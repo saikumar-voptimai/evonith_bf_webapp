@@ -1,0 +1,261 @@
+# Database
+influxdb:
+  host: "https://eu-central-1-1.aws.cloud2.influxdata.com"
+  org: "Blast Furnace, Evonith"
+  database: "Evonith_BFData_200Vars"
+  write: "True" # True or False - case sensitive.
+
+website_vars:
+  api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
+
+# Geometries
+paths:
+ geometry: "./src/geometries"
+
+plot:
+  circular:
+    r_inner: 30
+    r_outer: 100
+    radial_steps: 100
+    theta_steps: 360
+  contour:
+    furnace_grid_X_low: -4
+    furnace_grid_X_high: 0
+    furnace_grid_Y_low: 0
+    furnace_grid_Y_high: 20
+    grid_divisions: 200
+  geometry:
+    geometry_points:
+      - [-2.8, 4.374]
+      - [-2.8, 6.795]
+      - [-3.150, 8.335]
+      - [-3.15, 11.290]
+      - [-3.65, 14.390]
+      - [-3.650, 15.89]
+      - [-2.898, 20]
+    
+    sensors_at_y:
+      - [7, 13, 13, 13, 12, 14, 14, 14, 4, 4, 4]
+
+    heights:
+      - [4.373, 5.411, 5.757, 6.103, 6.795, 7.565, 8.335, 9.105, 12.975, 15.162, 18.660]
+
+    regions:
+      - ["Hearth", 5.5]
+      - ["Tuyere", 10.5]
+      - ["Bosh", 12.9]
+      - ["Belly", 15]
+      - ["Stack", 17.0]
+
+data_tags:
+  temperature_variables:
+    - "BF2_BFBD Furnace Body 12975mm Temp A"
+    - "BF2_BFBD Furnace Body 12975mm Temp B"
+    - "BF2_BFBD Furnace Body 12975mm Temp C"
+    - "BF2_BFBD Furnace Body 12975mm Temp D"
+    - "BF2_BFBD Furnace Body 12975mm Temp E"
+    - "BF2_BFBD Furnace Body 12975mm Temp F"
+    - "BF2_BFBD Furnace Body 12975mm Temp G"
+    - "BF2_BFBD Furnace Body 12975mm Temp H"
+    - "BF2_BFBD Furnace Body 12975mm Temp I"
+    - "BF2_BFBD Furnace Body 12975mm Temp J"
+    - "BF2_BFBD Furnace Body 12975mm Temp K"
+    - "BF2_BFBD Furnace Body 12975mm Temp L"
+    - "BF2_BFBD Furnace Body 12975mm Temp M"
+    - "BF2_BFBD Furnace Body 12975mm Temp N"
+    - "BF2_BFBD Furnace Body 15162mm Temp A"
+    - "BF2_BFBD Furnace Body 15162mm Temp B"
+    - "BF2_BFBD Furnace Body 15162mm Temp C"
+    - "BF2_BFBD Furnace Body 15162mm Temp D"
+    - "BF2_BFBD Furnace Body 15162mm Temp E"
+    - "BF2_BFBD Furnace Body 15162mm Temp F"
+    - "BF2_BFBD Furnace Body 15162mm Temp G"
+    - "BF2_BFBD Furnace Body 15162mm Temp H"
+    - "BF2_BFBD Furnace Body 15162mm Temp I"
+    - "BF2_BFBD Furnace Body 15162mm Temp J"
+    - "BF2_BFBD Furnace Body 15162mm Temp K"
+    - "BF2_BFBD Furnace Body 15162mm Temp L"
+    - "BF2_BFBD Furnace Body 15162mm Temp M"
+    - "BF2_BFBD Furnace Body 15162mm Temp N"
+    - "BF2_BFBD Furnace Body 18660mm Temp A"
+    - "BF2_BFBD Furnace Body 18660mm Temp B"
+    - "BF2_BFBD Furnace Body 18660mm Temp C"
+    - "BF2_BFBD Furnace Body 18660mm Temp D"
+    - "BF2_BFBD Furnace Body 18660mm Temp E"
+    - "BF2_BFBD Furnace Body 18660mm Temp F"
+    - "BF2_BFBD Furnace Body 18660mm Temp G"
+    - "BF2_BFBD Furnace Body 18660mm Temp H"
+    - "BF2_BFBD Furnace Body 18660mm Temp I"
+    - "BF2_BFBD Furnace Body 18660mm Temp J"
+    - "BF2_BFBD Furnace Body 18660mm Temp K"
+    - "BF2_BFBD Furnace Body 18660mm Temp L"
+    - "BF2_BFBD Furnace Body 18660mm Temp M"
+    - "BF2_BFBD Furnace Body 18660mm Temp N"
+    - "BF2_BFBD Furnace Body 4373mm Temp A"
+    - "BF2_BFBD Furnace Body 4373mm Temp B"
+    - "BF2_BFBD Furnace Body 4373mm Temp C"
+    - "BF2_BFBD Furnace Body 4373mm Temp D"
+    - "BF2_BFBD Furnace Body 4373mm Temp E"
+    - "BF2_BFBD Furnace Body 4373mm Temp F"
+    - "BF2_BFBD Furnace Body 4373mm Temp G"
+    - "BF2_BFBD Furnace Body 4373mm Temp H"
+    - "BF2_BFBD Furnace Body 4373mm Temp I"
+    - "BF2_BFBD Furnace Body 4373mm Temp J"
+    - "BF2_BFBD Furnace Body 4373mm Temp K"
+    - "BF2_BFBD Furnace Body 4373mm Temp L"
+    - "BF2_BFBD Furnace Body 4373mm Temp M"
+    - "BF2_BFBD Furnace Body 4373mm Temp N"
+    - "BF2_BFBD Furnace Body 5411mm Temp A"
+    - "BF2_BFBD Furnace Body 5411mm Temp B"
+    - "BF2_BFBD Furnace Body 5411mm Temp C"
+    - "BF2_BFBD Furnace Body 5411mm Temp D"
+    - "BF2_BFBD Furnace Body 5411mm Temp E"
+    - "BF2_BFBD Furnace Body 5411mm Temp F"
+    - "BF2_BFBD Furnace Body 5411mm Temp G"
+    - "BF2_BFBD Furnace Body 5411mm Temp H"
+    - "BF2_BFBD Furnace Body 5411mm Temp I"
+    - "BF2_BFBD Furnace Body 5411mm Temp J"
+    - "BF2_BFBD Furnace Body 5411mm Temp K"
+    - "BF2_BFBD Furnace Body 5411mm Temp L"
+    - "BF2_BFBD Furnace Body 5411mm Temp M"
+    - "BF2_BFBD Furnace Body 5411mm Temp N"
+    - "BF2_BFBD Furnace Body 5757mm Temp A"
+    - "BF2_BFBD Furnace Body 5757mm Temp B"
+    - "BF2_BFBD Furnace Body 5757mm Temp C"
+    - "BF2_BFBD Furnace Body 5757mm Temp D"
+    - "BF2_BFBD Furnace Body 5757mm Temp E"
+    - "BF2_BFBD Furnace Body 5757mm Temp F"
+    - "BF2_BFBD Furnace Body 5757mm Temp G"
+    - "BF2_BFBD Furnace Body 5757mm Temp H"
+    - "BF2_BFBD Furnace Body 5757mm Temp I"
+    - "BF2_BFBD Furnace Body 5757mm Temp J"
+    - "BF2_BFBD Furnace Body 5757mm Temp K"
+    - "BF2_BFBD Furnace Body 5757mm Temp L"
+    - "BF2_BFBD Furnace Body 5757mm Temp M"
+    - "BF2_BFBD Furnace Body 5757mm Temp N"
+    - "BF2_BFBD Furnace Body 6103mm Temp A"
+    - "BF2_BFBD Furnace Body 6103mm Temp B"
+    - "BF2_BFBD Furnace Body 6103mm Temp C"
+    - "BF2_BFBD Furnace Body 6103mm Temp D"
+    - "BF2_BFBD Furnace Body 6103mm Temp E"
+    - "BF2_BFBD Furnace Body 6103mm Temp F"
+    - "BF2_BFBD Furnace Body 6103mm Temp G"
+    - "BF2_BFBD Furnace Body 6103mm Temp H"
+    - "BF2_BFBD Furnace Body 6103mm Temp I"
+    - "BF2_BFBD Furnace Body 6103mm Temp J"
+    - "BF2_BFBD Furnace Body 6103mm Temp K"
+    - "BF2_BFBD Furnace Body 6103mm Temp L"
+    - "BF2_BFBD Furnace Body 6103mm Temp M"
+    - "BF2_BFBD Furnace Body 6103mm Temp N"
+    - "BF2_BFBD Furnace Body 6795mm Temp A"
+    - "BF2_BFBD Furnace Body 6795mm Temp B"
+    - "BF2_BFBD Furnace Body 6795mm Temp C"
+    - "BF2_BFBD Furnace Body 6795mm Temp D"
+    - "BF2_BFBD Furnace Body 6795mm Temp E"
+    - "BF2_BFBD Furnace Body 6795mm Temp F"
+    - "BF2_BFBD Furnace Body 6795mm Temp G"
+    - "BF2_BFBD Furnace Body 6795mm Temp H"
+    - "BF2_BFBD Furnace Body 6795mm Temp I"
+    - "BF2_BFBD Furnace Body 6795mm Temp J"
+    - "BF2_BFBD Furnace Body 6795mm Temp K"
+    - "BF2_BFBD Furnace Body 6795mm Temp L"
+    - "BF2_BFBD Furnace Body 6795mm Temp M"
+    - "BF2_BFBD Furnace Body 6795mm Temp N"
+    - "BF2_BFBD Furnace Body 7565mm Temp A"
+    - "BF2_BFBD Furnace Body 7565mm Temp B"
+    - "BF2_BFBD Furnace Body 7565mm Temp C"
+    - "BF2_BFBD Furnace Body 7565mm Temp D"
+    - "BF2_BFBD Furnace Body 7565mm Temp E"
+    - "BF2_BFBD Furnace Body 7565mm Temp F"
+    - "BF2_BFBD Furnace Body 7565mm Temp G"
+    - "BF2_BFBD Furnace Body 7565mm Temp H"
+    - "BF2_BFBD Furnace Body 7565mm Temp I"
+    - "BF2_BFBD Furnace Body 7565mm Temp J"
+    - "BF2_BFBD Furnace Body 7565mm Temp K"
+    - "BF2_BFBD Furnace Body 7565mm Temp L"
+    - "BF2_BFBD Furnace Body 7565mm Temp M"
+    - "BF2_BFBD Furnace Body 7565mm Temp N"
+    - "BF2_BFBD Furnace Body 8335mm Temp A"
+    - "BF2_BFBD Furnace Body 8335mm Temp B"
+    - "BF2_BFBD Furnace Body 8335mm Temp C"
+    - "BF2_BFBD Furnace Body 8335mm Temp D"
+    - "BF2_BFBD Furnace Body 8335mm Temp E"
+    - "BF2_BFBD Furnace Body 8335mm Temp F"
+    - "BF2_BFBD Furnace Body 8335mm Temp G"
+    - "BF2_BFBD Furnace Body 8335mm Temp H"
+    - "BF2_BFBD Furnace Body 8335mm Temp I"
+    - "BF2_BFBD Furnace Body 8335mm Temp J"
+    - "BF2_BFBD Furnace Body 8335mm Temp K"
+    - "BF2_BFBD Furnace Body 8335mm Temp L"
+    - "BF2_BFBD Furnace Body 8335mm Temp M"
+    - "BF2_BFBD Furnace Body 8335mm Temp N"
+    - "BF2_BFBD Furnace Body 9105mm Temp A"
+    - "BF2_BFBD Furnace Body 9105mm Temp B"
+    - "BF2_BFBD Furnace Body 9105mm Temp C"
+    - "BF2_BFBD Furnace Body 9105mm Temp D"
+    - "BF2_BFBD Furnace Body 9105mm Temp E"
+    - "BF2_BFBD Furnace Body 9105mm Temp F"
+    - "BF2_BFBD Furnace Body 9105mm Temp G"
+    - "BF2_BFBD Furnace Body 9105mm Temp H"
+    - "BF2_BFBD Furnace Body 9105mm Temp I"
+    - "BF2_BFBD Furnace Body 9105mm Temp J"
+    - "BF2_BFBD Furnace Body 9105mm Temp K"
+    - "BF2_BFBD Furnace Body 9105mm Temp L"
+    - "BF2_BFBD Furnace Body 9105mm Temp M"
+    - "BF2_BFBD Furnace Body 9105mm Temp N"
+
+
+  heatload_variables:
+    - "Heat load R6 Q1 (Stave No  1-8)"
+    - "Heat load R6 Q2(Stave No  9-16)"
+    - "Heat load R6 Q3(Stave No  17-24)"
+    - "Heat load R6 Q4(Stave No  25-32)"
+    
+    - "Heat load R7 Q1 (Stave No  1-8)"
+    - "Heat load R7 Q2(Stave No  9-16)"
+    - "Heat load R7 Q3 (Stave No  17-24)"
+    - "Heat load R7 Q4(Stave No  25-32)"
+        
+    - "Heat load R8 Q1(Stave No  1-8)"
+    - "Heat load R8 Q2(Stave No  9-16)"
+    - "Heat load R8 Q3(Stave No  17-24)"
+    - "Heat load R8 Q4(Stave No  25-32)"
+        
+    - "Heat load R9 Q1(Stave No  1-8)"
+    - "Heat load R9 Q2(Stave No  9-16)"
+    - "Heat load R9 Q3(Stave No  17-24)"
+    - "Heat load R9 Q4(Stave No  25-32)"
+        
+    - "Heat load R10 Q1(Stave No  1-8)"
+    - "Heat load R10 Q2(Stave No  9-16)"
+    - "Heat load R10 Q3(Stave No  17-24)"
+    - "Heat load R10 Q4(Stave No  25-32)"
+
+  process_variables:
+    - "BF2 CO in BF Gas(%)"
+    - "BF2 CO2 in BF Gas (%)"
+    - "BF2 H2 in BF Gas (%)"
+    - "BF2 TUYERE VELOCITY"
+    - "BF2_BODY_BOTTOM DP"
+    - "BF2_BODY_ETACO"
+    - "BF2_BODY_PERMEABILITY"
+    - "BF2_BODY_RAFT"
+    - "BF2_BODY_TOP DP"
+    - "BF2_BODY_TOTAL DP"
+    - "BF2_PROC Hot Blast Pressure"
+    - "BF2_PROC Hot Blast Temp"
+    - "BF2_PROC Hot Blast Temp Spare"
+    - "BF2_PROC Hot Blast Volume"
+    - "BF2_PROC Radar Stock Rod Level"
+    - "BF2_PROC Stock Rod 1 Position"
+    - "BF2_PROC Stock Rod 2 Position"
+    - "BF2_PROC Top Pressure 1"
+    - "BF2_PROC Top Pressure 2"
+    - "BF2_PROC Top Pressure 3"
+    - "BF2_PROC Top Pressure 4"
+    - "BF2_PROC Top Pressure Average"
+    - "BF2_PROC Top Temp 1"
+    - "BF2_PROC Top Temp 2"
+    - "BF2_PROC Top Temp 3"
+    - "BF2_PROC Top Temp 4"
+    - "BF2_PROC Top Temp Average"

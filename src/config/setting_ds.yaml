@@ -1,0 +1,82 @@
+# Input Params:
+Input Parameters:
+  - 'Sinter usage'
+  - 'Limestone Rate'
+  - 'Dolomite Rate'
+  - 'Quartzite Rate'
+  - 'Fe/C'
+  - 'Iron Ore_moisture_pct'
+  - 'Coke_moisture_pct'
+  - 'Fe_ore_pct'
+  - 'SiO2_ore_pct'
+  - 'Al2O3_ore_pct'
+  - 'Fe( T)_sinter'
+  - 'FeO_sinter_pct'
+  - 'SiO2_sinter_pct'
+  - 'Al2O3_sinter_pct'
+  - 'MgO_sinter_pct'
+  - 'Basicity_sinter'
+  - 'Ash'
+
+Flux Parameters:
+  - 'Limestone Rate'
+  - 'Dolomite Rate'
+  - 'Quartzite Rate'
+
+Sinter Parameters: 
+  - 'Sinter usage'
+  - 'Fe( T)_sinter'
+  - 'FeO_sinter_pct'
+  - 'SiO2_sinter_pct'
+  - 'Al2O3_sinter_pct'
+  - 'MgO_sinter_pct'
+  - 'Basicity_sinter'
+Ore Parameters:
+  - 'Fe/C'
+  - 'Iron Ore_moisture_pct'
+  - 'Coke_moisture_pct'
+  - 'Fe_ore_pct'
+  - 'SiO2_ore_pct'
+  - 'Al2O3_ore_pct'
+  - 'Ash'
+
+# Control Params:
+Control Parameters:
+  - 'Hot blast Temperature'
+  - 'Cold Blast Volume per thm'
+  - 'Oxygen Enrichment per thm'
+  - 'RAFT'
+  - 'Coke Rate'
+  - 'PCI'
+  - 'Silicon_hotmetal_pct'
+  - 'Steam'
+
+# Process Params:
+Process Parameters:
+  - 'Top Temp 1'
+  - 'Top Temp 2'
+  - 'Delta p per thm'
+  - 'HM Temp'
+  - 'CO_ag_pct'
+  - 'CO2_ag_pct'
+  - 'O2_ag_pct'
+  - 'H2_ag_pct'
+
+# Output Params:
+Metal Analysis:
+  - 'Production (Tap)'
+  - 'Carbon_hotmetal_pct'
+  - 'Manganese_hotmetal_pct'
+  - 'Sulphur_hotmetal_pct'
+  - 'Phosphurous_hotmetal_pct'
+
+Slag Analysis:
+  - 'CaO_slag_pct'
+  - 'SiO2_slag_pct'
+  - 'Al2O3_slag_pct'
+  - 'MgO_slag_pct'
+  - 'FeO_slag_pct'
+  - 'S_slag_pct'
+  - 'Basicity_slag'
+  - 'Total Basicity_slag'
+  - 'Slag Volume'

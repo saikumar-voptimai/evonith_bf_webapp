@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "evonith-webapp"
+version = "0.1.0"
+description = ""
+authors = ["Saikumar Yeddula <saikumar.yeddula@v-optimai.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+streamlit = "^1.40.2"
+matplotlib = "^3.9.3"
+pandas = "^2.2.3"
+pyyaml = "^6.0.2"
+influxdb3-python = "^0.10.0"
+python-dotenv = "^1.0.1"
+scipy = "^1.14.1"
+openpyxl = "^3.1.5"
+numpy = ">=1.22.4,<2.0.0"
+langchain = "^0.3.13"
+langchain-openai = "^0.2.14"
+langchain-anthropic = "^0.3.1"
+langchain-community = "^0.3.13"
+pypdf = "^5.1.0"
+chromadb = "^0.6.1"
+pygwalker = "^0.4.9.13"
+pypdf2 = "^3.0.1"
+joblib = "^1.4.2"
+xgboost = "^2.1.3"
+seaborn = "^0.13.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

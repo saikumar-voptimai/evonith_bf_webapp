@@ -1,0 +1,382 @@
+sections:
+  # -----------------------------------------------------------------
+  # TAB 1: Daily Production Report
+  # -----------------------------------------------------------------
+  Daily_Production_Report:
+    display_title: "Daily Production Report"
+    sub_sections:
+      - name: "a. Production Product"
+        variables:
+          - "Total Hot Metal Production (MT)"
+          - "Hot Metal to SMS (MT)"
+          - "Pig Iron (MT)"
+          - "PCM Skull (MT)"
+          - "Runner Skull (MT)"
+          - "Dry Pit Skull (MT)"
+          - "Slag Rate in Burden (Kg/Thm)"
+          - "Slag Generation (Calculated) (MT)"
+
+      - name: "b. By-Product Generation"
+        variables:
+          - "BF(RF) Coke Breeze -16mm (MT)"
+          - "BF(R) Coke Fines -30mm (MT)"
+          - "BF Return Iron Ore Fines (MT)"
+          - "Yard Nut Coke (RF) -14mm (MT)"
+          - "BF Return Sinter Fines (MT)"
+          - "Flue Dust (Dust Catcher) (MT)"
+          - "GCP Dust (Silo's) (MT)"
+
+      - name: "c. Fuel Consumption"
+        variables:
+          - "Lam Coke (MT)"
+          - "Prime Nut Coke (B-19) (MT)"
+          - "Yard Nut Coke (B-12) (MT)"
+          - "PCI Coal (MT)"
+
+      - name: "d. Raw Material Inputs"
+        variables:
+          - "Online+Offline Sinter (MT)"
+          - "Pellet (MT)"
+          - "Iron Ore (MT)"
+          - "Raw Fluxes (MT)"
+
+      - name: "e. Utility Data"
+        variables:
+          - "Oxygen (Nm3)"
+          - "Steam (Blast Furnace) (Tons)"
+          - "Steam (Turbo Blower) (Tons)"
+
+      - name: "f. Production Parameters"
+        variables:
+          - "IBRM Rate (Dry)"
+          - "Aggregate Fe (IBRM) (%)"
+          - "Avg. Fe (Sinter) (%)"
+          - "Avg. Fe (CLO) (%)"
+          - "Avg. Fe (Pellet) (%)"
+          - "Coke Rate (Kg/Thm)"
+          - "Nut Coke Rate (Kg/Thm)"
+          - "PCI Coal Rate (Kg/Thm)"
+          - "T. Fuel Rate (Kg/Thm)"
+          - "Burden Ratio (Sin:Ore:Pel) (Dry)"
+
+      - name: "g. HM Quality"
+        variables:
+          - "%Si (%)"
+          - "%S (%)"
+          - "Hot Metal Temp. (Deg. oC)"
+
+      - name: "h. BF Gas and Slag Data"
+        variables:
+          - "BF Gas Generation (KNM3)"
+          - "GCV of BF Gas (KCal/Nm3)"
+          - "BF Gas Flaring (%)"
+          - "Slag Al2O3 (%)"
+          - "Slag B1 (%)"
+
+      - name: "i. Furnace and Casting Details"
+        variables:
+          - "Avg. Uptake Temp. (Deg. oC)"
+          - "Avg. HBT (Deg. oC)"
+          - "Eta CO. (ŋ CO)"
+          - "Total Casting Duration (Min)"
+          - "Total Slag Duration (Min)"
+          - "Avg. Slag Ratio (%)"
+          - "Liquid Drainage Vol. (M3)"
+          - "Fe Balance (%)"
+
+      - name: "j. Raw Material Supply Details"
+        variables:
+          - "Pellet - (Godawari Power & Ispat Ltd.) (High-Grade) (MT)"
+          - "Total Pellet (Wet) (MT)"
+          - "Geomin Ind. (+53%) - EML (MT)"
+          - "Geomin Ind. (+55%) - EML (MT)"
+          - "Jayaswal Neco ind. Ltd. +(58%) (MT)"
+          - "Lloyds Metals & Energy (64%) (MT)"
+          - "NMDC  Limited (MT)"
+          - "Total Gross CLO (Wet) (MT)"
+          - "Sinter Online (SP-02) (MT)"
+          - "Sinter Offline (SP-02) (MT)"
+          - "Total Sinter Consumption (Wet) (MT)"
+          - "Total IBRM Wet (MT)"
+          - "Limestone (MT)"
+          - "Dolomite (MT)"
+          - "Quartzite (MT)"
+          - "Total Flux (MT)"
+          - "Coke Offline (Foundry/Wharf Coke) - EML (MT)"
+          - "Coke Offline (L-2) - EML (MT)"
+          - "Coke Online - EML (MT)"
+          - "Nut Coke from Prime Coke (MT)"
+          - "BF Return Coke fines (Breeze coke+prime Nut coke fines) (MT)"
+          - "Total Gross Coke consumption (WET) (MT)"
+          - "PCI - (Contaminated Coal) Free of Cost. (MT)"
+          - "Russian PCI - (MV OREN) PCORENPC01 (MT)"
+          - "PCI Coal - Russian PCI (MV NS Xiamen) A/c-Rawmet Resources) (MT)"
+          - "PCI Coal - Russian PCI (MV XIN HAI TONG 26  A/c-Bengal Energy) (MT)"
+          - "PCI Coal - Russian PCI (MV Panamax Christina A/C JSW Min. TPL) (MT)"
+          - "Russian PCI - (MV AC GLORIOUS COAL) PCRUACGLRS (MT)"
+          - "Total PCI Fine Coal Consumption (MT)"
+
+
+  # -----------------------------------------------------------------
+  # TAB 2: BF2 HM & Slag Chemistry
+  # -----------------------------------------------------------------
+  BF2_HM_and_Slag_Chemistry:
+    display_title: "BF2 HM & Slag Chemistry"
+    sub_sections:
+      - name: "a. Hot Metal Chemistry"
+        variables:
+          - "C (%)"
+          - "Si (%)"
+          - "Mn (%)"
+          - "S (%)"
+          - "P (%)"
+          - "Ti (%)"
+          - "Cr (%)"
+          - "Temp. (%)"
+
+      - name: "b. Slag Chemistry"
+        variables:
+          - "CaO (%)"
+          - "MgO (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "FeO (%)"
+          - "S (%)"
+          - "MnO (%)"
+          - "TiO2 (%)"
+          - "T. Alkali (%)"
+          - "B2"
+          - "B3"
+
+
+  # -----------------------------------------------------------------
+  # TAB 3: Raw Material Analysis
+  # -----------------------------------------------------------------
+  Raw_Material_Analysis:
+    display_title: "Raw Material Analysis"
+    sub_sections:
+      - name: "a. Coke"
+        variables:
+          - "Moist (%)"
+          - "IM (%)"
+          - "Ash (%)"
+          - "VM (%)"
+          - "FC (%)"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      - name: "b. Nut Coke (12&19)"
+        variables:
+          - "Moist (%)"
+          - "IM (%)"
+          - "Ash (%)"
+          - "VM (%)"
+          - "FC (%)"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      - name: "c. PCI-1 & 2"
+        variables:
+          - "TM (%)"
+          - "IM (%)"
+          - "Ash (%)"
+          - "VM (%)"
+          - "FC (%)"
+          - "+200 #"
+          - "-200 #"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      - name: "d. Raw PCI Coal"
+        variables:
+          - "TM (%)"
+          - "IM (%)"
+          - "Ash (%)"
+          - "VM (%)"
+          - "FC (%)"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      - name: "e. Sinter SP-02"
+        variables:
+          - "Fe(T) (%)"
+          - "FeO (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "CaO (%)"
+          - "MgO (%)"
+          - "Na2O (%)"
+          - "K2O (%)"
+          - "P (%)"
+          - "MnO (%)"
+          - "TiO2 (%)"
+          - "Basicity (%)"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 6                  # <--- number of samples
+        sample_labels: ["Sample A1", "Sample A2", "Sample B1", "Sample B2", "Sample C1", "Sample C2"]  # column labels
+
+      - name: "f. Sinter SP-01"
+        variables:
+          - "Fe(T) (%)"
+          - "FeO (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "CaO (%)"
+          - "MgO (%)"
+          - "Na2O (%)"
+          - "K2O (%)"
+          - "P (%)"
+          - "MnO (%)"
+          - "TiO2 (%)"
+          - "Basicity (%)"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 6                  # <--- number of samples
+        sample_labels: ["Sample A1", "Sample A2", "Sample B1", "Sample B2", "Sample C1", "Sample C2"]  # column labels
+
+
+      - name: "g. Geomin"
+        variables:
+          - "Fe(T) (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "P (%)"
+          - "TiO2 (%)"
+          - "Na2O (%)"
+          - "K2O (%)"
+          - "MnO (%)"
+          - "CaO (%)"
+          - "MgO (%)"
+          - "LOI (%)"
+          - "TM (%)"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      - name: "h. Lloyds"
+        variables:
+          - "Fe(T) (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "P (%)"
+          - "TiO2 (%)"
+          - "Na2O (%)"
+          - "K2O (%)"
+          - "MnO (%)"
+          - "CaO (%)"
+          - "MgO (%)"
+          - "LOI (%)"
+          - "TM (%)"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      - name: "i. NMDC"
+        variables:
+          - "Fe(T) (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "P (%)"
+          - "TiO2 (%)"
+          - "Na2O (%)"
+          - "K2O (%)"
+          - "MnO (%)"
+          - "CaO (%)"
+          - "MgO (%)"
+          - "LOI (%)"
+          - "TM (%)"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      - name: "j. Neco"
+        variables:
+          - "Fe(T) (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "P (%)"
+          - "TiO2 (%)"
+          - "Na2O (%)"
+          - "K2O (%)"
+          - "MnO (%)"
+          - "CaO (%)"
+          - "MgO (%)"
+          - "LOI (%)"
+          - "TM (%)"
+          - "Source"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      - name: "k. Pellet (Sarda)"
+        variables:
+          - "Fe(T) (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "P (%)"
+          - "TiO2 (%)"
+          - "Na2O (%)"
+          - "K2O (%)"
+          - "MnO (%)"
+          - "CaO (%)"
+          - "MgO (%)"
+          - "LOI (%)"
+          - "TM (%)"
+          - "Source"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+        
+      - name: "l. P-13 (Godawari 64.5)"
+        variables:
+          - "Fe(T) (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "P (%)"
+          - "TiO2 (%)"
+          - "Na2O (%)"
+          - "K2O (%)"
+          - "MnO (%)"
+          - "CaO (%)"
+          - "MgO (%)"
+          - "LOI (%)"
+          - "TM (%)"       
+          - "Source" 
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      # EXAMPLE of multi-sample for "n. Quartz-07"
+      - name: "m. Quartz-07"
+        variables:
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "Fe2O3 (%)"
+          - "LOI (%)"
+          - "TM (%)"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
+      - name: "n. Pellet (Neco)"
+        variables:
+          - "Fe(T) (%)"
+          - "SiO2 (%)"
+          - "Al2O3 (%)"
+          - "P (%)"
+          - "TiO2 (%)"
+          - "Na2O (%)"
+          - "K2O (%)"
+          - "MnO (%)"
+          - "CaO (%)"
+          - "MgO (%)"
+          - "LOI (%)"
+          - "TM (%)"
+          - "Source"
+        three_samples: true           # <--- indicates we want multi-sample input
+        n_samples: 3                  # <--- number of samples
+        sample_labels: ["Sample A", "Sample B", "Sample C"]  # column labels
+
