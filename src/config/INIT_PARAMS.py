@@ -1,5 +1,5 @@
 # File PARAMS
-folder = f'E:/Personal/MarketResearch/EvonithSteel/BlastFurnaceProject/PythonBlastFurnace/evonith_webapp/src/'
+folder = f'./src/'
 
 IMG_VOPTIMAI = "images/VOPTIMAI.png"
 IMG_HOSPET = "images/HOSPET.jpeg"
