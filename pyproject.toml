@@ -1,5 +1,6 @@
 [tool.poetry]
 name = "evonith-webapp"
+package-mode = false
 version = "0.1.0"
 description = ""
 authors = ["Saikumar Yeddula <saikumar.yeddula@v-optimai.com>"]
@@ -27,6 +28,7 @@ pypdf2 = "^3.0.1"
 joblib = "^1.4.2"
 xgboost = "^2.1.3"
 seaborn = "^0.13.2"
+plotly-express = "^0.4.1"
 
 [build-system]
 requires = ["poetry-core"]
