@@ -2,9 +2,9 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from src.config import INIT_PARAMS as IPS
+from config import INIT_PARAMS as IPS
 from typing import List, Dict
-from src.utils import optimiser
+from utils import optimiser
 
 units_dict = {'UTILITY _Steam (Blast Furnace)_Tons': 'Tonnes', 'UTILITY _Steam (Turbo Blower)_Tons': 'Tonnes',
                 'CBV From BlowerNm3/Hr.': 'Nm3/hr', 'Hot Blast VolumeNm3/Hr.': 'Nm3/hr',

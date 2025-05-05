@@ -4,7 +4,7 @@ import pandas as pd
 import joblib
 from typing import List, Dict
 
-from src.config import INIT_PARAMS as IPS
+from config import INIT_PARAMS as IPS
 
 
 def run_optimiser(data_path: str,

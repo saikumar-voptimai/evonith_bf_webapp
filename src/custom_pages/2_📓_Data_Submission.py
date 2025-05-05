@@ -3,7 +3,7 @@ import pandas as pd
 import logging
 import seaborn as sns
 import plotly.express as px
-from src.config import INIT_PARAMS as IPS
+from config import INIT_PARAMS as IPS
 from config.loader import load_config
 import os
 import matplotlib.pyplot as plt
