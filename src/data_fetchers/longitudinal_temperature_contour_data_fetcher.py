@@ -46,6 +46,11 @@ class LongitudinalTemperatureDataFetcher(TemperatureDataFetcher):
         Returns:
             List[float]: Interpolated values at four quadrants.
         """
+        # if any number in temp_list is 0 or Nan, fill replace with the average of the numerical values (but not zeros)
+        temp_list = np.array(temp_list)
+        temp_list[temp_list == 0] = np.nan
+        temp_list = np.nan_to_num(temp_list, nan=np.nanmean(temp_list[np.isfinite(temp_list)]))
+
         theta_per_sensor = 360 / n_sensors
         sensor_angles = np.radians([theta_per_sensor/2 + theta_per_sensor * i for i in range(len(temp_list))])
         theta_query_locs = np.radians([45, 135, 225, 315])

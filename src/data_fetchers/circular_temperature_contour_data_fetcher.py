@@ -30,6 +30,14 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
         """
         temp_data = super().fetch_averaged_data(average_by, start_time, end_time)
         level_dict = self.post_process_by_level(temp_data)
+        
+        for i, (level, temp_list) in enumerate(level_dict.items()):
+            # if any number in temp_list is 0 or Nan, fill replace with the average of the numerical values (but not zeros)
+            temp_list = np.array(temp_list)
+            temp_list[temp_list == 0] = np.nan
+            temp_list = np.nan_to_num(temp_list, nan=np.nanmean(temp_list[np.isfinite(temp_list)]))
+            level_dict[level] = temp_list
+            
         # Elevation labels from settings
         heights = config["plot"]["geometry"]["heights"][0]
         # Map special names for Bosh, Belly, Stack

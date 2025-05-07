@@ -31,7 +31,7 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
             # Find the variable name for this row and quadrant
             for key in flat_data:
                 if key.startswith(f"Heat load {row} Q{q}"):
-                    result[f"Q{q}"] = flat_data[key]
+                    result[f"Q{q}"] = flat_data[key] * 100
                     break
             else:
                 result[f"Q{q}"] = None  # or np.nan if you prefer

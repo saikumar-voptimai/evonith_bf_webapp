@@ -15,51 +15,10 @@ from config.loader import load_config
 
 TIMEZONE = pytz.timezone('Asia/Kolkata')  # GMT+5:30
 
-st.title("Heat Load Data Visualisation")
-# -------------------------------------------------------------------------------------------------------
-# 1. Timeseries Heatload plot
-# Initialize the data fetcher
-data_fetcher = TimeSeriesHeatLoadDataFetcher(debug=True)
-# Dropdown for selecting Row
-row = st.selectbox("Select Row", ["R6", "R7", "R8", "R9", "R10"])
-
-with st.expander("Set date and time"):
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        from_date = st.date_input("From Date:", value=datetime.now().date() - timedelta(days=1), key="left date input for heatload ts data")
-    with col2:
-        from_time = st.time_input("From Time:", value=datetime.now().time(), key="left time input for heatload ts data")
-    with col3:
-        to_date = st.date_input("To Date:", value=datetime.now().date(), key="right date input for heatload ts data")
-    with col4:
-        to_time = st.time_input("To Time:", value=datetime.now().time(), key="right time input for heatload ts data")
-
-    # Combine date and time
-    start_time = datetime.combine(from_date, from_time) if from_date and from_time else None
-    end_time = datetime.combine(to_date, to_time) if to_date and to_time else None
-
-# Fetch and process data for all quadrants
-data = data_fetcher.fetch_data(start_time=start_time, end_time=end_time, row=row) # random_data=True
-df = pd.DataFrame.from_dict(data[list(data.keys())[0]])
-
-# Plot the data
-fig = px.line(
-    df,
-    x=df['timestamps'],
-    y=df.columns,
-    title=f"Heat Load for {row}",
-    hover_data={"timestamps": "|%B %d, %Y"},
-    labels={ "timestamps": "Time", "value": "Heatload", "variable":"Quadrants"},
-    markers=True
-)
-
-# Display the plot
-st.plotly_chart(fig, use_container_width=True)
-
 # ----------------------------------------------------------------------------------------------------------
-# 2. Longitudinal Contour Plotter
+# 1. Longitudinal Contour Plotter
 # Initialize the data fetcher
-data_fetcher = LongitudinalTemperatureDataFetcher(debug=True)
+data_fetcher = LongitudinalTemperatureDataFetcher(debug=False, source="Live")
 
 # Streamlit UI
 st.title("Furnace Temperature Data Visualization")
@@ -105,11 +64,11 @@ fig = plotter.plot(temperature_list)
 st.pyplot(fig, use_container_width=True)
 st.markdown('-----------------------------------------------------------------------------------------')
 #-------------------------------------------------------------------------------------------------------
-# 3. Circumferential Contour Plotter - Heatload
+# 2. Circumferential Contour Plotter - Heatload
 # Circular Heat Load Plot
 st.subheader("Heat Load Distribution")
 st.markdown("Compares the average heat load distribution at a particular stave Row.")
-heatload_fetcher = AverageHeatLoadDataFetcher(debug=True, source="Live")
+heatload_fetcher = AverageHeatLoadDataFetcher(debug=False, source="Live")
 
 # Corresponding elevations
 rows = ["R6", "R7", "R8", "R9", "R10"]
@@ -157,11 +116,11 @@ with cols[1]:
     except Exception as e:
         st.error(f"Failed to fetch or plot heat load data: {e}")
 #------------------------------------------------------------------------------------------------------
-# 4. Circular Temperature Plot
+# 3. Circular Temperature Plot
 # Initialize the data fetcher
 
 st.title("Circumferential Temperature Distribution")
-circum_data_fetcher = CircumferentialTemperatureDataFetcher(debug=True, source="Live")
+circum_data_fetcher = CircumferentialTemperatureDataFetcher(debug=False, source="Live")
 
 # Define dropdown options
 time_options = [
@@ -204,3 +163,45 @@ st.pyplot(fig, use_container_width=True)
 st.markdown('-----------------------------------------------------------------------------------------')
 
 # #-------------------------------------------------------------------------------------------------------
+
+st.title("Heat Load Data - Timeseries")
+st.markdown('## Timeseries plots are under construction')
+# -------------------------------------------------------------------------------------------------------
+# 4. Timeseries Heatload plot
+# Initialize the data fetcher
+data_fetcher = TimeSeriesHeatLoadDataFetcher(debug=True)
+# Dropdown for selecting Row
+row = st.selectbox("Select Row", ["R6", "R7", "R8", "R9", "R10"])
+
+with st.expander("Set date and time"):
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        from_date = st.date_input("From Date:", value=datetime.now().date() - timedelta(days=1), key="left date input for heatload ts data")
+    with col2:
+        from_time = st.time_input("From Time:", value=datetime.now().time(), key="left time input for heatload ts data")
+    with col3:
+        to_date = st.date_input("To Date:", value=datetime.now().date(), key="right date input for heatload ts data")
+    with col4:
+        to_time = st.time_input("To Time:", value=datetime.now().time(), key="right time input for heatload ts data")
+
+    # Combine date and time
+    start_time = datetime.combine(from_date, from_time) if from_date and from_time else None
+    end_time = datetime.combine(to_date, to_time) if to_date and to_time else None
+
+# Fetch and process data for all quadrants
+data = data_fetcher.fetch_data(start_time=start_time, end_time=end_time, row=row) # random_data=True
+df = pd.DataFrame.from_dict(data[list(data.keys())[0]])
+
+# Plot the data
+fig = px.line(
+    df,
+    x=df['timestamps'],
+    y=df.columns,
+    title=f"Heat Load for {row}",
+    hover_data={"timestamps": "|%B %d, %Y"},
+    labels={ "timestamps": "Time", "value": "Heatload", "variable":"Quadrants"},
+    markers=True
+)
+
+# Display the plot
+st.plotly_chart(fig, use_container_width=True)

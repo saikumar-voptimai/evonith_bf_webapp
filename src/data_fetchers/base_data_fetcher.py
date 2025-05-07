@@ -118,13 +118,22 @@ class BaseDataFetcher:
             json_like_string = json_data.replace("'", '"')
             data = json.loads(json_like_string)
             df = pd.DataFrame(data)
-            df.replace('', pd.NA, inplace=True)
             log.info("Successfully fetched and parsed API data.")
             if df.empty:
                 log.error("API returned empty data.")
                 raise Exception("API returned empty data.")
             # API always returns data for a single timestamp, so take the first row
             row = df.iloc[0].to_dict()
+            # Convert all values to float, replacing empty strings with NaN
+            for k, v in row.items():
+                if isinstance(v, str) and v.strip() == "":
+                    row[k] = np.nan
+                else:
+                    try:
+                        row[k] = float(v)
+                    except ValueError:
+                        log.warning(f"Could not convert {k} to float: {v}")
+                        row[k] = np.nan
             # Only return variables in self.variables
             filtered_row = {k: (v if pd.notna(v) else np.nan) for k, v in row.items() if k in self.variables}
             return filtered_row
