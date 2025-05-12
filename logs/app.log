@@ -18,3 +18,38 @@
 [WARNING   | base_data_fetcher           | L135] 2025-05-05T18:03:18+0100: Could not convert Timelogged to float: TODAY | base_data_fetcher.py
 [INFO   | base_data_fetcher           | L121] 2025-05-05T18:03:18+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
 [WARNING   | base_data_fetcher           | L135] 2025-05-05T18:03:18+0100: Could not convert Timelogged to float: TODAY | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L121] 2025-05-08T12:55:34+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L135] 2025-05-08T12:55:34+0100: Could not convert Timelogged to float: 5/8/2025 11:54:51 AM | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L121] 2025-05-08T13:00:46+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L135] 2025-05-08T13:00:46+0100: Could not convert Timelogged to float: 5/8/2025 12:00:01 PM | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L121] 2025-05-08T13:02:00+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L135] 2025-05-08T13:02:00+0100: Could not convert Timelogged to float: 5/8/2025 12:01:41 PM | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L121] 2025-05-08T22:13:52+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L135] 2025-05-08T22:14:06+0100: Could not convert Timelogged to float: 5/8/2025 9:13:03 PM | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L121] 2025-05-08T22:32:02+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L135] 2025-05-08T22:35:23+0100: Could not convert Timelogged to float: 5/8/2025 9:31:03 PM | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L121] 2025-05-08T22:35:52+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L122] 2025-05-08T22:50:06+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L122] 2025-05-08T22:53:09+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L152] 2025-05-09T00:51:45+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[ERROR   | base_data_fetcher           | L163] 2025-05-09T00:51:45+0100: Error parsing API response: API response missing expected variables: | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L152] 2025-05-09T00:53:54+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[ERROR   | base_data_fetcher           | L163] 2025-05-09T00:53:54+0100: Error parsing API response: More than 20% of the expected variables are missing in API response.  | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L153] 2025-05-09T00:56:02+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[ERROR   | base_data_fetcher           | L164] 2025-05-09T00:56:02+0100: Error parsing API response: Expected temperature_variables are missing in API response.  | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L153] 2025-05-09T00:56:20+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[ERROR   | base_data_fetcher           | L164] 2025-05-09T00:56:20+0100: Error parsing API response: Expected temperature variables are missing in API response.  | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L153] 2025-05-09T00:56:38+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[ERROR   | base_data_fetcher           | L164] 2025-05-09T00:56:38+0100: Error parsing API response: Expected temperature variables are missing in API response.  | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L153] 2025-05-09T00:56:47+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[ERROR   | base_data_fetcher           | L164] 2025-05-09T00:56:47+0100: Error parsing API response: Expected temperature variables are missing in API response.  | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L153] 2025-05-10T21:38:46+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[ERROR   | base_data_fetcher           | L164] 2025-05-10T21:38:47+0100: Error parsing API response: Expected temperature variables are missing in API response.  | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L153] 2025-05-10T21:43:04+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[ERROR   | base_data_fetcher           | L164] 2025-05-10T21:43:47+0100: Error parsing API response: Expected temperature variables are missing in API response.  | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L153] 2025-05-10T21:44:26+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L159] 2025-05-11T15:53:41+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[INFO   | base_data_fetcher           | L159] 2025-05-11T15:53:41+0100: Successfully fetched and parsed API data. | base_data_fetcher.py
+[ERROR   | data_helpers           | L33] 2025-05-11T15:53:41+0100: Project owner email not configured in setting.yaml. | data_helpers.py
+[ERROR   | base_data_fetcher           | L170] 2025-05-11T15:53:41+0100: Error parsing API response: API response missing expected variables: ['BF2_BFBD Furnace Body 12975mm Temp E', 'BF2_BFBD Furnace Body 12975mm Temp F', 'BF2_BFBD Furnace Body 12975mm Temp G', 'BF2_BFBD Furnace Body 12975mm Temp H', 'BF2_BFBD Furnace Body 12975mm Temp I', 'BF2_BFBD Furnace Body 12975mm Temp J', 'BF2_BFBD Furnace Body 12975mm Temp K', 'BF2_BFBD Furnace Body 12975mm Temp L', 'BF2_BFBD Furnace Body 12975mm Temp M', 'BF2_BFBD Furnace Body 12975mm Temp N', 'BF2_BFBD Furnace Body 15162mm Temp E', 'BF2_BFBD Furnace Body 15162mm Temp F', 'BF2_BFBD Furnace Body 15162mm Temp G', 'BF2_BFBD Furnace Body 15162mm Temp H', 'BF2_BFBD Furnace Body 15162mm Temp I', 'BF2_BFBD Furnace Body 15162mm Temp J', 'BF2_BFBD Furnace Body 15162mm Temp K', 'BF2_BFBD Furnace Body 15162mm Temp L', 'BF2_BFBD Furnace Body 15162mm Temp M', 'BF2_BFBD Furnace Body 15162mm Temp N', 'BF2_BFBD Furnace Body 18660mm Temp E', 'BF2_BFBD Furnace Body 18660mm Temp F', 'BF2_BFBD Furnace Body 18660mm Temp G', 'BF2_BFBD Furnace Body 18660mm Temp H', 'BF2_BFBD Furnace Body 18660mm Temp I', 'BF2_BFBD Furnace Body 18660mm Temp J', 'BF2_BFBD Furnace Body 18660mm Temp K', 'BF2_BFBD Furnace Body 18660mm Temp L', 'BF2_BFBD Furnace Body 18660mm Temp M', 'BF2_BFBD Furnace Body 18660mm Temp N', 'BF2_BFBD Furnace Body 4373mm Temp H', 'BF2_BFBD Furnace Body 4373mm Temp I', 'BF2_BFBD Furnace Body 4373mm Temp J', 'BF2_BFBD Furnace Body 4373mm Temp K', 'BF2_BFBD Furnace Body 4373mm Temp L', 'BF2_BFBD Furnace Body 4373mm Temp M', 'BF2_BFBD Furnace Body 4373mm Temp N', 'BF2_BFBD Furnace Body 5411mm Temp N', 'BF2_BFBD Furnace Body 5757mm Temp N', 'BF2_BFBD Furnace Body 6103mm Temp N', 'BF2_BFBD Furnace Body 6795mm Temp M', 'BF2_BFBD Furnace Body 6795mm Temp N', 'BF2_BFBD Furnace Body 9105mm Temp M', 'BF2_BFBD Furnace Body 9105mm Temp N'] | base_data_fetcher.py
+[ERROR   | data_helpers           | L33] 2025-05-11T15:53:41+0100: Project owner email not configured in setting.yaml. | data_helpers.py

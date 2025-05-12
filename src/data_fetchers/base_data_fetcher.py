@@ -10,6 +10,7 @@ import json
 import xml.etree.ElementTree as ET
 from config.loader import load_config
 from .database import get_influx_client
+from utils.data_helpers import email_missing_variables
 
 # Load configuration and environment variables
 config = load_config()
@@ -35,6 +36,7 @@ class BaseDataFetcher:
         self.source = source.strip().lower()
         self.timezone = pytz.timezone('Asia/Kolkata')  # GMT+5:30
         self.client = get_influx_client()
+        self.variable_tag = variable_tag
         self.variables = config["data_tags"].get(variable_tag, [])
         self.api_url = config["website_vars"].get("api_url", "")
         self.api_user = os.getenv("USERNAME_REALTIMEDATA")
@@ -87,6 +89,41 @@ class BaseDataFetcher:
 
         return raw_data
     
+    def _check_and_handle_missing_vars(self, row: dict, context_method: str = "fetch_live_data"):
+        """
+        Checks for missing variables in the API response and handles error reporting and notification.
+        Args:
+            row (dict): The dictionary of variables returned from the API.
+            context_method (str): The method name for context (default: 'fetch_live_data').
+        Raises:
+            Exception: If a significant number of expected variables are missing.
+        """
+        missing_vars = [var for var in self.variables if var not in row]
+        total_vars = len(self.variables)
+        missing_ratio = len(missing_vars) / total_vars if total_vars > 0 else 0
+        if missing_vars:
+            import inspect
+            frame = inspect.currentframe()
+            context_info = (
+                f"Datetime: {datetime.now(self.timezone)}\n"
+                f"Class: {self.__class__.__name__}\n"
+                f"Method: {context_method}\n"
+                f"Line: {frame.f_back.f_lineno}\n"
+                f"Debug mode: {self.debug}\n"
+                f"Source type: {self.source}\n"
+                f"API URL: {self.api_url}\n"
+                f"Variables expected: {self.variables}\n"
+                f"Variables received: {list(row.keys())}\n"
+            )
+            if missing_ratio < 0.3:
+                log.warning(f"API response missing <{missing_ratio*100:.2f}% of expected variables: {missing_vars}\nContext: {context_info}")
+                for var in missing_vars:
+                    row[var] = 0
+            else:
+                log.error(f"API response missing >=20% of expected variables: {missing_vars}\nContext: {context_info}")
+                email_missing_variables(missing_vars, context_info)
+                raise Exception(f"API response missing expected variables <{missing_ratio*100:.2f}%: {missing_vars}")
+
     def fetch_live_data(
         self,
     ) -> Dict[str, float]:
@@ -118,23 +155,20 @@ class BaseDataFetcher:
             json_like_string = json_data.replace("'", '"')
             data = json.loads(json_like_string)
             df = pd.DataFrame(data)
+            df.replace('', pd.NA, inplace=True)
             log.info("Successfully fetched and parsed API data.")
             if df.empty:
                 log.error("API returned empty data.")
                 raise Exception("API returned empty data.")
             # API always returns data for a single timestamp, so take the first row
             row = df.iloc[0].to_dict()
-            # Convert all values to float, replacing empty strings with NaN
-            for k, v in row.items():
-                if isinstance(v, str) and v.strip() == "":
-                    row[k] = np.nan
-                else:
-                    try:
-                        row[k] = float(v)
-                    except ValueError:
-                        log.warning(f"Could not convert {k} to float: {v}")
-                        row[k] = np.nan
-            # Only return variables in self.variables
+            # Change dtype of all values to float
+            for key in row:
+                try:
+                    row[key] = float(row[key])
+                except (ValueError, TypeError):
+                    row[key] = np.nan
+            self._check_and_handle_missing_vars(row, context_method="fetch_live_data")
             filtered_row = {k: (v if pd.notna(v) else np.nan) for k, v in row.items() if k in self.variables}
             return filtered_row
         except Exception as e:

@@ -7,6 +7,7 @@ influxdb:
 
 website_vars:
   api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
+  email_missing_vars: "True" # True or False - case sensitive.
 
 # Geometries
 paths:
