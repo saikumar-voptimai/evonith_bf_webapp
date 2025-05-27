@@ -1,16 +1,33 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict
 import os
 import pytz
 import numpy as np
 import pandas as pd
 import requests
+import dotenv
 import json
 import xml.etree.ElementTree as ET
+from influxdb_client_3 import InfluxDBClient3, flight_client_options
+import certifi
 from config.loader import load_config
 from .database import get_influx_client
-from utils.data_helpers import email_missing_variables
+
+fh = open(certifi.where(), "r")
+cert = fh.read()
+fh.close()
+
+TIMEDELTAS = {
+        'last 1 minute': timedelta(minutes=1),
+        'last 15 minutes': timedelta(minutes=15),
+        'last 1 hour': timedelta(hours=1),
+        'last 6 hours': timedelta(hours=6),
+        'last 12 hours': timedelta(hours=12),
+        'last 1 day': timedelta(days=1),
+        'last 1 week': timedelta(weeks=1),
+        'last 1 month': timedelta(days=30)
+}
 
 # Load configuration and environment variables
 config = load_config()
@@ -18,12 +35,37 @@ config = load_config()
 # Initialize logging
 log = logging.getLogger("root")
 
+dotenv.load_dotenv()
+
+def query_builder(measurement: str, start: str, stop: str, type: str='average') -> str:
+    """
+    Build a SQL query to get average per variable for a measurement.
+    Args:
+        measurement: Measurement name (e.g., 'temperature_params')
+        start: Start datetime (ISO format)
+        stop: End datetime (ISO format)
+    Returns:
+        SQL query string
+    """
+    start_iso = start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+    end_iso = stop.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+
+    var_map = config["data_mapping"].get(measurement, {})
+    var_map_inv = {v: k for k, v in var_map.items()}
+    if type == 'average':
+        avg_str = [f"AVG({col}) AS {col}" for col in var_map_inv.keys()]  
+        return f"SELECT {', '.join(avg_str)} FROM {measurement} WHERE time >= timestamp '{start_iso}' AND time <= timestamp '{end_iso}'"
+    elif type == 'ts':
+        return f"SELECT * FROM {measurement} WHERE time >= timestamp '{start_iso}' AND time <= timestamp '{end_iso}'"
+    else:
+        raise ValueError(f"Invalid query type: {type}. Use 'average' or 'ts'.")
+
 class BaseDataFetcher:
     """
     Abstract base class for fetching raw data from InfluxDB.
     """
 
-    def __init__(self, variable_tag: str, debug: bool = False, source: str = "live"):
+    def __init__(self, variable_tag: str, debug: bool = False, source: str = "live", request_type: str = "average"):
         """
         Initialize the BaseDataFetcher with InfluxDB credentials and configuration.
 
@@ -41,54 +83,11 @@ class BaseDataFetcher:
         self.api_url = config["website_vars"].get("api_url", "")
         self.api_user = os.getenv("USERNAME_REALTIMEDATA")
         self.api_password = os.getenv("PASSWORD_REALTIMEDATA")
+        self.measurement_type = self.variable_tag
+        self.var_map = config["data_mapping"].get(self.measurement_type, {})
+        self.request_type = request_type
 
 
-    def fetch_raw_data(
-        self,
-        start_time: datetime,
-        end_time: datetime
-    ) -> Dict[str, Dict[str, List]]:
-        """
-        Fetch raw data for all variables within a given time range.
-
-        Parameters:
-            start_time (datetime): Start of the time range.
-            end_time (datetime): End of the time range.
-
-        Returns:
-            dict: A dictionary containing timestamps and values for each variable.
-        """
-        start_time_utc = start_time.astimezone(pytz.utc).isoformat()
-        end_time_utc = end_time.astimezone(pytz.utc).isoformat()
-
-        raw_data = {}
-        for variable in self.variables:
-            # Sanitize variable name to prevent injection
-            safe_variable = str(variable).replace('"', '').replace("'", "")
-            query = f"""
-            SELECT \"value\"
-            FROM \"{safe_variable}\"
-            WHERE time >= '{start_time_utc}' AND time <= '{end_time_utc}'
-            """
-            try:
-                log.debug(f"Executing query: {query}")
-                result = self.client.query(query=query, language='sql')
-                df = result.to_pandas()
-            except Exception as e:
-                log.error(f"Database query failed for {variable}: {e}")
-                raw_data[variable] = {"timestamps": [], "values": []}
-                continue
-            if not df.empty:
-                raw_data[variable] = {
-                    "timestamps": df["time"].tolist(),
-                    "values": df["value"].tolist()
-                }
-            else:
-                log.warning(f"No data found for sensor {variable} in the specified time range.")
-                raw_data[variable] = {"timestamps": [], "values": []}
-
-        return raw_data
-    
     def _check_and_handle_missing_vars(self, row: dict, context_method: str = "fetch_live_data"):
         """
         Checks for missing variables in the API response and handles error reporting and notification.
@@ -121,7 +120,6 @@ class BaseDataFetcher:
                     row[var] = 0
             else:
                 log.error(f"API response missing >=20% of expected variables: {missing_vars}\nContext: {context_info}")
-                email_missing_variables(missing_vars, context_info)
                 raise Exception(f"API response missing expected variables <{missing_ratio*100:.2f}%: {missing_vars}")
 
     def fetch_live_data(
@@ -195,9 +193,7 @@ class BaseDataFetcher:
         if self.debug:
             return {var: np.mean(data["values"]) for var, data in self._get_dummy_data().items()}
 
-        now = datetime.now(self.timezone)
-
-        # Normalize average_by for comparison
+        now = datetime.now(timezone.utc) # DB only sotres in UTC
         average_by_norm = average_by.strip().lower()
         if average_by_norm == 'live':
             return self.fetch_live_data()
@@ -205,27 +201,30 @@ class BaseDataFetcher:
             if not start_time or not end_time:
                 raise ValueError("For 'Over Selected Range', both start_time and end_time must be provided.")
         else:
-            time_deltas = {
-                'last 1 minute': timedelta(minutes=1),
-                'last 15 minutes': timedelta(minutes=15),
-                'last 1 hour': timedelta(hours=1),
-                'last 6 hours': timedelta(hours=6),
-                'last 12 hours': timedelta(hours=12),
-                'last 1 day': timedelta(days=1),
-                'last 1 week': timedelta(weeks=1),
-                'last 1 month': timedelta(days=30)
-            }
-            if average_by_norm not in time_deltas:
+            if average_by_norm not in TIMEDELTAS:
                 raise ValueError(f"Invalid average_by value: {average_by}")
-            start_time = now - time_deltas[average_by_norm]
+            start_time = now - TIMEDELTAS[average_by_norm]
             end_time = now
+        
+        database = config["influxdb"].get("database", "bf2_evonith_raw")
+        host = config["influxdb"].get("host", "https://eu-central-1-1.aws.cloud2.influxdata.com")
+        org = config["influxdb"].get("org", "Blast Furnace, Evonith")
 
-        raw_data = self.fetch_raw_data(start_time, end_time)
-        averaged_data = {
-            variable: np.mean(data["values"]) if data["values"] else np.nan
-            for variable, data in raw_data.items()
-        }
-        return averaged_data
+        token = os.environ.get("INFLUX_TOKEN", "")
+        query = query_builder(self.measurement_type, start_time, end_time, type=self.request_type)
+        client = InfluxDBClient3(host=host,
+                                database=database,
+                                org=org,
+                                token=token,
+                                flight_client_options=flight_client_options(
+                                    tls_root_certs=cert))
+        df = client.query(query=query, mode="pandas")
+        client.close()
+        if self.request_type == "ts":
+            return df
+        converted_data = self.dataframe_to_dict(df)
+        float_dict = {k: float(v[0]) for k, v in converted_data.items()}
+        return float_dict
 
     def _get_variable_names(self) -> List[str]:
         """
@@ -252,3 +251,20 @@ class BaseDataFetcher:
                 "values": [np.random.random() * 100 for _ in range(100)]
             }
         return dummy_data
+    
+    def dataframe_to_dict(self, df: pd.DataFrame) -> Dict[str, float]:
+        """
+        Convert a DataFrame with single row to a dictionary with variable names as keys and their values as floats.
+
+        Args:
+            df (pd.DataFrame): The DataFrame containing the data.
+            variables (List[str]): List of variable names to extract.
+
+        Returns:
+            Dict[str, float]: Dictionary with variable names as keys and their values.
+        """
+        var_map = config["data_mapping"].get(self.measurement_type, {})
+        var_map_inv = {v: k for k, v in var_map.items()}
+        df.rename(columns={old: new for old, new in var_map_inv.items()}, inplace=True)
+        dict_df = df.to_dict(orient='list')
+        return dict_df

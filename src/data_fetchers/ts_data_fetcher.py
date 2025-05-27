@@ -1,12 +1,13 @@
 from .base_data_fetcher import BaseDataFetcher
 from datetime import datetime, timedelta
 import numpy as np
+import pandas as pd
 
 class TimeSeriesDataFetcher(BaseDataFetcher):
     """
     Processes raw data for time-series plots.
     """
-    def fetch_data(self, start_time: datetime, end_time: datetime) -> dict:
+    def fetch_data(self, time_interval: str, start_time: datetime, end_time: datetime) -> pd.DataFrame:
         """
         Fetch raw time-series data for plotting.
 
@@ -20,18 +21,8 @@ class TimeSeriesDataFetcher(BaseDataFetcher):
         if self.debug:
             return self._get_dummy_data()
 
-        raw_data = self.fetch_raw_data(start_time, end_time)
-        time_series_data = {}
-        for variable, data in raw_data.items():
-            # Defensive: handle missing keys
-            timestamps = data.get("timestamps", [])
-            values = data.get("values", [])
-            time_series_data[variable] = {
-                "timestamps": timestamps,
-                "values": values
-            }
-        return time_series_data
-
+        raw_df = self.fetch_averaged_data(time_interval, start_time, end_time)
+        return raw_df
     def _get_dummy_data(self) -> dict:
         """
         Return dummy data for debugging purposes.

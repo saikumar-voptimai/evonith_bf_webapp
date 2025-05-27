@@ -8,7 +8,7 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
     """
 
     def __init__(self, debug: bool = False, source: str = "live"):
-        super().__init__("heatload_variables", debug, source)
+        super().__init__("heatload_delta_t", debug, source)
 
     def fetch_averaged_data(self, average_by: str, start_time=None, end_time=None, row: str = None) -> dict:
         """
@@ -32,6 +32,14 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
             for key in flat_data:
                 if key.startswith(f"Heat load {row} Q{q}"):
                     result[f"Q{q}"] = flat_data[key] * 100
+                    if result[f"Q{q}"] <= 0 or np.isnan(result[f"Q{q}"]):
+                        # If the value is <0 or NaN, replace with the average of non-zero values
+                        non_zero_values = [v for v in flat_data.values() if v > 0 and not np.isnan(v)]
+                        if non_zero_values:
+                            result[f"Q{q}"] = np.mean(non_zero_values)
+                    if result[f"Q{q}"] >= 150:
+                        # If the value is too high, set it to None
+                        result[f"Q{q}"] = 150   # or np.nan if you prefer
                     break
             else:
                 result[f"Q{q}"] = None  # or np.nan if you prefer

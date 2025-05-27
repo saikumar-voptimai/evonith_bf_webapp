@@ -3,7 +3,7 @@ import plotly.express as px
 import pandas as pd
 import pytz
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from data_fetchers.ts_heatload_data_fetcher import TimeSeriesHeatLoadDataFetcher
 from data_fetchers.longitudinal_temperature_contour_data_fetcher import LongitudinalTemperatureDataFetcher
 from data_fetchers.circular_temperature_contour_data_fetcher import CircumferentialTemperatureDataFetcher
@@ -18,7 +18,7 @@ TIMEZONE = pytz.timezone('Asia/Kolkata')  # GMT+5:30
 # ----------------------------------------------------------------------------------------------------------
 # 1. Longitudinal Contour Plotter
 # Initialize the data fetcher
-data_fetcher = LongitudinalTemperatureDataFetcher(debug=False, source="Live")
+data_fetcher = LongitudinalTemperatureDataFetcher(debug=False, source="Historical", request_type="average")
 
 # Streamlit UI
 st.title("Furnace Temperature Data Visualization")
@@ -35,11 +35,13 @@ with expander:
     with col4:
         to_time = st.time_input("To Time:", value=datetime.now().time(), key="right time for Longitudinal contour plot")
 
-    # Combine date and time
-    start_time = datetime.combine(from_date, from_time) if from_date and from_time else None
-    end_time = datetime.combine(to_date, to_time) if to_date and to_time else None
-
-    if start_time >= end_time:
+    # Combine date and time - ensure both are provided and convert to UTC
+    start_time_local = datetime.combine(from_date, from_time) if from_date and from_time else None
+    start_time_utc = start_time_local.astimezone(pytz.utc) if start_time_local else None
+    end_time_local = datetime.combine(to_date, to_time) if to_date and to_time else None
+    end_time_utc = end_time_local.astimezone(pytz.utc) if start_time_local else None
+    
+    if start_time_utc >= end_time_utc:
         st.error("Invalid time range: 'From' datetime must be earlier than 'To' datetime.")
         st.stop()
 
@@ -52,7 +54,7 @@ time_options = [
 # User selection
 time_interval_1 = st.selectbox("Longitudinal - Select Averaging Interval:", time_options, key="time interval longitudinal contour plot")
 try:
-    temperature_dict = data_fetcher.fetch_averaged_data(time_interval_1, start_time, end_time)
+    temperature_dict = data_fetcher.fetch_averaged_data(time_interval_1, start_time_utc, end_time_utc)
 except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()
@@ -68,7 +70,7 @@ st.markdown('-------------------------------------------------------------------
 # Circular Heat Load Plot
 st.subheader("Heat Load Distribution")
 st.markdown("Compares the average heat load distribution at a particular stave Row.")
-heatload_fetcher = AverageHeatLoadDataFetcher(debug=False, source="Live")
+heatload_fetcher = AverageHeatLoadDataFetcher(debug=False, source="historical")
 
 # Corresponding elevations
 rows = ["R6", "R7", "R8", "R9", "R10"]
@@ -120,7 +122,7 @@ with cols[1]:
 # Initialize the data fetcher
 
 st.title("Circumferential Temperature Distribution")
-circum_data_fetcher = CircumferentialTemperatureDataFetcher(debug=False, source="Live")
+circum_data_fetcher = CircumferentialTemperatureDataFetcher(debug=False, source="historical", request_type="average")
 
 # Define dropdown options
 time_options = [
@@ -165,11 +167,10 @@ st.markdown('-------------------------------------------------------------------
 # #-------------------------------------------------------------------------------------------------------
 
 st.title("Heat Load Data - Timeseries")
-st.markdown('## Timeseries plots are under construction')
 # -------------------------------------------------------------------------------------------------------
 # 4. Timeseries Heatload plot
 # Initialize the data fetcher
-data_fetcher = TimeSeriesHeatLoadDataFetcher(debug=True)
+data_fetcher = TimeSeriesHeatLoadDataFetcher(debug=False, source="historical", request_type="ts")
 # Dropdown for selecting Row
 row = st.selectbox("Select Row", ["R6", "R7", "R8", "R9", "R10"])
 
@@ -188,19 +189,20 @@ with st.expander("Set date and time"):
     start_time = datetime.combine(from_date, from_time) if from_date and from_time else None
     end_time = datetime.combine(to_date, to_time) if to_date and to_time else None
 
+# Define dropdown options
+time_options = ['Last 1 minute', 'Last 15 minutes', 'Last 1 hour', 'Last 6 hours',
+    'Last 12 hours', 'Last 1 day', 'Last 1 week', 'Last 1 month', 'Over Selected Range'
+]
+time_interval_4 = st.selectbox("TimeSeries - Select Interval:", time_options, key="time interval for ts plot")
 # Fetch and process data for all quadrants
-data = data_fetcher.fetch_data(start_time=start_time, end_time=end_time, row=row) # random_data=True
-df = pd.DataFrame.from_dict(data[list(data.keys())[0]])
+df = data_fetcher.fetch_data(time_interval=time_interval_4, start_time=start_time, end_time=end_time, row=row) # random_data=True
 
 # Plot the data
 fig = px.line(
     df,
-    x=df['timestamps'],
+    x=df.index,
     y=df.columns,
-    title=f"Heat Load for {row}",
-    hover_data={"timestamps": "|%B %d, %Y"},
-    labels={ "timestamps": "Time", "value": "Heatload", "variable":"Quadrants"},
-    markers=True
+    title=f"Heat Load for {row} - Moving Average over 10 minutes",
 )
 
 # Display the plot

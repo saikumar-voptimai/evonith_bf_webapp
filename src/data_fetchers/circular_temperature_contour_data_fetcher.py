@@ -13,8 +13,8 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
     Fetcher for longitudinal temperature data.
     """
 
-    def __init__(self, debug: bool = False, source: str = "live"):
-        super().__init__(debug, source)
+    def __init__(self, debug: bool = False, source: str = "live", request_type: str = "average"):
+        super().__init__(debug, source, request_type)
 
     def fetch_averaged_data(self, average_by: str, start_time=None, end_time=None) -> dict:
         """
@@ -34,7 +34,7 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
         for i, (level, temp_list) in enumerate(level_dict.items()):
             # if any number in temp_list is 0 or Nan, fill replace with the average of the numerical values (but not zeros)
             temp_list = np.array(temp_list)
-            temp_list[temp_list == 0] = np.nan
+            temp_list[temp_list <= 25] = np.nan
             temp_list = np.nan_to_num(temp_list, nan=np.nanmean(temp_list[np.isfinite(temp_list)]))
             level_dict[level] = temp_list
             

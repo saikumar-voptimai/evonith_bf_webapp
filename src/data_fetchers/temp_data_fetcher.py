@@ -12,8 +12,8 @@ class TemperatureDataFetcher(BaseDataFetcher):
     Fetcher for longitudinal temperature data.
     """
 
-    def __init__(self, debug: bool, source: str):
-        super().__init__("temperature_variables", debug, source)
+    def __init__(self, debug: bool, source: str, request_type: str = "average"):
+        super().__init__("temperature_profile", debug, source, request_type)
 
     def _get_variable_names(self, n_sensors: int) -> List[str]:
         """
@@ -48,7 +48,6 @@ class TemperatureDataFetcher(BaseDataFetcher):
             temp_data = self.fetch_live_data()
         else:
             temp_data = self._get_dummy_data()
-        # temp_data is now a dict {variable_name: value, ...}
         return temp_data
 
     def fetch_live_data(self) -> dict:

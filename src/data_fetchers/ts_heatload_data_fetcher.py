@@ -1,15 +1,16 @@
 from .ts_data_fetcher import TimeSeriesDataFetcher
 from datetime import datetime, timedelta
 import numpy as np
+import pandas as pd
 
 class TimeSeriesHeatLoadDataFetcher(TimeSeriesDataFetcher):
     """
     Processes raw data for time-series plots.
     """
-    def __init__(self, debug: bool = False, source: str = "live"):
-        super().__init__("heatload_variables", debug, source)
+    def __init__(self, debug: bool = False, source: str = "live", request_type: str = "ts"):
+        super().__init__("heatload_delta_t", debug, source, request_type)
     
-    def fetch_data(self, start_time: datetime, end_time: datetime, row: str, quadrant: str=None) -> dict:
+    def fetch_data(self, time_interval: str, start_time: datetime, end_time: datetime, row: str, quadrant: str=None) -> pd.DataFrame:
         """
         Fetch raw time-series data for plotting.
 
@@ -22,9 +23,22 @@ class TimeSeriesHeatLoadDataFetcher(TimeSeriesDataFetcher):
         Returns:
             dict: Time-series data for each heatload variable in the selected row (using full variable names).
         """
-        ts_data = super().fetch_data(start_time, end_time)
-        ts_row_data = {}
-        for key, value in ts_data.items():
-            if row in key and (quadrant is None or quadrant in key):
-                ts_row_data[key] = value
-        return ts_row_data
+        df_ts = super().fetch_data(time_interval, start_time, end_time)
+        if len(df_ts) == 0:
+            raise ValueError(f"No data available in the Database for the specified time range \
+                             - {start_time.isoformat()} and {end_time.isoformat()}.")
+        df_ts['time'] = pd.to_datetime(df_ts['time'], utc=True, errors='coerce')
+        df_ts.set_index("time", inplace=True)
+
+        # Replace values greater than 5 with 1
+        df_ts[df_ts > 5] = 1
+        df_ts[df_ts < 0.1] = 0
+        cols_to_check = [f"heat_load_{row.lower()}_q{q}" for q in range(1, 5)]
+        df_ts = df_ts[cols_to_check]
+        df_ts.rename(columns={
+            f"heat_load_{row.lower()}_q{q}": f"Heat load {row} Q{q}" for q in range(1, 5)
+        }, inplace=True)
+        for col in df_ts.columns:
+            # Moving average of columns
+            df_ts[col] = df_ts[col].rolling(window=60, min_periods=1).mean()
+        return df_ts
