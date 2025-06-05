@@ -51,8 +51,12 @@ class LongitudinalTemperatureDataFetcher(TemperatureDataFetcher):
         for level, cols in level_cols.items():
             n_sensors = SENSORS_AT_Y_Dict[level]['n_sensors']
             temp_matrix = temp_data[cols].to_numpy()
-            temp_matrix[temp_matrix == 0] = np.nan
-            row_means = np.nanmean(temp_matrix, axis=1, keepdims=True)
+            temp_matrix[temp_matrix <= 0] = np.nan
+            try:
+                row_means = np.nanmean(temp_matrix, axis=1, keepdims=True)
+            except ValueError as e:
+                log.error(f"Possible Null Data {level}: {e}")
+                raise
             inds = np.where(np.isnan(temp_matrix))
             temp_matrix[inds] = np.take(row_means, inds[0])
             for row_idx in range(temp_matrix.shape[0]):

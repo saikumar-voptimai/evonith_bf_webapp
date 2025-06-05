@@ -63,7 +63,12 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
             temp_matrix = temp_data[cols].to_numpy()
             temp_matrix[temp_matrix <= 25] = np.nan
             # replace nans with average values
-            row_means = np.nanmean(temp_matrix, axis=1, keepdims=True)
+            temp_matrix[temp_matrix == 0] = np.nan
+            try:
+                row_means = np.nanmean(temp_matrix, axis=1, keepdims=True)
+            except ValueError as e:
+                log.error(f"Possible Null Data {level}: {e}")
+                raise
             inds = np.where(np.isnan(temp_matrix))
             temp_matrix[inds] = np.take(row_means, inds[0])    
             level_dict[level] = temp_matrix.tolist()
