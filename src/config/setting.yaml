@@ -41,6 +41,41 @@ plot:
     heights:
       - [4.373, 5.411, 5.757, 6.103, 6.795, 7.565, 8.335, 9.105, 12.975, 15.162, 18.660]
 
+    heights_dict:
+        "4373":
+          level: 4.373
+          n_sensors: 7
+        "5411":
+          level: 5.411
+          n_sensors: 13
+        "5757":
+          level: 5.757
+          n_sensors: 13
+        "6103":
+          level: 6.103
+          n_sensors: 13
+        "6795":
+          level: 6.795
+          n_sensors: 12
+        "7565":
+          level: 7.565
+          n_sensors: 14
+        "8335":
+          level: 8.335
+          n_sensors: 14
+        "9105":
+          level: 9.105
+          n_sensors: 12
+        "12975":
+          level: 12.975
+          n_sensors: 4
+        "15162":
+          level: 15.162
+          n_sensors: 4
+        "18660":
+          level: 18.660
+          n_sensors: 4
+
     regions:
       - ["Hearth", 5.5]
       - ["Tuyere", 10.5]

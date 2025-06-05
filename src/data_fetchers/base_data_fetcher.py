@@ -20,12 +20,16 @@ fh.close()
 
 TIMEDELTAS = {
         'last 1 minute': timedelta(minutes=1),
+        'last 5 minutes': timedelta(minutes=5),
         'last 15 minutes': timedelta(minutes=15),
+        'last 30 minutes': timedelta(minutes=30),
         'last 1 hour': timedelta(hours=1),
         'last 6 hours': timedelta(hours=6),
         'last 12 hours': timedelta(hours=12),
         'last 1 day': timedelta(days=1),
+        'last 3 days': timedelta(days=3),
         'last 1 week': timedelta(weeks=1),
+        'last 2 weeks': timedelta(weeks=2),
         'last 1 month': timedelta(days=30)
 }
 
@@ -220,10 +224,15 @@ class BaseDataFetcher:
                                     tls_root_certs=cert))
         df = client.query(query=query, mode="pandas")
         client.close()
-        if self.request_type == "ts":
+        if self.request_type == "ts" and (average_by_norm != 'live' and average_by_norm != 'last 1 minute' and average_by_norm != 'last 5 minutes'):
+            self.request_type = 'average'
             return df
         converted_data = self.dataframe_to_dict(df)
-        float_dict = {k: float(v[0]) for k, v in converted_data.items()}
+        try:
+            float_dict = {k: float(v[0]) for k, v in converted_data.items() if k != 'time'}
+        except IndexError as i:
+            log.error(f"No data for the {average_by_norm} request. Returned {len(df)} rows from DB - Error {i}.")
+            raise
         return float_dict
 
     def _get_variable_names(self) -> List[str]:
@@ -265,6 +274,6 @@ class BaseDataFetcher:
         """
         var_map = config["data_mapping"].get(self.measurement_type, {})
         var_map_inv = {v: k for k, v in var_map.items()}
-        df.rename(columns={old: new for old, new in var_map_inv.items()}, inplace=True)
+        # df.rename(columns={old: new for old, new in var_map_inv.items()}, inplace=True)
         dict_df = df.to_dict(orient='list')
         return dict_df

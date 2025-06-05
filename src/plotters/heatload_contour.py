@@ -23,5 +23,5 @@ class HeatLoadPlotter(BasePlotter):
         contour = ax.contourf(Θ, R, Z, levels=100, cmap="hot")
         ax.set_rticks([])
 
-        self.add_colorbar(fig, contour, ax, label="Heat Load (kW)")
+        self.add_colorbar(fig, contour, ax, label="Heat Load (GJ)")
         return fig

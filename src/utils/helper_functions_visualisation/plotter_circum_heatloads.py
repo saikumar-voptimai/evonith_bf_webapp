@@ -114,7 +114,7 @@ def plotter_circum(field_values, fig, ax, r_inner=R_INNER, r_outer=R_OUTER, titl
     cbar_ticks = np.linspace(np.nanmin(Z), np.nanmax(Z), 5)
     cbar.set_ticks(cbar_ticks)
     cbar.set_ticklabels([f"{tick:.1f}" for tick in cbar_ticks])
-    cbar.set_label("Heat Load (kW)")
+    cbar.set_label("Heat Load (GJ)")
 
     # Add quadrant labels
     quadrant_labels = ["Q" + str(i+1) for i in range(len(field_values)) ]
@@ -124,7 +124,7 @@ def plotter_circum(field_values, fig, ax, r_inner=R_INNER, r_outer=R_OUTER, titl
 
     # Add heatload values
     for value, angle in zip(field_values, quadrant_angles):
-        ax.text(np.radians(angle), r_outer * (1 - 0.25), f"{int(value)} kW", color="black", fontsize=8, fontweight="bold", ha='center', va='center')
+        ax.text(np.radians(angle), r_outer * (1 - 0.25), f"{value:.2f} GJ", color="black", fontsize=8, fontweight="bold", ha='center', va='center')
 
     fig.suptitle(title, y=0.05, fontsize=6)
     fig.set_size_inches(3, 3)

@@ -141,8 +141,8 @@ with st.sidebar.form("Control Params"):
         cola, colb = st.sidebar.columns([10, 100])
         with cola:
             prev_params[control_params_list[i]] = st.sidebar.slider(control_params_list[i],
-                                                                min_value=df[control_params_list[i]].quantile(0.25),
-                                                                max_value=df[control_params_list[i]].quantile(0.75),
+                                                                min_value=df[control_params_list[i]].min(),
+                                                                max_value=df[control_params_list[i]].max(),
                                                                 value=df[control_params_list[i]].mean(),
                                                                 key=f"slider_{control_params_list[i]}")
         with colb:

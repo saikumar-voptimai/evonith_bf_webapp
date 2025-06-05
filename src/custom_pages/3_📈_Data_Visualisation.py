@@ -47,8 +47,8 @@ with expander:
 
 # Define dropdown options
 time_options = [
-    'Live', 'Last 15 minutes', 'Last 1 hour', 'Last 6 hours',
-    'Last 12 hours', 'Last 1 day', 'Last 1 week', 'Last 1 month', 'Over Selected Range'
+    'Last 1 minute', 'Last 5 minutes', 'Last 15 minutes', 'Last 30 minutes', 'Last 1 hour', 'Last 6 hours',
+    'Last 12 hours', 'Last 1 day', 'Last 3 days', 'Last 1 week', 'Last 2 weeks', 'Last 1 month', 'Over Selected Range'
 ]
 
 # User selection
@@ -61,7 +61,11 @@ except ValueError as e:
 
 # Plotting function (assuming it's defined elsewhere)
 plotter = LongitudinalTemperaturePlotter(mask_file="mask_longitudinal.pkl")
-temperature_list = [temperature_dict["Q1"], temperature_dict["Q2"], temperature_dict["Q3"], temperature_dict["Q4"]]
+temperature_list = [[val[0] for val in temperature_dict[f"Q{1}"].values()],
+                    [val[0] for val in temperature_dict[f"Q{2}"].values()],
+                    [val[0] for val in temperature_dict[f"Q{3}"].values()],
+                    [val[0] for val in temperature_dict[f"Q{4}"].values()]]
+
 fig = plotter.plot(temperature_list)
 st.pyplot(fig, use_container_width=True)
 st.markdown('-----------------------------------------------------------------------------------------')
@@ -126,8 +130,8 @@ circum_data_fetcher = CircumferentialTemperatureDataFetcher(debug=False, source=
 
 # Define dropdown options
 time_options = [
-    'Live', 'Last 1 minute', 'Last 15 minutes', 'Last 1 hour', 'Last 6 hours',
-    'Last 12 hours', 'Last 1 day', 'Last 1 week', 'Last 1 month', 'Over Selected Range'
+    'Last 1 minute', 'Last 5 minutes', 'Last 15 minutes', 'Last 30 minutes', 'Last 1 hour', 'Last 6 hours',
+    'Last 12 hours', 'Last 1 day', 'Last 1 week', 'Last 2 weeks', 'Last 1 month', 'Over Selected Range'
 ]
 
 # Corresponding elevations
@@ -156,7 +160,7 @@ except ValueError as e:
     st.stop()
 
 # Combine preset temperatures with the selected temperature
-temp_to_plot = [temperatures_dict[i] for i in preset_titles] + [temperatures_dict[selected_elevation]]
+temp_to_plot = [temperatures_dict[i][0] for i in preset_titles] + [temperatures_dict[selected_elevation][0]]
 
 # User selection
 plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
@@ -190,8 +194,9 @@ with st.expander("Set date and time"):
     end_time = datetime.combine(to_date, to_time) if to_date and to_time else None
 
 # Define dropdown options
-time_options = ['Last 1 minute', 'Last 15 minutes', 'Last 1 hour', 'Last 6 hours',
-    'Last 12 hours', 'Last 1 day', 'Last 1 week', 'Last 1 month', 'Over Selected Range'
+time_options = [
+    'Last 15 minutes', 'Last 30 minutes', 'Last 1 hour', 'Last 6 hours',
+    'Last 12 hours', 'Last 1 day', 'Last 1 week', 'Last 2 weeks', 'Last 1 month', 'Over Selected Range'
 ]
 time_interval_4 = st.selectbox("TimeSeries - Select Interval:", time_options, key="time interval for ts plot")
 # Fetch and process data for all quadrants
