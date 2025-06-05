@@ -4,6 +4,10 @@ from typing import List
 import numpy as np
 import pandas as pd
 from config.loader import load_config
+import logging
+
+# Initialize logging
+log = logging.getLogger("root")
 
 config = load_config()
 
@@ -62,8 +66,6 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
         for level, cols in level_cols.items():
             temp_matrix = temp_data[cols].to_numpy()
             temp_matrix[temp_matrix <= 25] = np.nan
-            # replace nans with average values
-            temp_matrix[temp_matrix == 0] = np.nan
             try:
                 row_means = np.nanmean(temp_matrix, axis=1, keepdims=True)
             except ValueError as e:
