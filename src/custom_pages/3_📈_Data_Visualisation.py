@@ -47,7 +47,7 @@ with expander:
 
 # Define dropdown options
 time_options = [
-    'Last 1 minute', 'Last 5 minutes', 'Last 15 minutes', 'Last 30 minutes', 'Last 1 hour', 'Last 6 hours',
+    'Last 5 minutes', 'Last 15 minutes', 'Last 30 minutes', 'Last 1 hour', 'Last 6 hours',
     'Last 12 hours', 'Last 1 day', 'Last 3 days', 'Last 1 week', 'Last 2 weeks', 'Last 1 month', 'Over Selected Range'
 ]
 
@@ -67,6 +67,9 @@ temperature_list = [[val[0] for val in temperature_dict[f"Q{1}"].values()],
                     [val[0] for val in temperature_dict[f"Q{4}"].values()]]
 
 fig = plotter.plot(temperature_list)
+if any(val == 0 for val in temperature_list[0]):
+    st.warning("No valid temperature data available in the selected time range. Please try a different time range or check the data source.")
+
 st.pyplot(fig, use_container_width=True)
 st.markdown('-----------------------------------------------------------------------------------------')
 #-------------------------------------------------------------------------------------------------------
@@ -130,7 +133,7 @@ circum_data_fetcher = CircumferentialTemperatureDataFetcher(debug=False, source=
 
 # Define dropdown options
 time_options = [
-    'Last 1 minute', 'Last 5 minutes', 'Last 15 minutes', 'Last 30 minutes', 'Last 1 hour', 'Last 6 hours',
+    'Last 5 minutes', 'Last 15 minutes', 'Last 30 minutes', 'Last 1 hour', 'Last 6 hours',
     'Last 12 hours', 'Last 1 day', 'Last 1 week', 'Last 2 weeks', 'Last 1 month', 'Over Selected Range'
 ]
 
@@ -165,6 +168,9 @@ temp_to_plot = [temperatures_dict[i][0] for i in preset_titles] + [temperatures_
 # User selection
 plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
 fig = plotter.plot(temp_to_plot, titles=all_titles)
+if any(temp == 0 for temp in temp_to_plot[0]):
+    st.warning("No valid temperature data available in the selected time range. Please try a different time range or check the data source.")
+
 st.pyplot(fig, use_container_width=True)
 st.markdown('-----------------------------------------------------------------------------------------')
 

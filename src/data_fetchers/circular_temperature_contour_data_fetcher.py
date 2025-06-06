@@ -66,11 +66,14 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
         for level, cols in level_cols.items():
             temp_matrix = temp_data[cols].to_numpy()
             temp_matrix[temp_matrix <= 25] = np.nan
-            try:
+            # If temp_matrix is empty (no sensors), fill with zeros
+            if temp_matrix.shape[1] == 0:
+                temp_matrix = np.zeros((temp_matrix.shape[0], 1))
+            # Compute row means, handle all-NaN rows robustly
+            with np.errstate(all='ignore'):
                 row_means = np.nanmean(temp_matrix, axis=1, keepdims=True)
-            except ValueError as e:
-                log.error(f"Possible Null Data {level}: {e}")
-                raise
+            # If any row mean is NaN (all-NaN row), set to 0.0
+            row_means = np.nan_to_num(row_means, nan=0.0)
             inds = np.where(np.isnan(temp_matrix))
             temp_matrix[inds] = np.take(row_means, inds[0])    
             level_dict[level] = temp_matrix.tolist()
