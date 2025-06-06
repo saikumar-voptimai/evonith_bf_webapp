@@ -68,10 +68,10 @@ def display_optimization_results(
                 if abs(delta_val) >= 0.01:
                     # Fetch unit from dictionary
                     param_unit = units_dict.get(param, "")
-                    
-                    # Create a label that includes the parameter name + unit
-                    label = f"{param} ({param_unit})" if param_unit else ""
-                    # st.metric automatically formats arrows (green up / red down) based on sign
+                    # Always provide a non-empty label
+                    label = f"{param} ({param_unit})" if param_unit else param
+                    if not label.strip():
+                        label = "Parameter"
                     st.metric(
                         label=label,
                         value=round(recommended_val, 2), 
