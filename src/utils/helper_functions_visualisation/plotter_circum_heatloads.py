@@ -4,8 +4,9 @@ import numpy as np
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import yaml
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import CubicSpline, interp1d
 from pathlib import Path
+import plotly.colors
 
 # Load configuration settings
 with open("src/config/setting.yaml", "r") as f:
@@ -128,6 +129,127 @@ def plotter_circum(field_values, fig, ax, r_inner=R_INNER, r_outer=R_OUTER, titl
 
     fig.suptitle(title, y=0.05, fontsize=6)
     fig.set_size_inches(3, 3)
+    return fig
+
+
+def plotter_circum_plotly(field_values, r_inner=R_INNER, r_outer=R_OUTER, title="Heat Load Distribution", colorscale='Viridis', resolution=200):
+    """
+    Plot a concentric heat ring using Plotly (polar coordinates, true ring, with colorbar and quadrant labels).
+    Args:
+        field_values (list): List of temperature/heatload values (theta direction only, e.g. [Q1, Q2, Q3, Q4]).
+        r_inner (float): Inner radius.
+        r_outer (float): Outer radius.
+        title (str): Title for the plot.
+        colorscale (str): Plotly colorscale name.
+        resolution (int): Number of angular steps for interpolation.
+    Returns:
+        plotly.graph_objects.Figure
+    """
+    n_theta = len(field_values)
+    theta_step = 360 / n_theta
+    angles_deg = np.array([theta_step/2 + theta_step*i for i in range(n_theta)])
+    # Ensure wrap-around for periodic spline
+    angles_deg = np.append(angles_deg, 360)
+    values = np.append(field_values, field_values[0])
+    theta_interp = np.linspace(0, 360, resolution)
+    temps_interp = interpolate_fields(theta_interp, angles_deg, values)
+    vmin, vmax = temps_interp.min(), temps_interp.max()
+    # Get colorscale as list of tuples (fraction, color)
+    colorscale_list = plotly.colors.get_colorscale(colorscale)
+    def value_to_rgba(val):
+        # Normalize
+        frac = (val - vmin) / (vmax - vmin + 1e-8)
+        # Interpolate color
+        return plotly.colors.sample_colorscale(colorscale, [frac])[0]
+    fig = go.Figure()
+    # Draw each angular slice as a filled sector with correct color
+    for i in range(len(theta_interp) - 1):
+        theta0 = theta_interp[i]
+        theta1 = theta_interp[i + 1]
+        theta_rad0 = np.deg2rad(theta0)
+        theta_rad1 = np.deg2rad(theta1)
+        # Sector polygon (r, theta)
+        r = [r_inner, r_outer, r_outer, r_inner, r_inner]
+        theta = [theta0, theta0, theta1, theta1, theta0]
+        # Convert to cartesian for fillcolor
+        x = [r[j]*np.cos(np.deg2rad(theta[j])) for j in range(5)]
+        y = [r[j]*np.sin(np.deg2rad(theta[j])) for j in range(5)]
+        color = value_to_rgba(temps_interp[i])
+        fig.add_trace(go.Scatter(
+            x=x, y=y,
+            mode='lines',
+            fill='toself',
+            fillcolor=color,
+            line=dict(color=color, width=0.5),
+            hoverinfo='skip',
+            showlegend=False
+        ))
+    # Add colorbar using an invisible scatter
+    colorbar_trace = go.Scatter(
+        x=[None], y=[None],
+        mode='markers',
+        marker=dict(
+            colorscale=colorscale,
+            cmin=vmin,
+            cmax=vmax,
+            colorbar=dict(title="Heat Load (GJ)", thickness=20, x=1.05, y=.56, len=0.9),
+            showscale=True
+        ),
+        showlegend=False
+    )
+    fig.add_trace(colorbar_trace)
+    # Add outer and inner boundary circles
+    circle_theta = np.linspace(0, 2*np.pi, 361)
+    fig.add_trace(go.Scatter(
+        x=r_inner*np.cos(circle_theta),
+        y=r_inner*np.sin(circle_theta),
+        mode='lines',
+        line=dict(color='black'),
+        showlegend=False
+    ))
+    fig.add_trace(go.Scatter(
+        x=r_outer*np.cos(circle_theta),
+        y=r_outer*np.sin(circle_theta),
+        mode='lines',
+        line=dict(color='black'),
+        showlegend=False
+    ))
+    # Add quadrant labels and values (cartesian positions)
+    label_r = r_outer * 1.12
+    value_r = r_outer * 0.7
+    for i, v in enumerate(field_values):
+        angle = theta_step/2 + theta_step*i
+        angle_rad = np.deg2rad(angle)
+        # Quadrant label
+        fig.add_annotation(
+            x=label_r * np.cos(angle_rad),
+            y=label_r * np.sin(angle_rad),
+            text=f"Q{i+1}",
+            showarrow=False,
+            font=dict(size=16, color="black", family="Arial Black"),
+            xref="x", yref="y"
+        )
+        # Value label
+        fig.add_annotation(
+            x=value_r * np.cos(angle_rad),
+            y=value_r * np.sin(angle_rad),
+            text=f"{v:.2f} GJ",
+            showarrow=False,
+            font=dict(size=16, color="black", family="Arial Black"),
+            xref="x", yref="y"
+        )
+    fig.update_layout(
+        title=dict(text=title, y=0.05, x=0.5, font=dict(size=14)),
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        margin=dict(l=10, r=10, t=30, b=10),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        showlegend=False,
+        width=350, height=350,
+        autosize=False
+    )
+    fig.update_yaxes(scaleanchor="x", scaleratio=1)
     return fig
 
 

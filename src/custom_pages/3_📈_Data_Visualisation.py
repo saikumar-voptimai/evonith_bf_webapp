@@ -10,7 +10,7 @@ from data_fetchers.circular_temperature_contour_data_fetcher import Circumferent
 from data_fetchers.average_heatload_data_fetcher import AverageHeatLoadDataFetcher
 from plotters.circumferential_contour import CircumferentialPlotter
 from plotters.longitudinal_temp_contour import LongitudinalTemperaturePlotter
-from utils.helper_functions_visualisation.plotter_circum_heatloads import plotter_circum
+from utils.helper_functions_visualisation.plotter_circum_heatloads import plotter_circum_plotly, plotter_circum
 from config.loader import load_config
 
 TIMEZONE = pytz.timezone('Asia/Kolkata')  # GMT+5:30
@@ -108,17 +108,15 @@ cols = st.columns(2)
 with cols[0]:
     try:
         heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval_2a, start_time, end_time, heatload_row)
-        fig_circular, ax_circular = plt.subplots(dpi=120, subplot_kw=dict(projection='polar'))
-        fig_circular = plotter_circum(list(heatloads_dict.values()), fig_circular, ax_circular, title=None)
-        st.pyplot(fig_circular, use_container_width=False)
+        fig_circular = plotter_circum_plotly(list(heatloads_dict.values()), title=f"Heat Load Distribution ({heatload_row})")
+        st.plotly_chart(fig_circular, use_container_width=True, key="circular heatload plot 1")
     except Exception as e:
         st.error(f"Failed to fetch or plot heat load data: {e}")
 with cols[1]:
     try:
-        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval_2b, start_time, end_time, heatload_row)
-        fig_circular, ax_circular = plt.subplots(dpi=120, subplot_kw=dict(projection='polar'))
-        fig_circular = plotter_circum(list(heatloads_dict.values()), fig_circular, ax_circular, title=None)
-        st.pyplot(fig_circular, use_container_width=False)
+        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval_2a, start_time, end_time, heatload_row)
+        fig_circular = plotter_circum_plotly(list(heatloads_dict.values()), title=f"Heat Load Distribution ({heatload_row})")
+        st.plotly_chart(fig_circular, use_container_width=True, key="circular heatload plot 2")
     except Exception as e:
         st.error(f"Failed to fetch or plot heat load data: {e}")
 #------------------------------------------------------------------------------------------------------

@@ -30,7 +30,7 @@ class CircumferentialPlotter(BasePlotter):
 
     def plot(self, field_values_list, titles=None, data_type="Value"):
         """
-        Generate circumferential contour plots for multiple datasets.
+        Generate circumferential contour plots for multiple datasets using periodic cubic spline interpolation.
 
         Args:
             field_values_list (list): A list of datasets (each a list of values).
@@ -40,6 +40,7 @@ class CircumferentialPlotter(BasePlotter):
         Returns:
             plt.Figure: A matplotlib figure with the plots.
         """
+        from scipy.interpolate import CubicSpline
         num_plots = len(field_values_list)
         width_ratios = [1 for _ in range(num_plots-1)]
         width_ratios.append(1.2)
@@ -52,9 +53,15 @@ class CircumferentialPlotter(BasePlotter):
         global_max = int(max(max(values) for values in field_values_list)/step) * step + step
         contour = []
         for i, (field_values, ax) in enumerate(zip(field_values_list, axes.flat)):
-            ext_angles = CircumferentialPlotter._get_angles(field_values)
-            ext_field_values = CircumferentialPlotter._get_ext_heatloads(field_values)
-            interpolated_values = np.interp(self.theta_mesh[:,0], np.radians(ext_angles), ext_field_values, period=90)
+            n_theta = len(field_values)
+            theta_step = 360 / n_theta
+            angles_deg = np.array([theta_step/2 + theta_step*j for j in range(n_theta)])
+            # Periodic cubic spline interpolation
+            angles_deg = np.append(angles_deg, 360)
+            values = np.append(field_values, field_values[0])
+            theta_interp = np.linspace(0, 360, self.theta_mesh.shape[0])
+            cs = CubicSpline(angles_deg, values, bc_type='periodic')
+            interpolated_values = cs(np.degrees(self.theta_mesh[:,0]) % 360)
 
             Z = np.zeros_like(self.r_mesh)
             for j in range(self.r_mesh.shape[1]):
@@ -70,9 +77,9 @@ class CircumferentialPlotter(BasePlotter):
             ax.set_xticks([])
             ax.set_title(titles[i] if titles else f"Plot {i+1}", va='bottom', fontsize=8, fontweight="bold")
 
-            # # Add data values to the plot
-            quadrant_angles = np.arange(0+360/(2*num_plots), 360, 360/(num_plots)) # 0, 360, num_plots, endpoint=False)
-            for idx, (value, angle) in enumerate(zip(field_values, quadrant_angles)):
+            # Add data values and quadrant labels
+            for idx, value in enumerate(field_values):
+                angle = theta_step/2 + theta_step*idx
                 ax.text(np.radians(angle), self.furnace.r_outer * 0.65, f"{value:.1f}", color="white", fontsize=8, fontweight="bold", ha='center', va='center')
                 if i == 0:
                     ax.text(np.radians(angle), self.furnace.r_outer * 1.2, f"Q{idx+1}", color="black", fontsize=8, fontweight="bold", ha="center", va="center")
