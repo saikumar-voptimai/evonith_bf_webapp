@@ -1,12 +1,17 @@
 import streamlit as st
 import pandas as pd
+from typing import List, Optional, Dict
+from influxdb_client_3 import InfluxDBClient3, flight_client_options
 import logging
+import certifi
 import seaborn as sns
 import plotly.express as px
 from config import INIT_PARAMS as IPS
 from config.loader import load_config
 import os
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta, timezone
+from config.loader import load_config
 
 from dotenv import load_dotenv
 load_dotenv() 
@@ -273,3 +278,202 @@ fig = px.line(
 
 # Display the plot
 st.plotly_chart(fig, use_container_width=True)
+
+# --------------------------------------------------------------------------------
+# SHOW 6 MEASUREMENTS FROM INFLUXDB
+# --------------------------------------------------------------------------------
+
+# load once
+_config = load_config()
+
+FIELD_LABELS = {
+    internal_key: human_label
+    for mapping in _config["data_mapping"].values()
+    for human_label, internal_key in mapping.items()
+}
+
+# InfluxDB connection settings
+host = "https://eu-central-1-1.aws.cloud2.influxdata.com"
+org = "Blast Furnace, Evonith"
+database = "bf2_evonith_raw"
+token = os.getenv("INFLUX_TOKEN", "")
+
+with open(certifi.where(), "r") as f:
+    cert = f.read()
+
+TIME_OPTIONS = {
+    "Last 1 min": timedelta(minutes=1),
+    "Last 5 min": timedelta(minutes=5),
+    "Last 10 min": timedelta(minutes=10),
+    "Last 15 min": timedelta(minutes=15),
+    "Last 30 min": timedelta(minutes=30),
+    "Last 1 hour": timedelta(hours=1),
+    "Last 6 hour": timedelta(hours=6),
+    "Last 12 hour": timedelta(hours=12),
+    "Last 1 day": timedelta(days=1),
+}
+
+FREQUENCY_OPTIONS = {
+    "1 min": "1min",
+    "5 min": "5min",
+    "10 min": "10min",
+    "30 min": "30min",
+    "1 hour": "1H",
+    "6 hour": "6H",
+    "12 hour": "12H",
+    "1 day": "1D",
+}
+
+FREQUENCY_TO_TIMEDTA = {
+    "1min": timedelta(minutes=1),
+    "5min": timedelta(minutes=5),
+    "10min": timedelta(minutes=10),
+    "30min": timedelta(minutes=30),
+    "1H": timedelta(hours=1),
+    "6H": timedelta(hours=6),
+    "12H": timedelta(hours=12),
+    "1D": timedelta(days=1),
+}
+
+MEASUREMENT_LABELS = {
+    "cooling_water": "Cooling Water",
+    "delta_t": "Delta T",
+    "heatload_delta_t": "Heatload Delta T",
+    "miscellaneous": "Miscellaneous",
+    "process_params": "Process Params",
+    "temperature_profile": "Temperature Profile"
+}
+
+
+def get_measurements():
+    client = InfluxDBClient3(host=host, org=org, token=token, database=database,
+                             flight_client_options=flight_client_options(tls_root_certs=cert))
+    df = client.query("SHOW TABLES", mode="pandas")
+    client.close()
+    return df[df["table_type"] == "BASE TABLE"]["table_name"].tolist()
+
+def get_fields(measurement):
+    query = f"SELECT * FROM {measurement} LIMIT 1"
+    client = InfluxDBClient3(host=host, org=org, token=token, database=database,
+                             flight_client_options=flight_client_options(tls_root_certs=cert))
+    df = client.query(query, mode="pandas")
+    client.close()
+    return [col for col in df.columns if col != "time"]
+
+def get_data(measurement, fields, time_range):
+    end = datetime.now(timezone.utc)
+    start = end - TIME_OPTIONS[time_range]
+    start_iso = start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+    end_iso = end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+    field_str = ", ".join(fields)
+
+    query = f"SELECT time, {field_str} FROM {measurement} WHERE time >= timestamp '{start_iso}' AND time <= timestamp '{end_iso}'"
+    client = InfluxDBClient3(host=host, org=org, token=token, database=database,
+                             flight_client_options=flight_client_options(tls_root_certs=cert))
+    df = client.query(query=query, mode="pandas")
+    client.close()
+    return df
+
+def average_data(df, freq):
+    df["time"] = pd.to_datetime(df["time"])
+    df.set_index("time", inplace=True)
+    df_avg = df.resample(freq).mean().dropna().reset_index()
+    return df_avg
+
+# --- Streamlit UI ---
+st.title("📊 BF2 Data Downloader")
+
+if "measurements" not in st.session_state:
+    st.session_state.measurements = []
+if "selected_measurements" not in st.session_state:
+    st.session_state.selected_measurements = set()
+if "avg_mode" not in st.session_state:
+    st.session_state.avg_mode = False
+if "select_all" not in st.session_state:
+    st.session_state.select_all = False
+
+if st.button("📂 Show Measurements", key="show_measurements_button"):
+    st.session_state.measurements = get_measurements()
+
+if st.session_state.measurements:
+    st.subheader("Select Measurements")
+
+    col1, col2 = st.columns(2)
+    
+
+    with col1:
+        st.toggle("Select All", key="select_all")
+        if st.session_state.select_all:
+            st.session_state.selected_measurements = set(st.session_state.measurements)
+        else:
+            st.session_state.selected_measurements = set()
+
+    with col2:
+        st.toggle("📊 Average", key="avg_mode")
+
+    cols = st.columns(4)
+    for i, meas in enumerate(st.session_state.measurements):
+        col = cols[i % 4]  # Rotate across 4 columns
+        label = MEASUREMENT_LABELS.get(meas, meas)
+        with col:
+            if st.checkbox(label, value=meas in st.session_state.selected_measurements, key=meas):
+                st.session_state.selected_measurements.add(meas)
+            else:
+                st.session_state.selected_measurements.discard(meas)
+
+
+if st.session_state.selected_measurements:
+    time_range = st.selectbox("Select Time Range:", list(TIME_OPTIONS.keys()))
+
+    # 1) pick averaging frequency (if any)
+    freq = None
+    if st.session_state.avg_mode:
+        freq_label = st.selectbox("⏱️ Average Frequency:", list(FREQUENCY_OPTIONS.keys()))
+        freq = FREQUENCY_OPTIONS[freq_label]
+        if FREQUENCY_TO_TIMEDTA[freq] > TIME_OPTIONS[time_range]:
+            st.error("❌ Frequency is greater than time range.")
+            freq = None
+
+    # 2) on button click: fetch, rename & merge in one pass
+    if st.button("⬇️ Show CSV File ", key="download_combined_csv"):
+        combined_df = pd.DataFrame()
+
+        for meas in st.session_state.selected_measurements:
+            # fetch raw (or averaged) data
+            df = get_data(meas, get_fields(meas), time_range)
+            if df.empty:
+                continue
+            if freq:
+                df = average_data(df, freq)
+
+            # rename cols using FIELD_LABELS + MEASUREMENT_LABELS
+            df = df.rename(columns={
+                col: f"{MEASUREMENT_LABELS.get(meas, meas)} – {FIELD_LABELS.get(col, col)}"
+                for col in df.columns if col != "time"
+            })
+
+            # merge into master
+            combined_df = df if combined_df.empty else combined_df.merge(df, on="time", how="outer")
+
+        # 3) build filename
+        prefix = "avg_" if (st.session_state.avg_mode and freq) else "raw_"
+        all_sel = st.session_state.selected_measurements
+        sheet_part = (
+            "combined"
+            if len(all_sel) == len(st.session_state.measurements)
+            else "_".join(sorted(all_sel)).replace(" ", "_")
+        )
+        file_name = f"{prefix}data_{sheet_part}_{time_range.replace(' ', '_')}.csv"
+
+        # 4) show & download
+        if not combined_df.empty:
+            combined_df = combined_df.sort_values("time").reset_index(drop=True)
+            combined_df.index += 1
+            st.dataframe(combined_df)
+
+        st.download_button(
+            "📄 Download CSV File",
+            data=combined_df.to_csv(index=True, index_label="Index").encode("utf-8"),
+            file_name=file_name,
+            mime="text/csv"
+        )
