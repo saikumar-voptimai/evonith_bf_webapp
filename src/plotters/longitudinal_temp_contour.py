@@ -2,6 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from .base_contour import BasePlotter
 
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+
 class LongitudinalTemperaturePlotter(BasePlotter):
     def plot(self, temperatures_list):
         """
@@ -74,4 +77,91 @@ class LongitudinalTemperaturePlotter(BasePlotter):
         cbar.set_ticks(cbar_ticks)
         cbar.set_ticklabels([f"{tick:.1f}" for tick in cbar_ticks])
         cbar.set_label("Temperature (°C)")
+        return fig
+    
+    def plot_plotly(self, temperatures_list):
+        X, Y = self.furnace.X, self.furnace.Y
+        heights = self.furnace.get_heights()
+        regions = self.furnace.get_regions()
+        mask = self.generate_mask("cartesian")
+
+        x_grid = X[0, :]
+        y_grid = Y[:, 0]
+
+        step = 100
+        all_temps = np.concatenate(temperatures_list)
+        vmin = int(min(all_temps) // step) * step
+        vmax = int(max(all_temps) // step + 1) * step
+
+        fig = make_subplots(rows=1, cols=len(temperatures_list), shared_yaxes=True, 
+                            horizontal_spacing=0.02, column_widths=[0.3, 0.22, 0.22, 0.22])
+        width = [100, 120, 140, 140]
+        for idx, temperatures in enumerate(temperatures_list):
+            temp_interp = np.interp(y_grid, heights, temperatures)
+            Z = np.tile(temp_interp[:, np.newaxis], (1, len(x_grid)))
+            Z[~mask] = np.nan
+
+            fig.add_trace(go.Heatmap(
+                z=Z,
+                x=x_grid,
+                y=y_grid,
+                zmin=vmin,
+                zmax=vmax,
+                colorscale='Viridis',
+                colorbar=dict(
+                    title='Temperature (°C)',
+                    ticks='outside',
+                    tickvals=np.arange(vmin, vmax+step, step),
+                ) if idx == len(temperatures_list) - 1 else None,
+                showscale=(idx == len(temperatures_list) - 1)
+            ), row=1, col=idx + 1)
+
+            # Add furnace boundary
+            boundary_x = [-4] + [p[0] for p in self.furnace.geometry_points] + [0, 0, -4]
+            boundary_y = [0] + [p[1] for p in self.furnace.geometry_points] + [20, 0, 0]
+            fig.add_trace(go.Scatter(
+                x=boundary_x,
+                y=boundary_y,
+                mode='lines',
+                line=dict(color='black', width=2),
+                showlegend=False
+            ), row=1, col=idx + 1)
+
+            # Add labels and region temperatures
+            for region_name, region_y in regions:
+                temp_val = float(np.interp(region_y, y_grid, temp_interp))
+                if idx == 0:
+                    fig.add_annotation(
+                        text=region_name,
+                        x=-5.5, y=region_y,
+                        xref=f'x{idx+1}', yref='y',
+                        font=dict(size=15, color='black', weight='bold'),
+                        showarrow=False
+                    )
+                fig.add_annotation(
+                    text=f"{temp_val:.1f}°C",
+                    x=-1.5, y=region_y,
+                    xref=f'x{idx+1}', yref='y',
+                    font=dict(size=15, color='white', weight='bold'),
+                    showarrow=False
+                )
+
+            fig.add_annotation(
+                text=f"Q{idx + 1}",
+                xref=f'x{idx+1}', yref='paper',
+                x=0.5, y=1.05,
+                showarrow=False,
+                font=dict(size=20, color='black', weight='bold')
+            )
+
+        # Hide axes and finalize layout
+        for idx in range(len(temperatures_list)):
+            fig.update_xaxes(visible=False, row=1, col=idx + 1)
+            fig.update_yaxes(visible=False, row=1, col=idx + 1, range=[4, 20])
+
+        fig.update_layout(
+            height=400,
+            margin=dict(t=40, b=20, l=20, r=20),
+            plot_bgcolor='white'
+        )
         return fig

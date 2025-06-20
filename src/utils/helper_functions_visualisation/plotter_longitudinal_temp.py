@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 import yaml
 from pathlib import Path
 from matplotlib.path import Path as plotter_path
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+import numpy as np
 
 # Load configuration settings
 with open("src/config/setting.yaml", "r") as f:
@@ -119,4 +122,120 @@ def plotter_longitudinal_temp(temperatures_list):
     cbar.set_label("Temperature (°C)")
     cbar_ticks = np.linspace(np.nanmin(colorbar_min), np.nanmax(colorbar_max), 5)
     cbar.set_ticks(cbar_ticks)
+    return fig
+
+def plotly_longitudinal_temp_plotly(temperatures_list, x_grid, y_grid, heights, geometry_points, generate_mask):
+    """
+    Plot contour maps for multiple furnaces along a longitudinal layout using Plotly.
+
+    Args:
+        temperatures_list (list): List of temperature profiles for each furnace.
+        x_grid, y_grid (1D arrays): Grid points.
+        heights (1D array): Original height positions corresponding to each temperature reading.
+        geometry_points (list of tuples): Points defining the furnace boundary.
+        generate_mask (function): Function to return a 2D mask for the furnace interior.
+
+    Returns:
+        Plotly Figure object.
+    """
+    # Generate geometry mask
+    mask = generate_mask(x_grid, y_grid, geometry_points)
+    X, Y = np.meshgrid(x_grid, y_grid)
+
+    # Define furnace regions for annotation
+    regions = [
+        ("Hearth", 4.5),
+        ("Tuyere", 6.5),
+        ("Bosh", 9.0),
+        ("Belly", 12.0),
+        ("Stack", 17.0)
+    ]
+
+    num_plots = len(temperatures_list)
+    fig = make_subplots(rows=1, cols=num_plots, shared_yaxes=True, horizontal_spacing=0.02)
+
+    all_temperatures = np.concatenate(temperatures_list)
+    vmin, vmax = np.nanmin(all_temperatures), np.nanmax(all_temperatures)
+
+    for i, temperatures in enumerate(temperatures_list):
+        # Interpolate along y_grid
+        temp_interpolated = np.interp(y_grid, heights, temperatures)
+
+        # Form 2D Z array
+        Z = np.tile(temp_interpolated[:, np.newaxis], (1, len(x_grid)))
+        Z[~mask] = np.nan
+
+        # Add contour plot as heatmap
+        heatmap = go.Heatmap(
+            z=Z,
+            x=x_grid,
+            y=y_grid,
+            colorscale='Viridis',
+            zmin=vmin,
+            zmax=vmax,
+            colorbar=dict(title="Temperature (°C)") if i == num_plots - 1 else None,
+            showscale=(i == num_plots - 1)
+        )
+
+        fig.add_trace(heatmap, row=1, col=i+1)
+
+        # Plot furnace boundary
+        boundary_x = [-4] + [p[0] for p in geometry_points] + [0, 0, -4]
+        boundary_y = [0] + [p[1] for p in geometry_points] + [20, 0, 0]
+
+        fig.add_trace(
+            go.Scatter(
+                x=boundary_x, y=boundary_y,
+                mode='lines',
+                line=dict(color='black', width=2),
+                showlegend=False
+            ),
+            row=1, col=i+1
+        )
+
+        # Add region labels and interpolated values
+        annotations = []
+        for region_name, region_y in regions:
+            temp_val = float(np.interp(region_y, y_grid, temp_interpolated))
+            if i == 0:
+                annotations.append(dict(
+                    x=-5.5, y=region_y,
+                    text=region_name,
+                    font=dict(size=10, color='black'),
+                    showarrow=False,
+                    xref=f"x{i+1}", yref=f"y"
+                ))
+            annotations.append(dict(
+                x=-2.7, y=region_y,
+                text=f"{temp_val:.1f}°C",
+                font=dict(size=8, color='white'),
+                showarrow=False,
+                xref=f"x{i+1}", yref=f"y"
+            ))
+
+        fig.update_layout(annotations=fig.layout.annotations + tuple(annotations))
+
+        # Add quadrant title
+        fig.add_annotation(
+            text=f"Q{i+1}",
+            xref=f"x{i+1} domain",
+            yref="paper",
+            x=0.5,
+            y=1.05,
+            showarrow=False,
+            font=dict(size=10, color='black')
+        )
+
+    # Layout settings
+    fig.update_layout(
+        height=400,
+        margin=dict(t=40, b=20, l=20, r=20),
+        plot_bgcolor='white',
+    )
+
+    # Hide axes
+    for i in range(num_plots):
+        fig.update_xaxes(visible=False, row=1, col=i+1)
+        fig.update_yaxes(visible=(i==0), row=1, col=i+1, range=[4, 20])
+
     return fig

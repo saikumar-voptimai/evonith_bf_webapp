@@ -10,7 +10,7 @@ from data_fetchers.circular_temperature_contour_data_fetcher import Circumferent
 from data_fetchers.average_heatload_data_fetcher import AverageHeatLoadDataFetcher
 from plotters.circumferential_contour import CircumferentialPlotter
 from plotters.longitudinal_temp_contour import LongitudinalTemperaturePlotter
-from utils.helper_functions_visualisation.plotter_circum_heatloads import plotter_circum
+from utils.helper_functions_visualisation.plotter_circum_heatloads import plotter_circum_plotly, plotter_circum
 from config.loader import load_config
 
 TIMEZONE = pytz.timezone('Asia/Kolkata')  # GMT+5:30
@@ -52,9 +52,9 @@ time_options = [
 ]
 
 # User selection
-time_interval_1 = st.selectbox("Longitudinal - Select Averaging Interval:", time_options, key="time interval longitudinal contour plot")
+time_interval = st.selectbox("Select Averaging/Display Interval:", time_options, key="time interval for plots")
 try:
-    temperature_dict = data_fetcher.fetch_averaged_data(time_interval_1, start_time_utc, end_time_utc)
+    temperature_dict = data_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc)
 except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()
@@ -66,11 +66,9 @@ temperature_list = [[val[0] for val in temperature_dict[f"Q{1}"].values()],
                     [val[0] for val in temperature_dict[f"Q{3}"].values()],
                     [val[0] for val in temperature_dict[f"Q{4}"].values()]]
 
-fig = plotter.plot(temperature_list)
-if any(val == 0 for val in temperature_list[0]):
-    st.warning("No valid temperature data available in the selected time range. Please try a different time range or check the data source.")
+fig = plotter.plot_plotly(temperature_list)
+st.plotly_chart(fig, use_container_width=True)
 
-st.pyplot(fig, use_container_width=True)
 st.markdown('-----------------------------------------------------------------------------------------')
 #-------------------------------------------------------------------------------------------------------
 # 2. Circumferential Contour Plotter - Heatload
@@ -81,47 +79,26 @@ heatload_fetcher = AverageHeatLoadDataFetcher(debug=False, source="historical")
 
 # Corresponding elevations
 rows = ["R6", "R7", "R8", "R9", "R10"]
-heatload_row = st.selectbox("Select the stave row:", rows, key="row selection circular heatload plot")
-
-
-expander = st.expander("Set date and time")
-with expander:
-    # Date and time input
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        from_date = st.date_input("From Date:", value=datetime.now().date() - timedelta(days=1), key="left date for circular heatload contour plot")
-    with col2:
-        from_time = st.time_input("From Time:", value=datetime.now().time(), key="left time for circular heatload contour plot")
-    with col3:
-        to_date = st.date_input("To Date:", value=datetime.now().date(), key="right date for circular heatload contour plot")
-    with col4:
-        to_time = st.time_input("To Time:", value=datetime.now().time(), key="right time for circular heatload contour plott")
-
-    # Combine date and time
-    start_time = datetime.combine(from_date, from_time) if from_date and from_time else None
-    end_time = datetime.combine(to_date, to_time) if to_date and to_time else None
 
 cols = st.columns(2)
 with cols[0]:
-    time_interval_2a = st.selectbox("Circular Heatload - Select Averaging Interval 1:", time_options, key="time interval left circular heatload plot")
+    heatload_row_left = st.selectbox("Select the stave row:", rows[:3], key="left row selection circular heatload plot")
 with cols[1]:
-    time_interval_2b = st.selectbox("Circular Heatload - Select Averaging Interval 2:", time_options, key="time interval right circular heatload plot")
+    heatload_row_right = st.selectbox("Select the stave row:", rows[3:], key="right row selection circular heatload plot")
 
 cols = st.columns(2)
 with cols[0]:
     try:
-        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval_2a, start_time, end_time, heatload_row)
-        fig_circular, ax_circular = plt.subplots(dpi=120, subplot_kw=dict(projection='polar'))
-        fig_circular = plotter_circum(list(heatloads_dict.values()), fig_circular, ax_circular, title=None)
-        st.pyplot(fig_circular, use_container_width=False)
+        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc, heatload_row_left)
+        fig_circular = plotter_circum_plotly(list(heatloads_dict.values()), title=f"Heat Load Distribution ({heatload_row_left})")
+        st.plotly_chart(fig_circular, use_container_width=True, key="circular heatload plot 1")
     except Exception as e:
         st.error(f"Failed to fetch or plot heat load data: {e}")
 with cols[1]:
     try:
-        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval_2b, start_time, end_time, heatload_row)
-        fig_circular, ax_circular = plt.subplots(dpi=120, subplot_kw=dict(projection='polar'))
-        fig_circular = plotter_circum(list(heatloads_dict.values()), fig_circular, ax_circular, title=None)
-        st.pyplot(fig_circular, use_container_width=False)
+        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc, heatload_row_right)
+        fig_circular = plotter_circum_plotly(list(heatloads_dict.values()), title=f"Heat Load Distribution ({heatload_row_right})")
+        st.plotly_chart(fig_circular, use_container_width=True, key="circular heatload plot 2")
     except Exception as e:
         st.error(f"Failed to fetch or plot heat load data: {e}")
 #------------------------------------------------------------------------------------------------------
@@ -131,33 +108,21 @@ with cols[1]:
 st.title("Circumferential Temperature Distribution")
 circum_data_fetcher = CircumferentialTemperatureDataFetcher(debug=False, source="historical", request_type="average")
 
-# Define dropdown options
-time_options = [
-    'Last 5 minutes', 'Last 15 minutes', 'Last 30 minutes', 'Last 1 hour', 'Last 6 hours',
-    'Last 12 hours', 'Last 1 day', 'Last 1 week', 'Last 2 weeks', 'Last 1 month', 'Over Selected Range'
-]
-
 # Corresponding elevations
 elevations = ["4.373m", "5.411m", "5.757m", "6.103m", "6.795m", "7.565m", "8.335m", "9.105m"]
 preset_titles = ["12.975m - Bosh", "15.162m - Belly", "18.660m - Stack"]
 
-cols = st.columns(2)
-
-# User selection
-with cols[0]:
-    time_interval_3 = st.selectbox("Circumferential - Select Averaging Interval:", time_options, key="time interval circular temperature plot")
-with cols[1]:
-    # Dropdown for selecting the 4th elevation
-    selected_elevation = st.selectbox(
-        "Select Elevation for the 4th Contour Plot:",
-        options=elevations,
-        format_func=lambda x: x.replace("mm", "")
-    )
+# Dropdown for selecting the 4th elevation
+selected_elevation = st.selectbox(
+    "Select Elevation for the 4th Contour Plot:",
+    options=elevations,
+    format_func=lambda x: x.replace("mm", "")
+)
 
 # Combine titles
 all_titles = preset_titles + [f"At {selected_elevation}"]
 try:
-    temperatures_dict = circum_data_fetcher.fetch_averaged_data(time_interval_3, start_time, end_time)
+    temperatures_dict = circum_data_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc)
 except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()
@@ -167,11 +132,10 @@ temp_to_plot = [temperatures_dict[i][0] for i in preset_titles] + [temperatures_
 
 # User selection
 plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
-fig = plotter.plot(temp_to_plot, titles=all_titles)
-if any(temp == 0 for temp in temp_to_plot[0]):
-    st.warning("No valid temperature data available in the selected time range. Please try a different time range or check the data source.")
 
-st.pyplot(fig, use_container_width=True)
+fig = plotter.plot_circumferential_quadrants(temp_to_plot, titles=all_titles, colorbar_title="Temperature (°C)", unit="°C")
+st.plotly_chart(fig, use_container_width=True)
+
 st.markdown('-----------------------------------------------------------------------------------------')
 
 # #-------------------------------------------------------------------------------------------------------
