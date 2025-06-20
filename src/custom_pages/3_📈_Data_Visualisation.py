@@ -68,6 +68,7 @@ temperature_list = [[val[0] for val in temperature_dict[f"Q{1}"].values()],
 
 fig = plotter.plot_plotly(temperature_list)
 st.plotly_chart(fig, use_container_width=True)
+
 st.markdown('-----------------------------------------------------------------------------------------')
 #-------------------------------------------------------------------------------------------------------
 # 2. Circumferential Contour Plotter - Heatload
@@ -131,8 +132,10 @@ temp_to_plot = [temperatures_dict[i][0] for i in preset_titles] + [temperatures_
 
 # User selection
 plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
+
 fig = plotter.plot_circumferential_quadrants(temp_to_plot, titles=all_titles, colorbar_title="Temperature (°C)", unit="°C")
 st.plotly_chart(fig, use_container_width=True)
+
 st.markdown('-----------------------------------------------------------------------------------------')
 
 # #-------------------------------------------------------------------------------------------------------

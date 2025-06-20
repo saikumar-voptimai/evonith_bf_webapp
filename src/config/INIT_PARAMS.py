@@ -55,4 +55,4 @@ INPUT_PARAMS_MODEL = ['COKE_MOIST%', 'COKE_IM%', 'COKE_ASH%', 'COKE_VM% ', 'COKE
 OUTPUT_PARAMS = ['PRODUCTION PRODUCT _Total Hot Metal Production_MT', 'Furnace Top Gas AnalysisCO2\n(CO+CO2)ŋ CO', 'Act. Fuel RateKg/Thm.']
 
 # Optimiser Params:
-OPTIM_STEPS = 10
+OPTIM_STEPS = 3
