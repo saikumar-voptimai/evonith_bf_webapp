@@ -71,36 +71,28 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.markdown('-----------------------------------------------------------------------------------------')
 #-------------------------------------------------------------------------------------------------------
-# 2. Circumferential Contour Plotter - Heatload
-# Circular Heat Load Plot
-st.subheader("Heat Load Distribution")
-st.markdown("Compares the average heat load distribution at a particular stave Row.")
-heatload_fetcher = AverageHeatLoadDataFetcher(debug=False, source="historical")
+# 2. Circular Heatload distribution Plot
+# Initialize the data fetcher
 
-# Corresponding elevations
+st.title("Circumferential HeatLoad Distribution")
+circum_data_fetcher = AverageHeatLoadDataFetcher(debug=False, source="historical")
 rows = ["R6", "R7", "R8", "R9", "R10"]
+# Combine titles
+try:
+    heatloads_list = []
+    for row in rows:
+        heatloads_list.append(list(circum_data_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc, row).values()))
+except ValueError as e:
+    st.error(f"Error: {e}")
+    st.stop()
 
-cols = st.columns(2)
-with cols[0]:
-    heatload_row_left = st.selectbox("Select the stave row:", rows[:3], key="left row selection circular heatload plot")
-with cols[1]:
-    heatload_row_right = st.selectbox("Select the stave row:", rows[3:], key="right row selection circular heatload plot")
+# User selection
+plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
 
-cols = st.columns(2)
-with cols[0]:
-    try:
-        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc, heatload_row_left)
-        fig_circular = plotter_circum_plotly(list(heatloads_dict.values()), title=f"Heat Load Distribution ({heatload_row_left})")
-        st.plotly_chart(fig_circular, use_container_width=True, key="circular heatload plot 1")
-    except Exception as e:
-        st.error(f"Failed to fetch or plot heat load data: {e}")
-with cols[1]:
-    try:
-        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc, heatload_row_right)
-        fig_circular = plotter_circum_plotly(list(heatloads_dict.values()), title=f"Heat Load Distribution ({heatload_row_right})")
-        st.plotly_chart(fig_circular, use_container_width=True, key="circular heatload plot 2")
-    except Exception as e:
-        st.error(f"Failed to fetch or plot heat load data: {e}")
+fig = plotter.plot_circumferential_quadrants(heatloads_list, titles=rows, colorbar_title="Heatload (GJ)", unit="GJ")
+st.plotly_chart(fig, use_container_width=True)
+
+st.markdown('-----------------------------------------------------------------------------------------')
 #------------------------------------------------------------------------------------------------------
 # 3. Circular Temperature Plot
 # Initialize the data fetcher
@@ -182,3 +174,35 @@ fig = px.line(
 
 # Display the plot
 st.plotly_chart(fig, use_container_width=True)
+
+# -------------------------------------------------------------------------------------------------------
+# 6. Circumferential Contour Plotter - Heatload
+# Circular Heat Load Plot
+st.subheader("Heat Load Distribution")
+st.markdown("Compares the average heat load distribution at a particular stave Row.")
+heatload_fetcher = AverageHeatLoadDataFetcher(debug=False, source="historical")
+
+# Corresponding elevations
+rows = ["R6", "R7", "R8", "R9", "R10"]
+
+cols = st.columns(2)
+with cols[0]:
+    heatload_row_left = st.selectbox("Select the stave row:", rows[:3], key="left row selection circular heatload plot")
+with cols[1]:
+    heatload_row_right = st.selectbox("Select the stave row:", rows[3:], key="right row selection circular heatload plot")
+
+cols = st.columns(2)
+with cols[0]:
+    try:
+        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc, heatload_row_left)
+        fig_circular = plotter_circum_plotly(list(heatloads_dict.values()), title=f"Heat Load Distribution ({heatload_row_left})")
+        st.plotly_chart(fig_circular, use_container_width=True, key="circular heatload plot 1")
+    except Exception as e:
+        st.error(f"Failed to fetch or plot heat load data: {e}")
+with cols[1]:
+    try:
+        heatloads_dict = heatload_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc, heatload_row_right)
+        fig_circular = plotter_circum_plotly(list(heatloads_dict.values()), title=f"Heat Load Distribution ({heatload_row_right})")
+        st.plotly_chart(fig_circular, use_container_width=True, key="circular heatload plot 2")
+    except Exception as e:
+        st.error(f"Failed to fetch or plot heat load data: {e}")

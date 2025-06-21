@@ -206,7 +206,7 @@ class CircumferentialPlotter(BasePlotter):
         vmin, vmax = all_vals.min(), all_vals.max()
 
         # Create subplots
-        fig = make_subplots(rows=1, cols=4, horizontal_spacing=0.05)
+        fig = make_subplots(rows=1, cols=len(field_values_list), horizontal_spacing=0.05)
         for idx, (field_values, temps_interp) in enumerate(zip(field_exact_values_list, all_interp_vals)):
             for i in range(len(theta_interp) - 1):
                 theta0, theta1 = theta_interp[i], theta_interp[i+1]
@@ -303,7 +303,7 @@ class CircumferentialPlotter(BasePlotter):
         )
         x_range = [-r_outer * 1, r_outer * 1]
         y_range = [-r_outer * 1, r_outer * 1]
-        for i in range(4):
+        for i in range(len(field_values_list)):
             fig.update_xaxes(visible=False, range=x_range, scaleanchor=f"y{i+1}",  row=1, col=i+1)
             fig.update_yaxes(visible=False, range=y_range, row=1, col=i+1)
 
