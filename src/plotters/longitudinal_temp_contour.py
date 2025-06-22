@@ -79,7 +79,15 @@ class LongitudinalTemperaturePlotter(BasePlotter):
         cbar.set_label("Temperature (°C)")
         return fig
     
-    def plot_plotly(self, temperatures_list):
+    def plot_plotly(self, temperatures_list, temperatures_max_list, temperatures_min_list):
+        """ Plot longitudinal temperature distribution using Plotly.
+        Args:
+            temperatures_list (list): List of temperature profiles for each quadrant.
+            temperatures_max_list (list): List of maximum temperatures for each quadrant.
+            temperatures_min_list (list): List of minimum temperatures for each quadrant.
+        Returns:
+            plotly.graph_objs.Figure: Plotly figure object.
+        """
         X, Y = self.furnace.X, self.furnace.Y
         heights = self.furnace.get_heights()
         regions = self.furnace.get_regions()
@@ -96,8 +104,14 @@ class LongitudinalTemperaturePlotter(BasePlotter):
         fig = make_subplots(rows=1, cols=len(temperatures_list), shared_yaxes=True, 
                             horizontal_spacing=0.02, column_widths=[0.3, 0.22, 0.22, 0.22])
         width = [100, 120, 140, 140]
-        for idx, temperatures in enumerate(temperatures_list):
+        # Iterate over each quadrant's temperatures
+        for idx, (temperatures, temperatures_max, temperatures_min) in enumerate(zip(temperatures_list, 
+                                                                   temperatures_max_list,
+                                                                   temperatures_min_list)):
             temp_interp = np.interp(y_grid, heights, temperatures)
+            tempmax_interp = np.interp(y_grid, heights, temperatures_max)
+            tempmin_interp = np.interp(y_grid, heights, temperatures_min)
+
             Z = np.tile(temp_interp[:, np.newaxis], (1, len(x_grid)))
             Z[~mask] = np.nan
 
@@ -127,9 +141,11 @@ class LongitudinalTemperaturePlotter(BasePlotter):
                 showlegend=False
             ), row=1, col=idx + 1)
 
-            # Add labels and region temperatures
-            for region_name, region_y in regions:
+            # Iterate over regions to add labels and temperature values
+            for i, (region_name, region_y) in enumerate(regions):
                 temp_val = float(np.interp(region_y, y_grid, temp_interp))
+                tempmax_val = float(np.interp(region_y, y_grid, tempmax_interp))
+                tempmin_val = float(np.interp(region_y, y_grid, tempmin_interp))
                 if idx == 0:
                     fig.add_annotation(
                         text=region_name,
@@ -140,9 +156,23 @@ class LongitudinalTemperaturePlotter(BasePlotter):
                     )
                 fig.add_annotation(
                     text=f"{temp_val:.1f}°C",
-                    x=-1.5, y=region_y,
+                    x=-1.8, y=region_y,
                     xref=f'x{idx+1}', yref='y',
                     font=dict(size=15, color='white', weight='bold'),
+                    showarrow=False
+                )
+                fig.add_annotation(
+                    text=f"+{(tempmax_val - temp_val):.1f}°C",
+                    x=-1.2, y=region_y+0.5,
+                    xref=f'x{idx+1}', yref='y',
+                    font=dict(size=12, color='red', weight='bold'),
+                    showarrow=False
+                )
+                fig.add_annotation(
+                    text=f"{(tempmin_val - temp_val):.1f}°C",
+                    x=-1.2, y=region_y-0.5,
+                    xref=f'x{idx+1}', yref='y',
+                    font=dict(size=12, color='green', weight='bold'),
                     showarrow=False
                 )
 

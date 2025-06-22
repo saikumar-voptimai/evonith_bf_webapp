@@ -8,7 +8,8 @@ class TimeSeriesHeatLoadDataFetcher(TimeSeriesDataFetcher):
     Processes raw data for time-series plots.
     """
     def __init__(self, debug: bool = False, source: str = "live", request_type: str = "ts"):
-        super().__init__("heatload_delta_t", debug, source, request_type)
+        super().__init__("heatload_delta_t", debug, source)
+        self.request_type = request_type
     
     def fetch_data(self, time_interval: str, start_time: datetime, end_time: datetime, row: str, quadrant: str=None) -> pd.DataFrame:
         """

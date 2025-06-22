@@ -69,7 +69,7 @@ class BaseDataFetcher:
     Abstract base class for fetching raw data from InfluxDB.
     """
 
-    def __init__(self, variable_tag: str, debug: bool = False, source: str = "live", request_type: str = "average"):
+    def __init__(self, variable_tag: str, debug: bool = False, source: str = "live"):
         """
         Initialize the BaseDataFetcher with InfluxDB credentials and configuration.
 
@@ -89,7 +89,6 @@ class BaseDataFetcher:
         self.api_password = os.getenv("PASSWORD_REALTIMEDATA")
         self.measurement_type = self.variable_tag
         self.var_map = config["data_mapping"].get(self.measurement_type, {})
-        self.request_type = request_type
 
 
     def _check_and_handle_missing_vars(self, row: dict, context_method: str = "fetch_live_data"):
@@ -182,7 +181,7 @@ class BaseDataFetcher:
         average_by: str,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None
-    ) -> Dict[str, float]:
+    ) -> pd.DataFrame:
         """
         Fetch and process averaged data over a specified time range.
 
@@ -215,7 +214,7 @@ class BaseDataFetcher:
         org = config["influxdb"].get("org", "Blast Furnace, Evonith")
 
         token = os.environ.get("INFLUX_TOKEN", "")
-        query = query_builder(self.measurement_type, start_time, end_time, type=self.request_type)
+        query = query_builder(self.measurement_type, start_time, end_time, type="ts")
         client = InfluxDBClient3(host=host,
                                 database=database,
                                 org=org,
@@ -224,16 +223,7 @@ class BaseDataFetcher:
                                     tls_root_certs=cert))
         df = client.query(query=query, mode="pandas")
         client.close()
-        if self.request_type == "ts" and (average_by_norm != 'live' and average_by_norm != 'last 1 minute' and average_by_norm != 'last 5 minutes'):
-            self.request_type = 'average'
-            return df
-        converted_data = self.dataframe_to_dict(df)
-        try:
-            float_dict = {k: float(v[0]) for k, v in converted_data.items() if k != 'time'}
-        except IndexError as i:
-            log.error(f"No data for the {average_by_norm} request. Returned {len(df)} rows from DB - Error {i}.")
-            raise
-        return float_dict
+        return df
 
     def _get_variable_names(self) -> List[str]:
         """

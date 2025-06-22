@@ -33,9 +33,6 @@ class LongitudinalTemperatureDataFetcher(TemperatureDataFetcher):
             temp_data = pd.DataFrame(temp_data, index=[start_time], columns=temp_data.keys())
         else:
             temp_data.set_index("time", inplace=True, drop=True)
-        # Vectorized, column-wise processing for all timestamps and levels
-        # temp_data columns: temp_L1_S1, temp_L1_S2, ..., temp_L2_S1, ...
-        # Group columns by level
         level_cols = {}
         for col in temp_data.columns:
             if not col.startswith('temp_'):
@@ -48,73 +45,69 @@ class LongitudinalTemperatureDataFetcher(TemperatureDataFetcher):
         val_dict = {f"Q{i+1}": {} for i in range(4)}
         # Add a 'time' key to store timestamps
         val_dict['time'] = temp_data.index.tolist() if hasattr(temp_data.index, 'tolist') else list(temp_data.index)
+        levelwise_dict = {}
         for level, cols in level_cols.items():
             n_sensors = SENSORS_AT_Y_Dict[level]['n_sensors']
-            temp_matrix = temp_data[cols].to_numpy()
-            temp_matrix[temp_matrix <= 25] = np.nan
+            df_temp_data = temp_data[cols]
+            df_temp_data[df_temp_data <= 25] = np.nan 
+            df_temp_data.dropna(axis=0, how='all', inplace=True)  # Drop rows where all sensors are NaN
+            df_temp_data.interpolate(method='linear', axis=1, inplace=True)
+            temp_matrix = df_temp_data.to_numpy()
             # If temp_matrix is empty (no sensors), fill with zeros
             if temp_matrix.shape[1] == 0:
                 temp_matrix = np.zeros((temp_matrix.shape[0], 1))
-            # Compute row means, handle all-NaN rows robustly
-            with np.errstate(all='ignore'):
-                row_means = np.nanmean(temp_matrix, axis=1, keepdims=True)
-            row_means = np.nan_to_num(row_means, nan=0.0)
-            inds = np.where(np.isnan(temp_matrix))
-            temp_matrix[inds] = np.take(row_means, inds[0])
-            for row_idx in range(temp_matrix.shape[0]):
-                temp_list = temp_matrix[row_idx, :]
-                theta_per_sensor = 360 / n_sensors
-                sensor_angles = np.radians([theta_per_sensor/2 + theta_per_sensor * i for i in range(n_sensors)])
-                theta_query_locs = np.radians([45, 135, 225, 315])
-                extended_angles = np.append(sensor_angles, sensor_angles[0] + 2 * np.pi)
-                extended_temps = np.append(temp_list, temp_list[0])
-                temp_query_locs = np.interp(theta_query_locs, extended_angles, extended_temps)
-                for i, temp in enumerate(temp_query_locs):
-                    val_dict[f"Q{i+1}"].setdefault(level, []).append(temp)
-        # Sort dictionary with float(keys) in val_dict except for 'time'
-        for key in val_dict.keys():
-            if key != 'time':
-                val_dict[key] = {k: v for k, v in sorted(val_dict[key].items(), key=lambda item: float(item[0]))}
-        return val_dict
+            df_new = pd.DataFrame(index=df_temp_data.index, columns=[f"Q_{i}" for i in range(1, 5)])
+            angles = [45, 135, 225, 315]
+            weights = [
+                [
+                max(1-abs((angle-i*360/n_sensors +180) %360 -180)/ (360/n_sensors), 0) for i in range(n_sensors)
+                ] for angle in angles
+            ]
+            for i, angle in enumerate(angles):
+                indices = np.where(np.array(weights[i]) > 0)[0]
+                if len(indices) > 0:
+                    df_new[f"Q_{i+1}"] = sum(df_temp_data.iloc[:, idx] * weights[i][idx] for idx in indices if weights[i][idx] > 0) 
+            levelwise_dict[level] = df_new
+        # Sort dictionary with float(keys) in levelwise dict
+        levelwise_dict = {int(k): v for k, v in levelwise_dict.items()}
+        levelwise_dict = dict(sorted(levelwise_dict.items()))
+        levelwise_dict = {str(k): v for k, v in levelwise_dict.items()}
 
-    def post_process_by_level(self, temp_dict: Dict) -> dict:
-        # If more than 20% of values in float_dict are NaN, raise an error
-        nan_count = sum(pd.isna(v) for _, v in temp_dict.items())
-        if (nan_count / (len(temp_dict)+0.001) > 0.2) or (len(temp_dict) == 0):
-            log.error(f"More than 20% of values are NaN: {nan_count} out of {len(temp_dict)}")
-            raise ValueError(f"More than 20% of values are Not Available/Logged in the DB for {self.measurement_type} for {self.start_time} and {self.end_time}.")
-        # This function is now only used for legacy row-wise fallback
-        level_dict = {}
-        for k in temp_dict.keys():
-            if not 'temp' in k:
-                continue
-            level_val = k.split("_")[1]
-            level_dict.setdefault(level_val, {})[k] = temp_dict[k]
-        return level_dict
+        if self.request_type == "average":
+            return self.post_process_by_level(levelwise_dict)
+        else:
+            return levelwise_dict
 
-
-    @staticmethod
-    def averager_to_four(temp_list: List[float], n_sensors: int) -> List[float]:
+    def post_process_by_level(self, levelwise_dict: Dict[str, pd.DataFrame]) -> dict:
         """
-        Interpolates temperature values to four quadrants (45°, 135°, 225°, 315°).
-
+        Post-processes temperature data by grouping values by level, computing max and min for each level and quadrant.
         Args:
-            temp_list (List[float]): Sensor temperature values.
-            n_sensors (int): Number of sensors at the level.
-
-        Returns:
-            List[float]: Interpolated values at four quadrants.
+            levelwise_dict (dict): Dictionary with temperature data for each level and quadrant.
+            Returns:
+            dict: Processed dictionary with levels as keys and temperature values as lists.
         """
-        # if any number in temp_list is 0 or Nan, fill replace with the average of the numerical values (but not zeros)
-        temp_list = np.array(temp_list)
-        temp_list[temp_list == 0] = np.nan
-        temp_list = np.nan_to_num(temp_list, nan=np.nanmean(temp_list[np.isfinite(temp_list)]))
+        # Send data as list of 13 values for each quadrant - for avg, max, min
+        mean_list_Q1, mean_list_Q2, mean_list_Q3, mean_list_Q4 = [], [], [], []
+        max_list_Q1, max_list_Q2, max_list_Q3, max_list_Q4 = [], [], [], []
+        min_list_Q1, min_list_Q2, min_list_Q3, min_list_Q4 = [], [], [], []
+        for level, df in levelwise_dict.items():
+            max = df.max().tolist(),
+            min = df.min().tolist(),
+            mean = df.mean().tolist()
+            mean_list_Q1.append(mean[0])
+            mean_list_Q2.append(mean[1])
+            mean_list_Q3.append(mean[2])
+            mean_list_Q4.append(mean[3])
 
-        theta_per_sensor = 360 / n_sensors
-        sensor_angles = np.radians([theta_per_sensor/2 + theta_per_sensor * i for i in range(len(temp_list))])
-        theta_query_locs = np.radians([45, 135, 225, 315])
-        temp_array = np.array(temp_list)
-        extended_angles = np.append(sensor_angles, sensor_angles[0] + 2 * np.pi)
-        extended_temps = np.append(temp_array, temp_array[0])
-        temp_query_locs = np.interp(theta_query_locs, extended_angles, extended_temps)
-        return temp_query_locs.tolist()
+            max_list_Q1.append(max[0][0])
+            max_list_Q2.append(max[0][1])
+            max_list_Q3.append(max[0][2])
+            max_list_Q4.append(max[0][3])
+
+            min_list_Q1.append(min[0][0])
+            min_list_Q2.append(min[0][1])
+            min_list_Q3.append(min[0][2])
+            min_list_Q4.append(min[0][3])
+        return [[mean_list_Q1, mean_list_Q2, mean_list_Q3, mean_list_Q4],
+                [max_list_Q1, max_list_Q2, max_list_Q3, max_list_Q4],
+                [min_list_Q1, min_list_Q2, min_list_Q3, min_list_Q4]]

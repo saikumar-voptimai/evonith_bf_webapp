@@ -1,6 +1,6 @@
 from .temp_data_fetcher import TemperatureDataFetcher
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 import numpy as np
 import pandas as pd
 from config.loader import load_config
@@ -33,26 +33,13 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
 
         Returns:
             dict: {elevation_label: [temps_at_level], ...} for each elevation.
-        """
-        # temp_data = super().fetch_averaged_data(average_by, start_time, end_time)
-        # level_dict = self.post_process_by_level(temp_data)
-        
-        # for i, (level, temp_list) in enumerate(level_dict.items()):
-        #     # if any number in temp_list is 0 or Nan, fill replace with the average of the numerical values (but not zeros)
-        #     temp_list = np.array(temp_list)
-        #     temp_list[temp_list <= 25] = np.nan
-        #     temp_list = np.nan_to_num(temp_list, nan=np.nanmean(temp_list[np.isfinite(temp_list)]))
-        #     level_dict[level] = temp_list
-        
+        """       
         temp_data = super().fetch_averaged_data(average_by, start_time, end_time)
         if not isinstance(temp_data, pd.DataFrame):
             # temp_data['time'] = pd.to_datetime(start_time)
             temp_data = pd.DataFrame(temp_data, index=[start_time], columns=temp_data.keys())
         else:
             temp_data.set_index("time", inplace=True, drop=True)
-        # Vectorized, column-wise processing for all timestamps and levels
-        # temp_data columns: temp_L1_S1, temp_L1_S2, ..., temp_L2_S1, ...
-        # Group columns by level
         level_cols = {}
         for col in temp_data.columns:
             if not col.startswith('temp_'):
@@ -62,40 +49,56 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
                 continue
             level = parts[1]
             level_cols.setdefault(level, []).append(col)
-        level_dict = {}
+        val_dict = {f"Q{i+1}": {} for i in range(4)}
+        # Add a 'time' key to store timestamps
+        val_dict['time'] = temp_data.index.tolist() if hasattr(temp_data.index, 'tolist') else list(temp_data.index)
+        levelwise_dict = {}
         for level, cols in level_cols.items():
-            temp_matrix = temp_data[cols].to_numpy()
-            temp_matrix[temp_matrix <= 25] = np.nan
+            n_sensors = SENSORS_AT_Y_Dict[level]['n_sensors']
+            df_temp_data = temp_data[cols]
+            df_temp_data[df_temp_data <= 25] = np.nan 
+            df_temp_data.dropna(axis=0, how='all', inplace=True)  # Drop rows where all sensors are NaN
+            df_temp_data.interpolate(method='linear', axis=1, inplace=True)
+            temp_matrix = df_temp_data.to_numpy()
             # If temp_matrix is empty (no sensors), fill with zeros
             if temp_matrix.shape[1] == 0:
                 temp_matrix = np.zeros((temp_matrix.shape[0], 1))
-            # Compute row means, handle all-NaN rows robustly
-            with np.errstate(all='ignore'):
-                row_means = np.nanmean(temp_matrix, axis=1, keepdims=True)
-            # If any row mean is NaN (all-NaN row), set to 0.0
-            row_means = np.nan_to_num(row_means, nan=0.0)
-            inds = np.where(np.isnan(temp_matrix))
-            temp_matrix[inds] = np.take(row_means, inds[0])    
-            level_dict[level] = temp_matrix.tolist()
+            df_new = pd.DataFrame(index=df_temp_data.index, columns=[f"Q_{i}" for i in range(1, 5)])
+            angles = [45, 135, 225, 315]
+            weights = [
+                [
+                max(1-abs((angle-i*360/n_sensors +180) %360 -180)/ (360/n_sensors), 0) for i in range(n_sensors)
+                ] for angle in angles
+            ]
+            for i, angle in enumerate(angles):
+                indices = np.where(np.array(weights[i]) > 0)[0]
+                if len(indices) > 0:
+                    df_new[f"Q_{i+1}"] = sum(df_temp_data.iloc[:, idx] * weights[i][idx] for idx in indices if weights[i][idx] > 0) 
+            levelwise_dict[level] = df_new
+        # Sort dictionary with float(keys) in levelwise dict
+        levelwise_dict = {int(k): v for k, v in levelwise_dict.items()}
+        levelwise_dict = dict(sorted(levelwise_dict.items()))
+        levelwise_dict = {str(k): v for k, v in levelwise_dict.items()}
 
-        # Sort dictionary with float(keys) in val_dict except for 'time'
-        for key in level_dict.keys():
-            level_dict = {k: v for k, v in sorted(level_dict.items(), key=lambda item: float(item[0]))}
+        if self.request_type == "average":
+            return self.post_process_by_level(levelwise_dict)
+        else:
+            return levelwise_dict
         
-        # Map special names for Bosh, Belly, Stack
-        special_labels = {
-            "12.975m": "12.975m - Bosh",
-            "15.162m": "15.162m - Belly",
-            "18.660m": "18.660m - Stack"
-        }
-        result = {}
-        for level, temp_list in level_dict.items():
-            mapped_level = f"{float(level)/1000:.3f}m"
-            if mapped_level in list(special_labels.keys()):
-                label = special_labels[mapped_level]
-            else:
-                label = mapped_level
-            result[label] = temp_list
-        # Add a 'time' key to store timestamps
-        result['time'] = temp_data.index.tolist() if hasattr(temp_data.index, 'tolist') else list(temp_data.index)  
-        return result
+    def post_process_by_level(self, levelwise_dict: Dict[str, pd.DataFrame]) -> dict:
+        """
+        Post-processes temperature data by grouping values by level, computing max and min for each level and quadrant.
+        Args:
+            levelwise_dict (dict): Dictionary with temperature data for each level and quadrant.
+            Returns:
+            dict: Processed dictionary with levels as keys and temperature values as lists.
+        """
+        # Send data as list of 13 values for each quadrant - for avg, max, min
+        levelwise_stats = {}
+        for level, df in levelwise_dict.items():
+            max = df.max().tolist()
+            min = df.min().tolist()
+            mean = df.mean().tolist()
+            
+            levelwise_stats[level] = [mean, max, min]
+        return levelwise_stats

@@ -13,7 +13,8 @@ class TemperatureDataFetcher(BaseDataFetcher):
     """
 
     def __init__(self, debug: bool, source: str, request_type: str = "average"):
-        super().__init__("temperature_profile", debug, source, request_type)
+        super().__init__("temperature_profile", debug, source)
+        self.request_type = request_type
 
     def _get_variable_names(self, n_sensors: int) -> List[str]:
         """

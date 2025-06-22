@@ -1,6 +1,5 @@
 import streamlit as st
 from utils.logger import setup_logger
-import logging
 
 # Setup the logger at the start of the application
 setup_logger()

@@ -1,16 +1,18 @@
 from .base_data_fetcher import BaseDataFetcher
 from typing import List
 import numpy as np
+import pandas as pd
 
 class AverageHeatLoadDataFetcher(BaseDataFetcher):
     """
     Fetcher for average heat load data.
     """
 
-    def __init__(self, debug: bool = False, source: str = "live"):
+    def __init__(self, debug: bool = False, source: str = "live", request_type: str = "average"):
         super().__init__("heatload_delta_t", debug, source)
+        self.request_type = request_type
 
-    def fetch_averaged_data(self, average_by: str, start_time=None, end_time=None, row: str = None) -> dict:
+    def fetch_averaged_data(self, average_by: str, start_time=None, end_time=None, row: str = None) -> List[List[float]]:
         """
         Fetch and process average heatload data for a specific row (R6-R10).
 
@@ -21,26 +23,37 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
             row (str, optional): The row to filter (e.g., 'r6').
 
         Returns:
-            dict: {Q1: value, Q2: value, Q3: value, Q4: value} for the selected row.
+            pd.DataFrame: DataFrame with averaged heat load data for the specified row.
         """
-        flat_data = super().fetch_averaged_data(average_by, start_time, end_time)
+        df_flatdata = super().fetch_averaged_data(average_by, start_time, end_time)
+        df_flatdata.set_index("time", inplace=True, drop=True)
         if row is None:
             raise ValueError("Row must be specified (e.g., 'r6').")
-        result = {}
+        df_result = pd.DataFrame(columns=["Q1", "Q2", "Q3", "Q4"], index=df_flatdata.index)
         for q in range(1, 5):
-            # Find the variable name for this row and quadrant
-            for key in flat_data:
-                if key.startswith(f"heat_load_{row.lower()}_q{q}"):
-                    result[f"Q{q}"] = flat_data[key]
-                    if result[f"Q{q}"] <= 0 or np.isnan(result[f"Q{q}"]):
-                        # If the value is <0 or NaN, replace with the average of non-zero values
-                        non_zero_values = [v for v in flat_data.values() if v > 0 and not np.isnan(v)]
-                        if non_zero_values:
-                            result[f"Q{q}"] = np.mean(non_zero_values)
-                    if result[f"Q{q}"] >= 1:
-                        # If the value is too high, set it to None
-                        result[f"Q{q}"] = 1   # or np.nan if you prefer
-                    break
-            else:
-                result[f"Q{q}"] = None  # or np.nan if you prefer
-        return result
+            for col in df_flatdata.columns:
+                if col.startswith(f"heat_load_{row.lower()}_q{q}"):
+                    df_result[f"Q{q}"] = df_flatdata[col]
+        df_result[df_result < 0] = np.nan
+        df_result[df_result > 1] = 1                    
+        df_result.dropna(axis=0, how='all', inplace=True)  # Drop rows where all sensors are NaN
+        df_result.interpolate(method='linear', axis=1, inplace=True)
+        if self.request_type == "ts":
+            df_result.reset_index(inplace=True)
+            df_result.rename(columns={"index": "time"}, inplace=True)
+            df_result.set_index("time", inplace=True)
+        else:
+            return self.post_process(df_result)
+        return df_result
+    
+    def post_process(self, df_result: pd.DataFrame) -> List[List[float]]:
+        """
+        Post-processes temperature data by grouping values by level, computing max and min for each level and quadrant.
+        Args:
+            df_result (pd.DataFrame): DataFrame with averaged heat load data for the specified row.
+        """
+        # Send data as list of 13 values for each quadrant - for avg, max, min
+        mean_list = df_result.mean().tolist()
+        max_list = df_result.max().tolist()
+        min_list = df_result.min().tolist()
+        return [mean_list, max_list, min_list]
