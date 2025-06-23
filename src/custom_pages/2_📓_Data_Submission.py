@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from typing import List, Optional, Dict
 from influxdb_client_3 import InfluxDBClient3, flight_client_options
+
 import logging
 import certifi
 import seaborn as sns
@@ -9,9 +10,13 @@ import plotly.express as px
 from config import INIT_PARAMS as IPS
 from config.loader import load_config
 import os
+os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
+import certifi
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta, timezone
-from config.loader import load_config
+from datetime import datetime, timedelta, timezone, time
+import pytz
+from io import BytesIO
+local_tz = pytz.timezone("Asia/Kolkata")  # or use your actual timezone
 
 from dotenv import load_dotenv
 load_dotenv() 
@@ -24,6 +29,22 @@ from utils.data_submission import (
     flatten_multi_sample_df_agg,
     create_production_report_xlsx
 )
+
+
+
+
+from dotenv import load_dotenv
+load_dotenv() 
+
+# Our custom utilities
+from utils.data_submission import (
+    layout_sub_sections,
+    strip_section_prefix,
+    flatten_single_sample_df,
+    flatten_multi_sample_df_agg,
+    create_production_report_xlsx
+)
+
 
 # --------------------------------------------------------------------------------
 # HELPER FUNCTION: Submitting data for a single date
@@ -448,7 +469,7 @@ if st.session_state.selected_measurements:
 
             # rename cols using FIELD_LABELS + MEASUREMENT_LABELS
             df = df.rename(columns={
-                col: f"{MEASUREMENT_LABELS.get(meas, meas)} – {FIELD_LABELS.get(col, col)}"
+                col: f"{MEASUREMENT_LABELS.get(meas, meas)} - {FIELD_LABELS.get(col, col)}"
                 for col in df.columns if col != "time"
             })
 
@@ -477,3 +498,181 @@ if st.session_state.selected_measurements:
             file_name=file_name,
             mime="text/csv"
         )
+
+
+
+
+# --------------------------------------------------------------------------------
+# Hourly avg for process parameters
+# ------------------------------------------------------------------------
+
+
+
+
+#load from settings.yaml
+config = load_config()
+field_mapping = config.get("field_mapping", {})
+# InfluxDB settings
+influx_config = config.get("influxdb", {})
+host = influx_config.get("host", "")
+org = influx_config.get("org", "")
+database = influx_config.get("database", "")
+
+token = os.getenv("INFLUX_TOKEN", "")
+
+with open(certifi.where(), "r") as f:
+    cert = f.read()
+
+
+REQUIRED_FIELDS = [v for v in field_mapping.values() if v]
+# Fields that are computed as averages of other fields
+AVERAGE_FIELD_GROUPS = {
+    "Furnace Top Gas Uptake,Avg": [
+        "top_temp_1", "top_temp_2", "top_temp_3", "top_temp_4"
+    ],
+    "Hearth Pad Center,Avg": [
+        "temp_4373_a", "temp_5411_a", "temp_5757_a", "temp_6103_a"
+    ],
+    "Bosh - 12975,Avg": [
+        "temp_12975_a", "temp_12975_c", "temp_12975_d"
+    ],
+    "Belly - 15162,Avg": [
+        "temp_15162_a", "temp_15162_b", "temp_15162_c", "temp_15162_d"
+    ],
+    "Lower Stack - 18660,Avg": [
+        "temp_18660_a", "temp_18660_b", "temp_18660_c", "temp_18660_d"
+    ]
+}
+
+
+# --- Functions ---
+def get_measurements():
+    client = InfluxDBClient3(host=host, org=org, token=token, database=database,
+                             flight_client_options=flight_client_options(tls_root_certs=cert))
+    df = client.query("SHOW TABLES", mode="pandas")
+    client.close()
+    return df[df["table_type"] == "BASE TABLE"]["table_name"].tolist()
+
+def get_fields(measurement):
+    query = f"SELECT * FROM {measurement} LIMIT 1"
+    client = InfluxDBClient3(host=host, org=org, token=token, database=database,
+                             flight_client_options=flight_client_options(tls_root_certs=cert))
+    df = client.query(query, mode="pandas")
+    client.close()
+    return [col for col in df.columns if col != "time"]
+
+def get_data(measurement, fields, start, end):
+    start_iso = start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+    end_iso = end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+    field_str = ", ".join(fields)
+
+    query = f"""
+        SELECT time, {field_str}
+        FROM {measurement}
+        WHERE time >= timestamp '{start_iso}' AND time <= timestamp '{end_iso}'
+    """
+    client = InfluxDBClient3(host=host, org=org, token=token, database=database,
+                             flight_client_options=flight_client_options(tls_root_certs=cert))
+    df = client.query(query=query, mode="pandas")
+    client.close()
+    return df
+
+def average_data(df):
+    df["time"] = pd.to_datetime(df["time"])
+    df.set_index("time", inplace=True)
+    return df.resample("1h").mean().dropna().reset_index()
+
+
+
+
+
+
+
+# --- Streamlit UI ---
+st.title("📊 Hourly Average Data for Process Parameters")
+
+# Unified single-date input (defaults to today)
+selected_date = st.date_input("📅 Select a date to download full-day hourly data:", value=datetime.utcnow().date())
+
+# Compute time boundaries in UTC (00:00 to 23:59:59)
+start_time = datetime.combine(selected_date, time(0, 0)).replace(tzinfo=timezone.utc)
+end_time = datetime.combine(selected_date, time(23, 59, 59)).replace(tzinfo=timezone.utc)
+
+# Show time range (UTC)
+
+
+# Fetch and download section
+if st.button("🔄 Fetch & Download Hourly Averages for the Day"):
+    combined_df = pd.DataFrame()
+    measurements = get_measurements()
+
+    for meas in measurements:
+        fields = get_fields(meas)
+        matched_fields = [f for f in fields if f in REQUIRED_FIELDS]
+
+        if not matched_fields:
+            continue
+
+        df = get_data(meas, matched_fields, start_time, end_time)
+        if df.empty:
+            continue
+
+        df = average_data(df)
+        df.columns = ['time'] + [col for col in df.columns if col != 'time']
+        combined_df = df if combined_df.empty else combined_df.merge(df, on="time", how="outer")
+
+    if not combined_df.empty:
+        combined_df = combined_df.sort_values("time").reset_index(drop=True)
+
+        # Add derived average columns
+        for avg_label, components in AVERAGE_FIELD_GROUPS.items():
+            available = [col for col in components if col in combined_df.columns]
+            if len(available) >= 2:
+                combined_df[avg_label] = combined_df[available].mean(axis=1)
+
+        # Build output DataFrame using field_mapping
+        field_order = list(field_mapping.keys())
+        output_df = pd.DataFrame()
+        output_df["Time,"] = combined_df["time"] if "time" in combined_df else pd.NaT
+
+        for label in field_order:
+            internal = field_mapping[label]
+            if internal:
+                output_df[label] = combined_df.get(internal, "")
+            else:
+                output_df[label] = combined_df.get(label, "")
+
+        output_df.index += 1
+        st.dataframe(output_df)
+
+        # Load Excel template and populate data
+        from openpyxl import load_workbook
+        from openpyxl.utils.dataframe import dataframe_to_rows
+        from openpyxl.utils import get_column_letter
+        from io import BytesIO
+
+        template_path = "src/templates/examplebf2process download.xlsx"
+        wb = load_workbook(template_path)
+        ws = wb.active
+        start_row, start_col = 7, 2
+
+        for r_idx, row in enumerate(dataframe_to_rows(output_df, index=False, header=False), start=start_row):
+            for c_idx, value in enumerate(row, start=start_col):
+                ws.cell(row=r_idx, column=c_idx, value=value)
+        ws.column_dimensions[get_column_letter(2)].width = 22
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        start_str = start_time.strftime("%Y-%m-%d_%H-%M")
+        end_str = end_time.strftime("%Y-%m-%d_%H-%M")
+        filename = f"bf2processparamsofhourlyavg_{start_str}_to_{end_str}.xlsx"
+
+        st.download_button(
+            label="⬇️ Download Excel File",
+            data=output,
+            file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.warning("⚠️ No data available for the selected date.")
