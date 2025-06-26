@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from typing import List, Optional, Dict
 from influxdb_client_3 import InfluxDBClient3, flight_client_options
-
 import logging
 import certifi
 import seaborn as sns
@@ -305,65 +304,40 @@ st.plotly_chart(fig, use_container_width=True)
 # --------------------------------------------------------------------------------
 
 # load once
-_config = load_config()
+config = load_config()
 
 FIELD_LABELS = {
     internal_key: human_label
-    for mapping in _config["data_mapping"].values()
+    for mapping in config["data_mapping"].values()
     for human_label, internal_key in mapping.items()
 }
 
 # InfluxDB connection settings
-host = "https://eu-central-1-1.aws.cloud2.influxdata.com"
-org = "Blast Furnace, Evonith"
-database = "bf2_evonith_raw"
+
+influx_config = config.get("influxdb", {})
+host = influx_config.get("host", "")
+org = influx_config.get("org", "")
+database = influx_config.get("database", "")
 token = os.getenv("INFLUX_TOKEN", "")
 
 with open(certifi.where(), "r") as f:
     cert = f.read()
 
+
+# Parse TIME_OPTIONS from config
 TIME_OPTIONS = {
-    "Last 1 min": timedelta(minutes=1),
-    "Last 5 min": timedelta(minutes=5),
-    "Last 10 min": timedelta(minutes=10),
-    "Last 15 min": timedelta(minutes=15),
-    "Last 30 min": timedelta(minutes=30),
-    "Last 1 hour": timedelta(hours=1),
-    "Last 6 hour": timedelta(hours=6),
-    "Last 12 hour": timedelta(hours=12),
-    "Last 1 day": timedelta(days=1),
+    label: timedelta(seconds=secs)
+    for label, secs in config.get("time_options", {}).items()
 }
 
+# Parse FREQUENCY_OPTIONS from config
 FREQUENCY_OPTIONS = {
-    "1 min": "1min",
-    "5 min": "5min",
-    "10 min": "10min",
-    "30 min": "30min",
-    "1 hour": "1H",
-    "6 hour": "6H",
-    "12 hour": "12H",
-    "1 day": "1D",
+    label: (info["label"], timedelta(seconds=info["duration"]))
+    for label, info in config.get("frequency_options", {}).items()
 }
 
-FREQUENCY_TO_TIMEDTA = {
-    "1min": timedelta(minutes=1),
-    "5min": timedelta(minutes=5),
-    "10min": timedelta(minutes=10),
-    "30min": timedelta(minutes=30),
-    "1H": timedelta(hours=1),
-    "6H": timedelta(hours=6),
-    "12H": timedelta(hours=12),
-    "1D": timedelta(days=1),
-}
+MEASUREMENT_LABELS = config.get("measurement_labels", {})
 
-MEASUREMENT_LABELS = {
-    "cooling_water": "Cooling Water",
-    "delta_t": "Delta T",
-    "heatload_delta_t": "Heatload Delta T",
-    "miscellaneous": "Miscellaneous",
-    "process_params": "Process Params",
-    "temperature_profile": "Temperature Profile"
-}
 
 
 def get_measurements():
@@ -393,13 +367,34 @@ def get_data(measurement, fields, time_range):
                              flight_client_options=flight_client_options(tls_root_certs=cert))
     df = client.query(query=query, mode="pandas")
     client.close()
+
+    if not df.empty:
+        df["time"] = pd.to_datetime(df["time"]).dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata').dt.tz_localize(None)
     return df
 
-def average_data(df, freq):
+
+def average_data(df, freq, time_delta):
     df["time"] = pd.to_datetime(df["time"])
+    df = df.sort_values("time")
+
+    # Strictly use selected time range
+    end_time = df["time"].max()
+    start_time = end_time - time_delta
+
+    # Filter only the selected time window
+    df = df[df["time"] > start_time]
+
+    # Resample using exact start time as origin
     df.set_index("time", inplace=True)
-    df_avg = df.resample(freq).mean().dropna().reset_index()
+    df_avg = df.resample(freq, origin=start_time, label='right', closed='right').mean().dropna().reset_index()
+    
     return df_avg
+
+
+
+
+
+
 
 # --- Streamlit UI ---
 st.title("📊 BF2 Data Downloader")
@@ -430,7 +425,7 @@ if st.session_state.measurements:
             st.session_state.selected_measurements = set()
 
     with col2:
-        st.toggle("📊 Average", key="avg_mode")
+        st.toggle("Average", key="avg_mode")
 
     cols = st.columns(4)
     for i, meas in enumerate(st.session_state.measurements):
@@ -450,13 +445,15 @@ if st.session_state.selected_measurements:
     freq = None
     if st.session_state.avg_mode:
         freq_label = st.selectbox("⏱️ Average Frequency:", list(FREQUENCY_OPTIONS.keys()))
-        freq = FREQUENCY_OPTIONS[freq_label]
-        if FREQUENCY_TO_TIMEDTA[freq] > TIME_OPTIONS[time_range]:
+        freq_str, freq_delta = FREQUENCY_OPTIONS[freq_label]
+        if freq_delta > TIME_OPTIONS[time_range]:
             st.error("❌ Frequency is greater than time range.")
             freq = None
+        else:
+            freq = freq_str
 
     # 2) on button click: fetch, rename & merge in one pass
-    if st.button("⬇️ Show CSV File ", key="download_combined_csv"):
+    if st.button("⬇️ Show Excel File", key="download_combined_csv"):
         combined_df = pd.DataFrame()
 
         for meas in st.session_state.selected_measurements:
@@ -465,7 +462,7 @@ if st.session_state.selected_measurements:
             if df.empty:
                 continue
             if freq:
-                df = average_data(df, freq)
+                df = average_data(df, freq, TIME_OPTIONS[time_range])
 
             # rename cols using FIELD_LABELS + MEASUREMENT_LABELS
             df = df.rename(columns={
@@ -492,11 +489,17 @@ if st.session_state.selected_measurements:
             combined_df.index += 1
             st.dataframe(combined_df)
 
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            combined_df.to_excel(writer, index=True, index_label="Index", sheet_name="BF2 Data")
+            
+        excel_data = output.getvalue()
+
         st.download_button(
-            "📄 Download CSV File",
-            data=combined_df.to_csv(index=True, index_label="Index").encode("utf-8"),
-            file_name=file_name,
-            mime="text/csv"
+            "📄 Download Excel File",
+            data=excel_data,
+            file_name=file_name.replace(".csv", ".xlsx"),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
 
@@ -508,9 +511,6 @@ if st.session_state.selected_measurements:
 
 
 
-
-#load from settings.yaml
-config = load_config()
 field_mapping = config.get("field_mapping", {})
 # InfluxDB settings
 influx_config = config.get("influxdb", {})
@@ -525,24 +525,7 @@ with open(certifi.where(), "r") as f:
 
 
 REQUIRED_FIELDS = [v for v in field_mapping.values() if v]
-# Fields that are computed as averages of other fields
-AVERAGE_FIELD_GROUPS = {
-    "Furnace Top Gas Uptake,Avg": [
-        "top_temp_1", "top_temp_2", "top_temp_3", "top_temp_4"
-    ],
-    "Hearth Pad Center,Avg": [
-        "temp_4373_a", "temp_5411_a", "temp_5757_a", "temp_6103_a"
-    ],
-    "Bosh - 12975,Avg": [
-        "temp_12975_a", "temp_12975_c", "temp_12975_d"
-    ],
-    "Belly - 15162,Avg": [
-        "temp_15162_a", "temp_15162_b", "temp_15162_c", "temp_15162_d"
-    ],
-    "Lower Stack - 18660,Avg": [
-        "temp_18660_a", "temp_18660_b", "temp_18660_c", "temp_18660_d"
-    ]
-}
+
 
 
 # --- Functions ---
@@ -577,13 +560,45 @@ def get_data(measurement, fields, start, end):
     client.close()
     return df
 
+
 def average_data(df):
-    df["time"] = pd.to_datetime(df["time"])
-    df.set_index("time", inplace=True)
-    return df.resample("1h").mean().dropna().reset_index()
+    # 1️⃣ Parse as UTC
+    df["time"] = pd.to_datetime(df["time"], utc=True)
+    
+    # 2️⃣ Make it the index and convert to India time
+    df = df.set_index("time").tz_convert("Asia/Kolkata")
+    
+    # 3️⃣ Resample on the India‐time index
+    df_hourly = (
+        df
+        .resample("1h", label="right", closed="right")
+        .mean()
+        .dropna()
+    )
+    
+    # 4️⃣ (Optional) Remove the timezone info so Excel shows plain times
+    df_hourly.index = df_hourly.index.tz_localize(None)
+    
+    # 5️⃣ Reset index so “time” comes back as a column
+    return df_hourly.reset_index()
 
 
+def make_utc_bounds_for_ist_day(selected_date):
+    """
+    Given a date (naive), returns (start_utc, end_utc) so that
+    in IST it covers 00:00→23:59:59 on that date.
+    """
+    india = pytz.timezone("Asia/Kolkata")
 
+    # 1) Localize to IST midnight and IST 23:59:59
+    start_ist = india.localize(datetime.combine(selected_date, time(0, 0)))
+    end_ist   = india.localize(datetime.combine(selected_date, time(23, 59, 59)))
+
+    # 2) Convert those instants to UTC (what InfluxDB needs)
+    start_utc = start_ist.astimezone(pytz.UTC)
+    end_utc   = end_ist.astimezone(pytz.UTC)
+
+    return start_utc, end_utc
 
 
 
@@ -594,9 +609,8 @@ st.title("📊 Hourly Average Data for Process Parameters")
 # Unified single-date input (defaults to today)
 selected_date = st.date_input("📅 Select a date to download full-day hourly data:", value=datetime.utcnow().date())
 
-# Compute time boundaries in UTC (00:00 to 23:59:59)
-start_time = datetime.combine(selected_date, time(0, 0)).replace(tzinfo=timezone.utc)
-end_time = datetime.combine(selected_date, time(23, 59, 59)).replace(tzinfo=timezone.utc)
+# Compute InfluxDB query bounds so that in IST we cover 00:00→23:59:59
+start_time, end_time = make_utc_bounds_for_ist_day(selected_date)
 
 # Show time range (UTC)
 
@@ -623,14 +637,6 @@ if st.button("🔄 Fetch & Download Hourly Averages for the Day"):
 
     if not combined_df.empty:
         combined_df = combined_df.sort_values("time").reset_index(drop=True)
-
-        # Add derived average columns
-        for avg_label, components in AVERAGE_FIELD_GROUPS.items():
-            available = [col for col in components if col in combined_df.columns]
-            if len(available) >= 2:
-                combined_df[avg_label] = combined_df[available].mean(axis=1)
-
-        # Build output DataFrame using field_mapping
         field_order = list(field_mapping.keys())
         output_df = pd.DataFrame()
         output_df["Time,"] = combined_df["time"] if "time" in combined_df else pd.NaT
@@ -638,9 +644,15 @@ if st.button("🔄 Fetch & Download Hourly Averages for the Day"):
         for label in field_order:
             internal = field_mapping[label]
             if internal:
-                output_df[label] = combined_df.get(internal, "")
+                # Get data from combined_df if present
+                if internal in combined_df.columns:
+                    output_df[label] = combined_df[internal].fillna("")
+                else:
+                    output_df[label] = ""
             else:
-                output_df[label] = combined_df.get(label, "")
+                # Leave column untouched so Excel formula remains
+                output_df[label] = ["" for _ in range(len(output_df))]
+
 
         output_df.index += 1
         st.dataframe(output_df)
@@ -652,14 +664,23 @@ if st.button("🔄 Fetch & Download Hourly Averages for the Day"):
         from io import BytesIO
 
         template_path = "src/templates/examplebf2process download.xlsx"
+        output_df["Time,"] = pd.to_datetime(output_df["Time,"]).dt.strftime("%H:%M")
         wb = load_workbook(template_path)
         ws = wb.active
+        # 🗓️ Write year in B2 cell
+        ws["B2"] = selected_date.strftime("%d-%b-%Y")  # e.g., 2025-06-24
         start_row, start_col = 7, 2
-
         for r_idx, row in enumerate(dataframe_to_rows(output_df, index=False, header=False), start=start_row):
             for c_idx, value in enumerate(row, start=start_col):
-                ws.cell(row=r_idx, column=c_idx, value=value)
-        ws.column_dimensions[get_column_letter(2)].width = 22
+                # Get column name from output_df
+                col_name = output_df.columns[c_idx - start_col]
+                internal = field_mapping.get(col_name, "")
+
+                # Only write value if the column is mapped and value is valid
+                if internal and pd.notna(value):
+                    ws.cell(row=r_idx, column=c_idx, value=value)
+                # Else skip writing — this preserves existing formulas in the cell
+                
 
         output = BytesIO()
         wb.save(output)
