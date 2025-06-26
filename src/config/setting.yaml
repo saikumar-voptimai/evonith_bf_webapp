@@ -1,3 +1,4 @@
+# Database
 influxdb:
   host: "https://eu-central-1-1.aws.cloud2.influxdata.com"
   org: "Blast Furnace, Evonith"
@@ -10,25 +11,83 @@ website_vars:
 
 
 
+
+# Bf2 Data downlaod mappings
+time_options:
+  Last 5 min: 300        # in seconds (5*60)
+  Last 10 min: 600
+  Last 15 min: 900
+  Last 30 min: 1800
+  Last 1 hour: 3600
+  Last 6 hour: 21600
+  Last 12 hour: 43200
+  Last 1 day: 86400
+  Last 3 days: 259200
+  Last 1 week: 604800
+  Last 2 weeks: 1209600
+  Last 1 month: 2592000
+  Last 3 months: 7776000
+  Last 6 months: 15552000
+
+frequency_options:
+  1 min:
+    label: "1min"
+    duration: 60
+  5 min:
+    label: "5min"
+    duration: 300
+  10 min:
+    label: "10min"
+    duration: 600
+  30 min:
+    label: "30min"
+    duration: 1800
+  1 hour:
+    label: "1H"
+    duration: 3600
+  6 hour:
+    label: "6H"
+    duration: 21600
+  12 hour:
+    label: "12H"
+    duration: 43200
+  1 day:
+    label: "1D"
+    duration: 86400
+
+
+
+measurement_labels:
+  cooling_water: "Cooling Water"
+  delta_t: "Delta T"
+  heatload_delta_t: "Heatload Delta T"
+  miscellaneous: "Miscellaneous"
+  process_params: "Process Params"
+  temperature_profile: "Temperature Profile"
+
+
+
+# Hourly download avg for Process Parms field mappings 
+
 field_mapping:
   "Time,": "time"
-  "Charges/Hrs.,": "steam"
+  "Charges/Hrs.,": "charges_per_hour"
   "Stock Rod Level,": "stock_rod_radar_level"
   "CBV From Blower,": ""
   "Hot Blast Volume,": "hot_blast_vol_nm3h"
-  "Total Oxygen,": ""
-  "PCI Coal Injection,Set Point": ""
+  "Total Oxygen,": "total_oxygen"
+  "PCI Coal Injection,Set Point": "coal_rate_set"
   "PCI Coal Injection,Actual-T": ""
-  "PCI Coal Injection,Actual-K": ""
+  "PCI Coal Injection,Actual-K": "coal_rate_actual"
   "Act. Fuel Rate,": ""
   "Hot Blast Pressure,": "hot_blast_press"
-  "Top Pressure": ""
+  "Top Pressure": "top_press_avg"
   "Differential Pressure,Total": "body_dp_total"
   "Differential Pressure,Bottom": "body_dp_bottom"
   "Differential Pressure,Top": "body_dp_top"
   "Hot Blast Temp,": "hot_blast_temp"
-  "Oxygen Flow,": "oxygen_flow_avg"
-  "Steam,": ""
+  "Oxygen Flow,": "oxygen_flow"
+  "Steam,": "steam_injection"
   "Permeability,": "body_perm"
   "Tuyere Velocity,": "tuyere_velocity"
   "RAFT,": "body_raft"
@@ -57,16 +116,16 @@ field_mapping:
   "Lower Stack - 18660,T-17": "temp_18660_c"
   "Lower Stack - 18660,T-03": "temp_18660_d"
   "Lower Stack - 18660,Avg": ""
-  "BF Gas Network Pressure,": "top_press_avg"
+  "BF Gas Network Pressure,": ""
   "Furnace Top Gas Analysis,CO%": "co_pct"
   "Furnace Top Gas Analysis,CO₂%": "co2_pct"
   "Furnace Top Gas Analysis,H₂%": "h2_pct"
   "Furnace Top Gas Analysis,η CO": "body_etaco"
-  "Oxygen Enrichment Calculation,Moist. In Blast": "cw_mains_temp_c"
-  "Oxygen Enrichment Calculation,Moist. In Blast Nm3/Hr.": "steam"
-  "Oxygen Enrichment Calculation,Dry Blast": "hot_blast_vol_nm3h"
-  "Oxygen Enrichment Calculation,N2 in Dry Blast": "n2_flow"
-  "Oxygen Enrichment Calculation,O2 in Dry Blast": "oxygen_flow_avg"
+  "Oxygen Enrichment Calculation,Moist. In Blast": ""
+  "Oxygen Enrichment Calculation,Moist. In Blast Nm3/Hr.": ""
+  "Oxygen Enrichment Calculation,Dry Blast": ""
+  "Oxygen Enrichment Calculation,N2 in Dry Blast": ""
+  "Oxygen Enrichment Calculation,O2 in Dry Blast": ""
   "Oxygen Enrichment Calculation,Total O2 in blast": ""
   "Oxygen Enrichment Calculation,O2 % in dry blast": ""
   "O2 Enrichment %,": ""
@@ -453,12 +512,12 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
     BF2_PROC Top Temp 3: top_temp_3
     BF2_PROC Top Temp 4: top_temp_4
     BF2_PROC Top Temp Average: top_temp_avg
-    BF2_BODY_BOTTOM DP: body_dp_bottom
-    BF2_BODY_TOP DP: body_dp_top
-    BF2_BODY_TOTAL DP: body_dp_total
-    BF2_BODY_PERMEABILITY: body_perm
-    BF2_BODY_ETACO: body_etaco
-    BF2_BODY_RAFT: body_raft
+    BF2_BODY BOTTOM DP: body_dp_bottom
+    BF2_BODY TOP DP: body_dp_top
+    BF2_BODY TOTAL DP: body_dp_total
+    BF2_BODY PERMEABILITY: body_perm
+    BF2_BODY ETACO: body_etaco
+    BF2_BODY RAFT: body_raft
     BF2 TUYERE VELOCITY: tuyere_velocity
     TE_40532A Runner Temp PCI side near to Taphole: runner_temp_pci_taphole
     TE_40532B Runner Temp CR side near to Taphole: runner_temp_cr_taphole
