@@ -1,39 +1,46 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from config import INIT_PARAMS as IPS
+import joblib
 from typing import List, Dict
 from utils import optimiser
+from pathlib import Path
+from src.config.config_loader import load_config
 
-units_dict = {'UTILITY _Steam (Blast Furnace)_Tons': 'Tonnes', 'UTILITY _Steam (Turbo Blower)_Tons': 'Tonnes',
-                'CBV From BlowerNm3/Hr.': 'Nm3/hr', 'Hot Blast VolumeNm3/Hr.': 'Nm3/hr',
-                'ActualKg/Thm.': 'kg/thm', 'Hot Blast PressureBar' : 'Bar', 'Hot Blast Temp.oC': 'oC', 'Oxygen\nFlowNm3/Hr.': 'Nm3/Hr', 
-                'SteamKgs/Hr.': 'kgs/hr', 'Tuyere\nVelocitym/s' : ' m/s', 'RAFToC' : 'oC',
-                'O2 Enrichment %' : '%'}
+config = load_config()
+config_vsense = load_config('setting_vsense.yml')
 
-def run_optimiser():
+def run_optimiser(df_data: pd.DataFrame,
+                  model: joblib,
+                  user_input: Dict,
+                  prev_params: Dict,
+                  control_params_list: List[str],
+                  no_of_steps: int):
     """
     Run the optimiser with the provided parameters.
     """
     include_control = st.session_state['include_control']
     with st.status("Searching for optimal solutions..."):
-        df_disp, prev_y_val = optimiser.run_optimiser(data_path, model_path, user_input, prev_params, control_params_list,
-                                          include_control, num)
+        df_disp, prev_y_val = optimiser.run_optimiser(df_data, 
+                                                      model, 
+                                                      user_input, 
+                                                      prev_params, 
+                                                      control_params_list,
+                                                      include_control, 
+                                                      no_of_steps)
 
         # Display optimal control parameters and efficiency
         st.write("### Optimal Control Parameters:")
         st.dataframe(df_disp.style.format('{:.3f}'), width=1200)
 
-    display_optimization_results(df_disp, prev_params, prev_y_val, control_params_list, units_dict)
+    display_optimization_results(df_disp, prev_params, prev_y_val, control_params_list)
     st.success("Optimal solutions found")
 
 def display_optimization_results(
     optimal_df: pd.DataFrame, 
     prev_params: dict, 
     prev_y_val: float,
-    control_params_list: list, 
-    units_dict: dict
+    control_params_list: list
 ):
     """
     Displays the recommended control parameters (from the first row of 'optimal_df')
@@ -42,7 +49,7 @@ def display_optimization_results(
     :param optimal_df: DataFrame with the first row containing optimal control parameters
     :param prev_params: Dictionary of previous day’s parameters (e.g., prev_params[param_name])
     :param control_params_list: List of control parameter names (column names in optimal_df)
-    :param units_dict: Dictionary mapping parameter names to their units
+    :param prev_y_val: Previous day's efficiency value for comparison
     """
     
     st.subheader("Recommended Control Parameters")
@@ -67,9 +74,7 @@ def display_optimization_results(
                 delta_val = recommended_val - previous_val
                 if abs(delta_val) >= 0.01:
                     # Fetch unit from dictionary
-                    param_unit = units_dict.get(param, "")
-                    # Always provide a non-empty label
-                    label = f"{param} ({param_unit})" if param_unit else param
+                    label = f"{param}"
                     if not label.strip():
                         label = "Parameter"
                     st.metric(
@@ -84,20 +89,21 @@ def display_optimization_results(
     delta_val = f"{delta_val:.2f}"
     st.metric(label='Efficiency', value=curr_val, delta=delta_val)
 
-# INITIALISATION:
-df_bf = pd.read_pickle(IPS.DATA)
-df = pd.read_pickle(IPS.DATA)
-control_params_list = IPS.CONTROL_PARAMS
-num = IPS.OPTIM_STEPS
-data_path = IPS.DATA
-model_path = IPS.MODEL
+optimisation_type = 'coke_rate_opt'
 
-flux_params = IPS.FLUX_PARAMS
-sinter_params = IPS.SINTER_PARAMS
-pellet_params = IPS.PELLET_PARAMS
-coke_params = IPS.COKE_PARAMS
-other_params = IPS.OTHER_PARAMS
-ore_params = IPS.ORE_PARAMS
+# Load the configuration and model
+model = joblib.load_model(config_vsense['MODELS'][optimisation_type])
+ip = config[optimisation_type]['input_params']
+ip_flat_list = [val for group in config[optimisation_type]['input_params'].values() for val in group]
+cp_list = list(set([val for group in config[optimisation_type]['control_params'].values() for val in group]))
+
+data_rel_path = config['DATA']
+fullpath = Path(__file__).resolve().parents[1] / data_rel_path.split('/')[1] / data_rel_path.split('/')[2]
+df_data = pd.read_csv(fullpath, index_col=0, parse_dates=True)
+
+model_rel_path = config_vsense['MODELS'][optimisation_type]
+model_path = Path(__file__).resolve().parents[1] / model_rel_path.split('/')[1] / model_rel_path.split('/')[2]
+model = joblib.load(model_path)
 
 # Create a Streamlit web app
 if 'stage' not in st.session_state:
@@ -123,146 +129,74 @@ if 'include_control' not in st.session_state:
     st.session_state['include_control'] = 0
 
 def trigger():
-    # Forms submitted:
-    st.sidebar.success("Control Parameters submitted")
+    """
+    Trigger function to handle the submission of control parameters.
+    This function is called when the control parameters form is submitted.
+    It updates the session state with the selected control parameters and their values.
+    """
+    st.success("Control Parameters submitted")
     include_control = {}
-    for i in range(len(control_params_list)):
-        if is_include_control[control_params_list[i]]:
-            st.sidebar.write(prev_params[control_params_list[i]])
-            include_control[control_params_list[i]] = prev_params[control_params_list[i]]
+    for i in range(len(cp_list)):
+        if is_include_control[cp_list[i]]:
+            st.sidebar.write(prev_params[cp_list[i]])
+            include_control[cp_list] = prev_params[cp_list[i]]
         else:
-            include_control[control_params_list[i]] = np.nan
+            include_control[cp_list[i]] = np.nan
     st.session_state['include_control'] = include_control
 
 # Previous control parameters:
-with st.sidebar.form("Control Params"):
+with st.form("Control Params"):
     prev_params, is_include_control = {}, {}
-    for i in range(len(control_params_list)):
+    for i in range(len(cp_list)):
         cola, colb = st.sidebar.columns([10, 100])
         with cola:
-            prev_params[control_params_list[i]] = st.sidebar.slider(control_params_list[i],
-                                                                min_value=df[control_params_list[i]].min(),
-                                                                max_value=df[control_params_list[i]].max(),
-                                                                value=df[control_params_list[i]].mean(),
-                                                                key=f"slider_{control_params_list[i]}")
+            prev_params[cp_list[i]] = st.number_input(cp_list[i],
+                                                      min_value=df_data[cp_list[i]].quantile(0.05),
+                                                      max_value=df_data[cp_list[i]].quantile(0.95),
+                                                      value=df_data[cp_list[i]].mean(),
+                                                      key=f"num_input_{cp_list[i]}")
         with colb:
-            is_include_control[control_params_list[i]] = st.sidebar.checkbox("Override",
+            is_include_control[cp_list[i]] = st.checkbox("Override",
                                                         value=False,
-                                                        key=f"checkbox_{control_params_list[i]}")
+                                                        key=f"checkbox_{cp_list[i]}")
     control_submitted = st.form_submit_button("Control Params", on_click=trigger)
 
 # User-specified input variables:
 # Define column layout for horizontal sections
-with st.expander("Input Parameters - From Offline Data - Click to expand and override"):
-    col1, col2, col3 = st.columns(3)
-    user_input = {}
+with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
+    cols = st.columns(len(ip.keys()))
+    raw_mtrl_input = {}
     # Display input boxes for Flux Parameters
-    with st.form(key="Input Params"):
-        with col1:
-            st.write("### Flux Parameters")
-            for i, param in enumerate(flux_params):
-                st.write(f"{param}:")
-                user_input[param] = st.number_input("", format="%.2f",
-                                                    min_value=df[param].min(),
-                                                    max_value=df[param].max(),
-                                                    value=df[param].mean())
+    keys = list(ip.keys())
+    with st.form(key=keys[i]):
+        for i, (key, ip_flat) in enumerate(ip.items()):
+            with cols[i]:
+                st.write(f"### {key} Parameters")
+                for i, param in enumerate(ip[key]):
+                    st.write(f"{param}:")
+                    raw_mtrl_input[param] = st.number_input("", format="%.2f",
+                                                        min_value=df_data[param].min(),
+                                                        max_value=df_data[param].max(),
+                                                        value=df_data[param].iloc[-1])
 
-        # Display input boxes for Ore Parameters
-        with col2:
-            st.write("### Ore Parameters")
-            for i, param in enumerate(ore_params):
-                st.write(f"{param}:")
-                user_input[param] = st.number_input("", format="%.2f",
-                                                    min_value=df[param].min(),
-                                                    max_value=df[param].max(),
-                                                    value=df[param].mean())
-
-        # Display input boxes for Sinter Parameters
-        with col3:
-            st.write("### Sinter Parameters")
-            for i, param in enumerate(sinter_params):
-                st.write(f"{param}:")
-                user_input[param] = st.number_input("", format="%.2f",
-                                                    min_value=df[param].min(),
-                                                    max_value=df[param].max(),
-                                                    value=df[param].mean())
-        
-        # Define column layout for horizontal sections
-        col4, col5, col6 = st.columns(3)
-        with col4:
-            st.write("### Pellet Parameters")
-            for i, param in enumerate(pellet_params):
-                st.write(f"{param}:")
-                user_input[param] = st.number_input("", format="%.2f",
-                                                    min_value=df[param].min(),
-                                                    max_value=df[param].max(),
-                                                    value=df[param].mean())
-
-        # Display input boxes for Ore Parameters
-        with col5:
-            st.write("### Coke Parameters")
-            for i, param in enumerate(coke_params):
-                st.write(f"{param}:")
-                user_input[param] = st.number_input("", format="%.2f",
-                                                    min_value=df[param].min(),
-                                                    max_value=df[param].max(),
-                                                    value=df[param].mean())
-
-        # Display input boxes for Sinter Parameters
-        with col6:
-            st.write("### Other Parameters")
-            for i, param in enumerate(other_params):
-                st.write(f"{param}:")
-                user_input[param] = st.number_input("", format="%.2f",
-                                                    min_value=df[param].min(),
-                                                    max_value=df[param].max(),
-                                                    value=df[param].mean())
-        # Every form must have a submit button.
-        input_submit = st.form_submit_button("Submit Input Params", on_click=trigger)
+    # Every form must have a submit button.
+    input_submit = st.form_submit_button("Submit Input Params", on_click=trigger)
 
 # Every form must have a submit button.
 if st.button("Run Optimiser", key="optimiser", on_click=trigger):
     include_control = st.session_state['include_control']
     with st.status("Searching for optimal solutions..."):
-        df_disp, prev_y_val = optimiser.run_optimiser(data_path, model_path, user_input, prev_params, control_params_list,
-                                        include_control, num)
+        df_disp, prev_y_val = optimiser.run_optimiser(df_data, 
+                                                      model, 
+                                                      user_input, 
+                                                      prev_params, 
+                                                      cp_list,
+                                                      include_control, 
+                                                      no_of_steps=config_vsense['OPTIM_STEPS'])
 
         # Display optimal control parameters and efficiency
         st.write("### Optimal Control Parameters:")
         st.dataframe(df_disp.style.format('{:.3f}'), width=1200)
 
-    display_optimization_results(df_disp, prev_params, prev_y_val, control_params_list, units_dict)
+    display_optimization_results(df_disp, prev_params, prev_y_val, cp_list)
     st.success("Optimal solutions found")
-
-# # Plot control parameters vs. efficiency
-# st.write("### Control Parameters vs. Efficiency:")
-# # Replace this with your code to create the plot
-
-# Create your control parameters vs. efficiency plots
-# # Create a sidebar for variable selection
-# variable_selector = st.sidebar.selectbox("Select Variable", ["Variable 1", "Variable 2", "Variable 3"])
-#
-# # Sample data (replace with your own data)
-# data = df_bf
-#
-# # Create two plots side by side
-# fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-#
-# # Plot 1
-# ax1.scatter(data[variable_selector], data["Efficiency"])
-# ax1.set_xlabel(variable_selector)
-# ax1.set_ylabel("Efficiency")
-# ax1.set_title("Plot 1")
-#
-# # Plot 2
-# ax2.scatter(data[variable_selector], data["Efficiency"], color="orange")
-# ax2.set_xlabel(variable_selector)
-# ax2.set_ylabel("Efficiency")
-# ax2.set_title("Plot 2")
-
-# Display the plots in Streamlit
-# st.pyplot(fig)
-
-# Create a DataFrame with similar combinations
-# similar_combinations_df = pd.DataFrame(...)
-# st.write(similar_combinations_df)

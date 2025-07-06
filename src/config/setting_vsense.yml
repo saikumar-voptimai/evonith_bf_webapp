@@ -1,0 +1,12 @@
+# File PARAMS
+IMG_VOPTIMAI: "images/VOPTIMAI.png"
+IMG_HOSPET: "images/HOSPET.jpeg"
+IMG_MBF: "images/MBF.jpg"
+
+DATA: "data/data.pkl"
+MODELS:
+  coke_rate_opt: "src/models/coke_rate_opt_model.pkl"
+  eta_co_opt: "src/models/eta_co_opt_model.pkl"
+  production_opt: "src/models/production_opt_model.pkl"
+
+OPTIM_STEPS: 3

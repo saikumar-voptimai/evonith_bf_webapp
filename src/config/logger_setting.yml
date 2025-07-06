@@ -1,0 +1,31 @@
+version: 1
+disable_existing_loggers: false
+formatters:
+  simple:
+    format: '%(asctime)s:     | %(levelname)s        | %(message)s | %(filename)s'
+  detailed:
+    format: '[%(levelname)s   | %(module)s           | L%(lineno)d] %(asctime)s: %(message)s | %(filename)s'
+    datefmt: '%Y-%m-%dT%H:%M:%S%z'
+handlers:
+  stdout:
+    class: logging.StreamHandler
+    formatter: simple
+    stream: ext://sys.stdout
+  stderr:
+    class: logging.StreamHandler
+    level: WARNING
+    formatter: simple
+    stream: ext://sys.stdout
+  file:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: detailed
+    filename: logs/app.log
+    maxBytes: 10000
+    backupCount: 3
+loggers:
+  root:
+    level: INFO
+    handlers:
+      - stdout
+      - file

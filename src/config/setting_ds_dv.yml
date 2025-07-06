@@ -1,0 +1,698 @@
+influxdb:
+  host: "https://eu-central-1-1.aws.cloud2.influxdata.com"
+  org: "Blast Furnace, Evonith"
+  database: "bf2_evonith_raw" # Bucket name
+  write: "True"
+
+website_vars:
+  api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
+  email_missing_vars: "True"
+
+DATA: "src/data/df_filtered.csv"
+
+# Geometries
+paths:
+ geometry: "./src/geometries"
+
+plot:
+  circular:
+    r_inner: 30
+    r_outer: 100
+    radial_steps: 100
+    theta_steps: 360
+  contour:
+    furnace_grid_X_low: -4
+    furnace_grid_X_high: 0
+    furnace_grid_Y_low: 0
+    furnace_grid_Y_high: 20
+    grid_divisions: 200
+  geometry:
+    geometry_points:
+      - [-2.8, 4.374]
+      - [-2.8, 6.795]
+      - [-3.150, 8.335]
+      - [-3.15, 11.290]
+      - [-3.65, 14.390]
+      - [-3.650, 15.89]
+      - [-2.898, 20]
+    
+    sensors_at_y:
+      - [7, 13, 13, 13, 12, 14, 14, 12, 4, 4, 4]
+
+    heights:
+      - [4.373, 5.411, 5.757, 6.103, 6.795, 7.565, 8.335, 9.105, 12.975, 15.162, 18.660]
+
+    heights_dict:
+        "4373":
+          level: 4.373
+          n_sensors: 7
+        "5411":
+          level: 5.411
+          n_sensors: 13
+        "5757":
+          level: 5.757
+          n_sensors: 13
+        "6103":
+          level: 6.103
+          n_sensors: 13
+        "6795":
+          level: 6.795
+          n_sensors: 12
+        "7565":
+          level: 7.565
+          n_sensors: 14
+        "8335":
+          level: 8.335
+          n_sensors: 14
+        "9105":
+          level: 9.105
+          n_sensors: 12
+        "12975":
+          level: 12.975
+          n_sensors: 4
+        "15162":
+          level: 15.162
+          n_sensors: 4
+        "18660":
+          level: 18.660
+          n_sensors: 4
+
+    regions:
+      - ["Hearth", 5.5]
+      - ["Tuyere", 10.5]
+      - ["Bosh", 12.9]
+      - ["Belly", 15]
+      - ["Stack", 17.0]
+
+coke_rate_opt:
+  output_params:
+    - FurnaceTopGasAnalysisCO2ETACO
+    - Act. Fuel RateKg/Thm.
+    - ProductionTonnesPerHr
+  input_params:
+    NutCoke:
+      - NUTCOKE_MOIST%
+      - NUTCOKE_Prime_MT
+      - NUTCOKE_VM%
+      - NUTCOKE_IM%
+      - NUTCOKE_FC%
+      - NUTCOKE_ASH%
+    PCI:
+      - PCI_2_%FC
+      - PCI_2_%Ash
+      - PCI_2_%VM
+      - PCI_2_%IM
+      - PCI_2_%TM
+    Sinter:
+      - Sinter_SP_02_Hot_strength_RDI
+      - Sinter_SP_02_Cold_Strength_AI
+      - Sinter_SP_02_Cold_strength_TI
+      - Sinter_SP_02_P%
+      - Sinter_SP_02_SiO2%
+      - Sinter_SP_02_MgO%
+      - Sinter_SP_02_FeO%
+      - Sinter_SP_02_Al2O3%
+      - Sinter_SP_02_Na2O% 
+      - Sinter_SP_02_TiO2%
+      - Sinter_SP_02_Fe(T)%
+      - Sinter_SP_02_CaO%
+      - Sinter_SP_02_K2O%
+      - Sinter_SP_02_Basicity
+      - Sinter_SP_02_MnO%
+    Coke:
+      - COKE_VM%
+      - COKE_ASH%
+      - COKE_IM%
+      - COKE_FC%
+      - COKE_MOIST%
+    Flux:
+      - FLUX_TM%
+      - FLUX_SiO2%
+      - FLUX_Fe2O3%
+      - FLUX_Al2O3%
+      - FLUX_LOI%
+      - FLUX_MgO%
+      - FLUX_CaO%
+      - FLUX_MT
+    Ore:
+      - Geomin Type
+      - ORE_%Fe(T)
+      - ORE_%LOI 
+      - ORE_%TM
+      - ORE_%MgO
+      - ORE_%Na2O
+      - ORE_%P
+      - ORE_%TiO2
+      - ORE_%Al2O3
+      - ORE_%SiO2
+      - ORE_%MnO
+      - ORE_%CaO
+      - ORE_%K2O
+  control_params:
+    Actual:
+      - Hot Blast VolumeNm3/Hr.
+      - Total OxygenNm3/Hr.
+      - Hot Blast PressureBar
+      - Differential PressureTotalBar
+      - Hot Blast Temp.oC
+      - SteamKgs/Hr.
+      - TuyereVelocitym/s
+      - O2 Enrichment %
+      - PermeabilityKgs/Hr.
+
+    Proxy:
+      - PermeabilityKgs/Hr.
+      - OxygenFlowNm3/Hr.
+      - TopPressureBar
+      
+data_tags:
+  temperature_variables:
+    - "BF2_BFBD Furnace Body 12975mm Temp A"
+    - "BF2_BFBD Furnace Body 12975mm Temp B"
+    - "BF2_BFBD Furnace Body 12975mm Temp C"
+    - "BF2_BFBD Furnace Body 12975mm Temp D"
+    - "BF2_BFBD Furnace Body 15162mm Temp A"
+    - "BF2_BFBD Furnace Body 15162mm Temp B"
+    - "BF2_BFBD Furnace Body 15162mm Temp C"
+    - "BF2_BFBD Furnace Body 15162mm Temp D"
+    - "BF2_BFBD Furnace Body 18660mm Temp A"
+    - "BF2_BFBD Furnace Body 18660mm Temp B"
+    - "BF2_BFBD Furnace Body 18660mm Temp C"
+    - "BF2_BFBD Furnace Body 4373mm Temp A"
+    - "BF2_BFBD Furnace Body 4373mm Temp B"
+    - "BF2_BFBD Furnace Body 4373mm Temp C"
+    - "BF2_BFBD Furnace Body 4373mm Temp D"
+    - "BF2_BFBD Furnace Body 4373mm Temp E"
+    - "BF2_BFBD Furnace Body 4373mm Temp F"
+    - "BF2_BFBD Furnace Body 4373mm Temp G"
+    - "BF2_BFBD Furnace Body 5411mm Temp A"
+    - "BF2_BFBD Furnace Body 5411mm Temp B"
+    - "BF2_BFBD Furnace Body 5411mm Temp C"
+    - "BF2_BFBD Furnace Body 5411mm Temp D"
+    - "BF2_BFBD Furnace Body 5411mm Temp E"
+    - "BF2_BFBD Furnace Body 5411mm Temp F"
+    - "BF2_BFBD Furnace Body 5411mm Temp G"
+    - "BF2_BFBD Furnace Body 5411mm Temp H"
+    - "BF2_BFBD Furnace Body 5411mm Temp I"
+    - "BF2_BFBD Furnace Body 5411mm Temp J"
+    - "BF2_BFBD Furnace Body 5411mm Temp K"
+    - "BF2_BFBD Furnace Body 5411mm Temp L"
+    - "BF2_BFBD Furnace Body 5757mm Temp A"
+    - "BF2_BFBD Furnace Body 5757mm Temp B"
+    - "BF2_BFBD Furnace Body 5757mm Temp C"
+    - "BF2_BFBD Furnace Body 5757mm Temp D"
+    - "BF2_BFBD Furnace Body 5757mm Temp E"
+    - "BF2_BFBD Furnace Body 5757mm Temp F"
+    - "BF2_BFBD Furnace Body 5757mm Temp G"
+    - "BF2_BFBD Furnace Body 5757mm Temp H"
+    - "BF2_BFBD Furnace Body 5757mm Temp I"
+    - "BF2_BFBD Furnace Body 5757mm Temp J"
+    - "BF2_BFBD Furnace Body 5757mm Temp K"
+    - "BF2_BFBD Furnace Body 5757mm Temp L"
+    - "BF2_BFBD Furnace Body 5757mm Temp M"
+    - "BF2_BFBD Furnace Body 6103mm Temp A"
+    - "BF2_BFBD Furnace Body 6103mm Temp B"
+    - "BF2_BFBD Furnace Body 6103mm Temp C"
+    - "BF2_BFBD Furnace Body 6103mm Temp D"
+    - "BF2_BFBD Furnace Body 6103mm Temp E"
+    - "BF2_BFBD Furnace Body 6103mm Temp F"
+    - "BF2_BFBD Furnace Body 6103mm Temp G"
+    - "BF2_BFBD Furnace Body 6103mm Temp H"
+    - "BF2_BFBD Furnace Body 6103mm Temp I"
+    - "BF2_BFBD Furnace Body 6103mm Temp J"
+    - "BF2_BFBD Furnace Body 6103mm Temp K"
+    - "BF2_BFBD Furnace Body 6103mm Temp L"
+    - "BF2_BFBD Furnace Body 6103mm Temp M"
+    - "BF2_BFBD Furnace Body 6795mm Temp A"
+    - "BF2_BFBD Furnace Body 6795mm Temp B"
+    - "BF2_BFBD Furnace Body 6795mm Temp C"
+    - "BF2_BFBD Furnace Body 6795mm Temp D"
+    - "BF2_BFBD Furnace Body 6795mm Temp E"
+    - "BF2_BFBD Furnace Body 6795mm Temp F"
+    - "BF2_BFBD Furnace Body 6795mm Temp G"
+    - "BF2_BFBD Furnace Body 6795mm Temp H"
+    - "BF2_BFBD Furnace Body 6795mm Temp I"
+    - "BF2_BFBD Furnace Body 6795mm Temp J"
+    - "BF2_BFBD Furnace Body 6795mm Temp K"
+    - "BF2_BFBD Furnace Body 6795mm Temp L"
+    - "BF2_BFBD Furnace Body 7565mm Temp A"
+    - "BF2_BFBD Furnace Body 7565mm Temp B"
+    - "BF2_BFBD Furnace Body 7565mm Temp C"
+    - "BF2_BFBD Furnace Body 7565mm Temp D"
+    - "BF2_BFBD Furnace Body 7565mm Temp E"
+    - "BF2_BFBD Furnace Body 7565mm Temp F"
+    - "BF2_BFBD Furnace Body 7565mm Temp G"
+    - "BF2_BFBD Furnace Body 7565mm Temp H"
+    - "BF2_BFBD Furnace Body 7565mm Temp I"
+    - "BF2_BFBD Furnace Body 7565mm Temp J"
+    - "BF2_BFBD Furnace Body 7565mm Temp K"
+    - "BF2_BFBD Furnace Body 7565mm Temp L"
+    - "BF2_BFBD Furnace Body 7565mm Temp M"
+    - "BF2_BFBD Furnace Body 7565mm Temp N"
+    - "BF2_BFBD Furnace Body 8335mm Temp A"
+    - "BF2_BFBD Furnace Body 8335mm Temp B"
+    - "BF2_BFBD Furnace Body 8335mm Temp C"
+    - "BF2_BFBD Furnace Body 8335mm Temp D"
+    - "BF2_BFBD Furnace Body 8335mm Temp E"
+    - "BF2_BFBD Furnace Body 8335mm Temp F"
+    - "BF2_BFBD Furnace Body 8335mm Temp G"
+    - "BF2_BFBD Furnace Body 8335mm Temp H"
+    - "BF2_BFBD Furnace Body 8335mm Temp I"
+    - "BF2_BFBD Furnace Body 8335mm Temp J"
+    - "BF2_BFBD Furnace Body 8335mm Temp K"
+    - "BF2_BFBD Furnace Body 8335mm Temp L"
+    - "BF2_BFBD Furnace Body 8335mm Temp M"
+    - "BF2_BFBD Furnace Body 8335mm Temp N"
+    - "BF2_BFBD Furnace Body 9105mm Temp A"
+    - "BF2_BFBD Furnace Body 9105mm Temp B"
+    - "BF2_BFBD Furnace Body 9105mm Temp C"
+    - "BF2_BFBD Furnace Body 9105mm Temp D"
+    - "BF2_BFBD Furnace Body 9105mm Temp E"
+    - "BF2_BFBD Furnace Body 9105mm Temp F"
+    - "BF2_BFBD Furnace Body 9105mm Temp G"
+    - "BF2_BFBD Furnace Body 9105mm Temp H"
+    - "BF2_BFBD Furnace Body 9105mm Temp I"
+    - "BF2_BFBD Furnace Body 9105mm Temp J"
+    - "BF2_BFBD Furnace Body 9105mm Temp K"
+    - "BF2_BFBD Furnace Body 9105mm Temp L"
+
+
+  heatload_variables:
+    - "Heat load R6 Q1 (Stave No  1-8)"
+    - "Heat load R6 Q2(Stave No  9-16)"
+    - "Heat load R6 Q3(Stave No  17-24)"
+    - "Heat load R6 Q4(Stave No  25-32)"
+    
+    - "Heat load R7 Q1 (Stave No  1-8)"
+    - "Heat load R7 Q2(Stave No  9-16)"
+    - "Heat load R7 Q3 (Stave No  17-24)"
+    - "Heat load R7 Q4(Stave No  25-32)"
+        
+    - "Heat load R8 Q1(Stave No  1-8)"
+    - "Heat load R8 Q2(Stave No  9-16)"
+    - "Heat load R8 Q3(Stave No  17-24)"
+    - "Heat load R8 Q4(Stave No  25-32)"
+        
+    - "Heat load R9 Q1(Stave No  1-8)"
+    - "Heat load R9 Q2(Stave No  9-16)"
+    - "Heat load R9 Q3(Stave No  17-24)"
+    - "Heat load R9 Q4(Stave No  25-32)"
+        
+    - "Heat load R10 Q1(Stave No  1-8)"
+    - "Heat load R10 Q2(Stave No  9-16)"
+    - "Heat load R10 Q3(Stave No  17-24)"
+    - "Heat load R10 Q4(Stave No  25-32)"
+
+  process_variables:
+    - "BF2 CO in BF Gas(%)"
+    - "BF2 CO2 in BF Gas (%)"
+    - "BF2 H2 in BF Gas (%)"
+    - "BF2 TUYERE VELOCITY"
+    - "BF2_BODY_BOTTOM DP"
+    - "BF2_BODY_ETACO"
+    - "BF2_BODY_PERMEABILITY"
+    - "BF2_BODY_RAFT"
+    - "BF2_BODY_TOP DP"
+    - "BF2_BODY_TOTAL DP"
+    - "BF2_PROC Hot Blast Pressure"
+    - "BF2_PROC Hot Blast Temp"
+    - "BF2_PROC Hot Blast Temp Spare"
+    - "BF2_PROC Hot Blast Volume"
+    - "BF2_PROC Radar Stock Rod Level"
+    - "BF2_PROC Stock Rod 1 Position"
+    - "BF2_PROC Stock Rod 2 Position"
+    - "BF2_PROC Top Pressure 1"
+    - "BF2_PROC Top Pressure 2"
+    - "BF2_PROC Top Pressure 3"
+    - "BF2_PROC Top Pressure 4"
+    - "BF2_PROC Top Pressure Average"
+    - "BF2_PROC Top Temp 1"
+    - "BF2_PROC Top Temp 2"
+    - "BF2_PROC Top Temp 3"
+    - "BF2_PROC Top Temp 4"
+    - "BF2_PROC Top Temp Average"
+
+data_mapping: # Using InfluxDB Measurement or Table names as keys
+  temperature_profile:
+    BF2_BFBD Furnace Body 12975mm Temp A: temp_12975_a
+    BF2_BFBD Furnace Body 12975mm Temp B: temp_12975_b
+    BF2_BFBD Furnace Body 12975mm Temp C: temp_12975_c
+    BF2_BFBD Furnace Body 12975mm Temp D: temp_12975_d
+    BF2_BFBD Furnace Body 15162mm Temp A: temp_15162_a
+    BF2_BFBD Furnace Body 15162mm Temp B: temp_15162_b
+    BF2_BFBD Furnace Body 15162mm Temp C: temp_15162_c
+    BF2_BFBD Furnace Body 15162mm Temp D: temp_15162_d
+    BF2_BFBD Furnace Body 18660mm Temp A: temp_18660_a
+    BF2_BFBD Furnace Body 18660mm Temp B: temp_18660_b
+    BF2_BFBD Furnace Body 18660mm Temp C: temp_18660_c
+    BF2_BFBD Furnace Body 18660mm Temp D: temp_18660_d
+    BF2_BFBD Furnace Body 4373mm Temp A: temp_4373_a
+    BF2_BFBD Furnace Body 4373mm Temp B: temp_4373_b
+    BF2_BFBD Furnace Body 4373mm Temp C: temp_4373_c
+    BF2_BFBD Furnace Body 4373mm Temp D: temp_4373_d
+    BF2_BFBD Furnace Body 4373mm Temp E: temp_4373_e
+    BF2_BFBD Furnace Body 4373mm Temp F: temp_4373_f
+    BF2_BFBD Furnace Body 4373mm Temp G: temp_4373_g
+    BF2_BFBD Furnace Body 5411mm Temp A: temp_5411_a
+    BF2_BFBD Furnace Body 5411mm Temp B: temp_5411_b
+    BF2_BFBD Furnace Body 5411mm Temp C: temp_5411_c
+    BF2_BFBD Furnace Body 5411mm Temp D: temp_5411_d
+    BF2_BFBD Furnace Body 5411mm Temp E: temp_5411_e
+    BF2_BFBD Furnace Body 5411mm Temp F: temp_5411_f
+    BF2_BFBD Furnace Body 5411mm Temp G: temp_5411_g
+    BF2_BFBD Furnace Body 5411mm Temp H: temp_5411_h
+    BF2_BFBD Furnace Body 5411mm Temp I: temp_5411_i
+    BF2_BFBD Furnace Body 5411mm Temp J: temp_5411_j
+    BF2_BFBD Furnace Body 5411mm Temp K: temp_5411_k
+    BF2_BFBD Furnace Body 5411mm Temp L: temp_5411_l
+    BF2_BFBD Furnace Body 5411mm Temp M: temp_5411_m
+    BF2_BFBD Furnace Body 5757mm Temp A: temp_5757_a
+    BF2_BFBD Furnace Body 5757mm Temp B: temp_5757_b
+    BF2_BFBD Furnace Body 5757mm Temp C: temp_5757_c
+    BF2_BFBD Furnace Body 5757mm Temp D: temp_5757_d
+    BF2_BFBD Furnace Body 5757mm Temp E: temp_5757_e
+    BF2_BFBD Furnace Body 5757mm Temp F: temp_5757_f
+    BF2_BFBD Furnace Body 5757mm Temp G: temp_5757_g
+    BF2_BFBD Furnace Body 5757mm Temp H: temp_5757_h
+    BF2_BFBD Furnace Body 5757mm Temp I: temp_5757_i
+    BF2_BFBD Furnace Body 5757mm Temp J: temp_5757_j
+    BF2_BFBD Furnace Body 5757mm Temp K: temp_5757_k
+    BF2_BFBD Furnace Body 5757mm Temp L: temp_5757_l
+    BF2_BFBD Furnace Body 5757mm Temp M: temp_5757_m
+    BF2_BFBD Furnace Body 6103mm Temp A: temp_6103_a
+    BF2_BFBD Furnace Body 6103mm Temp B: temp_6103_b
+    BF2_BFBD Furnace Body 6103mm Temp C: temp_6103_c
+    BF2_BFBD Furnace Body 6103mm Temp D: temp_6103_d
+    BF2_BFBD Furnace Body 6103mm Temp E: temp_6103_e
+    BF2_BFBD Furnace Body 6103mm Temp F: temp_6103_f
+    BF2_BFBD Furnace Body 6103mm Temp G: temp_6103_g
+    BF2_BFBD Furnace Body 6103mm Temp H: temp_6103_h
+    BF2_BFBD Furnace Body 6103mm Temp I: temp_6103_i
+    BF2_BFBD Furnace Body 6103mm Temp J: temp_6103_j
+    BF2_BFBD Furnace Body 6103mm Temp K: temp_6103_k
+    BF2_BFBD Furnace Body 6103mm Temp L: temp_6103_l
+    BF2_BFBD Furnace Body 6103mm Temp M: temp_6103_m
+    BF2_BFBD Furnace Body 6795mm Temp A: temp_6795_a
+    BF2_BFBD Furnace Body 6795mm Temp B: temp_6795_b
+    BF2_BFBD Furnace Body 6795mm Temp C: temp_6795_c
+    BF2_BFBD Furnace Body 6795mm Temp D: temp_6795_d
+    BF2_BFBD Furnace Body 6795mm Temp E: temp_6795_e
+    BF2_BFBD Furnace Body 6795mm Temp F: temp_6795_f
+    BF2_BFBD Furnace Body 6795mm Temp G: temp_6795_g
+    BF2_BFBD Furnace Body 6795mm Temp H: temp_6795_h
+    BF2_BFBD Furnace Body 6795mm Temp I: temp_6795_i
+    BF2_BFBD Furnace Body 6795mm Temp J: temp_6795_j
+    BF2_BFBD Furnace Body 6795mm Temp K: temp_6795_k
+    BF2_BFBD Furnace Body 6795mm Temp L: temp_6795_l
+    BF2_BFBD Furnace Body 7565mm Temp A: temp_7565_a
+    BF2_BFBD Furnace Body 7565mm Temp B: temp_7565_b
+    BF2_BFBD Furnace Body 7565mm Temp C: temp_7565_c
+    BF2_BFBD Furnace Body 7565mm Temp D: temp_7565_d
+    BF2_BFBD Furnace Body 7565mm Temp E: temp_7565_e
+    BF2_BFBD Furnace Body 7565mm Temp F: temp_7565_f
+    BF2_BFBD Furnace Body 7565mm Temp G: temp_7565_g
+    BF2_BFBD Furnace Body 7565mm Temp H: temp_7565_h
+    BF2_BFBD Furnace Body 7565mm Temp I: temp_7565_i
+    BF2_BFBD Furnace Body 7565mm Temp J: temp_7565_j
+    BF2_BFBD Furnace Body 7565mm Temp K: temp_7565_k
+    BF2_BFBD Furnace Body 7565mm Temp L: temp_7565_l
+    BF2_BFBD Furnace Body 7565mm Temp M: temp_7565_m
+    BF2_BFBD Furnace Body 7565mm Temp N: temp_7565_n
+    BF2_BFBD Furnace Body 8335mm Temp A: temp_8335_a
+    BF2_BFBD Furnace Body 8335mm Temp B: temp_8335_b
+    BF2_BFBD Furnace Body 8335mm Temp C: temp_8335_c
+    BF2_BFBD Furnace Body 8335mm Temp D: temp_8335_d
+    BF2_BFBD Furnace Body 8335mm Temp E: temp_8335_e
+    BF2_BFBD Furnace Body 8335mm Temp F: temp_8335_f
+    BF2_BFBD Furnace Body 8335mm Temp G: temp_8335_g
+    BF2_BFBD Furnace Body 8335mm Temp H: temp_8335_h
+    BF2_BFBD Furnace Body 8335mm Temp I: temp_8335_i
+    BF2_BFBD Furnace Body 8335mm Temp J: temp_8335_j
+    BF2_BFBD Furnace Body 8335mm Temp K: temp_8335_k
+    BF2_BFBD Furnace Body 8335mm Temp L: temp_8335_l
+    BF2_BFBD Furnace Body 8335mm Temp M: temp_8335_m
+    BF2_BFBD Furnace Body 8335mm Temp N: temp_8335_n
+    BF2_BFBD Furnace Body 9105mm Temp A: temp_9105_a
+    BF2_BFBD Furnace Body 9105mm Temp B: temp_9105_b
+    BF2_BFBD Furnace Body 9105mm Temp C: temp_9105_c
+    BF2_BFBD Furnace Body 9105mm Temp D: temp_9105_d
+    BF2_BFBD Furnace Body 9105mm Temp E: temp_9105_e
+    BF2_BFBD Furnace Body 9105mm Temp F: temp_9105_f
+    BF2_BFBD Furnace Body 9105mm Temp G: temp_9105_g
+    BF2_BFBD Furnace Body 9105mm Temp H: temp_9105_h
+    BF2_BFBD Furnace Body 9105mm Temp I: temp_9105_i
+    BF2_BFBD Furnace Body 9105mm Temp J: temp_9105_j
+    BF2_BFBD Furnace Body 9105mm Temp K: temp_9105_k
+    BF2_BFBD Furnace Body 9105mm Temp L: temp_9105_l
+
+
+  process_params:
+    BF2 CO in BF Gas(%): co_pct
+    BF2 CO2 in BF Gas (%): co2_pct
+    BF2 H2 in BF Gas (%): h2_pct
+    BF2_PROC Hot Blast Pressure: hot_blast_press
+    BF2_PROC Hot Blast Temp: hot_blast_temp
+    BF2_PROC Hot Blast Temp Spare: hot_blast_temp_spare
+    BF2_PROC Hot Blast Volume: hot_blast_vol_nm3h
+    HOT BLAST Volume Timer: hot_blast_vol_timer
+    BF2_PROC Top Pressure 1: top_press_1
+    BF2_PROC Top Pressure 2: top_press_2
+    BF2_PROC Top Pressure 3: top_press_3
+    BF2_PROC Top Pressure 4: top_press_4
+    BF2_PROC Top Pressure Average: top_press_avg
+    BF2_PROC Top Temp 1: top_temp_1
+    BF2_PROC Top Temp 2: top_temp_2
+    BF2_PROC Top Temp 3: top_temp_3
+    BF2_PROC Top Temp 4: top_temp_4
+    BF2_PROC Top Temp Average: top_temp_avg
+    BF2_BODY_BOTTOM DP: body_dp_bottom
+    BF2_BODY_TOP DP: body_dp_top
+    BF2_BODY_TOTAL DP: body_dp_total
+    BF2_BODY_PERMEABILITY: body_perm
+    BF2_BODY_ETACO: body_etaco
+    BF2_BODY_RAFT: body_raft
+    BF2 TUYERE VELOCITY: tuyere_velocity
+    TE_40532A Runner Temp PCI side near to Taphole: runner_temp_pci_taphole
+    TE_40532B Runner Temp CR side near to Taphole: runner_temp_cr_taphole
+    TE_40532C Runner Temp PCI side near to skimmer: runner_temp_pci_skimmer
+    TE_40532D Runner Temp CR side near to skimmer: runner_temp_cr_skimmer
+
+  heatload_delta_t:
+    Heat load Row 6: heat_load_row_6  
+    Heat load Row 7: heat_load_row_7  
+    Heat load Row 8: heat_load_row_8  
+    Heat load Row 9: heat_load_row_9  
+    Heat load Row 10: heat_load_row_10  
+    Heat load Row6-10 Q1(Stave 1-8): heat_load_row6_10_q1  
+    Heat load Row6-10 Q2(Stave 9-16): heat_load_row6_10_q2  
+    Heat load Row6-10 Q3(Stave 17-24): heat_load_row6_10_q3  
+    Heat load Row6-10 Q4(Stave 25-32): heat_load_row6_10_q4  
+    Heat load R6 Q1 (Stave No 1-8): heat_load_r6_q1  
+    Heat load R6 Q1(Stave No 1-8): heat_load_r6_q1  
+    Heat load R6 Q2(Stave No 9-16): heat_load_r6_q2  
+    Heat load R6 Q3(Stave No 17-24): heat_load_r6_q3  
+    Heat load R6 Q4(Stave No 25-32): heat_load_r6_q4  
+    Heat load R7 Q1(Stave No 1-8): heat_load_r7_q1  
+    Heat load R7 Q2(Stave No 9-16): heat_load_r7_q2  
+    Heat load R7 Q3(Stave No 17-24): heat_load_r7_q3  
+    Heat load R7 Q4(Stave No 25-32): heat_load_r7_q4  
+    Heat load R8 Q1(Stave No 1-8): heat_load_r8_q1  
+    Heat load R8 Q2(Stave No 9-16): heat_load_r8_q2  
+    Heat load R8 Q3(Stave No 17-24): heat_load_r8_q3  
+    Heat load R8 Q4(Stave No 25-32): heat_load_r8_q4  
+    Heat load R9 Q1(Stave No 1-8): heat_load_r9_q1  
+    Heat load R9 Q2(Stave No 9-16): heat_load_r9_q2  
+    Heat load R9 Q3(Stave No 17-24): heat_load_r9_q3  
+    Heat load R9 Q4(Stave No 25-32): heat_load_r9_q4  
+    Heat load R10 Q1(Stave No 1-8): heat_load_r10_q1  
+    Heat load R10 Q2(Stave No 9-16): heat_load_r10_q2  
+    Heat load R10 Q3(Stave No 17-24): heat_load_r10_q3  
+    Heat load R10 Q4(Stave No 25-32): heat_load_r10_q4  
+
+  miscellaneous:
+    BF2_BFBD Flare Stack Bypass Pressure: flare_bypass_press  
+    BF2_BFBD Flare Stack Pressure: flare_press  
+    BF2_PROC Radar Stock Rod Level: stock_rod_radar_level  
+    BF2_PROC Stock Rod 1 Position: stock_rod1_pos  
+    BF2_PROC Stock Rod 2 Position: stock_rod2_pos
+    BF2 No of Skip Car Trips - Reset Hourly: skip_car_trips_hour'
+    BF2 Coal flow switch No 1: coal_sw_01  
+    BF2 Coal flow switch No 2: coal_sw_02  
+    BF2 Coal flow switch No 3: coal_sw_03  
+    BF2 Coal flow switch No 4: coal_sw_04  
+    BF2 Coal flow switch No 5: coal_sw_05  
+    BF2 Coal flow switch No 6: coal_sw_06  
+    BF2 Coal flow switch No 7: coal_sw_07  
+    BF2 Coal flow switch No 8: coal_sw_08  
+    BF2 Coal flow switch No 9: coal_sw_09  
+    BF2 Coal flow switch No 10: coal_sw_10  
+    BF2 Coal flow switch No 11: coal_sw_11  
+    BF2 Coal flow switch No 12: coal_sw_12  
+    BF2 Coal flow switch No 13: coal_sw_13  
+    BF2 Coal flow switch No 14: coal_sw_14  
+    BF2 Coal flow switch No 15: coal_sw_15  
+    BF2 Coal flow switch No 16: coal_sw_16  
+    BF2 Coal flow switch No 17: coal_sw_17  
+    BF2 Coal flow switch No 18: coal_sw_18  
+
+  cooling_water:
+    BF2_BFBD Furnace Body Cooling Water Bosh and Belly Flow: cw_bosh_belly_flow_m3h
+    BF2_BFBD Furnace Body Cooling Water Bottom Flow: cw_bottom_flow_m3h
+    BF2_BFBD Furnace Body Cooling Water Hearth Flow: cw_hearth_flow_m3h
+    BF2_BFBD Furnace Body Cooling Water Lower Stack Flow: cw_lower_stack_flow_m3h
+    BF2_BFBD Furnace Body Cooling Water Upper Shaft Flow: cw_upper_shaft_flow_m3h
+    BF2_BFBD High Pressure Cooling Water Mains Pressure: cw_hp_mains_press_bar
+    BF2_BFBD Pressure Pump Cooling Water Mains Flow: cw_pressure_pump_flow_m3h
+    BF2_BFBD Tuyere Nose Cooling Water Mains Flow: cw_tuyere_nose_flow_m3h
+    BF2_BFBD Furnace Body Cooling Water Bosh and Belly Pressure: cw_bosh_belly_press_bar
+    BF2_BFBD Furnace Body Cooling Water Bottom Pressure: cw_bottom_press_bar
+    BF2_BFBD Furnace Body Cooling Water Hearth Pressure: cw_hearth_press_bar
+    BF2_BFBD Furnace Body Cooling Water Lower Stack Pressure: cw_lower_stack_press_bar
+    BF2_BFBD Furnace Body Cooling Water Upper Shaft Pressure: cw_upper_shaft_press_bar
+    BF2_BFBD Furnace Body Cooling Water Mains Pressure: cw_mains_press_bar
+    BF2_BFBD Tuyere Nose Cooling Water Mains Pressure: cw_tuyere_nose_press_bar
+    BF2_BFBD High Pressure Cooling Water Mains Temp: cw_hp_mains_temp_c
+    BF2_BFBD Tuyere Nose Cooling Water Mains Temp: cw_tuyere_nose_temp_c
+    BF2_BFBD Furnace Body Cooling Water Mains Temp: cw_mains_temp_c
+
+  delta_t:
+    DELTA T avg Row6-10 Q1 (Stave 1-8): delta_t_avg_row6_10_q1
+    DELTA T avg Row6-10 Q1(Stave 1-8): delta_t_avg_row6_10_q1
+    DELTA T avg Row6-10 Q2(Stave 9-16): delta_t_avg_row6_10_q2
+    DELTA T avg Row6-10 Q3(Stave 17-24): delta_t_avg_row6_10_q3
+    DELTA T avg Row6-10 Q3(Stave 25-32): delta_t_avg_row6_10_q4
+    DELTA T avg Row6-10 Q4(Stave 25-32): delta_t_avg_row6_10_q4
+    Delta T avg of Row 6: delta_t_avg_row6
+    Delta T avg of Row 7: delta_t_avg_row7
+    Delta T avg of Row 8: delta_t_avg_row8
+    Delta T avg of Row 9: delta_t_avg_row9
+    Delta T avg of Row 10: delta_t_avg_row10
+    R10 Delta T of Stave No 23 and 24: delta_t_r10_stave_23_24
+    R10 Delta T of Stave No 1 and 2: delta_t_r10_stave_1_2
+    R10 Delta T of Stave No 10 and 10: delta_t_r10_stave_10_10
+    R10 Delta T of Stave No 11 and 12: delta_t_r10_stave_11_12
+    R10 Delta T of Stave No 13 and 14: delta_t_r10_stave_13_14
+    R10 Delta T of Stave No 15 and 16: delta_t_r10_stave_15_16
+    R10 Delta T of Stave No 17 and 18: delta_t_r10_stave_17_18
+    R10 Delta T of Stave No 19 and 20: delta_t_r10_stave_19_20
+    R10 Delta T of Stave No 21 and 22: delta_t_r10_stave_21_22
+    R10 Delta T of Stave No 25 and 26: delta_t_r10_stave_25_26
+    R10 Delta T of Stave No 27 and 28: delta_t_r10_stave_27_28
+    R10 Delta T of Stave No 29 and 30: delta_t_r10_stave_29_30
+    R10 Delta T of Stave No 3 and 4: delta_t_r10_stave_3_4
+    R10 Delta T of Stave No 31 and 32: delta_t_r10_stave_31_32
+    R10 Delta T of Stave No 5 and 6: delta_t_r10_stave_5_6
+    R10 Delta T of Stave No 7 and 8: delta_t_r10_stave_7_8
+    R6 Delta T of Stave No 1: delta_t_r6_stave_1
+    R6 Delta T of Stave No 2: delta_t_r6_stave_2
+    R6 Delta T of Stave No 3: delta_t_r6_stave_3
+    R6 Delta T of Stave No 4: delta_t_r6_stave_4
+    R6 Delta T of Stave No 5: delta_t_r6_stave_5
+    R6 Delta T of Stave No 6: delta_t_r6_stave_6
+    R6 Delta T of Stave No 7: delta_t_r6_stave_7
+    R6 Delta T of Stave No 8: delta_t_r6_stave_8
+    R6 Delta T of Stave No 9: delta_t_r6_stave_9
+    R6 Delta T of Stave No 10: delta_t_r6_stave_10
+    R6 Delta T of Stave No 11: delta_t_r6_stave_11
+    R6 Delta T of Stave No 12: delta_t_r6_stave_12
+    R6 Delta T of Stave No 13: delta_t_r6_stave_13
+    R6 Delta T of Stave No 14: delta_t_r6_stave_14
+    R6 Delta T of Stave No 15: delta_t_r6_stave_15
+    R6 Delta T of Stave No 16: delta_t_r6_stave_16
+    R6 Delta T of Stave No 17: delta_t_r6_stave_17
+    R6 Delta T of Stave No 18: delta_t_r6_stave_18
+    R6 Delta T of Stave No 19: delta_t_r6_stave_19
+    R6 Delta T of Stave No 20: delta_t_r6_stave_20
+    R6 Delta T of Stave No 21: delta_t_r6_stave_21
+    R6 Delta T of Stave No 22: delta_t_r6_stave_22
+    R6 Delta T of Stave No 23: delta_t_r6_stave_23
+    R6 Delta T of Stave No 24: delta_t_r6_stave_24
+    R6 Delta T of Stave No 25: delta_t_r6_stave_25
+    R6 Delta T of Stave No 26: delta_t_r6_stave_26
+    R6 Delta T of Stave No 27: delta_t_r6_stave_27
+    R6 Delta T of Stave No 28: delta_t_r6_stave_28
+    R6 Delta T of Stave No 29: delta_t_r6_stave_29
+    R6 Delta T of Stave No 30: delta_t_r6_stave_30
+    R6 Delta T of Stave No 31: delta_t_r6_stave_31
+    R6 Delta T of Stave No 32: delta_t_r6_stave_32
+    R6 Delta T of Stave no.1: delta_t_r6_stave_1
+    R7 Delta T of Stave No 1: delta_t_r7_stave_1
+    R7 Delta T of Stave No 2: delta_t_r7_stave_2
+    R7 Delta T of Stave No 3: delta_t_r7_stave_3
+    R7 Delta T of Stave No 4: delta_t_r7_stave_4
+    R7 Delta T of Stave No 5: delta_t_r7_stave_5
+    R7 Delta T of Stave No 6: delta_t_r7_stave_6
+    R7 Delta T of Stave No 7: delta_t_r7_stave_7
+    R7 Delta T of Stave No 8: delta_t_r7_stave_8
+    R7 Delta T of Stave No 9: delta_t_r7_stave_9
+    R7 Delta T of Stave No 10: delta_t_r7_stave_10
+    R7 Delta T of Stave No 11: delta_t_r7_stave_11
+    R7 Delta T of Stave No 12: delta_t_r7_stave_12
+    R7 Delta T of Stave No 13: delta_t_r7_stave_13
+    R7 Delta T of Stave No 14: delta_t_r7_stave_14
+    R7 Delta T of Stave No 15: delta_t_r7_stave_15
+    R7 Delta T of Stave No 16: delta_t_r7_stave_16
+    R7 Delta T of Stave No 17: delta_t_r7_stave_17
+    R7 Delta T of Stave No 18: delta_t_r7_stave_18
+    R7 Delta T of Stave No 19: delta_t_r7_stave_19
+    R7 Delta T of Stave No 20: delta_t_r7_stave_20
+    R7 Delta T of Stave No 21: delta_t_r7_stave_21
+    R7 Delta T of Stave No 22: delta_t_r7_stave_22
+    R7 Delta T of Stave No 23: delta_t_r7_stave_23
+    R7 Delta T of Stave No 24: delta_t_r7_stave_24
+    R7 Delta T of Stave No 25: delta_t_r7_stave_25
+    R7 Delta T of Stave No 26: delta_t_r7_stave_26
+    R7 Delta T of Stave No 27: delta_t_r7_stave_27
+    R7 Delta T of Stave No 28: delta_t_r7_stave_28
+    R7 Delta T of Stave No 29: delta_t_r7_stave_29
+    R7 Delta T of Stave No 30: delta_t_r7_stave_30
+    R7 Delta T of Stave No 31: delta_t_r7_stave_31
+    R7 Delta T of Stave No 32: delta_t_r7_stave_32
+    R8 Delta T of Stave No 1: delta_t_r8_stave_1
+    R8 Delta T of Stave No 2: delta_t_r8_stave_2
+    R8 Delta T of Stave No 3: delta_t_r8_stave_3
+    R8 Delta T of Stave No 4: delta_t_r8_stave_4
+    R8 Delta T of Stave No 5: delta_t_r8_stave_5
+    R8 Delta T of Stave No 6: delta_t_r8_stave_6
+    R8 Delta T of Stave No 7: delta_t_r8_stave_7
+    R8 Delta T of Stave No 8: delta_t_r8_stave_8
+    R8 Delta T of Stave No 9: delta_t_r8_stave_9
+    R8 Delta T of Stave No 10: delta_t_r8_stave_10
+    R8 Delta T of Stave No 11: delta_t_r8_stave_11
+    R8 Delta T of Stave No 12: delta_t_r8_stave_12
+    R8 Delta T of Stave No 13: delta_t_r8_stave_13
+    R8 Delta T of Stave No 14: delta_t_r8_stave_14
+    R8 Delta T of Stave No 15: delta_t_r8_stave_15
+    R8 Delta T of Stave No 16: delta_t_r8_stave_16
+    R8 Delta T of Stave No 17: delta_t_r8_stave_17
+    R8 Delta T of Stave No 18: delta_t_r8_stave_18
+    R8 Delta T of Stave No 19: delta_t_r8_stave_19
+    R8 Delta T of Stave No 20: delta_t_r8_stave_20
+    R8 Delta T of Stave No 21: delta_t_r8_stave_21
+    R8 Delta T of Stave No 22: delta_t_r8_stave_22
+    R8 Delta T of Stave No 23: delta_t_r8_stave_23
+    R8 Delta T of Stave No 24: delta_t_r8_stave_24
+    R8 Delta T of Stave No 25: delta_t_r8_stave_25
+    R8 Delta T of Stave No 26: delta_t_r8_stave_26
+    R8 Delta T of Stave No 27: delta_t_r8_stave_27
+    R8 Delta T of Stave No 28: delta_t_r8_stave_28
+    R8 Delta T of Stave No 29: delta_t_r8_stave_29
+    R8 Delta T of Stave No 30: delta_t_r8_stave_30
+    R8 Delta T of Stave No 31: delta_t_r8_stave_31
+    R8 Delta T of Stave No 32: delta_t_r8_stave_32
+    R9 Delta T of Stave No 23 and 24: delta_t_r9_stave_23_24
+    R9 Delta T of Stave No 1 and2: delta_t_r9_stave_1_2
+    R9 Delta T of Stave No 11 and 12: delta_t_r9_stave_11_12
+    R9 Delta T of Stave No 13 and 14: delta_t_r9_stave_13_14
+    R9 Delta T of Stave No 15 and 16: delta_t_r9_stave_15_16
+    R9 Delta T of Stave No 17 and 18: delta_t_r9_stave_17_18
+    R9 Delta T of Stave No 19 and 20: delta_t_r9_stave_19_20
+    R9 Delta T of Stave No 21 and 22: delta_t_r9_stave_21_22
+    R9 Delta T of Stave No 25 and 26: delta_t_r9_stave_25_26
+    R9 Delta T of Stave No 27 and 28: delta_t_r9_stave_27_28
+    R9 Delta T of Stave No 29 and 30: delta_t_r9_stave_29_30
+    R9 Delta T of Stave No 3 and4: delta_t_r9_stave_3_4
+    R9 Delta T of Stave No 31 and 32: delta_t_r9_stave_31_32
+    R9 Delta T of Stave No 5 and 6: delta_t_r9_stave_5_6
+    R9 Delta T of Stave No 7 and 8: delta_t_r9_stave_7_8
+    R9 Delta T of Stave No 9 and 10: delta_t_r9_stave_9_10

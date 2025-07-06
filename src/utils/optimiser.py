@@ -4,31 +4,32 @@ import pandas as pd
 import joblib
 from typing import List, Dict
 
-from config import INIT_PARAMS as IPS
 
-
-def run_optimiser(data_path: str,
-                  model_path: str,
+def run_optimiser(df: pd.DataFrame,
+                  model: joblib,
                   user_input: Dict,
                   prev_control_input: Dict,
                   control_params_list: List[str],
                   include_control: Dict,
-                  num: int):
+                  no_of_steps: int):
     """
     A wrapper function to run the BruteForceOptimiser. This is executed on pressuing "Run Optimiser" button.
+    :param df: Path to the historical data file.
     :param user_input: Input parameters entered in the number_input boxes.
     :param prev_control_input: Previous days control inputs. Used to calculate distance to optimal solutions.
     :param control_params_list: List of control parameters as strings.
     :param include_control:
-    :return:
+    :param no_of_steps: Number of steps to discretise the control parameters into.
+    :return: DataFrame with the top combinations of control parameters and their efficiencies.
     """
     # Perform optimization to find the optimal set of control parameters
-    optimiser = BruteForceOptim(data_path=data_path,
-                                model_path=model_path,
+    optimiser = BruteForceOptim(df=df,
+                                model=model,
                                 control_params_list=control_params_list,
                                 include_control=include_control)
-    df_optim_comb, prev_y_val = optimiser.top_combinations(user_input, num=num,
-                                               prev_control_params=list(prev_control_input.values()))
+    df_optim_comb, prev_y_val = optimiser.top_combinations(user_input, 
+                                                           no_of_steps=no_of_steps,
+                                                           prev_control_params=list(prev_control_input.values()))
     disp_cols = control_params_list.copy()
     disp_cols.append("Efficiency")
     disp_cols.append("Distance to prev")
@@ -39,7 +40,7 @@ def run_optimiser(data_path: str,
 def control_param_comb(df_bf: pd.DataFrame,
                        control_params: List,
                        include_control: Dict,
-                       num: int = 10) -> List:
+                       no_of_steps: int = 10) -> List:
     """
     Generates the possible combination of control parameters (control_params) at steps prescribed by
     number of points (num).
@@ -59,7 +60,7 @@ def control_param_comb(df_bf: pd.DataFrame,
 
         # Divide this range into "num" points when Override is not selected (value = nan if not selected):
         if include_control[control_params[i]] is np.nan:
-            control_param_ranges[control_params[i]] = np.linspace(min_val, max_val, num=num)
+            control_param_ranges[control_params[i]] = np.linspace(min_val, max_val, num=no_of_steps)
         else:
             control_param_ranges[control_params[i]] = np.array([include_control[control_params[i]]])
 
@@ -69,10 +70,16 @@ def control_param_comb(df_bf: pd.DataFrame,
 
 
 class BruteForceOptim:
-    def __init__(self, data_path, model_path, control_params_list, include_control):
-        self.control_params_list = control_params_list
-        self.historical_data = pd.read_pickle(data_path)  # Load historical data
-        self.model = joblib.load(model_path)   # Initialize your pre-trained XGBoost model here
+    def __init__(self, 
+                 df_data: pd.DataFrame, 
+                 model: joblib, 
+                 input_params: List[str],
+                 feature_columns: List[str],
+                 control_params: List[str],
+                 include_control: bool = False):
+        self.control_params_list = control_params
+        self.historical_data = df_data  # Load historical data
+        self.model = model   # Initialize your pre-trained XGBoost model here
         self.include_control = include_control # Has the values of Overriding control parameters
 
     def top_combinations(self, input_params: Dict,
@@ -111,11 +118,11 @@ class BruteForceOptim:
         # Repeat the input params as many times as size of "control_params" combinations. Merge "input" & "control" dfs.
         df_input_params = df.loc[df.index.repeat(len(df_comb.index))].reset_index(drop=True)
         df_params = pd.concat([df_input_params, df_comb], axis=1)
-        df_params = df_params[IPS.INPUT_PARAMS_MODEL]
+        df_params = df_params[input_params]
 
-        if df_params.columns.tolist() != IPS.INPUT_PARAMS_MODEL:
+        if df_params.columns.tolist() != self.feature_columns:
             raise Exception(f'DF column names {df_params.columns }\n dont match model requirements '
-                            f'{IPS.INPUT_PARAMS_MODEL}')
+                            f'{self.feature_columns}')
         # Predict the efficiency by supplying the "full" (input + control) params to the model
         efficiency = self.model.predict(df_params)
 
@@ -128,7 +135,7 @@ class BruteForceOptim:
         # Find the Euclidean distance of each full param combination to the previous operating point
         if prev_control_params:
             prev_vector = np.array(prev_control_params)
-            col_temp = df_top_5[IPS.CONTROL_PARAMS].apply(lambda row: np.linalg.norm(row - prev_vector), axis=1)
+            col_temp = df_top_5[self.control_params_list].apply(lambda row: np.linalg.norm(row - prev_vector), axis=1)
             df_top_5["Distance to prev"] = col_temp
 
         # Return the top combinations as a DataFrame

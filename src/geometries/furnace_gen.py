@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import yaml
 from pathlib import Path
-from config.loader import load_config
+from src.config.config_loader import load_config
 
 config = load_config()
 

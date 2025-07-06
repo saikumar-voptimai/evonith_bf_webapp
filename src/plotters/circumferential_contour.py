@@ -1,10 +1,9 @@
 import numpy as np
 import pytz
 from .base_contour import BasePlotter
-from config.loader import load_config
+from src.config.config_loader import load_config
 from scipy.interpolate import CubicSpline, interp1d
 from plotly.subplots import make_subplots
-import plotly.colors
 import plotly.graph_objs as go
 
 from typing import Dict, List
