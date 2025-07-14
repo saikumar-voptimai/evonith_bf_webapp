@@ -11,7 +11,7 @@ import json
 import xml.etree.ElementTree as ET
 from influxdb_client_3 import InfluxDBClient3, flight_client_options
 import certifi
-from src.config.config_loader import load_config
+from config.config_loader import load_config
 
 fh = open(certifi.where(), "r")
 cert = fh.read()

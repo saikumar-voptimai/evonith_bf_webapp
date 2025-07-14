@@ -5,7 +5,7 @@ import joblib
 from utils import optimiser, recommendations
 from datetime import datetime
 from pathlib import Path
-from src.config.config_loader import load_config
+from config.config_loader import load_config
 
 config = load_config()
 config_vsense = load_config('setting_vsense.yml')

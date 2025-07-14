@@ -2,7 +2,7 @@ from .temp_data_fetcher import TemperatureDataFetcher
 from typing import List, Dict
 import numpy as np
 import pandas as pd
-from src.config.config_loader import load_config
+from config.config_loader import load_config
 import logging
 
 # Initialize logging

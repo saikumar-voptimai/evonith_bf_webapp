@@ -7,7 +7,7 @@ import pytz
 
 from pathlib import Path
 from data_fetchers.base_data_fetcher import BaseDataFetcher
-from src.config.config_loader import load_config
+from config.config_loader import load_config
 from datetime import timedelta
 from dotenv import load_dotenv
 

@@ -3,7 +3,7 @@ import pandas as pd
 from scipy.optimize import differential_evolution
 from utils.recommendations import get_control_bounds, load_scaler, scale_features, inverse_transform_output
 from typing import Dict, List, Any
-from src.config.config_loader import load_config
+from config.config_loader import load_config
 
 config_vsense = load_config('setting_vsense.yml')
 
@@ -17,6 +17,7 @@ def objective(
     time_idx: int,
     scaler,
     feature_names: List[str],
+    optimisation_type: str
 ) -> float:
     """
     Objective function combining the predicted target output and a penalty term
@@ -32,7 +33,7 @@ def objective(
         time_idx (int): Index of the timestep (historic) in df_feat_vec.
         scaler: Fitted scaler for features.
         feature_names: List of feature names in correct order.
-        output_name: Name of the output parameter.
+        optimisation_type (str): Type of optimization (e.g., Coke Rate, Fuel Rate).
     Returns:
         float: Combined objective value (predicted output + penalty).
     """
@@ -43,13 +44,15 @@ def objective(
     # Scale feature vector
     scaled_features = scale_features(scaler, row, feature_names).reshape(1,-1)
     # Predict in scaled space
-    y_pred_scaled = model.predict(scaled_features)[0]
+    max_min = -1 if 'Eta CO' in optimisation_type else 1
+    y_pred_scaled = model.predict(scaled_features)[0] * max_min
     # Scale control parameters for penalty
     row_cp = row[control_params]
     prev_row_cp = df_feat_vec.iloc[-1][control_params]
     scaled_xc_t_ordered = scale_features(scaler, row_cp, control_params)[0]
     scaled_prev_params = scale_features(scaler, prev_row_cp, control_params)[0]
     penalty = np.sum((scaled_xc_t_ordered - scaled_prev_params) ** 2)
+    print(y_pred_scaled)
     return y_pred_scaled + lambda_reg * penalty
 
 def run_optimiser(
@@ -117,7 +120,8 @@ def run_optimiser(
               lambda_reg, 
               TIME_IDX, 
               scaler,
-              feature_names
+              feature_names,
+              optimisation_type
               ),
         strategy='best1bin',
         popsize=5,

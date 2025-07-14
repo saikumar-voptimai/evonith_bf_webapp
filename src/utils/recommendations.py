@@ -1,9 +1,7 @@
 import pandas as pd
 import numpy as np
 import joblib
-from typing import List, Dict, Tuple, Any
-from pathlib import Path
-
+from typing import List, Dict, Any
 
 def build_feature_vector(df: pd.DataFrame,
                          user_input: Dict[str, Any],
@@ -119,26 +117,14 @@ def load_scaler(scaler_path):
 
 def scale_features(scaler, row, feature_names):
     """Scale a feature vector (row: pd.Series) using the provided scaler and feature order.
-    Only the columns in feature_names are used, and the scaler expects all input features (including output),
-    so we fill missing columns with zeros except for those in feature_names.
+    Returns a DataFrame with correct feature names for compatibility with sklearn scalers.
     """
-    # Build a full-length array matching scaler.feature_names_in_, fill with zeros
-    arr = np.zeros((1, len(scaler.feature_names_in_)))
-    for i, feat in enumerate(scaler.feature_names_in_):
-        if feat in feature_names:
-            arr[0, i] = row[feat]
-
-    arr_scaled = scaler.transform(arr)
-    # Return only the scaled values for feature_names
-    feature_names_list = scaler.feature_names_in_.tolist()
-    for i, feat in enumerate(feature_names_list):
-        if 'FurnaceTopGasAnalysis' in feat:
-            if '_lag' in feat:
-                feature_names_list[i] = 'FurnaceTopGasAnalysisCO2ETACO' + '_' + feat.split('_')[-1]
-            else:
-                feature_names_list[i] = 'FurnaceTopGasAnalysisCO2ETACO'
-
-    idxs = [feature_names_list.index(feat) for feat in feature_names]
+    all_feats = scaler.feature_names_in_.tolist()
+    data = {feat: row.get(feat, 0.0) for feat in all_feats}
+    df = pd.DataFrame([data], columns=all_feats)
+    arr_scaled = scaler.transform(df)
+    all_feats = [col.replace('ŋ','ETA') for col in all_feats]  # Replace 'ŋ' with 'ETA' for compatibility
+    idxs = [all_feats.index(feat) for feat in feature_names]
     return arr_scaled[0, idxs]
 
 def inverse_transform_output(scaler, y_scaled, output_name):
