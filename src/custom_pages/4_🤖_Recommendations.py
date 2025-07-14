@@ -2,115 +2,15 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import joblib
-from typing import List, Dict
-from utils import optimiser
+from utils import optimiser, recommendations
+from datetime import datetime
 from pathlib import Path
 from src.config.config_loader import load_config
 
 config = load_config()
 config_vsense = load_config('setting_vsense.yml')
 
-def run_optimiser(df_data: pd.DataFrame,
-                  model: joblib,
-                  user_input: Dict,
-                  prev_params: Dict,
-                  control_params_list: List[str],
-                  no_of_steps: int):
-    """
-    Run the optimiser with the provided parameters.
-    """
-    include_control = st.session_state['include_control']
-    with st.status("Searching for optimal solutions..."):
-        df_disp, prev_y_val = optimiser.run_optimiser(df_data, 
-                                                      model, 
-                                                      user_input, 
-                                                      prev_params, 
-                                                      control_params_list,
-                                                      include_control, 
-                                                      no_of_steps)
-
-        # Display optimal control parameters and efficiency
-        st.write("### Optimal Control Parameters:")
-        st.dataframe(df_disp.style.format('{:.3f}'), width=1200)
-
-    display_optimization_results(df_disp, prev_params, prev_y_val, control_params_list)
-    st.success("Optimal solutions found")
-
-def display_optimization_results(
-    optimal_df: pd.DataFrame, 
-    prev_params: dict, 
-    prev_y_val: float,
-    control_params_list: list
-):
-    """
-    Displays the recommended control parameters (from the first row of 'optimal_df')
-    as Streamlit metrics, along with the delta from 'prev_params'.
-    
-    :param optimal_df: DataFrame with the first row containing optimal control parameters
-    :param prev_params: Dictionary of previous day’s parameters (e.g., prev_params[param_name])
-    :param control_params_list: List of control parameter names (column names in optimal_df)
-    :param prev_y_val: Previous day's efficiency value for comparison
-    """
-    
-    st.subheader("Recommended Control Parameters")
-    st.write("Below you can see how each optimized parameter compares to yesterday's values.")
-
-    # We assume the first row contains the optimal parameter values
-    optimal_values = optimal_df.iloc[0]
-
-    # Chunk parameters in sets of 3 or 4 to show them in multiple columns
-    num_cols = 3  # Adjust as needed
-    for i in range(0, len(control_params_list), num_cols):
-        cols = st.columns(num_cols)
-        
-        # Display each parameter in the row's respective column
-        for j, param in enumerate(control_params_list[i : i + num_cols]):
-            with cols[j]:
-                # Get recommended (optimal) value and previous day's value
-                recommended_val = optimal_values[param]
-                previous_val = prev_params.get(param, 0.0)
-                
-                # Calculate delta
-                delta_val = recommended_val - previous_val
-                if abs(delta_val) >= 0.01:
-                    # Fetch unit from dictionary
-                    label = f"{param}"
-                    if not label.strip():
-                        label = "Parameter"
-                    st.metric(
-                        label=label,
-                        value=round(recommended_val, 2), 
-                        delta=round(delta_val, 2)
-                    )
-
-    curr_val = np.round(optimal_df['Efficiency'][0], 2)
-    delta_val = curr_val - prev_y_val
-    curr_val = f"{curr_val:.2f}"
-    delta_val = f"{delta_val:.2f}"
-    st.metric(label='Efficiency', value=curr_val, delta=delta_val)
-
-optimisation_type = 'coke_rate_opt'
-
-# Load the configuration and model
-model = joblib.load_model(config_vsense['MODELS'][optimisation_type])
-ip = config[optimisation_type]['input_params']
-ip_flat_list = [val for group in config[optimisation_type]['input_params'].values() for val in group]
-cp_list = list(set([val for group in config[optimisation_type]['control_params'].values() for val in group]))
-
-data_rel_path = config['DATA']
-fullpath = Path(__file__).resolve().parents[1] / data_rel_path.split('/')[1] / data_rel_path.split('/')[2]
-df_data = pd.read_csv(fullpath, index_col=0, parse_dates=True)
-
-model_rel_path = config_vsense['MODELS'][optimisation_type]
-model_path = Path(__file__).resolve().parents[1] / model_rel_path.split('/')[1] / model_rel_path.split('/')[2]
-model = joblib.load(model_path)
-
-# Create a Streamlit web app
-if 'stage' not in st.session_state:
-    st.session_state.stage = 0
-
-# Define the custom CSS style for the title
-# Set the title as a centered Markdown text
+# Section 0: Set the title page configuration
 st.markdown(
     """
     <h1 style="text-align: center; font-family: 'Times New Roman', Times, serif; color: black;">
@@ -122,81 +22,140 @@ st.markdown(
 
 st.divider()
 
-# Add sliders for input parameters
-st.sidebar.title("Previous Control Parameters")
+# Section 1: Select the optimisation type
+optimisation_type = st.selectbox(
+    "Select Optimisation Type",
+    list(config_vsense['Optimisation'].keys())
+)
 
-if 'include_control' not in st.session_state:
-    st.session_state['include_control'] = 0
+outputs = [config_vsense['Optimisation'][model]['output_param'] for model in list(config_vsense['Optimisation'].keys())]
 
-def trigger():
-    """
-    Trigger function to handle the submission of control parameters.
-    This function is called when the control parameters form is submitted.
-    It updates the session state with the selected control parameters and their values.
-    """
-    st.success("Control Parameters submitted")
-    include_control = {}
-    for i in range(len(cp_list)):
-        if is_include_control[cp_list[i]]:
-            st.sidebar.write(prev_params[cp_list[i]])
-            include_control[cp_list] = prev_params[cp_list[i]]
-        else:
-            include_control[cp_list[i]] = np.nan
-    st.session_state['include_control'] = include_control
+# Load the configuration and model
+ip = config['Optimisation']['input_params']
+ip_flat_list = [val for group in config['Optimisation']['input_params'].values() for val in group]
+cp_list = list(set([val for group in config['Optimisation']['control_params'].values() for val in group]))
 
-# Previous control parameters:
-with st.form("Control Params"):
-    prev_params, is_include_control = {}, {}
-    for i in range(len(cp_list)):
-        cola, colb = st.sidebar.columns([10, 100])
-        with cola:
-            prev_params[cp_list[i]] = st.number_input(cp_list[i],
-                                                      min_value=df_data[cp_list[i]].quantile(0.05),
-                                                      max_value=df_data[cp_list[i]].quantile(0.95),
-                                                      value=df_data[cp_list[i]].mean(),
-                                                      key=f"num_input_{cp_list[i]}")
-        with colb:
-            is_include_control[cp_list[i]] = st.checkbox("Override",
-                                                        value=False,
-                                                        key=f"checkbox_{cp_list[i]}")
-    control_submitted = st.form_submit_button("Control Params", on_click=trigger)
+data_rel_path = config['DATA']
+data_path = Path(__file__).resolve().parents[1] / data_rel_path.split('/')[1] / data_rel_path.split('/')[2]
+df_data = pd.read_csv(data_path, index_col=0, parse_dates=True)
+    
+models = {}
+for i, opt_type in enumerate(list(config_vsense['Optimisation'].keys())):
+    relpath = config_vsense['Optimisation'][opt_type]['model']
+    model_path = Path(__file__).resolve().parents[1] / relpath.split('/')[1] / relpath.split('/')[2]
+    models[outputs[i]] = joblib.load(model_path)
 
+# Set the target output based on the optimisation type
+target_output = config_vsense['Optimisation'][optimisation_type]['output_param']
+
+# Section 2: Set the starting point for the model
+cols = st.columns(2)
+with cols[0]:
+    date = st.date_input("Select Date")
+with cols[1]:
+    time = st.selectbox("Select Time Index", [f"{i}:00:00" for i in range(24)])
+
+date_time = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M:%S")
+TIME_IDX = int(np.where(pd.to_datetime(df_data.index, format="%d/%m/%Y %H:%M") < date_time)[0][-1])
+
+st.toast(f"Using data at {df_data.index[TIME_IDX]} as event time for optimisation.")
+
+# Section 3: Display the current data and control parameters
+st.subheader("Control Parameters")
+
+prev_params = {}
+include_control = {}
+cols = st.columns(3)
+i = 1
+with st.form(key="Control Params Form"):
+    for cp in cp_list:
+        with cols[(i % 3) - 1]:
+            prev_default_val = df_data[cp].iloc[-1]
+            user_val = st.number_input(
+                cp, min_value=float(df_data[cp].quantile(0.01)), 
+                max_value=float(df_data[cp].quantile(0.99)), value=float(prev_default_val)
+            )
+            override = st.checkbox(f"Override", key=f"ov_{cp}")
+            if override:
+                include_control[cp] = user_val
+            else:
+                include_control[cp] = np.nan
+            i += 1
+    input_submit = st.form_submit_button("Submit Control Params")
 # User-specified input variables:
-# Define column layout for horizontal sections
 with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
-    cols = st.columns(len(ip.keys()))
+    cols = st.columns(3)
     raw_mtrl_input = {}
     # Display input boxes for Flux Parameters
     keys = list(ip.keys())
-    with st.form(key=keys[i]):
+    with st.form(key="Raw Material Input Form"):
         for i, (key, ip_flat) in enumerate(ip.items()):
-            with cols[i]:
+            with cols[(i+1) % 3]:
                 st.write(f"### {key} Parameters")
                 for i, param in enumerate(ip[key]):
-                    st.write(f"{param}:")
-                    raw_mtrl_input[param] = st.number_input("", format="%.2f",
-                                                        min_value=df_data[param].min(),
-                                                        max_value=df_data[param].max(),
-                                                        value=df_data[param].iloc[-1])
+                    default_val = df_data[param].iloc[-1]
+                    user_val = st.number_input(param, 
+                                               format="%.2f", 
+                                               min_value=df_data[param].min(), 
+                                               max_value=df_data[param].max(),
+                                               value=default_val)
+                    if user_val != default_val:
+                        raw_mtrl_input[param] = user_val
+                    else:
+                        raw_mtrl_input[param] = np.nan
+        input_submit = st.form_submit_button("Submit Input Params")
 
-    # Every form must have a submit button.
-    input_submit = st.form_submit_button("Submit Input Params", on_click=trigger)
-
+cols = st.columns(2)
+with cols[0]:
+    lambda_reg = st.slider(
+        "Regularisation Parameter (Lambda)",
+        min_value=0.0, 
+        max_value=0.5, 
+        value=config_vsense['LAMBDA_REG'],
+        step=0.01,
+        help="Regularisation parameter for the optimisation algorithm."
+    )
 # Every form must have a submit button.
-if st.button("Run Optimiser", key="optimiser", on_click=trigger):
-    include_control = st.session_state['include_control']
-    with st.status("Searching for optimal solutions..."):
-        df_disp, prev_y_val = optimiser.run_optimiser(df_data, 
-                                                      model, 
-                                                      user_input, 
-                                                      prev_params, 
-                                                      cp_list,
-                                                      include_control, 
-                                                      no_of_steps=config_vsense['OPTIM_STEPS'])
+if st.button("Run Optimiser"):
+    fixed_cp = {cp: val for cp, val in include_control.items() if not np.isnan(val)}
+    user_input = {param: raw_mtrl_input.get(param, np.nan) for param in ip_flat_list}
+    df_data_processed = recommendations.process_dataframe(df_data,
+                                                          target_col=target_output,
+                                                          targets=list(config['Optimisation']['output_params']),
+                                                          lags=config_vsense['LAGS']
+                                                          )
+    with st.spinner('Running the optimiser'):
+        optimal_solution = optimiser.run_optimiser(
+            df_data_processed, 
+            models, 
+            user_input, 
+            fixed_cp,
+            cp_list,
+            target_output,
+            optimisation_type,
+            date_time,
+            lambda_reg=lambda_reg)
 
-        # Display optimal control parameters and efficiency
-        st.write("### Optimal Control Parameters:")
-        st.dataframe(df_disp.style.format('{:.3f}'), width=1200)
+    st.subheader("Optimisation Results")
+    # Show metrics for each control parameter and the target output
+    cols = st.columns(4)
+    for i, (key, new_val) in enumerate(optimal_solution.items()):
+        with cols[i % 4]:
+            if key in df_data.columns and key != target_output and key not in outputs:
+                old_val = df_data[key].iloc[TIME_IDX]
+                delta = new_val - old_val
+                st.metric(label=key, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
 
-    display_optimization_results(df_disp, prev_params, prev_y_val, cp_list)
-    st.success("Optimal solutions found")
+    st.metric(label=target_output, 
+              value=f"{optimal_solution[target_output]:.2f}", 
+              delta=f"{optimal_solution[target_output] - df_data[target_output].iloc[TIME_IDX]:+.2f}",
+              delta_color="inverse")
+    
+    cols = st.columns(3)
+    for i, (key, new_val) in enumerate(optimal_solution.items()):
+        with cols[i % 3]:
+            if key in outputs and key != target_output:
+                old_val = df_data[key].iloc[TIME_IDX]
+                delta = new_val - old_val
+                st.metric(label=key, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
+    

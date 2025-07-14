@@ -10,6 +10,7 @@ website_vars:
 
 DATA: "src/data/df_filtered.csv"
 
+
 # Geometries
 paths:
  geometry: "./src/geometries"
@@ -84,11 +85,12 @@ plot:
       - ["Belly", 15]
       - ["Stack", 17.0]
 
-coke_rate_opt:
+Optimisation:
   output_params:
-    - FurnaceTopGasAnalysisCO2ETACO
     - Act. Fuel RateKg/Thm.
+    - FurnaceTopGasAnalysisCO2ETACO
     - ProductionTonnesPerHr
+    - Coke Rate Kg/Thm
   input_params:
     NutCoke:
       - NUTCOKE_MOIST%
@@ -153,17 +155,13 @@ coke_rate_opt:
       - Hot Blast VolumeNm3/Hr.
       - Total OxygenNm3/Hr.
       - Hot Blast PressureBar
-      - Differential PressureTotalBar
+      - TopPressureBar
       - Hot Blast Temp.oC
       - SteamKgs/Hr.
+      - PermeabilityKgs/Hr.
       - TuyereVelocitym/s
       - O2 Enrichment %
-      - PermeabilityKgs/Hr.
-
-    Proxy:
-      - PermeabilityKgs/Hr.
-      - OxygenFlowNm3/Hr.
-      - TopPressureBar
+      - 'ActualKg/Thm.'
       
 data_tags:
   temperature_variables:

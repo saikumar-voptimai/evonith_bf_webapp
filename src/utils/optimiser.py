@@ -1,174 +1,172 @@
-import itertools
 import numpy as np
 import pandas as pd
-import joblib
-from typing import List, Dict
+from scipy.optimize import differential_evolution
+from utils.recommendations import get_control_bounds, load_scaler, scale_features, inverse_transform_output
+from typing import Dict, List, Any
+from src.config.config_loader import load_config
 
+config_vsense = load_config('setting_vsense.yml')
 
-def run_optimiser(df: pd.DataFrame,
-                  model: joblib,
-                  user_input: Dict,
-                  prev_control_input: Dict,
-                  control_params_list: List[str],
-                  include_control: Dict,
-                  no_of_steps: int):
+def objective(
+    xc_trial: np.ndarray,
+    df_feat_vec: pd.DataFrame,
+    fixed_cp: Dict[str, float],
+    model: Any,
+    control_params: List[str],
+    lambda_reg: float,
+    time_idx: int,
+    scaler,
+    feature_names: List[str],
+) -> float:
     """
-    A wrapper function to run the BruteForceOptimiser. This is executed on pressuing "Run Optimiser" button.
-    :param df: Path to the historical data file.
-    :param user_input: Input parameters entered in the number_input boxes.
-    :param prev_control_input: Previous days control inputs. Used to calculate distance to optimal solutions.
-    :param control_params_list: List of control parameters as strings.
-    :param include_control:
-    :param no_of_steps: Number of steps to discretise the control parameters into.
-    :return: DataFrame with the top combinations of control parameters and their efficiencies.
+    Objective function combining the predicted target output and a penalty term
+    for deviation from previous control parameters, both in scaled space.
+
+    Args:
+        xc_trial (np.ndarray): Array of free control parameter values (to be optimized).
+        df_feat_vec (pd.DataFrame): DataFrame with feature vectors.
+        fixed_cp (Dict[str, float]): Fixed control parameters. 
+        model (Any): Pre-trained regression model.
+        control_params (List[str]): List of control parameter names.
+        lambda_reg (float): Regularization strength.
+        time_idx (int): Index of the timestep (historic) in df_feat_vec.
+        scaler: Fitted scaler for features.
+        feature_names: List of feature names in correct order.
+        output_name: Name of the output parameter.
+    Returns:
+        float: Combined objective value (predicted output + penalty).
     """
-    # Perform optimization to find the optimal set of control parameters
-    optimiser = BruteForceOptim(df=df,
-                                model=model,
-                                control_params_list=control_params_list,
-                                include_control=include_control)
-    df_optim_comb, prev_y_val = optimiser.top_combinations(user_input, 
-                                                           no_of_steps=no_of_steps,
-                                                           prev_control_params=list(prev_control_input.values()))
-    disp_cols = control_params_list.copy()
-    disp_cols.append("Efficiency")
-    disp_cols.append("Distance to prev")
-    df_disp = df_optim_comb[disp_cols].round(5).reset_index(drop=True)
-    return df_disp, prev_y_val
+    free_cp = [cp for cp in control_params if cp not in fixed_cp]
+    row = df_feat_vec.iloc[time_idx].copy()
+    for idx, cp in enumerate(free_cp):
+        row[cp] = xc_trial[idx]
+    # Scale feature vector
+    scaled_features = scale_features(scaler, row, feature_names).reshape(1,-1)
+    # Predict in scaled space
+    y_pred_scaled = model.predict(scaled_features)[0]
+    # Scale control parameters for penalty
+    row_cp = row[control_params]
+    prev_row_cp = df_feat_vec.iloc[-1][control_params]
+    scaled_xc_t_ordered = scale_features(scaler, row_cp, control_params)[0]
+    scaled_prev_params = scale_features(scaler, prev_row_cp, control_params)[0]
+    penalty = np.sum((scaled_xc_t_ordered - scaled_prev_params) ** 2)
+    return y_pred_scaled + lambda_reg * penalty
 
-
-def control_param_comb(df_bf: pd.DataFrame,
-                       control_params: List,
-                       include_control: Dict,
-                       no_of_steps: int = 10) -> List:
+def run_optimiser(
+    df: pd.DataFrame,
+    models: Dict[str, Any],
+    user_input: Dict[str, float],
+    fixed_cp: Dict[str, float],
+    control_params: List[str],
+    target_output: str,
+    optimisation_type: str,
+    date_time: pd.Timestamp,
+    lambda_reg: float = 0.1,
+) -> Dict[str, float]:
     """
-    Generates the possible combination of control parameters (control_params) at steps prescribed by
-    number of points (num).
-    :param df_bf: Input dataframe to get the minimum and maximum values of the contro_params columns
-    :param control_params: List of control_params that are adjusted to maximise efficiency
-    :param num: Number of discrete to which each control parameter is discretised into.
-    :return: List of control parameter combinations
+    Runs optimization to find control parameters minimizing target output.
+    Args:
+        df (pd.DataFrame): DataFrame with feature vectors.
+        models (Dict[str, Any]): Pre-trained regression models for each target output.
+        user_input (Dict[str, float]): User-specified input parameters.
+        fixed_cp (Dict[str, float]): Fixed control parameters.
+        control_params (List[str]): List of control parameter names.
+        target_output (str): Target output variable name.
+        optimisation_type (str): Type of optimization - Ex: Coke Rate, Fuel Rate etc
+        date_time (pd.Timestamp): Timestamp for which to optimize.
+        lambda_reg (float): Regularization strength for penalty term.
+    Returns:
+        Dict[str, float]: Optimal control parameters including the predicted target output.
     """
-    # Define parameter ranges
-    control_param_ranges = {}
-    for i in range(len(control_params)):
-        if control_params[i] not in df_bf.columns:
-            raise Exception(f'Column {control_params[i]} not in DataFrame')
-        # Find the min and max values of each "control_param"
-        min_val = df_bf[control_params[i]].min()
-        max_val = df_bf[control_params[i]].max()
 
-        # Divide this range into "num" points when Override is not selected (value = nan if not selected):
-        if include_control[control_params[i]] is np.nan:
-            control_param_ranges[control_params[i]] = np.linspace(min_val, max_val, num=no_of_steps)
-        else:
-            control_param_ranges[control_params[i]] = np.array([include_control[control_params[i]]])
+    df_feat_vec = df.copy()
+    targets = [config_vsense['Optimisation'][model]['output_param'] for model in list(config_vsense['Optimisation'].keys())]
+    for i, target in enumerate(targets):
+        if target != target_output:
+            df_feat_vec.drop(columns=[col for col in list(df_feat_vec.columns) if target in col], inplace=True)
 
-    # Generate all parameter combinations as a list of tuples.
-    param_combinations = list(itertools.product(*control_param_ranges.values()))
-    return param_combinations
+    TIME_IDX = int(np.where(pd.to_datetime(df_feat_vec.index, format="%d/%m/%Y %H:%M") < date_time)[0][-1])
 
+    # Update the raw material input parameters if any are overridden
+    for key, value in user_input.items():
+        if not np.isnan(value):
+            df_feat_vec.at[df_feat_vec.index[TIME_IDX], key] = value
 
-class BruteForceOptim:
-    def __init__(self, 
-                 df_data: pd.DataFrame, 
-                 model: joblib, 
-                 input_params: List[str],
-                 feature_columns: List[str],
-                 control_params: List[str],
-                 include_control: bool = False):
-        self.control_params_list = control_params
-        self.historical_data = df_data  # Load historical data
-        self.model = model   # Initialize your pre-trained XGBoost model here
-        self.include_control = include_control # Has the values of Overriding control parameters
+    free_cp = [cp for cp in control_params if cp not in fixed_cp]
 
-    def top_combinations(self, input_params: Dict,
-                         num: int = 10,
-                         prev_control_params: List = None) -> pd.DataFrame:
-        """
-        Top_combinations gets the user-specified input parameters Dict from streamlit, combines them with the
-        various combinations of the control parameters, estimates the efficiency on all the points. The eucledian
-        distance to the previous operating points is also specified. Note the prev_control_params can be a
-        moving_average.
-        :param input_params:
-        :param num:
-        :param prev_control_params:
-        :return:
-        """
-        # TODO: Make the prev_control_params a moving average of the data points.
-        # Generate all possible combinations of control parameters.
-        control_param_combinations = control_param_comb(self.historical_data,
-                                                        self.control_params_list,
-                                                        self.include_control,
-                                                        num=num)
-        combinations = {key: None for key in self.control_params_list}
+    # Update the control parameters if any are overridden
+    for key, value in fixed_cp.items():
+        if not np.isnan(value):
+            df_feat_vec.at[df_feat_vec.index[TIME_IDX], key] = value
 
-        # Make a dictionary of the "control params" combinations, keys as "parameter names" and values as combinations.
-        # Ex: {"Sinter_usage": [60,62,...]..}.
-        for i, key in enumerate(self.control_params_list):
-            combinations[key] = [control_param_combinations[j][i] for j in range(len(control_param_combinations))]
-        # Create an index key to the dictionary. This will be the index for dataframe
-        combinations["index"] = [j for j in range(len(control_param_combinations))]
+    # Load scaler for the target output
+    scaler_path = config_vsense['Optimisation'][optimisation_type]['scaling']
+    scaler = load_scaler(scaler_path)
+    feature_names = df_feat_vec.columns.tolist()
 
-        # Convert the top_combinations into a dataframe.
-        df_comb = pd.DataFrame.from_dict(combinations).set_index("index")
+    # Bounds
+    bounds = get_control_bounds(df, free_cp, q_low=0.01, q_high=0.99)
 
-        # Similarly, create a dataframe for the user specified "input params". Note they are only one point vector.
-        df = pd.DataFrame(input_params, index=[0])
-        # Repeat the input params as many times as size of "control_params" combinations. Merge "input" & "control" dfs.
-        df_input_params = df.loc[df.index.repeat(len(df_comb.index))].reset_index(drop=True)
-        df_params = pd.concat([df_input_params, df_comb], axis=1)
-        df_params = df_params[input_params]
+    result = differential_evolution(
+        func=objective,
+        bounds=bounds,
+        args=(df_feat_vec, 
+              fixed_cp, 
+              models[target_output], 
+              control_params, 
+              lambda_reg, 
+              TIME_IDX, 
+              scaler,
+              feature_names
+              ),
+        strategy='best1bin',
+        popsize=5,
+        tol=0.01,
+        maxiter=10
+    )
 
-        if df_params.columns.tolist() != self.feature_columns:
-            raise Exception(f'DF column names {df_params.columns }\n dont match model requirements '
-                            f'{self.feature_columns}')
-        # Predict the efficiency by supplying the "full" (input + control) params to the model
-        efficiency = self.model.predict(df_params)
+    optimal_free_cp = dict(zip(free_cp, result.x))
+    optimal_cp = {**fixed_cp, **optimal_free_cp}
 
-        # Create a copy of the params dataframe and add a column "Efficiency" and attach the values.
-        df_result = df_params.copy()
-        df_result["Efficiency"] = efficiency
-        df_result = df_result.sort_values(by="Efficiency", ascending=False)
-        df_top_5 = df_result.head(10)
+    # Build the feature vector for prediction using the optimal control parameters
+    row = df_feat_vec.iloc[TIME_IDX].copy()
+    for key, value in optimal_cp.items():
+        row[key] = value
+    scaled_features = scale_features(scaler, row, feature_names).reshape(1,-1)
+    y_pred_scaled = models[target_output].predict(scaled_features)[0]
+    y_pred = inverse_transform_output(scaler, y_pred_scaled, target_output)
+    optimal_cp[target_output] = y_pred
 
-        # Find the Euclidean distance of each full param combination to the previous operating point
-        if prev_control_params:
-            prev_vector = np.array(prev_control_params)
-            col_temp = df_top_5[self.control_params_list].apply(lambda row: np.linalg.norm(row - prev_vector), axis=1)
-            df_top_5["Distance to prev"] = col_temp
+    # Predict impact on other outputs
+    for output, impact_model in models.items():
+        if output == target_output:
+            continue
+        df_local = df.copy()
+        # Remove all lagged feature vectors of other impact_targets
+        for i, impact_target in enumerate(targets):
+            if impact_target != output:
+                df_local.drop(columns=[col for col in list(df_local.columns) if impact_target in col], inplace=True)
+        row = df_local.iloc[TIME_IDX].copy()
+        for key, value in optimal_cp.items():
+            row[key] = value
+        for i, key in enumerate(config_vsense['Optimisation'].keys()):
+            if config_vsense['Optimisation'][key]['output_param'] == output:
+                impact_scaler_path = config_vsense['Optimisation'][key]['scaling']
+        impact_scaler = load_scaler(impact_scaler_path)
+        feature_names = df_local.columns.tolist()
+        impact_scaled_features = scale_features(impact_scaler, row, feature_names).reshape(1,-1)
+        y_pred_scaled = impact_model.predict(impact_scaled_features)[0]
+        y_pred = inverse_transform_output(impact_scaler, y_pred_scaled, output)
+        optimal_cp[output] = y_pred
 
-        # Return the top combinations as a DataFrame
-        df_top_5 = df_top_5.sort_values(by="Distance to prev", ascending=True)
-        return df_top_5, efficiency[-1]
+    return optimal_cp
 
-
-# Example usage:
-if __name__ == "__main__":
-    df = pd.DataFrame(data={"Param 1": [1, 5, 3, 2],
-                            "Param 2": [-3, 4, 2, 8],
-                            "Param 3": [-2, 35, 34, 68],
-                            "Param 4": [745, 22, 45, 84]})
-    control_pars = ["Param 1", "Param 2", "Param 4"]
-    include_control = {"Param 1": np.nan, "Param 2": -3, "Param 4": np.nan}
-    comb = control_param_comb(df, control_pars,include_control, num=5)
-    top_comb = {key: None for key in control_pars}
-    for i, key in enumerate(control_pars):
-        top_comb[key] = [comb[j][i] for j in range(len(comb))]
-    top_comb["index"] = [i for i in range(len(comb))]
-    df_top = pd.DataFrame.from_dict(top_comb)
-    df_top = df_top.set_index("index")
-    effi = []
-    for i in range(len(comb)):
-        effi.append(np.random.rand())
-    df_top["Efficiency"] = effi
-    df_top = df_top.sort_values(by="Efficiency", ascending=False)
-
-    # Return the top 5 combinations as a DataFrame
-    df_top_five = df_top.head(5)
-    print("Range")
-    # historical_data_path = "historical_data.csv"  # Replace with your data file
-    # optimizer = Optimizer(historical_data_path)
-    # input_params = {"Input_Param1": 0.5, "Input_Param2": 0.3}  # Get input parameters from Streamlit
-    # top_combinations = optimizer.optimize(input_params)
-    # print(top_combinations)
+def debug_callback(xc_trial: np.ndarray, convergence: bool) -> None:
+    """
+    Debug callback function to print the current trial values.
+    
+    Args:
+        xc_trial (np.ndarray): Current trial values of control parameters.
+        convergence (bool): Whether the optimization has converged.
+    """
+    print(f"Current trial values: {xc_trial}, Convergence: {convergence}")

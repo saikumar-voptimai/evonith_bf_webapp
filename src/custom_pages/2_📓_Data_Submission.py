@@ -1,20 +1,14 @@
 import streamlit as st
 import pandas as pd
-
 import seaborn as sns
 import plotly.express as px
-
 import os
-import certifi
-
 import pytz
 
 from pathlib import Path
 from data_fetchers.base_data_fetcher import BaseDataFetcher
-from influxdb_client_3 import InfluxDBClient3, flight_client_options
 from src.config.config_loader import load_config
-from datetime import datetime, timedelta, timezone, time
-from io import BytesIO
+from datetime import timedelta
 from dotenv import load_dotenv
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
@@ -42,11 +36,11 @@ with st.expander("How to Use DataWalker", expanded=False):
 st.subheader("Distribution plots")
 cols = st.columns(2)
 with cols[0]:
-    input_params = [item for sublist in config['coke_rate_opt']['input_params'].values() for item in sublist]
+    input_params = [item for sublist in config['Optimisation']['input_params'].values() for item in sublist]
     x = st.selectbox("Select X feature", input_params)
 
 with cols[1]:
-    output_params = config['coke_rate_opt']['output_params']
+    output_params = config['Optimisation']['output_params']
     y = st.selectbox("Select Y feature", output_params)
 plot = sns.regplot(data=df, 
                   x=x, 
@@ -99,15 +93,6 @@ FIELD_LABELS = {
     for human_label, internal_key in mapping.items()
 }
 
-# InfluxDB connection settings
-host = "https://eu-central-1-1.aws.cloud2.influxdata.com"
-org = "Blast Furnace, Evonith"
-database = "bf2_evonith_raw"
-token = os.getenv("INFLUX_TOKEN", "")
-
-with open(certifi.where(), "r") as f:
-    cert = f.read()
-
 TIME_OPTIONS = {
     "last 1 minute": timedelta(minutes=1),
     "last 5 minutes": timedelta(minutes=5),
@@ -156,68 +141,60 @@ def average_data(df, freq):
 
 # --- Streamlit UI ---
 st.title("📊 BF2 Data Downloader")
-
 if "measurements" not in st.session_state:
-    st.session_state.measurements = []
+    st.session_state.measurements = list(MEASUREMENT_LABELS.keys())
 if "selected_measurements" not in st.session_state:
-    st.session_state.selected_measurements = set()
+    st.session_state.selected_measurements = set(st.session_state.measurements)
 if "avg_mode" not in st.session_state:
-    st.session_state.avg_mode = False
+    st.session_state.avg_mode = True
 if "select_all" not in st.session_state:
-    st.session_state.select_all = False
+    st.session_state.select_all = True
 
-if st.session_state.measurements:
-    st.subheader("Select Measurements")
-    col1, col2 = st.columns(2)
+st.subheader("Select Measurements")
+col1, col2 = st.columns(2)
 
-    with col1:
-        st.toggle("Select All", key="select_all", value=True)
-        if st.session_state.select_all:
-            st.session_state.selected_measurements = set(st.session_state.measurements)
+with col1:
+    select_all = st.toggle("Select All", key="select_all", value=st.session_state.select_all)
+    if select_all:
+        st.session_state.selected_measurements = set(st.session_state.measurements)
+    else:
+        # Don't clear, just allow manual unchecking below
+        pass
+
+cols = st.columns(4)
+for i, meas in enumerate(st.session_state.measurements):
+    col = cols[i % 4]
+    label = MEASUREMENT_LABELS.get(meas, meas)
+    with col:
+        checked = st.checkbox(label, value=meas in st.session_state.selected_measurements, key=meas)
+        if checked:
+            st.session_state.selected_measurements.add(meas)
         else:
-            st.session_state.selected_measurements = set()
-
-    cols = st.columns(4)
-    for i, meas in enumerate(st.session_state.measurements):
-        col = cols[i % 4]  # Rotate across 4 columns
-        label = MEASUREMENT_LABELS.get(meas, meas)
-        with col:
-            if st.checkbox(label, value=meas in st.session_state.selected_measurements, key=meas):
-                st.session_state.selected_measurements.add(meas)
-            else:
-                st.session_state.selected_measurements.discard(meas)
-
+            st.session_state.selected_measurements.discard(meas)
 
 if st.session_state.selected_measurements:
     col1, col2 = st.columns(2)
-
     with col1:
-        time_range = st.selectbox("Select Time Range:", list(TIME_OPTIONS.keys())).lower()
+        time_range = st.selectbox("Select Time Range:", list(TIME_OPTIONS.keys()), index=list(TIME_OPTIONS.keys()).index("last 1 hour")).lower()
     with col2:
-        average_range = st.selectbox("Select Any Averaging Window:", list(FREQUENCY_TO_TIMEDTA.keys())).lower()
+        average_range = st.selectbox("Select Any Averaging Window:", list(FREQUENCY_TO_TIMEDTA.keys()), index=list(FREQUENCY_TO_TIMEDTA.keys()).index("1 hour")).lower()
 
-    # 2) on button click: fetch, rename & merge in one pass
     if st.button("⬇️ Show CSV File ", key="download_combined_csv"):
         combined_df = pd.DataFrame()
-
         for meas in st.session_state.selected_measurements:
-            # fetch raw (or averaged) data
             df = datafetchers[meas].fetch_averaged_data(average_by=time_range)
             if df.empty:
                 continue
+            # Always resample to 1 hour unless user changes it
             if FREQUENCY_TO_TIMEDTA[average_range] is not None:
                 df = average_data(df, FREQUENCY_TO_TIMEDTA[average_range])
-
-            # rename cols using FIELD_LABELS + MEASUREMENT_LABELS
+            else:
+                df = average_data(df, "1h")
             df = df.rename(columns={
                 col: f"{MEASUREMENT_LABELS.get(meas, meas)} - {FIELD_LABELS.get(col, col)}"
                 for col in df.columns if col != "time"
             })
-
-            # merge into master
             combined_df = df if combined_df.empty else combined_df.merge(df, on="time", how="outer")
-
-        # 3) build filename
         prefix = "avg_" if (st.session_state.avg_mode and FREQUENCY_TO_TIMEDTA[average_range]) else "raw_"
         all_sel = st.session_state.selected_measurements
         sheet_part = (
@@ -226,8 +203,6 @@ if st.session_state.selected_measurements:
             else "_".join(sorted(all_sel)).replace(" ", "_")
         )
         file_name = f"{prefix}data_{sheet_part}_{time_range.replace(' ', '_')}.csv"
-
-        # 4) show & download
         if not combined_df.empty:
             combined_df = combined_df.sort_values("time").reset_index(drop=True)
             combined_df.index += 1

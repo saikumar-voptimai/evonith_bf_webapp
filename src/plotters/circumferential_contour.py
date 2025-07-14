@@ -89,13 +89,12 @@ class CircumferentialPlotter(BasePlotter):
         Returns:
             fig (plotly.graph_objs.Figure): Plotly figure object with the circumferential quadrants.
         """
-        resolution = 360
+        resolution = 36
+        HORIZ_PLOTS = 5
         theta_interp = np.linspace(0, 360, resolution)
         circle_theta = np.linspace(0, 2*np.pi, 361)
 
         # Interpolate all values and find global color scale range
-        all_interp_vals = []
-        field_exact_values_list = []
         unshifted_fixed_angles = [0, 90, 180, 270]
         fixed_angles = [45, 135, 225, 315]  # Fixed angles for quadrants
         field_values_list = [item[0] for item in field_values_fulllist] # Extract field values for each row
@@ -116,7 +115,12 @@ class CircumferentialPlotter(BasePlotter):
         vmin, vmax = all_vals.min(), all_vals.max()
 
         # Create subplots
-        fig = make_subplots(rows=1, cols=len(field_values_fulllist), horizontal_spacing=0.05)
+        rows = int(np.ceil(len(field_values_fulllist) / HORIZ_PLOTS))
+        cols = min(len(field_values_fulllist), HORIZ_PLOTS)
+        fig = make_subplots(rows=rows,
+                            cols=cols, 
+                            horizontal_spacing=0.05,
+                            vertical_spacing=0.02)
         for idx, (field_values, 
                   fieldmax_values, 
                   fieldmin_values) in enumerate(zip(field_values_list, field_values_maxlist, field_values_minlist)):
@@ -206,7 +210,6 @@ class CircumferentialPlotter(BasePlotter):
                     xref=f"x{idx+1}", yref="y"
                 )
 
-
             # Add subplot title
             fig.add_annotation(
                 text=titles[idx],
@@ -219,7 +222,14 @@ class CircumferentialPlotter(BasePlotter):
                 showarrow=False
             )
 
-        # Add shared colorbar using dummy scatter
+        # Layout cleanup
+        fig.update_layout(
+            height=400,
+            margin=dict(t=80, b=100, l=20, r=20),
+            # plot_bgcolor='white',
+            showlegend=False
+        )
+
         fig.add_trace(go.Scatter(
             x=[None], y=[None],
             mode='markers',
@@ -241,19 +251,13 @@ class CircumferentialPlotter(BasePlotter):
             ),
             showlegend=False
         ))
-
-        # Layout cleanup
-        fig.update_layout(
-            height=400,
-            margin=dict(t=80, b=100, l=20, r=20),
-            # plot_bgcolor='white',
-            showlegend=False
-        )
         x_range = [-r_outer * 1, r_outer * 1]
         y_range = [-r_outer * 1, r_outer * 1]
         for i in range(len(field_values_list)):
-            fig.update_xaxes(visible=False, range=x_range, scaleanchor=f"y{i+1}",  row=1, col=i+1)
-            fig.update_yaxes(visible=False, range=y_range, row=1, col=i+1)
+            row = (i // HORIZ_PLOTS) + 1
+            col = (i % HORIZ_PLOTS) + 1
+            fig.update_xaxes(visible=False, range=x_range, scaleanchor=f"y{i+1}",  row=row, col=col)
+            fig.update_yaxes(visible=False, range=y_range, row=row, col=col)
 
         return fig
 
