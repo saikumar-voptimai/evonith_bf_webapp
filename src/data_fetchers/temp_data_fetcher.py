@@ -1,7 +1,7 @@
 import numpy as np
 from .base_data_fetcher import BaseDataFetcher
 from typing import List
-from config.loader import load_config
+from src.config.config_loader import load_config
 
 config = load_config()
 

@@ -1,4 +1,3 @@
-import plotly.express as px
 import pytz
 import streamlit as st
 from datetime import datetime, timedelta
@@ -9,8 +8,6 @@ from data_fetchers.average_heatload_data_fetcher import AverageHeatLoadDataFetch
 from plotters.circumferential_contour import CircumferentialPlotter
 from plotters.longitudinal_temp_contour import LongitudinalTemperaturePlotter
 
-from plotly.subplots import make_subplots
-import plotly.colors
 import plotly.graph_objs as go
 
 TIMEZONE = pytz.timezone('Asia/Kolkata')  # GMT+5:30

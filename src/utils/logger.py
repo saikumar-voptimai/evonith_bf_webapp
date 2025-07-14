@@ -3,7 +3,7 @@ import logging.config
 import yaml
 import os
 
-def setup_logger(config_path: str = "src/config/logger_setting.yaml"):
+def setup_logger(config_path: str = "src/config/logger_setting.yml"):
     """
     Setup logger using the provided YAML configuration file.
     

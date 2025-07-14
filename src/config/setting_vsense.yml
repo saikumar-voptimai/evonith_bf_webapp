@@ -1,0 +1,27 @@
+# File PARAMS
+IMG_VOPTIMAI: "images/VOPTIMAI.png"
+IMG_HOSPET: "images/HOSPET.jpeg"
+IMG_MBF: "images/MBF.jpg"
+
+DATA: "data/data.pkl"
+Optimisation:
+  Coke Rate:
+    model: "src/models/coke_rate_opt.pkl"
+    output_param: "Coke Rate Kg/Thm"
+    scaling: "src/models/coke_rate_scaler.pkl"
+  Eta CO:
+    model: "src/models/eta_co_opt.pkl"
+    output_param: "FurnaceTopGasAnalysisCO2ETACO"
+    scaling: "src/models/eta_co_scaler.pkl"
+  Production Rate:
+    model: "src/models/prod_rate_opt.pkl"
+    output_param: "ProductionTonnesPerHr"
+    scaling: "src/models/prod_rate_scaler.pkl"
+  Fuel Rate:
+    model: "src/models/fuel_rate_opt.pkl"
+    output_param: "Act. Fuel RateKg/Thm."
+    scaling: "src/models/fuel_rate_scaler.pkl"
+
+LAGS: 3
+OPTIM_STEPS: 3
+LAMBDA_REG: 0.005

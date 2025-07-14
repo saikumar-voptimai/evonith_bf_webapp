@@ -11,8 +11,7 @@ import json
 import xml.etree.ElementTree as ET
 from influxdb_client_3 import InfluxDBClient3, flight_client_options
 import certifi
-from config.loader import load_config
-from .database import get_influx_client
+from src.config.config_loader import load_config
 
 fh = open(certifi.where(), "r")
 cert = fh.read()
@@ -81,7 +80,6 @@ class BaseDataFetcher:
         self.debug = debug
         self.source = source.strip().lower()
         self.timezone = pytz.timezone('Asia/Kolkata')  # GMT+5:30
-        self.client = get_influx_client()
         self.variable_tag = variable_tag
         self.variables = config["data_tags"].get(variable_tag, [])
         self.api_url = config["website_vars"].get("api_url", "")

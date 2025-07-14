@@ -1,9 +1,8 @@
 from .temp_data_fetcher import TemperatureDataFetcher
-from pathlib import Path
 from typing import List, Dict
 import numpy as np
 import pandas as pd
-from config.loader import load_config
+from src.config.config_loader import load_config
 import logging
 
 # Initialize logging
