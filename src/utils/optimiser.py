@@ -52,7 +52,6 @@ def objective(
     scaled_xc_t_ordered = scale_features(scaler, row_cp, control_params)[0]
     scaled_prev_params = scale_features(scaler, prev_row_cp, control_params)[0]
     penalty = np.sum((scaled_xc_t_ordered - scaled_prev_params) ** 2)
-    print(y_pred_scaled)
     return y_pred_scaled + lambda_reg * penalty
 
 def run_optimiser(

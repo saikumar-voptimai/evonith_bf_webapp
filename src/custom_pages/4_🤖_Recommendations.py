@@ -112,7 +112,7 @@ with cols[0]:
         min_value=0.0, 
         max_value=0.5, 
         value=config_vsense['LAMBDA_REG'],
-        step=0.01,
+        step=0.05,
         help="Regularisation parameter for the optimisation algorithm."
     )
 # Every form must have a submit button.
