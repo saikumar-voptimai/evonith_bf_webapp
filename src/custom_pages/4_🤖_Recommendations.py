@@ -5,7 +5,7 @@ import joblib
 from utils import optimiser, recommendations
 from datetime import datetime
 from pathlib import Path
-from src.config.config_loader import load_config
+from config.config_loader import load_config
 
 config = load_config()
 config_vsense = load_config('setting_vsense.yml')
@@ -112,7 +112,7 @@ with cols[0]:
         min_value=0.0, 
         max_value=0.5, 
         value=config_vsense['LAMBDA_REG'],
-        step=0.01,
+        step=0.05,
         help="Regularisation parameter for the optimisation algorithm."
     )
 # Every form must have a submit button.

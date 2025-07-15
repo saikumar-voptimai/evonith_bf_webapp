@@ -98,12 +98,17 @@ class LongitudinalTemperaturePlotter(BasePlotter):
 
         step = 100
         all_temps = np.concatenate(temperatures_list)
-        vmin = int(min(all_temps) // step) * step
-        vmax = int(max(all_temps) // step + 1) * step
+        min_val = min(all_temps) // step
+        max_val = max(all_temps) // step
+        
+        if np.isnan(min_val) or np.isnan(max_val):
+            # Probable data missing error
+            raise ValueError('Missing data in DB - Try different time range')
+        vmin = int(min_val) * step
+        vmax = int(max_val) * step
 
         fig = make_subplots(rows=1, cols=len(temperatures_list), shared_yaxes=True, 
                             horizontal_spacing=0.02, column_widths=[0.3, 0.22, 0.22, 0.22])
-        width = [100, 120, 140, 140]
         # Iterate over each quadrant's temperatures
         for idx, (temperatures, temperatures_max, temperatures_min) in enumerate(zip(temperatures_list, 
                                                                    temperatures_max_list,

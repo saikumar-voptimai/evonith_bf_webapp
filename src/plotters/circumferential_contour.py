@@ -1,12 +1,12 @@
 import numpy as np
 import pytz
 from .base_contour import BasePlotter
-from src.config.config_loader import load_config
+from config.config_loader import load_config
 from scipy.interpolate import CubicSpline, interp1d
 from plotly.subplots import make_subplots
 import plotly.graph_objs as go
 
-from typing import Dict, List
+from typing import Dict
 import plotly.colors as pc
 
 config = load_config()
@@ -248,8 +248,7 @@ class CircumferentialPlotter(BasePlotter):
                     orientation='h',
                 ),
                 showscale=True
-            ),
-            showlegend=False
+            )
         ))
         x_range = [-r_outer * 1, r_outer * 1]
         y_range = [-r_outer * 1, r_outer * 1]

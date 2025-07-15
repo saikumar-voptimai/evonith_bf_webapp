@@ -1,5 +1,5 @@
 from .ts_data_fetcher import TimeSeriesDataFetcher
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 import pandas as pd
 
