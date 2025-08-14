@@ -44,7 +44,9 @@ TIME_OPTIONS = {
     "last 3 days": timedelta(days=3),
     "last 1 week": timedelta(weeks=1),
     'last 2 weeks': timedelta(weeks=2),
-    'last 1 month': timedelta(days=30)
+    'last 1 month': timedelta(days=30),
+    'last 2 months': timedelta(days=60),
+    'last 3 months': timedelta(days=90),
 }
 
 FREQUENCY_TO_TIMEDTA = {
@@ -294,10 +296,10 @@ if select_all:
     st.session_state.selected_measurements = set(measurements)
     for meas in measurements:
         st.session_state[f"meas_{meas}"] = True
-else:
-    st.session_state.selected_measurements = set()
-    for meas in measurements:
-        st.session_state[f"meas_{meas}"] = False
+# else:
+#     st.session_state.selected_measurements = set()
+#     for meas in measurements:
+#         st.session_state[f"meas_{meas}"] = False
 
 with st.form(key="measurement_form"):
     col1, col2 = st.columns(2)

@@ -29,7 +29,9 @@ TIMEDELTAS = {
         'last 3 days': timedelta(days=3),
         'last 1 week': timedelta(weeks=1),
         'last 2 weeks': timedelta(weeks=2),
-        'last 1 month': timedelta(days=30)
+        'last 1 month': timedelta(days=30),
+        'last 2 months': timedelta(days=60),
+        'last 3 months': timedelta(days=90)
 }
 
 # Load configuration and environment variables
