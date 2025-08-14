@@ -24,4 +24,4 @@ Optimisation:
 
 LAGS: 3
 OPTIM_STEPS: 3
-LAMBDA_REG: 0.005
+LAMBDA_REG: 0.4

@@ -68,7 +68,13 @@ class BaseDataFetcher:
     Abstract base class for fetching raw data from InfluxDB.
     """
 
-    def __init__(self, variable_tag: str, debug: bool = False, source: str = "live"):
+    def __init__(self, variable_tag: str, 
+                 debug: bool = False, 
+                 source: str = "live",
+                 database: str = "bf2_evonith_raw",
+                 host: str = "https://eu-central-1-1.aws.cloud2.influxdata.com",
+                 org: str = "Blast Furnace, Evonith",
+                 token: str = "INFLUX_ONLINE_TOKEN"):
         """
         Initialize the BaseDataFetcher with InfluxDB credentials and configuration.
 
@@ -88,6 +94,11 @@ class BaseDataFetcher:
         self.measurement_type = self.variable_tag
         self.var_map = config["data_mapping"].get(self.measurement_type, {})
 
+        self.database = database
+        self.host = host
+        self.org = org
+
+        self.token = token
 
     def _check_and_handle_missing_vars(self, row: dict, context_method: str = "fetch_live_data"):
         """
@@ -207,11 +218,25 @@ class BaseDataFetcher:
             start_time = now - TIMEDELTAS[average_by_norm]
             end_time = now
         
-        database = config["influxdb"].get("database", "bf2_evonith_raw")
-        host = config["influxdb"].get("host", "https://eu-central-1-1.aws.cloud2.influxdata.com")
-        org = config["influxdb"].get("org", "Blast Furnace, Evonith")
-
-        token = os.environ.get("INFLUX_TOKEN", "")
+        if self.database != config["influxdb"].get("database", self.database):
+            database = self.database
+        else:
+            log.warning(f"Database {self.database} not found in config. Using default database.")
+            database = config["influxdb"].get("database", self.database)
+        
+        if self.host != config["influxdb"].get("host", self.host):
+            host = self.host
+        else:
+            log.warning(f"Host {self.host} not found in config.")
+            host = config["influxdb"].get("host", self.host)
+        
+        if self.org != config["influxdb"].get("org", self.org):
+            org = self.org
+        else:
+            log.warning(f"Org {self.org} not found in config. Using default database.")
+            org = config["influxdb"].get("org", self.org)
+        
+        token = os.environ.get(self.token, "")
         query = query_builder(self.measurement_type, start_time, end_time, type="ts")
         client = InfluxDBClient3(host=host,
                                 database=database,

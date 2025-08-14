@@ -1,42 +1,26 @@
-[ERROR   | base_data_fetcher           | L173] 2025-05-27T03:13:05+0530: Error parsing API response: API response missing expected variables <100.00%: ['Heat load R6 Q1 (Stave No  1-8)', 'Heat load R6 Q2(Stave No  9-16)', 'Heat load R6 Q3(Stave No  17-24)', 'Heat load R6 Q4(Stave No  25-32)', 'Heat load R7 Q1 (Stave No  1-8)', 'Heat load R7 Q2(Stave No  9-16)', 'Heat load R7 Q3 (Stave No  17-24)', 'Heat load R7 Q4(Stave No  25-32)', 'Heat load R8 Q1(Stave No  1-8)', 'Heat load R8 Q2(Stave No  9-16)', 'Heat load R8 Q3(Stave No  17-24)', 'Heat load R8 Q4(Stave No  25-32)', 'Heat load R9 Q1(Stave No  1-8)', 'Heat load R9 Q2(Stave No  9-16)', 'Heat load R9 Q3(Stave No  17-24)', 'Heat load R9 Q4(Stave No  25-32)', 'Heat load R10 Q1(Stave No  1-8)', 'Heat load R10 Q2(Stave No  9-16)', 'Heat load R10 Q3(Stave No  17-24)', 'Heat load R10 Q4(Stave No  25-32)'] | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T03:13:06+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T03:13:20+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T03:13:21+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T03:13:41+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T03:20:39+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:32:16+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[ERROR   | longitudinal_temperature_contour_data_fetcher           | L36] 2025-05-27T16:32:16+0530: More than 20% of values are NaN: 0 out of 0 | longitudinal_temperature_contour_data_fetcher.py
-[ERROR   | longitudinal_temperature_contour_data_fetcher           | L36] 2025-05-27T16:32:43+0530: More than 20% of values are NaN: 110 out of 110 | longitudinal_temperature_contour_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:33:05+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:33:05+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:33:06+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:33:46+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:34:26+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:41:18+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:42:08+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:44:17+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:44:43+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:46:25+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T16:49:11+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T17:44:21+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[ERROR   | longitudinal_temperature_contour_data_fetcher           | L36] 2025-05-27T17:44:21+0530: More than 20% of values are NaN: 0 out of 0 | longitudinal_temperature_contour_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T17:44:31+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T17:44:31+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T17:44:32+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T17:44:48+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:35:10+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[ERROR   | longitudinal_temperature_contour_data_fetcher           | L36] 2025-05-27T18:35:10+0530: More than 20% of values are NaN: 0 out of 0 | longitudinal_temperature_contour_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:35:47+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:35:48+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:35:49+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:36:34+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:36:35+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:36:36+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:37:27+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[ERROR   | longitudinal_temperature_contour_data_fetcher           | L36] 2025-05-27T18:37:29+0530: More than 20% of values are NaN: 110 out of 110 | longitudinal_temperature_contour_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:37:45+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:38:05+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:38:06+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T18:38:24+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[INFO   | base_data_fetcher           | L157] 2025-05-27T19:18:04+0530: Successfully fetched and parsed API data. | base_data_fetcher.py
-[ERROR   | longitudinal_temperature_contour_data_fetcher           | L36] 2025-05-27T19:18:04+0530: More than 20% of values are NaN: 0 out of 0 | longitudinal_temperature_contour_data_fetcher.py
+[WARNING   | base_data_fetcher           | L230] 2025-08-14T10:11:33+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L236] 2025-08-14T10:11:33+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L224] 2025-08-14T10:11:34+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L230] 2025-08-14T10:11:34+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L236] 2025-08-14T10:11:34+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L224] 2025-08-14T10:12:25+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L230] 2025-08-14T10:12:25+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L236] 2025-08-14T10:12:25+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L224] 2025-08-14T10:13:44+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L230] 2025-08-14T10:13:44+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L236] 2025-08-14T10:13:44+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L224] 2025-08-14T10:13:45+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L230] 2025-08-14T10:13:45+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L236] 2025-08-14T10:13:45+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L224] 2025-08-14T10:13:45+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L230] 2025-08-14T10:13:45+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L236] 2025-08-14T10:13:45+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L224] 2025-08-14T10:13:46+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L230] 2025-08-14T10:13:46+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L236] 2025-08-14T10:13:46+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L224] 2025-08-14T10:13:46+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L230] 2025-08-14T10:13:46+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L236] 2025-08-14T10:13:46+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L224] 2025-08-14T10:13:47+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L230] 2025-08-14T10:13:47+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L236] 2025-08-14T10:13:47+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py

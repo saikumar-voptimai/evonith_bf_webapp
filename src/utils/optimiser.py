@@ -17,7 +17,9 @@ def objective(
     time_idx: int,
     scaler,
     feature_names: List[str],
-    optimisation_type: str
+    optimisation_type: str,
+    free_cp: List[str],
+    scaled_prev_params: np.ndarray,
 ) -> float:
     """
     Objective function combining the predicted target output and a penalty term
@@ -34,24 +36,27 @@ def objective(
         scaler: Fitted scaler for features.
         feature_names: List of feature names in correct order.
         optimisation_type (str): Type of optimization (e.g., Coke Rate, Fuel Rate).
+        free_cp (List[str]): Names of control params being optimized (precomputed).
+        scaled_prev_params (np.ndarray): Scaled previous control parameters for penalty (precomputed).
     Returns:
         float: Combined objective value (predicted output + penalty).
     """
-    free_cp = [cp for cp in control_params if cp not in fixed_cp]
     row = df_feat_vec.iloc[time_idx].copy()
     for idx, cp in enumerate(free_cp):
         row[cp] = xc_trial[idx]
-    # Scale feature vector
-    scaled_features = scale_features(scaler, row, feature_names).reshape(1,-1)
-    # Predict in scaled space
+
+    # Scale feature vector for prediction
+    scaled_features = scale_features(scaler, row, feature_names).reshape(1, -1)
+
+    # Predict in scaled space; flip sign for maximisation types
     max_min = -1 if 'Eta CO' in optimisation_type else 1
     y_pred_scaled = model.predict(scaled_features)[0] * max_min
-    # Scale control parameters for penalty
+
+    # Penalty on scaled control parameters deviation from previous
     row_cp = row[control_params]
-    prev_row_cp = df_feat_vec.iloc[-1][control_params]
-    scaled_xc_t_ordered = scale_features(scaler, row_cp, control_params)[0]
-    scaled_prev_params = scale_features(scaler, prev_row_cp, control_params)[0]
+    scaled_xc_t_ordered = scale_features(scaler, row_cp, control_params)
     penalty = np.sum((scaled_xc_t_ordered - scaled_prev_params) ** 2)
+
     return y_pred_scaled + lambda_reg * penalty
 
 def run_optimiser(
@@ -109,6 +114,10 @@ def run_optimiser(
     # Bounds
     bounds = get_control_bounds(df, free_cp, q_low=0.01, q_high=0.99)
 
+    # Precompute scaled previous control params for penalty term
+    prev_row_cp = df_feat_vec.iloc[-1][control_params]
+    scaled_prev_params = scale_features(scaler, prev_row_cp, control_params)
+
     result = differential_evolution(
         func=objective,
         bounds=bounds,
@@ -120,7 +129,9 @@ def run_optimiser(
               TIME_IDX, 
               scaler,
               feature_names,
-              optimisation_type
+              optimisation_type,
+              free_cp,
+              scaled_prev_params,
               ),
         strategy='best1bin',
         popsize=5,

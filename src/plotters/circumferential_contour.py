@@ -43,6 +43,7 @@ def interpolate_fields(theta_grid, angles, field_values) -> Dict[int, float]:
         ndarray: Interpolated field values along the theta_grid.
     """
     # Create the CubicSpline interpolator with natural boundary conditions
+    field_values = np.nan_to_num(np.array(field_values), nan=0.0)
     cs = CubicSpline(angles, field_values, bc_type='periodic')
 
     # Interpolate the values at the desired theta grid points
@@ -273,4 +274,3 @@ class CircumferentialPlotter(BasePlotter):
         return np.concatenate(([0.5 * (field_values[0] + field_values[-1])], 
                                 field_values, 
                                 [0.5 * (field_values[0] + field_values[-1])]))
-

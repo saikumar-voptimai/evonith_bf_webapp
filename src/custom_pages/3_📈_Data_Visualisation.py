@@ -178,38 +178,55 @@ st.plotly_chart(fig, use_container_width=True)
 st.title("Heat Load Data - Timeseries")
 # -------------------------------------------------------------------------------------------------------
 # 4. Timeseries Heatload plot
-# Initialize the data fetcher
 data_fetcher = TimeSeriesHeatLoadDataFetcher(debug=False, source="historical", request_type="ts")
 # Dropdown for selecting Row
 row = st.selectbox("Select Row", ["R6", "R7", "R8", "R9", "R10"])
 
 # Fetch and process data for all quadrants
-df = data_fetcher.fetch_data(time_interval=time_interval_4, start_time=start_time, end_time=end_time, row=row) # random_data=True
+df = data_fetcher.fetch_data(time_interval=time_interval_4, start_time=start_time, end_time=end_time, row=row)
 
-layout = dict(
-    hoversubplots="axis",
-    title=dict(text="Time Series Heat Load Data", x=0.5, xanchor="center"),
-    hovermode="x",
-    grid=dict(rows=4, columns=1),
-)
+df.sort_index(inplace=True)
 
 data = [
-    go.Scatter(x=df.index, y=df[f"Heat load {row} Q1"], xaxis="x", yaxis="y", name=f"{row} Q1"),
+    go.Scatter(x=df.index, 
+               y=df[f"Heat load {row} Q1"], 
+               xaxis="x", 
+               yaxis="y", 
+               name=f"{row} Q1"
+    ),
     go.Scatter(x=df.index, y=df[f"Heat load {row} Q2"], xaxis="x", yaxis="y2", name=f"{row} Q2"),
     go.Scatter(x=df.index, y=df[f"Heat load {row} Q3"], xaxis="x", yaxis="y3", name=f"{row} Q3"),
     go.Scatter(x=df.index, y=df[f"Heat load {row} Q4"], xaxis="x", yaxis="y4", name=f"{row} Q4"),
 ]
 
-fig = go.Figure(data=data, layout=layout)
+layout = go.Layout(
+    title="Heat Load Over Time",
+    xaxis=dict(title="Time"),
+    yaxis=dict(
+        title="", 
+        range=[0, 1]
+    ),
+    yaxis2=dict(
+        title="", 
+        range=[0, 1],  # Set the range for the second y-axis
+        overlaying="y",  # Make it overlay the primary y-axis
+        side="right",    # Place it on the right side of the plot
+    ),
+    yaxis3=dict(
+        title="", 
+        range=[0, 1],  # Set the range for the third y-axis
+        overlaying="y",  # Overlay the primary y-axis
+        side="left",     # Place it on the left side of the plot
+    ),
+    yaxis4=dict(
+        title="", 
+        range=[0, 1],  # Set the range for the fourth y-axis
+        overlaying="y",  # Overlay the primary y-axis
+        side="right",    # Place it on the right side of the plot
+    ),
+)
 
-# fig.show()
-# # Plot the data
-# fig = px.line(
-#     df,
-#     x=df.index,
-#     y=df.columns,
-#     title=f"Heat Load for {row} - Moving Average over 10 minutes",
-# )
+fig = go.Figure(data=data, layout=layout)
 
 # Display the plot
 st.plotly_chart(fig, use_container_width=True)
