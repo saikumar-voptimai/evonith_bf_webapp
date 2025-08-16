@@ -8,7 +8,7 @@ website_vars:
   api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
   email_missing_vars: "True"
 
-DATA: "src/data/df_filtered.csv"
+DATA: "src/data/V3_df_filtered.csv"
 
 
 # Geometries

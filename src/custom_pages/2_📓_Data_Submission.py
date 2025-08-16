@@ -14,7 +14,6 @@ from utils.helper_functions_submission import data_retrieval as dr
 from config.config_loader import load_config
 from datetime import timedelta
 from dotenv import load_dotenv
-from typing import List
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 
