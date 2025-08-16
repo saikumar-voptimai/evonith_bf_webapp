@@ -138,24 +138,31 @@ if st.button("Run Optimiser"):
 
     st.subheader("Optimisation Results")
     # Show metrics for each control parameter and the target output
+    not_needed_list = ['TuyereVelocitym/s', 'Total OxygenNm3/Hr.', 'TopPressureBar']
     cols = st.columns(4)
     for i, (key, new_val) in enumerate(optimal_solution.items()):
-        with cols[i % 4]:
-            if key in df_data.columns and key != target_output and key not in outputs:
+        if key in df_data.columns and key != target_output and key not in outputs and key not in not_needed_list:
+            with cols[i % 4]:
                 old_val = df_data[key].iloc[TIME_IDX]
                 delta = new_val - old_val
-                st.metric(label=key, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
+                if abs(delta)/abs(old_val) >= 0.01:  # Only show significant changes
+                    st.metric(label=key, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
+                if abs(delta)/abs(old_val) < 0.01:  # Only show significant changes
+                    st.metric(label=key, value=f"{old_val:.2f}", delta=f"{0:+.2f}")
 
-    st.metric(label=target_output, 
-              value=f"{optimal_solution[target_output]:.2f}", 
-              delta=f"{optimal_solution[target_output] - df_data[target_output].iloc[TIME_IDX]:+.2f}",
-              delta_color="inverse")
+    if (optimal_solution[target_output] - df_data[target_output].iloc[TIME_IDX]) > 0:
+        st.write('Already operating at optimal level.')
+    else:
+        st.metric(label=target_output, 
+                value=f"{optimal_solution[target_output]:.2f}", 
+                delta=f"{optimal_solution[target_output] - df_data[target_output].iloc[TIME_IDX]:+.2f}",
+                delta_color="inverse")
     
-    cols = st.columns(3)
-    for i, (key, new_val) in enumerate(optimal_solution.items()):
-        with cols[i % 3]:
-            if key in outputs and key != target_output:
-                old_val = df_data[key].iloc[TIME_IDX]
-                delta = new_val - old_val
-                st.metric(label=key, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
-    
+        cols = st.columns(3)
+        for i, (key, new_val) in enumerate(optimal_solution.items()):
+            with cols[i % 3]:
+                if key in outputs and key != target_output:
+                    old_val = df_data[key].iloc[TIME_IDX]
+                    delta = new_val - old_val
+                    st.metric(label=key, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
+        
