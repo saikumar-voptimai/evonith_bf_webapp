@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import joblib
 from typing import List, Dict, Any
+from data_fetchers.base_data_fetcher import BaseDataFetcher
 
 def build_feature_vector(df: pd.DataFrame,
                          user_input: Dict[str, Any],
@@ -148,3 +149,40 @@ def inverse_transform_output(scaler, y_scaled, output_name):
     else:
         # Fallback for single-output scaler
         return scaler.inverse_transform(np.array([[y_scaled]]))[0, 0]
+    
+def fetch_live_data(cp_op_ml_dict: Dict[str, Any], paths_set: List[str]) -> pd.DataFrame:
+    """
+    """
+    now = pd.Timestamp.utcnow()
+    this_hour = now.replace(minute=0, second=0, microsecond=0)
+    one_hour_ago = this_hour - pd.Timedelta(hours=1)
+
+    values_needed = {list(cp_op_ml_dict.values())[i]['InfluxName']:list(cp_op_ml_dict.keys())[i] for i in range(len(cp_op_ml_dict))}
+    buck_meas = {}
+    for bucketpath in paths_set:
+        bucket = bucketpath.split('/')[0]
+        if bucket not in buck_meas:
+            buck_meas[bucket] = []
+        for measpath in paths_set:
+            measurement = measpath.split('/')[1]
+            if measurement not in buck_meas[bucket]:
+                buck_meas[bucket].append(measurement)
+
+    combined_df = pd.DataFrame()
+    for bucket, selected_measurements in buck_meas.items():
+        for meas in selected_measurements:
+            datafetcher = BaseDataFetcher(meas, database=bucket)
+            df_meas = datafetcher.fetch_averaged_data(average_by='over selected range',
+                                            start_time=one_hour_ago,
+                                            end_time=this_hour)
+            
+            df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
+            df_meas.set_index('time', inplace=True)
+            
+            combined_df = df_meas if combined_df.empty else combined_df.join(df_meas, how='outer')
+    
+    hourly_avg = combined_df.resample('1h').mean()
+    hourly_avg.index = hourly_avg.index + pd.Timedelta(hours=1)  # Shift index to the end of the hour
+    hourly_avg = hourly_avg.rename(columns=values_needed)
+
+    return hourly_avg

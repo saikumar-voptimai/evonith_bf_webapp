@@ -7,7 +7,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import pytz
-from pygwalker.api.streamlit import StreamlitRenderer
 from pathlib import Path
 from data_fetchers.base_data_fetcher import BaseDataFetcher
 from utils.helper_functions_submission import data_retrieval as dr
@@ -87,8 +86,11 @@ with cols[2]:
     x_p = st.selectbox("Select X feature", all_params)
 
 with cols[3]:
-    output_params = config['Optimisation']['output_params']
-    control_params = config['Optimisation']['control_params']['Actual']
+    cp_dict_vals = config['Optimisation']['control_params']['Actual'].values()
+    control_params = [list(cp_dict_vals)[i]['NameInMLData'] for i in range(len(cp_dict_vals))]
+
+    op_dict_vals = config['Optimisation']['output_params'].values()
+    output_params = [list(op_dict_vals)[i]['NameInMLData'] for i in range(len(op_dict_vals))]
 
     y_p = st.selectbox("Select Y feature", output_params+['Unit Cost']+control_params)
 
@@ -283,7 +285,9 @@ if "select_all" not in st.session_state:
 if "time_range" not in st.session_state:
     st.session_state.time_range = "last 1 hour"
 if "average_range" not in st.session_state:
-    st.session_state.average_range = "None"
+    st.session_state.average_range = "1 hour"
+if "online_df" not in st.session_state:
+    st.session_state.online_df = None
 
 # Ensure per-measurement checkbox keys exist and follow select_all by default
 for meas in measurements:
@@ -295,10 +299,6 @@ if select_all:
     st.session_state.selected_measurements = set(measurements)
     for meas in measurements:
         st.session_state[f"meas_{meas}"] = True
-# else:
-#     st.session_state.selected_measurements = set()
-#     for meas in measurements:
-#         st.session_state[f"meas_{meas}"] = False
 
 with st.form(key="measurement_form"):
     col1, col2 = st.columns(2)
@@ -350,13 +350,23 @@ with st.form(key="measurement_form"):
                                              MEASUREMENT_LABELS,
                                              FIELD_LABELS)
 
-            # Display and allow download
-            if isinstance(combined_df, pd.DataFrame) and not combined_df.empty:
-                combined_df = combined_df.sort_index()
-                st.dataframe(combined_df)
+            # Persist for display/download after rerun
+            st.session_state.online_df = combined_df
 
-            else:
-                st.info("No data returned for the selected options.")
+# Display and allow download after the form (survives reruns)
+if isinstance(st.session_state.online_df, pd.DataFrame) and not st.session_state.online_df.empty:
+    df_show = st.session_state.online_df.sort_index()
+    st.dataframe(df_show)
+    csv_bytes = df_show.reset_index().to_csv(index=False).encode('utf-8')
+    ts_label = pd.Timestamp.utcnow().strftime('%Y%m%d_%H%M%SZ')
+    st.download_button(
+        label="Download CSV",
+        data=csv_bytes,
+        file_name=f"online_data_{ts_label}.csv",
+        mime="text/csv",
+    )
+else:
+    st.info("No data returned for the selected options.")
 
 
 # 8 --- UI Section for Offline Data ---
