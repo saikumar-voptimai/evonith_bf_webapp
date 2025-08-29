@@ -18,6 +18,16 @@ load_dotenv()
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 
+import streamlit as st
+import openai
+from openai import OpenAI
+client = OpenAI()
+
+st.write("openai version:", openai.__version__)
+st.write("openai module file:", getattr(openai, "__file__", "n/a"))
+st.write("Has client.responses?", hasattr(client, "responses"))
+st.write("Client attrs (trimmed):", [a for a in dir(client) if not a.startswith("_")][:20])
+
 
 # ────────────────────────────────────────────────────────────────────────────────
 # 0) CONFIG
