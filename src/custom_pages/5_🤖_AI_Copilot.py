@@ -418,9 +418,7 @@ Report everything as Markdown only.
 # ⚖️ Optimization for Unit Fuel Cost
 
 ### Definition
-\[
 \text{Fuel\_CostEq (kgCokeEq/thm)} = \text{Coke Rate} + 0.53 \times \text{PCI}
-\]  
 (Equivalently: \(0.47 \times \text{Coke} + 0.53 \times \text{Act. Fuel}\))
 
 ---
