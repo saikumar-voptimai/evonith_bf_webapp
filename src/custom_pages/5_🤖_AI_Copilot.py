@@ -418,8 +418,7 @@ Report everything as Markdown only.
 # ⚖️ Optimization for Unit Fuel Cost
 
 ### Definition
-\text{Fuel\_CostEq (kgCokeEq/thm)} = \text{Coke Rate} + 0.53 \times \text{PCI}
-(Equivalently: \(0.47 \times \text{Coke} + 0.53 \times \text{Act. Fuel}\))
+FuelCostEq (kgCokeEq/thm)} = Coke Rate + 0.53 * PCI
 
 ---
 
@@ -492,7 +491,7 @@ Report everything as Markdown only.
 
 # ✅ Action Checklist
 
-1. **Target PCI** where substitution ratio \(d\text{Coke}/d\text{PCI} \le -0.53\).  
+1. **Target PCI** where substitution ratio {d Coke}/{d PCI} <= -0.53).  
    (You are at −0.88 to −0.91 → PCI is cost-saving).  
 2. **Hold HB pressure high** (2.65–2.70 bar).  
 3. **Increase O₂ enrichment** (3.0–3.5 % if feasible).  

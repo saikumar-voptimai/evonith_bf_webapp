@@ -13,3 +13,15 @@
 [WARNING   | base_data_fetcher           | L238] 2025-08-29T12:07:04+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
 [INFO   | _client           | L1025] 2025-08-29T12:07:45+0530: HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK" | _client.py
 [INFO   | _client           | L1025] 2025-08-29T12:09:04+0530: HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK" | _client.py
+[WARNING   | base_data_fetcher           | L226] 2025-08-29T12:18:12+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L232] 2025-08-29T12:18:12+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L238] 2025-08-29T12:18:12+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L226] 2025-08-29T12:18:12+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L232] 2025-08-29T12:18:12+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L238] 2025-08-29T12:18:12+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L226] 2025-08-29T12:18:12+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L232] 2025-08-29T12:18:12+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L238] 2025-08-29T12:18:12+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[INFO   | _client           | L1025] 2025-08-29T12:18:50+0530: HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK" | _client.py
+[INFO   | _client           | L1025] 2025-08-29T12:19:53+0530: HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK" | _client.py
+[INFO   | _client           | L1025] 2025-08-29T12:22:09+0530: HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK" | _client.py
