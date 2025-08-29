@@ -119,18 +119,6 @@ def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]
     except Exception as err1:
         last_err = err1
 
-    # Fallback to Chat Completions (older SDKs)
-    try:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-        chat = client.chat.completions.create(model=OPENAI_MODEL, messages=messages, temperature=0.2)
-        if chat and chat.choices:
-            return chat.choices[0].message.content or ""
-    except Exception as err2:
-        last_err = err2
-
     return f"LLM call failed: {last_err}"
     
 # ────────────────────────────────────────────────────────────────────────────────
