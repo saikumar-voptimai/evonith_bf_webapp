@@ -296,7 +296,7 @@ if st.button("Run Optimiser"):
 
     Based on the optimisation results, provide specific recommendations to improve {target_output}.
     - Optimal solution computed using current methodology {optimal_solution}.
-    - Current operating point {df_live.to_dict()}.
+    - Current operating point {new_df.to_dict()}.
     - List the top 3-5 control parameters to adjust, with their new values. Note that we say 
     the furnace is already optimally operated if the target output change is less than 1%.
 
