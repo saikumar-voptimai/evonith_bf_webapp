@@ -5,10 +5,10 @@ import os
 import io
 
 from openai import OpenAI
+from datetime import datetime
 
 import joblib
 from utils import optimiser, recommendations
-from datetime import datetime
 from pathlib import Path
 from config.config_loader import load_config
 
@@ -111,41 +111,41 @@ optimisation_type = st.selectbox(
 )
 
 outputs = [config_vsense['Optimisation'][model]['output_param'] for model in list(config_vsense['Optimisation'].keys())]
-
+models_dict = config_vsense['Optimisation']
 # Load the configuration and model
-ip = config['Optimisation']['input_params']
-ip_flat_list = [val for group in config['Optimisation']['input_params'].values() for val in group]
+for model in models_dict.keys():
+    ip_flat = [val for group in models_dict[model]['input_params'].values() for val in group]
+    models_dict[model]['input_params_flat'] = ip_flat
+    models_dict[model]['Optimised'] = False    
+    relpath = models_dict[model]['model']
+    model_path = Path(__file__).resolve().parents[1] / relpath.split('/')[1] / relpath.split('/')[2]
+    models_dict[model]['LoadedMLModel'] = joblib.load(model_path)
+    if model == optimisation_type:
+        models_dict[model]['Optimised'] = True
 
-cp_dict_vals = config['Optimisation']['control_params']['Actual'].values()
-cp_list = [list(cp_dict_vals)[i]['NameInMLData'] for i in range(len(cp_dict_vals))]
-
-op_dict_vals = config['Optimisation']['output_params'].values()
-op_list = [list(op_dict_vals)[i]['NameInMLData'] for i in range(len(op_dict_vals))]
-
+cp_list = models_dict[optimisation_type]['control_params']    
+cp_op_list = list(config['Parameter Synonyms'].keys())
 cp_op_ml_dict, meas_list = {}, []
-for i, param in enumerate(cp_list):
-    cp_op_ml_dict[param] = {'InfluxBucket': list(cp_dict_vals)[i]['InfluxBucket'],
-    'InfluxMeasurement': list(cp_dict_vals)[i]['InfluxMeasurement'],
-    'InfluxName': list(cp_dict_vals)[i]['InfluxName']}
-    meas_list.append(list(cp_dict_vals)[i]['InfluxBucket'] + '/' + list(cp_dict_vals)[i]['InfluxMeasurement'])
-
-for i, param in enumerate(op_list):
-    cp_op_ml_dict[param] = {'InfluxBucket': list(op_dict_vals)[i]['InfluxBucket'],
-    'InfluxMeasurement': list(op_dict_vals)[i]['InfluxMeasurement'],
-    'InfluxName': list(op_dict_vals)[i]['InfluxName']}
-    meas_list.append(list(op_dict_vals)[i]['InfluxBucket'] + '/' + list(op_dict_vals)[i]['InfluxMeasurement'])
+for i, param in enumerate(cp_op_list):
+    cp_op_ml_dict[param] = {'InfluxBucket': config['Parameter Synonyms'][param]['InfluxBucket'],
+    'InfluxMeasurement': config['Parameter Synonyms'][param]['InfluxMeasurement'],
+    'InfluxName': config['Parameter Synonyms'][param]['InfluxName'],
+    'NameInMLData': config['Parameter Synonyms'][param]['NameInMLData']}
+    meas_list.append(config['Parameter Synonyms'][param]['InfluxBucket'] + '/' + 
+                     config['Parameter Synonyms'][param]['InfluxMeasurement'])
     
 meas_set = set(meas_list)
 live_data = recommendations.fetch_live_data(cp_op_ml_dict, meas_set)
 
-live_data['Coke Rate Kg/Thm'] = live_data['Coke Rate Kg/Thm'] + live_data['nut_coke_rate']
-live_data['ActualKg/Thm.'] = live_data['Act. Fuel RateKg/Thm.'] - live_data['Coke Rate Kg/Thm']
-live_data['ProductionTonnesPerHr'] =  live_data['ProductionTonnesPerHr']/10
+# Calculated data:
+live_data['UnitCost 1000Rs/Thm'] = live_data['Coke Rate Kg/Thm']  + config['Coke to PCI'] * live_data['ActualKg/Thm.']
 
+# Historical Data:
 data_rel_path = config['DATA']
 data_path = Path(__file__).resolve().parents[1] / data_rel_path.split('/')[1] / data_rel_path.split('/')[2]
 df_data = pd.read_csv(data_path, index_col=0, parse_dates=True)
-
+df_data.index = pd.to_datetime(df_data.index, format="%d/%m/%Y %H:%M", utc=True)
+# Attach live:
 new_live_row = df_data.iloc[-1].copy()
 
 update_cols = [c for c in live_data.columns if c in df_data.columns]
@@ -155,23 +155,9 @@ new_live_row.loc[update_cols] = live_series
 new_df = pd.DataFrame([new_live_row.values], columns=df_data.columns, index=[pd.to_datetime(live_data.index[-1])])
 df_live= pd.concat([df_data, new_df])
 
-models = {}
-for i, opt_type in enumerate(list(config_vsense['Optimisation'].keys())):
-    relpath = config_vsense['Optimisation'][opt_type]['model']
-    model_path = Path(__file__).resolve().parents[1] / relpath.split('/')[1] / relpath.split('/')[2]
-    models[outputs[i]] = joblib.load(model_path)
-
 # Set the target output based on the optimisation type
 target_output = config_vsense['Optimisation'][optimisation_type]['output_param']
 
-# # Section 2: Set the starting point for the model
-# cols = st.columns(2)
-# with cols[0]:
-#     date = st.date_input("Select Date")
-# with cols[1]:
-#     time = st.selectbox("Select Time Index", [f"{i}:00:00" for i in range(24)])
-
-# date_time = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M:%S")
 TIME_IDX = -1 # int(np.where(pd.to_datetime(df_data.index, format="%d/%m/%Y %H:%M") < date_time)[0][-1])
 
 # st.toast(f"Using data at {df_data.index[TIME_IDX]} as event time for optimisation.")
@@ -205,12 +191,12 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
     cols = st.columns(3)
     raw_mtrl_input = {}
     # Display input boxes for Flux Parameters
-    keys = list(ip.keys())
+    keys = list(models_dict[optimisation_type]['input_params'].keys())
     with st.form(key="Raw Material Input Form"):
-        for i, (key, ip_flat) in enumerate(ip.items()):
+        for i, (key, ip_flat) in enumerate(models_dict[optimisation_type]['input_params'].items()):
             with cols[(i+1) % 3]:
                 st.write(f"### {key} Parameters")
-                for i, param in enumerate(ip[key]):
+                for i, param in enumerate(models_dict[optimisation_type]['input_params'][key]):
                     default_val = df_live[param].iloc[-1]
                     user_val = st.number_input(param, 
                                                format="%.2f", 
@@ -222,6 +208,8 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
                     else:
                         raw_mtrl_input[param] = np.nan
         input_submit = st.form_submit_button("Submit Input Params")
+ip_flat_list = [val for group in models_dict[optimisation_type]['input_params'].values() for val in group]
+op_list = [config_vsense['Optimisation'][model]['output_param'] for model in list(config_vsense['Optimisation'].keys())]
 
 cols = st.columns(2)
 with cols[0]:
@@ -245,12 +233,9 @@ if st.button("Run Optimiser"):
     with st.spinner('Running the optimiser'):
         optimal_solution = optimiser.run_optimiser(
             df_data_processed,
-            models, 
+            models_dict, 
             user_input, 
             fixed_cp,
-            cp_list,
-            target_output,
-            optimisation_type,
             lambda_reg=lambda_reg)
 
     st.subheader("Optimisation Results")
@@ -267,22 +252,20 @@ if st.button("Run Optimiser"):
                 if abs(delta)/abs(old_val) < 0.01:  # Only show significant changes
                     st.metric(label=key, value=f"{old_val:.2f}", delta=f"{0:+.2f}")
 
-    if (optimal_solution[target_output] - df_live[target_output].iloc[-1]) > 0:
-        st.write('Already operating at optimal level.')
-    else:
-        st.metric(label=target_output, 
-                value=f"{optimal_solution[target_output]:.2f}", 
-                delta=f"{optimal_solution[target_output] - df_live[target_output].iloc[-1]:+.2f}",
-                delta_color="inverse")
+    st.metric(label=target_output, 
+            value=f"{optimal_solution[target_output + '_current']:.2f}", 
+            delta=f"{optimal_solution[target_output + '_current'] - optimal_solution[target_output + '_previous']:+.2f}")
+
+    cols = st.columns(3)
+    for i, (key, new_val) in enumerate(optimal_solution.items()):
+        with cols[i % 3]:
+            key_feat = key.replace('_current', '').replace('_previous', '')
+            if key_feat in outputs and key_feat != target_output and '_previous' in key:
+                old_val = optimal_solution[key_feat + '_previous']
+                new_val = optimal_solution[key_feat + '_current']
+                delta = new_val - old_val
+                st.metric(label=key_feat, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
     
-        cols = st.columns(3)
-        for i, (key, new_val) in enumerate(optimal_solution.items()):
-            with cols[i % 3]:
-                if key in outputs and key != target_output:
-                    old_val = df_live[key].iloc[-1]
-                    delta = new_val - old_val
-                    st.metric(label=key, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
-        
     # Section 4: Generate recommendations using LLM
     st.subheader("Recommendations")
     system = "You are a precise, senior blast furnace advisor. Be concise, numeric, and actionable."

@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 
 from openai import OpenAI
 
-from data_fetchers.base_data_fetcher import BaseDataFetcher
 from utils.helper_functions_submission import data_retrieval as dr
 from config.config_loader import load_config
 from dotenv import load_dotenv
@@ -183,9 +182,11 @@ FREQUENCY_TO_TIMEDTA = {
     "1 minute": "1min",
     "5 minutes": "5min",
     "10 minutes": "10min",
+    "15 minutes": "15min",
     "30 minutes": "30min",
     "1 hour": "1h",
     "6 hours": "6h",
+    "8 hours": "8h",
     "12 hours": "12h",
     "1 day": "1d",
 }
@@ -197,7 +198,7 @@ FIELD_LABELS = {
 }
 
 @st.cache_data(show_spinner=False)
-def fetch_recent_online(minutes: int = 15) -> pd.DataFrame:
+def fetch_recent_online(tr: str = 'last 8 hours', ar = '15 minutes') -> pd.DataFrame:
     """
     Fetches recent online data from InfluxDB for the last `minutes` minutes.
     Args:
@@ -205,17 +206,9 @@ def fetch_recent_online(minutes: int = 15) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the recent online data.
     """
-    datafetchers = {}
-    for k, v in MEASUREMENT_LABELS.items():
-        datafetchers[k] = BaseDataFetcher(k)
 
-    measurements = list(datafetchers.keys())
-    tr, ar = "last 15 minutes", "1 minute"
-
-    combined_df = dr.fetch_online_df(measurements, 
-                                    tr, 
+    combined_df = dr.fetch_online_df(tr, 
                                     ar,
-                                    datafetchers,
                                     FREQUENCY_TO_TIMEDTA,
                                     MEASUREMENT_LABELS,
                                     FIELD_LABELS)
@@ -680,22 +673,24 @@ c. process_params:
 Review the **last 15 minutes** for furnace profile temperature spikes, heatload spikes, ΔT excursions,
 gas/pressure instabilities.
 
-# Recent 15-min packet (sampled)
+# Recent 8hours packet (averaged to 15mins)
 {pkt}
 
 # Operator notes
 {notes}
 
 # Output in brief upto 200 words only
+- Key observations (2–3 lines) for operator of what happened in previous shift. 
+Like Blowdowns, StartUps, Shutdowns.
+Are heatloads increasing?
+Is fuel rate increasing?
+Is blast furnace stable?
+
 - Alerts (issue + severity).
 - Likely causes mapped to controllables (HB temp/volume/pressure, O₂, steam, PCI) and burden quality.
-- Immediate checks for the operator.
-- If stable, say so explicitly.
-- A list of parameters where there is potential sensor fault.
 
 NOTE: 1. Avoid any hallucincations and only stick to provided data. Don't be verbose and mention each point only once. 
-2. I will be running gpt-5 over API. Currently the operator does not have access to provide prompt feedback. So dont ask questions/expect further input.
-
+2. Currently the operator does not have access to provide prompt feedback. So dont ask questions/expect further input.
 """
 
 
@@ -752,7 +747,7 @@ with tabs[2]:
 
     if st.button("Check Anomalies"):
         with st.spinner("Fetching recent data from Influx…"):
-            df_recent = fetch_recent_online()
+            df_recent = fetch_recent_online(tr='last 8 hours', ar='15 minutes')
         if df_recent.empty:
             st.warning("No recent data fetched from Influx. Check credentials/fields.")
         else:

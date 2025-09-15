@@ -12,12 +12,12 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
         super().__init__("heatload_delta_t", debug, source)
         self.request_type = request_type
 
-    def fetch_averaged_data(self, average_by: str, start_time=None, end_time=None, row: str = None) -> List[List[float]]:
+    def fetch_averaged_data(self, recent_data_of: str, start_time=None, end_time=None, row: str = None) -> List[List[float]]:
         """
         Fetch and process average heatload data for a specific row (R6-R10).
 
         Parameters:
-            average_by (str): Averaging interval or range selection.
+            recent_data_of (str): Averaging interval or range selection.
             start_time (datetime, optional): Start time for the range.
             end_time (datetime, optional): End time for the range.
             row (str, optional): The row to filter (e.g., 'r6').
@@ -25,7 +25,7 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
         Returns:
             pd.DataFrame: DataFrame with averaged heat load data for the specified row.
         """
-        df_flatdata = super().fetch_averaged_data(average_by, start_time, end_time)
+        df_flatdata = super().fetch_averaged_data(recent_data_of, start_time, end_time)
         df_flatdata.set_index("time", inplace=True, drop=True)
         if row is None:
             raise ValueError("Row must be specified (e.g., 'r6').")

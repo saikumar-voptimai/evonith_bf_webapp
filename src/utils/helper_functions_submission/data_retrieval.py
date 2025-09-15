@@ -1,8 +1,26 @@
 import re
 import pandas as pd
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict
-from data_fetchers import base_data_fetcher
+from data_fetchers.base_data_fetcher import BaseDataFetcher
 
+TIMEDELTAS = {
+        'last 1 minute': timedelta(minutes=1),
+        'last 5 minutes': timedelta(minutes=5),
+        'last 15 minutes': timedelta(minutes=15),
+        'last 30 minutes': timedelta(minutes=30),
+        'last 1 hour': timedelta(hours=1),
+        'last 6 hours': timedelta(hours=6),
+        'last 8 hours': timedelta(hours=8),
+        'last 12 hours': timedelta(hours=12),
+        'last 1 day': timedelta(days=1),
+        'last 3 days': timedelta(days=3),
+        'last 1 week': timedelta(weeks=1),
+        'last 2 weeks': timedelta(weeks=2),
+        'last 1 month': timedelta(days=30),
+        'last 2 months': timedelta(days=60),
+        'last 3 months': timedelta(days=90)
+}
 
 def clean_rm_data(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -53,7 +71,7 @@ def fetch_offline_data(measurement: str,
     Returns:
         pd.DataFrame: DataFrame containing the offline data for the measurement.
     """
-    datafetcher = base_data_fetcher.BaseDataFetcher(measurement,
+    datafetcher = BaseDataFetcher(measurement,
                                                     database="bf2_evonith_offline",
                                                     token="INFLUX_OFFLINE_TOKEN")
     df_meas = datafetcher.fetch_averaged_data(average_by=time_range)
@@ -69,122 +87,50 @@ def fetch_offline_data(measurement: str,
     return df_meas
 
 
-def _ensure_dtindex(df: pd.DataFrame) -> pd.DataFrame:
-    """Ensure datetime index (UTC) and sorted."""
-    d = df.copy()
-    if not isinstance(d.index, pd.DatetimeIndex):
-        d.index = pd.to_datetime(d.index, errors='coerce', utc=True)
-    elif d.index.tz is None:
-        d.index = d.index.tz_localize('UTC')
-    d.sort_index(inplace=True)
-    return d
-
-
-def average_data(df: pd.DataFrame, freq: str) -> pd.DataFrame:
-    """
-    Average the data with right-labeled full bins and a custom last partial-window
-    aggregation assigned to the current timestamp ("now").
-
-    - Ensures DatetimeIndex (UTC) and sorted.
-    - Uses closed='right', label='right' for full bins.
-    - If the last bin is partial, compute its mean manually over (last_full_edge, max_ts]
-      and label it at now.
-
-    Args:
-        df: DataFrame indexed by time.
-        freq: Frequency string for resampling (e.g., '1h', '5min').
-    Returns:
-        Averaged DataFrame with optional last row labeled at now for partial window.
-    """
-    if df is None or len(df) == 0:
-        return pd.DataFrame()
-
-    d = _ensure_dtindex(df)
-
-    # Convert all numeric columns to numeric types where possible
-    for c in d.columns:
-        if d[c].dtype == object:
-            d[c] = pd.to_numeric(d[c], errors='coerce')
-
-    from pandas.tseries.frequencies import to_offset
-    off = to_offset(freq)
-
-    max_ts = d.index.max()
-    # Full-bin cut: include data up to and including the last full right edge
-    last_full_right = max_ts.floor(freq)
-    is_on_edge = (max_ts == last_full_right)
-
-    # Full bins (right-labeled, closed-right) up to last_full_right
-    d_full = d[d.index <= last_full_right]
-    full = d_full.resample(freq, label='right', closed='right').mean().dropna(how='all')
-
-    # Handle partial tail if not exactly on boundary and if there is tail data
-    if not is_on_edge:
-        tail = d[d.index > last_full_right]
-        if not tail.empty:
-            tail_mean = tail.mean(numeric_only=True).to_frame().T
-            # Label the partial aggregate at "now" in the same tz as data
-            now_ts = pd.Timestamp.utcnow().tz_convert(d.index.tz) if d.index.tz is not None else pd.Timestamp.utcnow().tz_localize('UTC')
-            tail_mean.index = pd.DatetimeIndex([now_ts])
-            out = pd.concat([full, tail_mean], axis=0)
-        else:
-            out = full
-    else:
-        out = full
-
-    # Drop columns that are entirely NaN
-    out = out.dropna(axis=1, how='all')
-
-    return out
-
-
-def fetch_online_df(selected_measurements: List[str], 
-                    time_range: str, 
-                    average_range: str, 
-                    datafetchers: Dict,
+def fetch_online_df(time_range: str, 
+                    average_range: str,
                     FREQUENCY_TO_TIMEDTA: Dict,
                     MEASUREMENT_LABELS: Dict,
                     FIELD_LABELS: Dict) -> pd.DataFrame:
     """
     Fetches and combines data from multiple data fetchers based on selected measurements and time range.
-
-    - Validates datetime index and sorts.
-    - Applies averaging window: if "None", default to 1h averaging.
-    - Renames columns to "<Measurement Label> - <Field Label>" when possible.
-    - Returns an outer-joined DataFrame across measurements.
+    Args:
+        selected_measurements (List[str]): List of measurement names to fetch.
+        time_range (str): Time range string (e.g., 'last 1 hour').
+        average_range (str): Averaging interval (e.g., '1h', '30min').
+        FREQUENCY_TO_TIMEDTA (Dict): Mapping of frequency strings to timedelta objects.
+        MEASUREMENT_LABELS (Dict): Mapping of measurement names to human-readable labels.
+        FIELD_LABELS (Dict): Mapping of field names to human-readable labels.
+    Returns:
+        pd.DataFrame: Combined DataFrame with data from all selected measurements.
     """
+    datafetchers = {}
+    for key in MEASUREMENT_LABELS.keys():
+        datafetchers[key] = BaseDataFetcher(key)
+
+    selected_measurements = list(datafetchers.keys())
     if not selected_measurements:
         return pd.DataFrame()
 
     combined_df = pd.DataFrame()
+    now = datetime.now(timezone.utc) 
+    start_time = now - TIMEDELTAS[time_range]
+    end_time = now
+        
     for meas in selected_measurements:
         if meas not in datafetchers:
             continue
-        try:
-            df_meas = datafetchers[meas].fetch_averaged_data(average_by=time_range)
-        except Exception:
-            df_meas = pd.DataFrame()
+        
+        df_meas = datafetchers[meas].fetch_averaged_data(recent_data_of='over selected range',
+                                                        start_time=start_time, 
+                                                        end_time=end_time)
         if df_meas is None or df_meas.empty:
             continue
 
-        # ensure time index
-        if 'time' in df_meas.columns:
-            df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
-            df_meas.set_index('time', inplace=True, drop=True)
-        else:
-            if not isinstance(df_meas.index, pd.DatetimeIndex):
-                df_meas.index = pd.to_datetime(df_meas.index, errors='coerce', utc=True)
+        df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
+        df_meas.set_index('time', inplace=True, drop=True)
         df_meas.sort_index(inplace=True)
 
-        # averaging
-        freq = FREQUENCY_TO_TIMEDTA.get(average_range)
-        if freq is not None:
-            df_meas = average_data(df_meas, freq)
-        else:
-            # default to 1h
-            df_meas = average_data(df_meas, '1h')
-
-        # rename columns with measurement and field labels
         def _rename(col: str) -> str:
             human_meas = MEASUREMENT_LABELS.get(meas, meas)
             human_field = FIELD_LABELS.get(col, col)
@@ -192,12 +138,18 @@ def fetch_online_df(selected_measurements: List[str],
 
         df_meas = df_meas.rename(columns={col: _rename(col) for col in df_meas.columns})
 
-        # combine
         combined_df = df_meas if combined_df.empty else combined_df.join(df_meas, how='outer')
+    freq = FREQUENCY_TO_TIMEDTA.get(average_range)
+    freq = freq if freq is not None else '1h'
+    combined_df = combined_df.resample(freq).mean(numeric_only=True)
+    combined_df.index = combined_df.index + pd.Timedelta(freq)
+    combined_df = combined_df.rename(index={combined_df.index[-1]: pd.Timestamp(end_time).round('1min')})
 
-    # final cleanup
     if combined_df.empty:
         return combined_df
     combined_df = combined_df.sort_index()
     combined_df = combined_df.loc[:, ~combined_df.columns.duplicated()]
+
+    combined_df.index = combined_df.index.tz_convert('Asia/Kolkata')
+    combined_df.index.name = 'time (IST)'
     return combined_df

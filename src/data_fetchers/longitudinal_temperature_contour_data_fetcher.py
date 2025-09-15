@@ -20,14 +20,14 @@ class LongitudinalTemperatureDataFetcher(TemperatureDataFetcher):
     def __init__(self, debug: bool = False, source: str = "live", request_type:str = "average"):
         super().__init__(debug, source, request_type)
 
-    def fetch_averaged_data(self, average_by: str, start_time=None, end_time=None) -> dict:
+    def fetch_averaged_data(self, recent_data_of: str, start_time=None, end_time=None) -> dict:
         """
         Fetch and process temperature data grouped by longitudinal location and return as dict with Q1-Q4 keys.
 
         Returns:
             dict: {Q1: {level: [temps]}, Q2: {...}, Q3: {...}, Q4: {...}} for each level.
         """
-        temp_data = super().fetch_averaged_data(average_by, start_time, end_time)
+        temp_data = super().fetch_averaged_data(recent_data_of, start_time, end_time)
         if not isinstance(temp_data, pd.DataFrame):
             # temp_data['time'] = pd.to_datetime(start_time)
             temp_data = pd.DataFrame(temp_data, index=[start_time], columns=temp_data.keys())

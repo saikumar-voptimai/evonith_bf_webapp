@@ -24,6 +24,7 @@ TIMEDELTAS = {
         'last 30 minutes': timedelta(minutes=30),
         'last 1 hour': timedelta(hours=1),
         'last 6 hours': timedelta(hours=6),
+        'last 8 hours': timedelta(hours=8),
         'last 12 hours': timedelta(hours=12),
         'last 1 day': timedelta(days=1),
         'last 3 days': timedelta(days=3),
@@ -49,6 +50,7 @@ def query_builder(measurement: str, start: str, stop: str, type: str='average') 
         measurement: Measurement name (e.g., 'temperature_params')
         start: Start datetime (ISO format)
         stop: End datetime (ISO format)
+        type: 'average' for averaged values, 'ts' for time-series data (for resampling we use the 'ts')
     Returns:
         SQL query string
     """
@@ -70,7 +72,8 @@ class BaseDataFetcher:
     Abstract base class for fetching raw data from InfluxDB.
     """
 
-    def __init__(self, variable_tag: str, 
+    def __init__(self, 
+                 variable_tag: str, 
                  debug: bool = False, 
                  source: str = "live",
                  database: str = "bf2_evonith_raw",
@@ -102,94 +105,9 @@ class BaseDataFetcher:
 
         self.token = token
 
-    def _check_and_handle_missing_vars(self, row: dict, context_method: str = "fetch_live_data"):
-        """
-        Checks for missing variables in the API response and handles error reporting and notification.
-        Args:
-            row (dict): The dictionary of variables returned from the API.
-            context_method (str): The method name for context (default: 'fetch_live_data').
-        Raises:
-            Exception: If a significant number of expected variables are missing.
-        """
-        missing_vars = [var for var in self.variables if var not in row]
-        total_vars = len(self.variables)
-        missing_ratio = len(missing_vars) / total_vars if total_vars > 0 else 0
-        if missing_vars:
-            import inspect
-            frame = inspect.currentframe()
-            context_info = (
-                f"Datetime: {datetime.now(self.timezone)}\n"
-                f"Class: {self.__class__.__name__}\n"
-                f"Method: {context_method}\n"
-                f"Line: {frame.f_back.f_lineno}\n"
-                f"Debug mode: {self.debug}\n"
-                f"Source type: {self.source}\n"
-                f"API URL: {self.api_url}\n"
-                f"Variables expected: {self.variables}\n"
-                f"Variables received: {list(row.keys())}\n"
-            )
-            if missing_ratio < 0.3:
-                log.warning(f"API response missing <{missing_ratio*100:.2f}% of expected variables: {missing_vars}\nContext: {context_info}")
-                for var in missing_vars:
-                    row[var] = 0
-            else:
-                log.error(f"API response missing >=20% of expected variables: {missing_vars}\nContext: {context_info}")
-                raise Exception(f"API response missing expected variables <{missing_ratio*100:.2f}%: {missing_vars}")
-
-    def fetch_live_data(
-        self,
-    ) -> Dict[str, float]:
-        """
-        Fetch and process live data.
-
-        Returns:
-            dict: A dictionary of live values for each variable in self.variables.
-        """
-        if self.debug:
-            return {var: np.mean(data["values"]) for var, data in self._get_dummy_data().items()}
-
-        params = {
-            "user": self.api_user,
-            "password": self.api_password     
-        }
-        # Handle missing API credentials
-        if not self.api_user or not self.api_password:
-            log.error("API credentials are missing. Please set USERNAME_REALTIMEDATA and PASSWORD_REALTIMEDATA.")
-            raise Exception("API credentials are missing.")
-        response = requests.get(self.api_url, params=params)
-        if response.status_code != 200:
-            log.error(f"API call failed with status code: {response.status_code}")
-            raise Exception(f"API call failed: {response.text}")
-        
-        try:
-            root = ET.fromstring(response.text)
-            json_data = root.text
-            json_like_string = json_data.replace("'", '"')
-            data = json.loads(json_like_string)
-            df = pd.DataFrame(data)
-            df.replace('', pd.NA, inplace=True)
-            log.info("Successfully fetched and parsed API data.")
-            if df.empty:
-                log.error("API returned empty data.")
-                raise Exception("API returned empty data.")
-            # API always returns data for a single timestamp, so take the first row
-            row = df.iloc[0].to_dict()
-            # Change dtype of all values to float
-            for key in row:
-                try:
-                    row[key] = float(row[key])
-                except (ValueError, TypeError):
-                    row[key] = np.nan
-            self._check_and_handle_missing_vars(row, context_method="fetch_live_data")
-            filtered_row = {k: (v if pd.notna(v) else np.nan) for k, v in row.items() if k in self.variables}
-            return filtered_row
-        except Exception as e:
-            log.error(f"Error parsing API response: {e}")
-            raise
-
     def fetch_averaged_data(
         self,
-        average_by: str,
+        recent_data_of: str,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None
     ) -> pd.DataFrame:
@@ -197,7 +115,7 @@ class BaseDataFetcher:
         Fetch and process averaged data over a specified time range.
 
         Parameters:
-            average_by (str): Averaging option ('Live', 'Last 15 minutes', etc.).
+            recent_data_of (str): Recent data with options option ('Live', 'Last 15 minutes', etc.).
             start_time (datetime, optional): Start of the time range (required for 'Over Selected Range').
             end_time (datetime, optional): End of the time range (required for 'Over Selected Range').
 
@@ -208,16 +126,16 @@ class BaseDataFetcher:
             return {var: np.mean(data["values"]) for var, data in self._get_dummy_data().items()}
 
         now = datetime.now(timezone.utc) # DB only sotres in UTC
-        average_by_norm = average_by.strip().lower()
-        if average_by_norm == 'live':
+        recent_data_of_norm = recent_data_of.strip().lower()
+        if recent_data_of_norm == 'live':
             return self.fetch_live_data()
-        elif average_by_norm == 'over selected range':
+        elif recent_data_of_norm == 'over selected range':
             if not start_time or not end_time:
                 raise ValueError("For 'Over Selected Range', both start_time and end_time must be provided.")
         else:
-            if average_by_norm not in TIMEDELTAS:
-                raise ValueError(f"Invalid average_by value: {average_by}")
-            start_time = now - TIMEDELTAS[average_by_norm]
+            if recent_data_of_norm not in TIMEDELTAS:
+                raise ValueError(f"Invalid recent_data option: {recent_data_of}")
+            start_time = now - TIMEDELTAS[recent_data_of_norm]
             end_time = now
         
         if self.database != config["influxdb"].get("database", self.database):

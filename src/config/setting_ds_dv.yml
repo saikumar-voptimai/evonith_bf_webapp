@@ -8,7 +8,7 @@ website_vars:
   api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
   email_missing_vars: "True"
 
-DATA: "src/data/V5_df_filtered.csv"
+DATA: "src/data/V6_df_filtered.csv"
 
 
 # Geometries
@@ -85,154 +85,83 @@ plot:
       - ["Belly", 15]
       - ["Stack", 17.0]
 
-Optimisation:
-  output_params:
-    TotalFuelRate:
-      NameInMLData: "Act. Fuel RateKg/Thm."
-      NameInMCartech: "BF2 Fuel rate (Kg/THM)"
-      InfluxBucket: "bf2_evonith_raw"
-      InfluxMeasurement: "process_params"
-      InfluxName: "fuel_rate"
-    EtaCO:
-      NameInMLData: "FurnaceTopGasAnalysisCO2ETACO"
-      NameInMCartech: "BF2_BODY_ETACO"
-      InfluxBucket: "bf2_evonith_raw"
-      InfluxMeasurement: "process_params"
-      InfluxName: "body_etaco"
-    ProductionRate:
-      NameInMLData: "ProductionTonnesPerHr"
-      NameInMCartech: "BF2 Production per hr"
-      InfluxBucket: "bf2_evonith_raw"
-      InfluxMeasurement: "process_params"
-      InfluxName: "production_per_hour"
-    CokeRate:
-      NameInMLData: "Coke Rate Kg/Thm"
-      NameInMCartech: "BF2 Coke rate (Kg/THM)"
-      InfluxBucket: "bf2_evonith_raw"
-      InfluxMeasurement: "process_params"
-      InfluxName: "coke_rate"
+Coke to PCI: 0.53
 
-  input_params:
-    NutCoke:
-      - NUTCOKE_MOIST%
-      - NUTCOKE_Prime_MT
-      - NUTCOKE_VM%
-      - NUTCOKE_IM%
-      - NUTCOKE_FC%
-      - NUTCOKE_ASH%
-    PCI:
-      - PCI_2_%FC
-      - PCI_2_%Ash
-      - PCI_2_%VM
-      - PCI_2_%IM
-      - PCI_2_%TM
-    Sinter:
-      - Sinter_SP_02_Hot_strength_RDI
-      - Sinter_SP_02_Cold_Strength_AI
-      - Sinter_SP_02_Cold_strength_TI
-      - Sinter_SP_02_P%
-      - Sinter_SP_02_SiO2%
-      - Sinter_SP_02_MgO%
-      - Sinter_SP_02_FeO%
-      - Sinter_SP_02_Al2O3%
-      - Sinter_SP_02_Na2O% 
-      - Sinter_SP_02_TiO2%
-      - Sinter_SP_02_Fe(T)%
-      - Sinter_SP_02_CaO%
-      - Sinter_SP_02_K2O%
-      - Sinter_SP_02_Basicity
-      - Sinter_SP_02_MnO%
-    Coke:
-      - COKE_VM%
-      - COKE_ASH%
-      - COKE_IM%
-      - COKE_FC%
-      - COKE_MOIST%
-    Flux:
-      - FLUX_TM%
-      - FLUX_SiO2%
-      - FLUX_Fe2O3%
-      - FLUX_Al2O3%
-      - FLUX_LOI%
-      - FLUX_MgO%
-      - FLUX_CaO%
-      - FLUX_MT
-    Ore:
-      - Geomin Type
-      - ORE_%Fe(T)
-      - ORE_%LOI 
-      - ORE_%TM
-      - ORE_%MgO
-      - ORE_%Na2O
-      - ORE_%P
-      - ORE_%TiO2
-      - ORE_%Al2O3
-      - ORE_%SiO2
-      - ORE_%MnO
-      - ORE_%CaO
-      - ORE_%K2O
-  control_params:
-    Actual:
-      HotBlastVolume:
-        NameInMLData: "Hot Blast VolumeNm3/Hr."
-        NameInMCartech: "BF2_PROC Hot Blast Volume"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement:  "process_params"
-        InfluxName: "hot_blast_vol_nm3h"
-      TotalOxygen:
-        NameInMLData: "Total OxygenNm3/Hr."
-        NameInMCartech: "BF2_PROC Total Oxygen"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement:  "process_params"
-        InfluxName: "total_oxygen"
-      HotBlastPressure:
-        NameInMLData: "Hot Blast PressureBar"
-        NameInMCartech: "BF2_PROC Hot Blast Pressure"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement: "process_params"
-        InfluxName: "hot_blast_press"
-      TopPressure:
-        NameInMLData: "TopPressureBar"
-        NameInMCartech: "BF2_PROC Top Pressure Average"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement: "process_params"
-        InfluxName: "top_press_avg"
-      HotBlastTemp:
-        NameInMLData: "Hot Blast Temp.oC"
-        NameInMCartech: "BF2_PROC Hot Blast Temp"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement: "process_params"
-        InfluxName: "hot_blast_temp"
-      SteamKgsHr:
-        NameInMLData: "SteamKgs/Hr."
-        NameInMCartech: "BF2 Steam injection (Kg/hour)"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement: "process_params"
-        InfluxName: "steam_injection"
-      PermeabilityKgsHr:
-        NameInMLData: "PermeabilityKgs/Hr."
-        NameInMCartech: "BF2_BODY_PERMEABILITY"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement: "process_params"
-        InfluxName: "body_perm"
-      TuyereVelocitym_s:
-        NameInMLData: "TuyereVelocitym/s"
-        NameInMCartech: "BF2 TUYERE VELOCITY"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement: "process_params"
-        InfluxName: "tuyere_velocity"
-      O2EnrichmentPerc:
-        NameInMLData: "O2 Enrichment %"
-        NameInMCartech: "BF2 Oxygen enrichment (%)"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement: "process_params"
-        InfluxName: "oxygen_enrichment_pct"
-      ActualKgThm:
-        NameInMLData: "ActualKg/Thm."
-        NameInMCartech: "BF2 Coal rate actual value (Kg/THM)"
-        InfluxBucket: "bf2_evonith_raw"
-        InfluxMeasurement: "process_params"
-        InfluxName: "coal_rate_actual_value"
+Parameter Synonyms:
+  TotalFuelRate:
+    NameInMLData: "Act. Fuel RateKg/Thm."
+    NameInMCartech: "BF2 Fuel rate (Kg/THM)"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "fuel_rate"
+  EtaCO:
+    NameInMLData: "FurnaceTopGasAnalysisCO2ETACO"
+    NameInMCartech: "BF2_BODY_ETACO"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "body_etaco"
+  ProductionRate:
+    NameInMLData: "ProductionTonnesPerHr"
+    NameInMCartech: "BF2 Production per hr"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "production_per_hour"
+  CokeRate:
+    NameInMLData: "Coke Rate Kg/Thm"
+    NameInMCartech: "BF2 Coke rate (Kg/THM)"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "coke_rate"
+      
+
+  HotBlastVolume:
+    NameInMLData: "Hot Blast VolumeNm3/Hr."
+    NameInMCartech: "BF2_PROC Hot Blast Volume"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement:  "process_params"
+    InfluxName: "hot_blast_vol_nm3h"
+  HotBlastPressure:
+    NameInMLData: "Hot Blast PressureBar"
+    NameInMCartech: "BF2_PROC Hot Blast Pressure"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "hot_blast_press"
+  TopPressure:
+    NameInMLData: "TopPressureBar"
+    NameInMCartech: "BF2_PROC Top Pressure Average"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "top_press_avg"
+  HotBlastTemp:
+    NameInMLData: "Hot Blast Temp.oC"
+    NameInMCartech: "BF2_PROC Hot Blast Temp"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "hot_blast_temp"
+  SteamKgsHr:
+    NameInMLData: "SteamKgs/Hr."
+    NameInMCartech: "BF2 Steam injection (Kg/hour)"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "steam_injection"
+  PermeabilityKgsHr:
+    NameInMLData: "PermeabilityKgs/Hr."
+    NameInMCartech: "BF2_BODY_PERMEABILITY"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "body_perm"
+  O2EnrichmentPerc:
+    NameInMLData: "O2 Enrichment %"
+    NameInMCartech: "BF2 Oxygen enrichment (%)"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "oxygen_enrichment_pct"
+  ActualKgThm:
+    NameInMLData: "ActualKg/Thm."
+    NameInMCartech: "BF2 Coal rate actual value (Kg/THM)"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "coal_rate_actual_value"
       
 data_tags:
   temperature_variables:
