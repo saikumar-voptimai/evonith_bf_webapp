@@ -5,7 +5,6 @@ import os
 import io
 
 from openai import OpenAI
-from datetime import datetime
 
 import joblib
 from utils import optimiser, recommendations

@@ -190,6 +190,12 @@ def inverse_transform_output(scaler, y_scaled, output_name):
     
 def fetch_live_data(cp_op_ml_dict: Dict[str, Any], paths_set: List[str]) -> pd.DataFrame:
     """
+    Fetch latest hourly averaged data for control and input parameters.
+    Args:
+        cp_op_ml_dict (Dict[str, Any]): Dictionary with control and input parameter metadata.
+        paths_set (List[str]): List of unique InfluxDB paths to query.
+    Returns:
+        pd.DataFrame: DataFrame with latest hourly averaged data.
     """
     now = pd.Timestamp.utcnow()
     this_hour = now.replace(minute=0, second=0, microsecond=0)

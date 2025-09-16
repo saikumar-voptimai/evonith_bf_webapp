@@ -224,7 +224,7 @@ Optimisation:
         - ORE_%MnO
         - ORE_%CaO
         - ORE_%K2O
-  Coke Rate:
+  Coke Rate (To be Deprecated):
     model: "src/models/coke_rate_opt.pkl"
     output_param: "Coke Rate Kg/Thm"
     scaling: "src/models/coke_rate_scaler.pkl"
@@ -298,7 +298,7 @@ Optimisation:
         - ORE_%MnO
         - ORE_%CaO
         - ORE_%K2O
-  Fuel Rate:
+  Fuel Rate (To be Deprecated):
     model: "src/models/fuel_rate_opt.pkl"
     output_param: "Act. Fuel RateKg/Thm."
     scaling: "src/models/fuel_rate_scaler.pkl"

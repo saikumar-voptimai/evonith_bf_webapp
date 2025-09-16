@@ -72,9 +72,9 @@ def fetch_offline_data(measurement: str,
         pd.DataFrame: DataFrame containing the offline data for the measurement.
     """
     datafetcher = BaseDataFetcher(measurement,
-                                                    database="bf2_evonith_offline",
-                                                    token="INFLUX_OFFLINE_TOKEN")
-    df_meas = datafetcher.fetch_averaged_data(average_by=time_range)
+                                database="bf2_evonith_offline_utc",
+                                token="INFLUX_OFFLINE_TOKEN")
+    df_meas = datafetcher.fetch_averaged_data(recent_data_of=time_range)
     if 'time' in df_meas.columns:
         df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
         df_meas.set_index('time', inplace=True, drop=True)
@@ -87,7 +87,8 @@ def fetch_offline_data(measurement: str,
     return df_meas
 
 
-def fetch_online_df(time_range: str, 
+def fetch_online_df(selected_measurements: List[str],
+                    time_range: str, 
                     average_range: str,
                     FREQUENCY_TO_TIMEDTA: Dict,
                     MEASUREMENT_LABELS: Dict,
@@ -108,7 +109,6 @@ def fetch_online_df(time_range: str,
     for key in MEASUREMENT_LABELS.keys():
         datafetchers[key] = BaseDataFetcher(key)
 
-    selected_measurements = list(datafetchers.keys())
     if not selected_measurements:
         return pd.DataFrame()
 

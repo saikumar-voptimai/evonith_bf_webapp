@@ -16,9 +16,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
+config_vsense = load_config('setting_vsense.yml')
 
 import streamlit as st
-import openai
 from openai import OpenAI
 client = OpenAI()
 
@@ -34,22 +34,12 @@ OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 USE_CODE_INTERPRETER = True 
 
 # Local CSV for static fuel/ETA analyses
-STATIC_CSV_PATH = "src/data/V4_df_filtered.csv"
+STATIC_CSV_PATH = config['DATA']
 
-# Columns (exact names as you provided)
-cp_dict_vals = config['Optimisation']['control_params']['Actual'].values()
-CONTROL_COLUMNS = [list(cp_dict_vals)[i]['NameInMLData'] for i in range(len(cp_dict_vals))]
-
-# Input columns (raw material quality & quantity)
-my_dict = config['Optimisation']['input_params']
-INPUT_COLUMNS = [item for sublist in my_dict.values() for item in sublist]
-
-OUTPUT_COLUMNS = [
-    "FurnaceTopGasAnalysisCO2ETACO",  # ETA CO
-    "Act. Fuel RateKg/Thm.",          # Total Fuel
-    "Coke Rate Kg/Thm",
-    "ProductionTonnesPerHr"
-]
+model_keys = list(config_vsense['Optimisation'].keys())
+CONTROL_COLUMNS = config_vsense['Optimisation'][model_keys[1]]['control_params']
+INPUT_COLUMNS = [item for sublist in config_vsense['Optimisation'][model_keys[1]]['input_params'].values() for item in sublist]
+OUTPUT_COLUMNS = [config_vsense['Optimisation'][key]['output_param'] for key in config_vsense['Optimisation']]
 
 METRIC_MAP = {
     "ETA CO": "FurnaceTopGasAnalysisCO2ETACO",
@@ -206,8 +196,9 @@ def fetch_recent_online(tr: str = 'last 8 hours', ar = '15 minutes') -> pd.DataF
     Returns:
         pd.DataFrame: DataFrame containing the recent online data.
     """
-
-    combined_df = dr.fetch_online_df(tr, 
+    selected_measurements = list(MEASUREMENT_LABELS.keys())
+    combined_df = dr.fetch_online_df(selected_measurements,
+                                    tr, 
                                     ar,
                                     FREQUENCY_TO_TIMEDTA,
                                     MEASUREMENT_LABELS,

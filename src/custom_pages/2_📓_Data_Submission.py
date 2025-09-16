@@ -15,6 +15,7 @@ from datetime import timedelta
 from dotenv import load_dotenv
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
+config_vsense = load_config("setting_vsense.yml")
 
 load_dotenv() 
 
@@ -81,17 +82,14 @@ with cols[1]:
     to_date = st.date_input("To Date", value=pd.to_datetime(df.index[-1]).date())
 
 with cols[2]:
-    params = list(config['Optimisation']['input_params'].values()) + list(config['Optimisation']['control_params'].values())
-    all_params = [item for sublist in params for item in sublist]
+    model_keys = list(config_vsense['Optimisation'].keys())
+    control_params = config_vsense['Optimisation'][model_keys[1]]['control_params']
+    input_params = [item for sublist in config_vsense['Optimisation'][model_keys[1]]['input_params'].values() for item in sublist]
+    all_params = control_params + input_params
     x_p = st.selectbox("Select X feature", all_params)
 
 with cols[3]:
-    cp_dict_vals = config['Optimisation']['control_params']['Actual'].values()
-    control_params = [list(cp_dict_vals)[i]['NameInMLData'] for i in range(len(cp_dict_vals))]
-
-    op_dict_vals = config['Optimisation']['output_params'].values()
-    output_params = [list(op_dict_vals)[i]['NameInMLData'] for i in range(len(op_dict_vals))]
-
+    output_params = [config_vsense['Optimisation'][key]['output_param'] for key in config_vsense['Optimisation']]
     y_p = st.selectbox("Select Y feature", output_params+['Unit Cost']+control_params)
 
 with st.sidebar:
@@ -267,11 +265,7 @@ st.plotly_chart(fig)
 # --------------------------------------------------------------------------------
 # SHOW 7 MEASUREMENTS FROM INFLUXDB
 # --------------------------------------------------------------------------------
-datafetchers = {}
-for k, v in MEASUREMENT_LABELS.items():
-    datafetchers[k] = BaseDataFetcher(k)
-
-measurements = list(datafetchers.keys())
+measurements = list(MEASUREMENT_LABELS.keys())
 
 # --- Streamlit UI ---
 st.header("📊 Online Data Downloader")
@@ -344,8 +338,7 @@ with st.form(key="measurement_form"):
             ar = st.session_state.average_range
             combined_df = dr.fetch_online_df(sorted(list(selected_measurements)), 
                                              tr, 
-                                             ar, 
-                                             datafetchers,
+                                             ar,
                                              FREQUENCY_TO_TIMEDTA,
                                              MEASUREMENT_LABELS,
                                              FIELD_LABELS)
