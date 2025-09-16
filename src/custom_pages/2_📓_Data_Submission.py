@@ -364,7 +364,7 @@ else:
 
 # 8 --- UI Section for Offline Data ---
 st.header("📄 Offline Data Viewer")
-offline_measurements = {"Bunker Report": "rm_data", 
+offline_measurements = {"Bunker Report": "rm_updated_data", 
                         "DPR": "dpr_data", 
                         "HM & Slag": "hotmetal_slag_data"}
 if "time_range_off" not in st.session_state:
