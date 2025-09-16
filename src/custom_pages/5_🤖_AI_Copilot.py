@@ -618,9 +618,9 @@ Each distribution change interval was evaluated by the **realized mean Unit Cost
 
 def build_anomaly_prompt(recent_df: pd.DataFrame, notes: str = "") -> str:
     # Compact alerts table
-    pkt = df_packet(recent_df.tail(40)) if not recent_df.empty else "_No timeseries to show_"
+    pkt = recent_df if not recent_df.empty else "_No timeseries to show_"
     return f"""
-You are an anomaly spotter. Report the key anomalies in last 15minutes using Z-score in one line per issue.
+You are an anomaly spotter. Report the key anomalies in last 8hours shift (provided data) using Z-score in one line per issue.
 
 You also received raw data (recent_df) for:
 a. blast furnace temperature profile denoted "Temperature Profile - BF2_BFBF Furnace Body [furnace_level]mm Temp [circumferential_position]"
@@ -661,7 +661,7 @@ b. heatload at different levels denoted by row number.
 c. process_params:
     - blast furnace top pressure, volume, temperature, O₂, steam, PCI (coal rate) etc
 
-Review the **last 15 minutes** for furnace profile temperature spikes, heatload spikes, ΔT excursions,
+Review the **last 8 hours** for furnace profile temperature spikes, heatload spikes, ΔT excursions,
 gas/pressure instabilities.
 
 # Recent 8hours packet (averaged to 15mins)
