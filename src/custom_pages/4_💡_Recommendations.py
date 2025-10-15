@@ -164,27 +164,63 @@ TIME_IDX = -1 # int(np.where(pd.to_datetime(df_data.index, format="%d/%m/%Y %H:%
 # Section 3: Display the current data and control parameters
 st.subheader("Control Parameters")
 
-prev_params = {}
+# JSON file to persist bounds
+bounds_file = Path("control_bounds.json")
+
+# Load persisted bounds if available
+if bounds_file.exists():
+    with open(bounds_file, "r") as f:
+        persisted_bounds = json.load(f)
+else:
+    persisted_bounds = {}
+
 include_control = {}
 cols = st.columns(3)
-i = 1
-with st.form(key="Control Params Form"):
+i = 0
+
+with st.form("Control Params Form"):
     for cp in cp_list:
-        with cols[(i % 3) - 1]:
-            prev_default_val = df_live[cp].iloc[-1]
-            user_val = st.number_input(
-                cp, 
-                min_value=np.min([float(df_live[cp].min()), float(prev_default_val)]), 
-                max_value=np.max([float(df_live[cp].max()), float(prev_default_val)]), 
-                value=float(prev_default_val)
+        with cols[i % 3]:
+            latest_val = float(df_live[cp].iloc[-1])
+            col_min = float(df_live[cp].min())
+            col_max = float(df_live[cp].max())
+
+            # Default bounds
+            cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
+            cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
+            val = persisted_bounds.get(cp, {}).get("value", latest_val)
+
+            st.markdown(f"**{cp}**")
+
+            # --- Main value box ---
+            val = st.number_input(
+                f"{cp} Value",
+                min_value=cp_min,
+                max_value=cp_max,
+                value=np.clip(val, cp_min, cp_max),
+                key=f"val_{cp}"
             )
-            override = st.checkbox(f"Override", key=f"ov_{cp}")
-            if override:
-                include_control[cp] = user_val
-            else:
-                include_control[cp] = np.nan
-            i += 1
-    input_submit = st.form_submit_button("Submit Control Params")
+
+            # --- Min and Max adjustment boxes ---
+            new_min = st.number_input(f"{cp} Min", value=cp_min, key=f"min_{cp}")
+            new_max = st.number_input(f"{cp} Max", value=cp_max, key=f"max_{cp}")
+
+            # Auto-adjust main value when min/max are changed
+            if val < new_min:
+                val = new_min
+            elif val > new_max:
+                val = new_max
+
+            include_control[cp] = {"min": new_min, "max": new_max, "value": val}
+
+        i += 1
+
+    submitted = st.form_submit_button("💾 Save Bounds")
+
+if submitted:
+    with open(bounds_file, "w") as f:
+        json.dump(include_control, f, indent=4)
+    st.success("Bounds saved and synced successfully!")
 # User-specified input variables:
 with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
     cols = st.columns(3)
