@@ -4,23 +4,17 @@ import io
 import json
 import streamlit as st
 import pandas as pd
-import numpy as np
 from datetime import datetime, timezone
-
-from openai import OpenAI
-
 from utils.helper_functions_submission import data_retrieval as dr
 from config.config_loader import load_config
 from dotenv import load_dotenv
+from openai import OpenAI
+client = OpenAI()
 
 load_dotenv()
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config('setting_vsense.yml')
-
-import streamlit as st
-from openai import OpenAI
-client = OpenAI()
 
 
 # ────────────────────────────────────────────────────────────────────────────────
