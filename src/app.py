@@ -1,22 +1,56 @@
+# ------------------------------------------------------
+# 🚀 Streamlit App Entry Point (Manufacturing Dashboard)
+# ------------------------------------------------------
 import streamlit as st
-from utils.logger import setup_logger
 
-# Setup the logger at the start of the application
-setup_logger()
-
-# Set app-wide page config
+# 🧩 Must be first Streamlit call
 st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
 
-# Define your pages
-page1 = st.Page("custom_pages/1_🏭_Welcome.py", title="Welcome", icon="🏭")
-page2 = st.Page("custom_pages/2_📓_Data_Explorer.py", title="Data Explorer", icon="📓")
-page3 = st.Page("custom_pages/3_📈_Data_Visualisation.py", title="V-Board", icon="📈")
-page4 = st.Page("custom_pages/4_💡_Recommendations.py", title="V-Sense", icon="💡")
-page5 = st.Page("custom_pages/5_🤖_AI_Copilot.py", title="CoPilot", icon="🤖")
-# page6 = st.Page("custom_pages/6_📝_Reports.py", title="Reporter", icon="📝")
+# ------------------------------------------------------
+# 🧱 Core Imports
+# ------------------------------------------------------
+from utils.logger import setup_logger
+from ui.login_page import LoginPage
+from utils.session import is_logged_in
 
-# Set up navigation
-pg = st.navigation([page1, page2, page3, page4, page5])
+# Initialize logging once
+setup_logger()
 
-# Run the selected page
+# ------------------------------------------------------
+# 🔐 Authentication Gate
+# ------------------------------------------------------
+if not is_logged_in():
+    # Hide sidebar completely during login
+    st.markdown(
+        """
+        <style>
+            [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] {
+                display: none !important;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    # Run login page
+    LoginPage().run()
+    st.stop()
+
+# ------------------------------------------------------
+# 🧭 PAGE REGISTRATION
+# ------------------------------------------------------
+# Base pages (visible to all)
+pages = [
+    st.Page("custom_pages/1_🏭_Welcome.py", title="Welcome", icon="🏭"),
+    st.Page("custom_pages/2_📓_Data_Submission.py", title="Data Submission", icon="📓"),
+    st.Page("custom_pages/3_📈_Data_Visualisation.py", title="V-Board", icon="📈"),
+    st.Page("custom_pages/4_💡_Recommendations.py", title="V-Sense", icon="💡"),
+    st.Page("custom_pages/5_🤖_AI_Copilot.py", title="CoPilot", icon="🤖"),
+    # st.Page("custom_pages/6_📊_Reports.py", title="Reports", icon="📊" ),
+]
+
+
+
+pg = st.navigation(pages)
+
+# Run active page
 pg.run()

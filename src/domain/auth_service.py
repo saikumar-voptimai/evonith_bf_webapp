@@ -1,5 +1,5 @@
 # domain/auth_service.py
-# Using the Database class for authentication and registration
+# Using the database class for authentication and registration
 
 class AuthService:
     def __init__(self, db):

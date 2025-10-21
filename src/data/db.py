@@ -44,7 +44,7 @@ class Database:
         self.create_users_table()
         self.create_material_hoppers_table()
 
-    # ---------------- USERS ----------------
+    # ---------------- USERS ---------------
     def create_users_table(self):
         """
         Creates the 'users' table if it does not exist.

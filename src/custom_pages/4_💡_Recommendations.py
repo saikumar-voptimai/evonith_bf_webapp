@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 import io
-
+import yaml
 from openai import OpenAI
 
 import joblib
@@ -13,10 +13,15 @@ from config.config_loader import load_config
 
 config = load_config()
 config_vsense = load_config('setting_vsense.yml')
-
+CONFIG_PATH = Path("src/config/setting_vsense.yml")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 USE_CODE_INTERPRETER = True 
+
+
+
+
+
 
 def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]] | None = None) -> str:
     """
@@ -94,7 +99,7 @@ def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]
 # Section 0: Set the title page configuration
 st.markdown(
     """
-    <h1 style="text-align: center; font-family: 'Times New Roman', Times, serif; color: black;">
+    <h1 style="text-align: center; font-family: 'Times New Roman', Times, serif; ">
         V-OptimAIse & Evonith Metallics Limited
     </h1>
     """,
@@ -102,6 +107,31 @@ st.markdown(
 )
 
 st.divider()
+def update_vsense_config(key, value):
+    """Update OPTIM_STEPS in setting_vsense.yml dynamically."""
+    with open(CONFIG_PATH, "r") as f:
+        data = yaml.safe_load(f)
+    data[key] = value
+    with open(CONFIG_PATH, "w") as f:
+        yaml.safe_dump(data, f)
+# --------------------------------------------------------
+#  Debug Mode Toggle
+# --------------------------------------------------------
+def toggle_debug_mode():
+    """Toggle Debug Mode ON/OFF and update OPTIM_STEPS in setting_vsense.yml."""
+    cfg = yaml.safe_load(open(CONFIG_PATH))
+    # Debug mode button should be on side bar
+    debug_on = st.sidebar.toggle("Debug", value=False)  # default OFF
+    new_steps = 3 if debug_on else 30
+
+    if cfg.get("OPTIM_STEPS") != new_steps:
+        cfg["OPTIM_STEPS"] = new_steps
+        yaml.safe_dump(cfg, open(CONFIG_PATH, "w"))
+        st.toast(f"{'✅ Debug ON (3 steps)' if debug_on else '🧩 Debug OFF (30 steps)'}", icon="⚡")
+        st.rerun()
+
+toggle_debug_mode()
+
 
 # Section 1: Select the optimisation type
 optimisation_type = st.selectbox(

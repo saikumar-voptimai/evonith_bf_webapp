@@ -18,9 +18,9 @@ class HopperAdminPage:
         self.materials = self.db.materials
         self.material_hoppers = self.db.get_material_hoppers()
 
-    # ----------------------------------------------------
+    # ---------------------------------------------------
     # 📝 Form Handling
-    # ----------------------------------------------------
+    # ---------------------------------------------------
     def render_form(self):
         """
         Renders the editable hopper mapping form.

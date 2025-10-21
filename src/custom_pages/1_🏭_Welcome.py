@@ -2,9 +2,9 @@
 import streamlit as st
 from utils.session import logout_user, is_admin
 
-# ----------------------------------------------------
+# ---------------------------------------------------
 # 🔒 AUTH CHECK
-# ----------------------------------------------------
+# ---------------------------------------------------
 if "auth_user" not in st.session_state:
     st.warning("Please login to access this page.")
     st.stop()

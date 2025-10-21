@@ -16,9 +16,9 @@ class RegisterPage:
         self.db = Database()
         self.auth_service = AuthService(self.db)
 
-    # -------------------------------
+    # ------------------------------
     # Helpers
-    # -------------------------------
+    # ------------------------------
     def show_success_message(self):
         """
         Displays a success message stored in session state and then clears it.

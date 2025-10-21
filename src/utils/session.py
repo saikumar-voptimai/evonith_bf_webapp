@@ -12,9 +12,9 @@ if not cookies.ready():
     st.stop()
 
 
-# ----------------------------
+# ---------------------------
 # AUTH STATE HANDLERS
-# ----------------------------
+# ---------------------------
 def is_logged_in():
     """Check if the user is logged in (session or cookie)."""
     # If session lost (reload), restore from cookie
