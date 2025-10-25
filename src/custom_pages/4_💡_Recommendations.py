@@ -172,7 +172,7 @@ if bounds_file.exists():
 else:
     persisted_bounds = {}
 
-# 💅 Unified CSS styling (without .metric-card)
+# 💅 Clean CSS styling
 st.markdown("""
 <style>
     section.main > div:first-child {
@@ -186,89 +186,90 @@ st.markdown("""
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         transition: all 0.2s ease-in-out;
         font-weight: 500;
+        text-align: center;
     }
     .stNumberInput > div > div > input:focus {
         border-color: #007bff !important;
         box-shadow: 0 0 6px rgba(0,123,255,0.4);
     }
 
+    .param-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1e3a8a;
+        text-align: center;
+        margin-bottom: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
     .value-label {
         font-weight: 600;
         color: #334155;
-        margin-bottom: 5px;
         text-align: center;
+        margin-bottom: 0.3rem;
     }
-    .sub-box {
-        background: #f8fafc;
-        padding: 10px 12px;
-        border-radius: 12px;
-        font-size: 1.05rem;
-        font-weight: 600;
-        color: #334155;
-        text-align: center;
-        box-shadow: inset 0 0 4px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
+
+    hr {
+        border: none;
+        height: 1px;
+        background-color: #e2e8f0;
+        margin: 1rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
 
+# Title
+st.subheader("💡 Control Parameters")
+
 include_control = {}
+cols = st.columns(3)
+i = 0
 
 with st.form("Control Params Form"):
     for cp in cp_list:
-        latest_val = float(df_live[cp].iloc[-1])
-        col_min = float(df_live[cp].min())
-        col_max = float(df_live[cp].max())
+        with cols[i % 3]:
+            latest_val = float(df_live[cp].iloc[-1])
+            col_min = float(df_live[cp].min())
+            col_max = float(df_live[cp].max())
 
-        cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
-        cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
-        val = persisted_bounds.get(cp, {}).get("value", latest_val)
+            cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
+            cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
+            val = persisted_bounds.get(cp, {}).get("value", latest_val)
 
-        # Parameter title
-        st.markdown(f"### {cp}")
+            # Title for each parameter
+            st.markdown(f"<div class='param-title'>{cp}</div>", unsafe_allow_html=True)
 
-        # Editable value
-        st.markdown(f"<div class='value-label'>Current Value</div>", unsafe_allow_html=True)
-        val = st.number_input(
-            f"{cp} Value",
-            min_value=cp_min,
-            max_value=cp_max,
-            value=np.clip(val, cp_min, cp_max),
-            key=f"val_{cp}",
-        )
-
-        # Min and Max inputs
-        min_col, max_col = st.columns(2)
-        with min_col:
-            new_min = st.number_input(
-                f"{cp} Min",
-                value=cp_min,
-                key=f"min_{cp}"
-            )
-        with max_col:
-            new_max = st.number_input(
-                f"{cp} Max",
-                value=cp_max,
-                key=f"max_{cp}"
+            # Editable value
+            st.markdown(f"<div class='value-label'>Current Value</div>", unsafe_allow_html=True)
+            val = st.number_input(
+                f"{cp} Value",
+                min_value=cp_min,
+                max_value=cp_max,
+                value=np.clip(val, cp_min, cp_max),
+                key=f"val_{cp}",
             )
 
-        # Auto-adjust value if out of range
-        if val < new_min:
-            val = new_min
-        elif val > new_max:
-            val = new_max
+            # Min and Max side by side
+            min_col, max_col = st.columns(2)
+            with min_col:
+                new_min = st.number_input(f"{cp} Min", value=cp_min, key=f"min_{cp}")
+            with max_col:
+                new_max = st.number_input(f"{cp} Max", value=cp_max, key=f"max_{cp}")
 
-        include_control[cp] = {"min": new_min, "max": new_max, "value": val}
+            # Auto-adjust current value
+            if val < new_min:
+                val = new_min
+            elif val > new_max:
+                val = new_max
 
-        # Range summary
-        st.markdown(
-            f"<div class='sub-box'>Range: <b>{new_min:.2f}</b> → <b>{new_max:.2f}</b></div>",
-            unsafe_allow_html=True
-        )
+            include_control[cp] = {"min": new_min, "max": new_max, "value": val}
 
-    submitted = st.form_submit_button("💾 Save Bounds")
+            st.markdown("<hr>", unsafe_allow_html=True)
+        i += 1
 
-# Save to JSON
+    submitted = st.form_submit_button("💾 Save Bounds", use_container_width=True)
+
+# Save bounds
 if submitted:
     with open(bounds_file, "w") as f:
         json.dump(include_control, f, indent=4)
