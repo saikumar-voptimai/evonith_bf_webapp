@@ -172,54 +172,10 @@ if bounds_file.exists():
 else:
     persisted_bounds = {}
 
-# 💅 Clean CSS styling
-st.markdown("""
-<style>
-    section.main > div:first-child {
-        padding-top: 0rem !important;
-    }
-
-    .stNumberInput > div > div > input {
-        background-color: #f8fbff !important;
-        border: 1px solid #91c9f9 !important;
-        border-radius: 10px !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        transition: all 0.2s ease-in-out;
-        font-weight: 500;
-        text-align: center;
-    }
-    .stNumberInput > div > div > input:focus {
-        border-color: #007bff !important;
-        box-shadow: 0 0 6px rgba(0,123,255,0.4);
-    }
-
-    .param-title {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: #1e3a8a;
-        text-align: center;
-        margin-bottom: 0.5rem;
-        margin-top: 0.5rem;
-    }
-
-    .value-label {
-        font-weight: 600;
-        color: #334155;
-        text-align: center;
-        margin-bottom: 0.3rem;
-    }
-
-    hr {
-        border: none;
-        height: 1px;
-        background-color: #e2e8f0;
-        margin: 1rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Title
-st.subheader("💡 Control Parameters")
+# Load external CSS file
+css_path = Path(__file__).resolve().parents[1] / "css-style" / "style.css"
+with open(css_path) as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 include_control = {}
 cols = st.columns(3)
