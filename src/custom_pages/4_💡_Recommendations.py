@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 import io
+import json
 
 from openai import OpenAI
 
@@ -164,11 +165,20 @@ TIME_IDX = -1 # int(np.where(pd.to_datetime(df_data.index, format="%d/%m/%Y %H:%
 # Section 3: Display the current data and control parameters
 st.subheader("Control Parameters")
 
-# File for persisted bounds
-bounds_file = Path("control_bounds.json")
+
+# Define bounds file path
+bounds_file = Path("src/data/control_bounds.json")
+
+# Ensure the directory exists
+bounds_file.parent.mkdir(parents=True, exist_ok=True)
+
+# Load bounds safely
 if bounds_file.exists():
-    with open(bounds_file, "r") as f:
-        persisted_bounds = json.load(f)
+    try:
+        with open(bounds_file, "r") as f:
+            persisted_bounds = json.load(f)
+    except json.JSONDecodeError:
+        persisted_bounds = {}  # fallback if JSON is empty or invalid
 else:
     persisted_bounds = {}
 
