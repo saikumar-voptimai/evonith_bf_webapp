@@ -1,6 +1,6 @@
 {
     "Hot Blast VolumeNm3/Hr.": {
-        "min": 90010.0,
+        "min": 100000.0,
         "max": 122890.0,
         "value": 111568.1408
     },

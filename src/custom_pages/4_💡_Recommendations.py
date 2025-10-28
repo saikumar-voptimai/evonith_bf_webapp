@@ -15,6 +15,9 @@ from config.config_loader import load_config
 config = load_config()
 config_vsense = load_config('setting_vsense.yml')
 
+# Load external CSS file
+css_path = Path(__file__).resolve().parents[1] / "css-style" / "recommendation_style.css"
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 USE_CODE_INTERPRETER = True 
@@ -174,16 +177,9 @@ bounds_file.parent.mkdir(parents=True, exist_ok=True)
 
 # Load bounds safely
 if bounds_file.exists():
-    try:
-        with open(bounds_file, "r") as f:
-            persisted_bounds = json.load(f)
-    except json.JSONDecodeError:
-        persisted_bounds = {}  # fallback if JSON is empty or invalid
-else:
-    persisted_bounds = {}
+    with open(bounds_file, "r") as f:
+        persisted_bounds = json.load(f)
 
-# Load external CSS file
-css_path = Path(__file__).resolve().parents[1] / "css-style" / "style.css"
 with open(css_path) as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -205,22 +201,20 @@ with st.form("Control Params Form"):
             # Title for each parameter
             st.markdown(f"<div class='param-title'>{cp}</div>", unsafe_allow_html=True)
 
-            # Editable value
-            st.markdown(f"<div class='value-label'>Current Value</div>", unsafe_allow_html=True)
-            val = st.number_input(
-                f"{cp} Value",
-                min_value=cp_min,
-                max_value=cp_max,
-                value=np.clip(val, cp_min, cp_max),
-                key=f"val_{cp}",
-            )
+            val_col, min_col, max_col = st.columns([2,1,1])
+            with val_col:
+                val = st.number_input(
+                    f"Value",
+                    min_value=cp_min,
+                    max_value=cp_max,
+                    value=np.clip(val, cp_min, cp_max),
+                    key=f"val_{cp}",
+                )
 
-            # Min and Max side by side
-            min_col, max_col = st.columns(2)
             with min_col:
-                new_min = st.number_input(f"{cp} Min", value=cp_min, key=f"min_{cp}")
+                new_min = st.number_input(f"Min", value=cp_min, key=f"min_{cp}")
             with max_col:
-                new_max = st.number_input(f"{cp} Max", value=cp_max, key=f"max_{cp}")
+                new_max = st.number_input(f"Max", value=cp_max, key=f"max_{cp}")
 
             # Auto-adjust current value
             if val < new_min:
