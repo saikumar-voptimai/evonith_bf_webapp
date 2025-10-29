@@ -205,7 +205,7 @@ with st.form("Control Params Form"):
             st.markdown(f"<div class='param-title'>{cp}</div>", unsafe_allow_html=True)
 
             # Layout for inputs
-            val_col, min_col, max_col = st.columns([1, 1, 1])
+            val_col, min_col, max_col = st.columns([2, 1, 1])
             with val_col:
                 val = st.number_input(
                     "Value",
@@ -235,8 +235,6 @@ with st.form("Control Params Form"):
             val = min(max(val, cp_min), cp_max)
 
             include_control[cp] = {"min": cp_min, "max": cp_max, "value": val}
-
-            st.markdown("<hr>", unsafe_allow_html=True)
 
         i += 1
 
