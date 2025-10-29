@@ -168,20 +168,21 @@ TIME_IDX = -1 # int(np.where(pd.to_datetime(df_data.index, format="%d/%m/%Y %H:%
 # Section 3: Display the current data and control parameters
 st.subheader("Control Parameters")
 
-
-# Define bounds file path
+# --- File paths ---
 bounds_file = Path("src/data/control_bounds.json")
 
-# Ensure the directory exists
+# Ensure directory exists
 bounds_file.parent.mkdir(parents=True, exist_ok=True)
 
-# Load bounds safely
+# --- Load persisted bounds safely ---
 if bounds_file.exists():
     with open(bounds_file, "r") as f:
         persisted_bounds = json.load(f)
 
-with open(css_path) as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+# --- Load CSS ---
+if css_path.exists():
+    with open(css_path) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 include_control = {}
 cols = st.columns(3)
@@ -190,46 +191,58 @@ i = 0
 with st.form("Control Params Form"):
     for cp in cp_list:
         with cols[i % 3]:
-            latest_val = float(df_live[cp].iloc[-1])
+            # Get machine limits
             col_min = float(df_live[cp].min())
             col_max = float(df_live[cp].max())
+            latest_val = float(df_live[cp].iloc[-1])
 
+            # Use persisted values if any
             cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
             cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
             val = persisted_bounds.get(cp, {}).get("value", latest_val)
 
-            # Title for each parameter
+            # Title
             st.markdown(f"<div class='param-title'>{cp}</div>", unsafe_allow_html=True)
 
-            val_col, min_col, max_col = st.columns([2,1,1])
+            # Layout for inputs
+            val_col, min_col, max_col = st.columns([1, 1, 1])
             with val_col:
                 val = st.number_input(
-                    f"Value",
+                    "Value",
                     min_value=cp_min,
                     max_value=cp_max,
                     value=np.clip(val, cp_min, cp_max),
                     key=f"val_{cp}",
                 )
 
+            # Show but lock Min/Max fields
             with min_col:
-                new_min = st.number_input(f"Min", value=cp_min, key=f"min_{cp}")
+                st.number_input(
+                    "Min",
+                    value=cp_min,
+                    key=f"min_{cp}",
+                    disabled=True  # makes it uneditable
+                )
             with max_col:
-                new_max = st.number_input(f"Max", value=cp_max, key=f"max_{cp}")
+                st.number_input(
+                    "Max",
+                    value=cp_max,
+                    key=f"max_{cp}",
+                    disabled=True  # makes it uneditable
+                )
 
-            # Auto-adjust current value
-            if val < new_min:
-                val = new_min
-            elif val > new_max:
-                val = new_max
+            # Ensure current value is within limits
+            val = min(max(val, cp_min), cp_max)
 
-            include_control[cp] = {"min": new_min, "max": new_max, "value": val}
+            include_control[cp] = {"min": cp_min, "max": cp_max, "value": val}
 
             st.markdown("<hr>", unsafe_allow_html=True)
+
         i += 1
 
     submitted = st.form_submit_button("💾 Save Bounds", use_container_width=True)
 
-# Save bounds
+# --- Save to JSON ---
 if submitted:
     with open(bounds_file, "w") as f:
         json.dump(include_control, f, indent=4)
