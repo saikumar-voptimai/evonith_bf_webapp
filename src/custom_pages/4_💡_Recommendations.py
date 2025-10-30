@@ -3,17 +3,19 @@ import numpy as np
 import pandas as pd
 import os
 import io
-
+import yaml
 from openai import OpenAI
 
 import joblib
 from utils import optimiser, recommendations
 from pathlib import Path
 from config.config_loader import load_config
+from utils.helper_functions_explorer.data_retrieval import fetch_offline_data
 
 config = load_config()
 config_vsense = load_config('setting_vsense.yml')
-
+field_mapping = config_vsense.get("field_mapping", {})
+CONFIG_PATH = Path("src/config/setting_vsense.yml")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 USE_CODE_INTERPRETER = True 
@@ -94,7 +96,7 @@ def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]
 # Section 0: Set the title page configuration
 st.markdown(
     """
-    <h1 style="text-align: center; font-family: 'Times New Roman', Times, serif; color: black;">
+    <h1 style="text-align: center; font-family: 'Times New Roman', Times, serif; ">
         V-OptimAIse & Evonith Metallics Limited
     </h1>
     """,
@@ -103,11 +105,26 @@ st.markdown(
 
 st.divider()
 
+# --------------------------------------------------------
+#  Debug Mode Toggle
+# --------------------------------------------------------
+debug_on = st.sidebar.toggle("Debug", value=False)
+new_steps = 3 if debug_on else 30
+
+
+if config_vsense.get("OPTIM_STEPS") != new_steps:
+    config_vsense["OPTIM_STEPS"] = new_steps
+    yaml.safe_dump(config_vsense, open(CONFIG_PATH, "w"))
+
+
 # Section 1: Select the optimisation type
 optimisation_type = st.selectbox(
     "Select Optimisation Type",
     list(config_vsense['Optimisation'].keys())
 )
+# Extract input parameter groups for the selected optimisation type
+input_params = config_vsense['Optimisation'][optimisation_type]['input_params']
+
 
 outputs = [config_vsense['Optimisation'][model]['output_param'] for model in list(config_vsense['Optimisation'].keys())]
 models_dict = config_vsense['Optimisation']
@@ -189,23 +206,36 @@ with st.form(key="Control Params Form"):
 with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
     cols = st.columns(3)
     raw_mtrl_input = {}
-    # Display input boxes for Flux Parameters
-    keys = list(models_dict[optimisation_type]['input_params'].keys())
+    ml_cfg = config_vsense.get("influxdb_ml_database", {})
+
+    # Fetch raw material input data from InfluxDB
+    df_live = fetch_offline_data(
+        measurement=ml_cfg.get("measurements", "rm_charge_data"),
+        time_range=ml_cfg.get("time_range", "last 1 month"),
+        database=ml_cfg.get("database", "ml_dataset"),
+    )
+    df_live = df_live.rename(columns=field_mapping)
+    # latest data points
+    latest_row = df_live.iloc[-1]
+
     with st.form(key="Raw Material Input Form"):
-        for i, (key, ip_flat) in enumerate(models_dict[optimisation_type]['input_params'].items()):
-            with cols[(i+1) % 3]:
-                st.write(f"### {key} Parameters")
-                for i, param in enumerate(models_dict[optimisation_type]['input_params'][key]):
-                    default_val = df_live[param].iloc[-1]
-                    user_val = st.number_input(param, 
-                                               format="%.2f", 
-                                               min_value=df_live[param].min(), 
-                                               max_value=df_live[param].max(),
-                                               value=default_val)
-                    if user_val != default_val:
-                        raw_mtrl_input[param] = user_val
+        for i, (group_name, params) in enumerate(input_params.items()):
+            with cols[i % 3]:
+                st.write(f"### {group_name}")
+                for param in params:
+                    if param in latest_row:
+                        default_val = float(latest_row[param])
                     else:
-                        raw_mtrl_input[param] = np.nan
+                        default_val = 0.0
+                    user_val = st.number_input(
+                        param,
+                        format="%.2f",
+                        value=default_val,
+                    )
+                    raw_mtrl_input[param] = (
+                        user_val if user_val != default_val else np.nan
+                    )
+
         input_submit = st.form_submit_button("Submit Input Params")
 ip_flat_list = [val for group in models_dict[optimisation_type]['input_params'].values() for val in group]
 op_list = [config_vsense['Optimisation'][model]['output_param'] for model in list(config_vsense['Optimisation'].keys())]

@@ -15,8 +15,11 @@ from dotenv import load_dotenv
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config("setting_vsense.yml")
+offline_measurements = config.get("offline_measurements", {})
+influx_cfg = config.get("influx_offline", {})
 
 load_dotenv() 
+INFLUX_OFFLINE_TOKEN = os.getenv("INFLUX_OFFLINE_TOKEN", "")
 
 local_tz = pytz.timezone("Asia/Kolkata")  # or use your actual timezone
 os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
@@ -362,30 +365,42 @@ else:
 
 # 8 --- UI Section for Offline Data ---
 st.header("📄 Offline Data Viewer")
-offline_measurements = {"Bunker Report": "rm_updated_data", 
-                        "DPR": "dpr_data", 
-                        "HM & Slag": "hotmetal_slag_data"}
+
+# Session state defaults for offline data
 if "time_range_off" not in st.session_state:
     st.session_state.time_range_off = "last 1 week"
+if "selected_offline" not in st.session_state:
+    st.session_state.selected_offline = list(offline_measurements.keys())[0]
+
 cols = st.columns(2)
 with cols[0]:
-    selected_offline = st.selectbox("Select Offline Measurement", list(offline_measurements.keys()))
+    selected_offline = st.selectbox(
+        "Select Offline Measurement",
+        list(offline_measurements.keys()),
+        index=list(offline_measurements.keys()).index(st.session_state.selected_offline),
+        key="selected_offline"  
+    )
 with cols[1]:
     time_range_off = st.selectbox(
         "Select Time Range:",
         list(TIME_OPTIONS.keys())[7:],
-        index=list(TIME_OPTIONS.keys())[7:].index(st.session_state.time_range_off)
+        index=list(TIME_OPTIONS.keys())[7:].index(st.session_state.time_range_off),
+        key="time_range_off"  # 🔹 Also stored in session_state
     )
-    st.session_state.time_range_off = time_range_off
 
+ 
 if st.button("Fetch Offline Data"):
-    df_offline = dr.fetch_offline_data(offline_measurements[selected_offline],
-                                       time_range_off)
+    database = influx_cfg.get("database", "bf2_evonith_offline_utc")
+    df_offline = dr.fetch_offline_data(
+        measurement=offline_measurements[st.session_state.selected_offline],
+        time_range=st.session_state.time_range_off,
+        database=database,
+    )
 
     if df_offline.empty:
-        st.warning(f"No data found for {selected_offline}")
+        st.warning(f"No data found for {st.session_state.selected_offline}")
     else:
-        if selected_offline == "rm_data":
+        if st.session_state.selected_offline == "rm_data":
             df_offline = dr.clean_rm_data(df_offline)
         # Change timeidx to Asia/Kolkata
         df_offline.index = df_offline.index.tz_convert(local_tz)
@@ -395,6 +410,6 @@ if st.button("Fetch Offline Data"):
         st.download_button(
             label="Download as CSV",
             data=csv,
-            file_name=f"{selected_offline}.csv",
+            file_name=f"{st.session_state.selected_offline}.csv",
             mime="text/csv",
         )
