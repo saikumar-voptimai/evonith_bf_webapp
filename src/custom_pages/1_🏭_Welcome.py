@@ -3,20 +3,20 @@ import streamlit as st
 from utils.session import logout_user, is_admin
 
 # ---------------------------------------------------
-# 🔒 AUTH CHECK
+#  AUTH CHECK
 # ---------------------------------------------------
 if "auth_user" not in st.session_state:
     st.warning("Please login to access this page.")
     st.stop()
 
 # ----------------------------------------------------
-# 🧭 SIDEBAR (Admin tools + logout)
+#  SIDEBAR (Admin tools + logout)
 # ----------------------------------------------------
 with st.sidebar:
     st.markdown(f"👋 Logged in as: `{st.session_state['auth_user']}` ")
     st.markdown("---")
 
-    # 🧑‍💻 Admin-only quick links (only on Welcome page)
+    # Admin-only quick links (only on Welcome page)
     if is_admin():
         st.markdown("### 🔧 Admin Tools")
 
@@ -41,7 +41,7 @@ with st.sidebar:
 
         st.markdown("---")
 
-    # 🚪 Common logout for all users
+    #  Common logout for all users
     if st.button("🚪 Logout"):
         logout_user()
         st.stop()
@@ -62,7 +62,7 @@ elif is_admin() and st.session_state.get("admin_tool_selection") == "register":
     st.stop()
 
 # ----------------------------------------------------
-# 🏭 MAIN PAGE CONTENT (Default welcome content)
+#  MAIN PAGE CONTENT (Default welcome content)
 # ----------------------------------------------------
 st.title("Welcome to the Manufacturing Dashboard")
 st.write("This dashboard provides tools for data submission, visualization, and recommendations.")

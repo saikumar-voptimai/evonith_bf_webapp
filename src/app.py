@@ -1,14 +1,7 @@
-# ------------------------------------------------------
-# 🚀 Streamlit App Entry Point (Manufacturing Dashboard)
-# ------------------------------------------------------
 import streamlit as st
 
-# 🧩 Must be first Streamlit call
+# Must be first Streamlit call
 st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
-
-# ------------------------------------------------------
-# 🧱 Core Imports
-# ------------------------------------------------------
 from utils.logger import setup_logger
 from ui.login_page import LoginPage
 from utils.session import is_logged_in
@@ -17,7 +10,7 @@ from utils.session import is_logged_in
 setup_logger()
 
 # ------------------------------------------------------
-# 🔐 Authentication Gate
+#  Authentication Gate
 # ------------------------------------------------------
 if not is_logged_in():
     # Hide sidebar completely during login
@@ -36,12 +29,12 @@ if not is_logged_in():
     st.stop()
 
 # ------------------------------------------------------
-# 🧭 PAGE REGISTRATION
+# PAGE REGISTRATION
 # ------------------------------------------------------
 # Base pages (visible to all)
 pages = [
     st.Page("custom_pages/1_🏭_Welcome.py", title="Welcome", icon="🏭"),
-    st.Page("custom_pages/2_📓_Data_Submission.py", title="Data Submission", icon="📓"),
+    st.Page("custom_pages/2_📓_Data_Explorer.py", title="Data Submission", icon="📓"),
     st.Page("custom_pages/3_📈_Data_Visualisation.py", title="V-Board", icon="📈"),
     st.Page("custom_pages/4_💡_Recommendations.py", title="V-Sense", icon="💡"),
     st.Page("custom_pages/5_🤖_AI_Copilot.py", title="CoPilot", icon="🤖"),

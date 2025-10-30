@@ -19,9 +19,9 @@ class LoginPage:
         self.auth_service = AuthService(self.db)
 
     # ---------------------------------------------------
-    # 🎨 UI Layout
+    #  UI Layout
     # ---------------------------------------------------
-    def render_layout(self):
+    def render_layout(self) -> None:
         st.markdown(
             """
             <h1 style='text-align:center;'>🔐 Blast Furnace Dashboard Access</h1>
@@ -55,9 +55,9 @@ class LoginPage:
         )
 
     # ----------------------------------------------------
-    # 🧾 Login Form
+    #  Login Form
     # ----------------------------------------------------
-    def render_form(self):
+    def render_form(self) -> None:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.markdown("### Please log in to continue")
@@ -72,9 +72,9 @@ class LoginPage:
                     self.handle_login(username, password)
 
     # ----------------------------------------------------
-    # 🔐 Authentication Logic
+    #  Authentication Logic
     # ----------------------------------------------------
-    def handle_login(self, username, password):
+    def handle_login(self, username, password) -> None:
         """
         Handles user authentication flow.
 
@@ -95,9 +95,9 @@ class LoginPage:
             st.error("❌ Invalid username or password.")
 
     # ----------------------------------------------------
-    # 🚀 Entry Point
+    #  Entry Point
     # ----------------------------------------------------
-    def run(self):
+    def run(self) -> None:
         """
         Entry point for rendering the Login Page.
 

@@ -107,30 +107,19 @@ st.markdown(
 )
 
 st.divider()
-def update_vsense_config(key, value):
-    """Update OPTIM_STEPS in setting_vsense.yml dynamically."""
-    with open(CONFIG_PATH, "r") as f:
-        data = yaml.safe_load(f)
-    data[key] = value
-    with open(CONFIG_PATH, "w") as f:
-        yaml.safe_dump(data, f)
+
 # --------------------------------------------------------
 #  Debug Mode Toggle
 # --------------------------------------------------------
-def toggle_debug_mode():
-    """Toggle Debug Mode ON/OFF and update OPTIM_STEPS in setting_vsense.yml."""
-    cfg = yaml.safe_load(open(CONFIG_PATH))
-    # Debug mode button should be on side bar
-    debug_on = st.sidebar.toggle("Debug", value=False)  # default OFF
-    new_steps = 3 if debug_on else 30
+debug_on = st.sidebar.toggle("Debug", value=False)
+new_steps = 3 if debug_on else 30
 
-    if cfg.get("OPTIM_STEPS") != new_steps:
-        cfg["OPTIM_STEPS"] = new_steps
-        yaml.safe_dump(cfg, open(CONFIG_PATH, "w"))
-        st.toast(f"{'✅ Debug ON (3 steps)' if debug_on else '🧩 Debug OFF (30 steps)'}", icon="⚡")
-        st.rerun()
 
-toggle_debug_mode()
+if config_vsense.get("OPTIM_STEPS") != new_steps:
+    config_vsense["OPTIM_STEPS"] = new_steps
+    yaml.safe_dump(config_vsense, open(CONFIG_PATH, "w"))
+
+
 
 
 # Section 1: Select the optimisation type

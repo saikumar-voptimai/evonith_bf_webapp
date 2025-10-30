@@ -12,16 +12,16 @@ class HopperAdminPage:
     assignments and enforcing valid input formats.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize database connection and load materials and mappings."""
         self.db = Database()
         self.materials = self.db.materials
         self.material_hoppers = self.db.get_material_hoppers()
 
     # ---------------------------------------------------
-    # 📝 Form Handling
+    #  Form Handling
     # ---------------------------------------------------
-    def render_form(self):
+    def render_form(self) -> None:
         """
         Renders the editable hopper mapping form.
 
@@ -53,9 +53,9 @@ class HopperAdminPage:
             self.handle_submission(updated_hoppers)
 
     # ----------------------------------------------------
-    # 🔄 Submission Handling
+    #  Submission Handling
     # ----------------------------------------------------
-    def handle_submission(self, updated_hoppers):
+    def handle_submission(self, updated_hoppers) -> None:
         """
         Parses, validates, and updates hopper mappings.
 
@@ -113,9 +113,9 @@ class HopperAdminPage:
             st.rerun()
 
     # ----------------------------------------------------
-    # 🖥️ Render Page
+    #  Render Page
     # ----------------------------------------------------
-    def render(self):
+    def render(self) -> None:
         """
         Renders the Hopper Admin Page.
 
@@ -142,7 +142,7 @@ class HopperAdminPage:
 # -------------------------------
 # Entry Point
 # -------------------------------
-def hopper_admin_page():
+def hopper_admin_page() -> None:
     """
     Streamlit entry point for Hopper Admin Page.
     Instantiates and renders the HopperAdminPage class.

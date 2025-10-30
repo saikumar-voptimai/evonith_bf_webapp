@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# ✅ Use your Neon/Supabase DB URL
+#  Use your Neon/Supabase DB URL
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
@@ -38,14 +38,14 @@ class Database:
         materials (list): List of materials loaded from the YAML file.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initializes the database by loading materials and creating necessary tables."""
         self.materials = self.load_materials_from_yml()
         self.create_users_table()
         self.create_material_hoppers_table()
 
     # ---------------- USERS ---------------
-    def create_users_table(self):
+    def create_users_table(self)-> None:
         """
         Creates the 'users' table if it does not exist.
 
@@ -71,7 +71,7 @@ class Database:
             if cur.fetchone() is None:
                 self.add_user("admin", "admin123", "admin")
 
-    def add_user(self, username: str, password: str, role: str = "user"):
+    def add_user(self, username: str, password: str, role: str = "user")-> None:
         """
         Adds a new user to the 'users' table.
 
@@ -93,7 +93,7 @@ class Database:
         except IntegrityError:
             raise ValueError("Username already exists.")
 
-    def validate_user(self, username: str, password: str):
+    def validate_user(self, username: str, password: str) -> tuple[str, str] | None:
         """
         Validates a user's credentials.
 
@@ -113,7 +113,7 @@ class Database:
             return tuple(row) if row else None
 
     # ---------------- MATERIAL HOPPERS ----------------
-    def load_materials_from_yml(self):
+    def load_materials_from_yml(self) -> list[str]:
         """
         Loads the materials list from the `materials.yml` configuration file.
 
@@ -140,7 +140,8 @@ class Database:
                 raise ValueError("Invalid format: 'materials' must be a list in YAML file.")
             return materials
 
-    def create_material_hoppers_table(self):
+    def create_material_hoppers_table(self) -> None:
+
         """
         Creates the 'material_hoppers' table if it does not exist.
 
@@ -170,7 +171,7 @@ class Database:
                         {"m": material, "h": "HOPPER_0_ACT"}
                     )
 
-    def get_material_hoppers(self):
+    def get_material_hoppers(self)-> dict[str, list[str]]:
         """
         Fetches all material-to-hopper mappings from the database.
 

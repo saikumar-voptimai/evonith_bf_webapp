@@ -19,12 +19,9 @@ class RegisterPage:
     # ------------------------------
     # Helpers
     # ------------------------------
-    def show_success_message(self):
+    def show_success_message(self) -> None:
         """
         Displays a success message stored in session state and then clears it.
-
-        This method ensures that the success message appears only once after
-        a successful registration and is removed on subsequent reruns.
         """
         if st.session_state.get("registration_success", False):
             st.success(
@@ -35,11 +32,11 @@ class RegisterPage:
             # Reset success message state so it shows only once
             st.session_state["registration_success"] = False
             st.session_state.pop("registration_success_message", None)
-            # ✅ Stop rendering further (prevents form flicker)
+            # Stop rendering further (prevents form flicker)
             # st.stop()
             return
 
-    def handle_registration(self, username: str, password: str, role: str):
+    def handle_registration(self, username: str, password: str, role: str) -> None:
         """
         Handles registration logic and interacts with AuthService.
 
@@ -73,16 +70,14 @@ class RegisterPage:
     # -------------------------------
     # UI
     # -------------------------------
-    def render(self):
+    def render(self) -> None:
         """
-        Renders the user registration page UI in Streamlit.
-
         Displays a registration form for entering username, password, and role.
         Also handles form submission and displays feedback messages.
         """
         st.subheader("🧾 Register New User")
 
-        # ✅ Show success message and prevent form re-render
+        # Show success message and prevent form re-render
         self.show_success_message()
 
         # Streamlit form (clears inputs automatically)
