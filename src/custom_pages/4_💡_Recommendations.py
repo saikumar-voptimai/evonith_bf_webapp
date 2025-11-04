@@ -301,7 +301,6 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
                         user_val if user_val != default_val else np.nan
                     )
 
-        input_submit = st.form_submit_button("Submit Input Params")
         raw_mtrl_input[param] = np.nan
         submit_ip = st.form_submit_button("Submit Input Params")
         if submit_ip:

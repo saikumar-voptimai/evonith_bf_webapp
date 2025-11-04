@@ -378,7 +378,7 @@ Optimisation:
 field_mapping:
   coke_pct_ashdb: COKE_ASH%
   coke_pct_fcdb: COKE_FC%
-  coke_pct_tm: COKE_TM%
+  coke_pct_tm: COKE_IM%
   coke_pct_moisture: COKE_MOIST%
   coke_pct_vmdb: COKE_VM%
   flux_mt: FLUX_MT
@@ -407,10 +407,10 @@ field_mapping:
   nutcoke_pct_im: NUTCOKE_IM%
   nutcoke_pct_tm: NUTCOKE_MOIST%
   nutcoke_pct_vm: NUTCOKE_VM%
-  pci_pct_ash: PCI_%Ash
-  pci_pct_fc: PCI_%FC
-  pci_pct_im: PCI_%IM
-  pci_pct_vm: PCI_%VM
+  pci_pct_ash: PCI_2_%Ash
+  pci_pct_fc: PCI_2_%FC
+  pci_pct_im: PCI_2_%IM
+  pci_pct_vm: PCI_2_%VM
   geomin: Geomin Type
   sinter_sp_02_basicity: Sinter_SP_02_Basicity
   sinter_sp_02_cold_strength_ai: Sinter_SP_02_Cold_Strength_AI
@@ -427,7 +427,10 @@ field_mapping:
   sinter_sp_02_pct_tio2: Sinter_SP_02_TiO2%
   sinter_sp_02_pct_total_alkali_pct_k2O: Sinter_SP_02_K2O%
   sinter_sp_02_pct_total_alkali_pct_na2O: Sinter_SP_02_Na2O%
-
+  ai: Sinter_SP_02_Cold_Strength_AI
+  ti: Sinter_SP_02_Cold_strength_TI
+  rdi: Sinter_SP_02_Hot_strength_RDI
+  
 influxdb_ml_database:
   database: ml_dataset
   measurements: "rm_charge_data"
