@@ -63,28 +63,32 @@ def clean_rm_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def fetch_offline_data(measurement: str,
-                       time_range: str) -> pd.DataFrame:
+                       time_range: str,
+                       database: str,
+                       ) -> pd.DataFrame:
     """
     Fetches offline data for a given measurement.
-    Args:
-        measurement (str): Measurement name to fetch data for.
-    Returns:
-        pd.DataFrame: DataFrame containing the offline data for the measurement.
     """
-    datafetcher = BaseDataFetcher(measurement,
-                                database="bf2_evonith_offline_utc",
-                                token="INFLUX_OFFLINE_TOKEN")
-    df_meas = datafetcher.fetch_averaged_data(recent_data_of=time_range)
+    datafetcher = BaseDataFetcher(
+        variable_tag=measurement,
+        database=database,
+        token="INFLUX_OFFLINE_TOKEN"
+    )
+    df_meas = datafetcher.fetch_averaged_data(
+        recent_data_of=time_range
+    )
+
+    # Ensure datetime index
     if 'time' in df_meas.columns:
         df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
         df_meas.set_index('time', inplace=True, drop=True)
-        df_meas.sort_index(inplace=True)
-    else:
-        if not isinstance(df_meas.index, pd.DatetimeIndex):
-            df_meas.index = pd.to_datetime(df_meas.index, errors='coerce', utc=True)
-        df_meas.sort_index(inplace=True)
+    elif not isinstance(df_meas.index, pd.DatetimeIndex):
+        df_meas.index = pd.to_datetime(df_meas.index, errors='coerce', utc=True)
 
+    df_meas.sort_index(inplace=True)
     return df_meas
+
+
 
 
 def fetch_online_df(selected_measurements: List[str],
