@@ -5,7 +5,7 @@ import json
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone
-from utils.helper_functions_submission import data_retrieval as dr
+from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
 from dotenv import load_dotenv
 from openai import OpenAI

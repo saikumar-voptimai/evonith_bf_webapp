@@ -302,7 +302,7 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
                     )
 
         input_submit = st.form_submit_button("Submit Input Params")
-                        raw_mtrl_input[param] = np.nan
+        raw_mtrl_input[param] = np.nan
         submit_ip = st.form_submit_button("Submit Input Params")
         if submit_ip:
             st.success("✅ Input parameters recorded.")
