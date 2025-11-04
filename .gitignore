@@ -1,8 +1,0 @@
-*.pyc
-.env
-.venv
-__pycache__/
-*.pyo
-*.pyd
-*__pycache__
-.vscode/
