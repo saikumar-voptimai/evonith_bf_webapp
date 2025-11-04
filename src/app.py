@@ -9,7 +9,7 @@ st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
 
 # Define your pages
 page1 = st.Page("custom_pages/1_🏭_Welcome.py", title="Welcome", icon="🏭")
-page2 = st.Page("custom_pages/2_📓_Data_Submission.py", title="Data Submission", icon="📓")
+page2 = st.Page("custom_pages/2_📓_Data_Explorer.py", title="Data Explorer", icon="📓")
 page3 = st.Page("custom_pages/3_📈_Data_Visualisation.py", title="V-Board", icon="📈")
 page4 = st.Page("custom_pages/4_💡_Recommendations.py", title="V-Sense", icon="💡")
 page5 = st.Page("custom_pages/5_🤖_AI_Copilot.py", title="CoPilot", icon="🤖")
