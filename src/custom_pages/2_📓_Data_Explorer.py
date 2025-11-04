@@ -8,8 +8,7 @@ import plotly.graph_objects as go
 import os
 import pytz
 from pathlib import Path
-from data_fetchers.base_data_fetcher import BaseDataFetcher
-from utils.helper_functions_submission import data_retrieval as dr
+from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
 from datetime import timedelta
 from dotenv import load_dotenv
@@ -173,7 +172,6 @@ with st.sidebar:
     with cols[1]:
         to_date = st.date_input("To Date", value=pd.to_datetime(df.index[-1]).date(), key="to_date2")
 
-st.write("Select the features to plot:")
 features = st.multiselect('Select features', df.columns, default=df.columns[0])
 df_t = df[(pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date >= from_date) & 
              (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date <= to_date)]
@@ -389,7 +387,9 @@ if st.button("Fetch Offline Data"):
     else:
         if selected_offline == "rm_data":
             df_offline = dr.clean_rm_data(df_offline)
-
+        # Change timeidx to Asia/Kolkata
+        df_offline.index = df_offline.index.tz_convert(local_tz)
+        df_offline.index.name = 'time (IST)'
         st.dataframe(df_offline)
         csv = df_offline.to_csv(index=False).encode('utf-8')
         st.download_button(
