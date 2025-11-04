@@ -2,7 +2,7 @@
     "Hot Blast VolumeNm3/Hr.": {
         "min": 100000.0,
         "max": 122890.0,
-        "value": 111568.1408
+        "value": 100000.0
     },
     "Hot Blast PressureBar": {
         "min": 2.03,
