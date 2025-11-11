@@ -29,7 +29,7 @@ section.main > div:first-child {
 }
 
 .stNumberInput > div > div > input:focus {
-    border-color: #FFF7CC !important;
+    border-color: #FFC107 !important; /* stronger amber */
     box-shadow: 0 0 0 0.2rem rgba(255,193,7,0.25);
 }
 

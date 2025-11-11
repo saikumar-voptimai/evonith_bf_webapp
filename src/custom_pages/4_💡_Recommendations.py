@@ -219,12 +219,13 @@ with st.form("Control Params Form"):
             cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
             cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
             val = persisted_bounds.get(cp, {}).get("value", latest_val)
+            overide = persisted_bounds.get(cp, {}).get("override", False)
 
             # Title
             st.markdown(f"<div class='param-title'>{cp}</div>", unsafe_allow_html=True)
 
             # Layout for inputs
-            val_col, min_col, max_col = st.columns([2, 1, 1])
+            val_col, or_col, min_col, max_col= st.columns([0.4, 0.10, 0.25, 0.25])
             with val_col:
                 val = st.number_input(
                     "Value",
@@ -234,32 +235,50 @@ with st.form("Control Params Form"):
                     key=f"val_{cp}",
                 )
 
-            # Show but lock Min/Max fields
-            with min_col:
-                st.number_input(
-                    "Min",
-                    value=cp_min,
-                    key=f"min_{cp}",
-                    disabled=True  # makes it uneditable
-                )
-            with max_col:
-                st.number_input(
-                    "Max",
-                    value=cp_max,
-                    key=f"max_{cp}",
-                    disabled=True  # makes it uneditable
-                )
+            with or_col:
+                override = st.checkbox(" ", value=False, key=f"override_{cp}")
+
+            if override:
+                with min_col:
+                    st.number_input(
+                        "Min",
+                        value=cp_min,
+                        key=f"min_{cp}",
+                        disabled=True  # Uneditable when override is checked
+                    )
+                with max_col:
+                    st.number_input(
+                        "Max",
+                        value=cp_max,
+                        key=f"max_{cp}",
+                        disabled=True  # Uneditable when override is checked
+                    )
+            else:
+                with min_col:
+                    st.number_input(
+                        "Min",
+                        value=cp_min,
+                        key=f"min_{cp}",
+                        disabled=False  # Editable when override is unchecked
+                    )
+                with max_col:
+                    st.number_input(
+                        "Max",
+                        value=cp_max,
+                        key=f"max_{cp}",
+                        disabled=False  # Editable when override is unchecked
+                    )
 
             # Ensure current value is within limits
             val = min(max(val, cp_min), cp_max)
-
-            include_control[cp] = {"min": cp_min, "max": cp_max, "value": val}
+            include_control[cp] = {"min": cp_min, "max": cp_max, "value": val, "override": overide}
 
         i += 1
 
     submit_cp = st.form_submit_button("Submit CP & Save bounds")
     if submit_cp:
         st.session_state['control_params'] = include_control
+                
 
 # --- Save to JSON ---
 if submit_cp:
@@ -301,7 +320,6 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
                         user_val if user_val != default_val else np.nan
                     )
 
-        input_submit = st.form_submit_button("Submit Input Params")
         raw_mtrl_input[param] = np.nan
         submit_ip = st.form_submit_button("Submit Input Params")
         if submit_ip:
