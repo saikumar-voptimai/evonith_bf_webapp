@@ -111,7 +111,8 @@ def run_optimiser(
                 local_features.remove(feature)
         models_dict[model]['local_feature_names'] = local_features
     # Bounds
-    bounds = get_control_bounds(df, free_cp, q_low=0.01, q_high=0.99)
+    bounds = get_control_bounds(df, free_cp )
+    print(bounds)
 
     # Precompute scaled previous control params for penalty term
     prev_row_cp = df_feat_vec.iloc[-1][control_params]

@@ -1,4 +1,6 @@
 import pandas as pd
+from pathlib import Path
+import json
 import numpy as np
 import joblib
 import warnings
@@ -55,9 +57,7 @@ def build_feature_vector(df: pd.DataFrame,
     return np.array(features).reshape(1, -1)
 
 def get_control_bounds(df: pd.DataFrame, 
-                       control_params: List[str], 
-                       q_low: float=0.01, 
-                       q_high: float=0.99
+                       cp_list: List[str], 
                        ) -> List[tuple]:
     """
     TODO: Edit the function to send cp bounds from control_bounds.json file
@@ -70,7 +70,23 @@ def get_control_bounds(df: pd.DataFrame,
     Returns:
         List[tuple]: List of tuples with lower and upper bounds for each control parameter.
     """
-    return [(df[cp].quantile(q_low), df[cp].quantile(q_high)) for cp in control_params]
+    bounds_file = Path("src/data/control_bounds.json")
+    bounds_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if bounds_file.exists():
+        with open(bounds_file, "r") as f:
+            persisted_bounds = json.load(f)
+            for cp in cp_list:
+                col_min = float(df[cp].min())
+                col_max = float(df[cp].max())
+                cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
+                cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
+                val = persisted_bounds.get(cp, {})["value"]
+                overide = persisted_bounds.get(cp, {}).get("override", False)
+                if overide:
+                    persisted_bounds[cp]["min"] = val * 0.99
+                    persisted_bounds[cp]["max"] = val * 1.01
+    return [(persisted_bounds[cp]["min"], persisted_bounds[cp]["max"]) for cp in cp_list]
 
 def process_dataframe(df: pd.DataFrame,
                       target_col: str,

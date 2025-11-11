@@ -293,14 +293,14 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
     ml_cfg = config_vsense.get("influxdb_ml_database", {})
 
     # Fetch raw material input data from InfluxDB
-    df_live = fetch_offline_data(
+    df_live_ip = fetch_offline_data(
         measurement=ml_cfg.get("measurements", "rm_charge_data"),
         time_range=ml_cfg.get("time_range", "last 1 month"),
         database=ml_cfg.get("database", "ml_dataset"),
     )
-    df_live = df_live.rename(columns=field_mapping)
+    df_live_ip = df_live_ip.rename(columns=field_mapping)
     # latest data points
-    latest_row = df_live.iloc[-1]
+    latest_row = df_live_ip.iloc[-1]
 
     with st.form(key="Raw Material Input Form"):
         for i, (group_name, params) in enumerate(input_params.items()):
