@@ -60,6 +60,7 @@ def get_control_bounds(df: pd.DataFrame,
                        q_high: float=0.99
                        ) -> List[tuple]:
     """
+    TODO: Edit the function to send cp bounds from control_bounds.json file
     Get quantile-based bounds for control params.
     Args:
         df (pd.DataFrame): DataFrame containing control parameters.
