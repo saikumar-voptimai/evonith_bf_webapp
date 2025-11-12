@@ -204,7 +204,8 @@ if css_path.exists():
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 include_control = {}
-
+if 'control_params' not in st.session_state:
+    st.session_state['control_params'] = include_control
 with st.form("Control Params Form"):
     cols = st.columns(3)
     i = 0
@@ -219,13 +220,22 @@ with st.form("Control Params Form"):
             cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
             cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
             val = persisted_bounds.get(cp, {}).get("value", latest_val)
-            overide = persisted_bounds.get(cp, {}).get("override", False)
+            override = persisted_bounds.get(cp, {}).get("override", False)
 
-            # Title
-            st.markdown(f"<div class='param-title'>{cp}</div>", unsafe_allow_html=True)
+            col1, col2 = st.columns([0.05, 0.95])
+
+            # Checkbox in the first column
+            with col1:
+                override = st.checkbox(" ", value=False, key=f"override_{cp}")
+
+            # Heading in the second column, styled
+            col2.markdown(
+                f"<div class='param-title'>{cp}</div>",
+                unsafe_allow_html=True
+            )
 
             # Layout for inputs
-            val_col, or_col, min_col, max_col= st.columns([0.4, 0.10, 0.25, 0.25])
+            val_col, min_col, max_col= st.columns([0.45, 0.275, 0.275])
             with val_col:
                 val = st.number_input(
                     "Value",
@@ -234,9 +244,6 @@ with st.form("Control Params Form"):
                     value=np.clip(val, cp_min, cp_max),
                     key=f"val_{cp}",
                 )
-
-            with or_col:
-                override = st.checkbox(" ", value=False, key=f"override_{cp}")
 
             if override:
                 with min_col:
@@ -255,14 +262,14 @@ with st.form("Control Params Form"):
                     )
             else:
                 with min_col:
-                    st.number_input(
+                    min_val = st.number_input(
                         "Min",
                         value=cp_min,
                         key=f"min_{cp}",
                         disabled=False  # Editable when override is unchecked
                     )
                 with max_col:
-                    st.number_input(
+                    max_val = st.number_input(
                         "Max",
                         value=cp_max,
                         key=f"max_{cp}",
@@ -270,21 +277,18 @@ with st.form("Control Params Form"):
                     )
 
             # Ensure current value is within limits
-            val = min(max(val, cp_min), cp_max)
-            include_control[cp] = {"min": cp_min, "max": cp_max, "value": val, "override": overide}
+            val = min(max(val, min_val), max_val)
+            include_control[cp] = {"min": min_val, "max": max_val, "value": val, "override": override}
 
         i += 1
-
+    st.session_state['control_params'] = include_control
     submit_cp = st.form_submit_button("Submit CP & Save bounds")
     if submit_cp:
         st.session_state['control_params'] = include_control
-                
+        with open(bounds_file, "w") as f:
+            json.dump(include_control, f, indent=4)
+        st.success("✅ Bounds saved successfully!")
 
-# --- Save to JSON ---
-if submit_cp:
-    with open(bounds_file, "w") as f:
-        json.dump(include_control, f, indent=4)
-    st.success("✅ Bounds saved successfully!")
 
 # User-specified input variables:
 with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
