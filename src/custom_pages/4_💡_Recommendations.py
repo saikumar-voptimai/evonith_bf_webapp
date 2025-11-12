@@ -341,7 +341,7 @@ with st.form("Optimiser Form"):
     submit_optim_params = st.form_submit_button("Run Optimiser")
     if submit_optim_params:
         st.success("✅ Optimiser run requested.")
-        fixed_cp = {cp: val for cp, val in include_control.items() if not np.isnan(val)}
+        fixed_cp = {cp: cp_props['value'] for cp, cp_props in include_control.items() if not np.isnan(cp_props['value']) and cp_props['override']}
         user_input = {param: raw_mtrl_input.get(param, np.nan) for param in ip_flat_list}
         df_data_processed = recommendations.process_dataframe(df_live,
                                                             target_col=target_output,
