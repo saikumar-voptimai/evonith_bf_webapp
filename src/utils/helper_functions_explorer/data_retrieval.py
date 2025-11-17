@@ -62,32 +62,57 @@ def clean_rm_data(df: pd.DataFrame) -> pd.DataFrame:
     return df_clean
 
 
-def fetch_offline_data(measurement: str,
-                       time_range: str,
-                       database: str,
-                       ) -> pd.DataFrame:
+
+def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFrame:
     """
     Fetches offline data for a given measurement.
+    Supports:
+    - preset strings (e.g. 'last 1 month')
+    - tuple ranges (start, end)
+    - full dataset ('full')
     """
-    datafetcher = BaseDataFetcher(
+    dfetch = BaseDataFetcher(
         variable_tag=measurement,
         database=database,
         token="INFLUX_OFFLINE_TOKEN"
     )
-    df_meas = datafetcher.fetch_averaged_data(
-        recent_data_of=time_range
+
+    now = datetime.now(timezone.utc)
+
+    # Resolve time_range into fetch_averaged_data parameters
+    if isinstance(time_range, str) and time_range.strip().lower() == "full":
+        start, end = datetime(2023, 1, 1, tzinfo=timezone.utc), now
+        recent_label = "over selected range"
+
+    elif isinstance(time_range, tuple) and len(time_range) == 2:
+        start = pd.to_datetime(time_range[0], utc=True)
+        end   = pd.to_datetime(time_range[1], utc=True)
+        recent_label = "over selected range"
+
+    else:
+        # Preset string (e.g. "last 1 month")
+        return _finalize_dataframe(
+            dfetch.fetch_averaged_data(recent_data_of=time_range)
+        )
+
+    # For custom/full ranges
+    df = dfetch.fetch_averaged_data(
+        recent_data_of=recent_label,
+        start_time=start,
+        end_time=end
     )
 
-    # Ensure datetime index
-    if 'time' in df_meas.columns:
-        df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
-        df_meas.set_index('time', inplace=True, drop=True)
-    elif not isinstance(df_meas.index, pd.DatetimeIndex):
-        df_meas.index = pd.to_datetime(df_meas.index, errors='coerce', utc=True)
+    return _finalize_dataframe(df)
 
-    df_meas.sort_index(inplace=True)
-    return df_meas
 
+def _finalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Cleans and standardizes the final DataFrame."""
+    if "time" in df.columns:
+        df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)
+        df.set_index("time", inplace=True)
+
+    df.sort_index(inplace=True)
+    return df
 
 
 

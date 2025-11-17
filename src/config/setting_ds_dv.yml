@@ -703,3 +703,27 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
     R9 Delta T of Stave No 5 and 6: delta_t_r9_stave_5_6
     R9 Delta T of Stave No 7 and 8: delta_t_r9_stave_7_8
     R9 Delta T of Stave No 9 and 10: delta_t_r9_stave_9_10
+
+
+keep_cols:
+  - chem_pct_c
+  - chem_pct_cr
+  - chem_pct_fe
+  - chem_pct_mn
+  - chem_pct_p
+  - chem_pct_s
+  - chem_pct_si
+  - chem_pct_ti
+  - hmt_gt_1480c
+  - slag_basicity
+  - slag_pct_al2o3
+  - slag_pct_cao
+  - slag_pct_feo
+  - slag_pct_k2o
+  - slag_pct_mgo
+  - slag_pct_mno
+  - slag_pct_na2o
+  - slag_pct_s
+  - slag_pct_sio2
+  - slag_pct_tio2
+  - slag_t_basicity

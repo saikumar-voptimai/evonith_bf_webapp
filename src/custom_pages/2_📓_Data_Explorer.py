@@ -413,3 +413,85 @@ if st.button("Fetch Offline Data"):
             file_name=f"{st.session_state.selected_offline}.csv",
             mime="text/csv",
         )
+        
+
+
+# ----- HOT METAL AND SLAG -----
+
+st.header("📄 HOT METAL AND SLAG")
+
+# ----- FORM -----
+with st.form("hotmetal_form"):
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        selected_date = st.date_input("Select Date")
+
+    with col2:
+        interval_min = st.number_input("Interval (minutes)", min_value=1, max_value=600, value=10)
+
+    fetch_btn = st.form_submit_button("Fetch HM & SLAG DATA")
+
+if fetch_btn:
+    keep_cols = config.get("keep_cols", [])
+
+    selected_start = pd.Timestamp(selected_date).tz_localize("Asia/Kolkata")
+    selected_end = selected_start + pd.Timedelta(days=1)
+    prev_start = selected_start - pd.Timedelta(days=1)
+
+    fetch_start_utc = prev_start.tz_convert("UTC")
+    fetch_end_utc = selected_end.tz_convert("UTC")
+
+    df = dr.fetch_offline_data(
+        measurement="hotmetal_slag_data",
+        time_range=(fetch_start_utc, fetch_end_utc),
+        database="bf2_evonith_offline_utc",
+    )
+
+    if df.empty:
+        st.warning("No data found.")
+        st.stop()
+
+    # Clean + numeric only
+    df.index = df.index.tz_convert("Asia/Kolkata")
+    df = df.sort_index().loc[~df.index.duplicated(keep="last")]
+    df = df[[c for c in keep_cols if c in df.columns]]
+
+
+    numeric_cols = df.columns
+
+    # ---------- CREATE TARGET INTERVAL INDEX ----------
+    target_index = pd.date_range(
+        start=selected_start,
+        end=selected_end,
+        freq=f"{interval_min}min",
+        tz="Asia/Kolkata"
+    )
+
+    # ---------- MERGE RAW INDEX + TARGET INDEX ----------
+    combined_index = df.index.union(target_index)
+
+    # ---------- REINDEX WITH COMBINED INDEX ----------
+    df_combined = df.reindex(combined_index)
+
+    # ---------- INTERPOLATE ----------
+    df_combined[numeric_cols] = df_combined[numeric_cols].interpolate("time")
+
+    # --------- EXTRACT EXACT TARGET INTERVALS ----------
+    df_final = df_combined.loc[target_index]
+
+    # ---------- END ----------
+    today = pd.Timestamp.now(tz="Asia/Kolkata").date()
+    if selected_date == today:
+        now = pd.Timestamp.now(tz="Asia/Kolkata")
+        cutoff = now.floor(f"{interval_min}min")
+        df_final = df_final.loc[selected_start:cutoff]
+
+    st.success("Data processed successfully!")
+    st.dataframe(df_final)
+
+    st.download_button(
+        "Download CSV",
+        df_final.to_csv().encode("utf-8"),
+        file_name=f"hotmetal_{selected_date}_{interval_min}min.csv",
+        mime="text/csv",
+    )
