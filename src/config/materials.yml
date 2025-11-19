@@ -1,0 +1,55 @@
+hoppers:
+  - HOPPER 01
+  - HOPPER 02
+  - HOPPER 03
+  - HOPPER 04
+  - HOPPER 05
+  - HOPPER 06
+  - HOPPER 07
+  - HOPPER 08
+  - HOPPER 09
+  - HOPPER 10
+  - HOPPER 11
+  - HOPPER 12
+  - HOPPER 13
+  - HOPPER 14
+  - HOPPER 15
+  - HOPPER 16
+  - HOPPER 17
+  - HOPPER 18
+  - HOPPER 19
+
+materials:
+  - Coke Online
+  - Sinter
+  - Bacheli oversize CLO
+  - Lloyds CLO
+  - Geomin CLO
+  - Sinter
+  - Quartz
+  - Coke Offline
+  - Nut Coke
+  - Lloyds Pellet
+  - Lime Stone
+  - Dolomite
+  - Sarda Energy & Minerals Limited
+  - NMDC Limited Lumps (10-150 MM) (Kirandul)
+  - SS Enterprises- High Manetite
+  - ACORE INDUSTRIES PRIVATE LIMITED (MANGANESE ORE LUMP)
+  - TIRUPATI MINERALS & METALS (MANGANESE ORE LUMP)
+  - NMDC Limited (Donimalai)
+  - NMDC Limited (Kumarswamy)
+  - JAYASWAL NECO INDUSTRIES LIMITED
+  - Geomin (60%) Iron Fines Oversize (+10MM)
+  - Lloyds Metals Iron Fines Oversize (+10MM)
+  - NMDC Limited (Donimalai) Iron Fines Oversize (+10MM)
+  - NMDC Limited (Bachelli) Iron Fines Oversize (+10MM)
+  - Geomin Iron Manufacturing Fines Oversize (+40MM)
+  - Geomin Fines Oversize(+40MM)
+  - NMDC CLO Oversize (+40MM) (Donimalai)
+  - Lloyds Metals & EnergyCLO Oversize (+40MM)
+  - NMDC Limited Crushed ROM (10-40MM) (Kirandul)
+  - Geomin Fines Oversize(+10MM)
+  - NMDC CLO Oversize (+10MM) (Donimalai)
+  - Lloyds Metals CLO Oversize (+10MM)
+
