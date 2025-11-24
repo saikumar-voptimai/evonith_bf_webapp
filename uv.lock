@@ -1091,6 +1091,7 @@ dependencies = [
     { name = "propcache", marker = "python_full_version >= '3.10' and python_full_version < '4'" },
     { name = "protobuf", marker = "python_full_version >= '3.10' and python_full_version < '4'" },
     { name = "psutil", marker = "python_full_version >= '3.10' and python_full_version < '4'" },
+    { name = "psycopg" },
     { name = "psycopg2" },
     { name = "psycopg2-binary" },
     { name = "psygnal", marker = "python_full_version >= '3.10' and python_full_version < '4'" },
@@ -1304,6 +1305,7 @@ requires-dist = [
     { name = "propcache", marker = "python_full_version >= '3.10' and python_full_version < '4'", specifier = "==0.2.1" },
     { name = "protobuf", marker = "python_full_version >= '3.10' and python_full_version < '4'", specifier = "==5.29.2" },
     { name = "psutil", marker = "python_full_version >= '3.10' and python_full_version < '4'", specifier = "==6.1.1" },
+    { name = "psycopg", specifier = ">=3.2.13" },
     { name = "psycopg2", specifier = ">=2.9.11" },
     { name = "psycopg2-binary", specifier = ">=2.9.11" },
     { name = "psygnal", marker = "python_full_version >= '3.10' and python_full_version < '4'", specifier = "==0.11.1" },
@@ -3445,6 +3447,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/47/da/99f4345d4ddf2845cb5b5bd0d93d554e84542d116934fde07a0c50bd4e9f/psutil-6.1.1-cp36-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:33431e84fee02bc84ea36d9e2c4a6d395d479c9dd9bba2376c1f6ee8f3a4e0b3", size = 289017, upload-time = "2024-12-19T18:21:57.875Z" },
     { url = "https://files.pythonhosted.org/packages/38/53/bd755c2896f4461fd4f36fa6a6dcb66a88a9e4b9fd4e5b66a77cf9d4a584/psutil-6.1.1-cp37-abi3-win32.whl", hash = "sha256:eaa912e0b11848c4d9279a93d7e2783df352b082f40111e078388701fd479e53", size = 250602, upload-time = "2024-12-19T18:22:08.808Z" },
     { url = "https://files.pythonhosted.org/packages/7b/d7/7831438e6c3ebbfa6e01a927127a6cb42ad3ab844247f3c5b96bea25d73d/psutil-6.1.1-cp37-abi3-win_amd64.whl", hash = "sha256:f35cfccb065fff93529d2afb4a2e89e363fe63ca1e4a5da22b603a85833c2649", size = 254444, upload-time = "2024-12-19T18:22:11.335Z" },
+]
+
+[[package]]
+name = "psycopg"
+version = "3.2.13"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions", version = "4.12.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10' and python_full_version < '3.13'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/05/d4a05988f15fcf90e0088c735b1f2fc04a30b7fc65461d6ec278f5f2f17a/psycopg-3.2.13.tar.gz", hash = "sha256:309adaeda61d44556046ec9a83a93f42bbe5310120b1995f3af49ab6d9f13c1d", size = 160626, upload-time = "2025-11-21T22:34:32.328Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/14/f2724bd1986158a348316e86fdd0837a838b14a711df3f00e47fba597447/psycopg-3.2.13-py3-none-any.whl", hash = "sha256:a481374514f2da627157f767a9336705ebefe93ea7a0522a6cbacba165da179a", size = 206797, upload-time = "2025-11-21T22:29:39.733Z" },
 ]
 
 [[package]]
