@@ -1,167 +1,3 @@
-# import os
-# import hashlib
-# import yaml
-# from sqlalchemy import create_engine, text
-# from sqlalchemy.exc import IntegrityError
-# from dotenv import load_dotenv
-
-# # ------------------------------------------------------------
-# #  Load environment variables
-# # ------------------------------------------------------------
-# load_dotenv()
-
-# DATABASE_URL = os.getenv("DATABASE_URL")
-# if not DATABASE_URL:
-#     raise ValueError("❌ Missing DATABASE_URL environment variable. Please set it in your .env file.")
-
-# # Create SQLAlchemy engine
-# engine = create_engine(DATABASE_URL, future=True)
-
-# # ------------------------------------------------------------
-# #  Path Configuration
-# # ------------------------------------------------------------
-# # Dynamically locate the YAML file regardless of where Streamlit is launched
-# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# PROJECT_ROOT = os.path.dirname(BASE_DIR)
-# MATERIALS_FILE = os.path.normpath(os.path.join(PROJECT_ROOT, "config", "materials.yml"))
-
-
-
-# class Database:
-#     """
-#     A PostgreSQL (Neon) database handler for managing users and hopper-to-material mappings.
-#     """
-
-#     def __init__(self) -> None:
-#         """Initializes the database by loading configuration and creating necessary tables."""
-#         # Load hoppers + materials correctly (fix order)
-#         try:
-#             self.hoppers, self.materials = self.load_materials_from_yml()
-#         except Exception as e:
-#             self.materials = []
-#             self.hoppers = []
-
-#         # Create required tables
-#         self.create_users_table()
-#         self.create_material_hoppers_table()
-
-#     # ------------------------------------------------------------
-#     #  USERS TABLE
-#     # ------------------------------------------------------------
-#     def create_users_table(self) -> None:
-#         with engine.begin() as conn:
-#             conn.execute(text('''
-#                 CREATE TABLE IF NOT EXISTS users (
-#                     username TEXT PRIMARY KEY,
-#                     password_hash TEXT,
-#                     role TEXT CHECK (role IN ('admin', 'user')) NOT NULL
-#                 )
-#             '''))
-
-#         # Ensure default admin exists
-#         with engine.begin() as conn:
-#             cur = conn.execute(text("SELECT 1 FROM users WHERE username='admin'"))
-#             if cur.fetchone() is None:
-#                 self.add_user("admin", "admin123", "admin")
-
-#     def add_user(self, username: str, password: str, role: str = "user") -> None:
-#         password_hash = hashlib.sha256(password.encode()).hexdigest()
-#         try:
-#             with engine.begin() as conn:
-#                 conn.execute(
-#                     text("INSERT INTO users (username, password_hash, role) VALUES (:u, :p, :r)"),
-#                     {"u": username, "p": password_hash, "r": role}
-#                 )
-#         except IntegrityError:
-#             raise ValueError("Username already exists.")
-
-#     def validate_user(self, username: str, password: str) -> tuple[str, str] | None:
-#         password_hash = hashlib.sha256(password.encode()).hexdigest()
-#         with engine.begin() as conn:
-#             row = conn.execute(
-#                 text("SELECT username, role FROM users WHERE username=:u AND password_hash=:p"),
-#                 {"u": username, "p": password_hash}
-#             ).fetchone()
-#             return tuple(row) if row else None
-
-#     # ------------------------------------------------------------
-#     #  LOAD MATERIALS FROM YAML
-#     # ------------------------------------------------------------
-#     def load_materials_from_yml(self) -> tuple[list[str], list[str]]:
-#         """Loads hoppers and materials lists from the materials.yml configuration file."""
-#         if not os.path.exists(MATERIALS_FILE):
-#             raise FileNotFoundError(f" Missing YAML file: {MATERIALS_FILE}")
-
-#         with open(MATERIALS_FILE, "r", encoding="utf-8-sig") as f:  # <-- important fix
-#             data = yaml.safe_load(f)
-
-#         # Normalize keys (remove BOMs, spaces, etc.)
-#         data = {k.strip(): v for k, v in data.items()} if isinstance(data, dict) else {}
-
-
-
-#         hoppers = data.get("hoppers", [])
-#         materials = data.get("materials", [])
-
-#         if not isinstance(hoppers, list):
-#             raise ValueError("Invalid format: 'hoppers' must be a list in YAML file.")
-#         if not isinstance(materials, list):
-#             raise ValueError("Invalid format: 'materials' must be a list in YAML file.")
-
-#         return hoppers, materials
-
-#     # ------------------------------------------------------------
-#     #  HOPPER ↔ MATERIALS TABLE
-#     # ------------------------------------------------------------
-#     def create_material_hoppers_table(self) -> None:
-#         """Ensures the 'hopper_materials' table exists and syncs new hoppers from YAML."""
-#         with engine.begin() as conn:
-#             # Create table if missing
-#             conn.execute(text('''
-#                 CREATE TABLE IF NOT EXISTS hopper_materials (
-#                     hopper TEXT PRIMARY KEY,
-#                     material TEXT
-#                 )
-#             '''))
-
-#             # Fetch existing hoppers in DB
-#             db_hoppers = {
-#                 row[0] for row in conn.execute(text("SELECT hopper FROM hopper_materials")).fetchall()
-#             }
-
-#             # Add missing ones from YAML
-#             missing_hoppers = [h for h in self.hoppers if h not in db_hoppers]
-
-#             if missing_hoppers:
-
-#                 for hopper in missing_hoppers:
-#                     conn.execute(
-#                         text("INSERT INTO hopper_materials (hopper, material) VALUES (:h, :m)"),
-#                         {"h": hopper, "m": "UNASSIGNED"}
-#                     )
-
-
-#     def get_hopper_materials(self) -> dict[str, str]:
-#         """Fetches the mapping of hopper → material."""
-#         with engine.begin() as conn:
-#             rows = conn.execute(text("SELECT hopper, material FROM hopper_materials")).fetchall()
-#         return {hopper: material for hopper, material in rows}
-
-#     def update_hopper_material(self, hopper: str, material: str) -> None:
-#         """Updates the material assigned to a given hopper."""
-#         if hopper not in self.hoppers:
-#             raise ValueError(f"Invalid hopper '{hopper}'. Must exist in materials.yml.")
-#         if material not in self.materials and material != "UNASSIGNED":
-#             raise ValueError(f"Invalid material '{material}'. Must exist in materials.yml or be 'UNASSIGNED'.")
-
-#         with engine.begin() as conn:
-#             conn.execute(
-#                 text("UPDATE hopper_materials SET material=:m WHERE hopper=:h"),
-#                 {"h": hopper, "m": material}
-#             )
-
-
-
 import os
 import hashlib
 import yaml
@@ -330,6 +166,39 @@ class Database:
                 text("SELECT hopper, material FROM hopper_materials ORDER BY hopper")
             ).fetchall()
         return dict(rows)
+    def get_hopper_material_history(self):
+        """
+        Return full hopper → material history with timestamps.
+        """
+        query = text("""
+            SELECT 
+                id,
+                hopper,
+                material,
+                valid_from,
+                valid_upto,
+                modifier
+            FROM hopper_material_history
+            ORDER BY 
+                hopper,
+                valid_from DESC
+        """)
+
+        with engine.begin() as conn:
+            rows = conn.execute(query).fetchall()
+
+        history = []
+        for row in rows:
+            history.append({
+                "id": row.id,
+                "hopper": row.hopper,
+                "material": row.material,
+                "valid_from": row.valid_from,
+                "valid_upto": row.valid_upto,
+                "modifier": row.modifier
+            })
+
+        return history
 
     def update_hopper_material(self, hopper: str, material: str) -> None:
         """Updates the current material snapshot."""
@@ -430,5 +299,22 @@ class Database:
                 {"h": hopper, "ts": timestamp}
             ).fetchone()
             return row[0] if row else None
+    
+    def delete_hopper_material_history(self, record_ids: list[int]) -> None:
+        """
+        Deletes hopper_material_history records by ID.
+        """
+        if not record_ids:
+            return
+
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                    DELETE FROM hopper_material_history
+                    WHERE id = ANY(:ids)
+                """),
+                {"ids": record_ids}
+            )
+
 
 

@@ -28,7 +28,7 @@ class HopperAdminPage:
         updated_values = {}
 
         # ---- Time Selection ----
-        st.markdown("### 🕒 Effective From Time")
+        st.markdown("###  Effective From Time")
         col_from_date, col_from_time = st.columns(2)
 
         with col_from_date:
@@ -38,11 +38,20 @@ class HopperAdminPage:
                 help="Select the date when this change becomes effective."
             )
         with col_from_time:
-            from_time = st.time_input(
-                "Time",
-                value=time(0, 0),
-                key="valid_from_time"
+            time_str = st.text_input(
+                "Time (HH:MM)",
+                value="00:00",
+                key="valid_from_time",
+                help="Please enter 24 hours format."
             )
+
+        # Parse text → time object
+        try:
+            from_time = datetime.strptime(time_str, "%H:%M").time()
+        except ValueError:
+            st.error("❌ Invalid time format. Please use HH:MM (e.g., 14:30).")
+            return
+
 
         # Combine into datetime
         from_dt = datetime.combine(from_date, from_time)
@@ -133,13 +142,49 @@ class HopperAdminPage:
             self.render_form(username)
 
         # ---- Current Mapping Table ----
-        st.markdown("### 📋 Current Hopper → Material Mapping")
-        current_map = self.db.get_hopper_materials()
+        st.markdown("### 📋 Hopper → Material History")
 
-        if current_map:
-            st.table(current_map)
+        history = self.db.get_hopper_material_history()
+
+        if history:
+
+            # Add checkbox column
+            for row in history:
+                row["delete"] = False
+
+            edited = st.data_editor(
+                history,
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "delete": st.column_config.CheckboxColumn("Delete"),
+                    "id": None,  
+                },
+                column_order=[
+                    "id",
+                    "hopper",
+                    "material",
+                    "valid_from",
+                    "valid_upto",
+                    "modifier", 
+                ]
+            )
+
+            # Extract selected IDs
+            delete_ids = [row["id"] for row in edited if row["delete"]]
+
+            st.write("---")
+
+            if st.button("🗑️ Delete ", disabled=len(delete_ids) == 0):
+                try:
+                    self.db.delete_hopper_material_history(delete_ids)
+                    st.success(f"🗑️ Deleted {len(delete_ids)} record(s).")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error deleting records: {e}")
+
         else:
-            st.info("No hopper-material mappings found.")
+            st.info("No hopper-material history found.")
 
 
 # -------------------------------

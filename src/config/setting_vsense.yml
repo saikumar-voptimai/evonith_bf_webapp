@@ -226,56 +226,58 @@ Optimisation:
     output_param: UnitCost 1000Rs/Thm
     scaling: src/models/unitcost_scaler2.pkl
 field_mapping:
-  coke_pct_ashdb: COKE_ASH%
-  coke_pct_fcdb: COKE_FC%
-  coke_pct_moisture: COKE_MOIST%
-  coke_pct_tm: COKE_TM%
-  coke_pct_vmdb: COKE_VM%
+  coke_ash_pct: COKE_ASH%
+  coke_fc_pct: COKE_FC%
+  coke_im_pct: COKE_IM%
+  coke_moist_pct: COKE_MOIST%
+  coke_vm_pct: COKE_VM%
   flux_mt: FLUX_MT
-  flux_pct_al2o3: FLUX_Al2O3%
-  flux_pct_cao: FLUX_CaO%
-  flux_pct_fe2o3: FLUX_Fe2O3%
-  flux_pct_loi: FLUX_LOI%
-  flux_pct_mgo: FLUX_MgO%
-  flux_pct_sio2: FLUX_iO2%
-  flux_pct_tm: FLUX_TM%
-  geomin: Geomin Type
-  nutcoke_mt: NUTCOKE_MT
-  nutcoke_pct_ash: NUTCOKE_ASH%
-  nutcoke_pct_fc: NUTCOKE_FC%
-  nutcoke_pct_im: NUTCOKE_IM%
-  nutcoke_pct_tm: NUTCOKE_MOIST%
-  nutcoke_pct_vm: NUTCOKE_VM%
-  ore_pct_al2o3: ORE_%Al2O3
-  ore_pct_cao: ORE_%CaO
-  ore_pct_fe_t: ORE_%Fe(T)
-  ore_pct_k2o: ORE_%K2O
-  ore_pct_loi: ORE_%LOI
-  ore_pct_mgo: ORE_%MgO
-  ore_pct_mno: ORE_%MnO
-  ore_pct_na2o: ORE_%Na2O
-  ore_pct_p: ORE_%P
-  ore_pct_sio2: ORE_%SiO2
-  ore_pct_tio2: ORE_%TiO2
-  pci_pct_ash: PCI_%Ash
-  pci_pct_fc: PCI_%FC
-  pci_pct_im: PCI_%IM
-  pci_pct_vm: PCI_%VM
-  sinter_sp_02_basicity: Sinter_SP_02_Basicity
-  sinter_sp_02_cold_strength_ai: Sinter_SP_02_Cold_Strength_AI
-  sinter_sp_02_cold_strength_ti: Sinter_SP_02_Cold_strength_TI
-  sinter_sp_02_hot_strength_rdi: Sinter_SP_02_Hot_strength_RDI
-  sinter_sp_02_pct_al2o3: Sinter_SP_02_Al2O3%
-  sinter_sp_02_pct_cao: Sinter_SP_02_CaO%
-  sinter_sp_02_pct_fe_t: Sinter_SP_02_Fe(T)%
-  sinter_sp_02_pct_feo: Sinter_SP_02_FeO%
-  sinter_sp_02_pct_mgo: Sinter_SP_02_MgO%
-  sinter_sp_02_pct_mno: Sinter_SP_02_MnO%
-  sinter_sp_02_pct_p: Sinter_SP_02_P%
-  sinter_sp_02_pct_sio2: Sinter_SP_02_SiO2%
-  sinter_sp_02_pct_tio2: Sinter_SP_02_TiO2%
-  sinter_sp_02_pct_total_alkali_pct_k2O: Sinter_SP_02_K2O%
-  sinter_sp_02_pct_total_alkali_pct_na2O: Sinter_SP_02_Na2O%
+  flux_tm_pct: FLUX_TM%
+  flux_sio2_pct: FLUX_SiO2%
+  flux_al2o3_pct: FLUX_Al2O3%
+  flux_cao_pct: FLUX_CaO%
+  flux_fe2o3_pct: FLUX_Fe2O3%
+  flux_loi_pct: FLUX_LOI%
+  flux_mgo_pct: FLUX_MgO%
+  ore_al2o3_pct: ORE_%Al2O3
+  ore_cao_pct: ORE_%CaO
+  ore_fe_total_pct: ORE_%Fe(T)
+  ore_k2o_pct: ORE_%K2O
+  ore_loi_pct: ORE_%LOI
+  ore_mgo_pct: ORE_%MgO
+  ore_mno_pct: ORE_%MnO
+  ore_na2o_pct: ORE_%Na2O
+  ore_p_pct: ORE_%P
+  ore_sio2_pct: ORE_%SiO2
+  ore_tio2_pct: ORE_%TiO2
+  nutcoke_prime_mt: NUTCOKE_MT
+  nutcoke_ash_pct: NUTCOKE_ASH%
+  nutcoke_fc_pct: NUTCOKE_FC%
+  nutcoke_im_pct: NUTCOKE_IM%
+  nutcoke_moist_pct: NUTCOKE_MOIST%
+  nutcoke_vm_pct: NUTCOKE_VM%
+  pci2_ash_pct: PCI_2_%Ash
+  pci2_fc_pct: PCI_2_%FC
+  pci2_im_pct: PCI_2_%IM
+  pci2_vm_pct: PCI_2_%VM
+  geomin_type: Geomin Type
+  Sinter_SP_02_Basicity: sinter_basicity
+  sinter_cold_strength_ai: Sinter_SP_02_Cold_Strength_AI
+  sinter_cold_strength_ti: Sinter_SP_02_Cold_strength_TI
+  sinter_hot_strength_rdi: Sinter_SP_02_Hot_strength_RDI
+  sinter_al2o3_pct: Sinter_SP_02_Al2O3%
+  sinter_cao_pct: Sinter_SP_02_CaO%     
+  sinter_fe_total_pct: Sinter_SP_02_Fe(T)%
+  sinter_feo_pct: Sinter_SP_02_FeO%
+  sinter_mgo_pct: Sinter_SP_02_MgO%
+  sinter_mno_pct: Sinter_SP_02_MnO%
+  sinter_p_pct: Sinter_SP_02_P%
+  sinter_sio2_pct: Sinter_SP_02_SiO2%
+  sinter_tio2_pct: Sinter_SP_02_TiO2%
+  sinter_k2o_pct: Sinter_SP_02_K2O%
+  sinter_na2o_pct: Sinter_SP_02_Na2O%
+
+
 influxdb_ml_database:
   database: ml_dataset
   measurements: rm_charge_data
