@@ -421,25 +421,35 @@ if st.button("Fetch Offline Data"):
 st.header("📄 HOT METAL AND SLAG")
 
 # ----- FORM -----
-with st.form("hotmetal_form"):
+with st.form("hotmetal_form_2"):
     col1, col2 = st.columns([1, 1])
     with col1:
-        selected_date = st.date_input("Select Date")
-
+        from_date = st.date_input("From Date")
     with col2:
-        interval_min = st.number_input("Interval (minutes)", min_value=1, max_value=600, value=10)
+        to_date = st.date_input("To Date")
+
+    interval_min = st.number_input("Interval (minutes)", min_value=1, max_value=600, value=60)
 
     fetch_btn = st.form_submit_button("Fetch HM & SLAG DATA")
 
 if fetch_btn:
+    if from_date > to_date:
+        st.error("❌ From Date must be less than or equal to To Date.")
+        st.stop()
+
     keep_cols = config.get("keep_cols", [])
 
-    selected_start = pd.Timestamp(selected_date).tz_localize("Asia/Kolkata")
-    selected_end = selected_start + pd.Timedelta(days=1)
-    prev_start = selected_start - pd.Timedelta(days=1)
+    # --- Convert to timezone-aware timestamps ---
+    from_dt = pd.Timestamp(from_date).tz_localize("Asia/Kolkata")
+    to_dt   = pd.Timestamp(to_date).tz_localize("Asia/Kolkata") + pd.Timedelta(days=1)
 
-    fetch_start_utc = prev_start.tz_convert("UTC")
-    fetch_end_utc = selected_end.tz_convert("UTC")
+    # fetch one extra day before for smooth interpolation
+    fetch_start = from_dt - pd.Timedelta(days=1)
+    fetch_end   = to_dt
+
+    # --- Convert to UTC for InfluxDB ---
+    fetch_start_utc = fetch_start.tz_convert("UTC")
+    fetch_end_utc   = fetch_end.tz_convert("UTC")
 
     df = dr.fetch_offline_data(
         measurement="hotmetal_slag_data",
@@ -451,47 +461,46 @@ if fetch_btn:
         st.warning("No data found.")
         st.stop()
 
-    # Clean + numeric only
+    # --- Cleanup ---
     df.index = df.index.tz_convert("Asia/Kolkata")
     df = df.sort_index().loc[~df.index.duplicated(keep="last")]
     df = df[[c for c in keep_cols if c in df.columns]]
 
-
     numeric_cols = df.columns
 
-    # ---------- CREATE TARGET INTERVAL INDEX ----------
+    # ------------ CREATE TARGET RANGE ------------
     target_index = pd.date_range(
-        start=selected_start,
-        end=selected_end,
+        start=from_dt,
+        end=to_dt,
         freq=f"{interval_min}min",
         tz="Asia/Kolkata"
     )
 
-    # ---------- MERGE RAW INDEX + TARGET INDEX ----------
+    # ------------ MERGE RAW + TARGET ------------
     combined_index = df.index.union(target_index)
 
-    # ---------- REINDEX WITH COMBINED INDEX ----------
-    df_combined = df.reindex(combined_index)
+    df2 = df.reindex(combined_index)
 
-    # ---------- INTERPOLATE ----------
-    df_combined[numeric_cols] = df_combined[numeric_cols].interpolate("time")
+    # ------------ INTERPOLATE DATA ------------
+    df2[numeric_cols] = df2[numeric_cols].interpolate("time")
 
-    # --------- EXTRACT EXACT TARGET INTERVALS ----------
-    df_final = df_combined.loc[target_index]
+    # ------------ SELECT EXACT TARGET POINTS ------------
+    df_final = df2.loc[target_index]
 
-    # ---------- END ----------
+    # ------------ Handle ToDate = Today ------------
     today = pd.Timestamp.now(tz="Asia/Kolkata").date()
-    if selected_date == today:
+    if to_date == today:
         now = pd.Timestamp.now(tz="Asia/Kolkata")
         cutoff = now.floor(f"{interval_min}min")
-        df_final = df_final.loc[selected_start:cutoff]
+        df_final = df_final.loc[from_dt:cutoff]
 
     st.success("Data processed successfully!")
     st.dataframe(df_final)
 
+    # --- CSV Download ---
     st.download_button(
         "Download CSV",
         df_final.to_csv().encode("utf-8"),
-        file_name=f"hotmetal_{selected_date}_{interval_min}min.csv",
+        file_name=f"hotmetal_{from_date}_to_{to_date}_{interval_min}min.csv",
         mime="text/csv",
     )
