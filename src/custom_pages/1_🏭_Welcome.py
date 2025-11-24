@@ -1,43 +1,102 @@
+# src/custom_pages/1_Welcome.py
 import streamlit as st
+from utils.session import logout_user, is_admin
 
+# ---------------------------------------------------
+#  AUTH CHECK
+# ---------------------------------------------------
+if "auth_user" not in st.session_state:
+    st.warning("Please login to access this page.")
+    st.stop()
+
+# ----------------------------------------------------
+#  SIDEBAR (Admin tools + logout)
+# ----------------------------------------------------
+with st.sidebar:
+    st.markdown(f"👋 Logged in as: `{st.session_state['auth_user']}` ")
+    st.markdown("---")
+
+    # Admin-only quick links (only on Welcome page)
+    if is_admin():
+        st.markdown("### 🔧 Admin Tools")
+
+        # Initialize session key for tool tracking
+        if "admin_tool_selection" not in st.session_state:
+            st.session_state["admin_tool_selection"] = None
+
+        # Admin Tool Buttons
+        if st.button("🛠 Hopper Mapping"):
+            st.session_state["admin_tool_selection"] = "hopper"
+            st.rerun()
+
+        if st.button("📝 Register Page"):
+            st.session_state["admin_tool_selection"] = "register"
+            st.rerun()
+
+        # Back to Dashboard button (visible only when inside tool)
+        if st.session_state.get("admin_tool_selection") in ["hopper", "register"]:
+            if st.button("⬅ Back to Dashboard"):
+                st.session_state["admin_tool_selection"] = None
+                st.rerun()
+
+        st.markdown("---")
+
+    #  Common logout for all users
+    if st.button("🚪 Logout"):
+        logout_user()
+        st.stop()
+
+# ----------------------------------------------------
+#  RENDER ADMIN TOOLS INLINE IF SELECTED
+# ----------------------------------------------------
+if is_admin() and st.session_state.get("admin_tool_selection") == "hopper":
+    # st.title("🛠 Hopper Material Mapping (Admin Tool)")
+    from ui.hopper_admin_page import hopper_admin_page
+    hopper_admin_page(st.session_state.get("auth_user", "Unknown"))
+
+    st.stop()
+
+elif is_admin() and st.session_state.get("admin_tool_selection") == "register":
+    # st.title("📝 Register Page (Admin Tool)")
+    from ui.register_page import register_page
+    register_page()
+    st.stop()
+
+# ----------------------------------------------------
+#  MAIN PAGE CONTENT (Default welcome content)
+# ----------------------------------------------------
 st.title("Welcome to the Manufacturing Dashboard")
 st.write("This dashboard provides tools for data submission, visualization, and recommendations.")
 
-import streamlit as st
-
+# ---- Image Loading ----
 def load_images():
-    """
-    Helper function to load and return images.
-    Adjust paths based on where your image files are located.
-    """
+    """Helper function to load and return images."""
     v_optimAIse_logo = "src/data/VOPTIMAISELOGO.png"
     evonith_logo = "src/data/evonith.png"
-    
     return v_optimAIse_logo, evonith_logo
 
-# Load images
 v_optimAIse_logo, evonith_logo = load_images()
 
-# Place images in the layout
-col1, col2 = st.columns([2,2])
+col1, col2 = st.columns([2, 2])
 with col1:
     st.image(v_optimAIse_logo, width=400)
 with col2:
     st.image(evonith_logo, width=500)
 
+# ---- Intro ----
 st.markdown(
     """
     **BlastFurnace WebApp** serves as a comprehensive digital platform for monitoring 
     and optimizing the Blast Furnace operations at Evonith. Through the combined efforts 
-    of V-OptimAIse and Evonith, we aim to improve operational efficiency, streamline data 
-    analytics, and provide actionable insights.
+    of **V-OptimAIse** and **Evonith**, we aim to improve operational efficiency, 
+    streamline data analytics, and provide actionable insights.
     """
 )
 
 st.markdown("---")
 st.header("Explore Our Features:")
 
-# Data Submission Page
+# ---- Data Submission ----
 st.subheader("1. Data Submission Page (Data Governance)")
 st.write(
     """
@@ -49,7 +108,7 @@ st.write(
     """
 )
 
-# V-Sense
+# ---- V-Sense ----
 st.subheader("2. V-Sense (AI Recommendation System)")
 st.write(
     """
@@ -62,7 +121,7 @@ st.write(
     """
 )
 
-# V-Board
+# ---- V-Board ----
 st.subheader("3. V-Board (Data Visualization)")
 st.write(
     """
@@ -75,7 +134,7 @@ st.write(
     """
 )
 
-# Reporter
+# ---- Reporter ----
 st.subheader("4. Reporter (GenAI Reporter)")
 st.write(
     """
@@ -88,8 +147,8 @@ st.write(
     """
 )
 
-# Chatbot
-st.subheader("Chatbot (Steel Manufacturing Expert)")
+# ---- Chatbot ----
+st.subheader("5. Chatbot (Steel Manufacturing Expert)")
 st.write(
     """
     - **Purpose**: Provide answers, guidance, and recommendations to teams in the plant, 
@@ -104,7 +163,7 @@ st.write(
 st.markdown("---")
 st.markdown(
     """
-    **We hope you find this platform useful and intuitive!** 
+    **We hope you find this platform useful and intuitive!**  
     Use the sidebar to navigate through the pages and access each feature.
     """
 )
