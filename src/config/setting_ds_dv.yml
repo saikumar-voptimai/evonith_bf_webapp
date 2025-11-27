@@ -171,6 +171,14 @@ Parameter Synonyms:
     InfluxBucket: "bf2_evonith_raw"
     InfluxMeasurement: "process_params"
     InfluxName: "coal_rate_actual_value"
+  TotalOxygenNm3/Hr:
+    NameInMLData: "Total OxygenNm3/Hr."
+    NameInMCartech: "BF2 Total Oxygen"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "total_oxygen"
+
+  
       
 data_tags:
   temperature_variables:

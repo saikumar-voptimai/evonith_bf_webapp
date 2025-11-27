@@ -158,6 +158,7 @@ for i, param in enumerate(cp_op_list):
     
 meas_set = set(meas_list)
 live_data = recommendations.fetch_live_data(cp_op_ml_dict, meas_set)
+st.dataframe(live_data)
 
 # Calculated data:
 live_data['UnitCost 1000Rs/Thm'] = live_data['Coke Rate Kg/Thm']  + config['Coke to PCI'] * live_data['ActualKg/Thm.']
@@ -166,7 +167,7 @@ live_data['UnitCost 1000Rs/Thm'] = live_data['Coke Rate Kg/Thm']  + config['Coke
 data_rel_path = config['DATA']
 data_path = Path(__file__).resolve().parents[1] / data_rel_path.split('/')[1] / data_rel_path.split('/')[2]
 df_data = pd.read_csv(data_path, index_col=0, parse_dates=True)
-df_data.index = pd.to_datetime(df_data.index, format="%d/%m/%Y %H:%M", utc=True)
+df_data.index = pd.to_datetime(df_data.index, format="%d-%m-%Y %H:%M", utc=True)
 # Attach live:
 new_live_row = df_data.iloc[-1].copy()
 
@@ -176,7 +177,7 @@ new_live_row.loc[update_cols] = live_series
 
 new_df = pd.DataFrame([new_live_row.values], columns=df_data.columns, index=[pd.to_datetime(live_data.index[-1])])
 df_live= pd.concat([df_data, new_df])
-
+  
 # Set the target output based on the optimisation type
 target_output = config_vsense['Optimisation'][optimisation_type]['output_param']
 
@@ -219,7 +220,8 @@ with st.form("Control Params Form"):
             # Use persisted values if any
             cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
             cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
-            val = persisted_bounds.get(cp, {}).get("value", latest_val)
+            # val = persisted_bounds.get(cp, {}).get("value", latest_val)
+            val = latest_val
             override = persisted_bounds.get(cp, {}).get("override", False)
 
             col1, col2 = st.columns([0.05, 0.95])
@@ -292,8 +294,8 @@ with st.form("Control Params Form"):
 
 # User-specified input variables:
 with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
-    cols = st.columns(3)
-    raw_mtrl_input = {}
+    
+
     ml_cfg = config_vsense.get("influxdb_ml_database", {})
 
     # Fetch raw material input data from InfluxDB
@@ -303,10 +305,32 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
         database=ml_cfg.get("database", "ml_dataset"),
     )
     df_live_ip = df_live_ip.rename(columns=field_mapping)
-    # latest data points
+    def get_shift(ts):
+        h = ts.hour
+        return "C" if h < 8 else "A" if h < 16 else "B"
+
+
     latest_row = df_live_ip.iloc[-1]
+    timestamp_utc = latest_row.name
+    timestamp_ist = timestamp_utc.tz_convert("Asia/Kolkata").tz_localize(None)
+
+    shift = get_shift(timestamp_ist)
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(f"<h4>DATE-TIME (IST): {timestamp_ist}</h4>", unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f"<h4>Shift: {shift}</h4>", unsafe_allow_html=True)
+
+
+
+    # print(df_live_ip.iloc[-1].to_dict())
+    cols = st.columns(3)
+    raw_mtrl_input = {}
 
     with st.form(key="Raw Material Input Form"):
+
         for i, (group_name, params) in enumerate(input_params.items()):
             with cols[i % 3]:
                 st.write(f"### {group_name}")

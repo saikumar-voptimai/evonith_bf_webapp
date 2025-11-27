@@ -29,7 +29,7 @@ with st.sidebar:
             st.session_state["admin_tool_selection"] = "hopper"
             st.rerun()
 
-        if st.button("📝 Register Page"):
+        if st.button("📝 User Management"):
             st.session_state["admin_tool_selection"] = "register"
             st.rerun()
 

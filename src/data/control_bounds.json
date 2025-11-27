@@ -44,7 +44,7 @@
     "Total OxygenNm3/Hr.": {
         "min": 1997.441168,
         "max": 94495.57319,
-        "value": 91862.40006,
+        "value": 46422.96238,
         "override": false
     },
     "TuyereVelocitym/s": {
