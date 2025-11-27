@@ -1,4 +1,5 @@
 import streamlit as st
+from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -10,7 +11,6 @@ import pytz
 from pathlib import Path
 from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
-from datetime import timedelta
 from dotenv import load_dotenv
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
@@ -364,52 +364,189 @@ else:
 
 
 # 8 --- UI Section for Offline Data ---
-st.header("📄 Offline Data Viewer")
-
-# Session state defaults for offline data
 if "time_range_off" not in st.session_state:
     st.session_state.time_range_off = "last 1 week"
+
 if "selected_offline" not in st.session_state:
     st.session_state.selected_offline = list(offline_measurements.keys())[0]
 
-cols = st.columns(2)
-with cols[0]:
-    selected_offline = st.selectbox(
-        "Select Offline Measurement",
-        list(offline_measurements.keys()),
-        index=list(offline_measurements.keys()).index(st.session_state.selected_offline),
-        key="selected_offline"  
-    )
-with cols[1]:
-    time_range_off = st.selectbox(
-        "Select Time Range:",
-        list(TIME_OPTIONS.keys())[7:],
-        index=list(TIME_OPTIONS.keys())[7:].index(st.session_state.time_range_off),
-        key="time_range_off"  # 🔹 Also stored in session_state
-    )
+# --- Time options WITHOUT Custom Range ---
+TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
 
- 
-if st.button("Fetch Offline Data"):
+# --- FORM START ---
+with st.form("offline_fetch_form"):
+
+    # Columns: Left = measurement, Right = time range + dates
+    col_left, col_right = st.columns([1, 1])
+
+    # ---------------- LEFT COLUMN -------------------
+    with col_left:
+        selected_offline = st.selectbox(
+            "Select Offline Measurement",
+            list(offline_measurements.keys()),
+            index=list(offline_measurements.keys()).index(st.session_state.selected_offline)
+        )
+
+    # ---------------- RIGHT COLUMN -------------------
+    with col_right:
+
+        time_range_choice = st.selectbox(
+            "Select Time Range (optional):",
+            ["Use Start/End Dates"] + TIME_OPTIONS_UI,
+            index=0
+        )
+
+        # Start & End Date on the SAME ROW
+        d1, d2 = st.columns([1, 1])
+        with d1:
+            start_date = st.date_input(
+                "Start Date",
+                value=datetime.now().date()
+            )
+        with d2:
+            end_date = st.date_input(
+                "End Date",
+                value=datetime.now().date()
+            )
+
+    # Submit button
+    submitted = st.form_submit_button("Fetch Offline Data")
+
+# --- FORM SUBMITTED ---
+if submitted:
+
+    # --- Validation ---
+    if start_date > end_date:
+        st.error("❌ Invalid date range: Start Date cannot be after End Date.")
+        st.stop()
+
     database = influx_cfg.get("database", "bf2_evonith_offline_utc")
+
+    # Decide fetch strategy
+    if time_range_choice == "Use Start/End Dates":
+        time_range_to_fetch = (
+            f"{start_date}T00:00:00Z",
+            f"{end_date}T23:59:59Z"
+        )
+    else:
+        time_range_to_fetch = time_range_choice
+
+    # Fetch data
     df_offline = dr.fetch_offline_data(
-        measurement=offline_measurements[st.session_state.selected_offline],
-        time_range=st.session_state.time_range_off,
+        measurement=offline_measurements[selected_offline],
+        time_range=time_range_to_fetch,
         database=database,
     )
 
     if df_offline.empty:
-        st.warning(f"No data found for {st.session_state.selected_offline}")
+        st.warning(f"No data found for {selected_offline}")
     else:
-        if st.session_state.selected_offline == "rm_data":
+        if selected_offline == "rm_data":
             df_offline = dr.clean_rm_data(df_offline)
-        # Change timeidx to Asia/Kolkata
+
         df_offline.index = df_offline.index.tz_convert(local_tz)
         df_offline.index.name = 'time (IST)'
+
         st.dataframe(df_offline)
+
         csv = df_offline.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="Download as CSV",
             data=csv,
-            file_name=f"{st.session_state.selected_offline}.csv",
+            file_name=f"{selected_offline}.csv",
             mime="text/csv",
         )
+
+
+
+
+# ----- HOT METAL AND SLAG -----
+
+st.header("📄 HOT METAL AND SLAG")
+
+# ----- FORM -----
+with st.form("hotmetal_form_2"):
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        from_date = st.date_input("From Date")
+    with col2:
+        to_date = st.date_input("To Date")
+
+    interval_min = st.number_input("Interval (minutes)", min_value=1, max_value=600, value=60)
+
+    fetch_btn = st.form_submit_button("Fetch HM & SLAG DATA")
+
+if fetch_btn:
+    if from_date > to_date:
+        st.error("❌ From Date must be less than or equal to To Date.")
+        st.stop()
+
+    keep_cols = config.get("keep_cols", [])
+
+    # --- Convert to timezone-aware timestamps ---
+    from_dt = pd.Timestamp(from_date).tz_localize("Asia/Kolkata")
+    to_dt   = pd.Timestamp(to_date).tz_localize("Asia/Kolkata") + pd.Timedelta(days=1)
+
+    # fetch one extra day before for smooth interpolation
+    fetch_start = from_dt - pd.Timedelta(days=1)
+    fetch_end   = to_dt
+
+    # --- Convert to UTC for InfluxDB ---
+    fetch_start_utc = fetch_start.tz_convert("UTC")
+    fetch_end_utc   = fetch_end.tz_convert("UTC")
+
+    df = dr.fetch_offline_data(
+        measurement="hotmetal_slag_data",
+        time_range=(fetch_start_utc, fetch_end_utc),
+        database="bf2_evonith_offline_utc",
+    )
+
+    if df.empty:
+        st.warning("No data found.")
+        st.stop()
+
+    # --- Cleanup ---
+    df.index = df.index.tz_convert("Asia/Kolkata")
+    df = df.sort_index().loc[~df.index.duplicated(keep="last")]
+    df = df[[c for c in keep_cols if c in df.columns]]
+
+    numeric_cols = df.columns
+
+    # ------------ CREATE TARGET RANGE ------------
+    target_index = pd.date_range(
+        start=from_dt,
+        end=to_dt,
+        freq=f"{interval_min}min",
+        tz="Asia/Kolkata"
+    )
+
+    # ------------ MERGE RAW + TARGET ------------
+    combined_index = df.index.union(target_index)
+
+    df2 = df.reindex(combined_index)
+
+    # ------------ INTERPOLATE DATA ------------
+    df2[numeric_cols] = df2[numeric_cols].interpolate("time")
+
+    # ------------ SELECT EXACT TARGET POINTS ------------
+    df_final = df2.loc[target_index]
+
+    # ------------ Handle ToDate = Today ------------
+    today = pd.Timestamp.now(tz="Asia/Kolkata").date()
+    if to_date == today:
+        now = pd.Timestamp.now(tz="Asia/Kolkata")
+        cutoff = now.floor(f"{interval_min}min")
+        df_final = df_final.loc[from_dt:cutoff]
+
+    st.success("Data processed successfully!")
+    st.dataframe(df_final)
+
+    # --- CSV Download ---
+    st.download_button(
+        "Download CSV",
+        df_final.to_csv().encode("utf-8"),
+        file_name=f"hotmetal_{from_date}_to_{to_date}_{interval_min}min.csv",
+        mime="text/csv",
+    )
+
+
