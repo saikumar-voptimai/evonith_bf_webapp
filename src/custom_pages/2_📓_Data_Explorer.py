@@ -99,8 +99,8 @@ with st.sidebar:
     factor = st.number_input("PCI/Coke Cost ratio", value=13250/25000, step=0.01, format="%.2f")
 
 df['Unit Cost'] = (df['Coke Rate Kg/Thm'] + factor * df['ActualKg/Thm.']) * 25100/1000
-df_filt = df[(pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date >= from_date) & 
-             (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date <= to_date)]
+df_filt = df[(pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date >= from_date) & 
+             (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date <= to_date)]
 
 # UI layout
 cols = st.columns([0.3, 0.2, 0.2, 0.2, 0.1])
@@ -176,8 +176,8 @@ with st.sidebar:
         to_date = st.date_input("To Date", value=pd.to_datetime(df.index[-1]).date(), key="to_date2")
 
 features = st.multiselect('Select features', df.columns, default=df.columns[0])
-df_t = df[(pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date >= from_date) & 
-             (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date <= to_date)]
+df_t = df[(pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date >= from_date) & 
+             (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date <= to_date)]
 cols = st.columns([0.3, 0.15, 0.15, 0.1, 0.3])
 with cols[0]:
     filter_feature = st.selectbox('Select feature to filter by', df.columns, index=int(len(df.columns)-3))

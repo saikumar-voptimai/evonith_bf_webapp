@@ -158,7 +158,6 @@ for i, param in enumerate(cp_op_list):
     
 meas_set = set(meas_list)
 live_data = recommendations.fetch_live_data(cp_op_ml_dict, meas_set)
-st.dataframe(live_data)
 
 # Calculated data:
 live_data['UnitCost 1000Rs/Thm'] = live_data['Coke Rate Kg/Thm']  + config['Coke to PCI'] * live_data['ActualKg/Thm.']
