@@ -214,12 +214,11 @@ with st.form("Control Params Form"):
             # Get machine limits
             col_min = float(df_live[cp].min())
             col_max = float(df_live[cp].max())
-            latest_val = float(df_live[cp].iloc[-1])
+            val = float(df_live[cp].iloc[-1])
 
             # Use persisted values if any
             cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
             cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
-            val = persisted_bounds.get(cp, {}).get("value", latest_val)
             override = persisted_bounds.get(cp, {}).get("override", False)
 
             col1, col2 = st.columns([0.05, 0.95])
