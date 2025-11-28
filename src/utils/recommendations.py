@@ -205,51 +205,96 @@ def inverse_transform_output(scaler, y_scaled, output_name):
         # Fallback for single-output scaler
         return scaler.inverse_transform(np.array([[y_scaled]]))[0, 0]
     
-def fetch_live_data(cp_op_ml_dict: Dict[str, Any], paths_set: List[str]) -> pd.DataFrame:
-    """
-    Fetch latest hourly averaged data for control and input parameters.
-    Args:
-        cp_op_ml_dict (Dict[str, Any]): Dictionary with control and input parameter metadata.
-        paths_set (List[str]): List of unique InfluxDB paths to query.
-    Returns:
-        pd.DataFrame: DataFrame with latest hourly averaged data.
-    """
-    now = pd.Timestamp.utcnow()
-    this_hour = now.replace(minute=0, second=0, microsecond=0)
-    one_hour_ago = this_hour - pd.Timedelta(hours=1)
+# def fetch_live_data(cp_op_ml_dict: Dict[str, Any], paths_set: List[str]) -> pd.DataFrame:
+#     """
+#     Fetch latest hourly averaged data for control and input parameters.
+#     Args:
+#         cp_op_ml_dict (Dict[str, Any]): Dictionary with control and input parameter metadata.
+#         paths_set (List[str]): List of unique InfluxDB paths to query.
+#     Returns:
+#         pd.DataFrame: DataFrame with latest hourly averaged data.
+#     """
+#     now = pd.Timestamp.utcnow()
+#     this_hour = now.replace(minute=0, second=0, microsecond=0)
+#     one_hour_ago = this_hour - pd.Timedelta(hours=1)
 
-    values_needed = {cp_op_ml_dict[param]['InfluxName']:cp_op_ml_dict[param]['NameInMLData'] for param in list(cp_op_ml_dict.keys())}
-    meas_dict = {}
-    paths = []
-    for param in list(cp_op_ml_dict.keys()):
-        path = cp_op_ml_dict[param]['InfluxBucket'] + '/' + cp_op_ml_dict[param]['InfluxMeasurement']
-        if path not in paths:
-            paths.append(path)
-        if meas_dict.get(path) is None:
-            meas_dict[path] = []
-        meas_dict[path].append(cp_op_ml_dict[param]['InfluxName'])
+#     values_needed = {cp_op_ml_dict[param]['InfluxName']:cp_op_ml_dict[param]['NameInMLData'] for param in list(cp_op_ml_dict.keys())}
+#     meas_dict = {}
+#     paths = []
+#     for param in list(cp_op_ml_dict.keys()):
+#         path = cp_op_ml_dict[param]['InfluxBucket'] + '/' + cp_op_ml_dict[param]['InfluxMeasurement']
+#         if path not in paths:
+#             paths.append(path)
+#         if meas_dict.get(path) is None:
+#             meas_dict[path] = []
+#         meas_dict[path].append(cp_op_ml_dict[param]['InfluxName'])
         
-        if cp_op_ml_dict[param]['InfluxName'] not in values_needed:
-            values_needed[cp_op_ml_dict[param]['InfluxName']] = cp_op_ml_dict[param]['NameInMLData']
+#         if cp_op_ml_dict[param]['InfluxName'] not in values_needed:
+#             values_needed[cp_op_ml_dict[param]['InfluxName']] = cp_op_ml_dict[param]['NameInMLData']
+
+#     combined_df = pd.DataFrame()
+#     for influx_path, required_vars in meas_dict.items():
+#         bucket = influx_path.split('/')[0]
+#         meas = influx_path.split('/')[1]
+#         datafetcher = BaseDataFetcher(meas, database=bucket)
+#         df_meas = datafetcher.fetch_averaged_data(recent_data_of='over selected range',
+#                                         start_time=one_hour_ago,
+#                                         end_time=this_hour)
+#         if meas == 'process_params':
+#             df_meas['coke_rate'] = df_meas['coke_rate'] + df_meas['nut_coke_rate']
+#         df_meas = df_meas[required_vars + ['time']]
+#         df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
+#         df_meas.set_index('time', inplace=True)
+        
+#         combined_df = df_meas if combined_df.empty else combined_df.join(df_meas, how='outer')
+#     print(combined_df.tail(2))
+#     latest_df = combined_df.tail(1).rename(columns=values_needed)
+#     return latest_df    
+#     # hourly_avg = combined_df.resample('1h').mean()
+#     # hourly_avg.index = hourly_avg.index + pd.Timedelta(hours=1)
+#     # hourly_avg = hourly_avg.rename(columns=values_needed)
+
+#     # return hourly_avg
+
+
+
+def fetch_live_data(cp_op_ml_dict: Dict[str, Any], paths_set: List[str]) -> pd.DataFrame:
+    # Map influx field name → ML name
+    values_needed = {
+        meta["InfluxName"]: meta["NameInMLData"]
+        for meta in cp_op_ml_dict.values()
+    }
+
+    # Group fields by bucket/measurement
+    meas_dict = {}
+    for meta in cp_op_ml_dict.values():
+        key = (meta["InfluxBucket"], meta["InfluxMeasurement"])
+        meas_dict.setdefault(key, []).append(meta["InfluxName"])
+
+    # Query only last 5 minutes → then take latest point
+    end = pd.Timestamp.utcnow()
+    start = end - pd.Timedelta(minutes=5)
 
     combined_df = pd.DataFrame()
-    for influx_path, required_vars in meas_dict.items():
-        bucket = influx_path.split('/')[0]
-        meas = influx_path.split('/')[1]
-        datafetcher = BaseDataFetcher(meas, database=bucket)
-        df_meas = datafetcher.fetch_averaged_data(recent_data_of='over selected range',
-                                        start_time=one_hour_ago,
-                                        end_time=this_hour)
-        if meas == 'process_params':
-            df_meas['coke_rate'] = df_meas['coke_rate'] + df_meas['nut_coke_rate']
-        df_meas = df_meas[required_vars + ['time']]
-        df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
-        df_meas.set_index('time', inplace=True)
-        
-        combined_df = df_meas if combined_df.empty else combined_df.join(df_meas, how='outer')
-    
-    hourly_avg = combined_df.resample('1h').mean()
-    hourly_avg.index = hourly_avg.index + pd.Timedelta(hours=1)
-    hourly_avg = hourly_avg.rename(columns=values_needed)
 
-    return hourly_avg
+    for (bucket, meas), fields in meas_dict.items():
+        fetcher = BaseDataFetcher(meas, database=bucket)
+
+        df = fetcher.fetch_averaged_data(
+            recent_data_of="over selected range",
+            start_time=start,
+            end_time=end
+        )
+
+        if meas == "process_params":
+            df["coke_rate"] = df["coke_rate"] + df["nut_coke_rate"]
+
+        df = df[fields + ["time"]]
+        df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+        df.set_index("time", inplace=True)
+
+        combined_df = df if combined_df.empty else combined_df.join(df, how="outer")
+
+    latest_df = combined_df.tail(1).rename(columns=values_needed)
+
+    return latest_df

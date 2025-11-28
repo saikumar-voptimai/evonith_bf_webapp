@@ -158,6 +158,8 @@ for i, param in enumerate(cp_op_list):
     
 meas_set = set(meas_list)
 live_data = recommendations.fetch_live_data(cp_op_ml_dict, meas_set)
+# st.dataframe(live_data)
+
 
 # Calculated data:
 live_data['UnitCost 1000Rs/Thm'] = live_data['Coke Rate Kg/Thm']  + config['Coke to PCI'] * live_data['ActualKg/Thm.']
@@ -174,9 +176,9 @@ update_cols = [c for c in live_data.columns if c in df_data.columns]
 live_series = live_data.iloc[0][update_cols]
 new_live_row.loc[update_cols] = live_series
 
+
 new_df = pd.DataFrame([new_live_row.values], columns=df_data.columns, index=[pd.to_datetime(live_data.index[-1])])
 df_live= pd.concat([df_data, new_df])
-  
 # Set the target output based on the optimisation type
 target_output = config_vsense['Optimisation'][optimisation_type]['output_param']
 
@@ -187,6 +189,9 @@ TIME_IDX = -1 # int(np.where(pd.to_datetime(df_data.index, format="%d/%m/%Y %H:%
 # Section 3: Display the current data and control parameters
 st.subheader("Control Parameters")
 
+timestamp_utc = live_data.index[0]
+timestamp_ist = timestamp_utc.tz_convert("Asia/Kolkata").tz_localize(None)
+st.markdown(f"<h4>DATE-TIME (IST): {timestamp_ist}</h4>", unsafe_allow_html=True)
 # --- File paths ---
 bounds_file = Path("src/data/control_bounds.json")
 
