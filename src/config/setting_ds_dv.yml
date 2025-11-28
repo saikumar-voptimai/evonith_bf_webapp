@@ -177,6 +177,12 @@ Parameter Synonyms:
     InfluxBucket: "bf2_evonith_raw"
     InfluxMeasurement: "process_params"
     InfluxName: "total_oxygen"
+  TuyereVelocitym/s:
+    NameInMLData: "TuyereVelocitym/s"
+    NameInMCartech: "BF2 TUYERE VELOCITY"
+    InfluxBucket: "bf2_evonith_raw"
+    InfluxMeasurement: "process_params"
+    InfluxName: "tuyere_velocity"
 
   
       
