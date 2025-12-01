@@ -15,6 +15,18 @@ class HopperAdminPage:
         self.materials = self.db.materials
         self.hoppers = self.db.hoppers
         self.hopper_materials = self.db.get_hopper_materials()
+    def get_client_ip(self):
+        try:
+            # Streamlit places headers here
+            forwarded_for = st.context.headers.get("X-Forwarded-For")
+            if forwarded_for:
+                return forwarded_for.split(",")[0].strip()
+
+            # fallback
+            return st.context.headers.get("REMOTE_ADDR", "unknown")
+        except:
+            return "unknown"
+
 
     # ---------------------------------------------------
     #  Form Rendering
@@ -26,7 +38,7 @@ class HopperAdminPage:
         st.markdown("Assign Materials to Hoppers")
 
         updated_values = {}
-
+#🕒
         # ---- Time Selection ----
         st.markdown("###  Effective From Time")
         col_from_date, col_from_time = st.columns(2)
@@ -83,12 +95,14 @@ class HopperAdminPage:
             if not from_dt:
                 st.error("❌ Please specify an effective date and time before saving.")
             else:
-                self.handle_submission(updated_values, from_dt, username)
+                ip = self.get_client_ip()
+                self.handle_submission(updated_values, from_dt, username, ip)
+
 
     # ----------------------------------------------------
     #  Submission Handling
     # ----------------------------------------------------
-    def handle_submission(self, updated_values: dict[str, str], from_time: datetime, username: str) -> None:
+    def handle_submission(self, updated_values: dict[str, str], from_time: datetime, username: str,  ip_address: str) -> None:
         """
         Updates only changed hopper-material assignments.
 
@@ -110,7 +124,8 @@ class HopperAdminPage:
                         hopper=hopper,
                         material=new_material,
                         from_time=from_time,
-                        modifier=username
+                        modifier=username,
+                        ip_address=ip_address
                     )
                     changes += 1
                 except Exception as e:
@@ -155,7 +170,7 @@ class HopperAdminPage:
             edited = st.data_editor(
                 history,
                 hide_index=True,
-                use_container_width=True,
+                width='stretch',
                 column_config={
                     "delete": st.column_config.CheckboxColumn("Delete"),
                     "id": None,  
@@ -166,7 +181,8 @@ class HopperAdminPage:
                     "material",
                     "valid_from",
                     "valid_upto",
-                    "modifier", 
+                    "modifier",
+                    "ip_address", 
                 ]
             )
 

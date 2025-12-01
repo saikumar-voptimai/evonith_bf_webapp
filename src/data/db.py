@@ -177,7 +177,8 @@ class Database:
                 material,
                 valid_from,
                 valid_upto,
-                modifier
+                modifier,
+                ip_address
             FROM hopper_material_history
             ORDER BY 
                 hopper,
@@ -195,7 +196,8 @@ class Database:
                 "material": row.material,
                 "valid_from": row.valid_from,
                 "valid_upto": row.valid_upto,
-                "modifier": row.modifier
+                "modifier": row.modifier,
+                "ip_address": row.ip_address
             })
 
         return history
@@ -228,6 +230,7 @@ class Database:
                     valid_from TIMESTAMP NOT NULL,
                     valid_upto TIMESTAMP,
                     modifier TEXT NOT NULL DEFAULT 'system',
+                    ip_address TEXT, 
                     FOREIGN KEY (hopper) REFERENCES hopper_materials (hopper)
                 )
             """))
@@ -238,6 +241,7 @@ class Database:
         material: str,
         from_time: datetime,
         modifier: str,
+        ip_address: str,
     ) -> None:
         """
         Updates hopper material history with modifier tracking.
@@ -274,13 +278,14 @@ class Database:
 
             # Insert new record
             conn.execute(text("""
-                INSERT INTO hopper_material_history (hopper, material, valid_from, valid_upto, modifier)
-                VALUES (:hopper, :material, :valid_from, NULL, :modifier)
+                INSERT INTO hopper_material_history (hopper, material, valid_from, valid_upto, modifier,ip_address)
+                VALUES (:hopper, :material, :valid_from, NULL, :modifier, :ip)
             """), {
                 "hopper": hopper,
                 "material": material,
                 "valid_from": from_time,
                 "modifier": modifier,
+                "ip": ip_address,
             })
 
     def get_hopper_material_at(self, hopper: str, timestamp: datetime) -> str | None:
