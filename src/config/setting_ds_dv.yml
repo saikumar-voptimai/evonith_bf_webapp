@@ -18,6 +18,7 @@ offline_measurements:
   Bunker Report: "rm_updated_data"
   DPR: "dpr_data"
   HM & Slag: "hotmetal_slag_data"
+  Charge: "charge_data"
 
 
 # Geometries

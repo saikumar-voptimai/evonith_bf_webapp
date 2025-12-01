@@ -1,5 +1,6 @@
 import streamlit as st
 from datetime import datetime, timedelta
+from datetime import timezone
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -364,6 +365,8 @@ else:
 
 
 # 8 --- UI Section for Offline Data ---
+
+st.header("📄 Offline Data Viewer")
 if "time_range_off" not in st.session_state:
     st.session_state.time_range_off = "last 1 week"
 
@@ -456,6 +459,7 @@ if submitted:
             file_name=f"{selected_offline}.csv",
             mime="text/csv",
         )
+
 
 
 
