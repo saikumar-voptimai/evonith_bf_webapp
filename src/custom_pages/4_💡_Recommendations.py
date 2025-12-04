@@ -240,17 +240,16 @@ with st.form("Control Params Form"):
                 unsafe_allow_html=True
             )
 
-            # Layout for inputs
-            val_col, min_col, max_col= st.columns([0.45, 0.275, 0.275])
-            with val_col:
-                val = st.number_input(
-                    "Value",
-                    min_value=cp_min,
-                    max_value=cp_max,
-                    value=np.clip(val, cp_min, cp_max),
-                    key=f"val_{cp}",
-                )
+            st.number_input(
+                "Value",
+                min_value=cp_min,
+                max_value=cp_max,
+                value=np.clip(val, cp_min, cp_max),
+                key=f"val_{cp}",
+            )
 
+            # --- Row 2: MIN | MAX ---
+            min_col, max_col = st.columns(2)
             if override:
                 with min_col:
                     st.number_input(
