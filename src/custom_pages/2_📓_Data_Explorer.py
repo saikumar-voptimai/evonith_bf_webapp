@@ -460,6 +460,90 @@ if submitted:
             mime="text/csv",
         )
 
+# ---------------- UI: OFFLINE DATA VIEWER -----------------
+st.header("📄 ML Dataset Viewer")
+
+MEASUREMENT = "rm_charge_dis_hm_slag"
+BUCKET = "ml_dataset_v_01"
+
+# Default State
+if "time_range_off" not in st.session_state:
+    st.session_state.time_range_off = "last 1 week"
+
+# Time options (no custom)
+TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]  # Your reduced options
+
+# ------------------- FORM ----------------------
+with st.form("ml_dataset_form"):
+
+    st.subheader("Select Time Range")
+
+    # Time choice
+    time_choice = st.selectbox(
+        "Select Time Range:",
+        ["Use Start/End Dates"] + TIME_OPTIONS_UI,
+        index=0
+    )
+
+    # Date Inputs
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("Start Date", datetime.now().date())
+    with col2:
+        end_date = st.date_input("End Date", datetime.now().date())
+
+    # Submit
+    submitted = st.form_submit_button("Fetch ML Dataset")
+
+# ---------------- FORM SUBMITTED ----------------
+if submitted:
+
+    # Validate
+    if start_date > end_date:
+        st.error("❌ Start date cannot be after end date.")
+        st.stop()
+
+    # Decide time range
+    if time_choice == "Use Start/End Dates":
+        time_range_to_fetch = (
+            f"{start_date}T00:00:00Z",
+            f"{end_date}T23:59:59Z"
+        )
+    else:
+        time_range_to_fetch = time_choice
+
+    st.info(f"Fetching data from **{MEASUREMENT}** in bucket **{BUCKET}**...")
+
+    # ---------------- DATA FETCH ----------------
+    df_offline = dr.fetch_offline_data(
+        measurement=MEASUREMENT,
+        time_range=time_range_to_fetch,
+        database=BUCKET,
+    )
+
+    if df_offline.empty:
+        st.warning("⚠️ No data found for selected time range.")
+        st.stop()
+
+    # ---------------- PROCESS TIMEZONE ----------------
+    df_offline.index = df_offline.index.tz_convert(local_tz)
+    df_offline.index.name = "time (IST)"
+    df_offline.index = df_offline.index.tz_localize(None)
+
+    # ---------------- SHOW PREVIEW ONLY ----------------
+    st.subheader("📊 Data Preview (first 500 rows)")
+    st.dataframe(df_offline.head(500))  # Prevent UI lag
+
+    # ---------------- DOWNLOAD FULL DATA ----------------
+    csv = df_offline.to_csv(index=True).encode("utf-8")
+    st.download_button(
+        label="Download Full CSV",
+        data=csv,
+        file_name=f"{MEASUREMENT}.csv",
+        mime="text/csv",
+    )
+
+
 
 
 
