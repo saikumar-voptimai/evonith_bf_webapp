@@ -63,7 +63,7 @@ def clean_rm_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFrame:
     """
-    Fetches offline data for a given measurement.
+    Fetch offline data with minimal and necessary time conversions.
     Supports:
     - preset strings (e.g. 'last 1 month')
     - tuple ranges (start, end)
@@ -77,39 +77,37 @@ def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFr
 
     now = datetime.now(timezone.utc)
 
-    # Resolve time_range into fetch_averaged_data parameters
+    # --- Resolve time range ---
     if isinstance(time_range, str) and time_range.strip().lower() == "full":
-        start, end = datetime(2023, 1, 1, tzinfo=timezone.utc), now
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        end = now
         recent_label = "over selected range"
 
     elif isinstance(time_range, tuple) and len(time_range) == 2:
+        # Convert tuple times once only
         start = pd.to_datetime(time_range[0], utc=True)
-        end   = pd.to_datetime(time_range[1], utc=True)
+        end = pd.to_datetime(time_range[1], utc=True)
         recent_label = "over selected range"
 
     else:
-        # Preset string (e.g. "last 1 month")
-        return _finalize_dataframe(
-            dfetch.fetch_averaged_data(recent_data_of=time_range)
-        )
+        # Preset string route → return directly
+        df = dfetch.fetch_averaged_data(recent_data_of=time_range)
+        df["time"] = pd.to_datetime(df["time"], utc=True)
+        return df.set_index("time").sort_index()
 
-    # For custom/full ranges
+    # --- Fetch for custom/full ranges ---
     df = dfetch.fetch_averaged_data(
         recent_data_of=recent_label,
         start_time=start,
         end_time=end
     )
 
-    return _finalize_dataframe(df)
-
-def _finalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Cleans and standardizes the final DataFrame."""
+    # --- Final minimal cleanup ---
     if "time" in df.columns:
-        df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)
-        df.set_index("time", inplace=True)
+        df["time"] = pd.to_datetime(df["time"], utc=True)
+        df = df.set_index("time")
 
-    df.sort_index(inplace=True)
-    return df
+    return df.sort_index()
 
 
 def fetch_online_df(selected_measurements: List[str],

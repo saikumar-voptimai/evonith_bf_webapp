@@ -461,38 +461,36 @@ if submitted:
         )
 
 # ---------------- UI: OFFLINE DATA VIEWER -----------------
+# ---------------- UI: OFFLINE DATA VIEWER -----------------
 st.header("📄 ML Dataset Viewer")
 
 MEASUREMENT = "rm_charge_dis_hm_slag"
-BUCKET = "ml_dataset_v_01"
+BUCKET = "ML DATASET"
 
-# Default State
+# Default time range state
 if "time_range_off" not in st.session_state:
     st.session_state.time_range_off = "last 1 week"
 
 # Time options (no custom)
-TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]  # Your reduced options
+TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
 
 # ------------------- FORM ----------------------
 with st.form("ml_dataset_form"):
 
     st.subheader("Select Time Range")
 
-    # Time choice
     time_choice = st.selectbox(
         "Select Time Range:",
         ["Use Start/End Dates"] + TIME_OPTIONS_UI,
         index=0
     )
 
-    # Date Inputs
     col1, col2 = st.columns(2)
     with col1:
         start_date = st.date_input("Start Date", datetime.now().date())
     with col2:
         end_date = st.date_input("End Date", datetime.now().date())
 
-    # Submit
     submitted = st.form_submit_button("Fetch ML Dataset")
 
 # ---------------- FORM SUBMITTED ----------------
@@ -503,42 +501,40 @@ if submitted:
         st.error("❌ Start date cannot be after end date.")
         st.stop()
 
-    # Decide time range
+    # Determine time range format
     if time_choice == "Use Start/End Dates":
-        time_range_to_fetch = (
+        time_range = (
             f"{start_date}T00:00:00Z",
             f"{end_date}T23:59:59Z"
         )
     else:
-        time_range_to_fetch = time_choice
+        time_range = time_choice
 
     st.info(f"Fetching data from **{MEASUREMENT}** in bucket **{BUCKET}**...")
 
-    # ---------------- DATA FETCH ----------------
-    df_offline = dr.fetch_offline_data(
+    # Fetch data
+    df = dr.fetch_offline_data(
         measurement=MEASUREMENT,
-        time_range=time_range_to_fetch,
+        time_range=time_range,
         database=BUCKET,
     )
 
-    if df_offline.empty:
+    if df.empty:
         st.warning("⚠️ No data found for selected time range.")
         st.stop()
 
-    # ---------------- PROCESS TIMEZONE ----------------
-    df_offline.index = df_offline.index.tz_convert(local_tz)
-    df_offline.index.name = "time (IST)"
-    df_offline.index = df_offline.index.tz_localize(None)
+    # ---------------- PROCESS TIMEZONE (Single Step) ----------------
+    df.index = df.index.tz_convert(local_tz).tz_localize(None)
+    df.index.name = "time (IST)"
 
-    # ---------------- SHOW PREVIEW ONLY ----------------
-    st.subheader("📊 Data Preview (first 500 rows)")
-    st.dataframe(df_offline.head(500))  # Prevent UI lag
+    # ---------------- SHOW PREVIEW ----------------
+    st.subheader("📊 Data Preview")
+    st.dataframe(df)
 
-    # ---------------- DOWNLOAD FULL DATA ----------------
-    csv = df_offline.to_csv(index=True).encode("utf-8")
+    # ---------------- DOWNLOAD CSV ----------------
     st.download_button(
         label="Download Full CSV",
-        data=csv,
+        data=df.to_csv(index=True).encode("utf-8"),
         file_name=f"{MEASUREMENT}.csv",
         mime="text/csv",
     )
@@ -553,7 +549,7 @@ if submitted:
 st.header("📄 HOT METAL AND SLAG")
 
 # ----- FORM -----
-with st.form("hotmetal_form_2"):
+with st.form("hotmetal_form"):
     col1, col2 = st.columns([1, 1])
     with col1:
         from_date = st.date_input("From Date")

@@ -17,7 +17,7 @@ influx_offline:
 offline_measurements:
   Bunker Report: "rm_updated_data"
   DPR: "dpr_data"
-  HM & Slag: "hotmetal_slag_data"
+  HM & Slag: "hotmetal_slag_updated_data"
   Charge: "charge_data"
 
 
