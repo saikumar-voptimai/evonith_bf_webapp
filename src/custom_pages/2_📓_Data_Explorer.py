@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from datetime import timezone
 import numpy as np
 import pandas as pd
@@ -13,6 +13,9 @@ from pathlib import Path
 from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
 from dotenv import load_dotenv
+from domain.ml_dataset_service import MlDatasetService
+from zoneinfo import ZoneInfo
+
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config("setting_vsense.yml")
@@ -54,6 +57,7 @@ TIME_OPTIONS = {
 FREQUENCY_TO_TIMEDTA = {
     "None": None,
     "1 minute": "1min",
+    "2 minute": "2min",
     "5 minutes": "5min",
     "10 minutes": "10min",
     "30 minutes": "30min",
@@ -460,87 +464,139 @@ if submitted:
             mime="text/csv",
         )
 
-# ---------------- UI: OFFLINE DATA VIEWER -----------------
-# ---------------- UI: OFFLINE DATA VIEWER -----------------
-st.header("📄 ML Dataset Viewer")
 
-MEASUREMENT = "rm_charge_dis_hm_slag"
-BUCKET = "ML DATASET"
+# -------------------- CONFIG --------------------
+local_tz = ZoneInfo("Asia/Kolkata")
+rename_dict = config.get("rename_dict", {})
+rename_values = list(rename_dict.values())
+keep_cols = config.get("keep_cols", [])
 
-# Default time range state
-if "time_range_off" not in st.session_state:
-    st.session_state.time_range_off = "last 1 week"
+service = MlDatasetService()
 
-# Time options (no custom)
-TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
+# -------------------- UI --------------------
+st.header("📄 ML Dataset")
 
-# ------------------- FORM ----------------------
-with st.form("ml_dataset_form"):
-
+with st.form("ml_form"):
     st.subheader("Select Time Range")
 
-    time_choice = st.selectbox(
-        "Select Time Range:",
-        ["Use Start/End Dates"] + TIME_OPTIONS_UI,
-        index=0
+    rm_choice = st.radio(
+        "Select RM Dataset",
+        ["RM Charge", "RM DPR"],
+        horizontal=True,
     )
 
     col1, col2 = st.columns(2)
     with col1:
-        start_date = st.date_input("Start Date", datetime.now().date())
+        start_date = st.date_input("Start Date", datetime.now(local_tz).date())
     with col2:
-        end_date = st.date_input("End Date", datetime.now().date())
+        end_date = st.date_input("End Date", datetime.now(local_tz).date())
 
-    submitted = st.form_submit_button("Fetch ML Dataset")
+    submitted = st.form_submit_button("Fetch Dataset")
 
-# ---------------- FORM SUBMITTED ----------------
+# -------------------- PROCESSING --------------------
 if submitted:
-
-    # Validate
     if start_date > end_date:
-        st.error("❌ Start date cannot be after end date.")
+        st.error("❌ Start Date cannot be after End Date.")
         st.stop()
 
-    # Determine time range format
-    if time_choice == "Use Start/End Dates":
-        time_range = (
-            f"{start_date}T00:00:00Z",
-            f"{end_date}T23:59:59Z"
-        )
+    CUTOFF = service.cutoff_date
+    mode = "charge" if rm_choice == "RM Charge" else "dpr"
+
+    df_step1 = pd.DataFrame()
+    df_step2 = pd.DataFrame()
+    df_hot = pd.DataFrame()
+
+    # ------------------------------------------------------
+    # CASE-1 → STEP-1 ONLY (ML)
+    # User selects 01-01-2024 to 06-12-2025 (end_date <= cutoff)
+    # ------------------------------------------------------
+    if end_date <= CUTOFF:
+        st.info("OLD DATA")
+
+        df_step1 = service.fetch_step1(start_date, end_date, allowed_columns=rename_dict)
+        df_step1 = df_step1.rename(columns=rename_dict)
+        df_step1 = df_step1[df_step1.columns.intersection(rename_values)]
+
+        df_final = df_step1
+
+    # ------------------------------------------------------
+    # CASE-2 → STEP-2 + STEP-3 (RM + HM)
+    # User selects 07-12-2025 to 09-12-2025 (start_date > cutoff)
+    # ------------------------------------------------------
+    elif start_date > CUTOFF:
+        st.info("New DATA")
+
+        # STEP-2: RM data
+        df_step2 = service.fetch_step2(start_date, end_date, mode, allowed_columns=rename_dict)
+        df_step2 = df_step2.rename(columns=rename_dict)
+        df_step2 = df_step2[df_step2.columns.intersection(rename_values)]
+
+        # STEP-3: Hot metal hourly (60 min)
+        df_hot = service.fetch_hotmetal_hourly(start_date, end_date, keep_columns=keep_cols, interval_minutes=60)
+        df_hot = df_hot.rename(columns=rename_dict)
+        df_hot = df_hot[df_hot.columns.intersection(rename_values)]
+
+        # Merge RM + HM by time
+        df_final = df_step2.join(df_hot, how="outer").sort_index()
+
+    # ------------------------------------------------------
+    # CASE-3 → MIXED RANGE (STEP-1 + STEP-2 + STEP-3)
+    # User selects 01-12-2025 to 10-12-2025
+    # ------------------------------------------------------
     else:
-        time_range = time_choice
+        st.info("Feching Old Data")
 
-    st.info(f"Fetching data from **{MEASUREMENT}** in bucket **{BUCKET}**...")
+        # STEP-1: ML part (start → cutoff)
+        df_step1 = service.fetch_step1(start_date, CUTOFF, allowed_columns=rename_dict)
+        df_step1 = df_step1.rename(columns=rename_dict)
+        df_step1 = df_step1[df_step1.columns.intersection(rename_values)]
+        st.info("Feching New ML Data")
+        # STEP-2: RM part (cutoff+1 → end)
+        df_step2 = service.fetch_step2(CUTOFF + timedelta(days=1), end_date, mode, allowed_columns=rename_dict)
+        df_step2 = df_step2.rename(columns=rename_dict)
+        df_step2 = df_step2[df_step2.columns.intersection(rename_values)]
 
-    # Fetch data
-    df = dr.fetch_offline_data(
-        measurement=MEASUREMENT,
-        time_range=time_range,
-        database=BUCKET,
-    )
+        st.info("Feching HM & SLAG Data")
+        # STEP-3: Hot metal for (cutoff+1 → end)
+        df_hot = service.fetch_hotmetal_hourly(
+            CUTOFF + timedelta(days=1),
+            end_date,
+            keep_columns=keep_cols,
+            interval_minutes=60,
+        )
+        df_hot = df_hot.rename(columns=rename_dict)
+        df_hot = df_hot[df_hot.columns.intersection(rename_values)]
+        df_merged = pd.merge_asof(
+            df_step2.sort_index(),
+            df_hot.sort_index(),
+            left_index=True,
+            right_index=True,
+            direction="nearest",
+            tolerance=pd.Timedelta("1min")
+        )
 
-    if df.empty:
-        st.warning("⚠️ No data found for selected time range.")
-        st.stop()
-
-    # ---------------- PROCESS TIMEZONE (Single Step) ----------------
-    df.index = df.index.tz_convert(local_tz).tz_localize(None)
-    df.index.name = "time (IST)"
-
-    # ---------------- SHOW PREVIEW ----------------
-    st.subheader("📊 Data Preview")
-    st.dataframe(df)
-
-    # ---------------- DOWNLOAD CSV ----------------
-    st.download_button(
-        label="Download Full CSV",
-        data=df.to_csv(index=True).encode("utf-8"),
-        file_name=f"{MEASUREMENT}.csv",
-        mime="text/csv",
-    )
+        
+        # ML + RM merged
+        df_final = pd.concat([df_step1, df_merged]).sort_index()
 
 
+    # ------------------------------------------------------
+    # FINAL OUTPUT
+    # ------------------------------------------------------
+    if df_final.empty:
+        st.warning("No data found for the selected range and configuration.")
+    else:
+        df_final.index.name = "time"
 
+        st.subheader("📊 Final Dataset (Merged ML + RM + Hot Metal)")
+        st.dataframe(df_final)
+
+        st.download_button(
+            "Download CSV",
+            df_final.to_csv(index=True).encode("utf-8"),
+            file_name=f"unified_ML_RM_HM_{start_date}_to_{end_date}.csv",
+            mime="text/csv",
+        )
 
 
 
@@ -549,7 +605,7 @@ if submitted:
 st.header("📄 HOT METAL AND SLAG")
 
 # ----- FORM -----
-with st.form("hotmetal_form"):
+with st.form("hotmetal_form_2"):
     col1, col2 = st.columns([1, 1])
     with col1:
         from_date = st.date_input("From Date")
@@ -580,7 +636,7 @@ if fetch_btn:
     fetch_end_utc   = fetch_end.tz_convert("UTC")
 
     df = dr.fetch_offline_data(
-        measurement="hotmetal_slag_data",
+        measurement="hotmetal_slag_updated_data",
         time_range=(fetch_start_utc, fetch_end_utc),
         database="bf2_evonith_offline_utc",
     )
@@ -610,7 +666,11 @@ if fetch_btn:
     df2 = df.reindex(combined_index)
 
     # ------------ INTERPOLATE DATA ------------
-    df2[numeric_cols] = df2[numeric_cols].interpolate("time")
+    df2[numeric_cols] = df2[numeric_cols].infer_objects(copy=False)
+    df2[numeric_cols] = df2[numeric_cols].apply(pd.to_numeric, errors="coerce")
+
+    # Interpolate safely
+    df2[numeric_cols] = df2[numeric_cols].interpolate(method="time")
 
     # ------------ SELECT EXACT TARGET POINTS ------------
     df_final = df2.loc[target_index]
@@ -621,6 +681,8 @@ if fetch_btn:
         now = pd.Timestamp.now(tz="Asia/Kolkata")
         cutoff = now.floor(f"{interval_min}min")
         df_final = df_final.loc[from_dt:cutoff]
+    # ---- REMOVE TIMEZONE FROM INDEX ----
+    df_final.index = df_final.index.tz_localize(None)
 
     st.success("Data processed successfully!")
     st.dataframe(df_final)
@@ -632,5 +694,7 @@ if fetch_btn:
         file_name=f"hotmetal_{from_date}_to_{to_date}_{interval_min}min.csv",
         mime="text/csv",
     )
+
+
 
 

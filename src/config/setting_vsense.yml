@@ -248,6 +248,7 @@ field_mapping:
   ore_mno_pct: ORE_%MnO
   ore_na2o_pct: ORE_%Na2O
   ore_p_pct: ORE_%P
+  ore_tm_pct: ORE_%TM
   ore_sio2_pct: ORE_%SiO2
   ore_tio2_pct: ORE_%TiO2
   nutcoke_prime_mt: NUTCOKE_Prime_MT
