@@ -5,9 +5,7 @@ import os
 import pytz
 import numpy as np
 import pandas as pd
-import requests
 import dotenv
-import json
 import xml.etree.ElementTree as ET
 from influxdb_client_3 import InfluxDBClient3, flight_client_options
 import certifi
