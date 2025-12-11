@@ -48,8 +48,6 @@ class ChargeAdminPage:
     # -----------------------------------------------
     def render_form(self, username):
 
-        st.markdown("### ⚙️ Charge Distribution Update")
-
         # Load current values once
         current_values = self.get_current_charge_values()
         updated_values = {}
