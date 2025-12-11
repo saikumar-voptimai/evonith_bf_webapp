@@ -1,6 +1,74 @@
+# # src/custom_pages/1_Welcome.py
+# import streamlit as st
+# from utils.session import logout_user, is_admin
+
+# # ---------------------------------------------------
+# #  AUTH CHECK
+# # ---------------------------------------------------
+# if "auth_user" not in st.session_state:
+#     st.warning("Please login to access this page.")
+#     st.stop()
+
+# # ----------------------------------------------------
+# #  SIDEBAR (Admin tools + logout)
+# # ----------------------------------------------------
+# with st.sidebar:
+#     st.markdown(f"👋 Logged in as: `{st.session_state['auth_user']}` ")
+#     st.markdown("---")
+
+#     # Admin-only quick links (only on Welcome page)
+#     if is_admin():
+#         st.markdown("### 🔧 Admin Tools")
+
+#         # Initialize session key for tool tracking
+#         if "admin_tool_selection" not in st.session_state:
+#             st.session_state["admin_tool_selection"] = None
+
+#         # Admin Tool Buttons
+#         if st.button("🛠 Hopper Mapping"):
+#             st.session_state["admin_tool_selection"] = "hopper"
+#             st.rerun()
+
+#         if st.button("📝 User Management"):
+#             st.session_state["admin_tool_selection"] = "register"
+#             st.rerun()
+
+#         # Back to Dashboard button (visible only when inside tool)
+#         if st.session_state.get("admin_tool_selection") in ["hopper", "register"]:
+#             if st.button("⬅ Back to Dashboard"):
+#                 st.session_state["admin_tool_selection"] = None
+#                 st.rerun()
+
+#         st.markdown("---")
+
+#     #  Common logout for all users
+#     if st.button("🚪 Logout"):
+#         logout_user()
+#         st.stop()
+
+# # ----------------------------------------------------
+# #  RENDER ADMIN TOOLS INLINE IF SELECTED
+# # ----------------------------------------------------
+# if is_admin() and st.session_state.get("admin_tool_selection") == "hopper":
+#     # st.title("🛠 Hopper Material Mapping (Admin Tool)")
+#     from ui.hopper_admin_page import hopper_admin_page
+#     hopper_admin_page(st.session_state.get("auth_user", "Unknown"))
+
+#     st.stop()
+
+# elif is_admin() and st.session_state.get("admin_tool_selection") == "register":
+#     # st.title("📝 Register Page (Admin Tool)")
+#     from ui.register_page import register_page
+#     register_page()
+#     st.stop()
+
+
+
+
 # src/custom_pages/1_Welcome.py
 import streamlit as st
 from utils.session import logout_user, is_admin
+
 
 # ---------------------------------------------------
 #  AUTH CHECK
@@ -13,55 +81,63 @@ if "auth_user" not in st.session_state:
 #  SIDEBAR (Admin tools + logout)
 # ----------------------------------------------------
 with st.sidebar:
-    st.markdown(f"👋 Logged in as: `{st.session_state['auth_user']}` ")
+    st.markdown(f"👋 Logged in as: `{st.session_state['auth_user']}`")
     st.markdown("---")
 
-    # Admin-only quick links (only on Welcome page)
     if is_admin():
         st.markdown("### 🔧 Admin Tools")
 
-        # Initialize session key for tool tracking
+        # Ensure selector exists
         if "admin_tool_selection" not in st.session_state:
             st.session_state["admin_tool_selection"] = None
 
-        # Admin Tool Buttons
-        if st.button("🛠 Hopper Mapping"):
+        # Admin Tools
+        if st.button("🛠 Hopper Mapping", key="btn_hopper"):
             st.session_state["admin_tool_selection"] = "hopper"
             st.rerun()
 
-        if st.button("📝 User Management"):
+        if st.button("📊 Charge Distribution", key="btn_charge"):
+            st.session_state["admin_tool_selection"] = "charge"
+            st.rerun()
+
+        if st.button("📝 User Management", key="btn_register"):
             st.session_state["admin_tool_selection"] = "register"
             st.rerun()
 
-        # Back to Dashboard button (visible only when inside tool)
-        if st.session_state.get("admin_tool_selection") in ["hopper", "register"]:
-            if st.button("⬅ Back to Dashboard"):
+        # Back Button
+        if st.session_state["admin_tool_selection"] in ["hopper", "charge", "register"]:
+            if st.button("⬅ Back to Dashboard", key="btn_back"):
                 st.session_state["admin_tool_selection"] = None
                 st.rerun()
 
         st.markdown("---")
 
-    #  Common logout for all users
-    if st.button("🚪 Logout"):
+    # Logout button
+    if st.button("🚪 Logout", key="btn_logout"):
         logout_user()
         st.stop()
 
+
 # ----------------------------------------------------
-#  RENDER ADMIN TOOLS INLINE IF SELECTED
+#  RENDER ADMIN TOOLS INLINE
 # ----------------------------------------------------
-if is_admin() and st.session_state.get("admin_tool_selection") == "hopper":
-    # st.title("🛠 Hopper Material Mapping (Admin Tool)")
-    from ui.hopper_admin_page import hopper_admin_page
-    hopper_admin_page(st.session_state.get("auth_user", "Unknown"))
+selection = st.session_state.get("admin_tool_selection")
 
-    st.stop()
+if is_admin():
+    if selection == "hopper":
+        from ui.hopper_admin_page import hopper_admin_page
+        hopper_admin_page(st.session_state.get("auth_user"))
+        st.stop()
 
-elif is_admin() and st.session_state.get("admin_tool_selection") == "register":
-    # st.title("📝 Register Page (Admin Tool)")
-    from ui.register_page import register_page
-    register_page()
-    st.stop()
+    elif selection == "charge":
+        from ui.charge_admin_page import charge_admin_page
+        charge_admin_page(st.session_state.get("auth_user"))
+        st.stop()
 
+    elif selection == "register":
+        from ui.register_page import register_page
+        register_page()
+        st.stop()
 # ----------------------------------------------------
 #  MAIN PAGE CONTENT (Default welcome content)
 # ----------------------------------------------------

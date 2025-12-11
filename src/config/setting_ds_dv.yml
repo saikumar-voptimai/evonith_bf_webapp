@@ -811,6 +811,7 @@ rename_dict:
     "sinter_cao_pct": "Sinter_SP_02_CaO%"
     "sinter_k2o_pct": "Sinter_SP_02_K2O%"
     "sinter_basicity": "Sinter_SP_02_Basicity"
+    "sinter_sp_02_basicity": "Sinter_SP_02_Basicity"
     "sinter_mno_pct": "Sinter_SP_02_MnO%"
     "sinter_mt": "Sinter_SP_02_MT"
     "sinter01_mt": "Sinter_SP_01_MT"
@@ -845,6 +846,7 @@ rename_dict:
     "ore_k2o_pct": "ORE_%K2O"
     "ore_mt": "ORE_MT"
     "Geomin Type": "Geomin Type"
+    "GeominType": "Geomin Type"
 
     "body_etaco": "FurnaceTopGasAnalysisCO2ETACO"
     "coke_rate": "Coke Rate Kg/Thm"

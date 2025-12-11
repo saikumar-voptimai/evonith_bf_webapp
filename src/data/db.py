@@ -37,6 +37,10 @@ class Database:
     def __init__(self) -> None:
         """Initialize configuration and ensure required tables exist."""
         self.hoppers, self.materials = self._safe_load_materials()
+        self.charge_fields = self._safe_load_charge_fields()
+        self._create_charge_distribution_history_table()
+
+
         self._init_tables()
 
     # ============================================================
@@ -322,4 +326,165 @@ class Database:
             )
 
 
+    # ============================================================
+    #  LOAD CHARGE FIELDS FROM YAML
+    # ============================================================
+    def _safe_load_charge_fields(self):
+        """Safely loads charge distribution field names from materials.yml."""
+        try:
+            return self._load_charge_fields_from_yaml()
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to load charge_fields from YAML: {e}")
+            return []
 
+    def _load_charge_fields_from_yaml(self):
+        """Internal YAML loader for charge distribution fields."""
+        if not os.path.exists(MATERIALS_FILE):
+            raise FileNotFoundError(f"Missing configuration file: {MATERIALS_FILE}")
+
+        with open(MATERIALS_FILE, "r", encoding="utf-8-sig") as f:
+            data = yaml.safe_load(f) or {}
+
+        fields = data.get("charge_fields", [])
+        if not isinstance(fields, list):
+            raise ValueError("'charge_fields' must be a list in materials.yml")
+
+        return fields
+
+
+    # --------------------------------------------------------
+    # Create charge distribution history table
+    # --------------------------------------------------------
+    def _create_charge_distribution_history_table(self):
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS charge_distribution_history (
+                    id SERIAL PRIMARY KEY,
+                    field_name TEXT NOT NULL,
+
+                    -- NEW dual-value support
+                    field_value_float DOUBLE PRECISION,
+                    field_value_text TEXT,
+
+                    valid_from TIMESTAMPTZ NOT NULL,
+                    valid_upto TIMESTAMPTZ,
+                    modifier TEXT DEFAULT 'system',
+                    ip_address TEXT
+                );
+            """))
+
+            # Only one active record per field
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_charge_active_record
+                ON charge_distribution_history (field_name, valid_upto);
+            """))
+
+
+    # --------------------------------------------------------
+    # Update (SCD Type-2)
+    # --------------------------------------------------------
+    def update_charge_field(self, field_name, value, valid_from, modifier="system", ip=""):
+
+        # Pattern fields use TEXT values, others use FLOAT
+        is_text_field = field_name in [
+            "COKE_CHARGE_PATTERN",
+            "NON_COKE_CHARGE_PATTERN"
+        ]
+
+        with engine.begin() as conn:
+            # Close the active record
+            conn.execute(text("""
+                UPDATE charge_distribution_history
+                SET valid_upto = :end_time
+                WHERE field_name = :f AND valid_upto IS NULL
+            """), {
+                "f": field_name,
+                "end_time": valid_from - timedelta(seconds=1)
+            })
+
+            # Insert new record
+            if is_text_field:
+                conn.execute(text("""
+                    INSERT INTO charge_distribution_history
+                        (field_name, field_value_text, valid_from, valid_upto, modifier, ip_address)
+                    VALUES (:f, :v_text, :start, NULL, :m, :ip)
+                """), {
+                    "f": field_name,
+                    "v_text": str(value),
+                    "start": valid_from,
+                    "m": modifier,
+                    "ip": ip
+                })
+            else:
+                conn.execute(text("""
+                    INSERT INTO charge_distribution_history
+                        (field_name, field_value_float, valid_from, valid_upto, modifier, ip_address)
+                    VALUES (:f, :v_float, :start, NULL, :m, :ip)
+                """), {
+                    "f": field_name,
+                    "v_float": float(value),
+                    "start": valid_from,
+                    "m": modifier,
+                    "ip": ip
+                })
+
+
+    # --------------------------------------------------------
+    # Bulk update from DataFrame row (timestamp-indexed)
+    # --------------------------------------------------------
+    def update_charge_row(self, df_row, timestamp, modifier="system", ip=""):
+        """Update all charge fields for a given timestamp."""
+        for field, value in df_row.items():
+            if field in self.charge_fields and value is not None:
+                self.update_charge_field(field, value, timestamp, modifier, ip)
+
+
+    # --------------------------------------------------------
+    # Read history
+    # --------------------------------------------------------
+    def get_charge_history(self):
+        with engine.begin() as conn:
+            rows = conn.execute(text("""
+                SELECT id, field_name,
+                    field_value_float, field_value_text,
+                    valid_from, valid_upto, modifier, ip_address
+                FROM charge_distribution_history
+                ORDER BY field_name, valid_from DESC
+            """)).fetchall()
+
+        output = []
+        for r in rows:
+            value = r.field_value_text if r.field_value_text is not None else r.field_value_float
+
+            output.append({
+                "id": r.id,
+                "field_name": r.field_name,
+                "value": value,
+                "valid_from": r.valid_from,
+                "valid_upto": r.valid_upto,
+                "modifier": r.modifier,
+                "ip_address": r.ip_address
+            })
+
+        return output
+
+
+    # --------------------------------------------------------
+    # Query field value at a specific time
+    # --------------------------------------------------------
+    def get_charge_value_at(self, field_name, ts):
+        with engine.begin() as conn:
+            row = conn.execute(text("""
+                SELECT field_value_float, field_value_text
+                FROM charge_distribution_history
+                WHERE field_name = :f
+                AND valid_from <= :ts
+                AND (valid_upto IS NULL OR valid_upto >= :ts)
+                ORDER BY valid_from DESC
+                LIMIT 1
+            """), {"f": field_name, "ts": ts}).fetchone()
+
+        if not row:
+            return None
+
+        return row.field_value_text if row.field_value_text is not None else row.field_value_float
