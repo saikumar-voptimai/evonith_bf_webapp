@@ -172,6 +172,7 @@ df_data.index = pd.to_datetime(df_data.index, format="%d-%m-%Y %H:%M", utc=True)
 # Attach live:
 new_live_row = df_data.iloc[-1].copy()
 
+
 update_cols = [c for c in live_data.columns if c in df_data.columns]
 live_series = live_data.iloc[0][update_cols]
 new_live_row.loc[update_cols] = live_series
@@ -305,15 +306,17 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
     df_live_ip = fetch_offline_data(
         measurement=ml_cfg.get("measurements", "rm_charge_data"),
         time_range=ml_cfg.get("time_range", "last 1 month"),
-        database=ml_cfg.get("database", "ml_dataset"),
+        database=ml_cfg.get("database", "ML DATASET"),
     )
+
     df_live_ip = df_live_ip.rename(columns=field_mapping)
     def get_shift(ts):
         h = ts.hour
         return "C" if h < 8 else "A" if h < 16 else "B"
 
 
-    latest_row = df_live_ip.iloc[-1]
+    latest_row = df_live_ip.iloc[-2]
+    # st.dataframe(latest_row)
     timestamp_utc = latest_row.name
     timestamp_ist = timestamp_utc.tz_convert("Asia/Kolkata").tz_localize(None)
 
@@ -328,7 +331,6 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
 
 
 
-    # print(df_live_ip.iloc[-1].to_dict())
     cols = st.columns(3)
     raw_mtrl_input = {}
 
