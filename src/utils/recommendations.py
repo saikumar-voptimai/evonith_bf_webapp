@@ -296,6 +296,6 @@ def fetch_live_data(cp_op_ml_dict: Dict[str, Any], paths_set: List[str]) -> pd.D
         combined_df = df if combined_df.empty else combined_df.join(df, how="outer")
 
     latest_df = combined_df.tail(1).rename(columns=values_needed)
-    print(latest_df)
+
 
     return latest_df

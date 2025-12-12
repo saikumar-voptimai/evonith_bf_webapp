@@ -754,10 +754,6 @@ if submitted:
             mime="text/csv",
         )
 
-
-
-
-
 # ----- HOT METAL AND SLAG -----
 
 st.header("📄 HOT METAL AND SLAG")
@@ -770,10 +766,16 @@ with st.form("hotmetal_form_2"):
     with col2:
         to_date = st.date_input("To Date")
 
-    interval_min = st.number_input("Interval (minutes)", min_value=1, max_value=600, value=60)
+    interval_min = st.number_input(
+        "Interval (minutes)",
+        min_value=1,
+        max_value=600,
+        value=60
+    )
 
     fetch_btn = st.form_submit_button("Fetch HM & SLAG DATA")
 
+# ----- ACTION -----
 if fetch_btn:
     if from_date > to_date:
         st.error("❌ From Date must be less than or equal to To Date.")
@@ -781,62 +783,21 @@ if fetch_btn:
 
     keep_cols = config.get("keep_cols", [])
 
-    # --- Convert to timezone-aware timestamps ---
-    from_dt = pd.Timestamp(from_date).tz_localize("Asia/Kolkata")
-    to_dt   = pd.Timestamp(to_date).tz_localize("Asia/Kolkata") + pd.Timedelta(days=1)
-
-    # fetch one extra day before for smooth interpolation
-    fetch_start = from_dt - pd.Timedelta(days=1)
-    fetch_end   = to_dt
-
-    # --- Convert to UTC for InfluxDB ---
-    fetch_start_utc = fetch_start.tz_convert("UTC")
-    fetch_end_utc   = fetch_end.tz_convert("UTC")
-
-    df = dr.fetch_offline_data(
-        measurement="hotmetal_slag_updated_data",
-        time_range=(fetch_start_utc, fetch_end_utc),
-        database="bf2_evonith_offline_utc",
+    # ---- CALL DOMAIN SERVICE ----
+    df_final = service.fetch_hotmetal_hourly(
+        start_date=from_date,
+        end_date=to_date,
+        keep_columns=keep_cols,
+        interval_minutes=interval_min,
     )
 
-    if df.empty:
+
+    if df_final.empty:
         st.warning("No data found.")
         st.stop()
-
-    # --- Cleanup ---
-    df.index = df.index.tz_convert("Asia/Kolkata")
-    df = df.sort_index().loc[~df.index.duplicated(keep="last")]
-    df = df[[c for c in keep_cols if c in df.columns]]
-
-    numeric_cols = df.columns
-
-    # ------------ CREATE TARGET RANGE ------------
-    target_index = pd.date_range(
-        start=from_dt,
-        end=to_dt,
-        freq=f"{interval_min}min",
-        tz="Asia/Kolkata"
-    )
-
-    # ------------ MERGE RAW + TARGET ------------
-    combined_index = df.index.union(target_index)
-
-    df2 = df.reindex(combined_index)
-
-    # ------------ INTERPOLATE DATA ------------
-    df2[numeric_cols] = df2[numeric_cols].interpolate("time")
-
-    # ------------ SELECT EXACT TARGET POINTS ------------
-    df_final = df2.loc[target_index]
-
-    # ------------ Handle ToDate = Today ------------
-    today = pd.Timestamp.now(tz="Asia/Kolkata").date()
-    if to_date == today:
-        now = pd.Timestamp.now(tz="Asia/Kolkata")
-        cutoff = now.floor(f"{interval_min}min")
-        df_final = df_final.loc[from_dt:cutoff]
-    # ---- REMOVE TIMEZONE FROM INDEX ----
-    df_final.index = df_final.index.tz_localize(None)
+    # ---- DROP UNWANTED COLUMNS ----
+    drop_cols = ["cast_no_ladle_spec", "lab_sample_id"]
+    df_final = df_final.drop(columns=[c for c in drop_cols if c in df_final.columns])
 
     st.success("Data processed successfully!")
     st.dataframe(df_final)
@@ -848,5 +809,99 @@ if fetch_btn:
         file_name=f"hotmetal_{from_date}_to_{to_date}_{interval_min}min.csv",
         mime="text/csv",
     )
+
+
+
+
+# # ----- HOT METAL AND SLAG -----
+
+# st.header("📄 HOT METAL AND SLAG")
+
+# # ----- FORM -----
+# with st.form("hotmetal_form_2"):
+#     col1, col2 = st.columns([1, 1])
+#     with col1:
+#         from_date = st.date_input("From Date")
+#     with col2:
+#         to_date = st.date_input("To Date")
+
+#     interval_min = st.number_input("Interval (minutes)", min_value=1, max_value=600, value=60)
+
+#     fetch_btn = st.form_submit_button("Fetch HM & SLAG DATA")
+
+# if fetch_btn:
+#     if from_date > to_date:
+#         st.error("❌ From Date must be less than or equal to To Date.")
+#         st.stop()
+
+#     keep_cols = config.get("keep_cols", [])
+
+#     # --- Convert to timezone-aware timestamps ---
+#     from_dt = pd.Timestamp(from_date).tz_localize("Asia/Kolkata")
+#     to_dt   = pd.Timestamp(to_date).tz_localize("Asia/Kolkata") + pd.Timedelta(days=1)
+
+#     # fetch one extra day before for smooth interpolation
+#     fetch_start = from_dt - pd.Timedelta(days=1)
+#     fetch_end   = to_dt
+
+#     # --- Convert to UTC for InfluxDB ---
+#     fetch_start_utc = fetch_start.tz_convert("UTC")
+#     fetch_end_utc   = fetch_end.tz_convert("UTC")
+
+#     df = dr.fetch_offline_data(
+#         measurement="hotmetal_slag_updated_data",
+#         time_range=(fetch_start_utc, fetch_end_utc),
+#         database="bf2_evonith_offline_utc",
+#     )
+
+#     if df.empty:
+#         st.warning("No data found.")
+#         st.stop()
+
+#     # --- Cleanup ---
+#     df.index = df.index.tz_convert("Asia/Kolkata")
+#     df = df.sort_index().loc[~df.index.duplicated(keep="last")]
+#     df = df[[c for c in keep_cols if c in df.columns]]
+
+#     numeric_cols = df.columns
+
+#     # ------------ CREATE TARGET RANGE ------------
+#     target_index = pd.date_range(
+#         start=from_dt,
+#         end=to_dt,
+#         freq=f"{interval_min}min",
+#         tz="Asia/Kolkata"
+#     )
+
+#     # ------------ MERGE RAW + TARGET ------------
+#     combined_index = df.index.union(target_index)
+
+#     df2 = df.reindex(combined_index)
+
+#     # ------------ INTERPOLATE DATA ------------
+#     df2[numeric_cols] = df2[numeric_cols].interpolate("time")
+
+#     # ------------ SELECT EXACT TARGET POINTS ------------
+#     df_final = df2.loc[target_index]
+
+#     # ------------ Handle ToDate = Today ------------
+#     today = pd.Timestamp.now(tz="Asia/Kolkata").date()
+#     if to_date == today:
+#         now = pd.Timestamp.now(tz="Asia/Kolkata")
+#         cutoff = now.floor(f"{interval_min}min")
+#         df_final = df_final.loc[from_dt:cutoff]
+#     # ---- REMOVE TIMEZONE FROM INDEX ----
+#     df_final.index = df_final.index.tz_localize(None)
+
+#     st.success("Data processed successfully!")
+#     st.dataframe(df_final)
+
+#     # --- CSV Download ---
+#     st.download_button(
+#         "Download CSV",
+#         df_final.to_csv().encode("utf-8"),
+#         file_name=f"hotmetal_{from_date}_to_{to_date}_{interval_min}min.csv",
+#         mime="text/csv",
+#     )
 
 

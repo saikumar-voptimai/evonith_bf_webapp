@@ -231,6 +231,7 @@ field_mapping:
   coke_im_pct: COKE_IM%
   coke_moist_pct: COKE_MOIST%
   coke_vm_pct: COKE_VM%
+  coke_mt: COKE_MT
   flux_mt: FLUX_MT
   flux_tm_pct: FLUX_TM%
   flux_sio2_pct: FLUX_SiO2%
@@ -251,6 +252,7 @@ field_mapping:
   ore_tm_pct: ORE_%TM
   ore_sio2_pct: ORE_%SiO2
   ore_tio2_pct: ORE_%TiO2
+  ore_mt: ORE_MT
   nutcoke_prime_mt: NUTCOKE_Prime_MT
   nutcoke_ash_pct: NUTCOKE_ASH%
   nutcoke_fc_pct: NUTCOKE_FC%
@@ -262,7 +264,7 @@ field_mapping:
   pci_im_pct: PCI_2_%IM
   pci_vm_pct: PCI_2_%VM
   pci_tm_pct: PCI_2_%TM
-  geomin_type: Geomin Type
+  Geomin Type: Geomin Type
   sinter_sp_02_basicity: Sinter_SP_02_Basicity
   sinter_cold_strength_ai: Sinter_SP_02_Cold_Strength_AI
   sinter_cold_strength_ti: Sinter_SP_02_Cold_strength_TI
@@ -281,6 +283,6 @@ field_mapping:
 
 
 influxdb_ml_database:
-  database: ml_dataset
+  database: "ML DATASET"
   measurements: rm_charge_data
   time_range: last 1 month
