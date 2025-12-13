@@ -33,15 +33,9 @@ class ChargeAdminPage:
     # Get latest charge values for all fields
     # -----------------------------------------------
     def get_current_charge_values(self):
-        """Fetch current SCD2 values for all charge fields."""
+        """Fetch current SCD2 values for all charge fields in ONE query."""
         now = datetime.now()
-        current = {}
-
-        for field in self.charge_fields:
-            val = self.db.get_charge_value_at(field, now)
-            current[field] = val
-
-        return current
+        return self.db.get_all_current_charge_values(now)
 
     # -----------------------------------------------
     # RENDER FORM

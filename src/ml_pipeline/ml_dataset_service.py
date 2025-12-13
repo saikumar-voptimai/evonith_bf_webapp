@@ -1,6 +1,7 @@
 # src/domain/ml_dataset_service.py
 from dataclasses import dataclass
 from datetime import datetime, date, time, timezone, timedelta
+from config.config_loader import load_config
 from zoneinfo import ZoneInfo
 import pandas as pd
 import time as time_module   # for sleep(), avoids conflict with datetime.time
@@ -10,7 +11,7 @@ import os
 
 load_dotenv()
 from utils.helper_functions_explorer.data_retrieval import fetch_offline_data
-
+config = load_config("setting_ds_dv.yml")
 
 @dataclass
 class MlDatasetService:
@@ -20,17 +21,23 @@ class MlDatasetService:
     Step-3: Fetch Hot Metal & Slag and interpolate to given interval
     """
 
-    bucket: str = "ML DATASET"
-    measurement_step1: str = "rm_charge_dis_hm_slag"
-    measurement_rm_charge: str = "rm_charge_data"
-    measurement_rm_dpr: str = "rm_dpr_data"
+    bucket: str = config["ml_dataset"]["bucket"]
+    measurement_step1: str = config["ml_dataset"]["measurement_step1"]
 
-    # STEP 3 config
-    hotmetal_bucket: str = "bf2_evonith_offline_utc"
-    hotmetal_measurement: str = "hotmetal_slag_updated_data"
+    # Reuse existing offline_measurements
+    measurement_rm_charge: str = config["ml_dataset"]["rm_charge_measurement"]
+    measurement_rm_dpr: str = config["ml_dataset"]["rm_dpr_measurement"]
 
-    local_tz: str = "Asia/Kolkata"
-    cutoff_date: date = date(2025, 12, 5)
+
+    # STEP 3 (reuse existing)
+    hotmetal_bucket: str = config["influx_offline"]["database"]
+    hotmetal_measurement: str = config["offline_measurements"]["HM & Slag"]
+
+    local_tz: str = config["ml_dataset"].get("local_tz", "Asia/Kolkata")
+
+    cutoff_date: date = date.fromisoformat(
+        config["ml_dataset"]["cutoff_date"]
+    )
     #  FOR STEP 4 (Charge Distribution Data)
     db_url: str = os.getenv("DATABASE_URL")
 
@@ -312,6 +319,16 @@ class MlDatasetService:
             (df_pivot[nc_rings].values * df_pivot[nc_angles].values).sum(axis=1)
             / df_pivot["TOTAL_NON_COKE_PORTIONS"].replace(0, pd.NA)
         )
+        # ---------------- ARROW SAFETY FIX (future-proof) ----------------
+        for col in df_pivot.columns:
+            if df_pivot[col].dtype == "object":
+                try:
+                    df_pivot[col] = pd.to_numeric(df_pivot[col])
+                except (ValueError, TypeError):
+                    # Column contains real text → keep as-is
+                    pass
+
+
 
         return df_pivot
 

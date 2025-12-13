@@ -472,19 +472,26 @@ class Database:
     # --------------------------------------------------------
     # Query field value at a specific time
     # --------------------------------------------------------
-    def get_charge_value_at(self, field_name, ts):
+    def get_all_current_charge_values(self, ts):
         with engine.begin() as conn:
-            row = conn.execute(text("""
-                SELECT field_value_float, field_value_text
+            rows = conn.execute(text("""
+                SELECT DISTINCT ON (field_name)
+                    field_name,
+                    field_value_float,
+                    field_value_text
                 FROM charge_distribution_history
-                WHERE field_name = :f
-                AND valid_from <= :ts
+                WHERE valid_from <= :ts
                 AND (valid_upto IS NULL OR valid_upto >= :ts)
-                ORDER BY valid_from DESC
-                LIMIT 1
-            """), {"f": field_name, "ts": ts}).fetchone()
+                ORDER BY field_name, valid_from DESC
+            """), {"ts": ts}).fetchall()
 
-        if not row:
-            return None
+        result = {}
+        for r in rows:
+            result[r.field_name] = (
+                r.field_value_text if r.field_value_text is not None else r.field_value_float
+            )
 
-        return row.field_value_text if row.field_value_text is not None else row.field_value_float
+        return result
+
+
+

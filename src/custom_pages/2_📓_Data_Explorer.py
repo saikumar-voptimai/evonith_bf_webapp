@@ -13,8 +13,15 @@ from pathlib import Path
 from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
 from dotenv import load_dotenv
-from domain.ml_dataset_service import MlDatasetService
+from ml_pipeline.main import get_ml_dataset
 from zoneinfo import ZoneInfo
+from ml_pipeline.ml_dataset_service import MlDatasetService
+
+
+
+
+
+
 
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
@@ -167,7 +174,7 @@ if eqn_str:
 # Resize and render with Streamlit
 fig = plot.get_figure()
 fig.set_size_inches(10, 5)
-st.pyplot(fig, use_container_width=False)
+st.pyplot(fig, width="content")
 
 #--------------------------------------------------------------------------
 st.subheader("Timeseries plot")
@@ -465,206 +472,16 @@ if submitted:
         )
 
 
-# # -------------------- CONFIG --------------------
-# local_tz = ZoneInfo("Asia/Kolkata")
-# rename_dict = config.get("rename_dict", {})
-# rename_values = list(rename_dict.values())
-# keep_cols = config.get("keep_cols", [])
 
-# service = MlDatasetService()
-
-# # -------------------- UI --------------------
-# st.header("📄 ML Dataset")
-
-# with st.form("ml_form"):
-#     st.subheader("Select Time Range")
-
-#     rm_choice = st.radio(
-#         "Select RM Dataset",
-#         ["RM Charge", "RM DPR"],
-#         horizontal=True,
-#     )
-
-#     col1, col2 = st.columns(2)
-#     with col1:
-#         start_date = st.date_input("Start Date", datetime.now(local_tz).date())
-#     with col2:
-#         end_date = st.date_input("End Date", datetime.now(local_tz).date())
-
-#     submitted = st.form_submit_button("Fetch Dataset")
-
-# # -------------------- PROCESSING --------------------
-# if submitted:
-#     if start_date > end_date:
-#         st.error("❌ Start Date cannot be after End Date.")
-#         st.stop()
-
-#     CUTOFF = service.cutoff_date
-#     mode = "charge" if rm_choice == "RM Charge" else "dpr"
-
-#     df_step1 = pd.DataFrame()
-#     df_step2 = pd.DataFrame()
-#     df_hot = pd.DataFrame()
-
-#     # ------------------------------------------------------
-#     # CASE-1 → STEP-1 ONLY (ML)
-#     # User selects 01-01-2024 to 05-12-2025 (end_date <= cutoff)
-#     # ------------------------------------------------------
-#     if end_date <= CUTOFF:
-#         st.info("OLD DATA")
-
-#         df_step1 = service.fetch_step1(start_date, end_date, allowed_columns=rename_dict)
-#         df_step1 = df_step1.rename(columns=rename_dict)
-#         df_step1 = df_step1[df_step1.columns.intersection(rename_values)]
-
-#         df_final = df_step1
-
-#     # ------------------------------------------------------
-#     # CASE-2 → STEP-2 + STEP-3 (RM + HM)
-#     # User selects 06-12-2025 to 09-12-2025 (start_date > cutoff)
-#     # ------------------------------------------------------
-#     elif start_date > CUTOFF:
-#         st.info("New DATA")
-
-#         # STEP-2: RM data
-#         df_step2 = service.fetch_step2(start_date, end_date, mode, allowed_columns=rename_dict)
-#         df_step2 = df_step2.rename(columns=rename_dict)
-#         df_step2 = df_step2[df_step2.columns.intersection(rename_values)]
-
-#         # STEP-3: Hot metal hourly (60 min)
-#         df_hot = service.fetch_hotmetal_hourly(start_date, end_date, keep_columns=keep_cols, interval_minutes=60)
-#         df_hot = df_hot.rename(columns=rename_dict)
-#         df_hot = df_hot[df_hot.columns.intersection(rename_values)]
-
-#         # STEP-4: Distribution (Neon DB)
-#         df_dist = service.fetch_distribution_data(start_date, end_date)
-#         df_dist = df_dist.rename(columns=rename_dict)
-#         df_dist = df_dist[df_dist.columns.intersection(rename_values)]
-#         # Align distribution data with hourly timestamps
-#         df_dist = df_dist.reindex(df_step2.index.union(df_hot.index)).sort_index()
-#         df_dist = df_dist.ffill()
-
-#         # Merge RM + HM by time
-#         # df_final = df_step2.join(df_hot, how="outer").sort_index()
-#         df_final = df_step2.join([df_hot, df_dist], how="outer").sort_index()
+# 9 --- ML Dataset Section ---
 
 
+local_tz = ZoneInfo(config["ml_dataset"]["local_tz"])
 
-#     # ------------------------------------------------------
-#     # CASE-3 → MIXED RANGE (STEP-1 + STEP-2 + STEP-3)
-#     # User selects 01-12-2025 to 10-12-2025
-#     # ------------------------------------------------------
-#     else:
-#         st.info("Feching Old Data")
-
-#         # STEP-1: ML part (start → cutoff)
-#         df_step1 = service.fetch_step1(start_date, CUTOFF, allowed_columns=rename_dict)
-#         df_step1 = df_step1.rename(columns=rename_dict)
-#         df_step1 = df_step1[df_step1.columns.intersection(rename_values)]
-#         st.info("Feching New ML Data")
-#         # STEP-2: RM part (cutoff+1 → end)
-#         df_step2 = service.fetch_step2(CUTOFF + timedelta(days=1), end_date, mode, allowed_columns=rename_dict)
-#         df_step2 = df_step2.rename(columns=rename_dict)
-#         df_step2 = df_step2[df_step2.columns.intersection(rename_values)]
-
-#         st.info("Feching HM & SLAG Data")
-#         # STEP-3: Hot metal for (cutoff+1 → end)
-#         df_hot = service.fetch_hotmetal_hourly(
-#             CUTOFF + timedelta(days=1),
-#             end_date,
-#             keep_columns=keep_cols,
-#             interval_minutes=60,
-#         )
-#         df_hot = df_hot.rename(columns=rename_dict)
-#         df_hot = df_hot[df_hot.columns.intersection(rename_values)]
-#         # STEP-4: Distribution (Neon DB)
-#         df_dist = service.fetch_distribution_data(CUTOFF + timedelta(days=1), end_date)
-#         df_dist = df_dist.rename(columns=rename_dict)
-#         df_dist = df_dist[df_dist.columns.intersection(rename_values)]
-#         # Align distribution data with hourly timestamps
-#         df_dist = df_dist.reindex(df_step2.index.union(df_hot.index)).sort_index()
-#         df_dist = df_dist.ffill()
-        
-#         df_merged = pd.merge_asof(
-#             df_step2.sort_index(),
-#             df_hot.sort_index(),
-#             left_index=True,
-#             right_index=True,
-#             direction="nearest",
-#             tolerance=pd.Timedelta("1min")
-#         )
-#         df_merged = df_merged.join(df_dist, how="left")
-
-
-        
-#         # ML + RM merged
-#         df_final = pd.concat([df_step1, df_merged]).sort_index()
-
-
-#     # ------------------------------------------------------
-#     # FINAL OUTPUT
-#     # ------------------------------------------------------
-#     if df_final.empty:
-#         st.warning("No data found for the selected range and configuration.")
-#     else:
-#         df_final.index.name = "time"
-
-#         st.subheader("📊 Final Dataset (Merged ML + RM + Hot Metal)")
-#         st.dataframe(df_final)
-
-#         st.download_button(
-#             "Download CSV",
-#             df_final.to_csv(index=True).encode("utf-8"),
-#             file_name=f"unified_ML_RM_HM_{start_date}_to_{end_date}.csv",
-#             mime="text/csv",
-#         )
-
-
-
-# -------------------- CONFIG --------------------
-local_tz = ZoneInfo("Asia/Kolkata")
-rename_dict = config.get("rename_dict", {})
-rename_values = list(rename_dict.values())
-rename_set = set(rename_values)   # faster filtering
-keep_cols = config.get("keep_cols", [])
-
-service = MlDatasetService()
-
-# -------------------- HELPERS --------------------
-def clean_df(df):
-    """Rename + keep only allowed columns."""
-    df = df.rename(columns=rename_dict)
-    return df[[c for c in df.columns if c in rename_set]]
-
-def align_dist(df_dist, df1, df2):
-    """Align distribution with RM + HM timestamps."""
-    idx = df1.index.union(df2.index)
-    return df_dist.reindex(idx).sort_index().ffill()
-
-def fetch_old(start, end):
-    df = service.fetch_step1(start, end, allowed_columns=rename_dict)
-    return clean_df(df)
-
-def fetch_new_rm(start, end, mode):
-    df = service.fetch_step2(start, end, mode, allowed_columns=rename_dict)
-    return clean_df(df)
-
-def fetch_hot(start, end):
-    df = service.fetch_hotmetal_hourly(
-        start, end, keep_columns=keep_cols, interval_minutes=60
-    )
-    return clean_df(df)
-
-def fetch_dist(start, end):
-    df = service.fetch_distribution_data(start, end)
-    return clean_df(df)
-
-# -------------------- UI --------------------
+# ---------------- UI ----------------
 st.header("📄 ML Dataset")
 
 with st.form("ml_form"):
-    st.subheader("Select Time Range")
-
     rm_choice = st.radio(
         "Select RM Dataset",
         ["RM Charge", "RM DPR"],
@@ -677,87 +494,44 @@ with st.form("ml_form"):
     with col2:
         end_date = st.date_input("End Date", datetime.now(local_tz).date())
 
-    submitted = st.form_submit_button("Fetch Dataset")
-status_box = st.empty()
+    cache_override = st.checkbox("Override Cache")
 
-# -------------------- PROCESSING --------------------
+    submitted = st.form_submit_button("Fetch Dataset")
+
+# ---------------- PROCESS ----------------
 if submitted:
 
     if start_date > end_date:
-        st.error("❌ Start Date cannot be after End Date.")
+        st.error("Start Date cannot be after End Date.")
         st.stop()
 
-    CUTOFF = service.cutoff_date
-    mode = "charge" if rm_choice == "RM Charge" else "dpr"
+    with st.spinner("Fetching ML Dataset..."):
+        df_final = get_ml_dataset(
+            start_date=start_date,
+            end_date=end_date,
+            rm_choice=rm_choice,
+            cache_override=cache_override,
+        )
 
-    # ------------------------------------------------------
-    # CASE 1 → OLD DATA ONLY
-    # ------------------------------------------------------
-    if end_date <= CUTOFF:
-        status_box.info("Fetching OLD DATA (ML only)")
-        df_final = fetch_old(start_date, end_date)
-
-    # ------------------------------------------------------
-    # CASE 2 → NEW DATA ONLY (RM + HOTMETAL + DIST)
-    # ------------------------------------------------------
-    elif start_date > CUTOFF:
-        status_box.info("Fetching NEW DATA (ML+ HM + Distribution)")
-
-        df_step2 = fetch_new_rm(start_date, end_date, mode)
-        df_hot   = fetch_hot(start_date, end_date)
-        df_dist  = fetch_dist(start_date, end_date)
-
-        df_dist = align_dist(df_dist, df_step2, df_hot)
-
-        df_final = df_step2.join([df_hot, df_dist], how="outer").sort_index()
-
-    # ------------------------------------------------------
-    # CASE 3 → MIXED RANGE (OLD ML + NEW RM/HM)
-    # ------------------------------------------------------
-    else:
-        status_box.info("Fetching MIXED RANGE (OLD ML + NEW ML + HM + Distribution)")
-
-        # OLD PART
-        df_old = fetch_old(start_date, CUTOFF)
-
-        # NEW PART
-        new_start = CUTOFF + timedelta(days=1)
-
-        df_step2 = fetch_new_rm(new_start, end_date, mode)
-        df_hot   = fetch_hot(new_start, end_date)
-        df_dist  = fetch_dist(new_start, end_date)
-
-        df_dist = align_dist(df_dist, df_step2, df_hot)
-
-        # Merge new RM + HM + Distribution
-        df_new = df_step2.join([df_hot, df_dist], how="outer").sort_index()
-
-        # Combine OLD + NEW
-        df_final = pd.concat([df_old, df_new]).sort_index()
-
-    # ------------------------------------------------------
-    # FINAL OUTPUT
-    # ------------------------------------------------------
-    status_box.empty()
     if df_final.empty:
-        st.warning("No data found for the selected range and configuration.")
+        st.warning("No data found.")
     else:
-        df_final.index.name = "time"
-
-        st.subheader("📊 ML DATASET")
         st.dataframe(df_final)
 
         st.download_button(
             "Download CSV",
             df_final.to_csv(index=True).encode("utf-8"),
-            file_name=f"unified_ML_RM_HM_{start_date}_to_{end_date}.csv",
+            file_name=f"unified_ML_{start_date}_to_{end_date}.csv",
             mime="text/csv",
         )
 
-# ----- HOT METAL AND SLAG -----
+
+# 10 --- HOT METAL AND SLAG DATA SECTION ---
+
 
 st.header("📄 HOT METAL AND SLAG")
 
+service = MlDatasetService()  # private singleton
 # ----- FORM -----
 with st.form("hotmetal_form_2"):
     col1, col2 = st.columns([1, 1])
@@ -784,7 +558,7 @@ if fetch_btn:
     keep_cols = config.get("keep_cols", [])
 
     # ---- CALL DOMAIN SERVICE ----
-    df_final = service.fetch_hotmetal_hourly(
+    df_final =  service.fetch_hotmetal_hourly(
         start_date=from_date,
         end_date=to_date,
         keep_columns=keep_cols,
@@ -809,99 +583,5 @@ if fetch_btn:
         file_name=f"hotmetal_{from_date}_to_{to_date}_{interval_min}min.csv",
         mime="text/csv",
     )
-
-
-
-
-# # ----- HOT METAL AND SLAG -----
-
-# st.header("📄 HOT METAL AND SLAG")
-
-# # ----- FORM -----
-# with st.form("hotmetal_form_2"):
-#     col1, col2 = st.columns([1, 1])
-#     with col1:
-#         from_date = st.date_input("From Date")
-#     with col2:
-#         to_date = st.date_input("To Date")
-
-#     interval_min = st.number_input("Interval (minutes)", min_value=1, max_value=600, value=60)
-
-#     fetch_btn = st.form_submit_button("Fetch HM & SLAG DATA")
-
-# if fetch_btn:
-#     if from_date > to_date:
-#         st.error("❌ From Date must be less than or equal to To Date.")
-#         st.stop()
-
-#     keep_cols = config.get("keep_cols", [])
-
-#     # --- Convert to timezone-aware timestamps ---
-#     from_dt = pd.Timestamp(from_date).tz_localize("Asia/Kolkata")
-#     to_dt   = pd.Timestamp(to_date).tz_localize("Asia/Kolkata") + pd.Timedelta(days=1)
-
-#     # fetch one extra day before for smooth interpolation
-#     fetch_start = from_dt - pd.Timedelta(days=1)
-#     fetch_end   = to_dt
-
-#     # --- Convert to UTC for InfluxDB ---
-#     fetch_start_utc = fetch_start.tz_convert("UTC")
-#     fetch_end_utc   = fetch_end.tz_convert("UTC")
-
-#     df = dr.fetch_offline_data(
-#         measurement="hotmetal_slag_updated_data",
-#         time_range=(fetch_start_utc, fetch_end_utc),
-#         database="bf2_evonith_offline_utc",
-#     )
-
-#     if df.empty:
-#         st.warning("No data found.")
-#         st.stop()
-
-#     # --- Cleanup ---
-#     df.index = df.index.tz_convert("Asia/Kolkata")
-#     df = df.sort_index().loc[~df.index.duplicated(keep="last")]
-#     df = df[[c for c in keep_cols if c in df.columns]]
-
-#     numeric_cols = df.columns
-
-#     # ------------ CREATE TARGET RANGE ------------
-#     target_index = pd.date_range(
-#         start=from_dt,
-#         end=to_dt,
-#         freq=f"{interval_min}min",
-#         tz="Asia/Kolkata"
-#     )
-
-#     # ------------ MERGE RAW + TARGET ------------
-#     combined_index = df.index.union(target_index)
-
-#     df2 = df.reindex(combined_index)
-
-#     # ------------ INTERPOLATE DATA ------------
-#     df2[numeric_cols] = df2[numeric_cols].interpolate("time")
-
-#     # ------------ SELECT EXACT TARGET POINTS ------------
-#     df_final = df2.loc[target_index]
-
-#     # ------------ Handle ToDate = Today ------------
-#     today = pd.Timestamp.now(tz="Asia/Kolkata").date()
-#     if to_date == today:
-#         now = pd.Timestamp.now(tz="Asia/Kolkata")
-#         cutoff = now.floor(f"{interval_min}min")
-#         df_final = df_final.loc[from_dt:cutoff]
-#     # ---- REMOVE TIMEZONE FROM INDEX ----
-#     df_final.index = df_final.index.tz_localize(None)
-
-#     st.success("Data processed successfully!")
-#     st.dataframe(df_final)
-
-#     # --- CSV Download ---
-#     st.download_button(
-#         "Download CSV",
-#         df_final.to_csv().encode("utf-8"),
-#         file_name=f"hotmetal_{from_date}_to_{to_date}_{interval_min}min.csv",
-#         mime="text/csv",
-#     )
 
 

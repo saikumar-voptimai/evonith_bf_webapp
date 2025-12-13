@@ -20,6 +20,14 @@ offline_measurements:
   HM & Slag: "hotmetal_slag_updated_data"
   Charge: "charge_data"
 
+ml_dataset:
+  bucket: "ML DATASET"
+  measurement_step1: "rm_charge_dis_hm_slag"
+  rm_charge_measurement: "rm_charge_data"
+  rm_dpr_measurement: "rm_dpr_data"
+  local_tz: "Asia/Kolkata"
+  cutoff_date: "2025-12-05"
+
 
 # Geometries
 paths:
