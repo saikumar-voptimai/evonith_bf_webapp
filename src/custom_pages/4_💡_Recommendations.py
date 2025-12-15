@@ -296,9 +296,8 @@ with st.form("Control Params Form"):
         st.success("✅ Bounds saved successfully!")
 
 
-# User-specified input variables:
+# Section 4: Input Parameters - Raw Material Data
 with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
-    
 
     ml_cfg = config_vsense.get("influxdb_ml_database", {})
 
@@ -310,27 +309,50 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
     )
 
     df_live_ip = df_live_ip.rename(columns=field_mapping)
+
+    # Ensure sorted by timestamp
+    df_live_ip = df_live_ip.sort_index()
+
     def get_shift(ts):
         h = ts.hour
         return "C" if h < 8 else "A" if h < 16 else "B"
 
+    # -------------------------------
+    # Select last  48timestamps
+    # -------------------------------
+    last_2days_timestamps = list(df_live_ip.index[-48:])[::-1]  # Last 48 entries (assuming 15-min intervals)
 
-    latest_row = df_live_ip.iloc[-2]
-    # st.dataframe(latest_row)
-    timestamp_utc = latest_row.name
+    selected_timestamp = st.selectbox(
+        "Select Timestamp (IST)",
+        options=last_2days_timestamps,
+        format_func=lambda x: x.tz_convert("Asia/Kolkata").strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    # Fetch selected row
+    latest_row = df_live_ip.loc[selected_timestamp]
+
+    timestamp_utc = selected_timestamp
     timestamp_ist = timestamp_utc.tz_convert("Asia/Kolkata").tz_localize(None)
 
     shift = get_shift(timestamp_ist)
+
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown(f"<h4>DATE-TIME (IST): {timestamp_ist}</h4>", unsafe_allow_html=True)
+        st.markdown(
+            f"<h4>DATE-TIME (IST): {timestamp_ist}</h4>",
+            unsafe_allow_html=True,
+        )
 
     with col2:
-        st.markdown(f"<h4>Shift: {shift}</h4>", unsafe_allow_html=True)
+        st.markdown(
+            f"<h4>Shift: {shift}</h4>",
+            unsafe_allow_html=True,
+        )
 
-
-
+    # -------------------------------
+    # Input Form
+    # -------------------------------
     cols = st.columns(3)
     raw_mtrl_input = {}
 
@@ -344,19 +366,24 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
                         default_val = float(latest_row[param])
                     else:
                         default_val = 0.0
+
                     user_val = st.number_input(
                         param,
                         format="%.2f",
                         value=default_val,
                     )
+
                     raw_mtrl_input[param] = (
                         user_val if user_val != default_val else np.nan
                     )
 
-        raw_mtrl_input[param] = np.nan
         submit_ip = st.form_submit_button("Submit Input Params")
+
         if submit_ip:
             st.success("✅ Input parameters recorded.")
+
+
+
 ip_flat_list = [val for group in models_dict[optimisation_type]['input_params'].values() for val in group]
 op_list = [config_vsense['Optimisation'][model]['output_param'] for model in list(config_vsense['Optimisation'].keys())]
 

@@ -259,11 +259,11 @@ field_mapping:
   nutcoke_im_pct: NUTCOKE_IM%
   nutcoke_moist_pct: NUTCOKE_MOIST%
   nutcoke_vm_pct: NUTCOKE_VM%
-  pci_ash_pct: PCI_2_%Ash
-  pci_fc_pct: PCI_2_%FC
-  pci_im_pct: PCI_2_%IM
-  pci_vm_pct: PCI_2_%VM
-  pci_tm_pct: PCI_2_%TM
+  pci2_ash_pct: PCI_2_%Ash
+  pci2_fc_pct: PCI_2_%FC
+  pci2_im_pct: PCI_2_%IM
+  pci2_vm_pct: PCI_2_%VM
+  pci2_tm_pct: PCI_2_%TM
   Geomin Type: Geomin Type
   sinter_sp_02_basicity: Sinter_SP_02_Basicity
   sinter_cold_strength_ai: Sinter_SP_02_Cold_Strength_AI
