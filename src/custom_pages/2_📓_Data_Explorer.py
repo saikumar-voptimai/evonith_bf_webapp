@@ -362,7 +362,7 @@ with st.form(key="measurement_form"):
 # Display and allow download after the form (survives reruns)
 if isinstance(st.session_state.online_df, pd.DataFrame) and not st.session_state.online_df.empty:
     df_show = st.session_state.online_df.sort_index()
-    st.dataframe(df_show)
+    st.dataframe(df_show.head(100))
     csv_bytes = df_show.reset_index().to_csv(index=False).encode('utf-8')
     ts_label = pd.Timestamp.utcnow().strftime('%Y%m%d_%H%M%SZ')
     st.download_button(
