@@ -88,7 +88,7 @@ if is_admin():
         st.stop()
 
     elif selection == "register":
-        from src.ui.user_management import register_page
+        from ui.user_management import register_page
         register_page()
         st.stop()
 
