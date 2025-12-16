@@ -84,7 +84,7 @@ class RegisterPage:
         with st.form(key="register_form", clear_on_submit=True):
             username = st.text_input("👤 New Username")
             password = st.text_input("🔑 New Password", type="password")
-            role = st.selectbox("🧩 Role", ["user", "admin"])
+            role = st.selectbox("🧩 Role", ["user", 'supervisor', "admin"])
 
             # Submit button
             submitted = st.form_submit_button("✅ Register")

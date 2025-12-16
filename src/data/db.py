@@ -65,7 +65,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS public.users (
                     username TEXT PRIMARY KEY,
                     password_hash TEXT NOT NULL,
-                    role TEXT CHECK (role IN ('admin', 'user')) NOT NULL
+                    role TEXT CHECK (role IN ('admin', 'supervisor', 'user')) NOT NULL
                 )
             """))
 
@@ -215,7 +215,7 @@ class Database:
             """), {"h": hopper, "m": material})
 
     # ============================================================
-    #  TIME-BASED HISTORY MANAGEMENT (with modifier)
+    #  TIME-BASED HISTORY MANAGEMENT 
     # ============================================================
     def _create_hopper_material_history_table(self) -> None:
         """Creates hopper_material_history table if missing."""

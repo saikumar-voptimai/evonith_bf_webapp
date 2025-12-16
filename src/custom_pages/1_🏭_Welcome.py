@@ -1,7 +1,6 @@
 # src/custom_pages/1_Welcome.py
 import streamlit as st
-from utils.session import logout_user, is_admin
-
+from utils.session import logout_user, is_admin, is_supervisor
 
 # ---------------------------------------------------
 #  AUTH CHECK
@@ -11,66 +10,88 @@ if "auth_user" not in st.session_state:
     st.stop()
 
 # ----------------------------------------------------
-#  SIDEBAR (Admin tools + logout)
+#  SIDEBAR
 # ----------------------------------------------------
 with st.sidebar:
     st.markdown(f"👋 Logged in as: `{st.session_state['auth_user']}`")
     st.markdown("---")
 
+    # Ensure selector exists
+    if "admin_tool_selection" not in st.session_state:
+        st.session_state["admin_tool_selection"] = None
+
+    # -------------------------
+    # ADMIN TOOLS
+    # -------------------------
     if is_admin():
         st.markdown("### 🔧 Admin Tools")
 
-        # Ensure selector exists
-        if "admin_tool_selection" not in st.session_state:
-            st.session_state["admin_tool_selection"] = None
-
-        # Admin Tools
-        if st.button("🛠 Hopper Mapping", key="btn_hopper"):
+        if st.button("🛠 Hopper Mapping", key="admin_hopper"):
             st.session_state["admin_tool_selection"] = "hopper"
             st.rerun()
 
-        if st.button("📊 Burden Distribution", key="btn_burden"):
+        if st.button("📊 Burden Distribution", key="admin_burden"):
             st.session_state["admin_tool_selection"] = "burden"
             st.rerun()
 
-        if st.button("📝 User Management", key="btn_register"):
+        if st.button("📝 User Management", key="admin_register"):
             st.session_state["admin_tool_selection"] = "register"
             st.rerun()
 
-        # Back Button
         if st.session_state["admin_tool_selection"] in ["hopper", "burden", "register"]:
-            if st.button("⬅ Back to Dashboard", key="btn_back"):
+            if st.button("⬅ Back to Dashboard", key="admin_back"):
                 st.session_state["admin_tool_selection"] = None
                 st.rerun()
 
         st.markdown("---")
 
-    # Logout button
+    # -------------------------
+    # SUPERVISOR TOOLS
+    # -------------------------
+    if is_supervisor() and not is_admin():
+        # st.markdown("### 🛠 Supervisor Tools")
+
+        if st.button("🛠 Hopper Mapping", key="supervisor_hopper"):
+            st.session_state["admin_tool_selection"] = "hopper"
+            st.rerun()
+
+        if st.session_state["admin_tool_selection"] == "hopper":
+            if st.button("⬅ Back to Dashboard", key="supervisor_back"):
+                st.session_state["admin_tool_selection"] = None
+                st.rerun()
+
+        st.markdown("---")
+
+    # -------------------------
+    # LOGOUT (ALL USERS)
+    # -------------------------
     if st.button("🚪 Logout", key="btn_logout"):
         logout_user()
         st.stop()
 
-
 # ----------------------------------------------------
-#  RENDER ADMIN TOOLS INLINE
+#  RENDER PAGES INLINE
 # ----------------------------------------------------
 selection = st.session_state.get("admin_tool_selection")
 
-if is_admin():
-    if selection == "hopper":
-        from ui.hopper_admin_page import hopper_admin_page
-        hopper_admin_page(st.session_state.get("auth_user"))
-        st.stop()
+# Hopper Mapping → Admin & Supervisor
+if selection == "hopper" and (is_admin() or is_supervisor()):
+    from ui.hopper_admin_page import hopper_admin_page
+    hopper_admin_page(st.session_state.get("auth_user"))
+    st.stop()
 
-    elif selection == "burden":
+# Admin-only pages
+if is_admin():
+    if selection == "burden":
         from ui.burden_admin_page import burden_admin_page
         burden_admin_page(st.session_state.get("auth_user"))
         st.stop()
 
     elif selection == "register":
-        from ui.register_page import register_page
+        from src.ui.user_management import register_page
         register_page()
         st.stop()
+
 
 # ----------------------------------------------------
 #  MAIN PAGE CONTENT (Default welcome content)
