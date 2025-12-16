@@ -1,6 +1,6 @@
 import streamlit as st
 from datetime import datetime, timedelta, date
-from datetime import timezone
+from datetime import time
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -376,24 +376,21 @@ else:
 
 
 # 8 --- UI Section for Offline Data ---
+UTC = pytz.UTC
+
 
 st.header("📄 Offline Data Viewer")
-if "time_range_off" not in st.session_state:
-    st.session_state.time_range_off = "last 1 week"
 
 if "selected_offline" not in st.session_state:
     st.session_state.selected_offline = list(offline_measurements.keys())[0]
 
-# --- Time options WITHOUT Custom Range ---
 TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
 
-# --- FORM START ---
+
 with st.form("offline_fetch_form"):
 
-    # Columns: Left = measurement, Right = time range + dates
-    col_left, col_right = st.columns([1, 1])
+    col_left, col_right = st.columns(2)
 
-    # ---------------- LEFT COLUMN -------------------
     with col_left:
         selected_offline = st.selectbox(
             "Select Offline Measurement",
@@ -401,51 +398,42 @@ with st.form("offline_fetch_form"):
             index=list(offline_measurements.keys()).index(st.session_state.selected_offline)
         )
 
-    # ---------------- RIGHT COLUMN -------------------
     with col_right:
-
         time_range_choice = st.selectbox(
             "Select Time Range (optional):",
-            ["Use Start/End Dates"] + TIME_OPTIONS_UI,
-            index=0
+            ["Use Start/End Dates"] + TIME_OPTIONS_UI
         )
 
-        # Start & End Date on the SAME ROW
-        d1, d2 = st.columns([1, 1])
+        d1, d2 = st.columns(2)
         with d1:
-            start_date = st.date_input(
-                "Start Date",
-                value=datetime.now().date()
-            )
+            start_date = st.date_input("Start Date", value=datetime.now().date())
         with d2:
-            end_date = st.date_input(
-                "End Date",
-                value=datetime.now().date()
-            )
+            end_date = st.date_input("End Date", value=datetime.now().date())
 
-    # Submit button
     submitted = st.form_submit_button("Fetch Offline Data")
 
-# --- FORM SUBMITTED ---
+
 if submitted:
 
-    # --- Validation ---
     if start_date > end_date:
         st.error("❌ Invalid date range: Start Date cannot be after End Date.")
         st.stop()
 
     database = influx_cfg.get("database", "bf2_evonith_offline_utc")
 
-    # Decide fetch strategy
+    # ---- CORRECT TIME RANGE HANDLING ----
     if time_range_choice == "Use Start/End Dates":
+
+        start_local = local_tz.localize(datetime.combine(start_date, time.min))
+        end_local = local_tz.localize(datetime.combine(end_date, time.max))
+
         time_range_to_fetch = (
-            f"{start_date}T00:00:00Z",
-            f"{end_date}T23:59:59Z"
+            start_local.astimezone(UTC),
+            end_local.astimezone(UTC),
         )
     else:
         time_range_to_fetch = time_range_choice
 
-    # Fetch data
     df_offline = dr.fetch_offline_data(
         measurement=offline_measurements[selected_offline],
         time_range=time_range_to_fetch,
@@ -454,22 +442,23 @@ if submitted:
 
     if df_offline.empty:
         st.warning(f"No data found for {selected_offline}")
-    else:
-        if selected_offline == "rm_data":
-            df_offline = dr.clean_rm_data(df_offline)
+        st.stop()
 
-        df_offline.index = df_offline.index.tz_convert(local_tz)
-        df_offline.index.name = 'time (IST)'
+    if selected_offline == "rm_data":
+        df_offline = dr.clean_rm_data(df_offline)
 
-        st.dataframe(df_offline)
+    # Index is already UTC → convert once
+    df_offline.index = df_offline.index.tz_convert(LOCAL_TZ)
+    df_offline.index.name = "time (IST)"
 
-        csv = df_offline.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download as CSV",
-            data=csv,
-            file_name=f"{selected_offline}.csv",
-            mime="text/csv",
-        )
+    st.dataframe(df_offline)
+
+    st.download_button(
+        label="Download as CSV",
+        data=df_offline.to_csv(index=False).encode("utf-8"),
+        file_name=f"{selected_offline}.csv",
+        mime="text/csv",
+    )
 
 
 

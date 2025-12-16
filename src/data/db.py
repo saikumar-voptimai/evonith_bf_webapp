@@ -380,7 +380,8 @@ class Database:
         # Pattern fields use TEXT values, others use FLOAT
         is_text_field = field_name in [
             "COKE_CHARGE_PATTERN",
-            "NON_COKE_CHARGE_PATTERN"
+            "NON_COKE_CHARGE_PATTERN",
+            "BURDEN_CHANGING_PURPOSE",
         ]
 
         
