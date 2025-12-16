@@ -176,3 +176,4 @@ def fetch_online_df(selected_measurements: List[str],
     combined_df.index = combined_df.index.tz_convert('Asia/Kolkata')
     combined_df.index.name = 'time (IST)'
     return combined_df
+

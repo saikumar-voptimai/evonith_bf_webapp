@@ -54,7 +54,7 @@ materials:
 
 
 
-charge_fields:
+burden_fields:
   - "COKE P01 RINGS"
   - "COKE P02 RINGS"
   - "COKE P03 RINGS"

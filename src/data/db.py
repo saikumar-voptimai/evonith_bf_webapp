@@ -35,22 +35,16 @@ class Database:
     """
 
     def __init__(self) -> None:
-        """Initialize configuration and ensure required tables exist."""
+        self.engine = engine   # ✅ STORE ENGINE HERE
+
         self.hoppers, self.materials = self._safe_load_materials()
-        self.charge_fields = self._safe_load_charge_fields()
-        self._create_charge_distribution_history_table()
+        self.burden_fields = self._safe_load_burden_fields()
 
-
-        self._init_tables()
-
-    # ============================================================
-    #  Initialization Helpers
-    # ============================================================
-    def _init_tables(self) -> None:
-        """Ensures required tables exist and are seeded."""
         self._create_users_table()
         self._create_hopper_materials_table()
         self._create_hopper_material_history_table()
+        self._create_burden_distribution_history_table()
+
 
     def _safe_load_materials(self) -> tuple[list[str], list[str]]:
         """Safely loads hoppers and materials from YAML configuration."""
@@ -66,7 +60,7 @@ class Database:
     def _create_users_table(self) -> None:
         """Creates 'users' table if not exists and ensures default admin."""
         #  Create table (committed first)
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS public.users (
                     username TEXT PRIMARY KEY,
@@ -76,7 +70,7 @@ class Database:
             """))
 
         #  Seed admin user in a separate committed transaction
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             exists = conn.execute(
                 text("SELECT 1 FROM public.users WHERE username = 'admin'")
             ).fetchone()
@@ -93,7 +87,7 @@ class Database:
         """Adds a new user with hashed password."""
         password_hash = hashlib.sha256(password.encode()).hexdigest()
         try:
-            with engine.begin() as conn:
+            with self.engine.begin() as conn:
                 conn.execute(text("""
                     INSERT INTO users (username, password_hash, role)
                     VALUES (:u, :p, :r)
@@ -104,7 +98,7 @@ class Database:
     def validate_user(self, username: str, password: str) -> tuple[str, str] | None:
         """Validates credentials and returns (username, role) if correct."""
         password_hash = hashlib.sha256(password.encode()).hexdigest()
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             row = conn.execute(text("""
                 SELECT username, role
                 FROM users
@@ -141,7 +135,7 @@ class Database:
     # ============================================================
     def _create_hopper_materials_table(self) -> None:
         """Ensures 'hopper_materials' table exists and syncs YAML hoppers."""
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS hopper_materials (
                     hopper TEXT PRIMARY KEY,
@@ -165,7 +159,7 @@ class Database:
 
     def get_hopper_materials(self) -> dict[str, str]:
         """Returns {hopper: material} mapping."""
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             rows = conn.execute(
                 text("SELECT hopper, material FROM hopper_materials ORDER BY hopper")
             ).fetchall()
@@ -189,7 +183,7 @@ class Database:
                 valid_from DESC
         """)
 
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             rows = conn.execute(query).fetchall()
 
         history = []
@@ -213,7 +207,7 @@ class Database:
         if material not in self.materials and material != "UNASSIGNED":
             raise ValueError(f"Invalid material '{material}'.")
 
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             conn.execute(text("""
                 UPDATE hopper_materials
                 SET material = :m
@@ -225,7 +219,7 @@ class Database:
     # ============================================================
     def _create_hopper_material_history_table(self) -> None:
         """Creates hopper_material_history table if missing."""
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS hopper_material_history (
                     id SERIAL PRIMARY KEY,
@@ -260,7 +254,7 @@ class Database:
         # Update the current snapshot table
         self.update_hopper_material(hopper, material)
 
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             # Ensure modifier column exists
             col_check = conn.execute(text("""
                 SELECT column_name
@@ -294,7 +288,7 @@ class Database:
 
     def get_hopper_material_at(self, hopper: str, timestamp: datetime) -> str | None:
         """Returns the material assigned to a hopper at a specific timestamp."""
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             row = conn.execute(
                 text("""
                     SELECT material
@@ -316,7 +310,7 @@ class Database:
         if not record_ids:
             return
 
-        with engine.begin() as conn:
+        with self.engine.begin() as conn:
             conn.execute(
                 text("""
                     DELETE FROM hopper_material_history
@@ -327,45 +321,43 @@ class Database:
 
 
     # ============================================================
-    #  LOAD CHARGE FIELDS FROM YAML
+    #  LOAD BURDEN FIELDS FROM YAML
     # ============================================================
-    def _safe_load_charge_fields(self):
-        """Safely loads charge distribution field names from materials.yml."""
+    def _safe_load_burden_fields(self):
+        """Safely loads burden distribution field names from materials.yml."""
         try:
-            return self._load_charge_fields_from_yaml()
+            return self._load_burden_fields_from_yaml()
         except Exception as e:
-            print(f"⚠️ Warning: Failed to load charge_fields from YAML: {e}")
+            print(f"⚠️ Warning: Failed to load burden_fields from YAML: {e}")
             return []
 
-    def _load_charge_fields_from_yaml(self):
-        """Internal YAML loader for charge distribution fields."""
+
+    def _load_burden_fields_from_yaml(self):
         if not os.path.exists(MATERIALS_FILE):
             raise FileNotFoundError(f"Missing configuration file: {MATERIALS_FILE}")
 
         with open(MATERIALS_FILE, "r", encoding="utf-8-sig") as f:
             data = yaml.safe_load(f) or {}
 
-        fields = data.get("charge_fields", [])
+        fields = data.get("burden_fields", [])
         if not isinstance(fields, list):
-            raise ValueError("'charge_fields' must be a list in materials.yml")
+            raise ValueError("'burden_fields' must be a list in materials.yml")
 
         return fields
 
 
+
     # --------------------------------------------------------
-    # Create charge distribution history table
+    # Create burden distribution history table
     # --------------------------------------------------------
-    def _create_charge_distribution_history_table(self):
-        with engine.begin() as conn:
+    def _create_burden_distribution_history_table(self):
+        with self.engine.begin() as conn:
             conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS charge_distribution_history (
+                CREATE TABLE IF NOT EXISTS burden_distribution_history (
                     id SERIAL PRIMARY KEY,
                     field_name TEXT NOT NULL,
-
-                    -- NEW dual-value support
                     field_value_float DOUBLE PRECISION,
                     field_value_text TEXT,
-
                     valid_from TIMESTAMPTZ NOT NULL,
                     valid_upto TIMESTAMPTZ,
                     modifier TEXT DEFAULT 'system',
@@ -373,17 +365,17 @@ class Database:
                 );
             """))
 
-            # Only one active record per field
             conn.execute(text("""
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_charge_active_record
-                ON charge_distribution_history (field_name, valid_upto);
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_burden_active_record
+                ON burden_distribution_history (field_name, valid_upto);
             """))
+
 
 
     # --------------------------------------------------------
     # Update (SCD Type-2)
     # --------------------------------------------------------
-    def update_charge_field(self, field_name, value, valid_from, modifier="system", ip=""):
+    def update_burden_field(self, field_name, value, valid_from, modifier="system", ip=""):
 
         # Pattern fields use TEXT values, others use FLOAT
         is_text_field = field_name in [
@@ -391,10 +383,10 @@ class Database:
             "NON_COKE_CHARGE_PATTERN"
         ]
 
-        with engine.begin() as conn:
-            # Close the active record
+        
+        with self.engine.begin() as conn:
             conn.execute(text("""
-                UPDATE charge_distribution_history
+                UPDATE burden_distribution_history
                 SET valid_upto = :end_time
                 WHERE field_name = :f AND valid_upto IS NULL
             """), {
@@ -402,10 +394,9 @@ class Database:
                 "end_time": valid_from - timedelta(seconds=1)
             })
 
-            # Insert new record
             if is_text_field:
                 conn.execute(text("""
-                    INSERT INTO charge_distribution_history
+                    INSERT INTO burden_distribution_history
                         (field_name, field_value_text, valid_from, valid_upto, modifier, ip_address)
                     VALUES (:f, :v_text, :start, NULL, :m, :ip)
                 """), {
@@ -417,7 +408,7 @@ class Database:
                 })
             else:
                 conn.execute(text("""
-                    INSERT INTO charge_distribution_history
+                    INSERT INTO burden_distribution_history
                         (field_name, field_value_float, valid_from, valid_upto, modifier, ip_address)
                     VALUES (:f, :v_float, :start, NULL, :m, :ip)
                 """), {
@@ -428,29 +419,29 @@ class Database:
                     "ip": ip
                 })
 
-
     # --------------------------------------------------------
     # Bulk update from DataFrame row (timestamp-indexed)
     # --------------------------------------------------------
-    def update_charge_row(self, df_row, timestamp, modifier="system", ip=""):
-        """Update all charge fields for a given timestamp."""
+    def update_burden_row(self, df_row, timestamp, modifier="system", ip=""):
         for field, value in df_row.items():
-            if field in self.charge_fields and value is not None:
-                self.update_charge_field(field, value, timestamp, modifier, ip)
+            if field in self.burden_fields and value is not None:
+                self.update_burden_field(field, value, timestamp, modifier, ip)
+
 
 
     # --------------------------------------------------------
     # Read history
     # --------------------------------------------------------
-    def get_charge_history(self):
-        with engine.begin() as conn:
+    def get_burden_history(self):
+        with self.engine.begin() as conn:
             rows = conn.execute(text("""
                 SELECT id, field_name,
                     field_value_float, field_value_text,
                     valid_from, valid_upto, modifier, ip_address
-                FROM charge_distribution_history
+                FROM burden_distribution_history
                 ORDER BY field_name, valid_from DESC
             """)).fetchall()
+
 
         output = []
         for r in rows:
@@ -472,26 +463,24 @@ class Database:
     # --------------------------------------------------------
     # Query field value at a specific time
     # --------------------------------------------------------
-    def get_all_current_charge_values(self, ts):
-        with engine.begin() as conn:
+    def get_all_current_burden_values(self, ts):
+        with self.engine.begin() as conn:
             rows = conn.execute(text("""
                 SELECT DISTINCT ON (field_name)
                     field_name,
                     field_value_float,
                     field_value_text
-                FROM charge_distribution_history
+                FROM burden_distribution_history
                 WHERE valid_from <= :ts
                 AND (valid_upto IS NULL OR valid_upto >= :ts)
                 ORDER BY field_name, valid_from DESC
             """), {"ts": ts}).fetchall()
 
-        result = {}
-        for r in rows:
-            result[r.field_name] = (
-                r.field_value_text if r.field_value_text is not None else r.field_value_float
-            )
+        return {
+            r.field_name: r.field_value_text if r.field_value_text is not None else r.field_value_float
+            for r in rows
+        }
 
-        return result
 
 
 

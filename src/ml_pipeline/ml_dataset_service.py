@@ -241,7 +241,7 @@ class MlDatasetService:
         return df_final
     
 
-    # Charge Distribution Data
+    # Burden Distribution Data
     def fetch_distribution_data(self, start_date: date, end_date: date) -> pd.DataFrame:
         engine = self._get_engine()
 
@@ -257,7 +257,7 @@ class MlDatasetService:
                 ) AS field_value,
                 valid_from,
                 valid_upto
-            FROM charge_distribution_history
+            FROM burden_distribution_history
             WHERE valid_from <= %(end_date)s::date
             AND (valid_upto IS NULL OR valid_upto >= %(start_date)s::date)
             ORDER BY valid_from;

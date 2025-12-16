@@ -96,8 +96,8 @@ with st.sidebar:
             st.session_state["admin_tool_selection"] = "hopper"
             st.rerun()
 
-        if st.button("📊 Charge Distribution", key="btn_charge"):
-            st.session_state["admin_tool_selection"] = "charge"
+        if st.button("📊 Burden Distribution", key="btn_burden"):
+            st.session_state["admin_tool_selection"] = "burden"
             st.rerun()
 
         if st.button("📝 User Management", key="btn_register"):
@@ -105,7 +105,7 @@ with st.sidebar:
             st.rerun()
 
         # Back Button
-        if st.session_state["admin_tool_selection"] in ["hopper", "charge", "register"]:
+        if st.session_state["admin_tool_selection"] in ["hopper", "burden", "register"]:
             if st.button("⬅ Back to Dashboard", key="btn_back"):
                 st.session_state["admin_tool_selection"] = None
                 st.rerun()
@@ -129,15 +129,16 @@ if is_admin():
         hopper_admin_page(st.session_state.get("auth_user"))
         st.stop()
 
-    elif selection == "charge":
-        from ui.charge_admin_page import charge_admin_page
-        charge_admin_page(st.session_state.get("auth_user"))
+    elif selection == "burden":
+        from ui.burden_admin_page import burden_admin_page
+        burden_admin_page(st.session_state.get("auth_user"))
         st.stop()
 
     elif selection == "register":
         from ui.register_page import register_page
         register_page()
         st.stop()
+
 # ----------------------------------------------------
 #  MAIN PAGE CONTENT (Default welcome content)
 # ----------------------------------------------------

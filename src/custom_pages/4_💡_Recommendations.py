@@ -320,7 +320,7 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
     # -------------------------------
     # Select last  48timestamps
     # -------------------------------
-    last_2days_timestamps = list(df_live_ip.index[-48:])[::-1]  # Last 48 entries (assuming 15-min intervals)
+    last_2days_timestamps = list(df_live_ip.index[-48:])[::-1]  
 
     selected_timestamp = st.selectbox(
         "Select Timestamp (IST)",
