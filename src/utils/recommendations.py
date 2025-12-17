@@ -134,15 +134,33 @@ def load_scaler(scaler_path):
     """Load a fitted scaler from disk."""
     return joblib.load(scaler_path)
 
+def extract_scaler_params(scaler):
+    """
+    Extract means, scales for StandardScaler / MinMaxScaler / RobustScaler.
+    Returns (offsets, scales) such that:
+        scaled = (x - offsets) / scales
+    """
+    if hasattr(scaler, "mean_") and hasattr(scaler, "scale_"):
+        # StandardScaler
+        return scaler.mean_, scaler.scale_
+    elif hasattr(scaler, "data_min_") and hasattr(scaler, "data_range_"):
+        # MinMaxScaler
+        return scaler.data_min_, scaler.data_range_
+    elif hasattr(scaler, "center_") and hasattr(scaler, "scale_"):
+        # RobustScaler
+        return scaler.center_, scaler.scale_
+    else:
+        raise ValueError("Unsupported scaler type")
+
 def scale_features(scaler, row, feature_names):
-    """Scale a feature vector (row: pd.Series) using the provided scaler and feature order.
+    """
+    Scale a feature vector (row: pd.Series) using the provided scaler and feature order.
     - Aligns to scaler.feature_names_in_ for transformation.
     - If any requested features (feature_names) are not present in the scaler, fills their
       scaled values with 0.0 while preserving the requested output order.
     This prevents index errors when models/scalers differ in expected inputs (e.g., UnitCost model).
     """
-    # If scaler doesn't expose feature names (unlikely for sklearn >=1.0 with pandas),
-    # fall back to transforming the requested features directly.
+    # If scaler doesn't expose feature names, transform requested features directly.
     if not hasattr(scaler, "feature_names_in_"):
         data = {feat: row.get(feat, 0.0) for feat in feature_names}
         df = pd.DataFrame([data], columns=feature_names)
@@ -156,7 +174,8 @@ def scale_features(scaler, row, feature_names):
 
     # Build a lookup between sanitized scaler feature names and indices
     def _sanitize(name: str) -> str:
-        # Normalize any model-time special characters to runtime names
+        #TODO: Implementing a single mapping for variable names. Once done
+        # patches like this are not necessary.
         return name.replace('ŋ', 'ETA')
 
     sanitized_scaler_feats = [_sanitize(f) for f in scaler_feats]
