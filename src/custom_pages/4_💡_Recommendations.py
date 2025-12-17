@@ -5,10 +5,12 @@ import os
 import io
 import yaml
 import json
+import sys
 from openai import OpenAI
 
 import joblib
-from utils import optimiser, recommendations
+import subprocess, json
+from utils import recommendations, optimiser
 from pathlib import Path
 from config.config_loader import load_config
 from utils.helper_functions_explorer.data_retrieval import fetch_offline_data
@@ -17,7 +19,6 @@ config = load_config()
 config_vsense = load_config('setting_vsense.yml')
 field_mapping = config_vsense.get("field_mapping", {})
 CONFIG_PATH = Path("src/config/setting_vsense.yml")
-
 
 # Load external CSS file
 css_path = Path(__file__).resolve().parents[1] / "css-style" / "recommendation_style.css"
@@ -97,7 +98,11 @@ def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]
         last_err = err2
 
     return f"LLM call failed: {last_err}"
-    
+
+if 'live_data' not in st.session_state:
+    st.session_state['live_data'] = None
+if 'df_hist_live' not in st.session_state:
+    st.session_state['df_hist_live'] = None    
 
 # Section 0: Set the title page configuration
 st.markdown(
@@ -117,11 +122,9 @@ st.divider()
 debug_on = st.sidebar.toggle("Debug", value=False)
 new_steps = 3 if debug_on else 30
 
-
 if config_vsense.get("OPTIM_STEPS") != new_steps:
     config_vsense["OPTIM_STEPS"] = new_steps
     yaml.safe_dump(config_vsense, open(CONFIG_PATH, "w"))
-
 
 # Section 1: Select the optimisation type
 optimisation_type = st.selectbox(
@@ -138,14 +141,13 @@ models_dict = config_vsense['Optimisation']
 for model in models_dict.keys():
     ip_flat = [val for group in models_dict[model]['input_params'].values() for val in group]
     models_dict[model]['input_params_flat'] = ip_flat
-    models_dict[model]['Optimised'] = False    
+    models_dict[model]['Optimised'] = False
     relpath = models_dict[model]['model']
     model_path = Path(__file__).resolve().parents[1] / relpath.split('/')[1] / relpath.split('/')[2]
     models_dict[model]['LoadedMLModel'] = joblib.load(model_path)
     if model == optimisation_type:
         models_dict[model]['Optimised'] = True
 
-cp_list = models_dict[optimisation_type]['control_params']    
 cp_op_list = list(config['Parameter Synonyms'].keys())
 cp_op_ml_dict, meas_list = {}, []
 for i, param in enumerate(cp_op_list):
@@ -157,11 +159,12 @@ for i, param in enumerate(cp_op_list):
                      config['Parameter Synonyms'][param]['InfluxMeasurement'])
     
 meas_set = set(meas_list)
-live_data = recommendations.fetch_live_data(cp_op_ml_dict, meas_set)
-# st.dataframe(live_data)
+if st.session_state['live_data'] is None:
+    st.session_state['live_data'] = recommendations.fetch_live_data(cp_op_ml_dict, meas_set)
 
 
 # Calculated data:
+live_data = st.session_state['live_data']
 live_data['UnitCost 1000Rs/Thm'] = live_data['Coke Rate Kg/Thm']  + config['Coke to PCI'] * live_data['ActualKg/Thm.']
 
 # Historical Data:
@@ -172,14 +175,15 @@ df_data.index = pd.to_datetime(df_data.index, format="%d-%m-%Y %H:%M", utc=True)
 # Attach live:
 new_live_row = df_data.iloc[-1].copy()
 
-
-update_cols = [c for c in live_data.columns if c in df_data.columns]
-live_series = live_data.iloc[0][update_cols]
+update_cols = [c for c in st.session_state.live_data.columns if c in df_data.columns]
+live_series = st.session_state.live_data.iloc[0][update_cols]
 new_live_row.loc[update_cols] = live_series
 
+new_df = pd.DataFrame([new_live_row.values], columns=df_data.columns, 
+                      index=[pd.to_datetime(st.session_state['live_data'].index[-1])])
+if st.session_state['df_hist_live'] is None:    
+    st.session_state['df_hist_live'] = pd.concat([df_data, new_df]) if not debug_on else df_data
 
-new_df = pd.DataFrame([new_live_row.values], columns=df_data.columns, index=[pd.to_datetime(live_data.index[-1])])
-df_live= pd.concat([df_data, new_df])
 # Set the target output based on the optimisation type
 target_output = config_vsense['Optimisation'][optimisation_type]['output_param']
 
@@ -209,6 +213,12 @@ if css_path.exists():
     with open(css_path) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
+ip_flat_list = models_dict[model]['input_params_flat']
+cp_list = models_dict[optimisation_type]['control_params']
+op_list = [config_vsense['Optimisation'][model]['output_param'] for model in list(config_vsense['Optimisation'].keys())]
+
+st.session_state['df_hist_live'] = df_data[[*ip_flat_list, *cp_list, *outputs]]
+
 include_control = {}
 if 'control_params' not in st.session_state:
     st.session_state['control_params'] = include_control
@@ -218,15 +228,13 @@ with st.form("Control Params Form"):
     for cp in cp_list:
         with cols[i % 3]:
             # Get machine limits
-            col_min = float(df_live[cp].min())
-            col_max = float(df_live[cp].max())
-            latest_val = float(df_live[cp].iloc[-1])
+            col_min = float(st.session_state.df_hist_live[cp].min())
+            col_max = float(st.session_state.df_hist_live[cp].max())
+            val = float(st.session_state.df_hist_live[cp].iloc[-1])
 
             # Use persisted values if any
             cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
             cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
-            # val = persisted_bounds.get(cp, {}).get("value", latest_val)
-            val = latest_val
             override = persisted_bounds.get(cp, {}).get("override", False)
 
             col1, col2 = st.columns([0.05, 0.95])
@@ -298,7 +306,8 @@ with st.form("Control Params Form"):
 
 # Section 4: Input Parameters - Raw Material Data
 with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
-
+    cols = st.columns(3)
+    raw_mtrl_input = {}
     ml_cfg = config_vsense.get("influxdb_ml_database", {})
 
     # Fetch raw material input data from InfluxDB
@@ -377,6 +386,7 @@ with st.expander("Input Parameters - Raw Material Data - Click to expand and ove
                         user_val if user_val != default_val else np.nan
                     )
 
+        raw_mtrl_input[param] = np.nan
         submit_ip = st.form_submit_button("Submit Input Params")
 
         if submit_ip:
@@ -403,27 +413,47 @@ with st.form("Optimiser Form"):
         st.success("✅ Optimiser run requested.")
         fixed_cp = {cp: cp_props['value'] for cp, cp_props in include_control.items() if not np.isnan(cp_props['value']) and cp_props['override']}
         user_input = {param: raw_mtrl_input.get(param, np.nan) for param in ip_flat_list}
-        df_data_processed = recommendations.process_dataframe(df_live,
+        df_data_processed = recommendations.process_dataframe(st.session_state['df_hist_live'],
                                                             target_col=target_output,
                                                             targets=op_list,
-                                                            lags=config_vsense['LAGS']
+                                                            lags=config_vsense['TIMESTEPS']
                                                             )
-        with st.spinner('Running the optimiser'):
-            optimal_solution = optimiser.run_optimiser(
-                df_data_processed,
-                models_dict, 
-                user_input, 
-                fixed_cp,
-                lambda_reg=lambda_reg)
+        payload = {
+            "df": df_data_processed.to_dict(orient="list"),
+            "models_dict": { m: {k: v for k, v in model_cfg.items() if k != "LoadedMLModel"} 
+                     for m, model_cfg in models_dict.items() },
+            "user_input": user_input,
+            "fixed_cp": fixed_cp,
+            "lambda_reg": lambda_reg
+        }
+        # import tempfile
+        # with tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8") as tmp:
+        #     json.dump(payload, tmp)
+        #     tmp_path = tmp.name
+
+        # proc = subprocess.run(
+        #     [sys.executable, "src/utils/optimiser_subprc.py", tmp_path],    
+        #     capture_output=True,
+        #     text=True
+        # )
+
+        # optimal_solution = json.loads(proc.stdout)
+        optimal_solution = optimiser.run_optimiser(
+            df_data_processed,
+            models_dict, 
+            user_input, 
+            fixed_cp,
+            lambda_reg=lambda_reg
+        )
 
         st.subheader("Optimisation Results")
         # Show metrics for each control parameter and the target output
         not_needed_list = ['TuyereVelocitym/s', 'Total OxygenNm3/Hr.', 'TopPressureBar']
         cols = st.columns(4)
         for i, (key, new_val) in enumerate(optimal_solution.items()):
-            if key in df_live.columns and key != target_output and key not in outputs and key not in not_needed_list:
+            if key in st.session_state.df_hist_live.columns and key != target_output and key not in outputs and key not in not_needed_list:
                 with cols[i % 4]:
-                    old_val = df_live[key].iloc[-1]
+                    old_val = st.session_state.df_hist_live[key].iloc[-1]
                     delta = new_val - old_val
                     if abs(delta)/abs(old_val) >= 0.01:  # Only show significant changes
                         st.metric(label=key, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")

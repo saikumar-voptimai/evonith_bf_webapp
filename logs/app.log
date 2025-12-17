@@ -1,11 +1,26 @@
-[WARNING   | base_data_fetcher           | L156] 2025-11-27T14:35:49+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L144] 2025-11-27T14:36:49+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L150] 2025-11-27T14:36:49+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L156] 2025-11-27T14:36:49+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L150] 2025-11-27T14:36:51+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L156] 2025-11-27T14:36:51+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L144] 2025-11-27T14:37:49+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L150] 2025-11-27T14:37:49+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L156] 2025-11-27T14:37:49+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L150] 2025-11-27T14:37:51+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L156] 2025-11-27T14:37:51+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0014s | scale_full= 0.0001s, predict= 0.0013s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0023s | scale_full= 0.0001s, predict= 0.0022s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0015s | scale_full= 0.0001s, predict= 0.0014s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0033s | scale_full= 0.0001s, predict= 0.0031s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0011s | scale_full= 0.0000s, predict= 0.0011s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0023s | scale_full= 0.0002s, predict= 0.0020s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0022s | scale_full= 0.0001s, predict= 0.0021s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0018s | scale_full= 0.0001s, predict= 0.0016s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0023s | scale_full= 0.0001s, predict= 0.0021s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0015s | scale_full= 0.0001s, predict= 0.0014s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0015s | scale_full= 0.0001s, predict= 0.0014s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0074s | scale_full= 0.0001s, predict= 0.0072s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0017s | scale_full= 0.0001s, predict= 0.0016s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0016s | scale_full= 0.0001s, predict= 0.0015s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0026s | scale_full= 0.0001s, predict= 0.0025s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0023s | scale_full= 0.0001s, predict= 0.0021s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0015s | scale_full= 0.0001s, predict= 0.0013s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0119s | scale_full= 0.0001s, predict= 0.0118s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0024s | scale_full= 0.0001s, predict= 0.0022s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0025s | scale_full= 0.0004s, predict= 0.0021s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0024s | scale_full= 0.0001s, predict= 0.0022s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:34+0530: [objective] total=  0.0015s | scale_full= 0.0001s, predict= 0.0014s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:35+0530: [objective] total=  0.0036s | scale_full= 0.0021s, predict= 0.0015s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:35+0530: [objective] total=  0.0018s | scale_full= 0.0001s, predict= 0.0017s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L18] 2025-12-17T20:22:35+0530: [objective] total=  0.0021s | scale_full= 0.0001s, predict= 0.0020s, penalty= 0.0001s | optimiser.py
+[INFO   | _client           | L1025] 2025-12-17T20:23:16+0530: HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK" | _client.py

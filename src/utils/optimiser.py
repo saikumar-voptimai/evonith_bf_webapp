@@ -1,19 +1,35 @@
 import numpy as np
 import pandas as pd
+import sys, time
 from scipy.optimize import differential_evolution
-from utils.recommendations import get_control_bounds, load_scaler, scale_features, inverse_transform_output
+from utils.recommendations import get_control_bounds, load_scaler, scale_features, inverse_transform_output, extract_scaler_params
 from typing import Dict, List, Any
 from config.config_loader import load_config
+from utils.logger import setup_logger
+
+logger = setup_logger()
 
 config_vsense = load_config('setting_vsense.yml')
 
+def _log_profile(message: str) -> None:
+    """
+    Cheap logger to stderr so Streamlit output is not polluted too much.
+    """
+    logger.info(message)
+
 def objective(
     xc_trial: np.ndarray,
-    df_feat_vec: pd.DataFrame,
-    models_dict: Any,
-    lambda_reg: float,
-    free_cp: List[str],
+    base_row: pd.Series,
+    base_scaled: np.ndarray,
+    free_idx: List[int],
+    control_idx: List[int],
     scaled_prev_params: np.ndarray,
+    offsets: np.ndarray,
+    scales: np.ndarray,
+    feature_idx: np.ndarray,
+    model,
+    lambda_reg: float,
+    maxmin: float
 ) -> float:
     """
     Objective function combining the predicted target output and a penalty term
@@ -30,30 +46,32 @@ def objective(
     Returns:
         float: Combined objective value (predicted output + penalty).
     """
-    row = df_feat_vec.iloc[-1].copy()
-    for idx, cp in enumerate(free_cp):
-        row[cp] = xc_trial[idx]
-    optimisation_type = [key for key, val in models_dict.items() if val['Optimised'] == True][0]
-    scaler_path = models_dict[optimisation_type]['scaling']
-    scaler = load_scaler(scaler_path)
-    local_feature_names = models_dict[optimisation_type]['local_feature_names']
-    control_params = models_dict[optimisation_type]['control_params']
+    t0 = time.perf_counter()
+    x_raw = base_row.copy()
+    x_raw[free_idx] = xc_trial
+    x_scaled = base_scaled.copy()
 
-    # Scale feature vector for prediction
-    scaled_features = scale_features(scaler, row, local_feature_names).reshape(1, -1)
+    raw_vals = x_raw[free_idx]
+    idx = feature_idx[free_idx]
+    scaled_vals = (raw_vals - offsets[idx]) / scales[idx]
+    x_scaled[free_idx] = scaled_vals
+    t_scale = time.perf_counter()
 
-    # Predict in scaled space; flip sign for maximisation types
-    max_min = 1
-    if 'Eta CO' in optimisation_type or 'Production' in optimisation_type:
-        max_min = -1
-    y_pred_scaled = models_dict[optimisation_type]['LoadedMLModel'].predict(scaled_features)[0] * max_min
+    y_pred_scaled = model.predict(x_scaled.reshape(1,-1))[0] * maxmin
+    t_pred = time.perf_counter()
 
     # Penalty on scaled control parameters deviation from previous
-    row_cp = row[control_params]
-    scaled_xc_t_ordered = scale_features(scaler, row_cp, control_params)
-    penalty = np.sum((scaled_xc_t_ordered - scaled_prev_params) ** 2)
-
-    return y_pred_scaled + lambda_reg * penalty
+    penalty = np.sum((x_scaled[control_idx] - scaled_prev_params) ** 2)
+    
+    t_pen = time.perf_counter()
+    _log_profile(
+        f"[objective] total={t_pen - t0:8.4f}s | "
+        f"scale_full={t_scale - t0:7.4f}s, "
+        f"predict={t_pred - t_scale:7.4f}s, "
+        f"penalty={t_pen - t_pred:7.4f}s"
+    )
+    
+    return y_pred_scaled + lambda_reg * penalty * 0.0
 
 def run_optimiser(
     df: pd.DataFrame,
@@ -78,18 +96,17 @@ def run_optimiser(
         if models_dict[model]['Optimised'] == True:
             target_output = models_dict[model]['output_param']
             optimisation_type = model
+            maxmin = models_dict[model]['maxmin']
             control_params = models_dict[model]['control_params']
         else:
             df_feat_vec.drop(columns=[col for col in list(df_feat_vec.columns) if models_dict[model]['output_param'] in col], inplace=True)
 
-    # Update the raw material input parameters if any are overridden:
     for key, value in user_input.items():
         if not np.isnan(value):
             df_feat_vec.at[df_feat_vec.index[-1], key] = value
 
     free_cp = [cp for cp in control_params if cp not in fixed_cp]
 
-    # Update the control parameters if any are overridden:
     for key, value in fixed_cp.items():
         if not np.isnan(value):
             df_feat_vec.at[df_feat_vec.index[-1], key] = value
@@ -97,6 +114,7 @@ def run_optimiser(
     # Load scaler for the target output
     scaler_path = models_dict[optimisation_type]['scaling']
     scaler = load_scaler(scaler_path)
+    models_dict[optimisation_type]['LoadedScaler'] = scaler
     feature_names = df.columns.tolist()
     for model in models_dict.keys():
         local_features = feature_names.copy()
@@ -114,23 +132,49 @@ def run_optimiser(
     bounds = get_control_bounds(df, free_cp )
     print(bounds)
 
-    # Precompute scaled previous control params for penalty term
-    prev_row_cp = df_feat_vec.iloc[-1][control_params]
-    scaled_prev_params = scale_features(scaler, prev_row_cp, control_params)
     local_feat_vec = df_feat_vec[models_dict[optimisation_type]['local_feature_names']]
+    loaded_model = models_dict[optimisation_type]['LoadedMLModel']
+    # Precompute scaled control params
+    scaler = models_dict[optimisation_type]["LoadedScaler"]
+    offsets, scales = extract_scaler_params(scaler)
+
+    local_feature_names = models_dict[optimisation_type]["local_feature_names"]
+    scaler_index = {name: i for i, name in enumerate(scaler.feature_names_in_)}
+    feature_idx = np.array([scaler_index.get(f, -1) for f in local_feature_names])
+
+    base_row = local_feat_vec.iloc[-1][local_feature_names].to_numpy(float)
+    base_scaled = (base_row - offsets[feature_idx]) / scales[feature_idx]
+
+    mask = (feature_idx == -1)
+    base_scaled[mask] = 0.0
+
+    free_idx = [local_feature_names.index(cp) for cp in free_cp]
+    control_idx = [local_feature_names.index(cp) for cp in control_params]
+    
+    scaled_prev_params = base_scaled[control_idx].copy()
+    
     result = differential_evolution(
         func=objective,
         bounds=bounds,
-        args=(local_feat_vec, 
-              models_dict,
-              lambda_reg,
-              free_cp,
-              scaled_prev_params,
-              ),
-        strategy='rand1exp',
-        popsize=30,
+        args=(
+            base_row,
+            base_scaled,
+            free_idx,
+            control_idx,
+            scaled_prev_params,
+            offsets,
+            scales,
+            feature_idx,
+            loaded_model,
+            lambda_reg,
+            maxmin
+            ),
+        strategy='best1bin',
+        polish=True,
+        popsize=15,
         tol=0.01,
-        maxiter=50
+        maxiter=20,
+        workers=1, 
     )
 
     optimal_free_cp = dict(zip(free_cp, result.x))

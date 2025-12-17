@@ -5,9 +5,7 @@ import os
 import pytz
 import numpy as np
 import pandas as pd
-import requests
 import dotenv
-import json
 import xml.etree.ElementTree as ET
 from influxdb_client_3 import InfluxDBClient3, flight_client_options
 import certifi
@@ -98,7 +96,7 @@ class BaseDataFetcher:
         self.api_password = os.getenv("PASSWORD_REALTIMEDATA")
         self.measurement_type = self.variable_tag
         self.var_map = config["data_mapping"].get(self.measurement_type, {})
-        self.average_window = None
+
         self.database = database
         self.host = host
         self.org = org
@@ -157,12 +155,7 @@ class BaseDataFetcher:
             org = config["influxdb"].get("org", self.org)
         
         token = os.environ.get(self.token, "")
-        query = query_builder(
-                self.measurement_type,
-                start_time,
-                end_time,
-                type='ts'
-        )
+        query = query_builder(self.measurement_type, start_time, end_time, type="ts")
         client = InfluxDBClient3(host=host,
                                 database=database,
                                 org=org,
