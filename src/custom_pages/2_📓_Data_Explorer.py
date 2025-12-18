@@ -448,7 +448,7 @@ if submitted:
         df_offline = dr.clean_rm_data(df_offline)
 
     # Index is already UTC → convert once
-    df_offline.index = df_offline.index.tz_convert(LOCAL_TZ)
+    df_offline.index = df_offline.index.tz_convert(local_tz)
     df_offline.index.name = "time (IST)"
 
     st.dataframe(df_offline)
