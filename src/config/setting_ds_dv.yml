@@ -8,7 +8,7 @@ website_vars:
   api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
   email_missing_vars: "True"
 
-DATA: "src/data/V6_df_filtered.csv"
+DATA: "src/data/V10_df_filtered.csv"
 
 influx_offline:
   database: bf2_evonith_offline_utc

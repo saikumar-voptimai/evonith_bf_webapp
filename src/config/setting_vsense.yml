@@ -3,27 +3,36 @@ IMG_HOSPET: images/HOSPET.jpeg
 IMG_MBF: images/MBF.jpg
 IMG_VOPTIMAI: images/VOPTIMAI.png
 LAMBDA_REG: 0.05
-OPTIM_STEPS: 3
+OPTIM_STEPS: 30
 Optimisation:
   Eta CO:
     control_params:
-    - Hot Blast VolumeNm3/Hr.
     - Hot Blast PressureBar
-    - TopPressureBar
     - Hot Blast Temp.oC
-    - SteamKgs/Hr.
-    - PermeabilityKgs/Hr.
+    - Hot Blast VolumeNm3/Hr.
     - O2 Enrichment %
-    - Total OxygenNm3/Hr.
+    - OxygenFlowNm3/Hr.
+    - PermeabilityKgs/Hr.
+    - RAFToC
+    - SteamKgs/Hr.
+    - TopPressureBar
     - TuyereVelocitym/s
-    - ActualKg/Thm.
+    - Differential PressureTotalBar
     input_params:
+      Burden:
+      - COKE_DISCHARGE_TIME
+      - WEIGHTED_COKE_ANGLE
+      - TOTAL_COKE_PORTIONS
+      - NON_COKE_DISCHARGE_TIME
+      - WEIGHTED_NON_COKE_ANGLE
+      - TOTAL_NON_COKE_PORTIONS
       Coke:
-      - COKE_VM%
       - COKE_ASH%
-      - COKE_IM%
       - COKE_FC%
+      - COKE_IM%
       - COKE_MOIST%
+      - COKE_VM%
+      - COKE_MT
       Flux:
       - FLUX_TM%
       - FLUX_SiO2%
@@ -33,49 +42,72 @@ Optimisation:
       - FLUX_MgO%
       - FLUX_CaO%
       - FLUX_MT
+      Generic:
+      - Charges/Hrs.
+      - StockRodLevel
       NutCoke:
+      - NUTCOKE_ASH%
+      - NUTCOKE_FC%
+      - NUTCOKE_IM%
       - NUTCOKE_MOIST%
       - NUTCOKE_Prime_MT
       - NUTCOKE_VM%
-      - NUTCOKE_IM%
-      - NUTCOKE_FC%
-      - NUTCOKE_ASH%
+      - NUTCOKE_YARD_Yard_MT
       Ore:
-      - Geomin Type
+      - ORE_%Al2O3
+      - ORE_%CaO
       - ORE_%Fe(T)
+      - ORE_%K2O
       - ORE_%LOI
-      - ORE_%TM
       - ORE_%MgO
+      - ORE_%MnO
       - ORE_%Na2O
       - ORE_%P
-      - ORE_%TiO2
-      - ORE_%Al2O3
       - ORE_%SiO2
-      - ORE_%MnO
-      - ORE_%CaO
-      - ORE_%K2O
+      - ORE_%TiO2
+      - ORE_%TM
+      - Geomin Type
+      - ORE_MT
       PCI:
-      - PCI_2_%FC
       - PCI_2_%Ash
-      - PCI_2_%VM
+      - PCI_2_%FC
       - PCI_2_%IM
       - PCI_2_%TM
+      - PCI_2_%VM
+      - PCI_2_MT
+      Pellet:
+      - total_pellet_mt
+      - lloyds_pellet_pct_al2o3
+      - lloyds_pellet_pct_cao
+      - lloyds_pellet_pct_fe2o3
+      - lloyds_pellet_pct_k2o
+      - lloyds_pellet_pct_loi
+      - lloyds_pellet_pct_mgo
+      - lloyds_pellet_pct_mno
+      - lloyds_pellet_pct_na2o
+      - lloyds_pellet_pct_p
+      - lloyds_pellet_pct_sio2
+      - lloyds_pellet_pct_tio2
+      - lloyds_pellet_pct_tm
       Sinter:
-      - Sinter_SP_02_Hot_strength_RDI
       - Sinter_SP_02_Cold_Strength_AI
       - Sinter_SP_02_Cold_strength_TI
+      - Sinter_SP_02_Hot_strength_RDI
+      - Sinter_SP_02_Hot_strength_RI
+      - Sinter_SP_02_Al2O3%
+      - Sinter_SP_02_Basicity
+      - Sinter_SP_02_CaO%
+      - Sinter_SP_02_Fe(T)%
+      - Sinter_SP_02_FeO%
+      - Sinter_SP_02_K2O%
+      - Sinter_SP_02_MgO%
+      - Sinter_SP_02_MnO%
+      - Sinter_SP_02_MT
+      - Sinter_SP_02_Na2O%
       - Sinter_SP_02_P%
       - Sinter_SP_02_SiO2%
-      - Sinter_SP_02_MgO%
-      - Sinter_SP_02_FeO%
-      - Sinter_SP_02_Al2O3%
-      - Sinter_SP_02_Na2O%
       - Sinter_SP_02_TiO2%
-      - Sinter_SP_02_Fe(T)%
-      - Sinter_SP_02_CaO%
-      - Sinter_SP_02_K2O%
-      - Sinter_SP_02_Basicity
-      - Sinter_SP_02_MnO%
+      - Sinter_SP_01_MT
     maxmin: -1.0
     model: src/models/eta_co_opt.pkl
     output_param: FurnaceTopGasAnalysisCO2ETACO
@@ -151,7 +183,7 @@ Optimisation:
       - Sinter_SP_02_K2O%
       - Sinter_SP_02_Basicity
       - Sinter_SP_02_MnO%
-    maxmin: 1.0
+    maxmin: -1.0
     model: src/models/prod_rate_opt.pkl
     output_param: ProductionTonnesPerHr
     scaling: src/models/prod_rate_scaler.pkl
@@ -223,10 +255,10 @@ Optimisation:
       - Sinter_SP_02_K2O%
       - Sinter_SP_02_Basicity
       - Sinter_SP_02_MnO%
-    maxmin: -1.0
-    model: src/models/unitcost_opt2.pkl
-    output_param: UnitCost 1000Rs/Thm
-    scaling: src/models/unitcost_scaler2.pkl
+    maxmin: 1.0
+    model: src/models/unitcost_opt.pkl
+    output_param: UnitCost Lakhs/Thm
+    scaling: src/models/unitcost_scaler.pkl
 TIMESTEPS: 3
 field_mapping:
   Sinter_SP_02_Basicity: sinter_basicity

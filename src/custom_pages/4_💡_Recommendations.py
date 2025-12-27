@@ -1,108 +1,30 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import os
-import io
 import yaml
 import json
-import sys
-from openai import OpenAI
-
 import joblib
-import subprocess, json
-from utils import recommendations, optimiser
+
 from pathlib import Path
 from config.config_loader import load_config
-from utils.helper_functions_explorer.data_retrieval import fetch_offline_data
+from utils.recommendations.llm import call_llm
+from utils.recommendations.prompts import prompt_recommendation_system
+from utils.recommendations.optimiser import run_optimiser
+from utils.recommendations.data import DataframesProcessor
 
 config = load_config()
 config_vsense = load_config('setting_vsense.yml')
-field_mapping = config_vsense.get("field_mapping", {})
 CONFIG_PATH = Path("src/config/setting_vsense.yml")
 
 # Load external CSS file
 css_path = Path(__file__).resolve().parents[1] / "css-style" / "recommendation_style.css"
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5-mini")
-USE_CODE_INTERPRETER = True 
-
-def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]] | None = None) -> str:
-    """
-    Sends prompts to OpenAI Responses API.
-    - Optionally enables the code_interpreter tool.
-    - If files are provided, uploads and attaches them for the tool to access.
-    - Falls back to a plain Chat Completions request if Responses API call fails.
-    """
-    if not OPENAI_API_KEY:
-        return "⚠️ OPENAI_API_KEY not set."
-
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
-    # Upload files and collect their IDs
-    file_ids: list[str] = []
-    if files:
-        for fname, fbytes in files:
-            try:
-                up = client.files.create(file=(fname, io.BytesIO(fbytes)), purpose="assistants")
-                file_ids.append(up.id)
-            except Exception:
-                # ignore upload errors, proceed without that file
-                pass
-
-    # Build request
-    req = {
-        "model": OPENAI_MODEL,
-        "input": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-
-    tools = []
-    if USE_CODE_INTERPRETER:
-        tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
-    if tools:
-        req["tools"] = tools
-
-    # Attach files primarily via top-level attachments, fallback via tool_resources
-    if file_ids:
-        req["attachments"] = [
-            {"file_id": fid, "tools": [{"type": "code_interpreter"}]} for fid in file_ids
-        ]
-        req["tool_resources"] = {"code_interpreter": {"file_ids": file_ids}}
-
-    # Try Responses API first
-    last_err = None
-    try:
-        response = client.responses.create(**req)
-        # New SDK provides output_text for convenience
-        text = getattr(response, "output_text", None)
-        if text:
-            return text
-        # Fallback to raw JSON dump if no convenience field is present
-        return json.dumps(response.to_dict(), indent=2)
-    except Exception as err1:
-        last_err = err1
-
-    # Fallback to Chat Completions (older SDKs)
-    try:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-        chat = client.chat.completions.create(model=OPENAI_MODEL, messages=messages, temperature=0.2)
-        if chat and chat.choices:
-            return chat.choices[0].message.content or ""
-    except Exception as err2:
-        last_err = err2
-
-    return f"LLM call failed: {last_err}"
-
-if 'live_data' not in st.session_state:
-    st.session_state['live_data'] = None
-if 'df_hist_live' not in st.session_state:
-    st.session_state['df_hist_live'] = None    
+if 'df_hist' not in st.session_state:
+    st.session_state['df_hist'] = None
+if 'df_full' not in st.session_state:
+    st.session_state['df_full'] = None
+if 'dfprocessor' not in st.session_state:
+    st.session_state['dfprocessor'] = None    
 
 # Section 0: Set the title page configuration
 st.markdown(
@@ -144,46 +66,21 @@ for model in models_dict.keys():
     if model == optimisation_type:
         models_dict[model]['Optimised'] = True
 
-cp_op_list = list(config['Parameter Synonyms'].keys())
-cp_op_ml_dict, meas_list = {}, []
-for i, param in enumerate(cp_op_list):
-    cp_op_ml_dict[param] = {'InfluxBucket': config['Parameter Synonyms'][param]['InfluxBucket'],
-    'InfluxMeasurement': config['Parameter Synonyms'][param]['InfluxMeasurement'],
-    'InfluxName': config['Parameter Synonyms'][param]['InfluxName'],
-    'NameInMLData': config['Parameter Synonyms'][param]['NameInMLData']}
-    meas_list.append(config['Parameter Synonyms'][param]['InfluxBucket'] + '/' + 
-                     config['Parameter Synonyms'][param]['InfluxMeasurement'])
-    
-meas_set = set(meas_list)
-if st.session_state['live_data'] is None:
-    st.session_state['live_data'] = recommendations.fetch_live_data(cp_op_ml_dict, meas_set)
-
-# Calculated data:
-live_data = st.session_state['live_data']
-live_data['UnitCost 1000Rs/Thm'] = live_data['Coke Rate Kg/Thm']  + config['Coke to PCI'] * live_data['ActualKg/Thm.']
-
-# Historical Data:
-data_rel_path = config['DATA']
-data_path = Path(__file__).resolve().parents[1] / data_rel_path.split('/')[1] / data_rel_path.split('/')[2]
-df_data = pd.read_csv(data_path, index_col=0, parse_dates=True)
-df_data.index = pd.to_datetime(df_data.index, format="%d/%m/%Y %H:%M", utc=True)
-
-# Attach live:
-new_live_row = df_data.iloc[-1].copy()
-
-update_cols = [c for c in st.session_state.live_data.columns if c in df_data.columns]
-live_series = st.session_state.live_data.iloc[0][update_cols]
-new_live_row.loc[update_cols] = live_series
-
-new_df = pd.DataFrame([new_live_row.values], columns=df_data.columns, 
-                      index=[pd.to_datetime(st.session_state['live_data'].index[-1])])
-if st.session_state['df_hist_live'] is None:    
-    st.session_state['df_hist_live'] = pd.concat([df_data, new_df]) if not debug_on else df_data
+if st.session_state['df_full'] is None:    
+    dfprocessor = DataframesProcessor(
+        config=config, 
+        config_vsense=config_vsense,
+        debug_on=debug_on
+        )
+    df_full = dfprocessor.df_full
+    df_hist = dfprocessor.df_hist
+    st.session_state['df_full'] = df_full
+    st.session_state['df_hist'] = df_hist
+    st.session_state['dfprocessor'] = dfprocessor
 
 # Set the target output based on the optimisation type
 target_output = config_vsense['Optimisation'][optimisation_type]['output_param']
 
-TIME_IDX = -1
 st.subheader("Control Parameters")
 bounds_file = Path("src/data/control_bounds.json")
 bounds_file.parent.mkdir(parents=True, exist_ok=True)
@@ -200,8 +97,6 @@ ip_flat_list = models_dict[model]['input_params_flat']
 cp_list = models_dict[optimisation_type]['control_params']
 op_list = [config_vsense['Optimisation'][model]['output_param'] for model in list(config_vsense['Optimisation'].keys())]
 
-st.session_state['df_hist_live'] = df_data[[*ip_flat_list, *cp_list, *outputs]]
-
 include_control = {}
 if 'control_params' not in st.session_state:
     st.session_state['control_params'] = include_control
@@ -211,20 +106,20 @@ with st.form("Control Params Form"):
     for cp in cp_list:
         with cols[i % 3]:
             # Get machine limits
-            col_min = float(st.session_state.df_hist_live[cp].min())
-            col_max = float(st.session_state.df_hist_live[cp].max())
-            val = float(st.session_state.df_hist_live[cp].iloc[-1])
+            col_min = float(st.session_state.df_full[cp].min())
+            col_max = float(st.session_state.df_full[cp].max())
+            val = float(st.session_state.df_full[cp].iloc[-1])
 
             # Use persisted values if any
             cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
             cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
-            override = persisted_bounds.get(cp, {}).get("override", False)
+            override_prev = persisted_bounds.get(cp, {}).get("override", False)
 
             col1, col2 = st.columns([0.05, 0.95])
 
             # Checkbox in the first column
             with col1:
-                override = st.checkbox(" ", value=False, key=f"override_{cp}")
+                override = st.checkbox(" ", value=override_prev, key=f"override_{cp}")
 
             # Heading in the second column, styled
             col2.markdown(
@@ -243,37 +138,13 @@ with st.form("Control Params Form"):
                     key=f"val_{cp}",
                 )
 
-            if override:
-                with min_col:
-                    st.number_input(
-                        "Min",
-                        value=cp_min,
-                        key=f"min_{cp}",
-                        disabled=True  # Uneditable when override is checked
-                    )
-                with max_col:
-                    st.number_input(
-                        "Max",
-                        value=cp_max,
-                        key=f"max_{cp}",
-                        disabled=True  # Uneditable when override is checked
-                    )
-            else:
-                with min_col:
-                    min_val = st.number_input(
-                        "Min",
-                        value=cp_min,
-                        key=f"min_{cp}",
-                        disabled=False  # Editable when override is unchecked
-                    )
-                with max_col:
-                    max_val = st.number_input(
-                        "Max",
-                        value=cp_max,
-                        key=f"max_{cp}",
-                        disabled=False  # Editable when override is unchecked
-                    )
-
+            disabled_chg = True if override else False
+            with min_col:
+                min_val = st.number_input("Min", value=cp_min, key=f"min_{cp}", disabled=disabled_chg)
+                
+            with max_col:
+                max_val = st.number_input("Max", value=cp_max, key=f"max_{cp}", disabled=disabled_chg)
+            
             # Ensure current value is within limits
             val = min(max(val, min_val), max_val)
             include_control[cp] = {"min": min_val, "max": max_val, "value": val, "override": override}
@@ -291,17 +162,7 @@ with st.form("Control Params Form"):
 with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
     cols = st.columns(3)
     raw_mtrl_input = {}
-    ml_cfg = config_vsense.get("influxdb_ml_database", {})
-
-    # Fetch raw material input data from InfluxDB
-    df_live_ip = fetch_offline_data(
-        measurement=ml_cfg.get("measurements", "rm_charge_data"),
-        time_range=ml_cfg.get("time_range", "last 1 month"),
-        database=ml_cfg.get("database", "ml_dataset"),
-    )
-    df_live_ip = df_live_ip.rename(columns=field_mapping)
-    latest_row = df_live_ip.iloc[-1]
-
+    latest_row = st.session_state.dfprocessor.fetch_live_rm_data()
     with st.form(key="Raw Material Input Form"):
         for i, (group_name, params) in enumerate(input_params.items()):
             with cols[i % 3]:
@@ -340,287 +201,69 @@ with st.form("Optimiser Form"):
         st.success("✅ Optimiser run requested.")
         fixed_cp = {cp: cp_props['value'] for cp, cp_props in include_control.items() if not np.isnan(cp_props['value']) and cp_props['override']}
         user_input = {param: raw_mtrl_input.get(param, np.nan) for param in ip_flat_list}
-        df_data_processed = recommendations.process_dataframe(st.session_state['df_hist_live'],
-                                                            target_col=target_output,
-                                                            targets=op_list,
-                                                            lags=config_vsense['TIMESTEPS']
-                                                            )
+        feat_vec_target = st.session_state.dfprocessor.process_dataframe(
+            scaler_path=models_dict[optimisation_type].get('scaling', None)
+        )                                                           
         payload = {
-            "df": df_data_processed.to_dict(orient="list"),
+            "feat_vec_target": feat_vec_target.to_dict(orient="list"),
             "models_dict": { m: {k: v for k, v in model_cfg.items() if k != "LoadedMLModel"} 
                      for m, model_cfg in models_dict.items() },
             "user_input": user_input,
             "fixed_cp": fixed_cp,
             "lambda_reg": lambda_reg
         }
-        # import tempfile
-        # with tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8") as tmp:
-        #     json.dump(payload, tmp)
-        #     tmp_path = tmp.name
-
-        # proc = subprocess.run(
-        #     [sys.executable, "src/utils/optimiser_subprc.py", tmp_path],    
-        #     capture_output=True,
-        #     text=True
-        # )
-
-        # optimal_solution = json.loads(proc.stdout)
-        optimal_solution = optimiser.run_optimiser(
-            df_data_processed,
+ 
+        optimal_solution = run_optimiser(
+            feat_vec_target,
             models_dict, 
             user_input, 
             fixed_cp,
+            st.session_state.dfprocessor,
             lambda_reg=lambda_reg
         )
 
         st.subheader("Optimisation Results")
         # Show metrics for each control parameter and the target output
-        not_needed_list = ['TuyereVelocitym/s', 'Total OxygenNm3/Hr.', 'TopPressureBar']
         cols = st.columns(4)
+        j = 0
         for i, (key, new_val) in enumerate(optimal_solution.items()):
-            if key in st.session_state.df_hist_live.columns and key != target_output and key not in outputs and key not in not_needed_list:
-                with cols[i % 4]:
-                    old_val = st.session_state.df_hist_live[key].iloc[-1]
+            if key in st.session_state.df_full.columns and key != target_output and key not in outputs:
+                with cols[j % 4]:
+                    old_val = st.session_state.df_full[key].iloc[-1]
                     delta = new_val - old_val
-                    if abs(delta)/abs(old_val) >= 0.01:  # Only show significant changes
+                    if abs(delta)/abs(old_val) >= 0.01:
                         st.metric(label=key, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
+                        j += 1 
                     if abs(delta)/abs(old_val) < 0.01:  # Only show significant changes
                         st.metric(label=key, value=f"{old_val:.2f}", delta=f"{0:+.2f}")
+                        j += 1 
 
         st.metric(label=target_output, 
                 value=f"{optimal_solution[target_output + '_current']:.2f}", 
                 delta=f"{optimal_solution[target_output + '_current'] - optimal_solution[target_output + '_previous']:+.2f}")
 
         cols = st.columns(3)
+        j = 0
         for i, (key, new_val) in enumerate(optimal_solution.items()):
-            with cols[i % 3]:
-                key_feat = key.replace('_current', '').replace('_previous', '')
-                if key_feat in outputs and key_feat != target_output and '_previous' in key:
+            key_feat = key.replace('_current', '').replace('_previous', '')
+            if key_feat in outputs and key_feat != target_output and '_previous' in key:
+                with cols[j % 3]:
                     old_val = optimal_solution[key_feat + '_previous']
                     new_val = optimal_solution[key_feat + '_current']
                     delta = new_val - old_val
                     st.metric(label=key_feat, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
+                    j += 1
         
         # Section 4: Generate recommendations using LLM
         st.subheader("Recommendations")
         system = "You are a precise, senior blast furnace advisor. Be concise, numeric, and actionable."
-
-        prompt = f"""
-
-        You are a blast furnace burden advisor. Analyze the impact of process parameters and raw material composition on **Unit Cost**.
-        I have priorly done this analysis and found key drivers and best practices. Now generate the findings
-        without hallucinating in a slightly concise manner. Donot repeat yourself and do not report mathematical analysis details (like betas,  rho). 
-        Report everything as Markdown only. 
-
-        Based on the optimisation results, provide specific recommendations to improve {target_output}.
-        - Optimal solution computed using current methodology {optimal_solution}.
-        - Current operating point {new_df.to_dict()}.
-        - List the top 3-5 control parameters to adjust, with their new values. Note that we say 
-        the furnace is already optimally operated if the target output change is less than 1%.
-
-        - Provide a brief rationale for each recommendation.
-        - Use bullet points for clarity.
-        - Avoid vague statements; be specific and data-driven.
-
-        Previous data analysis observations only for your reference (do not repeat in output):
-        
-
-    # 🔍 High-Confidence Findings (Statistically Significant Drivers)
-
-    **Sign convention:**  
-    - Negative = higher value → lower fuel rate (fuel-saving)  
-    - Positive = higher value → higher fuel rate (fuel-raising)  
-    (Standardized OLS β shown for relative effect size; all significant with *p* < 0.05)
-
-    ---
-
-    ## 1️⃣ Strongest Levers During Apr–Jun 2024 (All Models Agree)
-
-    ### **Hot Blast Pressure (NEGATIVE)**
-    - Spearman ρ ≈ −0.49; RF importance notable; OLS significant negative.  
-    - Apr–Jun higher by **+0.033 bar** (*p* ~ 3.0e-73).  
-    ➡️ Higher wind pressure strongly linked to lower fuel rate.
-
-    ---
-
-    ### **Hot Blast Volume (NEGATIVE)**
-    - Negative direction in OLS and correlations; non-trivial RF importance.  
-    - Apr–Jun higher by **+6,543 Nm³/hr** (*p* ≪ 1e-10).  
-    ➡️ More wind volume aligned with the low-fuel window.
-
-    ---
-
-    ### **Flux Addition Rate (FLUX_MT) (NEGATIVE)**
-    - Spearman ρ ≈ −0.27; RF ranked high; OLS coefficient negative.  
-    - Apr–Jun higher by **+0.57 t/h** (*p* ≈ 1.4e-5).  
-    ➡️ More flux correlated with lower fuel at current burden chemistry.
-
-    ---
-
-    ### **Sinter Basicity (NEGATIVE)**
-    - RF and OLS show lower basicity aligns with lower fuel.  
-    - Apr–Jun slightly lower (−0.0019; *p* ≈ 0.20).  
-    ➡️ Small but consistent with fuel-saving effect.
-
-    ---
-
-    ### **Coke Ash % (POSITIVE)**
-    - Higher ash increases fuel demand.  
-    - Apr–Jun lower by **−0.38 %** (*p* ≪ 1e-10).  
-    ➡️ Lower coke ash supported the fuel reduction.
-
-    ---
-
-    ### **Na₂O in Sinter (POSITIVE)**
-    - Higher Na₂O raises fuel demand.  
-    - Apr–Jun lower by **−0.0011 %** (*p* ≪ 1e-20).  
-    ➡️ Keeping Na₂O low is beneficial.
-
-    ---
-
-    📌 **Net Effect (Apr–Jun 2024):**  
-    - **Fuel-saving ↑:** Wind pressure, wind volume, flux rate  
-    - **Fuel-saving ↓:** Coke ash, Sinter Na₂O, Sinter basicity  
-
-    ---
-
-    ## 2️⃣ Levers That Moved *Against* the Fuel Decrease
-
-    ### **Injected Fuel (ActualKg/Thm., PCI) (POSITIVE, Strongest)**
-    - RF importance ~0.73; β ≈ +4.93.  
-    - Apr–Jun higher by **+15.8 kg/thm** (*p* ≪ 1e-10).  
-    ➡️ PCI raised Act. Fuel Rate, but was offset by wind/material gains.
-
-    ---
-
-    ### **Hot Blast Temperature °C (POSITIVE)**
-    - Positive correlation with fuel rate.  
-    - Apr–Jun higher by **+13 °C** (*p* ≪ 1e-200).  
-    ➡️ Likely operational coupling, not causal.
-
-    ---
-
-    ### **Sinter Al₂O₃ % (POSITIVE)**
-    - Higher alumina raised fuel.  
-    - Apr–Jun slightly higher (+0.076 %; *p* ≪ 1e-60).  
-    ➡️ Reducing Al₂O₃ helps.
-
-    ---
-
-    ## ✅ Which Variables Drove the Low Fuel Rate?
-
-    **Fuel-reducing (↑ increased):**
-    - Hot Blast Pressure  
-    - Hot Blast Volume  
-    - Flux Rate  
-
-    **Fuel-reducing (↓ decreased):**
-    - Coke Ash %  
-    - Sinter Na₂O %  
-    - Sinter Basicity  
-
-    **Counter-direction (increased fuel, but offset):**
-    - PCI (Actual Fuel Rate)  
-    - Hot Blast Temp °C  
-    - Sinter Al₂O₃ %  
-
-    ---
-
-    ## 📌 Actionable Operating Guidance (Data-Driven)
-
-    - **Maintain higher HB pressure & wind volume** within safe limits.  
-    - **Sustain or increase flux rate** while balancing slag chemistry.  
-    - **Procure lower coke ash** (≤ Apr–Jun median).  
-    - **Keep Na₂O in sinter low** via blending & fines control.  
-    - **Maintain slightly lower basicity** (avoid over-basic burdens).  
-    - **Be cautious with HBT** – correlation is operational, not causal.  
-    - **PCI**: If the goal is absolute min. fuel, consider steady or reduced PCI at high wind/low-ash conditions.
-
-    ---
-
-    # ⚖️ Optimization for Unit Fuel Cost
-
-    ### Definition
-    Fuel_CostEq (kgCokeEq/thm) = Coke Rate + 0.53 * PCI
-    ---
-
-    ## 🔑 Key Results
-    - **Apr–Jun 2024 Avg:** **483.0 kgCokeEq/thm**  
-    - **Best Historic 7-Day Run (B7D):** **473.4 kgCokeEq/thm**  
-    (≈ **−9.6** vs Apr–Jun)  
-    - **Production:** A–J **89.96 t/h** vs B7D **82.51 t/h**  
-    ➡️ B7D was cheaper but ran slower.
-
-    ---
-
-    ## 📉 What Drove Low Cost in Apr–Jun 2024
-
-    **Operational Drivers**
-    - HB Pressure ↑ → Cost ↓ (β ≈ −1.78, *p*≪0.001)  
-    - Wind Volume ↑ → Cost ↓  
-    - Flux Rate ↑ → Cost ↓ (β ≈ −1.08, *p*≪0.001)  
-    - PCI ↑ → Cost ↓ (−0.35 kgCokeEq saved per +1 kg PCI)  
-    - HB Temp ↑ → Cost ↑ (+0.15 per 1 °C)
-
-    **Burden Chemistry**
-    - Lower K₂O & Na₂O → Cost ↓  
-    - Lower FeO, SiO₂, TiO₂ → Cost ↓  
-    - Higher Al₂O₃ → Cost ↑
-
-    **Sensitivities**
-    - O₂ Enrichment: −2.58 kg/thm per +1 %  
-    - HB Pressure: −4.4 per +0.05 bar  
-    - Flux: −0.86 per +1 t/h  
-    - HB Temp: +1.53 per +10 °C  
-    - Wind Volume: −2.5 per +5,000 Nm³/h  
-
-    ---
-
-    ## 🔁 How the Best 7-Day Run Got Cheaper
-
-    **Cost-Reducing Changes (B7D vs Apr–Jun):**
-    - PCI +5.95 kg/thm (saved cost)  
-    - O₂ Enrichment +0.93 % abs.  
-    - Cleaner burden: Ore Al₂O₃ −1.80 %, Ore K₂O −0.019 %, Sinter K₂O −0.042 %  
-
-    **Offsets (fuel-raising moves but outweighed):**
-    - HB Pressure −0.18 bar, Wind −16,400 Nm³/h  
-    - Flux −1.36 t/h  
-    - HB Temp −12.4 °C (helpful)
-
-    **Trade-Off:** Lower throughput (−7.45 t/h).
-
-    ---
-
-    # 📊 Operating Envelope for Low Cost
-
-    **Based on lowest-cost decile (not strict limits):**
-
-    - PCI: **135–143 kg/thm**  
-    - O₂ Enrichment: **2.55–3.56 %**  
-    - HB Pressure: **2.65–2.70 bar**  
-    - HB Temp: **1149–1164 °C**  
-    - Flux: **18.6–22.9 t/h**  
-    - Wind: **≥115k Nm³/h**  
-    - Sinter K₂O: **≤0.11 %**  
-    - Sinter Na₂O: **0.045–0.053 %**  
-    - Ore K₂O: **≤0.031 %**  
-    - Ore Al₂O₃: **≥3.3 % (maintain slag balance)**
-
-    📌 Practical: To minimize cost, **lean on PCI + O₂**, **keep HB pressure up**, **moderate HB temp**, **add flux**, and **suppress alkalis**.
-
-    ---
-
-    # ✅ Action Checklist
-
-    1. **Target PCI** where substitution ratio (Coke/PCI = 0.53).  
-    (You are at −0.88 to −0.91 → PCI is cost-saving).  
-    2. **Hold HB pressure high** (2.65–2.70 bar).  
-    3. **Increase O₂ enrichment** (3.0–3.5 % if feasible).  
-    4. **Maintain flux ≥ 19 t/h**.  
-    5. **Manage chemistry**: Keep K₂O/Na₂O low, blend ore to reduce alkalis.  
-    6. **Throughput trade-off**: B7D was cheaper but slower → optimize cost *and* t/h jointly.
-    """
+        df_hist = st.session_state.df_hist.drop(columns=target_output)
+        prompt = prompt_recommendation_system(
+            df_hist=df_hist,
+            optimal_solution=optimal_solution,
+            target_output=target_output        
+            )
         with st.spinner("Generating review…"):
-            out = call_llm(system, prompt)
+            if not debug_on:
+                out = call_llm(system, prompt)
         st.markdown(out)

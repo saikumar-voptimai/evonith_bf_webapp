@@ -1,62 +1,68 @@
 {
-    "Hot Blast VolumeNm3/Hr.": {
-        "min": 100000.0,
-        "max": 122890.0,
-        "value": 112745.2347,
-        "override": false
-    },
     "Hot Blast PressureBar": {
         "min": 2.03,
         "max": 2.79909947,
-        "value": 2.676307656,
-        "override": false
-    },
-    "TopPressureBar": {
-        "min": 0.81,
-        "max": 1.5,
-        "value": 1.319052664,
+        "value": 2.7971883916666664,
         "override": false
     },
     "Hot Blast Temp.oC": {
         "min": 1018.0,
         "max": 1271.0,
-        "value": 1161.95,
+        "value": 1179.1266666666668,
+        "override": true
+    },
+    "Hot Blast VolumeNm3/Hr.": {
+        "min": 100000.0,
+        "max": 122890.0,
+        "value": 112033.67916666667,
+        "override": true
+    },
+    "O2 Enrichment %": {
+        "min": 0.0,
+        "max": 4.0,
+        "value": 3.5009593249999997,
         "override": false
+    },
+    "OxygenFlowNm3/Hr.": {
+        "min": 1022.0,
+        "max": 5100.0,
+        "value": 3992.398194,
+        "override": true
+    },
+    "PermeabilityKgs/Hr.": {
+        "min": 1075.0,
+        "max": 1997.0,
+        "value": 1290.19165,
+        "override": true
+    },
+    "RAFToC": {
+        "min": 2110.0,
+        "max": 2417.0,
+        "value": 2360.833989,
+        "override": true
     },
     "SteamKgs/Hr.": {
         "min": 0.0,
         "max": 2985.0,
         "value": 0.0,
-        "override": false
+        "override": true
     },
-    "PermeabilityKgs/Hr.": {
-        "min": 1075.0,
-        "max": 1997.0,
-        "value": 1385.248336,
-        "override": false
-    },
-    "O2 Enrichment %": {
-        "min": 0.0,
-        "max": 20.9,
-        "value": 2.858306892,
-        "override": false
-    },
-    "Total OxygenNm3/Hr.": {
-        "min": 1997.441168,
-        "max": 94495.57319,
-        "value": 91862.40006,
-        "override": false
+    "TopPressureBar": {
+        "min": 0.81,
+        "max": 1.5,
+        "value": 1.3479637833333333,
+        "override": true
     },
     "TuyereVelocitym/s": {
         "min": 163.0,
         "max": 298.0,
-        "value": 221.9089811,
-        "override": false
+        "value": 207.4478086,
+        "override": true
     },
-    "ActualKg/Thm.": {
-        "min": 71.0,
-        "max": 171.0,
-        "value": 125.0,
-        "override": false
+    "Differential PressureTotalBar": {
+        "min": 1.02,
+        "max": 1.47,
+        "value": 1.365803158,
+        "override": true
     }
 }
