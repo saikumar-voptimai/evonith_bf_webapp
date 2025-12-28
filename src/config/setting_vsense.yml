@@ -7,18 +7,90 @@ OPTIM_STEPS: 30
 Optimisation:
   Eta CO:
     control_params:
-    - Hot Blast PressureBar
-    - Hot Blast Temp.oC
-    - Hot Blast VolumeNm3/Hr.
-    - O2 Enrichment %
-    - OxygenFlowNm3/Hr.
-    - PermeabilityKgs/Hr.
-    - RAFToC
-    - SteamKgs/Hr.
-    - TopPressureBar
-    - TuyereVelocitym/s
-    - Differential PressureTotalBar
+    - HOT BLAST PRESSUREBAR
+    - TOPPRESSUREBAR
+    - HOT BLAST TEMP.OC
+    - STEAMKGS/HR.
+    - HOT BLAST VOLUMENM3/HR.
+    - O2 ENRICHMENT %
+    - ACTUALKG/THM.
     input_params:
+      Coke:
+      - COKE_VM%
+      - COKE_ASH%
+      - COKE_IM%
+      - COKE_FC%
+      - COKE_MOIST%
+      - COKE_CALC_MT
+      NutCoke:
+      - NUTCOKE_MOIST%
+      - NUTCOKE_CALC_MT
+      - NUTCOKE_VM%
+      - NUTCOKE_IM%
+      - NUTCOKE_FC%
+      - NUTCOKE_ASH%
+      PCI:
+      - PCI_2_FC%
+      - PCI_2_ASH%
+      - PCI_2_VM%
+      - PCI_2_IM%
+      - PCI_2_CALC_MT
+      Ore:
+      - GEOMIN TYPE
+      - ORE_FE(T)%
+      - ORE_LOI%
+      - ORE_TM%
+      - ORE_MGO%
+      - ORE_NA2O%
+      - ORE_P%
+      - ORE_TIO2%
+      - ORE_AL2O3%
+      - ORE_SIO2%
+      - ORE_MNO%
+      - ORE_CAO
+      - ORE_K2O%
+      - ORE_CALC_MT
+      Sinter:
+      - SINTER_SP_02_HOT_STRENGTH_RI
+      - SINTER_SP_02_HOT_STRENGTH_RDI
+      - SINTER_SP_02_COLD_STRENGTH_AI
+      - SINTER_SP_02_COLD_STRENGTH_TI
+      - SINTER_SP_02_P%
+      - SINTER_SP_02_SIO2%
+      - SINTER_SP_02_MGO%
+      - SINTER_SP_02_FEO%
+      - SINTER_SP_02_AL2O3%
+      - SINTER_SP_02_NA2O%
+      - SINTER_SP_02_TIO2%
+      - SINTER_SP_02_FE(T)%
+      - SINTER_SP_02_CAO%
+      - SINTER_SP_02_K2O%
+      - SINTER_SP_02_BASICITY
+      - SINTER_SP_02_MNO%
+      - SINTER_CALC_MT
+      Pellet:
+      - LLOYDS_PELLET_PCT_SIO2
+      - LLOYDS_PELLET_PCT_AL2O3
+      - LLOYDS_PELLET_PCT_FE2O3
+      - LLOYDS_PELLET_PCT_MGO
+      - LLOYDS_PELLET_PCT_TIO2
+      - LLOYDS_PELLET_PCT_NA2O
+      - TOTAL_PELLET_CALC_MT
+      - LLOYDS_PELLET_PCT_K2O
+      - LLOYDS_PELLET_PCT_TM
+      - LLOYDS_PELLET_PCT_LOI
+      - LLOYDS_PELLET_PCT_MNO
+      - LLOYDS_PELLET_PCT_CAO
+      - LLOYDS_PELLET_PCT_P
+      Flux:
+      - FLUX_TM%
+      - FLUX_SIO2%
+      - FLUX_FE2O3%
+      - FLUX_AL2O3%
+      - FLUX_LOI%
+      - FLUX_MGO%
+      - FLUX_CAO%
+      - FLUX_CALC_MT
       Burden:
       - COKE_DISCHARGE_TIME
       - WEIGHTED_COKE_ANGLE
@@ -26,104 +98,23 @@ Optimisation:
       - NON_COKE_DISCHARGE_TIME
       - WEIGHTED_NON_COKE_ANGLE
       - TOTAL_NON_COKE_PORTIONS
-      Coke:
-      - COKE_ASH%
-      - COKE_FC%
-      - COKE_IM%
-      - COKE_MOIST%
-      - COKE_VM%
-      - COKE_MT
-      Flux:
-      - FLUX_TM%
-      - FLUX_SiO2%
-      - FLUX_Fe2O3%
-      - FLUX_Al2O3%
-      - FLUX_LOI%
-      - FLUX_MgO%
-      - FLUX_CaO%
-      - FLUX_MT
-      Generic:
-      - Charges/Hrs.
-      - StockRodLevel
-      NutCoke:
-      - NUTCOKE_ASH%
-      - NUTCOKE_FC%
-      - NUTCOKE_IM%
-      - NUTCOKE_MOIST%
-      - NUTCOKE_Prime_MT
-      - NUTCOKE_VM%
-      - NUTCOKE_YARD_Yard_MT
-      Ore:
-      - ORE_%Al2O3
-      - ORE_%CaO
-      - ORE_%Fe(T)
-      - ORE_%K2O
-      - ORE_%LOI
-      - ORE_%MgO
-      - ORE_%MnO
-      - ORE_%Na2O
-      - ORE_%P
-      - ORE_%SiO2
-      - ORE_%TiO2
-      - ORE_%TM
-      - Geomin Type
-      - ORE_MT
-      PCI:
-      - PCI_2_%Ash
-      - PCI_2_%FC
-      - PCI_2_%IM
-      - PCI_2_%TM
-      - PCI_2_%VM
-      - PCI_2_MT
-      Pellet:
-      - total_pellet_mt
-      - lloyds_pellet_pct_al2o3
-      - lloyds_pellet_pct_cao
-      - lloyds_pellet_pct_fe2o3
-      - lloyds_pellet_pct_k2o
-      - lloyds_pellet_pct_loi
-      - lloyds_pellet_pct_mgo
-      - lloyds_pellet_pct_mno
-      - lloyds_pellet_pct_na2o
-      - lloyds_pellet_pct_p
-      - lloyds_pellet_pct_sio2
-      - lloyds_pellet_pct_tio2
-      - lloyds_pellet_pct_tm
-      Sinter:
-      - Sinter_SP_02_Cold_Strength_AI
-      - Sinter_SP_02_Cold_strength_TI
-      - Sinter_SP_02_Hot_strength_RDI
-      - Sinter_SP_02_Hot_strength_RI
-      - Sinter_SP_02_Al2O3%
-      - Sinter_SP_02_Basicity
-      - Sinter_SP_02_CaO%
-      - Sinter_SP_02_Fe(T)%
-      - Sinter_SP_02_FeO%
-      - Sinter_SP_02_K2O%
-      - Sinter_SP_02_MgO%
-      - Sinter_SP_02_MnO%
-      - Sinter_SP_02_MT
-      - Sinter_SP_02_Na2O%
-      - Sinter_SP_02_P%
-      - Sinter_SP_02_SiO2%
-      - Sinter_SP_02_TiO2%
-      - Sinter_SP_01_MT
+      Other:
+      - CHARGES/HRS.
+      - STOCKRODLEVEL
+      - FURNACE TOP GAS ANALYSISH2%
     maxmin: -1.0
     model: src/models/eta_co_opt.pkl
-    output_param: FurnaceTopGasAnalysisCO2ETACO
+    output_param: FURNACETOPGASANALYSISCO2ETACO
     scaling: src/models/eta_co_scaler.pkl
   Production Rate:
     control_params:
-    - Hot Blast VolumeNm3/Hr.
-    - Hot Blast PressureBar
-    - TopPressureBar
-    - Hot Blast Temp.oC
-    - SteamKgs/Hr.
-    - PermeabilityKgs/Hr.
-    - O2 Enrichment %
-    - Total OxygenNm3/Hr.
-    - TuyereVelocitym/s
-    - ActualKg/Thm.
+    - HOT BLAST PRESSUREBAR
+    - TOPPRESSUREBAR
+    - HOT BLAST TEMP.OC
+    - STEAMKGS/HR.
+    - HOT BLAST VOLUMENM3/HR.
+    - O2 ENRICHMENT %
+    - ACTUALKG/THM.
     input_params:
       Coke:
       - COKE_VM%
@@ -131,71 +122,99 @@ Optimisation:
       - COKE_IM%
       - COKE_FC%
       - COKE_MOIST%
-      Flux:
-      - FLUX_TM%
-      - FLUX_SiO2%
-      - FLUX_Fe2O3%
-      - FLUX_Al2O3%
-      - FLUX_LOI%
-      - FLUX_MgO%
-      - FLUX_CaO%
-      - FLUX_MT
+      - COKE_CALC_MT
       NutCoke:
       - NUTCOKE_MOIST%
-      - NUTCOKE_Prime_MT
+      - NUTCOKE_CALC_MT
       - NUTCOKE_VM%
       - NUTCOKE_IM%
       - NUTCOKE_FC%
       - NUTCOKE_ASH%
-      Ore:
-      - Geomin Type
-      - ORE_%Fe(T)
-      - ORE_%LOI
-      - ORE_%TM
-      - ORE_%MgO
-      - ORE_%Na2O
-      - ORE_%P
-      - ORE_%TiO2
-      - ORE_%Al2O3
-      - ORE_%SiO2
-      - ORE_%MnO
-      - ORE_%CaO
-      - ORE_%K2O
       PCI:
-      - PCI_2_%FC
-      - PCI_2_%Ash
-      - PCI_2_%VM
-      - PCI_2_%IM
-      - PCI_2_%TM
+      - PCI_2_FC%
+      - PCI_2_ASH%
+      - PCI_2_VM%
+      - PCI_2_IM%
+      - PCI_2_CALC_MT
+      Ore:
+      - GEOMIN TYPE
+      - ORE_FE(T)%
+      - ORE_LOI%
+      - ORE_TM%
+      - ORE_MGO%
+      - ORE_NA2O%
+      - ORE_P%
+      - ORE_TIO2%
+      - ORE_AL2O3%
+      - ORE_SIO2%
+      - ORE_MNO%
+      - ORE_CAO
+      - ORE_K2O%
+      - ORE_CALC_MT
       Sinter:
-      - Sinter_SP_02_Hot_strength_RDI
-      - Sinter_SP_02_Cold_Strength_AI
-      - Sinter_SP_02_Cold_strength_TI
-      - Sinter_SP_02_P%
-      - Sinter_SP_02_SiO2%
-      - Sinter_SP_02_MgO%
-      - Sinter_SP_02_FeO%
-      - Sinter_SP_02_Al2O3%
-      - Sinter_SP_02_Na2O%
-      - Sinter_SP_02_TiO2%
-      - Sinter_SP_02_Fe(T)%
-      - Sinter_SP_02_CaO%
-      - Sinter_SP_02_K2O%
-      - Sinter_SP_02_Basicity
-      - Sinter_SP_02_MnO%
+      - SINTER_SP_02_HOT_STRENGTH_RI
+      - SINTER_SP_02_HOT_STRENGTH_RDI
+      - SINTER_SP_02_COLD_STRENGTH_AI
+      - SINTER_SP_02_COLD_STRENGTH_TI
+      - SINTER_SP_02_P%
+      - SINTER_SP_02_SIO2%
+      - SINTER_SP_02_MGO%
+      - SINTER_SP_02_FEO%
+      - SINTER_SP_02_AL2O3%
+      - SINTER_SP_02_NA2O%
+      - SINTER_SP_02_TIO2%
+      - SINTER_SP_02_FE(T)%
+      - SINTER_SP_02_CAO%
+      - SINTER_SP_02_K2O%
+      - SINTER_SP_02_BASICITY
+      - SINTER_SP_02_MNO%
+      - SINTER_CALC_MT
+      Pellet:
+      - LLOYDS_PELLET_PCT_SIO2
+      - LLOYDS_PELLET_PCT_AL2O3
+      - LLOYDS_PELLET_PCT_FE2O3
+      - LLOYDS_PELLET_PCT_MGO
+      - LLOYDS_PELLET_PCT_TIO2
+      - LLOYDS_PELLET_PCT_NA2O
+      - TOTAL_PELLET_CALC_MT
+      - LLOYDS_PELLET_PCT_K2O
+      - LLOYDS_PELLET_PCT_TM
+      - LLOYDS_PELLET_PCT_LOI
+      - LLOYDS_PELLET_PCT_MNO
+      - LLOYDS_PELLET_PCT_CAO
+      - LLOYDS_PELLET_PCT_P
+      Flux:
+      - FLUX_TM%
+      - FLUX_SIO2%
+      - FLUX_FE2O3%
+      - FLUX_AL2O3%
+      - FLUX_LOI%
+      - FLUX_MGO%
+      - FLUX_CAO%
+      - FLUX_CALC_MT
+      Burden:
+      - COKE_DISCHARGE_TIME
+      - WEIGHTED_COKE_ANGLE
+      - TOTAL_COKE_PORTIONS
+      - NON_COKE_DISCHARGE_TIME
+      - WEIGHTED_NON_COKE_ANGLE
+      - TOTAL_NON_COKE_PORTIONS
+      Other:
+      - CHARGES/HRS.
+      - STOCKRODLEVEL
+      - FURNACE TOP GAS ANALYSISH2%
     maxmin: -1.0
     model: src/models/prod_rate_opt.pkl
-    output_param: ProductionTonnesPerHr
+    output_param: PRODUCTIONTONNESPERHR
     scaling: src/models/prod_rate_scaler.pkl
   UnitCost:
     control_params:
-    - Hot Blast VolumeNm3/Hr.
-    - Hot Blast PressureBar
-    - TopPressureBar
-    - Hot Blast Temp.oC
-    - SteamKgs/Hr.
-    - PermeabilityKgs/Hr.
-    - O2 Enrichment %
+    - HOT BLAST PRESSUREBAR
+    - TOPPRESSUREBAR
+    - HOT BLAST TEMP.OC
+    - STEAMKGS/HR.
+    - HOT BLAST VOLUMENM3/HR.
+    - O2 ENRICHMENT %
     input_params:
       Coke:
       - COKE_VM%
@@ -203,114 +222,158 @@ Optimisation:
       - COKE_IM%
       - COKE_FC%
       - COKE_MOIST%
-      Flux:
-      - FLUX_TM%
-      - FLUX_SiO2%
-      - FLUX_Fe2O3%
-      - FLUX_Al2O3%
-      - FLUX_LOI%
-      - FLUX_MgO%
-      - FLUX_CaO%
-      - FLUX_MT
+      - COKE_CALC_MT
       NutCoke:
       - NUTCOKE_MOIST%
-      - NUTCOKE_Prime_MT
+      - NUTCOKE_CALC_MT
       - NUTCOKE_VM%
       - NUTCOKE_IM%
       - NUTCOKE_FC%
       - NUTCOKE_ASH%
-      Ore:
-      - Geomin Type
-      - ORE_%Fe(T)
-      - ORE_%LOI
-      - ORE_%TM
-      - ORE_%MgO
-      - ORE_%Na2O
-      - ORE_%P
-      - ORE_%TiO2
-      - ORE_%Al2O3
-      - ORE_%SiO2
-      - ORE_%MnO
-      - ORE_%CaO
-      - ORE_%K2O
       PCI:
-      - PCI_2_%FC
-      - PCI_2_%Ash
-      - PCI_2_%VM
-      - PCI_2_%IM
-      - PCI_2_%TM
+      - PCI_2_FC%
+      - PCI_2_ASH%
+      - PCI_2_VM%
+      - PCI_2_IM%
+      - PCI_2_CALC_MT
+      Ore:
+      - GEOMIN TYPE
+      - ORE_FE(T)%
+      - ORE_LOI%
+      - ORE_TM%
+      - ORE_MGO%
+      - ORE_NA2O%
+      - ORE_P%
+      - ORE_TIO2%
+      - ORE_AL2O3%
+      - ORE_SIO2%
+      - ORE_MNO%
+      - ORE_CAO
+      - ORE_K2O%
+      - ORE_CALC_MT
       Sinter:
-      - Sinter_SP_02_Hot_strength_RDI
-      - Sinter_SP_02_Cold_Strength_AI
-      - Sinter_SP_02_Cold_strength_TI
-      - Sinter_SP_02_P%
-      - Sinter_SP_02_SiO2%
-      - Sinter_SP_02_MgO%
-      - Sinter_SP_02_FeO%
-      - Sinter_SP_02_Al2O3%
-      - Sinter_SP_02_Na2O%
-      - Sinter_SP_02_TiO2%
-      - Sinter_SP_02_Fe(T)%
-      - Sinter_SP_02_CaO%
-      - Sinter_SP_02_K2O%
-      - Sinter_SP_02_Basicity
-      - Sinter_SP_02_MnO%
+      - SINTER_SP_02_HOT_STRENGTH_RI
+      - SINTER_SP_02_HOT_STRENGTH_RDI
+      - SINTER_SP_02_COLD_STRENGTH_AI
+      - SINTER_SP_02_COLD_STRENGTH_TI
+      - SINTER_SP_02_P%
+      - SINTER_SP_02_SIO2%
+      - SINTER_SP_02_MGO%
+      - SINTER_SP_02_FEO%
+      - SINTER_SP_02_AL2O3%
+      - SINTER_SP_02_NA2O%
+      - SINTER_SP_02_TIO2%
+      - SINTER_SP_02_FE(T)%
+      - SINTER_SP_02_CAO%
+      - SINTER_SP_02_K2O%
+      - SINTER_SP_02_BASICITY
+      - SINTER_SP_02_MNO%
+      - SINTER_CALC_MT
+      Pellet:
+      - LLOYDS_PELLET_PCT_SIO2
+      - LLOYDS_PELLET_PCT_AL2O3
+      - LLOYDS_PELLET_PCT_FE2O3
+      - LLOYDS_PELLET_PCT_MGO
+      - LLOYDS_PELLET_PCT_TIO2
+      - LLOYDS_PELLET_PCT_NA2O
+      - TOTAL_PELLET_CALC_MT
+      - LLOYDS_PELLET_PCT_K2O
+      - LLOYDS_PELLET_PCT_TM
+      - LLOYDS_PELLET_PCT_LOI
+      - LLOYDS_PELLET_PCT_MNO
+      - LLOYDS_PELLET_PCT_CAO
+      - LLOYDS_PELLET_PCT_P
+      Flux:
+      - FLUX_TM%
+      - FLUX_SIO2%
+      - FLUX_FE2O3%
+      - FLUX_AL2O3%
+      - FLUX_LOI%
+      - FLUX_MGO%
+      - FLUX_CAO%
+      - FLUX_CALC_MT
+      Burden:
+      - COKE_DISCHARGE_TIME
+      - WEIGHTED_COKE_ANGLE
+      - TOTAL_COKE_PORTIONS
+      - NON_COKE_DISCHARGE_TIME
+      - WEIGHTED_NON_COKE_ANGLE
+      - TOTAL_NON_COKE_PORTIONS
+      Other:
+      - CHARGES/HRS.
+      - STOCKRODLEVEL
+      - FURNACE TOP GAS ANALYSISH2%
+
     maxmin: 1.0
     model: src/models/unitcost_opt.pkl
-    output_param: UnitCost Lakhs/Thm
+    output_param: UNITCOST LAKHS/THM
     scaling: src/models/unitcost_scaler.pkl
 TIMESTEPS: 3
 field_mapping:
-  Sinter_SP_02_Basicity: sinter_basicity
+  Sinter_SP_02_Basicity: SINTER_SP_02_BASICITY
   coke_ash_pct: COKE_ASH%
   coke_fc_pct: COKE_FC%
   coke_im_pct: COKE_IM%
   coke_moist_pct: COKE_MOIST%
   coke_vm_pct: COKE_VM%
-  flux_al2o3_pct: FLUX_Al2O3%
-  flux_cao_pct: FLUX_CaO%
-  flux_fe2o3_pct: FLUX_Fe2O3%
+  flux_al2o3_pct: FLUX_AL2O3%
+  flux_cao_pct: FLUX_CAO%
+  flux_fe2o3_pct: FLUX_FE2O3%
   flux_loi_pct: FLUX_LOI%
-  flux_mgo_pct: FLUX_MgO%
-  flux_mt: FLUX_MT
-  flux_sio2_pct: FLUX_SiO2%
+  flux_mgo_pct: FLUX_MGO%
+  flux_mt: FLUX_CALC_MT
+  flux_sio2_pct: FLUX_SIO2%
   flux_tm_pct: FLUX_TM%
-  geomin_type: Geomin Type
+  geomin_type: GEOMIN TYPE
   nutcoke_ash_pct: NUTCOKE_ASH%
   nutcoke_fc_pct: NUTCOKE_FC%
   nutcoke_im_pct: NUTCOKE_IM%
   nutcoke_moist_pct: NUTCOKE_MOIST%
-  nutcoke_prime_mt: NUTCOKE_MT
+  nutcoke_prime_mt: NUTCOKE_CALC_MT
   nutcoke_vm_pct: NUTCOKE_VM%
-  ore_al2o3_pct: ORE_%Al2O3
-  ore_cao_pct: ORE_%CaO
-  ore_fe_total_pct: ORE_%Fe(T)
-  ore_k2o_pct: ORE_%K2O
-  ore_loi_pct: ORE_%LOI
-  ore_mgo_pct: ORE_%MgO
-  ore_mno_pct: ORE_%MnO
-  ore_na2o_pct: ORE_%Na2O
-  ore_p_pct: ORE_%P
-  ore_sio2_pct: ORE_%SiO2
-  ore_tio2_pct: ORE_%TiO2
-  pci2_ash_pct: PCI_2_%Ash
-  pci2_fc_pct: PCI_2_%FC
-  pci2_im_pct: PCI_2_%IM
-  pci2_vm_pct: PCI_2_%VM
-  sinter_al2o3_pct: Sinter_SP_02_Al2O3%
-  sinter_cao_pct: Sinter_SP_02_CaO%
-  sinter_cold_strength_ai: Sinter_SP_02_Cold_Strength_AI
-  sinter_cold_strength_ti: Sinter_SP_02_Cold_strength_TI
-  sinter_fe_total_pct: Sinter_SP_02_Fe(T)%
-  sinter_feo_pct: Sinter_SP_02_FeO%
-  sinter_hot_strength_rdi: Sinter_SP_02_Hot_strength_RDI
-  sinter_k2o_pct: Sinter_SP_02_K2O%
-  sinter_mgo_pct: Sinter_SP_02_MgO%
-  sinter_mno_pct: Sinter_SP_02_MnO%
-  sinter_na2o_pct: Sinter_SP_02_Na2O%
-  sinter_p_pct: Sinter_SP_02_P%
-  sinter_sio2_pct: Sinter_SP_02_SiO2%
-  sinter_tio2_pct: Sinter_SP_02_TiO2%
+  ore_al2o3_pct: ORE_AL2O3%
+  ore_cao_pct: ORE_CAO%
+  ore_fe_total_pct: ORE_FE(T)%
+  ore_k2o_pct: ORE_K2O%
+  ore_loi_pct: ORE_LOI%
+  ore_mgo_pct: ORE_MGO%
+  ore_mno_pct: ORE_MNO%
+  ore_na2o_pct: ORE_NA2O%
+  ore_p_pct: ORE_P%
+  ore_sio2_pct: ORE_SIO2%
+  ore_tio2_pct: ORE_TIO2%
+  pci2_ash_pct: PCI_2_ASH%
+  pci2_fc_pct: PCI_2_FC%
+  pci2_im_pct: PCI_2_IM%
+  pci2_vm_pct: PCI_2_VM%
+  sinter_al2o3_pct: SINTER_SP_02_AL2O3%
+  sinter_cao_pct: SINTER_SP_02_CAO%
+  sinter_cold_strength_ai: SINTER_SP_02_COLD_STRENGTH_AI
+  sinter_cold_strength_ti: SINTER_SP_02_Cold_STRENGTH_TI
+  sinter_fe_total_pct: SINTER_SP_02_FE(T)%
+  sinter_feo_pct: SINTER_SP_02_FEO%
+  sinter_hot_strength_rdi: SITNER_SP_02_HOT_STRENGTH_RDI
+  sinter_k2o_pct: SINTER_SP_02_K2O%
+  sinter_mgo_pct: SINTER_SP_02_MGO%
+  sinter_mno_pct: SINTER_SP_02_MNO%
+  sinter_na2o_pct: SINTER_SP_02_NA2O%
+  sinter_p_pct: SINTER_SP_02_P%
+  sinter_sio2_pct: SINTER_SP_02_SIO2%
+  sinter_tio2_pct: SINTER_SP_02_TIO2%
+  lloyds_pellet_cao_pct: LLOYDS_PELLET_PCT_CAO
+  lloyds_pellet_mt: TOTAL_PELLET_CALC_MT
+  lloyds_pellet_pct_al2o3: LLOYDS_PELLET_PCT_AL2O3
+  lloyds_pellet_pct_fe2o3: LLOYDS_PELLET_PCT_FE2O3
+  lloyds_pellet_pct_k2o: LLOYDS_PELLET_PCT_K2O
+  lloyds_pellet_pct_loi: LLOYDS_PELLET_PCT_LOI
+  lloyds_pellet_pct_mgo: LLOYDS_PELLET_PCT_MGO
+  lloyds_pellet_pct_mno: LLOYDS_PELLET_PCT_MNO
+  lloyds_pellet_pct_na2o: LLOYDS_PELLET_PCT_NA2O
+  lloyds_pellet_pct_p: LLOYDS_PELLET_PCT_P
+  lloyds_pellet_pct_sio2: LLOYDS_PELLET_PCT_SIO2
+  lloyds_pellet_pct_tio2: LLOYDS_PELLET_PCT_TIO2
+  lloyds_pellet_pct_tm: LLOYDS_PELLET_PCT_TM
+  
 influxdb_ml_database:
   database: ml_dataset
   measurements: rm_charge_data
