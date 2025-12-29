@@ -90,7 +90,7 @@ class DataframesProcessor:
         # Attach live:
         row_hist_last = self.df_hist.iloc[-1].copy() # Start with last historical row
         if not self.debug_on:
-            update_cols = [c for c in self.df_live_row.columns if c in self.df_hist.columns]
+            update_cols = self.df_live_row.columns.intersection(self.df_hist.columns).tolist()
             if update_cols:
                 row_live_latest = self.df_live_row.iloc[-1][update_cols]
                 row_hist_last.loc[update_cols] = row_live_latest
@@ -107,9 +107,9 @@ class DataframesProcessor:
         Compute dependant features needed for the ML model.
         """
         # Example: Unit cost feature
-        live_data["UnitCost 1000Rs/Thm"] = (
-            live_data["Coke Rate Kg/Thm"]
-            + self.config["Coke to PCI"] * live_data["ActualKg/Thm."]
+        live_data["UNITCOST LAKHS/THM"] = 0.25 * (
+            live_data["COKE RATE KG/THM"]
+            + self.config["Coke to PCI"] * live_data["ACTUALKG/THM."]
         )
         return live_data
     
@@ -215,7 +215,10 @@ class DataframesProcessor:
         hourly_avg = df_combined.resample('1h').mean()
         hourly_avg.index = hourly_avg.index + pd.Timedelta(hours=1)
         hourly_avg = hourly_avg.rename(columns=values_needed)
-
+        for col in hourly_avg.columns:
+            col_new = col.upper()
+            if col_new != col:
+                hourly_avg.rename(columns={col: col_new}, inplace=True)
         return hourly_avg
         
     def fetch_live_params(self) -> tuple[Dict[str, Any], List[str]]:

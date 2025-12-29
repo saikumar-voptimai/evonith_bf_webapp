@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone
 from utils.helper_functions_explorer import data_retrieval as dr
+from utils.anomaly_propensity import compute_propensity_suite
 from config.config_loader import load_config
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -119,8 +120,8 @@ def load_static_df(path: str) -> pd.DataFrame:
         st.warning(f"CSV not found at {path}")
         return pd.DataFrame()
     df = pd.read_csv(path)
-    df.index = pd.to_datetime(df['datetime'], utc=True, errors="coerce")
-    df.drop(columns=['datetime'], inplace=True, errors="ignore")
+    df.index = pd.to_datetime(df['Unnamed: 0'], utc=True, errors="coerce")
+    df.drop(columns=['Unnamed: 0'], inplace=True, errors="ignore")
     # Ensure numeric
     for c in df.columns:
         if df[c].dtype == object:
@@ -198,6 +199,20 @@ def fetch_recent_online(tr: str = 'last 8 hours', ar = '15 minutes') -> pd.DataF
                                     MEASUREMENT_LABELS,
                                     FIELD_LABELS)
     return combined_df
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def fetch_recent_online_5min(tr: str = "last 8 hours") -> pd.DataFrame:
+    """Fetch recent data cached for ~5 minutes (demo widgets)."""
+    selected_measurements = list(MEASUREMENT_LABELS.keys())
+    return dr.fetch_online_df(
+        selected_measurements,
+        tr,
+        "5 minutes",
+        FREQUENCY_TO_TIMEDTA,
+        MEASUREMENT_LABELS,
+        FIELD_LABELS,
+    )
 
 # ────────────────────────────────────────────────────────────────────────────────
 # 4) PACKETS & PROMPTS
@@ -729,6 +744,46 @@ with tabs[2]:
     st.subheader("Anomalies")
     notes = st.text_area("Operator notes (optional)")
     # minutes = st.slider("Lookback (minutes)", 5, 60, 15, step=5)
+
+    with st.expander("Channeling propensity (demo)"):
+        show_channeling = st.checkbox(
+            "Compute channeling propensity (updates every 5 minutes)",
+            value=False,
+            key="channeling_propensity_enable",
+        )
+
+        if show_channeling:
+            with st.spinner("Computing propensities…"):
+                df_5m = fetch_recent_online_5min(tr="last 8 hours")
+                suite = compute_propensity_suite(df_5m)
+
+            if not suite:
+                st.info("Not enough data/columns to compute propensities.")
+            else:
+                items = list(suite.items())
+                cols = st.columns(min(4, len(items)))
+                for i, (name, res) in enumerate(items[:4]):
+                    cols[i].metric(
+                        name,
+                        f"{res.score_0_100:.0f}/100",
+                        "ALARM" if res.alarm else "OK",
+                    )
+
+                selected_name = st.selectbox(
+                    "Plot",
+                    options=list(suite.keys()),
+                    index=0,
+                    key="propensity_plot_select",
+                )
+                selected = suite[selected_name]
+
+                st.caption(
+                    f"Last sample: {selected.last_timestamp.isoformat() if selected.last_timestamp is not None else '—'} | {selected.alarm_reason}"
+                )
+                if selected.series_5min.empty:
+                    st.info("No series to plot for this propensity.")
+                else:
+                    st.line_chart(selected.series_5min, height=180)
 
     if st.button("Check Anomalies"):
         with st.spinner("Fetching recent data from Influx…"):

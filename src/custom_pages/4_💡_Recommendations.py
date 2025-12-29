@@ -160,6 +160,7 @@ with st.form("Control Params Form"):
 
 # User-specified input variables:
 latest_row = st.session_state.dfprocessor.fetch_live_rm_data()
+latest_row.name = latest_row.name.tz_convert('Asia/Kolkata')
 with st.expander(f"Input Params at {latest_row.name.strftime('%Y-%m-%d %H:%M')}  - Click to expand and override"):
     cols = st.columns(3)
     raw_mtrl_input = {}
