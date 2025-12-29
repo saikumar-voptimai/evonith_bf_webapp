@@ -169,58 +169,138 @@ class DataframesProcessor:
         df.dropna(inplace=True) # NaNs peek in due to lag features
         return df
 
-    def fetch_live_data(self, cp_op_ml_dict: Dict[str, Any], influx_paths: List[str]) -> pd.DataFrame:
-        """
-        Fetch latest hourly averaged data for control and input parameters.
-        Args:
-            cp_op_ml_dict (Dict[str, Any]): Dictionary with control and input parameter metadata.
-            paths_set (List[str]): List of unique InfluxDB paths to query.
-        Returns:
-            pd.DataFrame: DataFrame with latest hourly averaged data.
-        """
-        now = pd.Timestamp.utcnow()
-        this_hour = now.replace(minute=0, second=0, microsecond=0)
-        one_hour_ago = this_hour - pd.Timedelta(hours=1)
+    # def fetch_live_data(self, cp_op_ml_dict: Dict[str, Any], influx_paths: List[str]) -> pd.DataFrame:
+    #     """
+    #     Fetch latest hourly averaged data for control and input parameters.
+    #     Args:
+    #         cp_op_ml_dict (Dict[str, Any]): Dictionary with control and input parameter metadata.
+    #         paths_set (List[str]): List of unique InfluxDB paths to query.
+    #     Returns:
+    #         pd.DataFrame: DataFrame with latest hourly averaged data.
+    #     """
+    #     now = pd.Timestamp.utcnow()
+    #     this_hour = now.replace(minute=0, second=0, microsecond=0)
+    #     one_hour_ago = this_hour - pd.Timedelta(hours=1)
 
-        values_needed = {cp_op_ml_dict[param]['InfluxName']:cp_op_ml_dict[param]['NameInMLData'] for param in list(cp_op_ml_dict.keys())}
-        meas_dict = {}
-        paths = []
-        for param in list(cp_op_ml_dict.keys()):
-            path = cp_op_ml_dict[param]['InfluxBucket'] + '/' + cp_op_ml_dict[param]['InfluxMeasurement']
-            if path not in paths:
-                paths.append(path)
-            if meas_dict.get(path) is None:
-                meas_dict[path] = []
-            meas_dict[path].append(cp_op_ml_dict[param]['InfluxName'])
+    #     values_needed = {cp_op_ml_dict[param]['InfluxName']:cp_op_ml_dict[param]['NameInMLData'] for param in list(cp_op_ml_dict.keys())}
+    #     meas_dict = {}
+    #     paths = []
+    #     for param in list(cp_op_ml_dict.keys()):
+    #         path = cp_op_ml_dict[param]['InfluxBucket'] + '/' + cp_op_ml_dict[param]['InfluxMeasurement']
+    #         if path not in paths:
+    #             paths.append(path)
+    #         if meas_dict.get(path) is None:
+    #             meas_dict[path] = []
+    #         meas_dict[path].append(cp_op_ml_dict[param]['InfluxName'])
             
-            if cp_op_ml_dict[param]['InfluxName'] not in values_needed:
-                values_needed[cp_op_ml_dict[param]['InfluxName']] = cp_op_ml_dict[param]['NameInMLData']
+    #         if cp_op_ml_dict[param]['InfluxName'] not in values_needed:
+    #             values_needed[cp_op_ml_dict[param]['InfluxName']] = cp_op_ml_dict[param]['NameInMLData']
+
+    #     df_combined = pd.DataFrame()
+    #     for influx_path, required_vars in meas_dict.items():
+    #         bucket = influx_path.split('/')[0]
+    #         meas = influx_path.split('/')[1]
+    #         datafetcher = BaseDataFetcher(meas, database=bucket)
+    #         df_meas = datafetcher.fetch_averaged_data(recent_data_of='over selected range',
+    #                                         start_time=one_hour_ago,
+    #                                         end_time=this_hour)
+    #         if meas == 'process_params':
+    #             df_meas['coke_rate'] = df_meas['coke_rate'] + df_meas['nut_coke_rate']
+    #         df_meas = df_meas[required_vars + ['time']]
+    #         df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
+    #         df_meas.set_index('time', inplace=True)
+    #         df_meas.index = df_meas.index.tz_convert('Asia/Kolkata')
+    #         df_combined = df_meas if df_combined.empty else df_combined.join(df_meas, how='outer')
+
+    #     hourly_avg = df_combined.resample('1h').mean()
+    #     hourly_avg.index = hourly_avg.index + pd.Timedelta(hours=1)
+    #     hourly_avg = hourly_avg.rename(columns=values_needed)
+    #     for col in hourly_avg.columns:
+    #         col_new = col.upper()
+    #         if col_new != col:
+    #             hourly_avg.rename(columns={col: col_new}, inplace=True)
+    #     return hourly_avg
+
+
+    def fetch_live_data(
+        self,
+        cp_op_ml_dict: Dict[str, Any],
+        influx_paths: List[str]
+    ) -> pd.DataFrame:
+        """
+        Fetch latest (present) value for control and input parameters from InfluxDB.
+        Returns one-row DataFrame with most recent values.
+        """
+
+        now = pd.Timestamp.utcnow()
+        lookback = now - pd.Timedelta(minutes=15)  # safety window
+
+        # Map Influx field → ML column name
+        values_needed = {
+            cp_op_ml_dict[param]['InfluxName']: cp_op_ml_dict[param]['NameInMLData']
+            for param in cp_op_ml_dict
+        }
+
+        meas_dict: Dict[str, list] = {}
+        for param in cp_op_ml_dict:
+            path = (
+                cp_op_ml_dict[param]['InfluxBucket']
+                + '/'
+                + cp_op_ml_dict[param]['InfluxMeasurement']
+            )
+            meas_dict.setdefault(path, []).append(
+                cp_op_ml_dict[param]['InfluxName']
+            )
 
         df_combined = pd.DataFrame()
-        for influx_path, required_vars in meas_dict.items():
-            bucket = influx_path.split('/')[0]
-            meas = influx_path.split('/')[1]
-            datafetcher = BaseDataFetcher(meas, database=bucket)
-            df_meas = datafetcher.fetch_averaged_data(recent_data_of='over selected range',
-                                            start_time=one_hour_ago,
-                                            end_time=this_hour)
-            if meas == 'process_params':
-                df_meas['coke_rate'] = df_meas['coke_rate'] + df_meas['nut_coke_rate']
-            df_meas = df_meas[required_vars + ['time']]
-            df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
-            df_meas.set_index('time', inplace=True)
-            df_meas.index = df_meas.index.tz_convert('Asia/Kolkata')
-            df_combined = df_meas if df_combined.empty else df_combined.join(df_meas, how='outer')
 
-        hourly_avg = df_combined.resample('1h').mean()
-        hourly_avg.index = hourly_avg.index + pd.Timedelta(hours=1)
-        hourly_avg = hourly_avg.rename(columns=values_needed)
-        for col in hourly_avg.columns:
-            col_new = col.upper()
-            if col_new != col:
-                hourly_avg.rename(columns={col: col_new}, inplace=True)
-        return hourly_avg
-        
+        for influx_path, required_vars in meas_dict.items():
+            bucket, meas = influx_path.split('/')
+
+            datafetcher = BaseDataFetcher(meas, database=bucket)
+
+            #  Fetch recent raw data (not hourly)
+            df_meas = datafetcher.fetch_averaged_data(
+                recent_data_of='over selected range',
+                start_time=lookback,
+                end_time=now
+            )
+
+            if df_meas.empty:
+                continue
+
+            # Special logic
+            if meas == 'process_params':
+                if {'coke_rate', 'nut_coke_rate'}.issubset(df_meas.columns):
+                    df_meas['coke_rate'] = (
+                        df_meas['coke_rate'] + df_meas['nut_coke_rate']
+                    )
+
+            df_meas = df_meas[required_vars + ['time']]
+            df_meas['time'] = pd.to_datetime(df_meas['time'], utc=True, errors='coerce')
+            df_meas.set_index('time', inplace=True)
+            df_meas = df_meas.sort_index()
+            df_meas.index = df_meas.index.tz_convert('Asia/Kolkata')
+
+            #  TAKE LATEST VALUE
+            latest_row = df_meas.iloc[-1:]
+
+            df_combined = (
+                latest_row if df_combined.empty
+                else df_combined.join(latest_row, how='outer')
+            )
+
+        if df_combined.empty:
+            return df_combined
+
+        # Rename to ML column names
+        df_combined.rename(columns=values_needed, inplace=True)
+
+        # Uppercase consistency
+        df_combined.columns = [col.upper() for col in df_combined.columns]
+
+        return df_combined
+  
     def fetch_live_params(self) -> tuple[Dict[str, Any], List[str]]:
         """
         Fetch metadata for control and input parameters from configuration.
