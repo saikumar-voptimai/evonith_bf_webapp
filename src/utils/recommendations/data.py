@@ -209,9 +209,9 @@ class DataframesProcessor:
             df_meas = df_meas[required_vars + ['time']]
             df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
             df_meas.set_index('time', inplace=True)
-            
+            df_meas.index = df_meas.index.tz_convert('Asia/Kolkata')
             df_combined = df_meas if df_combined.empty else df_combined.join(df_meas, how='outer')
-        
+
         hourly_avg = df_combined.resample('1h').mean()
         hourly_avg.index = hourly_avg.index + pd.Timedelta(hours=1)
         hourly_avg = hourly_avg.rename(columns=values_needed)

@@ -1,4 +1,20 @@
-[WARNING   | base_data_fetcher           | L148] 2025-12-28T23:55:39+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-28T23:55:39+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L148] 2025-12-28T23:55:41+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-28T23:55:41+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0003s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0003s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0003s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0004s | scale_full= 0.0000s, predict= 0.0003s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0003s | scale_full= 0.0000s, predict= 0.0003s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L21] 2025-12-29T06:01:58+0530: [objective] total=  0.0002s | scale_full= 0.0000s, predict= 0.0002s, penalty= 0.0000s | optimiser.py

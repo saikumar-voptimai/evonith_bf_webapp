@@ -47,7 +47,7 @@ Optimisation:
       - ORE_AL2O3%
       - ORE_SIO2%
       - ORE_MNO%
-      - ORE_CAO
+      - ORE_CAO%
       - ORE_K2O%
       - ORE_CALC_MT
       Sinter:
@@ -103,9 +103,9 @@ Optimisation:
       - STOCKRODLEVEL
       - FURNACE TOP GAS ANALYSISH2%
     maxmin: -1.0
-    model: src/models/eta_co_opt.pkl
+    model: src/models/eta_co_opt_dec.pkl
     output_param: FURNACETOPGASANALYSISCO2ETACO
-    scaling: src/models/eta_co_scaler.pkl
+    scaling: src/models/eta_co_scaler_dec.pkl
   Production Rate:
     control_params:
     - HOT BLAST PRESSUREBAR
@@ -148,7 +148,7 @@ Optimisation:
       - ORE_AL2O3%
       - ORE_SIO2%
       - ORE_MNO%
-      - ORE_CAO
+      - ORE_CAO%
       - ORE_K2O%
       - ORE_CALC_MT
       Sinter:
@@ -248,7 +248,7 @@ Optimisation:
       - ORE_AL2O3%
       - ORE_SIO2%
       - ORE_MNO%
-      - ORE_CAO
+      - ORE_CAO%
       - ORE_K2O%
       - ORE_CALC_MT
       Sinter:
@@ -316,6 +316,7 @@ field_mapping:
   coke_im_pct: COKE_IM%
   coke_moist_pct: COKE_MOIST%
   coke_vm_pct: COKE_VM%
+  coke_mt: COKE_CALC_MT
   flux_al2o3_pct: FLUX_AL2O3%
   flux_cao_pct: FLUX_CAO%
   flux_fe2o3_pct: FLUX_FE2O3%
@@ -324,7 +325,7 @@ field_mapping:
   flux_mt: FLUX_CALC_MT
   flux_sio2_pct: FLUX_SIO2%
   flux_tm_pct: FLUX_TM%
-  geomin_type: GEOMIN TYPE
+  GeominType: GEOMIN TYPE
   nutcoke_ash_pct: NUTCOKE_ASH%
   nutcoke_fc_pct: NUTCOKE_FC%
   nutcoke_im_pct: NUTCOKE_IM%
@@ -342,17 +343,21 @@ field_mapping:
   ore_p_pct: ORE_P%
   ore_sio2_pct: ORE_SIO2%
   ore_tio2_pct: ORE_TIO2%
+  ore_tm_pct: ORE_TM%
+  ore_mt: ORE_CALC_MT
   pci2_ash_pct: PCI_2_ASH%
   pci2_fc_pct: PCI_2_FC%
   pci2_im_pct: PCI_2_IM%
   pci2_vm_pct: PCI_2_VM%
+  pci2_mt: PCI_2_CALC_MT
   sinter_al2o3_pct: SINTER_SP_02_AL2O3%
   sinter_cao_pct: SINTER_SP_02_CAO%
   sinter_cold_strength_ai: SINTER_SP_02_COLD_STRENGTH_AI
-  sinter_cold_strength_ti: SINTER_SP_02_Cold_STRENGTH_TI
+  sinter_cold_strength_ti: SINTER_SP_02_COLD_STRENGTH_TI
+  sinter_hot_strength_ri: SINTER_SP_02_HOT_STRENGTH_RI
   sinter_fe_total_pct: SINTER_SP_02_FE(T)%
   sinter_feo_pct: SINTER_SP_02_FEO%
-  sinter_hot_strength_rdi: SITNER_SP_02_HOT_STRENGTH_RDI
+  sinter_hot_strength_rdi: SINTER_SP_02_HOT_STRENGTH_RDI
   sinter_k2o_pct: SINTER_SP_02_K2O%
   sinter_mgo_pct: SINTER_SP_02_MGO%
   sinter_mno_pct: SINTER_SP_02_MNO%
@@ -360,6 +365,8 @@ field_mapping:
   sinter_p_pct: SINTER_SP_02_P%
   sinter_sio2_pct: SINTER_SP_02_SIO2%
   sinter_tio2_pct: SINTER_SP_02_TIO2%
+  sinter_sp_02_basicity: SINTER_SP_02_BASICITY
+  sinter_mt: SINTER_CALC_MT
   lloyds_pellet_cao_pct: LLOYDS_PELLET_PCT_CAO
   lloyds_pellet_mt: TOTAL_PELLET_CALC_MT
   lloyds_pellet_pct_al2o3: LLOYDS_PELLET_PCT_AL2O3
@@ -373,8 +380,10 @@ field_mapping:
   lloyds_pellet_pct_sio2: LLOYDS_PELLET_PCT_SIO2
   lloyds_pellet_pct_tio2: LLOYDS_PELLET_PCT_TIO2
   lloyds_pellet_pct_tm: LLOYDS_PELLET_PCT_TM
-  
+  charges_per_hr: CHARGES/HRS.
+  stock_rod_level: STOCKRODLEVEL
+  furnace_top_gas_analysis_h2_pct: FURNACE TOP GAS ANALYSISH2%
 influxdb_ml_database:
-  database: ml_dataset
+  database: ML DATASET
   measurements: rm_charge_data
   time_range: last 1 month

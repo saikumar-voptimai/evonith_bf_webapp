@@ -26,7 +26,6 @@ def objective(
     base_scaled: np.ndarray,
     free_idx: List[int],
     control_idx: List[int],
-    target_idx: int,
     scaled_prev_params: np.ndarray,
     offsets: np.ndarray,
     scales: np.ndarray,
@@ -134,6 +133,18 @@ def run_optimiser(
         target_value = local_feat_vec.iloc[-1][target_output]
         local_feature_names.pop(local_feature_names.index(target_output))
         local_feat_vec = local_feat_vec.drop(columns=[target_output])
+    else:
+        for feature in local_feature_names:
+            if target_output in feature:
+                feature_idx = local_feature_names.index(feature)
+                target_idx = len(offsets)
+                offsets = np.append(offsets, offsets[feature_idx])
+                scales = np.append(scales, scales[feature_idx])
+                break
+        else:
+            raise KeyError(
+                f"Target '{target_output}' not found in feature names for optimisation."
+            )
     scaler_index = {name: i for i, name in enumerate(scaler.feature_names_in_)}
     feature_idx = np.array([scaler_index.get(f, -1) for f in local_feature_names])
 
@@ -160,7 +171,6 @@ def run_optimiser(
             base_scaled,
             free_idx,
             control_idx,
-            target_idx,
             scaled_prev_params,
             offsets,
             scales,
@@ -239,10 +249,18 @@ def run_optimiser(
             target_idx_imp = impact_feature_names.index(impact_target)
             impact_feature_names.remove(impact_target)
         else:
-            raise KeyError(
-                f"Impact target '{impact_target}' not found in feature names "
-                f"for model '{model_name}'."
-            )
+            for feature in impact_feature_names:
+                if impact_target in feature:
+                    targetproxy_feature_idx = impact_feature_names.index(feature)
+                    target_idx_imp = len(offsets_imp)
+                    offsets_imp = np.append(offsets_imp, offsets_imp[targetproxy_feature_idx])
+                    scales_imp = np.append(scales_imp, scales_imp[targetproxy_feature_idx])
+                    break
+            else:
+                raise KeyError(
+                    f"Impact target '{impact_target}' not found in feature names "
+                    f"for model '{model_name}'."
+                )
 
         # Raw feature vectors
         raw_prev_imp = row_prev_imp[impact_feature_names].to_numpy(float)

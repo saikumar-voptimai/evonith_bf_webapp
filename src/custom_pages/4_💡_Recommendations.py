@@ -159,15 +159,19 @@ with st.form("Control Params Form"):
         st.success("✅ Bounds saved successfully!")
 
 # User-specified input variables:
-with st.expander("Input Parameters - Raw Material Data - Click to expand and override"):
+latest_row = st.session_state.dfprocessor.fetch_live_rm_data()
+with st.expander(f"Input Params at {latest_row.name.strftime('%Y-%m-%d %H:%M')}  - Click to expand and override"):
     cols = st.columns(3)
     raw_mtrl_input = {}
-    latest_row = st.session_state.dfprocessor.fetch_live_rm_data()
     with st.form(key="Raw Material Input Form"):
         for i, (group_name, params) in enumerate(input_params.items()):
             with cols[i % 3]:
                 st.write(f"### {group_name}")
                 for param in params:
+                    if group_name == "Burden":
+                        latest_row[param] = st.session_state.df_hist.iloc[-1][param]
+                    if 'CHARGES/HRS.' in param or 'GEOMIN TYPE' in param:
+                        latest_row[param] = np.round(latest_row[param])
                     if param in latest_row:
                         default_val = float(latest_row[param])
                     else:
