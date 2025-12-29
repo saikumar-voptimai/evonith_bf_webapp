@@ -39,7 +39,7 @@ st.markdown(
 st.divider()
 
 debug_on = st.sidebar.toggle("Debug", value=False)
-new_steps = 3 if debug_on else 30
+new_steps = 30 if debug_on else 30
 
 if config_vsense.get("OPTIM_STEPS") != new_steps:
     config_vsense["OPTIM_STEPS"] = new_steps
@@ -257,6 +257,38 @@ with st.form("Optimiser Form"):
                     delta = new_val - old_val
                     st.metric(label=key_feat, value=f"{new_val:.2f}", delta=f"{delta:+.2f}")
                     j += 1
+
+        # Optional: show dependent variables computed from optimal knobs
+        dep_prev_suffix = "_dep_previous"
+        dep_curr_suffix = "_dep_current"
+        dep_bases = sorted(
+            {
+                k[: -len(dep_prev_suffix)]
+                for k in optimal_solution.keys()
+                if k.endswith(dep_prev_suffix)
+            }
+        )
+
+        if dep_bases:
+            with st.expander("Dependent Parameters (Auto-calculated) — optional", expanded=False):
+                show_dep = st.checkbox(
+                    "Show dependent parameter impact", value=False, key="show_dep_params"
+                )
+                if show_dep:
+                    cols = st.columns(4)
+                    j = 0
+                    for base in dep_bases:
+                        prev_key = base + dep_prev_suffix
+                        curr_key = base + dep_curr_suffix
+                        if prev_key not in optimal_solution or curr_key not in optimal_solution:
+                            continue
+
+                        prev_val = float(optimal_solution[prev_key])
+                        curr_val = float(optimal_solution[curr_key])
+                        delta = curr_val - prev_val
+                        with cols[j % 4]:
+                            st.metric(label=base, value=f"{curr_val:.3g}", delta=f"{delta:+.3g}")
+                        j += 1
         
         # Section 4: Generate recommendations using LLM
         st.subheader("Recommendations")

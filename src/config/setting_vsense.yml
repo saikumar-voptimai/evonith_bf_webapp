@@ -103,9 +103,9 @@ Optimisation:
       - STOCKRODLEVEL
       - FURNACE TOP GAS ANALYSISH2%
     maxmin: -1.0
-    model: src/models/eta_co_opt_dec.pkl
+    model: src/models/etaco_opt_dec.pkl
     output_param: FURNACETOPGASANALYSISCO2ETACO
-    scaling: src/models/eta_co_scaler_dec.pkl
+    scaling: src/models/etaco_scaler_dec.pkl
   Production Rate:
     control_params:
     - HOT BLAST PRESSUREBAR
@@ -204,9 +204,9 @@ Optimisation:
       - STOCKRODLEVEL
       - FURNACE TOP GAS ANALYSISH2%
     maxmin: -1.0
-    model: src/models/prod_rate_opt.pkl
+    model: src/models/prodrate_opt_dec.pkl
     output_param: PRODUCTIONTONNESPERHR
-    scaling: src/models/prod_rate_scaler.pkl
+    scaling: src/models/prodrate_scaler_dec.pkl
   UnitCost:
     control_params:
     - HOT BLAST PRESSUREBAR
@@ -305,9 +305,9 @@ Optimisation:
       - FURNACE TOP GAS ANALYSISH2%
 
     maxmin: 1.0
-    model: src/models/unitcost_opt.pkl
+    model: src/models/unitcost_opt_dec.pkl
     output_param: UNITCOST LAKHS/THM
-    scaling: src/models/unitcost_scaler.pkl
+    scaling: src/models/unitcost_scaler_dec.pkl
 TIMESTEPS: 3
 field_mapping:
   Sinter_SP_02_Basicity: SINTER_SP_02_BASICITY

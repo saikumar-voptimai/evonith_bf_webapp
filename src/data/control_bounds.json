@@ -25,19 +25,19 @@
     },
     "HOT BLAST VOLUMENM3/HR.": {
         "min": 100000.0,
-        "max": 122890.0,
+        "max": 125000.0,
         "value": 108884.6897,
         "override": false
     },
     "O2 ENRICHMENT %": {
         "min": 0.0,
-        "max": 4.0,
+        "max": 8.0,
         "value": 3.748486901,
         "override": false
     },
     "ACTUALKG/THM.": {
         "min": 70.25110128,
-        "max": 338.5117178,
+        "max": 200.0,
         "value": 178.7129169,
         "override": false
     }

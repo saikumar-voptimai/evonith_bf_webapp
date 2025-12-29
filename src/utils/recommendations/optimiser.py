@@ -6,6 +6,7 @@ from scipy.optimize import differential_evolution
 from utils.recommendations.data import DataframesProcessor
 from utils.recommendations.bounds import get_control_bounds
 from utils.recommendations.features import extract_scaler_params
+from utils.recommendations.dependencies import build_bf_dependency_graph
 from typing import Dict, List, Any
 from config.config_loader import load_config
 from utils.logger import setup_logger
@@ -198,7 +199,7 @@ def run_optimiser(
         if key in row_curr.index:
             row_curr[key] = value
     # Build raw feature vectors in the same order as local_feature_names
-        raw_prev = row_prev[local_feature_names].to_numpy(float)
+    raw_prev = row_prev[local_feature_names].to_numpy(float)
     raw_curr = row_curr[local_feature_names].to_numpy(float)
 
     scaled_prev = (raw_prev - offsets[feature_idx]) / scales[feature_idx]
@@ -220,7 +221,20 @@ def run_optimiser(
     optimal_cp[target_output + "_previous"] = y_pred_prev
     optimal_cp[target_output + "_current"] = y_pred_curr
 
-    # Predict impact on other outputs given optimal_cp
+    # ------------------------------------------------------------------
+    # Optional: compute dependent variables from the optimal knobs
+    # (does not affect optimisation; just for explainability/impact display)
+    # ------------------------------------------------------------------
+    try:
+        dep_graph = build_bf_dependency_graph()
+        dep_prev = dep_graph.apply(row_prev)
+        dep_curr = dep_graph.apply(row_curr)
+        for dep_name in dep_graph.names():
+            optimal_cp[f"{dep_name}_dep_previous"] = float(dep_prev[dep_name])
+            optimal_cp[f"{dep_name}_dep_current"] = float(dep_curr[dep_name])
+    except Exception as err:
+        logger.info(f"[dependencies] skipped dependent-variable calc: {err}")
+
     for model_name, model_dict in models_dict.items():
         if model_dict["Optimised"]:
             continue
@@ -243,6 +257,7 @@ def run_optimiser(
         # Feature names for this model
         impact_feat_vec = df_impact_full.iloc[-1]
         impact_feature_names = impact_scaler.feature_names_in_.tolist()
+        offsets_imp, scales_imp = extract_scaler_params(impact_scaler)
 
         # Drop the impact target for inference
         if impact_target in impact_feature_names:
@@ -267,7 +282,6 @@ def run_optimiser(
         raw_curr_imp = row_curr_imp[impact_feature_names].to_numpy(float)
 
         # Scale using this model's scaler
-        offsets_imp, scales_imp = extract_scaler_params(impact_scaler)
         impact_index_map = {name: i for i, name in enumerate(impact_scaler.feature_names_in_)}
         feature_idx_imp = np.array(
             [impact_index_map.get(f, -1) for f in impact_feature_names], dtype=int
