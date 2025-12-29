@@ -100,7 +100,9 @@ op_list = [config_vsense['Optimisation'][model]['output_param'] for model in lis
 include_control = {}
 if 'control_params' not in st.session_state:
     st.session_state['control_params'] = include_control
-with st.form("Control Params Form"):
+last_time = st.session_state.df_full.index[-1].tz_convert('Asia/Kolkata')
+st.write(f"##### From window ending: {last_time.strftime('%Y-%m-%d %H:%M')}")
+with st.form(f"Control Params Form"):
     cols = st.columns(3)
     i = 0
     for cp in cp_list:
