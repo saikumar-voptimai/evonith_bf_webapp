@@ -27,6 +27,7 @@ os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
 fullpath = Path(__file__).resolve().parents[1] / config['DATA'].split('/')[1] /config['DATA'].split('/')[2]
 df = pd.read_csv(fullpath, index_col=0, parse_dates=True)
 
+
 FIELD_LABELS = {
     internal_key: human_label
     for mapping in config["data_mapping"].values()
@@ -98,7 +99,8 @@ with st.sidebar:
     st.subheader("PCI/Coke cost")
     factor = st.number_input("PCI/Coke Cost ratio", value=13250/25000, step=0.01, format="%.2f")
 
-df['Unit Cost'] = (df['Coke Rate Kg/Thm'] + factor * df['ActualKg/Thm.']) * 25100/1000
+
+df['Unit Cost'] = (df['COKE RATE KG/THM'] + factor * df['ACTUALKG/THM.']) * 25100/1000
 df_filt = df[(pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date >= from_date) & 
              (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date <= to_date)]
 
