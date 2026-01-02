@@ -39,7 +39,7 @@ with st.sidebar:
             st.rerun()
 
         if st.session_state["admin_tool_selection"] in ["hopper", "burden", "register"]:
-            if st.button("⬅ Back to Dashboard", key="admin_back"):
+            if st.button(" Back to Welcome", key="admin_back"):
                 st.session_state["admin_tool_selection"] = None
                 st.rerun()
 
