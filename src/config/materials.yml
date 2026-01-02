@@ -31,6 +31,8 @@ materials:
   - Lloyds Pellet
   - Lime Stone
   - Dolomite
+  - MN Ore
+  - JRS Ventures
   - Sarda Energy & Minerals Limited
   - NMDC Limited Lumps (10-150 MM) (Kirandul)
   - SS Enterprises- High Manetite
@@ -52,3 +54,60 @@ materials:
   - NMDC CLO Oversize (+10MM) (Donimalai)
   - Lloyds Metals CLO Oversize (+10MM)
 
+
+
+burden_fields:
+  - "COKE P01 RINGS"
+  - "COKE P02 RINGS"
+  - "COKE P03 RINGS"
+  - "COKE P04 RINGS"
+  - "COKE P05 RINGS"
+  - "COKE P06 RINGS"
+  - "COKE P07 RINGS"
+  - "COKE P08 RINGS"
+  - "COKE P09 RINGS"
+  - "COKE P10 RINGS"
+  - "COKE P11 RINGS"
+
+  - "COKE P01 ANGLES"
+  - "COKE P02 ANGLES"
+  - "COKE P03 ANGLES"
+  - "COKE P04 ANGLES"
+  - "COKE P05 ANGLES"
+  - "COKE P06 ANGLES"
+  - "COKE P07 ANGLES"
+  - "COKE P08 ANGLES"
+  - "COKE P09 ANGLES"
+  - "COKE P10 ANGLES"
+  - "COKE P11 ANGLES"
+
+  - "COKE_DISCHARGE_TIME"
+  - "COKE_CHARGE_PATTERN"
+
+  - "NONCOKE P01 RINGS"
+  - "NONCOKE P02 RINGS"
+  - "NONCOKE P03 RINGS"
+  - "NONCOKE P04 RINGS"
+  - "NONCOKE P05 RINGS"
+  - "NONCOKE P06 RINGS"
+  - "NONCOKE P07 RINGS"
+  - "NONCOKE P08 RINGS"
+  - "NONCOKE P09 RINGS"
+  - "NONCOKE P10 RINGS"
+  - "NONCOKE P11 RINGS"
+
+  - "NONCOKE P01 ANGLES"
+  - "NONCOKE P02 ANGLES"
+  - "NONCOKE P03 ANGLES"
+  - "NONCOKE P04 ANGLES"
+  - "NONCOKE P05 ANGLES"
+  - "NONCOKE P06 ANGLES"
+  - "NONCOKE P07 ANGLES"
+  - "NONCOKE P08 ANGLES"
+  - "NONCOKE P09 ANGLES"
+  - "NONCOKE P10 ANGLES"
+  - "NONCOKE P11 ANGLES"
+
+  - "NON_COKE_DISCHARGE_TIME"
+  - "NON_COKE_CHARGE_PATTERN"
+  - "BURDEN_CHANGING_PURPOSE"

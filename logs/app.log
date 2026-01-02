@@ -1,31 +1,38 @@
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0005s | scale_full= 0.0000s, predict= 0.0004s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0006s | scale_full= 0.0000s, predict= 0.0005s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0005s | scale_full= 0.0000s, predict= 0.0005s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0004s | scale_full= 0.0000s, predict= 0.0004s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0004s | scale_full= 0.0000s, predict= 0.0004s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0005s | scale_full= 0.0000s, predict= 0.0005s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0005s | scale_full= 0.0000s, predict= 0.0004s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0005s | scale_full= 0.0000s, predict= 0.0005s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0004s | scale_full= 0.0000s, predict= 0.0004s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0005s | scale_full= 0.0000s, predict= 0.0005s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0005s | scale_full= 0.0000s, predict= 0.0005s, penalty= 0.0000s | optimiser.py
-[INFO   | optimiser           | L22] 2025-12-29T10:26:34+0530: [objective] total=  0.0005s | scale_full= 0.0000s, predict= 0.0005s, penalty= 0.0000s | optimiser.py
-[INFO   | _client           | L1025] 2025-12-29T10:26:55+0530: HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK" | _client.py
-[WARNING   | base_data_fetcher           | L142] 2025-12-29T10:31:39+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L148] 2025-12-29T10:31:39+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-29T10:31:39+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L148] 2025-12-29T10:35:08+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-29T10:35:08+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L148] 2025-12-29T10:35:12+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-29T10:35:12+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L142] 2025-12-29T10:35:18+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L148] 2025-12-29T10:35:18+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-29T10:35:18+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L148] 2025-12-29T10:35:23+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-29T10:35:23+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L148] 2025-12-29T10:36:24+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-29T10:36:24+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L148] 2025-12-29T10:36:57+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-29T10:36:57+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L148] 2025-12-29T10:37:10+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
-[WARNING   | base_data_fetcher           | L154] 2025-12-29T10:37:10+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[INFO   | optimiser           | L22] 2026-01-02T17:08:03+0530: [objective] total=  0.0007s | scale_full= 0.0001s, predict= 0.0006s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L22] 2026-01-02T17:08:03+0530: [objective] total=  0.0013s | scale_full= 0.0002s, predict= 0.0011s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L22] 2026-01-02T17:08:03+0530: [objective] total=  0.0007s | scale_full= 0.0000s, predict= 0.0006s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L22] 2026-01-02T17:08:03+0530: [objective] total=  0.0008s | scale_full= 0.0001s, predict= 0.0007s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L22] 2026-01-02T17:08:03+0530: [objective] total=  0.0007s | scale_full= 0.0001s, predict= 0.0006s, penalty= 0.0000s | optimiser.py
+[INFO   | optimiser           | L22] 2026-01-02T17:08:03+0530: [objective] total=  0.0011s | scale_full= 0.0001s, predict= 0.0009s, penalty= 0.0001s | optimiser.py
+[INFO   | optimiser           | L22] 2026-01-02T17:08:03+0530: [objective] total=  0.0018s | scale_full= 0.0002s, predict= 0.0014s, penalty= 0.0002s | optimiser.py
+[INFO   | optimiser           | L22] 2026-01-02T17:08:03+0530: [objective] total=  0.0008s | scale_full= 0.0001s, predict= 0.0007s, penalty= 0.0001s | optimiser.py
+[WARNING   | base_data_fetcher           | L142] 2026-01-02T17:08:29+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:08:29+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:08:29+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[INFO   | _client           | L1025] 2026-01-02T17:08:30+0530: HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK" | _client.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:08:30+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:08:30+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:15:31+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:15:31+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:15:44+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:15:44+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:16:48+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:16:48+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L142] 2026-01-02T17:16:57+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:16:57+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:16:57+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:16:58+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:16:58+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:18:58+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:18:58+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:19:08+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:19:08+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:20:14+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:20:14+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:20:14+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:20:14+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L142] 2026-01-02T17:27:13+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:27:13+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:27:13+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-01-02T17:27:14+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-01-02T17:27:14+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
