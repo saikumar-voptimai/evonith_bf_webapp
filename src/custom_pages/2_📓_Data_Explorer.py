@@ -27,6 +27,7 @@ os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
 fullpath = Path(__file__).resolve().parents[1] / config['DATA'].split('/')[1] /config['DATA'].split('/')[2]
 df = pd.read_csv(fullpath, index_col=0, parse_dates=True)
 
+
 FIELD_LABELS = {
     internal_key: human_label
     for mapping in config["data_mapping"].values()
