@@ -89,14 +89,12 @@ def fetch_offline_data(measurement: str,
     return df_meas
 
 
-
-
 def fetch_online_df(selected_measurements: List[str],
-                    time_range: str, 
-                    average_range: str,
-                    FREQUENCY_TO_TIMEDTA: Dict,
+                    time_range: str,
                     MEASUREMENT_LABELS: Dict,
-                    FIELD_LABELS: Dict) -> pd.DataFrame:
+                    FIELD_LABELS: Dict,
+                    request_type: str = None,
+                    window_by: str = None) -> pd.DataFrame:
     """
     Fetches and combines data from multiple data fetchers based on selected measurements and time range.
     Args:
@@ -127,7 +125,9 @@ def fetch_online_df(selected_measurements: List[str],
         
         df_meas = datafetchers[meas].fetch_averaged_data(recent_data_of='over selected range',
                                                         start_time=start_time, 
-                                                        end_time=end_time)
+                                                        end_time=end_time,
+                                                        request_type=request_type,
+                                                        window_by=window_by)
         if df_meas is None or df_meas.empty:
             continue
 
@@ -143,10 +143,8 @@ def fetch_online_df(selected_measurements: List[str],
         df_meas = df_meas.rename(columns={col: _rename(col) for col in df_meas.columns})
 
         combined_df = df_meas if combined_df.empty else combined_df.join(df_meas, how='outer')
-    freq = FREQUENCY_TO_TIMEDTA.get(average_range)
-    freq = freq if freq is not None else '1h'
-    combined_df = combined_df.resample(freq).mean(numeric_only=True)
-    combined_df.index = combined_df.index + pd.Timedelta(freq)
+
+    combined_df = combined_df.select_dtypes(exclude=['object'])
     combined_df = combined_df.rename(index={combined_df.index[-1]: pd.Timestamp(end_time).round('1min')})
 
     if combined_df.empty:

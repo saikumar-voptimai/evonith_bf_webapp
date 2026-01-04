@@ -15,7 +15,7 @@ TIMEZONE = pytz.timezone('Asia/Kolkata')  # GMT+5:30
 # ----------------------------------------------------------------------------------------------------------
 # 1. Longitudinal Contour Plotter
 # Initialize the data fetcher
-data_fetcher = LongitudinalTemperatureDataFetcher(debug=False, source="Historical", request_type="average")
+data_fetcher = LongitudinalTemperatureDataFetcher(debug=False, source="Historical")
 
 # Streamlit UI
 st.title("Furnace Temperature Data Visualization")
@@ -71,7 +71,11 @@ with st.sidebar:
     start_time = datetime.combine(from_date, from_time) if from_date and from_time else None
     end_time = datetime.combine(to_date, to_time) if to_date and to_time else None
 try:
-    temperature_list = data_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc)
+    temperature_list = data_fetcher.fetch_averaged_data(time_interval, 
+                                                        start_time_utc, 
+                                                        end_time_utc, 
+                                                        request_type="avg-min-max", 
+                                                        window_by=None)
 except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()
@@ -90,7 +94,7 @@ st.plotly_chart(fig, use_container_width=True)
 # Initialize the data fetcher
 
 st.title("Circumferential HeatLoad Distribution")
-circum_data_fetcher = AverageHeatLoadDataFetcher(debug=False, source="historical", request_type="average")
+circum_data_fetcher = AverageHeatLoadDataFetcher(debug=False, source="historical")
 rows = ["R6", "R7", "R8", "R9", "R10"]
 # Combine titles
 try:
@@ -112,17 +116,25 @@ st.plotly_chart(fig, use_container_width=True)
 # Initialize the data fetcher
 
 st.title("Circumferential Temperature Distribution")
-circum_data_fetcher = CircumferentialTemperatureDataFetcher(debug=False, source="historical", request_type="average")
+circum_data_fetcher = CircumferentialTemperatureDataFetcher(debug=False, source="historical")
 
 try:
-    temperatures_dict = circum_data_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc)
+    temperatures_dict = circum_data_fetcher.fetch_averaged_data(time_interval, 
+                                                                start_time_utc, 
+                                                                end_time_utc,
+                                                                request_type="avg-min-max",
+                                                                window_by=None)
 except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()
 # Combine titles
 try:
     circum_temps_list = []
-    circum_temps_list.append(circum_data_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc))
+    circum_temps_list.append(circum_data_fetcher.fetch_averaged_data(time_interval, 
+                                                                     start_time_utc, 
+                                                                     end_time_utc,
+                                                                     request_type="avg-min-max",
+                                                                     window_by=None))
 except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()
@@ -178,12 +190,18 @@ st.plotly_chart(fig, use_container_width=True)
 st.title("Heat Load Data - Timeseries")
 # -------------------------------------------------------------------------------------------------------
 # 4. Timeseries Heatload plot
-data_fetcher = TimeSeriesHeatLoadDataFetcher(debug=False, source="historical", request_type="ts")
+data_fetcher = TimeSeriesHeatLoadDataFetcher(debug=False, source="historical")
 # Dropdown for selecting Row
 row = st.selectbox("Select Row", ["R6", "R7", "R8", "R9", "R10"])
 
 # Fetch and process data for all quadrants
-df = data_fetcher.fetch_data(time_interval=time_interval_4, start_time=start_time, end_time=end_time, row=row)
+df = data_fetcher.fetch_data(time_interval=time_interval_4, 
+                             start_time=start_time, 
+                             end_time=end_time, 
+                             row=row,
+                             quadrant=None,
+                             request_type="ts",
+                             window_by=None)
 
 df.sort_index(inplace=True)
 

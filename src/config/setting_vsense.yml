@@ -102,7 +102,7 @@ Optimisation:
       - CHARGES/HRS.
       - STOCKRODLEVEL
       - FURNACE TOP GAS ANALYSISH2%
-    maxmin: -1.0
+    maxmin: 1.0
     model: src/models/etaco_opt_dec.pkl
     output_param: FURNACETOPGASANALYSISCO2ETACO
     scaling: src/models/etaco_scaler_dec.pkl

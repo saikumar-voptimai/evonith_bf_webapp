@@ -12,9 +12,8 @@ class TemperatureDataFetcher(BaseDataFetcher):
     Fetcher for longitudinal temperature data.
     """
 
-    def __init__(self, debug: bool, source: str, request_type: str = "average"):
+    def __init__(self, debug: bool, source: str):
         super().__init__("temperature_profile", debug, source)
-        self.request_type = request_type
 
     def _get_variable_names(self, n_sensors: int) -> List[str]:
         """
@@ -30,21 +29,32 @@ class TemperatureDataFetcher(BaseDataFetcher):
             variable_names.extend([f"{self.variables[i]}{quadrant}" for quadrant in quadrants])
         return variable_names
     
-    def fetch_averaged_data(self, average_by: str, start_time=None, end_time=None) -> dict:
+    def fetch_averaged_data(self, 
+                            recent_data_of: str, 
+                            start_time=None, 
+                            end_time=None,
+                            request_type=None,
+                            window_by=None) -> dict:
         """
         Fetch and process temperature data as a dictionary for each temperature variable.
 
         Parameters:
-            average_by (str): Averaging interval or range selection.
+            recent_data_of (str): Averaging interval or range selection.
             start_time (datetime, optional): Start time for the range.
             end_time (datetime, optional): End time for the range.
+            request_type (str, optional): Type of request for data processing.
+            window_by (str, optional): Windowing parameter for data aggregation.
 
         Returns:
             dict: {variable_name: value, ...} for all temperature_variables.
         """
         source_clean = self.source.strip().lower()
         if not self.debug and source_clean == "historical":
-            temp_data = super().fetch_averaged_data(average_by, start_time, end_time)
+            temp_data = super().fetch_averaged_data(recent_data_of, 
+                                                    start_time, 
+                                                    end_time,
+                                                    request_type,
+                                                    window_by)
         elif not self.debug and source_clean == "live":
             temp_data = self.fetch_live_data()
         else:

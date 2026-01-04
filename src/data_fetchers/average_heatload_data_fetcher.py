@@ -8,11 +8,16 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
     Fetcher for average heat load data.
     """
 
-    def __init__(self, debug: bool = False, source: str = "live", request_type: str = "average"):
+    def __init__(self, debug: bool = False, source: str = "live"):
         super().__init__("heatload_delta_t", debug, source)
-        self.request_type = request_type
 
-    def fetch_averaged_data(self, recent_data_of: str, start_time=None, end_time=None, row: str = None) -> List[List[float]]:
+    def fetch_averaged_data(self, 
+                            recent_data_of: str, 
+                            start_time=None, 
+                            end_time=None, 
+                            row: str = None,
+                            request_type: str = "avg-min-max",
+                            window_by: str = "1h") -> List[List[float]]:
         """
         Fetch and process average heatload data for a specific row (R6-R10).
 
@@ -21,11 +26,17 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
             start_time (datetime, optional): Start time for the range.
             end_time (datetime, optional): End time for the range.
             row (str, optional): The row to filter (e.g., 'r6').
+            request_type (str, optional): Type of request for data processing.
+            window_by (str, optional): Windowing parameter for data aggregation. - Not valid for this method.
 
         Returns:
             pd.DataFrame: DataFrame with averaged heat load data for the specified row.
         """
-        df_flatdata = super().fetch_averaged_data(recent_data_of, start_time, end_time)
+        df_flatdata = super().fetch_averaged_data(recent_data_of, 
+                                                  start_time, 
+                                                  end_time,
+                                                  request_type,
+                                                  window_by)
         df_flatdata.set_index("time", inplace=True, drop=True)
         if row is None:
             raise ValueError("Row must be specified (e.g., 'r6').")
@@ -38,7 +49,7 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
         df_result[df_result > 1] = 1                    
         df_result.dropna(axis=0, how='all', inplace=True)  # Drop rows where all sensors are NaN
         df_result.interpolate(method='linear', axis=1, inplace=True)
-        if self.request_type == "ts":
+        if request_type == "ts":
             df_result.reset_index(inplace=True)
             df_result.rename(columns={"index": "time"}, inplace=True)
             df_result.set_index("time", inplace=True)

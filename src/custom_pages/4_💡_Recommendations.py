@@ -200,7 +200,7 @@ with st.form("Optimiser Form"):
             min_value=0.0, 
             max_value=0.5, 
             value=config_vsense['LAMBDA_REG'],
-            step=0.05,
+            step=0.005,
             help="Regularisation parameter for the optimisation algorithm."
         )
     submit_optim_params = st.form_submit_button("Run Optimiser")
@@ -305,4 +305,4 @@ with st.form("Optimiser Form"):
         with st.spinner("Generating review…"):
             if not debug_on:
                 out = call_llm(system, prompt)
-        st.markdown(out)
+                st.markdown(out)
