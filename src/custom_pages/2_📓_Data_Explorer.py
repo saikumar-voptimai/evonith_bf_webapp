@@ -162,7 +162,7 @@ if eqn_str:
 # Resize and render with Streamlit
 fig = plot.get_figure()
 fig.set_size_inches(10, 5)
-st.pyplot(fig, use_container_width=False)
+st.pyplot(fig, use_container_width='content')
 
 #--------------------------------------------------------------------------
 st.subheader("Timeseries plot")
