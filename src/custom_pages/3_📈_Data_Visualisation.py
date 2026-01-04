@@ -12,21 +12,21 @@ import plotly.graph_objs as go
 
 TIMEZONE = pytz.timezone('Asia/Kolkata')  # GMT+5:30
 
-st.markdown(
-    """
-    <style>
-      /* reduce spacing between all vertical blocks */
-      div[data-testid="stVerticalBlock"] { gap: 0rem; }
+st.markdown("""
+<style>
+/* Remove default vertical spacing between blocks */
+div[data-testid="stVerticalBlock"] { gap: 0rem !important; }
 
-      /* remove extra margin around plotly charts */
-      div[data-testid="stPlotlyChart"] { margin: 0 !important; padding: 0 !important; }
+/* Remove extra spacing around each element */
+div[data-testid="element-container"] { margin: 0 !important; padding: 0 !important; }
 
-      /* reduce page padding */
-      .block-container { padding-top: 0.6rem; padding-bottom: 0rem; }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+/* Plotly chart wrapper */
+div[data-testid="stPlotlyChart"] { margin: 0 !important; padding: 0 !important; }
+
+/* Page padding */
+.block-container { padding-top: 0.5rem !important; padding-bottom: 0rem !important; }
+</style>
+""", unsafe_allow_html=True)
 
 # ----------------------------------------------------------------------------------------------------------
 # 1. Longitudinal Contour Plotter

@@ -119,7 +119,7 @@ class CircumferentialPlotter(BasePlotter):
             vals_mid = cs_mean(theta_mid)
             fig.add_annotation(
                 text=titles[idx],
-                x=0.5, y=1.04,
+                x=0.5, y=0.98,
                 xref=xref, yref="paper",
                 showarrow=False,
                 font=dict(size=14, weight="bold")
@@ -251,7 +251,7 @@ class CircumferentialPlotter(BasePlotter):
                         colorbar=dict(
                             title=colorbar_title,
                             x=0.5,
-                            y=-0.12,
+                            y=-0.25,
                             len=0.85,
                             xanchor="center",
                             thickness=18,
@@ -286,10 +286,12 @@ class CircumferentialPlotter(BasePlotter):
                 range=y_range,
                 row=row, col=col
             )
-        bottom_margin = 55 if show_colorbar else 10
+        row_height = 160
+        top_margin = 0
+        bottom_margin = 10 if show_colorbar else 10
         fig.update_layout(
-            height=380 * rows,
-            margin=dict(t=80, b=bottom_margin, l=20, r=20),
+            height=row_height * rows,
+            margin=dict(t=top_margin, b=bottom_margin, l=20, r=20),
             showlegend=False,
         )
 

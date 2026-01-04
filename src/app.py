@@ -34,7 +34,7 @@ if not is_logged_in():
 # Base pages (visible to all)
 pages = [
     st.Page("custom_pages/1_🏭_Welcome.py", title="Welcome", icon="🏭"),
-    st.Page("custom_pages/2_📓_Data_Explorer.py", title="Data Submission", icon="📓"),
+    st.Page("custom_pages/2_📓_Data_Explorer.py", title="Data Explorer", icon="📓"),
     st.Page("custom_pages/3_📈_Data_Visualisation.py", title="V-Board", icon="📈"),
     st.Page("custom_pages/4_💡_Recommendations.py", title="V-Sense", icon="💡"),
     st.Page("custom_pages/5_🤖_AI_Copilot.py", title="CoPilot", icon="🤖"),
