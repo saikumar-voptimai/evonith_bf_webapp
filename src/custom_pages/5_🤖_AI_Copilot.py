@@ -4,9 +4,10 @@ import io
 import json
 import streamlit as st
 import pandas as pd
+import numpy as np
 from datetime import datetime, timezone
 from utils.helper_functions_explorer import data_retrieval as dr
-from utils.anomaly_propensity import compute_propensity_suite
+from utils.anomaly_propensity import Channeling, ChannelingConfig
 from config.config_loader import load_config
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -183,7 +184,9 @@ FIELD_LABELS = {
 }
 
 @st.cache_data(show_spinner=False)
-def fetch_recent_online(tr: str = 'last 8 hours', ar = '15 minutes') -> pd.DataFrame:
+def fetch_recent_online(tr: str = 'last 8 hours', 
+                        request_type: str = 'windowed-average',
+                        window_by: str = '15 minutes') -> pd.DataFrame:
     """
     Fetches recent online data from InfluxDB for the last `minutes` minutes.
     Args:
@@ -194,25 +197,12 @@ def fetch_recent_online(tr: str = 'last 8 hours', ar = '15 minutes') -> pd.DataF
     selected_measurements = list(MEASUREMENT_LABELS.keys())
     combined_df = dr.fetch_online_df(selected_measurements,
                                     tr, 
-                                    ar,
-                                    FREQUENCY_TO_TIMEDTA,
                                     MEASUREMENT_LABELS,
-                                    FIELD_LABELS)
+                                    FIELD_LABELS,                    
+                                    request_type=request_type,
+                                    window_by=window_by)
+
     return combined_df
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def fetch_recent_online_5min(tr: str = "last 8 hours") -> pd.DataFrame:
-    """Fetch recent data cached for ~5 minutes (demo widgets)."""
-    selected_measurements = list(MEASUREMENT_LABELS.keys())
-    return dr.fetch_online_df(
-        selected_measurements,
-        tr,
-        "5 minutes",
-        FREQUENCY_TO_TIMEDTA,
-        MEASUREMENT_LABELS,
-        FIELD_LABELS,
-    )
 
 # ────────────────────────────────────────────────────────────────────────────────
 # 4) PACKETS & PROMPTS
@@ -712,10 +702,132 @@ else:
 df_static = load_static_df(STATIC_CSV_PATH)
 
 st.header("Analysis & Reports")
-tabs = st.tabs(["Unit cost", "Unit cost & Burden Dist", "Anomalies"])
+tabs = st.tabs([ "Anomalies", "Unit cost", "Unit cost & Burden Dist"])
+
+st.sidebar.header("Configuration")
+run_llm = st.sidebar.toggle("Run LLM Analysis", key="run_llm_button")
+
+# ── Anomalies Tab (Influx) ─────────────────────────────────────────────────────
+# Optional but strongly recommended: cache your Influx pull so typing notes doesn’t slam the DB
+@st.cache_data(ttl=600, show_spinner=False)  # 10 minutes
+def fetch_recent_cached(tr: str, window_by: str):
+    return fetch_recent_online(tr=tr, request_type='windowed-average', window_by=window_by)
+
+with tabs[0]:
+    st.subheader("Anomalies")
+
+    # --- Operator notes: put in a form so it DOES NOT rerun the app on every keystroke ---
+    with st.form("operator_notes_form", clear_on_submit=False):
+        notes = st.text_area("Operator notes (optional)", key="operator_notes")
+        save_note = st.form_submit_button("Save note")
+        if save_note:
+            # TODO: persist this somewhere (DB / file / API) if required
+            st.success("Note captured in session (persistence TBD).")
+
+    st.divider()
+
+    detector = Channeling()
+
+    with st.expander("Channeling propensity", expanded=True):
+
+        c1, c2, c3 = st.columns([1, 1, 2])
+        enable = c1.toggle(
+            "Enable channeling propensity",
+            value=False,
+            key="channeling_propensity_enable",
+        )
+        live = c2.toggle(
+            "Auto-refresh (every 10 min)",
+            value=True,
+            key="channeling_propensity_autorefresh",
+        )
+        lookback = c3.selectbox(
+            "Lookback",
+            options=["last 1 hour", 
+                     "last 6 hours", 
+                     "last 12 hours",
+                     "last 1 day",
+                     "last 3 days",
+                     "last 1 week",
+                     "last 2 weeks",
+                     "last 1 month",
+                     "last 2 months",
+                     "last 3 months"],
+            index=2,
+            key="channeling_propensity_lookback",
+        )
+
+        # Auto-rerun the fragment every 600s ONLY if enabled + live
+        run_every = 600 if (enable and live) else None
+
+        @st.fragment(run_every=run_every)
+        def render_channeling():
+            with st.spinner("Computing propensities…"):
+                df_in = fetch_recent_cached(tr=lookback, window_by="1 minute")
+                scores = detector.score_timeseries(df_in)
+
+            if scores.empty:
+                st.info("No series to plot for this propensity.")
+                return
+
+            # --- KPI row ---
+            scores = scores[scores["channeling_score"] >= 0]  # filter invalid scores
+            scores = scores[scores["channeling_score"] <= 1.3]  # filter invalid scores
+            
+            scores.dropna(inplace=True, subset=["channeling_score"])
+            last = float(scores["channeling_score"].iloc[-1])
+            prev = float(scores["channeling_score"].iloc[-2]) if len(scores) > 1 else np.nan
+            delta = (last - prev) if np.isfinite(prev) else None
+
+            k1, k2, k3 = st.columns(3)
+            k1.metric(
+                "Current channeling score",
+                f"{last:.2f}",
+                delta=f"{delta:+.2f}" if delta is not None else None,
+            )
+            k2.metric(
+                "Components used (of 6)",
+                int(scores["n_components_used"].iloc[-1]),
+            )
+            k3.caption(f"Last updated: {datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}")
+
+            # --- Plot ONLY the final score (not the whole DF) ---
+            st.line_chart(scores[["channeling_score"]], height=220)
+
+            # --- Optional: component breakdown ---
+            last_points = st.number_input(
+                "Points to show in breakdown", value=12, min_value=1, max_value=1000, step=1)
+            with st.expander(f"Component breakdown (latest {last_points} points)", expanded=False):
+                cols = [
+                    "channeling_score",
+                    "uptake_score", "skin_score",
+                    "hbp_score", "eta_co_score",
+                    "heatload_score", "stave_score",
+                    "n_components_used",
+                ]
+                cols = [c for c in cols if c in scores.columns]
+                st.dataframe(scores[cols].tail(last_points), use_container_width=True)
+
+        if enable:
+            render_channeling()
+        else:
+            st.caption("Turn on **Enable channeling propensity** to start computing.")
+
+    if st.button("Check Anomalies"):
+        with st.spinner("Fetching recent data from Influx…"):
+            df_recent = fetch_recent_online(tr='last 8 hours', ar='15 minutes')
+        if df_recent.empty:
+            st.warning("No recent data fetched from Influx. Check credentials/fields.")
+        else:
+            system = "You are a careful anomaly detector for blast furnace thermal and gas behavior."
+            prompt = build_anomaly_prompt(df_recent, notes)
+            with st.spinner("Summarizing anomalies…"):
+                if run_llm:
+                    out = call_llm(system, prompt)
+                    st.markdown(out)
 
 # ── Review Tab (static CSV) ─────────────────────────────────────────────────────
-with tabs[0]:
+with tabs[1]:
     st.subheader("Unit cost review - Apr–Jun 2024")
 
     if st.button("Generate Review"):
@@ -728,7 +840,7 @@ with tabs[0]:
         st.markdown(out)
 
 # ── Report Tab (static CSV) ─────────────────────────────────────────────────────
-with tabs[1]:
+with tabs[2]:
     st.subheader("Unit cost & Burden Dist")
     if st.button("Generate Review - Burden Dist"):
 
@@ -739,63 +851,7 @@ with tabs[1]:
             out = call_llm(system, prompt)
         st.markdown(out)
 
-# ── Anomalies Tab (Influx) ─────────────────────────────────────────────────────
-with tabs[2]:
-    st.subheader("Anomalies")
-    notes = st.text_area("Operator notes (optional)")
-    # minutes = st.slider("Lookback (minutes)", 5, 60, 15, step=5)
 
-    with st.expander("Channeling propensity (demo)"):
-        show_channeling = st.checkbox(
-            "Compute channeling propensity (updates every 5 minutes)",
-            value=False,
-            key="channeling_propensity_enable",
-        )
-
-        if show_channeling:
-            with st.spinner("Computing propensities…"):
-                df_5m = fetch_recent_online_5min(tr="last 8 hours")
-                suite = compute_propensity_suite(df_5m)
-
-            if not suite:
-                st.info("Not enough data/columns to compute propensities.")
-            else:
-                items = list(suite.items())
-                cols = st.columns(min(4, len(items)))
-                for i, (name, res) in enumerate(items[:4]):
-                    cols[i].metric(
-                        name,
-                        f"{res.score_0_100:.0f}/100",
-                        "ALARM" if res.alarm else "OK",
-                    )
-
-                selected_name = st.selectbox(
-                    "Plot",
-                    options=list(suite.keys()),
-                    index=0,
-                    key="propensity_plot_select",
-                )
-                selected = suite[selected_name]
-
-                st.caption(
-                    f"Last sample: {selected.last_timestamp.isoformat() if selected.last_timestamp is not None else '—'} | {selected.alarm_reason}"
-                )
-                if selected.series_5min.empty:
-                    st.info("No series to plot for this propensity.")
-                else:
-                    st.line_chart(selected.series_5min, height=180)
-
-    if st.button("Check Anomalies"):
-        with st.spinner("Fetching recent data from Influx…"):
-            df_recent = fetch_recent_online(tr='last 8 hours', ar='15 minutes')
-        if df_recent.empty:
-            st.warning("No recent data fetched from Influx. Check credentials/fields.")
-        else:
-            system = "You are a careful anomaly detector for blast furnace thermal and gas behavior."
-            prompt = build_anomaly_prompt(df_recent, notes)
-            with st.spinner("Summarizing anomalies…"):
-                out = call_llm(system, prompt)
-            st.markdown(out)
 
 
 # ────────────────────────────────────────────────────────────────────────────────

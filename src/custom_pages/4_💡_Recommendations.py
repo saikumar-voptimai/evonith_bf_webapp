@@ -39,6 +39,7 @@ st.markdown(
 st.divider()
 
 debug_on = st.sidebar.toggle("Debug", value=False)
+run_llm = st.sidebar.toggle("Run LLM Analysis", key="run_llm_button")
 new_steps = 30 if debug_on else 30
 
 if config_vsense.get("OPTIM_STEPS") != new_steps:
@@ -303,6 +304,6 @@ with st.form("Optimiser Form"):
             target_output=target_output        
             )
         with st.spinner("Generating review…"):
-            if not debug_on:
+            if run_llm:
                 out = call_llm(system, prompt)
                 st.markdown(out)
