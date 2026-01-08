@@ -47,37 +47,54 @@ class StaticDatasetManager:
     # -----------------------------
     # Step 3: Fetch → Filter → Merge
     # -----------------------------
-    def update_static(self, rm_choice: str) -> pd.DataFrame:
+    def update_static(self, rm_choice: str, start_date: date | None = None) -> pd.DataFrame:
         existing = self._read_existing_static()
-        start_ts, end_ts = self._get_fetch_range(existing)
 
-        if start_ts is None:
-            st.info("Initial full fetch.")
-        else:
-            st.info(f"Fetching from {start_ts} → {end_ts}")
-        if start_ts == date.today():
-            st.info("No new data to fetch.")
-            return existing
-        else:
-            ml_df = self.fetcher.get_ml_dataset(
-                start_date=start_ts,
-                end_date=end_ts,
-                rm_choice=rm_choice,
-                cache_override=True,
-            )
+        # ---------------- CASE 1: FULL REPROCESS FROM USER DATE ----------------
+        if start_date:
+            st.info(f"Reprocessing historical data from {start_date}")
 
-            if ml_df.empty:
-                st.info("No new data fetched.")
+            # Keep only data BEFORE start_date
+            if not existing.empty:
+                existing = existing.loc[existing.index.date < start_date]
+
+            fetch_start = start_date
+            fetch_end = date.today() + timedelta(days=1)
+
+        # ---------------- CASE 2: NORMAL INCREMENTAL ----------------
+        else:
+            fetch_start, fetch_end = self._get_fetch_range(existing)
+
+            if fetch_start is None:
+                st.info("Initial full fetch.")
+            else:
+                st.info(f"Fetching incrementally from {fetch_start} → {fetch_end}")
+
+            if fetch_start == date.today():
+                st.info("No new data to fetch.")
                 return existing
 
-            filtered_df = self.cleaner.clean(ml_df)
 
-            final_df = filtered_df.combine_first(existing)
-            final_df = final_df.sort_index()
-            final_df = final_df.dropna(how="all")
+        # ---------------- FETCH ML DATA ----------------
+        ml_df = self.fetcher.get_ml_dataset(
+            start_date=fetch_start,
+            end_date=fetch_end,
+            rm_choice=rm_choice,
+            cache_override=True,
+        )
 
-            return final_df
+        if ml_df.empty:
+            st.info("No data fetched.")
+            return existing
 
+        filtered_df = self.cleaner.clean(ml_df)
+
+        # ---------------- MERGE (NEW WINS) ----------------
+        final_df = filtered_df.combine_first(existing)
+        final_df = final_df.sort_index()
+        final_df = final_df.dropna(how="all")
+
+        return final_df
 
 
 

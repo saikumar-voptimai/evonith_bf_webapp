@@ -470,52 +470,8 @@ if submitted:
 
 local_tz = ZoneInfo(config["ml_dataset"]["local_tz"])
 
-# # ---------------- UI ----------------
-# st.header("📄 ML Dataset")
 
-# with st.form("ml_form"):
-#     rm_choice = st.radio(
-#         "Select RM Dataset",
-#         ["RM Charge", "RM DPR"],
-#         horizontal=True,
-#     )
 
-#     col1, col2 = st.columns(2)
-#     with col1:
-#         start_date = st.date_input("Start Date", datetime.now(local_tz).date())
-#     with col2:
-#         end_date = st.date_input("End Date", datetime.now(local_tz).date())
-
-#     cache_override = st.checkbox("Override Cache")
-
-#     submitted = st.form_submit_button("Fetch Dataset")
-
-# # ---------------- PROCESS ----------------
-# if submitted:
-
-#     if start_date > end_date:
-#         st.error("Start Date cannot be after End Date.")
-#         st.stop()
-
-#     with st.spinner("Fetching ML Dataset..."):
-#         df_final = get_ml_dataset(
-#             start_date=start_date,
-#             end_date=end_date,
-#             rm_choice=rm_choice,
-#             cache_override=cache_override,
-#         )
-
-#     if df_final.empty:
-#         st.warning("No data found.")
-#     else:
-#         st.dataframe(df_final)
-
-#         st.download_button(
-#             "Download CSV",
-#             df_final.to_csv(index=True).encode("utf-8"),
-#             file_name=f"unified_ML_{start_date}_to_{end_date}.csv",
-#             mime="text/csv",
-#         )
 # IMPORTANT: create once so cache survives reruns
 @st.cache_resource
 def get_fetcher():
@@ -523,16 +479,10 @@ def get_fetcher():
 
 fetcher = get_fetcher()
 
-
-
-# -------------------------------------------------
-# Layout: TWO PANELS IN ONE ROW
-# -------------------------------------------------
+# ---------------- UI LAYOUT ----------------
 left_col, right_col = st.columns(2)
 
-# =================================================
-# LEFT PANEL — RAW ML DATASET
-# =================================================
+# -------------- ML DATASET FETCHER --------------
 with left_col:
     st.header("📄 ML Dataset")
 
@@ -581,20 +531,22 @@ with left_col:
                     mime="text/csv",
                 )
 
-# =================================================
-# RIGHT PANEL — FILTERED / STATIC DATASET 
-# =================================================
+# -------------- STATIC FILTERED DATASET MANAGER --------------
 with right_col:
     st.header("📄 Filtered ML Dataset")
     with st.container(border=True):
-        
 
         ml_cfg = config.get("ml_dataset", {})
         STATIC_DF_PATH = ml_cfg["static_dataset_path"]
+
         def get_static_manager():
             return StaticDatasetManager(STATIC_DF_PATH)
 
         static_manager = get_static_manager()
+
+        # ---------------- SESSION STATE INIT ----------------
+        if "static_df" not in st.session_state:
+            st.session_state.static_df = None
 
         rm_choice_static = st.radio(
             "Select RM Dataset",
@@ -603,27 +555,50 @@ with right_col:
             key="rm_static",
         )
 
+        # ---------------- HISTORICAL REPROCESS INPUT ----------------
+        reprocess_start_date = st.date_input(
+            "Reprocess data from date (optional)",
+            value=None,
+            help=(
+                "Use this if historical ML data has changed. "
+                "Data from this date onward will be recomputed and overwritten."
+            ),
+        )
+
+        if reprocess_start_date:
+            st.warning(
+                f"⚠ Historical reprocessing enabled from {reprocess_start_date}. "
+                "Existing data from this date onward will be overwritten."
+            )
+
+        # ---------------- FETCH BUTTON ----------------
         if st.button("Fetch & Update Filtered Dataset"):
             with st.spinner("Updating Static dataset..."):
-                df_static = static_manager.update_static(rm_choice_static)
+                df_static = static_manager.update_static(
+                    rm_choice=rm_choice_static,
+                    start_date=reprocess_start_date,
+                )
                 static_manager.save(df_static)
 
             if df_static.empty:
                 st.warning("No data available.")
+                st.session_state.static_df = None
             else:
                 st.success(f"Static dataset updated (rows: {len(df_static)})")
-                st.dataframe(df_static, height=300)
+                st.session_state.static_df = df_static
 
-                st.download_button(
-                    "Download Filtered Dataset (V14)",
-                    df_static.to_csv(index=True).encode("utf-8"),
-                    file_name="V14_df_filtered.csv",
-                    mime="text/csv",
-                )
+        # ---------------- DISPLAY + DOWNLOAD (PERSISTENT) ----------------
+        df_static = st.session_state.static_df
 
+        if df_static is not None and not df_static.empty:
+            st.dataframe(df_static, height=300)
 
-
-
+            st.download_button(
+                "Download Filtered Dataset (V14)",
+                df_static.to_csv(index=True).encode("utf-8"),
+                file_name="V14_df_filtered.csv",
+                mime="text/csv",
+            )
 
 
 
