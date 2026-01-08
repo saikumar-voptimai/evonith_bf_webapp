@@ -13,9 +13,10 @@ from pathlib import Path
 from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
 from dotenv import load_dotenv
-from ml_pipeline.main import get_ml_dataset
+
 from zoneinfo import ZoneInfo
-from ml_pipeline.ml_dataset_service import MlDatasetService
+from ml_pipeline.main import MlDatasetFetcher
+from ml_pipeline.static_dataset_manager import StaticDatasetManager
 
 
 
@@ -112,6 +113,7 @@ with st.sidebar:
     factor = st.number_input("PCI/Coke Cost ratio", value=13250/25000, step=0.01, format="%.2f")
 
 df['Unit Cost'] = (df['COKE RATE KG/THM'] + factor * df['ACTUALKG/THM.']) * 25100/1000
+
 df_filt = df[(pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date >= from_date) & 
              (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date <= to_date)]
 
@@ -468,63 +470,173 @@ if submitted:
 
 local_tz = ZoneInfo(config["ml_dataset"]["local_tz"])
 
-# ---------------- UI ----------------
-st.header("📄 ML Dataset")
+# # ---------------- UI ----------------
+# st.header("📄 ML Dataset")
 
-with st.form("ml_form"):
-    rm_choice = st.radio(
-        "Select RM Dataset",
-        ["RM Charge", "RM DPR"],
-        horizontal=True,
-    )
+# with st.form("ml_form"):
+#     rm_choice = st.radio(
+#         "Select RM Dataset",
+#         ["RM Charge", "RM DPR"],
+#         horizontal=True,
+#     )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Start Date", datetime.now(local_tz).date())
-    with col2:
-        end_date = st.date_input("End Date", datetime.now(local_tz).date())
+#     col1, col2 = st.columns(2)
+#     with col1:
+#         start_date = st.date_input("Start Date", datetime.now(local_tz).date())
+#     with col2:
+#         end_date = st.date_input("End Date", datetime.now(local_tz).date())
 
-    cache_override = st.checkbox("Override Cache")
+#     cache_override = st.checkbox("Override Cache")
 
-    submitted = st.form_submit_button("Fetch Dataset")
+#     submitted = st.form_submit_button("Fetch Dataset")
 
-# ---------------- PROCESS ----------------
-if submitted:
+# # ---------------- PROCESS ----------------
+# if submitted:
 
-    if start_date > end_date:
-        st.error("Start Date cannot be after End Date.")
-        st.stop()
+#     if start_date > end_date:
+#         st.error("Start Date cannot be after End Date.")
+#         st.stop()
 
-    with st.spinner("Fetching ML Dataset..."):
-        df_final = get_ml_dataset(
-            start_date=start_date,
-            end_date=end_date,
-            rm_choice=rm_choice,
-            cache_override=cache_override,
+#     with st.spinner("Fetching ML Dataset..."):
+#         df_final = get_ml_dataset(
+#             start_date=start_date,
+#             end_date=end_date,
+#             rm_choice=rm_choice,
+#             cache_override=cache_override,
+#         )
+
+#     if df_final.empty:
+#         st.warning("No data found.")
+#     else:
+#         st.dataframe(df_final)
+
+#         st.download_button(
+#             "Download CSV",
+#             df_final.to_csv(index=True).encode("utf-8"),
+#             file_name=f"unified_ML_{start_date}_to_{end_date}.csv",
+#             mime="text/csv",
+#         )
+# IMPORTANT: create once so cache survives reruns
+@st.cache_resource
+def get_fetcher():
+    return MlDatasetFetcher()
+
+fetcher = get_fetcher()
+
+
+
+# -------------------------------------------------
+# Layout: TWO PANELS IN ONE ROW
+# -------------------------------------------------
+left_col, right_col = st.columns(2)
+
+# =================================================
+# LEFT PANEL — RAW ML DATASET
+# =================================================
+with left_col:
+    st.header("📄 ML Dataset")
+
+    with st.form("ml_form"):
+        rm_choice_raw = st.radio(
+            "Select RM Dataset",
+            ["RM Charge", "RM DPR"],
+            horizontal=True,
         )
 
-    if df_final.empty:
-        st.warning("No data found.")
-    else:
-        st.dataframe(df_final)
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input(
+                "Start Date", datetime.now(local_tz).date()
+            )
+        with col2:
+            end_date = st.date_input(
+                "End Date", datetime.now(local_tz).date()
+            )
 
-        st.download_button(
-            "Download CSV",
-            df_final.to_csv(index=True).encode("utf-8"),
-            file_name=f"unified_ML_{start_date}_to_{end_date}.csv",
-            mime="text/csv",
+        cache_override = st.checkbox("Override Cache")
+        submitted = st.form_submit_button("Fetch Dataset")
+
+    if submitted:
+        if start_date > end_date:
+            st.error("Start Date cannot be after End Date.")
+        else:
+            with st.spinner("Fetching ML Dataset..."):
+                df_final = fetcher.get_ml_dataset(
+                    start_date=start_date,
+                    end_date=end_date,
+                    rm_choice=rm_choice_raw,
+                    cache_override=cache_override,
+                )
+
+            if df_final.empty:
+                st.warning("No data found.")
+            else:
+                st.success(f"Rows fetched: {len(df_final)}")
+                st.dataframe(df_final, height=300)
+
+                st.download_button(
+                    "Download CSV",
+                    df_final.to_csv(index=True).encode("utf-8"),
+                    file_name=f"unified_ML_{start_date}_to_{end_date}.csv",
+                    mime="text/csv",
+                )
+
+# =================================================
+# RIGHT PANEL — FILTERED / STATIC DATASET 
+# =================================================
+with right_col:
+    st.header("📄 Filtered ML Dataset")
+    with st.container(border=True):
+        
+
+        ml_cfg = config.get("ml_dataset", {})
+        STATIC_DF_PATH = ml_cfg["static_dataset_path"]
+        def get_static_manager():
+            return StaticDatasetManager(STATIC_DF_PATH)
+
+        static_manager = get_static_manager()
+
+        rm_choice_static = st.radio(
+            "Select RM Dataset",
+            ["RM Charge", "RM DPR"],
+            horizontal=True,
+            key="rm_static",
         )
+
+        if st.button("Fetch & Update Filtered Dataset"):
+            with st.spinner("Updating Static dataset..."):
+                df_static = static_manager.update_static(rm_choice_static)
+                static_manager.save(df_static)
+
+            if df_static.empty:
+                st.warning("No data available.")
+            else:
+                st.success(f"Static dataset updated (rows: {len(df_static)})")
+                st.dataframe(df_static, height=300)
+
+                st.download_button(
+                    "Download Filtered Dataset (V14)",
+                    df_static.to_csv(index=True).encode("utf-8"),
+                    file_name="V14_df_filtered.csv",
+                    mime="text/csv",
+                )
+
+
+
+
+
 
 
 # 10 --- HOT METAL AND SLAG DATA SECTION ---
 
 
+service = fetcher.service  
+
+# ---------------- UI ----------------
 st.header("📄 HOT METAL AND SLAG")
 
-service = MlDatasetService()  # private singleton
-# ----- FORM -----
 with st.form("hotmetal_form_2"):
-    col1, col2 = st.columns([1, 1])
+    col1, col2 = st.columns(2)
     with col1:
         from_date = st.date_input("From Date")
     with col2:
@@ -534,44 +646,45 @@ with st.form("hotmetal_form_2"):
         "Interval (minutes)",
         min_value=1,
         max_value=600,
-        value=60
+        value=60,
     )
 
     fetch_btn = st.form_submit_button("Fetch HM & SLAG DATA")
 
-# ----- ACTION -----
+# ---------------- ACTION ----------------
 if fetch_btn:
+
     if from_date > to_date:
         st.error("❌ From Date must be less than or equal to To Date.")
         st.stop()
 
     keep_cols = config.get("keep_cols", [])
 
-    # ---- CALL DOMAIN SERVICE ----
-    df_final =  service.fetch_hotmetal_hourly(
-        start_date=from_date,
-        end_date=to_date,
-        keep_columns=keep_cols,
-        interval_minutes=interval_min,
-    )
-
+    with st.spinner("Fetching Hot Metal & Slag data..."):
+        df_final = service.fetch_hotmetal_hourly(
+            start_date=from_date,
+            end_date=to_date,
+            keep_columns=keep_cols,
+            interval_minutes=interval_min,
+        )
 
     if df_final.empty:
         st.warning("No data found.")
         st.stop()
+
     # ---- DROP UNWANTED COLUMNS ----
     drop_cols = ["cast_no_ladle_spec", "lab_sample_id"]
-    df_final = df_final.drop(columns=[c for c in drop_cols if c in df_final.columns])
+    df_final = df_final.drop(
+        columns=[c for c in drop_cols if c in df_final.columns]
+    )
 
     st.success("Data processed successfully!")
     st.dataframe(df_final)
 
-    # --- CSV Download ---
+    # ---- CSV DOWNLOAD ----
     st.download_button(
         "Download CSV",
-        df_final.to_csv().encode("utf-8"),
+        df_final.to_csv(index=True).encode("utf-8"),
         file_name=f"hotmetal_{from_date}_to_{to_date}_{interval_min}min.csv",
         mime="text/csv",
     )
-
-
