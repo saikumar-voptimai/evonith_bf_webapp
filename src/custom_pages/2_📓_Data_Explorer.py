@@ -536,27 +536,28 @@ with right_col:
     st.header("📄 Filtered ML Dataset")
     with st.container(border=True):
 
-        ml_cfg = config.get("ml_dataset", {})
-        STATIC_DF_PATH = ml_cfg["static_dataset_path"]
+        STATIC_DF_PATH = config["DATA"]
 
+        @st.cache_resource
         def get_static_manager():
             return StaticDatasetManager(STATIC_DF_PATH)
 
-        static_manager = get_static_manager()
+        sm = get_static_manager()
 
         # ---------------- SESSION STATE INIT ----------------
-        if "static_df" not in st.session_state:
-            st.session_state.static_df = None
+        ss = st.session_state
+        ss.setdefault("static_df", None)
+        ss.setdefault("static_ready", False)
 
-        rm_choice_static = st.radio(
+        # ---------------- INPUTS ----------------
+        rm_choice = st.radio(
             "Select RM Dataset",
             ["RM Charge", "RM DPR"],
             horizontal=True,
             key="rm_static",
         )
 
-        # ---------------- HISTORICAL REPROCESS INPUT ----------------
-        reprocess_start_date = st.date_input(
+        reprocess_date = st.date_input(
             "Reprocess data from date (optional)",
             value=None,
             help=(
@@ -565,41 +566,56 @@ with right_col:
             ),
         )
 
-        if reprocess_start_date:
+        if reprocess_date:
             st.warning(
-                f"⚠ Historical reprocessing enabled from {reprocess_start_date}. "
+                f"⚠ Historical reprocessing enabled from {reprocess_date}. "
                 "Existing data from this date onward will be overwritten."
             )
 
-        # ---------------- FETCH BUTTON ----------------
-        if st.button("Fetch & Update Filtered Dataset"):
-            with st.spinner("Updating Static dataset..."):
-                df_static = static_manager.update_static(
-                    rm_choice=rm_choice_static,
-                    start_date=reprocess_start_date,
-                )
-                static_manager.save(df_static)
+        # ---------------- HELPERS ----------------
+        def set_static(df):
+            ss.static_df = df
+            ss.static_ready = df is not None and not df.empty
 
-            if df_static.empty:
-                st.warning("No data available.")
-                st.session_state.static_df = None
-            else:
-                st.success(f"Static dataset updated (rows: {len(df_static)})")
-                st.session_state.static_df = df_static
+        # ---------------- ACTION BUTTONS ----------------
+        col1, col2 = st.columns(2)
 
-        # ---------------- DISPLAY + DOWNLOAD (PERSISTENT) ----------------
-        df_static = st.session_state.static_df
+        with col1:
+            if st.button("🚀 Fetch & Process"):
+                with st.spinner("Fetching and processing static dataset..."):
+                    df = sm.update_static(
+                        rm_choice=rm_choice,
+                        start_date=reprocess_date,
+                    )
+                    if df.empty:
+                        st.warning("No data fetched.")
+                        set_static(None)
+                    else:
+                        sm.save(df)
+                        set_static(df)
+                        st.success(f"Static dataset ready ({len(df)} rows)")
 
-        if df_static is not None and not df_static.empty:
-            st.dataframe(df_static, height=300)
+        with col2:
+            if st.button("📂 Load Existing"):
+                with st.spinner("Loading saved static dataset..."):
+                    df = sm._read_existing_static()
+                    if df.empty:
+                        st.warning("No saved static dataset found.")
+                        set_static(None)
+                    else:
+                        set_static(df)
+                        st.success(f"Loaded static dataset ({len(df)} rows)")
+
+        # ---------------- DISPLAY + DOWNLOAD ----------------
+        if ss.static_ready:
+            st.dataframe(ss.static_df, height=300)
 
             st.download_button(
-                "Download Filtered Dataset (V14)",
-                df_static.to_csv(index=True).encode("utf-8"),
-                file_name="V14_df_filtered.csv",
+                "⬇ Download Filtered Dataset",
+                ss.static_df.to_csv(index=True).encode("utf-8"),
+                file_name="ML_df_filtered.csv",
                 mime="text/csv",
             )
-
 
 
 # 10 --- HOT METAL AND SLAG DATA SECTION ---
