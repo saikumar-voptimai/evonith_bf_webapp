@@ -537,16 +537,16 @@ with right_col:
     with st.container(border=True):
 
         static_df_path = config["DATA"]
+        sm = StaticDatasetManager(static_df_path)
 
-        @st.cache_resource
-        def get_static_manager():
-            return StaticDatasetManager(static_df_path)
-        sm = get_static_manager()
+        # ---------------- RESET FLAG INIT ----------------
+        if "reset_reprocess_date" not in st.session_state:
+            st.session_state.reset_reprocess_date = False
 
-        # ---------------- SESSION STATE INIT ----------------
-        ss = st.session_state
-        ss.setdefault("static_df", None)
-        ss.setdefault("static_ready", False)
+        # ---------------- APPLY RESET BEFORE WIDGET ----------------
+        if st.session_state.reset_reprocess_date:
+            st.session_state.reprocess_date = None
+            st.session_state.reset_reprocess_date = False
 
         # ---------------- INPUTS ----------------
         rm_choice = st.radio(
@@ -559,22 +559,8 @@ with right_col:
         reprocess_date = st.date_input(
             "Reprocess data from date (optional)",
             value=None,
-            help=(
-                "Use this if historical ML data has changed. "
-                "Data from this date onward will be recomputed and overwritten."
-            ),
+            key="reprocess_date",
         )
-
-        if reprocess_date:
-            st.warning(
-                f"⚠ Historical reprocessing enabled from {reprocess_date}. "
-                "Existing data from this date onward will be overwritten."
-            )
-
-        # ---------------- HELPERS ----------------
-        def set_static(df):
-            ss.static_df = df
-            ss.static_ready = df is not None and not df.empty
 
         # ---------------- ACTION BUTTON ----------------
         if st.button("🚀 Fetch, Update & Prepare Download"):
@@ -586,22 +572,23 @@ with right_col:
 
                 if df.empty:
                     st.warning("No data fetched.")
-                    ss.static_df = None
-                    ss.static_ready = False
                 else:
-                    sm.save(df) 
-                    ss.static_df = df 
-                    ss.static_ready = True
+                    sm.save(df)
                     st.success(f"Dataset ready ({len(df)} rows)")
-            
+
+                    # ✅ request reset for next rerun
+                    st.session_state.reset_reprocess_date = True
+                    st.rerun()
+
         # ---------------- DOWNLOAD ----------------
-        if ss.static_ready:
+        with open(static_df_path, "rb") as f:
             st.download_button(
-                label="⬇ Download Latest Dataset",
-                data=ss.static_df.to_csv(index=True).encode("utf-8"),
+                label="⬇ Download Existing Dataset",
+                data=f,
                 file_name="V13_df_filtered.csv",
                 mime="text/csv",
             )
+
 
 
         # col1, col2 = st.columns(2)
