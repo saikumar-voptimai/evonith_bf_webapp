@@ -563,8 +563,7 @@ with right_col:
             key="reprocess_date",
         )
 
-        # ---------------- ACTION BUTTON ----------------
-<<<<<<< HEAD
+        # ---------------- ACTION BUTTON ---------------
         col1, col2 = st.columns(2)
 
         with col1:
@@ -595,71 +594,6 @@ with right_col:
                 )
 
 
-
-        # col1, col2 = st.columns(2)
-
-        # with col1:
-        #     if st.button("Fetch & Process", use_container_width=True):
-        #         with st.spinner("Fetching and processing static dataset..."):
-        #             df = sm.update_static(
-        #                 rm_choice=rm_choice,
-        #                 start_date=reprocess_date,
-        #             )
-
-        #             if df.empty:
-        #                 st.warning("No data fetched.")
-        #                 ss.static_ready = False
-        #             else:
-        #                 sm.save(df)                 # ✅ persist to disk
-        #                 ss.static_df = df           # ✅ update UI
-        #                 ss.static_ready = True
-        #                 st.success(f"Static dataset updated ({len(df)} rows)")
-        # with col2:
-        #     with open(static_df_path, "rb") as f:
-        #         st.download_button(
-        #             label="⬇ Download Existing Dataset",
-        #             data=f,
-        #             file_name="V13_df_filtered.csv",
-        #             mime="text/csv",
-        #            )
-
-        # # ---------------- DISPLAY + DOWNLOAD ----------------
-        # if ss.static_ready:
-        #     st.dataframe(ss.static_df, height=300)
-
-        #     st.download_button(
-        #         "⬇ Download Filtered Dataset",
-        #         ss.static_df.to_csv(index=True).encode("utf-8"),
-        #         file_name="ML_df_filtered.csv",
-        #         mime="text/csv",
-        #     )
-=======
-        if st.button(" Fetch & Process"):
-            with st.spinner("Fetching & updating static dataset..."):
-                df = sm.update_static(
-                    rm_choice=rm_choice,
-                    start_date=reprocess_date,
-                )
-
-                if df.empty:
-                    st.warning("No data fetched.")
-                else:
-                    sm.save(df)
-                    st.success(f"Dataset ready ({len(df)} rows)")
-
-                    # ✅ request reset for next rerun
-                    st.session_state.reset_reprocess_date = True
-                    st.rerun()
-
-        # ---------------- DOWNLOAD ----------------
-        with open(static_df_path, "rb") as f:
-            st.download_button(
-                label="Download ML Dataset",
-                data=f,
-                file_name="V13_df_filtered.csv",
-                mime="text/csv",
-            )
->>>>>>> 0da90209f163b15477a798bfc89688caad5b6e02
 
 # 10 --- HOT METAL AND SLAG DATA SECTION ---
 
