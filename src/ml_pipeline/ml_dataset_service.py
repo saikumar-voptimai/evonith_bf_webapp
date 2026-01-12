@@ -44,9 +44,7 @@ class MlDatasetService:
     def _get_engine(self):
         return create_engine(self.db_url)
 
-    # ----------------------------------------------------------
-    # Safe Influx Query Wrapper
-    # ----------------------------------------------------------
+    # --------------- INFLUX FETCH WITH RETRIES ---------------
     def _safe_influx_call(self, measurement, start_dt, end_dt, bucket=None, retries=3, wait=2):
         """
         Wraps fetch_offline_data with simple retry on transient errors
@@ -78,54 +76,47 @@ class MlDatasetService:
                     continue
                 raise e
 
-    # ----------------------------------------------------------
-    # Convert date range into UTC timestamps
-    # ----------------------------------------------------------
+    # --------------- TIMEZONE CONVERSIONS ---------------
     def _to_utc_window(self, start_date: date, end_date: date):
+        """
+        Convert local date range to UTC datetime range for Influx queries.
+        """
         tz = ZoneInfo(self.local_tz)
         start_dt = datetime.combine(start_date, time.min).replace(tzinfo=tz).astimezone(timezone.utc)
         end_dt   = datetime.combine(end_date, time.max).replace(tzinfo=tz).astimezone(timezone.utc)
         return start_dt, end_dt
 
-    # ----------------------------------------------------------
-    # Normalize timezone: UTC → IST → strip tz
-    # ----------------------------------------------------------
+    # --------------- CLEAN TIMEZONE ---------------
     def _normalize_timezone(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Convert index to local timezone and remove tz info.
+        """
         if df.empty:
             return df
-
         tz = ZoneInfo(self.local_tz)
-
         if df.index.tz is None:
             df.index = df.index.tz_localize("UTC")
-
         df.index = df.index.tz_convert(tz).tz_localize(None)
         df.index.name = "time"
 
         return df.sort_index()
 
-    # ----------------------------------------------------------
-    # STEP 1: Fetch main ML dataset
-    # ----------------------------------------------------------
+    # ------------------- FETCH STEP 1 OLD DATASET -------------------
     def fetch(self, start_date: date, end_date: date, allowed_columns=None) -> pd.DataFrame:
+        """"
+        Fetch main ML dataset from InfluxDB.
+        """
 
         start_dt, end_dt = self._to_utc_window(start_date, end_date)
-
         df = self._safe_influx_call(self.measurement_step1, start_dt, end_dt)
-
         if df is None or df.empty:
             return pd.DataFrame()
-
         df = self._normalize_timezone(df)
-
         if allowed_columns:
             df = df[df.columns.intersection(allowed_columns.keys())]
-
         return df
 
-    # ----------------------------------------------------------
-    # STEP 2: Fetch RM Charge or RM DPR data
-    # ----------------------------------------------------------
+    # ------------------- FETCH STEP 2 NEW DATASET -------------------
     def fetch_rm_data(
         self,
         start_date: date,
@@ -133,28 +124,24 @@ class MlDatasetService:
         mode: str = "charge",       # "charge" or "dpr"
         allowed_columns=None
     ) -> pd.DataFrame:
+        """
+        Fetch RM Charge or RM DPR dataset from InfluxDB.
+        """
 
         measurement = (
             self.measurement_rm_charge if mode == "charge" else self.measurement_rm_dpr
         )
-
         start_dt, end_dt = self._to_utc_window(start_date, end_date)
-
         df = self._safe_influx_call(measurement, start_dt, end_dt)
-
         if df is None or df.empty:
             return pd.DataFrame()
-
         df = self._normalize_timezone(df)
-
         if allowed_columns:
             df = df[df.columns.intersection(allowed_columns.keys())]
 
         return df
 
-    # ----------------------------------------------------------
-    # STEP 3: Fetch Hot Metal / Slag and interpolate to interval
-    # ----------------------------------------------------------
+    # ------------------- FETCH STEP 3  HM DATASET -------------------
     def fetch_hotmetal_hourly(
         self,
         start_date: date,
@@ -241,8 +228,16 @@ class MlDatasetService:
         return df_final
     
 
-    # Burden Distribution Data
+    # ------------------- FETCH STEP 4 Distribution Data -------------------
     def fetch_distribution_data(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """
+        Fetch burden distribution data from Postgres history table.
+            Args:   
+            start_date (date): Start date for data fetch.
+            end_date (date): End date for data fetch.
+        Returns:
+            pd.DataFrame: DataFrame with burden distribution data indexed by date.
+        """
         engine = self._get_engine()
 
         def _to_date(v):
@@ -332,14 +327,9 @@ class MlDatasetService:
 
         return df_pivot
 
-
-
-    # ----------------------------------------------------------
-    # Wrappers to match UI function names (Step-1 / Step-2)
-    # ----------------------------------------------------------
+    # ------------------- WRAPPERS TO MATCH UI FUNCTION NAMES (STEP-1 / STEP-2) -------------------
     def fetch_step1(self, start_date, end_date, allowed_columns=None):
         return self.fetch(start_date, end_date, allowed_columns)
 
     def fetch_step2(self, start_date, end_date, mode, allowed_columns=None):
         return self.fetch_rm_data(start_date, end_date, mode, allowed_columns)
-

@@ -9,7 +9,13 @@ from ml_pipeline.data_cleaning import DataCleaner, build_default_config
 
 class StaticDatasetManager:
     """
-    Orchestrates incremental Static (filtered ML dataset) updates.
+    Manages reading, updating, and saving a static ML dataset CSV.
+    1. Reads existing static dataset from CSV.
+    2. Determines fetch range based on existing data.
+    3. Fetches new ML data using MlDatasetFetcher.
+    4. Cleans the fetched data using DataCleaner. 
+    5. Merges new data with existing data (new data takes precedence).
+    6. Saves the updated dataset back to CSV.
     """
 
     def __init__(self, static_path: str):
@@ -17,9 +23,7 @@ class StaticDatasetManager:
         self.fetcher = MlDatasetFetcher()
         self.cleaner = DataCleaner(build_default_config())
 
-    # -----------------------------
-    # Step 1: Read existing Static dataset safely
-    # -----------------------------
+    # ------------ READ EXISTING STATIC DATASET ------------
     def _read_existing_static(self) -> pd.DataFrame:
         if not self.static_path.exists():
             return pd.DataFrame()
@@ -33,20 +37,15 @@ class StaticDatasetManager:
 
         return df.sort_index()
 
-
-    # -----------------------------
-    # Step 2: Decide fetch range
-    # -----------------------------
-    def _get_fetch_range(self, existing_df: pd.DataFrame):
+    # ------------ DETERMINE FETCH RANGE ------------
+    def _get_fetch_range(self, existing_df: pd.DataFrame) -> tuple[date | None, date]:
         if existing_df.empty:
             return None, date.today()
 
         last_date = existing_df.index.max().date()
         return last_date, date.today()+timedelta(days=1)
 
-    # -----------------------------
-    # Step 3: Fetch → Filter → Merge
-    # -----------------------------
+    # ------------ FETCH ML DATA ------------
     def update_static(self, rm_choice: str, start_date: date | None = None) -> pd.DataFrame:
         existing = self._read_existing_static()
 
@@ -100,10 +99,8 @@ class StaticDatasetManager:
 
 
 
-    # -----------------------------
-    # Step 4: Persist (no index header)
-    # -----------------------------
-    def save(self, df: pd.DataFrame):
+    # ------------ SAVE STATIC DATASET ------------
+    def save(self, df: pd.DataFrame) -> None:
         # Remove index name so no column header is written
         df = df.copy()
         df.index.name = None
