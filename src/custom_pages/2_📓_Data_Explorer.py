@@ -532,6 +532,7 @@ with left_col:
                 )
 
 # -------------- STATIC FILTERED DATASET MANAGER --------------
+
 with right_col:
     st.header("📄 Filtered ML Dataset")
     with st.container(border=True):
@@ -563,31 +564,34 @@ with right_col:
         )
 
         # ---------------- ACTION BUTTON ----------------
-        if st.button("🚀 Fetch, Update & Prepare Download"):
-            with st.spinner("Fetching and processing static dataset..."):
-                df = sm.update_static(
-                    rm_choice=rm_choice,
-                    start_date=reprocess_date,
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button(" Fetch & Process"):
+                with st.spinner("Fetching & updating static dataset..."):
+                    df = sm.update_static(
+                        rm_choice=rm_choice,
+                        start_date=reprocess_date,
+                    )
+
+                    if df.empty:
+                        st.warning("No data fetched.")
+                    else:
+                        sm.save(df)
+                        st.success(f"Dataset ready ({len(df)} rows)")
+
+                        # request reset for next rerun
+                        st.session_state.reset_reprocess_date = True
+                        st.rerun()
+
+        with col2:
+            with open(static_df_path, "rb") as f:
+                st.download_button(
+                    label="Download ML Dataset",
+                    data=f,
+                    file_name="ML Filtered Dataset.csv",
+                    mime="text/csv",
                 )
-
-                if df.empty:
-                    st.warning("No data fetched.")
-                else:
-                    sm.save(df)
-                    st.success(f"Dataset ready ({len(df)} rows)")
-
-                    # ✅ request reset for next rerun
-                    st.session_state.reset_reprocess_date = True
-                    st.rerun()
-
-        # ---------------- DOWNLOAD ----------------
-        with open(static_df_path, "rb") as f:
-            st.download_button(
-                label="⬇ Download Existing Dataset",
-                data=f,
-                file_name="V13_df_filtered.csv",
-                mime="text/csv",
-            )
 
 
 
@@ -628,7 +632,6 @@ with right_col:
         #         file_name="ML_df_filtered.csv",
         #         mime="text/csv",
         #     )
-
 
 # 10 --- HOT METAL AND SLAG DATA SECTION ---
 
