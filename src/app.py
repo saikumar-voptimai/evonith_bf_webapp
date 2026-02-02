@@ -36,9 +36,10 @@ pages = [
     st.Page("custom_pages/1_🏭_Welcome.py", title="Welcome", icon="🏭"),
     st.Page("custom_pages/2_📓_Data_Explorer.py", title="Data Explorer", icon="📓"),
     st.Page("custom_pages/3_📈_Data_Visualisation.py", title="V-Board", icon="📈"),
-    st.Page("custom_pages/4_💡_Recommendations.py", title="AI CoPilot", icon="💡"),
-    st.Page("custom_pages/5_🤖_AI_Copilot.py", title="V-Sense", icon="🤖"),
+    st.Page("custom_pages/4_💡_Recommendations.py", title="V-Sense", icon="💡"),
+    st.Page("custom_pages/5_🤖_AI_Copilot.py", title="CoPilot", icon="🤖"),
     # st.Page("custom_pages/6_📊_Reports.py", title="Reports", icon="📊" ),
+    st.Page("custom_pages/7_🧠_FurnaceMind.py", title="FurnaceMind", icon="🧠"),
 ]
 
 
