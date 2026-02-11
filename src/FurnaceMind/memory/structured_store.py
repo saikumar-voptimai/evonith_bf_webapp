@@ -14,7 +14,7 @@ class StructuredStore:
     Stores shift summaries + aggregated daily/weekly/bi-weekly summaries.
     """
 
-    def __init__(self, base_dir: str = "FurnaceMind/data/structured"):
+    def __init__(self, base_dir: str = "src/FurnaceMind/data/structured"):
         self.base_path = Path(base_dir)
         self.base_path.mkdir(parents=True, exist_ok=True)
 
