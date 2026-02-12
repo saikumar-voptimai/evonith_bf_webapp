@@ -3,17 +3,12 @@
 from sentence_transformers import SentenceTransformer
 from typing import List
 
-
 class SentenceEmbedding:
-    """
-    SentenceTransformer-based embedding generator.
-    """
-
     def __init__(self, model_name: str, device: str = "cpu"):
-        # Load directly on target device
+        # Always use CPU to avoid CUDA issues on Streamlit Cloud
         self.model = SentenceTransformer(
             model_name,
-            device=device
+            device="cpu"
         )
 
     def embed(self, texts: List[str]) -> List[List[float]]:
