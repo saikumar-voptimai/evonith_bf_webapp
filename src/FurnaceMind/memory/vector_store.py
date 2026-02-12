@@ -1,6 +1,7 @@
 # memory/vector_store.py
 
 from typing import Dict, List, Optional
+import torch
 
 from FurnaceMind.utils.payload_helpers import window_id_to_uuid
 from qdrant_client import QdrantClient
@@ -31,7 +32,7 @@ class QdrantVectorStore:
 
         self.embedding = SentenceEmbedding(
             model_name=settings.embedding.model_name,
-            device=settings.embedding.device,
+            device="cuda" if torch.cuda.is_available() else "cpu",
         )
 
         self._ensure_collection()
