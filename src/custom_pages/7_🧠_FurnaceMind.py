@@ -45,7 +45,8 @@ logger = get_logger(__name__)
 
 
 # Load schemas
-BASE = Path(r"C:\All folders\VoptimAlse\FurnaceMind\config")
+# Load schemas
+BASE = Path(__file__).resolve().parent.parent / "FurnaceMind" / "config"
 
 SHIFT_SCHEMA = json.load(open(BASE / "shift_payload_schema.json"))
 DAY_SCHEMA = json.load(open(BASE / "day_payload_schema.json"))
