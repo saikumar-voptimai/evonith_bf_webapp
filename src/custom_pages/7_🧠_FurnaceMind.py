@@ -3,7 +3,7 @@
 
 import json
 from pathlib import Path
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
@@ -31,7 +31,6 @@ from FurnaceMind.memory.retriever import ContextRetriever
 from FurnaceMind.memory.schemas import ShiftSummary
 from FurnaceMind.memory.aggregation import run_aggregation_if_ready
 
-
 from FurnaceMind.utils.window_helpers import (
     build_shift_window_id,
     build_day_window_id,
@@ -44,9 +43,17 @@ from config.config_loader import load_config
 logger = get_logger(__name__)
 
 
-# Load schemas
-# Load schemas
-BASE = Path(__file__).resolve().parent.parent / "FurnaceMind" / "config"
+# ---------------------------------------------------------------------------
+# Load schemas — use a robust path that works both locally and on Streamlit Cloud
+# ---------------------------------------------------------------------------
+_THIS_DIR = Path(__file__).resolve().parent
+# Try the original path first; fall back to sibling "FurnaceMind/config" dir
+_CANDIDATE_PATHS = [
+    _THIS_DIR.parent / "FurnaceMind" / "config",   # original layout
+    _THIS_DIR / "FurnaceMind" / "config",           # flat / Cloud layout
+    _THIS_DIR / "config",                           # if already inside FurnaceMind
+]
+BASE = next((p for p in _CANDIDATE_PATHS if p.is_dir()), _CANDIDATE_PATHS[0])
 
 SHIFT_SCHEMA = json.load(open(BASE / "shift_payload_schema.json"))
 DAY_SCHEMA = json.load(open(BASE / "day_payload_schema.json"))
@@ -54,7 +61,9 @@ WEEK_SCHEMA = json.load(open(BASE / "weekly_payload_schema.json"))
 BIWEEK_SCHEMA = json.load(open(BASE / "biweekly_payload_schema.json"))
 
 
+# ---------------------------------------------------------------------------
 # Helpers
+# ---------------------------------------------------------------------------
 def validate_shift_dataframe(df: pd.DataFrame, shift_hours: int = 8):
     if df.empty:
         raise ValueError("Uploaded file is empty.")
@@ -77,13 +86,12 @@ def load_shift_data(uploaded_file) -> pd.DataFrame:
     return df.sort_index()
 
 
-
-config = load_config("setting_ds_dv.yml")  # Load the configuration file
+config = load_config("setting_ds_dv.yml")
 
 MEASUREMENT_LABELS = {
     "heatload_delta_t": "Heatload Delta T",
     "process_params": "Process Params",
-    "temperature_profile": "Temperature Profile"
+    "temperature_profile": "Temperature Profile",
 }
 
 FREQUENCY_TO_TIMEDTA = {
@@ -106,10 +114,23 @@ FIELD_LABELS = {
     for human_label, internal_key in mapping.items()
 }
 
-import pandas as pd
-import streamlit as st
 
-@st.cache_data(show_spinner=False)
+# ---------------------------------------------------------------------------
+# FIX #5 — Helper to normalize any datetime to UTC-aware.
+#          Prevents "can't compare offset-naive and offset-aware" errors.
+# ---------------------------------------------------------------------------
+def _ensure_utc(dt: datetime) -> datetime:
+    """Make sure a datetime is timezone-aware (UTC)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# FIX #1 — Added  ttl=timedelta(minutes=14)  so data actually refreshes
+#          on every 15-min auto-refresh cycle instead of being cached forever.
+# ---------------------------------------------------------------------------
+@st.cache_data(show_spinner=False, ttl=timedelta(minutes=14))
 def fetch_recent_online(
     tr: str = "last 8 hours",
     request_type: str = "windowed-average",
@@ -117,7 +138,6 @@ def fetch_recent_online(
 ) -> pd.DataFrame:
     selected_measurements = list(MEASUREMENT_LABELS.keys())
 
-    # Your fetch_online_df currently implements only "windowed-average" logic
     if request_type != "windowed-average":
         raise ValueError(
             f"Unsupported request_type={request_type!r}. "
@@ -127,14 +147,16 @@ def fetch_recent_online(
     return dr.fetch_online_df(
         selected_measurements=selected_measurements,
         time_range=tr,
-        average_range=window_by,                   # <-- key fix (maps to resample freq)
-        FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA, # <-- key fix
+        average_range=window_by,
+        FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
         MEASUREMENT_LABELS=MEASUREMENT_LABELS,
         FIELD_LABELS=FIELD_LABELS,
     )
 
 
+# ===========================================================================
 # MAIN APP
+# ===========================================================================
 def main():
     st.set_page_config(layout="wide")
     render_page_header()
@@ -142,7 +164,6 @@ def main():
 
     structured_store = StructuredStore()
     vector_store = QdrantVectorStore()
-
 
     # SIDEBAR — NAVIGATION
     st.sidebar.title("FurnaceMind")
@@ -158,24 +179,23 @@ def main():
 
     st.sidebar.divider()
 
-
+    # ===================================================================
     # 📤 DATA MANAGEMENT — Online Shift (Shift-Aware, No Upload)
+    # ===================================================================
     if app_mode == "📤 Data Management":
- 
+
         # CONFIG
         SHIFT_HOURS = 8
         WINDOW_MINUTES = 15
         ROWS_PER_SHIFT = (SHIFT_HOURS * 60) // WINDOW_MINUTES  # 32
 
-
         def get_shift_start(ts: datetime) -> datetime:
+            ts = _ensure_utc(ts)
             shift_hour = (ts.hour // SHIFT_HOURS) * SHIFT_HOURS
             return ts.replace(hour=shift_hour, minute=0, second=0, microsecond=0)
 
-
         def get_shift_id(shift_start: datetime) -> str:
             return f"{shift_start:%Y-%m-%d_%H}_SHIFT"
-
 
         # AUTO REFRESH — every 15 minutes
         st_autorefresh(
@@ -184,7 +204,6 @@ def main():
         )
 
         st.header("📤 Online Blast Furnace Shift Intelligence")
-
 
         # SESSION STATE
         if "online_shift_buffer" not in st.session_state:
@@ -202,18 +221,14 @@ def main():
         if "shift_waiting_for_operator" not in st.session_state:
             st.session_state.shift_waiting_for_operator = False
 
-
-
-        # STEP 1 — UI VIEW (LAST 8 HOURS)
-            ui_df = fetch_recent_online(
-            tr="last 8 hours",
-            request_type="windowed-average",
-            window_by="15 minutes",
-        )
-
+        # -------------------------------------------------------------------
+        # FIX #2 — Removed the duplicate / mis-indented dead code block
+        #          that was at old lines 207-212.  Only the correct try/except
+        #          version below is kept.
+        # -------------------------------------------------------------------
 
         # STEP 1 — UI VIEW (LAST 8 HOURS)
-        ui_df = pd.DataFrame()  #
+        ui_df = pd.DataFrame()
 
         try:
             ui_df = fetch_recent_online(
@@ -224,7 +239,7 @@ def main():
         except Exception as e:
             st.error("Failed to fetch UI online data.")
             st.exception(e)
-            st.stop()  # ✅ prevents using ui_df further
+            st.stop()
 
         # If fetch returned None for some reason, normalize to empty DF
         if ui_df is None:
@@ -238,9 +253,20 @@ def main():
         st.subheader("📊 Live Online Data (Last 8 Hours)")
         st.dataframe(ui_df, use_container_width=True)
 
+        # -------------------------------------------------------------------
+        # FIX #3 — Startup backfill.
+        #
+        # On Streamlit Cloud the app cold-starts with an empty session_state.
+        # If the buffer is empty we seed it with the full 8-hour UI fetch so
+        # that shift-boundary detection has data to work with immediately
+        # instead of requiring 8 hours of continuous uptime.
+        # -------------------------------------------------------------------
+        if st.session_state.online_shift_buffer.empty and not ui_df.empty:
+            logger.info("Cold start detected — backfilling shift buffer from UI data.")
+            st.session_state.online_shift_buffer = ui_df.copy()
 
         # STEP 2 — INGEST DELTA (LAST 15 MIN)
-        delta_df = pd.DataFrame()  
+        delta_df = pd.DataFrame()
 
         try:
             delta_df = fetch_recent_online(
@@ -260,19 +286,58 @@ def main():
                 .drop_duplicates()
             )
 
-
-
-
         # STEP 3 — SHIFT BOUNDARY DETECTION
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         new_shift_start = get_shift_start(now)
 
         if st.session_state.current_shift_start is None:
             st.session_state.current_shift_start = new_shift_start
+            logger.info(f"Initialized current_shift_start = {new_shift_start}")
+
+            # -----------------------------------------------------------------
+            # FIX #4 — On first init, check if the backfilled buffer already
+            # contains a full previous shift worth of data.  If the buffer
+            # spans a shift boundary, treat the earlier portion as completed.
+            # -----------------------------------------------------------------
+            if not st.session_state.online_shift_buffer.empty:
+                buf = st.session_state.online_shift_buffer
+                buf_start = _ensure_utc(buf.index.min().to_pydatetime())
+                buf_shift_start = get_shift_start(buf_start)
+
+                # If the buffer starts in a PREVIOUS shift window, that shift
+                # is already complete — split it off and trigger analysis.
+                if buf_shift_start < new_shift_start:
+                    completed_end = new_shift_start
+                    prev_data = buf[buf.index < pd.Timestamp(new_shift_start)]
+                    curr_data = buf[buf.index >= pd.Timestamp(new_shift_start)]
+
+                    if not prev_data.empty:
+                        logger.info(
+                            f"Backfill detected completed shift: "
+                            f"{buf_shift_start} → {completed_end}"
+                        )
+                        st.session_state.completed_shift = {
+                            "shift_id": get_shift_id(buf_shift_start),
+                            "shift_start": buf_shift_start,
+                            "shift_end": completed_end,
+                            "df": prev_data.copy(),
+                        }
+                        st.session_state.online_shift_buffer = (
+                            curr_data.copy() if not curr_data.empty else pd.DataFrame()
+                        )
+                        st.session_state.generated_structured = None
+                        st.session_state.generated_llm_text = None
+                        st.session_state.shift_waiting_for_operator = False
+                        st.session_state.shift_ready_for_analysis = True
 
         elif new_shift_start > st.session_state.current_shift_start:
+            # Normal shift-boundary crossing (app was already running)
             completed_start = st.session_state.current_shift_start
             completed_end = completed_start + timedelta(hours=SHIFT_HOURS)
+
+            logger.info(
+                f"Shift boundary crossed: {completed_start} → {completed_end}"
+            )
 
             st.session_state.completed_shift = {
                 "shift_id": get_shift_id(completed_start),
@@ -281,7 +346,7 @@ def main():
                 "df": st.session_state.online_shift_buffer.copy(),
             }
 
-            # RESET STATE (THIS FIXES YOUR ISSUE)
+            # RESET STATE
             st.session_state.generated_structured = None
             st.session_state.generated_llm_text = None
             st.session_state.shift_waiting_for_operator = False
@@ -290,7 +355,6 @@ def main():
             st.session_state.online_shift_buffer = pd.DataFrame()
             st.session_state.current_shift_start = new_shift_start
             st.session_state.shift_ready_for_analysis = True
-
 
         # STEP 4 — AUTO SHIFT SUMMARY + FSI
         if st.session_state.shift_ready_for_analysis:
@@ -376,8 +440,6 @@ def main():
             st.session_state.shift_ready_for_analysis = False
             st.session_state.shift_waiting_for_operator = True
 
-
-
         # STEP 5 — OPERATOR REVIEW & SAVE
         if st.session_state.shift_waiting_for_operator:
             st.subheader("🧠 Shift Summary (Review)")
@@ -422,7 +484,7 @@ def main():
                         shift_id=shift_data.shift_id,
                         shift_start=shift_data.shift_start,
                         shift_end=shift_data.shift_end,
-                        generated_at=datetime.utcnow(),
+                        generated_at=datetime.now(timezone.utc),
 
                         stability_index=structured["stability_index"],
                         stability_status=structured["stability_status"],
@@ -448,8 +510,9 @@ def main():
                 st.success("✅ Shift saved. Aggregation triggered.")
                 st.session_state.shift_waiting_for_operator = False
 
-
+    # ===================================================================
     # 📊 REPORTS — Historical Retrieval
+    # ===================================================================
     elif app_mode == "📊 Reports":
         st.header("📊 Historical Reports")
 
@@ -495,8 +558,9 @@ def main():
             else:
                 st.warning("No report found.")
 
-
+    # ===================================================================
     # 🧠 FURNACE INTELLIGENCE — HEALTH OVERVIEW
+    # ===================================================================
     else:
         st.header("🧠 Furnace Health Overview")
 
@@ -581,8 +645,7 @@ def main():
 
         st.divider()
 
-
-        # Row 3: Recurring Anomalies 
+        # Row 3: Recurring Anomalies
         st.subheader("🔁 Recurring Anomaly Patterns")
 
         # Step 1: Load recent historical shifts
@@ -614,7 +677,6 @@ def main():
 
         st.divider()
 
-
         # Influence Attribution
         st.subheader("🧭 Influence Attribution")
 
@@ -627,7 +689,6 @@ def main():
                 return "🟡 Moderate contributor"
             return "🟢 Minor contributor"
 
-
         attrib = InfluenceAttribution()
 
         influence_result = attrib.compute(
@@ -637,12 +698,12 @@ def main():
 
         if influence_result:
             df = pd.DataFrame([
-                    {
-                "Parameter": r["parameter"],
-                "Influence Index": r["influence_index"],
-                "Contribution Level": classify_influence(r["influence_index"]),
-                "Rank": r["rank"],
-            }
+                {
+                    "Parameter": r["parameter"],
+                    "Influence Index": r["influence_index"],
+                    "Contribution Level": classify_influence(r["influence_index"]),
+                    "Rank": r["rank"],
+                }
                 for r in influence_result
             ])
 
@@ -653,9 +714,9 @@ def main():
             )
 
             st.caption(
-            "ℹ️ Influence Index shows relative contribution to instability within this shift. "
-            "Higher values indicate stronger contribution compared to other parameters."
-        )
+                "ℹ️ Influence Index shows relative contribution to instability within this shift. "
+                "Higher values indicate stronger contribution compared to other parameters."
+            )
 
         else:
             st.info("No significant contributors identified.")
