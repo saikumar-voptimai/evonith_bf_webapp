@@ -46,10 +46,89 @@ from FurnaceMind.utils.window_helpers import (
     fetch_from_qdrant,
 )
 
+import re
+
+
 from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
 
+
+
 logger = get_logger(__name__)
+
+
+def _normalize_label(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(s).lower()).strip()
+
+def resolve_fields_from_query(user_query: str, field_labels: dict, max_fields: int = 4) -> list[str]:
+    """
+    Match user text against *human labels* from FIELD_LABELS (values).
+    Returns a list of human-label strings to match columns.
+    """
+    if not field_labels:
+        return []
+
+    human_labels = list(field_labels.values())
+    label_map = {_normalize_label(lbl): lbl for lbl in human_labels if isinstance(lbl, str) and lbl.strip()}
+
+    qn = _normalize_label(user_query)
+    toks = qn.split()
+
+    # candidates: tri-grams, bi-grams, tokens (order-preserving)
+    candidates = []
+    candidates += [" ".join(toks[i:i+3]) for i in range(max(0, len(toks) - 2))]
+    candidates += [" ".join(toks[i:i+2]) for i in range(max(0, len(toks) - 1))]
+    candidates += toks
+
+    hits = []
+    for cand in candidates:
+        if cand in label_map:
+            hits.append(label_map[cand])
+
+    # fallback: substring match over the full query
+    if not hits:
+        for nk, orig in label_map.items():
+            if nk and nk in qn:
+                hits.append(orig)
+
+    # unique + limit
+    out, seen = [], set()
+    for h in hits:
+        if h not in seen:
+            out.append(h)
+            seen.add(h)
+    return out[:max_fields]
+
+def parse_time_range_and_window(user_query: str) -> tuple[str, str]:
+    q = user_query.lower()
+
+    # time range
+    m = re.search(r"last\s+(\d+)\s*(h|hr|hrs|hour|hours)\b", q)
+    if m:
+        n = int(m.group(1))
+        time_range = f"last {n} hours"
+    else:
+        m = re.search(r"last\s+(\d+)\s*(m|min|mins|minute|minutes)\b", q)
+        if m:
+            n = int(m.group(1))
+            time_range = f"last {n} minutes"
+        else:
+            time_range = "last 8 hours"
+
+    # averaging window (e.g., '5 min avg')
+    m = re.search(r"(\d+)\s*(m|min|mins|minute|minutes)\s*(avg|average)\b", q)
+    if m:
+        window = f"{int(m.group(1))} minutes"
+    else:
+        # default heuristic
+        if "minutes" in time_range:
+            window = "1 minute"
+        elif any(x in time_range for x in ["last 1 hours", "last 2 hours"]):
+            window = "5 minutes"
+        else:
+            window = "15 minutes"
+
+    return time_range, window
 
 
 # ---------------------------------------------------------------------------
@@ -849,19 +928,17 @@ def main():
         # --------------------------------------------------
         # 🔹 Local Sentence Embedding (Text Only)
         # --------------------------------------------------
-        embedding_client = SentenceEmbedding(
-            model_name=settings.embedding["local"].model_name,
-            device=settings.embedding["local"].device,
-        )
+        embedding_client = CloudEmbeddingClient()
 
         knowledge_store = KnowledgeVectorStore(embedding_client)
         shift_store = QdrantVectorStore()
+
 
         fetcher = InfluxDataFetcher()
         plotter = PythonPlotter()
 
         # --------------------------------------------------
-        # 📂 File Upload (Text Files Only)
+        # 📂 File Upload
         # --------------------------------------------------
         file_types = ["pdf", "docx", "pptx", "xls", "xlsx", "txt"]
 
@@ -903,42 +980,77 @@ def main():
             with st.chat_message("user"):
                 st.markdown(user_query)
 
+            # IMPORTANT: pass FIELD_LABELS into router if you updated it like I suggested
+            # route = route_query(user_query, field_labels=FIELD_LABELS)
             route = route_query(user_query)
+
             llm = OpenAIClient()
 
             # =====================================================
-            # 🔧 MCP TOOL: Influx Fetch + Plot
+            # 🔧 MCP TOOL: Influx Fetch + Plot (ANY PARAMETER)
             # =====================================================
             if route == "influx":
-                df = fetcher.fetch(time_range="last 8 hours", window="15 minutes")
+                # 1) Determine what the user asked to plot (fields)
+                # FIELD_LABELS should exist in your project (from your config mapping)
+                requested_fields = resolve_fields_from_query(user_query, FIELD_LABELS)
+
+                # 2) Determine time range + window from query (defaults if not provided)
+                time_range, window = parse_time_range_and_window(user_query)
+
+                # 3) Fetch data (if you updated fetcher.fetch to accept fields, pass it.
+                # If not, fetch all then filter columns below.
+                try:
+                    df = fetcher.fetch(time_range=time_range, window=window, fields=requested_fields)
+                except TypeError:
+                    # Backward-compatible if fetcher.fetch doesn't accept fields yet
+                    df = fetcher.fetch(time_range=time_range, window=window)
 
                 if df is None or df.empty:
-                    response = "No live data available for the selected time range."
+                    response = f"No live data available for {time_range} (avg {window})."
                     st.session_state.chat_history.append({"role": "assistant", "content": response})
                     with st.chat_message("assistant"):
                         st.markdown(response)
+
                 else:
-                    selected_cols = [
-                        col for col in df.columns
-                        if any(k in col.lower() for k in ["eta", "temp", "pressure", "fuel", "co"])
-                    ]
+                    # 4) Choose columns to plot
+                    if requested_fields:
+                        wanted = [str(f).lower() for f in requested_fields]
+                        selected_cols = [c for c in df.columns if any(w in str(c).lower() for w in wanted)]
+                    else:
+                        selected_cols = []
+
                     if not selected_cols:
+                        # fallback: show something rather than nothing
                         selected_cols = list(df.columns[:2])
 
-                    fig = plotter.plot(df, columns=selected_cols, title="Live Furnace Trend")
+                    # 5) Plot
+                    title = f"Live Trend: {', '.join(selected_cols)} ({time_range}, avg {window})"
+                    fig = plotter.plot(df, columns=selected_cols, title=title)
 
-                    # Show plot
                     st.session_state.chat_history.append({"role": "assistant", "content": fig, "type": "plot"})
                     with st.chat_message("assistant"):
                         st.pyplot(fig)
 
-                    # Optional: add an AI Co-Operate textual summary below plot
-                    live_sample_csv = df[selected_cols].tail(200).to_csv(index=False)
+                    # 6) Grounded AI summary (stats + small sample, not huge CSV)
+                    stats_lines = []
+                    for c in selected_cols:
+                        s = df[c].dropna()
+                        if len(s) >= 2:
+                            stats_lines.append(
+                                f"- {c}: latest={s.iloc[-1]}, min={s.min()}, max={s.max()}, avg={s.mean()}"
+                            )
+                    stats_text = "\n".join(stats_lines) if stats_lines else "No numeric stats available."
+
+                    sample_csv = df[selected_cols].tail(40).to_csv(index=False)
+
                     system_prompt = (
                         AI_COOPERATE_SYSTEM
-                        + "\n\n=== LIVE DATA (authoritative sample) ===\n"
-                        + live_sample_csv
+                        + "\n\n=== LIVE DATA STATS (authoritative) ===\n"
+                        + stats_text
+                        + "\n\n=== LIVE DATA SAMPLE (authoritative) ===\n"
+                        + sample_csv
                     )
+
                     response = llm.generate(system_prompt=system_prompt, user_prompt=user_query)
 
                     if response:

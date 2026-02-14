@@ -34,14 +34,8 @@ class OpenAILLMConfig:
 @dataclass
 class LLMSettings:
     provider: str = "openrouter"
-
-    openrouter: OpenRouterLLMConfig = field(
-        default_factory=lambda: OpenRouterLLMConfig(api_key=None)
-    )
-
-    openai: OpenAILLMConfig = field(
-        default_factory=lambda: OpenAILLMConfig(api_key=None)
-    )
+    openrouter: OpenRouterLLMConfig = field(default_factory=lambda: OpenRouterLLMConfig(api_key=None))
+    openai: OpenAILLMConfig = field(default_factory=lambda: OpenAILLMConfig(api_key=None))
 
 
 # ==========================================================
@@ -104,15 +98,45 @@ class AppConfig:
 # ==========================================================
 
 class Settings:
+    """
+    Supports:
+      - Local embeddings + Shift Qdrant collection (384)
+      - Cloud embeddings + Knowledge Qdrant collection (1024)
+    """
+
     def __init__(self):
         self.llm = self._load_llm_settings()
         self.embedding = self._load_embedding_config()
-        self.qdrant = self._load_qdrant_config()
+
+        # Two Qdrant targets
+        self.qdrant_shift = self._load_qdrant_config(
+            collection_env="SHIFT_QDRANT_COLLECTION",
+            dim_env="SHIFT_QDRANT_EMBED_DIM",
+            default_collection="furnace_shift_summaries",
+            default_dim=384,
+            # backward compatible: accept old vars if SHIFT_* not set
+            fallback_collection_env="QDRANT_COLLECTION",
+            fallback_dim_env="QDRANT_EMBED_DIM",
+        )
+
+        self.qdrant_knowledge = self._load_qdrant_config(
+            collection_env="KNOWLEDGE_QDRANT_COLLECTION",
+            dim_env="KNOWLEDGE_QDRANT_EMBED_DIM",
+            default_collection="knowledge_docs_voyage_1024",
+            default_dim=1024,
+            # do NOT fall back to QDRANT_COLLECTION by default here,
+            # because that usually points to shift summaries and causes mixups.
+            fallback_collection_env=None,
+            fallback_dim_env=None,
+        )
+
+        # Backward-compatible alias: existing code that uses settings.qdrant
+        # will keep using the shift store unless you change those call-sites.
+        self.qdrant = self.qdrant_shift
+
         self.anomaly = AnomalyConfig()
         self.app = AppConfig()
-
         self._validate()
-
 
     # ------------------------------------------------------
     # LLM LOADER
@@ -122,12 +146,8 @@ class Settings:
         provider = os.getenv("LLM_PROVIDER", "openrouter").strip().lower()
 
         openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
-        openrouter_base_url = os.getenv(
-            "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
-        )
-        openrouter_model = os.getenv(
-            "OPENROUTER_MODEL", "openai/gpt-4o-mini"
-        )
+        openrouter_base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        openrouter_model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 
         openai_api_key = os.getenv("OPENAI_API_KEY")
         openai_base_url = os.getenv("OPENAI_BASE_URL")
@@ -153,28 +173,20 @@ class Settings:
             ),
         )
 
-
     # ------------------------------------------------------
     # EMBEDDING LOADER (DUAL MODE)
     # ------------------------------------------------------
     @staticmethod
     def _load_embedding_config():
-
-        # -------- Local Embedding (Shift Reports) --------
+        # Local (Shift Reports)
         local_provider = os.getenv("LOCAL_EMBEDDING_PROVIDER", "sentence_transformer")
-        local_model = os.getenv(
-            "LOCAL_EMBEDDING_MODEL",
-            "sentence-transformers/all-MiniLM-L6-v2",
-        )
+        local_model = os.getenv("LOCAL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
         local_device = os.getenv("LOCAL_EMBEDDING_DEVICE", "cpu")
         local_dim = int(os.getenv("LOCAL_EMBEDDING_DIM", 384))
 
-        # -------- Cloud Embedding (Knowledge Hub) --------
+        # Cloud (Knowledge Hub)
         cloud_provider = os.getenv("CLOUD_EMBEDDING_PROVIDER", "openai")
-        cloud_model = os.getenv(
-            "CLOUD_EMBEDDING_MODEL",
-            "text-embedding-3-large",
-        )
+        cloud_model = os.getenv("CLOUD_EMBEDDING_MODEL", "text-embedding-3-large")
         cloud_api_key = os.getenv("CLOUD_EMBEDDING_API_KEY")
         cloud_dim = int(os.getenv("CLOUD_EMBEDDING_DIM", 1024))
 
@@ -193,77 +205,88 @@ class Settings:
             ),
         }
 
-
     # ------------------------------------------------------
-    # QDRANT LOADER
+    # QDRANT LOADER (Reusable for Shift + Knowledge)
     # ------------------------------------------------------
     @staticmethod
-    def _load_qdrant_config() -> QdrantConfig:
+    def _load_qdrant_config(
+        *,
+        collection_env: str,
+        dim_env: str,
+        default_collection: str,
+        default_dim: int,
+        fallback_collection_env: str | None,
+        fallback_dim_env: str | None,
+    ) -> QdrantConfig:
 
+        # support both names (your existing file checked QDRANT_ENDPOINT or QDRANT_URL)
         endpoint = os.getenv("QDRANT_ENDPOINT")
         local_url = os.getenv("QDRANT_URL")
 
         if not endpoint and not local_url:
-            raise ValueError(
-                "Either QDRANT_ENDPOINT (cloud) or QDRANT_URL (local) must be set."
-            )
-
-        if endpoint and not os.getenv("QDRANT_API_KEY"):
-            raise ValueError(
-                "QDRANT_API_KEY must be set when using Qdrant Cloud."
-            )
+            raise ValueError("Either QDRANT_ENDPOINT (cloud) or QDRANT_URL (local) must be set.")
 
         effective_url = endpoint if endpoint else local_url
 
+        # collection / dim: prefer specific env; optionally fallback to old global vars
+        collection = os.getenv(collection_env)
+        if not collection and fallback_collection_env:
+            collection = os.getenv(fallback_collection_env)
+        if not collection:
+            collection = default_collection
+
+        dim_val = os.getenv(dim_env)
+        if (dim_val is None or str(dim_val).strip() == "") and fallback_dim_env:
+            dim_val = os.getenv(fallback_dim_env)
+        embedding_dim = int(dim_val) if dim_val not in (None, "") else int(default_dim)
+
+        timeout = int(os.getenv("QDRANT_TIMEOUT", 30))
+
+        # api key required for Qdrant Cloud in practice; keep same behavior
+        api_key = os.getenv("QDRANT_API_KEY")
+        if endpoint and not api_key:
+            raise ValueError("QDRANT_API_KEY must be set when using Qdrant Cloud (QDRANT_ENDPOINT).")
+
+        # basic safety
+        if "cloud.qdrant.io" in (effective_url or "") and not str(effective_url).startswith("https://"):
+            raise ValueError("Qdrant Cloud endpoint must use HTTPS.")
+
         return QdrantConfig(
             url=effective_url,
-            api_key=os.getenv("QDRANT_API_KEY"),
-            collection_name=os.getenv(
-                "QDRANT_COLLECTION", "furnace_shift_summaries"
-            ),
-            embedding_dim=int(os.getenv("QDRANT_EMBED_DIM", 384)),
-            timeout=int(os.getenv("QDRANT_TIMEOUT", 30)),
+            api_key=api_key,
+            collection_name=collection,
+            embedding_dim=embedding_dim,
+            timeout=timeout,
         )
-
 
     # ------------------------------------------------------
     # VALIDATION
     # ------------------------------------------------------
     def _validate(self) -> None:
-
         # LLM validation
         if not self.llm.openrouter.api_key and not self.llm.openai.api_key:
-            raise ValueError(
-                "At least one of OPENROUTER_API_KEY or OPENAI_API_KEY must be set."
-            )
-
+            raise ValueError("At least one of OPENROUTER_API_KEY or OPENAI_API_KEY must be set.")
         if self.llm.provider not in {"openrouter", "openai"}:
             raise ValueError(f"Unsupported LLM_PROVIDER: {self.llm.provider}")
-
         if self.llm.openai.api_mode not in {"responses", "chat_completions"}:
-            raise ValueError(
-                "OPENAI_API_MODE must be 'responses' or 'chat_completions'."
-            )
+            raise ValueError("OPENAI_API_MODE must be 'responses' or 'chat_completions'.")
 
         # Embedding validation
         if self.embedding["local"].provider != "sentence_transformer":
             raise ValueError("Unsupported local embedding provider.")
-
         if self.embedding["cloud"].provider not in {"openai", "openrouter", "voyage"}:
             raise ValueError("Unsupported cloud embedding provider.")
 
-        # Qdrant Cloud safety
-        if (
-            "cloud.qdrant.io" in self.qdrant.url
-            and not self.qdrant.url.startswith("https://")
-        ):
-            raise ValueError(
-                "Qdrant Cloud endpoint must use HTTPS."
-            )
+        # Dimension sanity (optional but helpful)
+        if self.qdrant_shift.embedding_dim != self.embedding["local"].dimension:
+            # don’t hard-fail; just warn via exception message if you want
+            pass
+        if self.qdrant_knowledge.embedding_dim != self.embedding["cloud"].dimension:
+            pass
 
 
 # ==========================================================
-# 🔹 SINGLETON
+# 🔹 SINGLETON INSTANCE
 # ==========================================================
 
 settings = Settings()

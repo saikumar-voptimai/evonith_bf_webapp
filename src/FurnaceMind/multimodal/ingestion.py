@@ -100,10 +100,20 @@ def process_file(file, knowledge_store, embedding_client):
     chunks = chunk_text(text)
 
     for chunk in chunks:
-        knowledge_store.add_document(
-            content=chunk,
-            metadata={
-                "source": file.name,
-                "type": file_type,
-            },
+        embedding = embedding_client.embed_text(chunk)
+
+        knowledge_store.client.upsert(
+            collection_name=knowledge_store.collection_name,
+            points=[
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=embedding,
+                    payload={
+                        "source": file.name,
+                        "type": file_type,
+                        "content": chunk,   # store text for retrieval / display
+                    },
+                )
+            ],
+            wait=True,
         )

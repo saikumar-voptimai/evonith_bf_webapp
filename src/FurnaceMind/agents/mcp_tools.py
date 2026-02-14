@@ -17,6 +17,7 @@ MEASUREMENT_LABELS = {
     "temperature_profile": "Temperature Profile",
 }
 
+
 FREQUENCY_TO_TIMEDTA = {
     "None": None,
     "1 minute": "1min",
@@ -49,6 +50,8 @@ class InfluxDataFetcher:
         time_range: str = "last 8 hours",
         window: str = "15 minutes",
         measurements: list[str] | None = None,
+        fields: list[str] | None = None,
+        field_match_mode: str = "contains",  # "contains" | "exact"
     ) -> pd.DataFrame:
 
         selected_measurements = (
@@ -64,10 +67,30 @@ class InfluxDataFetcher:
             FIELD_LABELS=FIELD_LABELS,
         )
 
-        if df is None:
+        if df is None or df.empty:
             return pd.DataFrame()
 
-        return df.sort_index()
+        df = df.sort_index()
+
+        # ✅ Optional: keep only requested fields/columns
+        if fields:
+            if field_match_mode not in {"contains", "exact"}:
+                field_match_mode = "contains"
+
+            if field_match_mode == "exact":
+                keep = [c for c in df.columns if c in fields]
+            else:
+                wanted = [str(f).lower() for f in fields]
+                keep = [
+                    c for c in df.columns
+                    if any(w in str(c).lower() for w in wanted)
+                ]
+
+            # If we matched something, filter; otherwise leave df unchanged for UI fallback.
+            if keep:
+                df = df[keep]
+
+        return df
 
 
 # =======================================
@@ -76,19 +99,19 @@ class InfluxDataFetcher:
 
 class PythonPlotter:
 
-    def plot(self, df: pd.DataFrame, columns: list[str], title: str = "Trend"):
-
-        if df is None or df.empty:
-            return None
-
-        fig, ax = plt.subplots()
+    def plot(self, df: pd.DataFrame, columns: list[str], title: str = "Live Furnace Trend"):
+        fig, ax = plt.subplots(figsize=(10, 4))
 
         for col in columns:
             if col in df.columns:
-                ax.plot(df.index, df[col])
+                ax.plot(df.index, df[col], label=col)
 
         ax.set_title(title)
         ax.set_xlabel("Time")
         ax.set_ylabel("Value")
+        ax.grid(True)
+        if len(columns) > 1:
+            ax.legend()
 
+        fig.autofmt_xdate()
         return fig

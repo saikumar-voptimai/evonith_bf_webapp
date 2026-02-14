@@ -1,7 +1,6 @@
 # memory/vector_store.py
 
 from typing import Dict, List, Optional
-import torch
 
 from FurnaceMind.utils.payload_helpers import window_id_to_uuid
 from qdrant_client import QdrantClient
@@ -18,32 +17,31 @@ from FurnaceMind.embeddings.sentence_embedding import SentenceEmbedding
 class QdrantVectorStore:
     """
     Vector store for window-based summaries (shift/day/week).
+    Uses LOCAL embeddings (sentence_transformer) + SHIFT Qdrant collection (384-dim).
     """
 
     def __init__(self):
+        qcfg = settings.qdrant_shift  # ✅ shift collection config
+
         self.client = QdrantClient(
-            url=settings.qdrant.url,
-            api_key=settings.qdrant.api_key,
-            timeout=settings.qdrant.timeout,
+            url=qcfg.url,
+            api_key=qcfg.api_key,
+            timeout=qcfg.timeout,
         )
 
-        self.collection_name = settings.qdrant.collection_name
+        self.collection_name = qcfg.collection_name
 
-        emb_cfg = settings.embedding["local"]   # ✅ pick local config
+        emb_cfg = settings.embedding["local"]  # ✅ local embedding config
+        self.embedding_dim = emb_cfg.dimension
 
-        self.embedding_dim = emb_cfg.dimension  # ✅ match embedding model dim
-
-        if settings.qdrant.embedding_dim != self.embedding_dim:
+        if qcfg.embedding_dim != self.embedding_dim:
             raise RuntimeError(
-                f"QDRANT_EMBED_DIM ({settings.qdrant.embedding_dim}) does not match "
+                f"SHIFT_QDRANT_EMBED_DIM ({qcfg.embedding_dim}) does not match "
                 f"LOCAL_EMBEDDING_DIM ({self.embedding_dim}). Fix your .env values."
             )
 
         self.embedding = SentenceEmbedding(model_name=emb_cfg.model_name)
-
         self._ensure_collection()
-
-
 
     def _ensure_collection(self) -> None:
         collections = self.client.get_collections().collections
@@ -62,7 +60,6 @@ class QdrantVectorStore:
         info = self.client.get_collection(self.collection_name)
         vectors = info.config.params.vectors
 
-        # Reject invalid schemas early
         if not hasattr(vectors, "size"):
             raise RuntimeError(
                 f"Invalid vector schema for collection '{self.collection_name}': {vectors}. "
@@ -74,8 +71,6 @@ class QdrantVectorStore:
                 f"Vector dimension mismatch for collection '{self.collection_name}': "
                 f"expected {self.embedding_dim}, got {vectors.size}"
             )
-
-
 
     # Write operations
     def add_window(
@@ -105,8 +100,6 @@ class QdrantVectorStore:
             wait=True,
         )
 
-
-
     # Read operations
     def search_similar_windows(
         self,
@@ -127,7 +120,6 @@ class QdrantVectorStore:
         )
 
         filtered = []
-
         for p in results.points:
             payload = p.payload or {}
 
@@ -137,12 +129,7 @@ class QdrantVectorStore:
             if stability_filter and payload.get("overall_stability") != stability_filter:
                 continue
 
-            filtered.append(
-                {
-                    "score": p.score,
-                    "payload": payload,
-                }
-            )
+            filtered.append({"score": p.score, "payload": payload})
 
         return filtered
 
