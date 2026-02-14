@@ -31,6 +31,15 @@ from FurnaceMind.memory.retriever import ContextRetriever
 from FurnaceMind.memory.schemas import ShiftSummary
 from FurnaceMind.memory.aggregation import run_aggregation_if_ready
 
+
+from FurnaceMind.embeddings.cloud_embedding import CloudEmbeddingClient
+from FurnaceMind.embeddings.sentence_embedding import SentenceEmbedding
+from FurnaceMind.memory.knowledge_vector_store import KnowledgeVectorStore
+from FurnaceMind.multimodal.ingestion import process_file
+from FurnaceMind.agents.rag_router import route_query
+from FurnaceMind.agents.mcp_tools import InfluxDataFetcher, PythonPlotter
+
+
 from FurnaceMind.utils.window_helpers import (
     build_shift_window_id,
     build_day_window_id,
@@ -116,14 +125,17 @@ FIELD_LABELS = {
 
 
 # ---------------------------------------------------------------------------
-# FIX #5 — Helper to normalize any datetime to UTC-aware.
-#          Prevents "can't compare offset-naive and offset-aware" errors.
+# IST timezone for shift boundary calculations.
+# Plant shifts are at 00:00, 08:00, 16:00 IST.
 # ---------------------------------------------------------------------------
-def _ensure_utc(dt: datetime) -> datetime:
-    """Make sure a datetime is timezone-aware (UTC)."""
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _ensure_ist(dt: datetime) -> datetime:
+    """Make sure a datetime is timezone-aware in IST."""
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=IST)
+    return dt.astimezone(IST)
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +186,7 @@ def main():
             "📤 Data Management",
             "📊 Reports",
             "🧠 Furnace Intelligence",
+            "🤖 Knowledge Hub",
         ],
     )
 
@@ -190,12 +203,23 @@ def main():
         ROWS_PER_SHIFT = (SHIFT_HOURS * 60) // WINDOW_MINUTES  # 32
 
         def get_shift_start(ts: datetime) -> datetime:
-            ts = _ensure_utc(ts)
+            ts = _ensure_ist(ts)
             shift_hour = (ts.hour // SHIFT_HOURS) * SHIFT_HOURS
             return ts.replace(hour=shift_hour, minute=0, second=0, microsecond=0)
 
+        def get_shift_label(shift_start: datetime) -> str:
+            """00:00 IST → A, 08:00 IST → B, 16:00 IST → C"""
+            hour = _ensure_ist(shift_start).hour
+            if hour == 0:
+                return "A"
+            elif hour == 8:
+                return "B"
+            else:
+                return "C"
+
         def get_shift_id(shift_start: datetime) -> str:
-            return f"{shift_start:%Y-%m-%d_%H}_SHIFT"
+            label = get_shift_label(shift_start)
+            return f"{shift_start:%Y-%m-%d}_SHIFT_{label}"
 
         # AUTO REFRESH — every 15 minutes
         st_autorefresh(
@@ -220,6 +244,18 @@ def main():
 
         if "shift_waiting_for_operator" not in st.session_state:
             st.session_state.shift_waiting_for_operator = False
+
+        if "generated_shift_data" not in st.session_state:
+            st.session_state.generated_shift_data = None
+
+        if "generated_structured" not in st.session_state:
+            st.session_state.generated_structured = None
+
+        if "generated_llm_text" not in st.session_state:
+            st.session_state.generated_llm_text = None
+
+        if "generated_contextual_text" not in st.session_state:
+            st.session_state.generated_contextual_text = None
 
         # -------------------------------------------------------------------
         # FIX #2 — Removed the duplicate / mis-indented dead code block
@@ -287,7 +323,7 @@ def main():
             )
 
         # STEP 3 — SHIFT BOUNDARY DETECTION
-        now = datetime.now(timezone.utc)
+        now = datetime.now(IST)
         new_shift_start = get_shift_start(now)
 
         if st.session_state.current_shift_start is None:
@@ -301,7 +337,7 @@ def main():
             # -----------------------------------------------------------------
             if not st.session_state.online_shift_buffer.empty:
                 buf = st.session_state.online_shift_buffer
-                buf_start = _ensure_utc(buf.index.min().to_pydatetime())
+                buf_start = _ensure_ist(buf.index.min().to_pydatetime())
                 buf_shift_start = get_shift_start(buf_start)
 
                 # If the buffer starts in a PREVIOUS shift window, that shift
@@ -327,6 +363,7 @@ def main():
                         )
                         st.session_state.generated_structured = None
                         st.session_state.generated_llm_text = None
+                        st.session_state.generated_contextual_text = None
                         st.session_state.shift_waiting_for_operator = False
                         st.session_state.shift_ready_for_analysis = True
 
@@ -349,6 +386,7 @@ def main():
             # RESET STATE
             st.session_state.generated_structured = None
             st.session_state.generated_llm_text = None
+            st.session_state.generated_contextual_text = None
             st.session_state.shift_waiting_for_operator = False
 
             # Prepare for next shift
@@ -364,151 +402,219 @@ def main():
             st.subheader("🕒 Completed Shift Detected")
             st.caption(f"{completed['shift_start']} → {completed['shift_end']}")
 
-            llm = OpenRouterClient()
-            shift_analyzer = ShiftAnalyzer(settings.anomaly)
-            contextual_analyzer = ContextualAnalyzer(llm)
-            retriever = ContextRetriever(structured_store, vector_store)
+            try:
+                llm = OpenRouterClient()
+                shift_analyzer = ShiftAnalyzer(settings.anomaly)
+                contextual_analyzer = ContextualAnalyzer(llm)
+                retriever = ContextRetriever(structured_store, vector_store)
 
-            shift_data = type(
-                "ShiftData",
-                (),
-                {
-                    "shift_id": completed["shift_id"],
-                    "shift_start": completed["shift_start"],
-                    "shift_end": completed["shift_end"],
-                    "data": shift_df,
-                },
-            )()
-
-            # Shift analysis
-            llm_text, structured = shift_analyzer.analyze(
-                shift_data=shift_data,
-                prev_shift_data=None,
-                llm=llm,
-            )
-
-            # Furnace Stability Index (FSI)
-            fsi_calculator = FurnaceStabilityIndex(
-                critical_parameters=[
-                    "Process Params - BF2_BODY_ETACO",
-                    "Process Params - BF2_PROC Top Temp Average",
-                    "Process Params - BF2_PROC Top Pressure Average",
-                    "Process Params - coke_rate",
-                    "Process Params - BF2 CO in BF Gas(%)",
-                    "Process Params - BF2 CO2 in BF Gas (%)",
-                    "Process Params - BF2_BODY_PERMEABILITY",
-                ],
-                primary_kpi="Process Params - BF2_BODY_ETACO",
-            )
-
-            fsi_result = fsi_calculator.compute(
-                df=shift_df,
-                anomaly_count=structured.get("anomaly_count", 0),
-            )
-
-            structured["stability_index"] = fsi_result["stability_index"]
-            structured["stability_status"] = fsi_result["stability_status"]
-            structured["stability_penalties"] = fsi_result["penalties"]
-
-            # Contextual summary
-            context = retriever.retrieve_context(
-                current_shift_id=shift_data.shift_id,
-                current_shift_text=llm_text,
-                top_k_similar=3,
-            )
-
-            contextual_text, _ = contextual_analyzer.build_day_summary(
-                day_id=shift_data.shift_id,
-                shift_payloads=[
+                shift_data = type(
+                    "ShiftData",
+                    (),
                     {
-                        "shift_name": shift_data.shift_id,
-                        "start_time": shift_data.shift_start.isoformat(),
-                        "end_time": shift_data.shift_end.isoformat(),
-                        "summary_text": llm_text,
-                        "stability_index": structured["stability_index"],
-                        "stability_status": structured["stability_status"],
-                    }
-                ],
-                previous_shift=context.get("previous_shift"),
-                historical_similar=context.get("historical_similar"),
-            )
+                        "shift_id": completed["shift_id"],
+                        "shift_start": completed["shift_start"],
+                        "shift_end": completed["shift_end"],
+                        "data": shift_df,
+                    },
+                )()
 
-            st.session_state.generated_shift_data = shift_data
-            st.session_state.generated_structured = structured
-            st.session_state.generated_llm_text = contextual_text
+                # Shift analysis
+                llm_text, structured = shift_analyzer.analyze(
+                    shift_data=shift_data,
+                    prev_shift_data=None,
+                    llm=llm,
+                )
 
-            st.session_state.shift_ready_for_analysis = False
-            st.session_state.shift_waiting_for_operator = True
+                # Guard: shift_analyzer may return string "None" if parsing fails
+                if llm_text is None or (isinstance(llm_text, str) and llm_text.strip().lower() == "none"):
+                    logger.error(f"shift_analyzer returned invalid llm_text: {repr(llm_text)}")
+                    if isinstance(structured, dict) and structured.get("summary_text"):
+                        llm_text = structured["summary_text"]
+                    elif isinstance(structured, dict) and structured.get("raw_response"):
+                        llm_text = structured["raw_response"]
+
+                if isinstance(structured, str):
+                    structured = {"raw_text": structured}
+                if not isinstance(structured, dict):
+                    structured = {}
+
+                logger.info(f"llm_text type={type(llm_text)}, length={len(llm_text) if llm_text else 0}")
+                logger.info(f"structured keys={list(structured.keys()) if structured else 'None'}")
+
+                # Furnace Stability Index (FSI)
+                fsi_calculator = FurnaceStabilityIndex(
+                    critical_parameters=[
+                        "Process Params - BF2_BODY_ETACO",
+                        "Process Params - BF2_PROC Top Temp Average",
+                        "Process Params - BF2_PROC Top Pressure Average",
+                        "Process Params - coke_rate",
+                        "Process Params - BF2 CO in BF Gas(%)",
+                        "Process Params - BF2 CO2 in BF Gas (%)",
+                        "Process Params - BF2_BODY_PERMEABILITY",
+                    ],
+                    primary_kpi="Process Params - BF2_BODY_ETACO",
+                )
+
+                fsi_result = fsi_calculator.compute(
+                    df=shift_df,
+                    anomaly_count=structured.get("anomaly_count", 0),
+                )
+
+                structured["stability_index"] = fsi_result["stability_index"]
+                structured["stability_status"] = fsi_result["stability_status"]
+                structured["stability_penalties"] = fsi_result["penalties"]
+
+                # Contextual summary — retrieve historical context
+                try:
+                    context = retriever.retrieve_context(
+                        current_shift_id=shift_data.shift_id,
+                        current_shift_text=llm_text,
+                        top_k_similar=3,
+                    )
+                except (AttributeError, TypeError) as ctx_err:
+                    logger.warning(
+                        f"retriever.retrieve_context failed: {ctx_err}. "
+                        "Continuing without historical context."
+                    )
+                    context = {"previous_shift": None, "historical_similar": []}
+
+                contextual_text, _ = contextual_analyzer.build_day_summary(
+                    day_id=shift_data.shift_id,
+                    shift_payloads=[
+                        {
+                            "shift_name": shift_data.shift_id,
+                            "start_time": shift_data.shift_start.isoformat(),
+                            "end_time": shift_data.shift_end.isoformat(),
+                            "summary_text": llm_text,
+                            "stability_index": structured.get("stability_index"),
+                            "stability_status": structured.get("stability_status"),
+                        }
+                    ],
+                    previous_shift=context.get("previous_shift"),
+                    historical_similar=context.get("historical_similar"),
+                )
+
+                # Guard: contextual_analyzer may also return string "None"
+                if contextual_text is None or (isinstance(contextual_text, str) and contextual_text.strip().lower() == "none"):
+                    logger.warning(f"contextual_analyzer returned: {repr(contextual_text)}, falling back to llm_text")
+                    contextual_text = llm_text if llm_text else "Contextual summary unavailable."
+
+                logger.info(f"contextual_text type={type(contextual_text)}, length={len(contextual_text) if contextual_text else 0}")
+
+                # Store results
+                st.session_state.generated_shift_data = shift_data
+                st.session_state.generated_structured = structured
+                st.session_state.generated_llm_text = llm_text
+                st.session_state.generated_contextual_text = contextual_text
+
+                st.session_state.shift_ready_for_analysis = False
+                st.session_state.shift_waiting_for_operator = True
+
+                logger.info("STEP 4 completed — shift_waiting_for_operator=True")
+
+            except Exception as e:
+                logger.error(f"STEP 4 failed: {e}", exc_info=True)
+                st.error(f"❌ Shift analysis failed: {e}")
+                st.exception(e)
+                st.session_state.shift_ready_for_analysis = False
 
         # STEP 5 — OPERATOR REVIEW & SAVE
         if st.session_state.shift_waiting_for_operator:
-            st.subheader("🧠 Shift Summary (Review)")
-            show_report("Shift Summary", st.session_state.generated_llm_text)
 
-            with st.form("operator_submit_form"):
-                operator_notes = st.text_area("📝 Operator Notes")
-                operator_rating = st.slider("⭐ Shift Rating", 1, 5, 3)
-                operator_comment = st.text_input("💬 Feedback Comment")
-                submit = st.form_submit_button("✅ Submit & Save Shift")
+            llm_text = st.session_state.generated_llm_text
+            ctx_text = st.session_state.generated_contextual_text
 
-            if submit:
-                shift_data = st.session_state.generated_shift_data
-                structured = st.session_state.generated_structured
-                summary_text = st.session_state.generated_llm_text
+            def _has_content(text):
+                """Check text is not None, not empty, not the string 'None'."""
+                if text is None or not isinstance(text, str):
+                    return False
+                return text.strip() != "" and text.strip().lower() != "none"
 
-                operator_context = {
-                    "notes": operator_notes,
-                    "feedback": {
-                        "rating": operator_rating,
-                        "comment": operator_comment,
-                    },
-                }
-
-                payload = build_shift_payload(
-                    shift_data=shift_data,
-                    structured_summary=structured,
-                    llm_text=summary_text,
-                    prev_shift=None,
-                    schema=SHIFT_SCHEMA,
-                    operator_context=operator_context,
+            if not _has_content(llm_text) and not _has_content(ctx_text):
+                logger.warning(
+                    f"No usable summaries: llm_text={repr(llm_text)}, "
+                    f"ctx_text={repr(ctx_text)}"
                 )
-
-                vector_store.add_window(
-                    window_id=payload["window_id"],
-                    embedding_text=payload["summary_text"],
-                    payload=payload,
+                st.warning(
+                    "⚠️ Shift analysis completed but returned no usable content. "
+                    "Check ShiftAnalyzer.analyze() and ContextualAnalyzer response parsing."
                 )
+                st.session_state.shift_waiting_for_operator = False
 
-                structured_store.save_shift_summary(
-                    ShiftSummary(
-                        shift_id=shift_data.shift_id,
-                        shift_start=shift_data.shift_start,
-                        shift_end=shift_data.shift_end,
-                        generated_at=datetime.now(timezone.utc),
+            else:
+                if _has_content(llm_text):
+                    st.subheader("🕒 Shift Operational Summary")
+                    st.markdown(llm_text)
 
-                        stability_index=structured["stability_index"],
-                        stability_status=structured["stability_status"],
-                        stability_penalties=structured["stability_penalties"],
+                if _has_content(ctx_text):
+                    st.subheader("🧠 Context-Aware Insight")
+                    st.markdown(ctx_text)
 
+                with st.form("operator_submit_form"):
+                    operator_notes = st.text_area("📝 Operator Notes")
+                    operator_rating = st.slider("⭐ Shift Rating", 1, 5, 3)
+                    operator_comment = st.text_input("💬 Feedback Comment")
+                    submit = st.form_submit_button("✅ Submit & Save Shift")
+
+                if submit:
+                    shift_data = st.session_state.generated_shift_data
+                    structured = st.session_state.generated_structured
+                    contextual_text = st.session_state.generated_contextual_text
+
+                    operator_context = {
+                        "notes": operator_notes,
+                        "feedback": {
+                            "rating": operator_rating,
+                            "comment": operator_comment,
+                        },
+                    }
+
+                    payload = build_shift_payload(
+                        shift_data=shift_data,
+                        structured_summary=structured,
+                        llm_text=contextual_text,
+                        prev_shift=None,
+                        schema=SHIFT_SCHEMA,
                         operator_context=operator_context,
                     )
-                )
 
-                run_aggregation_if_ready(
-                    new_shift=structured_store.load_shift_summary(shift_data.shift_id),
-                    store=structured_store,
-                    vector_store=vector_store,
-                    schemas={
-                        "day": DAY_SCHEMA,
-                        "week": WEEK_SCHEMA,
-                        "biweek": BIWEEK_SCHEMA,
-                    },
-                    shifts_per_day=3,
-                    days_per_week=7,
-                )
+                    vector_store.add_window(
+                        window_id=payload["window_id"],
+                        embedding_text=payload["summary_text"],
+                        payload=payload,
+                    )
 
-                st.success("✅ Shift saved. Aggregation triggered.")
-                st.session_state.shift_waiting_for_operator = False
+                    structured_store.save_shift_summary(
+                        ShiftSummary(
+                            shift_id=shift_data.shift_id,
+                            shift_start=shift_data.shift_start,
+                            shift_end=shift_data.shift_end,
+                            generated_at=datetime.now(IST),
+
+                            stability_index=structured["stability_index"],
+                            stability_status=structured["stability_status"],
+                            stability_penalties=structured["stability_penalties"],
+
+                            operator_context=operator_context,
+                        )
+                    )
+
+                    run_aggregation_if_ready(
+                        new_shift=structured_store.load_shift_summary(shift_data.shift_id),
+                        store=structured_store,
+                        vector_store=vector_store,
+                        schemas={
+                            "day": DAY_SCHEMA,
+                            "week": WEEK_SCHEMA,
+                            "biweek": BIWEEK_SCHEMA,
+                        },
+                        shifts_per_day=3,
+                        days_per_week=7,
+                    )
+
+                    st.success("✅ Shift saved. Aggregation triggered.")
+                    st.session_state.shift_waiting_for_operator = False
 
     # ===================================================================
     # 📊 REPORTS — Historical Retrieval
@@ -543,7 +649,8 @@ def main():
 
         if fetch_report:
             if report_level == "Shift":
-                window_id = build_shift_window_id(selected_date, shift_label)
+                # Must match get_shift_id format: YYYY-MM-DD_SHIFT_A/B/C
+                window_id = f"{selected_date:%Y-%m-%d}_SHIFT_{shift_label}"
             elif report_level == "Day":
                 window_id = build_day_window_id(selected_date)
             elif report_level == "Week":
@@ -558,9 +665,310 @@ def main():
             else:
                 st.warning("No report found.")
 
+    # elif app_mode == "🤖 Knowledge Hub":
+
+    #     st.header("🤖 FurnaceMind AI Copilot")
+
+    #     # Initialize components
+    #     embedding_client = CloudEmbeddingClient()
+    #     knowledge_store = KnowledgeVectorStore(embedding_client)
+    #     shift_store = QdrantVectorStore()
+
+    #     fetcher = InfluxDataFetcher()
+    #     plotter = PythonPlotter()
+
+    #     # -------------------------
+    #     # File Upload
+    #     # -------------------------
+    #     uploaded_files = st.sidebar.file_uploader(
+    #         "Upload Knowledge Files",
+    #         accept_multiple_files=True
+    #     )
+
+    #     if uploaded_files:
+    #         for file in uploaded_files:
+    #             process_file(file, knowledge_store, embedding_client)
+    #         st.success("Documents indexed successfully.")
+
+    #     # -------------------------
+    #     # Chat History
+    #     # -------------------------
+    #     if "chat_history" not in st.session_state:
+    #         st.session_state.chat_history = []
+
+    #     for msg in st.session_state.chat_history:
+    #         with st.chat_message(msg["role"]):
+    #             if msg.get("type") == "plot":
+    #                 st.pyplot(msg["content"])
+    #             else:
+    #                 st.markdown(msg["content"])
+
+    #     # -------------------------
+    #     # User Input
+    #     # -------------------------
+    #     user_query = st.chat_input("Ask about shifts, live trends, documents...")
+
+    #     if user_query:
+
+    #         st.session_state.chat_history.append(
+    #             {"role": "user", "content": user_query}
+    #         )
+
+    #         with st.chat_message("user"):
+    #             st.markdown(user_query)
+
+    #         route = route_query(user_query)
+
+    #         llm = OpenAIClient()
+
+    #         # =====================================================
+    #         # 🔧 MCP TOOL: Influx Fetch + Plot
+    #         # =====================================================
+    #         if route == "influx":
+
+    #             df = fetcher.fetch(
+    #                 time_range="last 8 hours",
+    #                 window="15 minutes"
+    #             )
+
+    #             if df is None or df.empty:
+    #                 response = "No live data available."
+    #                 st.session_state.chat_history.append(
+    #                     {"role": "assistant", "content": response}
+    #                 )
+    #                 with st.chat_message("assistant"):
+    #                     st.markdown(response)
+    #             else:
+    #                 # Basic column detection
+    #                 selected_cols = [
+    #                     col for col in df.columns
+    #                     if any(k in col.lower()
+    #                         for k in ["eta", "temp", "pressure", "fuel", "co"])
+    #                 ]
+
+    #                 if not selected_cols:
+    #                     selected_cols = df.columns[:2]
+
+    #                 fig = plotter.plot(
+    #                     df,
+    #                     columns=selected_cols,
+    #                     title="Live Furnace Trend"
+    #                 )
+
+    #                 st.session_state.chat_history.append(
+    #                     {"role": "assistant", "content": fig, "type": "plot"}
+    #                 )
+
+    #                 with st.chat_message("assistant"):
+    #                     st.pyplot(fig)
+
+    #         # =====================================================
+    #         # 📊 SHIFT RAG
+    #         # =====================================================
+    #         elif route == "shift":
+
+    #             results = shift_store.search_similar_windows(
+    #                 query_text=user_query,
+    #                 top_k=5
+    #             )
+
+    #             context = "\n\n".join(
+    #                 [r["payload"].get("summary_text", "")
+    #                 for r in results]
+    #             )
+
+    #             response = llm.generate(
+    #                 system_prompt=f"Use shift context:\n{context}",
+    #                 user_prompt=user_query
+    #             )
+
+    #             st.session_state.chat_history.append(
+    #                 {"role": "assistant", "content": response}
+    #             )
+
+    #             with st.chat_message("assistant"):
+    #                 st.markdown(response)
+
+    #         # =====================================================
+    #         # 📚 KNOWLEDGE RAG
+    #         # =====================================================
+    #         else:
+
+    #             results = knowledge_store.search(user_query)
+
+    #             context = "\n\n".join(
+    #                 [r["payload"].get("content", "")
+    #                 for r in results]
+    #             )
+
+    #             response = llm.generate(
+    #                 system_prompt=f"Use document context:\n{context}",
+    #                 user_prompt=user_query
+    #             )
+
+    #             st.session_state.chat_history.append(
+    #                 {"role": "assistant", "content": response}
+    #             )
+
+    #             with st.chat_message("assistant"):
+    #                 st.markdown(response)
     # ===================================================================
     # 🧠 FURNACE INTELLIGENCE — HEALTH OVERVIEW
     # ===================================================================
+
+    elif app_mode == "🤖 Knowledge Hub":
+
+        st.header("🤖 FurnaceMind AI Copilot")
+
+        # --------------------------------------------------
+        # 🔹 Local Sentence Embedding (Text Only)
+        # --------------------------------------------------
+        embedding_client = SentenceEmbedding(
+            model_name=settings.embedding["local"].model_name,
+            device=settings.embedding["local"].device,
+        )
+
+        knowledge_store = KnowledgeVectorStore(embedding_client)
+        shift_store = QdrantVectorStore()
+
+        fetcher = InfluxDataFetcher()
+        plotter = PythonPlotter()
+
+        # --------------------------------------------------
+        # 📂 File Upload (Text Files Only)
+        # --------------------------------------------------
+        uploaded_files = st.sidebar.file_uploader(
+            "Upload Knowledge Files",
+            type=["pdf", "docx", "pptx", "xls", "xlsx", "txt"],
+            accept_multiple_files=True
+        )
+
+        if uploaded_files:
+            for file in uploaded_files:
+                process_file(file, knowledge_store, embedding_client)
+            st.success("Documents indexed successfully.")
+
+        # --------------------------------------------------
+        # 💬 Chat History
+        # --------------------------------------------------
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
+
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                if msg.get("type") == "plot":
+                    st.pyplot(msg["content"])
+                else:
+                    st.markdown(msg["content"])
+
+        # --------------------------------------------------
+        # 🧠 User Input
+        # --------------------------------------------------
+        user_query = st.chat_input("Ask about shifts, live trends, documents...")
+
+        if user_query:
+
+            st.session_state.chat_history.append(
+                {"role": "user", "content": user_query}
+            )
+
+            with st.chat_message("user"):
+                st.markdown(user_query)
+
+            route = route_query(user_query)
+
+            llm = OpenAIClient()
+
+            # =====================================================
+            # 🔧 MCP TOOL: Influx Fetch + Plot
+            # =====================================================
+            if route == "influx":
+
+                df = fetcher.fetch(
+                    time_range="last 8 hours",
+                    window="15 minutes"
+                )
+
+                if df is None or df.empty:
+                    response = "No live data available."
+                    st.session_state.chat_history.append(
+                        {"role": "assistant", "content": response}
+                    )
+                    with st.chat_message("assistant"):
+                        st.markdown(response)
+                else:
+                    selected_cols = [
+                        col for col in df.columns
+                        if any(k in col.lower()
+                            for k in ["eta", "temp", "pressure", "fuel", "co"])
+                    ]
+
+                    if not selected_cols:
+                        selected_cols = df.columns[:2]
+
+                    fig = plotter.plot(
+                        df,
+                        columns=selected_cols,
+                        title="Live Furnace Trend"
+                    )
+
+                    st.session_state.chat_history.append(
+                        {"role": "assistant", "content": fig, "type": "plot"}
+                    )
+
+                    with st.chat_message("assistant"):
+                        st.pyplot(fig)
+
+            # =====================================================
+            # 📊 SHIFT RAG
+            # =====================================================
+            elif route == "shift":
+
+                results = shift_store.search_similar_windows(
+                    query_text=user_query,
+                    top_k=5
+                )
+
+                context = "\n\n".join(
+                    [r["payload"].get("summary_text", "")
+                    for r in results]
+                )
+
+                response = llm.generate(
+                    system_prompt=f"Use shift context:\n{context}",
+                    user_prompt=user_query
+                )
+
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": response}
+                )
+
+                with st.chat_message("assistant"):
+                    st.markdown(response)
+
+            # =====================================================
+            # 📚 KNOWLEDGE RAG (Text Only)
+            # =====================================================
+            else:
+
+                results = knowledge_store.search(user_query)
+
+                context = "\n\n".join(
+                    [r["payload"].get("content", "")
+                    for r in results]
+                )
+
+                response = llm.generate(
+                    system_prompt=f"Use document context:\n{context}",
+                    user_prompt=user_query
+                )
+
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": response}
+                )
+
+                with st.chat_message("assistant"):
+                    st.markdown(response)
     else:
         st.header("🧠 Furnace Health Overview")
 

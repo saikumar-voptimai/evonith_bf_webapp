@@ -1,1 +1,27 @@
-[]
+[
+  {
+    "shift_id": "2026-02-14_00_SHIFT",
+    "shift_start": "2026-02-14 00:00:00+05:30",
+    "shift_end": "2026-02-14 08:00:00+05:30",
+    "generated_at": "2026-02-14 12:53:16.674400+05:30",
+    "stability_index": 97.4,
+    "stability_status": "STABLE",
+    "stability_penalties": {
+      "variability": 1.7,
+      "anomaly": 0.0,
+      "trend": 0.9
+    },
+    "num_parameters": 0,
+    "num_anomalies": 0,
+    "early_drift": {},
+    "anomalous_parameters": [],
+    "anomaly_details": {},
+    "operator_context": {
+      "notes": "",
+      "feedback": {
+        "rating": 3,
+        "comment": ""
+      }
+    }
+  }
+]

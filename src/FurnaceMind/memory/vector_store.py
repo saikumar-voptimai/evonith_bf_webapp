@@ -28,14 +28,21 @@ class QdrantVectorStore:
         )
 
         self.collection_name = settings.qdrant.collection_name
-        self.embedding_dim = settings.qdrant.embedding_dim
 
-        self.embedding = SentenceEmbedding(
-            model_name=settings.embedding.model_name,
-            device="cuda" if torch.cuda.is_available() else "cpu",
-        )
+        emb_cfg = settings.embedding["local"]   # ✅ pick local config
+
+        self.embedding_dim = emb_cfg.dimension  # ✅ match embedding model dim
+
+        if settings.qdrant.embedding_dim != self.embedding_dim:
+            raise RuntimeError(
+                f"QDRANT_EMBED_DIM ({settings.qdrant.embedding_dim}) does not match "
+                f"LOCAL_EMBEDDING_DIM ({self.embedding_dim}). Fix your .env values."
+            )
+
+        self.embedding = SentenceEmbedding(model_name=emb_cfg.model_name)
 
         self._ensure_collection()
+
 
 
     def _ensure_collection(self) -> None:

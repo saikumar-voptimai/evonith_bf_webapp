@@ -10,8 +10,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# ==========================================================
+# 🔹 LLM CONFIGURATION
+# ==========================================================
 
-# LLM CONFIGURATION
 @dataclass
 class OpenRouterLLMConfig:
     api_key: str | None
@@ -31,10 +33,6 @@ class OpenAILLMConfig:
 
 @dataclass
 class LLMSettings:
-    """
-    LLM configuration supporting BOTH OpenRouter and OpenAI.
-    """
-
     provider: str = "openrouter"
 
     openrouter: OpenRouterLLMConfig = field(
@@ -46,16 +44,30 @@ class LLMSettings:
     )
 
 
+# ==========================================================
+# 🔹 EMBEDDING CONFIGURATION (DUAL SUPPORT)
+# ==========================================================
 
-# EMBEDDING CONFIGURATION
 @dataclass
-class EmbeddingConfig:
+class LocalEmbeddingConfig:
     provider: str
     model_name: str
     device: str
+    dimension: int
 
 
-# VECTOR DATABASE CONFIG
+@dataclass
+class CloudEmbeddingConfig:
+    provider: str
+    model_name: str
+    api_key: str | None
+    dimension: int
+
+
+# ==========================================================
+# 🔹 VECTOR DATABASE CONFIG
+# ==========================================================
+
 @dataclass
 class QdrantConfig:
     url: str
@@ -65,8 +77,10 @@ class QdrantConfig:
     timeout: int
 
 
+# ==========================================================
+# 🔹 ANOMALY CONFIGURATION
+# ==========================================================
 
-# ANOMALY CONFIGURATION
 @dataclass
 class AnomalyConfig:
     z_warn: float = 2.0
@@ -74,8 +88,10 @@ class AnomalyConfig:
     delta_warn: float = 0.05
 
 
+# ==========================================================
+# 🔹 APPLICATION CONFIG
+# ==========================================================
 
-# APPLICATION CONFIG
 @dataclass
 class AppConfig:
     shift_hours: int = 8
@@ -83,8 +99,10 @@ class AppConfig:
     environment: str = "dev"
 
 
+# ==========================================================
+# 🔹 SETTINGS LOADER
+# ==========================================================
 
-# SETTINGS LOADER
 class Settings:
     def __init__(self):
         self.llm = self._load_llm_settings()
@@ -96,12 +114,13 @@ class Settings:
         self._validate()
 
 
-    # LOADERS
+    # ------------------------------------------------------
+    # LLM LOADER
+    # ------------------------------------------------------
     @staticmethod
     def _load_llm_settings() -> LLMSettings:
         provider = os.getenv("LLM_PROVIDER", "openrouter").strip().lower()
 
-        # OpenRouter
         openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
         openrouter_base_url = os.getenv(
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
@@ -110,7 +129,6 @@ class Settings:
             "OPENROUTER_MODEL", "openai/gpt-4o-mini"
         )
 
-        # OpenAI
         openai_api_key = os.getenv("OPENAI_API_KEY")
         openai_base_url = os.getenv("OPENAI_BASE_URL")
         openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -135,19 +153,53 @@ class Settings:
             ),
         )
 
-    @staticmethod
-    def _load_embedding_config() -> EmbeddingConfig:
-        return EmbeddingConfig(
-            provider=os.getenv("EMBEDDING_PROVIDER", "sentence_transformer"),
-            model_name=os.getenv(
-                "EMBEDDING_MODEL",
-                "sentence-transformers/all-MiniLM-L6-v2",
-            ),
-            device=os.getenv("EMBEDDING_DEVICE", "cpu"),
-        )
 
+    # ------------------------------------------------------
+    # EMBEDDING LOADER (DUAL MODE)
+    # ------------------------------------------------------
+    @staticmethod
+    def _load_embedding_config():
+
+        # -------- Local Embedding (Shift Reports) --------
+        local_provider = os.getenv("LOCAL_EMBEDDING_PROVIDER", "sentence_transformer")
+        local_model = os.getenv(
+            "LOCAL_EMBEDDING_MODEL",
+            "sentence-transformers/all-MiniLM-L6-v2",
+        )
+        local_device = os.getenv("LOCAL_EMBEDDING_DEVICE", "cpu")
+        local_dim = int(os.getenv("LOCAL_EMBEDDING_DIM", 384))
+
+        # -------- Cloud Embedding (Knowledge Hub) --------
+        cloud_provider = os.getenv("CLOUD_EMBEDDING_PROVIDER", "openai")
+        cloud_model = os.getenv(
+            "CLOUD_EMBEDDING_MODEL",
+            "text-embedding-3-large",
+        )
+        cloud_api_key = os.getenv("CLOUD_EMBEDDING_API_KEY")
+        cloud_dim = int(os.getenv("CLOUD_EMBEDDING_DIM", 1024))
+
+        return {
+            "local": LocalEmbeddingConfig(
+                provider=local_provider,
+                model_name=local_model,
+                device=local_device,
+                dimension=local_dim,
+            ),
+            "cloud": CloudEmbeddingConfig(
+                provider=cloud_provider,
+                model_name=cloud_model,
+                api_key=cloud_api_key,
+                dimension=cloud_dim,
+            ),
+        }
+
+
+    # ------------------------------------------------------
+    # QDRANT LOADER
+    # ------------------------------------------------------
     @staticmethod
     def _load_qdrant_config() -> QdrantConfig:
+
         endpoint = os.getenv("QDRANT_ENDPOINT")
         local_url = os.getenv("QDRANT_URL")
 
@@ -174,31 +226,33 @@ class Settings:
         )
 
 
+    # ------------------------------------------------------
     # VALIDATION
+    # ------------------------------------------------------
     def _validate(self) -> None:
+
+        # LLM validation
         if not self.llm.openrouter.api_key and not self.llm.openai.api_key:
             raise ValueError(
                 "At least one of OPENROUTER_API_KEY or OPENAI_API_KEY must be set."
             )
 
         if self.llm.provider not in {"openrouter", "openai"}:
-            raise ValueError(
-                f"Unsupported LLM_PROVIDER: {self.llm.provider}"
-            )
+            raise ValueError(f"Unsupported LLM_PROVIDER: {self.llm.provider}")
 
         if self.llm.openai.api_mode not in {"responses", "chat_completions"}:
             raise ValueError(
                 "OPENAI_API_MODE must be 'responses' or 'chat_completions'."
             )
 
-        if self.embedding.provider not in {
-            "sentence_transformer",
-            "openrouter",
-        }:
-            raise ValueError(
-                f"Unsupported embedding provider: {self.embedding.provider}"
-            )
+        # Embedding validation
+        if self.embedding["local"].provider != "sentence_transformer":
+            raise ValueError("Unsupported local embedding provider.")
 
+        if self.embedding["cloud"].provider not in {"openai", "openrouter", "voyage"}:
+            raise ValueError("Unsupported cloud embedding provider.")
+
+        # Qdrant Cloud safety
         if (
             "cloud.qdrant.io" in self.qdrant.url
             and not self.qdrant.url.startswith("https://")
@@ -208,5 +262,8 @@ class Settings:
             )
 
 
-# Singleton
+# ==========================================================
+# 🔹 SINGLETON
+# ==========================================================
+
 settings = Settings()

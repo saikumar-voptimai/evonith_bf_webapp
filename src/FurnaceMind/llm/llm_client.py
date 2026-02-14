@@ -51,16 +51,29 @@ class OpenRouterClient:
         try:
             completion = self.client.chat.completions.create(
                 model=self.model,
-                messages=messages,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_completion_tokens=self.max_tokens,
+                stop=stop,
+                extra_headers=self.extra_headers,
+            )
+            return completion.choices[0].message.content or ""
+        except Exception as err:
+            # fallback for older models that only accept max_tokens
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
                 max_tokens=self.max_tokens,
                 stop=stop,
                 extra_headers=self.extra_headers,
             )
             return completion.choices[0].message.content or ""
 
-        except Exception as err:
-            print(f"[WARN] OpenRouter LLM call failed: {err}")
-            return ""
 
 
 
@@ -125,34 +138,30 @@ class OpenAIClient:
         stop: Optional[List[str]] = None,
     ) -> str:
         try:
-            # Chat Completions (recommended for GPT-5-mini)
-            if self.api_mode == "chat_completions":
-                completion = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    max_tokens=self.max_tokens,
-                    stop=stop,
-                    extra_headers=self.extra_headers,
-                )
-                return completion.choices[0].message.content or ""
-
-            # Responses API
-            resp = self.client.responses.create(
+            completion = self.client.chat.completions.create(
                 model=self.model,
-                instructions=system_prompt,
-                input=user_prompt,
-                max_output_tokens=self.max_tokens,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_completion_tokens=self.max_tokens,
+                stop=stop,
+                extra_headers=self.extra_headers,
+            )
+        except Exception:
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=self.max_tokens,
+                stop=stop,
                 extra_headers=self.extra_headers,
             )
 
-            return self._extract_text_from_responses(resp)
+        return completion.choices[0].message.content or ""
 
-        except Exception as err:
-            print(f"[WARN] OpenAI LLM call failed: {err}")
-            return ""
 
 
 
