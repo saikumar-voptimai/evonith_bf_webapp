@@ -10,23 +10,6 @@ from utils.session import is_logged_in
 setup_logger()
 
 
-import logging
-from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
-
-root = logging.getLogger()
-print("=== ROOT HANDLERS ===")
-for h in root.handlers:
-    print(type(h).__name__, getattr(h, "baseFilename", None))
-print("=====================")
-
-# Also check a typical app logger if you use get_logger("...")
-test = logging.getLogger("FurnaceMind")
-print("=== FurnaceMind logger handlers ===")
-for h in test.handlers:
-    print(type(h).__name__, getattr(h, "baseFilename", None))
-print("=====================")
-
-
 # ------------------------------------------------------
 #  Authentication Gate
 # ------------------------------------------------------

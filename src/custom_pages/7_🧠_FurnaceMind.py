@@ -186,7 +186,7 @@ def main():
             "📤 Data Management",
             "📊 Reports",
             "🧠 Furnace Intelligence",
-            "🤖 Knowledge Hub",
+            "🤖 AI Co-Operate",
         ],
     )
 
@@ -816,9 +816,35 @@ def main():
     # 🧠 FURNACE INTELLIGENCE — HEALTH OVERVIEW
     # ===================================================================
 
-    elif app_mode == "🤖 Knowledge Hub":
+    elif app_mode == "🤖 AI Co-Operate":
 
-        st.header("🤖 FurnaceMind AI Copilot")
+        st.header("🤖 FurnaceMind — AI Co-Operate")
+
+        # --------------------------------------------------
+        # 🧠 System behavior (AI Co-Operate)
+        # --------------------------------------------------
+        AI_COOPERATE_SYSTEM = """
+        You are FurnaceMind — AI Co-Operate, an industrial co-pilot that helps humans run manufacturing safely, efficiently, and consistently.
+
+        Mission:
+        - Co-operate with the operator/engineer: propose actions, ask for confirmation when actions are risky, and explain trade-offs.
+        - Stay grounded in the provided sources (live trends, shift summaries, uploaded documents). Never invent tags, readings, events, or document content.
+        - Prefer practical guidance: setpoints, checks, thresholds, step-by-step troubleshooting, and “what to do next”.
+
+        How to respond:
+        1) **Conclusion (1–2 lines)**: what you recommend or what’s happening.
+        2) **Evidence**: cite which signals/doc/shift notes you used (quote short snippets if needed).
+        3) **Actions**: 3–7 bullet steps, ordered, with units and time windows.
+        4) **Risks / Watch-outs**: what could go wrong, what alarms/limits to respect.
+        5) **If missing info**: ask ONLY the minimum missing variable(s) or timeframe.
+
+        Tool & routing discipline:
+        - If the question is about live behavior / trends / “last N hours” → use LIVE DATA context.
+        - If it’s about what happened in a shift / why performance changed → use SHIFT CONTEXT.
+        - If it’s about SOPs / procedures / specs / policies → use DOCUMENT CONTEXT.
+        - If context is empty, say so and request the missing artifact.
+        Keep the tone professional, concise, and operator-friendly.
+        """.strip()
 
         # --------------------------------------------------
         # 🔹 Local Sentence Embedding (Text Only)
@@ -837,16 +863,21 @@ def main():
         # --------------------------------------------------
         # 📂 File Upload (Text Files Only)
         # --------------------------------------------------
+        file_types = ["pdf", "docx", "pptx", "xls", "xlsx", "txt"]
+
         uploaded_files = st.sidebar.file_uploader(
             "Upload Knowledge Files",
-            type=["pdf", "docx", "pptx", "xls", "xlsx", "txt"],
-            accept_multiple_files=True
+            type=[str(x) for x in file_types],
+            accept_multiple_files=True,
+            key="knowledge_uploader",
         )
 
+        status = st.sidebar.empty()
+
         if uploaded_files:
-            for file in uploaded_files:
-                process_file(file, knowledge_store, embedding_client)
-            st.success("Documents indexed successfully.")
+            for f in uploaded_files:
+                process_file(f, knowledge_store, embedding_client)
+            status.success("Documents indexed successfully.")
 
         # --------------------------------------------------
         # 💬 Chat History
@@ -867,82 +898,73 @@ def main():
         user_query = st.chat_input("Ask about shifts, live trends, documents...")
 
         if user_query:
-
-            st.session_state.chat_history.append(
-                {"role": "user", "content": user_query}
-            )
+            st.session_state.chat_history.append({"role": "user", "content": user_query})
 
             with st.chat_message("user"):
                 st.markdown(user_query)
 
             route = route_query(user_query)
-
             llm = OpenAIClient()
 
             # =====================================================
             # 🔧 MCP TOOL: Influx Fetch + Plot
             # =====================================================
             if route == "influx":
-
-                df = fetcher.fetch(
-                    time_range="last 8 hours",
-                    window="15 minutes"
-                )
+                df = fetcher.fetch(time_range="last 8 hours", window="15 minutes")
 
                 if df is None or df.empty:
-                    response = "No live data available."
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": response}
-                    )
+                    response = "No live data available for the selected time range."
+                    st.session_state.chat_history.append({"role": "assistant", "content": response})
                     with st.chat_message("assistant"):
                         st.markdown(response)
                 else:
                     selected_cols = [
                         col for col in df.columns
-                        if any(k in col.lower()
-                            for k in ["eta", "temp", "pressure", "fuel", "co"])
+                        if any(k in col.lower() for k in ["eta", "temp", "pressure", "fuel", "co"])
                     ]
-
                     if not selected_cols:
-                        selected_cols = df.columns[:2]
+                        selected_cols = list(df.columns[:2])
 
-                    fig = plotter.plot(
-                        df,
-                        columns=selected_cols,
-                        title="Live Furnace Trend"
-                    )
+                    fig = plotter.plot(df, columns=selected_cols, title="Live Furnace Trend")
 
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": fig, "type": "plot"}
-                    )
-
+                    # Show plot
+                    st.session_state.chat_history.append({"role": "assistant", "content": fig, "type": "plot"})
                     with st.chat_message("assistant"):
                         st.pyplot(fig)
+
+                    # Optional: add an AI Co-Operate textual summary below plot
+                    live_sample_csv = df[selected_cols].tail(200).to_csv(index=False)
+                    system_prompt = (
+                        AI_COOPERATE_SYSTEM
+                        + "\n\n=== LIVE DATA (authoritative sample) ===\n"
+                        + live_sample_csv
+                    )
+                    response = llm.generate(system_prompt=system_prompt, user_prompt=user_query)
+
+                    if response:
+                        st.session_state.chat_history.append({"role": "assistant", "content": response})
+                        with st.chat_message("assistant"):
+                            st.markdown(response)
 
             # =====================================================
             # 📊 SHIFT RAG
             # =====================================================
             elif route == "shift":
+                results = shift_store.search_similar_windows(query_text=user_query, top_k=5)
 
-                results = shift_store.search_similar_windows(
-                    query_text=user_query,
-                    top_k=5
+                context = "\n\n".join([r.get("payload", {}).get("summary_text", "") for r in results]).strip()
+                if not context:
+                    context = "No shift summaries were retrieved for this query."
+
+                system_prompt = (
+                    AI_COOPERATE_SYSTEM
+                    + "\n\n=== SHIFT CONTEXT (authoritative) ===\n"
+                    + context
                 )
 
-                context = "\n\n".join(
-                    [r["payload"].get("summary_text", "")
-                    for r in results]
-                )
+                response = llm.generate(system_prompt=system_prompt, user_prompt=user_query)
 
-                response = llm.generate(
-                    system_prompt=f"Use shift context:\n{context}",
-                    user_prompt=user_query
-                )
-
-                st.session_state.chat_history.append(
-                    {"role": "assistant", "content": response}
-                )
-
+                st.session_state.chat_history.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
                     st.markdown(response)
 
@@ -950,25 +972,24 @@ def main():
             # 📚 KNOWLEDGE RAG (Text Only)
             # =====================================================
             else:
-
                 results = knowledge_store.search(user_query)
 
-                context = "\n\n".join(
-                    [r["payload"].get("content", "")
-                    for r in results]
+                context = "\n\n".join([r.get("payload", {}).get("content", "") for r in results]).strip()
+                if not context:
+                    context = "No document passages were retrieved for this query."
+
+                system_prompt = (
+                    AI_COOPERATE_SYSTEM
+                    + "\n\n=== DOCUMENT CONTEXT (authoritative) ===\n"
+                    + context
                 )
 
-                response = llm.generate(
-                    system_prompt=f"Use document context:\n{context}",
-                    user_prompt=user_query
-                )
+                response = llm.generate(system_prompt=system_prompt, user_prompt=user_query)
 
-                st.session_state.chat_history.append(
-                    {"role": "assistant", "content": response}
-                )
-
+                st.session_state.chat_history.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
                     st.markdown(response)
+
     else:
         st.header("🧠 Furnace Health Overview")
 
