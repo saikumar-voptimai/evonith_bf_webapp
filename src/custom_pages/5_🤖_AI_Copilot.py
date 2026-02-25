@@ -615,13 +615,17 @@ Each distribution change interval was evaluated by the **realized mean Unit Cost
   - **LMG angle ~40–43**, **charging pattern P→C**
 """
 
-def build_anomaly_prompt(recent_df: pd.DataFrame, notes: str = "") -> str:
+def build_anomaly_prompt(recent_df: pd.DataFrame, 
+                         past_df: pd.DataFrame,
+                         notes: str = "") -> str:
     # Compact alerts table
     pkt = recent_df if not recent_df.empty else "_No timeseries to show_"
+    past_pkt = past_df if not past_df.empty else "_No past timeseries to show_"
+    
     return f"""
-You are an anomaly spotter. Report the key anomalies in last 8hours shift (provided data) using Z-score in one line per issue.
+You are an anomaly spotter and shift summariser that helps operator to takeover in the next shift.
 
-You also received raw data (recent_df) for:
+You also received last 8hour data (recent_df) and 8-24hours past data (past_df) for:
 a. blast furnace temperature profile denoted "Temperature Profile - BF2_BFBF Furnace Body [furnace_level]mm Temp [circumferential_position]"
     Description for Number of sensors at different levels and any proxy name (furnace profile) is given below
     Desc:
@@ -666,10 +670,14 @@ gas/pressure instabilities.
 # Recent 8hours packet (averaged to 15mins)
 {pkt}
 
+# Past 8-24 hours packet (averaged to 15mins)
+{past_pkt}
+
 # Operator notes
 {notes}
 
 # Output in brief upto 200 words only
+- Siginificant changes in the two shifts in brief.
 - Key observations (2–3 lines) for operator of what happened in previous shift. 
 Like Blowdowns, StartUps, Shutdowns.
 Are heatloads increasing?
@@ -786,7 +794,7 @@ with tabs[0]:
                 delta=f"{delta:+.2f}" if delta is not None else None,
             )
             k2.metric(
-                "Components used (of 6)",
+                "Components used (of 7)",
                 int(scores["n_components_used"].iloc[-1]),
             )
             k3.caption(f"Last updated: {datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}")
@@ -795,18 +803,21 @@ with tabs[0]:
             st.line_chart(scores[["channeling_score"]], height=220)
 
             # --- Optional: component breakdown ---
-            last_points = st.number_input(
-                "Points to show in breakdown", value=12, min_value=1, max_value=1000, step=1)
+            cols = st.columns(3)
+            with cols[0]:
+                last_points = st.number_input(
+                    "Points to show in breakdown", value=12, min_value=1, max_value=1000, step=1)
             with st.expander(f"Component breakdown (latest {last_points} points)", expanded=False):
                 cols = [
                     "channeling_score",
                     "uptake_score", "skin_score",
-                    "hbp_score", "eta_co_score",
+                    "hbp_score", "topdp_score", 
+                    "bottomdp_score", "eta_co_score",
                     "heatload_score", "stave_score",
                     "n_components_used",
                 ]
                 cols = [c for c in cols if c in scores.columns]
-                st.dataframe(scores[cols].tail(last_points), use_container_width=True)
+                st.dataframe(scores[cols].tail(last_points), width='stretch')
 
         if enable:
             render_channeling()
@@ -815,12 +826,22 @@ with tabs[0]:
 
     if st.button("Check Anomalies"):
         with st.spinner("Fetching recent data from Influx…"):
-            df_recent = fetch_recent_online(tr='last 8 hours', ar='15 minutes')
-        if df_recent.empty:
+            df_recent_shift = fetch_recent_online(tr='last 8 hours', 
+                                            request_type='windowed-average', 
+                                            window_by='15 minutes')
+            
+            df_previous = fetch_recent_online(tr='last 24 hours', 
+                                            request_type='windowed-average', 
+                                            window_by='15 minutes')
+            # Make df_previous cover the 8–24 hours ago period only
+            if not df_previous.empty:
+                cutoff_time = df_previous.index.max() - pd.Timedelta(hours=16)
+                df_previous = df_previous[df_previous.index <= cutoff_time]
+        if df_recent_shift.empty:
             st.warning("No recent data fetched from Influx. Check credentials/fields.")
         else:
             system = "You are a careful anomaly detector for blast furnace thermal and gas behavior."
-            prompt = build_anomaly_prompt(df_recent, notes)
+            prompt = build_anomaly_prompt(df_recent_shift, df_previous, notes)
             with st.spinner("Summarizing anomalies…"):
                 if run_llm:
                     out = call_llm(system, prompt)

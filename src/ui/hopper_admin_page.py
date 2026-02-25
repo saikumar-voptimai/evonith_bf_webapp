@@ -155,7 +155,7 @@ class HopperAdminPage:
             edited = st.data_editor(
                 history,
                 hide_index=True,
-                use_container_width='stretch',
+                width='stretch',
                 column_config={
                     "delete": st.column_config.CheckboxColumn("Delete"),
                     "id": None,  

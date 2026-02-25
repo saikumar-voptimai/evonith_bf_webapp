@@ -5,6 +5,7 @@ from typing import List
 
 def get_control_bounds(df: pd.DataFrame, 
                        cp_list: List[str], 
+                       impute_lags: bool = True
                        ) -> List[tuple]:
     """
     TODO: Edit the function to send cp bounds from control_bounds.json file
@@ -24,13 +25,22 @@ def get_control_bounds(df: pd.DataFrame,
         with open(bounds_file, "r") as f:
             persisted_bounds = json.load(f)
             for cp in cp_list:
-                col_min = float(df[cp].min())
-                col_max = float(df[cp].max())
-                cp_min = persisted_bounds.get(cp, {}).get("min", col_min)
-                cp_max = persisted_bounds.get(cp, {}).get("max", col_max)
-                val = persisted_bounds.get(cp, {})["value"]
-                overide = persisted_bounds.get(cp, {}).get("override", False)
+                if '_lag' in cp and impute_lags:
+                    cp_sfx = cp.split('_lag')[0]
+                else:
+                    cp_sfx = cp
+                col_min = float(df[cp_sfx].min())
+                col_max = float(df[cp_sfx].max())
+                cp_min = persisted_bounds.get(cp_sfx, {}).get("min", col_min)
+                cp_max = persisted_bounds.get(cp_sfx, {}).get("max", col_max)
+                val = persisted_bounds.get(cp_sfx, {})["value"]
+                overide = persisted_bounds.get(cp_sfx, {}).get("override", False)
                 if overide:
                     persisted_bounds[cp]["min"] = val * 0.99
                     persisted_bounds[cp]["max"] = val * 1.01
-    return [(persisted_bounds[cp]["min"], persisted_bounds[cp]["max"]) for cp in cp_list]
+        if impute_lags:
+            return [(persisted_bounds[cp.split('_lag')[0] if '_lag' in cp else cp]["min"], 
+                     persisted_bounds[cp.split('_lag')[0] if '_lag' in cp else cp]["max"]) for cp in cp_list]
+        else:
+            return [(persisted_bounds[cp]["min"], 
+                     persisted_bounds[cp]["max"]) for cp in cp_list]

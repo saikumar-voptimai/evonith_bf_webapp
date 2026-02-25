@@ -227,7 +227,8 @@ with st.form("Optimiser Form"):
             user_input, 
             fixed_cp,
             st.session_state.dfprocessor,
-            lambda_reg=lambda_reg
+            lambda_reg=lambda_reg,
+            impute_lags=False
         )
 
         st.subheader("Optimisation Results")

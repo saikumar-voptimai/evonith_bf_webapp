@@ -103,7 +103,7 @@ temperatures_max = [temperature_list[1][i] for i in range(4)]
 temperatures_min = [temperature_list[2][i] for i in range(4)]  # Extracting only the temperature values for Q1-Q4
 
 fig = plotter.plot_plotly(temperatures, temperatures_max, temperatures_min)
-st.plotly_chart(fig, use_container_width='stretch')
+st.plotly_chart(fig, width='stretch')
 
 #-------------------------------------------------------------------------------------------------------
 # 2. Circular Heatload distribution Plot
@@ -129,7 +129,7 @@ fig = plotter.plot_circumferential_quadrants(heatloads_list,
                                              colorbar_title="Heatload (GJ)", 
                                              unit="",
                                              show_colorbar=True)
-st.plotly_chart(fig, use_container_width='stretch')
+st.plotly_chart(fig, width='stretch')
 
 #------------------------------------------------------------------------------------------------------
 # 3. Circular Temperature Plot
@@ -188,20 +188,20 @@ fig = plotter.plot_circumferential_quadrants(temp_to_plot,
                                              colorbar_title="Temperature (°C)", 
                                              unit="",
                                              show_colorbar=False)
-st.plotly_chart(fig, use_container_width='stretch')
+st.plotly_chart(fig, width='stretch')
 
 fig = plotter.plot_circumferential_quadrants(temp_to_plot2, 
                                              titles=all_titles[:5], 
                                              colorbar_title="Temperature (°C)", 
                                              unit="",
                                              show_colorbar=False)
-st.plotly_chart(fig, use_container_width='stretch')
+st.plotly_chart(fig, width='stretch')
 fig = plotter.plot_circumferential_quadrants(temp_to_plot3, 
                                              titles=all_titles[5:8], 
                                              colorbar_title="Temperature (°C)",
                                              unit="",
                                              show_colorbar=True)
-st.plotly_chart(fig, use_container_width='stretch')
+st.plotly_chart(fig, width='stretch')
 # -------------------------------------------------------------------------------------------------------
 st.title("Heat Load Data - Timeseries")
 # -------------------------------------------------------------------------------------------------------
@@ -263,4 +263,4 @@ layout = go.Layout(
 fig = go.Figure(data=data, layout=layout)
 
 # Display the plot
-st.plotly_chart(fig, use_container_width='stretch')
+st.plotly_chart(fig, width='stretch')
