@@ -385,5 +385,5 @@ field_mapping:
   furnace_top_gas_analysis_h2_pct: FURNACE TOP GAS ANALYSISH2%
 influxdb_ml_database:
   database: ML DATASET
-  measurements: rm_charge_data
+  measurements: rm_charge_dataset
   time_range: last 1 month
