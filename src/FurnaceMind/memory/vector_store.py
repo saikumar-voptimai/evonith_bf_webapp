@@ -1,5 +1,9 @@
-# memory/vector_store.py
+# FurnaceMind/memory/vector_store.py
+# Purpose: Vector store for shift/day/week window-based summaries
+# Fixed: Singleton embedding model (no duplicate loading),
+#        proper error handling, dimension validation
 
+import logging
 from typing import Dict, List, Optional
 
 from FurnaceMind.utils.payload_helpers import window_id_to_uuid
@@ -13,15 +17,32 @@ from qdrant_client.models import (
 from FurnaceMind.utils.settings import settings
 from FurnaceMind.embeddings.sentence_embedding import SentenceEmbedding
 
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Singleton embedding model (loaded once, shared across instances)
+# ---------------------------------------------------------------------------
+_embedding_instance: Optional[SentenceEmbedding] = None
+
+
+def _get_shared_embedding() -> SentenceEmbedding:
+    """Return a singleton SentenceEmbedding to avoid loading the model multiple times."""
+    global _embedding_instance
+    if _embedding_instance is None:
+        emb_cfg = settings.embedding["local"]
+        _embedding_instance = SentenceEmbedding(model_name=emb_cfg.model_name)
+        logger.info(f"Loaded sentence embedding model: {emb_cfg.model_name}")
+    return _embedding_instance
+
 
 class QdrantVectorStore:
     """
     Vector store for window-based summaries (shift/day/week).
-    Uses LOCAL embeddings (sentence_transformer) + SHIFT Qdrant collection (384-dim).
+    Uses LOCAL embeddings (sentence_transformer) + SHIFT Qdrant collection.
     """
 
     def __init__(self):
-        qcfg = settings.qdrant_shift  # ✅ shift collection config
+        qcfg = settings.qdrant_shift
 
         self.client = QdrantClient(
             url=qcfg.url,
@@ -31,7 +52,7 @@ class QdrantVectorStore:
 
         self.collection_name = qcfg.collection_name
 
-        emb_cfg = settings.embedding["local"]  # ✅ local embedding config
+        emb_cfg = settings.embedding["local"]
         self.embedding_dim = emb_cfg.dimension
 
         if qcfg.embedding_dim != self.embedding_dim:
@@ -40,7 +61,8 @@ class QdrantVectorStore:
                 f"LOCAL_EMBEDDING_DIM ({self.embedding_dim}). Fix your .env values."
             )
 
-        self.embedding = SentenceEmbedding(model_name=emb_cfg.model_name)
+        # Use shared singleton instead of creating a new model
+        self.embedding = _get_shared_embedding()
         self._ensure_collection()
 
     def _ensure_collection(self) -> None:
@@ -80,6 +102,10 @@ class QdrantVectorStore:
         embedding_text: str,
         payload: Dict,
     ) -> None:
+        if not embedding_text or not embedding_text.strip():
+            logger.warning(f"Skipping empty embedding_text for window_id={window_id}")
+            return
+
         embedding = self.embedding.embed([embedding_text])[0]
 
         if len(embedding) != self.embedding_dim:

@@ -1,14 +1,33 @@
-# core/shift_builder.py
+# FurnaceMind/core/shift_builder.py
+# Purpose: Create fixed 8-hour shifts from time-series data
+# Fixed: Standardized shift ID format to "YYYY-MM-DD_SHIFT_X" (uppercase)
+#        to match the main app and window_helpers.
 
 from dataclasses import dataclass
 from typing import Dict
 import pandas as pd
 
 
+# Canonical shift ID format — used everywhere
+SHIFT_ID_FORMAT = "{date}_SHIFT_{label}"
+
+
+def make_shift_id(dt: pd.Timestamp | str, label: str) -> str:
+    """
+    Generate a canonical shift ID.
+    Usage: make_shift_id("2025-01-01", "A") → "2025-01-01_SHIFT_A"
+    """
+    if isinstance(dt, pd.Timestamp):
+        date_str = dt.strftime("%Y-%m-%d")
+    else:
+        date_str = str(dt)[:10]
+    return SHIFT_ID_FORMAT.format(date=date_str, label=label)
+
+
 @dataclass
 class ShiftData:
     shift_id: str
-    shift_name: str        # NEW (A / B / C)
+    shift_name: str        # A / B / C
     shift_start: pd.Timestamp
     shift_end: pd.Timestamp
     data: pd.DataFrame
@@ -31,8 +50,8 @@ class ShiftBuilder:
 
         shifts: Dict[str, ShiftData] = {}
 
-        for date, df_day in df.groupby(df.index.date):
-            day_start = pd.Timestamp(date)
+        for date_val, df_day in df.groupby(df.index.date):
+            day_start = pd.Timestamp(date_val)
 
             windows = [
                 (day_start, day_start + pd.Timedelta(hours=8), "A"),
@@ -45,11 +64,11 @@ class ShiftBuilder:
                 if shift_df.empty:
                     continue
 
-                shift_id = f"{start.strftime('%Y-%m-%d')}_Shift_{label}"
+                shift_id = make_shift_id(start, label)
 
                 shifts[shift_id] = ShiftData(
                     shift_id=shift_id,
-                    shift_name=f"Shift {label}", 
+                    shift_name=f"Shift {label}",
                     shift_start=start,
                     shift_end=end,
                     data=shift_df.copy(),

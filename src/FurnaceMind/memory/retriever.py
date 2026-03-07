@@ -1,11 +1,16 @@
-# memory/retriever.py
+# FurnaceMind/memory/retriever.py
 # Purpose: Retrieve relevant historical context for LLM reasoning
+# Fixed: Type annotations corrected, operator_notes extracted from
+#        raw search results (not formatted strings), proper error handling
 
-from typing import List, Optional
+import logging
+from typing import List, Dict, Optional
 
 from FurnaceMind.memory.structured_store import StructuredStore
 from FurnaceMind.memory.vector_store import QdrantVectorStore
 from FurnaceMind.memory.schemas import ShiftSummary
+
+logger = logging.getLogger(__name__)
 
 
 class ContextRetriever:
@@ -21,28 +26,35 @@ class ContextRetriever:
         self.structured_store = structured_store
         self.vector_store = vector_store
 
-
-    # Context retrieval
     def retrieve_context(
-    self,
-    current_shift_id: str,
-    current_shift_text: str,
-    top_k_similar: int = 3,
-) -> dict:
+        self,
+        current_shift_id: str,
+        current_shift_text: str,
+        top_k_similar: int = 3,
+    ) -> dict:
         """
         Retrieve previous shift summary and similar historical shifts.
+        Returns structured context dict with text summaries and operator notes.
         """
-
         previous_summary = self._get_previous_shift_summary(current_shift_id)
-        similar_summaries = self._get_similar_shifts(
-            current_shift_text, top_k_similar
+
+        # Get raw search results first (for operator_notes extraction)
+        raw_results = self.vector_store.search_similar_windows(
+            query_text=current_shift_text,
+            top_k=top_k_similar,
+            window_type="shift",
         )
 
+        # Extract operator notes from raw results (before formatting)
         operator_notes = []
-        for hit in similar_summaries:
-            ctx = hit.payload.get("operator_context")
-            if ctx and ctx.get("notes"):
+        for hit in raw_results:
+            payload = hit.get("payload", {})
+            ctx = payload.get("operator_context")
+            if isinstance(ctx, dict) and ctx.get("notes"):
                 operator_notes.append(ctx["notes"])
+
+        # Format similar shifts into text summaries
+        similar_summaries = self._format_similar_shifts(raw_results)
 
         return {
             "previous_shift": previous_summary,
@@ -50,14 +62,10 @@ class ContextRetriever:
             "operator_notes": operator_notes,
         }
 
-
-    # Internal helpers
     def _get_previous_shift_summary(
         self, current_shift_id: str
     ) -> Optional[str]:
-        """
-        Fetch the immediate previous shift summary.
-        """
+        """Fetch the immediate previous shift summary."""
         all_shifts = self.structured_store.load_all_shift_summaries()
         if not all_shifts:
             return None
@@ -74,25 +82,17 @@ class ContextRetriever:
 
         return None
 
-    def _get_similar_shifts(
-        self, query_text: str, top_k: int
+    def _format_similar_shifts(
+        self, raw_results: List[Dict]
     ) -> List[str]:
         """
-        Retrieve semantically similar shifts from vector DB.
+        Convert raw vector search results into formatted text summaries.
         """
-
-        results = self.vector_store.search_similar_windows(
-            query_text=query_text,
-            top_k=top_k,
-            window_type="shift",  # 👈 IMPORTANT
-        )
-
         summaries = []
 
-        for r in results:
+        for r in raw_results:
             payload = r.get("payload", {})
 
-            # Ensure this is a shift-level payload
             if payload.get("window_type") != "shift":
                 continue
 
@@ -110,10 +110,7 @@ class ContextRetriever:
 
     @staticmethod
     def _format_shift_summary(shift: ShiftSummary) -> str:
-        """
-        Convert structured shift summary into readable text for LLM.
-        """
-        # Stability line (robust to old data)
+        """Convert structured shift summary into readable text for LLM."""
         if shift.stability_index is not None:
             stability_line = (
                 f"Overall Stability: "

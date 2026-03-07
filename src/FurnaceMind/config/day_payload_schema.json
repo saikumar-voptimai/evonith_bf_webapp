@@ -1,26 +1,28 @@
 {
-  "schema_version": "3.0",
+  "schema_version": "3.2",
 
   "required_fields": [
     "window_type",
     "window_id",
     "start_time",
     "end_time",
-    "summary_text",
-
-    "avg_stability_index",
-    "stability_trend"
+    "summary_text"
   ],
 
   "optional_fields": [
-    "generated_at",
+    "avg_stability_index",
+    "stability_trend",
     "num_records",
-    "confidence",
-    "model_version"
+    "generated_at",
+    "overall_stability",
+    "num_shifts",
+    "num_unstable_shifts"
   ],
 
   "defaults": {
-    "model_version": "v3",
-    "confidence": null
+    "window_type": "day",
+    "model_version": "v3.2",
+    "avg_stability_index": null,
+    "stability_trend": null
   }
 }
