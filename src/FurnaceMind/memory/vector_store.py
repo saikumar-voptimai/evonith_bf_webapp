@@ -19,9 +19,8 @@ from FurnaceMind.embeddings.sentence_embedding import SentenceEmbedding
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
+
 # Singleton embedding model (loaded once, shared across instances)
-# ---------------------------------------------------------------------------
 _embedding_instance: Optional[SentenceEmbedding] = None
 
 

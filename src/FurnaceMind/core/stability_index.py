@@ -77,3 +77,4 @@ class FurnaceStabilityIndex:
                 "trend": round(t_penalty, 1),
             },
         }
+    

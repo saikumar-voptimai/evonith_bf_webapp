@@ -12,6 +12,7 @@ from streamlit_autorefresh import st_autorefresh
 import pandas as pd
 import matplotlib.pyplot as plt
 
+
 from FurnaceMind.utils.settings import settings
 from FurnaceMind.utils.logger import get_logger
 from FurnaceMind.utils.payload_helpers import build_shift_payload

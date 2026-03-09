@@ -16,6 +16,7 @@ MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 2.0
 
 
+
 class CloudEmbeddingClient:
     """
     Voyage Multimodal Embedding Client
@@ -51,9 +52,8 @@ class CloudEmbeddingClient:
                     logger.error(f"{description} failed after {MAX_RETRIES} attempts: {e}")
         raise last_err  # type: ignore[misc]
 
-    # ---------------------------------------
+
     # Text Embedding
-    # ---------------------------------------
     def embed_text(self, text: str) -> list[float]:
         def _call():
             result = self.client.multimodal_embed(
@@ -64,9 +64,8 @@ class CloudEmbeddingClient:
 
         return self._retry(_call, "embed_text")
 
-    # ---------------------------------------
+
     # Image Embedding
-    # ---------------------------------------
     def embed_image(self, image_bytes: bytes) -> list[float]:
         def _call():
             image = Image.open(io.BytesIO(image_bytes))

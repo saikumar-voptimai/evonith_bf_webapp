@@ -10,17 +10,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
+
 # Time helpers
-# ---------------------------------------------------------------------------
 def utc_now_iso() -> str:
     """Current UTC time in ISO format (timezone-aware)."""
     return datetime.now(timezone.utc).isoformat()
 
 
-# ---------------------------------------------------------------------------
+
 # Validation helpers
-# ---------------------------------------------------------------------------
 def _validate_field_types(payload: dict) -> None:
     """Validate critical field types after payload assembly."""
     # stability_index must be numeric 0-100 or None
@@ -42,9 +40,8 @@ def _validate_field_types(payload: dict) -> None:
         logger.warning("summary_text is empty — payload may lack meaningful content")
 
 
-# ---------------------------------------------------------------------------
+
 # Generic payload builder
-# ---------------------------------------------------------------------------
 def build_payload(base_fields: dict, schema: dict) -> dict:
     """
     Build payload using schema defaults and provided fields.
@@ -72,9 +69,8 @@ def build_payload(base_fields: dict, schema: dict) -> dict:
     return payload
 
 
-# ---------------------------------------------------------------------------
+
 # SHIFT payload builder
-# ---------------------------------------------------------------------------
 def build_shift_payload(
     *,
     shift_data,
@@ -140,9 +136,8 @@ def build_shift_payload(
     return build_payload(base_fields, schema)
 
 
-# ---------------------------------------------------------------------------
+
 # DAY payload builder
-# ---------------------------------------------------------------------------
 def build_day_payload(*, day_id, shift_payloads, structured_summary, llm_text, schema):
     base_fields = {
         "window_type": "day",
@@ -162,9 +157,8 @@ def build_day_payload(*, day_id, shift_payloads, structured_summary, llm_text, s
     return build_payload(base_fields, schema)
 
 
-# ---------------------------------------------------------------------------
+
 # WEEK payload builder
-# ---------------------------------------------------------------------------
 def build_week_payload(*, week_id, day_payloads, structured_summary, llm_text, schema):
     base_fields = {
         "window_type": "week",
@@ -184,9 +178,8 @@ def build_week_payload(*, week_id, day_payloads, structured_summary, llm_text, s
     return build_payload(base_fields, schema)
 
 
-# ---------------------------------------------------------------------------
+
 # BI-WEEK payload builder
-# ---------------------------------------------------------------------------
 def build_biweek_payload(*, biweek_id, week_payloads, structured_summary, llm_text, schema):
     base_fields = {
         "window_type": "biweek",
@@ -206,9 +199,8 @@ def build_biweek_payload(*, biweek_id, week_payloads, structured_summary, llm_te
     return build_payload(base_fields, schema)
 
 
-# ---------------------------------------------------------------------------
+
 # Qdrant-safe deterministic ID helper
-# ---------------------------------------------------------------------------
 def window_id_to_uuid(window_id: str) -> str:
     """Convert a human-readable window_id into a deterministic UUID."""
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, window_id))

@@ -31,9 +31,8 @@ class StructuredStore:
         self._local = threading.local()
         self._init_tables()
 
-    # ------------------------------------------------------------------
+
     # Connection management (thread-safe)
-    # ------------------------------------------------------------------
     @property
     def _conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn") or self._local.conn is None:
@@ -81,9 +80,8 @@ class StructuredStore:
         """)
         conn.commit()
 
-    # ------------------------------------------------------------------
+
     # Migration helper: import existing JSON data
-    # ------------------------------------------------------------------
     def migrate_from_json(self):
         """
         One-time migration from old JSON files to SQLite.
@@ -129,9 +127,8 @@ class StructuredStore:
 
         conn.commit()
 
-    # ------------------------------------------------------------------
+
     # Shift write operations
-    # ------------------------------------------------------------------
     def save_shift_summary(self, summary: ShiftSummary) -> None:
         data = summary.model_dump(exclude_none=True)
         self._conn.execute(
@@ -147,9 +144,8 @@ class StructuredStore:
         )
         self._conn.commit()
 
-    # ------------------------------------------------------------------
+
     # Shift read operations
-    # ------------------------------------------------------------------
     def load_shift_summary(self, shift_id: str) -> Optional[ShiftSummary]:
         return self.get_shift_by_id(shift_id)
 
@@ -201,9 +197,8 @@ class StructuredStore:
         shifts = self.get_shifts_for_day(day_id)
         return [s.shift_id for s in shifts]
 
-    # ------------------------------------------------------------------
+
     # Daily summaries
-    # ------------------------------------------------------------------
     def daily_exists(self, day_id: str) -> bool:
         row = self._conn.execute(
             "SELECT 1 FROM daily_summaries WHERE window_id = ?", (day_id,)
@@ -255,9 +250,8 @@ class StructuredStore:
         out.sort(key=lambda r: r.get("window_id", ""))
         return out
 
-    # ------------------------------------------------------------------
+
     # Weekly summaries
-    # ------------------------------------------------------------------
     def weekly_exists(self, week_id: str) -> bool:
         row = self._conn.execute(
             "SELECT 1 FROM weekly_summaries WHERE window_id = ?", (week_id,)
@@ -311,9 +305,8 @@ class StructuredStore:
         out.sort(key=lambda r: r.get("window_id", ""))
         return out
 
-    # ------------------------------------------------------------------
+
     # Biweekly summaries
-    # ------------------------------------------------------------------
     def biweekly_exists(self, biweek_id: str) -> bool:
         row = self._conn.execute(
             "SELECT 1 FROM biweekly_summaries WHERE window_id = ?", (biweek_id,)
@@ -351,9 +344,8 @@ class StructuredStore:
         ).fetchone()
         return json.loads(row["data_json"]) if row else None
 
-    # ------------------------------------------------------------------
+
     # Unified read API (UI uses this)
-    # ------------------------------------------------------------------
     def get_report(
         self,
         *,

@@ -8,12 +8,12 @@ import re
 import logging
 from typing import List, Dict, Tuple, Optional
 
+
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
+
 # Text normalization
-# ---------------------------------------------------------------------------
 def _normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
 
@@ -39,9 +39,8 @@ def _extract_candidate_terms(user_query: str) -> List[str]:
     return out
 
 
-# ---------------------------------------------------------------------------
+
 # Operator alias map
-# ---------------------------------------------------------------------------
 OPERATOR_ALIASES: Dict[str, List[str]] = {
     "eta co":       ["etaco"],
     "eta":          ["etaco"],
@@ -58,11 +57,10 @@ OPERATOR_ALIASES: Dict[str, List[str]] = {
 }
 
 
-# ---------------------------------------------------------------------------
+
 # Stop words — IGNORED in all matching passes.
 # These words are common in English queries OR appear in label names
 # but are NOT themselves parameter identifiers.
-# ---------------------------------------------------------------------------
 _STOP_WORDS = frozenset({
     # English function words
     "the", "a", "an", "is", "are", "was", "were", "be", "been",
@@ -118,9 +116,8 @@ def _is_meaningful_candidate(cand: str) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
+
 # Field resolution (SINGLE SOURCE OF TRUTH)
-# ---------------------------------------------------------------------------
 def resolve_fields_from_query(
     user_query: str,
     field_labels: Dict[str, str],
@@ -255,9 +252,8 @@ def _unique_limit(items: List[str], limit: int) -> List[str]:
     return out[:limit]
 
 
-# ---------------------------------------------------------------------------
+
 # Time range + window parsing
-# ---------------------------------------------------------------------------
 def parse_time_range_and_window(user_query: str) -> Tuple[str, str]:
     q = user_query.lower()
 
@@ -285,17 +281,15 @@ def parse_time_range_and_window(user_query: str) -> Tuple[str, str]:
     return time_range, window
 
 
-# ---------------------------------------------------------------------------
+
 # Intent detection
-# ---------------------------------------------------------------------------
 def detect_plot_intent(user_query: str) -> bool:
     q = user_query.lower()
     return any(k in q for k in ["trend", "plot", "graph", "chart", "curve"])
 
 
-# ---------------------------------------------------------------------------
+
 # Query routing
-# ---------------------------------------------------------------------------
 def route_query(query: str, field_labels: Optional[Dict[str, str]] = None) -> str:
     q = query.lower()
 
@@ -319,9 +313,8 @@ def route_query(query: str, field_labels: Optional[Dict[str, str]] = None) -> st
     return "knowledge"
 
 
-# ---------------------------------------------------------------------------
+
 # Prompt injection defense
-# ---------------------------------------------------------------------------
 _INJECTION_PATTERNS = re.compile(
     r"(ignore\s+(all\s+)?(previous|above|prior)\s+(instructions?|prompts?|rules?))"
     r"|(you\s+are\s+now\s+)"

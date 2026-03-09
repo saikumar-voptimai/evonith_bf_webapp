@@ -98,3 +98,4 @@ class KnowledgeVectorStore:
         )
 
         return [{"score": p.score, "payload": p.payload} for p in results.points]
+

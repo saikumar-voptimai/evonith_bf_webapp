@@ -101,3 +101,4 @@ class BiWeeklySummary(BaseModel):
     major_trends: List[str]
     recommendations: List[str]
     summary_text: str
+    

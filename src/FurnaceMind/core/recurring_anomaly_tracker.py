@@ -51,6 +51,7 @@ class RecurringAnomalyTracker:
         valid_times = [e["shift_end"] for e in events if e["shift_end"] is not None]
         return max(valid_times) if valid_times else None
 
+
     def _infer_pattern(self, events: list) -> str:
         """
         Detect meaningful patterns:

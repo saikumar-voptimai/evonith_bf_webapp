@@ -23,6 +23,7 @@ from FurnaceMind.utils.payload_helpers import (
 logger = logging.getLogger(__name__)
 
 
+
 def _get_day_id(shift: ShiftSummary) -> str:
     return shift.shift_start.date().isoformat()
 

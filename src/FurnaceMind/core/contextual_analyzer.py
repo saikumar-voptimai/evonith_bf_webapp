@@ -85,6 +85,7 @@ class ContextualAnalyzer:
             previous_shift=previous_shift,
             historical_similar=historical_similar,
         )
+        
 
         # Operator observations block (NEW)
         operator_block = None

@@ -52,6 +52,7 @@ class InfluenceAttribution:
             key=lambda x: x[1],
             reverse=True,
         )
+        
 
         result = []
         for rank, (param, score) in enumerate(ranked, start=1):

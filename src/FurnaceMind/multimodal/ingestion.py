@@ -19,9 +19,8 @@ from FurnaceMind.multimodal.parsers import (
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
+
 # Configuration
-# ---------------------------------------------------------------------------
 MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
@@ -38,9 +37,8 @@ MAGIC_SIGNATURES = {
 }
 
 
-# ---------------------------------------------------------------------------
+
 # Text Chunking (sentence-aware)
-# ---------------------------------------------------------------------------
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n{2,}")
 
 
@@ -94,9 +92,8 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> list[str
     return chunks
 
 
-# ---------------------------------------------------------------------------
+
 # Security helpers
-# ---------------------------------------------------------------------------
 def _sanitize_filename(name: str) -> str:
     """Remove path separators and other dangerous characters from filename."""
     # Take only the basename (strip any directory components)
@@ -134,9 +131,8 @@ def _validate_content_type(file, declared_type: str) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
+
 # Main File Processor
-# ---------------------------------------------------------------------------
 def process_file(file, knowledge_store, embedding_client) -> None:
     """
     Process and index an uploaded file into the knowledge vector store.
@@ -153,9 +149,8 @@ def process_file(file, knowledge_store, embedding_client) -> None:
         logger.warning(f"File validation failed for '{safe_name}': {e}")
         raise
 
-    # ==================================================
+
     # Image Handling (Multimodal Embedding)
-    # ==================================================
     if file_type in ("png", "jpg", "jpeg"):
         image_bytes = file.read()
 
@@ -187,9 +182,8 @@ def process_file(file, knowledge_store, embedding_client) -> None:
         )
         return
 
-    # ==================================================
+
     # Text Document Handling
-    # ==================================================
     parsers = {
         "pdf": parse_pdf,
         "docx": parse_docx,

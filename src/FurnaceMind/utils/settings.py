@@ -14,9 +14,8 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-# ==========================================================
+
 # LLM CONFIGURATION
-# ==========================================================
 
 @dataclass
 class OpenRouterLLMConfig:
@@ -51,9 +50,8 @@ class LLMSettings:
     openai: OpenAILLMConfig = field(default_factory=OpenAILLMConfig)
 
 
-# ==========================================================
+
 # EMBEDDING CONFIGURATION (DUAL SUPPORT)
-# ==========================================================
 
 @dataclass
 class LocalEmbeddingConfig:
@@ -75,9 +73,8 @@ class CloudEmbeddingConfig:
         return os.getenv(self._api_key_env)
 
 
-# ==========================================================
+
 # VECTOR DATABASE CONFIG
-# ==========================================================
 
 @dataclass
 class QdrantConfig:
@@ -94,9 +91,8 @@ class QdrantConfig:
         return os.getenv("QDRANT_API_KEY")
 
 
-# ==========================================================
+
 # ANOMALY CONFIGURATION
-# ==========================================================
 
 @dataclass
 class AnomalyConfig:
@@ -105,9 +101,8 @@ class AnomalyConfig:
     delta_warn: float = 0.05
 
 
-# ==========================================================
+
 # APPLICATION CONFIG
-# ==========================================================
 
 @dataclass
 class AppConfig:
@@ -116,9 +111,8 @@ class AppConfig:
     environment: str = "dev"
 
 
-# ==========================================================
+
 # SETTINGS LOADER
-# ==========================================================
 
 class Settings:
     """
@@ -155,9 +149,8 @@ class Settings:
         self.app = AppConfig()
         self._validate()
 
-    # ------------------------------------------------------
+
     # LLM LOADER
-    # ------------------------------------------------------
     @staticmethod
     def _load_llm_settings() -> LLMSettings:
         provider = os.getenv("LLM_PROVIDER", "openrouter").strip().lower()
@@ -186,9 +179,8 @@ class Settings:
             ),
         )
 
-    # ------------------------------------------------------
+
     # EMBEDDING LOADER
-    # ------------------------------------------------------
     @staticmethod
     def _load_embedding_config():
         local_provider = os.getenv("LOCAL_EMBEDDING_PROVIDER", "sentence_transformer")
@@ -215,9 +207,8 @@ class Settings:
             ),
         }
 
-    # ------------------------------------------------------
+
     # QDRANT LOADER
-    # ------------------------------------------------------
     @staticmethod
     def _load_qdrant_config(
         *,
@@ -265,9 +256,8 @@ class Settings:
             timeout=timeout,
         )
 
-    # ------------------------------------------------------
+
     # VALIDATION
-    # ------------------------------------------------------
     def _validate(self) -> None:
         if not self.llm.openrouter.api_key and not self.llm.openai.api_key:
             raise ValueError("At least one of OPENROUTER_API_KEY or OPENAI_API_KEY must be set.")
@@ -294,8 +284,7 @@ class Settings:
             )
 
 
-# ==========================================================
+
 # SINGLETON INSTANCE
-# ==========================================================
 
 settings = Settings()

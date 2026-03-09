@@ -9,6 +9,7 @@ from FurnaceMind.memory.vector_store import QdrantVectorStore
 from FurnaceMind.core.shift_builder import make_shift_id
 
 
+
 # Window ID builders
 
 def build_shift_window_id(d: date, shift_label: str) -> str:

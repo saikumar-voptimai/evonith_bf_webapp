@@ -24,6 +24,7 @@ def make_shift_id(dt: pd.Timestamp | str, label: str) -> str:
     return SHIFT_ID_FORMAT.format(date=date_str, label=label)
 
 
+
 @dataclass
 class ShiftData:
     shift_id: str

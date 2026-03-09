@@ -10,14 +10,14 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive backend for Streamlit
 import matplotlib.pyplot as plt
 
+
 from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------
+
 # Config
-# ---------------------------------------
 config = load_config("setting_ds_dv.yml")
 
 MEASUREMENT_LABELS = {
@@ -47,11 +47,10 @@ FIELD_LABELS = {
 }
 
 
-# ---------------------------------------------------------------------------
+
 # Valid time ranges that data_retrieval.TIMEDELTAS supports.
 # These are the ONLY strings dr.fetch_online_df accepts as time_range.
 # If your TIMEDELTAS dict has different keys, update this list to match.
-# ---------------------------------------------------------------------------
 VALID_TIME_RANGES_MINUTES = [
     (15,    "last 15 minutes"),
     (30,    "last 30 minutes"),
@@ -118,9 +117,8 @@ def _snap_time_range(time_range: str) -> str:
     return best_key
 
 
-# =======================================
+
 # MCP TOOL 1 — Influx Data Fetcher
-# =======================================
 class InfluxDataFetcher:
 
     def fetch(
@@ -173,9 +171,8 @@ class InfluxDataFetcher:
         return df
 
 
-# =======================================
+
 # MCP TOOL 2 — Python Plotter
-# =======================================
 class PythonPlotter:
 
     def plot(

@@ -16,9 +16,8 @@ logger = logging.getLogger(__name__)
 Provider = Literal["openrouter", "openai"]
 ApiMode = Literal["responses", "chat_completions"]
 
-# ---------------------------------------------------------------------------
+
 # Retry config
-# ---------------------------------------------------------------------------
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 2.0  # seconds
 
@@ -49,9 +48,8 @@ def _retry_with_backoff(fn, *, max_retries: int = MAX_RETRIES):
     raise last_err  # type: ignore[misc]
 
 
-# ---------------------------------------------------------------------------
+
 # OpenRouter Client
-# ---------------------------------------------------------------------------
 class OpenRouterClient:
     """
     Wrapper around OpenRouter's OpenAI-compatible API.
@@ -112,9 +110,8 @@ class OpenRouterClient:
         return _retry_with_backoff(_call)
 
 
-# ---------------------------------------------------------------------------
+
 # OpenAI Client
-# ---------------------------------------------------------------------------
 class OpenAIClient:
     """
     Wrapper around OpenAI API.
@@ -207,9 +204,8 @@ class OpenAIClient:
         return _retry_with_backoff(_call)
 
 
-# ---------------------------------------------------------------------------
+
 # Client Selection
-# ---------------------------------------------------------------------------
 def get_llm_client(prefer: Optional[Provider] = None):
     provider = prefer or settings.llm.provider
 

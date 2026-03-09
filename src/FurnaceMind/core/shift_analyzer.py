@@ -90,6 +90,7 @@ class ShiftAnalyzer:
             "stats": stats,
             "signals": signals,
         }
+        
 
         # EXISTING prompt (unchanged)
         user_prompt = PromptTemplates.SHIFT_ANALYSIS_TASK.format(
