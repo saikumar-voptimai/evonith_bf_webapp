@@ -1,14 +1,13 @@
-# ui/layout.py
+# FurnaceMind/ui/layout.py
 # Purpose: Streamlit page layout definitions
+# Fixed: Removed st.set_page_config() — it's called in main() only
+#        (Streamlit allows only one call per session)
 
 import streamlit as st
 
 
 def render_page_header():
-    st.set_page_config(
-        page_title="FurnaceMind",
-        layout="wide",
-    )
+    """Render the main page header. Page config is set in main()."""
     st.title("🔥 FurnaceMind – Blast Furnace Operational Intelligence")
     st.markdown(
         "Context-aware furnace monitoring and learning system."
