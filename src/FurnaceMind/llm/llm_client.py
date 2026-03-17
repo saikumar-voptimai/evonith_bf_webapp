@@ -162,7 +162,35 @@ class OpenAIClient:
 
         return completion.choices[0].message.content or ""
 
+    def generate_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        tool_choice: str = "auto",
+    ) -> object:
+        """
+        Chat completion with optional tool definitions.
+        Returns the raw ChatCompletion response message object
+        (which may contain tool_calls).
+        """
+        kwargs = dict(
+            model=self.model,
+            messages=messages,
+            extra_headers=self.extra_headers,
+        )
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = tool_choice
 
+        try:
+            kwargs["max_completion_tokens"] = self.max_tokens
+            completion = self.client.chat.completions.create(**kwargs)
+        except Exception:
+            kwargs.pop("max_completion_tokens", None)
+            kwargs["max_tokens"] = self.max_tokens
+            completion = self.client.chat.completions.create(**kwargs)
+
+        return completion.choices[0].message
 
 
 # CLIENT SELECTION

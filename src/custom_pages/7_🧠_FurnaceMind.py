@@ -37,7 +37,18 @@ from FurnaceMind.embeddings.sentence_embedding import SentenceEmbedding
 from FurnaceMind.memory.knowledge_vector_store import KnowledgeVectorStore
 from FurnaceMind.multimodal.ingestion import process_file
 from FurnaceMind.agents.rag_router import route_query
-from FurnaceMind.agents.mcp_tools import InfluxDataFetcher, PythonPlotter
+from FurnaceMind.agents.furnace_tools import (
+    fetch_and_summarize_data,
+    execute_python_plot,
+    search_shift_history,
+    search_knowledge_docs,
+)
+from FurnaceMind.memory.copilot_memory import (
+    load_copilot_memory,
+    save_copilot_memory,
+    add_recent_turn,
+    build_persistent_context,
+)
 
 
 from FurnaceMind.utils.window_helpers import (
@@ -933,9 +944,41 @@ def main():
         knowledge_store = KnowledgeVectorStore(embedding_client)
         shift_store = QdrantVectorStore()
 
+        # Make stores available to LangChain tools via session_state
+        st.session_state["knowledge_store"] = knowledge_store
+        st.session_state["shift_store"] = shift_store
 
-        fetcher = InfluxDataFetcher()
-        plotter = PythonPlotter()
+        def _read_recent_tool_errors(max_chars: int = 2500) -> str:
+            """Best-effort tail read of tool_errors.md, for prompt grounding."""
+            try:
+                tool_errors_path = (
+                    Path(__file__).resolve().parents[1]
+                    / "FurnaceMind"
+                    / "agents"
+                    / "tool_errors.md"
+                )
+                if not tool_errors_path.exists():
+                    return ""
+                txt = tool_errors_path.read_text(encoding="utf-8")
+                return txt[-max_chars:].strip()
+            except Exception:
+                return ""
+
+        copilot_memory = load_copilot_memory()
+        persistent_context = build_persistent_context(copilot_memory)
+        tool_errors_tail = _read_recent_tool_errors()
+
+        def _build_system_prompt(extra_context: str = "") -> str:
+            parts = [AI_COOPERATE_SYSTEM]
+            if persistent_context:
+                parts.append(persistent_context)
+            if tool_errors_tail:
+                parts.append(
+                    "RECENT TOOL ERRORS (avoid repeating these failure modes):\n" + tool_errors_tail
+                )
+            if extra_context:
+                parts.append(extra_context.strip())
+            return "\n\n".join(parts).strip()
 
         # --------------------------------------------------
         # 📂 File Upload
@@ -964,7 +1007,9 @@ def main():
 
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
-                if msg.get("type") == "plot":
+                if msg.get("type") == "plotly":
+                    st.plotly_chart(msg["content"], use_container_width=True)
+                elif msg.get("type") == "plot":
                     st.pyplot(msg["content"])
                 else:
                     st.markdown(msg["content"])
@@ -990,67 +1035,62 @@ def main():
             # 🔧 MCP TOOL: Influx Fetch + Plot (ANY PARAMETER)
             # =====================================================
             if route == "influx":
-                # 1) Determine what the user asked to plot (fields)
-                # FIELD_LABELS should exist in your project (from your config mapping)
                 requested_fields = resolve_fields_from_query(user_query, FIELD_LABELS)
-
-                # 2) Determine time range + window from query (defaults if not provided)
                 time_range, window = parse_time_range_and_window(user_query)
 
-                # 3) Fetch data (if you updated fetcher.fetch to accept fields, pass it.
-                # If not, fetch all then filter columns below.
-                try:
-                    df = fetcher.fetch(time_range=time_range, window=window, fields=requested_fields)
-                except TypeError:
-                    # Backward-compatible if fetcher.fetch doesn't accept fields yet
-                    df = fetcher.fetch(time_range=time_range, window=window)
+                with st.chat_message("assistant"):
+                    with st.spinner("Fetching live data…"):
+                        data_summary = fetch_and_summarize_data.invoke(
+                            {"time_range": time_range, "window": window}
+                        )
 
-                if df is None or df.empty:
-                    response = f"No live data available for {time_range} (avg {window})."
-                    st.session_state.chat_history.append({"role": "assistant", "content": response})
+                if not isinstance(data_summary, str) or data_summary.strip().lower().startswith(
+                    ("fetch error", "no data")
+                ):
+                    msg = data_summary if isinstance(data_summary, str) else "Live data fetch failed."
+                    st.session_state.chat_history.append({"role": "assistant", "content": msg})
                     with st.chat_message("assistant"):
-                        st.markdown(response)
-
+                        st.markdown(msg)
                 else:
-                    # 4) Choose columns to plot
-                    if requested_fields:
-                        wanted = [str(f).lower() for f in requested_fields]
-                        selected_cols = [c for c in df.columns if any(w in str(c).lower() for w in wanted)]
-                    else:
-                        selected_cols = []
-
-                    if not selected_cols:
-                        # fallback: show something rather than nothing
-                        selected_cols = list(df.columns[:2])
-
-                    # 5) Plot
-                    title = f"Live Trend: {', '.join(selected_cols)} ({time_range}, avg {window})"
-                    fig = plotter.plot(df, columns=selected_cols, title=title)
-
-                    st.session_state.chat_history.append({"role": "assistant", "content": fig, "type": "plot"})
-                    with st.chat_message("assistant"):
-                        st.pyplot(fig)
-
-                    # 6) Grounded AI summary (stats + small sample, not huge CSV)
-                    stats_lines = []
-                    for c in selected_cols:
-                        s = df[c].dropna()
-                        if len(s) >= 2:
-                            stats_lines.append(
-                                f"- {c}: latest={s.iloc[-1]}, min={s.min()}, max={s.max()}, avg={s.mean()}"
-                            )
-                    stats_text = "\n".join(stats_lines) if stats_lines else "No numeric stats available."
-
-                    sample_csv = df[selected_cols].tail(40).to_csv(index=False)
-
-                    system_prompt = (
-                        AI_COOPERATE_SYSTEM
-                        + "\n\n=== LIVE DATA STATS (authoritative) ===\n"
-                        + stats_text
-                        + "\n\n=== LIVE DATA SAMPLE (authoritative) ===\n"
-                        + sample_csv
+                    plot_system_prompt = (
+                        "You generate Python plotting code for Streamlit to render a Plotly chart.\n"
+                        "Constraints (must follow):\n"
+                        "- Return ONLY valid Python code (no markdown, no backticks).\n"
+                        "- Do NOT use import/open/os/sys/subprocess/eval/exec.\n"
+                        "- You may use: pd, px, go, df.\n"
+                        "- Data is available as a pandas DataFrame variable named df (preferred), and also in 'current_furnace_data.csv'.\n"
+                        "- Create a Plotly figure named fig. Do not call fig.show().\n"
+                        "- Prefer a line chart over time (df.index) when applicable.\n\n"
+                        f"User request: {user_query}\n"
+                        f"Requested fields (if any): {requested_fields}\n\n"
+                        "Authoritative data context (columns + preview):\n"
+                        f"{data_summary}\n"
                     )
 
+                    with st.spinner("Generating Plotly code…"):
+                        plot_code = llm.generate(
+                            system_prompt=plot_system_prompt,
+                            user_prompt="Write the Python code now.",
+                        )
+
+                    exec_result = execute_python_plot.invoke({"code": plot_code})
+                    fig = st.session_state.get("copilot_fig")
+
+                    with st.chat_message("assistant"):
+                        if isinstance(exec_result, str) and exec_result.startswith("Successfully") and fig is not None:
+                            st.plotly_chart(fig, use_container_width=True)
+                            st.session_state.chat_history.append(
+                                {"role": "assistant", "content": fig, "type": "plotly"}
+                            )
+                        else:
+                            st.markdown(exec_result)
+                            st.session_state.chat_history.append(
+                                {"role": "assistant", "content": exec_result}
+                            )
+
+                    system_prompt = _build_system_prompt(
+                        "=== LIVE DATA TOOL OUTPUT (authoritative) ===\n" + data_summary
+                    )
                     response = llm.generate(system_prompt=system_prompt, user_prompt=user_query)
 
                     if response:
@@ -1058,20 +1098,22 @@ def main():
                         with st.chat_message("assistant"):
                             st.markdown(response)
 
+                        copilot_memory = add_recent_turn(
+                            copilot_memory,
+                            user=user_query,
+                            assistant=response,
+                        )
+                        save_copilot_memory(copilot_memory)
+
             # =====================================================
             # 📊 SHIFT RAG
             # =====================================================
             elif route == "shift":
-                results = shift_store.search_similar_windows(query_text=user_query, top_k=5)
+                with st.spinner("Searching shift history…"):
+                    context = search_shift_history.invoke({"query": user_query})
 
-                context = "\n\n".join([r.get("payload", {}).get("summary_text", "") for r in results]).strip()
-                if not context:
-                    context = "No shift summaries were retrieved for this query."
-
-                system_prompt = (
-                    AI_COOPERATE_SYSTEM
-                    + "\n\n=== SHIFT CONTEXT (authoritative) ===\n"
-                    + context
+                system_prompt = _build_system_prompt(
+                    "=== SHIFT CONTEXT (authoritative) ===\n" + (context or "")
                 )
 
                 response = llm.generate(system_prompt=system_prompt, user_prompt=user_query)
@@ -1079,21 +1121,19 @@ def main():
                 st.session_state.chat_history.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
                     st.markdown(response)
+
+                copilot_memory = add_recent_turn(copilot_memory, user=user_query, assistant=response)
+                save_copilot_memory(copilot_memory)
 
             # =====================================================
             # 📚 KNOWLEDGE RAG (Text Only)
             # =====================================================
             else:
-                results = knowledge_store.search(user_query)
+                with st.spinner("Searching knowledge documents…"):
+                    context = search_knowledge_docs.invoke({"query": user_query})
 
-                context = "\n\n".join([r.get("payload", {}).get("content", "") for r in results]).strip()
-                if not context:
-                    context = "No document passages were retrieved for this query."
-
-                system_prompt = (
-                    AI_COOPERATE_SYSTEM
-                    + "\n\n=== DOCUMENT CONTEXT (authoritative) ===\n"
-                    + context
+                system_prompt = _build_system_prompt(
+                    "=== DOCUMENT CONTEXT (authoritative) ===\n" + (context or "")
                 )
 
                 response = llm.generate(system_prompt=system_prompt, user_prompt=user_query)
@@ -1101,6 +1141,9 @@ def main():
                 st.session_state.chat_history.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
                     st.markdown(response)
+
+                copilot_memory = add_recent_turn(copilot_memory, user=user_query, assistant=response)
+                save_copilot_memory(copilot_memory)
 
     else:
         st.header("🧠 Furnace Health Overview")
