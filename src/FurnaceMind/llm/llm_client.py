@@ -43,11 +43,6 @@ class OpenRouterClient:
         user_prompt: str,
         stop: Optional[List[str]] = None,
     ) -> str:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-
         try:
             completion = self.client.chat.completions.create(
                 model=self.model,
@@ -60,7 +55,7 @@ class OpenRouterClient:
                 extra_headers=self.extra_headers,
             )
             return completion.choices[0].message.content or ""
-        except Exception as err:
+        except Exception:
             # fallback for older models that only accept max_tokens
             completion = self.client.chat.completions.create(
                 model=self.model,
@@ -73,6 +68,42 @@ class OpenRouterClient:
                 extra_headers=self.extra_headers,
             )
             return completion.choices[0].message.content or ""
+
+    def chat_completions(
+        self,
+        *,
+        messages: List[dict],
+        tools: Optional[List[dict]] = None,
+        tool_choice: Optional[Any] = "auto",
+        stop: Optional[List[str]] = None,
+    ) -> Any:
+        """Low-level Chat Completions call with optional tool-calling.
+
+        Returns the raw OpenAI SDK completion object so callers can inspect tool_calls.
+        """
+
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "stop": stop,
+            "extra_headers": self.extra_headers,
+        }
+        if tools:
+            kwargs["tools"] = tools
+            if tool_choice is not None:
+                kwargs["tool_choice"] = tool_choice
+
+        # Prefer max_completion_tokens (newer OpenAI-compatible APIs). Fallback to max_tokens.
+        try:
+            return self.client.chat.completions.create(
+                **kwargs,
+                max_completion_tokens=self.max_tokens,
+            )
+        except Exception:
+            return self.client.chat.completions.create(
+                **kwargs,
+                max_tokens=self.max_tokens,
+            )
 
 
 
@@ -195,12 +226,11 @@ class OpenAIClient:
 
 # CLIENT SELECTION
 def get_llm_client(prefer: Optional[Provider] = None):
-    provider = prefer or settings.llm.provider
+    """Return the configured LLM client.
 
-    if provider == "openrouter":
-        return OpenRouterClient() if settings.llm.openrouter.api_key else OpenAIClient()
+    FurnaceMind is intentionally routed through OpenRouter to make model switching
+    a config-only change and avoid provider/endpoint mismatches.
+    """
 
-    if provider == "openai":
-        return OpenAIClient() if settings.llm.openai.api_key else OpenRouterClient()
-
-    raise ValueError(f"Unsupported provider: {provider}")
+    _ = prefer  # kept for backward compatibility; intentionally unused
+    return OpenRouterClient()

@@ -8,7 +8,7 @@ from FurnaceMind.memory.schemas import ShiftSummary
 from FurnaceMind.memory.structured_store import StructuredStore
 from FurnaceMind.core.contextual_analyzer import ContextualAnalyzer
 from FurnaceMind.memory.vector_store import QdrantVectorStore
-from FurnaceMind.llm.llm_client import OpenAIClient
+from FurnaceMind.llm.llm_client import OpenRouterClient
 
 from FurnaceMind.utils.payload_helpers import (
     build_day_payload,
@@ -52,7 +52,7 @@ def run_aggregation_if_ready(
     """
 
     # Create analyzer locally (stateless, safe)
-    analyzer = ContextualAnalyzer(OpenAIClient())
+    analyzer = ContextualAnalyzer(OpenRouterClient())
 
 
     # DAILY AGGREGATION (3 shifts → 1 day)

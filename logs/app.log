@@ -1,0 +1,21 @@
+[INFO   | _client           | L1025] 2026-03-24T17:46:10+0530: HTTP Request: GET https://db1d776d-3804-47a2-a8cd-9a08963b3c09.us-east4-0.gcp.cloud.qdrant.io:6333/collections/knowledge_docs_voyage_1024 "HTTP/1.1 200 OK" | _client.py
+[INFO   | SentenceTransformer           | L107] 2026-03-24T17:46:11+0530: Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2 | SentenceTransformer.py
+[INFO   | _client           | L1025] 2026-03-24T17:46:12+0530: HTTP Request: GET https://db1d776d-3804-47a2-a8cd-9a08963b3c09.us-east4-0.gcp.cloud.qdrant.io:6333/collections "HTTP/1.1 200 OK" | _client.py
+[INFO   | _client           | L1025] 2026-03-24T17:46:12+0530: HTTP Request: GET https://db1d776d-3804-47a2-a8cd-9a08963b3c09.us-east4-0.gcp.cloud.qdrant.io:6333/collections/furnace_shift_summaries "HTTP/1.1 200 OK" | _client.py
+[INFO   | _client           | L1025] 2026-03-24T17:46:14+0530: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK" | _client.py
+[WARNING   | base_data_fetcher           | L148] 2026-03-24T17:46:15+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-03-24T17:46:15+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[INFO   | _client           | L1025] 2026-03-24T17:46:17+0530: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK" | _client.py
+[INFO   | _client           | L1025] 2026-03-24T17:46:24+0530: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK" | _client.py
+[WARNING   | base_data_fetcher           | L148] 2026-03-24T17:46:25+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-03-24T17:46:25+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[INFO   | _client           | L1025] 2026-03-24T17:46:26+0530: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK" | _client.py
+[WARNING   | base_data_fetcher           | L142] 2026-03-24T17:47:06+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-03-24T17:47:06+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-03-24T17:47:06+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L142] 2026-03-24T17:47:06+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-03-24T17:47:06+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-03-24T17:47:06+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L142] 2026-03-24T17:47:06+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L148] 2026-03-24T17:47:06+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
+[WARNING   | base_data_fetcher           | L154] 2026-03-24T17:47:06+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py

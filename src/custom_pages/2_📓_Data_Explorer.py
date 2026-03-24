@@ -268,7 +268,7 @@ fig.update_layout(
 )
 
 # Display the Plotly chart
-st.plotly_chart(fig)
+st.plotly_chart(fig, key="data_explorer_multi_axis_plot")
 # --------------------------------------------------------------------------------
 # SHOW 6 PyGWalker
 # --------------------------------------------------------------------------------

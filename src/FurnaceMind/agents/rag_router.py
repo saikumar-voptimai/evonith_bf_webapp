@@ -113,6 +113,19 @@ def route_query(query: str, field_labels: Optional[Dict[str, str]] = None) -> st
     """
     q = query.lower()
 
+    # 0) Offline measurement intent (also lives in Influx, but different cadence)
+    offline_markers = [
+        "bunker",
+        "dpr",
+        "charge",
+        "hot metal",
+        "slag",
+        "lab",
+        "analysis",
+    ]
+    if any(m in q for m in offline_markers) or re.search(r"\bhm\b", q):
+        return "influx"
+
     # 1) Strongest: explicit parameter match (if we have field labels available)
     if field_labels:
         hits = resolve_fields_from_query(query, field_labels)
