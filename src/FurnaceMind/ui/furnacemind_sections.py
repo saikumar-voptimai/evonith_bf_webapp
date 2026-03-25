@@ -8,6 +8,7 @@ from datetime import datetime, date, timedelta, timezone
 import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
+from utils.helper_functions_explorer import data_retrieval as dr
 
 from FurnaceMind.utils.settings import settings
 from FurnaceMind.utils.logger import get_logger
@@ -51,6 +52,7 @@ from FurnaceMind.utils.window_helpers import (
 from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
 
+config = load_config("setting_ds_dv.yml")  # Load the configuration file
 
 logger = get_logger(__name__)
 
@@ -199,6 +201,12 @@ def fetch_recent_online(
 # ---------------------------------------------------------------------------
 
 def render_live_operations(*, structured_store, vector_store) -> None:
+    """
+    Render the live operations tab. This tab monitors live data, detects shift boundaries, and runs shift analysis when a shift completes. It also tracks recurring anomalies and influence attribution over time.
+    Parameters:
+    - structured_store: An instance of StructuredStore for saving structured shift summaries.
+    - vector_store: An instance of VectorStore for saving vectorized shift summaries.
+    """
     schemas = load_schemas()
 
     SHIFT_HOURS = 8
@@ -206,11 +214,34 @@ def render_live_operations(*, structured_store, vector_store) -> None:
     ROWS_PER_SHIFT = (SHIFT_HOURS * 60) // WINDOW_MINUTES
 
     def get_shift_start(ts: datetime) -> datetime:
+        """
+        Given a timestamp, return the start time of the corresponding shift.
+        Shifts are defined as 8-hour windows starting at 00:00, 08:00, and 16:00 IST.
+        For example:
+        - A timestamp of 2024-09-01 07:45 IST would return 2024-09-01 00:00 IST (Shift A)
+        - A timestamp of 2024-09-01 08:15 IST would return 2024-09-01 08:00 IST (Shift B)
+        - A timestamp of 2024-09-01 16:30 IST would return 2024-09-01 16:00 IST (Shift C)
+        Parameters:
+        - ts: A datetime object representing the timestamp to evaluate.
+        Returns:
+        - A datetime object representing the start time of the corresponding shift.
+        """
         ts = _ensure_ist(ts)
         shift_hour = (ts.hour // SHIFT_HOURS) * SHIFT_HOURS
         return ts.replace(hour=shift_hour, minute=0, second=0, microsecond=0)
 
     def get_shift_label(shift_start: datetime) -> str:
+        """
+        Given a shift start time, return the corresponding shift label (A, B, or C).
+        Shift labels are assigned as follows based on the hour of the shift start time:
+        - Shift A: 00:00 - 07:59 IST
+        - Shift B: 08:00 - 15:59 IST
+        - Shift C: 16:00 - 23:59 IST
+        Parameters:
+        - shift_start: A datetime object representing the start time of the shift.
+        Returns:
+        - A string representing the shift label ("A", "B", or "C").
+        """
         hour = _ensure_ist(shift_start).hour
         if hour == 0:
             return "A"
@@ -219,6 +250,15 @@ def render_live_operations(*, structured_store, vector_store) -> None:
         return "C"
 
     def get_shift_id(shift_start: datetime) -> str:
+        """
+        Generate a unique shift ID based on the shift start time and label.
+        The shift ID is formatted as "YYYY-MM-DD_SHIFT_X" where X is the shift label (A, B, or C).
+        For example, a shift starting at 2024-09-01 08:00 IST would have the ID "2024-09-01_SHIFT_B".
+        Parameters:
+        - shift_start: A datetime object representing the start time of the shift.
+        Returns:
+        - A string representing the unique shift ID.
+        """
         label = get_shift_label(shift_start)
         return f"{shift_start:%Y-%m-%d}_SHIFT_{label}"
 
@@ -539,6 +579,11 @@ def render_live_operations(*, structured_store, vector_store) -> None:
 
 
 def render_reports(*, vector_store) -> None:
+    """
+    Render the Reports tab, which allows users to fetch and view historical shift/day/week/bi-week reports from the vector store. Users can select the report type and time window, and the corresponding report summary will be displayed if available.
+    Parameters:
+    - vector_store: An instance of QdrantVectorStore used to fetch report data based on window_id.
+    """
     st.header("📊 Historical Reports")
 
     report_level = st.sidebar.radio("Report Type", ["Shift", "Day", "Week", "Bi-week"])
@@ -582,6 +627,13 @@ def render_reports(*, vector_store) -> None:
 
 
 def render_ai_cooperate(*, field_labels: dict) -> None:
+    """
+    Render the AI Co-Operate tab, which provides an LLM-powered assistant for operators.
+    The assistant uses live data, historical context, and tool usage to provide actionable insights and recommendations
+    to the operator. This function sets up the UI and manages the interaction flow with the LLM and tools.
+    Parameters:
+    - field_labels: A dictionary mapping internal field keys to human-readable labels, used for displaying data
+    """
     st.header("🤖 FurnaceMind — AI Co-Operate")
 
     AI_COOPERATE_SYSTEM = """
@@ -589,7 +641,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:
 
     Mission:
     - Co-operate with the operator/engineer: propose actions, ask for confirmation when actions are risky, and explain trade-offs.
-    - Stay grounded in the provided sources (live trends, shift summaries, uploaded documents). Never invent tags, readings, events, or document content.
+    - Stay grounded in the provided sources (live trends, historic trends from dbs, shift summaries, uploaded documents). Never invent tags, readings, events, or document content.
     - Prefer practical guidance: setpoints, checks, thresholds, step-by-step troubleshooting, and “what to do next”.
 
     How to respond (keep it short and easy to scan):
@@ -617,6 +669,14 @@ def render_ai_cooperate(*, field_labels: dict) -> None:
     st.session_state["shift_store"] = shift_store
 
     def _read_static_file(path: Path, *, max_chars: int = 20000) -> str:
+        """
+        Read a static context file with a character limit. This is used for loading CLAUDE.md and TOOLS*.md to provide domain and tool usage context to the LLM.
+        Parameters:
+        - path: Path to the static context file.
+        - max_chars: Maximum number of characters to read from the file.
+        Returns:
+        - A string containing the file content, truncated if necessary, or an empty string if the file doesn't exist or is empty.
+        """
         try:
             if not path.exists():
                 return ""
@@ -630,6 +690,12 @@ def render_ai_cooperate(*, field_labels: dict) -> None:
             return ""
 
     def _read_static_context() -> str:
+        """
+        Read static context files (CLAUDE.md, TOOLS*.md) to provide domain and tool usage context to the LLM.
+        
+        Returns:
+        - A string containing the combined static context, or an empty string if no context files are found.
+        """
         parts: list[str] = []
 
         # Repo root = .../evonith_webapp
@@ -637,15 +703,30 @@ def render_ai_cooperate(*, field_labels: dict) -> None:
 
         claude_md = _read_static_file(repo_root / "CLAUDE.md", max_chars=24000)
         if claude_md:
+            logger.info("Loaded CLAUDE.md with %d characters", len(claude_md))
             parts.append("CLAUDE.md (blast furnace domain context):\n" + claude_md)
 
-        tools_md = _read_static_file(Path(__file__).resolve().parents[1] / "data" / "copilot" / "TOOLS.md", max_chars=12000)
-        if tools_md:
-            parts.append("TOOLS.md (available tools + calling rules):\n" + tools_md)
+        tools_folder = Path(__file__).resolve().parents[1] / "data" / "copilot"
+        # Check and load all TOOLS{i}.md files, sorted by i
+        tool_files = sorted(tools_folder.glob("TOOLS*.md"), key=lambda p: p.name)
+        for tool_file in tool_files:
+            tool_md = _read_static_file(tool_file, max_chars=12000)
+            if tool_md:
+                logger.info("Loaded %s with %d characters", tool_file.name, len(tool_md))
+                parts.append(f"{tool_file.name} (available tools + calling rules):\n" + tool_md)
 
         return "\n\n---\n\n".join(parts).strip()
 
     def _read_recent_tool_errors(max_chars: int = 2500) -> str:
+        """
+        Read the tail of tool_errors.md to provide recent failure context to the LLM.
+        This helps the LLM avoid repeating recent mistakes. We read from the file system each time to capture updates across interactions.
+        
+        Parameters:
+        - max_chars: Maximum number of characters to read from the end of the file.
+        Returns:
+        - A string containing the recent tool errors, or an empty string if the file doesn't exist or can't be read.
+        """
         try:
             tool_errors_path = Path(__file__).resolve().parents[1] / "agents" / "tool_errors.md"
             if not tool_errors_path.exists():
@@ -661,6 +742,15 @@ def render_ai_cooperate(*, field_labels: dict) -> None:
     static_context = _read_static_context()
 
     def _build_system_prompt(extra_context: str = "") -> str:
+        """
+        Build the system prompt by combining the AI_COOPERATE_SYSTEM instructions with various context sources.
+        Context sources include:
+        - Static context from files (CLAUDE.md, TOOLS*.md)
+        - Persistent context from memory (conversation summary, do-not-repeat rules)
+        - Recent tool errors (tail of tool_errors.md)
+        - Any extra context passed in (e.g. from the current conversation)
+        The resulting prompt is structured with clear section headers for readability.
+        """
         parts = [AI_COOPERATE_SYSTEM]
         if static_context:
             parts.append("STATIC CONTEXT (read this before answering):\n" + static_context)
@@ -696,6 +786,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:
         df_placeholder = st.empty()
 
     def _render_artifacts() -> None:
+        """
+        Render the latest plot and dataframe artifacts from session_state.
+        This is called after each tool execution to refresh the right-hand pane.
+        """
         fig = st.session_state.get("copilot_fig")
         if fig is not None:
             plot_placeholder.plotly_chart(
@@ -832,6 +926,11 @@ def render_ai_cooperate(*, field_labels: dict) -> None:
 
 
 def render_furnace_intelligence(*, structured_store) -> None:
+    """
+    Render the Furnace Intelligence tab, which provides an overview of furnace stability and performance based on shift summaries. It displays the latest Furnace Stability Index, current status, and recurring anomaly patterns. It also includes an influence attribution section that identifies which parameters are contributing most to instability in the latest shift.
+    Parameters:
+    - structured_store: An instance of StructuredStore used to load shift summaries and compute stability insights.
+    """
     st.header("🧠 Furnace Intelligence")
 
     latest_shift = structured_store.load_latest_shift_summary()

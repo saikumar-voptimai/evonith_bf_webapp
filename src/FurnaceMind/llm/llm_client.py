@@ -78,8 +78,15 @@ class OpenRouterClient:
         stop: Optional[List[str]] = None,
     ) -> Any:
         """Low-level Chat Completions call with optional tool-calling.
-
-        Returns the raw OpenAI SDK completion object so callers can inspect tool_calls.
+        Returns the raw response message object, which may contain tool_calls.
+        Parameters:
+        - messages: List of message dicts (role/content) for the conversation.
+        - tools: Optional list of tool definitions (if using tool-calling).
+        - tool_choice: Optional tool choice strategy (e.g. "auto", "none", or
+        specific tool name).
+        - stop: Optional list of stop tokens for generation.
+        Returns:
+        - The raw message object from the Chat Completion response, which may include tool_calls if tools were provided and chosen.
         """
 
         kwargs: dict[str, Any] = {

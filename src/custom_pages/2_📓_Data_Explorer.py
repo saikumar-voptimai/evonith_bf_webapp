@@ -18,13 +18,6 @@ from zoneinfo import ZoneInfo
 from ml_pipeline.main import MlDatasetFetcher
 from ml_pipeline.static_dataset_manager import StaticDatasetManager
 
-
-
-
-
-
-
-
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config("setting_vsense.yml")
 offline_measurements = config.get("offline_measurements", {})
