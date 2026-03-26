@@ -715,6 +715,14 @@ def render_ai_cooperate(*, field_labels: dict) -> None:
                 logger.info("Loaded %s with %d characters", tool_file.name, len(tool_md))
                 parts.append(f"{tool_file.name} (available tools + calling rules):\n" + tool_md)
 
+        # Load SKILLS*.md files (benchmark data for skill-based actions)
+        skill_files = sorted(tools_folder.glob("SKILLS*.md"), key=lambda p: p.name)
+        for skill_file in skill_files:
+            skill_md = _read_static_file(skill_file, max_chars=14000)
+            if skill_md:
+                logger.info("Loaded %s with %d characters", skill_file.name, len(skill_md))
+                parts.append(f"{skill_file.name} (skill benchmark data):\n" + skill_md)
+
         return "\n\n---\n\n".join(parts).strip()
 
     def _read_recent_tool_errors(max_chars: int = 2500) -> str:
@@ -815,21 +823,123 @@ def render_ai_cooperate(*, field_labels: dict) -> None:
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
+    # ── Shift selector helpers ──────────────────────────────────────────
+    IST = timezone(timedelta(hours=5, minutes=30))
+
+    def _last_completed_shift() -> tuple[date, str]:
+        """Return (date, label) of the most recently completed 8-hour shift."""
+        now_ist = datetime.now(IST)
+        hour = now_ist.hour
+        if hour < 8:
+            return (now_ist.date() - timedelta(days=1)), "C"
+        if hour < 16:
+            return now_ist.date(), "A"
+        return now_ist.date(), "B"
+
+    def _build_shift_to_best_prompt(shift_date: str, shift_label: str) -> str:
+        return (
+            f"[SKILL: Shift to Best]\n"
+            f"Analyze shift {shift_date} Shift {shift_label} and compare it against the "
+            f"best-shift benchmarks from SKILLS_BESTSHIFT.md.\n\n"
+            f"Steps:\n"
+            f"1. Call load_static_shift_data(shift_date=\"{shift_date}\", shift_label=\"{shift_label}\") "
+            f"to load the shift data.\n"
+            f"   - If it returns an error about date range, use fetch_online_data and "
+            f"fetch_offline_data instead.\n"
+            f"2. Compute 8-hour averages for all Tier 1, Tier 2, and Tier 3 parameters "
+            f"listed in SKILLS_BESTSHIFT.md.\n"
+            f"3. For each parameter, compare the shift average against the best-shift operating band.\n"
+            f"4. For parameters in the adverse region, provide: **ACTION** / **REASON** / **MAGNITUDE**.\n"
+            f"5. Respect the lag noted for each parameter when interpreting.\n"
+            f"6. Produce a concise Shift-to-Best report:\n"
+            f"   - Overall gap assessment (how far from best-shift envelope)\n"
+            f"   - Top 3 actionable improvements for fuel efficiency\n"
+            f"   - Gas flow symmetry check (bosh_quad_spread, uptake_quad_spread from Tier 3)\n"
+            f"   - Guardrail status (Tier 3 checks)\n"
+            f"7. Call execute_python_plot to generate a comparison bar chart showing "
+            f"key Tier 1 + Tier 2 parameters vs best-shift bands.\n"
+        )
+
+    default_date, default_label = _last_completed_shift()
+
     with chat_col:
         for msg in st.session_state.chat_history:
             # Plots are shown in the Artifacts panel, not in the chat.
             if msg.get("type") == "plotly":
                 continue
             with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+                st.markdown(msg.get("display", msg["content"]))
 
-        user_query = st.chat_input("Ask about shifts, live trends, documents…")
+        # ── Quick-action button bar ─────────────────────────────────────
+        st.markdown("---")
+
+        mode_col, date_col, shift_col = st.columns([0.2, 0.4, 0.4])
+
+        with mode_col:
+            hist_mode = st.toggle("Historical", key="skill_hist_mode", value=False)
+
+        if hist_mode:
+            with date_col:
+                selected_date = st.date_input(
+                    "Date", value=default_date, key="skill_date",
+                    max_value=default_date,
+                )
+            with shift_col:
+                label_options = ["A", "B", "C"]
+                selected_label = st.radio(
+                    "Shift", label_options, horizontal=True, key="skill_shift",
+                    index=label_options.index(default_label),
+                )
+        else:
+            selected_date = default_date
+            selected_label = default_label
+            with date_col:
+                st.caption(f"Last completed: **{default_date}** Shift **{default_label}**")
+
+        btn_cols = st.columns(6)
+        with btn_cols[0]:
+            if st.button("🎯 Shift to Best", use_container_width=True):
+                prompt = _build_shift_to_best_prompt(str(selected_date), selected_label)
+                st.session_state["pending_skill_prompt"] = {
+                    "prompt": prompt,
+                    "display": f"🎯 **Shift to Best**: {selected_date}, Shift {selected_label}",
+                }
+                st.rerun()
+        with btn_cols[1]:
+            st.button("📋 Shift Summary", use_container_width=True, disabled=True)
+        with btn_cols[2]:
+            st.button("⚠️ Channeling", use_container_width=True, disabled=True)
+        with btn_cols[3]:
+            st.button("🌡️ Heat Balance", use_container_width=True, disabled=True)
+        with btn_cols[4]:
+            st.button("📦 RM Impact", use_container_width=True, disabled=True)
+        with btn_cols[5]:
+            st.button("📉 Cost Trend", use_container_width=True, disabled=True)
+
+        st.markdown("---")
+
+        # ── Chat input ──────────────────────────────────────────────────
+        typed_query = st.chat_input("Ask about shifts, live trends, documents…")
+
+        # Pending skill prompt takes priority over typed input
+        user_query = None
+        user_display = None
+        if "pending_skill_prompt" in st.session_state:
+            pending = st.session_state.pop("pending_skill_prompt")
+            user_query = pending["prompt"]
+            user_display = pending["display"]
+        elif typed_query:
+            user_query = typed_query
+            user_display = typed_query
+
         if not user_query:
             return
 
-        st.session_state.chat_history.append({"role": "user", "content": user_query})
+        st.session_state.chat_history.append(
+            {"role": "user", "content": user_query, "display": user_display}
+        )
         with st.chat_message("user"):
-            st.markdown(user_query)
+            st.markdown(user_display)
 
     # Always route through OpenRouterClient for easy model swapping
     llm = OpenRouterClient()

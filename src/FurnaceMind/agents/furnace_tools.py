@@ -54,6 +54,7 @@ _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
 
 
 _DATASET_CSV_PATH = Path("current_furnace_data.csv")
+_ML_DATASET_PATH = Path("data/ml_dataset_filtered.csv")
 
 
 def _ensure_dataset_store() -> Dict[str, Any]:
@@ -154,6 +155,11 @@ class MergeArgs(BaseModel):
     fill_method: Literal["ffill", "none"] = Field(default="ffill", description="How to align offline rows onto online timestamps.")
 
 
+class StaticShiftArgs(BaseModel):
+    shift_date: str = Field(description="ISO date string YYYY-MM-DD")
+    shift_label: Literal["A", "B", "C"] = Field(description="Shift: A (00:00-08:00), B (08:00-16:00), C (16:00-24:00) IST")
+
+
 def _save_dataset(*, dataset_id: str, df: pd.DataFrame, meta: Dict[str, Any]) -> None:
     store = _ensure_dataset_store()
     store[dataset_id] = {"df": df, "meta": meta}
@@ -174,6 +180,66 @@ def _summarize_df(df: pd.DataFrame, *, dataset_id: str, title: str) -> str:
         f"Columns ({len(df.columns)}): {list(df.columns)}\n\n"
         f"Preview:\n{preview}"
     )
+
+
+def load_static_shift_data(*, shift_date: str, shift_label: str) -> str:
+    """Load 8-hour shift data from the static ML dataset (hourly, online+offline pre-merged).
+
+    Covers Jan 2024 to Mar 2026. Returns an error if the requested shift is outside
+    this range, instructing the LLM to fall back to fetch_online_data + fetch_offline_data.
+    """
+    params = {"shift_date": shift_date, "shift_label": shift_label}
+    try:
+        args = StaticShiftArgs.model_validate(params)
+
+        # Compute shift window (IST, tz-naive to match CSV)
+        date = pd.to_datetime(args.shift_date).normalize()
+        shift_hours = {"A": (0, 8), "B": (8, 16), "C": (16, 24)}
+        start_h, end_h = shift_hours[args.shift_label]
+
+        shift_start = date + pd.Timedelta(hours=start_h)
+        shift_end = date + pd.Timedelta(hours=end_h)
+
+        if not _ML_DATASET_PATH.exists():
+            return f"Error: Static ML dataset not found at {_ML_DATASET_PATH}"
+
+        df = pd.read_csv(_ML_DATASET_PATH, index_col=0, parse_dates=True)
+
+        # Check date range coverage
+        csv_min, csv_max = df.index.min(), df.index.max()
+        if shift_start < csv_min or shift_end > csv_max + pd.Timedelta(hours=1):
+            return (
+                f"Shift {shift_date} Shift {shift_label} ({shift_start} to {shift_end}) "
+                f"is outside the static dataset range ({csv_min} to {csv_max}). "
+                f"Use fetch_online_data and fetch_offline_data to retrieve this shift's data instead."
+            )
+
+        shift_df = df.loc[(df.index >= shift_start) & (df.index < shift_end)]
+
+        if shift_df.empty:
+            return f"No data rows found for {shift_date} Shift {shift_label} in the static dataset."
+
+        dataset_id = _new_dataset_id("static_shift")
+        meta = {
+            "type": "static_shift",
+            "shift_date": shift_date,
+            "shift_label": shift_label,
+            "shift_start": str(shift_start),
+            "shift_end": str(shift_end),
+            "source": str(_ML_DATASET_PATH),
+            "rows": len(shift_df),
+        }
+        _save_dataset(dataset_id=dataset_id, df=shift_df, meta=meta)
+
+        return _summarize_df(
+            shift_df,
+            dataset_id=dataset_id,
+            title=f"Static shift data: {shift_date} Shift {shift_label} ({len(shift_df)} hourly rows)",
+        )
+
+    except Exception as e:
+        _append_tool_error(tool_name="load_static_shift_data", params=params, error=str(e))
+        return f"Error loading static shift data: {e}"
 
 
 def fetch_online_data(*, lookback_days: int | None = None, lookback_hours: int | None = None, lookback_minutes: int | None = None,
@@ -497,6 +563,30 @@ def get_openai_tool_schemas() -> list[dict]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "load_static_shift_data",
+                "description": (
+                    "Load 8-hour shift data from the static ML dataset (hourly, online+offline pre-merged). "
+                    "Covers Jan 2024 to Mar 2026. Returns error if the shift is outside this range — "
+                    "use fetch_online_data + fetch_offline_data as fallback."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "shift_date": {"type": "string", "description": "ISO date YYYY-MM-DD"},
+                        "shift_label": {
+                            "type": "string",
+                            "enum": ["A", "B", "C"],
+                            "description": "Shift: A (00:00-08:00), B (08:00-16:00), C (16:00-24:00) IST",
+                        },
+                    },
+                    "required": ["shift_date", "shift_label"],
+                    "additionalProperties": False,
+                },
+            },
+        },
     ]
 
 
@@ -514,6 +604,8 @@ def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
         return search_knowledge_docs.invoke(arguments)
     if name == "execute_python_plot":
         return execute_python_plot.invoke(arguments)
+    if name == "load_static_shift_data":
+        return load_static_shift_data(**arguments)
     return f"Unknown tool: {name}"
 
 
