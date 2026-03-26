@@ -7,11 +7,17 @@ class TimeSeriesHeatLoadDataFetcher(TimeSeriesDataFetcher):
     """
     Processes raw data for time-series plots.
     """
-    def __init__(self, debug: bool = False, source: str = "live", request_type: str = "ts"):
+    def __init__(self, debug: bool = False, source: str = "live"):
         super().__init__("heatload_delta_t", debug, source)
-        self.request_type = request_type
     
-    def fetch_data(self, time_interval: str, start_time: datetime, end_time: datetime, row: str, quadrant: str=None) -> pd.DataFrame:
+    def fetch_data(self, 
+                   time_interval: str, 
+                   start_time: datetime, 
+                   end_time: datetime, 
+                   row: str, 
+                   quadrant: str=None,
+                   request_type: str="ts",
+                   window_by: str=None) -> pd.DataFrame:
         """
         Fetch raw time-series data for plotting.
 
@@ -24,7 +30,11 @@ class TimeSeriesHeatLoadDataFetcher(TimeSeriesDataFetcher):
         Returns:
             dict: Time-series data for each heatload variable in the selected row (using full variable names).
         """
-        df_ts = super().fetch_data(time_interval, start_time, end_time)
+        df_ts = super().fetch_data(time_interval, 
+                                   start_time, 
+                                   end_time,
+                                   request_type=request_type,
+                                   window_by=window_by)
         if len(df_ts) == 0:
             raise ValueError(f"No data available in the Database for the specified time range \
                              - {start_time.isoformat()} and {end_time.isoformat()}.")

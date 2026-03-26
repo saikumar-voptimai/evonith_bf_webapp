@@ -13,7 +13,7 @@
     },
     "HOT BLAST TEMP.OC": {
         "min": 1018.0,
-        "max": 1271.0,
+        "max": 1210.0,
         "value": 1204.677366,
         "override": false
     },
@@ -30,13 +30,13 @@
         "override": false
     },
     "O2 ENRICHMENT %": {
-        "min": 0.0,
+        "min": 0.005,
         "max": 8.0,
         "value": 3.748486901,
         "override": false
     },
     "ACTUALKG/THM.": {
-        "min": 70.25110128,
+        "min": 100.0,
         "max": 200.0,
         "value": 178.7129169,
         "override": false

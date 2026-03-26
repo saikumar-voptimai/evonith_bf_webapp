@@ -7,7 +7,12 @@ class TimeSeriesDataFetcher(BaseDataFetcher):
     """
     Processes raw data for time-series plots.
     """
-    def fetch_data(self, time_interval: str, start_time: datetime, end_time: datetime) -> pd.DataFrame:
+    def fetch_data(self, 
+                   time_interval: str, 
+                   start_time: datetime, 
+                   end_time: datetime,
+                   request_type: str = "ts",
+                   window_by: str = None) -> dict:
         """
         Fetch raw time-series data for plotting.
 
@@ -21,7 +26,12 @@ class TimeSeriesDataFetcher(BaseDataFetcher):
         if self.debug:
             return self._get_dummy_data()
 
-        raw_df = self.fetch_averaged_data(time_interval, start_time, end_time)
+        raw_df = self.fetch_averaged_data(time_interval, 
+                                          start_time, 
+                                          end_time,
+                                          request_type=request_type,
+                                          window_by=window_by)
+        raw_df = raw_df.select_dtypes(exclude=['object'])
         return raw_df
     def _get_dummy_data(self) -> dict:
         """

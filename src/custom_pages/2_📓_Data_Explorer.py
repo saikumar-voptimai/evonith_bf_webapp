@@ -105,10 +105,9 @@ with st.sidebar:
     st.subheader("PCI/Coke cost")
     factor = st.number_input("PCI/Coke Cost ratio", value=13250/25000, step=0.01, format="%.2f")
 
-df['Unit Cost'] = (df['COKE RATE KG/THM'] + factor * df['ACTUALKG/THM.']) * 25100/1000
-
-df_filt = df[(pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date >= from_date) & 
-             (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date <= to_date)]
+df['UNITCOST LAKHS/THM'] = (df['COKE RATE KG/THM'] + factor * df['ACTUALKG/THM.']) * .25
+df_filt = df[(pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date >= from_date) & 
+             (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date <= to_date)]
 
 # UI layout
 cols = st.columns([0.3, 0.2, 0.2, 0.2, 0.1])
@@ -287,8 +286,8 @@ if "select_all" not in st.session_state:
     st.session_state.select_all = True
 if "time_range" not in st.session_state:
     st.session_state.time_range = "last 1 hour"
-if "average_range" not in st.session_state:
-    st.session_state.average_range = "1 hour"
+if "window_by" not in st.session_state:
+    st.session_state.window_by = "1 hour"
 if "online_df" not in st.session_state:
     st.session_state.online_df = None
 
@@ -328,12 +327,12 @@ with st.form(key="measurement_form"):
         )
         st.session_state.time_range = time_range
     with col2:
-        average_range = st.selectbox(
+        window_by = st.selectbox(
             "Select Averaging Window:",
             list(FREQUENCY_TO_TIMEDTA.keys()),
-            index=list(FREQUENCY_TO_TIMEDTA.keys()).index(st.session_state.average_range)
+            index=list(FREQUENCY_TO_TIMEDTA.keys()).index(st.session_state.window_by)
         )
-        st.session_state.average_range = average_range
+        st.session_state.window_by = window_by
 
     # Fetch action
     fetch_clicked = st.form_submit_button("⬇️ Fetch")
@@ -344,13 +343,14 @@ with st.form(key="measurement_form"):
         else:
             # Use keys exactly as defined (no lowercasing)
             tr = st.session_state.time_range
-            ar = st.session_state.average_range
-            combined_df = dr.fetch_online_df(sorted(list(selected_measurements)), 
-                                             tr, 
-                                             ar,
-                                             FREQUENCY_TO_TIMEDTA,
+            wb = st.session_state.window_by
+            combined_df = dr.fetch_online_df(sorted(list(selected_measurements)),
+                                             tr,
                                              MEASUREMENT_LABELS,
-                                             FIELD_LABELS)
+                                             FIELD_LABELS,
+                                             request_type="windowed-average",
+                                             window_by=wb
+                                            )
 
             # Persist for display/download after rerun
             st.session_state.online_df = combined_df
