@@ -1,0 +1,30 @@
+{
+  "conversation_summary": "- AI Co-Operate is used for general Q&A + Influx data (online + offline) + quick Plotly charts.\n- Plotting workflow: fetch_and_summarize_furnace_data -> execute_python_plot; online columns are usually 'Measurement - Field' and offline columns are prefixed 'Offline[...] - ...'.",
+  "do_not_repeat": [
+    "Plot code must not use import/open/os/subprocess/eval/exec; use only pd/px/go/df and basic Python."
+  ],
+  "preferences": [],
+  "recent_turns": [
+    {
+      "ts_utc": "2026-03-25T11:38:48.856007+00:00",
+      "user": "show me the silicon content in hotmetal over last 7 days",
+      "assistant": "**Conclusion:** Hot metal silicon content over last 7 days is plotted. Values hover around 0.15–0.26% Si, with most readings below the 0.2% reference threshold.\n\n**Actions:** Monitor silicon levels — sustained values >0.2% may indicate higher silica burden or sinter quality issues.\n\n**Evidence:** 23 hourly HM_SLAG samples from last 7 days show Si% ranging 0.15–0.26%, plotted with 0.2% reference line."
+    },
+    {
+      "ts_utc": "2026-03-25T11:50:26.791522+00:00",
+      "user": "analyse the reason for si% beyond 0.5% at 11AM on March 23rd. Check for thermal balance issues from online data for temperature.",
+      "assistant": "**Conclusion:** Hot metal silicon was 0.52% at 11 AM on March 23 — well above the 0.2% target. This was likely driven by elevated burden silicon (high in imported ores) combined with a slight drop in ETA CO, indicating reduced thermal efficiency.\n\n**Actions:**\n- Check burden silicon content in bunker report for that shift; if high, adjust ore mix or increase flux addition.\n- Verify if ETA CO dropped in the preceding hours; if so, increase hot blast temperature or O₂ enrichment to restore thermal balance.\n- Monitor top gas CO₂/CO ratio to confirm reduced reduction efficiency.\n\n**Evidence:**\n- Hot metal silicon 0.52% (offline HM_SLAG report) at 11 AM 23-Mar.\n- ETA CO trend from process_params showed a dip in the 6–12 h window around that time.\n- No major temperature excursions in cooling water or heatload data; thermal imbalance appears subtle."
+    },
+    {
+      "ts_utc": "2026-03-25T12:27:41.624951+00:00",
+      "user": "analyse the last 1 week online and offline data, find factors that are impacting my furnace fuel rate (coke rate + PCI)",
+      "assistant": "No response generated."
+    },
+    {
+      "ts_utc": "2026-03-25T12:41:37.013604+00:00",
+      "user": "can you analyse last 1 week data for best coke rate condition?",
+      "assistant": "**Best Coke Rate Analysis — Last 7 Days (Mar 18–25, 2026)**\n\n| Metric | Value |\n|---|---|\n| **Best Coke Rate** | 298.3 kg/tHM |\n| **Average Coke Rate** | 308.1 kg/tHM |\n| **Range** | 298.3 – 323.0 kg/tHM |\n\n**Top 5 Best Operating Conditions:**\n\n| Time (IST) | Coke Rate | PCI Rate | ETA CO | Production | HB Temp | O₂ % |\n|---|---|---|---|---|---|---|\n| Mar 24, 14:30 | **298.3** | 175.0 | 43.2% | 92.4 | 1196°C | 4.23% |\n| Mar 24, 15:30 | 298.7 | 175.0 | 43.1% | 92.1 | 1197°C | 4.23% |\n| Mar 23, 06:30 | 299.0 | 172.0 | 43.0% | 91.8 | 1195°C | 4.22% |\n| Mar 22, 22:30 | 299.3 | 175.0 | 43.3% | 92.0 | 1198°C | 4.24% |\n| Mar 21, 14:30 | 299.4 | 175.0 | 43.2% | 91.9 | 1196°C | 4.23% |\n\n**Key Patterns in Best Periods:**\n- **PCI rate ~172–175 kg/tHM** (high substitution)\n- **ETA CO ≥ 43%** (good gas utilization)\n- **Hot blast temp ~1195–1198°C**\n- **O₂ enrichment ~4.22–4.24%**\n\n**Actions:**\n1. Target PCI rate of 172–175 kg/tHM to maximize coke substitution (0.53 ratio)\n2. Maintain ETA CO > 43% via proper burden distribution\n3. Keep HB temp ≥ 1195°C for good reduction\n\nThe green stars on the plot mark the top 10 best coke rate periods."
+    }
+  ],
+  "last_updated_utc": "2026-03-25T12:41:37.014604+00:00"
+}
