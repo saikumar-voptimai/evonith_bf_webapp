@@ -27,10 +27,14 @@ class DataframesProcessor:
         self.df_hist = self.fetch_historical_data()
         cp_op_ml_dict, meas_set = self.fetch_live_params()
         df_live = self.fetch_live_data(cp_op_ml_dict, meas_set)
-        self.df_live_row = self.compute_dependant_features(df_live)
-        
+        LiveMissing = False
+        if len(df_live) != 0:
+            self.df_live_row = self.compute_dependant_features(df_live)
+        else:
+            self.df_live_row = df_live
+            LiveMissing = True
         self.df_latest_row = self.create_latest_row()
-        self.df_full = pd.concat([self.df_hist, self.df_latest_row])
+        self.df_full = pd.concat([self.df_hist, self.df_latest_row]) if not LiveMissing else self.df_hist
 
     def fetch_historical_data(self) -> pd.DataFrame:
         """
@@ -81,7 +85,8 @@ class DataframesProcessor:
         """
         # Live Data:
         if self.df_live_row.empty:
-            raise ValueError("Live data is empty. Cannot merge with historical data.")
+            print("Live data is empty. Cannot merge with historical data.")
+            return self.df_hist.iloc[[-1]]  # Return last historical row as is.
         
         # Historical Data:
         if self.df_hist.empty:

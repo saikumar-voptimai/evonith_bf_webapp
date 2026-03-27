@@ -84,6 +84,7 @@ def run_optimiser(
     fixed_cp: Dict[str, float],
     dfprocessor: DataframesProcessor,
     lambda_reg: float = 0.1,
+    impute_lags: bool = True
 ) -> Dict[str, float]:
     """
     Runs optimization to find control parameters minimizing target output.
@@ -109,7 +110,7 @@ def run_optimiser(
             df_feat_vec.at[df_feat_vec.index[-1], key] = value
 
     free_cp = [cp for cp in control_params if cp not in fixed_cp]
-
+    
     for key, value in fixed_cp.items():
         if not np.isnan(value):
             df_feat_vec.at[df_feat_vec.index[-1], key] = value
@@ -118,9 +119,15 @@ def run_optimiser(
     scaler_path = models_dict[optimisation_type]['scaling']
     scaler = joblib.load(scaler_path)
     models_dict[optimisation_type]['LoadedScaler'] = scaler
+
+    local_feature_names = scaler.feature_names_in_.tolist()
+    if impute_lags:
+        for feat in local_feature_names:
+            if '_lag' in feat and feat.split('_lag')[0] in control_params:
+                free_cp.append(feat)
         
     # Bounds
-    bounds = get_control_bounds(df, free_cp )
+    bounds = get_control_bounds(df, free_cp, impute_lags=impute_lags)
     
     local_feat_vec = df_feat_vec
     loaded_model = models_dict[optimisation_type]['LoadedMLModel']
@@ -128,7 +135,6 @@ def run_optimiser(
     # Precompute scaled control params
     offsets, scales = extract_scaler_params(scaler)
 
-    local_feature_names = scaler.feature_names_in_.tolist()
     if target_output in local_feature_names:
         target_idx = local_feature_names.index(target_output)
         target_value = local_feat_vec.iloc[-1][target_output]
@@ -146,7 +152,7 @@ def run_optimiser(
             raise KeyError(
                 f"Target '{target_output}' not found in feature names for optimisation."
             )
-    scaler_index = {name: i for i, name in enumerate(scaler.feature_names_in_)}
+    scaler_index = {name: i for i, name in enumerate(local_feature_names)}
     feature_idx = np.array([scaler_index.get(f, -1) for f in local_feature_names])
 
     assert local_feat_vec.columns.tolist() == local_feature_names, \

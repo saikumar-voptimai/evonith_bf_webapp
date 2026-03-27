@@ -13,7 +13,6 @@ DATA: "src/data/V13_df_filtered.csv"
 influx_offline:
   database: bf2_evonith_offline_utc
 
-
 offline_measurements:
   Bunker Report: "rm_updated_data"
   DPR: "dpr_data"
@@ -28,7 +27,6 @@ ml_dataset:
   local_tz: "Asia/Kolkata"
   cutoff_date: "2025-08-24"
   static_dataset_path: "src/data/V14_df_filtered.csv"
-
 
 # Geometries
 paths:
@@ -532,7 +530,7 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
     BF2_PROC Radar Stock Rod Level: stock_rod_radar_level  
     BF2_PROC Stock Rod 1 Position: stock_rod1_pos  
     BF2_PROC Stock Rod 2 Position: stock_rod2_pos
-    BF2 No of Skip Car Trips - Reset Hourly: skip_car_trips_hour'
+    BF2 No of Skip Car Trips - Reset Hourly: skip_car_trips_hour
     BF2 Coal flow switch No 1: coal_sw_01  
     BF2 Coal flow switch No 2: coal_sw_02  
     BF2 Coal flow switch No 3: coal_sw_03  

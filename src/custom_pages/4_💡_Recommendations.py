@@ -39,6 +39,7 @@ st.markdown(
 st.divider()
 
 debug_on = st.sidebar.toggle("Debug", value=False)
+run_llm = st.sidebar.toggle("Run LLM Analysis", key="run_llm_button")
 new_steps = 30 if debug_on else 30
 
 if config_vsense.get("OPTIM_STEPS") != new_steps:
@@ -217,7 +218,7 @@ with st.form("Optimiser Form"):
             min_value=0.0, 
             max_value=0.5, 
             value=config_vsense['LAMBDA_REG'],
-            step=0.05,
+            step=0.005,
             help="Regularisation parameter for the optimisation algorithm."
         )
     submit_optim_params = st.form_submit_button("Run Optimiser")
@@ -243,7 +244,8 @@ with st.form("Optimiser Form"):
             user_input, 
             fixed_cp,
             st.session_state.dfprocessor,
-            lambda_reg=lambda_reg
+            lambda_reg=lambda_reg,
+            impute_lags=False
         )
 
         st.subheader("Optimisation Results")
@@ -320,6 +322,6 @@ with st.form("Optimiser Form"):
             target_output=target_output        
             )
         with st.spinner("Generating review…"):
-            if not debug_on:
+            if run_llm:
                 out = call_llm(system, prompt)
-        st.markdown(out)
+                st.markdown(out)
