@@ -1132,7 +1132,7 @@ def search_shift_history(query: str) -> str:
     if shift_store is None:
         return "Shift store not initialized."
 
-    results = shift_store.search_similar_windows(query_text=query, top_k=5)
+    results = shift_store.search_similar_shifts(query=query, top_k=5)
 
     if not results:
         return "No shift summaries found for this query."
