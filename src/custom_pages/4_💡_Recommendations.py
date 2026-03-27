@@ -101,8 +101,10 @@ op_list = [config_vsense['Optimisation'][model]['output_param'] for model in lis
 include_control = {}
 if 'control_params' not in st.session_state:
     st.session_state['control_params'] = include_control
+
+
 last_time = st.session_state.df_full.index[-1].tz_convert('Asia/Kolkata')
-st.write(f"##### From window ending: {last_time.strftime('%Y-%m-%d %H:%M')}")
+st.write(f"##### From window ending: {last_time.strftime('%Y-%m-%d %H:%M:%S')}")
 with st.form(f"Control Params Form"):
     cols = st.columns(3)
     i = 0
@@ -131,22 +133,36 @@ with st.form(f"Control Params Form"):
             )
 
             # Layout for inputs
-            val_col, min_col, max_col= st.columns([0.45, 0.275, 0.275])
-            with val_col:
-                val = st.number_input(
-                    "Value",
-                    min_value=cp_min,
-                    max_value=cp_max,
-                    value=np.clip(val, cp_min, cp_max),
-                    key=f"val_{cp}",
-                )
+            # -------- Row 1: Value --------
+            val = st.number_input(
+                "Value",
+                min_value=cp_min,
+                max_value=cp_max,
+                value=np.clip(val, cp_min, cp_max),
+                key=f"val_{cp}",
+            )
+
+            # -------- Row 2: Min & Max --------
+            min_col, max_col = st.columns(2)
 
             disabled_chg = True if override else False
+
             with min_col:
-                min_val = st.number_input("Min", value=cp_min, key=f"min_{cp}", disabled=disabled_chg)
-                
+                min_val = st.number_input(
+                    "Min",
+                    value=cp_min,
+                    key=f"min_{cp}",
+                    disabled=disabled_chg,
+                )
+
             with max_col:
-                max_val = st.number_input("Max", value=cp_max, key=f"max_{cp}", disabled=disabled_chg)
+                max_val = st.number_input(
+                    "Max",
+                    value=cp_max,
+                    key=f"max_{cp}",
+                    disabled=disabled_chg,
+                )
+
             
             # Ensure current value is within limits
             val = min(max(val, min_val), max_val)
@@ -164,7 +180,8 @@ with st.form(f"Control Params Form"):
 # User-specified input variables:
 latest_row = st.session_state.dfprocessor.fetch_live_rm_data()
 latest_row.name = latest_row.name.tz_convert('Asia/Kolkata')
-with st.expander(f"Input Params at {latest_row.name.strftime('%Y-%m-%d %H:%M')}  - Click to expand and override"):
+with st.expander(f"Input Params at {latest_row.name.strftime('%Y-%m-%d %H:%M:%S')}  - Click to expand and override"):
+
     cols = st.columns(3)
     raw_mtrl_input = {}
     with st.form(key="Raw Material Input Form"):

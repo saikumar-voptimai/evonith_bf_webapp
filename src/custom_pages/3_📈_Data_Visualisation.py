@@ -103,7 +103,7 @@ temperatures_max = [temperature_list[1][i] for i in range(4)]
 temperatures_min = [temperature_list[2][i] for i in range(4)]  # Extracting only the temperature values for Q1-Q4
 
 fig = plotter.plot_plotly(temperatures, temperatures_max, temperatures_min)
-st.plotly_chart(fig, width='stretch')
+st.plotly_chart(fig, use_container_width=True, key="data_vis_longitudinal_temp")
 
 #-------------------------------------------------------------------------------------------------------
 # 2. Circular Heatload distribution Plot
@@ -124,12 +124,8 @@ except ValueError as e:
 # User selection
 plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
 
-fig = plotter.plot_circumferential_quadrants(heatloads_list, 
-                                             titles=rows, 
-                                             colorbar_title="Heatload (GJ)", 
-                                             unit="",
-                                             show_colorbar=True)
-st.plotly_chart(fig, width='stretch')
+fig = plotter.plot_circumferential_quadrants(heatloads_list, titles=rows, colorbar_title="Heatload (GJ)", unit="GJ")
+st.plotly_chart(fig, use_container_width=True, key="data_vis_circ_heatload")
 
 #------------------------------------------------------------------------------------------------------
 # 3. Circular Temperature Plot
@@ -183,25 +179,29 @@ preset_titles = ["12.975m - Bosh", "15.162m - Belly", "18.660m - Stack"]
 
 all_titles = [f"At {elevations[i]}" for i in range(len(elevations))] + preset_titles
 
-fig = plotter.plot_circumferential_quadrants(temp_to_plot, 
-                                             titles=all_titles[-4:], 
-                                             colorbar_title="Temperature (°C)", 
-                                             unit="",
-                                             show_colorbar=False)
-st.plotly_chart(fig, width='stretch')
+fig = plotter.plot_circumferential_quadrants(temp_to_plot, titles=all_titles[-4:], colorbar_title="Temperature (°C)", unit="°C")
+st.plotly_chart(fig, use_container_width=True, key="data_vis_circ_temp_stack")
+st.markdown(
+    """
+    <style>
+    /* Shrink the vertical gap between ANY two elements */
+    div[data-testid="stVerticalBlock"]{
+        gap:0.rem;          /* default is 1rem */
+    }
 
-fig = plotter.plot_circumferential_quadrants(temp_to_plot2, 
-                                             titles=all_titles[:5], 
-                                             colorbar_title="Temperature (°C)", 
-                                             unit="",
-                                             show_colorbar=False)
-st.plotly_chart(fig, width='stretch')
-fig = plotter.plot_circumferential_quadrants(temp_to_plot3, 
-                                             titles=all_titles[5:8], 
-                                             colorbar_title="Temperature (°C)",
-                                             unit="",
-                                             show_colorbar=True)
-st.plotly_chart(fig, width='stretch')
+    /* Optional: make Plotly charts themselves have zero outer margin */
+    .stPlotlyChart {
+        margin-top:0 !important;
+        margin-bottom:0 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+fig = plotter.plot_circumferential_quadrants(temp_to_plot2, titles=all_titles[:5], colorbar_title="Temperature (°C)", unit="°C")
+st.plotly_chart(fig, use_container_width=True, key="data_vis_circ_temp_hearth")
+fig = plotter.plot_circumferential_quadrants(temp_to_plot3, titles=all_titles[5:8], colorbar_title="Temperature (°C)", unit="°C")
+st.plotly_chart(fig, use_container_width=True, key="data_vis_circ_temp_tuyere")
 # -------------------------------------------------------------------------------------------------------
 st.title("Heat Load Data - Timeseries")
 # -------------------------------------------------------------------------------------------------------
@@ -263,4 +263,4 @@ layout = go.Layout(
 fig = go.Figure(data=data, layout=layout)
 
 # Display the plot
-st.plotly_chart(fig, width='stretch')
+st.plotly_chart(fig, use_container_width=True, key="data_vis_heatload_ts")

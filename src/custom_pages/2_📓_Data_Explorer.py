@@ -1,4 +1,6 @@
 import streamlit as st
+from datetime import datetime, timedelta, date
+from datetime import time
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -10,8 +12,11 @@ import pytz
 from pathlib import Path
 from utils.helper_functions_explorer import data_retrieval as dr
 from config.config_loader import load_config
-from datetime import timedelta
 from dotenv import load_dotenv
+
+from zoneinfo import ZoneInfo
+from ml_pipeline.main import MlDatasetFetcher
+from ml_pipeline.static_dataset_manager import StaticDatasetManager
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config("setting_vsense.yml")
@@ -54,6 +59,7 @@ TIME_OPTIONS = {
 FREQUENCY_TO_TIMEDTA = {
     "None": None,
     "1 minute": "1min",
+    "2 minute": "2min",
     "5 minutes": "5min",
     "10 minutes": "10min",
     "30 minutes": "30min",
@@ -163,7 +169,7 @@ if eqn_str:
 # Resize and render with Streamlit
 fig = plot.get_figure()
 fig.set_size_inches(10, 5)
-st.pyplot(fig, width='content')
+st.pyplot(fig, width="content")
 
 #--------------------------------------------------------------------------
 st.subheader("Timeseries plot")
@@ -177,8 +183,8 @@ with st.sidebar:
         to_date = st.date_input("To Date", value=pd.to_datetime(df.index[-1]).date(), key="to_date2")
 
 features = st.multiselect('Select features', df.columns, default=df.columns[0])
-df_t = df[(pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date >= from_date) & 
-             (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date <= to_date)]
+df_t = df[(pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date >= from_date) & 
+             (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date <= to_date)]
 cols = st.columns([0.3, 0.15, 0.15, 0.1, 0.3])
 with cols[0]:
     filter_feature = st.selectbox('Select feature to filter by', df.columns, index=int(len(df.columns)-3))
@@ -254,7 +260,7 @@ fig.update_layout(
 )
 
 # Display the Plotly chart
-st.plotly_chart(fig)
+st.plotly_chart(fig, key="data_explorer_multi_axis_plot")
 # --------------------------------------------------------------------------------
 # SHOW 6 PyGWalker
 # --------------------------------------------------------------------------------
@@ -352,7 +358,7 @@ with st.form(key="measurement_form"):
 # Display and allow download after the form (survives reruns)
 if isinstance(st.session_state.online_df, pd.DataFrame) and not st.session_state.online_df.empty:
     df_show = st.session_state.online_df.sort_index()
-    st.dataframe(df_show)
+    st.dataframe(df_show.head(100))
     csv_bytes = df_show.reset_index().to_csv(index=False).encode('utf-8')
     ts_label = pd.Timestamp.utcnow().strftime('%Y%m%d_%H%M%SZ')
     st.download_button(
@@ -366,53 +372,280 @@ else:
 
 
 # 8 --- UI Section for Offline Data ---
+UTC = pytz.UTC
+
+
 st.header("📄 Offline Data Viewer")
 
-# Session state defaults for offline data
-if "time_range_off" not in st.session_state:
-    st.session_state.time_range_off = "last 1 week"
 if "selected_offline" not in st.session_state:
     st.session_state.selected_offline = list(offline_measurements.keys())[0]
 
-cols = st.columns(2)
-with cols[0]:
-    selected_offline = st.selectbox(
-        "Select Offline Measurement",
-        list(offline_measurements.keys()),
-        index=list(offline_measurements.keys()).index(st.session_state.selected_offline),
-        key="selected_offline"  
-    )
-with cols[1]:
-    time_range_off = st.selectbox(
-        "Select Time Range:",
-        list(TIME_OPTIONS.keys())[7:],
-        index=list(TIME_OPTIONS.keys())[7:].index(st.session_state.time_range_off),
-        key="time_range_off"  # 🔹 Also stored in session_state
-    )
+TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
 
- 
-if st.button("Fetch Offline Data"):
+
+with st.form("offline_fetch_form"):
+
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        selected_offline = st.selectbox(
+            "Select Offline Measurement",
+            list(offline_measurements.keys()),
+            index=list(offline_measurements.keys()).index(st.session_state.selected_offline)
+        )
+
+    with col_right:
+        time_range_choice = st.selectbox(
+            "Select Time Range (optional):",
+            ["Use Start/End Dates"] + TIME_OPTIONS_UI
+        )
+
+        d1, d2 = st.columns(2)
+        with d1:
+            start_date = st.date_input("Start Date", value=datetime.now().date())
+        with d2:
+            end_date = st.date_input("End Date", value=datetime.now().date())
+
+    submitted = st.form_submit_button("Fetch Offline Data")
+
+
+if submitted:
+
+    if start_date > end_date:
+        st.error("❌ Invalid date range: Start Date cannot be after End Date.")
+        st.stop()
+
     database = influx_cfg.get("database", "bf2_evonith_offline_utc")
+
+    # ---- CORRECT TIME RANGE HANDLING ----
+    if time_range_choice == "Use Start/End Dates":
+
+        start_local = local_tz.localize(datetime.combine(start_date, time.min))
+        end_local = local_tz.localize(datetime.combine(end_date, time.max))
+
+        time_range_to_fetch = (
+            start_local.astimezone(UTC),
+            end_local.astimezone(UTC),
+        )
+    else:
+        time_range_to_fetch = time_range_choice
+
     df_offline = dr.fetch_offline_data(
-        measurement=offline_measurements[st.session_state.selected_offline],
-        time_range=st.session_state.time_range_off,
+        measurement=offline_measurements[selected_offline],
+        time_range=time_range_to_fetch,
         database=database,
     )
 
     if df_offline.empty:
-        st.warning(f"No data found for {st.session_state.selected_offline}")
-    else:
-        if st.session_state.selected_offline == "rm_data":
-            df_offline = dr.clean_rm_data(df_offline)
-        # Change timeidx to Asia/Kolkata
-        df_offline.index = df_offline.index.tz_convert(local_tz)
-        df_offline.index.name = 'time (IST)'
-        df_offline = df_offline.select_dtypes(exclude=['object'])
-        st.dataframe(df_offline)
-        csv = df_offline.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download as CSV",
-            data=csv,
-            file_name=f"{st.session_state.selected_offline}.csv",
-            mime="text/csv",
+        st.warning(f"No data found for {selected_offline}")
+        st.stop()
+
+    if selected_offline == "rm_data":
+        df_offline = dr.clean_rm_data(df_offline)
+
+    # Index is already UTC → convert once
+    df_offline.index = df_offline.index.tz_convert(local_tz)
+    df_offline.index.name = "time (IST)"
+
+    st.dataframe(df_offline)
+    df_download = df_offline.reset_index()
+    st.download_button(
+        label="Download as CSV",
+        data=df_download.to_csv(index=False).encode("utf-8"),
+        file_name=f"{selected_offline}.csv",
+        mime="text/csv",
+    )
+
+
+
+# 9 --- ML Dataset Section ---
+
+
+local_tz = ZoneInfo(config["ml_dataset"]["local_tz"])
+
+
+
+# IMPORTANT: create once so cache survives reruns
+@st.cache_resource
+def get_fetcher():
+    return MlDatasetFetcher()
+
+fetcher = get_fetcher()
+
+# ---------------- UI LAYOUT ----------------
+left_col, right_col = st.columns(2)
+
+# -------------- ML DATASET FETCHER --------------
+with left_col:
+    st.header("📄 ML Dataset")
+
+    with st.form("ml_form"):
+        rm_choice_raw = st.radio(
+            "Select RM Dataset",
+            ["RM Charge", "RM DPR"],
+            horizontal=True,
         )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input(
+                "Start Date", datetime.now(local_tz).date()
+            )
+        with col2:
+            end_date = st.date_input(
+                "End Date", datetime.now(local_tz).date()
+            )
+
+        cache_override = st.checkbox("Override Cache")
+        submitted = st.form_submit_button("Fetch Dataset")
+
+    if submitted:
+        if start_date > end_date:
+            st.error("Start Date cannot be after End Date.")
+        else:
+            with st.spinner("Fetching ML Dataset..."):
+                df_final = fetcher.get_ml_dataset(
+                    start_date=start_date,
+                    end_date=end_date,
+                    rm_choice=rm_choice_raw,
+                    cache_override=cache_override,
+                )
+
+            if df_final.empty:
+                st.warning("No data found.")
+            else:
+                st.success(f"Rows fetched: {len(df_final)}")
+                st.dataframe(df_final, height=300)
+
+                st.download_button(
+                    "Download CSV",
+                    df_final.to_csv(index=True).encode("utf-8"),
+                    file_name=f"unified_ML_{start_date}_to_{end_date}.csv",
+                    mime="text/csv",
+                )
+
+# -------------- STATIC FILTERED DATASET MANAGER --------------
+
+with right_col:
+    st.header("📄 Filtered ML Dataset")
+    with st.container(border=True):
+
+        static_df_path = config["DATA"]
+        sm = StaticDatasetManager(static_df_path)
+
+        # ---------------- RESET FLAG INIT ----------------
+        if "reset_reprocess_date" not in st.session_state:
+            st.session_state.reset_reprocess_date = False
+
+        # ---------------- APPLY RESET BEFORE WIDGET ----------------
+        if st.session_state.reset_reprocess_date:
+            st.session_state.reprocess_date = None
+            st.session_state.reset_reprocess_date = False
+
+        # ---------------- INPUTS ----------------
+        rm_choice = st.radio(
+            "Select RM Dataset",
+            ["RM Charge", "RM DPR"],
+            horizontal=True,
+            key="rm_static",
+        )
+
+        reprocess_date = st.date_input(
+            "Reprocess data from date (optional)",
+            value=None,
+            key="reprocess_date",
+        )
+
+        # ---------------- ACTION BUTTON ---------------
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button(" Fetch & Process"):
+                with st.spinner("Fetching & updating static dataset..."):
+                    df = sm.update_static(
+                        rm_choice=rm_choice,
+                        start_date=reprocess_date,
+                    )
+
+                    if df.empty:
+                        st.warning("No data fetched.")
+                    else:
+                        sm.save(df)
+                        st.success(f"Dataset ready ({len(df)} rows)")
+
+                        # request reset for next rerun
+                        st.session_state.reset_reprocess_date = True
+                        st.rerun()
+
+        with col2:
+            with open(static_df_path, "rb") as f:
+                st.download_button(
+                    label="Download ML Dataset",
+                    data=f,
+                    file_name="ML Filtered Dataset.csv",
+                    mime="text/csv",
+                )
+
+
+
+# 10 --- HOT METAL AND SLAG DATA SECTION ---
+
+
+service = fetcher.service  
+
+# ---------------- UI ----------------
+st.header("📄 HOT METAL AND SLAG")
+
+with st.form("hotmetal_form_2"):
+    col1, col2 = st.columns(2)
+    with col1:
+        from_date = st.date_input("From Date")
+    with col2:
+        to_date = st.date_input("To Date")
+
+    interval_min = st.number_input(
+        "Interval (minutes)",
+        min_value=1,
+        max_value=600,
+        value=60,
+    )
+
+    fetch_btn = st.form_submit_button("Fetch HM & SLAG DATA")
+
+# ---------------- ACTION ----------------
+if fetch_btn:
+
+    if from_date > to_date:
+        st.error("❌ From Date must be less than or equal to To Date.")
+        st.stop()
+
+    keep_cols = config.get("keep_cols", [])
+
+    with st.spinner("Fetching Hot Metal & Slag data..."):
+        df_final = service.fetch_hotmetal_hourly(
+            start_date=from_date,
+            end_date=to_date,
+            keep_columns=keep_cols,
+            interval_minutes=interval_min,
+        )
+
+    if df_final.empty:
+        st.warning("No data found.")
+        st.stop()
+
+    # ---- DROP UNWANTED COLUMNS ----
+    drop_cols = ["cast_no_ladle_spec", "lab_sample_id"]
+    df_final = df_final.drop(
+        columns=[c for c in drop_cols if c in df_final.columns]
+    )
+
+    st.success("Data processed successfully!")
+    st.dataframe(df_final)
+
+    # ---- CSV DOWNLOAD ----
+    st.download_button(
+        "Download CSV",
+        df_final.to_csv(index=True).encode("utf-8"),
+        file_name=f"hotmetal_{from_date}_to_{to_date}_{interval_min}min.csv",
+        mime="text/csv",
+    )

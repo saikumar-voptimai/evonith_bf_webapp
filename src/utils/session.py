@@ -27,6 +27,9 @@ def is_logged_in() -> bool:
 def is_admin() -> bool:
     return is_logged_in() and st.session_state.get("role") == "admin"
 
+def is_supervisor() -> bool:             
+    return is_logged_in() and st.session_state.get("role") == "supervisor"
+
 
 def login_user(username, role) -> None:
     """Login user: set session and short-lived cookie."""

@@ -5,6 +5,7 @@ import json
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 from datetime import datetime, timezone
 from utils.helper_functions_explorer import data_retrieval as dr
 from utils.anomaly_propensity import Channeling, ChannelingConfig
@@ -17,6 +18,26 @@ load_dotenv()
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config('setting_vsense.yml')
+
+MEASUREMENT_LABELS = {
+    "heatload_delta_t": "Heatload Delta T",
+    "process_params": "Process Params",
+    "temperature_profile": "Temperature Profile"
+}
+
+FREQUENCY_TO_TIMEDTA = {
+    "None": None,
+    "1 minute": "1min",
+    "5 minutes": "5min",
+    "10 minutes": "10min",
+    "15 minutes": "15min",
+    "30 minutes": "30min",
+    "1 hour": "1h",
+    "6 hours": "6h",
+    "8 hours": "8h",
+    "12 hours": "12h",
+    "1 day": "1d",
+}
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -153,29 +174,10 @@ def best_snapshot_from_static(df: pd.DataFrame, target_col: str):
         ts = period[target_col].idxmin()
     return {"when": ts, "value": float(period.loc[ts, target_col])}
 
-
 # ────────────────────────────────────────────────────────────────────────────────
-# 3) INFLUX HELPERS (ONLINE ANOMALIES)
+# 3) INFLUXDB FETCHER (DYNAMIC ANALYSIS: Recent Operation Review)
 # ────────────────────────────────────────────────────────────────────────────────
-MEASUREMENT_LABELS = {
-    "heatload_delta_t": "Heatload Delta T",
-    "process_params": "Process Params",
-    "temperature_profile": "Temperature Profile"
-}
 
-FREQUENCY_TO_TIMEDTA = {
-    "None": None,
-    "1 minute": "1min",
-    "5 minutes": "5min",
-    "10 minutes": "10min",
-    "15 minutes": "15min",
-    "30 minutes": "30min",
-    "1 hour": "1h",
-    "6 hours": "6h",
-    "8 hours": "8h",
-    "12 hours": "12h",
-    "1 day": "1d",
-}
 
 FIELD_LABELS = {
     internal_key: human_label
@@ -189,10 +191,12 @@ def fetch_recent_online(tr: str = 'last 8 hours',
                         window_by: str = '15 minutes') -> pd.DataFrame:
     """
     Fetches recent online data from InfluxDB for the last `minutes` minutes.
-    Args:
-        minutes (int): Number of minutes to fetch data for.
+    Parameters:
+    - tr (str): Time range to fetch (e.g., 'last 8 hours').
+    - request_type (str): Type of data to fetch ('windowed-average' or 'raw').
+    - window_by (str): Resampling frequency for windowed average (e.g., '15 minutes').
     Returns:
-        pd.DataFrame: DataFrame containing the recent online data.
+    - pd.DataFrame: DataFrame containing the recent online data.
     """
     selected_measurements = list(MEASUREMENT_LABELS.keys())
     combined_df = dr.fetch_online_df(selected_measurements,
@@ -802,22 +806,68 @@ with tabs[0]:
             # --- Plot ONLY the final score (not the whole DF) ---
             st.line_chart(scores[["channeling_score"]], height=220)
 
+            # --- Circumferential quadrant profile (pie chart) ---
+            q_labels = ["Q1", "Q2", "Q3", "Q4"]
+            q_keys = ["q1_score", "q2_score", "q3_score", "q4_score"]
+            latest_row = scores.iloc[-1]
+            q_vals = [float(latest_row.get(k, 0)) for k in q_keys]
+            q_vals = [v if np.isfinite(v) else 0.0 for v in q_vals]
+            q_total = sum(q_vals)
+
+            pie_col, info_col = st.columns([3, 2])
+            with pie_col:
+                if q_total > 1e-6:
+                    fig_q = go.Figure(go.Pie(
+                        labels=q_labels,
+                        values=q_vals,
+                        hole=0.4,
+                        marker_colors=["#636EFA", "#EF553B", "#00CC96", "#AB63FA"],
+                        textinfo="label+percent",
+                        hovertemplate=(
+                            "<b>%{label}</b><br>"
+                            "Score: %{value:.3f}<br>"
+                            "Share: %{percent}<extra></extra>"
+                        ),
+                    ))
+                    fig_q.update_layout(
+                        title_text="Circumferential Anomaly Profile",
+                        height=320,
+                        margin=dict(t=40, b=20, l=20, r=20),
+                        showlegend=True,
+                    )
+                    st.plotly_chart(fig_q, use_container_width=True)
+                else:
+                    st.info("No circumferential asymmetry detected in this window.")
+
+            with info_col:
+                st.caption("**Quadrant scores** (latest window)")
+                for lbl, val in zip(q_labels, q_vals):
+                    pct = (val / q_total * 100) if q_total > 1e-6 else 25.0
+                    bar = int(round(pct / 5))  # rough bar out of 20
+                    st.text(f"  {lbl}: {val:.3f}  ({pct:5.1f}%)  {'█' * bar}")
+                if q_total > 1e-6:
+                    dominant = q_labels[int(np.argmax(q_vals))]
+                    st.markdown(f"**Dominant quadrant: {dominant}**")
+                else:
+                    st.markdown("**All quadrants balanced.**")
+
             # --- Optional: component breakdown ---
-            cols = st.columns(3)
-            with cols[0]:
+            breakdown_cols_row = st.columns(3)
+            with breakdown_cols_row[0]:
                 last_points = st.number_input(
                     "Points to show in breakdown", value=12, min_value=1, max_value=1000, step=1)
             with st.expander(f"Component breakdown (latest {last_points} points)", expanded=False):
-                cols = [
+                display_cols = [
                     "channeling_score",
                     "uptake_score", "skin_score",
-                    "hbp_score", "topdp_score", 
+                    "hbp_score", "topdp_score",
                     "bottomdp_score", "eta_co_score",
                     "heatload_score", "stave_score",
+                    "q1_score", "q2_score", "q3_score", "q4_score",
                     "n_components_used",
                 ]
-                cols = [c for c in cols if c in scores.columns]
-                st.dataframe(scores[cols].tail(last_points), width='stretch')
+                display_cols = [c for c in display_cols if c in scores.columns]
+                st.dataframe(scores[display_cols].tail(last_points), width='stretch')
 
         if enable:
             render_channeling()

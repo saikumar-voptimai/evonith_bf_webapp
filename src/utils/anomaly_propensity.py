@@ -267,6 +267,69 @@ class Channeling:
 
         return {"diag_sum": float(diag_sum) if any_valid else np.nan}
 
+    def _compute_quadrant_profile(self, g: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Compute per-quadrant anomaly deviation scores from the 3 quadrant-aware
+        components: uptake (temp+pressure), skin 18660, and heatload.
+
+        For spread-based components (uptake, skin): measures |value_i - mean|
+        normalized by the component threshold.
+        For heatload: measures per-quadrant rise normalized by threshold.
+
+        Returns q1_score..q4_score — higher means more anomalous in that quadrant.
+        """
+        N_Q = 4
+        q_contribs: List[List[float]] = [[] for _ in range(N_Q)]
+
+        # 1) Uptake temperatures: deviation of each quadrant from the group mean
+        temp_cols = [c for c in self.cfg.uptake_temp_cols if c in g.columns]
+        if len(temp_cols) == N_Q:
+            vals = g[temp_cols].mean(axis=0, skipna=True).to_numpy()
+            mu = np.nanmean(vals)
+            if np.isfinite(mu) and self.cfg.max_spread_uptake_temp > 0:
+                for i in range(N_Q):
+                    if np.isfinite(vals[i]):
+                        q_contribs[i].append(abs(vals[i] - mu) / self.cfg.max_spread_uptake_temp)
+
+        # 2) Uptake pressures: deviation of each quadrant from the group mean
+        pres_cols = [c for c in self.cfg.uptake_pressure_cols if c in g.columns]
+        if len(pres_cols) == N_Q:
+            vals = g[pres_cols].mean(axis=0, skipna=True).to_numpy()
+            mu = np.nanmean(vals)
+            if np.isfinite(mu) and self.cfg.max_spread_uptake_pressure > 0:
+                for i in range(N_Q):
+                    if np.isfinite(vals[i]):
+                        q_contribs[i].append(abs(vals[i] - mu) / self.cfg.max_spread_uptake_pressure)
+
+        # 3) Skin 18660 (A/B/C/D → Q1/Q2/Q3/Q4): deviation from group mean
+        skin_cols = [c for c in self.cfg.skin_18660_cols if c in g.columns]
+        if len(skin_cols) == N_Q:
+            vals = g[skin_cols].mean(axis=0, skipna=True).to_numpy()
+            mu = np.nanmean(vals)
+            if np.isfinite(mu) and self.cfg.max_spread_skin > 0:
+                for i in range(N_Q):
+                    if np.isfinite(vals[i]):
+                        q_contribs[i].append(abs(vals[i] - mu) / self.cfg.max_spread_skin)
+
+        # 4) Heatload (Q1–Q4): per-quadrant rise over the window
+        hl_cols = self.cfg.heatload_cols
+        present_hl = [c for c in hl_cols if c in g.columns]
+        if len(present_hl) == N_Q:
+            for i, c in enumerate(hl_cols):
+                first, last = self._first_last(g[c])
+                if np.isfinite(first) and np.isfinite(last) and self.cfg.max_rise_heatload > 0:
+                    delta = max(0.0, last - first)
+                    q_contribs[i].append(delta / self.cfg.max_rise_heatload)
+
+        # Average across available components per quadrant
+        result: Dict[str, Any] = {}
+        for i in range(N_Q):
+            if q_contribs[i]:
+                result[f"q{i+1}_score"] = float(np.nanmean(q_contribs[i]))
+            else:
+                result[f"q{i+1}_score"] = np.nan
+        return result
+
     def _score_window(self, g: pd.DataFrame, window_end: pd.Timestamp) -> Dict[str, Any]:
         out: Dict[str, Any] = {"window_end": window_end}
 
@@ -300,7 +363,10 @@ class Channeling:
         heat = self._diagnosis_rise_sum(g, self.cfg.heatload_cols, self.cfg.max_rise_heatload)
         out["heatload_score"] = heat["diag_sum"]
 
-        # Final: equal weight across the 6 measurement blocks (a–f), adjusted for availability
+        # (h) Per-quadrant profile from quadrant-aware components
+        out.update(self._compute_quadrant_profile(g))
+
+        # Final: equal weight across the 7 measurement blocks (a–g), adjusted for availability
         components = [
             out.get("uptake_score", np.nan),
             out.get("skin_score", np.nan),
