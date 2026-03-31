@@ -1,4 +1,4 @@
-from turtle import pd
+import pandas as pd
 import numpy as np
 from .base_data_fetcher import BaseDataFetcher
 from typing import List
@@ -6,7 +6,7 @@ from config.config_loader import load_config
 
 config = load_config()
 
-SENSORS_AT_Y = config["plot"]["geometry"]["sensors_at_y"][0]
+SENSORS_AT_Y = config["plot"]["geometry"]["heights_dict"]
 
 class TemperatureDataFetcher(BaseDataFetcher):
     """
