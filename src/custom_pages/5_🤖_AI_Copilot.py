@@ -200,7 +200,8 @@ def fetch_recent_online(tr: str = 'last 8 hours',
     """
     selected_measurements = list(MEASUREMENT_LABELS.keys())
     combined_df = dr.fetch_online_df(selected_measurements,
-                                    tr, 
+                                    tr,
+                                    FREQUENCY_TO_TIMEDTA,
                                     MEASUREMENT_LABELS,
                                     FIELD_LABELS,                    
                                     request_type=request_type,
@@ -804,9 +805,13 @@ with tabs[0]:
             k3.caption(f"Last updated: {datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}")
 
             # --- Plot ONLY the final score (not the whole DF) ---
-            st.line_chart(scores[["channeling_score"]], height=220)
+            _scores_ist = scores[["channeling_score"]].copy()
+            if _scores_ist.index.tz is None:
+                _scores_ist.index = _scores_ist.index.tz_localize("UTC")
+            _scores_ist.index = _scores_ist.index.tz_convert("Asia/Kolkata")
+            st.line_chart(_scores_ist, height=220)
 
-            # --- Circumferential quadrant profile (pie chart) ---
+            # --- Circumferential quadrant profile ---
             q_labels = ["Q1", "Q2", "Q3", "Q4"]
             q_keys = ["q1_score", "q2_score", "q3_score", "q4_score"]
             latest_row = scores.iloc[-1]
@@ -814,37 +819,69 @@ with tabs[0]:
             q_vals = [v if np.isfinite(v) else 0.0 for v in q_vals]
             q_total = sum(q_vals)
 
-            pie_col, info_col = st.columns([3, 2])
-            with pie_col:
-                if q_total > 1e-6:
-                    fig_q = go.Figure(go.Pie(
-                        labels=q_labels,
-                        values=q_vals,
-                        hole=0.4,
-                        marker_colors=["#636EFA", "#EF553B", "#00CC96", "#AB63FA"],
-                        textinfo="label+percent",
-                        hovertemplate=(
-                            "<b>%{label}</b><br>"
-                            "Score: %{value:.3f}<br>"
-                            "Share: %{percent}<extra></extra>"
-                        ),
+            circ_col, info_col = st.columns([3, 2])
+            with circ_col:
+                vmin, vmax = min(q_vals), max(q_vals)
+
+                def _yrb_color(frac):
+                    """Yellow(0) → Red(0.5) → Black(1)."""
+                    f = max(0.0, min(1.0, frac))
+                    if f <= 0.5:
+                        g = int(255 * (1 - 2 * f))
+                        return f"rgb(255,{g},0)"
+                    r = int(255 * (2 - 2 * f))
+                    return f"rgb({r},0,0)"
+
+                fig_q = go.Figure()
+                R_IN, R_OUT, SEGS = 3, 8, 60
+                for qi in range(4):
+                    th0 = qi * 90
+                    thetas = np.linspace(np.deg2rad(th0), np.deg2rad(th0 + 90), SEGS + 1)
+                    xs = np.concatenate([R_OUT * np.cos(thetas),
+                                         R_IN * np.cos(thetas[::-1]),
+                                         [R_OUT * np.cos(thetas[0])]])
+                    ys = np.concatenate([R_OUT * np.sin(thetas),
+                                         R_IN * np.sin(thetas[::-1]),
+                                         [R_OUT * np.sin(thetas[0])]])
+                    frac = (q_vals[qi] - vmin) / (vmax - vmin) if vmax > vmin else 0.5
+                    fig_q.add_trace(go.Scatter(
+                        x=xs, y=ys, mode="lines",
+                        fill="toself", fillcolor=_yrb_color(frac),
+                        line=dict(color="white", width=2),
+                        showlegend=False,
+                        hovertemplate=f"<b>{q_labels[qi]}</b><br>Score: {q_vals[qi]:.3f}<extra></extra>",
                     ))
-                    fig_q.update_layout(
-                        title_text="Circumferential Anomaly Profile",
-                        height=320,
-                        margin=dict(t=40, b=20, l=20, r=20),
-                        showlegend=True,
+                    ang_mid = np.deg2rad(th0 + 45)
+                    lbl_r = (R_IN + R_OUT) / 2
+                    fig_q.add_annotation(
+                        x=lbl_r * np.cos(ang_mid), y=lbl_r * np.sin(ang_mid),
+                        text=f"<b>{q_labels[qi]}</b><br>{q_vals[qi]:.3f}",
+                        showarrow=False, font=dict(size=12, color="green"), align="center",
                     )
-                    st.plotly_chart(fig_q, use_container_width=True)
-                else:
-                    st.info("No circumferential asymmetry detected in this window.")
+                # Colorbar via invisible scatter
+                fig_q.add_trace(go.Scatter(
+                    x=[None], y=[None], mode="markers",
+                    marker=dict(
+                        colorscale=[[0, "yellow"], [0.5, "red"], [1, "black"]],
+                        cmin=vmin, cmax=vmax, color=[vmin], showscale=True,
+                        colorbar=dict(title="Score", x=1.0, thickness=14, len=0.7),
+                    ),
+                    showlegend=False, hoverinfo="skip",
+                ))
+                fig_q.update_layout(
+                    title="Circumferential Anomaly Profile",
+                    height=300,
+                    margin=dict(t=40, b=10, l=10, r=60),
+                    xaxis=dict(visible=False, scaleanchor="y", range=[-10.5, 10.5]),
+                    yaxis=dict(visible=False, range=[-10.5, 10.5]),
+                    paper_bgcolor="white", plot_bgcolor="white",
+                )
+                st.plotly_chart(fig_q, use_container_width=True)
 
             with info_col:
                 st.caption("**Quadrant scores** (latest window)")
                 for lbl, val in zip(q_labels, q_vals):
-                    pct = (val / q_total * 100) if q_total > 1e-6 else 25.0
-                    bar = int(round(pct / 5))  # rough bar out of 20
-                    st.text(f"  {lbl}: {val:.3f}  ({pct:5.1f}%)  {'█' * bar}")
+                    st.text(f"  {lbl}: {val:.3f}")
                 if q_total > 1e-6:
                     dominant = q_labels[int(np.argmax(q_vals))]
                     st.markdown(f"**Dominant quadrant: {dominant}**")
@@ -880,7 +917,7 @@ with tabs[0]:
                                             request_type='windowed-average', 
                                             window_by='15 minutes')
             
-            df_previous = fetch_recent_online(tr='last 24 hours', 
+            df_previous = fetch_recent_online(tr='last 1 day',
                                             request_type='windowed-average', 
                                             window_by='15 minutes')
             # Make df_previous cover the 8–24 hours ago period only

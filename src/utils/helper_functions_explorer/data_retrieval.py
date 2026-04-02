@@ -185,7 +185,7 @@ def fetch_online_df(
 
     # Resolve frequency
     # Example: average_range="15 minutes" -> "15min"
-    freq = FREQUENCY_TO_TIMEDTA.get(average_range, average_range)
+    freq = FREQUENCY_TO_TIMEDTA.get(window_by, window_by)
 
     # If user selected "None", skip resampling
     if freq is None:
