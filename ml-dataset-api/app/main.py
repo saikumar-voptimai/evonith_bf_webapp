@@ -11,7 +11,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import dataset, health
+from app.routes import data, dataset, health
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,4 +33,5 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(data.router)
 app.include_router(dataset.router)

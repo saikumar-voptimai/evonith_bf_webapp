@@ -57,11 +57,11 @@ class TaskManager:
             try:
                 fn(task, *args, **kwargs)
                 task.status = TaskStatus.completed
-                task.completed_at = datetime.utcnow()
+                task.completed_at = datetime.now(datetime.UTC)
                 log.info("Task %s completed: %d rows", task.task_id, task.rows or 0)
             except Exception as e:
                 task.status = TaskStatus.failed
-                task.completed_at = datetime.utcnow()
+                task.completed_at = datetime.now(datetime.UTC)
                 task.error = str(e)
                 log.error("Task %s failed: %s\n%s", task.task_id, e, traceback.format_exc())
             finally:

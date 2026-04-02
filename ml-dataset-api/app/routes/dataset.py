@@ -1,6 +1,7 @@
-"""Dataset API routes — fetch, status, download, update-static, static."""
+"""Dataset API routes."""
 
 import logging
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -21,16 +22,22 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dataset", tags=["dataset"])
 
-# Shared fetcher instance (has its own RangeCache)
 _fetcher = MlDatasetFetcher()
+
+
+def _make_manager() -> StaticDatasetManager:
+    return StaticDatasetManager(
+        static_dir=settings.static_dir,
+        offline_lag_days=settings.offline_lag_days,
+        max_versions=settings.static_max_versions,
+        legacy_csv_path=settings.legacy_csv_path or None,
+    )
 
 
 # ---------- Background task functions ----------
 
 def _run_fetch(task: TaskState, req: FetchDatasetRequest):
-    """Background: fetch ML dataset for a date range."""
     task.progress = "Fetching ML dataset..."
-
     rm_label = "RM Charge" if req.rm_choice.value == "charge" else "RM DPR"
 
     df = _fetcher.get_ml_dataset(
@@ -45,23 +52,20 @@ def _run_fetch(task: TaskState, req: FetchDatasetRequest):
 
     if req.apply_cleaning:
         task.progress = "Cleaning dataset..."
-        cleaner = DataCleaner(build_default_config())
-        df = cleaner.clean(df)
+        df = DataCleaner(build_default_config()).clean(df)
 
     task.progress = "Saving result..."
     task_manager.save_result(task, df)
 
 
 def _run_update_static(task: TaskState, req: UpdateStaticRequest):
-    """Background: incremental update of static CSV."""
     task.progress = "Updating static dataset..."
-
     rm_label = "RM Charge" if req.rm_choice.value == "charge" else "RM DPR"
 
-    manager = StaticDatasetManager(settings.static_dataset_path)
+    manager = _make_manager()
     df = manager.update_static(
         rm_choice=rm_label,
-        start_date=req.reprocess_from,
+        reprocess_from=req.reprocess_from,
         apply_cleaning=req.apply_cleaning,
     )
 
@@ -69,9 +73,9 @@ def _run_update_static(task: TaskState, req: UpdateStaticRequest):
         raise ValueError("No data available after update.")
 
     task.progress = "Saving static dataset..."
-    manager.save(df)
+    csv_path = manager.save(df, rm_label)
 
-    # Also save as a task result for download via /download/{id}
+    # Also expose as downloadable task result
     task_manager.save_result(task, df)
 
 
@@ -79,28 +83,32 @@ def _run_update_static(task: TaskState, req: UpdateStaticRequest):
 
 @router.post("/fetch", response_model=TaskCreatedResponse)
 def fetch_dataset(req: FetchDatasetRequest):
-    """Trigger an ML dataset fetch. Returns a task_id to poll for status."""
+    """Trigger an ad-hoc ML dataset fetch for a date range. Returns task_id to poll."""
     if req.start_date > req.end_date:
         raise HTTPException(status_code=400, detail="start_date must be <= end_date")
 
     task = task_manager.create_task(callback_url=req.callback_url)
     task_manager.run_in_background(task, _run_fetch, req)
-
     return TaskCreatedResponse(task_id=task.task_id)
 
 
 @router.post("/update-static", response_model=TaskCreatedResponse)
 def update_static(req: UpdateStaticRequest):
-    """Trigger an incremental update of the static ML dataset CSV."""
+    """
+    Trigger a smart incremental update of the static ML dataset CSV.
+
+    Uses lag-aware caching:
+    - Rows up to (last_raw_end - offline_lag_days) are frozen.
+    - The uncertain window is re-fetched to pick up delayed offline data.
+    """
     task = task_manager.create_task(callback_url=req.callback_url)
     task_manager.run_in_background(task, _run_update_static, req)
-
     return TaskCreatedResponse(task_id=task.task_id)
 
 
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
 def get_task_status(task_id: str):
-    """Poll the status of a running task."""
+    """Poll the status of a running or completed task."""
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
@@ -119,7 +127,7 @@ def get_task_status(task_id: str):
 
 @router.get("/download/{task_id}")
 def download_result(task_id: str):
-    """Download the result CSV for a completed task."""
+    """Download the result CSV for a completed ad-hoc fetch task."""
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
@@ -143,12 +151,43 @@ def download_result(task_id: str):
 @router.get("/static")
 def download_static():
     """Download the current static ML dataset CSV."""
-    path = settings.static_dataset_path
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Static dataset not found. Run /update-static first.")
+    manager = _make_manager()
+    csv_path = manager.current_csv_path()
+
+    if not csv_path:
+        raise HTTPException(
+            status_code=404,
+            detail="No static dataset found. Run /dataset/update-static first.",
+        )
 
     return FileResponse(
-        path=path,
+        path=csv_path,
         media_type="text/csv",
-        filename="ml_dataset_static.csv",
+        filename=csv_path.name,
     )
+
+
+@router.get("/cache-info")
+def cache_info() -> Dict[str, Any]:
+    """
+    Return metadata about the current static cache:
+    confirmed_end, raw_end, offline_lag_days, rows, last_updated, csv_file.
+    """
+    manager = _make_manager()
+    meta = manager.get_meta()
+
+    if not meta:
+        return {"status": "no_cache", "detail": "No cache_meta.json found. Run /dataset/update-static first."}
+
+    return {
+        "status": "ok",
+        "data_start": meta.data_start,
+        "confirmed_end": meta.confirmed_end,
+        "raw_end": meta.raw_end,
+        "offline_lag_days": meta.offline_lag_days,
+        "last_updated": meta.last_updated,
+        "rows": meta.rows,
+        "columns": meta.columns,
+        "csv_file": meta.csv_file,
+        "rm_choice": meta.rm_choice,
+    }
