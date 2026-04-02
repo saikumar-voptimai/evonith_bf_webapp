@@ -174,58 +174,6 @@ class DataframesProcessor:
         df.dropna(inplace=True) # NaNs peek in due to lag features
         return df
 
-    # def fetch_live_data(self, cp_op_ml_dict: Dict[str, Any], influx_paths: List[str]) -> pd.DataFrame:
-    #     """
-    #     Fetch latest hourly averaged data for control and input parameters.
-    #     Args:
-    #         cp_op_ml_dict (Dict[str, Any]): Dictionary with control and input parameter metadata.
-    #         paths_set (List[str]): List of unique InfluxDB paths to query.
-    #     Returns:
-    #         pd.DataFrame: DataFrame with latest hourly averaged data.
-    #     """
-    #     now = pd.Timestamp.utcnow()
-    #     this_hour = now.replace(minute=0, second=0, microsecond=0)
-    #     one_hour_ago = this_hour - pd.Timedelta(hours=1)
-
-    #     values_needed = {cp_op_ml_dict[param]['InfluxName']:cp_op_ml_dict[param]['NameInMLData'] for param in list(cp_op_ml_dict.keys())}
-    #     meas_dict = {}
-    #     paths = []
-    #     for param in list(cp_op_ml_dict.keys()):
-    #         path = cp_op_ml_dict[param]['InfluxBucket'] + '/' + cp_op_ml_dict[param]['InfluxMeasurement']
-    #         if path not in paths:
-    #             paths.append(path)
-    #         if meas_dict.get(path) is None:
-    #             meas_dict[path] = []
-    #         meas_dict[path].append(cp_op_ml_dict[param]['InfluxName'])
-            
-    #         if cp_op_ml_dict[param]['InfluxName'] not in values_needed:
-    #             values_needed[cp_op_ml_dict[param]['InfluxName']] = cp_op_ml_dict[param]['NameInMLData']
-
-    #     df_combined = pd.DataFrame()
-    #     for influx_path, required_vars in meas_dict.items():
-    #         bucket = influx_path.split('/')[0]
-    #         meas = influx_path.split('/')[1]
-    #         datafetcher = BaseDataFetcher(meas, database=bucket)
-    #         df_meas = datafetcher.fetch_averaged_data(recent_data_of='over selected range',
-    #                                         start_time=one_hour_ago,
-    #                                         end_time=this_hour)
-    #         if meas == 'process_params':
-    #             df_meas['coke_rate'] = df_meas['coke_rate'] + df_meas['nut_coke_rate']
-    #         df_meas = df_meas[required_vars + ['time']]
-    #         df_meas['time'] = pd.to_datetime(df_meas['time'], errors='coerce', utc=True)
-    #         df_meas.set_index('time', inplace=True)
-    #         df_meas.index = df_meas.index.tz_convert('Asia/Kolkata')
-    #         df_combined = df_meas if df_combined.empty else df_combined.join(df_meas, how='outer')
-
-    #     hourly_avg = df_combined.resample('1h').mean()
-    #     hourly_avg.index = hourly_avg.index + pd.Timedelta(hours=1)
-    #     hourly_avg = hourly_avg.rename(columns=values_needed)
-    #     for col in hourly_avg.columns:
-    #         col_new = col.upper()
-    #         if col_new != col:
-    #             hourly_avg.rename(columns={col: col_new}, inplace=True)
-    #     return hourly_avg
-
 
     def fetch_live_data(
         self,
@@ -268,7 +216,9 @@ class DataframesProcessor:
             df_meas = datafetcher.fetch_averaged_data(
                 recent_data_of='over selected range',
                 start_time=lookback,
-                end_time=now
+                end_time=now,
+                request_type="ts",
+                window_by=None
             )
 
             if df_meas.empty:

@@ -59,11 +59,26 @@ class InfluxDataFetcher:
     def fetch(
         self,
         time_range: str = "last 8 hours",
-        window: str = "15 minutes",
         measurements: list[str] | None = None,
         fields: list[str] | None = None,
         field_match_mode: str = "contains",  # "contains" | "exact"
+        request_type: str = 'windowed-average',
+        window_by: str = "15 minutes",
     ) -> pd.DataFrame:
+        """
+        Fetch data from InfluxDB based on the specified parameters.
+        
+        Parameters:
+        - time_range: A string like "last 8 hours" or a custom range.
+        - measurements: List of measurement keys to fetch (e.g., ["heatload_delta_t"]).
+        - fields: Optional list of field names to keep in the final DataFrame.
+        - field_match_mode: If "exact", fields must match exactly; if "contains", fields that contain the string are kept.
+        - request_type: The type of data retrieval (e.g., "windowed-average", "avg-min-max", "ts").
+        - window_by: The aggregation window for averaging (e.g., "15 minutes").
+
+        Returns:
+        - A pandas DataFrame with the requested data, indexed by time.
+        """
 
         selected_measurements = (
             measurements if measurements else list(MEASUREMENT_LABELS.keys())
@@ -72,10 +87,11 @@ class InfluxDataFetcher:
         df = dr.fetch_online_df(
             selected_measurements=selected_measurements,
             time_range=time_range,
-            average_range=window,
             FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
             MEASUREMENT_LABELS=MEASUREMENT_LABELS,
             FIELD_LABELS=FIELD_LABELS,
+            request_type = request_type,
+            window_by = window_by,
         )
 
         if df is None or df.empty:
@@ -206,7 +222,8 @@ class PythonPlotter:
         columns: list[str],
         title: str = "Live Furnace Trend",
     ) -> go.Figure:
-        """Generate Plotly code, compile it, and return a Plotly figure.
+        """
+        Generate Plotly code, compile it, and return a Plotly figure.
 
         Streamlit Cloud expectation:
         - The caller should render with `st.plotly_chart(fig, use_container_width=True)`.

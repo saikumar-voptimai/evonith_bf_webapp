@@ -116,7 +116,12 @@ rows = ["R6", "R7", "R8", "R9", "R10"]
 try:
     heatloads_list = []
     for row in rows:
-        heatloads_list.append(circum_data_fetcher.fetch_averaged_data(time_interval, start_time_utc, end_time_utc, row))
+        heatloads_list.append(circum_data_fetcher.fetch_averaged_data(time_interval, 
+                                                                      start_time_utc, 
+                                                                      end_time_utc, 
+                                                                      row,
+                                                                      request_type="avg-min-max",
+                                                                      window_by=None))
 except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()

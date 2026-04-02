@@ -91,7 +91,9 @@ def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFr
 
     else:
         # Preset string route → return directly
-        df = dfetch.fetch_averaged_data(recent_data_of=time_range)
+        df = dfetch.fetch_averaged_data(recent_data_of=time_range,
+                                        request_type="ts",
+                                        window_by=None)
         df["time"] = pd.to_datetime(df["time"], utc=True)
         return df.set_index("time").sort_index()
 
@@ -99,7 +101,9 @@ def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFr
     df = dfetch.fetch_averaged_data(
         recent_data_of=recent_label,
         start_time=start,
-        end_time=end
+        end_time=end,
+        request_type="ts",
+        window_by=None
     )
 
     # --- Final minimal cleanup ---
@@ -117,10 +121,10 @@ def fetch_online_df(
     MEASUREMENT_LABELS: Dict,
     FIELD_LABELS: Dict,
     request_type: str = 'windowed-average',
-    average_range: str = '15 minutes'
+    window_by: str = '15 minutes'
 ) -> pd.DataFrame:
 
-    datafetchers = {key: BaseDataFetcher(key, request_type=request_type) for key in MEASUREMENT_LABELS.keys()}
+    datafetchers = {key: BaseDataFetcher(key) for key in MEASUREMENT_LABELS.keys()}
 
     if not selected_measurements:
         return pd.DataFrame()
@@ -139,6 +143,8 @@ def fetch_online_df(
             recent_data_of="over selected range",
             start_time=start_time,
             end_time=end_time,
+            request_type=request_type,
+            window_by=window_by
         )
 
         if df_meas is None or df_meas.empty:
@@ -179,7 +185,7 @@ def fetch_online_df(
 
     # Resolve frequency
     # Example: average_range="15 minutes" -> "15min"
-    freq = FREQUENCY_TO_TIMEDTA.get(average_range, average_range)
+    freq = FREQUENCY_TO_TIMEDTA.get(window_by, window_by)
 
     # If user selected "None", skip resampling
     if freq is None:

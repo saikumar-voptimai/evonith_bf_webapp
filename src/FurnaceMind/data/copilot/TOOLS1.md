@@ -16,9 +16,10 @@ This file is injected into the AI Co-Operate system prompt on every interaction.
   - Returns `dataset_id` + column preview
 - Args:
   - `lookback_days` (1–90) OR `lookback_hours` OR `lookback_minutes`
-  - `window` (optional, e.g. "15 minutes", "1 hour")
   - `measurement_groups` (optional subset):
     - `process_params`, `cooling_water`, `heatload_delta_t`, `delta_t`, `temperature_profile`, `miscellaneous`
+  - `request_type` (optional, e.g "window-average" for windowing, "ts" for raw timeseries, "avg-min-max" returns average-minimum-maximum values)
+  - `window_by` (optional, e.g. "15 minutes", "1 hour")
 
 ### 2) `fetch_offline_data`
 - Purpose: Fetch offline/manual reports from InfluxDB (`bf2_evonith_offline_utc`).
