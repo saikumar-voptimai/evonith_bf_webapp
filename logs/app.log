@@ -12,3 +12,15 @@
 [WARNING   | base_data_fetcher           | L181] 2026-04-03T05:07:28+0530: Database bf2_evonith_raw not found in config. Using default database. | base_data_fetcher.py
 [WARNING   | base_data_fetcher           | L187] 2026-04-03T05:07:28+0530: Host https://eu-central-1-1.aws.cloud2.influxdata.com not found in config. | base_data_fetcher.py
 [WARNING   | base_data_fetcher           | L193] 2026-04-03T05:07:28+0530: Org Blast Furnace, Evonith not found in config. Using default database. | base_data_fetcher.py
+[INFO   | SentenceTransformer           | L107] 2026-04-03T05:18:46+0530: Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2 | SentenceTransformer.py
+[INFO   | _client           | L1025] 2026-04-03T05:18:50+0530: HTTP Request: GET https://db1d776d-3804-47a2-a8cd-9a08963b3c09.us-east4-0.gcp.cloud.qdrant.io:6333/collections "HTTP/1.1 200 OK" | _client.py
+[INFO   | _client           | L1025] 2026-04-03T05:18:50+0530: HTTP Request: GET https://db1d776d-3804-47a2-a8cd-9a08963b3c09.us-east4-0.gcp.cloud.qdrant.io:6333/collections/furnace_shift_summaries "HTTP/1.1 200 OK" | _client.py
+[INFO   | _client           | L1025] 2026-04-03T05:18:51+0530: HTTP Request: GET https://db1d776d-3804-47a2-a8cd-9a08963b3c09.us-east4-0.gcp.cloud.qdrant.io:6333/collections "HTTP/1.1 200 OK" | _client.py
+[INFO   | _client           | L1025] 2026-04-03T05:18:51+0530: HTTP Request: GET https://db1d776d-3804-47a2-a8cd-9a08963b3c09.us-east4-0.gcp.cloud.qdrant.io:6333/collections/knowledge_docs_voyage_1024 "HTTP/1.1 200 OK" | _client.py
+[INFO   | SentenceTransformer           | L107] 2026-04-03T05:18:52+0530: Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2 | SentenceTransformer.py
+[INFO   | _client           | L1025] 2026-04-03T05:18:53+0530: HTTP Request: GET https://db1d776d-3804-47a2-a8cd-9a08963b3c09.us-east4-0.gcp.cloud.qdrant.io:6333/collections "HTTP/1.1 200 OK" | _client.py
+[INFO   | _client           | L1025] 2026-04-03T05:18:53+0530: HTTP Request: GET https://db1d776d-3804-47a2-a8cd-9a08963b3c09.us-east4-0.gcp.cloud.qdrant.io:6333/collections/furnace_shift_summaries "HTTP/1.1 200 OK" | _client.py
+[INFO   | furnacemind_sections           | L706] 2026-04-03T05:18:53+0530: Loaded CLAUDE.md with 24019 characters | furnacemind_sections.py
+[INFO   | furnacemind_sections           | L715] 2026-04-03T05:18:53+0530: Loaded TOOLS1.md with 2668 characters | furnacemind_sections.py
+[INFO   | furnacemind_sections           | L715] 2026-04-03T05:18:53+0530: Loaded TOOLS2.md with 2357 characters | furnacemind_sections.py
+[INFO   | furnacemind_sections           | L723] 2026-04-03T05:18:53+0530: Loaded SKILLS_BESTSHIFT.md with 14019 characters | furnacemind_sections.py
