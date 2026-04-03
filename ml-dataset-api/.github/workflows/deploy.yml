@@ -1,0 +1,160 @@
+name: CI/CD Deploy to Raspberry Pi
+
+on:
+  push:
+    branches: [ release ]
+  pull_request:
+    types:
+      - closed
+    branches: [ release ]
+
+jobs:
+  test-build-deploy:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true)
+    environment: Kalpvoptpi1p Env
+    runs-on: ubuntu-latest
+    env:
+      PI_HOST: ${{ secrets.PI_HOST }}
+      PI_USER: ${{ secrets.PI_USER }}
+      PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+      PI_PORT: 2222
+      PROJECT_DIR: /home/voptimaise/Desktop/evonith/furnace-data-api
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Create virtual environment and install deps
+        run: |
+          uv venv
+          uv sync --group dev
+
+      - name: Run tests with coverage
+        run: |
+          mkdir -p test_logs
+          uv run pytest test/ --cov=app --cov-fail-under=80 --tb=short 2>&1 | tee test_logs/coverage.txt
+
+      - name: Check formatting with Black
+        run: uv run black --check .
+
+      - name: Lint with Pylint
+        run: uv run pylint app --fail-under=5.0
+
+      - name: Get version
+        id: version
+        run: |
+          PATCH=$(git rev-list --count HEAD)
+          YY=$(date +"%y")
+          WEEK=$(date +"%V")
+          VERSION="$YY.$WEEK.$PATCH"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Archive project
+        run: |
+          mkdir -p dist
+          tar --exclude=dist \
+              --exclude=.git \
+              --exclude=test_logs \
+              --exclude=.venv \
+              --exclude="*.pyc" \
+              --exclude="__pycache__" \
+              --exclude="data/static" \
+              --exclude="data/results" \
+              --exclude=".env" \
+              -czf dist/furnace-data-api-${{ steps.version.outputs.version }}.tar.gz .
+
+      - name: Copy to Raspberry Pi
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.PI_HOST }}
+          username: ${{ env.PI_USER }}
+          key: ${{ env.PI_SSH_KEY }}
+          port: 2222
+          source: "dist/furnace-data-api-${{ steps.version.outputs.version }}.tar.gz"
+          target: "${{ env.PROJECT_DIR }}"
+
+      - name: Confirm archive on Pi
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.PI_HOST }}
+          username: ${{ env.PI_USER }}
+          key: ${{ env.PI_SSH_KEY }}
+          port: 2222
+          script: |
+            file "${{ env.PROJECT_DIR }}/dist/furnace-data-api-${{ steps.version.outputs.version }}.tar.gz"
+            ls -lh "${{ env.PROJECT_DIR }}/dist/"
+
+      - name: Deploy, update symlink, restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.PI_HOST }}
+          username: ${{ env.PI_USER }}
+          key: ${{ env.PI_SSH_KEY }}
+          port: 2222
+          request_pty: true
+          script: |
+            set -e
+            PROJECT_DIR="/home/voptimaise/Desktop/evonith/furnace-data-api"
+            VERSION="${{ steps.version.outputs.version }}"
+            ARCHIVE="$PROJECT_DIR/dist/furnace-data-api-$VERSION.tar.gz"
+            EXTRACTED_DIR="$PROJECT_DIR/furnace-data-api-$VERSION"
+
+            # Extract
+            mkdir -p "$EXTRACTED_DIR"
+            tar xzf "$ARCHIVE" -C "$EXTRACTED_DIR" --strip-components=1
+
+            # Create venv and install deps
+            python3.12 -m venv "$EXTRACTED_DIR/.venv"
+            "$EXTRACTED_DIR/.venv/bin/pip" install uv --quiet
+            "$EXTRACTED_DIR/.venv/bin/uv" sync --project "$EXTRACTED_DIR"
+
+            # Preserve data/ directory across deployments (static CSV + cache_meta)
+            if [ -d "$PROJECT_DIR/current/data" ]; then
+              cp -r "$PROJECT_DIR/current/data" "$EXTRACTED_DIR/data"
+              echo "Preserved data/ from previous deployment"
+            else
+              mkdir -p "$EXTRACTED_DIR/data/static" "$EXTRACTED_DIR/data/results"
+            fi
+
+            # Preserve .env
+            if [ -f "$PROJECT_DIR/current/.env" ]; then
+              cp "$PROJECT_DIR/current/.env" "$EXTRACTED_DIR/.env"
+              echo "Preserved .env from previous deployment"
+            fi
+
+            # Update symlink atomically
+            ln -sfn "$EXTRACTED_DIR" "$PROJECT_DIR/current"
+            echo "Symlink updated to furnace-data-api-$VERSION"
+
+            # Restart the systemd service
+            sudo systemctl restart furnace-api
+            echo "Service restarted"
+
+            # Verify it's running
+            sleep 3
+            sudo systemctl is-active furnace-api
+
+            # Rotate: keep only 3 old extracted versions
+            ls -dt $PROJECT_DIR/furnace-data-api-* | tail -n +4 | xargs rm -rf || true
+
+      - name: Rollback instructions
+        if: failure()
+        run: |
+          echo "============================================"
+          echo "Deployment failed. To rollback, SSH into Pi:"
+          echo ""
+          echo "  ssh -p 2222 $PI_USER@$PI_HOST"
+          echo "  ln -sfn /home/voptimaise/Desktop/evonith/furnace-data-api/furnace-data-api-<old_version> \\"
+          echo "          /home/voptimaise/Desktop/evonith/furnace-data-api/current"
+          echo "  sudo systemctl restart furnace-api"
+          echo "============================================"

@@ -12,6 +12,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host=settings.host,
-        port=settings.port,
+        port=settings.port,   # default 8080, override via PORT env var
         reload=True,
     )
