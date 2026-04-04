@@ -86,6 +86,7 @@ st.subheader("Control Parameters")
 bounds_file = Path("src/data/control_bounds.json")
 bounds_file.parent.mkdir(parents=True, exist_ok=True)
 
+persisted_bounds = {}
 if bounds_file.exists():
     with open(bounds_file, "r") as f:
         persisted_bounds = json.load(f)
@@ -173,8 +174,10 @@ with st.form(f"Control Params Form"):
     submit_cp = st.form_submit_button("Submit CP & Save bounds")
     if submit_cp:
         st.session_state['control_params'] = include_control
+        merged_bounds = persisted_bounds.copy()
+        merged_bounds.update(include_control)
         with open(bounds_file, "w") as f:
-            json.dump(include_control, f, indent=4)
+            json.dump(merged_bounds, f, indent=4)
         st.success("✅ Bounds saved successfully!")
 
 # User-specified input variables:
