@@ -11,15 +11,11 @@ import streamlit as st
 from FurnaceMind.ui.layout import render_page_header
 from FurnaceMind.ui.styles import apply_styles
 
-from FurnaceMind.memory.structured_store import StructuredStore
-from FurnaceMind.memory.vector_store import QdrantVectorStore
-
 from FurnaceMind.ui.furnacemind_sections import (
     select_nav_tab,
     render_ai_cooperate,
     render_reports,
     render_live_operations,
-    render_furnace_intelligence,
     FIELD_LABELS,
 )
 
@@ -29,8 +25,9 @@ def main() -> None:
     render_page_header()
     apply_styles()
 
-    structured_store = StructuredStore()
+    from FurnaceMind.memory.vector_store import QdrantVectorStore
     vector_store = QdrantVectorStore()
+    st.session_state.vector_store = vector_store
 
     st.sidebar.title("FurnaceMind")
 
@@ -45,12 +42,10 @@ def main() -> None:
         return
 
     if app_mode == "📡 Live Operations":
-        render_live_operations(structured_store=structured_store, vector_store=vector_store)
+        render_live_operations()
         return
 
-    if app_mode == "🧠 Furnace Intelligence":
-        render_furnace_intelligence(structured_store=structured_store)
-        return
+
 
 
 if __name__ == "__main__":

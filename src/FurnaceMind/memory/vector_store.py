@@ -9,15 +9,13 @@ from qdrant_client.models import (
     VectorParams,
     Distance,
 )
-
 from FurnaceMind.utils.settings import settings
-from FurnaceMind.embeddings.sentence_embedding import SentenceEmbedding
 
 
 class QdrantVectorStore:
     """
     Vector store for window-based summaries (shift/day/week).
-    Uses LOCAL embeddings (sentence_transformer) + SHIFT Qdrant collection (384-dim).
+    Handles fetching and metadata management for the Reports tab.
     """
 
     def __init__(self):
@@ -30,20 +28,15 @@ class QdrantVectorStore:
         )
 
         self.collection_name = qcfg.collection_name
+        self.embedding_dim = qcfg.embedding_dim
 
-        emb_cfg = settings.embedding["local"]  # ✅ local embedding config
-        self.embedding_dim = emb_cfg.dimension
+        from FurnaceMind.embeddings.local_embedding import LocalEmbeddingClient
+        self.embedding = LocalEmbeddingClient()
 
-        if qcfg.embedding_dim != self.embedding_dim:
-            raise RuntimeError(
-                f"SHIFT_QDRANT_EMBED_DIM ({qcfg.embedding_dim}) does not match "
-                f"LOCAL_EMBEDDING_DIM ({self.embedding_dim}). Fix your .env values."
-            )
-
-        self.embedding = SentenceEmbedding(model_name=emb_cfg.model_name)
         self._ensure_collection()
 
     def _ensure_collection(self) -> None:
+        from qdrant_client import models
         collections = self.client.get_collections().collections
         existing = {c.name for c in collections}
 
@@ -54,6 +47,17 @@ class QdrantVectorStore:
                     size=self.embedding_dim,
                     distance=Distance.COSINE,
                 ),
+            )
+            # Create indices for metadata filtering
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="date",
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="shift",
+                field_schema=models.PayloadSchemaType.KEYWORD,
             )
             return
 
@@ -71,68 +75,19 @@ class QdrantVectorStore:
                 f"Vector dimension mismatch for collection '{self.collection_name}': "
                 f"expected {self.embedding_dim}, got {vectors.size}"
             )
-
-    # Write operations
-    def add_window(
-        self,
-        *,
-        window_id: str,
-        embedding_text: str,
-        payload: Dict,
-    ) -> None:
-        embedding = self.embedding.embed([embedding_text])[0]
-
-        if len(embedding) != self.embedding_dim:
-            raise ValueError(
-                f"Embedding dimension {len(embedding)} "
-                f"does not match expected {self.embedding_dim}"
+            
+        # Ensure indices exist even if collection already existed
+        payload_schema = info.payload_schema or {}
+        if "date" not in payload_schema:
+            self.client.create_payload_index(
+                self.collection_name, "date", models.PayloadSchemaType.KEYWORD
+            )
+        if "shift" not in payload_schema:
+            self.client.create_payload_index(
+                self.collection_name, "shift", models.PayloadSchemaType.KEYWORD
             )
 
-        self.client.upsert(
-            collection_name=self.collection_name,
-            points=[
-                PointStruct(
-                    id=window_id_to_uuid(window_id),
-                    vector=embedding,
-                    payload=payload,
-                )
-            ],
-            wait=True,
-        )
-
     # Read operations
-    def search_similar_windows(
-        self,
-        *,
-        query_text: str,
-        top_k: int = 3,
-        window_type: Optional[str] = None,
-        stability_filter: Optional[str] = None,
-    ) -> List[Dict]:
-
-        query_embedding = self.embedding.embed([query_text])[0]
-
-        results = self.client.query_points(
-            collection_name=self.collection_name,
-            query=query_embedding,
-            limit=top_k,
-            with_payload=True,
-        )
-
-        filtered = []
-        for p in results.points:
-            payload = p.payload or {}
-
-            if window_type and payload.get("window_type") != window_type:
-                continue
-
-            if stability_filter and payload.get("overall_stability") != stability_filter:
-                continue
-
-            filtered.append({"score": p.score, "payload": payload})
-
-        return filtered
-
     def get_window_by_id(self, window_id: str) -> Optional[Dict]:
         points = self.client.retrieve(
             collection_name=self.collection_name,
@@ -144,3 +99,47 @@ class QdrantVectorStore:
             return None
 
         return points[0].payload
+
+    def get_report_by_metadata(self, date_str: str, shift_label: str) -> Optional[Dict]:
+        """
+        Fetch a report by date and shift metadata.
+        """
+        from qdrant_client import models
+
+        results, _ = self.client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="date",
+                        match=models.MatchValue(value=date_str),
+                    ),
+                    models.FieldCondition(
+                        key="shift",
+                        match=models.MatchValue(value=shift_label),
+                    ),
+                ]
+            ),
+            limit=1,
+            with_payload=True,
+        )
+
+        if not results:
+            return None
+
+        return results[0].payload
+
+    def search_similar_shifts(self, query: str, top_k: int = 5) -> List[Dict]:
+        """
+        Semantic search for similar historical shifts.
+        """
+        query_embedding = self.embedding.embed_text(query)
+
+        results = self.client.query_points(
+            collection_name=self.collection_name,
+            query=query_embedding,
+            limit=top_k,
+            with_payload=True,
+        )
+
+        return [{"score": p.score, "payload": p.payload} for p in results.points]
