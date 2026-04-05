@@ -11,11 +11,13 @@ from typing import Dict, List, Optional
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
-    PointStruct,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PayloadSchemaType,
     VectorParams,
 )
-
-from embeddings.sentence_embedding import SentenceEmbedding
+0
 from utils.payload_helpers import window_id_to_uuid
 from utils.settings import settings
 
@@ -23,7 +25,7 @@ from utils.settings import settings
 class QdrantVectorStore:
     """
     Vector store for window-based summaries (shift/day/week).
-    Uses LOCAL embeddings (sentence_transformer) + SHIFT Qdrant collection (384-dim).
+    Handles fetching and metadata management for the Reports tab.
     """
 
     def __init__(self) -> None:
@@ -51,17 +53,11 @@ class QdrantVectorStore:
         )
 
         self.collection_name = qcfg.collection_name
+        self.embedding_dim = qcfg.embedding_dim
 
-        emb_cfg = settings.embedding["local"]  # ✅ local embedding config
-        self.embedding_dim = emb_cfg.dimension
+        from FurnaceMind.embeddings.local_embedding import LocalEmbeddingClient
+        self.embedding = LocalEmbeddingClient()
 
-        if qcfg.embedding_dim != self.embedding_dim:
-            raise RuntimeError(
-                f"SHIFT_QDRANT_EMBED_DIM ({qcfg.embedding_dim}) does not match "
-                f"LOCAL_EMBEDDING_DIM ({self.embedding_dim}). Fix your .env values."
-            )
-
-        self.embedding = SentenceEmbedding(model_name=emb_cfg.model_name)
         self._ensure_collection()
 
     def _ensure_collection(self) -> None:
@@ -83,6 +79,17 @@ class QdrantVectorStore:
                     distance=Distance.COSINE,
                 ),
             )
+            # Create indices for metadata filtering
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="date",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="shift",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
             return
 
         info = self.client.get_collection(self.collection_name)
@@ -98,6 +105,17 @@ class QdrantVectorStore:
             raise RuntimeError(
                 f"Vector dimension mismatch for collection '{self.collection_name}': "
                 f"expected {self.embedding_dim}, got {vectors.size}"
+            )
+            
+        # Ensure indices exist even if collection already existed
+        payload_schema = info.payload_schema or {}
+        if "date" not in payload_schema:
+            self.client.create_payload_index(
+                self.collection_name, "date", PayloadSchemaType.KEYWORD
+            )
+        if "shift" not in payload_schema:
+            self.client.create_payload_index(
+                self.collection_name, "shift", PayloadSchemaType.KEYWORD
             )
 
     # Write operations
@@ -130,18 +148,6 @@ class QdrantVectorStore:
                 f"Embedding dimension {len(embedding)} "
                 f"does not match expected {self.embedding_dim}"
             )
-
-        self.client.upsert(
-            collection_name=self.collection_name,
-            points=[
-                PointStruct(
-                    id=window_id_to_uuid(window_id),
-                    vector=embedding,
-                    payload=payload,
-                )
-            ],
-            wait=True,
-        )
 
     # Read operations
     def search_similar_windows(
@@ -215,3 +221,45 @@ class QdrantVectorStore:
             return None
 
         return points[0].payload
+
+    def get_report_by_metadata(self, date_str: str, shift_label: str) -> Optional[Dict]:
+        """
+        Fetch a report by date and shift metadata.
+        """
+        results, _ = self.client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="date",
+                        match=MatchValue(value=date_str),
+                    ),
+                    FieldCondition(
+                        key="shift",
+                        match=MatchValue(value=shift_label),
+                    ),
+                ]
+            ),
+            limit=1,
+            with_payload=True,
+        )
+
+        if not results:
+            return None
+
+        return results[0].payload
+
+    def search_similar_shifts(self, query: str, top_k: int = 5) -> List[Dict]:
+        """
+        Semantic search for similar historical shifts.
+        """
+        query_embedding = self.embedding.embed_text(query)
+
+        results = self.client.query_points(
+            collection_name=self.collection_name,
+            query=query_embedding,
+            limit=top_k,
+            with_payload=True,
+        )
+
+        return [{"score": p.score, "payload": p.payload} for p in results.points]
