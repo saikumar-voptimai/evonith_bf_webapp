@@ -17,7 +17,9 @@ import pandas as pd
 
 from utils.copilot.data import df_packet
 
-_ANALYSIS_DIR = Path(__file__).resolve().parents[2] / "assets" / "data" / "copilot_analysis"
+_ANALYSIS_DIR = (
+    Path(__file__).resolve().parents[2] / "assets" / "data" / "copilot_analysis"
+)
 
 # ── System prompts (short persona strings, stable — no need to externalise) ──
 
@@ -25,12 +27,11 @@ ANOMALY_SYSTEM = (
     "You are a careful anomaly detector for blast furnace thermal and gas behavior."
 )
 
-BURDEN_SYSTEM = (
-    "You are a precise, senior blast furnace burden advisor. Be concise, numeric, and actionable."
-)
+BURDEN_SYSTEM = "You are a precise, senior blast furnace burden advisor. Be concise, numeric, and actionable."
 
 
 # ── File loaders ─────────────────────────────────────────────────────────────
+
 
 def _read_analysis_file(name: str) -> str:
     """Read a file from the copilot_analysis directory; return empty string on failure."""
@@ -52,6 +53,7 @@ def load_sensor_desc() -> str:
 
 
 # ── Prompt builders ───────────────────────────────────────────────────────────
+
 
 def build_burden_prompt(findings: str) -> str:
     """Wrap the pre-loaded findings text in a task instruction for the LLM.
@@ -83,8 +85,12 @@ def build_anomaly_prompt(
     sensor_desc: Content of ANOMALY_SENSOR_DESC.md — furnace zone/sensor layout.
     notes:       Optional operator notes entered in the UI.
     """
-    pkt_recent = df_packet(recent_df) if not recent_df.empty else "_No timeseries to show_"
-    pkt_past   = df_packet(past_df)   if not past_df.empty   else "_No past timeseries to show_"
+    pkt_recent = (
+        df_packet(recent_df) if not recent_df.empty else "_No timeseries to show_"
+    )
+    pkt_past = (
+        df_packet(past_df) if not past_df.empty else "_No past timeseries to show_"
+    )
 
     return f"""\
 You are an anomaly spotter and shift summariser helping the operator taking over the next shift.

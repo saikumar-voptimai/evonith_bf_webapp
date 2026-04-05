@@ -1,7 +1,17 @@
-from .base_data_fetcher import BaseDataFetcher
+"""Average (min/mean/max) heat-load data fetcher for the V-Board contour view.
+
+Fetches the ``heatload_delta_t`` measurement and returns per-row, per-quadrant
+averages, minima, and maxima suitable for the circumferential ring contour
+plots rendered by :class:`~plotters.circumferential_contour.CircumferentialPlotter`.
+"""
+
 from typing import List
+
 import numpy as np
 import pandas as pd
+
+from .base_data_fetcher import BaseDataFetcher
+
 
 class AverageHeatLoadDataFetcher(BaseDataFetcher):
     """
@@ -11,17 +21,19 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
     def __init__(self, debug: bool = False, source: str = "live"):
         super().__init__("heatload_delta_t", debug, source)
 
-    def fetch_averaged_data(self, 
-                            recent_data_of: str, 
-                            start_time=None, 
-                            end_time=None, 
-                            row: str = None,
-                            request_type: str = "avg-min-max",
-                            window_by: str = "1h") -> List[List[float]]:
+    def fetch_averaged_data(
+        self,
+        recent_data_of: str,
+        start_time=None,
+        end_time=None,
+        row: str = None,
+        request_type: str = "avg-min-max",
+        window_by: str = "1h",
+    ) -> List[List[float]]:
         """
         Fetch and process average heatload data for a specific row (R6-R10).
 
-        Parameters:
+        Args:
             recent_data_of (str): Averaging interval or range selection.
             start_time (datetime, optional): Start time for the range.
             end_time (datetime, optional): End time for the range.
@@ -32,23 +44,25 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
         Returns:
             pd.DataFrame: DataFrame with averaged heat load data for the specified row.
         """
-        df_flatdata = super().fetch_averaged_data(recent_data_of, 
-                                                  start_time, 
-                                                  end_time,
-                                                  request_type,
-                                                  window_by)
+        df_flatdata = super().fetch_averaged_data(
+            recent_data_of, start_time, end_time, request_type, window_by
+        )
         df_flatdata.set_index("time", inplace=True, drop=True)
         if row is None:
             raise ValueError("Row must be specified (e.g., 'r6').")
-        df_result = pd.DataFrame(columns=["Q1", "Q2", "Q3", "Q4"], index=df_flatdata.index)
+        df_result = pd.DataFrame(
+            columns=["Q1", "Q2", "Q3", "Q4"], index=df_flatdata.index
+        )
         for q in range(1, 5):
             for col in df_flatdata.columns:
                 if col.startswith(f"heat_load_{row.lower()}_q{q}"):
                     df_result[f"Q{q}"] = df_flatdata[col]
         df_result[df_result < 0] = np.nan
-        df_result[df_result > 1] = 1                    
-        df_result.dropna(axis=0, how='all', inplace=True)  # Drop rows where all sensors are NaN
-        df_result.interpolate(method='linear', axis=1, inplace=True)
+        df_result[df_result > 1] = 1
+        df_result.dropna(
+            axis=0, how="all", inplace=True
+        )  # Drop rows where all sensors are NaN
+        df_result.interpolate(method="linear", axis=1, inplace=True)
         if request_type == "ts":
             df_result.reset_index(inplace=True)
             df_result.rename(columns={"index": "time"}, inplace=True)
@@ -56,7 +70,7 @@ class AverageHeatLoadDataFetcher(BaseDataFetcher):
         else:
             return self.post_process(df_result)
         return df_result
-    
+
     def post_process(self, df_result: pd.DataFrame) -> List[List[float]]:
         """
         Post-processes temperature data by grouping values by level, computing max and min for each level and quadrant.

@@ -25,20 +25,22 @@ def render_reports(*, vector_store) -> None:
 
     if report_level == "Shift":
         selected_date = st.sidebar.date_input("Select date", date.today())
-        shift_label   = st.sidebar.selectbox("Select shift", ["A", "B", "C"])
-        fetch_report  = st.sidebar.button("Fetch Report")
+        shift_label = st.sidebar.selectbox("Select shift", ["A", "B", "C"])
+        fetch_report = st.sidebar.button("Fetch Report")
 
     elif report_level == "Day":
         selected_date = st.sidebar.date_input("Select date", date.today())
-        fetch_report  = st.sidebar.button("Fetch Report")
+        fetch_report = st.sidebar.button("Fetch Report")
 
     elif report_level == "Week":
         selected_week = st.sidebar.text_input("Week window_id (YYYY-MM-DD/YYYY-MM-DD)")
-        fetch_report  = st.sidebar.button("Fetch Report")
+        fetch_report = st.sidebar.button("Fetch Report")
 
     elif report_level == "Bi-week":
-        selected_biweek = st.sidebar.text_input("Bi-week window_id (YYYY-MM-DD/YYYY-MM-DD)")
-        fetch_report    = st.sidebar.button("Fetch Report")
+        selected_biweek = st.sidebar.text_input(
+            "Bi-week window_id (YYYY-MM-DD/YYYY-MM-DD)"
+        )
+        fetch_report = st.sidebar.button("Fetch Report")
 
     if not fetch_report:
         return

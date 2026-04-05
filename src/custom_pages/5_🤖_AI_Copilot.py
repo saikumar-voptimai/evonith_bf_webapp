@@ -71,14 +71,23 @@ with anomaly_tab:
 
     with st.expander("Channeling propensity", expanded=True):
         c1, c2, c3 = st.columns([1, 1, 2])
-        enable   = c1.toggle("Enable", value=False, key="channeling_propensity_enable")
-        live     = c2.toggle("Auto-refresh (10 min)", value=True, key="channeling_propensity_autorefresh")
+        enable = c1.toggle("Enable", value=False, key="channeling_propensity_enable")
+        live = c2.toggle(
+            "Auto-refresh (10 min)", value=True, key="channeling_propensity_autorefresh"
+        )
         lookback = c3.selectbox(
             "Lookback",
             options=[
-                "last 1 hour", "last 6 hours", "last 12 hours",
-                "last 1 day", "last 3 days", "last 1 week",
-                "last 2 weeks", "last 1 month", "last 2 months", "last 3 months",
+                "last 1 hour",
+                "last 6 hours",
+                "last 12 hours",
+                "last 1 day",
+                "last 3 days",
+                "last 1 week",
+                "last 2 weeks",
+                "last 1 month",
+                "last 2 months",
+                "last 3 months",
             ],
             index=2,
             key="channeling_propensity_lookback",
@@ -93,7 +102,7 @@ with anomaly_tab:
         @st.fragment(run_every=run_every)
         def render_channeling() -> None:
             with st.spinner("Computing propensities…"):
-                df_in  = _fetch_cached(tr=lookback, window_by="1 minute")
+                df_in = _fetch_cached(tr=lookback, window_by="1 minute")
                 scores = detector.score_timeseries(df_in)
 
             if scores.empty:
@@ -103,14 +112,23 @@ with anomaly_tab:
             scores = scores[scores["channeling_score"].between(0, 1.3)].dropna(
                 subset=["channeling_score"]
             )
-            last  = float(scores["channeling_score"].iloc[-1])
-            prev  = float(scores["channeling_score"].iloc[-2]) if len(scores) > 1 else np.nan
+            last = float(scores["channeling_score"].iloc[-1])
+            prev = (
+                float(scores["channeling_score"].iloc[-2])
+                if len(scores) > 1
+                else np.nan
+            )
             delta = (last - prev) if np.isfinite(prev) else None
 
             k1, k2, k3 = st.columns(3)
-            k1.metric("Current channeling score", f"{last:.2f}",
-                      delta=f"{delta:+.2f}" if delta is not None else None)
-            k2.metric("Components used (of 7)", int(scores["n_components_used"].iloc[-1]))
+            k1.metric(
+                "Current channeling score",
+                f"{last:.2f}",
+                delta=f"{delta:+.2f}" if delta is not None else None,
+            )
+            k2.metric(
+                "Components used (of 7)", int(scores["n_components_used"].iloc[-1])
+            )
             k3.caption(f"Last updated: {datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}")
 
             _sc = scores[["channeling_score"]].copy()
@@ -120,10 +138,12 @@ with anomaly_tab:
 
             # Circumferential quadrant profile
             q_labels = ["Q1", "Q2", "Q3", "Q4"]
-            q_keys   = ["q1_score", "q2_score", "q3_score", "q4_score"]
-            latest   = scores.iloc[-1]
-            q_vals   = [float(latest.get(k, 0)) if np.isfinite(float(latest.get(k, 0))) else 0.0
-                        for k in q_keys]
+            q_keys = ["q1_score", "q2_score", "q3_score", "q4_score"]
+            latest = scores.iloc[-1]
+            q_vals = [
+                float(latest.get(k, 0)) if np.isfinite(float(latest.get(k, 0))) else 0.0
+                for k in q_keys
+            ]
 
             circ_col, info_col = st.columns([3, 2])
             with circ_col:
@@ -138,43 +158,72 @@ with anomaly_tab:
                 fig_q = go.Figure()
                 R_IN, R_OUT, SEGS = 3, 8, 60
                 for qi in range(4):
-                    th0    = qi * 90
-                    thetas = np.linspace(np.deg2rad(th0), np.deg2rad(th0 + 90), SEGS + 1)
-                    xs = np.concatenate([R_OUT * np.cos(thetas),
-                                         R_IN * np.cos(thetas[::-1]),
-                                         [R_OUT * np.cos(thetas[0])]])
-                    ys = np.concatenate([R_OUT * np.sin(thetas),
-                                         R_IN * np.sin(thetas[::-1]),
-                                         [R_OUT * np.sin(thetas[0])]])
+                    th0 = qi * 90
+                    thetas = np.linspace(
+                        np.deg2rad(th0), np.deg2rad(th0 + 90), SEGS + 1
+                    )
+                    xs = np.concatenate(
+                        [
+                            R_OUT * np.cos(thetas),
+                            R_IN * np.cos(thetas[::-1]),
+                            [R_OUT * np.cos(thetas[0])],
+                        ]
+                    )
+                    ys = np.concatenate(
+                        [
+                            R_OUT * np.sin(thetas),
+                            R_IN * np.sin(thetas[::-1]),
+                            [R_OUT * np.sin(thetas[0])],
+                        ]
+                    )
                     frac = (q_vals[qi] - vmin) / (vmax - vmin) if vmax > vmin else 0.5
                     ang_mid = np.deg2rad(th0 + 45)
-                    lbl_r   = (R_IN + R_OUT) / 2
-                    fig_q.add_trace(go.Scatter(
-                        x=xs, y=ys, mode="lines", fill="toself",
-                        fillcolor=_yrb(frac), line=dict(color="white", width=2),
-                        showlegend=False,
-                        hovertemplate=f"<b>{q_labels[qi]}</b><br>Score: {q_vals[qi]:.3f}<extra></extra>",
-                    ))
-                    fig_q.add_annotation(
-                        x=lbl_r * np.cos(ang_mid), y=lbl_r * np.sin(ang_mid),
-                        text=f"<b>{q_labels[qi]}</b><br>{q_vals[qi]:.3f}",
-                        showarrow=False, font=dict(size=12, color="green"), align="center",
+                    lbl_r = (R_IN + R_OUT) / 2
+                    fig_q.add_trace(
+                        go.Scatter(
+                            x=xs,
+                            y=ys,
+                            mode="lines",
+                            fill="toself",
+                            fillcolor=_yrb(frac),
+                            line=dict(color="white", width=2),
+                            showlegend=False,
+                            hovertemplate=f"<b>{q_labels[qi]}</b><br>Score: {q_vals[qi]:.3f}<extra></extra>",
+                        )
                     )
-                fig_q.add_trace(go.Scatter(
-                    x=[None], y=[None], mode="markers",
-                    marker=dict(
-                        colorscale=[[0, "yellow"], [0.5, "red"], [1, "black"]],
-                        cmin=vmin, cmax=vmax, color=[vmin], showscale=True,
-                        colorbar=dict(title="Score", x=1.0, thickness=14, len=0.7),
-                    ),
-                    showlegend=False, hoverinfo="skip",
-                ))
+                    fig_q.add_annotation(
+                        x=lbl_r * np.cos(ang_mid),
+                        y=lbl_r * np.sin(ang_mid),
+                        text=f"<b>{q_labels[qi]}</b><br>{q_vals[qi]:.3f}",
+                        showarrow=False,
+                        font=dict(size=12, color="green"),
+                        align="center",
+                    )
+                fig_q.add_trace(
+                    go.Scatter(
+                        x=[None],
+                        y=[None],
+                        mode="markers",
+                        marker=dict(
+                            colorscale=[[0, "yellow"], [0.5, "red"], [1, "black"]],
+                            cmin=vmin,
+                            cmax=vmax,
+                            color=[vmin],
+                            showscale=True,
+                            colorbar=dict(title="Score", x=1.0, thickness=14, len=0.7),
+                        ),
+                        showlegend=False,
+                        hoverinfo="skip",
+                    )
+                )
                 fig_q.update_layout(
-                    title="Circumferential Anomaly Profile", height=300,
+                    title="Circumferential Anomaly Profile",
+                    height=300,
                     margin=dict(t=40, b=10, l=10, r=60),
                     xaxis=dict(visible=False, scaleanchor="y", range=[-10.5, 10.5]),
                     yaxis=dict(visible=False, range=[-10.5, 10.5]),
-                    paper_bgcolor="white", plot_bgcolor="white",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
                 )
                 st.plotly_chart(fig_q, use_container_width=True)
 
@@ -183,18 +232,36 @@ with anomaly_tab:
                 for lbl, val in zip(q_labels, q_vals):
                     st.text(f"  {lbl}: {val:.3f}")
                 dominant = q_labels[int(np.argmax(q_vals))]
-                st.markdown(f"**Dominant quadrant: {dominant}**" if sum(q_vals) > 1e-6
-                            else "**All quadrants balanced.**")
+                st.markdown(
+                    f"**Dominant quadrant: {dominant}**"
+                    if sum(q_vals) > 1e-6
+                    else "**All quadrants balanced.**"
+                )
 
             with st.expander(f"Component breakdown (latest points)", expanded=False):
-                display_cols = [c for c in [
-                    "channeling_score", "uptake_score", "skin_score",
-                    "hbp_score", "topdp_score", "bottomdp_score",
-                    "eta_co_score", "heatload_score", "stave_score",
-                    "q1_score", "q2_score", "q3_score", "q4_score",
-                    "n_components_used",
-                ] if c in scores.columns]
-                n = st.number_input("Points to show", value=12, min_value=1, max_value=1000, step=1)
+                display_cols = [
+                    c
+                    for c in [
+                        "channeling_score",
+                        "uptake_score",
+                        "skin_score",
+                        "hbp_score",
+                        "topdp_score",
+                        "bottomdp_score",
+                        "eta_co_score",
+                        "heatload_score",
+                        "stave_score",
+                        "q1_score",
+                        "q2_score",
+                        "q3_score",
+                        "q4_score",
+                        "n_components_used",
+                    ]
+                    if c in scores.columns
+                ]
+                n = st.number_input(
+                    "Points to show", value=12, min_value=1, max_value=1000, step=1
+                )
                 st.dataframe(scores[display_cols].tail(n), use_container_width=True)
 
         if enable:
@@ -205,19 +272,21 @@ with anomaly_tab:
     # ── LLM anomaly summary ───────────────────────────────────────────────────
     if st.button("Check Anomalies"):
         with st.spinner("Fetching data from InfluxDB…"):
-            df_recent = fetch_recent_online(tr="last 8 hours",    window_by="15 minutes")
-            df_past   = fetch_recent_online(tr="last 1 day",      window_by="15 minutes")
+            df_recent = fetch_recent_online(tr="last 8 hours", window_by="15 minutes")
+            df_past = fetch_recent_online(tr="last 1 day", window_by="15 minutes")
             if not df_past.empty:
-                cutoff    = df_past.index.max() - pd.Timedelta(hours=16)
-                df_past   = df_past[df_past.index <= cutoff]
+                cutoff = df_past.index.max() - pd.Timedelta(hours=16)
+                df_past = df_past[df_past.index <= cutoff]
 
         if df_recent.empty:
             st.warning("No recent data fetched from InfluxDB.")
         elif not run_llm:
-            st.info("Enable **Run LLM Analysis** in the sidebar to generate the anomaly summary.")
+            st.info(
+                "Enable **Run LLM Analysis** in the sidebar to generate the anomaly summary."
+            )
         else:
             sensor_desc = load_sensor_desc()
-            prompt      = build_anomaly_prompt(df_recent, df_past, sensor_desc, notes)
+            prompt = build_anomaly_prompt(df_recent, df_past, sensor_desc, notes)
             with st.spinner("Summarising anomalies…"):
                 st.markdown(call_llm(ANOMALY_SYSTEM, prompt))
 
@@ -234,7 +303,7 @@ with burden_tab:
 
     if st.button("Generate Review"):
         findings = load_burden_findings()
-        prompt   = build_burden_prompt(findings)
+        prompt = build_burden_prompt(findings)
 
         if not run_llm:
             # Show the raw findings without LLM narration
@@ -279,11 +348,13 @@ if st.session_state.get("op_fb_vote") == "down":
         placeholder="How could this be improved?",
     )
     if st.button("Submit feedback", key="op_fb_submit"):
-        st.session_state["op_feedback"].append({
-            "ts":   datetime.now(timezone.utc).isoformat(),
-            "vote": "down",
-            "text": st.session_state.get("op_fb_text", ""),
-        })
+        st.session_state["op_feedback"].append(
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "vote": "down",
+                "text": st.session_state.get("op_fb_text", ""),
+            }
+        )
         st.success("Thanks — feedback captured.")
         st.session_state["op_fb_vote"] = None
         st.session_state["op_fb_text"] = ""

@@ -1,6 +1,15 @@
+"""Scaler parameter extraction helpers for the V-OptimAIse optimiser.
+
+The optimiser operates in normalised (scaled) space to balance parameters
+with different magnitudes.  :func:`extract_scaler_params` returns the
+offsets and scales for any sklearn-compatible fitted scaler so the
+objective function can normalise features without calling ``transform()``.
+"""
+
 from __future__ import annotations
 
 from typing import Tuple
+
 import numpy as np
 
 

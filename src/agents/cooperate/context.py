@@ -15,14 +15,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from memory.copilot_memory import build_persistent_context, load_copilot_memory
 from agents.cooperate.prompts import AI_COOPERATE_SYSTEM
+from memory.copilot_memory import build_persistent_context, load_copilot_memory
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 _COPILOT_DATA_DIR = Path(__file__).resolve().parents[2] / "storage" / "copilot"
-_REPO_ROOT        = Path(__file__).resolve().parents[4]   # …/evonith_webapp
+_REPO_ROOT = Path(__file__).resolve().parents[4]  # …/evonith_webapp
 
 
 def _read_file(path: Path, *, max_chars: int) -> str:
@@ -33,7 +33,11 @@ def _read_file(path: Path, *, max_chars: int) -> str:
         txt = path.read_text(encoding="utf-8", errors="ignore").strip()
         if not txt:
             return ""
-        return txt if len(txt) <= max_chars else txt[:max_chars].rstrip() + "\n\n[...truncated...]"
+        return (
+            txt
+            if len(txt) <= max_chars
+            else txt[:max_chars].rstrip() + "\n\n[...truncated...]"
+        )
     except Exception:
         return ""
 
@@ -50,9 +54,9 @@ class SystemPromptContext:
     """
 
     def __init__(self) -> None:
-        self._static    = self._load_static()
-        self._errors    = self._load_errors()
-        self.memory     = load_copilot_memory()
+        self._static = self._load_static()
+        self._errors = self._load_errors()
+        self.memory = load_copilot_memory()
         self._persistent = build_persistent_context(self.memory)
 
     # ── Public ──────────────────────────────────────────────────────────────
@@ -61,18 +65,23 @@ class SystemPromptContext:
         """Assemble the full system prompt string."""
         parts = [AI_COOPERATE_SYSTEM]
         if self._static:
-            parts.append("STATIC CONTEXT (read this before answering):\n" + self._static)
+            parts.append(
+                "STATIC CONTEXT (read this before answering):\n" + self._static
+            )
         if self._persistent:
             parts.append(self._persistent)
         if self._errors:
-            parts.append("RECENT TOOL ERRORS (avoid repeating these failure modes):\n" + self._errors)
+            parts.append(
+                "RECENT TOOL ERRORS (avoid repeating these failure modes):\n"
+                + self._errors
+            )
         if extra:
             parts.append(extra.strip())
         return "\n\n".join(parts).strip()
 
     def refresh_memory(self) -> None:
         """Reload memory from disk (call after saving a new conversation turn)."""
-        self.memory      = load_copilot_memory()
+        self.memory = load_copilot_memory()
         self._persistent = build_persistent_context(self.memory)
 
     # ── Private loaders ─────────────────────────────────────────────────────

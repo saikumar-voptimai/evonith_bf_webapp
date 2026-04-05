@@ -3,9 +3,9 @@
 
 from typing import List, Optional
 
+from memory.schemas import ShiftSummary
 from memory.structured_store import StructuredStore
 from memory.vector_store import QdrantVectorStore
-from memory.schemas import ShiftSummary
 
 
 class ContextRetriever:
@@ -21,22 +21,19 @@ class ContextRetriever:
         self.structured_store = structured_store
         self.vector_store = vector_store
 
-
     # Context retrieval
     def retrieve_context(
-    self,
-    current_shift_id: str,
-    current_shift_text: str,
-    top_k_similar: int = 3,
-) -> dict:
+        self,
+        current_shift_id: str,
+        current_shift_text: str,
+        top_k_similar: int = 3,
+    ) -> dict:
         """
         Retrieve previous shift summary and similar historical shifts.
         """
 
         previous_summary = self._get_previous_shift_summary(current_shift_id)
-        similar_summaries = self._get_similar_shifts(
-            current_shift_text, top_k_similar
-        )
+        similar_summaries = self._get_similar_shifts(current_shift_text, top_k_similar)
 
         operator_notes = []
         for hit in similar_summaries:
@@ -50,11 +47,8 @@ class ContextRetriever:
             "operator_notes": operator_notes,
         }
 
-
     # Internal helpers
-    def _get_previous_shift_summary(
-        self, current_shift_id: str
-    ) -> Optional[str]:
+    def _get_previous_shift_summary(self, current_shift_id: str) -> Optional[str]:
         """
         Fetch the immediate previous shift summary.
         """
@@ -62,21 +56,15 @@ class ContextRetriever:
         if not all_shifts:
             return None
 
-        all_shifts_sorted = sorted(
-            all_shifts, key=lambda x: x.shift_start
-        )
+        all_shifts_sorted = sorted(all_shifts, key=lambda x: x.shift_start)
 
         for idx, shift in enumerate(all_shifts_sorted):
             if shift.shift_id == current_shift_id and idx > 0:
-                return self._format_shift_summary(
-                    all_shifts_sorted[idx - 1]
-                )
+                return self._format_shift_summary(all_shifts_sorted[idx - 1])
 
         return None
 
-    def _get_similar_shifts(
-        self, query_text: str, top_k: int
-    ) -> List[str]:
+    def _get_similar_shifts(self, query_text: str, top_k: int) -> List[str]:
         """
         Retrieve semantically similar shifts from vector DB.
         """
@@ -102,9 +90,7 @@ class ContextRetriever:
 
             shift_summary = self.structured_store.get_shift_by_id(shift_id)
             if shift_summary:
-                summaries.append(
-                    self._format_shift_summary(shift_summary)
-                )
+                summaries.append(self._format_shift_summary(shift_summary))
 
         return summaries
 
@@ -132,8 +118,7 @@ class ContextRetriever:
 
         if shift.anomalous_parameters:
             lines.append(
-                "Anomalous Parameters: "
-                + ", ".join(shift.anomalous_parameters)
+                "Anomalous Parameters: " + ", ".join(shift.anomalous_parameters)
             )
 
         return "\n".join(lines)

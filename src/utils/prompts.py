@@ -95,8 +95,6 @@ class PromptTemplates:
     ══════════════════════════════════════════════════
     """
 
-
-
     # SYSTEM PROMPTS — ROLE & DISCIPLINE
 
     SHIFT_ANALYZER_SYSTEM = """
@@ -150,7 +148,6 @@ class PromptTemplates:
     - Was the furnace stable overall?
     - Does anything require monitoring or attention?
     """
-
 
     CONTEXTUAL_ANALYZER_SYSTEM = """
     You are a Blast Furnace Operational Context Assistant
@@ -217,11 +214,10 @@ class PromptTemplates:
     - What level of attention is appropriate for upcoming shifts
     """
 
-
-
     # SHIFT REPORT — CONTROL ROOM STANDARD
 
-    SHIFT_ANALYSIS_TASK = """
+    SHIFT_ANALYSIS_TASK = (
+        """
     You are preparing a SHIFT OPERATION SUMMARY
     for the LAST 8 HOURS of blast furnace operation.
 
@@ -235,7 +231,9 @@ class PromptTemplates:
     Detected Deviations or Irregular Behavior:
     {anomaly_signals}
 
-    """ + KPI_REPORTING_FRAMEWORK + """
+    """
+        + KPI_REPORTING_FRAMEWORK
+        + """
 
     IMPORTANT — INSTABILITY ATTRIBUTION RULE:
 
@@ -317,12 +315,12 @@ class PromptTemplates:
     Keep the summary concise, calm, and suitable for
     shift handover documentation.
     """
-
-
+    )
 
     # CONTEXTUAL SHIFT COMPARISON — HANDOVER SUPPORT
 
-    CONTEXTUAL_ANALYSIS_TASK = """
+    CONTEXTUAL_ANALYSIS_TASK = (
+        """
     You are preparing a CONTEXTUAL OPERATING REVIEW
     to support shift handover and supervisory awareness.
 
@@ -338,7 +336,9 @@ class PromptTemplates:
     Operator-Reported Observations:
     {operator_observations}
 
-    """ + KPI_REPORTING_FRAMEWORK + """
+    """
+        + KPI_REPORTING_FRAMEWORK
+        + """
 
     IMPORTANT — PARAMETER CONSISTENCY RULE:
 
@@ -410,19 +410,21 @@ class PromptTemplates:
     Maintain a professional tone suitable for
     shift handover and supervisory review.
     """
-
-
+    )
 
     # DAILY REPORT — OPERATIONS REVIEW STANDARD
 
-    DAILY_REPORT_TASK = """
+    DAILY_REPORT_TASK = (
+        """
     You are preparing a DAILY OPERATIONS SUMMARY
     based on all shifts completed during the day.
 
     Daily Shift Summaries:
     {daily_shift_summaries}
 
-    """ + KPI_REPORTING_FRAMEWORK + """
+    """
+        + KPI_REPORTING_FRAMEWORK
+        + """
 
     Write the report using the following REQUIRED FORMAT.
 
@@ -467,19 +469,21 @@ class PromptTemplates:
     Keep the summary factual and suitable for
     daily production and operations meetings.
     """
-
-
+    )
 
     # WEEKLY REPORT — SUPERVISORY / RELIABILITY VIEW
 
-    WEEKLY_REPORT_TASK = """
+    WEEKLY_REPORT_TASK = (
+        """
     You are preparing a WEEKLY OPERATIONS REVIEW
     intended for senior operators and supervisors.
 
     Weekly Summaries:
     {weekly_shift_summaries}
 
-    """ + KPI_REPORTING_FRAMEWORK + """
+    """
+        + KPI_REPORTING_FRAMEWORK
+        + """
 
     Write the report using the following REQUIRED FORMAT.
 
@@ -529,19 +533,21 @@ class PromptTemplates:
     Use clear language suitable for supervisory review
     and reliability discussions.
     """
-
-
+    )
 
     # BI-WEEKLY REPORT — ENGINEERING & MANAGEMENT
 
-    BIWEEKLY_REPORT_TASK = """
+    BIWEEKLY_REPORT_TASK = (
+        """
     You are preparing a BI-WEEKLY OPERATIONS REVIEW
     intended for engineering, reliability, and management teams.
 
     Bi-Weekly Summaries:
     {biweekly_shift_summaries}
 
-    """ + KPI_REPORTING_FRAMEWORK + """
+    """
+        + KPI_REPORTING_FRAMEWORK
+        + """
 
     Write the report using the following REQUIRED FORMAT.
 
@@ -595,3 +601,4 @@ class PromptTemplates:
     Maintain an evidence-based, professional tone
     suitable for technical and management review.
     """
+    )

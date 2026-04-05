@@ -12,39 +12,38 @@ import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
-from data import retrieval as dr
 from config.config_loader import load_config
-
 from core.contextual_analyzer import ContextualAnalyzer
 from core.influence_attribution import InfluenceAttribution
 from core.recurring_anomaly_tracker import RecurringAnomalyTracker
 from core.shift_analyzer import ShiftAnalyzer
 from core.stability_index import FurnaceStabilityIndex
+from data import retrieval as dr
 from llm.llm_client import OpenRouterClient
 from memory.aggregation import run_aggregation_if_ready
 from memory.retriever import ContextRetriever
 from memory.schemas import ShiftSummary
-from utils.logger import get_logger
-from utils.payload_helpers import build_shift_payload
-from utils.settings import settings
-
 from ui.furnacemind_sections import (  # shared helpers (thin re-export file)
     FREQUENCY_TO_TIMEDTA,
     MEASUREMENT_LABELS,
     _ensure_ist,
     load_schemas,
 )
+from utils.logger import get_logger
+from utils.payload_helpers import build_shift_payload
+from utils.settings import settings
 
 logger = get_logger(__name__)
 
 _IST = timezone(timedelta(hours=5, minutes=30))
 
-_SHIFT_HOURS   = 8
+_SHIFT_HOURS = 8
 _WINDOW_MINUTES = 15
 _ROWS_PER_SHIFT = (_SHIFT_HOURS * 60) // _WINDOW_MINUTES
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
+
 
 def _get_shift_start(ts: datetime) -> datetime:
     ts = _ensure_ist(ts)
@@ -63,7 +62,9 @@ def _get_shift_id(shift_start: datetime) -> str:
 
 
 @st.cache_data(show_spinner=False, ttl=timedelta(minutes=14))
-def _fetch_recent_online(time_range: str, window_by: str = "15 minutes") -> pd.DataFrame:
+def _fetch_recent_online(
+    time_range: str, window_by: str = "15 minutes"
+) -> pd.DataFrame:
     config = load_config("setting_ds_dv.yml")
     field_labels = {
         internal_key: human_label
@@ -82,6 +83,7 @@ def _fetch_recent_online(time_range: str, window_by: str = "15 minutes") -> pd.D
 
 # ── Public renderers ─────────────────────────────────────────────────────────
 
+
 def render_live_operations(*, structured_store, vector_store) -> None:
     """Render the Live Operations tab with real-time shift detection."""
     schemas = load_schemas()
@@ -90,14 +92,14 @@ def render_live_operations(*, structured_store, vector_store) -> None:
     st.header("📡 Live Operations — Shift Intelligence")
 
     for key, default in [
-        ("online_shift_buffer",     pd.DataFrame()),
-        ("current_shift_start",     None),
-        ("completed_shift",         None),
+        ("online_shift_buffer", pd.DataFrame()),
+        ("current_shift_start", None),
+        ("completed_shift", None),
         ("shift_ready_for_analysis", False),
         ("shift_waiting_for_operator", False),
-        ("generated_shift_data",    None),
-        ("generated_structured",    None),
-        ("generated_llm_text",      None),
+        ("generated_shift_data", None),
+        ("generated_structured", None),
+        ("generated_llm_text", None),
         ("generated_contextual_text", None),
     ]:
         if key not in st.session_state:
@@ -138,7 +140,7 @@ def render_live_operations(*, structured_store, vector_store) -> None:
         st.exception(exc)
 
     # ── Shift boundary detection ─────────────────────────────────────────────
-    now            = datetime.now(_IST)
+    now = datetime.now(_IST)
     new_shift_start = _get_shift_start(now)
 
     if st.session_state.current_shift_start is None:
@@ -147,18 +149,23 @@ def render_live_operations(*, structured_store, vector_store) -> None:
 
         buf = st.session_state.online_shift_buffer
         if not buf.empty:
-            buf_shift_start = _get_shift_start(_ensure_ist(buf.index.min().to_pydatetime()))
+            buf_shift_start = _get_shift_start(
+                _ensure_ist(buf.index.min().to_pydatetime())
+            )
             if buf_shift_start < new_shift_start:
                 prev_data = buf[buf.index < pd.Timestamp(new_shift_start)]
                 curr_data = buf[buf.index >= pd.Timestamp(new_shift_start)]
                 if not prev_data.empty:
-                    _mark_shift_complete(buf_shift_start, new_shift_start, prev_data, curr_data)
+                    _mark_shift_complete(
+                        buf_shift_start, new_shift_start, prev_data, curr_data
+                    )
 
     elif new_shift_start > st.session_state.current_shift_start:
         completed_start = st.session_state.current_shift_start
-        completed_end   = completed_start + timedelta(hours=_SHIFT_HOURS)
+        completed_end = completed_start + timedelta(hours=_SHIFT_HOURS)
         _mark_shift_complete(
-            completed_start, completed_end,
+            completed_start,
+            completed_end,
             st.session_state.online_shift_buffer,
             pd.DataFrame(),
         )
@@ -180,48 +187,55 @@ def _mark_shift_complete(
     remaining_data: pd.DataFrame,
 ) -> None:
     st.session_state.completed_shift = {
-        "shift_id":    _get_shift_id(shift_start),
+        "shift_id": _get_shift_id(shift_start),
         "shift_start": shift_start,
-        "shift_end":   shift_end,
-        "df":          shift_data.copy(),
+        "shift_end": shift_end,
+        "df": shift_data.copy(),
     }
-    st.session_state.online_shift_buffer      = remaining_data.copy() if not remaining_data.empty else pd.DataFrame()
-    st.session_state.generated_structured     = None
-    st.session_state.generated_llm_text       = None
+    st.session_state.online_shift_buffer = (
+        remaining_data.copy() if not remaining_data.empty else pd.DataFrame()
+    )
+    st.session_state.generated_structured = None
+    st.session_state.generated_llm_text = None
     st.session_state.generated_contextual_text = None
     st.session_state.shift_waiting_for_operator = False
-    st.session_state.shift_ready_for_analysis  = True
+    st.session_state.shift_ready_for_analysis = True
 
 
 def _run_shift_analysis(structured_store, vector_store) -> None:
     completed = st.session_state.completed_shift
-    shift_df  = completed["df"]
+    shift_df = completed["df"]
 
     st.subheader("🕒 Completed Shift Detected")
     st.caption(f"{completed['shift_start']} → {completed['shift_end']}")
 
     try:
-        llm               = OpenRouterClient()
-        shift_analyzer    = ShiftAnalyzer(settings.anomaly)
+        llm = OpenRouterClient()
+        shift_analyzer = ShiftAnalyzer(settings.anomaly)
         contextual_analyzer = ContextualAnalyzer(llm)
-        retriever         = ContextRetriever(structured_store, vector_store)
+        retriever = ContextRetriever(structured_store, vector_store)
 
         shift_data = type(
-            "ShiftData", (),
+            "ShiftData",
+            (),
             {
-                "shift_id":    completed["shift_id"],
+                "shift_id": completed["shift_id"],
                 "shift_start": completed["shift_start"],
-                "shift_end":   completed["shift_end"],
-                "data":        shift_df,
+                "shift_end": completed["shift_end"],
+                "data": shift_df,
             },
         )()
 
         llm_text, structured = shift_analyzer.analyze(
-            shift_data=shift_data, prev_shift_data=None, llm=llm,
+            shift_data=shift_data,
+            prev_shift_data=None,
+            llm=llm,
         )
 
         if not _has_content(llm_text):
-            llm_text = (structured or {}).get("summary_text") or (structured or {}).get("raw_response")
+            llm_text = (structured or {}).get("summary_text") or (structured or {}).get(
+                "raw_response"
+            )
 
         if isinstance(structured, str):
             structured = {"raw_text": structured}
@@ -240,9 +254,11 @@ def _run_shift_analysis(structured_store, vector_store) -> None:
             ],
             primary_kpi="Process Params - BF2_BODY_ETACO",
         )
-        fsi_result = fsi.compute(df=shift_df, anomaly_count=structured.get("anomaly_count", 0))
-        structured["stability_index"]    = fsi_result["stability_index"]
-        structured["stability_status"]   = fsi_result["stability_status"]
+        fsi_result = fsi.compute(
+            df=shift_df, anomaly_count=structured.get("anomaly_count", 0)
+        )
+        structured["stability_index"] = fsi_result["stability_index"]
+        structured["stability_status"] = fsi_result["stability_status"]
         structured["stability_penalties"] = fsi_result["penalties"]
 
         try:
@@ -256,14 +272,16 @@ def _run_shift_analysis(structured_store, vector_store) -> None:
 
         contextual_text, _ = contextual_analyzer.build_day_summary(
             day_id=shift_data.shift_id,
-            shift_payloads=[{
-                "shift_name":      shift_data.shift_id,
-                "start_time":      shift_data.shift_start.isoformat(),
-                "end_time":        shift_data.shift_end.isoformat(),
-                "summary_text":    llm_text,
-                "stability_index": structured.get("stability_index"),
-                "stability_status": structured.get("stability_status"),
-            }],
+            shift_payloads=[
+                {
+                    "shift_name": shift_data.shift_id,
+                    "start_time": shift_data.shift_start.isoformat(),
+                    "end_time": shift_data.shift_end.isoformat(),
+                    "summary_text": llm_text,
+                    "stability_index": structured.get("stability_index"),
+                    "stability_status": structured.get("stability_status"),
+                }
+            ],
             previous_shift=context.get("previous_shift"),
             historical_similar=context.get("historical_similar"),
         )
@@ -271,11 +289,11 @@ def _run_shift_analysis(structured_store, vector_store) -> None:
         if not _has_content(contextual_text):
             contextual_text = llm_text or "Contextual summary unavailable."
 
-        st.session_state.generated_shift_data      = shift_data
-        st.session_state.generated_structured      = structured
-        st.session_state.generated_llm_text        = llm_text
+        st.session_state.generated_shift_data = shift_data
+        st.session_state.generated_structured = structured
+        st.session_state.generated_llm_text = llm_text
         st.session_state.generated_contextual_text = contextual_text
-        st.session_state.shift_ready_for_analysis  = False
+        st.session_state.shift_ready_for_analysis = False
         st.session_state.shift_waiting_for_operator = True
 
     except Exception as exc:
@@ -305,18 +323,18 @@ def _show_shift_results(structured_store, vector_store, schemas: dict) -> None:
         st.markdown(ctx_text)
 
     with st.form("operator_submit_form"):
-        operator_notes   = st.text_area("📝 Operator Notes")
-        operator_rating  = st.slider("⭐ Shift Rating", 1, 5, 3)
+        operator_notes = st.text_area("📝 Operator Notes")
+        operator_rating = st.slider("⭐ Shift Rating", 1, 5, 3)
         operator_comment = st.text_input("💬 Feedback Comment")
-        submit           = st.form_submit_button("✅ Submit & Save Shift")
+        submit = st.form_submit_button("✅ Submit & Save Shift")
 
     if submit:
-        shift_data  = st.session_state.generated_shift_data
-        structured  = st.session_state.generated_structured
+        shift_data = st.session_state.generated_shift_data
+        structured = st.session_state.generated_structured
         contextual_text = st.session_state.generated_contextual_text
 
         operator_context = {
-            "notes":    operator_notes,
+            "notes": operator_notes,
             "feedback": {"rating": operator_rating, "comment": operator_comment},
         }
         payload = build_shift_payload(
@@ -332,21 +350,27 @@ def _show_shift_results(structured_store, vector_store, schemas: dict) -> None:
             embedding_text=payload["summary_text"],
             payload=payload,
         )
-        structured_store.save_shift_summary(ShiftSummary(
-            shift_id          = shift_data.shift_id,
-            shift_start       = shift_data.shift_start,
-            shift_end         = shift_data.shift_end,
-            generated_at      = datetime.now(_IST),
-            stability_index   = structured["stability_index"],
-            stability_status  = structured["stability_status"],
-            stability_penalties = structured["stability_penalties"],
-            operator_context  = operator_context,
-        ))
+        structured_store.save_shift_summary(
+            ShiftSummary(
+                shift_id=shift_data.shift_id,
+                shift_start=shift_data.shift_start,
+                shift_end=shift_data.shift_end,
+                generated_at=datetime.now(_IST),
+                stability_index=structured["stability_index"],
+                stability_status=structured["stability_status"],
+                stability_penalties=structured["stability_penalties"],
+                operator_context=operator_context,
+            )
+        )
         run_aggregation_if_ready(
             new_shift=structured_store.load_shift_summary(shift_data.shift_id),
             store=structured_store,
             vector_store=vector_store,
-            schemas={"day": schemas["day"], "week": schemas["week"], "biweek": schemas["biweek"]},
+            schemas={
+                "day": schemas["day"],
+                "week": schemas["week"],
+                "biweek": schemas["biweek"],
+            },
             shifts_per_day=3,
             days_per_week=7,
         )
@@ -360,24 +384,31 @@ def _has_content(text) -> bool:
 
 # ── Furnace Intelligence ─────────────────────────────────────────────────────
 
+
 def render_furnace_intelligence(*, structured_store) -> None:
     """Render the Furnace Intelligence tab (FSI, recurring anomalies, attribution)."""
     st.header("🧠 Furnace Intelligence")
 
     latest_shift = structured_store.load_latest_shift_summary()
-    all_shifts   = structured_store.load_all_shift_summaries() or []
+    all_shifts = structured_store.load_all_shift_summaries() or []
 
     if latest_shift is None:
-        st.warning("No shift summaries found yet. Run shift detection / generate summaries first.")
+        st.warning(
+            "No shift summaries found yet. Run shift detection / generate summaries first."
+        )
         st.stop()
 
-    valid_shifts   = sorted(
+    valid_shifts = sorted(
         [s for s in all_shifts if getattr(s, "shift_end", None) is not None],
         key=lambda s: s.shift_end,
     )
-    prev_shift     = valid_shifts[-2] if len(valid_shifts) >= 2 else None
-    display_shift  = next(
-        (s for s in (latest_shift, prev_shift) if getattr(s, "stability_index", None) is not None),
+    prev_shift = valid_shifts[-2] if len(valid_shifts) >= 2 else None
+    display_shift = next(
+        (
+            s
+            for s in (latest_shift, prev_shift)
+            if getattr(s, "stability_index", None) is not None
+        ),
         None,
     )
 
@@ -385,10 +416,19 @@ def render_furnace_intelligence(*, structured_store) -> None:
     with c1:
         if display_shift:
             delta = None
-            if display_shift is latest_shift and prev_shift and prev_shift.stability_index is not None:
-                delta = round(latest_shift.stability_index - prev_shift.stability_index, 1)
-            st.metric("Furnace Stability Index", round(display_shift.stability_index, 1),
-                      delta=f"{delta:+}" if delta is not None else None)
+            if (
+                display_shift is latest_shift
+                and prev_shift
+                and prev_shift.stability_index is not None
+            ):
+                delta = round(
+                    latest_shift.stability_index - prev_shift.stability_index, 1
+                )
+            st.metric(
+                "Furnace Stability Index",
+                round(display_shift.stability_index, 1),
+                delta=f"{delta:+}" if delta is not None else None,
+            )
         else:
             st.metric("Furnace Stability Index", "—")
 
@@ -419,15 +459,24 @@ def render_furnace_intelligence(*, structured_store) -> None:
     st.divider()
 
     st.subheader("🔁 Recurring Anomaly Patterns")
-    tracker           = RecurringAnomalyTracker(min_occurrences=3)
-    recurring_anomalies = tracker.detect(structured_store.load_last_n_shift_summaries(n=20))
+    tracker = RecurringAnomalyTracker(min_occurrences=3)
+    recurring_anomalies = tracker.detect(
+        structured_store.load_last_n_shift_summaries(n=20)
+    )
 
     if recurring_anomalies:
         st.dataframe(
-            pd.DataFrame([
-                {"Parameter": p, "Frequency": d["count"], "Pattern": d["pattern"], "Last Seen": d["last_seen"]}
-                for p, d in recurring_anomalies.items()
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "Parameter": p,
+                        "Frequency": d["count"],
+                        "Pattern": d["pattern"],
+                        "Last Seen": d["last_seen"],
+                    }
+                    for p, d in recurring_anomalies.items()
+                ]
+            ),
             use_container_width=True,
             hide_index=True,
         )
@@ -437,22 +486,33 @@ def render_furnace_intelligence(*, structured_store) -> None:
     st.divider()
 
     st.subheader("🧭 Influence Attribution")
-    attrib           = InfluenceAttribution()
-    influence_result = attrib.compute(shift_summary=latest_shift, recurring_anomalies=recurring_anomalies)
+    attrib = InfluenceAttribution()
+    influence_result = attrib.compute(
+        shift_summary=latest_shift, recurring_anomalies=recurring_anomalies
+    )
 
     def _classify(index: float) -> str:
-        if index >= 0.30: return "🔴 Dominant contributor"
-        if index >= 0.15: return "🟠 Significant contributor"
-        if index >= 0.05: return "🟡 Moderate contributor"
+        if index >= 0.30:
+            return "🔴 Dominant contributor"
+        if index >= 0.15:
+            return "🟠 Significant contributor"
+        if index >= 0.05:
+            return "🟡 Moderate contributor"
         return "🟢 Minor contributor"
 
     if influence_result:
         st.dataframe(
-            pd.DataFrame([
-                {"Parameter": r["parameter"], "Influence Index": r["influence_index"],
-                 "Contribution Level": _classify(r["influence_index"]), "Rank": r["rank"]}
-                for r in influence_result
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "Parameter": r["parameter"],
+                        "Influence Index": r["influence_index"],
+                        "Contribution Level": _classify(r["influence_index"]),
+                        "Rank": r["rank"],
+                    }
+                    for r in influence_result
+                ]
+            ),
             use_container_width=True,
             hide_index=True,
         )

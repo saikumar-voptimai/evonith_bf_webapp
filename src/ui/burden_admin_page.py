@@ -1,22 +1,38 @@
+"""Burden distribution admin page for ring-charge pattern management.
+
+Allows supervisors and admins to update burden distribution parameters
+(charge patterns, coke/non-coke angles, portions) stored via
+:class:`~data.db.Database` SCD Type-2 logic.
+"""
+
 # --------- burden_admin_page.py ----------
-import streamlit as st
 from datetime import datetime
-from data.db import Database
+
+import streamlit as st
 from sqlalchemy import text
+
+from data.db import Database
 
 
 class BurdenAdminPage:
+    """Streamlit admin interface for editing burden distribution fields.
+
+    Attributes:
+        db:            :class:`~data.db.Database` instance.
+        burden_fields: Dict of burden field metadata loaded from ``materials.yml``.
+        history:       In-session list of recently applied changes.
+    """
 
     TEXT_FIELDS = [
         "COKE_CHARGE_PATTERN",
         "NON_COKE_CHARGE_PATTERN",
         "BURDEN_CHANGING_PURPOSE",
-
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialise with a fresh database connection and current burden state."""
         self.db = Database()
-        self.burden_fields = self.db.burden_fields   # loaded from materials.yml
+        self.burden_fields = self.db.burden_fields  # loaded from materials.yml
         self.history = []
 
     # -----------------------------------------------
@@ -57,9 +73,7 @@ class BurdenAdminPage:
 
         with col_time:
             time_str = st.text_input(
-                "Time (HH:MM)",
-                value="00:00",
-                key="burden_from_time"
+                "Time (HH:MM)", value="00:00", key="burden_from_time"
             )
 
         try:
@@ -78,7 +92,7 @@ class BurdenAdminPage:
         for i in range(0, len(self.burden_fields), 3):
             cols = st.columns(3)
 
-            for j, field_name in enumerate(self.burden_fields[i:i+3]):
+            for j, field_name in enumerate(self.burden_fields[i : i + 3]):
                 with cols[j]:
 
                     initial_value = current_values.get(field_name)
@@ -86,15 +100,21 @@ class BurdenAdminPage:
                     if field_name in self.TEXT_FIELDS:
                         val = st.text_input(
                             field_name,
-                            value=str(initial_value) if initial_value is not None else "",
-                            key=f"burden_{field_name}"
+                            value=(
+                                str(initial_value) if initial_value is not None else ""
+                            ),
+                            key=f"burden_{field_name}",
                         )
                     else:
                         val = st.number_input(
                             field_name,
-                            value=float(initial_value) if isinstance(initial_value, (int, float)) else 0.0,
+                            value=(
+                                float(initial_value)
+                                if isinstance(initial_value, (int, float))
+                                else 0.0
+                            ),
                             step=0.1,
-                            key=f"burden_{field_name}"
+                            key=f"burden_{field_name}",
                         )
 
                     updated_values[field_name] = val
@@ -103,7 +123,9 @@ class BurdenAdminPage:
 
         if submitted:
             ip = self.get_client_ip()
-            self.handle_submission(updated_values, current_values, from_dt, username, ip)
+            self.handle_submission(
+                updated_values, current_values, from_dt, username, ip
+            )
 
     # -----------------------------------------------
     # HANDLE SUBMISSION
@@ -130,7 +152,7 @@ class BurdenAdminPage:
                     value=new_value,
                     valid_from=from_dt,
                     modifier=username,
-                    ip=ip
+                    ip=ip,
                 )
                 changes += 1
             except Exception as e:
@@ -141,7 +163,9 @@ class BurdenAdminPage:
             if changes == 0:
                 st.info("ℹ️ No fields were changed.")
             else:
-                st.session_state["burden_success_msg"] = f"✅ Updated {changes} field(s)."
+                st.session_state["burden_success_msg"] = (
+                    f"✅ Updated {changes} field(s)."
+                )
                 st.rerun()
 
     # -----------------------------------------------
@@ -165,7 +189,7 @@ class BurdenAdminPage:
             width="stretch",
             column_config={
                 "delete": st.column_config.CheckboxColumn("Delete"),
-                "id": None
+                "id": None,
             },
             column_order=[
                 "id",
@@ -175,8 +199,8 @@ class BurdenAdminPage:
                 "valid_upto",
                 "modifier",
                 "ip_address",
-                "delete"
-            ]
+                "delete",
+            ],
         )
 
         delete_ids = [row["id"] for row in edited if row["delete"]]
@@ -185,8 +209,10 @@ class BurdenAdminPage:
             try:
                 with self.db.engine.begin() as conn:
                     conn.execute(
-                        text("DELETE FROM burden_distribution_history WHERE id = ANY(:ids)"),
-                        {"ids": delete_ids}
+                        text(
+                            "DELETE FROM burden_distribution_history WHERE id = ANY(:ids)"
+                        ),
+                        {"ids": delete_ids},
                     )
                 st.success(f"🗑️ Deleted {len(delete_ids)} record(s).")
                 st.rerun()

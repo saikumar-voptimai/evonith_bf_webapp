@@ -1,32 +1,46 @@
+"""Automatic aggregation pipeline for day, week, and bi-week summaries.
+
+Triggered after each new shift is saved.  When enough sub-windows exist and the
+corresponding aggregate has not yet been written, this module calls
+:class:`~core.contextual_analyzer.ContextualAnalyzer` to produce LLM summaries
+and persists them to both the file store and the Qdrant vector store.
+"""
+
 # memory/aggregation.py
 # Purpose: Automatic aggregation trigger for day / week / bi-week summaries
 
 from datetime import date
-from typing import Optional, Dict
+from typing import Dict, Optional
 
+from core.contextual_analyzer import ContextualAnalyzer
+from llm.llm_client import OpenRouterClient
 from memory.schemas import ShiftSummary
 from memory.structured_store import StructuredStore
-from core.contextual_analyzer import ContextualAnalyzer
 from memory.vector_store import QdrantVectorStore
-from llm.llm_client import OpenRouterClient
-
 from utils.payload_helpers import (
+    build_biweek_payload,
     build_day_payload,
     build_week_payload,
-    build_biweek_payload,
 )
 
 
 def _get_day_id(shift: ShiftSummary) -> str:
+    """Derive the ISO date string from a shift's start timestamp."""
     return shift.shift_start.date().isoformat()
 
 
 def _get_week_id(d: date) -> str:
+    """Derive an ISO week identifier (``YYYY-WNN``) from a calendar date."""
     iso_year, iso_week, _ = d.isocalendar()
     return f"{iso_year}-W{iso_week:02d}"
 
 
 def _get_biweek_id(week_id: str) -> str:
+    """Derive a bi-week identifier (``YYYY-BWNN``) from an ISO week string.
+
+    Odd weeks belong to bi-week 1, 3, 5 …; even weeks to bi-week 2, 4, 6 …
+    (i.e. ``biweek_idx = (week + 1) // 2``).
+    """
     year_str, w_str = week_id.split("-W")
     year = int(year_str)
     week = int(w_str)
@@ -54,7 +68,6 @@ def run_aggregation_if_ready(
     # Create analyzer locally (stateless, safe)
     analyzer = ContextualAnalyzer(OpenRouterClient())
 
-
     # DAILY AGGREGATION (3 shifts → 1 day)
     day_id = _get_day_id(new_shift)
     shifts_today = store.get_shifts_for_day(day_id)
@@ -68,8 +81,9 @@ def run_aggregation_if_ready(
                 "summary_text": store.get_report(
                     level="shift",
                     window_id=s.shift_id,
-                )["structured"]["summary_text"],
-
+                )[
+                    "structured"
+                ]["summary_text"],
                 # Furnace Stability Index (safe for legacy shifts)
                 "stability_status": (
                     s.stability_status if s.stability_index is not None else "UNKNOWN"
@@ -104,7 +118,6 @@ def run_aggregation_if_ready(
                 embedding_text=payload["summary_text"],
                 payload=payload,
             )
-
 
     # WEEKLY AGGREGATION (7 days → 1 week)
     week_id = _get_week_id(new_shift.shift_start.date())
@@ -146,7 +159,6 @@ def run_aggregation_if_ready(
                 embedding_text=payload["summary_text"],
                 payload=payload,
             )
-
 
     # BI-WEEKLY AGGREGATION (2 weeks → 1 bi-week)
     biweek_id = _get_biweek_id(week_id)

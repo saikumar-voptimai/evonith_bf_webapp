@@ -1,8 +1,17 @@
+"""Shift-level anomaly analysis and LLM reporting for BF2 operations.
+
+This module implements ``ShiftAnalyzer``, which consumes a single
+:class:`~core.shift_builder.ShiftData` window, computes z-score-based
+anomaly signals, and delegates structured reporting to the configured LLM.
+"""
+
 # core/shift_analyzer.py
+
+from typing import Dict
 
 import numpy as np
 import pandas as pd
-from typing import Dict
+
 from utils.prompts import PromptTemplates
 
 
@@ -12,7 +21,14 @@ class ShiftAnalyzer:
     and existing prompt templates.
     """
 
-    def __init__(self, anomaly_config):
+    def __init__(self, anomaly_config) -> None:
+        """Initialise the analyzer with anomaly detection thresholds.
+
+        Args:
+            anomaly_config: An object (typically
+                :class:`~utils.settings.AnomalyConfig`) exposing
+                ``z_warn`` and ``z_critical`` float attributes.
+        """
         self.z_warn = anomaly_config.z_warn
         self.z_critical = anomaly_config.z_critical
 
@@ -23,6 +39,33 @@ class ShiftAnalyzer:
         prev_shift_data,
         llm,
     ):
+        """Analyse a single shift window and produce LLM + structured output.
+
+        For every numeric column with at least 20 observations:
+
+        * Computes per-shift mean, std, z_max, and z_min.
+        * Flags parameters whose absolute z-score exceeds ``z_warn`` or
+          ``z_critical`` as anomalous.
+        * Derives an overall stability label: *stable* (0 anomalies),
+          *warning* (1–3), or *unstable* (> 3).
+
+        The structured summary is then formatted into the
+        :data:`~utils.prompts.PromptTemplates.SHIFT_ANALYSIS_TASK` template and
+        sent to *llm* for a human-readable narrative.
+
+        Args:
+            shift_data:      :class:`~core.shift_builder.ShiftData` for the
+                             current window.  Must expose ``.data`` (DataFrame)
+                             and shift metadata attributes.
+            prev_shift_data: Previous shift's :class:`~core.shift_builder.ShiftData`
+                             (reserved for future delta analysis; currently unused).
+            llm:             LLM client implementing ``.generate(system_prompt, user_prompt)``.
+
+        Returns:
+            A two-tuple ``(llm_summary, structured_summary)`` where
+            *llm_summary* is the raw LLM text and *structured_summary* is a
+            JSON-serialisable dict suitable for Qdrant payload storage.
+        """
         df = shift_data.data
 
         # numeric-only (safe)
@@ -70,7 +113,7 @@ class ShiftAnalyzer:
 
         # overall stability, anomaly count, num_parameters
         anomaly_count = len(signals)
-        num_parameters = len(stats)  
+        num_parameters = len(stats)
 
         if anomaly_count == 0:
             overall_stability = "stable"
@@ -86,7 +129,7 @@ class ShiftAnalyzer:
             "shift_end": shift_data.shift_end,
             "overall_stability": overall_stability,
             "anomaly_count": anomaly_count,
-            "num_parameters": num_parameters,   
+            "num_parameters": num_parameters,
             "stats": stats,
             "signals": signals,
         }

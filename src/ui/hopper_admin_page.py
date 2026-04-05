@@ -1,20 +1,38 @@
-import streamlit as st
+"""Hopper-to-material mapping admin interface.
+
+Allows supervisors and admins to assign raw materials to hoppers with
+a user-specified effective timestamp.  All changes are written via
+:meth:`~data.db.Database.update_hopper_material_with_time` which appends
+a new SCD Type-2 history row.
+"""
+
 from datetime import datetime
+
+import streamlit as st
+
 from data.db import Database
 
 
 class HopperAdminPage:
-    """
-    Admin interface for managing hopper-to-material mappings with timestamp tracking.
-    Uses ONLY hopper_material_history (no snapshot table).
+    """Streamlit admin interface for hopper-to-material mapping management.
+
+    Derives the current mapping entirely from the ``hopper_material_history``
+    table (no separate snapshot table required).
+
+    Attributes:
+        db:              :class:`~data.db.Database` instance.
+        materials:       List of material names available for assignment.
+        hoppers:         List of hopper identifiers.
+        hopper_materials: Dict of ``{hopper_id: material_name}`` (current mapping).
     """
 
     def __init__(self) -> None:
+        """Initialise with a fresh database connection and current hopper mapping."""
         self.db = Database()
         self.materials = self.db.materials
         self.hoppers = self.db.hoppers
 
-        # ✅ UPDATED: derive current mapping from history table
+        # \u2705 UPDATED: derive current mapping from history table
         self.hopper_materials = self.db.get_current_hopper_materials()
 
     def get_client_ip(self):
@@ -58,7 +76,7 @@ class HopperAdminPage:
 
         for i in range(0, len(self.hoppers), 3):
             cols = st.columns(3)
-            for j, hopper in enumerate(self.hoppers[i:i + 3]):
+            for j, hopper in enumerate(self.hoppers[i : i + 3]):
                 with cols[j]:
                     current_material = self.hopper_materials.get(hopper, "UNASSIGNED")
                     options = ["UNASSIGNED"] + self.materials
@@ -66,9 +84,12 @@ class HopperAdminPage:
                     selected_material = st.selectbox(
                         hopper,
                         options,
-                        index=options.index(current_material)
-                        if current_material in options else 0,
-                        key=f"{hopper}_dropdown"
+                        index=(
+                            options.index(current_material)
+                            if current_material in options
+                            else 0
+                        ),
+                        key=f"{hopper}_dropdown",
                     )
                     updated_values[hopper] = selected_material
 

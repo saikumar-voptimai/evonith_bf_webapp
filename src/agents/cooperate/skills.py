@@ -23,10 +23,12 @@ import plotly.graph_objects as go
 import streamlit as st
 import yaml
 
-from agents.furnace_tools import fetch_ml_data, load_static_shift_data
 from agents.cooperate.prompts import HEATLOAD_PLOT_CODE, HEATLOAD_REPORT_TEMPLATE
+from agents.furnace_tools import fetch_ml_data, load_static_shift_data
 
-_PARAMS_PATH = Path(__file__).resolve().parents[2] / "storage" / "copilot" / "skill_params.yml"
+_PARAMS_PATH = (
+    Path(__file__).resolve().parents[2] / "storage" / "copilot" / "skill_params.yml"
+)
 
 
 def _load_params() -> dict:
@@ -39,6 +41,7 @@ _PARAMS: dict = _load_params()
 
 
 # ── Low-level helpers (also useful for testing in isolation) ─────────────────
+
 
 def col_mean(df: pd.DataFrame, col: str) -> float | None:
     """Mean of df[col] (NaN-dropped), or None if column absent or all-NaN."""
@@ -63,6 +66,7 @@ def is_adverse(cfg: dict[str, Any], val: float) -> bool:
 
 # ── SkillEngine ──────────────────────────────────────────────────────────────
 
+
 class SkillEngine:
     """Pre-computes skill analysis; returns numbered prompts ready for the LLM.
 
@@ -71,11 +75,11 @@ class SkillEngine:
     """
 
     def __init__(self) -> None:
-        self._t1: dict[str, dict]  = _PARAMS["tier1"]
-        self._t2: dict[str, dict]  = _PARAMS["tier2"]
-        self._t3_cols: list[str]   = _PARAMS["tier3_guardrail_cols"]
-        self._uc_col: str          = _PARAMS["unit_cost_col"]
-        self._bmark_pct: float     = _PARAMS["benchmark_percentile"]
+        self._t1: dict[str, dict] = _PARAMS["tier1"]
+        self._t2: dict[str, dict] = _PARAMS["tier2"]
+        self._t3_cols: list[str] = _PARAMS["tier3_guardrail_cols"]
+        self._uc_col: str = _PARAMS["unit_cost_col"]
+        self._bmark_pct: float = _PARAMS["benchmark_percentile"]
 
     # ── Public skill entry points ────────────────────────────────────────────
 
@@ -84,7 +88,9 @@ class SkillEngine:
         data, _ = self._compute_optimise_data()
         if "error" in data:
             return self._optimise_fallback(data["error"])
-        self._build_gap_figure(data["tier1"], title="Unit Cost Optimisation — Tier 1 Gap")
+        self._build_gap_figure(
+            data["tier1"], title="Unit Cost Optimisation — Tier 1 Gap"
+        )
         return self._format_optimise_prompt(data)
 
     def shift_to_best_prompt(self, shift_date: str, label: str) -> str:
@@ -103,15 +109,17 @@ class SkillEngine:
         # Use last 4 rows of the 8h shift window as the lagged source for angle params.
         df_lagged = shift_df.iloc[-4:] if len(shift_df) >= 4 else shift_df
         tier1_rows = self._compute_tier1_rows(shift_df, df_lagged=df_lagged)
-        self._build_gap_figure(tier1_rows, title=f"Shift to Best — {shift_date} Shift {label}")
+        self._build_gap_figure(
+            tier1_rows, title=f"Shift to Best — {shift_date} Shift {label}"
+        )
 
         uc = col_mean(shift_df, self._uc_col)
         uc_benchmark = self._fetch_uc_benchmark()
         # Restore shift df — benchmark fetch overwrites session_state["copilot_df"]
         st.session_state["copilot_df"] = shift_df
 
-        t1_lines  = self._format_tier1_lines(tier1_rows)
-        t2_lines  = self._tier2_lines_from_df(shift_df)
+        t1_lines = self._format_tier1_lines(tier1_rows)
+        t2_lines = self._tier2_lines_from_df(shift_df)
 
         return (
             f"SKILL: Shift to Best — {shift_date} Shift {label}\n"
@@ -119,7 +127,9 @@ class SkillEngine:
             "Write the operator report ONLY — no code, no tool calls needed.\n\n"
             f"UNIT COST (shift avg): {uc} Lakhs/tHM | Best-shift benchmark (30d p20): {uc_benchmark} Lakhs/tHM\n\n"
             "TIER 1 (ranked by impact score):\n" + "\n".join(t1_lines) + "\n\n"
-            "TIER 2:\n" + ("\n".join(t2_lines) or "  (no Tier 2 data available)") + "\n\n"
+            "TIER 2:\n"
+            + ("\n".join(t2_lines) or "  (no Tier 2 data available)")
+            + "\n\n"
             "Write this report:\n"
             f"**Shift**: {shift_date} Shift {label}\n"
             f"**Unit cost**: [value] Lakhs/tHM vs benchmark {uc_benchmark} Lakhs/tHM\n"
@@ -155,7 +165,7 @@ class SkillEngine:
             return {"error": "ML data load failed"}, None
 
         df_sorted = df.sort_index().dropna(how="all")
-        df_curr   = df_sorted.tail(8)
+        df_curr = df_sorted.tail(8)
         # 4h-lagged window for burden angle params: rows 8–12 hours ago
         df_lagged = df_sorted.iloc[-12:-4] if len(df_sorted) >= 12 else df_curr
 
@@ -166,14 +176,22 @@ class SkillEngine:
         tier2 = self._compute_tier2_dict(df_curr)
         tier3 = {c: col_mean(df_curr, c) for c in self._t3_cols}
 
-        uc_series = df_sorted[self._uc_col].dropna() if self._uc_col in df_sorted.columns else pd.Series(dtype=float)
-        uc_benchmark = round(float(uc_series.quantile(self._bmark_pct)), 3) if len(uc_series) else None
+        uc_series = (
+            df_sorted[self._uc_col].dropna()
+            if self._uc_col in df_sorted.columns
+            else pd.Series(dtype=float)
+        )
+        uc_benchmark = (
+            round(float(uc_series.quantile(self._bmark_pct)), 3)
+            if len(uc_series)
+            else None
+        )
 
         return {
-            "tier1":        tier1_rows,
-            "tier2":        tier2,
-            "tier3":        tier3,
-            "unit_cost":    col_mean(df_curr, self._uc_col),
+            "tier1": tier1_rows,
+            "tier2": tier2,
+            "tier3": tier3,
+            "unit_cost": col_mean(df_curr, self._uc_col),
             "uc_benchmark": uc_benchmark,
         }, df
 
@@ -191,16 +209,18 @@ class SkillEngine:
             v = col_mean(src, col)
             if v is None:
                 continue
-            mid   = cfg["best_mid"]
+            mid = cfg["best_mid"]
             coeff = cfg["abs_coeff"]
-            rows.append({
-                "param":   col,
-                "current": v,
-                "target":  mid,
-                "score":   round(abs(mid - v) * coeff, 3),
-                "adverse": is_adverse(cfg, v),
-                "unit":    cfg.get("unit", ""),
-            })
+            rows.append(
+                {
+                    "param": col,
+                    "current": v,
+                    "target": mid,
+                    "score": round(abs(mid - v) * coeff, 3),
+                    "adverse": is_adverse(cfg, v),
+                    "unit": cfg.get("unit", ""),
+                }
+            )
         rows.sort(key=lambda r: r["score"], reverse=True)
         return rows
 
@@ -210,7 +230,11 @@ class SkillEngine:
             v = col_mean(df, col)
             if v is None:
                 continue
-            lo, hi, adv = cfg.get("band_lo"), cfg.get("band_hi"), cfg.get("adverse_threshold")
+            lo, hi, adv = (
+                cfg.get("band_lo"),
+                cfg.get("band_hi"),
+                cfg.get("adverse_threshold"),
+            )
             flag = "OK"
             if adv is not None and v > adv:
                 flag = "ADVERSE"
@@ -218,8 +242,8 @@ class SkillEngine:
                 flag = "OUTSIDE_BAND"
             result[col] = {
                 "value": v,
-                "band":  f"{lo}–{hi}" if lo is not None else "—",
-                "flag":  flag,
+                "band": f"{lo}–{hi}" if lo is not None else "—",
+                "flag": flag,
             }
         return result
 
@@ -236,14 +260,21 @@ class SkillEngine:
 
     def _build_gap_figure(self, tier1_rows: list[dict], *, title: str) -> None:
         """Build a current-vs-target bar chart and store it in session_state."""
-        params    = [r["param"]   for r in tier1_rows]
+        params = [r["param"] for r in tier1_rows]
         curr_vals = [r["current"] for r in tier1_rows]
-        tgt_vals  = [r["target"]  for r in tier1_rows]
-        colours   = ["#e74c3c" if r["adverse"] else "#3498db" for r in tier1_rows]
+        tgt_vals = [r["target"] for r in tier1_rows]
+        colours = ["#e74c3c" if r["adverse"] else "#3498db" for r in tier1_rows]
 
         fig = go.Figure()
-        fig.add_bar(name="Current (8h avg)",  x=params, y=curr_vals, marker_color=colours)
-        fig.add_bar(name="Best-shift target", x=params, y=tgt_vals,  marker_color="rgba(46,204,113,0.55)")
+        fig.add_bar(
+            name="Current (8h avg)", x=params, y=curr_vals, marker_color=colours
+        )
+        fig.add_bar(
+            name="Best-shift target",
+            x=params,
+            y=tgt_vals,
+            marker_color="rgba(46,204,113,0.55)",
+        )
         fig.update_layout(
             title=title + "  (red = adverse)",
             barmode="group",
@@ -272,14 +303,22 @@ class SkillEngine:
 
     def _format_optimise_prompt(self, data: dict) -> str:
         t1 = "\n".join(self._format_tier1_lines(data["tier1"]))
-        t2 = "\n".join(
-            f"  {col}: {v['value']} (band {v['band']}) [{v['flag']}]"
-            for col, v in data["tier2"].items()
-        ) or "  (no data)"
-        t3 = "\n".join(
-            f"  {col}: {val}" for col, val in data["tier3"].items() if val is not None
-        ) or "  (no data)"
-        uc  = data["unit_cost"]
+        t2 = (
+            "\n".join(
+                f"  {col}: {v['value']} (band {v['band']}) [{v['flag']}]"
+                for col, v in data["tier2"].items()
+            )
+            or "  (no data)"
+        )
+        t3 = (
+            "\n".join(
+                f"  {col}: {val}"
+                for col, val in data["tier3"].items()
+                if val is not None
+            )
+            or "  (no data)"
+        )
+        uc = data["unit_cost"]
         ucb = data.get("uc_benchmark", "N/A")
 
         return (

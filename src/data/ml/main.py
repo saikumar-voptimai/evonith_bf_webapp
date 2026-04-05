@@ -1,10 +1,18 @@
+"""ML dataset fetcher with range-aware in-memory caching.
+
+:class:`RangeCache` holds the last fetched DataFrame so repeated requests
+for the same date range avoid redundant InfluxDB calls.
+:class:`MlDatasetFetcher` uses :class:`~data.ml.ml_dataset_service.MlDatasetService`
+to retrieve, rename, and merge the multi-source ML dataset.
+"""
+
 from datetime import date, timedelta
 from threading import Lock
+
 import pandas as pd
 
 from config.config_loader import load_config
 from data.ml.ml_dataset_service import MlDatasetService
-
 
 # ---------------- CONFIG ----------------
 config = load_config("setting_ds_dv.yml")
@@ -16,25 +24,46 @@ KEEP_COLS = config.get("keep_cols", [])
 
 # ---------------- RANGE CACHE ----------------
 class RangeCache:
+    """Thread-safe cache for the most recently fetched ML dataset.
+
+    Attributes:
+        start:   Start date of the cached dataset (or ``None`` if empty).
+        end:     End date of the cached dataset (or ``None`` if empty).
+        rm_mode: Raw-material mode string used for the last fetch.
+        df:      Cached :class:`~pandas.DataFrame`, or ``None``.
     """
-    Caches the last fetched dataset along with its date range and RM mode.
-    """
-    def __init__(self):
+
+    def __init__(self) -> None:
+        """Initialise an empty cache protected by a :class:`~threading.Lock`."""
         self.start: date | None = None
         self.end: date | None = None
         self.rm_mode: str | None = None
         self.df: pd.DataFrame | None = None
         self._lock = Lock()
 
-    def reset(self):
+    def reset(self) -> None:
+        """Invalidate all cached state under the lock."""
         with self._lock:
             self.start = self.end = self.rm_mode = self.df = None
 
-    def snapshot(self):
+    def snapshot(self) -> tuple:
+        """Return a consistent copy of all cached fields under the lock.
+
+        Returns:
+            Tuple ``(start, end, rm_mode, df)``.
+        """
         with self._lock:
             return self.start, self.end, self.rm_mode, self.df
 
-    def update(self, start, end, rm_mode, df):
+    def update(self, start: date, end: date, rm_mode: str, df: pd.DataFrame) -> None:
+        """Replace all cached fields atomically under the lock.
+
+        Args:
+            start:   New start date.
+            end:     New end date.
+            rm_mode: New raw-material mode string.
+            df:      New fetched DataFrame.
+        """
         with self._lock:
             self.start = start
             self.end = end
@@ -44,10 +73,18 @@ class RangeCache:
 
 # ---------------- DATASET FETCHER ----------------
 class MlDatasetFetcher:
+    """Fetches the multi-source ML dataset with range-aware caching.
+
+    Combines the main operational dataset (InfluxDB), raw-material composition
+    data, and hot-metal/slag data into a single cleaned DataFrame.
+
+    Attributes:
+        service: :class:`~data.ml.ml_dataset_service.MlDatasetService` instance.
+        cache:   :class:`RangeCache` for avoiding repeat InfluxDB calls.
     """
-    Fetches ML datasets with range-aware caching.   
-    """
-    def __init__(self):
+
+    def __init__(self) -> None:
+        """Initialise fetcher with a fresh cache and dataset service."""
         self.service = MlDatasetService()
         self.cache = RangeCache()
 
@@ -108,9 +145,7 @@ class MlDatasetFetcher:
         df_rm = self.service.fetch_step2(
             start, end, rm_mode, allowed_columns=RENAME_DICT
         )
-        df_hm = self.service.fetch_hotmetal_hourly(
-            start, end, keep_columns=KEEP_COLS
-        )
+        df_hm = self.service.fetch_hotmetal_hourly(start, end, keep_columns=KEEP_COLS)
         df_dist = self.service.fetch_distribution_data(start, end)
 
         df_dist = self._align_distribution(df_dist, df_rm, df_hm)

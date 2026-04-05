@@ -1,26 +1,36 @@
+"""InfluxDB data retrieval helpers for both online and offline buckets.
+
+Provides thin wrappers around :class:`~data.fetchers.base_data_fetcher.BaseDataFetcher`
+that resolve time-range expressions (preset strings, tuple pairs, or ``"full"``)
+into concrete InfluxQL queries and return tidy, timestamp-indexed DataFrames.
+"""
+
 import re
-import pandas as pd
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict
+from typing import Dict, List
+
+import pandas as pd
+
 from data.fetchers.base_data_fetcher import BaseDataFetcher
 
 TIMEDELTAS = {
-        'last 1 minute': timedelta(minutes=1),
-        'last 5 minutes': timedelta(minutes=5),
-        'last 15 minutes': timedelta(minutes=15),
-        'last 30 minutes': timedelta(minutes=30),
-        'last 1 hour': timedelta(hours=1),
-        'last 6 hours': timedelta(hours=6),
-        'last 8 hours': timedelta(hours=8),
-        'last 12 hours': timedelta(hours=12),
-        'last 1 day': timedelta(days=1),
-        'last 3 days': timedelta(days=3),
-        'last 1 week': timedelta(weeks=1),
-        'last 2 weeks': timedelta(weeks=2),
-        'last 1 month': timedelta(days=30),
-        'last 2 months': timedelta(days=60),
-        'last 3 months': timedelta(days=90)
+    "last 1 minute": timedelta(minutes=1),
+    "last 5 minutes": timedelta(minutes=5),
+    "last 15 minutes": timedelta(minutes=15),
+    "last 30 minutes": timedelta(minutes=30),
+    "last 1 hour": timedelta(hours=1),
+    "last 6 hours": timedelta(hours=6),
+    "last 8 hours": timedelta(hours=8),
+    "last 12 hours": timedelta(hours=12),
+    "last 1 day": timedelta(days=1),
+    "last 3 days": timedelta(days=3),
+    "last 1 week": timedelta(weeks=1),
+    "last 2 weeks": timedelta(weeks=2),
+    "last 1 month": timedelta(days=30),
+    "last 2 months": timedelta(days=60),
+    "last 3 months": timedelta(days=90),
 }
+
 
 def clean_rm_data(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -33,7 +43,7 @@ def clean_rm_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     ore_groups = {}
     for col in df.columns:
-        match = re.match(r'(ore_\d+)_', col)
+        match = re.match(r"(ore_\d+)_", col)
         if match:
             ore_groups.setdefault(match.group(1), []).append(col)
 
@@ -42,15 +52,15 @@ def clean_rm_data(df: pd.DataFrame) -> pd.DataFrame:
         if df[cols].isnull().all(axis=1).all():
             drop_cols.extend(cols)
 
-    df_clean = df.drop(columns=drop_cols, errors='ignore')
+    df_clean = df.drop(columns=drop_cols, errors="ignore")
 
     # Rename ore prefixes
     ore_name_map = {
-        'ore_1': 'NMDC_DONAMALAI',
-        'ore_2': 'LLOYDS',
-        'ore_3': 'GEOMIN',
-        'ore_4': 'JRS_VENTURES',
-        'ore_5': 'NMDC_ROM'
+        "ore_1": "NMDC_DONAMALAI",
+        "ore_2": "LLOYDS",
+        "ore_3": "GEOMIN",
+        "ore_4": "JRS_VENTURES",
+        "ore_5": "NMDC_ROM",
     }
     rename_map = {}
     for col in df_clean.columns:
@@ -61,6 +71,7 @@ def clean_rm_data(df: pd.DataFrame) -> pd.DataFrame:
 
     return df_clean
 
+
 def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFrame:
     """
     Fetch offline data with minimal and necessary time conversions.
@@ -70,9 +81,7 @@ def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFr
     - full dataset ('full')
     """
     dfetch = BaseDataFetcher(
-        variable_tag=measurement,
-        database=database,
-        token="INFLUX_OFFLINE_TOKEN"
+        variable_tag=measurement, database=database, token="INFLUX_OFFLINE_TOKEN"
     )
 
     now = datetime.now(timezone.utc)
@@ -91,9 +100,9 @@ def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFr
 
     else:
         # Preset string route → return directly
-        df = dfetch.fetch_averaged_data(recent_data_of=time_range,
-                                        request_type="ts",
-                                        window_by=None)
+        df = dfetch.fetch_averaged_data(
+            recent_data_of=time_range, request_type="ts", window_by=None
+        )
         df["time"] = pd.to_datetime(df["time"], utc=True)
         return df.set_index("time").sort_index()
 
@@ -103,7 +112,7 @@ def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFr
         start_time=start,
         end_time=end,
         request_type="ts",
-        window_by=None
+        window_by=None,
     )
 
     # --- Final minimal cleanup ---
@@ -120,10 +129,33 @@ def fetch_online_df(
     FREQUENCY_TO_TIMEDTA: Dict,
     MEASUREMENT_LABELS: Dict,
     FIELD_LABELS: Dict,
-    request_type: str = 'windowed-average',
-    window_by: str = '15 minutes'
+    request_type: str = "windowed-average",
+    window_by: str = "15 minutes",
 ) -> pd.DataFrame:
+    """Fetch and merge online (real-time) measurements from InfluxDB.
 
+    Queries each measurement in *selected_measurements* over the resolved time
+    window and concatenates the results into a single time-indexed DataFrame.
+    Column names are prefixed with the measurement label and the human-readable
+    field label.
+
+    Args:
+        selected_measurements: List of measurement keys to fetch (must be present
+            in *MEASUREMENT_LABELS*).
+        time_range:            Preset lookback string (e.g. ``"last 8 hours"``).
+        FREQUENCY_TO_TIMEDTA:  Mapping from frequency strings to
+            :class:`datetime.timedelta` objects.
+        MEASUREMENT_LABELS:    Mapping from measurement key to display label.
+        FIELD_LABELS:          Mapping from InfluxDB field names to display names.
+        request_type:          InfluxQL query type; defaults to
+            ``"windowed-average"``.
+        window_by:             Aggregation window size; defaults to
+            ``"15 minutes"``.
+
+    Returns:
+        A time-indexed ``pd.DataFrame`` with one column per fetched field,
+        or an empty ``DataFrame`` if *selected_measurements* is empty.
+    """
     datafetchers = {key: BaseDataFetcher(key) for key in MEASUREMENT_LABELS.keys()}
 
     if not selected_measurements:
@@ -132,7 +164,9 @@ def fetch_online_df(
     combined_df = pd.DataFrame()
 
     now = datetime.now(timezone.utc)
-    start_time = now - TIMEDELTAS[time_range]   # assumes TIMEDELTAS has "last 8 hours", etc.
+    start_time = (
+        now - TIMEDELTAS[time_range]
+    )  # assumes TIMEDELTAS has "last 8 hours", etc.
     end_time = now
 
     for meas in selected_measurements:
@@ -144,7 +178,7 @@ def fetch_online_df(
             start_time=start_time,
             end_time=end_time,
             request_type=request_type,
-            window_by=window_by
+            window_by=window_by,
         )
 
         if df_meas is None or df_meas.empty:
@@ -172,7 +206,9 @@ def fetch_online_df(
 
         df_meas = df_meas.rename(columns={col: _rename(col) for col in df_meas.columns})
 
-        combined_df = df_meas if combined_df.empty else combined_df.join(df_meas, how="outer")
+        combined_df = (
+            df_meas if combined_df.empty else combined_df.join(df_meas, how="outer")
+        )
 
     # CRITICAL GUARD: if nothing fetched, return empty BEFORE resample
     if combined_df.empty:

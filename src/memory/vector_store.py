@@ -1,17 +1,23 @@
+"""Qdrant vector store for shift/day/week/bi-week operational summaries.
+
+Uses local sentence-transformer embeddings (384-dim, cosine similarity)
+against the ``furnace_shift_summaries`` Qdrant collection.
+"""
+
 # memory/vector_store.py
 
 from typing import Dict, List, Optional
 
-from utils.payload_helpers import window_id_to_uuid
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
+    Distance,
     PointStruct,
     VectorParams,
-    Distance,
 )
 
-from utils.settings import settings
 from embeddings.sentence_embedding import SentenceEmbedding
+from utils.payload_helpers import window_id_to_uuid
+from utils.settings import settings
 
 
 class QdrantVectorStore:
@@ -20,7 +26,22 @@ class QdrantVectorStore:
     Uses LOCAL embeddings (sentence_transformer) + SHIFT Qdrant collection (384-dim).
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Connect to Qdrant, configure the sentence-transformer embedder, and
+        create the collection if it does not already exist.
+
+        Reads all settings from :data:`~utils.settings.settings`:
+
+        * ``settings.qdrant_shift`` – Qdrant Cloud URL, API key, collection name,
+          expected embedding dimension, and request timeout.
+        * ``settings.embedding["local"]`` – sentence-transformer model name and
+          target dimension.
+
+        Raises:
+            RuntimeError: If the configured ``SHIFT_QDRANT_EMBED_DIM`` does not
+                match ``LOCAL_EMBEDDING_DIM``, or if the existing collection was
+                created with a different vector size.
+        """
         qcfg = settings.qdrant_shift  # ✅ shift collection config
 
         self.client = QdrantClient(
@@ -44,6 +65,13 @@ class QdrantVectorStore:
         self._ensure_collection()
 
     def _ensure_collection(self) -> None:
+        """Create the Qdrant collection with cosine-distance IVFFLAT config if it
+        does not exist, or validate the dimension of an existing collection.
+
+        Raises:
+            RuntimeError: If the existing collection has an incompatible vector
+                schema or mismatched dimension.
+        """
         collections = self.client.get_collections().collections
         existing = {c.name for c in collections}
 
@@ -80,6 +108,21 @@ class QdrantVectorStore:
         embedding_text: str,
         payload: Dict,
     ) -> None:
+        """Upsert a summary window into the Qdrant collection.
+
+        The *window_id* is deterministically converted to a UUID so repeated
+        writes for the same window are idempotent.
+
+        Args:
+            window_id:      Human-readable ID (e.g. ``"2025-04-05_Shift_B"``).
+            embedding_text: Text to embed; typically the LLM summary string.
+            payload:        Arbitrary JSON-serialisable metadata to store alongside
+                            the vector.
+
+        Raises:
+            ValueError: If the generated embedding dimension does not match the
+                expected dimension configured for this store.
+        """
         embedding = self.embedding.embed([embedding_text])[0]
 
         if len(embedding) != self.embedding_dim:
@@ -109,7 +152,24 @@ class QdrantVectorStore:
         window_type: Optional[str] = None,
         stability_filter: Optional[str] = None,
     ) -> List[Dict]:
+        """Semantic search for similar operational windows.
 
+        Embeds *query_text* and queries Qdrant for the *top_k* nearest
+        neighbours.  Optional post-query filters are applied in Python.
+
+        Args:
+            query_text:       Natural-language search query.
+            top_k:            Maximum number of results to return.
+            window_type:      If set, only return payloads whose
+                              ``window_type`` matches (e.g. ``"shift"``).
+            stability_filter: If set, only return payloads whose
+                              ``overall_stability`` matches (e.g.
+                              ``"unstable"``).
+
+        Returns:
+            List of ``{"score": float, "payload": dict}`` dicts sorted by
+            descending similarity score.
+        """
         query_embedding = self.embedding.embed([query_text])[0]
 
         results = self.client.query_points(
@@ -126,7 +186,10 @@ class QdrantVectorStore:
             if window_type and payload.get("window_type") != window_type:
                 continue
 
-            if stability_filter and payload.get("overall_stability") != stability_filter:
+            if (
+                stability_filter
+                and payload.get("overall_stability") != stability_filter
+            ):
                 continue
 
             filtered.append({"score": p.score, "payload": payload})
@@ -134,6 +197,14 @@ class QdrantVectorStore:
         return filtered
 
     def get_window_by_id(self, window_id: str) -> Optional[Dict]:
+        """Retrieve a single window payload by exact *window_id*.
+
+        Args:
+            window_id: Human-readable window ID (converted to UUID internally).
+
+        Returns:
+            The payload dict if found, or ``None``.
+        """
         points = self.client.retrieve(
             collection_name=self.collection_name,
             ids=[window_id_to_uuid(window_id)],

@@ -1,10 +1,11 @@
 from datetime import date
-from typing import Optional, Dict
-from utils.payload_helpers import window_id_to_uuid
-from memory.vector_store import QdrantVectorStore
+from typing import Dict, Optional
 
+from memory.vector_store import QdrantVectorStore
+from utils.payload_helpers import window_id_to_uuid
 
 # Window ID builders (DERIVABLE LEVELS ONLY)
+
 
 def build_shift_window_id(d: date, shift_label: str) -> str:
     """
@@ -20,7 +21,6 @@ def build_day_window_id(d: date) -> str:
     Example: day_2025-11-14
     """
     return f"day_{d.strftime('%Y-%m-%d')}"
-
 
 
 # Qdrant fetch helper (EXACT ID LOOKUP)

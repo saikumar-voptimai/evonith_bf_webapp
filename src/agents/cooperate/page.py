@@ -13,6 +13,11 @@ from datetime import date, datetime, timedelta, timezone
 
 import streamlit as st
 
+from agents.cooperate.agent import run_agent_loop
+from agents.cooperate.artifacts import render_artifacts_panel
+from agents.cooperate.context import SystemPromptContext
+from agents.cooperate.prompts import TOOL_POLICY
+from agents.cooperate.skills import SkillEngine
 from agents.furnace_tools import get_openai_tool_schemas
 from embeddings.cloud_embedding import CloudEmbeddingClient
 from llm.llm_client import OpenRouterClient
@@ -21,18 +26,12 @@ from memory.knowledge_vector_store import KnowledgeVectorStore
 from memory.vector_store import QdrantVectorStore
 from multimodal.ingestion import process_file
 
-from agents.cooperate.agent     import run_agent_loop
-from agents.cooperate.artifacts import render_artifacts_panel
-from agents.cooperate.context   import SystemPromptContext
-from agents.cooperate.prompts   import TOOL_POLICY
-from agents.cooperate.skills    import SkillEngine
-
 _IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def _last_completed_shift() -> tuple[date, str]:
     """Return (date, label) of the most recently completed 8-hour shift (IST)."""
-    now  = datetime.now(_IST)
+    now = datetime.now(_IST)
     hour = now.hour
     if hour < 8:
         return (now.date() - timedelta(days=1)), "C"
@@ -48,7 +47,11 @@ def _chat_history_to_messages(max_messages: int = 14) -> list[dict]:
         if m.get("type") == "plotly":
             continue
         role, content = m.get("role"), m.get("content")
-        if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+        if (
+            role in ("user", "assistant")
+            and isinstance(content, str)
+            and content.strip()
+        ):
             msgs.append({"role": role, "content": content})
     return msgs
 
@@ -59,10 +62,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
     # ── Stores ───────────────────────────────────────────────────────────────
     embedding_client = CloudEmbeddingClient()
-    knowledge_store  = KnowledgeVectorStore(embedding_client)
-    shift_store      = QdrantVectorStore()
+    knowledge_store = KnowledgeVectorStore(embedding_client)
+    shift_store = QdrantVectorStore()
     st.session_state["knowledge_store"] = knowledge_store
-    st.session_state["shift_store"]     = shift_store
+    st.session_state["shift_store"] = shift_store
 
     # ── Knowledge upload (sidebar) ───────────────────────────────────────────
     with st.sidebar.expander("Knowledge (optional)", expanded=False):
@@ -88,7 +91,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         st.session_state.chat_history = []
 
     # ── Context (loaded once per render) ────────────────────────────────────
-    ctx    = SystemPromptContext()
+    ctx = SystemPromptContext()
     engine = SkillEngine()
 
     default_date, default_label = _last_completed_shift()
@@ -111,31 +114,44 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         if hist_mode:
             with date_col:
                 selected_date = st.date_input(
-                    "Date", value=default_date, key="skill_date", max_value=default_date,
+                    "Date",
+                    value=default_date,
+                    key="skill_date",
+                    max_value=default_date,
                 )
             with shift_col:
-                label_opts    = ["A", "B", "C"]
+                label_opts = ["A", "B", "C"]
                 selected_label = st.radio(
-                    "Shift", label_opts, horizontal=True, key="skill_shift",
+                    "Shift",
+                    label_opts,
+                    horizontal=True,
+                    key="skill_shift",
                     index=label_opts.index(default_label),
                 )
         else:
             selected_date, selected_label = default_date, default_label
             with date_col:
-                st.caption(f"Last completed: **{default_date}** Shift **{default_label}**")
+                st.caption(
+                    f"Last completed: **{default_date}** Shift **{default_label}**"
+                )
 
         # ── Skill buttons ────────────────────────────────────────────────────
         def _fire_skill(prompt: str, display: str) -> None:
             """Clear stale artifacts and queue the skill prompt for the next render."""
-            st.session_state.pop("copilot_fig",     None)
-            st.session_state.pop("copilot_df",      None)
+            st.session_state.pop("copilot_fig", None)
+            st.session_state.pop("copilot_df", None)
             st.session_state.pop("copilot_df_meta", None)
-            st.session_state["pending_skill_prompt"] = {"prompt": prompt, "display": display}
+            st.session_state["pending_skill_prompt"] = {
+                "prompt": prompt,
+                "display": display,
+            }
             st.rerun()
 
         b1, b2, b3 = st.columns(3)
         with b1:
-            if st.button("💰 Optimise Unit Cost", use_container_width=True, type="primary"):
+            if st.button(
+                "💰 Optimise Unit Cost", use_container_width=True, type="primary"
+            ):
                 _fire_skill(
                     engine.optimise_prompt(),
                     "💰 **Optimise Unit Cost** — analysing last 30 days vs best-shift targets",
@@ -160,8 +176,8 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
         user_query = user_display = None
         if "pending_skill_prompt" in st.session_state:
-            pending      = st.session_state.pop("pending_skill_prompt")
-            user_query   = pending["prompt"]
+            pending = st.session_state.pop("pending_skill_prompt")
+            user_query = pending["prompt"]
             user_display = pending["display"]
         elif typed_query:
             user_query = user_display = typed_query
@@ -176,7 +192,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             st.markdown(user_display)
 
     # ── Agent loop ───────────────────────────────────────────────────────────
-    llm   = OpenRouterClient()
+    llm = OpenRouterClient()
     tools = get_openai_tool_schemas()
 
     messages: list[dict] = [
@@ -186,7 +202,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
     with chat_col:
         with st.chat_message("assistant"):
-            status_box   = st.empty()
+            status_box = st.empty()
             response_box = st.empty()
             status_box.status("Thinking…", expanded=False)
 
@@ -202,6 +218,8 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     st.session_state.chat_history.append(
         {"role": "assistant", "content": final_response, "display": final_response}
     )
-    updated_memory = add_recent_turn(ctx.memory, user=user_query, assistant=final_response)
+    updated_memory = add_recent_turn(
+        ctx.memory, user=user_query, assistant=final_response
+    )
     save_copilot_memory(updated_memory)
     st.rerun()

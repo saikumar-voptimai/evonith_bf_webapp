@@ -1,10 +1,19 @@
-import streamlit as st
+"""Manages the static (file-cached) ML dataset CSV used by V-OptimAIse.
+
+:class:`StaticDatasetManager` reads the existing CSV, determines what new
+data needs to be fetched from InfluxDB, fetches and cleans it via
+:class:`~data.ml.main.MlDatasetFetcher` and :class:`~data.ml.data_cleaning.DataCleaner`,
+merges the result (new data wins), and saves the updated file.
+"""
+
 from datetime import date, timedelta
-import pandas as pd
 from pathlib import Path
 
-from data.ml.main import MlDatasetFetcher
+import pandas as pd
+import streamlit as st
+
 from data.ml.data_cleaning import DataCleaner, build_default_config
+from data.ml.main import MlDatasetFetcher
 
 
 class StaticDatasetManager:
@@ -13,18 +22,29 @@ class StaticDatasetManager:
     1. Reads existing static dataset from CSV.
     2. Determines fetch range based on existing data.
     3. Fetches new ML data using MlDatasetFetcher.
-    4. Cleans the fetched data using DataCleaner. 
+    4. Cleans the fetched data using DataCleaner.
     5. Merges new data with existing data (new data takes precedence).
     6. Saves the updated dataset back to CSV.
     """
 
-    def __init__(self, static_path: str):
+    def __init__(self, static_path: str) -> None:
+        """Initialise the manager with the CSV path to read/write.
+
+        Args:
+            static_path: Relative or absolute path to the static ML dataset CSV.
+        """
         self.static_path = Path(static_path)
         self.fetcher = MlDatasetFetcher()
         self.cleaner = DataCleaner(build_default_config())
 
     # ------------ READ EXISTING STATIC DATASET ------------
     def _read_existing_static(self) -> pd.DataFrame:
+        """Read the current CSV from disk, returning an empty DataFrame if absent.
+
+        Returns:
+            DatetimeIndex DataFrame of the existing static dataset, sorted
+            ascending.  Empty DataFrame when the file does not exist.
+        """
         if not self.static_path.exists():
             return pd.DataFrame()
 
@@ -39,14 +59,26 @@ class StaticDatasetManager:
 
     # ------------ DETERMINE FETCH RANGE ------------
     def _get_fetch_range(self, existing_df: pd.DataFrame) -> tuple[date | None, date]:
+        """Determine the date range to fetch from InfluxDB.
+
+        Args:
+            existing_df: The current static dataset (may be empty).
+
+        Returns:
+            Tuple of ``(start_date, end_date)`` where *start_date* is the last
+            date in the existing dataset (or ``None`` for a full refresh) and
+            *end_date* is tomorrow.
+        """
         if existing_df.empty:
             return None, date.today()
 
         last_date = existing_df.index.max().date()
-        return last_date, date.today()+timedelta(days=1)
+        return last_date, date.today() + timedelta(days=1)
 
     # ------------ FETCH ML DATA ------------
-    def update_static(self, rm_choice: str, start_date: date | None = None) -> pd.DataFrame:
+    def update_static(
+        self, rm_choice: str, start_date: date | None = None
+    ) -> pd.DataFrame:
         existing = self._read_existing_static()
 
         # ---------------- CASE 1: FULL REPROCESS FROM USER DATE ----------------
@@ -73,7 +105,6 @@ class StaticDatasetManager:
                 st.info("No new data to fetch.")
                 return existing
 
-
         # ---------------- FETCH ML DATA ----------------
         ml_df = self.fetcher.get_ml_dataset(
             start_date=fetch_start,
@@ -94,10 +125,6 @@ class StaticDatasetManager:
         final_df = final_df.dropna(how="all")
 
         return final_df
-
-
-
-
 
     # ------------ SAVE STATIC DATASET ------------
     def save(self, df: pd.DataFrame) -> None:

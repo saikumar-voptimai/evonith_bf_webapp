@@ -1,9 +1,19 @@
-from .temp_data_fetcher import TemperatureDataFetcher
+"""Circumferential temperature contour data fetcher.
+
+Groups the 110-sensor temperature readings by elevation level and returns
+data in a format ready for :class:`~plotters.circumferential_contour.CircumferentialPlotter`:
+per-quadrant mean/min/max at each of the 11 sensor elevations.
+"""
+
+import logging
 from typing import Dict
+
 import numpy as np
 import pandas as pd
+
 from config.config_loader import load_config
-import logging
+
+from .temp_data_fetcher import TemperatureDataFetcher
 
 log = logging.getLogger("root")
 
@@ -19,12 +29,14 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
     def __init__(self, debug: bool = False, source: str = "live"):
         super().__init__(debug, source)
 
-    def fetch_averaged_data(self,
-                            average_by: str,
-                            start_time=None,
-                            end_time=None,
-                            request_type=None,
-                            window_by=None) -> dict:
+    def fetch_averaged_data(
+        self,
+        average_by: str,
+        start_time=None,
+        end_time=None,
+        request_type=None,
+        window_by=None,
+    ) -> dict:
         """
         Fetch and process temperature data grouped by circumferential location (elevation).
 
@@ -35,26 +47,30 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
             Otherwise:
                 {level_str: DataFrame with Q_1..Q_4 columns}
         """
-        temp_data = super().fetch_averaged_data(average_by,
-                                                start_time,
-                                                end_time,
-                                                request_type=request_type,
-                                                window_by=window_by)
+        temp_data = super().fetch_averaged_data(
+            average_by,
+            start_time,
+            end_time,
+            request_type=request_type,
+            window_by=window_by,
+        )
 
         if not isinstance(temp_data, pd.DataFrame):
-            temp_data = pd.DataFrame(temp_data, index=[start_time], columns=temp_data.keys())
+            temp_data = pd.DataFrame(
+                temp_data, index=[start_time], columns=temp_data.keys()
+            )
         else:
             if "time" in temp_data.columns:
                 temp_data.set_index("time", inplace=True, drop=True)
             # Drop non-numeric columns after time is handled
-            temp_data = temp_data.select_dtypes(exclude=['object'])
+            temp_data = temp_data.select_dtypes(exclude=["object"])
 
         # Group columns by elevation level
         level_cols: Dict[str, list] = {}
         for col in temp_data.columns:
-            if not col.startswith('temp_'):
+            if not col.startswith("temp_"):
                 continue
-            parts = col.split('_')
+            parts = col.split("_")
             if len(parts) < 3:
                 continue
             level = parts[1]
@@ -65,30 +81,43 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
 
         for level, cols in level_cols.items():
             cols_sorted = sorted(cols)
-            n_sensors = SENSORS_AT_Y_Dict.get(level, {}).get('n_sensors', len(cols_sorted))
+            n_sensors = SENSORS_AT_Y_Dict.get(level, {}).get(
+                "n_sensors", len(cols_sorted)
+            )
 
             df_temp_data = temp_data[cols_sorted].copy()
             df_temp_data[df_temp_data <= 25] = np.nan
-            df_temp_data.dropna(axis=0, how='all', inplace=True)
+            df_temp_data.dropna(axis=0, how="all", inplace=True)
 
             if df_temp_data.empty:
                 df_new = pd.DataFrame(columns=[f"Q_{i}" for i in range(1, 5)])
                 levelwise_dict[level] = df_new
                 continue
 
-            df_temp_data.interpolate(method='linear', axis=1, inplace=True)
+            df_temp_data.interpolate(method="linear", axis=1, inplace=True)
 
             if request_type == "avg-min-max":
-                mean_cols = sorted([c for c in df_temp_data.columns if c.endswith('_mean')])
-                max_cols  = sorted([c for c in df_temp_data.columns if c.endswith('_max')])
-                min_cols  = sorted([c for c in df_temp_data.columns if c.endswith('_min')])
+                mean_cols = sorted(
+                    [c for c in df_temp_data.columns if c.endswith("_mean")]
+                )
+                max_cols = sorted(
+                    [c for c in df_temp_data.columns if c.endswith("_max")]
+                )
+                min_cols = sorted(
+                    [c for c in df_temp_data.columns if c.endswith("_min")]
+                )
                 n_actual = len(mean_cols)
             else:
                 n_actual = len(cols_sorted)
 
             weights = [
                 [
-                    max(1 - abs((angle - i * 360 / n_actual + 180) % 360 - 180) / (360 / n_actual), 0)
+                    max(
+                        1
+                        - abs((angle - i * 360 / n_actual + 180) % 360 - 180)
+                        / (360 / n_actual),
+                        0,
+                    )
                     for i in range(n_actual)
                 ]
                 for angle in angles
@@ -100,25 +129,43 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
                 indices = np.where(np.array(weights[qi]) > 0)[0]
                 if len(indices) == 0:
                     continue
-                weight_sum = sum(weights[qi][idx] for idx in indices if weights[qi][idx] > 0)
+                weight_sum = sum(
+                    weights[qi][idx] for idx in indices if weights[qi][idx] > 0
+                )
                 if request_type == "avg-min-max":
-                    df_new[f"Q_{qi+1}_mean"] = sum(
-                        df_temp_data[mean_cols].iloc[:, idx] * weights[qi][idx]
-                        for idx in indices if weights[qi][idx] > 0
-                    ) / weight_sum
-                    df_new[f"Q_{qi+1}_max"] = sum(
-                        df_temp_data[max_cols].iloc[:, idx] * weights[qi][idx]
-                        for idx in indices if weights[qi][idx] > 0
-                    ) / weight_sum
-                    df_new[f"Q_{qi+1}_min"] = sum(
-                        df_temp_data[min_cols].iloc[:, idx] * weights[qi][idx]
-                        for idx in indices if weights[qi][idx] > 0
-                    ) / weight_sum
+                    df_new[f"Q_{qi+1}_mean"] = (
+                        sum(
+                            df_temp_data[mean_cols].iloc[:, idx] * weights[qi][idx]
+                            for idx in indices
+                            if weights[qi][idx] > 0
+                        )
+                        / weight_sum
+                    )
+                    df_new[f"Q_{qi+1}_max"] = (
+                        sum(
+                            df_temp_data[max_cols].iloc[:, idx] * weights[qi][idx]
+                            for idx in indices
+                            if weights[qi][idx] > 0
+                        )
+                        / weight_sum
+                    )
+                    df_new[f"Q_{qi+1}_min"] = (
+                        sum(
+                            df_temp_data[min_cols].iloc[:, idx] * weights[qi][idx]
+                            for idx in indices
+                            if weights[qi][idx] > 0
+                        )
+                        / weight_sum
+                    )
                 else:
-                    df_new[f"Q_{qi+1}"] = sum(
-                        df_temp_data.iloc[:, idx] * weights[qi][idx]
-                        for idx in indices if weights[qi][idx] > 0
-                    ) / weight_sum
+                    df_new[f"Q_{qi+1}"] = (
+                        sum(
+                            df_temp_data.iloc[:, idx] * weights[qi][idx]
+                            for idx in indices
+                            if weights[qi][idx] > 0
+                        )
+                        / weight_sum
+                    )
 
             levelwise_dict[level] = df_new
 
@@ -141,9 +188,9 @@ class CircumferentialTemperatureDataFetcher(TemperatureDataFetcher):
         """
         levelwise_stats = {}
         for level, df in levelwise_dict.items():
-            mean_cols = sorted([c for c in df.columns if c.endswith('_mean')])
-            max_cols  = sorted([c for c in df.columns if c.endswith('_max')])
-            min_cols  = sorted([c for c in df.columns if c.endswith('_min')])
+            mean_cols = sorted([c for c in df.columns if c.endswith("_mean")])
+            max_cols = sorted([c for c in df.columns if c.endswith("_max")])
+            min_cols = sorted([c for c in df.columns if c.endswith("_min")])
 
             if df.empty or not mean_cols:
                 levelwise_stats[level] = [[np.nan] * 4, [np.nan] * 4, [np.nan] * 4]

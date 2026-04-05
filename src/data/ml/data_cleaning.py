@@ -1,3 +1,13 @@
+"""ML dataset cleaning pipeline: outlier removal, imputation, and column filtering.
+
+Configured via frozen dataclasses (:class:`RangeFilter`, :class:`OutlierRule`,
+:class:`ImputationPlan`, :class:`ColumnGroups`, :class:`CleaningConfig`) so
+the full cleaning specification is inspectable and easily unit-testable.
+
+:func:`build_default_config` returns the production configuration used by the
+:class:`StaticDatasetManager`.
+"""
+
 # data_cleaning.py
 from __future__ import annotations
 
@@ -23,6 +33,7 @@ from sklearn.impute import IterativeImputer, SimpleImputer
 @dataclass(frozen=True)
 class RangeFilter:
     """Row filter based on a numeric range in a column."""
+
     column: str
     min_value: Optional[float] = None
     max_value: Optional[float] = None
@@ -33,6 +44,7 @@ class RangeFilter:
 @dataclass(frozen=True)
 class OutlierRule:
     """Values outside [min_value, max_value] are set to NaN."""
+
     column: str
     min_value: Optional[float] = None
     max_value: Optional[float] = None
@@ -42,6 +54,7 @@ class OutlierRule:
 @dataclass(frozen=True)
 class ImputationPlan:
     """Controls selective imputation before the final global imputation."""
+
     # Columns to impute with IterativeImputer (MICE). Temperature columns are added dynamically.
     iterative_base_columns: Tuple[str, ...] = ()
     include_temperature_columns: bool = True
@@ -54,6 +67,18 @@ class ImputationPlan:
 
 @dataclass(frozen=True)
 class ColumnGroups:
+    """Logical column groupings for the ML dataset.
+
+    Attributes:
+        rm_params:     Raw-material quality columns.
+        hm_slag_params: Hot-metal and slag quality columns.
+        bd_params:     Burden distribution columns.
+        temp_params:   Furnace wall temperature columns.
+        op_params:     Operational/blast parameter columns.
+        prcs_params:   Process KPI columns (fuel rate, ETA CO, etc.).
+        proxy_params:  Derived proxy feature columns.
+    """
+
     rm_params: Tuple[str, ...]
     hm_slag_params: Tuple[str, ...]
     bd_params: Tuple[str, ...]
@@ -92,6 +117,7 @@ class ColumnGroups:
 @dataclass(frozen=True)
 class CleaningConfig:
     """All parameters required for the cleaning pipeline."""
+
     columns: ColumnGroups
 
     # Index normalization
@@ -172,7 +198,9 @@ class CleaningConfig:
 class DataCleaner:
     """Configurable, production-friendly cleaning pipeline."""
 
-    def __init__(self, config: CleaningConfig, logger: Optional[logging.Logger] = None) -> None:
+    def __init__(
+        self, config: CleaningConfig, logger: Optional[logging.Logger] = None
+    ) -> None:
         self.config = config
         self.logger = logger or logging.getLogger(self.__class__.__name__)
 
@@ -254,7 +282,9 @@ class DataCleaner:
 
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.config.uppercase_columns:
-            df.columns = df.columns.map(lambda c: c.upper() if isinstance(c, str) else c)
+            df.columns = df.columns.map(
+                lambda c: c.upper() if isinstance(c, str) else c
+            )
         return df
 
     def _apply_schema(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -301,7 +331,9 @@ class DataCleaner:
     def _drop_unnamed(self, df: pd.DataFrame) -> pd.DataFrame:
         if not self.config.drop_unnamed_columns:
             return df
-        unnamed = [c for c in df.columns if isinstance(c, str) and "UNNAMED" in c.upper()]
+        unnamed = [
+            c for c in df.columns if isinstance(c, str) and "UNNAMED" in c.upper()
+        ]
         return df.drop(columns=unnamed) if unnamed else df
 
     def _fill_default_zeros(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -325,7 +357,11 @@ class DataCleaner:
         if not cfg.combine_sinter_sources:
             return df
 
-        sp01, sp02, combined = cfg.sinter_sp01_col, cfg.sinter_sp02_col, cfg.sinter_combined_col
+        sp01, sp02, combined = (
+            cfg.sinter_sp01_col,
+            cfg.sinter_sp02_col,
+            cfg.sinter_combined_col,
+        )
 
         if sp01 not in df.columns and sp02 not in df.columns:
             return df
@@ -358,7 +394,10 @@ class DataCleaner:
         cfg = self.config
         if not cfg.add_unit_cost_feature:
             return df
-        if cfg.unit_cost_coke_rate_col not in df.columns or cfg.unit_cost_pci_rate_col not in df.columns:
+        if (
+            cfg.unit_cost_coke_rate_col not in df.columns
+            or cfg.unit_cost_pci_rate_col not in df.columns
+        ):
             self.logger.warning(
                 "Unit cost feature skipped (missing columns): %s, %s",
                 cfg.unit_cost_coke_rate_col,
@@ -368,7 +407,9 @@ class DataCleaner:
 
         coke_rate = pd.to_numeric(df[cfg.unit_cost_coke_rate_col], errors="coerce")
         pci_rate = pd.to_numeric(df[cfg.unit_cost_pci_rate_col], errors="coerce")
-        df[cfg.unit_cost_col] = (coke_rate + cfg.unit_cost_pci_multiplier * pci_rate) * cfg.unit_cost_unit_multiplier
+        df[cfg.unit_cost_col] = (
+            coke_rate + cfg.unit_cost_pci_multiplier * pci_rate
+        ) * cfg.unit_cost_unit_multiplier
         return df
 
     def _drop_high_nan_columns(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -379,7 +420,9 @@ class DataCleaner:
         nan_frac = df.isna().mean()
         drop_cols = nan_frac[nan_frac > thresh].index.tolist()
         if drop_cols:
-            self.logger.info("Dropping %d columns with NaN fraction > %.2f", len(drop_cols), thresh)
+            self.logger.info(
+                "Dropping %d columns with NaN fraction > %.2f", len(drop_cols), thresh
+            )
             df = df.drop(columns=drop_cols)
         return df
 
@@ -392,28 +435,44 @@ class DataCleaner:
             series = pd.to_numeric(df[rule.column], errors="coerce")
 
             if rule.min_value is not None:
-                df = df[series >= rule.min_value] if rule.min_inclusive else df[series > rule.min_value]
-                series = pd.to_numeric(df[rule.column], errors="coerce")  # recompute after filtering
+                df = (
+                    df[series >= rule.min_value]
+                    if rule.min_inclusive
+                    else df[series > rule.min_value]
+                )
+                series = pd.to_numeric(
+                    df[rule.column], errors="coerce"
+                )  # recompute after filtering
 
             if rule.max_value is not None:
-                df = df[series <= rule.max_value] if rule.max_inclusive else df[series < rule.max_value]
+                df = (
+                    df[series <= rule.max_value]
+                    if rule.max_inclusive
+                    else df[series < rule.max_value]
+                )
 
         return df
 
     def _apply_outlier_rules(self, df: pd.DataFrame) -> pd.DataFrame:
         for rule in self.config.outlier_rules:
             if rule.column not in df.columns:
-                self.logger.warning("Skipping outlier rule; column missing: %s", rule.column)
+                self.logger.warning(
+                    "Skipping outlier rule; column missing: %s", rule.column
+                )
                 continue
 
             s = pd.to_numeric(df[rule.column], errors="coerce")
             mask = pd.Series(False, index=df.index)
 
             if rule.min_value is not None:
-                mask |= (s < rule.min_value) if rule.inclusive else (s <= rule.min_value)
+                mask |= (
+                    (s < rule.min_value) if rule.inclusive else (s <= rule.min_value)
+                )
 
             if rule.max_value is not None:
-                mask |= (s > rule.max_value) if rule.inclusive else (s >= rule.max_value)
+                mask |= (
+                    (s > rule.max_value) if rule.inclusive else (s >= rule.max_value)
+                )
 
             if mask.any():
                 df.loc[mask, rule.column] = np.nan
@@ -423,9 +482,13 @@ class DataCleaner:
     def _selective_imputation(self, df: pd.DataFrame) -> pd.DataFrame:
         plan = self.config.imputation_plan
 
-        iter_cols: List[str] = [c for c in plan.iterative_base_columns if c in df.columns]
+        iter_cols: List[str] = [
+            c for c in plan.iterative_base_columns if c in df.columns
+        ]
         if plan.include_temperature_columns:
-            iter_cols.extend([c for c in self.config.columns.temp_params if c in df.columns])
+            iter_cols.extend(
+                [c for c in self.config.columns.temp_params if c in df.columns]
+            )
 
         # De-duplicate while preserving order
         seen = set()
@@ -441,17 +504,23 @@ class DataCleaner:
 
         for col, strategy in (plan.simple_column_strategies or {}).items():
             if col not in df.columns:
-                self.logger.warning("Skipping simple imputation; column missing: %s", col)
+                self.logger.warning(
+                    "Skipping simple imputation; column missing: %s", col
+                )
                 continue
             df[col] = self._simple_impute_series(df[col], strategy=strategy)
 
         return df
 
-    def _iterative_impute(self, df: pd.DataFrame, cols: Sequence[str], random_state: int, max_iter: int) -> pd.DataFrame:
+    def _iterative_impute(
+        self, df: pd.DataFrame, cols: Sequence[str], random_state: int, max_iter: int
+    ) -> pd.DataFrame:
         X = df[list(cols)].apply(pd.to_numeric, errors="coerce")
         imputer = IterativeImputer(random_state=random_state, max_iter=max_iter)
         imputed = imputer.fit_transform(X)
-        df.loc[:, list(cols)] = pd.DataFrame(imputed, columns=list(cols), index=df.index)
+        df.loc[:, list(cols)] = pd.DataFrame(
+            imputed, columns=list(cols), index=df.index
+        )
         return df
 
     def _simple_impute_series(self, s: pd.Series, strategy: str) -> pd.Series:
@@ -505,79 +574,169 @@ class DataCleaner:
 def build_default_config() -> CleaningConfig:
     # ---- Column groups copied from your notebook (Cell 1) ----
     rm_params = (
-        'COKE_VM%', 'COKE_ASH%', 'COKE_IM%', 'COKE_FC%', 'COKE_MOIST%', 'COKE_CALC_MT',
-        'NUTCOKE_MOIST%',  'NUTCOKE_VM%', 'NUTCOKE_IM%', 'NUTCOKE_FC%', 'NUTCOKE_ASH%',
-        'NUTCOKE_CALC_MT',
-        'PCI_2_FC%', 'PCI_2_ASH%', 'PCI_2_VM%', 'PCI_2_IM%', 'PCI_2_CALC_MT',
-        'SINTER_SP_02_COLD_STRENGTH_AI', 'SINTER_SP_02_COLD_STRENGTH_TI', 'SINTER_SP_02_HOT_STRENGTH_RI', 'SINTER_SP_02_HOT_STRENGTH_RDI',
-        'SINTER_SP_02_P%', 'SINTER_SP_02_SIO2%', 'SINTER_SP_02_MGO%', 'SINTER_SP_02_FEO%',
-        'SINTER_SP_02_AL2O3%', 'SINTER_SP_02_NA2O%', 'SINTER_SP_02_TIO2%', 'SINTER_SP_02_FE(T)%',
-        'SINTER_SP_02_CAO%', 'SINTER_SP_02_K2O%', 'SINTER_SP_02_BASICITY', 'SINTER_SP_02_MNO%',
-        'SINTER_CALC_MT',
-        'FLUX_TM%', 'FLUX_SIO2%', 'FLUX_FE2O3%', 'FLUX_AL2O3%', 'FLUX_LOI%', 'FLUX_MGO%', 'FLUX_CAO%', 'FLUX_CALC_MT',
-        'GEOMIN TYPE', 'ORE_FE(T)%', 'ORE_LOI%', 'ORE_TM%', 'ORE_MGO%', 'ORE_NA2O%', 'ORE_P%', 'ORE_TIO2%', 'ORE_AL2O3%',
-        'ORE_SIO2%', 'ORE_MNO%', 'ORE_CAO%', 'ORE_K2O%', 'ORE_CALC_MT',
-        'LLOYDS_PELLET_PCT_SIO2', 'LLOYDS_PELLET_PCT_AL2O3', 'LLOYDS_PELLET_PCT_FE2O3',
-        'LLOYDS_PELLET_PCT_MGO', 'LLOYDS_PELLET_PCT_TIO2', 'LLOYDS_PELLET_PCT_NA2O',
-        'TOTAL_PELLET_CALC_MT','LLOYDS_PELLET_PCT_K2O', 'LLOYDS_PELLET_PCT_TM', 'LLOYDS_PELLET_PCT_LOI',
-        'LLOYDS_PELLET_PCT_MNO','LLOYDS_PELLET_PCT_CAO','LLOYDS_PELLET_PCT_P',
-        'DAILYPRODUCTION', 'CHARGES/HRS.', 'STOCKRODLEVEL'
+        "COKE_VM%",
+        "COKE_ASH%",
+        "COKE_IM%",
+        "COKE_FC%",
+        "COKE_MOIST%",
+        "COKE_CALC_MT",
+        "NUTCOKE_MOIST%",
+        "NUTCOKE_VM%",
+        "NUTCOKE_IM%",
+        "NUTCOKE_FC%",
+        "NUTCOKE_ASH%",
+        "NUTCOKE_CALC_MT",
+        "PCI_2_FC%",
+        "PCI_2_ASH%",
+        "PCI_2_VM%",
+        "PCI_2_IM%",
+        "PCI_2_CALC_MT",
+        "SINTER_SP_02_COLD_STRENGTH_AI",
+        "SINTER_SP_02_COLD_STRENGTH_TI",
+        "SINTER_SP_02_HOT_STRENGTH_RI",
+        "SINTER_SP_02_HOT_STRENGTH_RDI",
+        "SINTER_SP_02_P%",
+        "SINTER_SP_02_SIO2%",
+        "SINTER_SP_02_MGO%",
+        "SINTER_SP_02_FEO%",
+        "SINTER_SP_02_AL2O3%",
+        "SINTER_SP_02_NA2O%",
+        "SINTER_SP_02_TIO2%",
+        "SINTER_SP_02_FE(T)%",
+        "SINTER_SP_02_CAO%",
+        "SINTER_SP_02_K2O%",
+        "SINTER_SP_02_BASICITY",
+        "SINTER_SP_02_MNO%",
+        "SINTER_CALC_MT",
+        "FLUX_TM%",
+        "FLUX_SIO2%",
+        "FLUX_FE2O3%",
+        "FLUX_AL2O3%",
+        "FLUX_LOI%",
+        "FLUX_MGO%",
+        "FLUX_CAO%",
+        "FLUX_CALC_MT",
+        "GEOMIN TYPE",
+        "ORE_FE(T)%",
+        "ORE_LOI%",
+        "ORE_TM%",
+        "ORE_MGO%",
+        "ORE_NA2O%",
+        "ORE_P%",
+        "ORE_TIO2%",
+        "ORE_AL2O3%",
+        "ORE_SIO2%",
+        "ORE_MNO%",
+        "ORE_CAO%",
+        "ORE_K2O%",
+        "ORE_CALC_MT",
+        "LLOYDS_PELLET_PCT_SIO2",
+        "LLOYDS_PELLET_PCT_AL2O3",
+        "LLOYDS_PELLET_PCT_FE2O3",
+        "LLOYDS_PELLET_PCT_MGO",
+        "LLOYDS_PELLET_PCT_TIO2",
+        "LLOYDS_PELLET_PCT_NA2O",
+        "TOTAL_PELLET_CALC_MT",
+        "LLOYDS_PELLET_PCT_K2O",
+        "LLOYDS_PELLET_PCT_TM",
+        "LLOYDS_PELLET_PCT_LOI",
+        "LLOYDS_PELLET_PCT_MNO",
+        "LLOYDS_PELLET_PCT_CAO",
+        "LLOYDS_PELLET_PCT_P",
+        "DAILYPRODUCTION",
+        "CHARGES/HRS.",
+        "STOCKRODLEVEL",
     )
 
     hm_slag_params = (
-        'CHEM_PCT_C', 'CHEM_PCT_CR', 'CHEM_PCT_FE', 'CHEM_PCT_MN', 'CHEM_PCT_P',
-        'CHEM_PCT_S', 'CHEM_PCT_SI', 'CHEM_PCT_TI', 'SLAG_BASICITY', 'SLAG_PCT_AL2O3', 'SLAG_PCT_CAO',
-        'SLAG_PCT_FEO', 'SLAG_PCT_K2O', 'SLAG_PCT_MGO', 'SLAG_PCT_MNO', 'SLAG_PCT_NA2O', 'SLAG_PCT_S',
-        'SLAG_PCT_SIO2', 'SLAG_PCT_TIO2', 'SLAG_T_BASICITY', 'HMT_GT_1480C'
+        "CHEM_PCT_C",
+        "CHEM_PCT_CR",
+        "CHEM_PCT_FE",
+        "CHEM_PCT_MN",
+        "CHEM_PCT_P",
+        "CHEM_PCT_S",
+        "CHEM_PCT_SI",
+        "CHEM_PCT_TI",
+        "SLAG_BASICITY",
+        "SLAG_PCT_AL2O3",
+        "SLAG_PCT_CAO",
+        "SLAG_PCT_FEO",
+        "SLAG_PCT_K2O",
+        "SLAG_PCT_MGO",
+        "SLAG_PCT_MNO",
+        "SLAG_PCT_NA2O",
+        "SLAG_PCT_S",
+        "SLAG_PCT_SIO2",
+        "SLAG_PCT_TIO2",
+        "SLAG_T_BASICITY",
+        "HMT_GT_1480C",
     )
 
     bd_params = (
-        'COKE_DISCHARGE_TIME', 'WEIGHTED_COKE_ANGLE', 'TOTAL_COKE_PORTIONS',
-        'NON_COKE_DISCHARGE_TIME', 'WEIGHTED_NON_COKE_ANGLE','TOTAL_NON_COKE_PORTIONS'
+        "COKE_DISCHARGE_TIME",
+        "WEIGHTED_COKE_ANGLE",
+        "TOTAL_COKE_PORTIONS",
+        "NON_COKE_DISCHARGE_TIME",
+        "WEIGHTED_NON_COKE_ANGLE",
+        "TOTAL_NON_COKE_PORTIONS",
     )
 
     temp_params = (
-        'TOTAL HEAT LOAD',
-        'FURNACE TOP GAS_UPTAKE TEMP. OCAT-16DEG. OC',
-        'FURNACE TOP GAS_UPTAKE TEMP. OC.1BT-12DEG. OC',
-        'FURNACE TOP GAS_UPTAKE TEMP. OC.2CT-08DEG. OC',
-        'FURNACE TOP GAS_UPTAKE TEMP. OC.3DT-04DEG. OC',
-        'FURNACE TOP GAS_UPTAKE TEMP. OC.4AVG.DEG. OC',
-        'HEARTH PAD CENTER_TEMP. OCA4.3 MTR.DEG. OC',
-        'HEARTH PAD CENTER_TEMP. OC.1B5.4 MTR.DEG. OC',
-        'HEARTH PAD CENTER_TEMP. OC.2C5.7 MTR.DEG. OC',
-        'HEARTH PAD CENTER_TEMP. OC.3D6.1 MTR.DEG. OC',
-        'HEARTH PAD CENTER_TEMP. OC.4AVG.DEG. OC',
-        'BOSH - 12975_TEMP. OCAT-07DEG. OC',
-        'BOSH - 12975_TEMP. OC.1BT-12DEG. OC',
-        'BOSH - 12975_TEMP. OC.2CT-17DEG. OC',
-        'BOSH - 12975_TEMP. OC.3DT-03DEG. OC',
-        'BOSH - 12975_TEMP. OC.4AVG.DEG. OC',
-        'BELLY - 15162_TEMP. OCAT-07DEG. OC',
-        'BELLY - 15162_TEMP. OC.2CT-17DEG. OC',
-        'BELLY - 15162_TEMP. OC.3DT-03DEG. OC',
-        'BELLY - 15162_TEMP. OC.1BT-12DEG. OC',
-        'BELLY - 15162_TEMP. OC.4AVG.DEG. OC',
-        'LOWER STACK - 18660_TEMP. OCAT-07DEG. OC',
-        'LOWER STACK - 18660_TEMP. OC.1BT-12DEG. OC',
-        'LOWER STACK - 18660_TEMP. OC.2CT-17DEG. OC',
-        'LOWER STACK - 18660_TEMP. OC.3DT-03DEG. OC',
-        'LOWER STACK - 18660_TEMP. OC.4AVG.DEG. OC',
+        "TOTAL HEAT LOAD",
+        "FURNACE TOP GAS_UPTAKE TEMP. OCAT-16DEG. OC",
+        "FURNACE TOP GAS_UPTAKE TEMP. OC.1BT-12DEG. OC",
+        "FURNACE TOP GAS_UPTAKE TEMP. OC.2CT-08DEG. OC",
+        "FURNACE TOP GAS_UPTAKE TEMP. OC.3DT-04DEG. OC",
+        "FURNACE TOP GAS_UPTAKE TEMP. OC.4AVG.DEG. OC",
+        "HEARTH PAD CENTER_TEMP. OCA4.3 MTR.DEG. OC",
+        "HEARTH PAD CENTER_TEMP. OC.1B5.4 MTR.DEG. OC",
+        "HEARTH PAD CENTER_TEMP. OC.2C5.7 MTR.DEG. OC",
+        "HEARTH PAD CENTER_TEMP. OC.3D6.1 MTR.DEG. OC",
+        "HEARTH PAD CENTER_TEMP. OC.4AVG.DEG. OC",
+        "BOSH - 12975_TEMP. OCAT-07DEG. OC",
+        "BOSH - 12975_TEMP. OC.1BT-12DEG. OC",
+        "BOSH - 12975_TEMP. OC.2CT-17DEG. OC",
+        "BOSH - 12975_TEMP. OC.3DT-03DEG. OC",
+        "BOSH - 12975_TEMP. OC.4AVG.DEG. OC",
+        "BELLY - 15162_TEMP. OCAT-07DEG. OC",
+        "BELLY - 15162_TEMP. OC.2CT-17DEG. OC",
+        "BELLY - 15162_TEMP. OC.3DT-03DEG. OC",
+        "BELLY - 15162_TEMP. OC.1BT-12DEG. OC",
+        "BELLY - 15162_TEMP. OC.4AVG.DEG. OC",
+        "LOWER STACK - 18660_TEMP. OCAT-07DEG. OC",
+        "LOWER STACK - 18660_TEMP. OC.1BT-12DEG. OC",
+        "LOWER STACK - 18660_TEMP. OC.2CT-17DEG. OC",
+        "LOWER STACK - 18660_TEMP. OC.3DT-03DEG. OC",
+        "LOWER STACK - 18660_TEMP. OC.4AVG.DEG. OC",
     )
 
     op_params = (
-        'ACTUALKG/THM.', 'ACT. FUEL RATEKG/THM.',
-        'FURNACETOPGASANALYSISCO2ETACO', 'COKE RATE KG/THM', 'PRODUCTIONTONNESPERHR'
+        "ACTUALKG/THM.",
+        "ACT. FUEL RATEKG/THM.",
+        "FURNACETOPGASANALYSISCO2ETACO",
+        "COKE RATE KG/THM",
+        "PRODUCTIONTONNESPERHR",
     )
 
     prcs_params = (
-        'HOT BLAST PRESSUREBAR', 'TOPPRESSUREBAR', 'DIFFERENTIAL PRESSURETOTALBAR',
-        'HOT BLAST TEMP.OC', 'OXYGENFLOWNM3/HR.', 'STEAMKGS/HR.', 'RAFTOC',
-        'PERMEABILITYKGS/HR.', 'TUYEREVELOCITYM/S', 'HOT BLAST VOLUMENM3/HR.', 'O2 ENRICHMENT %', 'FURNACE TOP GAS ANALYSISCO2%',
-        'BOTTOMBAR', 'FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%', 'TOPBAR'
+        "HOT BLAST PRESSUREBAR",
+        "TOPPRESSUREBAR",
+        "DIFFERENTIAL PRESSURETOTALBAR",
+        "HOT BLAST TEMP.OC",
+        "OXYGENFLOWNM3/HR.",
+        "STEAMKGS/HR.",
+        "RAFTOC",
+        "PERMEABILITYKGS/HR.",
+        "TUYEREVELOCITYM/S",
+        "HOT BLAST VOLUMENM3/HR.",
+        "O2 ENRICHMENT %",
+        "FURNACE TOP GAS ANALYSISCO2%",
+        "BOTTOMBAR",
+        "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%",
+        "TOPBAR",
     )
 
-    proxy_params = ('FURNACE TOP GAS ANALYSISH2%',)
+    proxy_params = ("FURNACE TOP GAS ANALYSISH2%",)
 
     col_groups = ColumnGroups(
         rm_params=rm_params,
@@ -593,9 +752,21 @@ def build_default_config() -> CleaningConfig:
     cruising_filters = (
         RangeFilter("HOT BLAST VOLUMENM3/HR.", min_value=90000, min_inclusive=False),
         RangeFilter("ACTUALKG/THM.", min_value=70, min_inclusive=False),
-        RangeFilter("FURNACETOPGASANALYSISCO2ETACO", min_value=38, max_value=47, min_inclusive=False, max_inclusive=False),
+        RangeFilter(
+            "FURNACETOPGASANALYSISCO2ETACO",
+            min_value=38,
+            max_value=47,
+            min_inclusive=False,
+            max_inclusive=False,
+        ),
         RangeFilter("PRODUCTIONTONNESPERHR", min_value=60, min_inclusive=False),
-        RangeFilter("ACT. FUEL RATEKG/THM.", min_value=100, max_value=670, min_inclusive=False, max_inclusive=False),
+        RangeFilter(
+            "ACT. FUEL RATEKG/THM.",
+            min_value=100,
+            max_value=670,
+            min_inclusive=False,
+            max_inclusive=False,
+        ),
     )
 
     # Outlier rules (strictest bounds kept; values outside become NaN then imputed)

@@ -1,6 +1,6 @@
 from collections import defaultdict
-from typing import List, Dict
 from datetime import datetime
+from typing import Dict, List
 
 
 class RecurringAnomalyTracker:
@@ -30,10 +30,12 @@ class RecurringAnomalyTracker:
                 continue
 
             for param in summary.anomalous_parameters:
-                anomaly_map[param].append({
-                    "shift_id": summary.shift_id,
-                    "shift_end": summary.shift_end,
-                })
+                anomaly_map[param].append(
+                    {
+                        "shift_id": summary.shift_id,
+                        "shift_end": summary.shift_end,
+                    }
+                )
 
         # Step 3 & 4: Apply recurrence rule
         recurring = {}

@@ -1,15 +1,28 @@
+"""LLM inference clients for BF2 FurnaceMind and AI Copilot features.
+
+Provides two concrete client classes:
+
+* :class:`OpenRouterClient` – used by the FurnaceMind agent; routes all
+  traffic through OpenRouter so model switches are config-only changes.
+* :class:`OpenAIClient` – used by AI Copilot and V-OptimAIse; calls the
+  OpenAI Chat Completions (or Responses) API directly.
+
+Use :func:`get_llm_client` to obtain the default client.
+"""
+
 # FurnaceMind/llm/llm.py
 # Purpose: LLM inference clients (text generation only)
 
 from __future__ import annotations
-from typing import List, Optional, Literal, Any
-from openai import OpenAI
-from utils.settings import settings
 
+from typing import Any, List, Literal, Optional
+
+from openai import OpenAI
+
+from utils.settings import settings
 
 Provider = Literal["openrouter", "openai"]
 ApiMode = Literal["responses", "chat_completions"]
-
 
 
 # OPENROUTER CLIENT
@@ -19,7 +32,12 @@ class OpenRouterClient:
     Text generation only.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialise the OpenRouter client from :data:`~utils.settings.settings`.
+
+        Raises:
+            ValueError: If ``OPENROUTER_API_KEY`` is not set.
+        """
         cfg = settings.llm.openrouter
         if not cfg.api_key:
             raise ValueError("OPENROUTER_API_KEY is not set.")
@@ -43,6 +61,19 @@ class OpenRouterClient:
         user_prompt: str,
         stop: Optional[List[str]] = None,
     ) -> str:
+        """Generate a response from the LLM given system and user prompts.
+
+        Tries ``max_completion_tokens`` first (newer OpenAI-compatible API)
+        and falls back to ``max_tokens`` for older model compatibility.
+
+        Args:
+            system_prompt: Instruction/persona prompt for the assistant.
+            user_prompt:   User message to respond to.
+            stop:          Optional list of stop sequences.
+
+        Returns:
+            The assistant’s response text stripped of leading/trailing whitespace.
+        """
         try:
             completion = self.client.chat.completions.create(
                 model=self.model,
@@ -79,7 +110,7 @@ class OpenRouterClient:
     ) -> Any:
         """Low-level Chat Completions call with optional tool-calling.
         Returns the raw response message object, which may contain tool_calls.
-        Parameters:
+        Args:
         - messages: List of message dicts (role/content) for the conversation.
         - tools: Optional list of tool definitions (if using tool-calling).
         - tool_choice: Optional tool choice strategy (e.g. "auto", "none", or
@@ -113,19 +144,26 @@ class OpenRouterClient:
             )
 
 
-
-
 # OPENAI CLIENT
 class OpenAIClient:
-    """
-    Wrapper around OpenAI API.
-    Text generation only.
+    """Wrapper around the OpenAI Chat Completions and Responses APIs.
 
-    - Uses Chat Completions OR Responses API
-    - Robust text extraction for GPT-5-mini
+    Supports both ``chat_completions`` and ``responses`` API modes
+    (controlled by the ``OPENAI_API_MODE`` environment variable).  Contains
+    robust text extraction logic for structured GPT-5-mini outputs.
+
+    Attributes:
+        model:      OpenAI model identifier (e.g. ``"gpt-4o-mini"``).
+        max_tokens: Maximum tokens for each completion response.
+        api_mode:   Active API mode: ``"responses"`` or ``"chat_completions"``.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialise the OpenAI client from :data:`~utils.settings.settings`.
+
+        Raises:
+            ValueError: If ``OPENAI_API_KEY`` is not set.
+        """
         cfg = settings.llm.openai
         if not cfg.api_key:
             raise ValueError("OPENAI_API_KEY is not set.")
@@ -175,6 +213,19 @@ class OpenAIClient:
         user_prompt: str,
         stop: Optional[List[str]] = None,
     ) -> str:
+        """Generate a response using the OpenAI Chat Completions API.
+
+        Tries ``max_completion_tokens`` first and falls back to ``max_tokens``
+        for compatibility with older models.
+
+        Args:
+            system_prompt: Instruction/persona prompt for the assistant.
+            user_prompt:   User message to respond to.
+            stop:          Optional list of stop sequences.
+
+        Returns:
+            The assistant’s response text, or an empty string on failure.
+        """
         try:
             completion = self.client.chat.completions.create(
                 model=self.model,

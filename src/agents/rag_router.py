@@ -1,5 +1,12 @@
+"""Lightweight NLP router that maps free-text queries to InfluxDB field names.
+
+Used by the FurnaceMind agent to resolve which sensor fields a user is asking
+about, and to extract time-range / aggregation-window preferences from
+natural-language queries without calling an LLM.
+"""
+
 import re
-from typing import List, Dict, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 def _normalize(s: str) -> str:
@@ -13,18 +20,20 @@ def _extract_candidate_terms(user_query: str) -> List[str]:
     """
     q = _normalize(user_query)
     toks = q.split()
-    bigrams = [" ".join(toks[i:i+2]) for i in range(len(toks) - 1)]
-    trigrams = [" ".join(toks[i:i+3]) for i in range(len(toks) - 2)]
+    bigrams = [" ".join(toks[i : i + 2]) for i in range(len(toks) - 1)]
+    trigrams = [" ".join(toks[i : i + 3]) for i in range(len(toks) - 2)]
     seen = set()
     out = []
-    for x in (trigrams + bigrams + toks):
+    for x in trigrams + bigrams + toks:
         if x and x not in seen:
             out.append(x)
             seen.add(x)
     return out
 
 
-def resolve_fields_from_query(user_query: str, field_labels: Dict[str, str], max_fields: int = 4) -> List[str]:
+def resolve_fields_from_query(
+    user_query: str, field_labels: Dict[str, str], max_fields: int = 4
+) -> List[str]:
     """
     Resolve requested fields from user text by matching against the *human labels*
     (the values in FIELD_LABELS).
@@ -40,7 +49,11 @@ def resolve_fields_from_query(user_query: str, field_labels: Dict[str, str], max
 
     # Build normalized human-label lookup
     human_labels = list(field_labels.values())
-    label_map = {_normalize(lbl): lbl for lbl in human_labels if isinstance(lbl, str) and lbl.strip()}
+    label_map = {
+        _normalize(lbl): lbl
+        for lbl in human_labels
+        if isinstance(lbl, str) and lbl.strip()
+    }
 
     candidates = _extract_candidate_terms(user_query)
 
@@ -134,16 +147,28 @@ def route_query(query: str, field_labels: Optional[Dict[str, str]] = None) -> st
 
     # 2) Plot / live-ish intent
     plot_intent = detect_plot_intent(query)
-    live_intent = any(k in q for k in ["last ", "hours", "mins", "minutes", "now", "current", "live", "today"])
+    live_intent = any(
+        k in q
+        for k in [
+            "last ",
+            "hours",
+            "mins",
+            "minutes",
+            "now",
+            "current",
+            "live",
+            "today",
+        ]
+    )
 
     if plot_intent or live_intent:
         return "influx"
 
     # 3) Shift intelligence
-    if any(k in q for k in [
-        "shift", "fsi", "stability",
-        "recurring", "influence", "anomaly"
-    ]):
+    if any(
+        k in q
+        for k in ["shift", "fsi", "stability", "recurring", "influence", "anomaly"]
+    ):
         return "shift"
 
     return "knowledge"

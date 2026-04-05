@@ -1,23 +1,49 @@
-from dataclasses import dataclass
-from datetime import datetime, date, time, timezone, timedelta
-from config.config_loader import load_config
-from zoneinfo import ZoneInfo
-import pandas as pd
-import time as time_module   # for sleep(), avoids conflict with datetime.time
-from sqlalchemy import create_engine
-from dotenv import load_dotenv
+"""Multi-step ML dataset assembler that pulls from InfluxDB offline and online buckets.
+
+Fetches three data streams and merges them into a single hourly-resolution
+DataFrame used by :class:`~data.ml.main.MlDatasetFetcher`:
+
+1. **Step 1** — Main ML operational dataset (InfluxDB online bucket).
+2. **Step 2** — Raw-material composition: RM Charge *or* DPR (offline bucket).
+3. **Step 3** — Hot metal & slag quality, forward-filled to the operational cadence.
+4. **Step 4** — Burden distribution from PostgreSQL (charge-level SCD-2 records).
+"""
+
 import os
+import time as time_module  # for sleep(), avoids conflict with datetime.time
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+import pandas as pd
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+
+from config.config_loader import load_config
 
 load_dotenv()
 from data.retrieval import fetch_offline_data
+
 config = load_config("setting_ds_dv.yml")
+
 
 @dataclass
 class MlDatasetService:
-    """
-    Step-1: Fetch ML Dataset (main operational dataset)
-    Step-2: Fetch RM Charge or RM DPR datasets
-    Step-3: Fetch Hot Metal & Slag and interpolate to given interval
+    """Low-level multi-source ML dataset assembler.
+
+    Each public ``fetch_*`` method corresponds to one data stream.  Results
+    are combined by :class:`~data.ml.main.MlDatasetFetcher`.
+
+    Attributes:
+        bucket:                InfluxDB online bucket for the main operational data.
+        measurement_step1:     Measurement name for Step 1 (main ML dataset).
+        measurement_rm_charge: Measurement for RM Charge data (Step 2 option A).
+        measurement_rm_dpr:    Measurement for DPR data (Step 2 option B).
+        hotmetal_bucket:       InfluxDB offline bucket for hot-metal/slag data.
+        hotmetal_measurement:  Measurement name for Step 3 (hot metal & slag).
+        local_tz:              Local timezone string for shift-boundary alignment.
+        cutoff_date:           Earliest date for which historical data is valid.
+        db_url:                PostgreSQL connection URL for burden distribution (Step 4).
     """
 
     bucket: str = config["ml_dataset"]["bucket"]
@@ -27,16 +53,13 @@ class MlDatasetService:
     measurement_rm_charge: str = config["ml_dataset"]["rm_charge_measurement"]
     measurement_rm_dpr: str = config["ml_dataset"]["rm_dpr_measurement"]
 
-
     # STEP 3 (reuse existing)
     hotmetal_bucket: str = config["influx_offline"]["database"]
     hotmetal_measurement: str = config["offline_measurements"]["HM & Slag"]
 
     local_tz: str = config["ml_dataset"].get("local_tz", "Asia/Kolkata")
 
-    cutoff_date: date = date.fromisoformat(
-        config["ml_dataset"]["cutoff_date"]
-    )
+    cutoff_date: date = date.fromisoformat(config["ml_dataset"]["cutoff_date"])
     #  FOR STEP 4 (Charge Distribution Data)
     db_url: str = os.getenv("DATABASE_URL")
 
@@ -44,7 +67,9 @@ class MlDatasetService:
         return create_engine(self.db_url)
 
     # --------------- INFLUX FETCH WITH RETRIES ---------------
-    def _safe_influx_call(self, measurement, start_dt, end_dt, bucket=None, retries=3, wait=2):
+    def _safe_influx_call(
+        self, measurement, start_dt, end_dt, bucket=None, retries=3, wait=2
+    ):
         """
         Wraps fetch_offline_data with simple retry on transient errors
         (simultaneous query limit, temporary unavailability, etc.).
@@ -70,7 +95,10 @@ class MlDatasetService:
                     "unavailable",
                     "server never sent a data message",
                 ]
-                if any(err in msg for err in transient_errors) and attempt < retries - 1:
+                if (
+                    any(err in msg for err in transient_errors)
+                    and attempt < retries - 1
+                ):
                     time_module.sleep(wait)
                     continue
                 raise e
@@ -81,8 +109,16 @@ class MlDatasetService:
         Convert local date range to UTC datetime range for Influx queries.
         """
         tz = ZoneInfo(self.local_tz)
-        start_dt = datetime.combine(start_date, time.min).replace(tzinfo=tz).astimezone(timezone.utc)
-        end_dt   = datetime.combine(end_date, time.max).replace(tzinfo=tz).astimezone(timezone.utc)
+        start_dt = (
+            datetime.combine(start_date, time.min)
+            .replace(tzinfo=tz)
+            .astimezone(timezone.utc)
+        )
+        end_dt = (
+            datetime.combine(end_date, time.max)
+            .replace(tzinfo=tz)
+            .astimezone(timezone.utc)
+        )
         return start_dt, end_dt
 
     # --------------- CLEAN TIMEZONE ---------------
@@ -101,8 +137,10 @@ class MlDatasetService:
         return df.sort_index()
 
     # ------------------- FETCH STEP 1 OLD DATASET -------------------
-    def fetch(self, start_date: date, end_date: date, allowed_columns=None) -> pd.DataFrame:
-        """"
+    def fetch(
+        self, start_date: date, end_date: date, allowed_columns=None
+    ) -> pd.DataFrame:
+        """ "
         Fetch main ML dataset from InfluxDB.
         """
 
@@ -120,8 +158,8 @@ class MlDatasetService:
         self,
         start_date: date,
         end_date: date,
-        mode: str = "charge",       # "charge" or "dpr"
-        allowed_columns=None
+        mode: str = "charge",  # "charge" or "dpr"
+        allowed_columns=None,
     ) -> pd.DataFrame:
         """
         Fetch RM Charge or RM DPR dataset from InfluxDB.
@@ -157,22 +195,22 @@ class MlDatasetService:
 
         # Convert to timezone-aware timestamps
         start_local = pd.Timestamp(start_date).tz_localize(tz)
-        end_local   = pd.Timestamp(end_date).tz_localize(tz) + pd.Timedelta(days=1)
+        end_local = pd.Timestamp(end_date).tz_localize(tz) + pd.Timedelta(days=1)
 
         # Fetch 1 extra day before for better interpolation
         fetch_start = start_local - pd.Timedelta(days=1)
-        fetch_end   = end_local
+        fetch_end = end_local
 
         # Convert to UTC for Influx query
         fetch_start_utc = fetch_start.tz_convert("UTC")
-        fetch_end_utc   = fetch_end.tz_convert("UTC")
+        fetch_end_utc = fetch_end.tz_convert("UTC")
 
         # ---------------- FETCH RAW DATA ----------------
         df = self._safe_influx_call(
             measurement=self.hotmetal_measurement,
             start_dt=fetch_start_utc,
             end_dt=fetch_end_utc,
-            bucket=self.hotmetal_bucket
+            bucket=self.hotmetal_bucket,
         )
 
         if df is None or df.empty:
@@ -193,10 +231,7 @@ class MlDatasetService:
 
         # ---------------- TARGET TIME RANGE ----------------
         target_index = pd.date_range(
-            start=start_local,
-            end=end_local,
-            freq=f"{interval_minutes}min",
-            tz=tz
+            start=start_local, end=end_local, freq=f"{interval_minutes}min", tz=tz
         )
 
         # Merge raw + target for interpolation
@@ -225,13 +260,12 @@ class MlDatasetService:
         df_final.index.name = "time"
 
         return df_final
-    
 
     # ------------------- FETCH STEP 4 Distribution Data -------------------
     def fetch_distribution_data(self, start_date: date, end_date: date) -> pd.DataFrame:
         """
         Fetch burden distribution data from Postgres history table.
-            Args:   
+            Args:
             start_date (date): Start date for data fetch.
             end_date (date): End date for data fetch.
         Returns:
@@ -261,7 +295,7 @@ class MlDatasetService:
             query,
             engine,
             params={"start_date": start_date, "end_date": end_date},
-            parse_dates=["valid_from", "valid_upto"]
+            parse_dates=["valid_from", "valid_upto"],
         )
 
         if df.empty:
@@ -283,10 +317,7 @@ class MlDatasetService:
         df2 = pd.DataFrame(expanded_rows, columns=["time", "field_name", "field_value"])
 
         df_pivot = df2.pivot_table(
-            index="time",
-            columns="field_name",
-            values="field_value",
-            aggfunc="last"
+            index="time", columns="field_name", values="field_value", aggfunc="last"
         ).sort_index()
 
         # Convert numeric applicable columns
@@ -296,8 +327,12 @@ class MlDatasetService:
         nc_rings = [c for c in df_pivot.columns if "NONCOKE" in c and "RINGS" in c]
         nc_angles = [c for c in df_pivot.columns if "NONCOKE" in c and "ANGLES" in c]
 
-        df_pivot[coke_rings] = df_pivot[coke_rings].apply(pd.to_numeric, errors="coerce")
-        df_pivot[coke_angles] = df_pivot[coke_angles].apply(pd.to_numeric, errors="coerce")
+        df_pivot[coke_rings] = df_pivot[coke_rings].apply(
+            pd.to_numeric, errors="coerce"
+        )
+        df_pivot[coke_angles] = df_pivot[coke_angles].apply(
+            pd.to_numeric, errors="coerce"
+        )
         df_pivot[nc_rings] = df_pivot[nc_rings].apply(pd.to_numeric, errors="coerce")
         df_pivot[nc_angles] = df_pivot[nc_angles].apply(pd.to_numeric, errors="coerce")
 
@@ -305,14 +340,12 @@ class MlDatasetService:
         df_pivot["TOTAL_NON_COKE_PORTIONS"] = df_pivot[nc_rings].sum(axis=1)
 
         df_pivot["WEIGHTED_COKE_ANGLE"] = (
-            (df_pivot[coke_rings].values * df_pivot[coke_angles].values).sum(axis=1)
-            / df_pivot["TOTAL_COKE_PORTIONS"].replace(0, pd.NA)
-        )
+            df_pivot[coke_rings].values * df_pivot[coke_angles].values
+        ).sum(axis=1) / df_pivot["TOTAL_COKE_PORTIONS"].replace(0, pd.NA)
 
         df_pivot["WEIGHTED_NON_COKE_ANGLE"] = (
-            (df_pivot[nc_rings].values * df_pivot[nc_angles].values).sum(axis=1)
-            / df_pivot["TOTAL_NON_COKE_PORTIONS"].replace(0, pd.NA)
-        )
+            df_pivot[nc_rings].values * df_pivot[nc_angles].values
+        ).sum(axis=1) / df_pivot["TOTAL_NON_COKE_PORTIONS"].replace(0, pd.NA)
         # ---------------- ARROW SAFETY FIX (future-proof) ----------------
         for col in df_pivot.columns:
             if df_pivot[col].dtype == "object":
@@ -321,8 +354,6 @@ class MlDatasetService:
                 except (ValueError, TypeError):
                     # Column contains real text → keep as-is
                     pass
-
-
 
         return df_pivot
 

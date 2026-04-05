@@ -13,7 +13,7 @@ import os
 
 from openai import OpenAI
 
-OPENAI_MODEL        = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 USE_CODE_INTERPRETER = True
 
 
@@ -39,7 +39,7 @@ def call_llm(
     if not api_key:
         return "⚠️ OPENAI_API_KEY not set."
 
-    client   = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key)
     file_ids: list[str] = []
 
     if files:
@@ -56,7 +56,7 @@ def call_llm(
         "model": OPENAI_MODEL,
         "input": [
             {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt},
+            {"role": "user", "content": user_prompt},
         ],
     }
 
@@ -64,8 +64,9 @@ def call_llm(
         req["tools"] = [{"type": "code_interpreter", "container": {"type": "auto"}}]
 
     if file_ids:
-        req["attachments"]    = [
-            {"file_id": fid, "tools": [{"type": "code_interpreter"}]} for fid in file_ids
+        req["attachments"] = [
+            {"file_id": fid, "tools": [{"type": "code_interpreter"}]}
+            for fid in file_ids
         ]
         req["tool_resources"] = {"code_interpreter": {"file_ids": file_ids}}
 

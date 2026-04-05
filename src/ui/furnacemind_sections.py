@@ -23,7 +23,6 @@ from pathlib import Path
 import streamlit as st
 
 from config.config_loader import load_config
-
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -40,23 +39,23 @@ NAV_TABS = [
 config = load_config("setting_ds_dv.yml")
 
 MEASUREMENT_LABELS: dict[str, str] = {
-    "heatload_delta_t":    "Heatload Delta T",
-    "process_params":      "Process Params",
+    "heatload_delta_t": "Heatload Delta T",
+    "process_params": "Process Params",
     "temperature_profile": "Temperature Profile",
 }
 
 FREQUENCY_TO_TIMEDTA: dict[str, str | None] = {
-    "None":       None,
-    "1 minute":   "1min",
-    "5 minutes":  "5min",
+    "None": None,
+    "1 minute": "1min",
+    "5 minutes": "5min",
     "10 minutes": "10min",
     "15 minutes": "15min",
     "30 minutes": "30min",
-    "1 hour":     "1h",
-    "6 hours":    "6h",
-    "8 hours":    "8h",
-    "12 hours":   "12h",
-    "1 day":      "1d",
+    "1 hour": "1h",
+    "6 hours": "6h",
+    "8 hours": "8h",
+    "12 hours": "12h",
+    "1 day": "1d",
 }
 
 FIELD_LABELS: dict[str, str] = {
@@ -71,6 +70,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 
 # ── Shared utilities ──────────────────────────────────────────────────────────
+
 
 def _ensure_ist(dt: datetime) -> datetime:
     if dt.tzinfo is None:
@@ -87,9 +87,9 @@ def load_schemas() -> dict:
     this_dir = Path(__file__).resolve().parent
     base = this_dir.parent / "config" / "schemas"
     return {
-        "shift":  json.load(open(base / "shift_payload_schema.json")),
-        "day":    json.load(open(base / "day_payload_schema.json")),
-        "week":   json.load(open(base / "weekly_payload_schema.json")),
+        "shift": json.load(open(base / "shift_payload_schema.json")),
+        "day": json.load(open(base / "day_payload_schema.json")),
+        "week": json.load(open(base / "weekly_payload_schema.json")),
         "biweek": json.load(open(base / "biweekly_payload_schema.json")),
     }
 
@@ -99,8 +99,13 @@ def select_nav_tab() -> str:
     try:
         if hasattr(st, "segmented_control"):
             return st.segmented_control(
-                "Navigation", NAV_TABS, default=NAV_TABS[0], key="furnacemind_nav",
+                "Navigation",
+                NAV_TABS,
+                default=NAV_TABS[0],
+                key="furnacemind_nav",
             )
     except TypeError:
         pass
-    return st.radio("Navigation", NAV_TABS, horizontal=True, index=0, key="furnacemind_nav")
+    return st.radio(
+        "Navigation", NAV_TABS, horizontal=True, index=0, key="furnacemind_nav"
+    )

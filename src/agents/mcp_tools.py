@@ -1,3 +1,10 @@
+"""MCP-compatible Plotly chart tools for the FurnaceMind agent.
+
+These tools wrap common charting operations (time-series line plots) so the
+agent can generate interactive Plotly figures by calling structured tool
+functions instead of writing raw code.
+"""
+
 from __future__ import annotations
 
 import re
@@ -12,9 +19,8 @@ try:
 except Exception:  # pragma: no cover
     st = None  # type: ignore
 
-from data import retrieval as dr
 from config.config_loader import load_config
-
+from data import retrieval as dr
 
 # ---------------------------------------
 # 🔧 CONFIG LOAD (Your Actual Setup)
@@ -54,6 +60,7 @@ FIELD_LABELS = {
 # 🔧 MCP TOOL 1 — Influx Data Fetcher
 # =======================================
 
+
 class InfluxDataFetcher:
 
     def fetch(
@@ -62,13 +69,13 @@ class InfluxDataFetcher:
         measurements: list[str] | None = None,
         fields: list[str] | None = None,
         field_match_mode: str = "contains",  # "contains" | "exact"
-        request_type: str = 'windowed-average',
+        request_type: str = "windowed-average",
         window_by: str = "15 minutes",
     ) -> pd.DataFrame:
         """
         Fetch data from InfluxDB based on the specified parameters.
-        
-        Parameters:
+
+        Args:
         - time_range: A string like "last 8 hours" or a custom range.
         - measurements: List of measurement keys to fetch (e.g., ["heatload_delta_t"]).
         - fields: Optional list of field names to keep in the final DataFrame.
@@ -90,8 +97,8 @@ class InfluxDataFetcher:
             FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
             MEASUREMENT_LABELS=MEASUREMENT_LABELS,
             FIELD_LABELS=FIELD_LABELS,
-            request_type = request_type,
-            window_by = window_by,
+            request_type=request_type,
+            window_by=window_by,
         )
 
         if df is None or df.empty:
@@ -109,8 +116,7 @@ class InfluxDataFetcher:
             else:
                 wanted = [str(f).lower() for f in fields]
                 keep = [
-                    c for c in df.columns
-                    if any(w in str(c).lower() for w in wanted)
+                    c for c in df.columns if any(w in str(c).lower() for w in wanted)
                 ]
 
             # If we matched something, filter; otherwise leave df unchanged for UI fallback.
@@ -123,6 +129,7 @@ class InfluxDataFetcher:
 # =======================================
 # 🔧 MCP TOOL 2 — Python Plotter
 # =======================================
+
 
 class PythonPlotter:
 
@@ -187,7 +194,7 @@ class PythonPlotter:
             cols = list(df.columns[:2])
 
         # Escape title for embedding in Python code
-        safe_title = title.replace("\\", "\\\\").replace("\"", "\\\"")
+        safe_title = title.replace("\\", "\\\\").replace('"', '\\"')
 
         # We plot df.index as time. Keep it robust even if index is not datetime.
         code = (

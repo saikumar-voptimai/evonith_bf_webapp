@@ -1,7 +1,13 @@
+"""File-based structured store for BF2 operational summaries.
+
+Persists shift, daily, weekly, and bi-weekly summaries as JSON files using
+atomic writes (write to ``.tmp`` then rename) to prevent data corruption.
+"""
+
 import json
+from datetime import date, datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any
-from datetime import datetime, date
+from typing import Any, Dict, List, Optional
 
 from memory.schemas import ShiftSummary
 
@@ -12,7 +18,13 @@ class StructuredStore:
     Stores shift summaries + aggregated daily/weekly/bi-weekly summaries.
     """
 
-    def __init__(self, base_dir: str = "src/storage"):
+    def __init__(self, base_dir: str = "src/storage") -> None:
+        """Initialise the store and ensure all JSON backing files exist.
+
+        Args:
+            base_dir: Directory path where the four JSON files will be created.
+                      The directory is created if it does not exist.
+        """
         self.base_path = Path(base_dir)
         self.base_path.mkdir(parents=True, exist_ok=True)
 
@@ -30,24 +42,25 @@ class StructuredStore:
             if not f.exists():
                 self._write_file(f, [])
 
-
-
     # Shift write operations
     def save_shift_summary(self, summary: ShiftSummary) -> None:
+        """Persist a :class:`~memory.schemas.ShiftSummary` to disk.
+
+        The write is idempotent: if a record with the same ``shift_id`` already
+        exists, the method returns immediately without modifying the store.
+
+        Args:
+            summary: The structured shift summary to save.
+        """
         records = self._read_file(self.shift_file)
 
         # Idempotency
         if any(r.get("shift_id") == summary.shift_id for r in records):
             return
 
-        records.append(
-            summary.model_dump(exclude_none=True)
-        )
+        records.append(summary.model_dump(exclude_none=True))
 
         self._write_file(self.shift_file, records)
-
-
-
 
     # Shift read operations
     def load_shift_summary(self, shift_id: str) -> Optional[ShiftSummary]:
@@ -55,7 +68,6 @@ class StructuredStore:
         Compatibility alias for callers expecting load_shift_summary().
         """
         return self.get_shift_by_id(shift_id)
-    
 
     def load_latest_shift_summary(self) -> Optional[ShiftSummary]:
         """
@@ -66,11 +78,15 @@ class StructuredStore:
             return None
         return max(shifts, key=lambda s: s.shift_start)
 
-
     def load_all_shift_summaries(self) -> List[ShiftSummary]:
+        """Load and deserialise all shift summaries from disk.
+
+        Returns:
+            List of :class:`~memory.schemas.ShiftSummary` objects, in
+            insertion order.
+        """
         records = self._read_file(self.shift_file)
         return [ShiftSummary(**r) for r in records]
-    
 
     def load_last_n_shift_summaries(self, n: int) -> List[ShiftSummary]:
         """
@@ -80,31 +96,44 @@ class StructuredStore:
         # Guard: empty store
         if not shifts:
             return []
-        
+
         # Sort by shift_start (ascending)
         shifts.sort(key=lambda s: s.shift_start)
         # Return last N
         return shifts[-n:]
 
-
     def get_shift_by_id(self, shift_id: str) -> Optional[ShiftSummary]:
+        """Retrieve a single shift summary by its unique ``shift_id``.
+
+        Args:
+            shift_id: Identifier in ``YYYY-MM-DD_Shift_A|B|C`` format.
+
+        Returns:
+            A :class:`~memory.schemas.ShiftSummary` if found, else ``None``.
+        """
         records = self._read_file(self.shift_file)
         for r in records:
             if r.get("shift_id") == shift_id:
                 return ShiftSummary(**r)
         return None
 
-
     # UI-friendly alias
     def get_shift(self, shift_id: str) -> Optional[ShiftSummary]:
+        """Alias for :meth:`get_shift_by_id` used by UI components."""
         return self.get_shift_by_id(shift_id)
 
     def get_shifts_for_day(self, day_id: str) -> List[ShiftSummary]:
-        """
-        day_id format: YYYY-MM-DD
+        """Return all shift summaries for a given calendar day, sorted by start time.
+
+        Args:
+            day_id: ISO date string in ``YYYY-MM-DD`` format.
+
+        Returns:
+            Sorted list of :class:`~memory.schemas.ShiftSummary` objects.
         """
         shifts = [
-            s for s in self.load_all_shift_summaries()
+            s
+            for s in self.load_all_shift_summaries()
             if s.shift_start.date().isoformat() == day_id
         ]
         shifts.sort(key=lambda s: s.shift_start)
@@ -118,15 +147,16 @@ class StructuredStore:
         shifts = self.get_shifts_for_day(day_id)
         return [s.shift_id for s in shifts]
 
-
-
     # Daily summaries
     def daily_exists(self, day_id: str) -> bool:
-        return any(
-            r.get("window_id") == day_id
-            for r in self._read_file(self.daily_file)
-        )
+        """Check whether a daily summary for *day_id* already exists.
 
+        Args:
+            day_id: ISO date string (``YYYY-MM-DD``).
+        """
+        return any(
+            r.get("window_id") == day_id for r in self._read_file(self.daily_file)
+        )
 
     def save_daily_summary(
         self,
@@ -135,6 +165,13 @@ class StructuredStore:
         summary_text: str,
         structured: Dict[str, Any],
     ) -> None:
+        """Persist a daily summary (idempotent: skips if *day_id* already stored).
+
+        Args:
+            day_id:       ISO date string (``YYYY-MM-DD``).
+            summary_text: LLM-generated narrative for the day.
+            structured:   Additional metadata dict merged into the record.
+        """
         records = self._read_file(self.daily_file)
         if any(r.get("window_id") == day_id for r in records):
             return
@@ -149,21 +186,32 @@ class StructuredStore:
         )
         self._write_file(self.daily_file, records)
 
-
     def load_all_daily_summaries(self) -> List[Dict[str, Any]]:
+        """Load all daily summaries sorted by ``window_id`` (ascending)."""
         records = self._read_file(self.daily_file)
         records.sort(key=lambda r: r.get("window_id", ""))
         return records
 
-
     def get_daily_by_id(self, day_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a single daily summary by ``window_id``.
+
+        Returns:
+            The summary dict if found, else ``None``.
+        """
         for r in self._read_file(self.daily_file):
             if r.get("window_id") == day_id:
                 return r
         return None
 
-
     def get_daily_for_week(self, week_id: str) -> List[Dict[str, Any]]:
+        """Return daily summaries belonging to *week_id* sorted by date.
+
+        Args:
+            week_id: ISO week string in ``YYYY-WNN`` format.
+
+        Returns:
+            List of daily summary dicts belonging to the week, ascending order.
+        """
         out: List[Dict[str, Any]] = []
 
         for r in self.load_all_daily_summaries():
@@ -179,13 +227,15 @@ class StructuredStore:
         out.sort(key=lambda r: r.get("window_id", ""))
         return out
 
-
- 
     # Weekly summaries
     def weekly_exists(self, week_id: str) -> bool:
+        """Check whether a weekly summary for *week_id* already exists.
+
+        Args:
+            week_id: ISO week string (``YYYY-WNN``).
+        """
         return any(
-            r.get("window_id") == week_id
-            for r in self._read_file(self.weekly_file)
+            r.get("window_id") == week_id for r in self._read_file(self.weekly_file)
         )
 
     def save_weekly_summary(
@@ -195,6 +245,13 @@ class StructuredStore:
         summary_text: str,
         structured: Dict[str, Any],
     ) -> None:
+        """Persist a weekly summary (idempotent: skips if *week_id* already stored).
+
+        Args:
+            week_id:      ISO week string (``YYYY-WNN``).
+            summary_text: LLM-generated narrative for the week.
+            structured:   Additional metadata dict merged into the record.
+        """
         records = self._read_file(self.weekly_file)
         if any(r.get("window_id") == week_id for r in records):
             return
@@ -210,17 +267,31 @@ class StructuredStore:
         self._write_file(self.weekly_file, records)
 
     def load_all_weekly_summaries(self) -> List[Dict[str, Any]]:
+        """Load all weekly summaries sorted by ``window_id`` (ascending)."""
         records = self._read_file(self.weekly_file)
         records.sort(key=lambda r: r.get("window_id", ""))
         return records
 
     def get_weekly_by_id(self, week_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a single weekly summary by ``window_id``.
+
+        Returns:
+            The summary dict if found, else ``None``.
+        """
         for r in self._read_file(self.weekly_file):
             if r.get("window_id") == week_id:
                 return r
         return None
 
     def get_weeks_for_biweek(self, biweek_id: str) -> List[Dict[str, Any]]:
+        """Return weekly summaries belonging to *biweek_id* sorted by week.
+
+        Args:
+            biweek_id: Bi-week identifier in ``YYYY-BWNN`` format.
+
+        Returns:
+            List of weekly summary dicts belonging to the bi-week, ascending.
+        """
         out: List[Dict[str, Any]] = []
 
         for r in self.load_all_weekly_summaries():
@@ -239,15 +310,16 @@ class StructuredStore:
         out.sort(key=lambda r: r.get("window_id", ""))
         return out
 
-
-
     # Bi-weekly summaries
     def biweekly_exists(self, biweek_id: str) -> bool:
-        return any(
-            r.get("window_id") == biweek_id
-            for r in self._read_file(self.biweekly_file)
-        )
+        """Check whether a bi-weekly summary for *biweek_id* already exists.
 
+        Args:
+            biweek_id: Bi-week string (``YYYY-BWNN``).
+        """
+        return any(
+            r.get("window_id") == biweek_id for r in self._read_file(self.biweekly_file)
+        )
 
     def save_biweekly_summary(
         self,
@@ -256,6 +328,13 @@ class StructuredStore:
         summary_text: str,
         structured: Dict[str, Any],
     ) -> None:
+        """Persist a bi-weekly summary (idempotent: skips if already stored).
+
+        Args:
+            biweek_id:    Bi-week string (``YYYY-BWNN``).
+            summary_text: LLM-generated narrative for the bi-week.
+            structured:   Additional metadata dict merged into the record.
+        """
         records = self._read_file(self.biweekly_file)
         if any(r.get("window_id") == biweek_id for r in records):
             return
@@ -270,20 +349,22 @@ class StructuredStore:
         )
         self._write_file(self.biweekly_file, records)
 
-
     def load_all_biweekly_summaries(self) -> List[Dict[str, Any]]:
+        """Load all bi-weekly summaries sorted by ``window_id`` (ascending)."""
         records = self._read_file(self.biweekly_file)
         records.sort(key=lambda r: r.get("window_id", ""))
         return records
 
-
     def get_biweekly_by_id(self, biweek_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a single bi-weekly summary by ``window_id``.
+
+        Returns:
+            The summary dict if found, else ``None``.
+        """
         for r in self._read_file(self.biweekly_file):
             if r.get("window_id") == biweek_id:
                 return r
         return None
-
-
 
     # Unified read API (UI uses this)
     def get_report(
@@ -317,17 +398,17 @@ class StructuredStore:
 
         raise ValueError(f"Unknown report level: {level}")
 
-
-
     # Internal helpers
-    
+
     @staticmethod
     def _read_file(path: Path) -> List[dict]:
+        """Read and deserialise a JSON array from *path*."""
         with open(path, "r") as f:
             return json.load(f)
 
     @staticmethod
     def _write_file(path: Path, data: List[dict]) -> None:
+        """Atomically serialise *data* to *path* via a temporary file."""
         tmp_path = path.with_suffix(".tmp")
         with open(tmp_path, "w") as f:
             json.dump(data, f, indent=2, default=str)

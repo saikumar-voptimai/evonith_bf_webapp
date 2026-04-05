@@ -1,3 +1,13 @@
+"""Document and image ingestion pipeline for the Knowledge Hub.
+
+Chunks text documents into overlapping windows and upserts them into the
+Qdrant Knowledge collection via :class:`~memory.knowledge_vector_store.KnowledgeVectorStore`.
+Images are handled via multimodal embeddings from
+:class:`~embeddings.cloud_embedding.CloudEmbeddingClient`.
+
+Entry point: :func:`process_file`.
+"""
+
 import os
 import uuid
 from pathlib import Path
@@ -5,17 +15,27 @@ from pathlib import Path
 from qdrant_client.models import PointStruct
 
 from multimodal.parsers import (
-    parse_pdf,
     parse_docx,
-    parse_pptx,
     parse_excel,
+    parse_pdf,
+    parse_pptx,
 )
 
 
 # ---------------------------------------------
 # 🔹 Text Chunking
 # ---------------------------------------------
-def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100):
+def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> list[str]:
+    """Split *text* into overlapping chunks of *chunk_size* characters.
+
+    Args:
+        text:       Input text to split.
+        chunk_size: Maximum characters per chunk.
+        overlap:    Number of characters to overlap between consecutive chunks.
+
+    Returns:
+        List of text chunks.
+    """
     chunks = []
     start = 0
 
@@ -30,7 +50,20 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100):
 # ---------------------------------------------
 # 🔹 Main File Processor
 # ---------------------------------------------
-def process_file(file, knowledge_store, embedding_client):
+def process_file(file, knowledge_store, embedding_client) -> None:
+    """Parse, chunk, embed, and upsert a document or image into the Knowledge Hub.
+
+    Supports PDF, DOCX, PPTX, XLS/XLSX (text chunking + sentence embeddings)
+    and PNG/JPG/JPEG (multimodal image embeddings).
+
+    Args:
+        file:            Streamlit ``UploadedFile`` object.
+        knowledge_store: :class:`~memory.knowledge_vector_store.KnowledgeVectorStore`
+                         instance to upsert chunks into.
+        embedding_client: :class:`~embeddings.cloud_embedding.CloudEmbeddingClient`
+                          used for both text and image embeddings.
+    """
+    file_type = file.name.split(".")[-1].lower()
 
     file_type = file.name.split(".")[-1].lower()
 
@@ -72,7 +105,6 @@ def process_file(file, knowledge_store, embedding_client):
 
         return
 
-
     # ==================================================
     # 📄 TEXT DOCUMENT HANDLING
     # ==================================================
@@ -93,7 +125,6 @@ def process_file(file, knowledge_store, embedding_client):
         # Unsupported file type
         return
 
-
     if not text:
         return
 
@@ -111,7 +142,7 @@ def process_file(file, knowledge_store, embedding_client):
                     payload={
                         "source": file.name,
                         "type": file_type,
-                        "content": chunk,   # store text for retrieval / display
+                        "content": chunk,  # store text for retrieval / display
                     },
                 )
             ],

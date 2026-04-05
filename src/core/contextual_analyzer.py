@@ -1,4 +1,12 @@
+"""Context-aware aggregation of shift, day, week, and bi-week summaries.
+
+This module uses stored LLM shift summaries together with optional operator
+observations and semantically similar historical records to produce higher-level
+operational intelligence reports via the configured LLM.
+"""
+
 from typing import List, Optional
+
 from utils.prompts import PromptTemplates
 
 
@@ -8,9 +16,14 @@ class ContextualAnalyzer:
     using stored summaries (memory-based reasoning).
     """
 
-    def __init__(self, llm):
-        self.llm = llm
+    def __init__(self, llm) -> None:
+        """Initialise the analyzer with an LLM client.
 
+        Args:
+            llm: An LLM client implementing
+                ``.generate(system_prompt, user_prompt) -> str``.
+        """
+        self.llm = llm
 
     # Helpers
     @staticmethod
@@ -37,31 +50,26 @@ class ContextualAnalyzer:
         sections = []
 
         if previous_shift:
-            sections.append(
-                "PREVIOUS SHIFT CONTEXT:\n"
-                + previous_shift
-            )
+            sections.append("PREVIOUS SHIFT CONTEXT:\n" + previous_shift)
 
         if historical_similar:
             sections.append(
-                "SIMILAR HISTORICAL SHIFTS:\n"
-                + "\n\n".join(historical_similar)
+                "SIMILAR HISTORICAL SHIFTS:\n" + "\n\n".join(historical_similar)
             )
 
         return "\n\n".join(sections)
 
-
     # Day summary (UPDATED)
 
     def build_day_summary(
-    self,
-    day_id: str,
-    shift_payloads: list,
-    *,
-    previous_shift: Optional[str] = None,
-    historical_similar: Optional[List[str]] = None,
-    operator_notes: Optional[List[str]] = None, 
-):
+        self,
+        day_id: str,
+        shift_payloads: list,
+        *,
+        previous_shift: Optional[str] = None,
+        historical_similar: Optional[List[str]] = None,
+        operator_notes: Optional[List[str]] = None,
+    ):
         """
         Build a context-aware daily summary using:
         - current shift(s)
@@ -89,21 +97,19 @@ class ContextualAnalyzer:
         # Operator observations block (NEW)
         operator_block = None
         if operator_notes:
-            operator_block = (
-                "Operator-Reported Observations:\n"
-                + "\n".join(f"- {note}" for note in operator_notes)
+            operator_block = "Operator-Reported Observations:\n" + "\n".join(
+                f"- {note}" for note in operator_notes
             )
 
         # Final context
         full_context = "\n\n".join(
-            block
-            for block in [history_block, operator_block, current_block]
-            if block
+            block for block in [history_block, operator_block, current_block] if block
         )
 
         user_prompt = PromptTemplates.CONTEXTUAL_ANALYSIS_TASK.format(
             current_shift_summary=current_block,
-            previous_shift_summary=previous_shift or "No previous shift data available.",
+            previous_shift_summary=previous_shift
+            or "No previous shift data available.",
             historical_summaries=(
                 "\n\n".join(historical_similar)
                 if historical_similar
@@ -121,10 +127,7 @@ class ContextualAnalyzer:
             user_prompt=user_prompt,
         )
 
-        unstable = [
-            p for p in shift_payloads
-            if p.get("overall_stability") != "stable"
-        ]
+        unstable = [p for p in shift_payloads if p.get("overall_stability") != "stable"]
 
         structured = {
             "window_id": day_id,
@@ -135,10 +138,23 @@ class ContextualAnalyzer:
 
         return llm_summary, structured
 
-
-
-    # Week summary (UNCHANGED)
     def build_week_summary(self, week_id: str, day_payloads: list):
+        """Build a weekly summary from up to seven daily payload dicts.
+
+        Each daily payload is expected to contain at minimum ``window_id`` and
+        ``summary_text`` keys.  Missing keys are silently replaced with
+        placeholder strings.
+
+        Args:
+            week_id:      ISO week identifier in ``YYYY-WNN`` format.
+            day_payloads: List of daily summary dicts (or Qdrant retriever
+                          results with a ``payload`` key).
+
+        Returns:
+            A two-tuple ``(llm_summary, structured)`` where *structured* is a
+            dict containing ``window_id``, ``overall_stability``,
+            ``num_days``, and ``num_unstable_days``.
+        """
         day_payloads = self._unwrap_payloads(day_payloads)
 
         context_block = "\n\n".join(
@@ -156,8 +172,7 @@ class ContextualAnalyzer:
         )
 
         unstable_days = [
-            p for p in day_payloads
-            if p.get("overall_stability") != "stable"
+            p for p in day_payloads if p.get("overall_stability") != "stable"
         ]
 
         structured = {
@@ -169,9 +184,19 @@ class ContextualAnalyzer:
 
         return llm_summary, structured
 
-
-    # Bi-week summary (UNCHANGED)
     def build_biweek_summary(self, biweek_id: str, week_payloads: list):
+        """Build a bi-weekly summary from two weekly payload dicts.
+
+        Args:
+            biweek_id:     Bi-week identifier in ``YYYY-BWNN`` format.
+            week_payloads: List of weekly summary dicts (or Qdrant retriever
+                           results with a ``payload`` key).
+
+        Returns:
+            A two-tuple ``(llm_summary, structured)`` where *structured* is a
+            dict containing ``window_id``, ``overall_stability``,
+            ``num_weeks``, and ``num_unstable_weeks``.
+        """
         week_payloads = self._unwrap_payloads(week_payloads)
 
         context_block = "\n\n".join(
@@ -189,8 +214,7 @@ class ContextualAnalyzer:
         )
 
         unstable_weeks = [
-            p for p in week_payloads
-            if p.get("overall_stability") != "stable"
+            p for p in week_payloads if p.get("overall_stability") != "stable"
         ]
 
         structured = {

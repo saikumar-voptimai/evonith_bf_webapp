@@ -7,8 +7,8 @@
 
 from __future__ import annotations
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 from config.config_loader import load_config
 from data import retrieval as dr
@@ -16,23 +16,23 @@ from data import retrieval as dr
 _config = load_config("setting_ds_dv.yml")
 
 MEASUREMENT_LABELS: dict[str, str] = {
-    "heatload_delta_t":    "Heatload Delta T",
-    "process_params":      "Process Params",
+    "heatload_delta_t": "Heatload Delta T",
+    "process_params": "Process Params",
     "temperature_profile": "Temperature Profile",
 }
 
 FREQUENCY_TO_TIMEDTA: dict[str, str | None] = {
-    "None":       None,
-    "1 minute":   "1min",
-    "5 minutes":  "5min",
+    "None": None,
+    "1 minute": "1min",
+    "5 minutes": "5min",
     "10 minutes": "10min",
     "15 minutes": "15min",
     "30 minutes": "30min",
-    "1 hour":     "1h",
-    "6 hours":    "6h",
-    "8 hours":    "8h",
-    "12 hours":   "12h",
-    "1 day":      "1d",
+    "1 hour": "1h",
+    "6 hours": "6h",
+    "8 hours": "8h",
+    "12 hours": "12h",
+    "1 day": "1d",
 }
 
 FIELD_LABELS: dict[str, str] = {

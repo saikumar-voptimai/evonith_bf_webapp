@@ -1,6 +1,7 @@
 # src/custom_pages/1_Welcome.py
 import streamlit as st
-from utils.session import logout_user, is_admin, is_supervisor
+
+from utils.session import is_admin, is_supervisor, logout_user
 
 # ---------------------------------------------------
 #  AUTH CHECK
@@ -77,6 +78,7 @@ selection = st.session_state.get("admin_tool_selection")
 # Hopper Mapping → Admin & Supervisor
 if selection == "hopper" and (is_admin() or is_supervisor()):
     from ui.hopper_admin_page import hopper_admin_page
+
     hopper_admin_page(st.session_state.get("auth_user"))
     st.stop()
 
@@ -84,11 +86,13 @@ if selection == "hopper" and (is_admin() or is_supervisor()):
 if is_admin():
     if selection == "burden":
         from ui.burden_admin_page import burden_admin_page
+
         burden_admin_page(st.session_state.get("auth_user"))
         st.stop()
 
     elif selection == "register":
         from ui.user_management import register_page
+
         register_page()
         st.stop()
 
@@ -97,7 +101,10 @@ if is_admin():
 #  MAIN PAGE CONTENT (Default welcome content)
 # ----------------------------------------------------
 st.title("Welcome to the Manufacturing Dashboard")
-st.write("This dashboard provides tools for data submission, visualization, and recommendations.")
+st.write(
+    "This dashboard provides tools for data submission, visualization, and recommendations."
+)
+
 
 # ---- Image Loading ----
 def load_images():
@@ -105,6 +112,7 @@ def load_images():
     v_optimAIse_logo = "src/assets/data/VOPTIMAISELOGO.png"
     evonith_logo = "src/assets/data/evonith.png"
     return v_optimAIse_logo, evonith_logo
+
 
 v_optimAIse_logo, evonith_logo = load_images()
 
@@ -115,86 +123,72 @@ with col2:
     st.image(evonith_logo, width=500)
 
 # ---- Intro ----
-st.markdown(
-    """
+st.markdown("""
     **BlastFurnace WebApp** serves as a comprehensive digital platform for monitoring 
     and optimizing the Blast Furnace operations at Evonith. Through the combined efforts 
     of **V-OptimAIse** and **Evonith**, we aim to improve operational efficiency, 
     streamline data analytics, and provide actionable insights.
-    """
-)
+    """)
 
 st.markdown("---")
 st.header("Explore Our Features:")
 
 # ---- Data Submission ----
 st.subheader("1. Data Submission Page (Data Governance)")
-st.write(
-    """
+st.write("""
     - **Purpose**: Consolidate both offline and online BF data in one place, making it accessible 
       to operations teams at EML, our AI models for inference, and for V-OptimAIse analytics & training. 
     - **Key Functions**:
       - Upload and download offline/online data.
       - Ensure data consistency and availability for downstream AI/analytics systems.
-    """
-)
+    """)
 
 # ---- V-Sense ----
 st.subheader("2. V-Sense (AI Recommendation System)")
-st.write(
-    """
+st.write("""
     - **Purpose**: Provide real-time, self-learning AI-driven recommendations to operators.
     - **Key Functions**:
       - Generate textual recommendations along with reasoning, explaining the motivation 
         behind each suggested action.
       - Continually refine recommendations based on evolving furnace conditions 
         and historical outcomes.
-    """
-)
+    """)
 
 # ---- V-Board ----
 st.subheader("3. V-Board (Data Visualization)")
-st.write(
-    """
+st.write("""
     - **Purpose**: Deliver tailored data visualizations to facilitate quick insights 
       into real-time operations.
     - **Key Functions**:
       - Visualize 2D heat load or temperature distributions in real-time, aiding 
         in stave analysis and quick decision-making.
       - Customize dashboards to meet the specific needs of various user groups.
-    """
-)
+    """)
 
 # ---- Reporter ----
 st.subheader("4. Reporter (GenAI Reporter)")
-st.write(
-    """
+st.write("""
     - **Purpose**: Automate weekly/daily reporting for various teams, saving time 
       and reducing human error.
     - **Key Functions**:
       - Generate comprehensive reports on furnace performance.
       - Compare current performance with historical benchmarks, offering deep 
         insights into trends and anomalies.
-    """
-)
+    """)
 
 # ---- Chatbot ----
 st.subheader("5. Chatbot (Steel Manufacturing Expert)")
-st.write(
-    """
+st.write("""
     - **Purpose**: Provide answers, guidance, and recommendations to teams in the plant, 
       leveraging knowledge from local production data.
     - **Key Functions**:
       - Runs locally with limited internet access, ensuring data privacy and protection.
       - Offers accurate, tailor-cut responses based on the plant's own production 
         and technical data.
-    """
-)
+    """)
 
 st.markdown("---")
-st.markdown(
-    """
+st.markdown("""
     **We hope you find this platform useful and intuitive!**  
     Use the sidebar to navigate through the pages and access each feature.
-    """
-)
+    """)

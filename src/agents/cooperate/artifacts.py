@@ -20,12 +20,12 @@ def render_artifacts_panel() -> None:
             st.info("No plot yet — ask me to visualize something.")
 
     with data_tab:
-        df   = st.session_state.get("copilot_df")
+        df = st.session_state.get("copilot_df")
         meta = st.session_state.get("copilot_df_meta", {})
         if df is not None:
             if meta:
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Rows",    df.shape[0])
+                c1.metric("Rows", df.shape[0])
                 c2.metric("Columns", df.shape[1])
                 c3.metric("Dataset", meta.get("dataset_id", "—"))
             st.dataframe(df, use_container_width=True, key="artifact_df_main")

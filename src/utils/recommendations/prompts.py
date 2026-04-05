@@ -1,9 +1,9 @@
 import pandas as pd
 
+
 def prompt_recommendation_system(
-        df_hist: pd.DataFrame, 
-        optimal_solution: pd.DataFrame,
-        target_output: str) -> str:
+    df_hist: pd.DataFrame, optimal_solution: pd.DataFrame, target_output: str
+) -> str:
     """
     Generate a prompt for the recommendation system based on historical data and target parameter.
 
@@ -239,4 +239,4 @@ def prompt_recommendation_system(
     {df_hist.tail(5).to_string(index=False)}
     
     Please provide your recommendations in a clear and concise manner.
-    """                                                                                     
+    """
