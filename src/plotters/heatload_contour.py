@@ -1,8 +1,22 @@
-import numpy as np
+"""Polar Matplotlib heat-load contour plotter.
+
+Provides a simple polar contour plot of per-quadrant heat load values.
+For the Plotly-based multi-row circumferential view, use
+:class:`~plotters.circumferential_contour.CircumferentialPlotter`.
+"""
+
 import matplotlib.pyplot as plt
+import numpy as np
+
 from .base_contour import BasePlotter
 
+
 class HeatLoadPlotter(BasePlotter):
+    """Matplotlib polar plotter for heat load per quadrant.
+
+    Inherits mask and colorbar helpers from :class:`~plotters.base_contour.BasePlotter`.
+    """
+
     def plot(self, heatload_values, grid):
         """
         Plot heat load distribution.

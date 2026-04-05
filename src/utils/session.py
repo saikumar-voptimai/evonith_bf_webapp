@@ -1,3 +1,11 @@
+"""Streamlit session and cookie-based authentication helpers.
+
+Manages login state across Streamlit reruns using both
+:mod:`streamlit.session_state` and an encrypted cookie jar
+(``streamlit-cookies-manager``).  Provides role-based guards for
+the ``admin`` and ``supervisor`` roles.
+"""
+
 # utils/session.py
 import streamlit as st
 from streamlit_cookies_manager import EncryptedCookieManager
@@ -5,7 +13,7 @@ from streamlit_cookies_manager import EncryptedCookieManager
 # Initialize cookies (stored per browser tab)
 cookies = EncryptedCookieManager(
     prefix="bf_dashboard_",  # Unique prefix
-    password="use_a_random_secret_key_here"  # change this to a secure key
+    password="use_a_random_secret_key_here",  # change this to a secure key
 )
 
 if not cookies.ready():
@@ -25,9 +33,12 @@ def is_logged_in() -> bool:
 
 
 def is_admin() -> bool:
+    """Return ``True`` when the logged-in user holds the ``admin`` role."""
     return is_logged_in() and st.session_state.get("role") == "admin"
 
-def is_supervisor() -> bool:             
+
+def is_supervisor() -> bool:
+    """Return ``True`` when the logged-in user holds the ``supervisor`` role."""
     return is_logged_in() and st.session_state.get("role") == "supervisor"
 
 

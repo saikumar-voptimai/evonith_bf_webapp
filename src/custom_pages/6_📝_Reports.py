@@ -1,21 +1,22 @@
-import streamlit as st
 import os
-import pandas as pd
-from PyPDF2 import PdfReader
-import openai
-import matplotlib.pyplot as plt
-from io import BytesIO
-import dotenv
 import uuid
-from langchain_openai import ChatOpenAI, AzureChatOpenAI
+from io import BytesIO
+
+import dotenv
+import matplotlib.pyplot as plt
+import openai
+import pandas as pd
+import streamlit as st
+from langchain.schema import AIMessage, HumanMessage
 from langchain_anthropic import ChatAnthropic
-from langchain.schema import HumanMessage, AIMessage
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from PyPDF2 import PdfReader
 
 from utils.rag_methods import (
-    load_doc_to_db, 
+    load_doc_to_db,
     load_url_to_db,
-    stream_llm_response,
     stream_llm_rag_response,
+    stream_llm_response,
 )
 
 dotenv.load_dotenv()
@@ -44,27 +45,35 @@ if "rag_sources" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there! How can I assist you today?"}
-]
+        {"role": "assistant", "content": "Hi there! How can I assist you today?"},
+    ]
 
 
 # --- Side Bar LLM API Tokens ---
 with st.sidebar:
     if "AZ_OPENAI_API_KEY" not in os.environ:
-        default_openai_api_key = os.getenv("OPENAI_API_KEY") if os.getenv("OPENAI_API_KEY") is not None else ""  # only for development environment, otherwise it should return None
+        default_openai_api_key = (
+            os.getenv("OPENAI_API_KEY")
+            if os.getenv("OPENAI_API_KEY") is not None
+            else ""
+        )  # only for development environment, otherwise it should return None
         with st.popover("🔐 OpenAI"):
             openai_api_key = st.text_input(
-                "Introduce your OpenAI API Key (https://platform.openai.com/)", 
-                value=default_openai_api_key, 
+                "Introduce your OpenAI API Key (https://platform.openai.com/)",
+                value=default_openai_api_key,
                 type="password",
                 key="openai_api_key",
             )
 
-        default_anthropic_api_key = os.getenv("ANTHROPIC_API_KEY") if os.getenv("ANTHROPIC_API_KEY") is not None else ""
+        default_anthropic_api_key = (
+            os.getenv("ANTHROPIC_API_KEY")
+            if os.getenv("ANTHROPIC_API_KEY") is not None
+            else ""
+        )
         with st.popover("🔐 Anthropic"):
             anthropic_api_key = st.text_input(
-                "Introduce your Anthropic API Key (https://console.anthropic.com/)", 
-                value=default_anthropic_api_key, 
+                "Introduce your Anthropic API Key (https://console.anthropic.com/)",
+                value=default_anthropic_api_key,
                 type="password",
                 key="anthropic_api_key",
             )
@@ -77,7 +86,9 @@ with st.sidebar:
 
 # --- Main Content ---
 # Checking if the user has introduced the OpenAI API Key, if not, a warning is displayed
-missing_openai = openai_api_key == "" or openai_api_key is None or "sk-" not in openai_api_key
+missing_openai = (
+    openai_api_key == "" or openai_api_key is None or "sk-" not in openai_api_key
+)
 missing_anthropic = anthropic_api_key == "" or anthropic_api_key is None
 if missing_openai and missing_anthropic and ("AZ_OPENAI_API_KEY" not in os.environ):
     st.write("#")
@@ -97,29 +108,36 @@ else:
                 models.append(model)
 
         st.selectbox(
-            "🤖 Select a Model", 
+            "🤖 Select a Model",
             options=models,
             key="model",
         )
 
         cols0 = st.columns(2)
         with cols0[0]:
-            is_vector_db_loaded = ("vector_db" in st.session_state and st.session_state.vector_db is not None)
+            is_vector_db_loaded = (
+                "vector_db" in st.session_state
+                and st.session_state.vector_db is not None
+            )
             st.toggle(
-                "Use RAG", 
-                value=is_vector_db_loaded, 
-                key="use_rag", 
+                "Use RAG",
+                value=is_vector_db_loaded,
+                key="use_rag",
                 disabled=not is_vector_db_loaded,
             )
 
         with cols0[1]:
-            st.button("Clear Chat", on_click=lambda: st.session_state.messages.clear(), type="primary")
+            st.button(
+                "Clear Chat",
+                on_click=lambda: st.session_state.messages.clear(),
+                type="primary",
+            )
 
         st.header("RAG Sources:")
-            
+
         # File upload input for RAG with documents
         st.file_uploader(
-            "📄 Upload a document", 
+            "📄 Upload a document",
             type=["pdf", "txt", "docx", "md"],
             accept_multiple_files=True,
             on_change=load_doc_to_db,
@@ -128,16 +146,21 @@ else:
 
         # URL input for RAG with websites
         st.text_input(
-            "🌐 Introduce a URL", 
+            "🌐 Introduce a URL",
             placeholder="https://example.com",
             on_change=load_url_to_db,
             key="rag_url",
         )
 
-        with st.expander(f"📚 Documents in DB ({0 if not is_vector_db_loaded else len(st.session_state.rag_sources)})"):
-            st.write([] if not is_vector_db_loaded else [source for source in st.session_state.rag_sources])
+        with st.expander(
+            f"📚 Documents in DB ({0 if not is_vector_db_loaded else len(st.session_state.rag_sources)})"
+        ):
+            st.write(
+                []
+                if not is_vector_db_loaded
+                else [source for source in st.session_state.rag_sources]
+            )
 
-    
     # Main chat app
     model_provider = st.session_state.model.split("/")[0]
     if model_provider == "openai":
@@ -178,7 +201,14 @@ else:
             message_placeholder = st.empty()
             full_response = ""
 
-            messages = [HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"]) for m in st.session_state.messages]
+            messages = [
+                (
+                    HumanMessage(content=m["content"])
+                    if m["role"] == "user"
+                    else AIMessage(content=m["content"])
+                )
+                for m in st.session_state.messages
+            ]
 
             if not st.session_state.use_rag:
                 st.write_stream(stream_llm_response(llm_stream, messages))
