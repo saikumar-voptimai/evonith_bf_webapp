@@ -8,20 +8,20 @@ from __future__ import annotations
 
 import streamlit as st
 
-from FurnaceMind.ui.layout import render_page_header
-from FurnaceMind.ui.styles import apply_styles
+from ui.layout import render_page_header
+from ui.styles import apply_styles
 
-from FurnaceMind.memory.structured_store import StructuredStore
-from FurnaceMind.memory.vector_store import QdrantVectorStore
+from memory.structured_store import StructuredStore
+from memory.vector_store import QdrantVectorStore
 
-from FurnaceMind.ui.furnacemind_sections import (
+from ui.furnacemind_sections import (
     select_nav_tab,
     FIELD_LABELS,
 )
 
-from FurnaceMind.ui.cooperate import render_ai_cooperate
-from FurnaceMind.ui.reports   import render_reports
-from FurnaceMind.ui.live_ops  import render_live_operations
+from agents.cooperate import render_ai_cooperate
+from ui.reports   import render_reports
+from ui.live_ops  import render_live_operations
 
 
 def main() -> None:

@@ -20,3 +20,16 @@ def setup_logger(config_path: str = "src/config/logger_setting.yml"):
 
     logger = logging.getLogger("root")
     return logger
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Return a named logger with a StreamHandler if none is attached yet."""
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter(
+            "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"
+        ))
+        logger.addHandler(handler)
+    return logger
