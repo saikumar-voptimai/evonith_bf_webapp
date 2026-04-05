@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-from utils.helper_functions_explorer.data_retrieval import fetch_offline_data
+from data.retrieval import fetch_offline_data
 config = load_config("setting_ds_dv.yml")
 
 @dataclass

@@ -1,5 +1,5 @@
 from typing import List, Optional
-from utils.fm_prompts import PromptTemplates
+from utils.prompts import PromptTemplates
 
 
 class ContextualAnalyzer:

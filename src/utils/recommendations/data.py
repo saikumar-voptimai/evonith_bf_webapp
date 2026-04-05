@@ -4,7 +4,7 @@ from pathlib import Path
 import warnings
 from typing import List, Dict, Any
 from data.fetchers.base_data_fetcher import BaseDataFetcher
-from utils.helper_functions_explorer.data_retrieval import fetch_offline_data
+from data.retrieval import fetch_offline_data
 
 
 class DataframesProcessor:

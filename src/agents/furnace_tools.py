@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional, Literal, List
 
 from pydantic import BaseModel, Field, ValidationError
 
-from utils.helper_functions_explorer import data_retrieval as dr
+from data import retrieval as dr
 from config.config_loader import load_config
 
 # CONFIG

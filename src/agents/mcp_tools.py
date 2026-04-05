@@ -12,7 +12,7 @@ try:
 except Exception:  # pragma: no cover
     st = None  # type: ignore
 
-from utils.helper_functions_explorer import data_retrieval as dr
+from data import retrieval as dr
 from config.config_loader import load_config
 
 

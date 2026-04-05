@@ -11,7 +11,7 @@ import streamlit as st
 import pandas as pd
 
 from config.config_loader import load_config
-from utils.helper_functions_explorer import data_retrieval as dr
+from data import retrieval as dr
 
 _config = load_config("setting_ds_dv.yml")
 

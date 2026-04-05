@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
-from utils.helper_functions_explorer import data_retrieval as dr
+from data import retrieval as dr
 from config.config_loader import load_config
 
 from core.contextual_analyzer import ContextualAnalyzer
