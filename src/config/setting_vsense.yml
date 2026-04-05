@@ -6,107 +6,10 @@ LAMBDA_REG: 0.05
 OPTIM_STEPS: 30
 Optimisation:
   Eta CO:
-    control_params:
-    - HOT BLAST PRESSUREBAR
-    - TOPPRESSUREBAR
-    - HOT BLAST TEMP.OC
-    - STEAMKGS/HR.
-    - HOT BLAST VOLUMENM3/HR.
-    - O2 ENRICHMENT %
-    - ACTUALKG/THM.
-    input_params:
-      Coke:
-      - COKE_VM%
-      - COKE_ASH%
-      - COKE_IM%
-      - COKE_FC%
-      - COKE_MOIST%
-      - COKE_CALC_MT
-      NutCoke:
-      - NUTCOKE_MOIST%
-      - NUTCOKE_CALC_MT
-      - NUTCOKE_VM%
-      - NUTCOKE_IM%
-      - NUTCOKE_FC%
-      - NUTCOKE_ASH%
-      PCI:
-      - PCI_2_FC%
-      - PCI_2_ASH%
-      - PCI_2_VM%
-      - PCI_2_IM%
-      - PCI_2_CALC_MT
-      Ore:
-      - GEOMIN TYPE
-      - ORE_FE(T)%
-      - ORE_LOI%
-      - ORE_TM%
-      - ORE_MGO%
-      - ORE_NA2O%
-      - ORE_P%
-      - ORE_TIO2%
-      - ORE_AL2O3%
-      - ORE_SIO2%
-      - ORE_MNO%
-      - ORE_CAO%
-      - ORE_K2O%
-      - ORE_CALC_MT
-      Sinter:
-      - SINTER_SP_02_HOT_STRENGTH_RI
-      - SINTER_SP_02_HOT_STRENGTH_RDI
-      - SINTER_SP_02_COLD_STRENGTH_AI
-      - SINTER_SP_02_COLD_STRENGTH_TI
-      - SINTER_SP_02_P%
-      - SINTER_SP_02_SIO2%
-      - SINTER_SP_02_MGO%
-      - SINTER_SP_02_FEO%
-      - SINTER_SP_02_AL2O3%
-      - SINTER_SP_02_NA2O%
-      - SINTER_SP_02_TIO2%
-      - SINTER_SP_02_FE(T)%
-      - SINTER_SP_02_CAO%
-      - SINTER_SP_02_K2O%
-      - SINTER_SP_02_BASICITY
-      - SINTER_SP_02_MNO%
-      - SINTER_CALC_MT
-      Pellet:
-      - LLOYDS_PELLET_PCT_SIO2
-      - LLOYDS_PELLET_PCT_AL2O3
-      - LLOYDS_PELLET_PCT_FE2O3
-      - LLOYDS_PELLET_PCT_MGO
-      - LLOYDS_PELLET_PCT_TIO2
-      - LLOYDS_PELLET_PCT_NA2O
-      - TOTAL_PELLET_CALC_MT
-      - LLOYDS_PELLET_PCT_K2O
-      - LLOYDS_PELLET_PCT_TM
-      - LLOYDS_PELLET_PCT_LOI
-      - LLOYDS_PELLET_PCT_MNO
-      - LLOYDS_PELLET_PCT_CAO
-      - LLOYDS_PELLET_PCT_P
-      Flux:
-      - FLUX_TM%
-      - FLUX_SIO2%
-      - FLUX_FE2O3%
-      - FLUX_AL2O3%
-      - FLUX_LOI%
-      - FLUX_MGO%
-      - FLUX_CAO%
-      - FLUX_CALC_MT
-      Burden:
-      - COKE_DISCHARGE_TIME
-      - WEIGHTED_COKE_ANGLE
-      - TOTAL_COKE_PORTIONS
-      - NON_COKE_DISCHARGE_TIME
-      - WEIGHTED_NON_COKE_ANGLE
-      - TOTAL_NON_COKE_PORTIONS
-      Other:
-      - CHARGES/HRS.
-      - STOCKRODLEVEL
-      - FURNACE TOP GAS ANALYSISH2%
-    maxmin: 1.0
-    model: src/assets/models/etaco_opt_dec.pkl
     output_param: FURNACETOPGASANALYSISCO2ETACO
-    scaling: src/assets/models/etaco_scaler_dec.pkl
-  Production Rate:
+    model: src/assets/models/etaco_model.pkl
+    scaling: src/assets/models/etaco_scaler.pkl
+    maxmin: -1.0
     control_params:
     - HOT BLAST PRESSUREBAR
     - TOPPRESSUREBAR
@@ -114,99 +17,212 @@ Optimisation:
     - STEAMKGS/HR.
     - HOT BLAST VOLUMENM3/HR.
     - O2 ENRICHMENT %
-    - ACTUALKG/THM.
     input_params:
       Coke:
-      - COKE_VM%
       - COKE_ASH%
-      - COKE_IM%
       - COKE_FC%
+      - COKE_IM%
       - COKE_MOIST%
+      - COKE_VM%
       - COKE_CALC_MT
+      - COKE_DISCHARGE_TIME
       NutCoke:
-      - NUTCOKE_MOIST%
-      - NUTCOKE_CALC_MT
-      - NUTCOKE_VM%
-      - NUTCOKE_IM%
-      - NUTCOKE_FC%
       - NUTCOKE_ASH%
+      - NUTCOKE_FC%
+      - NUTCOKE_IM%
+      - NUTCOKE_MOIST%
+      - NUTCOKE_VM%
+      - NUTCOKE_CALC_MT
       PCI:
-      - PCI_2_FC%
       - PCI_2_ASH%
-      - PCI_2_VM%
+      - PCI_2_FC%
       - PCI_2_IM%
+      - PCI_2_VM%
       - PCI_2_CALC_MT
       Ore:
-      - GEOMIN TYPE
+      - ORE_AL2O3%
+      - ORE_CAO%
       - ORE_FE(T)%
+      - ORE_K2O%
       - ORE_LOI%
-      - ORE_TM%
       - ORE_MGO%
+      - ORE_MNO%
+      - ORE_CALC_MT
       - ORE_NA2O%
       - ORE_P%
-      - ORE_TIO2%
-      - ORE_AL2O3%
       - ORE_SIO2%
-      - ORE_MNO%
-      - ORE_CAO%
-      - ORE_K2O%
-      - ORE_CALC_MT
+      - ORE_TIO2%
+      - ORE_TM%
       Sinter:
-      - SINTER_SP_02_HOT_STRENGTH_RI
-      - SINTER_SP_02_HOT_STRENGTH_RDI
+      - SINTER_SP_02_AL2O3%
+      - SINTER_SP_02_CAO%
       - SINTER_SP_02_COLD_STRENGTH_AI
       - SINTER_SP_02_COLD_STRENGTH_TI
-      - SINTER_SP_02_P%
-      - SINTER_SP_02_SIO2%
-      - SINTER_SP_02_MGO%
-      - SINTER_SP_02_FEO%
-      - SINTER_SP_02_AL2O3%
-      - SINTER_SP_02_NA2O%
-      - SINTER_SP_02_TIO2%
       - SINTER_SP_02_FE(T)%
-      - SINTER_SP_02_CAO%
+      - SINTER_SP_02_FEO%
+      - SINTER_SP_02_HOT_STRENGTH_RDI
+      - SINTER_SP_02_HOT_STRENGTH_RI
       - SINTER_SP_02_K2O%
-      - SINTER_SP_02_BASICITY
+      - SINTER_SP_02_MGO%
       - SINTER_SP_02_MNO%
       - SINTER_CALC_MT
+      - SINTER_SP_02_NA2O%
+      - SINTER_SP_02_P%
+      - SINTER_SP_02_SIO2%
+      - SINTER_SP_02_BASICITY
+      - SINTER_SP_02_TIO2%
       Pellet:
-      - LLOYDS_PELLET_PCT_SIO2
+      - LLOYDS_PELLET_PCT_CAO
+      - TOTAL_PELLET_CALC_MT
       - LLOYDS_PELLET_PCT_AL2O3
       - LLOYDS_PELLET_PCT_FE2O3
-      - LLOYDS_PELLET_PCT_MGO
-      - LLOYDS_PELLET_PCT_TIO2
-      - LLOYDS_PELLET_PCT_NA2O
-      - TOTAL_PELLET_CALC_MT
       - LLOYDS_PELLET_PCT_K2O
-      - LLOYDS_PELLET_PCT_TM
       - LLOYDS_PELLET_PCT_LOI
+      - LLOYDS_PELLET_PCT_MGO
       - LLOYDS_PELLET_PCT_MNO
-      - LLOYDS_PELLET_PCT_CAO
+      - LLOYDS_PELLET_PCT_NA2O
       - LLOYDS_PELLET_PCT_P
+      - LLOYDS_PELLET_PCT_SIO2
+      - LLOYDS_PELLET_PCT_TIO2
+      - LLOYDS_PELLET_PCT_TM
       Flux:
-      - FLUX_TM%
-      - FLUX_SIO2%
-      - FLUX_FE2O3%
       - FLUX_AL2O3%
+      - FLUX_CAO%
+      - FLUX_FE2O3%
       - FLUX_LOI%
       - FLUX_MGO%
-      - FLUX_CAO%
       - FLUX_CALC_MT
+      - FLUX_SIO2%
+      - FLUX_TM%
       Burden:
-      - COKE_DISCHARGE_TIME
       - WEIGHTED_COKE_ANGLE
-      - TOTAL_COKE_PORTIONS
-      - NON_COKE_DISCHARGE_TIME
       - WEIGHTED_NON_COKE_ANGLE
+      - TOTAL_COKE_PORTIONS
       - TOTAL_NON_COKE_PORTIONS
+      - NON_COKE_DISCHARGE_TIME
+      Temperature:
+      - BELLY - 15162_TEMP. OCAT-07DEG. OC
+      - BELLY - 15162_TEMP. OC.2CT-17DEG. OC
+      - BELLY - 15162_TEMP. OC.3DT-03DEG. OC
+      - BOSH - 12975_TEMP. OCAT-07DEG. OC
+      - BOSH - 12975_TEMP. OC.1BT-12DEG. OC
+      - BOSH - 12975_TEMP. OC.2CT-17DEG. OC
+      - BOSH - 12975_TEMP. OC.3DT-03DEG. OC
+      - LOWER STACK - 18660_TEMP. OCAT-07DEG. OC
+      - LOWER STACK - 18660_TEMP. OC.1BT-12DEG. OC
+      - LOWER STACK - 18660_TEMP. OC.2CT-17DEG. OC
+      - LOWER STACK - 18660_TEMP. OC.3DT-03DEG. OC
+      - FURNACE TOP GAS_UPTAKE TEMP. OC.4AVG.DEG. OC
+      - FURNACE TOP GAS_UPTAKE TEMP. OC.1BT-12DEG. OC
+      - FURNACE TOP GAS_UPTAKE TEMP. OCAT-16DEG. OC
+      - FURNACE TOP GAS_UPTAKE TEMP. OC.2CT-08DEG. OC
+      - FURNACE TOP GAS_UPTAKE TEMP. OC.3DT-04DEG. OC
+      - HEARTH PAD CENTER_TEMP. OCA4.3 MTR.DEG. OC
+      - HEARTH PAD CENTER_TEMP. OC.1B5.4 MTR.DEG. OC
+      - HEARTH PAD CENTER_TEMP. OC.2C5.7 MTR.DEG. OC
+      - HEARTH PAD CENTER_TEMP. OC.3D6.1 MTR.DEG. OC
       Other:
+      - FURNACE TOP GAS ANALYSISH2%
+  Production Rate:
+    output_param: PRODUCTIONTONNESPERHR
+    model: src/assets/models/productionrate_model.pkl
+    scaling: src/assets/models/productionrate_scaler.pkl
+    maxmin: -1.0
+    control_params:
+    - HOT BLAST PRESSUREBAR
+    - TOPPRESSUREBAR
+    - HOT BLAST TEMP.OC
+    - STEAMKGS/HR.
+    - HOT BLAST VOLUMENM3/HR.
+    - ACTUALKG/THM.
+    - O2 ENRICHMENT %
+    input_params:
+      Coke:
+      - COKE_ASH%
+      - COKE_FC%
+      - COKE_IM%
+      - COKE_MOIST%
+      - COKE_VM%
+      - COKE_CALC_MT
+      - COKE_DISCHARGE_TIME
+      NutCoke:
+      - NUTCOKE_ASH%
+      - NUTCOKE_FC%
+      - NUTCOKE_IM%
+      - NUTCOKE_MOIST%
+      - NUTCOKE_VM%
+      - NUTCOKE_CALC_MT
+      PCI:
+      - PCI_2_ASH%
+      - PCI_2_FC%
+      - PCI_2_IM%
+      - PCI_2_VM%
+      - PCI_2_CALC_MT
+      Ore:
+      - ORE_AL2O3%
+      - ORE_CAO%
+      - ORE_FE(T)%
+      - ORE_K2O%
+      - ORE_LOI%
+      - ORE_MGO%
+      - ORE_MNO%
+      - ORE_CALC_MT
+      - ORE_NA2O%
+      - ORE_P%
+      - ORE_SIO2%
+      - ORE_TIO2%
+      - ORE_TM%
+      Sinter:
+      - SINTER_SP_02_AL2O3%
+      - SINTER_SP_02_CAO%
+      - SINTER_SP_02_COLD_STRENGTH_AI
+      - SINTER_SP_02_COLD_STRENGTH_TI
+      - SINTER_SP_02_FE(T)%
+      - SINTER_SP_02_FEO%
+      - SINTER_SP_02_HOT_STRENGTH_RDI
+      - SINTER_SP_02_HOT_STRENGTH_RI
+      - SINTER_SP_02_K2O%
+      - SINTER_SP_02_MGO%
+      - SINTER_SP_02_MNO%
+      - SINTER_CALC_MT
+      - SINTER_SP_02_NA2O%
+      - SINTER_SP_02_P%
+      - SINTER_SP_02_SIO2%
+      - SINTER_SP_02_BASICITY
+      - SINTER_SP_02_TIO2%
+      Pellet:
+      - LLOYDS_PELLET_PCT_CAO
+      - TOTAL_PELLET_CALC_MT
+      - LLOYDS_PELLET_PCT_AL2O3
+      - LLOYDS_PELLET_PCT_FE2O3
+      - LLOYDS_PELLET_PCT_K2O
+      - LLOYDS_PELLET_PCT_LOI
+      - LLOYDS_PELLET_PCT_MGO
+      - LLOYDS_PELLET_PCT_MNO
+      - LLOYDS_PELLET_PCT_NA2O
+      - LLOYDS_PELLET_PCT_P
+      - LLOYDS_PELLET_PCT_SIO2
+      - LLOYDS_PELLET_PCT_TIO2
+      - LLOYDS_PELLET_PCT_TM
+      Flux:
+      - FLUX_AL2O3%
+      - FLUX_CAO%
+      - FLUX_FE2O3%
+      - FLUX_LOI%
+      - FLUX_MGO%
+      - FLUX_CALC_MT
+      - FLUX_SIO2%
+      - FLUX_TM%
+      Burden:
+      - WEIGHTED_COKE_ANGLE
+      - WEIGHTED_NON_COKE_ANGLE
+      - TOTAL_COKE_PORTIONS
+      - TOTAL_NON_COKE_PORTIONS
+      - NON_COKE_DISCHARGE_TIME
+      Other:
+      - FURNACE TOP GAS ANALYSISH2%
       - CHARGES/HRS.
       - STOCKRODLEVEL
-      - FURNACE TOP GAS ANALYSISH2%
-    maxmin: -1.0
-    model: src/assets/models/prodrate_opt_dec.pkl
-    output_param: PRODUCTIONTONNESPERHR
-    scaling: src/assets/models/prodrate_scaler_dec.pkl
   UnitCost:
     control_params:
     - HOT BLAST PRESSUREBAR
@@ -303,7 +319,6 @@ Optimisation:
       - CHARGES/HRS.
       - STOCKRODLEVEL
       - FURNACE TOP GAS ANALYSISH2%
-
     maxmin: 1.0
     model: src/assets/models/unitcost_opt_dec.pkl
     output_param: UNITCOST LAKHS/THM
@@ -383,6 +398,26 @@ field_mapping:
   charges_per_hr: CHARGES/HRS.
   stock_rod_level: STOCKRODLEVEL
   furnace_top_gas_analysis_h2_pct: FURNACE TOP GAS ANALYSISH2%
+  belly_a_c: BELLY - 15162_TEMP. OCAT-07DEG. OC
+  belly_c_c: BELLY - 15162_TEMP. OC.2CT-17DEG. OC
+  belly_d_c: BELLY - 15162_TEMP. OC.3DT-03DEG. OC
+  bosh_a_c: BOSH - 12975_TEMP. OCAT-07DEG. OC
+  bosh_b_c: BOSH - 12975_TEMP. OC.1BT-12DEG. OC
+  bosh_c_c: BOSH - 12975_TEMP. OC.2CT-17DEG. OC
+  bosh_d_c: BOSH - 12975_TEMP. OC.3DT-03DEG. OC
+  lower_stack_a_c: LOWER STACK - 18660_TEMP. OCAT-07DEG. OC
+  lower_stack_b_c: LOWER STACK - 18660_TEMP. OC.1BT-12DEG. OC
+  lower_stack_c_c: LOWER STACK - 18660_TEMP. OC.2CT-17DEG. OC
+  lower_stack_d_c: LOWER STACK - 18660_TEMP. OC.3DT-03DEG. OC
+  ftg_uptake_avg_c: FURNACE TOP GAS_UPTAKE TEMP. OC.4AVG.DEG. OC
+  ftg_uptake_bt12_c: FURNACE TOP GAS_UPTAKE TEMP. OC.1BT-12DEG. OC
+  ftg_uptake_cat16_c: FURNACE TOP GAS_UPTAKE TEMP. OCAT-16DEG. OC
+  ftg_uptake_ct08_c: FURNACE TOP GAS_UPTAKE TEMP. OC.2CT-08DEG. OC
+  ftg_uptake_dt04_c: FURNACE TOP GAS_UPTAKE TEMP. OC.3DT-04DEG. OC
+  hearth_pad_4d3_c: HEARTH PAD CENTER_TEMP. OCA4.3 MTR.DEG. OC
+  hearth_pad_b5d4_c: HEARTH PAD CENTER_TEMP. OC.1B5.4 MTR.DEG. OC
+  hearth_pad_c5d7_c: HEARTH PAD CENTER_TEMP. OC.2C5.7 MTR.DEG. OC
+  hearth_pad_d6d1_c: HEARTH PAD CENTER_TEMP. OC.3D6.1 MTR.DEG. OC
 influxdb_ml_database:
   database: ML DATASET
   measurements: rm_charge_dataset
