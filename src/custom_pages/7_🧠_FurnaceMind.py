@@ -8,20 +8,17 @@ from __future__ import annotations
 
 import streamlit as st
 
-from FurnaceMind.ui.layout import render_page_header
-from FurnaceMind.ui.styles import apply_styles
-
-from FurnaceMind.memory.structured_store import StructuredStore
-from FurnaceMind.memory.vector_store import QdrantVectorStore
-
-from FurnaceMind.ui.furnacemind_sections import (
-    select_nav_tab,
-    render_ai_cooperate,
-    render_reports,
-    render_live_operations,
-    render_furnace_intelligence,
+from agents.cooperate import render_ai_cooperate
+from memory.structured_store import StructuredStore
+from memory.vector_store import QdrantVectorStore
+from ui.furnacemind_sections import (
     FIELD_LABELS,
+    select_nav_tab,
 )
+from ui.layout import render_page_header
+from ui.live_ops import render_live_operations, render_furnace_intelligence
+from ui.reports import render_reports
+from ui.styles import apply_styles
 
 
 def main() -> None:
@@ -45,7 +42,9 @@ def main() -> None:
         return
 
     if app_mode == "📡 Live Operations":
-        render_live_operations(structured_store=structured_store, vector_store=vector_store)
+        render_live_operations(
+            structured_store=structured_store, vector_store=vector_store
+        )
         return
 
     if app_mode == "🧠 Furnace Intelligence":

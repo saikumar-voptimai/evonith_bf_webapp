@@ -1,3 +1,13 @@
+"""Derived/dependent parameter specifications for V-OptimAIse.
+
+Defines :class:`ParamSpec` (a frozen dataclass) and :func:`build_bf_dependency_graph`
+which returns the ordered list of blast furnace dependent parameters that the
+optimiser appends to its output after the core recommendation is made.
+
+Each :class:`ParamSpec` specifies the required input columns, a *formula*
+(pure function) or a pre-trained sklearn *model*, and optional clipping bounds.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -98,7 +108,10 @@ class DependencyGraph:
     def apply(self, row: Union[pd.Series, Dict[str, float]]) -> Dict[str, float]:
         values: Dict[str, float]
         if isinstance(row, pd.Series):
-            values = {k: float(v) if v is not None and not pd.isna(v) else v for k, v in row.to_dict().items()}
+            values = {
+                k: float(v) if v is not None and not pd.isna(v) else v
+                for k, v in row.to_dict().items()
+            }
         else:
             values = dict(row)
 
@@ -133,7 +146,9 @@ class BFColumns:
     k_value: str = "K_VALUE"
 
 
-def _effective_o2_percent_from_flows(cbv: float, oxygen_flow: float, wind: float) -> float:
+def _effective_o2_percent_from_flows(
+    cbv: float, oxygen_flow: float, wind: float
+) -> float:
     """Effective O2% in total wind (hot blast) given air (cbv) and pure O2 flow.
 
     Derived from your shared expression:
@@ -162,7 +177,9 @@ def oxygen_flow_from_enrichment(values: Values, cols: BFColumns) -> float:
     wind = float(values[cols.wind_vol_nm3_hr])
     enr = float(values[cols.o2_enrich_pct])
 
-    cbv = float(values.get("CBV", wind))  # optional override if you later add CBV column
+    cbv = float(
+        values.get("CBV", wind)
+    )  # optional override if you later add CBV column
     effective = 20.8 + enr
     of = (wind * (effective / 100.0) - 0.208 * cbv) / 0.792
     return float(max(of, 0.0))
@@ -188,7 +205,9 @@ def bosh_vol_from_formula(values: Values, cols: BFColumns) -> float:
 
     cbv = float(values.get("CBV", wind))
 
-    effective_o2_pct = _effective_o2_percent_from_flows(cbv=cbv, oxygen_flow=oxygen_flow, wind=wind)
+    effective_o2_pct = _effective_o2_percent_from_flows(
+        cbv=cbv, oxygen_flow=oxygen_flow, wind=wind
+    )
 
     term1 = 2.0 * (cbv * (effective_o2_pct / 100.0))
     term2 = (20.0 * (wind - oxygen_flow)) / 18000.0
@@ -210,11 +229,13 @@ def k_value_from_formula(values: Values, cols: BFColumns) -> float:
 
     # ((HB*1000+1033)^2 - (Top*1000+1033)^2)/(BoshVol^1.7)
     num = (hb_p * 1000.0 + 1033.0) ** 2 - (top_p * 1000.0 + 1033.0) ** 2
-    den = bosh_vol ** 1.7
+    den = bosh_vol**1.7
     return float(num / den)
 
 
-def permeability_from_k_value(values: Values, cols: BFColumns, eps: float = 1e-9) -> float:
+def permeability_from_k_value(
+    values: Values, cols: BFColumns, eps: float = 1e-9
+) -> float:
     """Convert inverse-permeability proxy to permeability.
 
     You said: inverse(permeability) is calculated as per the shared formula.
