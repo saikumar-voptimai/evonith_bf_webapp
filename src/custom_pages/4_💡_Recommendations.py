@@ -17,7 +17,7 @@ config_vsense = load_config('setting_vsense.yml')
 CONFIG_PATH = Path("src/config/setting_vsense.yml")
 
 # Load external CSS file
-css_path = Path(__file__).resolve().parents[1] / "css-style" / "recommendation_style.css"
+css_path = Path(__file__).resolve().parents[1] / "assets" / "css" / "recommendation_style.css"
 
 if 'df_hist' not in st.session_state:
     st.session_state['df_hist'] = None
@@ -62,7 +62,7 @@ for model in models_dict.keys():
     models_dict[model]['input_params_flat'] = ip_flat
     models_dict[model]['Optimised'] = False
     relpath = models_dict[model]['model']
-    model_path = Path(__file__).resolve().parents[1] / relpath.split('/')[1] / relpath.split('/')[2]
+    model_path = Path(__file__).resolve().parents[2] / relpath
     models_dict[model]['LoadedMLModel'] = joblib.load(model_path)
     if model == optimisation_type:
         models_dict[model]['Optimised'] = True
@@ -83,7 +83,7 @@ if st.session_state['df_full'] is None:
 target_output = config_vsense['Optimisation'][optimisation_type]['output_param']
 
 st.subheader("Control Parameters")
-bounds_file = Path("src/data/control_bounds.json")
+bounds_file = Path("src/assets/data/control_bounds.json")
 bounds_file.parent.mkdir(parents=True, exist_ok=True)
 
 if bounds_file.exists():

@@ -54,7 +54,11 @@ _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
 
 
 _DATASET_CSV_PATH = Path("current_furnace_data.csv")
-_ML_DATASET_PATH = Path("data/ml_dataset_filtered.csv")
+# Absolute path: src/FurnaceMind/agents/ -> parents[2] = src/ -> assets/data/
+_ML_DATASET_PATH = Path(__file__).resolve().parents[2] / "assets" / "data" / "ml_dataset_filtered.csv"
+
+# IST offset (tz-naive CSV index matches this)
+_IST_OFFSET = timedelta(hours=5, minutes=30)
 
 
 def _ensure_dataset_store() -> Dict[str, Any]:
@@ -160,6 +164,30 @@ class StaticShiftArgs(BaseModel):
     shift_label: Literal["A", "B", "C"] = Field(description="Shift: A (00:00-08:00), B (08:00-16:00), C (16:00-24:00) IST")
 
 
+class MLDataArgs(BaseModel):
+    start_time: str = Field(
+        description="Start of range. ISO-8601 or YYYY-MM-DD. Treated as IST (matches CSV index). E.g. '2026-03-01' or '2026-03-01T06:00:00'."
+    )
+    end_time: Optional[str] = Field(
+        default=None,
+        description="End of range. ISO-8601 or YYYY-MM-DD. Defaults to current IST time. Omit for 'up to now'.",
+    )
+    resample: Optional[Literal["1h", "4h", "8h", "1d"]] = Field(
+        default=None,
+        description="Downsampling cadence. Native resolution is 1h. Use '8h' for shift-level, '1d' for daily views. Omit to keep native.",
+    )
+    columns: Optional[List[str]] = Field(
+        default=None,
+        description="Optional keyword list to filter columns (case-insensitive substring match). E.g. ['fuel rate', 'si', 'etaco']. Omit to return all columns.",
+    )
+
+
+class ConcatArgs(BaseModel):
+    dataset_ids: List[str] = Field(
+        description="Dataset IDs to concatenate vertically (temporal union). Sorted by index; duplicate timestamps keep the last entry (prefer recent data)."
+    )
+
+
 def _save_dataset(*, dataset_id: str, df: pd.DataFrame, meta: Dict[str, Any]) -> None:
     store = _ensure_dataset_store()
     store[dataset_id] = {"df": df, "meta": meta}
@@ -182,6 +210,213 @@ def _summarize_df(df: pd.DataFrame, *, dataset_id: str, title: str) -> str:
     )
 
 
+def _now_ist_naive() -> pd.Timestamp:
+    """Current time as IST tz-naive Timestamp (matches the CSV index)."""
+    return pd.Timestamp.utcnow().tz_localize(None) + pd.Timedelta(hours=5, minutes=30)
+
+
+def _parse_ist_naive(s: str) -> pd.Timestamp:
+    """Parse an ISO-8601 or YYYY-MM-DD string into a tz-naive IST Timestamp."""
+    ts = pd.to_datetime(s)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("Asia/Kolkata").tz_localize(None)
+    return ts
+
+
+def _load_ml_dataset() -> tuple[pd.DataFrame, pd.Timestamp, pd.Timestamp]:
+    """
+    Load the static ML dataset with aggressive session-level caching.
+    Returns (df, csv_start, csv_end). The index is tz-naive IST at hourly resolution.
+    Raises FileNotFoundError if the CSV is missing.
+    """
+    cache_key = "fm_ml_df_cache"
+    if cache_key not in st.session_state:
+        if not _ML_DATASET_PATH.exists():
+            raise FileNotFoundError(
+                f"Static ML dataset not found at {_ML_DATASET_PATH}. "
+                f"Expected: src/assets/data/ml_dataset_filtered.csv"
+            )
+        df = pd.read_csv(_ML_DATASET_PATH, index_col=0, parse_dates=True)
+        df = df.sort_index()
+        st.session_state[cache_key] = df
+    df: pd.DataFrame = st.session_state[cache_key]
+    return df, df.index.min(), df.index.max()
+
+
+def _ml_column_summary(df: pd.DataFrame) -> str:
+    """Return a compact grouped column summary for the ML dataset."""
+    groups: dict[str, list[str]] = {
+        "KPIs": [],
+        "Process params": [],
+        "Temperature": [],
+        "Materials": [],
+        "Hot metal / Slag": [],
+        "Burden": [],
+        "Other": [],
+    }
+    for col in df.columns:
+        cu = col.upper()
+        if any(k in cu for k in ["FUEL RATE", "ETACO", "PRODUCTIONTONNES", "COKE RATE KG", "UNITCOST"]):
+            groups["KPIs"].append(col)
+        elif any(k in cu for k in ["HOT BLAST", "TOPPRESSURE", "BOTTOMBAR", "TOPBAR", "STEAM", "O2 ENRICH",
+                                    "PERMEABILITY", "DIFFERENTIAL PRESSURE", "RAFT", "TUYERE", "OXYGEN"]):
+            groups["Process params"].append(col)
+        elif any(k in cu for k in ["TEMP.", "HEARTH PAD", "BELLY", "BOSH", "LOWER STACK", "UPTAKE TEMP", "HEAT LOAD"]):
+            groups["Temperature"].append(col)
+        elif any(k in cu for k in ["COKE_", "NUTCOKE_", "PCI_", "ORE_", "SINTER_", "PELLET_", "FLUX_"]):
+            groups["Materials"].append(col)
+        elif any(k in cu for k in ["CHEM_PCT", "SLAG_", "HMT_", "GEOMIN"]):
+            groups["Hot metal / Slag"].append(col)
+        elif any(k in cu for k in ["PORTION", "ANGLE", "DISCHARGE_TIME", "CHARGES", "STOCK"]):
+            groups["Burden"].append(col)
+        else:
+            groups["Other"].append(col)
+    lines = []
+    for grp, cols in groups.items():
+        if cols:
+            lines.append(f"  {grp} ({len(cols)}): {', '.join(cols[:6])}" + (" …" if len(cols) > 6 else ""))
+    return "\n".join(lines)
+
+
+def fetch_ml_data(
+    *,
+    start_time: str,
+    end_time: str | None = None,
+    resample: str | None = None,
+    columns: list[str] | None = None,
+) -> str:
+    """
+    Fetch a date-range slice from the static pre-merged ML dataset (hourly, IST-naive index).
+    Covers 2024-01-01 to ~current month. Fast — reads from local CSV cached in session.
+
+    If the requested range extends beyond the CSV end (recent gap):
+    - Returns the covered static portion as a dataset.
+    - Includes a GAP NOTE instructing the caller to also run fetch_online_data for the gap,
+      then concat_datasets to stitch them together.
+    """
+    params = {"start_time": start_time, "end_time": end_time, "resample": resample, "columns": columns}
+    try:
+        args = MLDataArgs.model_validate(params)
+
+        req_start = _parse_ist_naive(args.start_time)
+        req_end = _parse_ist_naive(args.end_time) if args.end_time else _now_ist_naive()
+
+        if req_end <= req_start:
+            return "Error: end_time must be after start_time."
+
+        df, csv_start, csv_end = _load_ml_dataset()
+
+        overlap_start = max(req_start, csv_start)
+        overlap_end = min(req_end, csv_end)
+
+        if overlap_start > overlap_end + pd.Timedelta(hours=1):
+            return (
+                f"Requested range ({req_start} – {req_end} IST) has no overlap with the "
+                f"static ML dataset ({csv_start} – {csv_end} IST). "
+                f"Use fetch_online_data directly for this query."
+            )
+
+        slice_df = df.loc[(df.index >= overlap_start) & (df.index <= overlap_end)].copy()
+
+        # Optional column filter (fuzzy substring)
+        if args.columns:
+            matched: list[str] = []
+            for kw in args.columns:
+                kw_lower = kw.lower()
+                matched += [c for c in df.columns if kw_lower in c.lower() and c not in matched]
+            if matched:
+                slice_df = slice_df[matched]
+
+        # Optional resample (native is 1h)
+        if args.resample and args.resample != "1h":
+            slice_df = slice_df.resample(args.resample).mean(numeric_only=True).dropna(how="all")
+
+        dataset_id = _new_dataset_id("ml_static")
+        meta = {
+            "dataset_id": dataset_id,
+            "type": "ml_static",
+            "source": _ML_DATASET_PATH.name,
+            "start": str(overlap_start.date()),
+            "end": str(overlap_end.date()),
+            "resample": args.resample or "1h (native)",
+        }
+        _save_dataset(dataset_id=dataset_id, df=slice_df, meta=meta)
+
+        col_summary = _ml_column_summary(slice_df) if not args.columns else f"  Filtered: {list(slice_df.columns)}"
+        summary = (
+            f"ML STATIC DATA | {overlap_start.date()} -> {overlap_end.date()} IST\n"
+            f"dataset_id={dataset_id} | {len(slice_df)} rows × {len(slice_df.columns)} cols\n"
+            f"Columns available:\n{col_summary}"
+        )
+
+        # Gap note: if request extends beyond CSV end by more than 2 hours
+        gap_threshold = pd.Timedelta(hours=2)
+        if req_end > csv_end + gap_threshold:
+            gap_hours = max(1, int((req_end - csv_end).total_seconds() / 3600) + 1)
+            summary += (
+                f"\n\nGAP NOTE: Static dataset ends {csv_end} IST; your request goes to {req_end.strftime('%Y-%m-%d %H:%M')} IST.\n"
+                f"To fill the ~{gap_hours}h gap:\n"
+                f"  1. fetch_online_data(lookback_hours={gap_hours})\n"
+                f"  2. concat_datasets(dataset_ids=['{dataset_id}', '<online_dataset_id>'])\n"
+                f"Note: online columns use InfluxDB names (e.g. 'fuel_rate') — ML static uses ML names (e.g. 'ACT. FUEL RATEKG/THM.'). "
+                f"Plot whichever column is non-null in each time region."
+            )
+
+        return summary
+
+    except Exception as e:
+        _append_tool_error(tool_name="fetch_ml_data", params=params, error=str(e))
+        return f"fetch_ml_data Error: {e}"
+
+
+def concat_datasets(*, dataset_ids: list[str]) -> str:
+    """
+    Concatenate multiple datasets vertically (temporal union).
+    Useful for stitching static ML data with a recent online fetch.
+    Duplicate timestamps keep the last entry (later dataset wins — prefer online for recent rows).
+    Column mismatches are handled with outer join (NaN where a column doesn't exist in a given frame).
+    """
+    params = {"dataset_ids": dataset_ids}
+    try:
+        args = ConcatArgs.model_validate(params)
+        store = _ensure_dataset_store()
+
+        frames: list[pd.DataFrame] = []
+        for did in args.dataset_ids:
+            entry = store.get(did)
+            if not entry or "df" not in entry:
+                raise ValueError(f"Unknown dataset_id: '{did}'. Fetch it first.")
+            frames.append(entry["df"])
+
+        if not frames:
+            raise ValueError("No datasets provided to concat.")
+
+        combined = pd.concat(frames, axis=0, join="outer")
+        combined = combined.sort_index()
+        combined = combined[~combined.index.duplicated(keep="last")]  # later dataset wins on overlap
+
+        dataset_id = _new_dataset_id("concat")
+        meta = {
+            "dataset_id": dataset_id,
+            "type": "concat",
+            "source_ids": args.dataset_ids,
+            "rows": len(combined),
+            "start": str(combined.index.min()),
+            "end": str(combined.index.max()),
+        }
+        _save_dataset(dataset_id=dataset_id, df=combined, meta=meta)
+
+        return (
+            f"CONCAT DATA | {combined.index.min()} -> {combined.index.max()}\n"
+            f"dataset_id={dataset_id} | {len(combined)} rows × {len(combined.columns)} cols\n"
+            f"Sources: {args.dataset_ids}"
+        )
+
+    except Exception as e:
+        _append_tool_error(tool_name="concat_datasets", params=params, error=str(e))
+        return f"concat_datasets Error: {e}"
+
+
 def load_static_shift_data(*, shift_date: str, shift_label: str) -> str:
     """Load 8-hour shift data from the static ML dataset (hourly, online+offline pre-merged).
 
@@ -200,13 +435,7 @@ def load_static_shift_data(*, shift_date: str, shift_label: str) -> str:
         shift_start = date + pd.Timedelta(hours=start_h)
         shift_end = date + pd.Timedelta(hours=end_h)
 
-        if not _ML_DATASET_PATH.exists():
-            return f"Error: Static ML dataset not found at {_ML_DATASET_PATH}"
-
-        df = pd.read_csv(_ML_DATASET_PATH, index_col=0, parse_dates=True)
-
-        # Check date range coverage
-        csv_min, csv_max = df.index.min(), df.index.max()
+        df, csv_min, csv_max = _load_ml_dataset()
         if shift_start < csv_min or shift_end > csv_max + pd.Timedelta(hours=1):
             return (
                 f"Shift {shift_date} Shift {shift_label} ({shift_start} to {shift_end}) "
@@ -288,7 +517,7 @@ def fetch_online_data(*, lookback_days: int | None = None, lookback_hours: int |
         df = dr.fetch_online_df(
             selected_measurements=selected_measurements,
             time_range=normalized_time_range,
-            average_range=window_final,
+            window_by=window_final,
             FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
             MEASUREMENT_LABELS=MEASUREMENT_LABELS,
             FIELD_LABELS=FIELD_LABELS,
@@ -566,6 +795,69 @@ def get_openai_tool_schemas() -> list[dict]:
         {
             "type": "function",
             "function": {
+                "name": "fetch_ml_data",
+                "description": (
+                    "PRIMARY tool for any historical data query spanning more than 2 days. "
+                    "Reads from the local pre-merged ML dataset (hourly, IST-naive, 2024-01-01 -> present). "
+                    "Fast — no InfluxDB call. Covers process params, material quality, burden, KPIs, hot metal chemistry. "
+                    "If the requested range extends beyond the dataset end, returns a GAP NOTE with exact instructions "
+                    "to call fetch_online_data + concat_datasets for the recent gap. "
+                    "Use fetch_online_data directly only for: last ≤2 days, sub-hourly resolution, or when this tool reports no coverage."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "start_time": {
+                            "type": "string",
+                            "description": "ISO-8601 or YYYY-MM-DD. Treated as IST. E.g. '2026-03-01'.",
+                        },
+                        "end_time": {
+                            "type": "string",
+                            "description": "ISO-8601 or YYYY-MM-DD. Defaults to now IST if omitted.",
+                        },
+                        "resample": {
+                            "type": "string",
+                            "enum": ["1h", "4h", "8h", "1d"],
+                            "description": "Downsampling. Native is 1h. Use '8h' for shift views, '1d' for daily.",
+                        },
+                        "columns": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional keyword substrings to filter columns, e.g. ['si', 'fuel rate', 'etaco']. Omit for all.",
+                        },
+                    },
+                    "required": ["start_time"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "concat_datasets",
+                "description": (
+                    "Concatenate datasets vertically (temporal union). "
+                    "Use after fetching static + online portions to stitch them into one continuous dataset. "
+                    "Sorts by timestamp; duplicate rows keep the last dataset's value (online wins over static on overlap). "
+                    "Column mismatches handled with outer join (NaN where a column doesn't exist in a frame)."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "dataset_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of dataset IDs to concatenate, in chronological order.",
+                        },
+                    },
+                    "required": ["dataset_ids"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "load_static_shift_data",
                 "description": (
                     "Load 8-hour shift data from the static ML dataset (hourly, online+offline pre-merged). "
@@ -592,6 +884,10 @@ def get_openai_tool_schemas() -> list[dict]:
 
 def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
     """Dispatcher used by the OpenRouter tool-calling loop."""
+    if name == "fetch_ml_data":
+        return fetch_ml_data(**arguments)
+    if name == "concat_datasets":
+        return concat_datasets(**arguments)
     if name == "fetch_online_data":
         return fetch_online_data(**arguments)
     if name == "fetch_offline_data":
@@ -891,10 +1187,21 @@ def _safe_exec(code: str, local_vars: Dict[str, Any]) -> None:
         "float": float,
         "int": int,
         "str": str,
+        "bool": bool,
+        "round": round,
         "print": print,
+        "isinstance": isinstance,
+        "hasattr": hasattr,
+        "getattr": getattr,
+        "None": None,
+        "True": True,
+        "False": False,
     }
 
-    exec(code, {"__builtins__": safe_builtins}, local_vars)
+    # Merge builtins into local_vars so list comprehensions can see all names.
+    # (Python 3 list comprehensions resolve names via globals, not locals, in exec.)
+    local_vars["__builtins__"] = safe_builtins
+    exec(code, local_vars)  # noqa: S102
 
 
 @tool
@@ -917,7 +1224,7 @@ def fetch_and_summarize_data(time_range: str, window: str = "15 minutes") -> str
                 "miscellaneous",
             ],
             time_range=normalized_time_range,
-            average_range=window,
+            window_by=window,
             FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
             MEASUREMENT_LABELS=MEASUREMENT_LABELS,
             FIELD_LABELS=FIELD_LABELS,
@@ -999,7 +1306,7 @@ def fetch_and_summarize_furnace_data(request: str) -> str:
                     "miscellaneous",
                 ],
                 time_range=normalized_time_range,
-                average_range=online_window,
+                window_by=online_window,
                 FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
                 MEASUREMENT_LABELS=MEASUREMENT_LABELS,
                 FIELD_LABELS=FIELD_LABELS,
@@ -1098,8 +1405,11 @@ def execute_python_plot(code: str) -> str:
         except Exception:
             df = None
 
+        import numpy as np  # noqa: PLC0415 — local import intentional for sandbox context
+        from plotly.subplots import make_subplots  # noqa: PLC0415
+
         # Create a local environment for execution
-        local_vars = {"pd": pd, "px": px, "go": go, "df": df}
+        local_vars = {"pd": pd, "px": px, "go": go, "df": df, "np": np, "make_subplots": make_subplots}
 
         # Execute the LLM-generated code (restricted)
         _safe_exec(code, local_vars)

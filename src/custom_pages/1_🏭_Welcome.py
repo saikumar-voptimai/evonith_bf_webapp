@@ -102,8 +102,8 @@ st.write("This dashboard provides tools for data submission, visualization, and 
 # ---- Image Loading ----
 def load_images():
     """Helper function to load and return images."""
-    v_optimAIse_logo = "src/data/VOPTIMAISELOGO.png"
-    evonith_logo = "src/data/evonith.png"
+    v_optimAIse_logo = "src/assets/data/VOPTIMAISELOGO.png"
+    evonith_logo = "src/assets/data/evonith.png"
     return v_optimAIse_logo, evonith_logo
 
 v_optimAIse_logo, evonith_logo = load_images()

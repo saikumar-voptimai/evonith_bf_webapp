@@ -18,7 +18,7 @@ def get_control_bounds(df: pd.DataFrame,
     Returns:
         List[tuple]: List of tuples with lower and upper bounds for each control parameter.
     """
-    bounds_file = Path("src/data/control_bounds.json")
+    bounds_file = Path("src/assets/data/control_bounds.json")
     bounds_file.parent.mkdir(parents=True, exist_ok=True)
 
     if bounds_file.exists():

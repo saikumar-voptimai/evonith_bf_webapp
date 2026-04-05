@@ -16,12 +16,12 @@ from FurnaceMind.memory.vector_store import QdrantVectorStore
 
 from FurnaceMind.ui.furnacemind_sections import (
     select_nav_tab,
-    render_ai_cooperate,
-    render_reports,
-    render_live_operations,
-    render_furnace_intelligence,
     FIELD_LABELS,
 )
+
+from FurnaceMind.ui.cooperate import render_ai_cooperate
+from FurnaceMind.ui.reports   import render_reports
+from FurnaceMind.ui.live_ops  import render_live_operations
 
 
 def main() -> None:

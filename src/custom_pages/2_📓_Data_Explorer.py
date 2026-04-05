@@ -29,7 +29,7 @@ INFLUX_OFFLINE_TOKEN = os.getenv("INFLUX_OFFLINE_TOKEN", "")
 local_tz = pytz.timezone("Asia/Kolkata")  # or use your actual timezone
 os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
 
-fullpath = Path(__file__).resolve().parents[1] / config['DATA'].split('/')[1] /config['DATA'].split('/')[2]
+fullpath = Path(__file__).resolve().parents[2] / config['DATA']
 df = pd.read_csv(fullpath, index_col=0, parse_dates=True)
 
 
