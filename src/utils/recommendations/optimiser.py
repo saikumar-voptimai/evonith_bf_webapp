@@ -1,25 +1,39 @@
+"""Differential-evolution optimiser for V-OptimAIse blast parameter recommendations.
+
+Uses :func:`scipy.optimize.differential_evolution` with an objective function
+that jointly minimises (or maximises) a target KPI and penalises large
+deviations from the current operating point via an L2 regularisation term.
+
+All computations are performed in the scaler's normalised space so that
+different parameter scales are balanced automatically.
+"""
+
+import time
+from typing import Any, Dict, List
+
+import joblib
 import numpy as np
 import pandas as pd
-import time
-import joblib
 from scipy.optimize import differential_evolution
-from utils.recommendations.data import DataframesProcessor
-from utils.recommendations.bounds import get_control_bounds
-from utils.recommendations.features import extract_scaler_params
-from utils.recommendations.dependencies import build_bf_dependency_graph
-from typing import Dict, List, Any
+
 from config.config_loader import load_config
 from utils.logger import setup_logger
+from utils.recommendations.bounds import get_control_bounds
+from utils.recommendations.data import DataframesProcessor
+from utils.recommendations.dependencies import build_bf_dependency_graph
+from utils.recommendations.features import extract_scaler_params
 
 logger = setup_logger()
 
-config_vsense = load_config('setting_vsense.yml')
+config_vsense = load_config("setting_vsense.yml")
+
 
 def _log_profile(message: str) -> None:
     """
     Cheap logger to stderr so Streamlit output is not polluted too much.
     """
     logger.info(message)
+
 
 def objective(
     xc_trial: np.ndarray,
@@ -33,7 +47,7 @@ def objective(
     feature_idx: np.ndarray,
     model,
     lambda_reg: float,
-    maxmin: float
+    maxmin: float,
 ) -> float:
     """
     Objective function combining the predicted target output and a penalty term
@@ -42,7 +56,7 @@ def objective(
     Args:
         xc_trial (np.ndarray): Array of free control parameter values (to be optimized).
         df_feat_vec (pd.DataFrame): DataFrame with feature vectors.
-        fixed_cp (Dict[str, float]): Fixed control parameters. 
+        fixed_cp (Dict[str, float]): Fixed control parameters.
         models_dict (Dict): Pre-trained regression model.
         lambda_reg (float): Regularization strength.
         free_cp (List[str]): Names of control params being optimized (precomputed).
@@ -61,12 +75,12 @@ def objective(
     x_scaled[free_idx] = scaled_vals
     t_scale = time.perf_counter()
 
-    y_pred_scaled = model.predict(x_scaled.reshape(1,-1))[0] * maxmin
+    y_pred_scaled = model.predict(x_scaled.reshape(1, -1))[0] * maxmin
     t_pred = time.perf_counter()
 
     # Penalty on scaled control parameters deviation from previous
     penalty = np.sum((x_scaled[control_idx] - scaled_prev_params) ** 2)
-    
+
     t_pen = time.perf_counter()
     _log_profile(
         f"[objective] total={t_pen - t0:8.4f}s | "
@@ -74,17 +88,18 @@ def objective(
         f"predict={t_pred - t_scale:7.4f}s, "
         f"penalty={t_pen - t_pred:7.4f}s"
     )
-    
+
     return float(y_pred_scaled + lambda_reg * penalty)
 
+
 def run_optimiser(
-    df: pd.DataFrame, # will have feature vectors as per the required scaler.feature_names_in
+    df: pd.DataFrame,  # will have feature vectors as per the required scaler.feature_names_in
     models_dict: Dict[str, Any],
     user_input: Dict[str, float],
     fixed_cp: Dict[str, float],
     dfprocessor: DataframesProcessor,
     lambda_reg: float = 0.1,
-    impute_lags: bool = True
+    impute_lags: bool = True,
 ) -> Dict[str, float]:
     """
     Runs optimization to find control parameters minimizing target output.
@@ -99,39 +114,39 @@ def run_optimiser(
     """
     df_feat_vec = df.copy()
     for model in models_dict.keys():
-        if models_dict[model]['Optimised'] == True:
-            target_output = models_dict[model]['output_param']
+        if models_dict[model]["Optimised"] == True:
+            target_output = models_dict[model]["output_param"]
             optimisation_type = model
-            maxmin = models_dict[model]['maxmin']
-            control_params = models_dict[model]['control_params']
-        
+            maxmin = models_dict[model]["maxmin"]
+            control_params = models_dict[model]["control_params"]
+
     for key, value in user_input.items():
         if not np.isnan(value):
             df_feat_vec.at[df_feat_vec.index[-1], key] = value
 
     free_cp = [cp for cp in control_params if cp not in fixed_cp]
-    
+
     for key, value in fixed_cp.items():
         if not np.isnan(value):
             df_feat_vec.at[df_feat_vec.index[-1], key] = value
 
     # Load scaler for the target output
-    scaler_path = models_dict[optimisation_type]['scaling']
+    scaler_path = models_dict[optimisation_type]["scaling"]
     scaler = joblib.load(scaler_path)
-    models_dict[optimisation_type]['LoadedScaler'] = scaler
+    models_dict[optimisation_type]["LoadedScaler"] = scaler
 
     local_feature_names = scaler.feature_names_in_.tolist()
     if impute_lags:
         for feat in local_feature_names:
-            if '_lag' in feat and feat.split('_lag')[0] in control_params:
+            if "_lag" in feat and feat.split("_lag")[0] in control_params:
                 free_cp.append(feat)
-        
+
     # Bounds
     bounds = get_control_bounds(df, free_cp, impute_lags=impute_lags)
-    
+
     local_feat_vec = df_feat_vec
-    loaded_model = models_dict[optimisation_type]['LoadedMLModel']
-    
+    loaded_model = models_dict[optimisation_type]["LoadedMLModel"]
+
     # Precompute scaled control params
     offsets, scales = extract_scaler_params(scaler)
 
@@ -155,21 +170,23 @@ def run_optimiser(
     scaler_index = {name: i for i, name in enumerate(local_feature_names)}
     feature_idx = np.array([scaler_index.get(f, -1) for f in local_feature_names])
 
-    assert local_feat_vec.columns.tolist() == local_feature_names, \
-        f"Feature names mismatch: {local_feat_vec.columns.tolist()} vs {local_feature_names}"
-    assert len(feature_idx) == len(local_feature_names), \
-        f"Feature index length mismatch: {len(feature_idx)} vs {len(local_feature_names)}"
+    assert (
+        local_feat_vec.columns.tolist() == local_feature_names
+    ), f"Feature names mismatch: {local_feat_vec.columns.tolist()} vs {local_feature_names}"
+    assert len(feature_idx) == len(
+        local_feature_names
+    ), f"Feature index length mismatch: {len(feature_idx)} vs {len(local_feature_names)}"
     base_row = local_feat_vec.iloc[-1][local_feature_names].to_numpy(float)
     base_scaled = (base_row - offsets[feature_idx]) / scales[feature_idx]
-    
-    mask = (feature_idx == -1)
+
+    mask = feature_idx == -1
     base_scaled[mask] = 0.0
 
     free_idx = [local_feature_names.index(cp) for cp in free_cp]
     control_idx = [local_feature_names.index(cp) for cp in control_params]
-    
+
     scaled_prev_params = base_scaled[control_idx].copy()
-    
+
     result = differential_evolution(
         func=objective,
         bounds=bounds,
@@ -184,14 +201,14 @@ def run_optimiser(
             feature_idx,
             loaded_model,
             lambda_reg,
-            maxmin
-            ),
-        strategy='best1bin',
+            maxmin,
+        ),
+        strategy="best1bin",
         polish=True,
         popsize=15,
         tol=0.01,
         maxiter=20,
-        workers=1
+        workers=1,
     )
 
     optimal_free_cp = dict(zip(free_cp, result.x))
@@ -211,14 +228,14 @@ def run_optimiser(
     scaled_prev = (raw_prev - offsets[feature_idx]) / scales[feature_idx]
     scaled_curr = (raw_curr - offsets[feature_idx]) / scales[feature_idx]
 
-   # Zero out any features not in scaler (feature_idx == -1)
-    mask = (feature_idx == -1)
+    # Zero out any features not in scaler (feature_idx == -1)
+    mask = feature_idx == -1
     scaled_prev[mask] = 0.0
     scaled_curr[mask] = 0.0
 
     # Model predictions in scaled target space
-    y_pred_scaled_prev = loaded_model.predict(scaled_prev.reshape(1,-1))[0]
-    y_pred_scaled_curr = loaded_model.predict(scaled_curr.reshape(1,-1))[0]
+    y_pred_scaled_prev = loaded_model.predict(scaled_prev.reshape(1, -1))[0]
+    y_pred_scaled_curr = loaded_model.predict(scaled_curr.reshape(1, -1))[0]
 
     # Inverse-transform to original target units
     y_pred_prev = y_pred_scaled_prev * scales[target_idx] + offsets[target_idx]
@@ -274,8 +291,12 @@ def run_optimiser(
                 if impact_target in feature:
                     targetproxy_feature_idx = impact_feature_names.index(feature)
                     target_idx_imp = len(offsets_imp)
-                    offsets_imp = np.append(offsets_imp, offsets_imp[targetproxy_feature_idx])
-                    scales_imp = np.append(scales_imp, scales_imp[targetproxy_feature_idx])
+                    offsets_imp = np.append(
+                        offsets_imp, offsets_imp[targetproxy_feature_idx]
+                    )
+                    scales_imp = np.append(
+                        scales_imp, scales_imp[targetproxy_feature_idx]
+                    )
                     break
             else:
                 raise KeyError(
@@ -288,25 +309,27 @@ def run_optimiser(
         raw_curr_imp = row_curr_imp[impact_feature_names].to_numpy(float)
 
         # Scale using this model's scaler
-        impact_index_map = {name: i for i, name in enumerate(impact_scaler.feature_names_in_)}
+        impact_index_map = {
+            name: i for i, name in enumerate(impact_scaler.feature_names_in_)
+        }
         feature_idx_imp = np.array(
             [impact_index_map.get(f, -1) for f in impact_feature_names], dtype=int
         )
 
-        scaled_prev_imp = (raw_prev_imp - offsets_imp[feature_idx_imp]) / scales_imp[feature_idx_imp]
-        scaled_curr_imp = (raw_curr_imp - offsets_imp[feature_idx_imp]) / scales_imp[feature_idx_imp]
+        scaled_prev_imp = (raw_prev_imp - offsets_imp[feature_idx_imp]) / scales_imp[
+            feature_idx_imp
+        ]
+        scaled_curr_imp = (raw_curr_imp - offsets_imp[feature_idx_imp]) / scales_imp[
+            feature_idx_imp
+        ]
 
         mask_imp = feature_idx_imp == -1
         scaled_prev_imp[mask_imp] = 0.0
         scaled_curr_imp[mask_imp] = 0.0
 
         # Predict in scaled target space
-        y_imp_scaled_prev = impact_model.predict(
-            scaled_prev_imp.reshape(1, -1)
-            )[0]
-        y_imp_scaled_curr = impact_model.predict(
-            scaled_curr_imp.reshape(1, -1)
-            )[0]
+        y_imp_scaled_prev = impact_model.predict(scaled_prev_imp.reshape(1, -1))[0]
+        y_imp_scaled_curr = impact_model.predict(scaled_curr_imp.reshape(1, -1))[0]
 
         target_offset_imp = offsets_imp[target_idx_imp]
         target_scale_imp = scales_imp[target_idx_imp]
@@ -323,7 +346,7 @@ def run_optimiser(
 def debug_callback(xc_trial: np.ndarray, convergence: bool) -> None:
     """
     Debug callback function to print the current trial values.
-    
+
     Args:
         xc_trial (np.ndarray): Current trial values of control parameters.
         convergence (bool): Whether the optimization has converged.

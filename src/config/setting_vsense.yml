@@ -7,8 +7,8 @@ OPTIM_STEPS: 30
 Optimisation:
   Eta CO:
     output_param: FURNACETOPGASANALYSISCO2ETACO
-    model: src/models/etaco_model.pkl
-    scaling: src/models/etaco_scaler.pkl
+    model: src/assets/models/etaco_model.pkl
+    scaling: src/assets/models/etaco_scaler.pkl
     maxmin: -1.0
     control_params:
     - HOT BLAST PRESSUREBAR
@@ -125,8 +125,8 @@ Optimisation:
       - FURNACE TOP GAS ANALYSISH2%
   Production Rate:
     output_param: PRODUCTIONTONNESPERHR
-    model: src/models/productionrate_model.pkl
-    scaling: src/models/productionrate_scaler.pkl
+    model: src/assets/models/productionrate_model.pkl
+    scaling: src/assets/models/productionrate_scaler.pkl
     maxmin: -1.0
     control_params:
     - HOT BLAST PRESSUREBAR
@@ -320,182 +320,9 @@ Optimisation:
       - STOCKRODLEVEL
       - FURNACE TOP GAS ANALYSISH2%
     maxmin: 1.0
-    model: src/models/unitcost_model.pkl
+    model: src/assets/models/unitcost_opt_dec.pkl
     output_param: UNITCOST LAKHS/THM
-    scaling: src/models/unitcost_scaler.pkl
-  Fuel Rate:
-    control_params:
-    - HOT BLAST PRESSUREBAR
-    - TOPPRESSUREBAR
-    - HOT BLAST TEMP.OC
-    - STEAMKGS/HR.
-    - HOT BLAST VOLUMENM3/HR.
-    - O2 ENRICHMENT %
-    input_params:
-      Coke:
-      - COKE_VM%
-      - COKE_ASH%
-      - COKE_IM%
-      - COKE_FC%
-      - COKE_MOIST%
-      - COKE_CALC_MT
-      NutCoke:
-      - NUTCOKE_MOIST%
-      - NUTCOKE_CALC_MT
-      - NUTCOKE_VM%
-      - NUTCOKE_IM%
-      - NUTCOKE_FC%
-      - NUTCOKE_ASH%
-      PCI:
-      - PCI_2_FC%
-      - PCI_2_ASH%
-      - PCI_2_VM%
-      - PCI_2_IM%
-      Ore:
-      - ORE_FE(T)%
-      - ORE_LOI%
-      - ORE_TM%
-      - ORE_MGO%
-      - ORE_NA2O%
-      - ORE_P%
-      - ORE_TIO2%
-      - ORE_AL2O3%
-      - ORE_SIO2%
-      - ORE_MNO%
-      - ORE_CAO%
-      - ORE_K2O%
-      - ORE_CALC_MT
-      Sinter:
-      - SINTER_SP_02_HOT_STRENGTH_RI
-      - SINTER_SP_02_HOT_STRENGTH_RDI
-      - SINTER_SP_02_COLD_STRENGTH_AI
-      - SINTER_SP_02_COLD_STRENGTH_TI
-      - SINTER_SP_02_P%
-      - SINTER_SP_02_SIO2%
-      - SINTER_SP_02_MGO%
-      - SINTER_SP_02_FEO%
-      - SINTER_SP_02_AL2O3%
-      - SINTER_SP_02_NA2O%
-      - SINTER_SP_02_TIO2%
-      - SINTER_SP_02_FE(T)%
-      - SINTER_SP_02_CAO%
-      - SINTER_SP_02_K2O%
-      - SINTER_SP_02_BASICITY
-      - SINTER_SP_02_MNO%
-      - SINTER_CALC_MT
-      Pellet:
-      - LLOYDS_PELLET_PCT_SIO2
-      - LLOYDS_PELLET_PCT_AL2O3
-      - LLOYDS_PELLET_PCT_FE2O3
-      - LLOYDS_PELLET_PCT_MGO
-      - LLOYDS_PELLET_PCT_TIO2
-      - LLOYDS_PELLET_PCT_NA2O
-      - TOTAL_PELLET_CALC_MT
-      - LLOYDS_PELLET_PCT_K2O
-      - LLOYDS_PELLET_PCT_TM
-      - LLOYDS_PELLET_PCT_LOI
-      - LLOYDS_PELLET_PCT_MNO
-      - LLOYDS_PELLET_PCT_CAO
-      - LLOYDS_PELLET_PCT_P
-      Flux:
-      - FLUX_TM%
-      - FLUX_SIO2%
-      - FLUX_FE2O3%
-      - FLUX_AL2O3%
-      - FLUX_LOI%
-      - FLUX_MGO%
-      - FLUX_CAO%
-      - FLUX_CALC_MT
-    maxmin: 1.0
-    model: src/models/fuelrate_model.pkl
-    output_param: ACT. FUEL RATEKG/THM.
-    scaling: src/models/fuelrate_scaler.pkl
-  Coke Rate:
-    output_param: COKE RATE KG/THM
-    model: src/models/cokerate_model.pkl
-    scaling: src/models/cokerate_scaler.pkl
-    maxmin: 1.0
-    control_params:
-    - HOT BLAST PRESSUREBAR
-    - TOPPRESSUREBAR
-    - HOT BLAST TEMP.OC
-    - STEAMKGS/HR.
-    - HOT BLAST VOLUMENM3/HR.
-    - O2 ENRICHMENT %
-    input_params:
-      Coke:
-      - COKE_ASH%
-      - COKE_FC%
-      - COKE_IM%
-      - COKE_MOIST%
-      - COKE_VM%
-      - COKE_CALC_MT
-      NutCoke:
-      - NUTCOKE_ASH%
-      - NUTCOKE_FC%
-      - NUTCOKE_IM%
-      - NUTCOKE_MOIST%
-      - NUTCOKE_VM%
-      - NUTCOKE_CALC_MT
-      PCI:
-      - PCI_2_ASH%
-      - PCI_2_FC%
-      - PCI_2_IM%
-      - PCI_2_VM%
-      Ore:
-      - ORE_AL2O3%
-      - ORE_CAO%
-      - ORE_FE(T)%
-      - ORE_K2O%
-      - ORE_LOI%
-      - ORE_MGO%
-      - ORE_MNO%
-      - ORE_CALC_MT
-      - ORE_NA2O%
-      - ORE_P%
-      - ORE_SIO2%
-      - ORE_TIO2%
-      - ORE_TM%
-      Sinter:
-      - SINTER_SP_02_CAO%
-      - SINTER_SP_02_COLD_STRENGTH_AI
-      - SINTER_SP_02_COLD_STRENGTH_TI
-      - SINTER_SP_02_FE(T)%
-      - SINTER_SP_02_FEO%
-      - SINTER_SP_02_HOT_STRENGTH_RDI
-      - SINTER_SP_02_HOT_STRENGTH_RI
-      - SINTER_SP_02_K2O%
-      - SINTER_SP_02_MGO%
-      - SINTER_SP_02_MNO%
-      - SINTER_CALC_MT
-      - SINTER_SP_02_NA2O%
-      - SINTER_SP_02_P%
-      - SINTER_SP_02_SIO2%
-      - SINTER_SP_02_BASICITY
-      - SINTER_SP_02_TIO2%
-      Pellet:
-      - LLOYDS_PELLET_PCT_CAO
-      - TOTAL_PELLET_CALC_MT
-      - LLOYDS_PELLET_PCT_AL2O3
-      - LLOYDS_PELLET_PCT_FE2O3
-      - LLOYDS_PELLET_PCT_K2O
-      - LLOYDS_PELLET_PCT_LOI
-      - LLOYDS_PELLET_PCT_MGO
-      - LLOYDS_PELLET_PCT_MNO
-      - LLOYDS_PELLET_PCT_NA2O
-      - LLOYDS_PELLET_PCT_P
-      - LLOYDS_PELLET_PCT_SIO2
-      - LLOYDS_PELLET_PCT_TIO2
-      - LLOYDS_PELLET_PCT_TM
-      Flux:
-      - FLUX_AL2O3%
-      - FLUX_CAO%
-      - FLUX_FE2O3%
-      - FLUX_LOI%
-      - FLUX_MGO%
-      - FLUX_CALC_MT
-      - FLUX_SIO2%
-      - FLUX_TM%
+    scaling: src/assets/models/unitcost_scaler_dec.pkl
 TIMESTEPS: 3
 field_mapping:
   Sinter_SP_02_Basicity: SINTER_SP_02_BASICITY

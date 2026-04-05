@@ -1,795 +1,123 @@
-# pages/ai_copilot.py
-import os
-import io
-import json
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
+"""AI Copilot page.
+
+Three tabs:
+  1. Anomalies       — live InfluxDB snapshot + channeling propensity + LLM anomaly summary
+  2. Unit Cost & Burden Distribution — static analysis findings from BURDEN_UNITCOST.md
+
+Analysis findings are maintained in ``src/assets/data/copilot_analysis/``.
+To update findings after a new regression run, edit the .md files there — no Python changes needed.
+"""
+
+from __future__ import annotations
+
 from datetime import datetime, timezone
-from utils.helper_functions_explorer import data_retrieval as dr
-from utils.anomaly_propensity import Channeling, ChannelingConfig
-from config.config_loader import load_config
-from dotenv import load_dotenv
-from openai import OpenAI
-client = OpenAI()
 
-load_dotenv()
-
-config = load_config("setting_ds_dv.yml")  # Load the configuration file
-config_vsense = load_config('setting_vsense.yml')
-
-MEASUREMENT_LABELS = {
-    "heatload_delta_t": "Heatload Delta T",
-    "process_params": "Process Params",
-    "temperature_profile": "Temperature Profile"
-}
-
-FREQUENCY_TO_TIMEDTA = {
-    "None": None,
-    "1 minute": "1min",
-    "5 minutes": "5min",
-    "10 minutes": "10min",
-    "15 minutes": "15min",
-    "30 minutes": "30min",
-    "1 hour": "1h",
-    "6 hours": "6h",
-    "8 hours": "8h",
-    "12 hours": "12h",
-    "1 day": "1d",
-}
-
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 0) CONFIG
-# ────────────────────────────────────────────────────────────────────────────────
-
-# OpenAI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-# Prefer an env-provided name; fall back to a safe small model
-OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5-mini")
-USE_CODE_INTERPRETER = True 
-
-# Local CSV for static fuel/ETA analyses
-STATIC_CSV_PATH = config['DATA']
-
-model_keys = list(config_vsense['Optimisation'].keys())
-CONTROL_COLUMNS = config_vsense['Optimisation'][model_keys[1]]['control_params']
-INPUT_COLUMNS = [item for sublist in config_vsense['Optimisation'][model_keys[1]]['input_params'].values() for item in sublist]
-OUTPUT_COLUMNS = [config_vsense['Optimisation'][key]['output_param'] for key in config_vsense['Optimisation']]
-
-METRIC_MAP = {
-    "ETA CO": "FurnaceTopGasAnalysisCO2ETACO",
-    "Total Fuel": "Act. Fuel RateKg/Thm.",
-}
-
-ALL_COLUMNS = CONTROL_COLUMNS + INPUT_COLUMNS + OUTPUT_COLUMNS
-BEST_START = datetime(2024, 4, 1, tzinfo=timezone.utc)
-BEST_END   = datetime(2024, 6, 30, 23, 59, 59, tzinfo=timezone.utc)
-
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 1) LLM WRAPPER (OpenAI Responses API with optional code_interpreter)
-# ────────────────────────────────────────────────────────────────────────────────
-
-def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]] | None = None) -> str:
-    """
-    Sends prompts to OpenAI Responses API.
-    - Optionally enables the code_interpreter tool.
-    - If files are provided, uploads and attaches them for the tool to access.
-    - Falls back to a plain Chat Completions request if Responses API call fails.
-    """
-    if not OPENAI_API_KEY:
-        return "⚠️ OPENAI_API_KEY not set."
-
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
-    # Upload files and collect their IDs
-    file_ids: list[str] = []
-    if files:
-        for fname, fbytes in files:
-            try:
-                up = client.files.create(file=(fname, io.BytesIO(fbytes)), purpose="assistants")
-                file_ids.append(up.id)
-            except Exception:
-                # ignore upload errors, proceed without that file
-                pass
-
-    # Build request
-    req = {
-        "model": OPENAI_MODEL,
-        "input": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-
-    tools = []
-    if USE_CODE_INTERPRETER:
-        tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
-    if tools:
-        req["tools"] = tools
-
-    # Attach files primarily via top-level attachments, fallback via tool_resources
-    if file_ids:
-        req["attachments"] = [
-            {"file_id": fid, "tools": [{"type": "code_interpreter"}]} for fid in file_ids
-        ]
-        req["tool_resources"] = {"code_interpreter": {"file_ids": file_ids}}
-
-    # Try Responses API first
-    last_err = None
-    try:
-        response = client.responses.create(**req)
-        # New SDK provides output_text for convenience
-        text = getattr(response, "output_text", None)
-        if text:
-            return text
-        # Fallback to raw JSON dump if no convenience field is present
-        return json.dumps(response.to_dict(), indent=2)
-    except Exception as err1:
-        last_err = err1
-
-    return f"LLM call failed: {last_err}"
-    
-# ────────────────────────────────────────────────────────────────────────────────
-# 2) CSV LOADER (STATIC ANALYSIS: Review / Drivers)
-# ────────────────────────────────────────────────────────────────────────────────
-
-@st.cache_data(show_spinner=False)
-def load_static_df(path: str) -> pd.DataFrame:
-    if not os.path.isfile(path):
-        st.warning(f"CSV not found at {path}")
-        return pd.DataFrame()
-    df = pd.read_csv(path)
-    df.index = pd.to_datetime(df['Unnamed: 0'], utc=True, errors="coerce")
-    df.drop(columns=['Unnamed: 0'], inplace=True, errors="ignore")
-    # Ensure numeric
-    for c in df.columns:
-        if df[c].dtype == object:
-            df[c] = pd.to_numeric(df[c], errors="ignore")
-    return df
-
-
-def best_snapshot_from_static(df: pd.DataFrame, target_col: str):
-    """
-    Returns the best snapshot for a target column in the static CSV.
-    The best snapshot is defined as the time when the target column is at its best value
-    within the BEST_START and BEST_END range.
-    Args:
-        df (pd.DataFrame): DataFrame containing the static data.
-        target_col (str): The target column to find the best snapshot for.
-    Returns:
-        dict: A dictionary with the best time and value for the target column.
-    """
-    if df.empty or target_col not in df.columns:
-        return None
-    period = df.loc[(df.index >= BEST_START) & (df.index <= BEST_END), [target_col]].dropna()
-    if period.empty:
-        return None
-    # ETA CO → max; Total Fuel → min
-    if target_col == "FurnaceTopGasAnalysisCO2ETACO":
-        ts = period[target_col].idxmax()
-    else:
-        ts = period[target_col].idxmin()
-    return {"when": ts, "value": float(period.loc[ts, target_col])}
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 3) INFLUXDB FETCHER (DYNAMIC ANALYSIS: Recent Operation Review)
-# ────────────────────────────────────────────────────────────────────────────────
-
-
-FIELD_LABELS = {
-    internal_key: human_label
-    for mapping in config["data_mapping"].values()
-    for human_label, internal_key in mapping.items()
-}
-
-@st.cache_data(show_spinner=False)
-def fetch_recent_online(tr: str = 'last 8 hours', 
-                        request_type: str = 'windowed-average',
-                        window_by: str = '15 minutes') -> pd.DataFrame:
-    """
-    Fetches recent online data from InfluxDB for the last `minutes` minutes.
-    Parameters:
-    - tr (str): Time range to fetch (e.g., 'last 8 hours').
-    - request_type (str): Type of data to fetch ('windowed-average' or 'raw').
-    - window_by (str): Resampling frequency for windowed average (e.g., '15 minutes').
-    Returns:
-    - pd.DataFrame: DataFrame containing the recent online data.
-    """
-    selected_measurements = list(MEASUREMENT_LABELS.keys())
-    combined_df = dr.fetch_online_df(selected_measurements,
-                                    tr,
-                                    FREQUENCY_TO_TIMEDTA,
-                                    MEASUREMENT_LABELS,
-                                    FIELD_LABELS,                    
-                                    request_type=request_type,
-                                    window_by=window_by)
-
-    return combined_df
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 4) PACKETS & PROMPTS
-# ────────────────────────────────────────────────────────────────────────────────
-
-def df_packet(df: pd.DataFrame, max_rows: int = 160) -> str:
-    """
-    Converts a DataFrame to a markdown packet for display in Streamlit.
-    Args:
-        df (pd.DataFrame): DataFrame to convert.
-        max_rows (int): Maximum number of rows to display in the packet.
-    Returns:
-        str: Markdown formatted string with the DataFrame and summary stats.
-    """
-    if df.empty:
-        return "_No data in the selected window._"
-    d = df.copy()
-    for c in d.columns:
-        if pd.api.types.is_numeric_dtype(d[c]):
-            d[c] = d[c].astype(float).round(4)
-    if len(d) > max_rows:
-        step = max(1, len(d)//max_rows)
-        d = d.iloc[::step]
-    parts = []
-    parts.append(f"Rows: {len(df)} | Columns: {len(df.columns)}")
-    parts.append(d.reset_index(names="timestamp").to_markdown(index=False))
-    parts.append("\n**Summary Stats:**")
-    parts.append(df.describe().round(3).to_markdown())
-    return "\n\n".join(parts)
-
-def build_review_prompt(target_label: str, df1: pd.DataFrame, df2: pd.DataFrame | None, best_snap: dict) -> str:
-    """
-    Builds a review prompt for the AI copilot based on the target label and dataframes.
-    Args:
-        target_label (str): The target label for the review.
-        df1 (pd.DataFrame): DataFrame for the first timeframe.
-        df2 (pd.DataFrame | None): DataFrame for the second timeframe (optional).
-        best_snap (dict): Dictionary with the best snapshot information.
-    Returns:
-        str: Formatted prompt string for the AI copilot.
-    """
-    metric = METRIC_MAP[target_label]
-    pkt1 = df_packet(df1[[metric]].dropna()) if metric in df1.columns else "_(Metric absent in CSV)_"
-    pkt2 = df_packet(df2[[metric]].dropna()) if (df2 is not None and metric in df2.columns) else "_(No Timeframe 2)_"
-    best_line = f"{best_snap['value']:.3f} at {best_snap['when']}" if best_snap else "N/A"
-    return f"""
-You are a senior blast furnace advisor. Be concise, numeric, and actionable.
-
-# Target
-- Metric: **{target_label}** (`{metric}`)
-- Historical best (Apr–Jun 2024): **{best_line}** (ETA CO → max; Total Fuel → min)
-
-# Data
-## Timeframe 1
-{pkt1}
-
-## Timeframe 2
-{pkt2}
-
-# Output
-0) If you sense the furnace is shutdown, reply "Furnace is shutdown, no data available."
-1) Executive verdict (2–3 lines).
-2) Drivers of difference (hot blast temp/vol/press, O₂, steam, PCI, top pressure, permeability, silicon, heatloads, etc.).
-3) Recommendations (setpoint nudges + rationale + trade-offs).
-4) Gap to historical best and what to emulate.
-5) Comparison of last 2days operation vs 7days vs 30days (if available).
-"""
-
-def build_unitcost_prompt() -> str:
-    return """
-You are a blast furnace burden advisor. Analyze the impact of process parameters and raw material composition on **Unit Cost**.
-I have priorly done this analysis and found key drivers and best practices. Now generate the findings
-without hallucinating in a slightly concise manner. Donot repeat yourself and do not report mathematical analysis details (like betas,  rho). 
-Report everything as Markdown only. 
-
-# 🔍 High-Confidence Findings (Statistically Significant Drivers)
-
-**Sign convention:**  
-- Negative = higher value → lower fuel rate (fuel-saving)  
-- Positive = higher value → higher fuel rate (fuel-raising)  
-(Standardized OLS β shown for relative effect size; all significant with *p* < 0.05)
-
----
-
-## 1️⃣ Strongest Levers During Apr–Jun 2024 (All Models Agree)
-
-### **Hot Blast Pressure (NEGATIVE)**
-- Spearman ρ ≈ −0.49; RF importance notable; OLS significant negative.  
-- Apr–Jun higher by **+0.033 bar** (*p* ~ 3.0e-73).  
-➡️ Higher wind pressure strongly linked to lower fuel rate.
-
----
-
-### **Hot Blast Volume (NEGATIVE)**
-- Negative direction in OLS and correlations; non-trivial RF importance.  
-- Apr–Jun higher by **+6,543 Nm³/hr** (*p* ≪ 1e-10).  
-➡️ More wind volume aligned with the low-fuel window.
-
----
-
-### **Flux Addition Rate (FLUX_MT) (NEGATIVE)**
-- Spearman ρ ≈ −0.27; RF ranked high; OLS coefficient negative.  
-- Apr–Jun higher by **+0.57 t/h** (*p* ≈ 1.4e-5).  
-➡️ More flux correlated with lower fuel at current burden chemistry.
-
----
-
-### **Sinter Basicity (NEGATIVE)**
-- RF and OLS show lower basicity aligns with lower fuel.  
-- Apr–Jun slightly lower (−0.0019; *p* ≈ 0.20).  
-➡️ Small but consistent with fuel-saving effect.
-
----
-
-### **Coke Ash % (POSITIVE)**
-- Higher ash increases fuel demand.  
-- Apr–Jun lower by **−0.38 %** (*p* ≪ 1e-10).  
-➡️ Lower coke ash supported the fuel reduction.
-
----
-
-### **Na₂O in Sinter (POSITIVE)**
-- Higher Na₂O raises fuel demand.  
-- Apr–Jun lower by **−0.0011 %** (*p* ≪ 1e-20).  
-➡️ Keeping Na₂O low is beneficial.
-
----
-
-📌 **Net Effect (Apr–Jun 2024):**  
-- **Fuel-saving ↑:** Wind pressure, wind volume, flux rate  
-- **Fuel-saving ↓:** Coke ash, Sinter Na₂O, Sinter basicity  
-
----
-
-## 2️⃣ Levers That Moved *Against* the Fuel Decrease
-
-### **Injected Fuel (ActualKg/Thm., PCI) (POSITIVE, Strongest)**
-- RF importance ~0.73; β ≈ +4.93.  
-- Apr–Jun higher by **+15.8 kg/thm** (*p* ≪ 1e-10).  
-➡️ PCI raised Act. Fuel Rate, but was offset by wind/material gains.
-
----
-
-### **Hot Blast Temperature °C (POSITIVE)**
-- Positive correlation with fuel rate.  
-- Apr–Jun higher by **+13 °C** (*p* ≪ 1e-200).  
-➡️ Likely operational coupling, not causal.
-
----
-
-### **Sinter Al₂O₃ % (POSITIVE)**
-- Higher alumina raised fuel.  
-- Apr–Jun slightly higher (+0.076 %; *p* ≪ 1e-60).  
-➡️ Reducing Al₂O₃ helps.
-
----
-
-## ✅ Which Variables Drove the Low Fuel Rate?
-
-**Fuel-reducing (↑ increased):**
-- Hot Blast Pressure  
-- Hot Blast Volume  
-- Flux Rate  
-
-**Fuel-reducing (↓ decreased):**
-- Coke Ash %  
-- Sinter Na₂O %  
-- Sinter Basicity  
-
-**Counter-direction (increased fuel, but offset):**
-- PCI (Actual Fuel Rate)  
-- Hot Blast Temp °C  
-- Sinter Al₂O₃ %  
-
----
-
-## 📌 Actionable Operating Guidance (Data-Driven)
-
-- **Maintain higher HB pressure & wind volume** within safe limits.  
-- **Sustain or increase flux rate** while balancing slag chemistry.  
-- **Procure lower coke ash** (≤ Apr–Jun median).  
-- **Keep Na₂O in sinter low** via blending & fines control.  
-- **Maintain slightly lower basicity** (avoid over-basic burdens).  
-- **Be cautious with HBT** – correlation is operational, not causal.  
-- **PCI**: If the goal is absolute min. fuel, consider steady or reduced PCI at high wind/low-ash conditions.
-
----
-
-# ⚖️ Optimization for Unit Fuel Cost
-
-### Definition
-FuelCostEq (kgCokeEq/thm)} = Coke Rate + 0.53 * PCI
-
----
-
-## 🔑 Key Results
-- **Apr–Jun 2024 Avg:** **483.0 kgCokeEq/thm**  
-- **Best Historic 7-Day Run (B7D):** **473.4 kgCokeEq/thm**  
-  (≈ **−9.6** vs Apr–Jun)  
-- **Production:** A–J **89.96 t/h** vs B7D **82.51 t/h**  
-  ➡️ B7D was cheaper but ran slower.
-
----
-
-## 📉 What Drove Low Cost in Apr–Jun 2024
-
-**Operational Drivers**
-- HB Pressure ↑ → Cost ↓ (β ≈ −1.78, *p*≪0.001)  
-- Wind Volume ↑ → Cost ↓  
-- Flux Rate ↑ → Cost ↓ (β ≈ −1.08, *p*≪0.001)  
-- PCI ↑ → Cost ↓ (−0.35 kgCokeEq saved per +1 kg PCI)  
-- HB Temp ↑ → Cost ↑ (+0.15 per 1 °C)
-
-**Burden Chemistry**
-- Lower K₂O & Na₂O → Cost ↓  
-- Lower FeO, SiO₂, TiO₂ → Cost ↓  
-- Higher Al₂O₃ → Cost ↑
-
-**Sensitivities**
-- O₂ Enrichment: −2.58 kg/thm per +1 %  
-- HB Pressure: −4.4 per +0.05 bar  
-- Flux: −0.86 per +1 t/h  
-- HB Temp: +1.53 per +10 °C  
-- Wind Volume: −2.5 per +5,000 Nm³/h  
-
----
-
-## 🔁 How the Best 7-Day Run Got Cheaper
-
-**Cost-Reducing Changes (B7D vs Apr–Jun):**
-- PCI +5.95 kg/thm (saved cost)  
-- O₂ Enrichment +0.93 % abs.  
-- Cleaner burden: Ore Al₂O₃ −1.80 %, Ore K₂O −0.019 %, Sinter K₂O −0.042 %  
-
-**Offsets (fuel-raising moves but outweighed):**
-- HB Pressure −0.18 bar, Wind −16,400 Nm³/h  
-- Flux −1.36 t/h  
-- HB Temp −12.4 °C (helpful)
-
-**Trade-Off:** Lower throughput (−7.45 t/h).
-
----
-
-# 📊 Operating Envelope for Low Cost
-
-**Based on lowest-cost decile (not strict limits):**
-
-- PCI: **135–143 kg/thm**  
-- O₂ Enrichment: **2.55–3.56 %**  
-- HB Pressure: **2.65–2.70 bar**  
-- HB Temp: **1149–1164 °C**  
-- Flux: **18.6–22.9 t/h**  
-- Wind: **≥115k Nm³/h**  
-- Sinter K₂O: **≤0.11 %**  
-- Sinter Na₂O: **0.045–0.053 %**  
-- Ore K₂O: **≤0.031 %**  
-- Ore Al₂O₃: **≥3.3 % (maintain slag balance)**
-
-📌 Practical: To minimize cost, **lean on PCI + O₂**, **keep HB pressure up**, **moderate HB temp**, **add flux**, and **suppress alkalis**.
-
----
-
-# ✅ Action Checklist
-
-1. **Target PCI** where substitution ratio {d Coke}/{d PCI} <= -0.53).  
-   (You are at −0.88 to −0.91 → PCI is cost-saving).  
-2. **Hold HB pressure high** (2.65–2.70 bar).  
-3. **Increase O₂ enrichment** (3.0–3.5 % if feasible).  
-4. **Maintain flux ≥ 19 t/h**.  
-5. **Manage chemistry**: Keep K₂O/Na₂O low, blend ore to reduce alkalis.  
-6. **Throughput trade-off**: B7D was cheaper but slower → optimize cost *and* t/h jointly.
-
-
-"""
-
-def build_report_prompt(df: pd.DataFrame, label: str) -> str:
-    pkt = df_packet(df.dropna(axis=1, how="all"))
-    return f"""
-You are a blast furnace reviewer. Create a structured report for **{label}**.
-
-# Data
-{pkt}
-
-# Deliverables
-- Operations snapshot (throughput, Total Fuel, ETA CO, stability).
-- Thermal profile (top/bosh temps, skin temps by level, heatloads, ΔT).
-- Burden quality & quantity (coke/nutcoke, sinter, CLO; PCI quality).
-- Outputs (HM/slag key analysis—e.g., silicon).
-- Deviations vs typical.
-- Recommendations (concrete levers + expected effect).
-"""
-
-def build_bunker_unitcost_prompt() -> str:
-    return f"""
-
-You are a blast furnace burden advisor. Analyze the impact of mainly the burden distribution on **Unit Cost** and to some extent
-combined with the rawmaterial and process parameters.
-I have priorly done this analysis and found key drivers and best practices. Now generate the findings
-without hallucinating in a slightly concise manner. Donot repeat yourself and do not report mathematical analysis details (like betas,  rho). 
-Report everything as Markdown only. 
-
-Findings:
-
-# What the data say (linked to your Unit Cost)
-
-### Reminder of Unit Cost
-`Unit_Cost = Coke Rate Kg/Thm + 0.53 × ActualKg/Thm.`
-
----
-
-## Modeling approach
-**Model:** Transparent linear model (OLS) to reduce confounding.
-
-**Controls:**  
-- Hot Blast Temp  
-- TopPressureBar  
-- O₂ Enrichment %  
-- ETA CO *(FurnaceTopGasAnalysisCO2ETACO)*  
-- PCI ActualKg/Thm
-
-**Burden features:**  
-- `portions_total_COKE`, `portions_total_NON COKE`  
-- `angle_wmean_COKE`, `angle_wmean_NON COKE`  
-- `outer_share_COKE`, `outer_share_NON COKE`  
-- `lmg_angle`
-
-**Model quality:**  
-- **R² ≈ 0.43** on ~5,900 valid rows *(burden + controls explain ~43% of Unit Cost variance)*.  
-- *(Charts: “Standardized Effects…” visualize these effects.)*
-
----
-
-## Most influential & directionally consistent effects *(holding controls constant)*
-- **More NON-COKE portions → lower Unit Cost** *(strong, significant).*  
-  *Intuition:* better ore/sinter coverage enabling efficient gas flow.
-- **More COKE portions → higher Unit Cost** *(strong, significant).*  
-  *Intuition:* coke rings consume more and drive cost up.
-- **Pushing NON-COKE outward (higher `angle_wmean_NON COKE`) → lower Unit Cost** *(significant).*  
-  *Intuition:* spreading ore toward the periphery improves permeability/ETA and saves fuel.
-- **Higher LMG angle → slight reduction in Unit Cost** *(small but significant negative coefficient in a sparse, de-collinear model).*
-- **Outer share of COKE:** small negative coefficient *(cost ↓)*, not statistically strong once other features enter.
-
----
-
-## Process controls behaved as expected
-- **Higher PCI rate** and **higher ETA CO** both **reduce Unit Cost**.
-- **Higher Hot Blast Temp** **increases** cost *(likely proxying for periods requiring more heat input).*
-
----
-
-## “Best burden distributions” found in your history
-Each distribution change interval was evaluated by the **realized mean Unit Cost** until the next change (and we also tracked Coke rate, PCI, and ETA CO).
-
-**Top performing change windows (≥300 data rows; long enough to trust):**  
-*(See full table in “Top 25 Best Burden Events…”)*
-1. **2024-03-28 17:00 — mean Unit Cost ≈ 487.0**  
-   - COKE portions: **11**, NON-COKE portions: **8**  
-   - `angle_wmean_COKE` ≈ **26.0°**, `angle_wmean_NON-COKE` ≈ **28.0°**  
-   - `outer_share_NON-COKE`: **0.25**  
-   - **LMG angle:** **42.5** *(pattern “P TO C”)*  
-   - **Purpose:** “TO IMPROVE THE CENTER GAS FLOW”.
-
-2. **2024-11-08 12:47 — mean Unit Cost ≈ 489.5**  
-   - COKE portions: **37**, NON-COKE portions: **24** *(multiple ring sets logged at the same timestamp; summed)*  
-   - `angle_wmean_COKE` ≈ **27.4°**, `angle_wmean_NON-COKE` ≈ **28.5°**  
-   - `outer_share_NON-COKE`: **0.25**  
-   - **Purpose:** “TO INCREASE THE UTILISATION”.
-
-3. **2025-08-02 10:00 — mean Unit Cost ≈ 492.0**  
-   - COKE: **11**, NON-COKE: **8**  
-   - `angle_wmean_COKE` ≈ **26.7°**, `angle_wmean_NON-COKE` ≈ **28.0°**  
-   - `outer_share_NON-COKE`: **0.25**
-
-4. **2024-08-20 20:00 — mean Unit Cost ≈ 493.9**  
-   - COKE: **11**, NON-COKE: **8**  
-   - `angle_wmean_COKE` ≈ **26.8°**, `angle_wmean_NON-COKE` ≈ **28.3°**  
-   - `outer_share_NON-COKE`: **0.33**  
-   - **Purpose:** “TO CONTROL PRE”.
-
----
-
-## Common pattern across best windows
-- **Moderate COKE portions (~10–11)** & **adequate NON-COKE portions (~8)**.  
-- **NON-COKE weighted angle near ~28°** and **≥25% in the outer ring (≥32°)**.  
-- **LMG angle ~40–43** with **P→C charging pattern** frequently noted.  
-- These windows also show **good ETA CO** and **healthy PCI**.
-
-> **Rule of thumb (from your data):**  
-> Keep **coke portions lean**, keep **non-coke portions ample**, and **bias the non-coke outward** *(center-of-mass ~28° with ≥25% outer share).*
-
-**Key drivers summary:**  
-- **NON-COKE `portions_total`** is the strongest cost **reducer**.  
-- **COKE `portions_total`** is the strongest cost **increaser**.  
-- **NON-COKE weighted angle** reduces cost *(more outer non-coke).*
-
----
-
-## Why this is faithful to your physical process
-- Respects the **6-row block design**; carries **date/time forward** so every material record is stamped correctly.
-- Pairs each **“RINGS”** row with its **following “Angle”** row **only** to obtain degrees *(avoids double-counting portions)*.
-- Separates **`metric=portions`** vs **`metric=percent`** so Extra-Coke “IN %” entries don’t pollute portions counts.
-- Models **change windows** *(pattern holds until next change)*, not isolated points.
-
----
-
-## Actionable next steps (recommended)
-- **Lock a candidate best pattern from history:**
-  - **~10–11 COKE portions**, **~8 NON-COKE portions**
-  - **Target `angle_wmean_NON-COKE` ≈ 28°**, **≥25% outer share**
-  - **LMG angle ~40–43**, **charging pattern P→C**
-"""
-
-def build_anomaly_prompt(recent_df: pd.DataFrame, 
-                         past_df: pd.DataFrame,
-                         notes: str = "") -> str:
-    # Compact alerts table
-    pkt = recent_df if not recent_df.empty else "_No timeseries to show_"
-    past_pkt = past_df if not past_df.empty else "_No past timeseries to show_"
-    
-    return f"""
-You are an anomaly spotter and shift summariser that helps operator to takeover in the next shift.
-
-You also received last 8hour data (recent_df) and 8-24hours past data (past_df) for:
-a. blast furnace temperature profile denoted "Temperature Profile - BF2_BFBF Furnace Body [furnace_level]mm Temp [circumferential_position]"
-    Description for Number of sensors at different levels and any proxy name (furnace profile) is given below
-    Desc:
-        "4373":
-          n_sensors: 7
-        "5411":
-          n_sensors: 13
-        "5757":
-          proxy_name: "Hearth"      
-          n_sensors: 13
-        "6103":
-          n_sensors: 13
-        "6795":
-          n_sensors: 12
-        "7565":
-          n_sensors: 14
-        "8335":
-          n_sensors: 14
-        "9105":
-          n_sensors: 12
-        "12975":
-          proxy_name: "Bosh"   
-          n_sensors: 4
-        "15162":
-          proxy_name: "Belly"  
-          n_sensors: 4
-        "18660":
-          proxy_name: "Stack"
-          n_sensors: 4
-
-        "Tuyeres" are located at 10500mm
-b. heatload at different levels denoted by row number. 
-    Ex: "Heatload Delta T - Heat load R8 Q3 (Stave No 17-24)" - Average heatload for Quadrant 3 (for staves 17 to 24)
-        "Heatload Delta T - Heat load Row6-10 Q1 (Stave No 17-24) - Average for Rows 6 to 10 but only Quadrant 3
-        "Heatload Delta T - Heat load Row6" - for average heatload in row 6 across all quadrants
-c. process_params:
-    - blast furnace top pressure, volume, temperature, O₂, steam, PCI (coal rate) etc
-
-Review the **last 8 hours** for furnace profile temperature spikes, heatload spikes, ΔT excursions,
-gas/pressure instabilities.
-
-# Recent 8hours packet (averaged to 15mins)
-{pkt}
-
-# Past 8-24 hours packet (averaged to 15mins)
-{past_pkt}
-
-# Operator notes
-{notes}
-
-# Output in brief upto 200 words only
-- Siginificant changes in the two shifts in brief.
-- Key observations (2–3 lines) for operator of what happened in previous shift. 
-Like Blowdowns, StartUps, Shutdowns.
-Are heatloads increasing?
-Is fuel rate increasing?
-Is blast furnace stable?
-
-- Alerts (issue + severity).
-- Likely causes mapped to controllables (HB temp/volume/pressure, O₂, steam, PCI) and burden quality.
-
-NOTE: 1. Avoid any hallucincations and only stick to provided data. Don't be verbose and mention each point only once. 
-2. Currently the operator does not have access to provide prompt feedback. So dont ask questions/expect further input.
-"""
-
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 6) STREAMLIT UI
-# ────────────────────────────────────────────────────────────────────────────────
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+from utils.anomaly_propensity import Channeling
+from utils.copilot.data import fetch_recent_online
+from utils.copilot.llm import OPENAI_MODEL, call_llm
+from utils.copilot.prompts import (
+    ANOMALY_SYSTEM,
+    BURDEN_SYSTEM,
+    build_anomaly_prompt,
+    build_burden_prompt,
+    load_burden_findings,
+    load_sensor_desc,
+)
+
+# ── Page config & header ──────────────────────────────────────────────────────
 
 st.title("🤖 AI Copilot")
 
-combined_df = fetch_recent_online()
-# Display and allow download
-if isinstance(combined_df, pd.DataFrame) and not combined_df.empty:
-    combined_df = combined_df.sort_index()
-    st.dataframe(combined_df)
-else:
-    st.info("No data returned for the selected options. Will wait for 15 minutes to refresh.")
-
-# === Static CSV (used by Review & Drivers) ===
-df_static = load_static_df(STATIC_CSV_PATH)
-
-st.header("Analysis & Reports")
-tabs = st.tabs([ "Anomalies", "Unit cost", "Unit cost & Burden Dist"])
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 
 st.sidebar.header("Configuration")
 run_llm = st.sidebar.toggle("Run LLM Analysis", key="run_llm_button")
+st.sidebar.caption(f"Model: `{OPENAI_MODEL}`")
 
-# ── Anomalies Tab (Influx) ─────────────────────────────────────────────────────
-# Optional but strongly recommended: cache your Influx pull so typing notes doesn’t slam the DB
-@st.cache_data(ttl=600, show_spinner=False)  # 10 minutes
-def fetch_recent_cached(tr: str, window_by: str):
-    return fetch_recent_online(tr=tr, request_type='windowed-average', window_by=window_by)
+# ── Live data (shared across tabs) ────────────────────────────────────────────
 
-with tabs[0]:
+combined_df = fetch_recent_online()
+if isinstance(combined_df, pd.DataFrame) and not combined_df.empty:
+    st.dataframe(combined_df.sort_index(), use_container_width=True)
+else:
+    st.info("No live data returned. Will retry on next refresh.")
+
+# ── Tabs ──────────────────────────────────────────────────────────────────────
+
+anomaly_tab, burden_tab = st.tabs(["🔍 Anomalies", "📦 Unit Cost & Burden Dist"])
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tab 1 — Anomalies
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with anomaly_tab:
     st.subheader("Anomalies")
 
-    # --- Operator notes: put in a form so it DOES NOT rerun the app on every keystroke ---
+    # Operator notes (form avoids rerun on every keystroke)
     with st.form("operator_notes_form", clear_on_submit=False):
         notes = st.text_area("Operator notes (optional)", key="operator_notes")
-        save_note = st.form_submit_button("Save note")
-        if save_note:
-            # TODO: persist this somewhere (DB / file / API) if required
-            st.success("Note captured in session (persistence TBD).")
+        if st.form_submit_button("Save note"):
+            st.success("Note captured in session.")
 
     st.divider()
 
+    # ── Channeling propensity ─────────────────────────────────────────────────
     detector = Channeling()
 
     with st.expander("Channeling propensity", expanded=True):
-
         c1, c2, c3 = st.columns([1, 1, 2])
-        enable = c1.toggle(
-            "Enable channeling propensity",
-            value=False,
-            key="channeling_propensity_enable",
-        )
+        enable = c1.toggle("Enable", value=False, key="channeling_propensity_enable")
         live = c2.toggle(
-            "Auto-refresh (every 10 min)",
-            value=True,
-            key="channeling_propensity_autorefresh",
+            "Auto-refresh (10 min)", value=True, key="channeling_propensity_autorefresh"
         )
         lookback = c3.selectbox(
             "Lookback",
-            options=["last 1 hour", 
-                     "last 6 hours", 
-                     "last 12 hours",
-                     "last 1 day",
-                     "last 3 days",
-                     "last 1 week",
-                     "last 2 weeks",
-                     "last 1 month",
-                     "last 2 months",
-                     "last 3 months"],
+            options=[
+                "last 1 hour",
+                "last 6 hours",
+                "last 12 hours",
+                "last 1 day",
+                "last 3 days",
+                "last 1 week",
+                "last 2 weeks",
+                "last 1 month",
+                "last 2 months",
+                "last 3 months",
+            ],
             index=2,
             key="channeling_propensity_lookback",
         )
 
-        # Auto-rerun the fragment every 600s ONLY if enabled + live
+        @st.cache_data(ttl=600, show_spinner=False)
+        def _fetch_cached(tr: str, window_by: str) -> pd.DataFrame:
+            return fetch_recent_online(tr=tr, window_by=window_by)
+
         run_every = 600 if (enable and live) else None
 
         @st.fragment(run_every=run_every)
-        def render_channeling():
+        def render_channeling() -> None:
             with st.spinner("Computing propensities…"):
-                df_in = fetch_recent_cached(tr=lookback, window_by="1 minute")
+                df_in = _fetch_cached(tr=lookback, window_by="1 minute")
                 scores = detector.score_timeseries(df_in)
 
             if scores.empty:
                 st.info("No series to plot for this propensity.")
                 return
 
-            # --- KPI row ---
-            scores = scores[scores["channeling_score"] >= 0]  # filter invalid scores
-            scores = scores[scores["channeling_score"] <= 1.3]  # filter invalid scores
-            
-            scores.dropna(inplace=True, subset=["channeling_score"])
+            scores = scores[scores["channeling_score"].between(0, 1.3)].dropna(
+                subset=["channeling_score"]
+            )
             last = float(scores["channeling_score"].iloc[-1])
-            prev = float(scores["channeling_score"].iloc[-2]) if len(scores) > 1 else np.nan
+            prev = (
+                float(scores["channeling_score"].iloc[-2])
+                if len(scores) > 1
+                else np.nan
+            )
             delta = (last - prev) if np.isfinite(prev) else None
 
             k1, k2, k3 = st.columns(3)
@@ -799,82 +127,103 @@ with tabs[0]:
                 delta=f"{delta:+.2f}" if delta is not None else None,
             )
             k2.metric(
-                "Components used (of 7)",
-                int(scores["n_components_used"].iloc[-1]),
+                "Components used (of 7)", int(scores["n_components_used"].iloc[-1])
             )
             k3.caption(f"Last updated: {datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}")
 
-            # --- Plot ONLY the final score (not the whole DF) ---
-            _scores_ist = scores[["channeling_score"]].copy()
-            if _scores_ist.index.tz is None:
-                _scores_ist.index = _scores_ist.index.tz_localize("UTC")
-            _scores_ist.index = _scores_ist.index.tz_convert("Asia/Kolkata")
-            st.line_chart(_scores_ist, height=220)
+            _sc = scores[["channeling_score"]].copy()
+            if _sc.index.tz is None:
+                _sc.index = _sc.index.tz_localize("UTC")
+            st.line_chart(_sc.tz_convert("Asia/Kolkata"), height=220)
 
-            # --- Circumferential quadrant profile ---
+            # Circumferential quadrant profile
             q_labels = ["Q1", "Q2", "Q3", "Q4"]
             q_keys = ["q1_score", "q2_score", "q3_score", "q4_score"]
-            latest_row = scores.iloc[-1]
-            q_vals = [float(latest_row.get(k, 0)) for k in q_keys]
-            q_vals = [v if np.isfinite(v) else 0.0 for v in q_vals]
-            q_total = sum(q_vals)
+            latest = scores.iloc[-1]
+            q_vals = [
+                float(latest.get(k, 0)) if np.isfinite(float(latest.get(k, 0))) else 0.0
+                for k in q_keys
+            ]
 
             circ_col, info_col = st.columns([3, 2])
             with circ_col:
                 vmin, vmax = min(q_vals), max(q_vals)
 
-                def _yrb_color(frac):
-                    """Yellow(0) → Red(0.5) → Black(1)."""
+                def _yrb(frac: float) -> str:
                     f = max(0.0, min(1.0, frac))
                     if f <= 0.5:
-                        g = int(255 * (1 - 2 * f))
-                        return f"rgb(255,{g},0)"
-                    r = int(255 * (2 - 2 * f))
-                    return f"rgb({r},0,0)"
+                        return f"rgb(255,{int(255*(1-2*f))},0)"
+                    return f"rgb({int(255*(2-2*f))},0,0)"
 
                 fig_q = go.Figure()
                 R_IN, R_OUT, SEGS = 3, 8, 60
                 for qi in range(4):
                     th0 = qi * 90
-                    thetas = np.linspace(np.deg2rad(th0), np.deg2rad(th0 + 90), SEGS + 1)
-                    xs = np.concatenate([R_OUT * np.cos(thetas),
-                                         R_IN * np.cos(thetas[::-1]),
-                                         [R_OUT * np.cos(thetas[0])]])
-                    ys = np.concatenate([R_OUT * np.sin(thetas),
-                                         R_IN * np.sin(thetas[::-1]),
-                                         [R_OUT * np.sin(thetas[0])]])
+                    thetas = np.linspace(
+                        np.deg2rad(th0), np.deg2rad(th0 + 90), SEGS + 1
+                    )
+                    xs = np.concatenate(
+                        [
+                            R_OUT * np.cos(thetas),
+                            R_IN * np.cos(thetas[::-1]),
+                            [R_OUT * np.cos(thetas[0])],
+                        ]
+                    )
+                    ys = np.concatenate(
+                        [
+                            R_OUT * np.sin(thetas),
+                            R_IN * np.sin(thetas[::-1]),
+                            [R_OUT * np.sin(thetas[0])],
+                        ]
+                    )
                     frac = (q_vals[qi] - vmin) / (vmax - vmin) if vmax > vmin else 0.5
-                    fig_q.add_trace(go.Scatter(
-                        x=xs, y=ys, mode="lines",
-                        fill="toself", fillcolor=_yrb_color(frac),
-                        line=dict(color="white", width=2),
-                        showlegend=False,
-                        hovertemplate=f"<b>{q_labels[qi]}</b><br>Score: {q_vals[qi]:.3f}<extra></extra>",
-                    ))
                     ang_mid = np.deg2rad(th0 + 45)
                     lbl_r = (R_IN + R_OUT) / 2
-                    fig_q.add_annotation(
-                        x=lbl_r * np.cos(ang_mid), y=lbl_r * np.sin(ang_mid),
-                        text=f"<b>{q_labels[qi]}</b><br>{q_vals[qi]:.3f}",
-                        showarrow=False, font=dict(size=12, color="green"), align="center",
+                    fig_q.add_trace(
+                        go.Scatter(
+                            x=xs,
+                            y=ys,
+                            mode="lines",
+                            fill="toself",
+                            fillcolor=_yrb(frac),
+                            line=dict(color="white", width=2),
+                            showlegend=False,
+                            hovertemplate=f"<b>{q_labels[qi]}</b><br>Score: {q_vals[qi]:.3f}<extra></extra>",
+                        )
                     )
-                # Colorbar via invisible scatter
-                fig_q.add_trace(go.Scatter(
-                    x=[None], y=[None], mode="markers",
-                    marker=dict(
-                        colorscale=[[0, "yellow"], [0.5, "red"], [1, "black"]],
-                        cmin=vmin, cmax=vmax, color=[vmin], showscale=True,
-                        colorbar=dict(title="Score", x=1.0, thickness=14, len=0.7),
-                    ),
-                    showlegend=False, hoverinfo="skip",
-                ))
+                    fig_q.add_annotation(
+                        x=lbl_r * np.cos(ang_mid),
+                        y=lbl_r * np.sin(ang_mid),
+                        text=f"<b>{q_labels[qi]}</b><br>{q_vals[qi]:.3f}",
+                        showarrow=False,
+                        font=dict(size=12, color="green"),
+                        align="center",
+                    )
+                fig_q.add_trace(
+                    go.Scatter(
+                        x=[None],
+                        y=[None],
+                        mode="markers",
+                        marker=dict(
+                            colorscale=[[0, "yellow"], [0.5, "red"], [1, "black"]],
+                            cmin=vmin,
+                            cmax=vmax,
+                            color=[vmin],
+                            showscale=True,
+                            colorbar=dict(title="Score", x=1.0, thickness=14, len=0.7),
+                        ),
+                        showlegend=False,
+                        hoverinfo="skip",
+                    )
+                )
                 fig_q.update_layout(
                     title="Circumferential Anomaly Profile",
                     height=300,
                     margin=dict(t=40, b=10, l=10, r=60),
                     xaxis=dict(visible=False, scaleanchor="y", range=[-10.5, 10.5]),
                     yaxis=dict(visible=False, range=[-10.5, 10.5]),
-                    paper_bgcolor="white", plot_bgcolor="white",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
                 )
                 st.plotly_chart(fig_q, use_container_width=True)
 
@@ -882,140 +231,132 @@ with tabs[0]:
                 st.caption("**Quadrant scores** (latest window)")
                 for lbl, val in zip(q_labels, q_vals):
                     st.text(f"  {lbl}: {val:.3f}")
-                if q_total > 1e-6:
-                    dominant = q_labels[int(np.argmax(q_vals))]
-                    st.markdown(f"**Dominant quadrant: {dominant}**")
-                else:
-                    st.markdown("**All quadrants balanced.**")
+                dominant = q_labels[int(np.argmax(q_vals))]
+                st.markdown(
+                    f"**Dominant quadrant: {dominant}**"
+                    if sum(q_vals) > 1e-6
+                    else "**All quadrants balanced.**"
+                )
 
-            # --- Optional: component breakdown ---
-            breakdown_cols_row = st.columns(3)
-            with breakdown_cols_row[0]:
-                last_points = st.number_input(
-                    "Points to show in breakdown", value=12, min_value=1, max_value=1000, step=1)
-            with st.expander(f"Component breakdown (latest {last_points} points)", expanded=False):
+            with st.expander(f"Component breakdown (latest points)", expanded=False):
                 display_cols = [
-                    "channeling_score",
-                    "uptake_score", "skin_score",
-                    "hbp_score", "topdp_score",
-                    "bottomdp_score", "eta_co_score",
-                    "heatload_score", "stave_score",
-                    "q1_score", "q2_score", "q3_score", "q4_score",
-                    "n_components_used",
+                    c
+                    for c in [
+                        "channeling_score",
+                        "uptake_score",
+                        "skin_score",
+                        "hbp_score",
+                        "topdp_score",
+                        "bottomdp_score",
+                        "eta_co_score",
+                        "heatload_score",
+                        "stave_score",
+                        "q1_score",
+                        "q2_score",
+                        "q3_score",
+                        "q4_score",
+                        "n_components_used",
+                    ]
+                    if c in scores.columns
                 ]
-                display_cols = [c for c in display_cols if c in scores.columns]
-                st.dataframe(scores[display_cols].tail(last_points), width='stretch')
+                n = st.number_input(
+                    "Points to show", value=12, min_value=1, max_value=1000, step=1
+                )
+                st.dataframe(scores[display_cols].tail(n), use_container_width=True)
 
         if enable:
             render_channeling()
         else:
-            st.caption("Turn on **Enable channeling propensity** to start computing.")
+            st.caption("Turn on **Enable** to start computing channeling propensity.")
 
+    # ── LLM anomaly summary ───────────────────────────────────────────────────
     if st.button("Check Anomalies"):
-        with st.spinner("Fetching recent data from Influx…"):
-            df_recent_shift = fetch_recent_online(tr='last 8 hours', 
-                                            request_type='windowed-average', 
-                                            window_by='15 minutes')
-            
-            df_previous = fetch_recent_online(tr='last 1 day',
-                                            request_type='windowed-average', 
-                                            window_by='15 minutes')
-            # Make df_previous cover the 8–24 hours ago period only
-            if not df_previous.empty:
-                cutoff_time = df_previous.index.max() - pd.Timedelta(hours=16)
-                df_previous = df_previous[df_previous.index <= cutoff_time]
-        if df_recent_shift.empty:
-            st.warning("No recent data fetched from Influx. Check credentials/fields.")
-        else:
-            system = "You are a careful anomaly detector for blast furnace thermal and gas behavior."
-            prompt = build_anomaly_prompt(df_recent_shift, df_previous, notes)
-            with st.spinner("Summarizing anomalies…"):
-                if run_llm:
-                    out = call_llm(system, prompt)
-                    st.markdown(out)
+        with st.spinner("Fetching data from InfluxDB…"):
+            df_recent = fetch_recent_online(tr="last 8 hours", window_by="15 minutes")
+            df_past = fetch_recent_online(tr="last 1 day", window_by="15 minutes")
+            if not df_past.empty:
+                cutoff = df_past.index.max() - pd.Timedelta(hours=16)
+                df_past = df_past[df_past.index <= cutoff]
 
-# ── Review Tab (static CSV) ─────────────────────────────────────────────────────
-with tabs[1]:
-    st.subheader("Unit cost review - Apr–Jun 2024")
+        if df_recent.empty:
+            st.warning("No recent data fetched from InfluxDB.")
+        elif not run_llm:
+            st.info(
+                "Enable **Run LLM Analysis** in the sidebar to generate the anomaly summary."
+            )
+        else:
+            sensor_desc = load_sensor_desc()
+            prompt = build_anomaly_prompt(df_recent, df_past, sensor_desc, notes)
+            with st.spinner("Summarising anomalies…"):
+                st.markdown(call_llm(ANOMALY_SYSTEM, prompt))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tab 2 — Unit Cost & Burden Distribution
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with burden_tab:
+    st.subheader("Unit Cost & Burden Distribution Analysis")
+    st.caption(
+        "Findings are loaded from `src/assets/data/copilot_analysis/BURDEN_UNITCOST.md`. "
+        "Edit that file to update after a new regression run — no code change needed."
+    )
 
     if st.button("Generate Review"):
+        findings = load_burden_findings()
+        prompt = build_burden_prompt(findings)
 
-        system = "You are a precise, senior blast furnace advisor. Be concise, numeric, and actionable."
-        prompt = build_unitcost_prompt()
+        if not run_llm:
+            # Show the raw findings without LLM narration
+            st.info("LLM narration is off. Showing raw analysis findings.")
+            st.markdown(findings)
+        else:
+            with st.spinner("Generating review…"):
+                st.markdown(call_llm(BURDEN_SYSTEM, prompt))
 
-        with st.spinner("Generating review…"):
-            out = call_llm(system, prompt)
-        st.markdown(out)
+# ── Footer ────────────────────────────────────────────────────────────────────
 
-# ── Report Tab (static CSV) ─────────────────────────────────────────────────────
-with tabs[2]:
-    st.subheader("Unit cost & Burden Dist")
-    if st.button("Generate Review - Burden Dist"):
-
-        system = "You are a precise, senior blast furnace advisor. Be concise, numeric, and actionable."
-        prompt = build_bunker_unitcost_prompt()
-
-        with st.spinner("Generating review…"):
-            out = call_llm(system, prompt)
-        st.markdown(out)
-
-
-
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 7) FOOTER / TIPS
-# ────────────────────────────────────────────────────────────────────────────────
-
-with st.expander("⚙️ Setup notes & knobs"):
-    st.markdown("""
-- **OpenAI Responses API** with `code_interpreter` is enabled. Set `OPENAI_API_KEY` and (optionally) `OPENAI_MODEL`.
-- **Static CSV**: page reads `src/data/V3_df_filtered.csv` for Review/Report/Drivers. Timestamps are auto-detected.
-- **InfluxDB**: set `INFLUX_URL`, `INFLUX_ORG`, `INFLUX_TOKEN`. Bucket is hard-coded to `bf2_evonith_raw`.
-- **Fields**: tweak `PROCESS_FIELDS`, `HEATLOAD_FIELDS`, `DELTA_T_FIELDS`, `COOLING_WATER_FIELDS`, and `TEMP_PROFILE_FIELDS`.
-- **Anomaly thresholds**: simple z-score/Δz; adjust window lengths or add domain thresholds as needed.
+with st.expander("⚙️ Setup notes"):
+    st.markdown(f"""
+- **OpenAI Responses API** with `code_interpreter` enabled. Set `OPENAI_API_KEY` and (optionally) `OPENAI_MODEL` (current: `{OPENAI_MODEL}`).
+- **Analysis files**: edit `src/assets/data/copilot_analysis/BURDEN_UNITCOST.md` to update burden findings after a new regression run.
+- **Sensor descriptions**: edit `src/assets/data/copilot_analysis/ANOMALY_SENSOR_DESC.md` if sensor layout changes.
+- **InfluxDB**: set `INFLUX_URL`, `INFLUX_ORG`, `INFLUX_TOKEN`. Bucket is `bf2_evonith_raw`.
     """)
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 8) OPERATOR FEEDBACK
-# ────────────────────────────────────────────────────────────────────────────────
+# ── Operator feedback ─────────────────────────────────────────────────────────
 
 st.markdown("---")
 st.subheader("Operator feedback")
 
-# Initialize session state for feedback widgets
-if "op_fb_vote" not in st.session_state:
-    st.session_state["op_fb_vote"] = None
-if "op_fb_text" not in st.session_state:
-    st.session_state["op_fb_text"] = ""
-if "op_feedback" not in st.session_state:
-    st.session_state["op_feedback"] = []  # placeholder store; persist later
+for key, default in [("op_fb_vote", None), ("op_fb_text", ""), ("op_feedback", [])]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-c_up, c_down = st.columns(2)
-with c_up:
+fb_up, fb_down = st.columns(2)
+with fb_up:
     if st.button("👍 Useful", key="op_fb_up"):
         st.session_state["op_fb_vote"] = "up"
         st.session_state["op_fb_text"] = ""
-with c_down:
+with fb_down:
     if st.button("👎 Not useful", key="op_fb_down"):
         st.session_state["op_fb_vote"] = "down"
 
-# Show textbox only when a thumbs-down is recorded
 if st.session_state.get("op_fb_vote") == "down":
     st.text_area(
-        "Operator feedback (optional)",
+        "What was not useful?",
         key="op_fb_text",
-        placeholder="What was not useful or how could this be improved?",
+        placeholder="How could this be improved?",
     )
     if st.button("Submit feedback", key="op_fb_submit"):
-        st.session_state["op_feedback"].append({
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "vote": "down",
-            "text": st.session_state.get("op_fb_text", ""),
-        })
-        # TODO: Persist this to a vector DB / persistent store for later grounding
-        st.success("Thanks for the feedback. It will be used to improve future responses.")
+        st.session_state["op_feedback"].append(
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "vote": "down",
+                "text": st.session_state.get("op_fb_text", ""),
+            }
+        )
+        st.success("Thanks — feedback captured.")
         st.session_state["op_fb_vote"] = None
         st.session_state["op_fb_text"] = ""
 elif st.session_state.get("op_fb_vote") == "up":
     st.info("Thanks for confirming it was useful.")
-

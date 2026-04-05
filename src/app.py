@@ -1,9 +1,20 @@
+"""Streamlit multi-page application entry point for the BF2 dashboard.
+
+Handles:
+- ``st.set_page_config`` (must be the first Streamlit call)
+- Authentication gate: redirects unauthenticated users to the login page
+- Page registration via :func:`streamlit.navigation`
+
+Run via ``python run_streamlit.py`` (never invoke ``streamlit run`` directly
+to avoid Windows DLL ordering issues with PyTorch).
+"""
+
 import streamlit as st
 
 # Must be first Streamlit call
 st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
-from utils.logger import setup_logger
 from ui.login_page import LoginPage
+from utils.logger import setup_logger
 from utils.session import is_logged_in
 
 # Initialize logging once
@@ -42,7 +53,6 @@ pages = [
     # st.Page("custom_pages/6_📊_Reports.py", title="Reports", icon="📊" ),
     st.Page("custom_pages/7_🧠_FurnaceMind.py", title="FurnaceMind", icon="🧠"),
 ]
-
 
 
 pg = st.navigation(pages)
