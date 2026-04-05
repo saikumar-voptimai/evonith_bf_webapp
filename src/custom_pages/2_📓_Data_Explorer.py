@@ -379,24 +379,31 @@ with st.form(key="measurement_form"):
     # Fetch action
     fetch_clicked = st.form_submit_button("⬇️ Fetch")
     if fetch_clicked:
-        selected_measurements = st.session_state.selected_measurements
-        if not selected_measurements:
-            st.warning("Please select at least one measurement.")
-        else:
-            # Use keys exactly as defined (no lowercasing)
-            tr = st.session_state.time_range
-            wb = st.session_state.window_by
-            combined_df = dr.fetch_online_df(
-                sorted(list(selected_measurements)),
-                tr,
-                MEASUREMENT_LABELS,
-                FIELD_LABELS,
-                request_type="windowed-average",
-                window_by=wb,
-            )
+        sm = st.session_state
 
-            # Persist for display/download after rerun
-            st.session_state.online_df = combined_df
+        invalid = (
+            (wr := FREQUENCY_TO_TIMEDTA.get(sm.window_by))
+            and (tr := TIME_OPTIONS.get(sm.time_range))
+            and pd.to_timedelta(wr) > tr
+        )
+
+        if invalid:
+            st.warning(f"⚠️ Avg window ({sm.window_by}) > time range ({sm.time_range})")
+            st.stop()
+
+        if not sm.selected_measurements:
+            st.warning("Please select at least one measurement.")
+            st.stop()
+
+        sm.online_df = dr.fetch_online_df(
+            sorted(sm.selected_measurements),
+            sm.time_range,
+            FREQUENCY_TO_TIMEDTA,
+            MEASUREMENT_LABELS,
+            FIELD_LABELS,
+            request_type="windowed-average",
+            window_by=sm.window_by,
+        )
 
 # Display and allow download after the form (survives reruns)
 if (
