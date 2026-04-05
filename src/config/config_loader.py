@@ -1,5 +1,7 @@
-import yaml
 from pathlib import Path
+
+import yaml
+
 
 def load_config(config_file: str = "setting_ds_dv.yml"):
     """

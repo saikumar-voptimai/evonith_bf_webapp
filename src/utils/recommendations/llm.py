@@ -1,13 +1,27 @@
-import os
+"""OpenAI Responses API wrapper for V-OptimAIse LLM review.
+
+After the optimiser proposes new blast parameters, :func:`call_llm` forwards
+the optimisation result to the OpenAI Responses API (with optional
+``code_interpreter`` tool) for a concise, numeric, actionable review by a
+senior blast-furnace advisor persona.
+
+Falls back to the Chat Completions API if the Responses API call fails.
+"""
+
 import io
 import json
+import os
+
 from openai import OpenAI
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL   = os.getenv("OPENAI_MODEL", "gpt-5-mini")
-USE_CODE_INTERPRETER = True 
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+USE_CODE_INTERPRETER = True
 
-def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]] | None = None) -> str:
+
+def call_llm(
+    system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]] | None = None
+) -> str:
     """
     Sends prompts to OpenAI Responses API.
     - Optionally enables the code_interpreter tool.
@@ -24,7 +38,9 @@ def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]
     if files:
         for fname, fbytes in files:
             try:
-                up = client.files.create(file=(fname, io.BytesIO(fbytes)), purpose="assistants")
+                up = client.files.create(
+                    file=(fname, io.BytesIO(fbytes)), purpose="assistants"
+                )
                 file_ids.append(up.id)
             except Exception:
                 # ignore upload errors, proceed without that file
@@ -48,7 +64,8 @@ def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]
     # Attach files primarily via top-level attachments, fallback via tool_resources
     if file_ids:
         req["attachments"] = [
-            {"file_id": fid, "tools": [{"type": "code_interpreter"}]} for fid in file_ids
+            {"file_id": fid, "tools": [{"type": "code_interpreter"}]}
+            for fid in file_ids
         ]
         req["tool_resources"] = {"code_interpreter": {"file_ids": file_ids}}
 
@@ -71,7 +88,9 @@ def call_llm(system_prompt: str, user_prompt: str, files: list[tuple[str, bytes]
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        chat = client.chat.completions.create(model=OPENAI_MODEL, messages=messages, temperature=0.2)
+        chat = client.chat.completions.create(
+            model=OPENAI_MODEL, messages=messages, temperature=0.2
+        )
         if chat and chat.choices:
             return chat.choices[0].message.content or ""
     except Exception as err2:

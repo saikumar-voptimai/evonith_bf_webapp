@@ -1,18 +1,29 @@
+"""User registration and management UI for the BF2 dashboard.
+
+Provides :class:`RegisterPage` which wraps the :class:`~domain.auth_service.AuthService`
+to add new users with role assignment from an admin interface.
+"""
+
 # register_page.py
 import streamlit as st
-from domain.auth_service import AuthService
+
 from data.db import Database
+from domain.auth_service import AuthService
 
 
 class RegisterPage:
-    """
-    Handles the user registration interface and logic for the application.
-    This class manages the form UI, field validation, and interaction
-    with the AuthService for creating new users.
+    """User registration interface and validation logic.
+
+    Manages the registration form UI, field validation, and interaction
+    with :class:`~domain.auth_service.AuthService` for creating new users.
+
+    Attributes:
+        db:           :class:`~data.db.Database` instance for persistence.
+        auth_service: :class:`~domain.auth_service.AuthService` facade.
     """
 
-    def __init__(self):
-        """Initialize database and authentication service."""
+    def __init__(self) -> None:
+        """Initialise the database connection and authentication service."""
         self.db = Database()
         self.auth_service = AuthService(self.db)
 
@@ -55,9 +66,9 @@ class RegisterPage:
 
             # Store success state for message
             st.session_state["registration_success"] = True
-            st.session_state[
-                "registration_success_message"
-            ] = f"✅ User '{username}' registered successfully."
+            st.session_state["registration_success_message"] = (
+                f"✅ User '{username}' registered successfully."
+            )
 
             # Trigger rerun to refresh and show message
             st.rerun()
@@ -84,7 +95,7 @@ class RegisterPage:
         with st.form(key="register_form", clear_on_submit=True):
             username = st.text_input("👤 New Username")
             password = st.text_input("🔑 New Password", type="password")
-            role = st.selectbox("🧩 Role", ["user", 'supervisor', "admin"])
+            role = st.selectbox("🧩 Role", ["user", "supervisor", "admin"])
 
             # Submit button
             submitted = st.form_submit_button("✅ Register")
