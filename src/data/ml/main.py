@@ -1,10 +1,9 @@
-# src/ml_pipeline/main.py
 from datetime import date, timedelta
 from threading import Lock
 import pandas as pd
 
 from config.config_loader import load_config
-from ml_pipeline.ml_dataset_service import MlDatasetService
+from data.ml.ml_dataset_service import MlDatasetService
 
 
 # ---------------- CONFIG ----------------

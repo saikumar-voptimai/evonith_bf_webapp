@@ -3,7 +3,7 @@ import joblib
 from pathlib import Path
 import warnings
 from typing import List, Dict, Any
-from data_fetchers.base_data_fetcher import BaseDataFetcher
+from data.fetchers.base_data_fetcher import BaseDataFetcher
 from utils.helper_functions_explorer.data_retrieval import fetch_offline_data
 
 

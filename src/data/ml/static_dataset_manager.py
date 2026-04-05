@@ -3,8 +3,8 @@ from datetime import date, timedelta
 import pandas as pd
 from pathlib import Path
 
-from ml_pipeline.main import MlDatasetFetcher
-from ml_pipeline.data_cleaning import DataCleaner, build_default_config
+from data.ml.main import MlDatasetFetcher
+from data.ml.data_cleaning import DataCleaner, build_default_config
 
 
 class StaticDatasetManager:

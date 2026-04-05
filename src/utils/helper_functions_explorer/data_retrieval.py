@@ -2,7 +2,7 @@ import re
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict
-from data_fetchers.base_data_fetcher import BaseDataFetcher
+from data.fetchers.base_data_fetcher import BaseDataFetcher
 
 TIMEDELTAS = {
         'last 1 minute': timedelta(minutes=1),
