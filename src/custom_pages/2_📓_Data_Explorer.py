@@ -579,8 +579,7 @@ with right_col:
     st.header("📄 Filtered ML Dataset")
     with st.container(border=True):
 
-        static_df_path = config["DATA"]
-        sm = StaticDatasetManager(static_df_path)
+        sm = StaticDatasetManager(fullpath)
 
         # ---------------- RESET FLAG INIT ----------------
         if "reset_reprocess_date" not in st.session_state:
@@ -627,11 +626,11 @@ with right_col:
                         st.rerun()
 
         with col2:
-            with open(static_df_path, "rb") as f:
+            with open(fullpath, "rb") as f:
                 st.download_button(
                     label="Download ML Dataset",
                     data=f,
-                    file_name="ML Filtered Dataset.csv",
+                    file_name="ml_dataset_filtered.csv",
                     mime="text/csv",
                 )
 

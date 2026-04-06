@@ -110,7 +110,7 @@ class TemperatureDataFetcher(BaseDataFetcher):
             levelwise_dict = {}
             for level, cols in level_cols.items():
                 n_sensors = SENSORS_AT_Y[level]["n_sensors"]
-                df_temp_data = temp_data[cols]
+                df_temp_data = temp_data[cols].copy()
                 df_temp_data[df_temp_data <= 25] = np.nan
                 df_temp_data.dropna(
                     axis=0, how="all", inplace=True

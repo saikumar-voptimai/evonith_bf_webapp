@@ -6,7 +6,7 @@ Construct once per page render (``__init__`` does file I/O).
 Static context loaded (in order, concatenated):
   1. CLAUDE.md          — blast furnace domain knowledge
   2. TOOLS*.md          — tool routing rules
-  3. SKILLS*.md         — skill benchmark data (best-shift bands, coefficients)
+  3. SKILLS*.md         — injected only for the active skill (not all at once)
 
 All files live in ``src/storage/copilot/``.
 """
@@ -23,6 +23,14 @@ logger = get_logger(__name__)
 
 _COPILOT_DATA_DIR = Path(__file__).resolve().parents[2] / "storage" / "copilot"
 _REPO_ROOT = Path(__file__).resolve().parents[4]  # …/evonith_webapp
+
+# Which SKILLS*.md files to inject per active skill. None = free chat (no skill docs).
+_SKILL_FILES: dict[str | None, list[str]] = {
+    "optimise":      ["SKILLS_BESTSHIFT.md", "SKILLS_OPTIMISE.md"],
+    "shift_to_best": ["SKILLS_BESTSHIFT.md"],
+    "heatload":      ["SKILLS_HEATLOAD.md"],
+    None:            [],
+}
 
 
 def _read_file(path: Path, *, max_chars: int) -> str:
@@ -61,13 +69,22 @@ class SystemPromptContext:
 
     # ── Public ──────────────────────────────────────────────────────────────
 
-    def build(self, extra: str = "") -> str:
-        """Assemble the full system prompt string."""
+    def build(self, extra: str = "", skill_id: str | None = None) -> str:
+        """Assemble the full system prompt string.
+
+        Args:
+            extra:    Additional text appended at the end (e.g. TOOL_POLICY).
+            skill_id: Active skill key — controls which SKILLS*.md is injected.
+                      Pass None for free-chat turns (no skill docs loaded).
+        """
         parts = [AI_COOPERATE_SYSTEM]
         if self._static:
             parts.append(
                 "STATIC CONTEXT (read this before answering):\n" + self._static
             )
+        skill_ctx = self._load_skills(skill_id)
+        if skill_ctx:
+            parts.append("SKILL CONTEXT (active skill reference data):\n" + skill_ctx)
         if self._persistent:
             parts.append(self._persistent)
         if self._errors:
@@ -100,13 +117,18 @@ class SystemPromptContext:
                 logger.info("Loaded %s (%d chars)", p.name, len(txt))
                 parts.append(f"{p.name} (available tools + calling rules):\n" + txt)
 
-        for p in sorted(_COPILOT_DATA_DIR.glob("SKILLS*.md"), key=lambda f: f.name):
-            txt = _read_file(p, max_chars=14_000)
-            if txt:
-                logger.info("Loaded %s (%d chars)", p.name, len(txt))
-                parts.append(f"{p.name} (skill benchmark data):\n" + txt)
-
         return "\n\n---\n\n".join(parts).strip()
+
+    def _load_skills(self, skill_id: str | None) -> str:
+        """Load only the SKILLS*.md files relevant to *skill_id*."""
+        filenames = _SKILL_FILES.get(skill_id, [])
+        parts: list[str] = []
+        for name in filenames:
+            txt = _read_file(_COPILOT_DATA_DIR / name, max_chars=14_000)
+            if txt:
+                logger.info("Loaded skill file %s (%d chars) for skill=%s", name, len(txt), skill_id)
+                parts.append(f"{name} (skill benchmark data):\n" + txt)
+        return "\n\n---\n\n".join(parts)
 
     def _load_errors(self) -> str:
         try:

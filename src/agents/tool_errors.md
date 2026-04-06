@@ -460,3 +460,51 @@ Disallowed token in code: \bimport\b
 ```
 'DataFrame' object has no attribute 'sortna'
 ```
+
+
+## 2026-04-06T10:12:34.963153+00:00
+**Tool:** fetch_ml_data
+
+**Params:** `{"start_time": "2026-03-07", "end_time": null, "resample": null, "columns": null}`
+
+**Error:**
+
+```
+Static ML dataset not found at E:\Personal\MarketResearch\EvonithSteel\BlastFurnaceProject\PythonBlastFurnace\evonith_webapp\assets\data\ml_dataset_filtered.csv. Expected: src/assets/data/ml_dataset_filtered.csv
+```
+
+
+## 2026-04-06T10:12:43.350308+00:00
+**Tool:** fetch_ml_data
+
+**Params:** `{"start_time": "2026-03-07", "end_time": null, "resample": null, "columns": null}`
+
+**Error:**
+
+```
+Static ML dataset not found at E:\Personal\MarketResearch\EvonithSteel\BlastFurnaceProject\PythonBlastFurnace\evonith_webapp\assets\data\ml_dataset_filtered.csv. Expected: src/assets/data/ml_dataset_filtered.csv
+```
+
+
+## 2026-04-06T12:24:47.308101+00:00
+**Tool:** fetch_ml_data
+
+**Params:** `{"start_time": "2026-03-07", "end_time": null, "resample": null, "columns": null}`
+
+**Error:**
+
+```
+Static ML dataset not found at E:\Personal\MarketResearch\EvonithSteel\BlastFurnaceProject\PythonBlastFurnace\evonith_webapp\assets\data\ml_dataset_filtered.csv. Expected: src/assets/data/ml_dataset_filtered.csv
+```
+
+
+## 2026-04-06T12:24:56.103987+00:00
+**Tool:** fetch_ml_data
+
+**Params:** `{"start_time": "2026-03-07", "end_time": null, "resample": null, "columns": null}`
+
+**Error:**
+
+```
+Static ML dataset not found at E:\Personal\MarketResearch\EvonithSteel\BlastFurnaceProject\PythonBlastFurnace\evonith_webapp\assets\data\ml_dataset_filtered.csv. Expected: src/assets/data/ml_dataset_filtered.csv
+```

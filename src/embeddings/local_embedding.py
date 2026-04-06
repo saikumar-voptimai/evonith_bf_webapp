@@ -1,5 +1,5 @@
 from sentence_transformers import SentenceTransformer
-from FurnaceMind.utils.settings import settings
+from utils.settings import settings
 
 class LocalEmbeddingClient:
     """

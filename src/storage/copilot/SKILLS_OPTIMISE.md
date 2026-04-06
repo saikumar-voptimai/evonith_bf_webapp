@@ -81,75 +81,15 @@ Do NOT recommend increasing enrichment or changing distribution if any of these 
 
 ---
 
-## Analysis procedure (execute in execute_python_plot)
+## Analysis procedure (pre-computed — no tool calls required)
 
-```python
-# df is available — contains ML static data for last 30 days
+When this skill is invoked via the "💰 Optimise Unit Cost" button, the SkillEngine
+pre-computes all values (8h averages, gap scores, benchmark) and builds the Tier 1
+gap chart **before** the LLM is called. The chart is already stored in the Artifacts
+panel. The user message will contain all computed numbers inline.
 
-# 1. Split: baseline = all history, current = last 8 rows (8h at 1h resolution)
-df_sorted = df.sort_index().dropna(how='all')
-df_curr = df_sorted.tail(8)   # last 8h = current shift
-df_base = df_sorted            # all 30 days = baseline context
-
-# 2. Compute current 8h averages for key parameters
-tier1_cols = [
-    'O2 ENRICHMENT %', 'HOT BLAST TEMP.OC', 'TOPPRESSUREBAR',
-    'WEIGHTED_COKE_ANGLE', 'WEIGHTED_NON_COKE_ANGLE', 'CHARGES/HRS.'
-]
-tier2_cols = [
-    'PCI_2_ASH%', 'COKE_MOIST%', 'COKE_ASH%', 'NUTCOKE_ASH%',
-    'SINTER_SP_02_BASICITY', 'SINTER_SP_02_AL2O3%', 'ORE_TM%'
-]
-tier3_cols = [
-    'TOPBAR', 'DIFFERENTIAL PRESSURETOTALBAR', 'PERMEABILITYKGS/HR.',
-    'CHEM_PCT_SI', 'TOTAL HEAT LOAD'
-]
-
-# 3. For each Tier 1 param: compute gap from best-shift midpoint, weight by |coeff|
-# best_shift_midpoints and coefficients are from SKILLS_BESTSHIFT.md (hardcoded below)
-best_mid = {
-    'O2 ENRICHMENT %': 4.6,
-    'HOT BLAST TEMP.OC': 1212.0,
-    'WEIGHTED_COKE_ANGLE': 27.3,
-    'WEIGHTED_NON_COKE_ANGLE': 27.3,
-    'CHARGES/HRS.': 6.5,
-}
-abs_coeff = {
-    'O2 ENRICHMENT %': 1.204,
-    'HOT BLAST TEMP.OC': 0.390,
-    'WEIGHTED_COKE_ANGLE': 3.732,
-    'WEIGHTED_NON_COKE_ANGLE': 3.092,
-    'CHARGES/HRS.': 0.3,
-}
-
-# 4. Compute impact scores for available columns
-scores = {}
-for col in best_mid:
-    if col in df_curr.columns:
-        curr_val = df_curr[col].mean()
-        gap = best_mid[col] - curr_val   # positive = below optimal
-        coeff = abs_coeff.get(col, 0.5)
-        scores[col] = abs(gap) * coeff
-
-# 5. Sort by score descending
-ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
-# 6. Build comparison bar chart
-params = [r[0] for r in ranked]
-curr_vals = [df_curr[p].mean() if p in df_curr.columns else 0 for p in params]
-opt_vals = [best_mid[p] for p in params]
-
-fig = go.Figure()
-fig.add_bar(name='Current (8h avg)', x=params, y=curr_vals, marker_color='steelblue')
-fig.add_bar(name='Best-shift target', x=params, y=opt_vals, marker_color='green', opacity=0.6)
-fig.update_layout(
-    title='Unit Cost Optimisation — Current vs Best-Shift Targets (Tier 1)',
-    barmode='group',
-    xaxis_tickangle=-30,
-    yaxis_title='Parameter value',
-    legend=dict(orientation='h', y=1.1)
-)
-```
+**Do NOT call `execute_python_plot` or any other tool for this skill.**
+Simply read the pre-computed data in the user message and write the operator report.
 
 ---
 

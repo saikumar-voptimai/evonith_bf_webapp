@@ -136,7 +136,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
                 )
 
         # ── Skill buttons ────────────────────────────────────────────────────
-        def _fire_skill(prompt: str, display: str) -> None:
+        def _fire_skill(prompt: str, display: str, skill_id: str) -> None:
             """Clear stale artifacts and queue the skill prompt for the next render."""
             st.session_state.pop("copilot_fig", None)
             st.session_state.pop("copilot_df", None)
@@ -144,29 +144,32 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             st.session_state["pending_skill_prompt"] = {
                 "prompt": prompt,
                 "display": display,
+                "skill_id": skill_id,
             }
             st.rerun()
 
         b1, b2, b3 = st.columns(3)
         with b1:
             if st.button(
-                "💰 Optimise Unit Cost", use_container_width=True, type="primary"
-            ):
+                "💰 Optimise Unit Cost", use_container_width=True):
                 _fire_skill(
                     engine.optimise_prompt(),
                     "💰 **Optimise Unit Cost** — analysing last 30 days vs best-shift targets",
+                    "optimise",
                 )
         with b2:
             if st.button("🎯 Shift to Best", use_container_width=True):
                 _fire_skill(
                     engine.shift_to_best_prompt(str(selected_date), selected_label),
                     f"🎯 **Shift to Best**: {selected_date}, Shift {selected_label}",
+                    "shift_to_best",
                 )
         with b3:
             if st.button("🌡️ Check Heatloads", use_container_width=True):
                 _fire_skill(
                     engine.heatload_prompt(),
                     "🌡️ **Check Heatloads** — last 8h vs 2-month baseline",
+                    "heatload",
                 )
 
         st.markdown("---")
@@ -175,10 +178,12 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         typed_query = st.chat_input("Ask about shifts, live trends, documents…")
 
         user_query = user_display = None
+        active_skill_id: str | None = None
         if "pending_skill_prompt" in st.session_state:
             pending = st.session_state.pop("pending_skill_prompt")
             user_query = pending["prompt"]
             user_display = pending["display"]
+            active_skill_id = pending.get("skill_id")
         elif typed_query:
             user_query = user_display = typed_query
 
@@ -196,7 +201,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     tools = get_openai_tool_schemas()
 
     messages: list[dict] = [
-        {"role": "system", "content": ctx.build(extra=TOOL_POLICY)},
+        {"role": "system", "content": ctx.build(extra=TOOL_POLICY, skill_id=active_skill_id)},
         *_chat_history_to_messages(),
     ]
 

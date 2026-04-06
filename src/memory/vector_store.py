@@ -55,7 +55,7 @@ class QdrantVectorStore:
         self.collection_name = qcfg.collection_name
         self.embedding_dim = qcfg.embedding_dim
 
-        from FurnaceMind.embeddings.local_embedding import LocalEmbeddingClient
+        from embeddings.local_embedding import LocalEmbeddingClient
         self.embedding = LocalEmbeddingClient()
 
         self._ensure_collection()

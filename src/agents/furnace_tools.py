@@ -68,9 +68,9 @@ _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
 
 
 _DATASET_CSV_PATH = Path("current_furnace_data.csv")
-# Absolute path: src/FurnaceMind/agents/ -> parents[2] = src/ -> assets/data/
+# Absolute path: src/agents/furnace_tools.py -> parents[1] = src/ -> assets/data/
 _ML_DATASET_PATH = (
-    Path(__file__).resolve().parents[2] / "assets" / "data" / "ml_dataset_filtered.csv"
+    Path(__file__).resolve().parents[1] / "assets" / "data" / "ml_dataset_filtered.csv"
 )
 
 # IST offset (tz-naive CSV index matches this)
@@ -1102,6 +1102,8 @@ def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
     if name == "search_knowledge_docs":
         return search_knowledge_docs.invoke(arguments)
     if name == "execute_python_plot":
+        if not arguments.get("code"):
+            return "Error: execute_python_plot requires a non-empty 'code' argument containing valid Python that creates a Plotly figure named 'fig'."
         return execute_python_plot.invoke(arguments)
     if name == "load_static_shift_data":
         return load_static_shift_data(**arguments)
