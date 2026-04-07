@@ -30,7 +30,12 @@ div[data-testid="element-container"] { margin: 0 !important; padding: 0 !importa
 div[data-testid="stPlotlyChart"] { margin: 0 !important; padding: 0 !important; }
 
 /* Page padding */
-.block-container { padding-top: 0.5rem !important; padding-bottom: 0rem !important; }
+.block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
+.block-container h1:first-of-type {
+    margin-bottom: 1rem !important;
+}
+
+</style>
 </style>
 """,
     unsafe_allow_html=True,
@@ -39,10 +44,12 @@ div[data-testid="stPlotlyChart"] { margin: 0 !important; padding: 0 !important; 
 # ----------------------------------------------------------------------------------------------------------
 # 1. Longitudinal Contour Plotter
 # Initialize the data fetcher
-data_fetcher = LongitudinalTemperatureDataFetcher(debug=False, source="Historical")
+data_fetcher = LongitudinalTemperatureDataFetcher(
+    debug=False, source="Historical")
 
 # Streamlit UI
 st.title("Furnace Temperature Data Visualization")
+
 expander = st.expander("Set date and time")
 with expander:
     # Date and time input
@@ -74,11 +81,15 @@ with expander:
 
     # Combine date and time - ensure both are provided and convert to UTC
     start_time_local = (
-        datetime.combine(from_date, from_time) if from_date and from_time else None
+        datetime.combine(
+            from_date, from_time) if from_date and from_time else None
     )
-    start_time_utc = start_time_local.astimezone(pytz.utc) if start_time_local else None
-    end_time_local = datetime.combine(to_date, to_time) if to_date and to_time else None
-    end_time_utc = end_time_local.astimezone(pytz.utc) if start_time_local else None
+    start_time_utc = start_time_local.astimezone(
+        pytz.utc) if start_time_local else None
+    end_time_local = datetime.combine(
+        to_date, to_time) if to_date and to_time else None
+    end_time_utc = end_time_local.astimezone(
+        pytz.utc) if start_time_local else None
 
     if start_time_utc >= end_time_utc:
         st.error(
@@ -153,9 +164,11 @@ with st.sidebar:
 
     # Combine date and time
     start_time = (
-        datetime.combine(from_date, from_time) if from_date and from_time else None
+        datetime.combine(
+            from_date, from_time) if from_date and from_time else None
     )
-    end_time = datetime.combine(to_date, to_time) if to_date and to_time else None
+    end_time = datetime.combine(
+        to_date, to_time) if to_date and to_time else None
 try:
     temperature_list = data_fetcher.fetch_averaged_data(
         time_interval,
@@ -177,14 +190,16 @@ temperatures_min = [
 ]  # Extracting only the temperature values for Q1-Q4
 
 fig = plotter.plot_plotly(temperatures, temperatures_max, temperatures_min)
-st.plotly_chart(fig, use_container_width=True, key="data_vis_longitudinal_temp")
+st.plotly_chart(fig, use_container_width=True,
+                key="data_vis_longitudinal_temp")
 
 # -------------------------------------------------------------------------------------------------------
 # 2. Circular Heatload distribution Plot
 # Initialize the data fetcher
 
 st.title("Circumferential HeatLoad")
-circum_data_fetcher = AverageHeatLoadDataFetcher(debug=False, source="historical")
+circum_data_fetcher = AverageHeatLoadDataFetcher(
+    debug=False, source="historical")
 rows = ["R6", "R7", "R8", "R9", "R10"]
 # Combine titles
 try:
@@ -285,7 +300,8 @@ elevations = [
 ]
 preset_titles = ["12.975m - Bosh", "15.162m - Belly", "18.660m - Stack"]
 
-all_titles = [f"At {elevations[i]}" for i in range(len(elevations))] + preset_titles
+all_titles = [f"At {elevations[i]}" for i in range(
+    len(elevations))] + preset_titles
 
 fig = plotter.plot_circumferential_quadrants(
     temp_to_plot, titles=all_titles[-4:], colorbar_title="Temperature (°C)", unit=""
