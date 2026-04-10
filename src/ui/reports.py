@@ -56,6 +56,12 @@ def render_reports(*, vector_store) -> None:
 
     payload = fetch_from_qdrant(vector_store, window_id)
     if payload:
-        show_report(f"📄 Report ({window_id})", payload["summary_text"])
+        display_window_id = payload.get("window_id", window_id)
+        summary_text = payload.get("summary_text") or payload.get("summary")
+
+        if summary_text:
+            show_report(f"📄 Report ({display_window_id})", summary_text)
+        else:
+            st.warning("Report found, but summary text is missing.")
     else:
         st.warning("No report found.")
