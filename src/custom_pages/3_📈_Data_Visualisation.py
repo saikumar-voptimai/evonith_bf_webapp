@@ -30,7 +30,12 @@ div[data-testid="element-container"] { margin: 0 !important; padding: 0 !importa
 div[data-testid="stPlotlyChart"] { margin: 0 !important; padding: 0 !important; }
 
 /* Page padding */
-.block-container { padding-top: 0.5rem !important; padding-bottom: 0rem !important; }
+.block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
+.block-container h1:first-of-type {
+    margin-bottom: 1rem !important;
+}
+
+</style>
 </style>
 """,
     unsafe_allow_html=True,
