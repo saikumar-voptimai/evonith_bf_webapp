@@ -32,12 +32,13 @@ The platform has two deployable components:
 | **Streamlit App** (`evonith_webapp/`) | Multi-page dashboard for operators and engineers | Python, Streamlit, LangChain |
 | **ML Dataset API** (`ml-dataset-api/`) | Raspberry Pi sidecar for ML dataset caching and delivery | Python, FastAPI, Uvicorn |
 
-The Streamlit app serves 7 pages, each tackling a distinct operational concern:
+The Streamlit app serves 8 pages, each tackling a distinct operational concern:
 
 - **Live monitoring** — temperature profiles, heat loads, cooling water
 - **Data exploration** — raw InfluxDB browsing and ML dataset management
 - **AI optimisation** — blast parameter recommendations against 3 objectives
 - **Channeling detection** — propensity scoring for gas-flow asymmetry
+- **Material balance** — per-element daily mass balance with Sankey, bars, and closure table
 - **FurnaceMind** — conversational AI co-operator with structured shift memory
 - **Reports** — shift/daily/weekly/bi-weekly operational summaries
 
@@ -49,7 +50,7 @@ The Streamlit app serves 7 pages, each tackling a distinct operational concern:
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Streamlit App (src/)                        │
 │                                                                  │
-│  custom_pages/         ← 7 page entry points                    │
+│  custom_pages/         ← 8 page entry points                    │
 │  │                                                               │
 │  ├── agents/           ← FurnaceMind tool definitions + agent    │
 │  │   └── cooperate/   ← AI Co-Operate: agent loop, skills,       │
@@ -114,6 +115,7 @@ evonith_webapp/
 │   │   ├── 4_💡_Recommendations.py
 │   │   ├── 5_🤖_AI_Copilot.py
 │   │   ├── 6_📝_Reports.py
+│   │   ├── 6_⚖️_Material_Balance.py
 │   │   └── 7_🧠_FurnaceMind.py
 │   │
 │   ├── agents/                 LLM agent machinery
@@ -189,6 +191,12 @@ evonith_webapp/
 │   │   │   ├── data.py         fetch_recent_online() + df_packet
 │   │   │   ├── llm.py          call_llm(), OPENAI_MODEL
 │   │   │   └── prompts.py      AI Copilot tab-specific prompt builders
+│   │   ├── material_balance/   Material Balance Visualiser package
+│   │   │   ├── __init__.py
+│   │   │   ├── constants.py    Atomic weights, oxide→element, MaterialSpec registry
+│   │   │   ├── data_sources.py Day-window fetchers (RM, HM/Slag, DPR, online)
+│   │   │   ├── dpr_mapping.py  DPR field mapping persistence + discovery
+│   │   │   └── compute.py      Element-balance math + run_full_balance(day)
 │   │   └── recommendations/    V-OptimAIse helpers
 │   │       ├── data.py         DataframesProcessor — merges CSV + live InfluxDB
 │   │       ├── optimiser.py    run_optimiser() — differential_evolution wrapper
@@ -199,11 +207,12 @@ evonith_webapp/
 │   │       ├── llm.py          LLM review after optimisation
 │   │       └── prompts.py      Recommendations LLM prompt templates
 │   │
-│   ├── plotters/               Plotly contour chart builders
+│   ├── plotters/               Plotly chart builders
 │   │   ├── base_contour.py     Base class + furnace outline
 │   │   ├── circumferential_contour.py  CircumferentialPlotter
 │   │   ├── longitudinal_temp_contour.py  LongitudinalTemperaturePlotter
-│   │   └── heatload_contour.py HeatloadContourPlotter
+│   │   ├── heatload_contour.py HeatloadContourPlotter
+│   │   └── material_balance_plots.py   Sankey, per-element bars, closure styler, furnace diagram
 │   │
 │   ├── llm/                    LLM client wrappers
 │   │   └── llm_client.py       OpenRouterClient + OpenAIClient + get_llm_client()
@@ -227,6 +236,7 @@ evonith_webapp/
 │   │   ├── setting_ds_dv.yml   InfluxDB mappings, data_mapping, furnace geometry
 │   │   ├── setting_vsense.yml  V-OptimAIse: models, control/input/output params
 │   │   ├── materials.yml       Hopper + raw material definitions
+│   │   ├── material_balance.yml Element list, ash assumptions, DPR mapping, closure thresholds
 │   │   └── schemas/            JSON payload schemas for shift/day/week/biweek reports
 │   │
 │   ├── assets/                 Static non-code assets
@@ -355,7 +365,33 @@ Score formula: `100 × (0.6 × magnitude + 0.4 × variability)` — alarm when z
 
 ---
 
-### Page 6 — Reports (`6_📝_Reports.py`)
+### Page 6a — Material Balance Visualiser (`6_⚖️_Material_Balance.py`)
+
+Single-date element balance: for each of 12 elements (Fe, C, Si, Ca, Mg, Al, Mn, S, P, O, N, H), how many tonnes entered the furnace via raw materials + blast + steam, and how many left via hot metal + slag + top gas.
+
+**Key features:**
+- Date picker (default yesterday IST, max yesterday); Refresh button
+- Overall mass closure KPI tile (colour-coded green/yellow/red)
+- Three tabs: Sankey diagram (total mass or element-focused), per-element stacked bars (4×3 grid), closure table (traffic-light row colours)
+- Lightweight furnace cross-section diagram with labelled inflow/outflow arrows
+- DPR field mapping expander (one-time configuration; persisted to `material_balance.yml`)
+- Assumptions & limitations expander
+
+**Element conversion pipeline:**
+1. Fetch RM (3-shift avg), HM/Slag (day avg), DPR, online `process_params` for the picked day
+2. Resolve material masses from DPR (with RM-sum fallback)
+3. For each material, apply `direct/oxide/H2O/ASH/LOI` rules via `MaterialSpec` to compute element tonnes
+4. Add gas-phase inputs: blast O+N, O₂ enrichment O, steam H+O
+5. Compute outputs: HM elements (direct wt%), slag elements (oxide split), top-gas C+O+H+N
+6. Build closure table: In_t / Out_t / Closure% per element
+
+**Math layer (`utils/material_balance/`)** is fully decoupled from Streamlit — `compute.py` and `constants.py` have zero Streamlit imports and are unit-testable.
+
+**Dependencies:** `utils/material_balance/`, `plotters/material_balance_plots.py`, `data/retrieval.py`, `utils/recommendations/dependencies.py` (bosh-vol formula), `config/material_balance.yml`
+
+---
+
+### Page 6b — Reports (`6_📝_Reports.py`)
 
 Structured report viewer for persisted shift/daily/weekly/bi-weekly summaries stored in `storage/`.
 
@@ -578,13 +614,14 @@ Supported formats: PDF (PyMuPDF), DOCX, PPTX, XLS/XLSX, TXT.
 
 ### `plotters/`
 
-All plotters extend `base_contour.py` which loads `Furnace` geometry from `geometries/furnace_gen.py`.
+Contour plotters extend `base_contour.py` which loads `Furnace` geometry from `geometries/furnace_gen.py`. The material balance plotter is standalone.
 
 | Plotter | Chart |
 |---|---|
 | `CircumferentialPlotter` | Polar heatmap of ring sensors |
 | `LongitudinalTemperaturePlotter` | Contour plot (elevation × time) |
 | `HeatloadContourPlotter` | Stave heat load grid |
+| `material_balance_plots` | Sankey, per-element bars, closure table styler, furnace diagram |
 
 ### `memory/structured_store.py`
 
@@ -613,6 +650,16 @@ V-OptimAIse configuration:
 - `Optimisation.control_parameters` — 7 control params with display names
 - `Optimisation.input_parameters` — 9 groups of read-only features
 - `LAMBDA_REG`, `OPTIM_STEPS`, `TIMESTEPS`
+
+### `config/material_balance.yml`
+
+Material Balance Visualiser configuration:
+- `elements` — 12 tracked elements (Fe, C, Si, Ca, Mg, Al, Mn, S, P, O, N, H)
+- `constants` — gas-phase constants (air density, O₂/N₂ fractions, molar volume)
+- `coke_ash_assumption_pct` / `pci_ash_assumption_pct` — constant oxide split for coke and PCI ash (used when shift-level ash chemistry is unavailable)
+- `dpr_field_mapping` — user-configured mapping from canonical mass fields to raw DPR column names (persisted via the in-page expander)
+- `future_streams` — placeholder fields for dust catcher, sludge, granulation loss (all null in v1)
+- `closure_thresholds` — `good: [95, 105]`, `warning: [85, 115]` for traffic-light row colours
 
 ### `storage/copilot/skill_params.yml`
 

@@ -51,6 +51,7 @@ pages = [
     st.Page("custom_pages/4_💡_Recommendations.py", title="V-Sense", icon="💡"),
     st.Page("custom_pages/5_🤖_AI_Copilot.py", title="CoPilot", icon="🤖"),
     # st.Page("custom_pages/6_📊_Reports.py", title="Reports", icon="📊" ),
+    st.Page("custom_pages/6_⚖️_Material_Balance.py", title="Material Balance", icon="⚖️"),
     st.Page("custom_pages/7_🧠_FurnaceMind.py", title="FurnaceMind", icon="🧠"),
 ]
 

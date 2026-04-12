@@ -13,7 +13,7 @@ jobs:
     if: >-
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true)
-    environment: Kalpvoptpi1p Env
+    environment: Kalpvoptpi1p
     runs-on: ubuntu-latest
     env:
       PI_HOST: ${{ secrets.PI_HOST }}

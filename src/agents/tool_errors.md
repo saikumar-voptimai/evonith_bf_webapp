@@ -508,3 +508,27 @@ Static ML dataset not found at E:\Personal\MarketResearch\EvonithSteel\BlastFurn
 ```
 Static ML dataset not found at E:\Personal\MarketResearch\EvonithSteel\BlastFurnaceProject\PythonBlastFurnace\evonith_webapp\assets\data\ml_dataset_filtered.csv. Expected: src/assets/data/ml_dataset_filtered.csv
 ```
+
+
+## 2026-04-12T09:52:25.722858+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import pandas as pd\nimport plotly.graph_objects as go\n\ndf = pd.read_csv('current_furnace_data.csv', index_col=0, parse_dates=True)\n\nfig = go.Figure()\nfig.add_trace(go.Scatter(x=df.index, y=df['Process Params - BF2_BODY_ETACO'], mode='lines+markers', name='ETACO'))\nfig.update_layout(title='ETA CO Trend - Last 8 Hours', yaxis_title='ETACO %', xaxis_title='Time (IST)')\nfig.show()"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```
+
+
+## 2026-04-12T09:56:39.572809+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import pandas as pd\nimport plotly.graph_objects as go\n\ndf = pd.read_csv('current_furnace_data.csv', index_col=0, parse_dates=True)\ndf = df.dropna(subset=['Offline[HM & Slag] - chem_pct_si', 'Process Params - BF2_PROC Hot Blast Temp'])\n\nsi = df['Offline[HM & Slag] - chem_pct_si']\nhmt = df['Offline[HM & Slag] - hmt_gt_1480c']\nblast = df['Process Params - BF2_PROC Hot Blast Temp']\n\nfig = go.Figure()\nfig.add_trace(go.Scatter(x=hmt, y=si, mode='markers', name='Si% vs HMT', marker=dict(size=10, color='red')))\nfig.add_trace(go.Scatter(x=blast, y=si, mode='markers', name='Si% vs Blast Temp', marker=dict(size=10, color='blue')))\nfig.update_layout(title='Si% vs Hot Metal Temp & Blast Temp (Last 20 days)', xaxis_title='Temperature (°C)', yaxis_title='Si %')\nfig.show()"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```

@@ -506,7 +506,143 @@ Two clients:
 
 ---
 
-## 7. Architecture Summary
+## 7. Material Balance Visualiser
+
+**File:** `src/custom_pages/6_⚖️_Material_Balance.py`
+
+Single-date element balance showing how many tonnes of each element (Fe, C, Si, Ca, Mg, Al, Mn, S, P, O, N, H) entered the furnace via raw materials + blast + steam and how many tonnes left via hot metal + slag + top gas. Surfaces accuracy gaps in raw-material reporting and provides an empirical baseline before finer streams (dust catcher, sludge, granulation losses) are added.
+
+### Files
+
+| Path | Role |
+|---|---|
+| `src/custom_pages/6_⚖️_Material_Balance.py` | Streamlit page — UI orchestration only |
+| `src/utils/material_balance/__init__.py` | Package init |
+| `src/utils/material_balance/constants.py` | Atomic weights, oxide→element table, `MaterialSpec` registry |
+| `src/utils/material_balance/data_sources.py` | Day-window fetchers for RM, HM/Slag, DPR, online `process_params` |
+| `src/utils/material_balance/compute.py` | Pure element-balance math + `run_full_balance(day)` entry point |
+| `src/utils/material_balance/dpr_mapping.py` | DPR field discovery + yml load/save |
+| `src/plotters/material_balance_plots.py` | Sankey, per-element bars, furnace diagram, closure styler |
+| `src/config/material_balance.yml` | Constants, ash assumptions, DPR field mapping, future-stream hooks |
+
+### Data Flow
+
+```
+date_picker (default = yesterday IST, max = yesterday)
+        │
+get_day_window_utc(date) → (start_utc, end_utc)
+        │
+        ├── fetch_rm_for_day          → clean_rm_data → 1-row composition DF (3-shift avg)
+        ├── fetch_hm_slag_for_day     → 1-row chemistry DF (24-hour avg)
+        ├── fetch_dpr_for_day         → raw DPR row(s); apply_dpr_mapping → mass dict
+        └── fetch_online_aggregates   → dict {hot_blast_vol, o2_enr, steam, co_pct, …}
+                │
+                ▼
+        compute.run_full_balance(day)
+                │
+        ┌───────┼─────────────────┐
+        ▼       ▼                 ▼
+    inputs   outputs        closure_table
+                │
+        ┌───────┼────────────────┬──────────────────┐
+        ▼       ▼                ▼                  ▼
+   build_sankey  build_per_     style_closure_     build_furnace_
+                 element_bars   table              diagram
+```
+
+### Element Conversion Algorithm
+
+For each raw material, `material_to_elements(mass_t, row, spec, ash_assumptions)` walks the `MaterialSpec.composition` dict. Each column maps to a `(token, kind)`:
+
+- **`"direct"`**: column reports the element wt% directly → `out[token] += mass_t × pct/100`
+- **`"oxide"`**: column reports an oxide wt% → split into element + O via `OXIDE_TO_ELEMENT_MASS_FRAC`
+- **`"H2O"`**: moisture → split into H + O by molecular weight
+- **`"ASH"`**: ash% → distributed among oxides using a constant assumption from `material_balance.yml` (`coke_ash_assumption_pct` or `pci_ash_assumption_pct`)
+- **`"LOI"`**: loss-on-ignition → dropped in v1 (TODO: split into CO₂ + H₂O)
+
+### Gas-Phase Math
+
+**Blast (O + N from air + O₂ enrichment):**
+```
+o2_flow = (wind × (20.8 + enr)/100 − 0.208 × wind) / 0.792
+air_only = wind − o2_flow
+O_air_t  = air_only × 24 × 1.293 × 0.232 / 1000
+N_air_t  = air_only × 24 × 1.293 × 0.755 / 1000
+O_enrich = o2_flow × 24 × (32 / 22.414) / 1000
+```
+
+**Steam (H + O):**
+```
+H_steam_t = steam_kgh × 24 × (2.016 / 18.015) / 1000
+O_steam_t = steam_kgh × 24 × (16.0 / 18.015) / 1000
+```
+
+**Top gas (C + O + H + N):** uses `bosh_vol_from_formula` from `utils/recommendations/dependencies.py` to estimate total top-gas volume, then applies CO/CO₂/H₂/N₂ percentages from online `process_params`. Runtime sanity check caps volume at 10× daily wind.
+
+### MaterialSpec Registry (`constants.py`)
+
+7 input materials registered with their InfluxDB field names:
+
+| Material | Mass field | Key composition columns | Ash assumption |
+|---|---|---|---|
+| Coke | `coke_mt` | `coke_fc_pct` (C), `coke_ash_pct`, `coke_moist_pct` | `coke` |
+| Nut Coke | `nutcoke_prime_mt` | `nutcoke_fc_pct` (C), `nutcoke_ash_pct`, `nutcoke_moist_pct` | `coke` |
+| PCI | `pci2_mt` | `pci2_fc_pct` (C), `pci2_ash_pct` | `pci` |
+| Ore | `ore_mt` | `ore_fe_total_pct` (Fe), `ore_sio2_pct`, `ore_cao_pct`, … | — |
+| Sinter | `sinter_mt` | `sinter_fe_total_pct`, `sinter_sio2_pct`, `sinter_feo_pct`, … | — |
+| Pellet | `lloyds_pellet_mt` | `lloyds_pellet_pct_fe2o3`, `lloyds_pellet_pct_sio2`, … | — |
+| Flux | `flux_mt` | `flux_sio2_pct`, `flux_fe2o3_pct`, `flux_cao_pct`, … | — |
+
+### Output Streams
+
+- **Hot Metal**: `chem_pct_fe`, `chem_pct_c`, `chem_pct_si`, `chem_pct_mn`, `chem_pct_p`, `chem_pct_s`, `chem_pct_ti` — all direct element wt%
+- **Slag**: `slag_pct_sio2`, `slag_pct_cao`, `slag_pct_mgo`, `slag_pct_al2o3`, `slag_pct_feo`, `slag_pct_mno`, `slag_pct_k2o`, `slag_pct_na2o`, `slag_pct_tio2` (oxides) + `slag_pct_s` (direct)
+- **Top Gas**: C, O, H, N from CO/CO₂/H₂/N₂ gas composition
+- **Unaccounted**: placeholder at 0 t in v1 (future: dust catcher, sludge, granulation)
+
+### DPR Field Mapping
+
+DPR column names are not documented. The page exposes a one-time mapping UI that lists every column found on a sample DPR row and persists choices to `material_balance.yml`. Nine canonical fields: `hm_mass_t`, `slag_mass_t`, `coke_mass_t`, `nut_coke_mass_t`, `pci_mass_t`, `ore_mass_t`, `sinter_mass_t`, `pellet_mass_t`, `flux_mass_t`.
+
+When the mapping is incomplete, masses fall back to RM `*_mt` columns; HM falls back to `production_per_hour × 24`; slag falls back to `0.30 × HM`.
+
+### UI Layout
+
+- **Top row**: Date picker (default yesterday IST) | Refresh button | Overall closure KPI tile
+- **Left 70%**: 3 tabs — Sankey | Per-element bars | Closure table
+- **Right 30%**: Lightweight furnace cross-section diagram with labelled inflow/outflow arrows
+- **Bottom**: Sankey-mode radio (Total mass / Element-focused), DPR mapping expander, Assumptions expander
+
+### Closure Table
+
+Per-element In_t / Out_t / Closure% / Delta_t with traffic-light row colours: green (95–105 %), yellow (85–115 %), red (outside). Thresholds configurable in `material_balance.yml`.
+
+### Caching
+
+| Function | TTL | Notes |
+|---|---|---|
+| `fetch_rm_for_day` | 1 h | RM is 8-hourly |
+| `fetch_dpr_for_day` | 1 h | DPR is daily |
+| `fetch_hm_slag_for_day` | 10 min | Hourly source |
+| `fetch_online_aggregates_for_day` | 10 min | 1 h-windowed `process_params` |
+
+Refresh button calls `clear_day_caches(day)` to invalidate all four.
+
+### Future-Extension Hooks
+
+Each is a no-op function or null yml field today:
+
+1. **Dust catcher / top-gas solid losses** — `compute_unaccounted_solids()` returns `{}` in v1; Sankey "Unaccounted" node already wired at 0 t
+2. **Sludge** — `material_balance.yml → future_streams.sludge_t` placeholder
+3. **Slag granulation loss** — separate output stream slot reserved
+4. **LOI breakdown** — per-material `loi_split_pct = {CO2: x, H2O: y}` in yml
+5. **Per-element historical trend** — future tab: loop `run_full_balance` over 30 days
+6. **Hot blast humidity** — additional H + O input if a humidity field appears
+7. **Lab ash chemistry** — replace constant ash assumption with monthly lab updates
+
+---
+
+## 8. Architecture Summary
 
 ### Entry Points
 - `run_streamlit.py` → `src/app.py` → authentication gate → `st.navigation()` to all pages
@@ -520,6 +656,7 @@ Two clients:
 | Data Visualisation | `3_📈_Data_Visualisation.py` | Temperature + heatload contour plots |
 | V-OptimAIse | `4_💡_Recommendations.py` | ML optimizer for blast parameters |
 | AI Copilot | `5_🤖_AI_Copilot.py` | Channeling analysis, unit cost review, anomaly LLM |
+| Material Balance | `6_⚖️_Material_Balance.py` | Per-element daily mass balance (12 elements, Sankey + bars + closure table) |
 | FurnaceMind | `7_🧠_FurnaceMind.py` | LangChain chatbot with 6 data/plot tools |
 
 ### Key Supporting Modules
@@ -536,6 +673,9 @@ Two clients:
 | `StructuredStore` | `src/FurnaceMind/memory/structured_store.py` | JSON persistence for shift/daily/weekly summaries |
 | `Settings` | `src/FurnaceMind/utils/settings.py` | Pydantic singleton for all FurnaceMind config |
 | `OpenRouterClient` | `src/FurnaceMind/llm/llm_client.py` | LLM wrapper (FurnaceMind agent) |
+| `run_full_balance` | `src/utils/material_balance/compute.py` | Element-balance math: material→element, gas-phase, closure table |
+| `MaterialSpec` | `src/utils/material_balance/constants.py` | Declarative spec per raw material (composition → element mapping) |
+| `material_balance_plots` | `src/plotters/material_balance_plots.py` | Sankey, per-element bars, closure styler, furnace diagram |
 
 ### Authentication
 - Cookie-based sessions (`streamlit-cookies-manager`, prefix `bf_dashboard_`)
@@ -546,6 +686,7 @@ Two clients:
 - `src/config/setting_ds_dv.yml` — InfluxDB mappings, furnace geometry, sensor layout
 - `src/config/setting_vsense.yml` — V-OptimAIse: 3 models, control/input/output params, `LAMBDA_REG`, `OPTIM_STEPS`, `TIMESTEPS`
 - `src/config/materials.yml` — Hoppers, materials, burden fields (for PostgreSQL `Database`)
+- `src/config/material_balance.yml` — Element list, ash assumptions, DPR field mapping, closure thresholds, future-stream hooks
 - `.env` — All secrets
 
 ### Key Patterns
