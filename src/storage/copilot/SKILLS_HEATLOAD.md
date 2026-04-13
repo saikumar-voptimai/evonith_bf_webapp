@@ -91,13 +91,13 @@ HEATLOAD & SKIN TEMPERATURE CHECK — [date] [shift]
 OVERALL STATUS: [NORMAL / ELEVATED / HIGH / CRITICAL]
 
 HEAT LOAD BY ROW (current vs 2-month baseline)
-  Row 6: X MW  (baseline mean Y MW, z=Z) [status]
+  Row 6: X GJ  (baseline mean Y GJ, z=Z) [status]
   Row 7: ...
   ...
   Row 10: ...
 
 QUADRANT ASYMMETRY (R6-R10 average)
-  Q1: X MW | Q2: Y MW | Q3: Z MW | Q4: W MW
+  Q1: X GJ | Q2: Y GJ | Q3: Z GJ | Q4: W GJ
   Max/Avg ratio: [value] [status]
 
 TEMPERATURE PROFILE CHECKS
