@@ -13,7 +13,6 @@ import streamlit as st
 
 # Must be first Streamlit call
 st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
-from ui.login_page import LoginPage
 from utils.logger import setup_logger
 from utils.session import is_logged_in
 
@@ -25,6 +24,8 @@ setup_logger()
 #  Authentication Gate
 # ------------------------------------------------------
 if not is_logged_in():
+    from ui.login_page import LoginPage  # lazy — avoids partial-module cache on rerun
+
     # Hide sidebar completely during login
     st.markdown(
         """
