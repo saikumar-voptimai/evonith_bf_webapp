@@ -9,3 +9,4 @@ __pycache__/
 logs/*
 *.log
 .claude
+current_furnace_data.csv

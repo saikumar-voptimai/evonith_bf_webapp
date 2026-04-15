@@ -151,10 +151,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         b1, b2, b3 = st.columns(3)
         with b1:
             if st.button(
-                "💰 Optimise Unit Cost", width='stretch'):
+                "💰 Unit Cost", width='stretch'):
                 _fire_skill(
                     engine.optimise_prompt(),
-                    "💰 **Optimise Unit Cost** — analysing last 30 days vs best-shift targets",
+                    "💰 **Unit Cost** — analysing last 30 days vs best-shift targets",
                     "optimise",
                 )
         with b2:
@@ -165,10 +165,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
                     "shift_to_best",
                 )
         with b3:
-            if st.button("🌡️ Check Heatloads", width='stretch'):
+            if st.button("🌡️ Heatloads", width='stretch'):
                 _fire_skill(
                     engine.heatload_prompt(),
-                    "🌡️ **Check Heatloads** — last 8h vs 2-month baseline",
+                    "🌡️ **Heatloads** — last 8h vs 2-month baseline",
                     "heatload",
                 )
 

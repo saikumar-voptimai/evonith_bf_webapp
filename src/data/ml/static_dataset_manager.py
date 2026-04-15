@@ -39,10 +39,24 @@ class StaticDatasetManager:
             reprocess_from=start_date,
         )
 
+    _MAX_VERSIONED_FILES: int = 3
+
     def save(self, df: pd.DataFrame) -> None:
         saved_path = self._core.save(df, rm_choice=self._last_rm_choice)
         if saved_path.resolve() != self.static_path.resolve():
             shutil.copyfile(saved_path, self.static_path)
+        self._rotate_versioned_files()
+
+    def _rotate_versioned_files(self) -> None:
+        """Delete oldest timestamped copies, keeping at most _MAX_VERSIONED_FILES."""
+        stem = self.static_path.stem          # e.g. "furnace_dataset"
+        data_dir = self.static_path.parent
+        versioned = sorted(
+            data_dir.glob(f"{stem}_*.csv"),   # matches furnace_dataset_YYYYMMDD_HHMMSS.csv
+            key=lambda p: p.stat().st_mtime,
+        )
+        for old_file in versioned[: -self._MAX_VERSIONED_FILES]:
+            old_file.unlink(missing_ok=True)
 
     def get_meta(self) -> CacheMeta | None:
         return self._core.get_meta()

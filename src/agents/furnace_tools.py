@@ -10,6 +10,7 @@ Exposes six :func:`langchain.tools.tool`-decorated functions:
 6. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
 """
 
+import io
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -59,7 +60,6 @@ FIELD_LABELS = {
 _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
 
 
-_DATASET_CSV_PATH = Path("current_furnace_data.csv")
 # Absolute path: src/agents/furnace_tools.py -> parents[1] = src/ -> assets/data/
 _ML_DATASET_PATH = get_static_dataset_path()
 
@@ -238,8 +238,6 @@ class ConcatArgs(BaseModel):
 def _save_dataset(*, dataset_id: str, df: pd.DataFrame, meta: Dict[str, Any]) -> None:
     store = _ensure_dataset_store()
     store[dataset_id] = {"df": df, "meta": meta}
-    # Keep a conventional 'current' dataset for plotting tool
-    df.to_csv(_DATASET_CSV_PATH, index=True)
     st.session_state.copilot_df = df
     st.session_state.copilot_df_meta = meta
 
@@ -503,6 +501,30 @@ def concat_datasets(*, dataset_ids: list[str]) -> str:
 
         if not frames:
             raise ValueError("No datasets provided to concat.")
+
+        # Normalise timezones: ML static data is IST-naive; online data is UTC-aware.
+        # Mixed tz-naive + tz-aware causes a TypeError during sort_index.
+        has_tz_aware = any(
+            isinstance(f.index, pd.DatetimeIndex) and f.index.tz is not None
+            for f in frames
+        )
+        has_tz_naive = any(
+            isinstance(f.index, pd.DatetimeIndex) and f.index.tz is None
+            for f in frames
+        )
+        if has_tz_aware and has_tz_naive:
+            normalized_frames: list[pd.DataFrame] = []
+            for f in frames:
+                if isinstance(f.index, pd.DatetimeIndex):
+                    if f.index.tz is None:
+                        # IST-naive → localise to IST then convert to UTC
+                        f = f.copy()
+                        f.index = f.index.tz_localize("Asia/Kolkata").tz_convert("UTC")
+                    else:
+                        f = f.copy()
+                        f.index = f.index.tz_convert("UTC")
+                normalized_frames.append(f)
+            frames = normalized_frames
 
         combined = pd.concat(frames, axis=0, join="outer")
         combined = combined.sort_index()
@@ -1390,8 +1412,20 @@ def _should_fetch_online(user_request: str) -> bool:
     return False
 
 
-def _safe_exec(code: str, local_vars: Dict[str, Any]) -> None:
-    """Execute plotting code with a restricted builtins set and basic static checks."""
+def _safe_exec(
+    code: str,
+    local_vars: Dict[str, Any],
+    stdout_buf: "io.StringIO | None" = None,
+) -> None:
+    """Execute plotting code with a restricted builtins set and basic static checks.
+
+    Args:
+        code: Python code string to execute.
+        local_vars: Namespace dict (mutated in-place; contains execution results).
+        stdout_buf: Optional :class:`io.StringIO` buffer.  When provided, all
+            ``print()`` calls inside the executed code write to this buffer
+            instead of real stdout so callers can capture diagnostic output.
+    """
     if not isinstance(code, str) or not code.strip():
         raise ValueError("Empty code string")
 
@@ -1409,6 +1443,15 @@ def _safe_exec(code: str, local_vars: Dict[str, Any]) -> None:
     for pat in banned:
         if re.search(pat, code):
             raise ValueError(f"Disallowed token in code: {pat}")
+
+    # Route print() to the buffer when one is provided so callers can capture output.
+    if stdout_buf is not None:
+        def _buffered_print(*args, **kwargs):  # noqa: ANN202
+            kwargs.setdefault("file", stdout_buf)
+            print(*args, **kwargs)  # noqa: T201
+        captured_print = _buffered_print
+    else:
+        captured_print = print
 
     safe_builtins = {
         "len": len,
@@ -1429,7 +1472,7 @@ def _safe_exec(code: str, local_vars: Dict[str, Any]) -> None:
         "str": str,
         "bool": bool,
         "round": round,
-        "print": print,
+        "print": captured_print,
         "isinstance": isinstance,
         "hasattr": hasattr,
         "getattr": getattr,
@@ -1480,9 +1523,6 @@ def fetch_and_summarize_data(time_range: str, window: str = "15 minutes") -> str
     if df is None or df.empty:
         return "No data found."
 
-    # Save to a fixed path for the Python executor to find
-    # Keep index so timestamps remain available
-    df.to_csv("current_furnace_data.csv", index=True)
     st.session_state.copilot_df = df
 
     # Give the LLM a 'peek' at the data
@@ -1611,8 +1651,7 @@ def fetch_and_summarize_furnace_data(request: str) -> str:
         else:
             return "No data found."
 
-        # Persist
-        df_final.to_csv("current_furnace_data.csv", index=True)
+        # Persist to session state for the plotting sandbox
         st.session_state.copilot_df = df_final
         st.session_state.copilot_df_meta = {
             "request": request,
@@ -1656,22 +1695,37 @@ def fetch_and_summarize_furnace_data(request: str) -> str:
 @tool
 def execute_python_plot(code: str) -> str:
     """
-    Execute python code to create a Plotly figure.
-    The code MUST:
-    1. Read data from 'current_furnace_data.csv'.
-    2. Create a plotly figure named 'fig'.
-    3. Not use 'fig.show()'.
-    Example: fig = px.scatter(pd.read_csv('current_furnace_data.csv'), x='A', y='B')
+    Execute restricted Python code to create a Plotly figure.
+
+    PRE-LOADED — do NOT import these, they are already available:
+      pd            — pandas
+      px            — plotly.express
+      go            — plotly.graph_objects
+      make_subplots — plotly.subplots.make_subplots
+      np            — numpy
+      df            — current DataFrame (most recently fetched dataset)
+
+    RULES — the sandbox will reject code that violates these:
+      - DO NOT use 'import', '__import__', 'open(', 'os', 'subprocess', 'sys', 'eval', 'exec'
+      - DO NOT call fig.show() — the figure is rendered automatically by the UI
+      - The code MUST assign a Plotly figure to a variable named 'fig'
+
+    DIAGNOSTIC USE: Code that only calls print() (no fig) is allowed — the output
+    will be returned so you can inspect column names, index ranges, etc., then plot
+    on the next call.
+
+    Example:
+        fig = px.line(df.reset_index(), x='index', y='fuel_rate', title='Fuel Rate')
     """
     try:
-        # Preload the dataframe for convenience (LLM may still choose to read CSV explicitly)
-        try:
-            df = pd.read_csv("current_furnace_data.csv", index_col=0, parse_dates=True)
-        except Exception:
-            df = None
+        # Load the active DataFrame directly from session state (no disk I/O needed)
+        df = st.session_state.get("copilot_df")
 
         import numpy as np  # noqa: PLC0415 — local import intentional for sandbox context
         from plotly.subplots import make_subplots  # noqa: PLC0415
+
+        # Capture stdout so diagnostic print() calls are returned to the LLM
+        stdout_buf = io.StringIO()
 
         # Create a local environment for execution
         local_vars = {
@@ -1681,16 +1735,23 @@ def execute_python_plot(code: str) -> str:
             "df": df,
             "np": np,
             "make_subplots": make_subplots,
+            "_stdout_buf": stdout_buf,
         }
 
-        # Execute the LLM-generated code (restricted)
-        _safe_exec(code, local_vars)
+        # Execute the LLM-generated code (restricted), routing print() to buffer
+        _safe_exec(code, local_vars, stdout_buf=stdout_buf)
+
+        captured_output = stdout_buf.getvalue().strip()
 
         if "fig" in local_vars:
             # Save the figure object to session state for the UI to pick up
             st.session_state.copilot_fig = local_vars["fig"]
             st.session_state.last_plot_code = code
             return "Successfully generated Plotly figure."
+        elif captured_output:
+            # Diagnostic code (e.g. print(df.columns)) — return output so the LLM
+            # can use the information to write a proper plot on the next call.
+            return f"Diagnostic output (no figure created):\n{captured_output}"
         else:
             return "Code executed but no variable named 'fig' was found."
 
