@@ -43,7 +43,7 @@ st.sidebar.caption(f"Model: `{OPENAI_MODEL}`")
 
 combined_df = fetch_recent_online()
 if isinstance(combined_df, pd.DataFrame) and not combined_df.empty:
-    st.dataframe(combined_df.sort_index(), use_container_width=True)
+    st.dataframe(combined_df.sort_index(), width='stretch')
 else:
     st.info("No live data returned. Will retry on next refresh.")
 
@@ -225,7 +225,7 @@ with anomaly_tab:
                     paper_bgcolor="white",
                     plot_bgcolor="white",
                 )
-                st.plotly_chart(fig_q, use_container_width=True)
+                st.plotly_chart(fig_q, width='stretch')
 
             with info_col:
                 st.caption("**Quadrant scores** (latest window)")
@@ -262,7 +262,7 @@ with anomaly_tab:
                 n = st.number_input(
                     "Points to show", value=12, min_value=1, max_value=1000, step=1
                 )
-                st.dataframe(scores[display_cols].tail(n), use_container_width=True)
+                st.dataframe(scores[display_cols].tail(n), width='stretch')
 
         if enable:
             render_channeling()

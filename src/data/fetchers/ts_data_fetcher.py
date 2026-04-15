@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from .base_data_fetcher import BaseDataFetcher
+from furnace_data.influx.base import BaseDataFetcher
 
 
 class TimeSeriesDataFetcher(BaseDataFetcher):

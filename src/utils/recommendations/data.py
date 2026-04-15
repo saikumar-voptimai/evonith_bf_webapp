@@ -1,11 +1,11 @@
 import warnings
-from pathlib import Path
 from typing import Any, Dict, List
 
 import joblib
 import pandas as pd
 
-from data.fetchers.base_data_fetcher import BaseDataFetcher
+from furnace_data.influx.base import BaseDataFetcher
+from data.ml.static_csv import load_static_dataset
 from data.retrieval import fetch_offline_data
 
 
@@ -50,9 +50,7 @@ class DataframesProcessor:
             pd.DataFrame: DataFrame containing historical data.
         """
         data_rel_path = self.config["DATA"]
-        # parents[3] = evonith_webapp/ (project root); data_rel_path is relative to it
-        data_path = Path(__file__).resolve().parents[3] / data_rel_path
-        df_hist = pd.read_csv(data_path, index_col=0, parse_dates=True)
+        df_hist = load_static_dataset(data_rel_path)
         df_hist.index = pd.to_datetime(df_hist.index, format="%d/%m/%Y %H:%M", utc=True)
         return df_hist
 
@@ -64,7 +62,6 @@ class DataframesProcessor:
         """
         field_mapping = self.config_vsense.get("field_mapping", {})
         ml_cfg = self.config_vsense.get("influxdb_ml_database", {})
-        # Fetch raw material input data from InfluxDB
         df_live_ip = fetch_offline_data(
             measurement=ml_cfg.get("measurements", "rm_charge_data"),
             time_range=ml_cfg.get("time_range", "last 1 month"),

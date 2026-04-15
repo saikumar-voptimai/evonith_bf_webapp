@@ -4,7 +4,7 @@ Single-date element balance showing how much of each element (Fe, C, Si,
 Ca, Mg, Al, Mn, S, P, O, N, H) enters via raw materials + blast + steam
 and leaves via hot metal + slag + top gas + dust catcher.
 
-Data source: static ML-dataset CSV (``src/assets/data/ml_dataset_filtered.csv``).
+Data source: static furnace dataset CSV (``src/assets/data/furnace_dataset.csv``).
 
 Layout:
     Top row : date picker | Refresh | dust catcher input | overall closure KPI
@@ -62,7 +62,7 @@ if csv_min and csv_max:
 else:
     st.warning(
         "Static ML-dataset CSV not found. Expected at "
-        "`src/assets/data/ml_dataset_filtered.csv`."
+        "`src/assets/data/furnace_dataset.csv`."
     )
 
 # ── Top control row ───────────────────────────────────────────────────
@@ -80,7 +80,7 @@ with ctrl1:
 
 with ctrl2:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    if st.button("🔄 Refresh", use_container_width=True):
+    if st.button("🔄 Refresh", width='stretch'):
         clear_day_caches(selected_day)
         st.rerun()
 
@@ -199,7 +199,7 @@ with fig_col:
         "Dust Catcher": result.gas_phase.get("dust_catcher_t", 0),
     }
     diagram = build_furnace_diagram(in_labels, out_labels)
-    st.plotly_chart(diagram, use_container_width=True, key="furnace_diagram")
+    st.plotly_chart(diagram, width='stretch', key="furnace_diagram")
 
 with table_col:
     st.markdown("**Element closure**")
@@ -209,14 +209,14 @@ with table_col:
     styler = style_closure_table(
         result.closure_table, good=good, warning=warning_thr
     )
-    st.dataframe(styler, use_container_width=True, hide_index=True)
+    st.dataframe(styler, width='stretch', hide_index=True)
 
 # Full-width per-element breakdown (optional deep-dive)
 with st.expander("📊 Per-element input/output breakdown", expanded=False):
     fig_bars = build_per_element_bars(
         result.closure_table, result.inputs, result.outputs
     )
-    st.plotly_chart(fig_bars, use_container_width=True, key="bars_fig")
+    st.plotly_chart(fig_bars, width='stretch', key="bars_fig")
 
 # ── Ash Analysis editor expander ───────────────────────────────────────
 with st.expander("🔬 Ash Analysis — Coke / Nut Coke / PCI", expanded=False):
@@ -340,7 +340,7 @@ with st.expander("ℹ️ Assumptions & limitations"):
     )
     st.markdown(
         f"""
-**Data source**: Static ML-dataset CSV (`ml_dataset_filtered.csv`).
+**Data source**: Static furnace dataset CSV (`furnace_dataset.csv`).
 {result.n_rm_rows} hourly rows found for the selected day.
 
 **RM lag**: {result.rm_lag_hours} h &nbsp;|&nbsp; **Blast lag**: {result.blast_lag_hours} h

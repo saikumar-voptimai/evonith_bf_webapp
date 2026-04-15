@@ -25,6 +25,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from config.config_loader import load_config
 from data import retrieval as dr
+from data.fetch_presets import (
+    OFFLINE_REPORT_LABEL_MAP,
+    ONLINE_MEASUREMENT_LABELS,
+    WINDOW_FREQUENCY_MAP,
+)
+from data.ml.static_csv import get_static_dataset_path, load_static_dataset
 
 # CONFIG
 config = load_config("setting_ds_dv.yml")
@@ -35,27 +41,13 @@ INFLUX_OFFLINE_DB = (config.get("influx_offline", {}) or {}).get(
 )
 
 MEASUREMENT_LABELS = {
-    "heatload_delta_t": "Heatload Delta T",
-    "process_params": "Process Params",
-    "temperature_profile": "Temperature Profile",
+    **ONLINE_MEASUREMENT_LABELS,
     "cooling_water": "Cooling Water",
     "delta_t": "Delta T",
     "miscellaneous": "Miscellaneous",
 }
 
-FREQUENCY_TO_TIMEDTA = {
-    "None": None,
-    "1 minute": "1min",
-    "5 minutes": "5min",
-    "10 minutes": "10min",
-    "15 minutes": "15min",
-    "30 minutes": "30min",
-    "1 hour": "1h",
-    "6 hours": "6h",
-    "8 hours": "8h",
-    "12 hours": "12h",
-    "1 day": "1d",
-}
+FREQUENCY_TO_TIMEDTA = WINDOW_FREQUENCY_MAP
 
 FIELD_LABELS = {
     internal_key: human_label
@@ -69,9 +61,7 @@ _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
 
 _DATASET_CSV_PATH = Path("current_furnace_data.csv")
 # Absolute path: src/agents/furnace_tools.py -> parents[1] = src/ -> assets/data/
-_ML_DATASET_PATH = (
-    Path(__file__).resolve().parents[1] / "assets" / "data" / "ml_dataset_filtered.csv"
-)
+_ML_DATASET_PATH = get_static_dataset_path()
 
 # IST offset (tz-naive CSV index matches this)
 _IST_OFFSET = timedelta(hours=5, minutes=30)
@@ -291,10 +281,9 @@ def _load_ml_dataset() -> tuple[pd.DataFrame, pd.Timestamp, pd.Timestamp]:
         if not _ML_DATASET_PATH.exists():
             raise FileNotFoundError(
                 f"Static ML dataset not found at {_ML_DATASET_PATH}. "
-                f"Expected: src/assets/data/ml_dataset_filtered.csv"
+                f"Expected: src/assets/data/furnace_dataset.csv"
             )
-        df = pd.read_csv(_ML_DATASET_PATH, index_col=0, parse_dates=True)
-        df = df.sort_index()
+        df = load_static_dataset(_ML_DATASET_PATH)
         st.session_state[cache_key] = df
     df: pd.DataFrame = st.session_state[cache_key]
     return df, df.index.min(), df.index.max()
@@ -712,13 +701,7 @@ def fetch_offline_data(
         args = OfflineFetchArgs.model_validate(params)
 
         # Resolve measurement label and Influx measurement name
-        label_map = {
-            "HM_SLAG": "HM & Slag",
-            "CHARGE": "Charge",
-            "RAW_MATERIAL_COMPOSITION": "Bunker Report",
-            "DPR": "DPR",
-        }
-        label = label_map.get(args.report_type)
+        label = OFFLINE_REPORT_LABEL_MAP.get(args.report_type)
         if not label:
             raise ValueError(f"Unsupported report_type: {args.report_type}")
         measurement = OFFLINE_MEASUREMENTS.get(label)

@@ -4,7 +4,7 @@ import plotly.graph_objs as go
 import pytz
 import streamlit as st
 
-from data.fetchers.average_heatload_data_fetcher import AverageHeatLoadDataFetcher
+from furnace_data.domain.heatload import AverageHeatLoadDataFetcher
 from data.fetchers.circular_temperature_contour_data_fetcher import (
     CircumferentialTemperatureDataFetcher,
 )
@@ -182,7 +182,7 @@ temperatures_min = [
 ]  # Extracting only the temperature values for Q1-Q4
 
 fig = plotter.plot_plotly(temperatures, temperatures_max, temperatures_min)
-st.plotly_chart(fig, use_container_width=True, key="data_vis_longitudinal_temp")
+st.plotly_chart(fig, width='stretch', key="data_vis_longitudinal_temp")
 
 # -------------------------------------------------------------------------------------------------------
 # 2. Circular Heatload distribution Plot
@@ -215,7 +215,7 @@ plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
 fig = plotter.plot_circumferential_quadrants(
     heatloads_list, titles=rows, colorbar_title="Heatload (GJ)", unit=""
 )
-st.plotly_chart(fig, use_container_width=True, key="data_vis_circ_heatload")
+st.plotly_chart(fig, width='stretch', key="data_vis_circ_heatload")
 
 # ------------------------------------------------------------------------------------------------------
 # 3. Circular Temperature Plot
@@ -295,7 +295,7 @@ all_titles = [f"At {elevations[i]}" for i in range(len(elevations))] + preset_ti
 fig = plotter.plot_circumferential_quadrants(
     temp_to_plot, titles=all_titles[-4:], colorbar_title="Temperature (°C)", unit=""
 )
-st.plotly_chart(fig, use_container_width=True, key="data_vis_circ_temp_stack")
+st.plotly_chart(fig, width='stretch', key="data_vis_circ_temp_stack")
 st.markdown(
     """
     <style>
@@ -316,11 +316,11 @@ st.markdown(
 fig = plotter.plot_circumferential_quadrants(
     temp_to_plot2, titles=all_titles[:5], colorbar_title="Temperature (°C)", unit=""
 )
-st.plotly_chart(fig, use_container_width=True, key="data_vis_circ_temp_hearth")
+st.plotly_chart(fig, width='stretch', key="data_vis_circ_temp_hearth")
 fig = plotter.plot_circumferential_quadrants(
     temp_to_plot3, titles=all_titles[5:8], colorbar_title="Temperature (°C)", unit=""
 )
-st.plotly_chart(fig, use_container_width=True, key="data_vis_circ_temp_tuyere")
+st.plotly_chart(fig, width='stretch', key="data_vis_circ_temp_tuyere")
 # -------------------------------------------------------------------------------------------------------
 st.title("Heat Load Data - Timeseries")
 # -------------------------------------------------------------------------------------------------------
@@ -384,4 +384,4 @@ layout = go.Layout(
 fig = go.Figure(data=data, layout=layout)
 
 # Display the plot
-st.plotly_chart(fig, use_container_width=True, key="data_vis_heatload_ts")
+st.plotly_chart(fig, width='stretch', key="data_vis_heatload_ts")

@@ -233,7 +233,7 @@ class PythonPlotter:
         Generate Plotly code, compile it, and return a Plotly figure.
 
         Streamlit Cloud expectation:
-        - The caller should render with `st.plotly_chart(fig, use_container_width=True)`.
+        - The caller should render with `st.plotly_chart(fig, width=='stretch')`.
         - The generated code is stored in `self.last_plot_code` and (if available) `st.session_state`.
         """
         self.last_plot_error = None

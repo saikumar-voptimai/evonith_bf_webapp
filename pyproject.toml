@@ -226,7 +226,11 @@ dependencies = [
     "requests>=2.32.3",
     "pillow>=11.1.0",
     "voyageai>=0.3.2",
+    "furnace_data",
 ]
+
+[tool.uv.sources]
+furnace_data = { path = "./furnace_data", editable = true }
 
 [dependency-groups]
 dev = [

@@ -2,7 +2,7 @@
 
 Primary data source
 -------------------
-Static ML dataset CSV at ``src/assets/data/ml_dataset_filtered.csv``.
+Static furnace dataset CSV at ``src/assets/data/furnace_dataset.csv``.
 This CSV is produced by the ML-Dataset service and contains hourly rows
 with UTC-naive timestamps (00–23 each day) for all composition, blast,
 chemistry, and tonnage columns.
@@ -44,14 +44,14 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 from typing import Dict, Set, Tuple
 
 import pandas as pd
 import pytz
 import streamlit as st
 
-from data.fetchers.base_data_fetcher import BaseDataFetcher
+from furnace_data.influx.base import BaseDataFetcher
+from data.ml.static_csv import get_static_dataset_path
 from data.retrieval import clean_rm_data, fetch_offline_data
 
 log = logging.getLogger("root")
@@ -86,9 +86,7 @@ PROCESS_FIELDS = [
 # ---------------------------------------------------------------------------
 # Static CSV path
 # ---------------------------------------------------------------------------
-_CSV_PATH = (
-    Path(__file__).resolve().parents[2] / "assets" / "data" / "ml_dataset_filtered.csv"
-)
+_CSV_PATH = get_static_dataset_path()
 
 # ---------------------------------------------------------------------------
 # Column mapping: CSV column name → schema-compatible name expected by
