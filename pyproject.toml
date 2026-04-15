@@ -230,7 +230,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-furnace_data = { path = "./furnace_data", editable = true }
+furnace_data = { path = "./furnace_data" }
 
 [dependency-groups]
 dev = [
