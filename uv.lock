@@ -2233,7 +2233,7 @@ wheels = [
 
 [[package]]
 name = "furnace-data"
-version = "0.1.0"
+version = "0.1.1"
 source = { directory = "furnace_data" }
 dependencies = [
     { name = "certifi", marker = "python_full_version < '3.10' or python_full_version >= '4.0' or os_name != 'nt' or sys_platform != 'darwin'" },

@@ -2,8 +2,9 @@
 
 Searches for YAML config files in this order:
   1. ``FURNACE_CONFIG_DIR`` environment variable (if set)
-  2. ``<repo_root>/src/config/`` — works when package is installed editably
-     from the evonith_webapp repo root.
+  2. ``<cwd>/config/`` — works when Streamlit runs from ``src/``
+  3. ``<cwd>/src/config/`` — works when running from the repo root
+  4. ``../../src/config/`` relative to this file — legacy editable-install path
 
 The API service (furnace-data-service) sets ``FURNACE_CONFIG_DIR`` in its
 ``.env`` to point at ``furnace-data-service/config/``.
@@ -21,8 +22,26 @@ from pathlib import Path
 
 import yaml
 
-# Default: repo_root/src/config/ (works for editable install at repo root)
-_DEFAULT_CONFIG_DIR: Path = Path(__file__).resolve().parent.parent / "src" / "config"
+def _find_default_config_dir() -> Path:
+    """Locate the YAML config directory without an env var.
+
+    Resolution order (first directory that exists wins):
+    1. ``<cwd>/config``       — app runs from ``src/`` (Streamlit Cloud & local dev)
+    2. ``<cwd>/src/config``   — app runs from the repo root
+    3. ``../../src/config``   — legacy editable-install path relative to this file
+    """
+    candidates = [
+        Path.cwd() / "config",
+        Path.cwd() / "src" / "config",
+        Path(__file__).resolve().parent.parent / "src" / "config",
+    ]
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return candidates[0]  # let load_config raise a clear error
+
+
+_DEFAULT_CONFIG_DIR: Path = _find_default_config_dir()
 
 
 def load_config(config_file: str = "setting_ds_dv.yml") -> dict:
