@@ -4,7 +4,10 @@ Searches for YAML config files in this order:
   1. ``FURNACE_CONFIG_DIR`` environment variable (if set)
   2. ``<cwd>/config/`` — works when Streamlit runs from ``src/``
   3. ``<cwd>/src/config/`` — works when running from the repo root
-  4. ``../../src/config/`` relative to this file — legacy editable-install path
+
+Evaluated lazily at each call so that ``cwd`` is resolved at call time,
+not at module import time (which breaks non-editable installs where the
+package lives in site-packages and cwd may not yet be the app directory).
 
 The API service (furnace-data-service) sets ``FURNACE_CONFIG_DIR`` in its
 ``.env`` to point at ``furnace-data-service/config/``.
@@ -22,26 +25,25 @@ from pathlib import Path
 
 import yaml
 
-def _find_default_config_dir() -> Path:
+
+def _find_config_dir() -> Path:
     """Locate the YAML config directory without an env var.
 
+    Evaluated at call time so ``Path.cwd()`` reflects the actual working
+    directory of the running process (e.g. ``src/`` under Streamlit).
+
     Resolution order (first directory that exists wins):
-    1. ``<cwd>/config``       — app runs from ``src/`` (Streamlit Cloud & local dev)
-    2. ``<cwd>/src/config``   — app runs from the repo root
-    3. ``../../src/config``   — legacy editable-install path relative to this file
+    1. ``<cwd>/config``     — app runs from ``src/`` (Streamlit Cloud & local dev)
+    2. ``<cwd>/src/config`` — app runs from the repo root
     """
     candidates = [
         Path.cwd() / "config",
         Path.cwd() / "src" / "config",
-        Path(__file__).resolve().parent.parent / "src" / "config",
     ]
     for candidate in candidates:
         if candidate.is_dir():
             return candidate
     return candidates[0]  # let load_config raise a clear error
-
-
-_DEFAULT_CONFIG_DIR: Path = _find_default_config_dir()
 
 
 def load_config(config_file: str = "setting_ds_dv.yml") -> dict:
@@ -56,7 +58,8 @@ def load_config(config_file: str = "setting_ds_dv.yml") -> dict:
     Raises:
         FileNotFoundError: If the config file cannot be found.
     """
-    config_dir = Path(os.environ.get("FURNACE_CONFIG_DIR", str(_DEFAULT_CONFIG_DIR)))
+    env_dir = os.environ.get("FURNACE_CONFIG_DIR")
+    config_dir = Path(env_dir) if env_dir else _find_config_dir()
     config_path = config_dir / config_file
     if not config_path.is_file():
         raise FileNotFoundError(

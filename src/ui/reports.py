@@ -30,7 +30,8 @@ def render_reports(*, vector_store) -> None:
         unsafe_allow_html=True,
     )
 
-    report_level = st.sidebar.radio("Report Type", ["Shift", "Day", "Week", "Bi-week"])
+    # report_level = st.sidebar.radio("Report Type", ["Shift", "Day", "Week", "Bi-week"])
+    report_level = st.sidebar.text("Report Type (Shift)")
 
     #  FORM START (key change)
     with st.sidebar.form(key="report_form"):
