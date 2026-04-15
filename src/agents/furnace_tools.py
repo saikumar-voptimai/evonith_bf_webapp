@@ -248,7 +248,6 @@ def _summarize_df(df: pd.DataFrame, *, dataset_id: str, title: str) -> str:
     preview = df.head(2).to_string() if len(df) else "<empty>"
     return (
         f"{title}: dataset_id={dataset_id}\n"
-        f"Saved to '{_DATASET_CSV_PATH.as_posix()}'.\n"
         f"Shape: {df.shape}\n"
         f"Columns ({len(df.columns)}): {list(df.columns)}\n\n"
         f"Preview:\n{preview}"
