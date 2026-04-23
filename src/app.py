@@ -54,6 +54,7 @@ pages = [
     # st.Page("custom_pages/6_📊_Reports.py", title="Reports", icon="📊" ),
     st.Page("custom_pages/6_⚖️_Material_Balance.py", title="Material Balance", icon="⚖️"),
     st.Page("custom_pages/7_🧠_FurnaceMind.py", title="FurnaceMind", icon="🧠"),
+    st.Page("custom_pages/8_🧪_Blend_Optimizer.py", title="Blend Optimizer", icon="🧪"),
 ]
 
 

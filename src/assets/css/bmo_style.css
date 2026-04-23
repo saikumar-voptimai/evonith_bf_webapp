@@ -1,0 +1,34 @@
+.bmo-header {
+  background: linear-gradient(120deg, #0f2940 0%, #19507a 60%, #1f7a5a 100%);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 14px;
+}
+
+.bmo-header h2 {
+  color: #ffffff;
+  margin: 0;
+  font-size: 24px;
+}
+
+.bmo-header p {
+  color: #d7ecff;
+  margin: 6px 0 0 0;
+  font-size: 13px;
+}
+
+.bmo-subtle {
+  color: #6f7f8f;
+  font-size: 12px;
+}
+
+.bmo-status-ok {
+  color: #127a4f;
+  font-weight: 600;
+}
+
+.bmo-status-warn {
+  color: #b65a00;
+  font-weight: 600;
+}
+

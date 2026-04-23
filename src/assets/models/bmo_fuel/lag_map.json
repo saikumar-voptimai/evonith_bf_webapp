@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "lags": {
+    "TOTAL OXYGENNM3/HR._lag1": {
+      "base_feature": "TOTAL OXYGENNM3/HR.",
+      "lag_steps": 1
+    },
+    "HOT BLAST VOLUMENM3/HR._lag1": {
+      "base_feature": "HOT BLAST VOLUMENM3/HR.",
+      "lag_steps": 1
+    }
+  },
+  "notes": "Replace with lag map used during model training."
+}

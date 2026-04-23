@@ -10,14 +10,28 @@ the ``admin`` and ``supervisor`` roles.
 import streamlit as st
 from streamlit_cookies_manager import EncryptedCookieManager
 
-# Initialize cookies (stored per browser tab)
+# Initialize cookies (stored per browser tab).
+# The ready-check is intentionally NOT done at module level — calling
+# st.stop() here would interrupt the import and leave this module partially
+# initialised in sys.modules, causing `ImportError: cannot import name
+# 'is_logged_in'` on the next rerun.  Instead, every public function that
+# needs cookies calls _ensure_cookies_ready() first.
 cookies = EncryptedCookieManager(
     prefix="bf_dashboard_",  # Unique prefix
     password="use_a_random_secret_key_here",  # change this to a secure key
 )
 
-if not cookies.ready():
-    st.stop()
+
+def _ensure_cookies_ready() -> bool:
+    """Block rendering until the cookie jar is hydrated from the browser.
+
+    Returns ``True`` when cookies are ready.  Calls ``st.stop()`` (and
+    returns ``False`` unreachably) when they are not, which causes Streamlit
+    to re-render once the browser has responded with the cookie values.
+    """
+    if not cookies.ready():
+        st.stop()
+    return True
 
 
 # ---------------------------
@@ -25,6 +39,7 @@ if not cookies.ready():
 # ---------------------------
 def is_logged_in() -> bool:
     """Check if the user is logged in (session or cookie)."""
+    _ensure_cookies_ready()
     # If session lost (reload), restore from cookie
     if "auth_user" not in st.session_state and cookies.get("auth_user"):
         st.session_state["auth_user"] = cookies.get("auth_user")

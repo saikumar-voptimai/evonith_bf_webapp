@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "model_name": "placeholder",
+  "train_date": "2026-04-23",
+  "metrics": {
+    "rmse": null,
+    "mae": null,
+    "r2": null
+  },
+  "notes": "Replace with production model training metrics."
+}
