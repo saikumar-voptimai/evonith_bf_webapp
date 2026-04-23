@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import inspect
 
 import pandas as pd
 import streamlit as st
@@ -16,7 +17,22 @@ def get_static_dataset_path(data_rel_path: str | None = None) -> Path:
     return (Path(__file__).resolve().parents[3] / rel_path).resolve()
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+if hasattr(st, "cache_data"):
+    _cache_data = st.cache_data
+elif hasattr(st, "experimental_memo"):
+    _cache_data = st.experimental_memo
+else:
+    _cache_data = st.cache
+
+_cache_kwargs = {}
+_cache_sig = inspect.signature(_cache_data)
+if "ttl" in _cache_sig.parameters:
+    _cache_kwargs["ttl"] = 3600
+if "show_spinner" in _cache_sig.parameters:
+    _cache_kwargs["show_spinner"] = False
+
+
+@_cache_data(**_cache_kwargs)
 def load_static_dataset(
     path: str | Path | None = None,
     *,

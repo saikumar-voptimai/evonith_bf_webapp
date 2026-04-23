@@ -67,3 +67,24 @@ bmo:
       - NMDC DONIMALAI
       - GOMTI CLO
 
+  optimization_runtime:
+    dataset:
+      static_dataset_path: src/assets/data/furnace_dataset.csv
+      refresh_enabled: false
+      refresh_rm_choice: RM Charge
+    model_bundle:
+      model_path: src/assets/models/bmo_fuel/model.joblib
+      scaler_path: src/assets/models/bmo_fuel/scaler.joblib
+      feature_manifest_path: src/assets/models/bmo_fuel/feature_manifest.json
+      lag_map_path: src/assets/models/bmo_fuel/lag_map.json
+      training_metrics_path: src/assets/models/bmo_fuel/training_metrics.json
+      strict_loading: false
+    feature_policy:
+      missing_feature_policy: default_warn
+    optimizer:
+      strategy: best1bin
+      maxiter: 40
+      popsize: 12
+      tol: 0.01
+      polish: true
+      seed: 42

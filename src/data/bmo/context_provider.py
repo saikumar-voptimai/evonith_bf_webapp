@@ -9,6 +9,7 @@ import pandas as pd
 import yaml
 
 from domain.bmo.types import OreChemistry, OreInput
+from domain.optimization_runtime import DatasetContextService, build_runtime_config
 
 try:
     from data.retrieval import fetch_offline_data as _fetch_offline_data
@@ -62,6 +63,12 @@ class EvonithBmoContextProvider:
 
         self._ores_cfg = self.mapping.get("ores", [])
         self._chem_field_map = self.mapping.get("chemistry_field_map", {})
+        self.runtime_cfg = build_runtime_config(self.settings)
+        self._dataset_service = DatasetContextService(
+            static_dataset_path=self.runtime_cfg["dataset"].get("static_dataset_path"),
+            refresh_enabled=bool(self.runtime_cfg["dataset"].get("refresh_enabled", False)),
+            refresh_rm_choice=str(self.runtime_cfg["dataset"].get("refresh_rm_choice", "RM Charge")),
+        )
 
     def get_raw_mapping(self) -> dict[str, Any]:
         return {"settings": self.settings, "mapping": self.mapping}
@@ -181,18 +188,11 @@ class EvonithBmoContextProvider:
         return chemistry_by_ore, warnings
 
     def get_history_frame(self) -> tuple[pd.DataFrame, list[str]]:
-        static_path = str(self.settings.get("data_sources", {}).get("static_dataset_path", ""))
-        csv_path = _resolve_repo_path(static_path)
-
         warnings: list[str] = []
-        if not csv_path.exists():
-            warnings.append(f"Static dataset not found at {csv_path}.")
-            return pd.DataFrame(), warnings
-
         try:
-            df = pd.read_csv(csv_path, index_col=0)
-            df.index = pd.to_datetime(df.index, errors="coerce", utc=True)
-            df = df.sort_index()
+            df = self._dataset_service.load_history()
+            if df.empty:
+                warnings.append("Static dataset loaded but empty.")
             return df, warnings
         except Exception as exc:
             warnings.append(f"Could not load static dataset: {exc}")

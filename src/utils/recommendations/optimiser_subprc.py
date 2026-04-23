@@ -31,5 +31,12 @@ if __name__ == "__main__":
     fixed_cp = payload["fixed_cp"]
     lambda_reg = payload["lambda_reg"]
 
-    result = run_optimiser(df, models_dict, user_input, fixed_cp, lambda_reg)
+    result = run_optimiser(
+        df,
+        models_dict,
+        user_input,
+        fixed_cp,
+        dfprocessor=None,
+        lambda_reg=lambda_reg,
+    )
     print(json.dumps(result))

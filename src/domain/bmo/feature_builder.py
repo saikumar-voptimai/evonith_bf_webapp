@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from typing import Any
 
+from domain.optimization_runtime import normalize_feature_name as _normalize_feature_name
+
 
 def normalize_feature_name(name: str) -> str:
-    text = str(name).strip().lower()
-    text = re.sub(r"[^a-z0-9]+", "_", text)
-    text = re.sub(r"_+", "_", text).strip("_")
-    return text
+    return _normalize_feature_name(name)
 
 
 def build_feature_payload(
@@ -50,4 +48,3 @@ def build_feature_payload(
             payload[normalize_feature_name(str(key))] = payload[str(key)]
 
     return payload
-

@@ -1,13 +1,13 @@
 import json
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
 import yaml
 
 from config.config_loader import load_config
+from domain.optimization_runtime import ModelBundleService
 from utils.recommendations.data import DataframesProcessor
 from utils.recommendations.llm import call_llm
 from utils.recommendations.optimiser import run_optimiser
@@ -83,9 +83,18 @@ for model in models_dict.keys():
     ]
     models_dict[model]["input_params_flat"] = ip_flat
     models_dict[model]["Optimised"] = False
-    relpath = models_dict[model]["model"]
-    model_path = Path(__file__).resolve().parents[2] / relpath
-    models_dict[model]["LoadedMLModel"] = joblib.load(model_path)
+    relpath_model = models_dict[model]["model"]
+    relpath_scaler = models_dict[model].get("scaling")
+    bundle = ModelBundleService(
+        {
+            "model_path": relpath_model,
+            "scaler_path": relpath_scaler,
+            "strict_loading": True,
+        }
+    ).get_bundle()
+    models_dict[model]["LoadedMLModel"] = bundle.model
+    if bundle.scaler is not None:
+        models_dict[model]["LoadedScaler"] = bundle.scaler
     if model == optimisation_type:
         models_dict[model]["Optimised"] = True
 

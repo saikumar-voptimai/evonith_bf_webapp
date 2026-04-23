@@ -4,6 +4,20 @@ IMG_MBF: images/MBF.jpg
 IMG_VOPTIMAI: images/VOPTIMAI.png
 LAMBDA_REG: 0.05
 OPTIM_STEPS: 30
+optimization_runtime:
+  dataset:
+    static_dataset_path: src/assets/data/furnace_dataset.csv
+    refresh_enabled: false
+    refresh_rm_choice: RM Charge
+  feature_policy:
+    missing_feature_policy: default_warn
+  optimizer:
+    strategy: best1bin
+    maxiter: 30
+    popsize: 15
+    tol: 0.01
+    polish: true
+    seed: 42
 Optimisation:
   Eta CO:
     output_param: FURNACETOPGASANALYSISCO2ETACO

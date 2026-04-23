@@ -15,6 +15,7 @@ from domain.bmo import (
     run_lp_baseline,
     run_nonlinear_optimizer,
 )
+from domain.optimization_runtime import build_runtime_config
 from ui.bmo import (
     apply_bmo_styles,
     build_ore_editor_df,
@@ -56,8 +57,14 @@ def _get_context_provider() -> EvonithBmoContextProvider:
 @_resource_cache(show_spinner=False)
 def _get_model_service() -> FuelUnitCostModelService:
     bmo_cfg = _get_bmo_config()
+    runtime_cfg = build_runtime_config(bmo_cfg)
+    bundle_cfg = dict(runtime_cfg.get("model_bundle", {}))
+    bundle_cfg.setdefault(
+        "missing_feature_policy",
+        runtime_cfg.get("feature_policy", {}).get("missing_feature_policy", "default_warn"),
+    )
     return FuelUnitCostModelService(
-        bundle_cfg=bmo_cfg.get("model_bundle", {}),
+        bundle_cfg=bundle_cfg,
         fallback_cfg=bmo_cfg.get("fallback_fuel_model", {}),
     )
 
@@ -99,7 +106,8 @@ st.caption(
 
 ui_cfg = bmo_cfg.get("ui", {})
 target_cfg = bmo_cfg.get("target", {})
-opt_cfg = bmo_cfg.get("optimization", {})
+runtime_cfg = build_runtime_config(bmo_cfg, default_optimizer=bmo_cfg.get("optimization", {}))
+opt_cfg = runtime_cfg.get("optimizer", {})
 
 layout_col1, layout_col2 = st.columns(2)
 

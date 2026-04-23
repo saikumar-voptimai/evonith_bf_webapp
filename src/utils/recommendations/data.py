@@ -1,12 +1,16 @@
 import warnings
 from typing import Any, Dict, List
 
-import joblib
 import pandas as pd
 
 from furnace_data.influx.base import BaseDataFetcher
-from data.ml.static_csv import load_static_dataset
 from data.retrieval import fetch_offline_data
+from domain.optimization_runtime import (
+    DatasetContextService,
+    FeatureVectorBuilder,
+    ModelBundleService,
+    build_runtime_config,
+)
 
 
 class DataframesProcessor:
@@ -26,6 +30,20 @@ class DataframesProcessor:
         self.config = config
         self.config_vsense = config_vsense
         self.debug_on = debug_on
+        runtime_cfg = build_runtime_config(
+            {
+                "DATA": self.config.get("DATA"),
+                "optimization_runtime": self.config_vsense.get("optimization_runtime", {}),
+            },
+            default_dataset_path=self.config.get("DATA"),
+        )
+        dataset_cfg = runtime_cfg.get("dataset", {})
+        self.dataset_service = DatasetContextService(
+            static_dataset_path=dataset_cfg.get("static_dataset_path"),
+            refresh_enabled=bool(dataset_cfg.get("refresh_enabled", False)),
+            refresh_rm_choice=str(dataset_cfg.get("refresh_rm_choice", "RM Charge")),
+        )
+        self.runtime_cfg = runtime_cfg
 
         self.df_hist = self.fetch_historical_data()
         cp_op_ml_dict, meas_set = self.fetch_live_params()
@@ -49,9 +67,7 @@ class DataframesProcessor:
         Returns:
             pd.DataFrame: DataFrame containing historical data.
         """
-        data_rel_path = self.config["DATA"]
-        df_hist = load_static_dataset(data_rel_path)
-        df_hist.index = pd.to_datetime(df_hist.index, format="%d/%m/%Y %H:%M", utc=True)
+        df_hist = self.dataset_service.load_history()
         return df_hist
 
     def fetch_live_rm_data(self) -> pd.DataFrame:
@@ -127,52 +143,34 @@ class DataframesProcessor:
         Returns:
             pd.DataFrame: Processed DataFrame with 'time' index.
         """
-        scaler = joblib.load(scaler_path)
-        df = self.df_full.copy()
-        df.index = pd.to_datetime(df.index, errors="coerce", format="%d/%m/%Y %H:%M")
-
-        if scaler is None or not hasattr(scaler, "feature_names_in_"):
+        bundle_service = ModelBundleService({"scaler_path": scaler_path})
+        bundle = bundle_service.get_bundle()
+        if bundle.scaler is None or not hasattr(bundle.scaler, "feature_names_in_"):
             raise NotImplementedError("Scaler must be provided for feature processing.")
+        feature_names = list(bundle.scaler.feature_names_in_)
 
-        feature_names = scaler.feature_names_in_.tolist()
+        latest_row = self.df_full.iloc[-1].copy()
+        latest_ts = pd.to_datetime(self.df_full.index[-1], errors="coerce")
+        if pd.notna(latest_ts):
+            if "hour" in feature_names and "hour" not in latest_row.index:
+                latest_row["hour"] = int(latest_ts.hour)
+            if "day_of_week" in feature_names and "day_of_week" not in latest_row.index:
+                latest_row["day_of_week"] = int(latest_ts.dayofweek)
+            if "month" in feature_names and "month" not in latest_row.index:
+                latest_row["month"] = int(latest_ts.month)
 
-        if "hour" in feature_names and "hour" not in df.columns:
-            df["hour"] = df.index.to_series().dt.hour
-        if "day_of_week" in feature_names and "day_of_week" not in df.columns:
-            df["day_of_week"] = df.index.to_series().dt.dayofweek
-        if "month" in feature_names and "month" not in df.columns:
-            df["month"] = df.index.to_series().dt.month
-
-        idx_to_col: Dict[int, str] = {}
-        missing_features: list[str] = []
-
-        for idx, feat in enumerate(feature_names):
-            if "_lag" in feat and feat.split("_lag")[0] in df.columns:
-                base_name, _, lag_str = feat.partition("_lag")
-                try:
-                    lag = int(lag_str)
-                except ValueError:
-                    missing_features.append(feat)
-                    continue
-                lag_col = f"{base_name}_lag{lag}"
-                df[lag_col] = df[base_name].shift(lag)
-                idx_to_col[idx] = lag_col
-            elif feat in df.columns:
-                idx_to_col[idx] = feat
-            elif feat in ["hour", "day_of_week", "month"]:
-                idx_to_col[idx] = feat
-            else:
-                missing_features.append(feat)
-
-        ordered_cols = [col for _, col in sorted(idx_to_col.items())]
-        df = df[ordered_cols]
-        if missing_features:
+        builder = FeatureVectorBuilder(bundle, missing_feature_policy="default_warn")
+        build_result = builder.build(
+            base_sample=latest_row,
+            history_df=self.df_full,
+            expected_features=feature_names,
+        )
+        if build_result.missing_features:
             warnings.warn(
-                f"process_dataframe: Features '{missing_features}' not found in DataFrame columns."
+                "process_dataframe: Missing features were imputed via default_warn policy: "
+                f"{build_result.missing_features}"
             )
-
-        df.dropna(inplace=True)  # NaNs peek in due to lag features
-        return df
+        return build_result.vector_df
 
     def fetch_live_data(
         self, cp_op_ml_dict: Dict[str, Any], influx_paths: List[str]
