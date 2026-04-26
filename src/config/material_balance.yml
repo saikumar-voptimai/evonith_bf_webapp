@@ -1,0 +1,84 @@
+elements:
+- Fe
+- C
+- Si
+- Ca
+- Mg
+- Al
+- Mn
+- S
+- P
+- O
+- N
+- H
+constants:
+  rho_air_ntp_kg_per_nm3: 1.293
+  air_o2_vol_frac: 0.208
+  air_n2_vol_frac: 0.792
+  molar_volume_ntp_nm3_per_kmol: 22.414
+  air_o2_mass_frac: 0.232
+  air_n2_mass_frac: 0.755
+coke_ash_analysis_pct:
+  SiO2: 55.60
+  Al2O3: 27.29
+  Fe2O3: 6.85
+  CaO: 3.26
+  MgO: 1.21
+  TiO2: 1.47
+  Na2O: 0.07
+  K2O: 0.18
+  S: 0.72
+  P: 0.042
+nutcoke_ash_analysis_pct:
+  SiO2: 55.64
+  Al2O3: 27.25
+  Fe2O3: 7.13
+  CaO: 3.12
+  MgO: 1.12
+  TiO2: 1.475
+  Na2O: 0.07
+  K2O: 0.17
+  S: 0.76
+  P: 0.040
+pci_ash_analysis_pct:
+  SiO2: 47.12
+  Al2O3: 24.68
+  Fe2O3: 7.88
+  CaO: 7.68
+  MgO: 2.09
+  TiO2: 0.857
+  Na2O: 0.663
+  K2O: 1.524
+  S: 0.40
+  P: 0.042
+dpr_field_mapping:
+  hm_mass_t: null
+  slag_mass_t: null
+  coke_mass_t: null
+  nut_coke_mass_t: null
+  pci_mass_t: null
+  ore_mass_t: null
+  sinter_mass_t: null
+  pellet_mass_t: null
+  flux_mass_t: null
+future_streams:
+  dust_catcher_t: null
+  sludge_t: null
+  slag_granulation_loss: null
+closure_thresholds:
+  good:
+  - 95
+  - 105
+  warning:
+  - 85
+  - 115
+dust_catcher_composition_pct:
+  Fe2O3: 38
+  C: 14
+  SiO2: 18
+  Al2O3: 10
+  CaO: 8
+  MgO: 4
+  K2O: 2
+  Na2O: 1
+  other: 5

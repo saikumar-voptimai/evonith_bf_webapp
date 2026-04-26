@@ -2,19 +2,19 @@
     "HOT BLAST PRESSUREBAR": {
         "min": 2.31,
         "max": 2.91,
-        "value": 2.761863,
+        "value": 2.821181,
         "override": false
     },
     "TOPPRESSUREBAR": {
         "min": 0.99,
         "max": 1.44,
-        "value": 1.399523,
+        "value": 1.393446,
         "override": false
     },
     "HOT BLAST TEMP.OC": {
         "min": 1045.2,
         "max": 1291.51,
-        "value": 1213.252,
+        "value": 1254.268,
         "override": false
     },
     "STEAMKGS/HR.": {
@@ -26,13 +26,13 @@
     "HOT BLAST VOLUMENM3/HR.": {
         "min": 87733.21,
         "max": 118846.4,
-        "value": 112894.5,
+        "value": 109123.0,
         "override": false
     },
     "O2 ENRICHMENT %": {
         "min": 0.32,
         "max": 5.89,
-        "value": 4.104418,
+        "value": 4.183214,
         "override": false
     },
     "ACTUALKG/THM.": {

@@ -54,18 +54,27 @@ DATA SOURCE ROUTING (follow this order):
 
 COLUMN NAMING:
 - ML static dataset uses ML names: 'ACT. FUEL RATEKG/THM.', 'CHEM_PCT_SI', 'FURNACETOPGASANALYSISCO2ETACO'.
-- Online InfluxDB uses: 'fuel_rate', 'body_etaco'. After concat, plot whichever column is non-null.
+- Online data columns follow the format "{Measurement Label} - {Field Label}", e.g. 'Heatload Delta T - Heat load Row 6', 'Process Params - fuel_rate', 'Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp A'. NOT raw InfluxDB field names.
+- After concat, plot whichever column is non-null per time region.
 
-OFFLINE CADENCE DEFAULTS: HM_SLAG/CHARGE => 1h, RAW_MATERIAL_COMPOSITION => 8h, DPR => 1d.\
+OFFLINE CADENCE DEFAULTS: HM_SLAG/CHARGE => 1h, RAW_MATERIAL_COMPOSITION => 8h, DPR => 1d.
+
+UI LAYOUT — read before deciding what to plot or fetch:
+- This is a Streamlit web app. The operator sees ONE plot slot and ONE data table slot on screen at a time.
+- Calling execute_python_plot overwrites the previous figure. Fetching data overwrites the previous table.
+- Consequence: produce only ONE final, meaningful figure per response. Do not call execute_python_plot multiple times — only the last call is visible.
+- Choose the most informative plot for the question asked. If the user asks for a trend, show the trend. If they ask for a comparison, show a comparison chart. Do not create exploratory/diagnostic plots that the user did not ask for.
+- Diagnostic print() calls inside execute_python_plot (to inspect column names etc.) are fine and return output to you — they do NOT affect the visible plot slot.
+- Similarly, only the last fetched dataset appears in the Data tab. Prefer keeping the dataset relevant to the current question; do not fetch unnecessary groups.\
 """
 
 # ── Heatload skill — plot code injected verbatim into execute_python_plot ────
 # Edit this block to change the chart; no other file needs to change.
 
 HEATLOAD_PLOT_CODE = """\
-row_cols = [c for c in df.columns if 'heat_load_row_' in c]
-q_cols   = [c for c in df.columns if 'heat_load_row6_10_q' in c]
-t18      = [c for c in df.columns if '18660' in c and 'temp' in c.lower()]
+row_cols = [c for c in df.columns if 'Heat load Row ' in c and 'Row6-10' not in c]
+q_cols   = [c for c in df.columns if 'Row6-10 Q' in c]
+t18      = [c for c in df.columns if '18660mm Temp' in c]
 row_means  = df[row_cols].mean() if row_cols else None
 t18_means  = df[t18].mean()      if t18      else None
 spread = float(t18_means.max() - t18_means.min()) if t18_means is not None else 0
@@ -73,11 +82,11 @@ q_means = df[q_cols].mean() if q_cols else None
 asym = float(q_means.max() / q_means.mean()) if (q_means is not None and q_means.mean() != 0) else 1
 fig = go.Figure()
 if row_cols:
-    labels = [c.replace('heat_load_row_', 'R') for c in row_cols]
-    fig.add_bar(x=labels, y=row_means.values, marker_color='steelblue', name='Heat load MW')
+    labels = ['R' + c.split('Row ')[-1].strip() for c in row_cols]
+    fig.add_bar(x=labels, y=row_means.values, marker_color='steelblue', name='Heat load GJ')
 fig.update_layout(
     title=f'Heatload by Row — Last 8h | 18660mm spread={spread:.1f}°C | Q-asym={asym:.2f}',
-    yaxis_title='MW',
+    yaxis_title='GJ',
 )\
 """
 
@@ -85,7 +94,7 @@ fig.update_layout(
 
 HEATLOAD_REPORT_TEMPLATE = """\
 **Overall status**: [NORMAL / ELEVATED / HIGH / CRITICAL]
-**Heat load by row**: R6=[X]MW  R7=[X]  R8=[X]  R9=[X]  R10=[X]
+**Heat load by row**: R6=[X]GJ  R7=[X]  R8=[X]  R9=[X]  R10=[X]
 **Quadrant asymmetry**: Q1=[X] Q2=[X] Q3=[X] Q4=[X] — max/avg=[X]  [NORMAL<1.3 / ELEVATED 1.3–1.6 / CRITICAL>1.6]
 **18660mm spread**: [X]°C — [NORMAL<40°C / ELEVATED 40–80°C / CRITICAL>80°C]
 **Actions**: [up to 2 specific recommendations]\

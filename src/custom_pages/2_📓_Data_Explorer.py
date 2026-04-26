@@ -1,6 +1,5 @@
 import os
 from datetime import date, datetime, time, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import matplotlib.pyplot as plt
@@ -15,8 +14,10 @@ from dotenv import load_dotenv
 
 from config.config_loader import load_config
 from data import retrieval as dr
-from data.ml.main import MlDatasetFetcher
+from furnace_data.dataset.fetcher import DatasetFetcher as MlDatasetFetcher
+from data.ml.static_csv import get_static_dataset_path, load_static_dataset
 from data.ml.static_dataset_manager import StaticDatasetManager
+from utils.dataset_refresher import maybe_refresh
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config("setting_vsense.yml")
@@ -29,8 +30,12 @@ INFLUX_OFFLINE_TOKEN = os.getenv("INFLUX_OFFLINE_TOKEN", "")
 local_tz = pytz.timezone("Asia/Kolkata")  # or use your actual timezone
 os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
 
-fullpath = Path(__file__).resolve().parents[2] / config["DATA"]
-df = pd.read_csv(fullpath, index_col=0, parse_dates=True)
+# ── dataset auto-refresh ───────────────────────────────────────────────────
+if maybe_refresh(config):
+    st.sidebar.caption("⏳ Refreshing dataset in background…")
+
+fullpath = get_static_dataset_path(config["DATA"])
+df = load_static_dataset(fullpath)
 
 
 FIELD_LABELS = {
@@ -630,7 +635,7 @@ with right_col:
                 st.download_button(
                     label="Download ML Dataset",
                     data=f,
-                    file_name="ml_dataset_filtered.csv",
+                    file_name="furnace_dataset.csv",
                     mime="text/csv",
                 )
 

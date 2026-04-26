@@ -120,7 +120,7 @@ def render_live_operations(*, structured_store, vector_store) -> None:
 
     ui_df = ui_df.sort_index().tail(_ROWS_PER_SHIFT)
     st.subheader("📊 Live Online Data (Last 8 Hours)")
-    st.dataframe(ui_df, use_container_width=True)
+    st.dataframe(ui_df, width='stretch')
 
     if st.session_state.online_shift_buffer.empty:
         logger.info("Cold start — backfilling shift buffer from UI data.")
@@ -477,7 +477,7 @@ def render_furnace_intelligence(*, structured_store) -> None:
                     for p, d in recurring_anomalies.items()
                 ]
             ),
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
         )
     else:
@@ -513,7 +513,7 @@ def render_furnace_intelligence(*, structured_store) -> None:
                     for r in influence_result
                 ]
             ),
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
         )
         st.caption(

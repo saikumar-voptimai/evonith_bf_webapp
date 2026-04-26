@@ -15,7 +15,7 @@ def render_artifacts_panel() -> None:
     with plot_tab:
         fig = st.session_state.get("copilot_fig")
         if fig is not None:
-            st.plotly_chart(fig, use_container_width=True, key="artifact_plot_main")
+            st.plotly_chart(fig, width='stretch', key="artifact_plot_main")
         else:
             st.info("No plot yet — ask me to visualize something.")
 
@@ -28,6 +28,6 @@ def render_artifacts_panel() -> None:
                 c1.metric("Rows", df.shape[0])
                 c2.metric("Columns", df.shape[1])
                 c3.metric("Dataset", meta.get("dataset_id", "—"))
-            st.dataframe(df, use_container_width=True, key="artifact_df_main")
+            st.dataframe(df, width='stretch', key="artifact_df_main")
         else:
             st.info("No data yet — ask me to fetch something.")

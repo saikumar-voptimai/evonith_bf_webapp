@@ -11,29 +11,13 @@ import pandas as pd
 import streamlit as st
 
 from config.config_loader import load_config
+from data.fetch_presets import ONLINE_MEASUREMENT_LABELS, WINDOW_FREQUENCY_MAP
 from data import retrieval as dr
 
 _config = load_config("setting_ds_dv.yml")
 
-MEASUREMENT_LABELS: dict[str, str] = {
-    "heatload_delta_t": "Heatload Delta T",
-    "process_params": "Process Params",
-    "temperature_profile": "Temperature Profile",
-}
-
-FREQUENCY_TO_TIMEDTA: dict[str, str | None] = {
-    "None": None,
-    "1 minute": "1min",
-    "5 minutes": "5min",
-    "10 minutes": "10min",
-    "15 minutes": "15min",
-    "30 minutes": "30min",
-    "1 hour": "1h",
-    "6 hours": "6h",
-    "8 hours": "8h",
-    "12 hours": "12h",
-    "1 day": "1d",
-}
+MEASUREMENT_LABELS = ONLINE_MEASUREMENT_LABELS
+FREQUENCY_TO_TIMEDTA = WINDOW_FREQUENCY_MAP
 
 FIELD_LABELS: dict[str, str] = {
     internal_key: human_label

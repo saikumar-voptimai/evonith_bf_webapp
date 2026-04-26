@@ -22,6 +22,21 @@ css_path = (
     Path(__file__).resolve().parents[1] / "assets" / "css" / "recommendation_style.css"
 )
 
+# ── dataset auto-refresh ───────────────────────────────────────────────────
+from utils.dataset_refresher import get_version as _ds_get_version, maybe_refresh as _ds_maybe_refresh  # noqa: E402
+
+if _ds_maybe_refresh(config):
+    st.sidebar.caption("⏳ Refreshing dataset in background…")
+
+# If a new dataset version landed since this session was started, force
+# DataframesProcessor to re-initialise with the fresh CSV on next run.
+_current_ds_version = _ds_get_version()
+if st.session_state.get("_ds_version") != _current_ds_version:
+    st.session_state.pop("dfprocessor", None)
+    st.session_state.pop("df_hist", None)
+    st.session_state.pop("df_full", None)
+    st.session_state["_ds_version"] = _current_ds_version
+
 if "df_hist" not in st.session_state:
     st.session_state["df_hist"] = None
 if "df_full" not in st.session_state:

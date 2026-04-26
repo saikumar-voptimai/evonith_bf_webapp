@@ -10,42 +10,45 @@ Elevated heatloads indicate refractory wear, channeling gas flow, or raceway imb
 
 ## Data sources required
 
+### Column naming — IMPORTANT
+Online data columns use the format **`"{Measurement Label} - {Field Label}"`** — NOT raw InfluxDB field names.
+Always rely on the column list returned by `fetch_online_data` rather than guessing names.
+Use `df.filter(like='...', axis=1)` or `[c for c in df.columns if '...' in c]` for robust selection.
+
+| What you need | DataFrame column pattern | Example exact name |
+|---|---|---|
+| Row heat loads (R6–R10) | `"Heatload Delta T - Heat load Row {N}"` | `"Heatload Delta T - Heat load Row 6"` |
+| Cross-row quadrant averages | `"Heatload Delta T - Heat load Row6-10 Q{N}(Stave …)"` | `"Heatload Delta T - Heat load Row6-10 Q1(Stave 1-8)"` |
+| Per-row quadrant | `"Heatload Delta T - Heat load R{row} Q{N}(Stave No …)"` | `"Heatload Delta T - Heat load R6 Q1(Stave No 1-8)"` |
+| Delta-T row averages | `"Delta T - DELTA T avg Row{N}"` | `"Delta T - DELTA T avg Row6"` |
+| 18660 mm temps | `"Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp {A/B/C/D}"` | `"Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp A"` |
+| 15162 mm temps | `"Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp {A/B/C/D}"` | `"Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp A"` |
+| 12975 mm temps | `"Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp {A/B/C/D}"` | `"Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp A"` |
+| Production rate | `"Process Params - production_per_hour"` | `"Process Params - production_per_hour"` |
+
 ### Current state (last 8h)
 - **Tool**: `fetch_online_data`
 - **Groups**: `heatload_delta_t`, `temperature_profile`, `process_params`
 - **Window**: `15 minutes` or `1 hour`
-- **What to get**:
-  - Heat load by row: `heat_load_row_6` through `heat_load_row_10`
-  - Heat load by quadrant: `heat_load_r6_q1` through `heat_load_r10_q4`
-  - Cross-row quadrant averages: `heat_load_row6_10_q1` through `heat_load_row6_10_q4`
-  - Delta-T by row: `delta_t_avg_row6` through `delta_t_avg_row10`
-  - Quadrant delta-T: `delta_t_avg_row6_10_q1` through `delta_t_avg_row6_10_q4`
-  - Temperature profile (all 11 elevations):
-    - Hearth (4373 mm): `temp_4373_a` through `temp_4373_g`
-    - Tuyere (5411–8335 mm): `temp_5411_*`, `temp_5757_*`, `temp_6103_*`, `temp_6795_*`, `temp_7565_*`, `temp_8335_*`
-    - Bosh (9105 mm): `temp_9105_*`
-    - Belly (12975 mm): `temp_12975_a` through `temp_12975_d`
-    - Lower Stack (15162 mm): `temp_15162_a` through `temp_15162_d`
-    - Upper Stack (18660 mm): `temp_18660_a`, `temp_18660_b`, `temp_18660_c`, `temp_18660_d`
-  - Total heat load: `body_dp_total` (as context), production rate: `production_per_hour`
+- **What to get**: Row heat loads (R6–R10), cross-row quadrant averages (Q1–Q4), per-row quadrant loads, upper/lower stack temperatures (18660 mm, 15162 mm, 12975 mm), production rate
 
 ### Baseline (2-month rolling)
-- **Tool**: `fetch_ml_data`
-- **start_time**: 60 days ago from today
-- **end_time**: 8 hours ago (exclude current window)
-- **columns filter**: `['total heat load', 'lower stack', 'belly', 'bosh', 'hearth', 'uptake temp']`
-- **resample**: `'1h'` (native)
+- **Tool**: `fetch_online_data`
+- **lookback_days**: 60
+- **Groups**: `heatload_delta_t`, `temperature_profile`
+- **Window**: `1 hour` (keep data volume manageable)
+- **Note**: Same column naming format as current-state fetch — row loads, quadrant loads, and stack temps are all available at row/quadrant resolution, unlike ML static which only has `TOTAL HEAT LOAD`.
 
 ---
 
 ## Analysis methodology
 
 ### Step 1 — Fetch both datasets
-1. Fetch online (last 8h)
-2. Fetch ML static (60-day baseline, up to 8h ago)
+1. Fetch online current (last 8h, 15-min window) → dataset A
+2. Fetch online baseline (last 60 days, 1h window) → dataset B
 
 ### Step 2 — Compute baseline statistics
-For each ML static column:
+For each column in dataset B (60-day baseline):
 - `baseline_mean = col.mean()`
 - `baseline_std = col.std()`
 - `baseline_p95 = col.quantile(0.95)`
@@ -91,13 +94,13 @@ HEATLOAD & SKIN TEMPERATURE CHECK — [date] [shift]
 OVERALL STATUS: [NORMAL / ELEVATED / HIGH / CRITICAL]
 
 HEAT LOAD BY ROW (current vs 2-month baseline)
-  Row 6: X MW  (baseline mean Y MW, z=Z) [status]
+  Row 6: X GJ  (baseline mean Y GJ, z=Z) [status]
   Row 7: ...
   ...
   Row 10: ...
 
 QUADRANT ASYMMETRY (R6-R10 average)
-  Q1: X MW | Q2: Y MW | Q3: Z MW | Q4: W MW
+  Q1: X GJ | Q2: Y GJ | Q3: Z GJ | Q4: W GJ
   Max/Avg ratio: [value] [status]
 
 TEMPERATURE PROFILE CHECKS

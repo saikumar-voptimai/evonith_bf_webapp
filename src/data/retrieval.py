@@ -1,126 +1,18 @@
 """InfluxDB data retrieval helpers for both online and offline buckets.
 
-Provides thin wrappers around :class:`~data.fetchers.base_data_fetcher.BaseDataFetcher`
-that resolve time-range expressions (preset strings, tuple pairs, or ``"full"``)
-into concrete InfluxQL queries and return tidy, timestamp-indexed DataFrames.
+``clean_rm_data`` and ``fetch_offline_data`` are thin shims that delegate to
+``furnace_data.influx.offline``; ``fetch_online_df`` retains webapp-specific
+IST conversion, column renaming, and resampling logic.
 """
 
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
 import pandas as pd
 
-from data.fetchers.base_data_fetcher import BaseDataFetcher
-
-TIMEDELTAS = {
-    "last 1 minute": timedelta(minutes=1),
-    "last 5 minutes": timedelta(minutes=5),
-    "last 15 minutes": timedelta(minutes=15),
-    "last 30 minutes": timedelta(minutes=30),
-    "last 1 hour": timedelta(hours=1),
-    "last 6 hours": timedelta(hours=6),
-    "last 8 hours": timedelta(hours=8),
-    "last 12 hours": timedelta(hours=12),
-    "last 1 day": timedelta(days=1),
-    "last 3 days": timedelta(days=3),
-    "last 1 week": timedelta(weeks=1),
-    "last 2 weeks": timedelta(weeks=2),
-    "last 1 month": timedelta(days=30),
-    "last 2 months": timedelta(days=60),
-    "last 3 months": timedelta(days=90),
-}
-
-
-def clean_rm_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Offline Data fetcher:
-    Cleans the raw data DataFrame by removing columns with all NaN values and renaming ore prefixes.
-    Args:
-        df (pd.DataFrame): Raw data DataFrame.
-    Returns:
-        pd.DataFrame: Cleaned DataFrame with renamed ore prefixes.
-    """
-    ore_groups = {}
-    for col in df.columns:
-        match = re.match(r"(ore_\d+)_", col)
-        if match:
-            ore_groups.setdefault(match.group(1), []).append(col)
-
-    drop_cols = []
-    for ore_key, cols in ore_groups.items():
-        if df[cols].isnull().all(axis=1).all():
-            drop_cols.extend(cols)
-
-    df_clean = df.drop(columns=drop_cols, errors="ignore")
-
-    # Rename ore prefixes
-    ore_name_map = {
-        "ore_1": "NMDC_DONAMALAI",
-        "ore_2": "LLOYDS",
-        "ore_3": "GEOMIN",
-        "ore_4": "JRS_VENTURES",
-        "ore_5": "NMDC_ROM",
-    }
-    rename_map = {}
-    for col in df_clean.columns:
-        for ore_prefix, ore_name in ore_name_map.items():
-            if col.startswith(ore_prefix):
-                rename_map[col] = col.replace(ore_prefix, ore_name)
-    df_clean = df_clean.rename(columns=rename_map)
-
-    return df_clean
-
-
-def fetch_offline_data(measurement: str, time_range, database: str) -> pd.DataFrame:
-    """
-    Fetch offline data with minimal and necessary time conversions.
-    Supports:
-    - preset strings (e.g. 'last 1 month')
-    - tuple ranges (start, end)
-    - full dataset ('full')
-    """
-    dfetch = BaseDataFetcher(
-        variable_tag=measurement, database=database, token="INFLUX_OFFLINE_TOKEN"
-    )
-
-    now = datetime.now(timezone.utc)
-
-    # --- Resolve time range ---
-    if isinstance(time_range, str) and time_range.strip().lower() == "full":
-        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        end = now
-        recent_label = "over selected range"
-
-    elif isinstance(time_range, tuple) and len(time_range) == 2:
-        # Convert tuple times once only
-        start = pd.to_datetime(time_range[0], utc=True)
-        end = pd.to_datetime(time_range[1], utc=True)
-        recent_label = "over selected range"
-
-    else:
-        # Preset string route → return directly
-        df = dfetch.fetch_averaged_data(
-            recent_data_of=time_range, request_type="ts", window_by=None
-        )
-        df["time"] = pd.to_datetime(df["time"], utc=True)
-        return df.set_index("time").sort_index()
-
-    # --- Fetch for custom/full ranges ---
-    df = dfetch.fetch_averaged_data(
-        recent_data_of=recent_label,
-        start_time=start,
-        end_time=end,
-        request_type="ts",
-        window_by=None,
-    )
-
-    # --- Final minimal cleanup ---
-    if "time" in df.columns:
-        df["time"] = pd.to_datetime(df["time"], utc=True)
-        df = df.set_index("time")
-
-    return df.sort_index()
+from furnace_data.influx.base import BaseDataFetcher
+from furnace_data.influx.offline import clean_rm_data, fetch_offline_data  # noqa: F401
+from furnace_data.influx.query import TIMEDELTAS  # noqa: F401
 
 
 def fetch_online_df(
