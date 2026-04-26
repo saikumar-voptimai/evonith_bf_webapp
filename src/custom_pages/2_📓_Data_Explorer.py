@@ -1,35 +1,35 @@
-import streamlit as st
-from datetime import datetime, timedelta, date
-from datetime import time
+import os
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
-import os
 import pytz
-from pathlib import Path
-from utils.helper_functions_explorer import data_retrieval as dr
-from config.config_loader import load_config
+import seaborn as sns
+import streamlit as st
 from dotenv import load_dotenv
 
-from zoneinfo import ZoneInfo
-from ml_pipeline.main import MlDatasetFetcher
-from ml_pipeline.static_dataset_manager import StaticDatasetManager
+from config.config_loader import load_config
+from data import retrieval as dr
+from data.ml.main import MlDatasetFetcher
+from data.ml.static_dataset_manager import StaticDatasetManager
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config("setting_vsense.yml")
 offline_measurements = config.get("offline_measurements", {})
 influx_cfg = config.get("influx_offline", {})
 
-load_dotenv() 
+load_dotenv()
 INFLUX_OFFLINE_TOKEN = os.getenv("INFLUX_OFFLINE_TOKEN", "")
 
 local_tz = pytz.timezone("Asia/Kolkata")  # or use your actual timezone
 os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
 
-fullpath = Path(__file__).resolve().parents[1] / config['DATA'].split('/')[1] /config['DATA'].split('/')[2]
+fullpath = Path(__file__).resolve().parents[2] / config["DATA"]
 df = pd.read_csv(fullpath, index_col=0, parse_dates=True)
 
 
@@ -50,10 +50,10 @@ TIME_OPTIONS = {
     "last 1 day": timedelta(days=1),
     "last 3 days": timedelta(days=3),
     "last 1 week": timedelta(weeks=1),
-    'last 2 weeks': timedelta(weeks=2),
-    'last 1 month': timedelta(days=30),
-    'last 2 months': timedelta(days=60),
-    'last 3 months': timedelta(days=90),
+    "last 2 weeks": timedelta(weeks=2),
+    "last 1 month": timedelta(days=30),
+    "last 2 months": timedelta(days=60),
+    "last 3 months": timedelta(days=90),
 }
 
 FREQUENCY_TO_TIMEDTA = {
@@ -75,12 +75,12 @@ MEASUREMENT_LABELS = {
     "heatload_delta_t": "Heatload Delta T",
     "miscellaneous": "Miscellaneous",
     "process_params": "Process Params",
-    "temperature_profile": "Temperature Profile"
+    "temperature_profile": "Temperature Profile",
 }
 
 st.title("Visualisation tool")
 
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 st.subheader("Distribution plots")
 
 cols = st.columns([0.2, 0.2, 0.3, 0.3])
@@ -91,38 +91,59 @@ with cols[1]:
     to_date = st.date_input("To Date", value=pd.to_datetime(df.index[-1]).date())
 
 with cols[2]:
-    model_keys = list(config_vsense['Optimisation'].keys())
-    control_params = config_vsense['Optimisation'][model_keys[1]]['control_params']
-    input_params = [item for sublist in config_vsense['Optimisation'][model_keys[1]]['input_params'].values() for item in sublist]
+    model_keys = list(config_vsense["Optimisation"].keys())
+    control_params = config_vsense["Optimisation"][model_keys[1]]["control_params"]
+    input_params = [
+        item
+        for sublist in config_vsense["Optimisation"][model_keys[1]][
+            "input_params"
+        ].values()
+        for item in sublist
+    ]
     all_params = control_params + input_params
     x_p = st.selectbox("Select X feature", all_params)
 
 with cols[3]:
-    output_params = [config_vsense['Optimisation'][key]['output_param'] for key in config_vsense['Optimisation']]
-    y_p = st.selectbox("Select Y feature", output_params+['Unit Cost']+control_params)
+    output_params = [
+        config_vsense["Optimisation"][key]["output_param"]
+        for key in config_vsense["Optimisation"]
+    ]
+    y_p = st.selectbox(
+        "Select Y feature", output_params + ["Unit Cost"] + control_params
+    )
 
 with st.sidebar:
     st.subheader("PCI/Coke cost")
-    factor = st.number_input("PCI/Coke Cost ratio", value=13250/25000, step=0.01, format="%.2f")
+    factor = st.number_input(
+        "PCI/Coke Cost ratio", value=13250 / 25000, step=0.01, format="%.2f"
+    )
 
-df['UNITCOST LAKHS/THM'] = (df['COKE RATE KG/THM'] + factor * df['ACTUALKG/THM.']) * .25
-df_filt = df[(pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date >= from_date) & 
-             (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date <= to_date)]
+df["UNITCOST LAKHS/THM"] = (
+    df["COKE RATE KG/THM"] + factor * df["ACTUALKG/THM."]
+) * 0.25
+df_filt = df[
+    (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date >= from_date)
+    & (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date <= to_date)
+]
 
 # UI layout
 cols = st.columns([0.3, 0.2, 0.2, 0.2, 0.1])
 with cols[0]:
-    filter_feature = st.selectbox('Filter by', df.columns, index=int(len(df.columns)-3))
+    filter_feature = st.selectbox(
+        "Filter by", df.columns, index=int(len(df.columns) - 3)
+    )
 with cols[1]:
-    min_value = st.number_input('Lower bound', 
-                                    value=float(df[filter_feature].quantile(0.25)))
+    min_value = st.number_input(
+        "Lower bound", value=float(df[filter_feature].quantile(0.25))
+    )
 with cols[2]:
-    max_value = st.number_input('Higher bound', 
-                                    value=float(df[filter_feature].quantile(0.75)))
+    max_value = st.number_input(
+        "Higher bound", value=float(df[filter_feature].quantile(0.75))
+    )
 with cols[3]:
-    order = st.selectbox('Poly order', [1, 2, 3])
+    order = st.selectbox("Poly order", [1, 2, 3])
 with cols[4]:
-    inverse_filter = st.checkbox('Invert', value=True)
+    inverse_filter = st.checkbox("Invert", value=True)
 
 # Fit
 coeffs = np.polyfit(df_filt[x_p], df_filt[y_p], deg=order)
@@ -131,79 +152,103 @@ for i in range(len(coeffs)):
     if i == 0:
         eqn_str = f"{coeffs[len(coeffs) - 1]:.3g}"
     else:
-        coeff_i = coeffs[len(coeffs) - (i+1)]
+        coeff_i = coeffs[len(coeffs) - (i + 1)]
         if i == 1:
-            eqn_str += f" + {coeff_i:.3g}x" if coeff_i >= 0 else f" - {abs(coeff_i):.3g}x"
+            eqn_str += (
+                f" + {coeff_i:.3g}x" if coeff_i >= 0 else f" - {abs(coeff_i):.3g}x"
+            )
         else:
-            eqn_str += f" + {coeff_i:.3g}x^{i}" if coeff_i >= 0 else f" - {abs(coeff_i):.3g}x^{i}"
+            eqn_str += (
+                f" + {coeff_i:.3g}x^{i}"
+                if coeff_i >= 0
+                else f" - {abs(coeff_i):.3g}x^{i}"
+            )
 
 # Range filter
 if inverse_filter:
-    df_filt = df_filt[(df_filt[filter_feature] < min_value) | (df_filt[filter_feature] > max_value)]
+    df_filt = df_filt[
+        (df_filt[filter_feature] < min_value) | (df_filt[filter_feature] > max_value)
+    ]
 else:
-    df_filt = df_filt[(df_filt[filter_feature] >= min_value) & (df_filt[filter_feature] <= max_value)]    
-df_filt['Type'] = df_filt[filter_feature].apply(lambda x: 'Low' if x < min_value else 'High')
+    df_filt = df_filt[
+        (df_filt[filter_feature] >= min_value) & (df_filt[filter_feature] <= max_value)
+    ]
+df_filt["Type"] = df_filt[filter_feature].apply(
+    lambda x: "Low" if x < min_value else "High"
+)
 
 # Scatter and fit
-graph = sns.lmplot(x=x_p, 
-                   y=y_p,
-                   markers='x', 
-                   hue='Type',
-                   scatter_kws={'s':8, 'marker': 'x'}, 
-                   data=df_filt, 
-                   fit_reg=False)
+graph = sns.lmplot(
+    x=x_p,
+    y=y_p,
+    markers="x",
+    hue="Type",
+    scatter_kws={"s": 8, "marker": "x"},
+    data=df_filt,
+    fit_reg=False,
+)
 
 # Create the regplot
 ax = graph.axes[0, 0]
-plot = sns.regplot(data=df_filt, 
-                   x=x_p, 
-                   y=y_p,
-                   order=order,
-                   scatter=False,
-                   ax=ax)
+plot = sns.regplot(data=df_filt, x=x_p, y=y_p, order=order, scatter=False, ax=ax)
 
 if eqn_str:
-    plt.text(0.05, 0.95, f"y = {eqn_str}", transform=plot.transAxes,
-             fontsize=12, verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.5))
+    plt.text(
+        0.05,
+        0.95,
+        f"y = {eqn_str}",
+        transform=plot.transAxes,
+        fontsize=12,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.5),
+    )
 
 # Resize and render with Streamlit
 fig = plot.get_figure()
 fig.set_size_inches(10, 5)
 st.pyplot(fig, width="content")
 
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 st.subheader("Timeseries plot")
 st.sidebar.subheader("TS Plot - Select the date range.")
 with st.sidebar:
     st.subheader("Timeseries Plot Options")
     cols = st.columns(2)
     with cols[0]:
-        from_date = st.date_input("From Date", value=pd.to_datetime(df.index[0]).date(), key="from_date2")
+        from_date = st.date_input(
+            "From Date", value=pd.to_datetime(df.index[0]).date(), key="from_date2"
+        )
     with cols[1]:
-        to_date = st.date_input("To Date", value=pd.to_datetime(df.index[-1]).date(), key="to_date2")
+        to_date = st.date_input(
+            "To Date", value=pd.to_datetime(df.index[-1]).date(), key="to_date2"
+        )
 
-features = st.multiselect('Select features', df.columns, default=df.columns[0])
-df_t = df[(pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date >= from_date) & 
-             (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date <= to_date)]
+features = st.multiselect("Select features", df.columns, default=df.columns[0])
+df_t = df[
+    (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date >= from_date)
+    & (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date <= to_date)
+]
 cols = st.columns([0.3, 0.15, 0.15, 0.1, 0.3])
 with cols[0]:
-    filter_feature = st.selectbox('Select feature to filter by', df.columns, index=int(len(df.columns)-3))
+    filter_feature = st.selectbox(
+        "Select feature to filter by", df.columns, index=int(len(df.columns) - 3)
+    )
 with cols[1]:
     average_range = st.selectbox(
-        "Avg Window:", 
-        list(FREQUENCY_TO_TIMEDTA.keys()), 
-        index=list(FREQUENCY_TO_TIMEDTA.keys()).index("None")
+        "Avg Window:",
+        list(FREQUENCY_TO_TIMEDTA.keys()),
+        index=list(FREQUENCY_TO_TIMEDTA.keys()).index("None"),
     )
 with cols[2]:
-    min_value = st.number_input('Min', 
-                                 value=float(df_t[filter_feature].min()))
+    min_value = st.number_input("Min", value=float(df_t[filter_feature].min()))
 with cols[3]:
-    max_value = st.number_input('Max', 
-                                 value=float(df_t[filter_feature].max()))
+    max_value = st.number_input("Max", value=float(df_t[filter_feature].max()))
 with cols[4]:
-    inverse_filter = st.checkbox('Invert')
+    inverse_filter = st.checkbox("Invert")
 
-df_filtered = df_t[(df_t[filter_feature] >= min_value) & (df_t[filter_feature] <= max_value)]
+df_filtered = df_t[
+    (df_t[filter_feature] >= min_value) & (df_t[filter_feature] <= max_value)
+]
 
 if FREQUENCY_TO_TIMEDTA[average_range] is not None:
     df_avg = dr.average_data(df_filtered, FREQUENCY_TO_TIMEDTA[average_range])
@@ -211,51 +256,48 @@ else:
     df_avg = df_filtered.copy()
 
 fig = go.Figure()
-colors = ['blue', 'red', 'green', 'orange', 'purple']
+colors = ["blue", "red", "green", "orange", "purple"]
 
 for i, feature in enumerate(features):
-    axis_name = f'y{i+1}' if i != 0 else 'y'
+    axis_name = f"y{i+1}" if i != 0 else "y"
     trace = go.Scatter(
         x=df_avg.index,
         y=df_avg[feature],
         name=feature,
-        mode='lines+markers',
+        mode="lines+markers",
         yaxis=axis_name,
-        line=dict(color=colors[i % len(colors)])
+        line=dict(color=colors[i % len(colors)]),
     )
     fig.add_trace(trace)
 
     # Axis layout
     axis_layout = dict(
-        title='',
+        title="",
         showgrid=False,
         showticklabels=False,
     )
 
     if i == 0:
-        axis_layout['side'] = 'left'
+        axis_layout["side"] = "left"
         fig.update_layout(yaxis=axis_layout)
     else:
-        axis_layout.update({
-            "overlaying": "y",
-            "side": "right" if i % 2 else "left",
-            "anchor": "x",
-            "position": 1.0 - (i * 0.05) if i % 2 else 0.05 + (i * 0.05),
-        })
-        fig.update_layout({f'yaxis{i+1}': axis_layout})
+        axis_layout.update(
+            {
+                "overlaying": "y",
+                "side": "right" if i % 2 else "left",
+                "anchor": "x",
+                "position": 1.0 - (i * 0.05) if i % 2 else 0.05 + (i * 0.05),
+            }
+        )
+        fig.update_layout({f"yaxis{i+1}": axis_layout})
 
 # Final layout
 fig.update_layout(
-    xaxis=dict(title='Date'),
+    xaxis=dict(title="Date"),
     height=600,
     template="plotly_white",
-    hovermode='x unified',
-    legend=dict(
-        yanchor="top",
-        y=1.15,
-        xanchor="left",
-        x=0.01
-    ),
+    hovermode="x unified",
+    legend=dict(yanchor="top", y=1.15, xanchor="left", x=0.01),
     margin=dict(l=40, r=40, t=60, b=40),
 )
 
@@ -267,7 +309,7 @@ st.plotly_chart(fig, key="data_explorer_multi_axis_plot")
 # st.header("DataWalker - Interactive Data Exploration")
 # df_filt.reset_index(inplace=True)
 # df_filt['datetime'] = pd.to_datetime(df_filt['datetime'], format="%d/%m/%Y %H:%M")
-# pyg_app = StreamlitRenderer(df_filt) 
+# pyg_app = StreamlitRenderer(df_filt)
 # pyg_app.explorer()
 
 # --------------------------------------------------------------------------------
@@ -323,44 +365,55 @@ with st.form(key="measurement_form"):
         time_range = st.selectbox(
             "Select Time Range:",
             list(TIME_OPTIONS.keys()),
-            index=list(TIME_OPTIONS.keys()).index(st.session_state.time_range)
+            index=list(TIME_OPTIONS.keys()).index(st.session_state.time_range),
         )
         st.session_state.time_range = time_range
     with col2:
         window_by = st.selectbox(
             "Select Averaging Window:",
             list(FREQUENCY_TO_TIMEDTA.keys()),
-            index=list(FREQUENCY_TO_TIMEDTA.keys()).index(st.session_state.window_by)
+            index=list(FREQUENCY_TO_TIMEDTA.keys()).index(st.session_state.window_by),
         )
         st.session_state.window_by = window_by
 
     # Fetch action
     fetch_clicked = st.form_submit_button("⬇️ Fetch")
     if fetch_clicked:
-        selected_measurements = st.session_state.selected_measurements
-        if not selected_measurements:
-            st.warning("Please select at least one measurement.")
-        else:
-            # Use keys exactly as defined (no lowercasing)
-            tr = st.session_state.time_range
-            wb = st.session_state.window_by
-            combined_df = dr.fetch_online_df(sorted(list(selected_measurements)),
-                                             tr,
-                                             MEASUREMENT_LABELS,
-                                             FIELD_LABELS,
-                                             request_type="windowed-average",
-                                             window_by=wb
-                                            )
+        sm = st.session_state
 
-            # Persist for display/download after rerun
-            st.session_state.online_df = combined_df
+        invalid = (
+            (wr := FREQUENCY_TO_TIMEDTA.get(sm.window_by))
+            and (tr := TIME_OPTIONS.get(sm.time_range))
+            and pd.to_timedelta(wr) > tr
+        )
+
+        if invalid:
+            st.warning(f"⚠️ Avg window ({sm.window_by}) > time range ({sm.time_range})")
+            st.stop()
+
+        if not sm.selected_measurements:
+            st.warning("Please select at least one measurement.")
+            st.stop()
+
+        sm.online_df = dr.fetch_online_df(
+            sorted(sm.selected_measurements),
+            sm.time_range,
+            FREQUENCY_TO_TIMEDTA,
+            MEASUREMENT_LABELS,
+            FIELD_LABELS,
+            request_type="windowed-average",
+            window_by=sm.window_by,
+        )
 
 # Display and allow download after the form (survives reruns)
-if isinstance(st.session_state.online_df, pd.DataFrame) and not st.session_state.online_df.empty:
+if (
+    isinstance(st.session_state.online_df, pd.DataFrame)
+    and not st.session_state.online_df.empty
+):
     df_show = st.session_state.online_df.sort_index()
     st.dataframe(df_show.head(100))
-    csv_bytes = df_show.reset_index().to_csv(index=False).encode('utf-8')
-    ts_label = pd.Timestamp.utcnow().strftime('%Y%m%d_%H%M%SZ')
+    csv_bytes = df_show.reset_index().to_csv(index=False).encode("utf-8")
+    ts_label = pd.Timestamp.utcnow().strftime("%Y%m%d_%H%M%SZ")
     st.download_button(
         label="Download CSV",
         data=csv_bytes,
@@ -391,13 +444,14 @@ with st.form("offline_fetch_form"):
         selected_offline = st.selectbox(
             "Select Offline Measurement",
             list(offline_measurements.keys()),
-            index=list(offline_measurements.keys()).index(st.session_state.selected_offline)
+            index=list(offline_measurements.keys()).index(
+                st.session_state.selected_offline
+            ),
         )
 
     with col_right:
         time_range_choice = st.selectbox(
-            "Select Time Range (optional):",
-            ["Use Start/End Dates"] + TIME_OPTIONS_UI
+            "Select Time Range (optional):", ["Use Start/End Dates"] + TIME_OPTIONS_UI
         )
 
         d1, d2 = st.columns(2)
@@ -457,18 +511,17 @@ if submitted:
     )
 
 
-
 # 9 --- ML Dataset Section ---
 
 
 local_tz = ZoneInfo(config["ml_dataset"]["local_tz"])
 
 
-
 # IMPORTANT: create once so cache survives reruns
 @st.cache_resource
 def get_fetcher():
     return MlDatasetFetcher()
+
 
 fetcher = get_fetcher()
 
@@ -488,13 +541,9 @@ with left_col:
 
         col1, col2 = st.columns(2)
         with col1:
-            start_date = st.date_input(
-                "Start Date", datetime.now(local_tz).date()
-            )
+            start_date = st.date_input("Start Date", datetime.now(local_tz).date())
         with col2:
-            end_date = st.date_input(
-                "End Date", datetime.now(local_tz).date()
-            )
+            end_date = st.date_input("End Date", datetime.now(local_tz).date())
 
         cache_override = st.checkbox("Override Cache")
         submitted = st.form_submit_button("Fetch Dataset")
@@ -530,8 +579,7 @@ with right_col:
     st.header("📄 Filtered ML Dataset")
     with st.container(border=True):
 
-        static_df_path = config["DATA"]
-        sm = StaticDatasetManager(static_df_path)
+        sm = StaticDatasetManager(fullpath)
 
         # ---------------- RESET FLAG INIT ----------------
         if "reset_reprocess_date" not in st.session_state:
@@ -578,20 +626,19 @@ with right_col:
                         st.rerun()
 
         with col2:
-            with open(static_df_path, "rb") as f:
+            with open(fullpath, "rb") as f:
                 st.download_button(
                     label="Download ML Dataset",
                     data=f,
-                    file_name="ML Filtered Dataset.csv",
+                    file_name="ml_dataset_filtered.csv",
                     mime="text/csv",
                 )
-
 
 
 # 10 --- HOT METAL AND SLAG DATA SECTION ---
 
 
-service = fetcher.service  
+service = fetcher.service
 
 # ---------------- UI ----------------
 st.header("📄 HOT METAL AND SLAG")
@@ -635,9 +682,7 @@ if fetch_btn:
 
     # ---- DROP UNWANTED COLUMNS ----
     drop_cols = ["cast_no_ladle_spec", "lab_sample_id"]
-    df_final = df_final.drop(
-        columns=[c for c in drop_cols if c in df_final.columns]
-    )
+    df_final = df_final.drop(columns=[c for c in drop_cols if c in df_final.columns])
 
     st.success("Data processed successfully!")
     st.dataframe(df_final)

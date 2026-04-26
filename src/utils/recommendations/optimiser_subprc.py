@@ -1,8 +1,9 @@
 import json
 import sys
-import pandas as pd
-import joblib
 from pathlib import Path
+
+import joblib
+import pandas as pd
 
 # Guarantee project root is on Python path
 ROOT1 = Path(__file__).resolve().parents[1]
@@ -16,14 +17,14 @@ from src.utils.recommendations.optimiser import run_optimiser
 
 if __name__ == "__main__":
     payload_path = sys.argv[1]
-    with open(payload_path, 'r') as f:
+    with open(payload_path, "r") as f:
         payload = json.load(f)
     df = pd.DataFrame(payload["df"])
     models_dict = payload["models_dict"]
 
     # 🔥 Re-load models here (instead of JSON-passing them)
     for name, cfg in models_dict.items():
-        model_path = cfg["model"]      # or cfg["model_path"]
+        model_path = cfg["model"]  # or cfg["model_path"]
         models_dict[name]["LoadedMLModel"] = joblib.load(model_path)
 
     user_input = payload["user_input"]

@@ -8,7 +8,7 @@ website_vars:
   api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
   email_missing_vars: "True"
 
-DATA: "src/data/V13_df_filtered.csv"
+DATA: "src/assets/data/ml_dataset_filtered.csv"
 
 influx_offline:
   database: bf2_evonith_offline_utc
@@ -713,6 +713,7 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
     R9 Delta T of Stave No 9 and 10: delta_t_r9_stave_9_10
 
 
+
     
 rename_dict:
     "timestamp": "TIME"
@@ -812,6 +813,9 @@ rename_dict:
     "coke_fc_pct": "COKE_FC%"
     "coke_moist_pct": "COKE_MOIST%"
     "coke_mt": "COKE_CALC_MT"
+    "coke_off_mt": "COKE_OFF_MT"
+    "coke_on_mt": "COKE_ON_MT"
+
 
     "flux_tm_pct": "FLUX_TM%"
     "flux_sio2_pct": "FLUX_SIO2%"
@@ -835,6 +839,18 @@ rename_dict:
     "ore_cao_pct": "ORE_CAO%"
     "ore_k2o_pct": "ORE_K2O%"
     "ore_mt": "ORE_CALC_MT"
+    "ore_1_mt": "ORE_1_CALC_MT"
+    "ore_2_mt": "ORE_2_CALC_MT"
+    "ore_3_mt": "ORE_3_CALC_MT"
+    "ore_4_mt": "ORE_4_CALC_MT"
+    "ore_5_mt": "ORE_5_CALC_MT"
+    "ore_6_mt": "ORE_6_CALC_MT"
+    "ore_7_mt": "ORE_7_CALC_MT"
+    "ore_8_mt": "ORE_8_CALC_MT"
+    "ore_9_mt": "ORE_9_CALC_MT"
+    "ore_10_mt": "ORE_10_CALC_MT"
+    "ore_11_mt": "ORE_11_CALC_MT"
+    "ore_12_mt": "ORE_12_CALC_MT"
     "Geomin Type": "GEOMIN TYPE"
     "GeominType": "GEOMIN TYPE"
 

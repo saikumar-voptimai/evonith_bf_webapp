@@ -1,20 +1,31 @@
+"""Streamlit login page for the BF2 Dashboard.
+
+Handles credential collection, validation via :class:`~domain.auth_service.AuthService`,
+and session state initialisation via :func:`~utils.session.login_user`.
+"""
+
 # # ui/login_page.py
 import streamlit as st
-from domain.auth_service import AuthService
+
 from data.db import Database
+from domain.auth_service import AuthService
 from utils.session import login_user
 
 
 class LoginPage:
-    """
-    Login Page for the Blast Furnace Dashboard.
+    """Login page component for the Blast Furnace Dashboard.
 
-    Responsible for handling user authentication, including
-    collecting credentials, validating them through AuthService,
-    and managing user sessions.
+    Collects username and password, validates them through
+    :class:`~domain.auth_service.AuthService`, and writes login state to
+    session via :func:`~utils.session.login_user`.
+
+    Attributes:
+        db:           :class:`~data.db.Database` instance for credential lookup.
+        auth_service: :class:`~domain.auth_service.AuthService` facade.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialise the login page with a fresh database connection."""
         self.db = Database()
         self.auth_service = AuthService(self.db)
 
@@ -65,7 +76,9 @@ class LoginPage:
             # Use a FORM to prevent auto-rerun on typing
             with st.form(key="login_form"):
                 username = st.text_input("Username", placeholder="Enter your username")
-                password = st.text_input("Password", placeholder="Enter your password", type="password")
+                password = st.text_input(
+                    "Password", placeholder="Enter your password", type="password"
+                )
                 submit = st.form_submit_button("Login")
 
                 if submit:

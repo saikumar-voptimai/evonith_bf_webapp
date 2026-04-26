@@ -227,3 +227,9 @@ dependencies = [
     "pillow>=11.1.0",
     "voyageai>=0.3.2",
 ]
+
+[dependency-groups]
+dev = [
+    "black>=25.11.0",
+    "isort>=6.1.0",
+]
