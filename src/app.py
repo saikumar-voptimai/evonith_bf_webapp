@@ -13,6 +13,8 @@ import streamlit as st
 
 # Must be first Streamlit call
 st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
+
+from config.page_registry import get_navigation_pages
 from utils.logger import setup_logger
 from utils.session import is_logged_in
 
@@ -24,7 +26,7 @@ setup_logger()
 #  Authentication Gate
 # ------------------------------------------------------
 if not is_logged_in():
-    from ui.login_page import LoginPage  # lazy — avoids partial-module cache on rerun
+    from ui.login_page import LoginPage  # lazy import avoids partial-module cache on rerun
 
     # Hide sidebar completely during login
     st.markdown(
@@ -44,18 +46,10 @@ if not is_logged_in():
 # ------------------------------------------------------
 # PAGE REGISTRATION
 # ------------------------------------------------------
-# Base pages (visible to all)
 pages = [
-    st.Page("custom_pages/1_🏭_Welcome.py", title="Welcome", icon="🏭"),
-    st.Page("custom_pages/2_📓_Data_Explorer.py", title="Data Explorer", icon="📓"),
-    st.Page("custom_pages/3_📈_Data_Visualisation.py", title="V-Board", icon="📈"),
-    st.Page("custom_pages/4_💡_Recommendations.py", title="V-Sense", icon="💡"),
-    st.Page("custom_pages/5_🤖_AI_Copilot.py", title="CoPilot", icon="🤖"),
-    # st.Page("custom_pages/6_📊_Reports.py", title="Reports", icon="📊" ),
-    st.Page("custom_pages/6_⚖️_Material_Balance.py", title="Material Balance", icon="⚖️"),
-    st.Page("custom_pages/7_🧠_FurnaceMind.py", title="FurnaceMind", icon="🧠"),
+    st.Page(descriptor.file_path, title=descriptor.title, icon=descriptor.icon)
+    for descriptor in get_navigation_pages()
 ]
-
 
 pg = st.navigation(pages)
 

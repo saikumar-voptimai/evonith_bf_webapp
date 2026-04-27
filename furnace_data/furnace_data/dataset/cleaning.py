@@ -79,6 +79,7 @@ class ColumnGroups:
     @property
     def keep_columns(self) -> List[str]:
         keep = self.final_columns.copy()
+        #TODO: No hardcoding of any variables
         for extra in ("SINTER_SP_01_CALC_MT", "SINTER_SP_02_CALC_MT"):
             if extra not in keep:
                 keep.append(extra)
@@ -104,7 +105,8 @@ class CleaningConfig:
 
     row_min_non_na_fraction: float = 0.5
     col_max_nan_fraction: float = 0.30
-
+    
+    #TODO: No hardcoding of any variables
     zero_fill_columns: Tuple[str, ...] = (
         "SINTER_SP_01_CALC_MT", "SINTER_SP_02_CALC_MT", "STEAMKGS/HR.", "FLUX_CALC_MT",
     )
@@ -116,6 +118,7 @@ class CleaningConfig:
     sinter_combined_col: str = "SINTER_CALC_MT"
 
     drop_unnamed_columns: bool = True
+    #TODO: No hardcoding of any variables. Use config file.
     unnecessary_columns: Tuple[str, ...] = (
         "ACTUALTON/HR.", "BF GAS NETWORK PRESSUREMMWC", "DAILYPRODUCTION",
         "NON_COKE_CHARGE_PATTERN", "COKE_CHARGE_PATTERN", "PCI_2_TM%",
@@ -126,6 +129,7 @@ class CleaningConfig:
     )
 
     add_unit_cost_feature: bool = True
+    #TODO: No hardcoding of any variables. Use cfg files.
     unit_cost_col: str = "UNITCOST LAKHS/THM"
     unit_cost_coke_rate_col: str = "COKE RATE KG/THM"
     unit_cost_pci_rate_col: str = "ACTUALKG/THM."

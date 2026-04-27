@@ -9,7 +9,6 @@ Allows supervisors and admins to update burden distribution parameters
 from datetime import datetime
 
 import streamlit as st
-from sqlalchemy import text
 
 from data.db import Database
 
@@ -207,13 +206,7 @@ class BurdenAdminPage:
 
         if st.button("🗑️ Delete Selected", disabled=len(delete_ids) == 0):
             try:
-                with self.db.engine.begin() as conn:
-                    conn.execute(
-                        text(
-                            "DELETE FROM burden_distribution_history WHERE id = ANY(:ids)"
-                        ),
-                        {"ids": delete_ids},
-                    )
+                self.db.delete_burden_history(delete_ids)
                 st.success(f"🗑️ Deleted {len(delete_ids)} record(s).")
                 st.rerun()
             except Exception as e:
