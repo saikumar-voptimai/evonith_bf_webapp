@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "rm_choice": "charge",
+  "data_start": "2024-01-01",
+  "confirmed_end": "2026-04-25",
+  "raw_end": "2026-04-28",
+  "last_updated": "2026-04-28T20:45:38",
+  "offline_lag_days": 3,
+  "rows": 15873,
+  "columns": 142,
+  "csv_file": "furnace_dataset_20260428_204536.csv"
+}

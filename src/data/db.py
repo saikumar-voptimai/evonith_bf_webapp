@@ -14,19 +14,31 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
+FEEDBACK_CRITICALITIES = ("low", "medium", "high", "critical")
+FEEDBACK_STATUSES = (
+    "open",
+    "in-progress",
+    "resolved",
+    "closed",
+    "dependency-conflict",
+)
+
 # ------------------------------------------------------------
 # Load Environment Variables
 # ------------------------------------------------------------
-load_dotenv()
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("❌ Missing DATABASE_URL environment variable.")
-
-engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
+REPO_ROOT = os.path.dirname(PROJECT_ROOT)
+ENV_FILE = os.path.join(REPO_ROOT, ".env")
+
+load_dotenv(ENV_FILE)
+
+POSTGRES_DATABASE_URL = os.getenv("POSTGRES_DATABASE_URL")
+if not POSTGRES_DATABASE_URL:
+    raise ValueError("❌ Missing POSTGRES_DATABASE_URL environment variable.")
+
+engine = create_engine(POSTGRES_DATABASE_URL, future=True, pool_pre_ping=True)
+
 MATERIALS_FILE = os.path.join(PROJECT_ROOT, "config", "materials.yml")
 
 
@@ -52,6 +64,7 @@ class Database:
         self._create_users_table()
         self._create_hopper_material_history_table()
         self._create_burden_distribution_history_table()
+        self._create_feedback_ticket_tables()
         self._seed_hoppers_if_missing()
 
     # ============================================================
@@ -520,3 +533,310 @@ class Database:
             )
             for r in rows
         }
+
+    # ============================================================
+    # FEEDBACK / CASE MANAGEMENT
+    # ============================================================
+    def _create_feedback_ticket_tables(self) -> None:
+        """Create feedback ticket and audit-event tables if they are missing."""
+        with self.engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS feedback_tickets (
+                    id SERIAL PRIMARY KEY,
+                    page TEXT NOT NULL,
+                    reporter_name TEXT NOT NULL,
+                    submitted_by TEXT NOT NULL,
+                    criticality TEXT CHECK (
+                        criticality IN ('low','medium','high','critical')
+                    ) NOT NULL,
+                    description TEXT NOT NULL,
+                    ideal_closure TEXT NOT NULL,
+                    status TEXT CHECK (
+                        status IN (
+                            'open',
+                            'in-progress',
+                            'resolved',
+                            'closed',
+                            'dependency-conflict'
+                        )
+                    ) NOT NULL DEFAULT 'open',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    closed_at TIMESTAMPTZ,
+                    created_by_ip TEXT,
+                    updated_by TEXT,
+                    updated_by_ip TEXT
+                )
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_feedback_tickets_status
+                ON feedback_tickets (status)
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_feedback_tickets_criticality
+                ON feedback_tickets (criticality)
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_feedback_tickets_created_at
+                ON feedback_tickets (created_at DESC)
+            """))
+
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS feedback_ticket_events (
+                    id SERIAL PRIMARY KEY,
+                    ticket_id INTEGER NOT NULL REFERENCES feedback_tickets(id)
+                        ON DELETE CASCADE,
+                    actor TEXT NOT NULL,
+                    old_status TEXT,
+                    new_status TEXT CHECK (
+                        new_status IN (
+                            'open',
+                            'in-progress',
+                            'resolved',
+                            'closed',
+                            'dependency-conflict'
+                        )
+                    ) NOT NULL,
+                    comment TEXT,
+                    ip_address TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_feedback_events_ticket_id
+                ON feedback_ticket_events (ticket_id, created_at DESC)
+            """))
+
+    def create_feedback_ticket(
+        self,
+        *,
+        page: str,
+        reporter_name: str,
+        submitted_by: str,
+        criticality: str,
+        description: str,
+        ideal_closure: str,
+        ip_address: str = "",
+    ) -> int:
+        """Create a feedback ticket and its initial audit event."""
+        if criticality not in FEEDBACK_CRITICALITIES:
+            raise ValueError("Invalid criticality")
+
+        with self.engine.begin() as conn:
+            ticket_id = conn.execute(
+                text("""
+                    INSERT INTO feedback_tickets (
+                        page,
+                        reporter_name,
+                        submitted_by,
+                        criticality,
+                        description,
+                        ideal_closure,
+                        status,
+                        created_by_ip,
+                        updated_by,
+                        updated_by_ip
+                    )
+                    VALUES (
+                        :page,
+                        :reporter_name,
+                        :submitted_by,
+                        :criticality,
+                        :description,
+                        :ideal_closure,
+                        'open',
+                        :ip_address,
+                        :submitted_by,
+                        :ip_address
+                    )
+                    RETURNING id
+                """),
+                {
+                    "page": page,
+                    "reporter_name": reporter_name,
+                    "submitted_by": submitted_by,
+                    "criticality": criticality,
+                    "description": description,
+                    "ideal_closure": ideal_closure,
+                    "ip_address": ip_address,
+                },
+            ).scalar_one()
+
+            conn.execute(
+                text("""
+                    INSERT INTO feedback_ticket_events (
+                        ticket_id,
+                        actor,
+                        old_status,
+                        new_status,
+                        comment,
+                        ip_address
+                    )
+                    VALUES (
+                        :ticket_id,
+                        :actor,
+                        NULL,
+                        'open',
+                        'Ticket created',
+                        :ip_address
+                    )
+                """),
+                {
+                    "ticket_id": ticket_id,
+                    "actor": submitted_by,
+                    "ip_address": ip_address,
+                },
+            )
+
+        return int(ticket_id)
+
+    def list_feedback_tickets(
+        self,
+        *,
+        status: str | None = None,
+        criticality: str | None = None,
+        page: str | None = None,
+    ) -> list[dict]:
+        """Return feedback tickets ordered newest first."""
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT
+                        id,
+                        page,
+                        reporter_name,
+                        submitted_by,
+                        criticality,
+                        description,
+                        ideal_closure,
+                        status,
+                        created_at,
+                        updated_at,
+                        closed_at,
+                        created_by_ip,
+                        updated_by,
+                        updated_by_ip
+                    FROM feedback_tickets
+                    WHERE (:status IS NULL OR status = :status)
+                    AND (:criticality IS NULL OR criticality = :criticality)
+                    AND (:page IS NULL OR page = :page)
+                    ORDER BY created_at DESC, id DESC
+                """),
+                {"status": status, "criticality": criticality, "page": page},
+            ).fetchall()
+
+        return [dict(row._mapping) for row in rows]
+
+    def update_feedback_ticket_status(
+        self,
+        *,
+        ticket_id: int,
+        status: str,
+        actor: str,
+        comment: str = "",
+        ip_address: str = "",
+    ) -> bool:
+        """Update a ticket status and append an audit event.
+
+        Returns:
+            ``True`` when the status changed, ``False`` when the ticket already
+            had the requested status.
+        """
+        if status not in FEEDBACK_STATUSES:
+            raise ValueError("Invalid status")
+
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT status
+                    FROM feedback_tickets
+                    WHERE id = :ticket_id
+                    FOR UPDATE
+                """),
+                {"ticket_id": ticket_id},
+            ).fetchone()
+
+            if row is None:
+                raise ValueError("Ticket not found")
+
+            old_status = row.status
+            if old_status == status:
+                return False
+
+            conn.execute(
+                text("""
+                    UPDATE feedback_tickets
+                    SET
+                        status = :status,
+                        updated_at = CURRENT_TIMESTAMP,
+                        updated_by = :actor,
+                        updated_by_ip = :ip_address,
+                        closed_at = CASE
+                            WHEN :status IN ('resolved', 'closed')
+                            THEN CURRENT_TIMESTAMP
+                            ELSE NULL
+                        END
+                    WHERE id = :ticket_id
+                """),
+                {
+                    "ticket_id": ticket_id,
+                    "status": status,
+                    "actor": actor,
+                    "ip_address": ip_address,
+                },
+            )
+
+            conn.execute(
+                text("""
+                    INSERT INTO feedback_ticket_events (
+                        ticket_id,
+                        actor,
+                        old_status,
+                        new_status,
+                        comment,
+                        ip_address
+                    )
+                    VALUES (
+                        :ticket_id,
+                        :actor,
+                        :old_status,
+                        :new_status,
+                        :comment,
+                        :ip_address
+                    )
+                """),
+                {
+                    "ticket_id": ticket_id,
+                    "actor": actor,
+                    "old_status": old_status,
+                    "new_status": status,
+                    "comment": comment,
+                    "ip_address": ip_address,
+                },
+            )
+
+        return True
+
+    def get_feedback_ticket_events(self, ticket_id: int) -> list[dict]:
+        """Return audit events for a feedback ticket, newest first."""
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT
+                        id,
+                        ticket_id,
+                        actor,
+                        old_status,
+                        new_status,
+                        comment,
+                        ip_address,
+                        created_at
+                    FROM feedback_ticket_events
+                    WHERE ticket_id = :ticket_id
+                    ORDER BY created_at DESC, id DESC
+                """),
+                {"ticket_id": ticket_id},
+            ).fetchall()
+
+        return [dict(row._mapping) for row in rows]
