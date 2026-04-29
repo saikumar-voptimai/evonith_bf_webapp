@@ -25,6 +25,7 @@ from memory.copilot_memory import add_recent_turn, save_copilot_memory
 from memory.knowledge_vector_store import KnowledgeVectorStore
 from memory.vector_store import QdrantVectorStore
 from multimodal.ingestion import process_file
+from utils.settings import settings
 
 _IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -59,6 +60,15 @@ def _chat_history_to_messages(max_messages: int = 14) -> list[dict]:
 def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     """Render the AI Co-Operate tab."""
     st.header("🤖 FurnaceMind — AI Co-Operate")
+
+    with st.sidebar:
+        fast_mode = st.toggle("Fast", value=False, key="ai_cooperate_fast_mode")
+
+    model_name = (
+        settings.llm.openrouter.ai_cooperate_fast_model_name
+        if fast_mode
+        else settings.llm.openrouter.ai_cooperate_reasoning_model_name
+    )
 
     # ── Stores ───────────────────────────────────────────────────────────────
     embedding_client = CloudEmbeddingClient()
@@ -197,7 +207,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             st.markdown(user_display)
 
     # ── Agent loop ───────────────────────────────────────────────────────────
-    llm = OpenRouterClient()
+    llm = OpenRouterClient(model=model_name)
     tools = get_openai_tool_schemas()
 
     messages: list[dict] = [

@@ -20,7 +20,7 @@ APP_PAGE_CATALOG: tuple[AppPage, ...] = (
     AppPage("custom_pages/3_📈_Data_Visualisation.py", "V-Board", "📈"),
     AppPage("custom_pages/4_💡_Recommendations.py", "V-Sense", "💡"),
     AppPage("custom_pages/5_🤖_AI_Copilot.py", "CoPilot", "🤖"),
-    AppPage("custom_pages/6_⚖️_Material_Balance.py", "Material Balance", "⚖️"),
+    AppPage("custom_pages/6_📝_Reports.py", "Reports", "📝"),
     AppPage("custom_pages/7_🧠_FurnaceMind.py", "FurnaceMind", "🧠"),
     AppPage("custom_pages/8_Feedback.py", "Feedback", "💬"),
 )

@@ -32,8 +32,12 @@ class OpenRouterClient:
     Text generation only.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, model: str | None = None) -> None:
         """Initialise the OpenRouter client from :data:`~utils.settings.settings`.
+
+        Args:
+            model: Optional model override. When omitted, ``OPENROUTER_MODEL``
+                from settings is used.
 
         Raises:
             ValueError: If ``OPENROUTER_API_KEY`` is not set.
@@ -47,7 +51,7 @@ class OpenRouterClient:
             base_url=cfg.base_url,
         )
 
-        self.model = cfg.model_name
+        self.model = model or cfg.model_name
         self.max_tokens = cfg.max_tokens
 
         self.extra_headers = {

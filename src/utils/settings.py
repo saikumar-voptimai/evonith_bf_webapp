@@ -38,12 +38,16 @@ class OpenRouterLLMConfig:
         api_key:    OpenRouter API key (``OPENROUTER_API_KEY`` env var).
         base_url:   OpenRouter API base URL.
         model_name: Fully-qualified model identifier (e.g. ``openai/gpt-4o-mini``).
+        ai_cooperate_fast_model_name: Fast AI Co-Operate model override.
+        ai_cooperate_reasoning_model_name: Deep-reasoning AI Co-Operate model override.
         max_tokens: Maximum completion tokens to request.
     """
 
     api_key: str | None
     base_url: str = "https://openrouter.ai/api/v1"
     model_name: str = "openai/gpt-4o-mini"
+    ai_cooperate_fast_model_name: str = "google/gemini-2.5-flash"
+    ai_cooperate_reasoning_model_name: str = "openai/gpt-5.4"
     max_tokens: int = 800
 
 
@@ -276,6 +280,14 @@ class Settings:
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         )
         openrouter_model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+        ai_cooperate_fast_model = os.getenv(
+            "AI_COOPERATE_FAST_MODEL",
+            "google/gemini-2.5-flash",
+        )
+        ai_cooperate_reasoning_model = os.getenv(
+            "AI_COOPERATE_REASONING_MODEL",
+            "openai/gpt-5.4",
+        )
 
         openai_api_key = os.getenv("OPENAI_API_KEY")
         openai_base_url = os.getenv("OPENAI_BASE_URL")
@@ -290,6 +302,8 @@ class Settings:
                 api_key=openrouter_api_key,
                 base_url=openrouter_base_url,
                 model_name=openrouter_model,
+                ai_cooperate_fast_model_name=ai_cooperate_fast_model,
+                ai_cooperate_reasoning_model_name=ai_cooperate_reasoning_model,
                 max_tokens=max_tokens,
             ),
             openai=OpenAILLMConfig(

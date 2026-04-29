@@ -9,7 +9,6 @@ import streamlit as st
 
 from data.db import Database
 from domain.auth_service import AuthService
-from utils.session import login_user
 
 
 class LoginPage:
@@ -101,6 +100,8 @@ class LoginPage:
         result = self.auth_service.authenticate(username, password)
 
         if result:
+            from utils.session import login_user
+
             login_user(result[0], result[1])
             st.success(f"✅ Welcome, {result[0]}!")
             st.rerun()

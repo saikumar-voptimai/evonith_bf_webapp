@@ -13,11 +13,7 @@ import streamlit as st
 
 # Must be first Streamlit call
 st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
-<<<<<<< Updated upstream
-from ui.login_page import LoginPage
-=======
 from ui.page_catalog import APP_PAGE_CATALOG
->>>>>>> Stashed changes
 from utils.logger import setup_logger
 from utils.session import is_logged_in
 
@@ -29,6 +25,8 @@ setup_logger()
 #  Authentication Gate
 # ------------------------------------------------------
 if not is_logged_in():
+    from ui.login_page import LoginPage
+
     # Hide sidebar completely during login
     st.markdown(
         """
@@ -48,18 +46,8 @@ if not is_logged_in():
 # PAGE REGISTRATION
 # ------------------------------------------------------
 pages = [
-<<<<<<< Updated upstream
-    st.Page("custom_pages/1_🏭_Welcome.py", title="Welcome", icon="🏭"),
-    st.Page("custom_pages/2_📓_Data_Explorer.py", title="Data Explorer", icon="📓"),
-    st.Page("custom_pages/3_📈_Data_Visualisation.py", title="V-Board", icon="📈"),
-    st.Page("custom_pages/4_💡_Recommendations.py", title="V-Sense", icon="💡"),
-    st.Page("custom_pages/5_🤖_AI_Copilot.py", title="CoPilot", icon="🤖"),
-    # st.Page("custom_pages/6_📊_Reports.py", title="Reports", icon="📊" ),
-    st.Page("custom_pages/7_🧠_FurnaceMind.py", title="FurnaceMind", icon="🧠"),
-=======
     st.Page(page.path, title=page.title, icon=page.icon)
     for page in APP_PAGE_CATALOG
->>>>>>> Stashed changes
 ]
 
 
