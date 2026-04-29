@@ -7,6 +7,7 @@ plain Python string.  Supported formats:
 * DOCX — via python-docx
 * PPTX — via python-pptx
 * Excel (XLS/XLSX) — via pandas, rendered as Markdown table
+* Plain text — UTF-8/UTF-16/Latin-1 fallback decoding
 """
 
 from io import BytesIO
@@ -72,3 +73,25 @@ def parse_excel(file) -> str:
     """
     df = pd.read_excel(file)
     return df.to_markdown()
+
+
+def parse_text(file) -> str:
+    """Read a plain-text-like file using common encodings.
+
+    Args:
+        file: File-like object containing text bytes.
+
+    Returns:
+        Decoded text.
+    """
+    data = file.read()
+    if isinstance(data, str):
+        return data
+
+    for encoding in ("utf-8-sig", "utf-16", "latin-1"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+
+    return data.decode("utf-8", errors="replace")

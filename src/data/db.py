@@ -6,6 +6,7 @@ identifies the current row).
 """
 
 import hashlib
+import json
 import os
 from datetime import datetime, timedelta
 
@@ -22,6 +23,7 @@ FEEDBACK_STATUSES = (
     "closed",
     "dependency-conflict",
 )
+KNOWLEDGE_MEMORY_STATUSES = ("active", "removed")
 
 # ------------------------------------------------------------
 # Load Environment Variables
@@ -65,6 +67,7 @@ class Database:
         self._create_hopper_material_history_table()
         self._create_burden_distribution_history_table()
         self._create_feedback_ticket_tables()
+        self._create_knowledge_memory_table()
         self._seed_hoppers_if_missing()
 
     # ============================================================
@@ -840,3 +843,228 @@ class Database:
             ).fetchall()
 
         return [dict(row._mapping) for row in rows]
+
+    # ============================================================
+    # KNOWLEDGE MEMORY
+    # ============================================================
+    def _create_knowledge_memory_table(self) -> None:
+        """Create the uploaded-document memory table if it is missing."""
+        with self.engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS knowledge_memory (
+                    id SERIAL PRIMARY KEY,
+                    doc_id TEXT UNIQUE NOT NULL,
+                    filename TEXT NOT NULL,
+                    file_type TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    file_size_bytes BIGINT NOT NULL DEFAULT 0,
+                    uploaded_by TEXT NOT NULL DEFAULT 'unknown',
+                    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    summary TEXT NOT NULL,
+                    extracted_text_preview TEXT,
+                    qdrant_collection TEXT,
+                    qdrant_point_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    status TEXT CHECK (status IN ('active','removed')) NOT NULL DEFAULT 'active',
+                    removed_at TIMESTAMPTZ,
+                    removed_by TEXT
+                )
+            """))
+
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_memory_active_hash
+                ON knowledge_memory (content_hash)
+                WHERE status = 'active'
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_knowledge_memory_status_uploaded
+                ON knowledge_memory (status, uploaded_at DESC)
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_knowledge_memory_uploaded_by
+                ON knowledge_memory (uploaded_by)
+            """))
+
+    @staticmethod
+    def _normalise_qdrant_point_ids(value) -> list[str]:
+        """Return Qdrant point ids as a plain list regardless of DB driver shape."""
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(v) for v in value]
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return []
+            if isinstance(parsed, list):
+                return [str(v) for v in parsed]
+            return []
+        try:
+            return [str(v) for v in value]
+        except TypeError:
+            return []
+
+    def get_active_knowledge_memory_by_hash(
+        self, content_hash: str
+    ) -> dict | None:
+        """Return an active knowledge-memory row for *content_hash*, if present."""
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT
+                        id,
+                        doc_id,
+                        filename,
+                        file_type,
+                        content_hash,
+                        file_size_bytes,
+                        uploaded_by,
+                        uploaded_at,
+                        summary,
+                        extracted_text_preview,
+                        qdrant_collection,
+                        qdrant_point_ids,
+                        status,
+                        removed_at,
+                        removed_by
+                    FROM knowledge_memory
+                    WHERE content_hash = :content_hash
+                    AND status = 'active'
+                    ORDER BY uploaded_at DESC, id DESC
+                    LIMIT 1
+                """),
+                {"content_hash": content_hash},
+            ).fetchone()
+
+        if row is None:
+            return None
+        output = dict(row._mapping)
+        output["qdrant_point_ids"] = self._normalise_qdrant_point_ids(
+            output.get("qdrant_point_ids")
+        )
+        return output
+
+    def create_knowledge_memory(
+        self,
+        *,
+        doc_id: str,
+        filename: str,
+        file_type: str,
+        content_hash: str,
+        file_size_bytes: int,
+        uploaded_by: str,
+        summary: str,
+        extracted_text_preview: str,
+        qdrant_collection: str,
+        qdrant_point_ids: list[str],
+    ) -> int:
+        """Persist an uploaded document summary and vector-store metadata."""
+        try:
+            with self.engine.begin() as conn:
+                row_id = conn.execute(
+                    text("""
+                        INSERT INTO knowledge_memory (
+                            doc_id,
+                            filename,
+                            file_type,
+                            content_hash,
+                            file_size_bytes,
+                            uploaded_by,
+                            summary,
+                            extracted_text_preview,
+                            qdrant_collection,
+                            qdrant_point_ids
+                        )
+                        VALUES (
+                            :doc_id,
+                            :filename,
+                            :file_type,
+                            :content_hash,
+                            :file_size_bytes,
+                            :uploaded_by,
+                            :summary,
+                            :extracted_text_preview,
+                            :qdrant_collection,
+                            CAST(:qdrant_point_ids AS JSONB)
+                        )
+                        RETURNING id
+                    """),
+                    {
+                        "doc_id": doc_id,
+                        "filename": filename,
+                        "file_type": file_type,
+                        "content_hash": content_hash,
+                        "file_size_bytes": file_size_bytes,
+                        "uploaded_by": uploaded_by or "unknown",
+                        "summary": summary,
+                        "extracted_text_preview": extracted_text_preview,
+                        "qdrant_collection": qdrant_collection,
+                        "qdrant_point_ids": json.dumps(qdrant_point_ids or []),
+                    },
+                ).scalar_one()
+        except IntegrityError:
+            raise ValueError("Knowledge document already exists")
+
+        return int(row_id)
+
+    def list_knowledge_memory(self, status: str = "active") -> list[dict]:
+        """Return knowledge-memory records ordered newest first."""
+        if status not in KNOWLEDGE_MEMORY_STATUSES:
+            raise ValueError("Invalid knowledge-memory status")
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT
+                        id,
+                        doc_id,
+                        filename,
+                        file_type,
+                        content_hash,
+                        file_size_bytes,
+                        uploaded_by,
+                        uploaded_at,
+                        summary,
+                        extracted_text_preview,
+                        qdrant_collection,
+                        qdrant_point_ids,
+                        status,
+                        removed_at,
+                        removed_by
+                    FROM knowledge_memory
+                    WHERE status = :status
+                    ORDER BY uploaded_at DESC, id DESC
+                """),
+                {"status": status},
+            ).fetchall()
+
+        output = []
+        for row in rows:
+            item = dict(row._mapping)
+            item["qdrant_point_ids"] = self._normalise_qdrant_point_ids(
+                item.get("qdrant_point_ids")
+            )
+            output.append(item)
+        return output
+
+    def remove_knowledge_memory(self, *, doc_id: str, removed_by: str) -> bool:
+        """Soft-delete an active knowledge-memory record.
+
+        Returns:
+            ``True`` when a row was removed, else ``False``.
+        """
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                text("""
+                    UPDATE knowledge_memory
+                    SET
+                        status = 'removed',
+                        removed_at = CURRENT_TIMESTAMP,
+                        removed_by = :removed_by
+                    WHERE doc_id = :doc_id
+                    AND status = 'active'
+                """),
+                {"doc_id": doc_id, "removed_by": removed_by or "unknown"},
+            )
+
+        return bool(result.rowcount)

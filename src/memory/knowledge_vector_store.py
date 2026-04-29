@@ -10,7 +10,7 @@ import uuid
 from typing import Dict, List
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import Distance, PointIdsList, PointStruct, VectorParams
 
 from utils.settings import settings
 
@@ -147,3 +147,14 @@ class KnowledgeVectorStore:
         )
 
         return [{"score": p.score, "payload": p.payload} for p in results.points]
+
+    def delete_points(self, point_ids: list[str]) -> None:
+        """Delete knowledge points by Qdrant point id."""
+        if not point_ids:
+            return
+
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=PointIdsList(points=point_ids),
+            wait=True,
+        )
