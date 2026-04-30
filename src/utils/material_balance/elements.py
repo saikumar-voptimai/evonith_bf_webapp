@@ -103,13 +103,33 @@ def material_to_elements(
             assumption = ash_assumptions.get(spec.ash_assumption_key or "", {})
             if not assumption:
                 continue
-            # Distribute ash mass into species.
+
+            # Some species (e.g. S) in the ash analysis report are given as
+            # wt% of net fuel (gross mass minus moisture), NOT wt% of ash.
+            # Identify those species and compute their correct base mass.
+            net_fuel_species = set(
+                ash_assumptions.get(
+                    f"{spec.ash_assumption_key}_net_fuel_basis_species", []
+                ) or []
+            )
+            if net_fuel_species:
+                moist_pct = _get_pct(row, spec.moisture_col) if spec.moisture_col else 0.0
+                net_fuel_t = mass_t * (1.0 - moist_pct / 100.0)
+            else:
+                net_fuel_t = mass_t  # unused if net_fuel_species is empty
+
+            # Distribute ash mass (or net-fuel mass) into species.
             # Species can be oxides (split into element + O) OR direct elements
-            # (e.g. S, P reported as elemental wt% of ash).
+            # (e.g. S, P).  Base mass depends on which reporting convention applies.
             for species_key, species_pct in assumption.items():
                 if species_key.lower() == "other" or (species_pct or 0.0) <= 0:
                     continue
-                species_mass = contrib * float(species_pct) / 100.0
+                if species_key in net_fuel_species:
+                    # Net-fuel basis: S% = wt% of (gross − moisture)
+                    species_mass = net_fuel_t * float(species_pct) / 100.0
+                else:
+                    # Ash basis: species% = wt% of ash fraction only
+                    species_mass = contrib * float(species_pct) / 100.0
                 mfrac_entry = OXIDE_TO_ELEMENT_MASS_FRAC.get(species_key)
                 if mfrac_entry is not None:
                     # Oxide: split into metal element + oxygen
@@ -117,7 +137,7 @@ def material_to_elements(
                     elements[elem] = elements.get(elem, 0.0) + species_mass * mfrac
                     elements["O"] = elements.get("O", 0.0) + species_mass * (1.0 - mfrac)
                 elif species_key in ATOMIC_WEIGHTS:
-                    # Direct element (e.g. S, P as wt% of ash)
+                    # Direct element (e.g. S, P)
                     elements[species_key] = elements.get(species_key, 0.0) + species_mass
                 # else: unknown key → skip silently
 

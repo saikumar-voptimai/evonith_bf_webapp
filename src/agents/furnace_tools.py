@@ -1,13 +1,17 @@
-"""LangChain tools for the FurnaceMind agent.
+"""Tool functions for the FurnaceMind AI Co-Operate agent.
 
-Exposes six :func:`langchain.tools.tool`-decorated functions:
+Exposes nine tool functions dispatched by
+:func:`execute_openai_tool_call`:
 
 1. ``fetch_online_data`` — fetch InfluxDB telemetry for any measurement group.
 2. ``fetch_offline_data`` — fetch shift/daily report data from the offline bucket.
 3. ``merge_furnace_data`` — align and merge online + offline datasets on timestamps.
-4. ``search_shift_history`` — semantic vector search over Qdrant shift summaries.
-5. ``search_knowledge_docs`` — semantic search over uploaded operator documents.
-6. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
+4. ``fetch_ml_data`` — load a date-range slice from the static pre-merged ML dataset.
+5. ``concat_datasets`` — concatenate multiple datasets vertically (temporal union).
+6. ``load_static_shift_data`` — load 8-hour shift data from the static ML dataset.
+7. ``search_shift_history`` — semantic vector search over Qdrant shift summaries.
+8. ``search_knowledge_docs`` — semantic search over uploaded operator documents.
+9. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
 """
 
 import io
@@ -238,8 +242,8 @@ class ConcatArgs(BaseModel):
 def _save_dataset(*, dataset_id: str, df: pd.DataFrame, meta: Dict[str, Any]) -> None:
     store = _ensure_dataset_store()
     store[dataset_id] = {"df": df, "meta": meta}
-    st.session_state.copilot_df = df
-    st.session_state.copilot_df_meta = meta
+    st.session_state.fm_df = df
+    st.session_state.fm_df_meta = meta
 
 
 def _summarize_df(df: pd.DataFrame, *, dataset_id: str, title: str) -> str:
@@ -858,7 +862,7 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "fetch_online_data",
-                "description": "Fetch online telemetry (max lookback 90 days). If window omitted: >1 day => 1 hour avg, else 15 minutes avg. Saves data to current_furnace_data.csv and returns dataset_id + column preview.",
+                "description": "Fetch online telemetry (max lookback 90 days). If window omitted: >1 day => 1 hour avg, else 15 minutes avg. Stores the active dataframe in session (fm_df) and returns dataset_id + column preview.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -896,7 +900,7 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "fetch_offline_data",
-                "description": "Fetch offline report datasets (HM/Slag, Charge, Raw material composition/Bunker, DPR). Defaults: HM_SLAG/CHARGE hourly; RAW_MATERIAL_COMPOSITION shiftwise (8h); DPR daily (1d). Saves to current_furnace_data.csv and returns dataset_id + preview.",
+                "description": "Fetch offline report datasets (HM/Slag, Charge, Raw material composition/Bunker, DPR). Defaults: HM_SLAG/CHARGE hourly; RAW_MATERIAL_COMPOSITION shiftwise (8h); DPR daily (1d). Stores the active dataframe in session (fm_df) and returns dataset_id + preview.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -937,7 +941,7 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "merge_furnace_data",
-                "description": "Merge offline datasets onto an online dataset by aligning to online timestamps (repeat/forward-fill). Produces merged dataset_id and writes current_furnace_data.csv.",
+                "description": "Merge offline datasets onto an online dataset by aligning to online timestamps (repeat/forward-fill). Produces merged dataset_id and stores it as the active session dataframe (fm_df).",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -987,7 +991,7 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "execute_python_plot",
-                "description": "Execute restricted Python to create a Plotly figure 'fig' using df (loaded from current_furnace_data.csv).",
+                "description": "Execute restricted Python to create a Plotly figure 'fig' using df (loaded from active session dataframe fm_df).",
                 "parameters": {
                     "type": "object",
                     "properties": {"code": {"type": "string"}},
@@ -1487,211 +1491,6 @@ def _safe_exec(
 
 
 @tool
-def fetch_and_summarize_data(time_range: str, window: str = "15 minutes") -> str:
-    """
-    Fetch data and save to a temp file.
-    Returns the first 5 rows and column names so the Python tool knows how to code.
-    """
-
-    try:
-        normalized_time_range = _normalize_time_range(time_range)
-
-        df = dr.fetch_online_df(
-            selected_measurements=[
-                "process_params",
-                "cooling_water",
-                "heatload_delta_t",
-                "delta_t",
-                "temperature_profile",
-                "miscellaneous",
-            ],
-            time_range=normalized_time_range,
-            window_by=window,
-            FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
-            MEASUREMENT_LABELS=MEASUREMENT_LABELS,
-            FIELD_LABELS=FIELD_LABELS,
-        )
-    except Exception as e:
-        _append_tool_error(
-            tool_name="fetch_and_summarize_data",
-            params={"time_range": time_range, "window": window},
-            error=str(e),
-        )
-        return f"Fetch Error: {str(e)}"
-
-    if df is None or df.empty:
-        return "No data found."
-
-    st.session_state.copilot_df = df
-
-    # Give the LLM a 'peek' at the data
-    summary = (
-        "Data saved to 'current_furnace_data.csv'.\n"
-        "Note: Columns are renamed as 'Measurement - Field'.\n"
-        f"Time range: {time_range} | Window: {window}\n"
-        f"Columns ({len(df.columns)}): {list(df.columns)}\n\n"
-        f"Preview:\n{df.head(2).to_string()}"
-    )
-    return summary
-
-
-@tool
-def fetch_and_summarize_furnace_data(request: str) -> str:
-    """Smart Influx fetch for AI Co-Operate.
-
-    Provide a natural-language request. The tool will:
-    - Decide whether the request needs ONLINE data (30s sampling) via `fetch_online_df`,
-      OFFLINE data (manual/shift/day cadence) via `fetch_offline_data`, or BOTH.
-    - Infer start/end time windows and an averaging window for online data.
-    - Optionally combine online+offline into a single dataframe (offline forward-filled onto online timestamps).
-
-    Side effects:
-    - Saves the dataframe to `current_furnace_data.csv`.
-    - Stores it in `st.session_state.copilot_df`.
-    """
-    params: Dict[str, Any] = {"request": request}
-    try:
-        offline_intent = _should_fetch_offline(request)
-        online_intent = _should_fetch_online(request)
-
-        # If user is clearly talking offline, allow offline-only; otherwise default to online
-        if not offline_intent and not online_intent:
-            online_intent = True
-
-        offline_labels = (
-            _infer_offline_measurement_labels(request) if offline_intent else []
-        )
-        if offline_intent and not offline_labels and OFFLINE_MEASUREMENTS:
-            choices = ", ".join(list(OFFLINE_MEASUREMENTS.keys()))
-            return (
-                "Offline data requested but the measurement is ambiguous. "
-                f"Please specify one of: {choices}."
-            )
-
-        online_df: Optional[pd.DataFrame] = None
-        offline_df: Optional[pd.DataFrame] = None
-
-        online_time_range = None
-        online_window = None
-        if online_intent:
-            online_time_range, online_window = _infer_online_time_range_and_window(
-                request
-            )
-            normalized_time_range = _normalize_time_range(online_time_range)
-
-            online_df = dr.fetch_online_df(
-                selected_measurements=[
-                    "process_params",
-                    "cooling_water",
-                    "heatload_delta_t",
-                    "delta_t",
-                    "temperature_profile",
-                    "miscellaneous",
-                ],
-                time_range=normalized_time_range,
-                window_by=online_window,
-                FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
-                MEASUREMENT_LABELS=MEASUREMENT_LABELS,
-                FIELD_LABELS=FIELD_LABELS,
-            )
-
-        offline_range_note = None
-        if offline_intent and offline_labels:
-            (start_utc, end_utc), offline_range_note = _infer_offline_time_range(
-                request
-            )
-            parts: list[pd.DataFrame] = []
-            for label in offline_labels:
-                measurement = OFFLINE_MEASUREMENTS.get(label)
-                if not measurement:
-                    continue
-                df_part = dr.fetch_offline_data(
-                    measurement=measurement,
-                    time_range=(start_utc, end_utc),
-                    database=INFLUX_OFFLINE_DB,
-                )
-                if df_part is None or df_part.empty:
-                    continue
-                # Convert to IST for alignment with online df
-                if (
-                    isinstance(df_part.index, pd.DatetimeIndex)
-                    and df_part.index.tz is not None
-                ):
-                    df_part = df_part.sort_index()
-                    df_part.index = df_part.index.tz_convert("Asia/Kolkata")
-                    df_part.index.name = "time (IST)"
-                # Prefix columns to avoid collisions
-                df_part = df_part.rename(
-                    columns={c: f"Offline[{label}] - {c}" for c in df_part.columns}
-                )
-                parts.append(df_part)
-
-            if parts:
-                offline_df = parts[0]
-                for df_part in parts[1:]:
-                    offline_df = offline_df.join(df_part, how="outer")
-
-        # Combine
-        df_final: Optional[pd.DataFrame]
-        if (
-            online_df is not None
-            and not online_df.empty
-            and offline_df is not None
-            and not offline_df.empty
-        ):
-            offline_aligned = offline_df.sort_index().reindex(
-                online_df.index, method="ffill"
-            )
-            df_final = online_df.join(offline_aligned, how="left")
-        elif online_df is not None and not online_df.empty:
-            df_final = online_df
-        elif offline_df is not None and not offline_df.empty:
-            df_final = offline_df
-        else:
-            return "No data found."
-
-        # Persist to session state for the plotting sandbox
-        st.session_state.copilot_df = df_final
-        st.session_state.copilot_df_meta = {
-            "request": request,
-            "fetched_online": bool(online_df is not None and not online_df.empty),
-            "fetched_offline": bool(offline_df is not None and not offline_df.empty),
-            "online_time_range": online_time_range,
-            "online_window": online_window,
-            "offline_measurements": offline_labels,
-            "offline_range_note": offline_range_note,
-            "offline_db": INFLUX_OFFLINE_DB,
-        }
-
-        summary_lines = [
-            "Data saved to 'current_furnace_data.csv'.",
-            "Note: Online columns are usually 'Measurement - Field'. Offline columns are prefixed as 'Offline[<label>] - <field>'.",
-            f"Request: {request}",
-        ]
-        if online_df is not None and not online_df.empty:
-            summary_lines.append(
-                f"Online: time_range={online_time_range} | window={online_window} | rows={len(online_df)}"
-            )
-        if offline_df is not None and not offline_df.empty:
-            summary_lines.append(
-                f"Offline: measurements={offline_labels} | range={offline_range_note} | rows={len(offline_df)} | db={INFLUX_OFFLINE_DB}"
-            )
-        summary_lines.append(f"Final shape: {df_final.shape}")
-        summary_lines.append(
-            f"Columns ({len(df_final.columns)}): {list(df_final.columns)}"
-        )
-        summary_lines.append("\nPreview:\n" + df_final.head(2).to_string())
-
-        return "\n".join(summary_lines)
-
-    except Exception as e:
-        _append_tool_error(
-            tool_name="fetch_and_summarize_furnace_data", params=params, error=str(e)
-        )
-        return f"Fetch Error: {str(e)}"
-
-
-@tool
 def execute_python_plot(code: str) -> str:
     """
     Execute restricted Python code to create a Plotly figure.
@@ -1718,7 +1517,7 @@ def execute_python_plot(code: str) -> str:
     """
     try:
         # Load the active DataFrame directly from session state (no disk I/O needed)
-        df = st.session_state.get("copilot_df")
+        df = st.session_state.get("fm_df")
 
         import numpy as np  # noqa: PLC0415 — local import intentional for sandbox context
         from plotly.subplots import make_subplots  # noqa: PLC0415
@@ -1744,7 +1543,7 @@ def execute_python_plot(code: str) -> str:
 
         if "fig" in local_vars:
             # Save the figure object to session state for the UI to pick up
-            st.session_state.copilot_fig = local_vars["fig"]
+            st.session_state.fm_fig = local_vars["fig"]
             st.session_state.last_plot_code = code
             return "Successfully generated Plotly figure."
         elif captured_output:

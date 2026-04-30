@@ -7,7 +7,10 @@ the Feedback page. The public entry point is :class:`TicketService`.
 from .models import TicketCriticality, TicketStatus
 from .service import (
     TicketCreateRequest,
+    TicketDeleteRequest,
     TicketEventView,
+    TicketImageUpload,
+    TicketImageView,
     TicketQueryFilter,
     TicketService,
     TicketStatusUpdateRequest,
@@ -17,7 +20,10 @@ from .service import (
 __all__ = [
     "TicketCreateRequest",
     "TicketCriticality",
+    "TicketDeleteRequest",
     "TicketEventView",
+    "TicketImageUpload",
+    "TicketImageView",
     "TicketQueryFilter",
     "TicketService",
     "TicketStatus",

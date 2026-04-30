@@ -7,10 +7,10 @@ detection, and general app settings.
 The module-level singleton :data:`settings` is the single source of truth
 for runtime configuration; import it via::
 
-    from FurnaceMind.utils.settings import settings
+    from utils.settings import settings
 """
 
-# FurnaceMind/utils/settings.py
+# utils/settings.py
 # Purpose: Centralized configuration for FurnaceMind application
 
 from __future__ import annotations

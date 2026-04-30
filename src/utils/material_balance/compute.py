@@ -46,6 +46,7 @@ from utils.material_balance.outputs import (
 log = logging.getLogger("root")
 
 # Stream labels used in the inputs/outputs nested dicts.
+#TODO: Standardise the name. Maybe all caps?
 GAS_INPUT_BLAST = "Hot Blast"
 GAS_INPUT_O2 = "O2 Enrichment"
 GAS_INPUT_STEAM = "Steam"
@@ -196,6 +197,10 @@ def run_full_balance(
         "coke":    cfg.get("coke_ash_analysis_pct") or cfg.get("coke_ash_assumption_pct", {}),
         "nutcoke": cfg.get("nutcoke_ash_analysis_pct", {}),
         "pci":     cfg.get("pci_ash_analysis_pct") or cfg.get("pci_ash_assumption_pct", {}),
+        # Species whose wt% is reported on net-fuel basis (after moisture), not ash basis.
+        "coke_net_fuel_basis_species":    cfg.get("coke_net_fuel_basis_species", []),
+        "nutcoke_net_fuel_basis_species": cfg.get("nutcoke_net_fuel_basis_species", []),
+        "pci_net_fuel_basis_species":     cfg.get("pci_net_fuel_basis_species", []),
     }
     dust_composition = cfg.get("dust_catcher_composition_pct", {}) or {}
 

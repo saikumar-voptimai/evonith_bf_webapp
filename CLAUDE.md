@@ -17,7 +17,7 @@ uv add <package>           # Add dependency
 
 **Do not invoke `streamlit run` directly** — `run_streamlit.py` imports torch first to prevent Windows DLL errors.
 
-**All pages run with `src/` as the working directory** — use `from FurnaceMind.xxx`, not `from src.FurnaceMind.xxx`.
+**All pages run with `src/` as the working directory** — use `from agents.xxx`, `from utils.xxx`, etc., not `from src.agents.xxx`. The old `FurnaceMind/` package was flattened into top-level dirs under `src/`.
 
 ---
 
@@ -196,7 +196,7 @@ Manual-entry data at lower temporal resolution:
 | `furnace_shift_summaries` (env: `SHIFT_QDRANT_COLLECTION`) | Local sentence-transformers | 384 | Shift/day/week reports |
 | `knowledge_docs_voyage_1024` (env: `KNOWLEDGE_QDRANT_COLLECTION`) | Cloud (OpenAI/Voyage) | 1024 | Uploaded operator docs |
 
-### Shift Summary Schema (`src/FurnaceMind/memory/schemas.py`)
+### Shift Summary Schema (`src/agents/memory/schemas.py`)
 
 Each `ShiftSummary` stored in Qdrant has:
 
@@ -216,15 +216,15 @@ Optional future fields: `control_actions`, `fuel_efficiency_indicator`, `thermal
 
 ### How Shifts Are Built and Analyzed
 
-**`ShiftBuilder`** (`core/shift_builder.py`): Partitions a DataFrame into 8-hour windows (A/B/C), handles IST timezone.
+**`ShiftBuilder`** (deleted — was `core/shift_builder.py`): Partitions a DataFrame into 8-hour windows (A/B/C), handles IST timezone.
 
-**`ShiftAnalyzer`** (`core/shift_analyzer.py`): Z-score analysis on each shift:
+**`ShiftAnalyzer`** (deleted — was `core/shift_analyzer.py`): Z-score analysis on each shift:
 - z_warn threshold ≈ 2.5, z_critical ≈ 3.5
 - 0 anomalies → stable; 1–3 → warning; >3 → unstable
 - Calls LLM with `SHIFT_ANALYZER_SYSTEM` + `SHIFT_ANALYSIS_TASK` prompts (7-section structured report)
 - Returns `(llm_summary, structured_summary)` where structured_summary feeds the Qdrant payload
 
-### LLM Reporting Prompts (`src/FurnaceMind/utils/prompts.py`)
+### LLM Reporting Prompts (`src/utils/prompts.py`)
 
 All prompts enforce **ACTION / REASON / MAGNITUDE** discipline. KPI priority order is hard-coded:
 - **High**: Fuel Rate, ETA CO, Production Rate
@@ -232,7 +232,7 @@ All prompts enforce **ACTION / REASON / MAGNITUDE** discipline. KPI priority ord
 
 Report types: `SHIFT_ANALYSIS_TASK`, `CONTEXTUAL_ANALYSIS_TASK` (vs prior shifts), `DAILY_REPORT_TASK`, `WEEKLY_REPORT_TASK`, `BIWEEKLY_REPORT_TASK`
 
-### Persistence (`src/FurnaceMind/memory/structured_store.py`)
+### Persistence (`src/agents/memory/structured_store.py`)
 
 File-based JSON (atomic writes via `.tmp` files):
 - `shift_summaries.json`
@@ -369,21 +369,24 @@ Thumbs up/down voting with optional text feedback on AI responses. Currently sto
 
 **Files:**
 - Page: `src/custom_pages/7_🧠_FurnaceMind.py`
-- UI components: `src/FurnaceMind/ui/furnacemind_sections.py`
-- Tools: `src/FurnaceMind/agents/furnace_tools.py`
-- LLM client: `src/FurnaceMind/llm/llm_client.py`
-- Prompts: `src/FurnaceMind/utils/prompts.py`
+- Agent loop: `src/agents/furnacemind/agent.py`
+- Tools: `src/agents/furnace_tools.py`
+- Skills: `src/agents/furnacemind/skills.py`
+- System prompt: `src/agents/furnacemind/context.py`
+- UI components: `src/ui/furnacemind_sections.py`
+- LLM client: `src/agents/llm/llm_client.py`
+- Prompts: `src/utils/prompts.py`
 
 ### Agent Architecture
 
-**LangChain AgentExecutor** with `create_openai_tools_agent` + **ChatOpenAI** (via OpenRouter). The agent has 6 tools it can call in sequence to retrieve data, search memory, and generate plots.
+**Custom tool-calling loop** (`agents/furnacemind/agent.py`) with **OpenRouter** (OpenAI-compatible API), max 8 iterations per turn. Supports reasoning models (DeepSeek-R1, MiniMax M2.5) — `<think>` blocks are stripped before display. **Not** LangChain AgentExecutor.
 
 **Session state keys:**
-- `copilot_df` — Current DataFrame (set by fetch tools)
-- `copilot_df_meta` — Metadata about the fetched dataset
-- `copilot_fig` — Current Plotly figure (set by `execute_python_plot`)
+- `fm_df` — Current DataFrame (set by fetch tools)
+- `fm_df_meta` — Metadata about the fetched dataset
+- `fm_fig` — Current Plotly figure (set by `execute_python_plot`)
+- `fm_datasets` — Dict of all fetched datasets keyed by dataset_id
 - `chat_history` — List of `{"role", "content", "type"}` dicts; type is "text" or "plotly"
-- `agent_executor` — Cached AgentExecutor
 - `shift_store` — QdrantVectorStore (shift summaries, 384-dim local embeddings)
 - `knowledge_store` — KnowledgeVectorStore (uploaded docs, 1024-dim cloud embeddings)
 
@@ -393,110 +396,21 @@ Thumbs up/down voting with optional text feedback on AI responses. Currently sto
 - **Right 40%**: Full chat history (text + embedded Plotly charts)
 - **Bottom**: `st.chat_input()` full-width
 
-### Tools for Data Retrieval
+### Tools (9 functions dispatched by `execute_openai_tool_call`)
 
-#### Tool 1: `fetch_online_data`
-Fetches 30-second-resolution InfluxDB telemetry (`bf2_evonith_raw` bucket).
+| # | Tool | Description |
+|---|------|-------------|
+| 1 | `fetch_online_data` | InfluxDB live telemetry (up to 90 days, auto-windowed) |
+| 2 | `fetch_offline_data` | Manual/shift report data (HM_SLAG, CHARGE, RAW_MATERIAL, DPR) |
+| 3 | `merge_furnace_data` | Align + merge online + offline datasets on timestamps |
+| 4 | `fetch_ml_data` | Load date-range slice from pre-merged ML dataset (hourly, IST) |
+| 5 | `concat_datasets` | Concatenate datasets vertically (temporal union) |
+| 6 | `load_static_shift_data` | Load 8-hour shift data from static ML dataset |
+| 7 | `search_shift_history` | Semantic search on Qdrant shift summaries (384-dim) |
+| 8 | `search_knowledge_docs` | Semantic search on uploaded operator docs (1024-dim) |
+| 9 | `execute_python_plot` | Execute sandboxed Plotly code; result in `fm_fig` |
 
-```
-Parameters:
-  lookback_days / lookback_hours / lookback_minutes  — time window (max 90 days)
-  window                                             — aggregation interval (e.g., "15m", "1h")
-  measurement_groups                                 — subset of 6 measurements to fetch
-                                                       ["process_params", "cooling_water",
-                                                        "heatload_delta_t", "delta_t",
-                                                        "temperature_profile", "miscellaneous"]
-
-Auto-windowing policy:
-  - lookback > 1 day and no window specified → 1 hour avg
-  - Otherwise → 15 minute avg
-
-Output:
-  - Saves to current_furnace_data.csv + st.session_state.copilot_df
-  - Returns dataset_id, shape, column preview
-```
-
-#### Tool 2: `fetch_offline_data`
-Fetches manual/shift-report data from `bf2_evonith_offline_utc` bucket.
-
-```
-Parameters:
-  report_type     — "HM_SLAG" | "CHARGE" | "RAW_MATERIAL_COMPOSITION" | "DPR"
-  start_time_utc / end_time_utc  — explicit range (optional)
-  lookback_days   — alternative to explicit range (max 365 days)
-  cadence         — "1h" | "8h" | "1d"
-
-Default cadences:
-  HM_SLAG → 1h | CHARGE → 1h | RAW_MATERIAL_COMPOSITION → 8h | DPR → 1d
-
-Output:
-  - Columns prefixed as "Offline[{label}] - {field}"
-  - Returns dataset_id, columns preview
-```
-
-#### Tool 3: `merge_furnace_data`
-Aligns and merges an online dataset with one or more offline datasets on timestamps.
-
-```
-Parameters:
-  online_dataset_id     — from fetch_online_data
-  offline_dataset_ids   — list from fetch_offline_data calls
-  fill_method           — "ffill" (forward-fill gaps) | "none"
-
-Output:
-  - Returns merged dataset_id, saves merged CSV
-```
-
-#### Tool 4: `search_shift_history`
-Semantic search on Qdrant shift summaries (384-dim local embeddings, cosine similarity).
-
-```
-Parameters:
-  query  — natural language query (e.g., "shifts with high fuel rate and unstable permeability")
-
-Output:
-  - Top 5 similar shift summaries
-  - Each includes: window_id, summary_text, overall_stability, anomaly_count, num_parameters
-```
-
-#### Tool 5: `search_knowledge_docs`
-Semantic search on uploaded operator documents (1024-dim cloud embeddings).
-
-```
-Parameters:
-  query  — natural language query
-
-Output:
-  - Top 5 matching document chunks with source, content, relevance score
-```
-
-### Tool for Plot Generation
-
-#### Tool 6: `execute_python_plot`
-Executes LLM-generated Plotly code in a sandboxed environment.
-
-```
-Parameters:
-  code  — Python code string that MUST create a variable named `fig`
-
-Available in execution context:
-  pd  — pandas
-  px  — plotly.express
-  go  — plotly.graph_objects
-  df  — the current DataFrame (from last fetch/merge)
-
-Security restrictions (static check + restricted builtins):
-  Banned tokens: import, open(, __import__, os, subprocess, sys, eval, exec
-  Safe builtins only: len, range, min, max, sum, abs, sorted, enumerate, zip,
-                      list, dict, set, tuple, float, int, str, print
-
-Output:
-  - fig stored in st.session_state.copilot_fig
-  - UI renders it via st.plotly_chart()
-  - Returns success/error message
-```
-
-### LLM Client (`src/FurnaceMind/llm/llm_client.py`)
+### LLM Client (`src/agents/llm/llm_client.py`)
 
 Two clients:
 - **`OpenRouterClient`** — used by FurnaceMind agent. Wraps OpenRouter API (OpenAI-compatible). Methods: `generate(system, user)`, `chat_completions(messages, tools, tool_choice)`. Sends HTTP-Referer and X-Title headers for OpenRouter tracking.
@@ -645,19 +559,20 @@ Each is a no-op function or null yml field today:
 ## 8. Architecture Summary
 
 ### Entry Points
-- `run_streamlit.py` → `src/app.py` → authentication gate → `st.navigation()` to all pages
+- `run_streamlit.py` → `src/app.py` → authentication gate → `st.navigation()` using `page_registry.get_navigation_pages()`
 
 ### Pages
 
 | Page | File | Purpose |
 |---|---|---|
-| Welcome | `1_…` | Dashboard landing |
-| Data Explorer | `2_📓_Data_Explorer.py` | Browse InfluxDB data; build/manage ML dataset |
-| Data Visualisation | `3_📈_Data_Visualisation.py` | Temperature + heatload contour plots |
-| V-OptimAIse | `4_💡_Recommendations.py` | ML optimizer for blast parameters |
-| AI Copilot | `5_🤖_AI_Copilot.py` | Channeling analysis, unit cost review, anomaly LLM |
-| Material Balance | `6_⚖️_Material_Balance.py` | Per-element daily mass balance (12 elements, Sankey + bars + closure table) |
-| FurnaceMind | `7_🧠_FurnaceMind.py` | LangChain chatbot with 6 data/plot tools |
+| Welcome | `1_Welcome.py` | Dashboard landing |
+| Data Explorer | `2_Data_Explorer.py` | Browse InfluxDB data; build/manage ML dataset |
+| Data Visualisation | `3_Data_Visualisation.py` | Temperature + heatload contour plots |
+| V-OptimAIse | `4_Recommendations.py` | ML optimizer for blast parameters |
+| AI Copilot | `5_AI_Copilot.py` | Channeling analysis, unit cost review, anomaly LLM |
+| Material Balance | `6_Material_Balance.py` | Per-element daily mass balance (12 elements, Sankey + bars + closure table) |
+| FurnaceMind | `7_FurnaceMind.py` | Custom tool-calling agent with 9 data/plot tools |
+| Feedback | `8_Feedback.py` | Feedback ticket board (SQLAlchemy, SQLite/PostgreSQL) |
 
 ### Key Supporting Modules
 
@@ -666,13 +581,15 @@ Each is a no-op function or null yml field today:
 | `DataframesProcessor` | `src/utils/recommendations/data.py` | Merges historical CSV + live InfluxDB for optimizer |
 | `run_optimiser` | `src/utils/recommendations/optimiser.py` | Differential evolution optimizer |
 | `compute_propensity_suite` | `src/utils/anomaly_propensity.py` | 4 channeling/instability z-score metrics |
-| `furnace_tools` | `src/FurnaceMind/agents/furnace_tools.py` | 6 LangChain tools (fetch, merge, search, plot) |
-| `ShiftBuilder` | `src/FurnaceMind/core/shift_builder.py` | Partitions data into 8-hour shifts |
-| `ShiftAnalyzer` | `src/FurnaceMind/core/shift_analyzer.py` | Z-score anomaly detection + LLM shift report |
-| `QdrantVectorStore` | `src/FurnaceMind/memory/vector_store.py` | Shift summary semantic search (384-dim, cosine) |
-| `StructuredStore` | `src/FurnaceMind/memory/structured_store.py` | JSON persistence for shift/daily/weekly summaries |
-| `Settings` | `src/FurnaceMind/utils/settings.py` | Pydantic singleton for all FurnaceMind config |
-| `OpenRouterClient` | `src/FurnaceMind/llm/llm_client.py` | LLM wrapper (FurnaceMind agent) |
+| `furnace_tools` | `src/agents/furnace_tools.py` | 9 tool functions (fetch, merge, search, plot) |
+| `agent.py` | `src/agents/furnacemind/agent.py` | Custom tool-calling loop + reasoning-model cleanup |
+| `QdrantVectorStore` | `src/agents/memory/vector_store.py` | Shift summary semantic search (384-dim, cosine) |
+| `StructuredStore` | `src/agents/memory/structured_store.py` | JSON persistence for shift/daily/weekly summaries |
+| `Settings` | `src/utils/settings.py` | Pydantic singleton for all FurnaceMind config |
+| `OpenRouterClient` | `src/agents/llm/llm_client.py` | LLM wrapper (FurnaceMind agent) |
+| `TicketService` | `src/data/tickets/service.py` | Ticket CRUD + audit events (Feedback page) |
+| `TicketRepository` | `src/data/tickets/repository.py` | SQLAlchemy ticket persistence |
+| `page_registry` | `src/config/page_registry.py` | Central page navigation registry |
 | `run_full_balance` | `src/utils/material_balance/compute.py` | Element-balance math: material→element, gas-phase, closure table |
 | `MaterialSpec` | `src/utils/material_balance/constants.py` | Declarative spec per raw material (composition → element mapping) |
 | `material_balance_plots` | `src/plotters/material_balance_plots.py` | Sankey, per-element bars, closure styler, furnace diagram |
@@ -687,14 +604,58 @@ Each is a no-op function or null yml field today:
 - `src/config/setting_vsense.yml` — V-OptimAIse: 3 models, control/input/output params, `LAMBDA_REG`, `OPTIM_STEPS`, `TIMESTEPS`
 - `src/config/materials.yml` — Hoppers, materials, burden fields (for PostgreSQL `Database`)
 - `src/config/material_balance.yml` — Element list, ash assumptions, DPR field mapping, closure thresholds, future-stream hooks
+- `src/config/page_registry.py` — Central page navigation registry (`PAGE_REGISTRY` tuple)
+- `src/config/logger_setting.yml` — Logging configuration (YAML-based)
 - `.env` — All secrets
 
 ### Key Patterns
 - **SCD Type-2** for PostgreSQL history tables — `valid_upto IS NULL` = current row
 - **Data fetcher adapter** — all InfluxDB fetchers extend `BaseDataFetcher`; mappings from `data_mapping` in yml
-- **Settings singleton** — `from FurnaceMind.utils.settings import settings` for all FurnaceMind config
+- **Settings singleton** — `from utils.settings import settings` for all FurnaceMind config
+- **Page registry** — `src/config/page_registry.py` defines all pages; `app.py` uses `get_navigation_pages()`
+- **Tickets layered pattern** — `data/tickets/` follows service → repository → models (SQLAlchemy 2.0 ORM)
 - **Shift windows** — always 8-hour A/B/C; `ShiftBuilder` creates them, `ShiftAnalyzer` processes
 - **KPI priority** in all LLM prompts — Fuel Rate → ETA CO → Production Rate → Quadrant heat loads; ACTION/REASON/MAGNITUDE discipline enforced
+
+## 9. Feedback & Support Desk (Page 8)
+
+**File:** `src/custom_pages/8_Feedback.py`
+
+A shared ticket board for operators and engineers to report bugs, suggest improvements, and track resolution.
+
+### Data Layer (`src/data/tickets/`)
+
+| File | Role |
+|---|---|
+| `models.py` | SQLAlchemy 2.0 ORM: `Ticket`, `TicketEvent`, `TicketImage` + enums |
+| `engine.py` | Engine/session factory; SQLite default at `src/storage/feedback/tickets.db` |
+| `repository.py` | Low-level CRUD (session-scoped) |
+| `service.py` | Business logic + Pydantic view models (`TicketService`, `TicketView`, etc.) |
+| `__init__.py` | Public API re-exports |
+
+### Enums
+- `TicketCriticality`: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`
+- `TicketStatus`: `OPEN`, `IN_PROGRESS`, `RESOLVED`, `DEPENDENCY_CONFLICT`, `CLOSED`
+
+### Tables (3)
+- `tickets` — main ticket record (page_name, criticality, description, status, audit fields)
+- `ticket_events` — audit trail (status transitions + comments)
+- `ticket_images` — screenshot metadata (file path + original filename)
+
+### Authorization
+- All logged-in users can create tickets and view the board
+- Only `admin` / `supervisor` roles can update status, delete tickets, or access the management panel
+
+### Storage
+- SQLite by default: `src/storage/feedback/tickets.db`
+- Override via `TICKETS_DB_URL` env var for PostgreSQL
+- Schema auto-created via `Base.metadata.create_all()` (no Alembic)
+
+### UI Helpers
+- `src/utils/feedback_page.py` — `render_board()`, `render_overview_kpis()`, `render_management_panel()`
+- `src/assets/css/feedback_style.css` — ticket card styling
+
+---
 
 ## Environment Variables
 
@@ -704,5 +665,6 @@ Embeddings: LOCAL_EMBEDDING_*, CLOUD_EMBEDDING_*
 Qdrant:     QDRANT_ENDPOINT or QDRANT_URL, QDRANT_API_KEY
             SHIFT_QDRANT_COLLECTION, KNOWLEDGE_QDRANT_COLLECTION
 Database:   DATABASE_URL (PostgreSQL/Neon)
+Tickets:    TICKETS_DB_URL (SQLite default; set for PostgreSQL override)
 InfluxDB:   INFLUX_ONLINE_TOKEN, INFLUX_OFFLINE_TOKEN
 ```

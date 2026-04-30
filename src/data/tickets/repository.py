@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Sequence
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Ticket, TicketCriticality, TicketEvent, TicketStatus, utc_now
+from .models import (
+    Ticket,
+    TicketCriticality,
+    TicketEvent,
+    TicketImage,
+    TicketStatus,
+    utc_now,
+)
 
 
 def format_ticket_code(ticket_id: int) -> str:
@@ -164,6 +172,87 @@ class TicketRepository:
             for event in events:
                 session.expunge(event)
             return events
+
+    def add_images(
+        self,
+        *,
+        ticket_id: int,
+        image_rows: Sequence[tuple[str, str, str]],
+    ) -> list[TicketImage]:
+        """Insert image metadata rows for one ticket.
+
+        Args:
+            ticket_id: Primary key of the ticket.
+            image_rows: Sequence of
+                ``(image_path, original_filename, uploaded_by)`` tuples.
+        """
+        if not image_rows:
+            return []
+
+        with self._session_factory() as session:
+            ticket = session.get(Ticket, ticket_id)
+            if ticket is None:
+                raise ValueError(f"Ticket {ticket_id} not found.")
+
+            images: list[TicketImage] = []
+            for image_path, original_filename, uploaded_by in image_rows:
+                image = TicketImage(
+                    ticket_id=ticket_id,
+                    image_path=image_path,
+                    original_filename=original_filename,
+                    uploaded_by=uploaded_by,
+                )
+                session.add(image)
+                images.append(image)
+
+            self._add_event(
+                session=session,
+                ticket_id=ticket_id,
+                event_type="attachment_added",
+                old_status=None,
+                new_status=ticket.status,
+                comment=f"{len(images)} screenshot(s) attached",
+                actor=ticket.updated_by,
+            )
+            session.commit()
+
+            for image in images:
+                session.refresh(image)
+                session.expunge(image)
+            return images
+
+    def list_images(self, ticket_id: int) -> list[TicketImage]:
+        """List ticket image metadata newest-first."""
+        with self._session_factory() as session:
+            query = (
+                select(TicketImage)
+                .where(TicketImage.ticket_id == ticket_id)
+                .order_by(TicketImage.created_at.desc(), TicketImage.id.desc())
+            )
+            images = list(session.execute(query).scalars().all())
+            for image in images:
+                session.expunge(image)
+            return images
+
+    def delete_ticket(self, ticket_id: int) -> list[str]:
+        """Delete a ticket and return linked image paths for filesystem cleanup."""
+        with self._session_factory() as session:
+            ticket = session.get(Ticket, ticket_id)
+            if ticket is None:
+                raise ValueError(f"Ticket {ticket_id} not found.")
+
+            image_paths = list(
+                session.execute(
+                    select(TicketImage.image_path).where(
+                        TicketImage.ticket_id == ticket_id
+                    )
+                ).scalars()
+            )
+            session.execute(delete(TicketImage).where(TicketImage.ticket_id == ticket_id))
+            session.execute(delete(TicketEvent).where(TicketEvent.ticket_id == ticket_id))
+            session.delete(ticket)
+            session.commit()
+            return image_paths
 
     @staticmethod
     def _add_event(

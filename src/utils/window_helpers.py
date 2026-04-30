@@ -2,7 +2,7 @@ import re
 from datetime import date
 from typing import Dict, Optional
 
-from memory.vector_store import QdrantVectorStore
+from agents.memory.vector_store import QdrantVectorStore
 from utils.payload_helpers import window_id_to_uuid
 
 # Window ID builders (DERIVABLE LEVELS ONLY)

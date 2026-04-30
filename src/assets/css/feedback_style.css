@@ -34,6 +34,21 @@
     margin: 1rem 0 0.6rem 0;
 }
 
+.feedback-shell div[data-testid="stForm"] {
+    border: 1px solid #d9e6eb;
+    border-radius: 14px;
+    padding: 0.95rem 1rem 1.1rem;
+    background: linear-gradient(180deg, #ffffff, #fbfcff);
+    box-shadow: 0 8px 22px rgba(17, 56, 66, 0.06);
+}
+
+.feedback-shell div[data-testid="stMetric"] {
+    border: 1px solid #d9e6eb;
+    border-radius: 10px;
+    padding: 0.75rem 0.8rem;
+    background: #f8fbfd;
+}
+
 .feedback-note {
     margin-top: 0.2rem;
     color: #40666f;
@@ -127,4 +142,8 @@
     padding: 1.1rem 1rem;
     color: #45656d;
     background: #f8fbfd;
+}
+
+.feedback-shell img {
+    border-radius: 10px;
 }

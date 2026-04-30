@@ -65,10 +65,16 @@ class DatasetService:
 
     cutoff_date: date = date.fromisoformat(config["ml_dataset"]["cutoff_date"])
 
-    db_url: str = os.getenv("DATABASE_URL", "")
+    # Intentionally NOT frozen at class-definition time: field(default_factory=str)
+    # means the env var is not captured on import.  _get_engine() re-reads at
+    # call time via resolve_database_url's fallback so a late load_dotenv() works.
+    db_url: str = ""
 
     def _get_engine(self):
-        return build_relational_engine(self.db_url)
+        # Always prefer the live env var; self.db_url is only used when explicitly
+        # set to a non-empty string (e.g. in tests or the API sidecar).
+        url = self.db_url or os.getenv("DATABASE_URL", "")
+        return build_relational_engine(url)
 
     # --------------- INFLUX FETCH WITH RETRIES ---------------
 
@@ -288,7 +294,12 @@ class DatasetService:
             Time-indexed :class:`pandas.DataFrame` with one row per day, columns
             for each burden distribution field plus derived aggregate columns.
         """
-        engine = self._get_engine()
+        try:
+            engine = self._get_engine()
+        except (ValueError, Exception) as exc:
+            log.warning("fetch_distribution_data: DB engine unavailable (%s) — skipping.", exc)
+            return pd.DataFrame()
+
         window_start = datetime.combine(start_date, time.min)
         window_end = datetime.combine(end_date, time.max)
         value_expr = func.coalesce(

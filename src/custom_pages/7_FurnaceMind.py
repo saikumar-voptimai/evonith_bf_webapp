@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import streamlit as st
 
-from agents.cooperate import render_ai_cooperate
+from agents.furnacemind import render_ai_cooperate
 from config.config_loader import load_config
 from utils.dataset_refresher import get_version as _ds_get_version, maybe_refresh as _ds_maybe_refresh
-from memory.structured_store import StructuredStore
-from memory.vector_store import QdrantVectorStore
+from agents.memory.structured_store import StructuredStore
+from agents.memory.vector_store import QdrantVectorStore
 from ui.furnacemind_sections import (
     FIELD_LABELS,
     select_nav_tab,

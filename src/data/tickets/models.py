@@ -110,6 +110,13 @@ class Ticket(Base):
         passive_deletes=True,
         order_by="desc(TicketEvent.created_at)",
     )
+    images: Mapped[list["TicketImage"]] = relationship(
+        "TicketImage",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="desc(TicketImage.created_at)",
+    )
 
 
 class TicketEvent(Base):
@@ -145,3 +152,30 @@ class TicketEvent(Base):
     )
 
     ticket: Mapped["Ticket"] = relationship("Ticket", back_populates="events")
+
+
+class TicketImage(Base):
+    """Screenshot metadata linked to one ticket."""
+
+    __tablename__ = "ticket_images"
+    __table_args__ = (
+        Index("ix_ticket_images_ticket_created_at", "ticket_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticket_id: Mapped[int] = mapped_column(
+        ForeignKey("tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    image_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    uploaded_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        index=True,
+    )
+
+    ticket: Mapped["Ticket"] = relationship("Ticket", back_populates="images")
