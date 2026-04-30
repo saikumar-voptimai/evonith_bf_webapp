@@ -10,3 +10,8 @@ logs/*
 *.log
 .claude
 current_furnace_data.csv
+*.isorted
+/storage/
+.pytest_cache/
+pytest-cache-files-*/
+nul

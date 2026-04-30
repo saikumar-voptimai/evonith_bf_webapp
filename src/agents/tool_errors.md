@@ -628,3 +628,27 @@ Disallowed token in code: \bimport\b
 ```
 'Figure' object has no attribute 'update_xaxis'
 ```
+
+
+## 2026-04-27T18:45:26.848126+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "df = pd.read_csv('current_furnace_data.csv', index_col=0, parse_dates=True)\ndf = df.sort_index()\n\n# Filter last 8 hours\nlast_8h = df.last('8H')\n\nfig = go.Figure()\nfig.add_trace(go.Scatter(x=last_8h.index, y=last_8h['Process Params - BF2_BODY_ETACO'],\n                        mode='lines+markers', name='ETACO %',\n                        line=dict(color='green', width=2)))\n\nfig.update_layout(title='ETACO Trend - Last 8 Hours',\n                  yaxis_title='ETACO %',\n                  xaxis_title='Time (IST)',\n                  template='plotly_white')\nfig.update_xaxes(tickformat='%H:%M')\n"}`
+
+**Error:**
+
+```
+[Errno 2] No such file or directory: 'current_furnace_data.csv'
+```
+
+
+## 2026-04-27T18:45:30.024067+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import os\nprint(os.listdir('.'))\n"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```

@@ -1,0 +1,8 @@
+Single-database migration environment for BF2 relational schema.
+
+Run examples:
+- alembic upgrade head
+- alembic downgrade -1
+- alembic revision --autogenerate -m "describe change"
+
+Uses DATABASE_URL from environment when present.

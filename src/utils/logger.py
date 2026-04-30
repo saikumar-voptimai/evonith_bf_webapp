@@ -1,8 +1,34 @@
+import logging
 import logging.config
+import logging.handlers
 import os
+import time
 from pathlib import Path
 
 import yaml
+
+
+class WindowsSafeRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """RotatingFileHandler that retries rotate() on Windows PermissionError.
+
+    On Windows, a brief race between threads/processes can leave the log file
+    momentarily locked when a rollover is attempted.  This subclass retries the
+    rename up to 5 times with increasing back-off before silently skipping the
+    rotation (which is safer than crashing the logging thread).
+    """
+
+    def rotate(self, source: str, dest: str) -> None:
+        for attempt in range(5):
+            try:
+                super().rotate(source, dest)
+                return
+            except PermissionError:
+                time.sleep(0.05 * (attempt + 1))
+        # Final attempt – skip rather than raise so logging never crashes.
+        try:
+            super().rotate(source, dest)
+        except PermissionError:
+            pass
 
 
 def setup_logger(config_path: str = "src/config/logger_setting.yml"):

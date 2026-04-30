@@ -19,7 +19,10 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy.orm import Session
+
+from furnace_data.relational import BurdenDistributionHistory, build_relational_engine
 
 from furnace_data.config import load_config
 from furnace_data.influx.offline import fetch_offline_data
@@ -62,10 +65,16 @@ class DatasetService:
 
     cutoff_date: date = date.fromisoformat(config["ml_dataset"]["cutoff_date"])
 
-    db_url: str = os.getenv("DATABASE_URL", "")
+    # Intentionally NOT frozen at class-definition time: field(default_factory=str)
+    # means the env var is not captured on import.  _get_engine() re-reads at
+    # call time via resolve_database_url's fallback so a late load_dotenv() works.
+    db_url: str = ""
 
     def _get_engine(self):
-        return create_engine(self.db_url)
+        # Always prefer the live env var; self.db_url is only used when explicitly
+        # set to a non-empty string (e.g. in tests or the API sidecar).
+        url = self.db_url or os.getenv("DATABASE_URL", "")
+        return build_relational_engine(url)
 
     # --------------- INFLUX FETCH WITH RETRIES ---------------
 
@@ -285,35 +294,59 @@ class DatasetService:
             Time-indexed :class:`pandas.DataFrame` with one row per day, columns
             for each burden distribution field plus derived aggregate columns.
         """
-        engine = self._get_engine()
+        try:
+            engine = self._get_engine()
+        except (ValueError, Exception) as exc:
+            log.warning("fetch_distribution_data: DB engine unavailable (%s) — skipping.", exc)
+            return pd.DataFrame()
 
-        def _to_date(v):
-            return v.date() if hasattr(v, "date") else v
+        window_start = datetime.combine(start_date, time.min)
+        window_end = datetime.combine(end_date, time.max)
+        value_expr = func.coalesce(
+            cast(BurdenDistributionHistory.field_value_float, String),
+            BurdenDistributionHistory.field_value_text,
+        ).label("field_value")
 
-        query = """
-            SELECT
-                field_name,
-                COALESCE(
-                    CAST(field_value_float AS TEXT),
-                    field_value_text
-                ) AS field_value,
-                valid_from,
-                valid_upto
-            FROM burden_distribution_history
-            WHERE valid_from <= %(end_date)s::date
-            AND (valid_upto IS NULL OR valid_upto >= %(start_date)s::date)
-            ORDER BY valid_from;
-        """
-
-        df = pd.read_sql_query(
-            query,
-            engine,
-            params={"start_date": start_date, "end_date": end_date},
-            parse_dates=["valid_from", "valid_upto"],
+        stmt = (
+            select(
+                BurdenDistributionHistory.field_name,
+                value_expr,
+                BurdenDistributionHistory.valid_from,
+                BurdenDistributionHistory.valid_upto,
+            )
+            .where(
+                and_(
+                    BurdenDistributionHistory.valid_from <= window_end,
+                    or_(
+                        BurdenDistributionHistory.valid_upto.is_(None),
+                        BurdenDistributionHistory.valid_upto >= window_start,
+                    ),
+                )
+            )
+            .order_by(BurdenDistributionHistory.valid_from.asc())
         )
+
+        try:
+            with Session(engine) as session:
+                rows = session.execute(stmt).all()
+        finally:
+            engine.dispose()
+
+        if not rows:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(
+            rows,
+            columns=["field_name", "field_value", "valid_from", "valid_upto"],
+        )
+        df["valid_from"] = pd.to_datetime(df["valid_from"])
+        df["valid_upto"] = pd.to_datetime(df["valid_upto"])
 
         if df.empty:
             return pd.DataFrame()
+
+        def _to_date(value):
+            return value.date() if hasattr(value, "date") else value
 
         df["valid_upto"] = df["valid_upto"].fillna(end_date)
 

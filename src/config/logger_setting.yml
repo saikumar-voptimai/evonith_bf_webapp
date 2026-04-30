@@ -17,12 +17,13 @@ handlers:
     formatter: simple
     stream: ext://sys.stdout
   file:
-    class: logging.handlers.RotatingFileHandler
+    class: utils.logger.WindowsSafeRotatingFileHandler
     level: INFO
     formatter: detailed
     filename: logs/app.log
-    maxBytes: 10000
+    maxBytes: 10485760
     backupCount: 3
+    delay: true
 loggers:
   root:
     level: INFO

@@ -29,6 +29,10 @@ coke_ash_analysis_pct:
   K2O: 0.18
   S: 0.72
   P: 0.042
+# Species listed here are reported as wt% of NET FUEL (gross minus moisture),
+# not as wt% of ash. S in standard ash-analysis reports is on this basis.
+coke_net_fuel_basis_species:
+  - S
 nutcoke_ash_analysis_pct:
   SiO2: 55.64
   Al2O3: 27.25
@@ -40,6 +44,8 @@ nutcoke_ash_analysis_pct:
   K2O: 0.17
   S: 0.76
   P: 0.040
+nutcoke_net_fuel_basis_species:
+  - S
 pci_ash_analysis_pct:
   SiO2: 47.12
   Al2O3: 24.68
@@ -51,6 +57,8 @@ pci_ash_analysis_pct:
   K2O: 1.524
   S: 0.40
   P: 0.042
+pci_net_fuel_basis_species:
+  - S
 dpr_field_mapping:
   hm_mass_t: null
   slag_mass_t: null
