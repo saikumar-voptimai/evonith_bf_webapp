@@ -1,0 +1,7 @@
+# Anomaly detection thresholds for shift stability analysis.
+# These are currently unused (ShiftAnalyzer / AnomalyConfig removed from settings.py)
+# but preserved here for when the shift analysis pipeline is re-activated.
+
+z_warn: 2.0       # Z-score threshold that triggers a warning anomaly
+z_critical: 3.0   # Z-score threshold that triggers a critical anomaly
+delta_warn: 0.05  # Fractional delta threshold for early-drift detection

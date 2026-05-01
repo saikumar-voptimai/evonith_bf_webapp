@@ -29,11 +29,12 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field, ValidationError
 
 from config.config_loader import load_config
-from data import retrieval as dr
+from furnace_data.influx.offline import clean_rm_data, fetch_offline_data as _fetch_offline_df  # noqa: F401
+from furnace_data.influx.online import fetch_online_df  # noqa: F401
+from furnace_data.influx.query import TIMEDELTAS  # noqa: F401
+
 from data.fetch_presets import (
     OFFLINE_REPORT_LABEL_MAP,
-    ONLINE_MEASUREMENT_LABELS,
-    WINDOW_FREQUENCY_MAP,
 )
 from data.ml.static_csv import get_static_dataset_path, load_static_dataset
 
@@ -44,21 +45,6 @@ OFFLINE_MEASUREMENTS = config.get("offline_measurements", {}) or {}
 INFLUX_OFFLINE_DB = (config.get("influx_offline", {}) or {}).get(
     "database", "bf2_evonith_offline_utc"
 )
-
-MEASUREMENT_LABELS = {
-    **ONLINE_MEASUREMENT_LABELS,
-    "cooling_water": "Cooling Water",
-    "delta_t": "Delta T",
-    "miscellaneous": "Miscellaneous",
-}
-
-FREQUENCY_TO_TIMEDTA = WINDOW_FREQUENCY_MAP
-
-FIELD_LABELS = {
-    internal_key: human_label
-    for mapping in config["data_mapping"].values()
-    for human_label, internal_key in mapping.items()
-}
 
 
 _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
@@ -152,6 +138,14 @@ class OnlineFetchArgs(BaseModel):
         default=None,
         description="Averaging window. If omitted, tool applies policy: >1 day => 1 hour, else 15 minutes.",
     )
+    start_time_utc: Optional[str] = Field(
+        default=None,
+        description="ISO-8601 UTC start time. Use for exact windows instead of lookback_*.",
+    )
+    end_time_utc: Optional[str] = Field(
+        default=None,
+        description="ISO-8601 UTC end time. Defaults to now if omitted.",
+    )
     measurement_groups: Optional[
         List[
             Literal[
@@ -211,7 +205,7 @@ class MergeArgs(BaseModel):
 class StaticShiftArgs(BaseModel):
     shift_date: str = Field(description="ISO date string YYYY-MM-DD")
     shift_label: Literal["A", "B", "C"] = Field(
-        description="Shift: A (00:00-08:00), B (08:00-16:00), C (16:00-24:00) IST"
+        description="Shift: A (06:00-14:00), B (14:00-22:00), C (22:00-06:00 next day) IST"
     )
 
 
@@ -568,12 +562,16 @@ def load_static_shift_data(*, shift_date: str, shift_label: str) -> str:
         args = StaticShiftArgs.model_validate(params)
 
         # Compute shift window (IST, tz-naive to match CSV)
+        # A: 06:00-14:00, B: 14:00-22:00, C: 22:00-06:00 (next day)
         date = pd.to_datetime(args.shift_date).normalize()
-        shift_hours = {"A": (0, 8), "B": (8, 16), "C": (16, 24)}
-        start_h, end_h = shift_hours[args.shift_label]
-
-        shift_start = date + pd.Timedelta(hours=start_h)
-        shift_end = date + pd.Timedelta(hours=end_h)
+        if args.shift_label == "C":
+            shift_start = date + pd.Timedelta(hours=22)
+            shift_end = date + pd.Timedelta(hours=30)  # 30h = next day 06:00
+        else:
+            _hours = {"A": (6, 14), "B": (14, 22)}
+            start_h, end_h = _hours[args.shift_label]
+            shift_start = date + pd.Timedelta(hours=start_h)
+            shift_end = date + pd.Timedelta(hours=end_h)
 
         df, csv_min, csv_max = _load_ml_dataset()
         if shift_start < csv_min or shift_end > csv_max + pd.Timedelta(hours=1):
@@ -620,6 +618,8 @@ def fetch_online_data(
     lookback_minutes: int | None = None,
     window: str | None = None,
     measurement_groups: list[str] | None = None,
+    start_time_utc: str | None = None,
+    end_time_utc: str | None = None,
 ) -> str:
     """Fetch online (high-frequency) telemetry with policy-constrained lookback and averaging.
 
@@ -634,33 +634,11 @@ def fetch_online_data(
         "lookback_minutes": lookback_minutes,
         "window": window,
         "measurement_groups": measurement_groups,
+        "start_time_utc": start_time_utc,
+        "end_time_utc": end_time_utc,
     }
     try:
         args = OnlineFetchArgs.model_validate(params)
-        # Mutually exclusive enforcement
-        provided = [
-            v is not None
-            for v in [args.lookback_days, args.lookback_hours, args.lookback_minutes]
-        ]
-        if sum(provided) > 1:
-            raise ValueError(
-                "Provide only one of lookback_days, lookback_hours, lookback_minutes"
-            )
-        if args.lookback_days is not None and args.lookback_days > 90:
-            raise ValueError("Online lookback_days exceeds max 90")
-
-        time_range_key = _lookback_to_time_range_key(
-            days=args.lookback_days,
-            hours=args.lookback_hours,
-            minutes=args.lookback_minutes,
-        )
-        normalized_time_range = _normalize_time_range(time_range_key)
-
-        # Determine actual lookback timedelta for policy
-        lookback_td = getattr(dr, "TIMEDELTAS", {}).get(normalized_time_range)
-        if not isinstance(lookback_td, timedelta):
-            lookback_td = timedelta(hours=8)
-        window_final = _resolve_online_window(lookback=lookback_td, window=args.window)
 
         selected_measurements = (
             list(args.measurement_groups)
@@ -675,20 +653,72 @@ def fetch_online_data(
             ]
         )
 
-        df = dr.fetch_online_df(
-            selected_measurements=selected_measurements,
-            time_range=normalized_time_range,
-            window_by=window_final,
-            FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
-            MEASUREMENT_LABELS=MEASUREMENT_LABELS,
-            FIELD_LABELS=FIELD_LABELS,
-        )
+        if args.start_time_utc:
+            # Absolute-time window path
+            start_dt = _parse_iso8601_utc(args.start_time_utc)
+            _now = datetime.now(timezone.utc)
+            end_dt = (
+                _parse_iso8601_utc(args.end_time_utc)
+                if args.end_time_utc
+                else _now
+            )
+            # Guard: reject future windows
+            if start_dt > _now:
+                return (
+                    f"Fetch Error: start_time_utc {start_dt.isoformat()} is in the future "
+                    f"(current UTC time is {_now.strftime('%Y-%m-%dT%H:%M:%SZ')}). "
+                    "No online data exists for future dates. Please use the current or a past date."
+                )
+            if end_dt > _now:
+                end_dt = _now
+            duration = end_dt - start_dt
+            window_final = _resolve_online_window(lookback=duration, window=args.window)
+            df = fetch_online_df(
+                selected_measurements=selected_measurements,
+                time_range="last 8 hours",  # unused when overrides are set
+                window_by=window_final,
+                start_time_override=start_dt,
+                end_time_override=end_dt,
+            )
+            time_range_label = f"{args.start_time_utc} → {args.end_time_utc or 'now'}"
+        else:
+            # Lookback path (existing)
+            provided = [
+                v is not None
+                for v in [args.lookback_days, args.lookback_hours, args.lookback_minutes]
+            ]
+            if sum(provided) > 1:
+                raise ValueError(
+                    "Provide only one of lookback_days, lookback_hours, lookback_minutes"
+                )
+            if args.lookback_days is not None and args.lookback_days > 90:
+                raise ValueError("Online lookback_days exceeds max 90")
+
+            time_range_key = _lookback_to_time_range_key(
+                days=args.lookback_days,
+                hours=args.lookback_hours,
+                minutes=args.lookback_minutes,
+            )
+            normalized_time_range = _normalize_time_range(time_range_key)
+
+            lookback_td = TIMEDELTAS.get(normalized_time_range)
+            if not isinstance(lookback_td, timedelta):
+                lookback_td = timedelta(hours=8)
+            window_final = _resolve_online_window(lookback=lookback_td, window=args.window)
+
+            df = fetch_online_df(
+                selected_measurements=selected_measurements,
+                time_range=normalized_time_range,
+                window_by=window_final,
+            )
+            time_range_label = normalized_time_range
+
         df = _to_ist_index(df)
 
         dataset_id = _new_dataset_id("online")
         meta = {
             "type": "online",
-            "time_range": normalized_time_range,
+            "time_range": time_range_label,
             "window": window_final,
             "measurement_groups": selected_measurements,
         }
@@ -742,6 +772,17 @@ def fetch_offline_data(
             lb = max(1, min(lb, 365))
             start = end - timedelta(days=lb)
 
+        # Guard: reject future windows — InfluxDB has no data for dates that haven't occurred yet
+        if start > now:
+            return (
+                f"Fetch Error: start_time_utc {start.isoformat()} is in the future "
+                f"(current UTC time is {now.strftime('%Y-%m-%dT%H:%M:%SZ')}). "
+                "No offline data exists for future dates. Please use the current or a past date."
+            )
+        # Cap end at now to avoid empty half-future windows
+        if end > now:
+            end = now
+
         cadence_default = {
             "HM_SLAG": "1h",
             "CHARGE": "1h",
@@ -750,7 +791,7 @@ def fetch_offline_data(
         }[args.report_type]
         cadence_final = args.cadence or cadence_default
 
-        df = dr.fetch_offline_data(
+        df = _fetch_offline_df(
             measurement=measurement,
             time_range=(start, end),
             database=INFLUX_OFFLINE_DB,
@@ -862,7 +903,7 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "fetch_online_data",
-                "description": "Fetch online telemetry (max lookback 90 days). If window omitted: >1 day => 1 hour avg, else 15 minutes avg. Stores the active dataframe in session (fm_df) and returns dataset_id + column preview.",
+                "description": "Fetch online telemetry (max lookback 90 days). Use start_time_utc + end_time_utc for exact windows (preferred for shift reports); use lookback_* for relative windows. If window omitted: >1 day => 1 hour avg, else 15 minutes avg. Stores the active dataframe in session (fm_df) and returns dataset_id + column preview.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -876,6 +917,14 @@ def get_openai_tool_schemas() -> list[dict]:
                         "window": {
                             "type": "string",
                             "description": "Averaging window like '15 minutes' or '1 hour'. Optional.",
+                        },
+                        "start_time_utc": {
+                            "type": "string",
+                            "description": "ISO-8601 UTC start e.g. '2026-05-01T00:30:00Z'. Use for exact windows instead of lookback_*.",
+                        },
+                        "end_time_utc": {
+                            "type": "string",
+                            "description": "ISO-8601 UTC end timestamp. Defaults to now if omitted.",
                         },
                         "measurement_groups": {
                             "type": "array",
@@ -1082,7 +1131,7 @@ def get_openai_tool_schemas() -> list[dict]:
                         "shift_label": {
                             "type": "string",
                             "enum": ["A", "B", "C"],
-                            "description": "Shift: A (00:00-08:00), B (08:00-16:00), C (16:00-24:00) IST",
+                            "description": "Shift: A (06:00-14:00), B (14:00-22:00), C (22:00-06:00 next day) IST",
                         },
                     },
                     "required": ["shift_date", "shift_label"],
@@ -1145,274 +1194,45 @@ def _append_tool_error(*, tool_name: str, params: Dict[str, Any], error: str) ->
 
 
 def _normalize_time_range(user_time_range: str) -> str:
-    """Normalize natural language into dr.TIMEDELTAS-compatible keys, extending TIMEDELTAS as needed."""
+    """Normalize natural language into TIMEDELTAS-compatible keys, extending TIMEDELTAS as needed."""
     tr = (user_time_range or "").strip().lower()
     if not tr:
         return "last 8 hours"
 
     # Already supported
-    if hasattr(dr, "TIMEDELTAS") and tr in dr.TIMEDELTAS:
+    if tr in TIMEDELTAS:
         return tr
 
     m = re.search(r"last\s+(\d+)\s*(minute|minutes|min|mins)\b", tr)
     if m:
         n = int(m.group(1))
         key = f"last {n} minutes" if n != 1 else "last 1 minute"
-        if hasattr(dr, "TIMEDELTAS"):
-            dr.TIMEDELTAS.setdefault(key, timedelta(minutes=n))
+        TIMEDELTAS.setdefault(key, timedelta(minutes=n))
         return key
 
     m = re.search(r"last\s+(\d+)\s*(hour|hours|hr|hrs|h)\b", tr)
     if m:
         n = int(m.group(1))
         key = f"last {n} hours" if n != 1 else "last 1 hour"
-        if hasattr(dr, "TIMEDELTAS"):
-            dr.TIMEDELTAS.setdefault(key, timedelta(hours=n))
+        TIMEDELTAS.setdefault(key, timedelta(hours=n))
         return key
 
     m = re.search(r"last\s+(\d+)\s*(day|days|d)\b", tr)
     if m:
         n = int(m.group(1))
         key = f"last {n} days" if n != 1 else "last 1 day"
-        if hasattr(dr, "TIMEDELTAS"):
-            dr.TIMEDELTAS.setdefault(key, timedelta(days=n))
+        TIMEDELTAS.setdefault(key, timedelta(days=n))
         return key
 
     m = re.search(r"last\s+(\d+)\s*(week|weeks|w)\b", tr)
     if m:
         n = int(m.group(1))
         key = f"last {n} weeks" if n != 1 else "last 1 week"
-        if hasattr(dr, "TIMEDELTAS"):
-            dr.TIMEDELTAS.setdefault(key, timedelta(weeks=n))
+        TIMEDELTAS.setdefault(key, timedelta(weeks=n))
         return key
 
     # Fallback to safe default
     return "last 8 hours"
-
-
-def _normalize_text(s: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
-
-
-def _infer_online_time_range_and_window(user_request: str) -> tuple[str, str]:
-    """Infer online time_range + averaging window from natural language."""
-    q = _normalize_text(user_request)
-
-    # Time range: explicit "last N ..." wins
-    m = re.search(r"\blast\s+(\d+)\s*(h|hr|hrs|hour|hours)\b", q)
-    if m:
-        time_range = f"last {int(m.group(1))} hours"
-    else:
-        m = re.search(r"\blast\s+(\d+)\s*(m|min|mins|minute|minutes)\b", q)
-        if m:
-            time_range = f"last {int(m.group(1))} minutes"
-        elif "today" in q:
-            time_range = "last 1 day"
-        elif "yesterday" in q:
-            time_range = "last 1 day"
-        elif "shift" in q or "last shift" in q:
-            time_range = "last 8 hours"
-        elif any(k in q for k in ["now", "current", "live"]):
-            time_range = "last 1 hour"
-        else:
-            time_range = "last 8 hours"
-
-    normalized_time_range = _normalize_time_range(time_range)
-
-    # Window: allow explicit "X min avg"
-    m = re.search(r"\b(\d+)\s*(m|min|mins|minute|minutes)\s*(avg|average)\b", q)
-    if m:
-        window = f"{int(m.group(1))} minutes"
-        return normalized_time_range, window
-
-    # Explicit "raw" / "no averaging"
-    if any(
-        k in q
-        for k in [
-            "no averaging",
-            "no avg",
-            "raw",
-            "unaveraged",
-            "30 sec",
-            "30 second",
-            "30 seconds",
-        ]
-    ):
-        return normalized_time_range, "None"
-
-    # Default based on inferred delta
-    delta = None
-    if hasattr(dr, "TIMEDELTAS"):
-        delta = dr.TIMEDELTAS.get(normalized_time_range)
-
-    if isinstance(delta, timedelta):
-        if delta <= timedelta(hours=1):
-            window = "1 minute"
-        elif delta <= timedelta(hours=6):
-            window = "5 minutes"
-        elif delta <= timedelta(hours=12):
-            window = "10 minutes"
-        else:
-            window = "15 minutes"
-    else:
-        window = "15 minutes"
-
-    return normalized_time_range, window
-
-
-def _infer_offline_time_range(
-    user_request: str,
-) -> tuple[tuple[datetime, datetime], str]:
-    """Infer a UTC (start,end) tuple for offline measurements.
-
-    Offline data may be delayed (manual entry), so for requests like "today" we widen the window.
-    Returns ((start_utc, end_utc), note)
-    """
-    q = _normalize_text(user_request)
-    now = datetime.now(timezone.utc)
-
-    # ISO dates: 2026-03-10 or 2026-03-10 to 2026-03-12
-    iso_dates = re.findall(r"\b(20\d{2}-\d{2}-\d{2})\b", q)
-    if iso_dates:
-        start_d = pd.to_datetime(iso_dates[0], utc=True).to_pydatetime()
-        if len(iso_dates) >= 2:
-            end_d = pd.to_datetime(iso_dates[1], utc=True).to_pydatetime()
-        else:
-            end_d = start_d
-
-        start = datetime(start_d.year, start_d.month, start_d.day, tzinfo=timezone.utc)
-        end = datetime(
-            end_d.year, end_d.month, end_d.day, 23, 59, 59, tzinfo=timezone.utc
-        )
-        return (start, end), "explicit date range"
-
-    # Relative ranges
-    m = re.search(r"\blast\s+(\d+)\s*(day|days|d)\b", q)
-    if m:
-        days = max(1, int(m.group(1)))
-        start = now - timedelta(days=min(days, 120))
-        return (start, now), f"last {days} days"
-
-    m = re.search(r"\blast\s+(\d+)\s*(week|weeks|w)\b", q)
-    if m:
-        weeks = max(1, int(m.group(1)))
-        start = now - timedelta(weeks=min(weeks, 20))
-        return (start, now), f"last {weeks} weeks"
-
-    if "yesterday" in q or "previous day" in q:
-        # Widen to catch delayed entry
-        start = now - timedelta(days=3)
-        return (start, now), "yesterday (widened for delayed entry)"
-
-    if "today" in q:
-        # Widen to catch delayed entry
-        start = now - timedelta(days=2)
-        return (start, now), "today (widened for delayed entry)"
-
-    if "shift" in q:
-        start = now - timedelta(days=3)
-        return (start, now), "recent shifts (widened)"
-
-    # Safe default
-    start = now - timedelta(days=10)
-    return (start, now), "default last 10 days"
-
-
-def _infer_offline_measurement_labels(user_request: str) -> list[str]:
-    """Infer which offline measurement(s) the user is referring to.
-
-    Returns measurement *labels* (keys in OFFLINE_MEASUREMENTS).
-    """
-    if not OFFLINE_MEASUREMENTS:
-        return []
-
-    q = _normalize_text(user_request)
-    hits: list[str] = []
-
-    # Keyword/synonym matching first
-    synonyms: dict[str, list[str]] = {
-        "HM & Slag": ["hot metal", "hm", "h m", "slag", "hmt", "silicon", "si"],
-        "Bunker Report": ["bunker", "rm", "raw material", "coke", "sinter", "pellet"],
-        "DPR": ["dpr", "daily production", "production", "prod"],
-        "Charge": ["charge", "charging"],
-    }
-    for label, keys in synonyms.items():
-        if label in OFFLINE_MEASUREMENTS and any(
-            re.search(rf"\b{re.escape(k)}\b", q) for k in keys if k.isalnum()
-        ):
-            hits.append(label)
-        elif label in OFFLINE_MEASUREMENTS and any(
-            k in q for k in keys if not k.isalnum()
-        ):
-            hits.append(label)
-
-    # Match by label text itself
-    for label in OFFLINE_MEASUREMENTS.keys():
-        if not isinstance(label, str) or not label.strip():
-            continue
-        if _normalize_text(label) in q:
-            hits.append(label)
-
-    # Unique preserve order
-    uniq: list[str] = []
-    seen = set()
-    for h in hits:
-        if h not in seen:
-            uniq.append(h)
-            seen.add(h)
-    return uniq
-
-
-def _should_fetch_offline(user_request: str) -> bool:
-    q = _normalize_text(user_request)
-    # Strong offline intent
-    if any(
-        k in q
-        for k in ["bunker", "dpr", "charge", "hot metal", "slag", "lab", "analysis"]
-    ):
-        return True
-    if re.search(r"\bhm\b", q):
-        return True
-    return False
-
-
-def _should_fetch_online(user_request: str) -> bool:
-    q = _normalize_text(user_request)
-    # If user asked for a trend/time window, that's usually online
-    if any(
-        k in q
-        for k in [
-            "trend",
-            "plot",
-            "graph",
-            "chart",
-            "live",
-            "now",
-            "current",
-            "last ",
-            "minutes",
-            "hours",
-        ]
-    ):
-        return True
-    # Common online process words
-    if any(
-        k in q
-        for k in [
-            "pressure",
-            "temp",
-            "temperature",
-            "o2",
-            "oxygen",
-            "pci",
-            "fuel",
-            "coke rate",
-            "heatload",
-            "delta t",
-        ]
-    ):
-        return True
-    return False
 
 
 def _safe_exec(

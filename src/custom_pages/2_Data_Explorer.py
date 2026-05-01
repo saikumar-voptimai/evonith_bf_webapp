@@ -38,12 +38,6 @@ fullpath = get_static_dataset_path(config["DATA"])
 df = load_static_dataset(fullpath)
 
 
-FIELD_LABELS = {
-    internal_key: human_label
-    for mapping in config["data_mapping"].values()
-    for human_label, internal_key in mapping.items()
-}
-
 TIME_OPTIONS = {
     "last 1 minute": timedelta(minutes=1),
     "last 5 minutes": timedelta(minutes=5),
@@ -403,9 +397,6 @@ with st.form(key="measurement_form"):
         sm.online_df = dr.fetch_online_df(
             sorted(sm.selected_measurements),
             sm.time_range,
-            FREQUENCY_TO_TIMEDTA,
-            MEASUREMENT_LABELS,
-            FIELD_LABELS,
             request_type="windowed-average",
             window_by=sm.window_by,
         )

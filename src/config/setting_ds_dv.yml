@@ -486,7 +486,19 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
     BF2_BODY_PERMEABILITY: body_perm
     BF2_BODY_ETACO: body_etaco
     BF2_BODY_RAFT: body_raft
-    BF2 TUYERE VELOCITY: tuyere_velocity
+
+    BF2_TUYERE VELOCITY: tuyere_velocity
+    BF2_PRODUCTION TONNES PER HR: production_per_hour
+    BF2_OXYGEN ENRICHMENT PCT: oxygen_enrichment_pct
+    BF2_THEORETICAL PRODUCTION PER DAY: theoretical_production_per_day
+    BF2_STEAM INJECTION: steam_injections
+    BF2_CHARGES PER HR: charges_per_hour
+    BF2_COAL RATE PER THM: coal_rate_actual_value
+    BF2_COKE RATE PER THM: coke_rate
+    BF2_NUT COKE RATE PER THM: nut_coke_rate
+    BF2_FUEL RATE PER THM: fuel_rate
+    BF2_HM PER CHARGE: hm_per_charge
+
     TE_40532A Runner Temp PCI side near to Taphole: runner_temp_pci_taphole
     TE_40532B Runner Temp CR side near to Taphole: runner_temp_cr_taphole
     TE_40532C Runner Temp PCI side near to skimmer: runner_temp_pci_skimmer
@@ -770,7 +782,7 @@ rename_dict:
     "furnace_top_gas_analysis_co_pct": "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%"
     "furnace_top_gas_analysis_co2_pct": "FURNACE TOP GAS ANALYSISCO2%"
     "furnace_top_gas_analysis_h2_pct": "FURNACE TOP GAS ANALYSISH2%"
-    "o2_enrichment_pct": "O2 ENRICHMENT %"
+    "oxygen_enrichment_pct": "O2 ENRICHMENT %"
     "total_heat_load": "TOTAL HEAT LOAD"
 
     "nutcoke_moist_pct": "NUTCOKE_MOIST%"

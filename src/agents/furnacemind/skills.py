@@ -165,6 +165,7 @@ class SkillEngine:
         """
         return (
             f"SKILL: Shift Handover Report — {shift_date} Shift {label}\n"
+            "Do NOT call execute_python_plot — this skill produces text tables only, no charts. "
             "Do NOT output any code, planning text, or commentary. "
             "Execute the steps below in order, then write the report.\n\n"
             "--- COLUMN NAME REFERENCE ---\n"

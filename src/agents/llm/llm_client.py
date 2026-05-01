@@ -292,3 +292,80 @@ def get_llm_client(prefer: Optional[Provider] = None):
 
     _ = prefer  # kept for backward compatibility; intentionally unused
     return OpenRouterClient()
+
+
+# ==========================================================
+# 🔹 OPENAI RESPONSES API — code_interpreter helper
+# ==========================================================
+
+import io as _io
+import os as _os
+
+OPENAI_MODEL: str = _os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+
+def call_llm(
+    system_prompt: str,
+    user_prompt: str,
+    files: list[tuple[str, bytes]] | None = None,
+) -> str:
+    """Send prompts to the OpenAI Responses API with optional file attachments.
+
+    Uses the ``code_interpreter`` tool for data-heavy analysis tasks.  This is
+    the single entry point for AI Copilot page interactions — no other module
+    should instantiate a raw OpenAI client for this purpose.
+
+    Parameters
+    ----------
+    system_prompt:  LLM persona / task framing.
+    user_prompt:    The main user message (may contain pre-computed data).
+    files:          Optional list of ``(filename, bytes)`` tuples to upload
+                    and attach to the code_interpreter tool.
+
+    Returns
+    -------
+    str  The model's text response, or an error message string.
+    """
+    api_key = _os.getenv("OPENAI_API_KEY", "")
+    if not api_key:
+        return "⚠️ OPENAI_API_KEY not set."
+
+    from openai import OpenAI as _OpenAI  # local import to keep module-level imports clean
+
+    client = _OpenAI(api_key=api_key)
+    file_ids: list[str] = []
+
+    if files:
+        for fname, fbytes in files:
+            try:
+                up = client.files.create(
+                    file=(fname, _io.BytesIO(fbytes)), purpose="assistants"
+                )
+                file_ids.append(up.id)
+            except Exception:
+                pass  # skip failed uploads; proceed without that file
+
+    req: dict = {
+        "model": OPENAI_MODEL,
+        "input": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "tools": [{"type": "code_interpreter", "container": {"type": "auto"}}],
+    }
+
+    if file_ids:
+        req["attachments"] = [
+            {"file_id": fid, "tools": [{"type": "code_interpreter"}]}
+            for fid in file_ids
+        ]
+        req["tool_resources"] = {"code_interpreter": {"file_ids": file_ids}}
+
+    try:
+        response = client.responses.create(**req)
+        text = getattr(response, "output_text", None)
+        if text:
+            return text
+        return "⚠️ LLM returned no output_text."
+    except Exception as err:
+        return f"LLM call failed: {err}"
