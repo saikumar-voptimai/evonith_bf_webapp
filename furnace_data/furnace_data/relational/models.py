@@ -30,7 +30,7 @@ USER_ROLE_ENUM = SqlEnum(
     UserRole,
     name="user_role",
     native_enum=False,
-    validate_strings=True,
+    values_callable=lambda enum: [e.value for e in enum],
 )
 
 
