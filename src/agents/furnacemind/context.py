@@ -29,6 +29,7 @@ _SKILL_FILES: dict[str | None, list[str]] = {
     "optimise":      ["SKILLS_BESTSHIFT.md", "SKILLS_OPTIMISE.md"],
     "shift_to_best": ["SKILLS_BESTSHIFT.md"],
     "heatload":      ["SKILLS_HEATLOAD.md"],
+    "shift_report":  ["SKILLS_SHIFTREPORT.md"],
     None:            [],
 }
 

@@ -10,7 +10,7 @@ from typing import List
 import voyageai
 from PIL import Image
 
-from utils.settings import settings
+from agents.embeddings.config import load_cloud_embedding_config
 
 
 class CloudEmbeddingClient:
@@ -28,12 +28,13 @@ class CloudEmbeddingClient:
 
     def __init__(self) -> None:
         """Initialise the client using cloud embedding settings from
-        :data:`~utils.settings.settings`.
+        :func:`~agents.embeddings.config.load_cloud_embedding_config`.
         """
-        self.model = settings.embedding["cloud"].model_name
-        self.dimension = settings.embedding["cloud"].dimension
+        cfg = load_cloud_embedding_config()
+        self.model = cfg.model_name
+        self.dimension = cfg.dimension
 
-        self.client = voyageai.Client(api_key=settings.embedding["cloud"].api_key)
+        self.client = voyageai.Client(api_key=cfg.api_key)
 
     # ---------------------------------------
     # 🔹 Text Embedding

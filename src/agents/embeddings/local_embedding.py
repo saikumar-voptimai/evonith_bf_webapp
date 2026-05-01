@@ -1,5 +1,5 @@
 from sentence_transformers import SentenceTransformer
-from utils.settings import settings
+from agents.embeddings.config import load_local_embedding_config
 
 class LocalEmbeddingClient:
     """
@@ -7,7 +7,7 @@ class LocalEmbeddingClient:
     Produces 384-dimensional embeddings as configured in the local settings.
     """
     def __init__(self):
-        cfg = settings.embedding["local"]
+        cfg = load_local_embedding_config()
         self.model_name = cfg.model_name
         self.device = cfg.device
         self.dimension = cfg.dimension

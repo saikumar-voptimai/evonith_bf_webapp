@@ -19,7 +19,7 @@ import streamlit as st
 
 from utils.anomaly_propensity import Channeling
 from utils.copilot.data import fetch_recent_online
-from utils.copilot.llm import OPENAI_MODEL, call_llm
+from agents.llm.llm_client import OPENAI_MODEL, call_llm
 from utils.copilot.prompts import (
     ANOMALY_SYSTEM,
     BURDEN_SYSTEM,

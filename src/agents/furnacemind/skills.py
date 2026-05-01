@@ -155,6 +155,75 @@ class SkillEngine:
             f"{HEATLOAD_REPORT_TEMPLATE}\n"
         )
 
+    def shift_report_prompt(
+        self, shift_date: str, label: str, start_utc: str, end_utc: str
+    ) -> str:
+        """Return the live shift handover report prompt.
+
+        The LLM will fetch online + offline data for the given shift window,
+        then render the report following SKILLS_SHIFTREPORT.md.
+        """
+        return (
+            f"SKILL: Shift Handover Report — {shift_date} Shift {label}\n"
+            "Do NOT call execute_python_plot — this skill produces text tables only, no charts. "
+            "Do NOT output any code, planning text, or commentary. "
+            "Execute the steps below in order, then write the report.\n\n"
+            "--- COLUMN NAME REFERENCE ---\n"
+            "Online columns follow the format: '<Measurement Label> - <Human Tag Name>'\n"
+            "  Hot blast volume     → 'Process Params - BF2_PROC Hot Blast Volume'\n"
+            "  Hot blast temp       → 'Process Params - BF2_PROC Hot Blast Temp'\n"
+            "  Hot blast pressure   → 'Process Params - BF2_PROC Hot Blast Pressure'\n"
+            "  Permeability         → 'Process Params - BF2_BODY_PERMEABILITY'\n"
+            "  ETA CO               → 'Process Params - BF2_BODY_ETACO'\n"
+            "  RAFT                 → 'Process Params - BF2_BODY_RAFT'\n"
+            "  Uptake Temp Q1-Q4    → 'Process Params - BF2_PROC Top Temp 1/2/3/4'\n"
+            "  Runner Temp (HM Temp)→ 'Process Params - TE_40532A Runner Temp PCI side near to Taphole'\n"
+            "  Skip car trips (sum) → 'Miscellaneous - BF2 No of Skip Car Trips - Reset Hourly'\n"
+            "  Bosh ΔT Q1          → 'Delta T - DELTA T avg Row6-10 Q1(Stave 1-8)'\n"
+            "  Bosh ΔT Q2          → 'Delta T - DELTA T avg Row6-10 Q2(Stave 9-16)'\n"
+            "  Bosh ΔT Q3          → 'Delta T - DELTA T avg Row6-10 Q3(Stave 17-24)'\n"
+            "  Bosh ΔT Q4          → 'Delta T - DELTA T avg Row6-10 Q4(Stave 25-32)'\n"
+            "  Hearth 4.3m A        → 'Temperature Profile - BF2_BFBD Furnace Body 4373mm Temp A'\n"
+            "  Hearth 5.4m C        → 'Temperature Profile - BF2_BFBD Furnace Body 5411mm Temp C'\n"
+            "  Hearth 5.7m C        → 'Temperature Profile - BF2_BFBD Furnace Body 5757mm Temp C'\n"
+            "  Hearth 6.1m B        → 'Temperature Profile - BF2_BFBD Furnace Body 6103mm Temp B'\n"
+            "  Lower Stack Q1-Q4    → 'Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp A/B/C/D'\n"
+            "  Belly Q1-Q4          → 'Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp A/B/C/D'\n"
+            "Offline columns follow the format: 'Offline[<Report>] - <field>'\n"
+            "  HM Si/S/Fe           → 'Offline[HM_Slag] - chem_pct_si/s/fe'\n"
+            "  Slag basicity inputs → 'Offline[HM_Slag] - slag_pct_cao', 'Offline[HM_Slag] - slag_pct_sio2'\n"
+            "  Coke (total)         → 'Offline[Charge] - coke_total_mt'  (SUM over rows)\n"
+            "  Nut coke             → 'Offline[Charge] - total_nutcoke_mt'  (SUM)\n"
+            "  Sinter               → 'Offline[Charge] - sinter_mt'  (SUM)\n"
+            "  Ore                  → 'Offline[Charge] - ore_mt'  (SUM)\n"
+            "  Pellet               → 'Offline[Charge] - ll_pellet_mt' or 'pellet_mt'  (SUM)\n"
+            "  Flux                 → 'Offline[Charge] - flux_mt'  (SUM)\n"
+            "  PCI                  → 'Offline[Charge] - pci_mt'  (SUM)\n"
+            "NOTE: production_per_hour, fuel_rate, coke_rate are NOT in online data.\n"
+            "  Derive coke_rate = sum(coke_total_mt)*1000 / theoretical_production\n"
+            "  PCI_rate = sum(pci_mt)*1000 / theoretical_production\n"
+            "  fuel_rate = coke_rate + 0.53 * PCI_rate\n"
+            "  If theoretical_production unavailable, mark kg/tHM fields as '-'.\n"
+            "No. of Taps = count of non-null rows in HM_SLAG data for this shift window.\n\n"
+            "--- STEPS ---\n"
+            f"STEP 1 — Call fetch_online_data with:\n"
+            f"  start_time_utc='{start_utc}'\n"
+            f"  end_time_utc='{end_utc}'\n"
+            "  window='15 minutes'\n"
+            "  measurement_groups=['process_params','temperature_profile','delta_t','miscellaneous']\n\n"
+            f"STEP 2 — Call fetch_offline_data with:\n"
+            f"  report_type='HM_SLAG'\n"
+            f"  start_time_utc='{start_utc}'\n"
+            f"  end_time_utc='{end_utc}'\n\n"
+            f"STEP 3 — Call fetch_offline_data with:\n"
+            f"  report_type='CHARGE'\n"
+            f"  start_time_utc='{start_utc}'\n"
+            f"  end_time_utc='{end_utc}'\n\n"
+            "STEP 4 — Using all fetched data, write the SHIFT HANDOVER REPORT "
+            "following the template in SKILLS_SHIFTREPORT.md exactly.\n\n"
+            f"Shift window: {shift_date} Shift {label}  |  UTC: {start_utc} → {end_utc}\n"
+        )
+
     # ── Data computation ─────────────────────────────────────────────────────
 
     def _compute_optimise_data(self) -> tuple[dict, pd.DataFrame | None]:
