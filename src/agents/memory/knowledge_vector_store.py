@@ -146,4 +146,7 @@ class KnowledgeVectorStore:
             with_payload=True,
         )
 
-        return [{"score": p.score, "payload": p.payload} for p in results.points]
+        return [
+            {"id": str(p.id), "score": p.score, "payload": p.payload}
+            for p in results.points
+        ]

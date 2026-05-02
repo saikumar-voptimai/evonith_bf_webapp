@@ -796,3 +796,87 @@ fetch_offline_data() got an unexpected keyword argument 'measurement'
 ```
 fetch_offline_data() got an unexpected keyword argument 'measurement'
 ```
+
+
+## 2026-05-01T18:07:50.393237+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 24, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["heatload_delta_t", "cooling_water", "delta_t"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-01T18:07:53.374165+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 24, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["heatload_delta_t", "cooling_water", "delta_t"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-01T18:08:07.557375+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 24, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["heatload_delta_t", "cooling_water", "delta_t"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-01T18:08:09.531892+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 24, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["heatload_delta_t", "cooling_water", "delta_t"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-01T18:08:12.080249+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 24, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["heatload_delta_t", "cooling_water", "delta_t"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-01T18:08:15.724756+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 24, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["heatload_delta_t", "cooling_water", "delta_t"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-01T18:08:18.064925+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 24, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["heatload_delta_t", "cooling_water", "delta_t"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```

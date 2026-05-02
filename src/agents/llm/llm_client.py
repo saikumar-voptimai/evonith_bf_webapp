@@ -23,6 +23,20 @@ from utils.settings import settings
 
 Provider = Literal["openrouter", "openai"]
 ApiMode = Literal["responses", "chat_completions"]
+_SUPPORTED_REASONING_EFFORTS = {"low", "medium", "high"}
+
+
+def _normalize_reasoning_effort(value: str | None) -> str | None:
+    """Return a supported OpenRouter reasoning effort, or None."""
+    effort = (value or "").strip().lower()
+    if effort in _SUPPORTED_REASONING_EFFORTS:
+        return effort
+    return None
+
+
+def _reasoning_config(effort: str) -> dict[str, Any]:
+    """Build OpenRouter reasoning configuration."""
+    return {"effort": effort, "exclude": True}
 
 
 # OPENROUTER CLIENT
@@ -32,7 +46,11 @@ class OpenRouterClient:
     Text generation only.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        model_name: str | None = None,
+        reasoning_effort: str | None = None,
+    ) -> None:
         """Initialise the OpenRouter client from :data:`~utils.settings.settings`.
 
         Raises:
@@ -47,8 +65,9 @@ class OpenRouterClient:
             base_url=cfg.base_url,
         )
 
-        self.model = cfg.model_name
+        self.model = model_name or cfg.model_name
         self.max_tokens = cfg.max_tokens
+        self.reasoning_effort = _normalize_reasoning_effort(reasoning_effort)
 
         self.extra_headers = {
             "HTTP-Referer": settings.app.environment,
@@ -74,30 +93,27 @@ class OpenRouterClient:
         Returns:
             The assistant’s response text stripped of leading/trailing whitespace.
         """
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "stop": stop,
+            "extra_headers": self.extra_headers,
+        }
+        if self.reasoning_effort:
+            kwargs["extra_body"] = {"reasoning": _reasoning_config(self.reasoning_effort)}
+
         try:
             completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+                **kwargs,
                 max_completion_tokens=self.max_tokens,
-                stop=stop,
-                extra_headers=self.extra_headers,
             )
             return completion.choices[0].message.content or ""
         except Exception:
             # fallback for older models that only accept max_tokens
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                max_tokens=self.max_tokens,
-                stop=stop,
-                extra_headers=self.extra_headers,
-            )
+            completion = self._chat_with_max_tokens_fallback(kwargs)
             return completion.choices[0].message.content or ""
 
     def chat_completions(
@@ -130,6 +146,8 @@ class OpenRouterClient:
             kwargs["tools"] = tools
             if tool_choice is not None:
                 kwargs["tool_choice"] = tool_choice
+        if self.reasoning_effort:
+            kwargs["extra_body"] = {"reasoning": _reasoning_config(self.reasoning_effort)}
 
         # Prefer max_completion_tokens (newer OpenAI-compatible APIs). Fallback to max_tokens.
         try:
@@ -138,8 +156,22 @@ class OpenRouterClient:
                 max_completion_tokens=self.max_tokens,
             )
         except Exception:
+            return self._chat_with_max_tokens_fallback(kwargs)
+
+    def _chat_with_max_tokens_fallback(self, kwargs: dict[str, Any]) -> Any:
+        """Retry with max_tokens, then without reasoning if unsupported."""
+        try:
             return self.client.chat.completions.create(
                 **kwargs,
+                max_tokens=self.max_tokens,
+            )
+        except Exception:
+            if "extra_body" not in kwargs:
+                raise
+            retry_kwargs = dict(kwargs)
+            retry_kwargs.pop("extra_body", None)
+            return self.client.chat.completions.create(
+                **retry_kwargs,
                 max_tokens=self.max_tokens,
             )
 

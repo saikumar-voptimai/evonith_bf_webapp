@@ -4,12 +4,31 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import String, and_, cast, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import BurdenDistributionHistory, HopperMaterialHistory, User, UserRole
+from .models import (
+    BurdenDistributionHistory,
+    Conversation,
+    ConversationMessage,
+    FeedbackItem,
+    HopperMaterialHistory,
+    LongTermMemory,
+    MemoryDocument,
+    MemorySummary,
+    Skill,
+    User,
+    UserRole,
+    utc_now,
+)
+
+
+def _new_id(prefix: str) -> str:
+    """Return a compact unique identifier with a readable prefix."""
+    return f"{prefix}_{uuid4().hex}"
 
 
 class UserRepository:
@@ -292,12 +311,8 @@ class BurdenHistoryRepository:
             ranked_subquery = (
                 select(
                     BurdenDistributionHistory.field_name.label("field_name"),
-                    BurdenDistributionHistory.field_value_float.label(
-                        "field_value_float"
-                    ),
-                    BurdenDistributionHistory.field_value_text.label(
-                        "field_value_text"
-                    ),
+                    BurdenDistributionHistory.field_value_float.label("field_value_float"),
+                    BurdenDistributionHistory.field_value_text.label("field_value_text"),
                     func.row_number()
                     .over(
                         partition_by=BurdenDistributionHistory.field_name,
@@ -372,3 +387,577 @@ class BurdenHistoryRepository:
                 .order_by(BurdenDistributionHistory.valid_from.asc())
             )
             return list(session.execute(stmt).all())
+
+
+class ConversationRepository:
+    """Repository for FurnaceMind conversations."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+        self._session_factory = session_factory
+
+    def create_conversation(
+        self,
+        *,
+        user_id: str,
+        title: str | None = None,
+        model_mode: str = "medium",
+    ) -> Conversation:
+        """Create and return a new conversation row."""
+        now = utc_now()
+        conversation = Conversation(
+            conversation_id=_new_id("conv"),
+            user_id=user_id,
+            title=title,
+            model_mode=model_mode,
+            created_at=now,
+            updated_at=now,
+        )
+        with self._session_factory() as session:
+            session.add(conversation)
+            session.commit()
+            session.refresh(conversation)
+            session.expunge(conversation)
+            return conversation
+
+    def get_conversation(self, conversation_id: str) -> Conversation | None:
+        """Return one conversation by ID, or None when missing."""
+        with self._session_factory() as session:
+            conversation = session.get(Conversation, conversation_id)
+            if conversation is None:
+                return None
+            session.expunge(conversation)
+            return conversation
+
+    def list_conversations(self, *, user_id: str, limit: int = 30) -> list[Conversation]:
+        """List a user's conversations ordered by most recently updated."""
+        with self._session_factory() as session:
+            stmt = (
+                select(Conversation)
+                .where(Conversation.user_id == user_id)
+                .order_by(Conversation.updated_at.desc())
+                .limit(limit)
+            )
+            rows = list(session.execute(stmt).scalars().all())
+            for row in rows:
+                session.expunge(row)
+            return rows
+
+    def touch_conversation(
+        self,
+        *,
+        conversation_id: str,
+        title: str | None = None,
+    ) -> None:
+        """Update conversation timestamp and optionally title."""
+        values: dict[str, Any] = {"updated_at": utc_now()}
+        if title:
+            values["title"] = title
+        with self._session_factory() as session:
+            session.execute(
+                update(Conversation)
+                .where(Conversation.conversation_id == conversation_id)
+                .values(**values)
+            )
+            session.commit()
+
+    def update_model_mode(self, *, conversation_id: str, model_mode: str) -> None:
+        """Persist the selected reasoning effort for a conversation."""
+        with self._session_factory() as session:
+            session.execute(
+                update(Conversation)
+                .where(Conversation.conversation_id == conversation_id)
+                .values(model_mode=model_mode, updated_at=utc_now())
+            )
+            session.commit()
+
+
+class ConversationMessageRepository:
+    """Repository for FurnaceMind conversation messages."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+        self._session_factory = session_factory
+
+    def add_message(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        role: str,
+        content: str,
+        display: str | None = None,
+        model: str | None = None,
+        token_count: int | None = None,
+        tool_calls: list | None = None,
+        metadata: dict | None = None,
+    ) -> ConversationMessage:
+        """Create one message and assign the next conversation sequence number."""
+        with self._session_factory() as session:
+            max_stmt = select(func.max(ConversationMessage.sequence_num)).where(
+                ConversationMessage.conversation_id == conversation_id
+            )
+            sequence_num = int(session.execute(max_stmt).scalar() or 0) + 1
+            message = ConversationMessage(
+                message_id=_new_id("msg"),
+                conversation_id=conversation_id,
+                user_id=user_id,
+                role=role,
+                content=content,
+                model=model,
+                sequence_num=sequence_num,
+                token_count=token_count,
+                tool_calls=tool_calls,
+                metadata_json={**(metadata or {}), "display": display},
+                created_at=utc_now(),
+            )
+            session.add(message)
+            session.commit()
+            session.refresh(message)
+            session.expunge(message)
+            return message
+
+    def list_recent_messages(
+        self,
+        *,
+        conversation_id: str,
+        limit: int = 50,
+    ) -> list[ConversationMessage]:
+        """Return recent messages in chronological order."""
+        with self._session_factory() as session:
+            stmt = (
+                select(ConversationMessage)
+                .where(ConversationMessage.conversation_id == conversation_id)
+                .order_by(ConversationMessage.sequence_num.desc())
+                .limit(limit)
+            )
+            rows = list(session.execute(stmt).scalars().all())
+            rows.reverse()
+            for row in rows:
+                session.expunge(row)
+            return rows
+
+    def get_message(self, message_id: str) -> ConversationMessage | None:
+        """Return one message by ID, or None when it is missing."""
+        with self._session_factory() as session:
+            message = session.get(ConversationMessage, message_id)
+            if message is None:
+                return None
+            session.expunge(message)
+            return message
+
+    def list_messages_after(
+        self,
+        *,
+        conversation_id: str,
+        sequence_num: int,
+    ) -> list[ConversationMessage]:
+        """Return messages after a sequence number in chronological order."""
+        with self._session_factory() as session:
+            stmt = (
+                select(ConversationMessage)
+                .where(
+                    ConversationMessage.conversation_id == conversation_id,
+                    ConversationMessage.sequence_num > sequence_num,
+                )
+                .order_by(ConversationMessage.sequence_num.asc())
+            )
+            rows = list(session.execute(stmt).scalars().all())
+            for row in rows:
+                session.expunge(row)
+            return rows
+
+
+class MemoryDocumentRepository:
+    """Repository for uploaded FurnaceMind knowledge documents."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+        self._session_factory = session_factory
+
+    def create_document(
+        self,
+        *,
+        user_id: str,
+        filename: str,
+        file_type: str,
+        file_path: str | None = None,
+        summary: str | None = None,
+        qdrant_collection: str | None = None,
+        qdrant_point_ids: list | None = None,
+        token_estimate: int | None = None,
+        metadata: dict | None = None,
+    ) -> MemoryDocument:
+        """Create and return metadata for an uploaded memory document."""
+        now = utc_now()
+        document = MemoryDocument(
+            document_id=_new_id("doc"),
+            user_id=user_id,
+            filename=filename,
+            file_type=file_type,
+            file_path=file_path,
+            summary=summary,
+            qdrant_collection=qdrant_collection,
+            qdrant_point_ids=qdrant_point_ids or [],
+            token_estimate=token_estimate,
+            metadata_json=metadata or {},
+            created_at=now,
+            updated_at=now,
+        )
+        with self._session_factory() as session:
+            session.add(document)
+            session.commit()
+            session.refresh(document)
+            session.expunge(document)
+            return document
+
+    def list_documents(
+        self,
+        *,
+        user_id: str,
+        active_only: bool = True,
+    ) -> list[MemoryDocument]:
+        """List memory documents for one user."""
+        with self._session_factory() as session:
+            stmt = select(MemoryDocument).where(MemoryDocument.user_id == user_id)
+            if active_only:
+                stmt = stmt.where(MemoryDocument.is_active.is_(True))
+            stmt = stmt.order_by(MemoryDocument.created_at.desc())
+            rows = list(session.execute(stmt).scalars().all())
+            for row in rows:
+                session.expunge(row)
+            return rows
+
+    def deactivate_document(self, document_id: str) -> None:
+        """Mark a memory document inactive."""
+        with self._session_factory() as session:
+            session.execute(
+                update(MemoryDocument)
+                .where(MemoryDocument.document_id == document_id)
+                .values(is_active=False, updated_at=utc_now())
+            )
+            session.commit()
+
+
+class MemorySummaryRepository:
+    """Repository for compressed conversation summaries."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+        self._session_factory = session_factory
+
+    def create_summary(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        summary_text: str,
+        token_count: int | None = None,
+        source_message_id_start: str | None = None,
+        source_message_id_end: str | None = None,
+        metadata: dict | None = None,
+    ) -> MemorySummary:
+        """Create and return a conversation memory summary."""
+        summary = MemorySummary(
+            summary_id=_new_id("sum"),
+            conversation_id=conversation_id,
+            user_id=user_id,
+            summary_text=summary_text,
+            source_message_id_start=source_message_id_start,
+            source_message_id_end=source_message_id_end,
+            token_count=token_count,
+            metadata_json=metadata or {},
+            created_at=utc_now(),
+        )
+        with self._session_factory() as session:
+            session.add(summary)
+            session.commit()
+            session.refresh(summary)
+            session.expunge(summary)
+            return summary
+
+    def list_summaries(
+        self,
+        *,
+        conversation_id: str,
+        limit: int = 5,
+    ) -> list[MemorySummary]:
+        """List summaries for one conversation, newest first."""
+        with self._session_factory() as session:
+            stmt = (
+                select(MemorySummary)
+                .where(MemorySummary.conversation_id == conversation_id)
+                .order_by(MemorySummary.created_at.desc())
+                .limit(limit)
+            )
+            rows = list(session.execute(stmt).scalars().all())
+            for row in rows:
+                session.expunge(row)
+            return rows
+
+
+class LongTermMemoryRepository:
+    """Repository for durable FurnaceMind long-term memories."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+        self._session_factory = session_factory
+
+    def create_memory(
+        self,
+        *,
+        user_id: str,
+        memory_text: str,
+        qdrant_collection: str | None = None,
+        qdrant_point_id: str | None = None,
+        source_conversation_id: str | None = None,
+        source_user_message_id: str | None = None,
+        source_assistant_message_id: str | None = None,
+        token_estimate: int | None = None,
+        metadata: dict | None = None,
+    ) -> LongTermMemory:
+        """Create and return one long-term memory row."""
+        now = utc_now()
+        memory = LongTermMemory(
+            memory_id=_new_id("ltm"),
+            user_id=user_id,
+            memory_text=memory_text,
+            qdrant_collection=qdrant_collection,
+            qdrant_point_id=qdrant_point_id,
+            source_conversation_id=source_conversation_id,
+            source_user_message_id=source_user_message_id,
+            source_assistant_message_id=source_assistant_message_id,
+            token_estimate=token_estimate,
+            metadata_json=metadata or {},
+            created_at=now,
+            updated_at=now,
+        )
+        with self._session_factory() as session:
+            session.add(memory)
+            session.commit()
+            session.refresh(memory)
+            session.expunge(memory)
+            return memory
+
+    def list_memories(self, *, user_id: str) -> list[LongTermMemory]:
+        """List long-term memories for one user."""
+        with self._session_factory() as session:
+            stmt = select(LongTermMemory).where(LongTermMemory.user_id == user_id)
+            stmt = stmt.order_by(LongTermMemory.created_at.desc())
+            rows = list(session.execute(stmt).scalars().all())
+            for row in rows:
+                session.expunge(row)
+            return rows
+
+
+class SkillRepository:
+    """Repository for built-in and uploaded FurnaceMind skills."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+        self._session_factory = session_factory
+
+    def upsert_skill(
+        self,
+        *,
+        name: str,
+        instruction: str,
+        description: str | None = None,
+        source_type: str = "custom",
+        created_by: str | None = None,
+        metadata: dict | None = None,
+    ) -> Skill:
+        """Create or update a skill by name/source and return the row."""
+        with self._session_factory() as session:
+            skill = session.execute(
+                select(Skill)
+                .where(
+                    Skill.name == name,
+                    Skill.source_type == source_type,
+                    Skill.created_by.is_(created_by) if created_by is None else Skill.created_by == created_by,
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            now = utc_now()
+            if skill is None:
+                skill = Skill(
+                    skill_id=_new_id("skill"),
+                    name=name,
+                    instruction=instruction,
+                    description=description,
+                    source_type=source_type,
+                    created_by=created_by,
+                    metadata_json=metadata or {},
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(skill)
+            else:
+                skill.name = name
+                skill.instruction = instruction
+                skill.description = description
+                skill.source_type = source_type
+                skill.created_by = created_by
+                skill.metadata_json = metadata or {}
+                skill.updated_at = now
+            session.commit()
+            session.refresh(skill)
+            session.expunge(skill)
+            return skill
+
+    def create_skill(
+        self,
+        *,
+        name: str,
+        instruction: str,
+        description: str | None = None,
+        source_type: str = "custom",
+        created_by: str | None = None,
+        metadata: dict | None = None,
+    ) -> Skill:
+        """Create and return a new skill row."""
+        skill = Skill(
+            skill_id=_new_id("skill"),
+            name=name,
+            instruction=instruction,
+            description=description,
+            source_type=source_type,
+            created_by=created_by,
+            metadata_json=metadata or {},
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        with self._session_factory() as session:
+            session.add(skill)
+            session.commit()
+            session.refresh(skill)
+            session.expunge(skill)
+            return skill
+
+    def list_skills(self, *, active_only: bool = False) -> list[Skill]:
+        """List skills with an optional active filter."""
+        with self._session_factory() as session:
+            stmt = select(Skill)
+            if active_only:
+                stmt = stmt.where(Skill.is_active.is_(True))
+            stmt = stmt.order_by(Skill.name.asc())
+            rows = list(session.execute(stmt).scalars().all())
+            for row in rows:
+                session.expunge(row)
+            return rows
+
+    def update_skill(self, *, skill_id: str, is_active: bool) -> Skill:
+        """Toggle a skill's active flag and return the row."""
+        with self._session_factory() as session:
+            skill = session.get(Skill, skill_id)
+            if skill is None:
+                raise ValueError(f"Skill {skill_id} not found.")
+            skill.is_active = is_active
+            skill.updated_at = utc_now()
+            session.commit()
+            session.refresh(skill)
+            session.expunge(skill)
+            return skill
+
+
+class FeedbackItemRepository:
+    """Repository for FurnaceMind response feedback and lessons."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+        self._session_factory = session_factory
+
+    def add_feedback(
+        self,
+        *,
+        user_id: str,
+        source: str,
+        polarity: str,
+        message_id: str,
+        conversation_id: str,
+        feedback_text: str | None = None,
+        raw_user_message: str | None = None,
+        prev_assistant_message: str | None = None,
+        snapshot: dict | None = None,
+        metadata: dict | None = None,
+    ) -> FeedbackItem:
+        """Create feedback or return the existing unique row."""
+        with self._session_factory() as session:
+            if message_id:
+                existing = session.execute(
+                    select(FeedbackItem).where(
+                        FeedbackItem.message_id == message_id,
+                        FeedbackItem.user_id == user_id,
+                        FeedbackItem.source == source,
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    session.expunge(existing)
+                    return existing
+            now = utc_now()
+            feedback = FeedbackItem(
+                feedback_id=_new_id("fb"),
+                message_id=message_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                source=source,
+                polarity=polarity,
+                feedback_text=feedback_text,
+                raw_user_message=raw_user_message,
+                prev_assistant_message=prev_assistant_message,
+                snapshot=snapshot or {},
+                metadata_json=metadata or {},
+                created_at=now,
+            )
+            session.add(feedback)
+            session.commit()
+            session.refresh(feedback)
+            session.expunge(feedback)
+            return feedback
+
+    def get_feedback(self, *, message_id: str, user_id: str) -> FeedbackItem | None:
+        """Return saved feedback for a message and user."""
+        with self._session_factory() as session:
+            row = session.execute(
+                select(FeedbackItem)
+                .where(FeedbackItem.message_id == message_id, FeedbackItem.user_id == user_id)
+                .limit(1)
+            ).scalar_one_or_none()
+            if row is None:
+                return None
+            session.expunge(row)
+            return row
+
+    def list_pending_lessons(self, *, limit: int = 10) -> list[FeedbackItem]:
+        """Return feedback rows that still need lesson extraction."""
+        with self._session_factory() as session:
+            stmt = (
+                select(FeedbackItem)
+                .where(FeedbackItem.lesson_extracted.is_(False))
+                .order_by(FeedbackItem.created_at.asc())
+                .limit(limit)
+            )
+            rows = list(session.execute(stmt).scalars().all())
+            for row in rows:
+                session.expunge(row)
+            return rows
+
+    def mark_lesson_extracted(
+        self,
+        *,
+        feedback_id: str,
+        lesson: str,
+        mem0_memory_id: str | None = None,
+    ) -> None:
+        """Save the extracted lesson for a feedback row."""
+        with self._session_factory() as session:
+            session.execute(
+                update(FeedbackItem)
+                .where(FeedbackItem.feedback_id == feedback_id)
+                .values(
+                    extracted_lesson=lesson,
+                    lesson_extracted=True,
+                    mem0_memory_id=mem0_memory_id,
+                )
+            )
+            session.commit()

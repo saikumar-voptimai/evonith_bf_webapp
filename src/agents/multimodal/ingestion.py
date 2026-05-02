@@ -1,150 +1,120 @@
-"""Document and image ingestion pipeline for the Knowledge Hub.
+"""Document and image ingestion helpers for FurnaceMind knowledge upload."""
 
-Chunks text documents into overlapping windows and upserts them into the
-Qdrant Knowledge collection via :class:`~memory.knowledge_vector_store.KnowledgeVectorStore`.
-Images are handled via multimodal embeddings from
-:class:`~embeddings.cloud_embedding.CloudEmbeddingClient`.
+from __future__ import annotations
 
-Entry point: :func:`process_file`.
-"""
-
-import os
 import uuid
 from pathlib import Path
 
 from qdrant_client.models import PointStruct
 
-from agents.multimodal.parsers import (
-    parse_docx,
-    parse_excel,
-    parse_pdf,
-    parse_pptx,
-)
+from agents.multimodal.parsers import parse_docx, parse_excel, parse_pdf, parse_pptx
 
 
-# ---------------------------------------------
-# 🔹 Text Chunking
-# ---------------------------------------------
 def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> list[str]:
-    """Split *text* into overlapping chunks of *chunk_size* characters.
-
-    Args:
-        text:       Input text to split.
-        chunk_size: Maximum characters per chunk.
-        overlap:    Number of characters to overlap between consecutive chunks.
-
-    Returns:
-        List of text chunks.
-    """
-    chunks = []
+    """Split text into overlapping character chunks."""
+    chunks: list[str] = []
     start = 0
-
     while start < len(text):
         end = start + chunk_size
         chunks.append(text[start:end])
         start = end - overlap
-
     return chunks
 
 
-# ---------------------------------------------
-# 🔹 Main File Processor
-# ---------------------------------------------
-def process_file(file, knowledge_store, embedding_client) -> None:
-    """Parse, chunk, embed, and upsert a document or image into the Knowledge Hub.
-
-    Supports PDF, DOCX, PPTX, XLS/XLSX (text chunking + sentence embeddings)
-    and PNG/JPG/JPEG (multimodal image embeddings).
-
-    Args:
-        file:            Streamlit ``UploadedFile`` object.
-        knowledge_store: :class:`~memory.knowledge_vector_store.KnowledgeVectorStore`
-                         instance to upsert chunks into.
-        embedding_client: :class:`~embeddings.cloud_embedding.CloudEmbeddingClient`
-                          used for both text and image embeddings.
-    """
+def extract_text_from_file(file) -> tuple[str, str]:
+    """Extract text from a supported uploaded file."""
     file_type = file.name.split(".")[-1].lower()
-
-    file_type = file.name.split(".")[-1].lower()
-
-    # ==================================================
-    # 🖼 IMAGE HANDLING (Multimodal Embedding)
-    # ==================================================
-    if file_type in ["png", "jpg", "jpeg"]:
-
-        image_bytes = file.read()
-
-        # Save image locally (so we can display later)
-        upload_dir = Path("uploaded_images")
-        upload_dir.mkdir(exist_ok=True)
-
-        image_path = upload_dir / f"{uuid.uuid4()}_{file.name}"
-
-        with open(image_path, "wb") as f:
-            f.write(image_bytes)
-
-        # Generate embedding
-        embedding = embedding_client.embed_image(image_bytes)
-
-        # Insert into Qdrant
-        knowledge_store.client.upsert(
-            collection_name=knowledge_store.collection_name,
-            points=[
-                PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=embedding,
-                    payload={
-                        "source": file.name,
-                        "type": "image",
-                        "file_path": str(image_path),
-                    },
-                )
-            ],
-            wait=True,
-        )
-
-        return
-
-    # ==================================================
-    # 📄 TEXT DOCUMENT HANDLING
-    # ==================================================
-
     if file_type == "pdf":
-        text = parse_pdf(file)
+        return file_type, parse_pdf(file)
+    if file_type == "docx":
+        return file_type, parse_docx(file)
+    if file_type == "pptx":
+        return file_type, parse_pptx(file)
+    if file_type in {"xls", "xlsx"}:
+        return file_type, parse_excel(file)
+    if file_type in {"txt", "md"}:
+        return file_type, file.read().decode("utf-8", errors="ignore")
+    return file_type, ""
 
-    elif file_type == "docx":
-        text = parse_docx(file)
 
-    elif file_type == "pptx":
-        text = parse_pptx(file)
+def process_file(file, knowledge_store, embedding_client) -> dict:
+    """Parse, chunk, embed, and upsert one uploaded file into Qdrant."""
+    file_type = file.name.split(".")[-1].lower()
+    if file_type in {"png", "jpg", "jpeg"}:
+        return _process_image_file(file, knowledge_store, embedding_client, file_type)
+    return _process_text_file(file, knowledge_store, embedding_client)
 
-    elif file_type in ["xls", "xlsx"]:
-        text = parse_excel(file)
 
-    else:
-        # Unsupported file type
-        return
+def _process_image_file(file, knowledge_store, embedding_client, file_type: str) -> dict:
+    """Embed and upsert one image file into Qdrant."""
+    image_bytes = file.read()
+    upload_dir = Path("uploaded_images")
+    upload_dir.mkdir(exist_ok=True)
+    image_path = upload_dir / f"{uuid.uuid4()}_{file.name}"
+    image_path.write_bytes(image_bytes)
 
+    point_id = str(uuid.uuid4())
+    knowledge_store.client.upsert(
+        collection_name=knowledge_store.collection_name,
+        points=[
+            PointStruct(
+                id=point_id,
+                vector=embedding_client.embed_image(image_bytes),
+                payload={
+                    "source": file.name,
+                    "type": "image",
+                    "file_path": str(image_path),
+                },
+            )
+        ],
+        wait=True,
+    )
+    return {
+        "file_type": file_type,
+        "qdrant_collection": knowledge_store.collection_name,
+        "qdrant_point_ids": [point_id],
+        "chunk_count": 1,
+        "token_estimate": 0,
+    }
+
+
+def _process_text_file(file, knowledge_store, embedding_client) -> dict:
+    """Extract text, chunk it, and upsert chunks into Qdrant."""
+    file_type, text = extract_text_from_file(file)
     if not text:
-        return
+        return {
+            "file_type": file_type,
+            "qdrant_collection": knowledge_store.collection_name,
+            "qdrant_point_ids": [],
+            "chunk_count": 0,
+            "token_estimate": 0,
+        }
 
     chunks = chunk_text(text)
-
+    point_ids: list[str] = []
     for chunk in chunks:
-        embedding = embedding_client.embed_text(chunk)
-
+        point_id = str(uuid.uuid4())
+        point_ids.append(point_id)
         knowledge_store.client.upsert(
             collection_name=knowledge_store.collection_name,
             points=[
                 PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=embedding,
+                    id=point_id,
+                    vector=embedding_client.embed_text(chunk),
                     payload={
                         "source": file.name,
                         "type": file_type,
-                        "content": chunk,  # store text for retrieval / display
+                        "content": chunk,
                     },
                 )
             ],
             wait=True,
         )
+
+    return {
+        "file_type": file_type,
+        "qdrant_collection": knowledge_store.collection_name,
+        "qdrant_point_ids": point_ids,
+        "chunk_count": len(chunks),
+        "token_estimate": max(1, len(text) // 4),
+    }
