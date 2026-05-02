@@ -12,7 +12,7 @@ from reports.base import ReportAnalyser
 from reports.shift_report.data import ShiftReportData
 
 _SYSTEM = (
-    "You are a blast furnace process expert at BF2, Evonith Steel. "
+    "You are a blast furnace process expert at BF2. "
     "You receive key metrics for the current shift and (optionally) the previous shift. "
     "Write a concise handover analysis in 3 short paragraphs:\n"
     "1. Current shift summary — status and the 2-3 most significant parameters.\n"

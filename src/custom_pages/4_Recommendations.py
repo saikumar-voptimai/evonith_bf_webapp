@@ -48,7 +48,7 @@ if "dfprocessor" not in st.session_state:
 st.markdown(
     """
     <h1 style="text-align: center; font-family: 'Times New Roman', Times, serif; ">
-        V-OptimAIse & Evonith Metallics Limited
+        V-Sense — Blast Parameter Optimisation
     </h1>
     """,
     unsafe_allow_html=True,
