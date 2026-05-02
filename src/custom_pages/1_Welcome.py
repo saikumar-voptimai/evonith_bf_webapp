@@ -19,8 +19,88 @@ st.markdown(
     """
     <style>
     .stApp, [data-testid="stAppViewContainer"] { background: #f1f5f9 !important; }
-    [data-testid="stSidebar"],
-    [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+
+    /* Hide default Streamlit page-nav links in sidebar */
+    [data-testid="stSidebarNav"] { display: none !important; }
+
+    /* ── Sidebar base ── */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0a0f1e 0%, #0f172a 40%, #111827 100%) !important;
+        border-right: 1px solid rgba(251,146,60,0.15) !important;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.4) !important;
+    }
+    [data-testid="stSidebar"] > div:first-child { padding: 0 !important; }
+    [data-testid="stSidebar"] section[data-testid="stSidebarContent"] {
+        padding: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        height: 100vh !important;
+    }
+
+    /* ── Sidebar buttons — base ── */
+    [data-testid="stSidebar"] .stButton > button {
+        background: rgba(255,255,255,0.03) !important;
+        color: #94a3b8 !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 10px !important;
+        font-size: 0.83rem !important;
+        font-weight: 600 !important;
+        padding: 0.6rem 1rem !important;
+        text-align: left !important;
+        letter-spacing: 0.01em !important;
+        transition: all 0.22s cubic-bezier(0.4,0,0.2,1) !important;
+        margin-bottom: 6px !important;
+        position: relative !important;
+        overflow: hidden !important;
+    }
+    [data-testid="stSidebar"] .stButton > button::before {
+        content: '' !important;
+        position: absolute !important;
+        left: 0; top: 0; bottom: 0 !important;
+        width: 3px !important;
+        background: #fb923c !important;
+        border-radius: 0 2px 2px 0 !important;
+        opacity: 0 !important;
+        transition: opacity 0.2s ease !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: rgba(251,146,60,0.10) !important;
+        border-color: rgba(251,146,60,0.35) !important;
+        color: #fed7aa !important;
+        transform: translateX(4px) !important;
+        box-shadow: 0 2px 12px rgba(251,146,60,0.12) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover::before { opacity: 1 !important; }
+
+    /* ── Logout button ── */
+    [data-testid="stSidebar"] .logout-btn button,
+    [data-testid="stSidebar"] .stButton:last-of-type > button {
+        background: rgba(239,68,68,0.08) !important;
+        border-color: rgba(239,68,68,0.2) !important;
+        color: #fca5a5 !important;
+        margin-top: 0 !important;
+    }
+    [data-testid="stSidebar"] .stButton:last-of-type > button:hover {
+        background: rgba(239,68,68,0.18) !important;
+        border-color: rgba(239,68,68,0.5) !important;
+        color: #fecaca !important;
+        box-shadow: 0 2px 12px rgba(239,68,68,0.15) !important;
+    }
+    [data-testid="stSidebar"] .stButton:last-of-type > button::before {
+        background: #ef4444 !important;
+    }
+
+    /* ── Sidebar text ── */
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] label { color: #64748b !important; }
+    [data-testid="stSidebar"] strong { color: #e2e8f0 !important; }
+    [data-testid="stSidebar"] hr {
+        border: none !important;
+        border-top: 1px solid rgba(255,255,255,0.06) !important;
+        margin: 0.6rem 0 !important;
+    }
+
     .block-container {
         max-width: 1120px !important;
         padding-top: 1.2rem !important;
@@ -78,12 +158,150 @@ if is_admin():
         register_page()
         st.stop()
 
-# ── Top-right logout ──────────────────────────────────────────────────────────
-_, _top_btn = st.columns([6, 1])
-with _top_btn:
-    if st.button("🚪 Logout", key="top_logout"):
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+_role_label = "Admin" if is_admin() else "Supervisor" if is_supervisor() else "User"
+_role_color = "#fb923c" if is_admin() else "#38bdf8" if is_supervisor() else "#4ade80"
+_role_bg    = "rgba(251,146,60,0.15)" if is_admin() else "rgba(56,189,248,0.12)" if is_supervisor() else "rgba(74,222,128,0.12)"
+_role_border= "rgba(251,146,60,0.3)"  if is_admin() else "rgba(56,189,248,0.25)"  if is_supervisor() else "rgba(74,222,128,0.25)"
+_user_initial = str(st.session_state['auth_user'])[0].upper()
+_active = st.session_state.get("admin_tool_selection")
+
+import datetime as _dt
+_now = _dt.datetime.now().strftime("%d %b %Y, %H:%M")
+
+with st.sidebar:
+
+    # ── Brand strip ──────────────────────────────────────────────────────────
+    st.html(f"""
+    <div style="background:linear-gradient(135deg,#7c2d12 0%,#c2410c 50%,#ea580c 100%);
+                padding:1.1rem 1.2rem 1rem; margin:-1rem -1rem 0;
+                position:relative; overflow:hidden;">
+        <div style="position:absolute; top:-18px; right:-18px;
+                    width:80px; height:80px; border-radius:50%;
+                    background:rgba(255,255,255,0.06);"></div>
+        <div style="position:absolute; bottom:-25px; left:10px;
+                    width:60px; height:60px; border-radius:50%;
+                    background:rgba(255,255,255,0.04);"></div>
+        <div style="font-size:1.05rem; font-weight:800; color:white;
+                    letter-spacing:0.3px; position:relative;">
+            🔥 &nbsp;BF Intelligence
+        </div>
+        <div style="font-size:0.62rem; color:rgba(255,255,255,0.55);
+                    letter-spacing:0.18em; margin-top:3px;
+                    font-weight:600; position:relative;">
+            BLAST FURNACE PLATFORM
+        </div>
+    </div>
+    """)
+
+    st.html("<div style='height:1rem'></div>")
+
+    # ── Profile card ─────────────────────────────────────────────────────────
+    st.html(f"""
+    <div style="background:linear-gradient(135deg,rgba(255,255,255,0.05) 0%,rgba(255,255,255,0.02) 100%);
+                border:1px solid rgba(255,255,255,0.08);
+                border-radius:14px; padding:1rem 1.1rem;
+                margin-bottom:0.2rem;
+                box-shadow:0 4px 16px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.06);">
+        <div style="display:flex; align-items:center; gap:0.85rem;">
+            <div style="width:46px; height:46px; border-radius:50%;
+                        background:linear-gradient(135deg,#92400e,#fb923c);
+                        display:flex; align-items:center; justify-content:center;
+                        font-size:1.25rem; font-weight:900; color:white;
+                        flex-shrink:0;
+                        box-shadow:0 0 0 3px rgba(251,146,60,0.2), 0 4px 12px rgba(251,146,60,0.3);">
+                {_user_initial}
+            </div>
+            <div style="min-width:0; flex:1;">
+                <div style="color:#f8fafc; font-weight:700; font-size:0.95rem;
+                            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    {st.session_state['auth_user']}
+                </div>
+                <div style="margin-top:5px; display:flex; align-items:center; gap:6px;">
+                    <span style="background:{_role_bg};
+                                 color:{_role_color};
+                                 font-size:0.65rem; font-weight:800;
+                                 letter-spacing:0.1em;
+                                 padding:2px 9px; border-radius:20px;
+                                 border:1px solid {_role_border};">
+                        {_role_label.upper()}
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div style="margin-top:0.75rem; padding-top:0.65rem;
+                    border-top:1px solid rgba(255,255,255,0.06);
+                    display:flex; align-items:center; gap:5px;">
+            <span style="width:7px; height:7px; border-radius:50%;
+                         background:#4ade80; display:inline-block;
+                         box-shadow:0 0 6px #4ade80; flex-shrink:0;"></span>
+            <span style="color:#475569; font-size:0.68rem; letter-spacing:0.02em;">
+                Session started &nbsp;·&nbsp; {_now}
+            </span>
+        </div>
+    </div>
+    """)
+
+    st.html("<div style='height:0.5rem'></div>")
+
+    # ── Admin Tools ──────────────────────────────────────────────────────────
+    if is_admin() or is_supervisor():
+        st.html("""
+        <div style="display:flex; align-items:center; gap:8px; margin:0.4rem 0 0.6rem; padding-left:2px;">
+            <div style="height:1px; flex:1; background:rgba(255,255,255,0.06);"></div>
+            <span style="color:#475569; font-size:0.63rem; font-weight:700;
+                         letter-spacing:0.14em; white-space:nowrap;">
+                ⚙ &nbsp;ADMIN TOOLS
+            </span>
+            <div style="height:1px; flex:1; background:rgba(255,255,255,0.06);"></div>
+        </div>
+        """)
+
+        _btn_style = lambda active: (
+            "background:rgba(251,146,60,0.15) !important; border-color:rgba(251,146,60,0.4) !important; color:#fed7aa !important;"
+            if active else ""
+        )
+
+        if st.button("🛠 &nbsp; Hopper Mapping", use_container_width=True,
+                     key="sb_hopper"):
+            st.session_state["admin_tool_selection"] = "hopper"
+            st.rerun()
+
+        if is_admin():
+            if st.button("📊 &nbsp; Burden Distribution", use_container_width=True,
+                         key="sb_burden"):
+                st.session_state["admin_tool_selection"] = "burden"
+                st.rerun()
+            if st.button("📝 &nbsp; User Management", use_container_width=True,
+                         key="sb_register"):
+                st.session_state["admin_tool_selection"] = "register"
+                st.rerun()
+
+    # ── Spacer pushes logout to bottom ───────────────────────────────────────
+    st.html("<div style='flex:1; min-height:1.5rem'></div>")
+
+    # ── Divider ──────────────────────────────────────────────────────────────
+    st.html("""
+    <div style="height:1px; background:linear-gradient(90deg,transparent,rgba(251,146,60,0.2),transparent);
+                margin:0 0 0.8rem;"></div>
+    """)
+
+    # ── Logout ───────────────────────────────────────────────────────────────
+    if st.button("🚪 &nbsp; Logout", use_container_width=True, key="sb_logout"):
         logout_user()
         st.stop()
+
+    # ── Version tag ──────────────────────────────────────────────────────────
+    st.html("""
+    <div style="text-align:center; padding:0.6rem 0 0.4rem;">
+        <span style="color:#1e293b; font-size:0.62rem; letter-spacing:0.1em;
+                     font-weight:600; background:rgba(255,255,255,0.03);
+                     padding:2px 10px; border-radius:20px;
+                     border:1px solid rgba(255,255,255,0.05);">
+            v2.1.0 &nbsp;·&nbsp; V-OptimAIse
+        </span>
+    </div>
+    """)
 
 # ── Hero banner ───────────────────────────────────────────────────────────────
 def _b64_file(path: str) -> str:
@@ -261,26 +479,6 @@ _, _fc, _ = st.columns([1, 1, 1])
 _tile(_fc, "custom_pages/8_Feedback.py", "📮", "Feedback",
       "Submit feature requests, bug reports, and operational feedback.", "#b45309")
 
-# ── Admin tools ───────────────────────────────────────────────────────────────
-if is_admin() or is_supervisor():
-    st.markdown("---")
-    st.html("<p style='color:#94a3b8; font-size:0.75rem; font-weight:700;"
-            "text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.8rem;'>"
-            "Administration</p>")
-    _a1, _a2, _a3 = st.columns(3)
-    with _a1:
-        if st.button("🛠  Hopper Mapping", use_container_width=True):
-            st.session_state["admin_tool_selection"] = "hopper"
-            st.rerun()
-    if is_admin():
-        with _a2:
-            if st.button("📊  Burden Distribution", use_container_width=True):
-                st.session_state["admin_tool_selection"] = "burden"
-                st.rerun()
-        with _a3:
-            if st.button("📝  User Management", use_container_width=True):
-                st.session_state["admin_tool_selection"] = "register"
-                st.rerun()
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("---")
