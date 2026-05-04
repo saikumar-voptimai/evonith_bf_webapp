@@ -14,8 +14,18 @@ from dotenv import load_dotenv
 
 from config.config_loader import load_config
 from furnace_data.influx.online import fetch_online_df
-from furnace_data.influx.offline import fetch_offline_data, clean_rm_data
+from furnace_data.influx.offline import (
+    clean_rm_data,
+    fetch_offline_data as fetch_influx_offline_data,
+)
+from furnace_data.neon_db.offline import (
+    NEON_OFFLINE_REPORT_MAP,
+    NEON_OFFLINE_TABLES,
+    fetch_offline_data as fetch_neon_table_data,
+    fetch_offline_report as fetch_neon_offline_report,
+)
 from furnace_data.dataset.fetcher import DatasetFetcher as MlDatasetFetcher
+from data.fetch_presets import OFFLINE_REPORT_LABEL_MAP
 from data.ml.static_csv import get_static_dataset_path, load_static_dataset
 from data.ml.static_dataset_manager import StaticDatasetManager
 from utils.dataset_refresher import maybe_refresh
@@ -445,8 +455,10 @@ UTC = pytz.UTC
 
 st.header("📄 Offline Data Viewer")
 
+if "offline_source" not in st.session_state:
+    st.session_state.offline_source = "Neon DB"
 if "selected_offline" not in st.session_state:
-    st.session_state.selected_offline = list(offline_measurements.keys())[0]
+    st.session_state.selected_offline = list(NEON_OFFLINE_REPORT_MAP.keys())[0]
 
 TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
 
@@ -456,13 +468,45 @@ with st.form("offline_fetch_form"):
     col_left, col_right = st.columns(2)
 
     with col_left:
-        selected_offline = st.selectbox(
-            "Select Offline Measurement",
-            list(offline_measurements.keys()),
-            index=list(offline_measurements.keys()).index(
-                st.session_state.selected_offline
+        offline_source = st.radio(
+            "Offline Source",
+            ["Neon DB", "InfluxDB rollback"],
+            horizontal=True,
+            index=["Neon DB", "InfluxDB rollback"].index(
+                st.session_state.offline_source
             ),
         )
+        st.session_state.offline_source = offline_source
+
+        if offline_source == "Neon DB":
+            neon_mode = st.radio(
+                "Neon Fetch Type",
+                ["Logical report", "Explicit table"],
+                horizontal=True,
+            )
+            if neon_mode == "Logical report":
+                neon_reports = list(NEON_OFFLINE_REPORT_MAP.keys())
+                selected_neon_report = st.selectbox(
+                    "Select Offline Report",
+                    neon_reports,
+                    format_func=lambda key: OFFLINE_REPORT_LABEL_MAP.get(key, key),
+                )
+                selected_neon_table = None
+            else:
+                selected_neon_report = "RM_COMPOSITION"
+                selected_neon_table = st.selectbox(
+                    "Select Neon Table",
+                    sorted(NEON_OFFLINE_TABLES.keys()),
+                )
+            selected_influx_measurement = None
+        else:
+            selected_influx_measurement = st.selectbox(
+                "Select Influx Offline Measurement",
+                list(offline_measurements.keys()),
+                index=0,
+            )
+            selected_neon_report = None
+            selected_neon_table = None
 
     with col_right:
         time_range_choice = st.selectbox(
@@ -484,8 +528,6 @@ if submitted:
         st.error("❌ Invalid date range: Start Date cannot be after End Date.")
         st.stop()
 
-    database = influx_cfg.get("database", "bf2_evonith_offline_utc")
-
     # ---- CORRECT TIME RANGE HANDLING ----
     if time_range_choice == "Use Start/End Dates":
 
@@ -499,29 +541,48 @@ if submitted:
     else:
         time_range_to_fetch = time_range_choice
 
-    df_offline = fetch_offline_data(
-        measurement=offline_measurements[selected_offline],
-        time_range=time_range_to_fetch,
-        database=database,
-    )
+    if offline_source == "Neon DB":
+        if selected_neon_table:
+            df_offline = fetch_neon_table_data(
+                table_name=selected_neon_table,
+                time_range=time_range_to_fetch,
+            )
+            output_name = selected_neon_table
+        else:
+            df_offline = fetch_neon_offline_report(
+                report_type=selected_neon_report,
+                time_range=time_range_to_fetch,
+            )
+            output_name = selected_neon_report.lower()
+    else:
+        database = influx_cfg.get("database", "bf2_evonith_offline_utc")
+        df_offline = fetch_influx_offline_data(
+            measurement=offline_measurements[selected_influx_measurement],
+            time_range=time_range_to_fetch,
+            database=database,
+        )
+        output_name = selected_influx_measurement
 
     if df_offline.empty:
-        st.warning(f"No data found for {selected_offline}")
+        st.warning(f"No data found for {output_name}")
         st.stop()
 
-    if selected_offline == "rm_data":
+    if offline_source != "Neon DB" and selected_influx_measurement == "Bunker Report":
         df_offline = clean_rm_data(df_offline)
 
     # Index is already UTC → convert once
-    df_offline.index = df_offline.index.tz_convert(local_tz)
-    df_offline.index.name = "time (IST)"
+    if isinstance(df_offline.index, pd.DatetimeIndex):
+        if df_offline.index.tz is None:
+            df_offline.index = df_offline.index.tz_localize(UTC)
+        df_offline.index = df_offline.index.tz_convert(local_tz)
+        df_offline.index.name = "time (IST)"
 
     st.dataframe(df_offline)
     df_download = df_offline.reset_index()
     st.download_button(
         label="Download as CSV",
         data=df_download.to_csv(index=False).encode("utf-8"),
-        file_name=f"{selected_offline}.csv",
+        file_name=f"{output_name}.csv",
         mime="text/csv",
     )
 

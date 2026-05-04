@@ -31,11 +31,32 @@ class ResponseFormat(str, Enum):
     csv = "csv"
 
 
+class OfflineDataSource(str, Enum):
+    neon_db = "neon_db"
+    influx = "influx"
+
+
 class OfflineReportType(str, Enum):
     hm_slag = "HM_SLAG"
     charge = "CHARGE"
     rm_composition = "RM_COMPOSITION"
     dpr = "DPR"
+    burden_distribution = "BURDEN_DISTRIBUTION"
+    hopper_management = "HOPPER_MANAGEMENT"
+
+
+class NeonOfflineTable(str, Enum):
+    burden_distribution_history = "burden_distribution_history"
+    charge_data = "charge_data"
+    dpr_data = "dpr_data"
+    flux_chemistry = "flux_chemistry"
+    fuel_chemistry = "fuel_chemistry"
+    hopper_material_history = "hopper_material_history"
+    hot_metal_chemistry = "hot_metal_chemistry"
+    ore_chemistry = "ore_chemistry"
+    raw_materials = "raw_materials"
+    rm_hm = "rm_hm"
+    sinter_chemistry = "sinter_chemistry"
 
 
 # ---- Online/Offline requests ----
@@ -60,6 +81,14 @@ class OnlineFetchRequest(BaseModel):
 
 class OfflineFetchRequest(BaseModel):
     report_type: OfflineReportType
+    source: OfflineDataSource = Field(
+        OfflineDataSource.neon_db,
+        description="Offline backend. Defaults to Neon; use 'influx' for rollback.",
+    )
+    table_name: Optional[NeonOfflineTable] = Field(
+        None,
+        description="Optional explicit Neon table override. Used only with source='neon_db'.",
+    )
     preset: Optional[str] = Field(
         None,
         description="Preset time window e.g. 'last 1 month'.",
@@ -67,6 +96,14 @@ class OfflineFetchRequest(BaseModel):
     )
     start_time: Optional[datetime] = Field(None, description="UTC start time (ignored if preset is set)")
     end_time: Optional[datetime] = Field(None, description="UTC end time (ignored if preset is set)")
+    query_type: QueryType = Field(
+        QueryType.ts,
+        description="For Neon: 'ts', 'windowed-average', or 'average'. Ignored for Influx rollback.",
+    )
+    window: Optional[str] = Field(
+        "1 hour",
+        description="PostgreSQL interval for Neon windowed-average, e.g. '1 hour'.",
+    )
     format: ResponseFormat = ResponseFormat.json
 
 
@@ -75,6 +112,8 @@ class OfflineFetchRequest(BaseModel):
 class DataMeta(BaseModel):
     measurements: Optional[List[str]] = None
     report_type: Optional[str] = None
+    source: Optional[str] = None
+    table_name: Optional[str] = None
     query_type: Optional[str] = None
     window: Optional[str] = None
     start: Optional[str] = None

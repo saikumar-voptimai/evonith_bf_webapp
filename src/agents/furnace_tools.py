@@ -36,6 +36,17 @@ from furnace_data.influx.online import fetch_online_df  # noqa: F401
 from furnace_data.influx.query import TIMEDELTAS  # noqa: F401
 from utils.shift_windows import shift_window_naive, shift_windows_description
 
+from furnace_data.neon_db.offline import (
+    NEON_OFFLINE_TABLES,
+    fetch_offline_data as _fetch_neon_table_df,
+    fetch_offline_report as _fetch_neon_report_df,
+)
+
+from data.fetch_presets import (
+    OFFLINE_REPORT_LABEL_MAP,
+)
+from data.ml.static_csv import get_static_dataset_path, load_static_dataset
+
 # CONFIG
 config = load_config("setting_ds_dv.yml")
 
@@ -43,6 +54,10 @@ OFFLINE_MEASUREMENTS = config.get("offline_measurements", {}) or {}
 INFLUX_OFFLINE_DB = (config.get("influx_offline", {}) or {}).get(
     "database", "bf2_evonith_offline_utc"
 )
+
+_NEON_REPORT_TYPE_ALIASES = {
+    "RAW_MATERIAL_COMPOSITION": "RM_COMPOSITION",
+}
 
 
 _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
@@ -142,10 +157,24 @@ class OfflineReportType(str):
 
 
 class OfflineFetchArgs(BaseModel):
-    report_type: Literal["HM_SLAG", "CHARGE", "RAW_MATERIAL_COMPOSITION", "DPR"] = (
-        Field(
-            description="Which offline dataset to fetch. RAW_MATERIAL_COMPOSITION maps to Bunker Report in config."
-        )
+    report_type: Literal[
+        "HM_SLAG",
+        "CHARGE",
+        "RAW_MATERIAL_COMPOSITION",
+        "RM_COMPOSITION",
+        "DPR",
+        "BURDEN_DISTRIBUTION",
+        "HOPPER_MANAGEMENT",
+    ] = Field(
+        description="Which offline dataset to fetch. Defaults to Neon DB; use source='influx' for rollback."
+    )
+    source: Literal["neon_db", "influx"] = Field(
+        default="neon_db",
+        description="Offline backend. Defaults to Neon DB; set to 'influx' for rollback.",
+    )
+    table_name: Optional[str] = Field(
+        default=None,
+        description="Optional explicit Neon table override, e.g. ore_chemistry or charge_data.",
     )
     start_time_utc: Optional[str] = Field(
         default=None,
@@ -698,6 +727,8 @@ def fetch_online_data(
 def fetch_offline_data(
     *,
     report_type: str,
+    source: str = "neon_db",
+    table_name: str | None = None,
     start_time_utc: str | None = None,
     end_time_utc: str | None = None,
     lookback_days: int | None = 10,
@@ -712,6 +743,8 @@ def fetch_offline_data(
     """
     params = {
         "report_type": report_type,
+        "source": source,
+        "table_name": table_name,
         "start_time_utc": start_time_utc,
         "end_time_utc": end_time_utc,
         "lookback_days": lookback_days,
@@ -720,13 +753,21 @@ def fetch_offline_data(
     try:
         args = OfflineFetchArgs.model_validate(params)
 
-        # Resolve measurement label and Influx measurement name
-        label = OFFLINE_REPORT_LABEL_MAP.get(args.report_type)
-        if not label:
-            raise ValueError(f"Unsupported report_type: {args.report_type}")
-        measurement = OFFLINE_MEASUREMENTS.get(label)
-        if not measurement:
-            raise ValueError(f"Offline measurement not configured for label: {label}")
+        neon_report_type = _NEON_REPORT_TYPE_ALIASES.get(
+            args.report_type, args.report_type
+        )
+        label = (
+            "Bunker Report"
+            if neon_report_type == "RM_COMPOSITION"
+            else OFFLINE_REPORT_LABEL_MAP.get(neon_report_type, neon_report_type)
+        )
+        measurement = None
+        if args.source == "influx":
+            measurement = OFFLINE_MEASUREMENTS.get(label)
+            if not measurement:
+                raise ValueError(
+                    f"Offline Influx measurement not configured for label: {label}"
+                )
 
         now = datetime.now(timezone.utc)
         end = _parse_iso8601_utc(args.end_time_utc) if args.end_time_utc else now
@@ -752,19 +793,55 @@ def fetch_offline_data(
             "HM_SLAG": "1h",
             "CHARGE": "1h",
             "RAW_MATERIAL_COMPOSITION": "8h",
+            "RM_COMPOSITION": "8h",
             "DPR": "1d",
+            "BURDEN_DISTRIBUTION": "1d",
+            "HOPPER_MANAGEMENT": "1d",
         }[args.report_type]
         cadence_final = args.cadence or cadence_default
 
-        df = _fetch_offline_df(
-            measurement=measurement,
-            time_range=(start, end),
-            database=INFLUX_OFFLINE_DB,
-        )
+        if args.source == "neon_db":
+            if args.table_name:
+                if args.table_name not in NEON_OFFLINE_TABLES:
+                    raise ValueError(
+                        f"Unknown Neon table_name: {args.table_name}. "
+                        f"Valid: {sorted(NEON_OFFLINE_TABLES)}"
+                    )
+                df = _fetch_neon_table_df(
+                    table_name=args.table_name,
+                    time_range=(start, end),
+                )
+                source_detail = args.table_name
+            else:
+                df = _fetch_neon_report_df(
+                    report_type=neon_report_type,
+                    time_range=(start, end),
+                )
+                source_detail = neon_report_type
+        else:
+            df = _fetch_offline_df(
+                measurement=measurement,
+                time_range=(start, end),
+                database=INFLUX_OFFLINE_DB,
+            )
+            source_detail = measurement
 
         # Offline fetch returns UTC index (as per helper); convert + resample
         df = _to_ist_index(df)
-        if df is not None and not df.empty and isinstance(df.index, pd.DatetimeIndex):
+        skip_resample = (
+            args.source == "neon_db"
+            and (
+                neon_report_type
+                in {"RM_COMPOSITION", "BURDEN_DISTRIBUTION", "HOPPER_MANAGEMENT"}
+                or bool(args.table_name)
+            )
+        )
+        if (
+            not skip_resample
+            and df is not None
+            and not df.empty
+            and isinstance(df.index, pd.DatetimeIndex)
+        ):
             df = df.resample(cadence_final).mean(numeric_only=True)
             df = df.dropna(how="all")
 
@@ -779,8 +856,10 @@ def fetch_offline_data(
         meta = {
             "type": "offline",
             "report_type": args.report_type,
+            "source": args.source,
             "label": label,
             "measurement": measurement,
+            "source_detail": source_detail,
             "db": INFLUX_OFFLINE_DB,
             "start_time_utc": start.isoformat(),
             "end_time_utc": end.isoformat(),
@@ -921,7 +1000,7 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "fetch_offline_data",
-                "description": "Fetch offline report datasets (HM/Slag, Charge, Raw material composition/Bunker, DPR). Defaults: HM_SLAG/CHARGE hourly; RAW_MATERIAL_COMPOSITION shiftwise (8h); DPR daily (1d). Stores the active dataframe in session (fm_df) and returns dataset_id + preview.",
+                "description": "Fetch offline report datasets from Neon DB by default, with source='influx' rollback. Covers HM/Slag, Charge, raw material composition, DPR, burden distribution, and hopper management. Stores the active dataframe in session (fm_df) and returns dataset_id + preview.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -931,8 +1010,22 @@ def get_openai_tool_schemas() -> list[dict]:
                                 "HM_SLAG",
                                 "CHARGE",
                                 "RAW_MATERIAL_COMPOSITION",
+                                "RM_COMPOSITION",
                                 "DPR",
+                                "BURDEN_DISTRIBUTION",
+                                "HOPPER_MANAGEMENT",
                             ],
+                        },
+                        "source": {
+                            "type": "string",
+                            "enum": ["neon_db", "influx"],
+                            "default": "neon_db",
+                            "description": "Use neon_db by default; use influx only for rollback.",
+                        },
+                        "table_name": {
+                            "type": "string",
+                            "enum": sorted(NEON_OFFLINE_TABLES.keys()),
+                            "description": "Optional explicit Neon table override.",
                         },
                         "start_time_utc": {
                             "type": "string",

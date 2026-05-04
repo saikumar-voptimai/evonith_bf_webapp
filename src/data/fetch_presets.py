@@ -26,5 +26,8 @@ OFFLINE_REPORT_LABEL_MAP: dict[str, str] = {
     "HM_SLAG": "HM & Slag",
     "CHARGE": "Charge",
     "RAW_MATERIAL_COMPOSITION": "Bunker Report",
+    "RM_COMPOSITION": "Raw Material Composition",
     "DPR": "DPR",
+    "BURDEN_DISTRIBUTION": "Burden Distribution",
+    "HOPPER_MANAGEMENT": "Hopper Management",
 }

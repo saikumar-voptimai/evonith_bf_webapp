@@ -10,5 +10,6 @@ influx      BaseDataFetcher, query_builder, fetch_online_df, fetch_offline_data
 domain      TemperatureDataFetcher, AverageHeatLoadDataFetcher
 dataset     DatasetFetcher, DatasetService, StaticDatasetManager
 relational  SQLAlchemy 2.0 engine/session helpers + ORM repositories
+neon_db     Whitelisted Neon/PostgreSQL offline report fetchers
 models      Shared Pydantic schemas (QueryType, OfflineReportType, …)
 """
