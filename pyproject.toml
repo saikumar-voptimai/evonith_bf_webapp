@@ -3,7 +3,7 @@ name = "evonith-bf-webapp"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "alembic>=1.17.1",
     "aiohappyeyeballs==2.4.4 ; python_full_version >= '3.10' and python_full_version < '4.0'",

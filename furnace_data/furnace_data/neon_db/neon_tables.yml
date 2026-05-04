@@ -1,0 +1,202 @@
+report_map:
+  CHARGE: charge_data
+  DPR: dpr_data
+  HM_SLAG: hot_metal_chemistry
+  RM_COMPOSITION: ore_chemistry
+
+non_averaged_columns:
+  - id
+  - created_at
+  - date_time
+  - date
+  - material_id
+  - charge_no
+  - lab_sample_id
+  - cast_no_ladle_spec
+  - material_name
+  - category
+
+tables:
+  charge_data:
+    time_column: date_time
+    columns:
+      - id
+      - date_time
+      - charge_no
+      - sinter_1_mt
+      - sinter_2_mt
+      - sinter_3_mt
+      - sinter_4_mt
+      - pellet_1_mt
+      - pellet_2_mt
+      - ore_1_mt
+      - ore_2_mt
+      - ore_3_mt
+      - ore_4_mt
+      - ore_5_mt
+      - ore_6_mt
+      - ore_7_mt
+      - ore_8_mt
+      - ore_9_mt
+      - ore_10_mt
+      - ore_11_mt
+      - ore_12_mt
+      - nut_coke_1_mt
+      - nut_coke_2_mt
+      - coke_1_mt
+      - coke_2_mt
+      - pci_mt
+      - flux_1_mt
+      - flux_2_mt
+      - flux_3_mt
+
+  dpr_data:
+    time_column: date_time
+    columns:
+      - id
+      - date_time
+      - sinter_1_mt
+      - sinter_2_mt
+      - sinter_3_mt
+      - sinter_4_mt
+      - pellet_1_mt
+      - pellet_2_mt
+      - ore_1_mt
+      - ore_2_mt
+      - ore_3_mt
+      - ore_4_mt
+      - ore_5_mt
+      - ore_6_mt
+      - ore_7_mt
+      - ore_8_mt
+      - ore_9_mt
+      - ore_10_mt
+      - ore_11_mt
+      - ore_12_mt
+      - nut_coke_1_mt
+      - nut_coke_2_mt
+      - coke_1_mt
+      - coke_2_mt
+      - pci_mt
+      - flux_1_mt
+      - flux_2_mt
+      - flux_3_mt
+      - total_hot_metal_mt
+      - slag_generation_mt
+      - gcp_dust_mt
+      - cast_house_dust_mt
+      - flue_dust_mt
+      - stock_house_dust_mt
+
+  flux_chemistry:
+    time_column: date_time
+    columns:
+      - id
+      - date_time
+      - material_id
+      - mgo
+      - tm
+      - al2o3
+      - loi
+      - cao
+      - sio2
+      - fe2o3
+
+  fuel_chemistry:
+    time_column: date_time
+    columns:
+      - id
+      - date_time
+      - material_id
+      - fc
+      - moisture
+      - ash
+      - tm
+      - vm
+
+  hot_metal_chemistry:
+    time_column: date
+    columns:
+      - id
+      - date
+      - created_at
+      - lab_sample_id
+      - cast_no_ladle_spec
+      - chem_pct_c
+      - chem_pct_cr
+      - chem_pct_fe
+      - chem_pct_mn
+      - chem_pct_p
+      - chem_pct_s
+      - chem_pct_si
+      - chem_pct_ti
+      - hmt_gt_1480c
+      - slag_basicity
+      - slag_t_basicity
+      - slag_pct_al2o3
+      - slag_pct_cao
+      - slag_pct_feo
+      - slag_pct_k2o
+      - slag_pct_mgo
+      - slag_pct_mno
+      - slag_pct_na2o
+      - slag_pct_s
+      - slag_pct_sio2
+      - slag_pct_tio2
+
+  ore_chemistry:
+    time_column: date_time
+    columns:
+      - id
+      - date_time
+      - material_id
+      - fe_t
+      - sio2
+      - mgo
+      - tm
+      - p
+      - cao
+      - k2o
+      - al2o3
+      - mno
+      - loi
+      - na2o
+      - tio2
+
+  raw_materials:
+    time_column: created_at
+    columns:
+      - id
+      - created_at
+      - material_name
+      - category
+
+  rm_hm:
+    time_column: date_time
+    columns:
+      - id
+      - date_time
+      - created_at
+      - ti
+      - ri
+      - rdi
+      - ai
+
+  sinter_chemistry:
+    time_column: date_time
+    columns:
+      - id
+      - date_time
+      - material_id
+      - k2o
+      - p
+      - cao
+      - basicity
+      - sio2
+      - feo
+      - mno
+      - fe_t
+      - mgo
+      - al2o3
+      - tio2
+      - na2o

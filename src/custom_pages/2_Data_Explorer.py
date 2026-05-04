@@ -1,5 +1,7 @@
 import os
+import sys
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import matplotlib.pyplot as plt
@@ -12,9 +14,14 @@ import seaborn as sns
 import streamlit as st
 from dotenv import load_dotenv
 
+furnace_data_src = Path(__file__).resolve().parents[2] / "furnace_data" / "furnace_data"
+if furnace_data_src.is_dir() and str(furnace_data_src) not in sys.path:
+    sys.path.insert(0, str(furnace_data_src))
+
 from config.config_loader import load_config
 from data import retrieval as dr
 from furnace_data.dataset.fetcher import DatasetFetcher as MlDatasetFetcher
+from furnace_data.neon_db import fetch_offline_data as fetch_neon_offline_data
 from data.ml.static_csv import get_static_dataset_path, load_static_dataset
 from data.ml.static_dataset_manager import StaticDatasetManager
 from utils.dataset_refresher import maybe_refresh
@@ -75,6 +82,21 @@ MEASUREMENT_LABELS = {
     "miscellaneous": "Miscellaneous",
     "process_params": "Process Params",
     "temperature_profile": "Temperature Profile",
+}
+
+NEON_OFFLINE_TABLES = [
+    "charge_data",
+    "dpr_data",
+    "fuel_chemistry",
+    "flux_chemistry",
+    "sinter_chemistry",
+    "ore_chemistry",
+    "hot_metal_chemistry",
+]
+
+NEON_QUERY_TYPES = {
+    "Raw data": "ts",
+
 }
 
 st.title("Visualisation tool")
@@ -503,6 +525,121 @@ if submitted:
         label="Download as CSV",
         data=df_download.to_csv(index=False).encode("utf-8"),
         file_name=f"{selected_offline}.csv",
+        mime="text/csv",
+    )
+
+
+st.subheader("Neon DB Offline Data")
+
+if "selected_neon_offline" not in st.session_state:
+    st.session_state.selected_neon_offline = NEON_OFFLINE_TABLES[0]
+if "neon_offline_df" not in st.session_state:
+    st.session_state.neon_offline_df = None
+if "neon_offline_table" not in st.session_state:
+    st.session_state.neon_offline_table = None
+
+with st.form("neon_offline_fetch_form"):
+    neon_left, neon_right = st.columns(2)
+
+    with neon_left:
+        selected_neon_table = st.selectbox(
+            "Select Neon DB Table",
+            NEON_OFFLINE_TABLES,
+            index=NEON_OFFLINE_TABLES.index(st.session_state.selected_neon_offline),
+        )
+        neon_query_label = st.radio(
+            "Fetch Type",
+            list(NEON_QUERY_TYPES.keys()),
+            horizontal=True,
+        )
+
+    with neon_right:
+        neon_time_range_choice = st.selectbox(
+            "Select Neon Time Range (optional):",
+            ["Use Start/End Dates"] + TIME_OPTIONS_UI,
+            key="neon_time_range_choice",
+        )
+
+        neon_d1, neon_d2 = st.columns(2)
+        with neon_d1:
+            neon_start_date = st.date_input(
+                "Neon Start Date",
+                value=datetime.now().date(),
+            )
+        with neon_d2:
+            neon_end_date = st.date_input(
+                "Neon End Date",
+                value=datetime.now().date(),
+            )
+
+        custom_window = "1 hour"
+        if neon_query_label == "Custom avg window":
+            custom_window = st.text_input(
+                "Custom Avg Window",
+                value="15 minutes",
+                help="PostgreSQL interval, for example: 15 minutes, 2 hours, 1 day",
+            )
+
+    neon_submitted = st.form_submit_button("Fetch Neon DB Offline Data")
+
+if neon_submitted:
+    if neon_start_date > neon_end_date:
+        st.error("❌ Invalid date range: Start Date cannot be after End Date.")
+        st.stop()
+
+    if neon_time_range_choice == "Use Start/End Dates":
+        neon_start_local = local_tz.localize(
+            datetime.combine(neon_start_date, time.min)
+        )
+        neon_end_local = local_tz.localize(datetime.combine(neon_end_date, time.max))
+        neon_time_range_to_fetch = (
+            neon_start_local.astimezone(UTC),
+            neon_end_local.astimezone(UTC),
+        )
+    else:
+        neon_time_range_to_fetch = neon_time_range_choice
+
+    neon_query_type = NEON_QUERY_TYPES[neon_query_label]
+    neon_window = None
+    if neon_query_label == "Hourly avg":
+        neon_window = "1 hour"
+    elif neon_query_label == "Custom avg window":
+        neon_window = custom_window.strip() or "1 hour"
+
+    try:
+        df_neon_offline = fetch_neon_offline_data(
+            table_name=selected_neon_table,
+            time_range=neon_time_range_to_fetch,
+            query_type=neon_query_type,
+            window=neon_window,
+        )
+    except Exception as exc:
+        st.error(f"Failed to fetch Neon DB offline data: {exc}")
+        st.stop()
+
+    if df_neon_offline.empty:
+        st.warning(f"No data found for {selected_neon_table}")
+        st.stop()
+
+    if getattr(df_neon_offline.index, "tz", None) is not None:
+        df_neon_offline.index = df_neon_offline.index.tz_convert(local_tz)
+    df_neon_offline.index.name = "time (IST)"
+
+    st.session_state.selected_neon_offline = selected_neon_table
+    st.session_state.neon_offline_df = df_neon_offline
+    st.session_state.neon_offline_table = selected_neon_table
+
+if (
+    isinstance(st.session_state.neon_offline_df, pd.DataFrame)
+    and not st.session_state.neon_offline_df.empty
+):
+    neon_df_show = st.session_state.neon_offline_df
+    neon_table_name = st.session_state.neon_offline_table or "neon_offline"
+    st.dataframe(neon_df_show)
+    st.download_button(
+        label="Download Neon DB CSV",
+        data=neon_df_show.reset_index().to_csv(index=False).encode("utf-8"),
+        file_name=f"{neon_table_name}.csv",
         mime="text/csv",
     )
 

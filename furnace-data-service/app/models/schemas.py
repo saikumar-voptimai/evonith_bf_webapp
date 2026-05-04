@@ -26,6 +26,11 @@ class QueryType(str, Enum):
     avg_min_max = "avg-min-max"
 
 
+class OfflineDataSource(str, Enum):
+    influx = "influx"
+    neon_db = "neon_db"
+
+
 class ResponseFormat(str, Enum):
     json = "json"
     csv = "csv"
@@ -36,6 +41,18 @@ class OfflineReportType(str, Enum):
     charge = "CHARGE"
     rm_composition = "RM_COMPOSITION"
     dpr = "DPR"
+
+
+class NeonOfflineTable(str, Enum):
+    charge_data = "charge_data"
+    dpr_data = "dpr_data"
+    flux_chemistry = "flux_chemistry"
+    fuel_chemistry = "fuel_chemistry"
+    hot_metal_chemistry = "hot_metal_chemistry"
+    ore_chemistry = "ore_chemistry"
+    raw_materials = "raw_materials"
+    rm_hm = "rm_hm"
+    sinter_chemistry = "sinter_chemistry"
 
 
 # ---- Online/Offline requests ----
@@ -60,6 +77,14 @@ class OnlineFetchRequest(BaseModel):
 
 class OfflineFetchRequest(BaseModel):
     report_type: OfflineReportType
+    source: OfflineDataSource = Field(
+        OfflineDataSource.influx,
+        description="Offline backend. Defaults to existing Influx behavior; use 'neon_db' for Neon/PostgreSQL.",
+    )
+    table_name: Optional[NeonOfflineTable] = Field(
+        None,
+        description="Optional Neon table override. Used only when source='neon_db'.",
+    )
     preset: Optional[str] = Field(
         None,
         description="Preset time window e.g. 'last 1 month'.",
@@ -67,6 +92,14 @@ class OfflineFetchRequest(BaseModel):
     )
     start_time: Optional[datetime] = Field(None, description="UTC start time (ignored if preset is set)")
     end_time: Optional[datetime] = Field(None, description="UTC end time (ignored if preset is set)")
+    query_type: QueryType = Field(
+        QueryType.ts,
+        description="For Neon: 'ts' raw rows, 'windowed-average' for hourly/custom averages, or 'average'. Ignored for Influx offline.",
+    )
+    window: Optional[str] = Field(
+        "1 hour",
+        description="For Neon windowed-average. PostgreSQL interval e.g. '1 hour', '15 minutes', '8 hours'.",
+    )
     format: ResponseFormat = ResponseFormat.json
 
 
@@ -75,6 +108,8 @@ class OfflineFetchRequest(BaseModel):
 class DataMeta(BaseModel):
     measurements: Optional[List[str]] = None
     report_type: Optional[str] = None
+    source: Optional[str] = None
+    table_name: Optional[str] = None
     query_type: Optional[str] = None
     window: Optional[str] = None
     start: Optional[str] = None

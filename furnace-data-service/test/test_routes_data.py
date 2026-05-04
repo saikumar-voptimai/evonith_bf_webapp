@@ -56,6 +56,14 @@ class TestOfflineReportTypes:
             assert isinstance(v, str)
             assert len(v) > 0
 
+    def test_neon_tables_endpoint_lists_charge_data(self, client):
+        resp = client.get("/data/offline/neon-tables")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["report_map"]["CHARGE"] == "charge_data"
+        assert "charge_data" in body["tables"]
+        assert "date_time" in body["tables"]["charge_data"]
+
 
 # ---------------------------------------------------------------------------
 # POST /data/online/fetch — input validation
@@ -207,3 +215,34 @@ class TestOfflineFetch:
                 "preset": "last 1 day",
             })
         assert resp.status_code == 204
+
+    def test_neon_source_fetches_charge_windowed_average(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df) as mocked:
+            resp = client.post("/data/offline/fetch", json={
+                "source": "neon_db",
+                "report_type": "CHARGE",
+                "preset": "last 3 days",
+                "query_type": "windowed-average",
+                "window": "1 hour",
+                "format": "json",
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["meta"]["source"] == "neon_db"
+        assert body["meta"]["table_name"] == "charge_data"
+        assert body["meta"]["query_type"] == "windowed-average"
+        assert body["meta"]["window"] == "1 hour"
+        mocked.assert_called_once()
+
+    def test_neon_table_override_fetches_raw_table(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df) as mocked:
+            resp = client.post("/data/offline/fetch", json={
+                "source": "neon_db",
+                "report_type": "RM_COMPOSITION",
+                "table_name": "sinter_chemistry",
+                "preset": "last 3 days",
+                "query_type": "ts",
+            })
+        assert resp.status_code == 200
+        assert resp.json()["meta"]["table_name"] == "sinter_chemistry"
+        assert mocked.call_args.kwargs["query_type"] == "ts"
