@@ -7,7 +7,8 @@ and leaves via hot metal + slag + top gas + dust catcher.
 Data source: static furnace dataset CSV (``src/assets/data/furnace_dataset.csv``).
 
 Layout:
-    Top row : date picker | Refresh | dust catcher input | overall closure KPI
+    Top row : date picker | refresh | dust catcher input
+    Summary : prominent overall-closure status card + totals
     Left 70%: 3 tabs — Sankey | Per-element bars | Closure table
     Right 30%: lightweight furnace cross-section diagram
     Bottom  : Lag settings expander, DPR mapping expander, Assumptions expander
@@ -67,7 +68,7 @@ else:
 
 # ── Top control row ───────────────────────────────────────────────────
 yesterday = date.today() - timedelta(days=1)
-ctrl1, ctrl2, ctrl3, ctrl4 = st.columns([0.22, 0.10, 0.26, 0.42])
+ctrl1, ctrl2, ctrl3 = st.columns([0.30, 0.18, 0.52])
 
 with ctrl1:
     selected_day = st.date_input(
@@ -79,8 +80,8 @@ with ctrl1:
     )
 
 with ctrl2:
-    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    if st.button("🔄 Refresh", width='stretch'):
+    st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
+    if st.button("Refresh data", width="stretch"):
         clear_day_caches(selected_day)
         st.rerun()
 
@@ -143,29 +144,47 @@ with st.spinner("Computing element balance …"):
     )
 
 # ── KPI tile ──────────────────────────────────────────────────────────
-with ctrl4:
-    ct = result.closure_table
-    total_in = ct["In_t"].sum()
-    total_out = ct["Out_t"].sum()
-    overall_pct = (total_out / total_in * 100.0) if total_in > 0 else 0.0
-    colour = (
-        "green"
-        if 95 <= overall_pct <= 105
-        else "orange"
-        if 85 <= overall_pct <= 115
-        else "red"
-    )
-    st.markdown(
-        f"**Overall closure:** "
-        f"<span style='color:{colour};font-size:1.4rem'>{overall_pct:.1f} %</span>"
-        f"&nbsp;(In {total_in:,.0f} t / Out {total_out:,.0f} t)"
-        + (
-            f"&nbsp;·&nbsp;HM {result.gas_phase.get('hm_mass_t', 0):,.0f} t"
-            if result.gas_phase.get("hm_mass_t", 0) > 0
-            else ""
-        ),
-        unsafe_allow_html=True,
-    )
+ct = result.closure_table
+total_in = ct["In_t"].sum()
+total_out = ct["Out_t"].sum()
+overall_pct = (total_out / total_in * 100.0) if total_in > 0 else 0.0
+hm_t = result.gas_phase.get("hm_mass_t", 0)
+
+if 95 <= overall_pct <= 105:
+    status_label = "Good"
+    accent = "#166534"
+    bg = "#f0fdf4"
+elif 85 <= overall_pct <= 115:
+    status_label = "Warning"
+    accent = "#b45309"
+    bg = "#fffbeb"
+else:
+    status_label = "Critical"
+    accent = "#b91c1c"
+    bg = "#fef2f2"
+
+st.markdown(
+    f"""
+<div style="
+    border-left:6px solid {accent};
+    background:{bg};
+    border-radius:10px;
+    padding:0.75rem 1rem 0.85rem;
+    margin:0.2rem 0 0.7rem 0;">
+  <div style="font-size:0.82rem;color:#64748b;font-weight:700;letter-spacing:0.02em;">
+    Overall closure | {status_label}
+  </div>
+  <div style="font-size:2rem;font-weight:800;line-height:1.1;color:{accent};">
+    {overall_pct:.1f} %
+  </div>
+  <div style="font-size:0.92rem;color:#334155;margin-top:0.22rem;">
+    In {total_in:,.0f} t | Out {total_out:,.0f} t
+    {f"| HM {hm_t:,.0f} t" if hm_t > 0 else ""}
+  </div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 # ── Warnings bar ──────────────────────────────────────────────────────
 for w in result.warnings:
@@ -366,4 +385,3 @@ will split into CO₂ + H₂O via per-material yml config.
 **Unaccounted stream**: Sludge and granulation losses not yet modelled.
 """
     )
-
