@@ -102,6 +102,16 @@ class SystemPromptContext:
         self.memory = load_fm_memory()
         self._persistent = build_persistent_context(self.memory)
 
+    def refresh_session_context(self) -> None:
+        """Refresh all per-session data (memory + recent tool errors).
+
+        Call this once per render on the cached SystemPromptContext instance so
+        that new conversation turns and new tool errors are picked up without
+        re-loading the expensive static files (TOOLS*.md, CLAUDE.md).
+        """
+        self.refresh_memory()
+        self._errors = self._load_errors()
+
     # ── Private loaders ─────────────────────────────────────────────────────
 
     def _load_static(self) -> str:

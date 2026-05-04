@@ -49,6 +49,9 @@ def _render_form(ticket_service: TicketService) -> None:
 
     page_options = get_feedback_page_options()
     auth_user = str(st.session_state.get("auth_user", "")).strip()
+    if "feedback_upload_nonce" not in st.session_state:
+        st.session_state["feedback_upload_nonce"] = 0
+    uploader_key = f"feedback_upload_{st.session_state['feedback_upload_nonce']}"
 
     with st.form("feedback_create_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
@@ -82,10 +85,8 @@ def _render_form(ticket_service: TicketService) -> None:
             "Screenshots (optional)",
             type=["png", "jpg", "jpeg", "webp"],
             accept_multiple_files=True,
-            help=(
-                f"Up to {MAX_UPLOAD_FILES} files, max {MAX_UPLOAD_SIZE_MB} MB each. "
-                "Supported: png, jpg, jpeg, webp."
-            ),
+            help=f"Up to {MAX_UPLOAD_FILES} files, max {MAX_UPLOAD_SIZE_MB} MB each.",
+            key=uploader_key,
         )
         if uploaded_files:
             st.caption("Preview")
@@ -120,6 +121,7 @@ def _render_form(ticket_service: TicketService) -> None:
         return
 
     st.success(f"Ticket {created_ticket.ticket_code} created successfully.")
+    st.session_state["feedback_upload_nonce"] += 1
     st.rerun()
 
 

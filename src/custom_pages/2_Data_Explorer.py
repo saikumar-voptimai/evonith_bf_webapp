@@ -13,7 +13,8 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from config.config_loader import load_config
-from data import retrieval as dr
+from furnace_data.influx.online import fetch_online_df
+from furnace_data.influx.offline import fetch_offline_data, clean_rm_data
 from furnace_data.dataset.fetcher import DatasetFetcher as MlDatasetFetcher
 from data.ml.static_csv import get_static_dataset_path, load_static_dataset
 from data.ml.static_dataset_manager import StaticDatasetManager
@@ -222,7 +223,23 @@ with st.sidebar:
             "To Date", value=pd.to_datetime(df.index[-1]).date(), key="to_date2"
         )
 
-features = st.multiselect("Select features", df.columns, default=df.columns[0])
+_col_search = st.text_input(
+    "Search columns",
+    placeholder="Type to filter the column list…",
+    key="de_ts_col_search",
+)
+_all_cols = list(df.columns)
+_filtered_cols = (
+    [c for c in _all_cols if _col_search.strip().lower() in c.lower()]
+    if _col_search.strip()
+    else _all_cols
+)
+features = st.multiselect(
+    f"Select features ({len(_filtered_cols)} shown)",
+    options=_filtered_cols,
+    default=[_filtered_cols[0]] if _filtered_cols else [],
+)
+
 df_t = df[
     (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date >= from_date)
     & (pd.to_datetime(df.index, format="%d-%m-%Y %H:%M").date <= to_date)
@@ -230,7 +247,9 @@ df_t = df[
 cols = st.columns([0.3, 0.15, 0.15, 0.1, 0.3])
 with cols[0]:
     filter_feature = st.selectbox(
-        "Select feature to filter by", df.columns, index=int(len(df.columns) - 3)
+        "Filter by", _filtered_cols or _all_cols,
+        index=min(max(len((_filtered_cols or _all_cols)) - 3, 0), len((_filtered_cols or _all_cols)) - 1),
+        key="de_ts_filter_feature",
     )
 with cols[1]:
     average_range = st.selectbox(
@@ -250,7 +269,7 @@ df_filtered = df_t[
 ]
 
 if FREQUENCY_TO_TIMEDTA[average_range] is not None:
-    df_avg = dr.average_data(df_filtered, FREQUENCY_TO_TIMEDTA[average_range])
+    df_avg = df_filtered.resample(FREQUENCY_TO_TIMEDTA[average_range]).mean(numeric_only=True)
 else:
     df_avg = df_filtered.copy()
 
@@ -394,7 +413,7 @@ with st.form(key="measurement_form"):
             st.warning("Please select at least one measurement.")
             st.stop()
 
-        sm.online_df = dr.fetch_online_df(
+        sm.online_df = fetch_online_df(
             sorted(sm.selected_measurements),
             sm.time_range,
             request_type="windowed-average",
@@ -480,7 +499,7 @@ if submitted:
     else:
         time_range_to_fetch = time_range_choice
 
-    df_offline = dr.fetch_offline_data(
+    df_offline = fetch_offline_data(
         measurement=offline_measurements[selected_offline],
         time_range=time_range_to_fetch,
         database=database,
@@ -491,7 +510,7 @@ if submitted:
         st.stop()
 
     if selected_offline == "rm_data":
-        df_offline = dr.clean_rm_data(df_offline)
+        df_offline = clean_rm_data(df_offline)
 
     # Index is already UTC → convert once
     df_offline.index = df_offline.index.tz_convert(local_tz)

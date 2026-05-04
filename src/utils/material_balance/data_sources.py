@@ -52,7 +52,7 @@ import streamlit as st
 
 from furnace_data.influx.base import BaseDataFetcher
 from data.ml.static_csv import get_static_dataset_path
-from data.retrieval import clean_rm_data, fetch_offline_data
+from furnace_data.influx.offline import clean_rm_data, fetch_offline_data
 
 log = logging.getLogger("root")
 

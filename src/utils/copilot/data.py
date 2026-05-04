@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from data.fetch_presets import ONLINE_MEASUREMENT_LABELS
-from data import retrieval as dr
+from furnace_data.influx.online import fetch_online_df
 
 MEASUREMENT_LABELS = ONLINE_MEASUREMENT_LABELS
 
@@ -28,10 +28,9 @@ def fetch_recent_online(
     tr:       InfluxDB time-range string, e.g. ``"last 8 hours"``.
     window_by: Aggregation window, e.g. ``"15 minutes"`` or ``"1 hour"``.
     """
-    return dr.fetch_online_df(
+    return fetch_online_df(
         selected_measurements=list(MEASUREMENT_LABELS.keys()),
         time_range=tr,
-        request_type="windowed-average",
         window_by=window_by,
     )
 

@@ -394,52 +394,52 @@ def build_furnace_diagram(
 
     # --- Input streams (left side) ---
     _draw_stream_arrow(
-        fig, fx=-2.9, fy=19.5, lx=-8.5, ly=19.5,
+        fig, fx=-2.9, fy=19.5, lx=-7.2, ly=19.5,
         text=f"Burden: {in_streams.get('Burden', 0):,.0f} t",
         colour="#a23b3b", label_side="left",
     )
     _draw_stream_arrow(
-        fig, fx=-4.0, fy=8.0, lx=-8.5, ly=8.0,
-        text=f"Hot Blast + O₂: {in_streams.get('Hot Blast', 0):,.0f} t",
+        fig, fx=-4.0, fy=8.0, lx=-7.2, ly=8.0,
+        text=f"Blast + O2: {in_streams.get('Hot Blast', 0):,.0f} t",
         colour="#3a9bd6", label_side="left",
     )
     _draw_stream_arrow(
-        fig, fx=-4.0, fy=6.5, lx=-8.5, ly=6.5,
+        fig, fx=-4.0, fy=6.5, lx=-7.2, ly=6.5,
         text=f"PCI + Steam: {in_streams.get('PCI', 0):,.0f} t",
         colour="#a1845b", label_side="left",
     )
 
     # --- Output streams (right side) ---
     _draw_stream_arrow(
-        fig, fx=2.9, fy=19.5, lx=8.5, ly=19.5,
+        fig, fx=2.9, fy=19.5, lx=7.2, ly=19.5,
         text=f"Top Gas: {out_streams.get('Top Gas', 0):,.0f} t",
         colour="#6f4e8b", label_side="right",
     )
     dust_t = out_streams.get("Dust Catcher", 0.0)
     _draw_stream_arrow(
-        fig, fx=3.2, fy=17.5, lx=8.5, ly=17.5,
+        fig, fx=3.2, fy=17.5, lx=7.2, ly=17.5,
         text=f"Dust: {dust_t:,.0f} t" if dust_t > 0 else "Dust Catcher: —",
         colour="#888888" if dust_t > 0 else "#bbbbbb",
         label_side="right",
     )
     _draw_stream_arrow(
-        fig, fx=4.0, fy=5.5, lx=8.5, ly=5.5,
+        fig, fx=4.0, fy=5.5, lx=7.2, ly=5.5,
         text=f"Slag: {out_streams.get('Slag', 0):,.0f} t",
         colour="#7a571c", label_side="right",
     )
     _draw_stream_arrow(
-        fig, fx=4.0, fy=3.8, lx=8.5, ly=3.8,
+        fig, fx=4.0, fy=3.8, lx=7.2, ly=3.8,
         text=f"Hot Metal: {out_streams.get('Hot Metal', 0):,.0f} t",
         colour="#b8281f", label_side="right",
     )
 
     fig.update_layout(
         height=680,
-        margin=dict(l=10, r=10, t=10, b=10),
+        margin=dict(l=18, r=18, t=10, b=10),
         plot_bgcolor="white",
         paper_bgcolor="white",
         showlegend=False,
-        xaxis=dict(range=[-11, 11], visible=False),
+        xaxis=dict(range=[-11.5, 11.5], visible=False),
         yaxis=dict(range=[-0.5, 22], visible=False),
     )
     return fig
@@ -498,7 +498,7 @@ def _draw_stream_arrow(
         x=lx, y=ly,
         text=text,
         showarrow=False,
-        font=dict(size=11, color=colour, family="Arial"),
+        font=dict(size=10, color=colour, family="Arial"),
         xanchor="right" if label_side == "left" else "left",
         yanchor="middle",
         bgcolor="rgba(255,255,255,0.75)",

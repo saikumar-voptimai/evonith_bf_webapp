@@ -5,91 +5,111 @@ from datetime import date
 import streamlit as st
 
 from ui.components import show_report
-from utils.window_helpers import build_day_window_id, fetch_from_qdrant
+from utils.window_helpers import fetch_from_qdrant
 
 
-def _run_live_shift_report(d: date, label: str, *, status_box) -> str:
-    """Fetch data, build metrics, run LLM analysis — no agent loop."""
+def _run_live_shift_report(
+    shift_date: date,
+    shift_label: str,
+    *,
+    include_analysis: bool,
+    status_box,
+) -> str:
+    """Fetch live shift data and render markdown report text."""
     from agents.llm.llm_client import OpenRouterClient
     from reports.shift_report import ShiftReportService
 
-    status_box.status("Fetching shift data…", expanded=False)
-    _, markdown = ShiftReportService(llm_client=OpenRouterClient()).generate(d, label)
+    status_box.status("Fetching shift data...", expanded=False)
+    _, markdown = ShiftReportService(llm_client=OpenRouterClient()).generate(
+        shift_date,
+        shift_label,
+        include_analysis=include_analysis,
+    )
     return markdown
 
 
-def render_reports(*, vector_store) -> None:
-    """Renders the Reports page with Qdrant (historical) or Live (on-the-fly LLM) modes."""
+def render_reports() -> None:
+    """Render the Reports tab with saved and live shift report options."""
+    st.header("Reports")
 
-    st.header("📊 Reports")
-    st.markdown(
-        """
-    <style>
-    div[data-testid="stForm"] {
-        border: none !important;
-        padding: 0 !important;
-        background-color: transparent !important;
-    }
-    </style>
-    """,
-        unsafe_allow_html=True,
-    )
+    with st.form(key="report_form_main"):
+        controls_left, controls_right = st.columns(2)
 
-    st.sidebar.text("Report Type (Shift)")
+        with controls_left:
+            report_type = st.selectbox("Report Type", ["Shift"], index=0)
+            source = st.radio(
+                "Source",
+                ["Saved", "Live"],
+                horizontal=True,
+                help=(
+                    "Saved: fetch a pre-stored shift summary.\n\n"
+                    "Live: generate report on-the-fly from raw data."
+                ),
+            )
+            selected_date = st.date_input("Date", date.today())
 
-    # ── Source selector ──────────────────────────────────────────────────────
-    source = st.sidebar.radio(
-        "Source",
-        ["Saved", "Live"],
-        horizontal=True,
-        help=(
-            "**Saved** — fetch a pre-stored shift summary.\n\n"
-            "**Live** — generate the report on-the-fly from raw InfluxDB data."
-        ),
-    )
+        with controls_right:
+            shift_label = st.selectbox("Shift", ["A", "B", "C"])
+            agentic_analysis = st.toggle(
+                "Agentic analysis",
+                value=False,
+                help="When enabled, compare current shift against previous shift.",
+            )
 
-    # ── Report form ──────────────────────────────────────────────────────────
-    with st.sidebar.form(key="report_form"):
-        selected_date = st.date_input("Select date", date.today())
-        shift_label = st.selectbox("Select shift", ["A", "B", "C"])
-        btn_label = "Generate Report" if source == "Live" else "Fetch Report"
-        fetch_report = st.form_submit_button(btn_label)
+            st.caption(
+                f"Selected: {report_type} report | {source} source | "
+                f"{selected_date:%Y-%m-%d} Shift {shift_label}"
+            )
 
-    if not fetch_report:
+        generate_report = st.form_submit_button(
+            "Generate Report",
+            use_container_width=True,
+        )
+
+    if not generate_report:
         return
 
     window_id = f"{selected_date:%Y-%m-%d}_SHIFT_{shift_label}"
 
-    # ── DB-Saved mode ──────────────────────────────────────────────────────────
     if source == "Saved":
+        from agents.memory.vector_store import QdrantVectorStore
+
+        vector_store = QdrantVectorStore()
         payload = fetch_from_qdrant(vector_store, window_id)
         if payload:
-            show_report(f"📄 Report ({window_id})", payload["summary_text"])
+            show_report(f"Report ({window_id})", payload["summary_text"])
         else:
             st.warning(
-                f"No report found in DB-Saved for **{window_id}**. "
-                "Try the **Live** source to generate one on-the-fly."
+                f"No saved report found for {window_id}. "
+                "Try Live source to generate one."
             )
         return
 
-    # ── Live mode ────────────────────────────────────────────────────────────
-    cache_key = f"live_report_{window_id}"
+    analysis_mode = "agentic" if agentic_analysis else "plain"
+    cache_key = f"live_report_{window_id}_{analysis_mode}"
 
-    # Show cached result immediately (avoid re-generating on widget interaction)
     if cache_key in st.session_state:
-        st.info(f"Showing cached live report for **{window_id}**. Re-submit to refresh.")
-        show_report(f"⚡ Live Report ({window_id})", st.session_state[cache_key])
+        st.info(
+            "Showing cached live report for "
+            f"{window_id} ({analysis_mode}). Re-submit to refresh."
+        )
+        show_report(f"Live Report ({window_id})", st.session_state[cache_key])
         return
 
     status_box = st.empty()
+    spinner_message = (
+        f"Generating live report for {window_id} "
+        "from source data" + (" and LLM analysis..." if agentic_analysis else "...")
+    )
 
-    with st.spinner(
-        f"Generating live report for **{window_id}** — fetching InfluxDB data and calling LLM…"
-    ):
+    with st.spinner(spinner_message):
         report_text = _run_live_shift_report(
-            selected_date, shift_label, status_box=status_box
+            selected_date,
+            shift_label,
+            include_analysis=agentic_analysis,
+            status_box=status_box,
         )
 
     status_box.empty()
     st.session_state[cache_key] = report_text
-    show_report(f"⚡ Live Report ({window_id})", report_text)
+    show_report(f"Live Report ({window_id})", report_text)

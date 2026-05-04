@@ -73,7 +73,7 @@ def build_attachment_payloads(uploaded_files: Sequence[Any]) -> list[TicketImage
 
 
 def render_overview_kpis(tickets: Sequence[TicketView]) -> None:
-    """Render compact KPI cards for Feedback case overview."""
+    """Render compact KPI cards for feedback case overview."""
     open_count = sum(ticket.status == TicketStatus.OPEN.value for ticket in tickets)
     progress_count = sum(
         ticket.status == TicketStatus.IN_PROGRESS.value for ticket in tickets
@@ -113,11 +113,15 @@ def build_events_dataframe(events: Sequence[TicketEventView]) -> pd.DataFrame:
             ],
             "Type": [event.event_type for event in events],
             "From": [
-                event.old_status.replace("_", "-") if event.old_status else "-"
+                TicketService.status_label(event.old_status)
+                if event.old_status
+                else "-"
                 for event in events
             ],
             "To": [
-                event.new_status.replace("_", "-") if event.new_status else "-"
+                TicketService.status_label(event.new_status)
+                if event.new_status
+                else "-"
                 for event in events
             ],
             "Actor": [event.actor for event in events],
@@ -144,6 +148,7 @@ def render_ticket_images_gallery(images: Sequence[TicketImageView]) -> None:
                 if project_candidate.exists()
                 else Path.cwd() / image_path
             )
+
         with cols[idx % 3]:
             if not full_path.exists():
                 st.caption(f"{image.original_filename} (missing file)")
@@ -153,16 +158,6 @@ def render_ticket_images_gallery(images: Sequence[TicketImageView]) -> None:
                 caption=image.original_filename,
                 use_container_width=True,
             )
-            with st.expander("View metadata", expanded=False):
-                st.write(
-                    {
-                        "Uploaded by": image.uploaded_by,
-                        "Uploaded at": image.created_at.astimezone().strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
-                        "Path": image.image_path,
-                    }
-                )
 
 
 def render_management_panel(
@@ -255,7 +250,7 @@ def render_management_panel(
             except (PermissionError, ValueError) as exc:
                 st.error(str(exc))
 
-    with st.expander("Selected Case Event History", expanded=False):
+    with st.expander("Selected Case Event History", expanded=False, key="fb_event_history"):
         events = ticket_service.list_events(selected_ticket.id)
         if not events:
             st.info("No events available for this ticket.")
@@ -267,18 +262,31 @@ def render_management_panel(
             )
 
 
+def _build_ticket_table(tickets: Sequence[TicketView]) -> pd.DataFrame:
+    """Build dataframe for the selectable ticket table."""
+    return pd.DataFrame(
+        [
+            {
+                "Code": ticket.ticket_code,
+                "Page": ticket.page_name,
+                "Criticality": TicketService.criticality_label(ticket.criticality),
+                "Status": TicketService.status_label(ticket.status),
+                "Reporter": ticket.reported_by,
+                "Created": ticket.created_at.astimezone().strftime("%Y-%m-%d %H:%M"),
+            }
+            for ticket in tickets
+        ]
+    )
+
+
 def render_board(
     ticket_service: TicketService,
     status_options: Sequence[str],
     criticality_options: Sequence[str],
 ) -> None:
-    """Render ticket board filters and detail cards with image previews."""
+    """Render ticket board with selectable table and detail panel."""
     st.markdown(
-        "<div class='feedback-section-title'>All Cases</div>", unsafe_allow_html=True
-    )
-    st.markdown(
-        "<div class='feedback-note'>All logged-in users can view cases. "
-        "Status and delete controls are role-restricted.</div>",
+        "<div class='feedback-section-title'>All Cases</div>",
         unsafe_allow_html=True,
     )
 
@@ -288,7 +296,7 @@ def render_board(
     today = date.today()
     default_from = today - timedelta(days=30)
 
-    with st.expander("Filters", expanded=True):
+    with st.expander("Filters", expanded=True, key="fb_filters"):
         f1, f2, f3 = st.columns(3)
         with f1:
             selected_statuses = st.multiselect(
@@ -306,10 +314,7 @@ def render_board(
             selected_reporters = st.multiselect("Reporter", options=reporter_options)
         with f3:
             keyword = st.text_input("Keyword", placeholder="code, issue text, user...")
-            date_range = st.date_input(
-                "Created date range",
-                value=(default_from, today),
-            )
+            date_range = st.date_input("Created date range", value=(default_from, today))
 
     date_from: date | None = None
     date_to: date | None = None
@@ -332,70 +337,118 @@ def render_board(
     )
 
     if not tickets:
-        st.markdown(
-            "<div class='feedback-board-empty'>No tickets found for the current filters.</div>",
-            unsafe_allow_html=True,
-        )
+        st.session_state.pop("fb_selected_ticket_code", None)
+        st.info("No tickets found for the current filters.")
         return
 
-    can_manage = is_admin() or is_supervisor()
-    actor = str(st.session_state.get("auth_user", "")).strip()
-    actor_role = str(st.session_state.get("role", "")).strip().lower()
+    ticket_map = {ticket.ticket_code: ticket for ticket in tickets}
+    table_df = _build_ticket_table(tickets)
+    table_height = min(420, max(180, 62 + (len(table_df) * 35)))
 
-    for ticket in tickets:
-        status_label = TicketService.status_label(ticket.status)
-        criticality_label = TicketService.criticality_label(ticket.criticality)
+    left_col, right_col = st.columns([0.44, 0.56], gap="large")
+
+    with left_col:
+        st.caption(f"{len(tickets)} ticket(s) - click a row to view details")
+        selection = st.dataframe(
+            table_df,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="fb_ticket_table",
+            height=table_height,
+        )
+
+    selected_rows = (selection.selection.get("rows") or []) if selection else []
+    selected_code: str | None = None
+    if selected_rows:
+        selected_row_idx = selected_rows[0]
+        if 0 <= selected_row_idx < len(table_df):
+            selected_code = str(table_df.iloc[selected_row_idx]["Code"])
+
+    if selected_code:
+        st.session_state["fb_selected_ticket_code"] = selected_code
+    else:
+        remembered_code = st.session_state.get("fb_selected_ticket_code")
+        if isinstance(remembered_code, str) and remembered_code in ticket_map:
+            selected_code = remembered_code
+        elif len(tickets) == 1:
+            selected_code = tickets[0].ticket_code
+            st.session_state["fb_selected_ticket_code"] = selected_code
+        else:
+            st.session_state.pop("fb_selected_ticket_code", None)
+
+    selected_ticket = ticket_map.get(selected_code) if selected_code else None
+
+    with right_col:
+        if selected_ticket is None:
+            st.markdown(
+                "<div class='feedback-board-empty'>Select a ticket from the left table to view details.</div>",
+                unsafe_allow_html=True,
+            )
+            return
+
+        ticket = selected_ticket
+        can_manage = is_admin() or is_supervisor()
+        actor = str(st.session_state.get("auth_user", "")).strip()
+        actor_role = str(st.session_state.get("role", "")).strip().lower()
+
         status_css_class = f"feedback-chip-status-{ticket.status.replace('_', '-')}"
         criticality_css_class = f"feedback-chip-criticality-{ticket.criticality}"
 
-        st.markdown("<div class='feedback-board-card'>", unsafe_allow_html=True)
-        c1, c2, c3, c4 = st.columns([1.45, 1.35, 1.2, 1.9])
+        st.markdown(f"### `{ticket.ticket_code}` - {ticket.page_name}")
+        c1, c2 = st.columns(2)
         with c1:
-            st.markdown(f"**`{ticket.ticket_code}`**")
-        with c2:
-            st.markdown(ticket.page_name)
-        with c3:
             st.markdown(
-                render_chip(criticality_label.lower(), criticality_css_class),
+                render_chip(
+                    TicketService.status_label(ticket.status),
+                    status_css_class,
+                ),
                 unsafe_allow_html=True,
             )
-        with c4:
+        with c2:
             st.markdown(
-                render_chip(status_label, status_css_class),
+                render_chip(
+                    TicketService.criticality_label(ticket.criticality).lower(),
+                    criticality_css_class,
+                ),
                 unsafe_allow_html=True,
             )
 
         st.markdown(
-            f"<div class='feedback-meta'>Raised by <b>{ticket.reported_by}</b> "
-            f"on {ticket.created_at.astimezone().strftime('%Y-%m-%d %H:%M:%S')} | "
-            f"Last updated by <b>{ticket.updated_by}</b> on "
-            f"{ticket.updated_at.astimezone().strftime('%Y-%m-%d %H:%M:%S')}</div>",
+            f"<div class='feedback-meta'><b>Reporter:</b> {ticket.reported_by} | "
+            f"<b>Created:</b> {ticket.created_at.astimezone().strftime('%Y-%m-%d %H:%M')} | "
+            f"<b>Updated by:</b> {ticket.updated_by} | "
+            f"<b>Updated:</b> {ticket.updated_at.astimezone().strftime('%Y-%m-%d %H:%M')}</div>",
             unsafe_allow_html=True,
         )
 
-        with st.expander(f"Open {ticket.ticket_code} details", expanded=False):
-            st.markdown("**Issue description**")
-            st.write(ticket.description)
+        st.markdown("**Issue description**")
+        st.write(ticket.description)
+        if ticket.ideal_closure_text:
             st.markdown("**Ideal closure**")
             st.write(ticket.ideal_closure_text)
-            render_ticket_images_gallery(ticket_service.list_ticket_images(ticket.id))
 
-            if can_manage:
-                st.markdown("**Quick status update**")
-                with st.form(f"status_update_form_{ticket.id}"):
-                    next_status = st.selectbox(
-                        "New status",
-                        options=status_options,
-                        index=list(status_options).index(ticket.status),
-                        format_func=TicketService.status_label,
-                    )
-                    update_comment = st.text_area(
-                        "Update comment",
-                        placeholder="Optional progress note...",
-                        max_chars=600,
-                    )
-                    submit_status = st.form_submit_button("Update Status")
-                if submit_status:
+        images = ticket_service.list_ticket_images(ticket.id)
+        if images:
+            render_ticket_images_gallery(images)
+
+        if can_manage:
+            st.markdown("**Update status**")
+            with st.form(f"status_update_form_{ticket.id}"):
+                next_status = st.selectbox(
+                    "New status",
+                    options=status_options,
+                    index=list(status_options).index(ticket.status),
+                    format_func=TicketService.status_label,
+                    key=f"status_sel_{ticket.id}",
+                )
+                update_comment = st.text_area(
+                    "Comment",
+                    placeholder="Optional note...",
+                    max_chars=600,
+                )
+                if st.form_submit_button("Update Status", type="primary"):
                     try:
                         ticket_service.update_status(
                             TicketStatusUpdateRequest(
@@ -407,22 +460,17 @@ def render_board(
                             )
                         )
                         st.success(
-                            f"{ticket.ticket_code} updated to "
-                            f"{TicketService.status_label(next_status)}."
+                            f"Updated to {TicketService.status_label(next_status)}."
                         )
                         st.rerun()
                     except (PermissionError, ValueError) as exc:
                         st.error(str(exc))
-            else:
-                st.info("Status updates are available only for admin/supervisor roles.")
 
-            events = ticket_service.list_events(ticket.id)
-            if events:
-                st.markdown("**Event history**")
+        events = ticket_service.list_events(ticket.id)
+        if events:
+            with st.expander("Event history", expanded=False, key=f"fb_events_{ticket.id}"):
                 st.dataframe(
                     build_events_dataframe(events),
                     use_container_width=True,
                     hide_index=True,
                 )
-
-        st.markdown("</div>", unsafe_allow_html=True)

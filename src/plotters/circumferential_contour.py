@@ -63,7 +63,7 @@ class CircumferentialPlotter(BasePlotter):
         colorscale="YlOrRd",
         colorbar_title="Heat Load (GJ)",
         unit="GJ",
-        resolution=120,  # smoother than 36
+        resolution=36,  # 36 pts/ring is visually smooth and 3× fewer Plotly traces than 120
         HORIZ_PLOTS=5,
         show_colorbar=True,
     ):
