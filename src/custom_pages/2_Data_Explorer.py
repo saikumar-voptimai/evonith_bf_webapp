@@ -1,3 +1,10 @@
+"""Data Explorer page for the Blast Furnace dashboard.
+
+Provides interactive tools for distribution and timeseries visualisation of the
+ML dataset, downloading online InfluxDB measurements, browsing offline InfluxDB
+reports, and fetching Neon DB offline tables.
+"""
+
 import os
 import sys
 from datetime import date, datetime, time, timedelta
@@ -96,7 +103,6 @@ NEON_OFFLINE_TABLES = [
 
 NEON_QUERY_TYPES = {
     "Raw data": "ts",
-
 }
 
 st.title("Visualisation tool")
@@ -653,6 +659,11 @@ local_tz = ZoneInfo(config["ml_dataset"]["local_tz"])
 # IMPORTANT: create once so cache survives reruns
 @st.cache_resource
 def get_fetcher():
+    """Create and cache the MlDatasetFetcher instance for the lifetime of the app session.
+
+    Returns:
+         - MlDatasetFetcher
+    """
     return MlDatasetFetcher()
 
 

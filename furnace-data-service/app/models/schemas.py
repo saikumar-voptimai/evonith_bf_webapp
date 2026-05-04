@@ -8,11 +8,15 @@ from pydantic import BaseModel, Field
 
 
 class RmChoice(str, Enum):
+    """Raw material source selection for ML dataset construction."""
+
     charge = "charge"
     dpr = "dpr"
 
 
 class TaskStatus(str, Enum):
+    """Lifecycle states for background dataset fetch tasks."""
+
     pending = "pending"
     running = "running"
     completed = "completed"
@@ -20,6 +24,8 @@ class TaskStatus(str, Enum):
 
 
 class QueryType(str, Enum):
+    """Aggregation mode applied to InfluxDB or Neon query results."""
+
     ts = "ts"
     windowed_average = "windowed-average"
     average = "average"
@@ -27,16 +33,22 @@ class QueryType(str, Enum):
 
 
 class OfflineDataSource(str, Enum):
+    """Backend store used to serve offline furnace data."""
+
     influx = "influx"
     neon_db = "neon_db"
 
 
 class ResponseFormat(str, Enum):
+    """HTTP response encoding for data fetch endpoints."""
+
     json = "json"
     csv = "csv"
 
 
 class OfflineReportType(str, Enum):
+    """Logical category identifiers for offline report data."""
+
     hm_slag = "HM_SLAG"
     charge = "CHARGE"
     rm_composition = "RM_COMPOSITION"
@@ -44,6 +56,8 @@ class OfflineReportType(str, Enum):
 
 
 class NeonOfflineTable(str, Enum):
+    """Whitelisted Neon/PostgreSQL table names for offline data access."""
+
     charge_data = "charge_data"
     dpr_data = "dpr_data"
     flux_chemistry = "flux_chemistry"
@@ -58,6 +72,8 @@ class NeonOfflineTable(str, Enum):
 # ---- Online/Offline requests ----
 
 class OnlineFetchRequest(BaseModel):
+    """Request body for POST /data/online/fetch."""
+
     measurements: List[str] = Field(
         ...,
         description="One or more of: process_params, temperature_profile, heatload_delta_t, cooling_water, delta_t, miscellaneous",
@@ -76,6 +92,8 @@ class OnlineFetchRequest(BaseModel):
 
 
 class OfflineFetchRequest(BaseModel):
+    """Request body for POST /data/offline/fetch."""
+
     report_type: OfflineReportType
     source: OfflineDataSource = Field(
         OfflineDataSource.influx,
@@ -106,6 +124,8 @@ class OfflineFetchRequest(BaseModel):
 # ---- Online/Offline responses ----
 
 class DataMeta(BaseModel):
+    """Metadata block included in every DataFetchResponse."""
+
     measurements: Optional[List[str]] = None
     report_type: Optional[str] = None
     source: Optional[str] = None
@@ -119,6 +139,8 @@ class DataMeta(BaseModel):
 
 
 class DataFetchResponse(BaseModel):
+    """Standard JSON envelope returned by online and offline data fetch endpoints."""
+
     meta: DataMeta
     columns: List[str]
     data: List[Dict[str, Any]]
@@ -127,6 +149,8 @@ class DataFetchResponse(BaseModel):
 # ---- Dataset (ML) requests ----
 
 class FetchDatasetRequest(BaseModel):
+    """Request body for triggering an ML dataset fetch over a date range."""
+
     start_date: date
     end_date: date
     rm_choice: RmChoice = RmChoice.charge
@@ -136,6 +160,8 @@ class FetchDatasetRequest(BaseModel):
 
 
 class UpdateStaticRequest(BaseModel):
+    """Request body for rebuilding the static filtered ML dataset file."""
+
     rm_choice: RmChoice = RmChoice.charge
     reprocess_from: Optional[date] = Field(None, description="Recompute from this date onwards")
     apply_cleaning: bool = True
@@ -145,12 +171,16 @@ class UpdateStaticRequest(BaseModel):
 # ---- Responses ----
 
 class TaskCreatedResponse(BaseModel):
+    """Response returned when a background dataset task has been accepted."""
+
     task_id: str
     status: TaskStatus = TaskStatus.pending
     message: str = "Task created"
 
 
 class TaskStatusResponse(BaseModel):
+    """Status snapshot for a running or completed background task."""
+
     task_id: str
     status: TaskStatus
     progress: Optional[str] = None
@@ -162,6 +192,8 @@ class TaskStatusResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    """Response body for the service healthcheck endpoint."""
+
     status: str = "ok"
     version: str = "0.1.0"
 
@@ -169,6 +201,8 @@ class HealthResponse(BaseModel):
 # ---- Live RM data ----
 
 class RmLiveFetchRequest(BaseModel):
+    """Request body for POST /data/rm/live."""
+
     lookback_days: int = Field(10, ge=1, le=365, description="Days of history to fetch")
     cadence: str = Field("8h", description="Aggregation cadence: '8h', '1h', or '1d'")
     format: ResponseFormat = ResponseFormat.json

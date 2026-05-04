@@ -37,7 +37,20 @@ def fetch_neon_offline(
     query_type: str = "ts",
     window: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Fetch offline data from Neon for a report type or explicit table."""
+    """Fetch offline data from Neon/PostgreSQL for a given report type or explicit table.
+
+    Args:
+         - report_type: str - Offline report key (e.g. "HM_SLAG", "CHARGE"). Must be in NEON_OFFLINE_REPORT_MAP unless table_name is supplied.
+         - start_time: Optional[datetime] - UTC start of the query range. Ignored when preset is set.
+         - end_time: Optional[datetime] - UTC end of the query range. Ignored when preset is set.
+         - preset: Optional[str] - Named time window (e.g. "last 1 month"). Overrides start_time/end_time.
+         - table_name: Optional[str] - Explicit Neon table name override; falls back to NEON_OFFLINE_REPORT_MAP[report_type].
+         - query_type: str - Aggregation mode: "ts" for raw rows, "windowed-average" for time-bucketed averages, "average" for a single aggregate row.
+         - window: Optional[str] - PostgreSQL interval string used with "windowed-average" (e.g. "1 hour", "15 minutes").
+
+    Returns:
+         - pd.DataFrame - Time-indexed DataFrame with UTC-aware index.
+    """
     table = table_name or NEON_OFFLINE_REPORT_MAP.get(report_type)
     if not table or table not in NEON_OFFLINE_TABLES:
         raise ValueError(
@@ -49,7 +62,9 @@ def fetch_neon_offline(
     if preset:
         delta = PRESET_TIMEDELTAS.get(preset.lower())
         if delta is None:
-            raise ValueError(f"Unknown preset '{preset}'. Valid: {list(PRESET_TIMEDELTAS)}")
+            raise ValueError(
+                f"Unknown preset '{preset}'. Valid: {list(PRESET_TIMEDELTAS)}"
+            )
         start_time = now - delta
         end_time = now
     elif start_time is None or end_time is None:

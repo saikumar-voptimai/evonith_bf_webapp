@@ -49,7 +49,17 @@ def _df_to_response(
     filename: str,
     meta: DataMeta,
 ) -> Any:
-    """Return JSON response or streaming CSV depending on requested format."""
+    """Serialise a DataFrame to either a JSON response or a streaming CSV download.
+
+    Args:
+         - df: pd.DataFrame - Data to serialise; index is reset and renamed to "time".
+         - fmt: ResponseFormat - Desired output format (json or csv).
+         - filename: str - Attachment filename used in the Content-Disposition header for CSV.
+         - meta: DataMeta - Metadata block embedded in the JSON envelope.
+
+    Returns:
+         - DataFetchResponse for JSON, StreamingResponse for CSV.
+    """
     if fmt == ResponseFormat.csv:
         buf = io.StringIO()
         df.to_csv(buf, index=True)
@@ -78,17 +88,26 @@ def _df_to_response(
 
 @router.get("/online/measurements")
 def get_measurements() -> Dict[str, Any]:
-    """List all available online measurements and their field names."""
+    """List all available online InfluxDB measurements and their field names.
+
+    Returns:
+         - dict with key "measurements" mapping measurement names to their field lists.
+    """
     return {"measurements": list_measurements()}
 
 
 @router.post("/online/fetch")
 def fetch_online_data(req: OnlineFetchRequest):
-    """
-    Fetch one or more online measurements from InfluxDB.
+    """Fetch one or more online measurements from InfluxDB.
 
     Provide either `preset` (e.g. "last 8 hours") or `start_time` + `end_time`.
     Multiple measurements are outer-joined on the time index.
+
+    Args:
+         - req: OnlineFetchRequest - Validated request body containing measurements, time range, query type, and format options.
+
+    Returns:
+         - DataFetchResponse (JSON) or StreamingResponse (CSV).
     """
     # Validate measurements
     unknown = [m for m in req.measurements if m not in ONLINE_MEASUREMENTS]
@@ -142,11 +161,16 @@ def fetch_online_data(req: OnlineFetchRequest):
 
 @router.post("/offline/fetch")
 def fetch_offline_data(req: OfflineFetchRequest):
-    """
-    Fetch offline report data (HM/slag, charge, RM composition, DPR).
+    """Fetch offline report data (HM/slag, charge, RM composition, DPR).
 
     Provide either `preset` or `start_time` + `end_time`.
     Defaults to existing InfluxDB behavior; pass `source="neon_db"` for Neon.
+
+    Args:
+         - req: OfflineFetchRequest - Validated request body with report type, backend source, and time range.
+
+    Returns:
+         - DataFetchResponse (JSON) or StreamingResponse (CSV).
     """
     if not req.preset and (req.start_time is None or req.end_time is None):
         raise HTTPException(
@@ -207,13 +231,21 @@ def fetch_offline_data(req: OfflineFetchRequest):
 
 @router.get("/offline/report-types")
 def get_report_types() -> Dict[str, str]:
-    """List available offline report types and their InfluxDB measurement names."""
+    """List available offline report types and their InfluxDB measurement names.
+
+    Returns:
+         - dict mapping report type keys to InfluxDB measurement strings.
+    """
     return {k: v for k, v in OFFLINE_REPORT_MAP.items()}
 
 
 @router.get("/offline/neon-tables")
 def get_neon_tables() -> Dict[str, Any]:
-    """List available Neon offline tables and report-type defaults."""
+    """List available Neon offline tables and the report-type-to-table defaults.
+
+    Returns:
+         - dict with "report_map" (report type → table name) and "tables" (table name → sorted column list).
+    """
     return {
         "report_map": dict(NEON_OFFLINE_REPORT_MAP),
         "tables": {table: sorted(columns) for table, columns in NEON_OFFLINE_TABLES.items()},
@@ -226,14 +258,17 @@ def get_neon_tables() -> Dict[str, Any]:
 
 @router.post("/rm/live")
 def fetch_rm_live(req: RmLiveFetchRequest):
-    """
-    Fetch and clean the latest Raw Material composition data.
+    """Fetch and clean the latest Raw Material composition data from InfluxDB.
 
     Fetches ``rm_updated_data`` from the offline bucket for the requested
     lookback window and applies :func:`furnace_data.influx.offline.clean_rm_data`
     to drop all-NaN ore groups and rename ore variants.
 
-    Provide ``lookback_days`` (1–365) and ``cadence`` (``"8h"`` | ``"1h"`` | ``"1d"``).
+    Args:
+         - req: RmLiveFetchRequest - Validated request body with lookback_days, cadence, and format.
+
+    Returns:
+         - DataFetchResponse (JSON) or StreamingResponse (CSV).
     """
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(days=req.lookback_days)

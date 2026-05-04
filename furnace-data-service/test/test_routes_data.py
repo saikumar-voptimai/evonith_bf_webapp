@@ -3,11 +3,11 @@ Tests for /data/online/* and /data/offline/* routes.
 
 InfluxDB calls are mocked at the core-function level so no credentials needed.
 """
+
 from unittest.mock import patch
 
 import pandas as pd
 import pytest
-
 
 ONLINE_MEASUREMENTS = [
     "process_params",
@@ -23,8 +23,12 @@ ONLINE_MEASUREMENTS = [
 # GET /data/online/measurements
 # ---------------------------------------------------------------------------
 
+
 class TestMeasurementsList:
+    """Tests for the GET /data/online/measurements endpoint."""
+
     def test_returns_all_six_measurements(self, client):
+        """Verify the endpoint returns all six expected InfluxDB measurement names."""
         resp = client.get("/data/online/measurements")
         assert resp.status_code == 200
         body = resp.json()
@@ -33,6 +37,7 @@ class TestMeasurementsList:
             assert m in body["measurements"]
 
     def test_each_measurement_has_field_list(self, client):
+        """Verify each measurement key maps to a list of field name strings."""
         resp = client.get("/data/online/measurements")
         for m, fields in resp.json()["measurements"].items():
             assert isinstance(fields, list)
@@ -42,8 +47,12 @@ class TestMeasurementsList:
 # GET /data/offline/report-types
 # ---------------------------------------------------------------------------
 
+
 class TestOfflineReportTypes:
+    """Tests for the GET /data/offline/report-types endpoint."""
+
     def test_returns_known_types(self, client):
+        """Verify the four canonical offline report type keys are present."""
         resp = client.get("/data/offline/report-types")
         assert resp.status_code == 200
         body = resp.json()
@@ -51,12 +60,14 @@ class TestOfflineReportTypes:
             assert key in body
 
     def test_values_are_measurement_strings(self, client):
+        """Verify each report type value is a non-empty string."""
         resp = client.get("/data/offline/report-types")
         for v in resp.json().values():
             assert isinstance(v, str)
             assert len(v) > 0
 
     def test_neon_tables_endpoint_lists_charge_data(self, client):
+        """Verify the Neon tables endpoint maps CHARGE to charge_data and includes its columns."""
         resp = client.get("/data/offline/neon-tables")
         assert resp.status_code == 200
         body = resp.json()
@@ -69,36 +80,58 @@ class TestOfflineReportTypes:
 # POST /data/online/fetch — input validation
 # ---------------------------------------------------------------------------
 
+
 class TestOnlineFetchValidation:
+    """Tests for request validation on the POST /data/online/fetch endpoint."""
+
     def test_missing_time_params_returns_400(self, client):
-        resp = client.post("/data/online/fetch", json={
-            "measurements": ["process_params"],
-            # neither preset nor start_time/end_time
-        })
+        """Verify a 400 is returned when neither preset nor start_time/end_time are supplied."""
+        resp = client.post(
+            "/data/online/fetch",
+            json={
+                "measurements": ["process_params"],
+                # neither preset nor start_time/end_time
+            },
+        )
         assert resp.status_code == 400
-        assert "preset" in resp.json()["detail"].lower() or "start_time" in resp.json()["detail"].lower()
+        assert (
+            "preset" in resp.json()["detail"].lower()
+            or "start_time" in resp.json()["detail"].lower()
+        )
 
     def test_unknown_measurement_returns_400(self, client):
-        resp = client.post("/data/online/fetch", json={
-            "measurements": ["nonexistent_measurement"],
-            "preset": "last 1 hour",
-        })
+        """Verify a 400 is returned when an unrecognised measurement name is requested."""
+        resp = client.post(
+            "/data/online/fetch",
+            json={
+                "measurements": ["nonexistent_measurement"],
+                "preset": "last 1 hour",
+            },
+        )
         assert resp.status_code == 400
         assert "unknown" in resp.json()["detail"].lower()
 
     def test_invalid_query_type_returns_422(self, client):
-        resp = client.post("/data/online/fetch", json={
-            "measurements": ["process_params"],
-            "preset": "last 1 hour",
-            "query_type": "invalid_type",
-        })
+        """Verify a 422 is returned when query_type is not a valid enum value."""
+        resp = client.post(
+            "/data/online/fetch",
+            json={
+                "measurements": ["process_params"],
+                "preset": "last 1 hour",
+                "query_type": "invalid_type",
+            },
+        )
         assert resp.status_code == 422
 
     def test_empty_measurements_list_returns_422(self, client):
-        resp = client.post("/data/online/fetch", json={
-            "measurements": [],
-            "preset": "last 1 hour",
-        })
+        """Verify a 422 is returned when the measurements list is empty."""
+        resp = client.post(
+            "/data/online/fetch",
+            json={
+                "measurements": [],
+                "preset": "last 1 hour",
+            },
+        )
         assert resp.status_code == 422
 
 
@@ -106,16 +139,23 @@ class TestOnlineFetchValidation:
 # POST /data/online/fetch — successful fetch (mocked)
 # ---------------------------------------------------------------------------
 
+
 class TestOnlineFetchSuccess:
+    """Tests for successful responses from the POST /data/online/fetch endpoint."""
+
     def test_json_response_shape(self, client, sample_process_df):
+        """Verify the JSON response envelope contains meta, columns, and data with correct row/column counts."""
         with patch("app.routes.data.fetch_online", return_value=sample_process_df):
-            resp = client.post("/data/online/fetch", json={
-                "measurements": ["process_params"],
-                "preset": "last 1 hour",
-                "query_type": "windowed-average",
-                "window": "15m",
-                "format": "json",
-            })
+            resp = client.post(
+                "/data/online/fetch",
+                json={
+                    "measurements": ["process_params"],
+                    "preset": "last 1 hour",
+                    "query_type": "windowed-average",
+                    "window": "15m",
+                    "format": "json",
+                },
+            )
         assert resp.status_code == 200
         body = resp.json()
         assert "meta" in body
@@ -126,44 +166,60 @@ class TestOnlineFetchSuccess:
         assert len(body["data"]) == len(sample_process_df)
 
     def test_csv_response_content_type(self, client, sample_process_df):
+        """Verify a CSV response has the correct content-type and contains expected column names."""
         with patch("app.routes.data.fetch_online", return_value=sample_process_df):
-            resp = client.post("/data/online/fetch", json={
-                "measurements": ["process_params"],
-                "preset": "last 1 hour",
-                "format": "csv",
-            })
+            resp = client.post(
+                "/data/online/fetch",
+                json={
+                    "measurements": ["process_params"],
+                    "preset": "last 1 hour",
+                    "format": "csv",
+                },
+            )
         assert resp.status_code == 200
         assert "text/csv" in resp.headers["content-type"]
         assert "hot_blast_vol_nm3h" in resp.text
 
     def test_multiple_measurements_in_meta(self, client, sample_process_df):
+        """Verify that requesting multiple measurements lists all of them in the response meta."""
         with patch("app.routes.data.fetch_online", return_value=sample_process_df):
-            resp = client.post("/data/online/fetch", json={
-                "measurements": ["process_params", "heatload_delta_t"],
-                "preset": "last 1 hour",
-                "format": "json",
-            })
+            resp = client.post(
+                "/data/online/fetch",
+                json={
+                    "measurements": ["process_params", "heatload_delta_t"],
+                    "preset": "last 1 hour",
+                    "format": "json",
+                },
+            )
         assert resp.status_code == 200
         meta = resp.json()["meta"]
         assert "process_params" in meta["measurements"]
         assert "heatload_delta_t" in meta["measurements"]
 
     def test_empty_dataframe_returns_204(self, client):
+        """Verify a 204 is returned when the fetcher returns an empty DataFrame."""
         with patch("app.routes.data.fetch_online", return_value=pd.DataFrame()):
-            resp = client.post("/data/online/fetch", json={
-                "measurements": ["process_params"],
-                "preset": "last 1 hour",
-            })
+            resp = client.post(
+                "/data/online/fetch",
+                json={
+                    "measurements": ["process_params"],
+                    "preset": "last 1 hour",
+                },
+            )
         assert resp.status_code == 204
 
     def test_start_end_without_preset(self, client, sample_process_df):
+        """Verify a 200 is returned when an explicit start_time/end_time pair is provided instead of a preset."""
         with patch("app.routes.data.fetch_online", return_value=sample_process_df):
-            resp = client.post("/data/online/fetch", json={
-                "measurements": ["process_params"],
-                "start_time": "2026-01-01T00:00:00",
-                "end_time": "2026-01-02T00:00:00",
-                "query_type": "ts",
-            })
+            resp = client.post(
+                "/data/online/fetch",
+                json={
+                    "measurements": ["process_params"],
+                    "start_time": "2026-01-01T00:00:00",
+                    "end_time": "2026-01-02T00:00:00",
+                    "query_type": "ts",
+                },
+            )
         assert resp.status_code == 200
 
 
@@ -171,61 +227,90 @@ class TestOnlineFetchSuccess:
 # POST /data/offline/fetch — validation + success
 # ---------------------------------------------------------------------------
 
+
 class TestOfflineFetch:
+    """Tests for the POST /data/offline/fetch endpoint covering both Influx and Neon backends."""
+
     def test_missing_time_params_returns_400(self, client):
-        resp = client.post("/data/offline/fetch", json={
-            "report_type": "HM_SLAG",
-            # no preset, no start/end
-        })
+        """Verify a 400 is returned when neither preset nor start_time/end_time are supplied."""
+        resp = client.post(
+            "/data/offline/fetch",
+            json={
+                "report_type": "HM_SLAG",
+                # no preset, no start/end
+            },
+        )
         assert resp.status_code == 400
 
     def test_invalid_report_type_returns_422(self, client):
-        resp = client.post("/data/offline/fetch", json={
-            "report_type": "INVALID",
-            "preset": "last 1 month",
-        })
+        """Verify a 422 is returned when report_type is not a valid enum value."""
+        resp = client.post(
+            "/data/offline/fetch",
+            json={
+                "report_type": "INVALID",
+                "preset": "last 1 month",
+            },
+        )
         assert resp.status_code == 422
 
     def test_successful_fetch_json(self, client, sample_hm_df):
+        """Verify a JSON response is returned with correct report_type metadata for a valid HM_SLAG request."""
         with patch("app.routes.data.fetch_offline", return_value=sample_hm_df):
-            resp = client.post("/data/offline/fetch", json={
-                "report_type": "HM_SLAG",
-                "preset": "last 3 days",
-                "format": "json",
-            })
+            resp = client.post(
+                "/data/offline/fetch",
+                json={
+                    "report_type": "HM_SLAG",
+                    "preset": "last 3 days",
+                    "format": "json",
+                },
+            )
         assert resp.status_code == 200
         body = resp.json()
         assert body["meta"]["report_type"] == "HM_SLAG"
         assert body["meta"]["rows"] == len(sample_hm_df)
 
     def test_successful_fetch_csv(self, client, sample_hm_df):
+        """Verify a CSV response has the correct content-type for a valid offline fetch."""
         with patch("app.routes.data.fetch_offline", return_value=sample_hm_df):
-            resp = client.post("/data/offline/fetch", json={
-                "report_type": "HM_SLAG",
-                "preset": "last 3 days",
-                "format": "csv",
-            })
+            resp = client.post(
+                "/data/offline/fetch",
+                json={
+                    "report_type": "HM_SLAG",
+                    "preset": "last 3 days",
+                    "format": "csv",
+                },
+            )
         assert resp.status_code == 200
         assert "text/csv" in resp.headers["content-type"]
 
     def test_empty_result_returns_204(self, client):
+        """Verify a 204 is returned when the fetcher returns an empty DataFrame."""
         with patch("app.routes.data.fetch_offline", return_value=pd.DataFrame()):
-            resp = client.post("/data/offline/fetch", json={
-                "report_type": "DPR",
-                "preset": "last 1 day",
-            })
+            resp = client.post(
+                "/data/offline/fetch",
+                json={
+                    "report_type": "DPR",
+                    "preset": "last 1 day",
+                },
+            )
         assert resp.status_code == 204
 
     def test_neon_source_fetches_charge_windowed_average(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df) as mocked:
-            resp = client.post("/data/offline/fetch", json={
-                "source": "neon_db",
-                "report_type": "CHARGE",
-                "preset": "last 3 days",
-                "query_type": "windowed-average",
-                "window": "1 hour",
-                "format": "json",
-            })
+        """Verify the Neon backend is called and response meta reflects the correct source, table, and query_type."""
+        with patch(
+            "app.routes.data.fetch_neon_offline", return_value=sample_hm_df
+        ) as mocked:
+            resp = client.post(
+                "/data/offline/fetch",
+                json={
+                    "source": "neon_db",
+                    "report_type": "CHARGE",
+                    "preset": "last 3 days",
+                    "query_type": "windowed-average",
+                    "window": "1 hour",
+                    "format": "json",
+                },
+            )
         assert resp.status_code == 200
         body = resp.json()
         assert body["meta"]["source"] == "neon_db"
@@ -235,14 +320,20 @@ class TestOfflineFetch:
         mocked.assert_called_once()
 
     def test_neon_table_override_fetches_raw_table(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df) as mocked:
-            resp = client.post("/data/offline/fetch", json={
-                "source": "neon_db",
-                "report_type": "RM_COMPOSITION",
-                "table_name": "sinter_chemistry",
-                "preset": "last 3 days",
-                "query_type": "ts",
-            })
+        """Verify an explicit table_name override is passed through and reflected in the response meta."""
+        with patch(
+            "app.routes.data.fetch_neon_offline", return_value=sample_hm_df
+        ) as mocked:
+            resp = client.post(
+                "/data/offline/fetch",
+                json={
+                    "source": "neon_db",
+                    "report_type": "RM_COMPOSITION",
+                    "table_name": "sinter_chemistry",
+                    "preset": "last 3 days",
+                    "query_type": "ts",
+                },
+            )
         assert resp.status_code == 200
         assert resp.json()["meta"]["table_name"] == "sinter_chemistry"
         assert mocked.call_args.kwargs["query_type"] == "ts"

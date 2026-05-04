@@ -34,6 +34,14 @@ _NON_AVERAGED_COLUMNS: set[str] = set(_schema["non_averaged_columns"])
 
 
 def _resolve_database_url(database_url: str | None = None) -> str:
+    """Resolve the Neon database URL from the argument or NEON_DATABASE_DEV_URL env var.
+
+    Args:
+         - database_url: str | None - Explicit SQLAlchemy connection URL; falls back to the env var if None.
+
+    Returns:
+         - str - Validated PostgreSQL connection URL.
+    """
     resolved = database_url or os.getenv("NEON_DATABASE_DEV_URL")
     if not resolved:
         raise ValueError("Missing NEON_DATABASE_DEV_URL environment variable.")
@@ -41,14 +49,41 @@ def _resolve_database_url(database_url: str | None = None) -> str:
 
 
 def _build_engine(database_url: str | None = None) -> Engine:
-    return create_engine(_resolve_database_url(database_url), future=True, pool_pre_ping=True)
+    """Create a SQLAlchemy engine with pre-ping health checking.
+
+    Args:
+         - database_url: str | None - SQLAlchemy connection URL; resolved via _resolve_database_url if None.
+
+    Returns:
+         - Engine - Configured SQLAlchemy engine.
+    """
+    return create_engine(
+        _resolve_database_url(database_url), future=True, pool_pre_ping=True
+    )
 
 
 def _quote_identifier(identifier: str) -> str:
+    """Wrap a PostgreSQL identifier in double quotes, escaping any internal double quotes.
+
+    Args:
+         - identifier: str - Column or table name to quote.
+
+    Returns:
+         - str - Double-quoted identifier safe for embedding in raw SQL.
+    """
     return '"' + identifier.replace('"', '""') + '"'
 
 
 def _normalise_columns(table_name: str, columns: Iterable[str] | None) -> list[str]:
+    """Validate and return the column list for a given Neon table.
+
+    Args:
+         - table_name: str - Neon table whose allowed columns are checked against.
+         - columns: Iterable[str] | None - Requested columns; defaults to all allowed columns when None.
+
+    Returns:
+         - list[str] - Validated, ordered column list.
+    """
     allowed = NEON_OFFLINE_TABLES[table_name]
     if columns is None:
         return sorted(allowed)
@@ -60,10 +95,26 @@ def _normalise_columns(table_name: str, columns: Iterable[str] | None) -> list[s
 
 
 def _numeric_average_columns(selected_columns: Iterable[str]) -> list[str]:
+    """Filter out non-numeric (categorical/timestamp) columns unsuitable for SQL AVG.
+
+    Args:
+         - selected_columns: Iterable[str] - Full set of columns selected for the query.
+
+    Returns:
+         - list[str] - Subset of columns eligible for SQL AVG aggregation.
+    """
     return [col for col in selected_columns if col not in _NON_AVERAGED_COLUMNS]
 
 
 def _resolve_range(time_range: Union[str, Tuple]) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """Resolve a time range argument to a concrete UTC (start, end) timestamp pair.
+
+    Args:
+         - time_range: Union[str, Tuple] - Preset string (e.g. "last 1 week"), "full" for all available data, or a (start, end) datetime/Timestamp tuple.
+
+    Returns:
+         - tuple[pd.Timestamp, pd.Timestamp] - UTC-aware (start, end) pair.
+    """
     now = pd.Timestamp(datetime.now(timezone.utc))
     if isinstance(time_range, str) and time_range.strip().lower() == "full":
         return pd.Timestamp("2023-01-01T00:00:00Z"), now
@@ -73,8 +124,12 @@ def _resolve_range(time_range: Union[str, Tuple]) -> tuple[pd.Timestamp, pd.Time
             raise ValueError(f"Unknown time_range preset: {time_range!r}")
         return now - delta, now
     if isinstance(time_range, tuple) and len(time_range) == 2:
-        return pd.to_datetime(time_range[0], utc=True), pd.to_datetime(time_range[1], utc=True)
-    raise ValueError("time_range must be a preset string, 'full', or a (start, end) tuple.")
+        return pd.to_datetime(time_range[0], utc=True), pd.to_datetime(
+            time_range[1], utc=True
+        )
+    raise ValueError(
+        "time_range must be a preset string, 'full', or a (start, end) tuple."
+    )
 
 
 def _build_query(
@@ -83,6 +138,17 @@ def _build_query(
     query_type: str,
     window: str | None,
 ) -> tuple[str, dict[str, object]]:
+    """Build a parameterised SQL SELECT statement for the requested query type.
+
+    Args:
+         - table_name: str - Target Neon table name.
+         - selected_columns: list[str] - Columns to include in the SELECT clause.
+         - query_type: str - One of "ts"/"raw" for raw rows, "windowed-average"/"hourly-average" for time-bucketed averages, or "average" for a single aggregate row.
+         - window: str | None - PostgreSQL interval string (e.g. "1 hour") used for windowed-average queries.
+
+    Returns:
+         - tuple[str, dict] - (SQL string with :param placeholders, extra bind params dict).
+    """
     time_col = _TIME_COLUMNS[table_name]
     table_sql = _quote_identifier(table_name)
     time_sql = _quote_identifier(time_col)
@@ -127,7 +193,9 @@ def _build_query(
             {},
         )
 
-    raise ValueError("query_type must be 'ts', 'raw', 'average', or 'windowed-average'.")
+    raise ValueError(
+        "query_type must be 'ts', 'raw', 'average', or 'windowed-average'."
+    )
 
 
 def fetch_offline_data(
@@ -141,17 +209,15 @@ def fetch_offline_data(
     """Fetch offline data from a whitelisted Neon/PostgreSQL table.
 
     Args:
-        table_name: One of :data:`NEON_OFFLINE_TABLES`.
-        time_range: Preset string, ``"full"``, or ``(start, end)``.
-        query_type: ``"ts"``/``"raw"`` for raw rows, ``"windowed-average"``
-            for hourly/custom buckets, or ``"average"`` for one aggregate row.
-        window: PostgreSQL interval string for ``"windowed-average"``. Examples:
-            ``"1 hour"``, ``"15 minutes"``, ``"8 hours"``.
-        columns: Optional column subset. Unknown columns are rejected.
-        database_url: Optional SQLAlchemy URL override.
+         - table_name: str - One of the keys in NEON_OFFLINE_TABLES.
+         - time_range: Union[str, Tuple] - Preset string (e.g. "last 1 week"), "full" for all data, or a (start, end) datetime/Timestamp tuple.
+         - query_type: str - "ts"/"raw" for raw rows, "windowed-average" for time-bucketed averages, or "average" for a single aggregate row.
+         - window: str | None - PostgreSQL interval string for "windowed-average" queries (e.g. "1 hour", "15 minutes").
+         - columns: Iterable[str] | None - Column subset to fetch; defaults to all columns when None.
+         - database_url: str | None - SQLAlchemy URL override; falls back to NEON_DATABASE_DEV_URL env var.
 
     Returns:
-        Time-indexed :class:`pandas.DataFrame` with a UTC-aware index.
+         - pd.DataFrame - Time-indexed DataFrame with UTC-aware index, sorted ascending.
     """
     if table_name not in NEON_OFFLINE_TABLES:
         raise ValueError(
