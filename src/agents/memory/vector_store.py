@@ -6,7 +6,7 @@ against the ``furnace_shift_summaries`` Qdrant collection.
 
 # memory/vector_store.py
 
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -17,9 +17,11 @@ from qdrant_client.models import (
     PayloadSchemaType,
     VectorParams,
 )
-0
 from utils.payload_helpers import window_id_to_uuid
 from utils.settings import settings
+
+if TYPE_CHECKING:
+    from agents.embeddings.local_embedding import LocalEmbeddingClient
 
 
 class QdrantVectorStore:
@@ -55,10 +57,18 @@ class QdrantVectorStore:
         self.collection_name = qcfg.collection_name
         self.embedding_dim = qcfg.embedding_dim
 
-        from agents.embeddings.local_embedding import LocalEmbeddingClient
-        self.embedding = LocalEmbeddingClient()
+        self._embedding: Optional["LocalEmbeddingClient"] = None
 
         self._ensure_collection()
+
+    @property
+    def embedding(self) -> "LocalEmbeddingClient":
+        """Lazily initialize the local embedding client when first required."""
+        if self._embedding is None:
+            from agents.embeddings.local_embedding import LocalEmbeddingClient
+
+            self._embedding = LocalEmbeddingClient()
+        return self._embedding
 
     def _ensure_collection(self) -> None:
         """Create the Qdrant collection with cosine-distance IVFFLAT config if it

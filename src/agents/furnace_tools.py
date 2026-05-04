@@ -94,23 +94,6 @@ def _parse_iso8601_utc(s: str) -> datetime:
     raise ValueError(f"Invalid datetime: {s}")
 
 
-def _lookback_to_time_range_key(
-    *, days: int | None, hours: int | None, minutes: int | None
-) -> str:
-    if days is not None:
-        if days <= 0:
-            raise ValueError("lookback_days must be >= 1")
-        return f"last {int(days)} days" if int(days) != 1 else "last 1 day"
-    if hours is not None:
-        if hours <= 0:
-            raise ValueError("lookback_hours must be >= 1")
-        return f"last {int(hours)} hours" if int(hours) != 1 else "last 1 hour"
-    if minutes is not None:
-        if minutes <= 0:
-            raise ValueError("lookback_minutes must be >= 1")
-        return f"last {int(minutes)} minutes" if int(minutes) != 1 else "last 1 minute"
-    return "last 8 hours"
-
 
 def _resolve_online_window(*, lookback: timedelta, window: Optional[str]) -> str:
     if isinstance(window, str) and window.strip():
@@ -122,17 +105,12 @@ def _resolve_online_window(*, lookback: timedelta, window: Optional[str]) -> str
 
 
 class OnlineFetchArgs(BaseModel):
-    lookback_days: Optional[int] = Field(
+    lookback: Optional[str] = Field(
         default=None,
-        description="Look back this many days (max 90). Mutually exclusive with lookback_hours/minutes.",
-    )
-    lookback_hours: Optional[int] = Field(
-        default=None,
-        description="Look back this many hours. Mutually exclusive with lookback_days/minutes.",
-    )
-    lookback_minutes: Optional[int] = Field(
-        default=None,
-        description="Look back this many minutes. Mutually exclusive with lookback_days/hours.",
+        description=(
+            "Relative window as a compact string: '8h', '2d', '30m', '1 week'. "
+            "Use this OR start_time_utc/end_time_utc — never both."
+        ),
     )
     window: Optional[str] = Field(
         default=None,
@@ -140,7 +118,7 @@ class OnlineFetchArgs(BaseModel):
     )
     start_time_utc: Optional[str] = Field(
         default=None,
-        description="ISO-8601 UTC start time. Use for exact windows instead of lookback_*.",
+        description="ISO-8601 UTC start time e.g. '2026-05-01T00:30:00Z'. Use for exact windows instead of lookback.",
     )
     end_time_utc: Optional[str] = Field(
         default=None,
@@ -613,25 +591,37 @@ def load_static_shift_data(*, shift_date: str, shift_label: str) -> str:
 
 def fetch_online_data(
     *,
-    lookback_days: int | None = None,
-    lookback_hours: int | None = None,
-    lookback_minutes: int | None = None,
+    lookback: str | None = None,
     window: str | None = None,
     measurement_groups: list[str] | None = None,
     start_time_utc: str | None = None,
     end_time_utc: str | None = None,
+    # Legacy params — accepted but ignored to avoid errors if LLM still sends them
+    lookback_days: int | None = None,
+    lookback_hours: int | None = None,
+    lookback_minutes: int | None = None,
 ) -> str:
-    """Fetch online (high-frequency) telemetry with policy-constrained lookback and averaging.
+    """Fetch online (high-frequency) telemetry.
 
-    Policy:
-    - lookback_days max 90
-    - if lookback > 1 day and window omitted => 1 hour averaging
-    - else (<=1 day) and window omitted => 15 minutes averaging
+    Pass either ``lookback`` (e.g. ``"8h"``, ``"2d"``, ``"30m"``) OR
+    ``start_time_utc`` + ``end_time_utc`` for an exact window — never both.
+    If ``window`` is omitted the tool applies: >1 day => 1 hour avg, else 15 min avg.
     """
+    # Coerce empty strings to None (LLMs sometimes send "" for omitted fields)
+    start_time_utc = start_time_utc or None
+    end_time_utc = end_time_utc or None
+
+    # Legacy int params: if the LLM still sends the old style, convert to string lookback
+    if lookback is None and start_time_utc is None:
+        if lookback_hours is not None:
+            lookback = f"{lookback_hours}h"
+        elif lookback_days is not None:
+            lookback = f"{lookback_days}d"
+        elif lookback_minutes is not None:
+            lookback = f"{lookback_minutes}m"
+
     params = {
-        "lookback_days": lookback_days,
-        "lookback_hours": lookback_hours,
-        "lookback_minutes": lookback_minutes,
+        "lookback": lookback,
         "window": window,
         "measurement_groups": measurement_groups,
         "start_time_utc": start_time_utc,
@@ -682,24 +672,8 @@ def fetch_online_data(
             )
             time_range_label = f"{args.start_time_utc} → {args.end_time_utc or 'now'}"
         else:
-            # Lookback path (existing)
-            provided = [
-                v is not None
-                for v in [args.lookback_days, args.lookback_hours, args.lookback_minutes]
-            ]
-            if sum(provided) > 1:
-                raise ValueError(
-                    "Provide only one of lookback_days, lookback_hours, lookback_minutes"
-                )
-            if args.lookback_days is not None and args.lookback_days > 90:
-                raise ValueError("Online lookback_days exceeds max 90")
-
-            time_range_key = _lookback_to_time_range_key(
-                days=args.lookback_days,
-                hours=args.lookback_hours,
-                minutes=args.lookback_minutes,
-            )
-            normalized_time_range = _normalize_time_range(time_range_key)
+            # Relative lookback path — normalise the string to a TIMEDELTAS key
+            normalized_time_range = _normalize_time_range(args.lookback or "last 8 hours")
 
             lookback_td = TIMEDELTAS.get(normalized_time_range)
             if not isinstance(lookback_td, timedelta):
@@ -903,28 +877,34 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "fetch_online_data",
-                "description": "Fetch online telemetry (max lookback 90 days). Use start_time_utc + end_time_utc for exact windows (preferred for shift reports); use lookback_* for relative windows. If window omitted: >1 day => 1 hour avg, else 15 minutes avg. Stores the active dataframe in session (fm_df) and returns dataset_id + column preview.",
+                "description": (
+                    "Fetch live InfluxDB telemetry (max 90 days). "
+                    "Use EITHER lookback (e.g. '8h', '2d', '30m') "
+                    "OR start_time_utc + end_time_utc for exact windows — never both. "
+                    "If window omitted: >1 day => 1 hour avg, else 15 min avg. "
+                    "Stores data in session (fm_df) and returns dataset_id + column preview."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "lookback_days": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 90,
+                        "lookback": {
+                            "type": "string",
+                            "description": (
+                                "Relative window as a compact string: '8h', '2d', '30m', '1 week'. "
+                                "Omit if using start_time_utc/end_time_utc."
+                            ),
                         },
-                        "lookback_hours": {"type": "integer", "minimum": 1},
-                        "lookback_minutes": {"type": "integer", "minimum": 1},
                         "window": {
                             "type": "string",
                             "description": "Averaging window like '15 minutes' or '1 hour'. Optional.",
                         },
                         "start_time_utc": {
                             "type": "string",
-                            "description": "ISO-8601 UTC start e.g. '2026-05-01T00:30:00Z'. Use for exact windows instead of lookback_*.",
+                            "description": "ISO-8601 UTC start e.g. '2026-05-01T00:30:00Z'. Omit if using lookback.",
                         },
                         "end_time_utc": {
                             "type": "string",
-                            "description": "ISO-8601 UTC end timestamp. Defaults to now if omitted.",
+                            "description": "ISO-8601 UTC end. Defaults to now if omitted.",
                         },
                         "measurement_groups": {
                             "type": "array",
@@ -939,6 +919,7 @@ def get_openai_tool_schemas() -> list[dict]:
                                     "miscellaneous",
                                 ],
                             },
+                            "description": "Which measurement groups to fetch. Omit to fetch all.",
                         },
                     },
                     "additionalProperties": False,
@@ -1194,15 +1175,49 @@ def _append_tool_error(*, tool_name: str, params: Dict[str, Any], error: str) ->
 
 
 def _normalize_time_range(user_time_range: str) -> str:
-    """Normalize natural language into TIMEDELTAS-compatible keys, extending TIMEDELTAS as needed."""
+    """Normalize a lookback string into a TIMEDELTAS-compatible key.
+
+    Accepts both compact forms ("8h", "2d", "30m") and natural language
+    ("last 8 hours", "last 2 days") and extends TIMEDELTAS on the fly.
+    """
     tr = (user_time_range or "").strip().lower()
     if not tr:
         return "last 8 hours"
 
-    # Already supported
+    # Already a known key
     if tr in TIMEDELTAS:
         return tr
 
+    # Compact bare forms: "8h", "30m", "2d", "1w"
+    m = re.match(r"^(\d+)\s*(m|min|mins|minute|minutes)$", tr)
+    if m:
+        n = int(m.group(1))
+        key = f"last {n} minutes" if n != 1 else "last 1 minute"
+        TIMEDELTAS.setdefault(key, timedelta(minutes=n))
+        return key
+
+    m = re.match(r"^(\d+)\s*(h|hr|hrs|hour|hours)$", tr)
+    if m:
+        n = int(m.group(1))
+        key = f"last {n} hours" if n != 1 else "last 1 hour"
+        TIMEDELTAS.setdefault(key, timedelta(hours=n))
+        return key
+
+    m = re.match(r"^(\d+)\s*(d|day|days)$", tr)
+    if m:
+        n = int(m.group(1))
+        key = f"last {n} days" if n != 1 else "last 1 day"
+        TIMEDELTAS.setdefault(key, timedelta(days=n))
+        return key
+
+    m = re.match(r"^(\d+)\s*(w|week|weeks)$", tr)
+    if m:
+        n = int(m.group(1))
+        key = f"last {n} weeks" if n != 1 else "last 1 week"
+        TIMEDELTAS.setdefault(key, timedelta(weeks=n))
+        return key
+
+    # "last N <unit>" natural language forms
     m = re.search(r"last\s+(\d+)\s*(minute|minutes|min|mins)\b", tr)
     if m:
         n = int(m.group(1))
@@ -1231,7 +1246,6 @@ def _normalize_time_range(user_time_range: str) -> str:
         TIMEDELTAS.setdefault(key, timedelta(weeks=n))
         return key
 
-    # Fallback to safe default
     return "last 8 hours"
 
 

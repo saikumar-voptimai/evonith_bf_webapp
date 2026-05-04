@@ -6,7 +6,7 @@ import pandas as pd
 
 from furnace_data.influx.base import BaseDataFetcher
 from data.ml.static_csv import load_static_dataset
-from data.retrieval import fetch_offline_data
+from furnace_data.influx.offline import fetch_offline_data
 
 
 class DataframesProcessor:

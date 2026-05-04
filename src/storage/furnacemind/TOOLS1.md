@@ -52,10 +52,23 @@ It is the source of truth for tool routing and plotting behavior.
 ### 2. `fetch_online_data`
 - Fetches live telemetry from Influx (`bf2_evonith_raw`).
 - Max lookback is 90 days.
+- **Parameters — use EITHER `lookback` OR `start_time_utc`/`end_time_utc`, never both:**
+  - `lookback` — compact string like `"8h"`, `"2d"`, `"30m"`, `"1 week"`.
+  - `start_time_utc` / `end_time_utc` — ISO-8601 UTC strings for exact windows.
+  - Omit any param you don't need. Do NOT set unused fields to `""` or `0`.
 - Default averaging when `window` is omitted:
   - `> 1 day` lookback -> `1 hour`
   - otherwise -> `15 minutes`
 - Output columns are mapped display labels, not raw Influx field IDs.
+
+**Example — last 8h ETA CO:**
+```json
+{"lookback": "8h", "measurement_groups": ["process_params"]}
+```
+**Example — exact shift window:**
+```json
+{"start_time_utc": "2026-05-01T00:30:00Z", "end_time_utc": "2026-05-01T08:30:00Z", "measurement_groups": ["process_params"]}
+```
 
 ### 3. `fetch_offline_data`
 - Fetches offline/manual reports from offline bucket.

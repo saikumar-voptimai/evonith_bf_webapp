@@ -1,26 +1,6 @@
-"""render_live_operations and render_furnace_intelligence tabs.
+"""Deprecated — Live Operations and Furnace Intelligence tabs were removed.
 
-Both tabs depend on classes that were in src/core/ (now deleted).
-The functions are stubbed until those classes are rebuilt under agents/.
+The underlying core classes (InfluenceAttribution, RecurringAnomalyTracker,
+ShiftAnalyzer, FurnaceStabilityIndex) were deleted with src/core/.
+This module is intentionally empty.  Do not import from it.
 """
-
-from __future__ import annotations
-
-import streamlit as st
-
-# TODO: The following classes were in src/core/ which has been deleted.
-#       They need to be rebuilt or relocated before these tabs can function.
-#   - InfluenceAttribution      (was core.influence_attribution)
-#   - RecurringAnomalyTracker   (was core.recurring_anomaly_tracker)
-#   - ShiftAnalyzer             (was core.shift_analyzer)
-#   - FurnaceStabilityIndex     (was core.stability_index)
-
-
-def render_live_operations(*, structured_store, vector_store) -> None:  # noqa: ARG001
-    """Render the Live Operations tab (currently under reconstruction)."""
-    st.info("Live Operations tab is under reconstruction.")
-
-
-def render_furnace_intelligence(*, structured_store) -> None:  # noqa: ARG001
-    """Render the Furnace Intelligence tab (currently under reconstruction)."""
-    st.info("Furnace Intelligence tab is under reconstruction.")

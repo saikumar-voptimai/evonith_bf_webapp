@@ -796,3 +796,99 @@ fetch_offline_data() got an unexpected keyword argument 'measurement'
 ```
 fetch_offline_data() got an unexpected keyword argument 'measurement'
 ```
+
+
+## 2026-05-03T12:12:33.480631+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:34.971464+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 8, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:36.564724+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 1, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:38.794539+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:40.362108+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:43.066655+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:44.584181+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["delta_t"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:46.236445+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["miscellaneous"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```

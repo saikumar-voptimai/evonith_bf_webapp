@@ -15,6 +15,23 @@ from data.fetchers.ts_heatload_data_fetcher import TimeSeriesHeatLoadDataFetcher
 from plotters.circumferential_contour import CircumferentialPlotter
 from plotters.longitudinal_temp_contour import LongitudinalTemperaturePlotter
 
+# ── Cached figure helpers — re-render only when data or params change ─────────
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _circ_fig(field_values, titles, colorbar_title, resolution=36):
+    plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
+    return plotter.plot_circumferential_quadrants(
+        field_values, titles=titles,
+        colorbar_title=colorbar_title, unit="",
+        resolution=resolution,
+    )
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _long_fig(temperatures, temperatures_max, temperatures_min):
+    plotter = LongitudinalTemperaturePlotter(mask_file="mask_longitudinal.pkl")
+    return plotter.plot_plotly(temperatures, temperatures_max, temperatures_min)
+
 TIMEZONE = pytz.timezone("Asia/Kolkata")  # GMT+5:30
 
 st.markdown(
@@ -48,7 +65,7 @@ data_fetcher = LongitudinalTemperatureDataFetcher(debug=False, source="Historica
 
 # Streamlit UI
 st.title("Furnace Temperature Data Visualization")
-expander = st.expander("Set date and time")
+expander = st.expander("Set date and time", key="vboard_datetime")
 with expander:
     # Date and time input
     col1, col2, col3, col4 = st.columns(4)
@@ -173,16 +190,12 @@ except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()
 
-# Plotting function (assuming it's defined elsewhere)
-plotter = LongitudinalTemperaturePlotter(mask_file="mask_longitudinal.pkl")
-temperatures = [temperature_list[0][i] for i in range(4)]
+temperatures     = [temperature_list[0][i] for i in range(4)]
 temperatures_max = [temperature_list[1][i] for i in range(4)]
-temperatures_min = [
-    temperature_list[2][i] for i in range(4)
-]  # Extracting only the temperature values for Q1-Q4
+temperatures_min = [temperature_list[2][i] for i in range(4)]
 
-fig = plotter.plot_plotly(temperatures, temperatures_max, temperatures_min)
-st.plotly_chart(fig, width='stretch', key="data_vis_longitudinal_temp")
+fig = _long_fig(tuple(temperatures), tuple(temperatures_max), tuple(temperatures_min))
+st.plotly_chart(fig, width="stretch", key="data_vis_longitudinal_temp")
 
 # -------------------------------------------------------------------------------------------------------
 # 2. Circular Heatload distribution Plot
@@ -209,13 +222,12 @@ except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()
 
-# User selection
-plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
-
-fig = plotter.plot_circumferential_quadrants(
-    heatloads_list, titles=rows, colorbar_title="Heatload (GJ)", unit=""
+fig = _circ_fig(
+    [tuple(map(tuple, r)) for r in heatloads_list],
+    tuple(rows),
+    "Heatload (GJ)",
 )
-st.plotly_chart(fig, width='stretch', key="data_vis_circ_heatload")
+st.plotly_chart(fig, width="stretch", key="data_vis_circ_heatload")
 
 # ------------------------------------------------------------------------------------------------------
 # 3. Circular Temperature Plot
@@ -227,7 +239,7 @@ circum_data_fetcher = CircumferentialTemperatureDataFetcher(
 )
 
 try:
-    temperatures_dict = circum_data_fetcher.fetch_averaged_data(
+    circum_temps = circum_data_fetcher.fetch_averaged_data(
         time_interval,
         start_time_utc,
         end_time_utc,
@@ -237,21 +249,7 @@ try:
 except ValueError as e:
     st.error(f"Error: {e}")
     st.stop()
-# Combine titles
-try:
-    circum_temps_list = []
-    circum_temps_list.append(
-        circum_data_fetcher.fetch_averaged_data(
-            time_interval,
-            start_time_utc,
-            end_time_utc,
-            request_type="avg-min-max",
-            window_by=None,
-        )
-    )
-except ValueError as e:
-    st.error(f"Error: {e}")
-    st.stop()
+circum_temps_list = [circum_temps]
 
 # Combine preset temperatures with the selected temperature
 temp_to_plot = [
@@ -275,8 +273,6 @@ temp_to_plot3 = [
 ]  # Convert elevation to string without 'm' and '.'
 
 
-# User selection
-plotter = CircumferentialPlotter(mask_file="mask_circular.pkl")
 # Corresponding elevations
 elevations = [
     "4.373m",
@@ -292,35 +288,25 @@ preset_titles = ["12.975m - Bosh", "15.162m - Belly", "18.660m - Stack"]
 
 all_titles = [f"At {elevations[i]}" for i in range(len(elevations))] + preset_titles
 
-fig = plotter.plot_circumferential_quadrants(
-    temp_to_plot, titles=all_titles[-4:], colorbar_title="Temperature (°C)", unit=""
+_circ_title = "Temperature (°C)"
+fig = _circ_fig(
+    [tuple(map(tuple, r)) for r in temp_to_plot],
+    tuple(all_titles[-4:]),
+    _circ_title,
 )
-st.plotly_chart(fig, width='stretch', key="data_vis_circ_temp_stack")
-st.markdown(
-    """
-    <style>
-    /* Shrink the vertical gap between ANY two elements */
-    div[data-testid="stVerticalBlock"]{
-        gap:0.rem;          /* default is 1rem */
-    }
-
-    /* Optional: make Plotly charts themselves have zero outer margin */
-    .stPlotlyChart {
-        margin-top:0 !important;
-        margin-bottom:0 !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
+st.plotly_chart(fig, width="stretch", key="data_vis_circ_temp_stack")
+fig = _circ_fig(
+    [tuple(map(tuple, r)) for r in temp_to_plot2],
+    tuple(all_titles[:5]),
+    _circ_title,
 )
-fig = plotter.plot_circumferential_quadrants(
-    temp_to_plot2, titles=all_titles[:5], colorbar_title="Temperature (°C)", unit=""
+st.plotly_chart(fig, width="stretch", key="data_vis_circ_temp_hearth")
+fig = _circ_fig(
+    [tuple(map(tuple, r)) for r in temp_to_plot3],
+    tuple(all_titles[5:8]),
+    _circ_title,
 )
-st.plotly_chart(fig, width='stretch', key="data_vis_circ_temp_hearth")
-fig = plotter.plot_circumferential_quadrants(
-    temp_to_plot3, titles=all_titles[5:8], colorbar_title="Temperature (°C)", unit=""
-)
-st.plotly_chart(fig, width='stretch', key="data_vis_circ_temp_tuyere")
+st.plotly_chart(fig, width="stretch", key="data_vis_circ_temp_tuyere")
 # -------------------------------------------------------------------------------------------------------
 st.title("Heat Load Data - Timeseries")
 # -------------------------------------------------------------------------------------------------------

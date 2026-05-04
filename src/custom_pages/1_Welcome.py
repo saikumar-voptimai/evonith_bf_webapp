@@ -195,19 +195,20 @@ def _kpi_card(value: str, label: str, unit: str, grad: str) -> str:
     </div>"""
 
 
-_kpi_row = "".join([
-    _kpi_card(_fmt(kpis.get("prod")),  "PRODUCTION RATE", "t / hr",   "linear-gradient(135deg,#92400e,#ea580c)"),
-    _kpi_card(_fmt(kpis.get("fuel"),0),"FUEL RATE",       "kg / tHM", "linear-gradient(135deg,#92400e,#ea580c)"),
-    _kpi_card(_fmt(kpis.get("etaco")), "ETA CO",          "%",        "linear-gradient(135deg,#92400e,#ea580c)"),
-    _kpi_card(_fmt(kpis.get("wind"),0),"BLAST VOLUME",    "Nm³ / hr","linear-gradient(135deg,#92400e,#ea580c)"),
-])
+_kpi_specs = [
+    (_fmt(kpis.get("prod")),   "PRODUCTION RATE", "t / hr",   "linear-gradient(135deg,#166534,#16a34a)"),
+    (_fmt(kpis.get("fuel"),0), "FUEL RATE",       "kg / tHM", "linear-gradient(135deg,#92400e,#ea580c)"),
+    (_fmt(kpis.get("etaco")),  "ETA CO",          "%",        "linear-gradient(135deg,#1e3a8a,#2563eb)"),
+    (_fmt(kpis.get("wind"),0), "BLAST VOLUME",    "Nm³ / hr", "linear-gradient(135deg,#0c4a6e,#0284c7)"),
+]
 
-st.html(f"""
-<div style="display:grid; grid-template-columns:repeat(4,1fr);
-            gap:1rem; margin-bottom:2rem;">
-    {_kpi_row}
-</div>
-""")
+# st.columns ensures the grid reflows properly on narrow viewports
+_kc1, _kc2, _kc3, _kc4 = st.columns(4)
+for _col, (val, label, unit, grad) in zip([_kc1, _kc2, _kc3, _kc4], _kpi_specs):
+    with _col:
+        st.html(_kpi_card(val, label, unit, grad))
+
+st.html("<div style='margin-bottom:2rem'></div>")
 
 # ── Module tile grid ──────────────────────────────────────────────────────────
 st.html("<p style='color:#64748b; font-size:0.75rem; font-weight:700;"

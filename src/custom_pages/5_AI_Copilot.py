@@ -69,7 +69,7 @@ with anomaly_tab:
     # ── Channeling propensity ─────────────────────────────────────────────────
     detector = Channeling()
 
-    with st.expander("Channeling propensity", expanded=True):
+    with st.expander("Channeling propensity", expanded=True, key="copilot_channeling"):
         c1, c2, c3 = st.columns([1, 1, 2])
         enable = c1.toggle("Enable", value=False, key="channeling_propensity_enable")
         live = c2.toggle(
@@ -238,7 +238,7 @@ with anomaly_tab:
                     else "**All quadrants balanced.**"
                 )
 
-            with st.expander(f"Component breakdown (latest points)", expanded=False):
+            with st.expander(f"Component breakdown (latest points)", expanded=False, key="copilot_breakdown"):
                 display_cols = [
                     c
                     for c in [
@@ -315,7 +315,7 @@ with burden_tab:
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 
-with st.expander("⚙️ Setup notes"):
+with st.expander("⚙️ Setup notes", key="copilot_setup_notes"):
     st.markdown(f"""
 - **OpenAI Responses API** with `code_interpreter` enabled. Set `OPENAI_API_KEY` and (optionally) `OPENAI_MODEL` (current: `{OPENAI_MODEL}`).
 - **Analysis files**: edit `src/assets/data/copilot_analysis/BURDEN_UNITCOST.md` to update burden findings after a new regression run.

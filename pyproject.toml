@@ -3,7 +3,7 @@ name = "evonith-bf-webapp"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "alembic>=1.17.1",
     "aiohappyeyeballs==2.4.4 ; python_full_version >= '3.10' and python_full_version < '4.0'",
@@ -184,7 +184,7 @@ dependencies = [
     "stack-data==0.6.3 ; python_full_version >= '3.10' and python_full_version < '4.0'",
     "starlette==0.41.3 ; python_full_version >= '3.10' and python_full_version < '4.0'",
     "statsmodels==0.14.4 ; python_full_version >= '3.10' and python_full_version < '4.0'",
-    "streamlit>=1.50.0",
+    "streamlit>=1.56.0",
     "streamlit-autorefresh==1.0.1",
     "streamlit-cookies-manager>=0.2.0",
     "sympy==1.13.3 ; python_full_version >= '3.10' and python_full_version < '4.0'",

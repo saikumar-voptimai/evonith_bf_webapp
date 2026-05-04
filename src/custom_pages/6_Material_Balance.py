@@ -99,7 +99,7 @@ with ctrl3:
     )
 
 # ── Lag settings ──────────────────────────────────────────────────────
-with st.expander("⏱ Lag settings (advanced)", expanded=False):
+with st.expander("⏱ Lag settings (advanced)", expanded=False, key="mb_lag_settings"):
     st.markdown(
         """
 Set **lag hours** to account for the carry-forward behaviour of furnace inputs:
@@ -212,14 +212,14 @@ with table_col:
     st.dataframe(styler, width='stretch', hide_index=True)
 
 # Full-width per-element breakdown (optional deep-dive)
-with st.expander("📊 Per-element input/output breakdown", expanded=False):
+with st.expander("📊 Per-element input/output breakdown", expanded=False, key="mb_element_breakdown"):
     fig_bars = build_per_element_bars(
         result.closure_table, result.inputs, result.outputs
     )
     st.plotly_chart(fig_bars, width='stretch', key="bars_fig")
 
 # ── Ash Analysis editor expander ───────────────────────────────────────
-with st.expander("🔬 Ash Analysis — Coke / Nut Coke / PCI", expanded=False):
+with st.expander("🔬 Ash Analysis — Coke / Nut Coke / PCI", expanded=False, key="mb_ash_analysis"):
     st.caption(
         "Enter the **ash chemical analysis** (wt % of ash) from lab reports. "
         "These values are used directly in the element balance to compute "
@@ -295,6 +295,7 @@ mapping_ok = mapping_is_complete(current_mapping)
 with st.expander(
     "🗂 DPR field mapping" + ("" if mapping_ok else " (optional — not required for CSV path)"),
     expanded=False,
+    key="mb_dpr_mapping",
 ):
     st.caption(
         "The DPR mapping is optional when using the static CSV. "
@@ -331,7 +332,7 @@ with st.expander(
             st.rerun()
 
 # ── Assumptions & limitations expander ────────────────────────────────
-with st.expander("ℹ️ Assumptions & limitations"):
+with st.expander("ℹ️ Assumptions & limitations", key="mb_assumptions"):
     dust_comp = cfg.get("dust_catcher_composition_pct", {})
     dust_comp_str = (
         ", ".join(f"{k}: {v}%" for k, v in dust_comp.items() if k != "other")
