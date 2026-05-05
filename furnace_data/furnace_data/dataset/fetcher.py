@@ -40,25 +40,36 @@ class RangeCache:
         self.start: date | None = None
         self.end: date | None = None
         self.rm_mode: str | None = None
+        self.source: str | None = None
         self.df: pd.DataFrame | None = None
         self._lock = Lock()
 
     def reset(self) -> None:
         """Clear the cache."""
         with self._lock:
-            self.start = self.end = self.rm_mode = self.df = None
+            self.start = self.end = self.rm_mode = self.source = self.df = None
 
-    def snapshot(self) -> tuple[date | None, date | None, str | None, pd.DataFrame | None]:
+    def snapshot(
+        self,
+    ) -> tuple[date | None, date | None, str | None, str | None, pd.DataFrame | None]:
         """Return a consistent (start, end, rm_mode, df) snapshot."""
         with self._lock:
-            return self.start, self.end, self.rm_mode, self.df
+            return self.start, self.end, self.rm_mode, self.source, self.df
 
-    def update(self, start: date, end: date, rm_mode: str, df: pd.DataFrame) -> None:
+    def update(
+        self,
+        start: date,
+        end: date,
+        rm_mode: str,
+        source: str,
+        df: pd.DataFrame,
+    ) -> None:
         """Atomically update the cache."""
         with self._lock:
             self.start = start
             self.end = end
             self.rm_mode = rm_mode
+            self.source = source
             self.df = df
 
 
@@ -83,11 +94,13 @@ class DatasetFetcher:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _clean_df(df: pd.DataFrame) -> pd.DataFrame:
+    def _clean_df(df: pd.DataFrame, *, keep_unmapped: bool = False) -> pd.DataFrame:
         """Rename columns and keep only the renamed subset."""
         if df.empty:
             return df
         df = df.rename(columns=RENAME_DICT)
+        if keep_unmapped:
+            return df
         return df.loc[:, df.columns.intersection(RENAME_SET)]
 
     @staticmethod
@@ -102,7 +115,25 @@ class DatasetFetcher:
         idx = df_rm.index.union(df_hm.index)
         return df_dist.reindex(idx).sort_index().ffill()
 
-    def _fetch_full_range(self, start: date, end: date, rm_mode: str) -> pd.DataFrame:
+    @staticmethod
+    def _normalise_source(source: str) -> str:
+        source = (source or "influx").strip().lower()
+        if source in {"neon", "neondb", "neon-db"}:
+            return "neon_db"
+        if source not in {"influx", "neon_db"}:
+            raise ValueError("source must be 'influx' or 'neon_db'.")
+        return source
+
+    def _fetch_full_range(
+        self,
+        start: date,
+        end: date,
+        rm_mode: str,
+        source: str,
+    ) -> pd.DataFrame:
+        if source == "neon_db":
+            return self._fetch_new_range(start, end, rm_mode, source)
+
         cutoff = self.service.cutoff_date
 
         if end <= cutoff:
@@ -118,19 +149,36 @@ class DatasetFetcher:
             self.service.fetch_step1(start, cutoff, allowed_columns=RENAME_DICT)
         )
         new_start = cutoff + timedelta(days=1)
-        df_new = self._fetch_new_range(new_start, end, rm_mode)
+        df_new = self._fetch_new_range(new_start, end, rm_mode, source)
 
         return pd.concat([df_old, df_new]).sort_index()
 
-    def _fetch_new_range(self, start: date, end: date, rm_mode: str) -> pd.DataFrame:
-        df_rm = self.service.fetch_step2(start, end, rm_mode, allowed_columns=RENAME_DICT)
-        df_hm = self.service.fetch_hotmetal_hourly(start, end, keep_columns=KEEP_COLS)
+    def _fetch_new_range(
+        self,
+        start: date,
+        end: date,
+        rm_mode: str,
+        source: str,
+    ) -> pd.DataFrame:
+        df_rm = self.service.fetch_step2(
+            start,
+            end,
+            rm_mode,
+            allowed_columns=RENAME_DICT,
+            source=source,
+        )
+        df_hm = self.service.fetch_hotmetal_hourly(
+            start,
+            end,
+            keep_columns=KEEP_COLS,
+            source=source,
+        )
         df_dist = self.service.fetch_distribution_data(start, end)
 
         df_dist = self._align_distribution(df_dist, df_rm, df_hm)
 
         df = df_rm.join([df_hm, df_dist], how="outer").sort_index()
-        return self._clean_df(df)
+        return self._clean_df(df, keep_unmapped=source == "neon_db")
 
     # ------------------------------------------------------------------
     # Public API
@@ -142,6 +190,7 @@ class DatasetFetcher:
         end_date: date,
         rm_choice: str,
         cache_override: bool = False,
+        source: str = "influx",
     ) -> pd.DataFrame:
         """Fetch the furnace dataset for a date range with range-aware caching.
 
@@ -154,22 +203,25 @@ class DatasetFetcher:
             end_date:       Inclusive end date.
             rm_choice:      ``"RM Charge"`` or ``"RM DPR"``.
             cache_override: If ``True``, clear the cache before fetching.
+            source:         ``"influx"`` for rollback or ``"neon_db"``.
 
         Returns:
             Time-indexed :class:`pandas.DataFrame` sliced to [start_date, end_date]
             with the index named ``"time"``.
         """
         rm_mode = "charge" if rm_choice == "RM Charge" else "dpr"
+        source = self._normalise_source(source)
 
         if cache_override:
             self.cache.reset()
 
-        cache_start, cache_end, cache_rm, cache_df = self.cache.snapshot()
+        cache_start, cache_end, cache_rm, cache_source, cache_df = self.cache.snapshot()
 
         # Fast cache hit
         if (
             cache_df is not None
             and cache_rm == rm_mode
+            and cache_source == source
             and cache_start <= start_date
             and cache_end >= end_date
         ):
@@ -181,11 +233,14 @@ class DatasetFetcher:
         parts = []
         fetch_start, fetch_end = start_date, end_date
 
-        if cache_df is not None and cache_rm == rm_mode:
+        if cache_df is not None and cache_rm == rm_mode and cache_source == source:
             if start_date < cache_start:
                 parts.append(
                     self._fetch_full_range(
-                        start_date, cache_start - timedelta(days=1), rm_mode
+                        start_date,
+                        cache_start - timedelta(days=1),
+                        rm_mode,
+                        source,
                     )
                 )
                 fetch_start = start_date
@@ -197,7 +252,10 @@ class DatasetFetcher:
             if end_date > cache_end:
                 parts.append(
                     self._fetch_full_range(
-                        cache_end + timedelta(days=1), end_date, rm_mode
+                        cache_end + timedelta(days=1),
+                        end_date,
+                        rm_mode,
+                        source,
                     )
                 )
                 fetch_end = end_date
@@ -206,9 +264,9 @@ class DatasetFetcher:
 
             df_full = pd.concat(parts).sort_index()
         else:
-            df_full = self._fetch_full_range(start_date, end_date, rm_mode)
+            df_full = self._fetch_full_range(start_date, end_date, rm_mode, source)
 
-        self.cache.update(fetch_start, fetch_end, rm_mode, df_full)
+        self.cache.update(fetch_start, fetch_end, rm_mode, source, df_full)
 
         out = df_full.loc[start_date:end_date].copy()
         out.index.name = "time"

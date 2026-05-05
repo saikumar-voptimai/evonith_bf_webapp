@@ -3,8 +3,14 @@ report_map:
     - hot_metal_chemistry
   CHARGE:
     - charge_data
+  RM_CHARGE:
+    - charge_data
+    - rm_hm
   DPR:
     - dpr_data
+  RM_DPR:
+    - dpr_data
+    - rm_hm
   RM_COMPOSITION:
     - ore_chemistry
     - sinter_chemistry

@@ -160,9 +160,11 @@ class OfflineFetchArgs(BaseModel):
     report_type: Literal[
         "HM_SLAG",
         "CHARGE",
+        "RM_CHARGE",
         "RAW_MATERIAL_COMPOSITION",
         "RM_COMPOSITION",
         "DPR",
+        "RM_DPR",
         "BURDEN_DISTRIBUTION",
         "HOPPER_MANAGEMENT",
     ] = Field(
@@ -792,9 +794,11 @@ def fetch_offline_data(
         cadence_default = {
             "HM_SLAG": "1h",
             "CHARGE": "1h",
+            "RM_CHARGE": "8h",
             "RAW_MATERIAL_COMPOSITION": "8h",
             "RM_COMPOSITION": "8h",
             "DPR": "1d",
+            "RM_DPR": "1d",
             "BURDEN_DISTRIBUTION": "1d",
             "HOPPER_MANAGEMENT": "1d",
         }[args.report_type]
@@ -1009,9 +1013,11 @@ def get_openai_tool_schemas() -> list[dict]:
                             "enum": [
                                 "HM_SLAG",
                                 "CHARGE",
+                                "RM_CHARGE",
                                 "RAW_MATERIAL_COMPOSITION",
                                 "RM_COMPOSITION",
                                 "DPR",
+                                "RM_DPR",
                                 "BURDEN_DISTRIBUTION",
                                 "HOPPER_MANAGEMENT",
                             ],

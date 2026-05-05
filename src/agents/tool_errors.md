@@ -892,3 +892,57 @@ Provide only one of lookback_days, lookback_hours, lookback_minutes
 ```
 Provide only one of lookback_days, lookback_hours, lookback_minutes
 ```
+
+
+## 2026-05-05T02:12:36.439959+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "source": "neon_db", "table_name": "hot_metal_chemistry", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
+
+**Error:**
+
+```
+(psycopg2.errors.UndefinedTable) relation "hot_metal_chemistry" does not exist
+LINE 1: ...ct_sio2", "slag_pct_tio2", "slag_t_basicity" FROM "hot_metal...
+                                                             ^
+
+[SQL: SELECT "cast_no_ladle_spec", "chem_pct_c", "chem_pct_cr", "chem_pct_fe", "chem_pct_mn", "chem_pct_p", "chem_pct_s", "chem_pct_si", "chem_pct_ti", "created_at", "date", "hmt_gt_1480c", "id", "lab_sample_id", "slag_basicity", "slag_pct_al2o3", "slag_pct_cao", "slag_pct_feo", "slag_pct_k2o", "slag_pct_mgo", "slag_pct_mno", "slag_pct_na2o", "slag_pct_s", "slag_pct_sio2", "slag_pct_tio2", "slag_t_basicity" FROM "hot_metal_chemistry" WHERE "date" >= %(start_time)s AND "date" <= %(end_time)s ORDER BY "date"]
+[parameters: {'start_time': datetime.datetime(2026, 5, 2, 0, 0, tzinfo=datetime.timezone.utc), 'end_time': datetime.datetime(2026, 5, 5, 0, 0, tzinfo=datetime.timezone.utc)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+```
+
+
+## 2026-05-05T02:12:39.016584+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "source": "neon_db", "table_name": "rm_hm", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
+
+**Error:**
+
+```
+(psycopg2.errors.UndefinedTable) relation "rm_hm" does not exist
+LINE 1: ...ed_at", "date_time", "id", "rdi", "ri", "ti" FROM "rm_hm" WH...
+                                                             ^
+
+[SQL: SELECT "ai", "created_at", "date_time", "id", "rdi", "ri", "ti" FROM "rm_hm" WHERE "date_time" >= %(start_time)s AND "date_time" <= %(end_time)s ORDER BY "date_time"]
+[parameters: {'start_time': datetime.datetime(2026, 5, 2, 0, 0, tzinfo=datetime.timezone.utc), 'end_time': datetime.datetime(2026, 5, 5, 0, 0, tzinfo=datetime.timezone.utc)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+```
+
+
+## 2026-05-05T02:12:40.950029+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "source": "neon_db", "table_name": "charge_data", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
+
+**Error:**
+
+```
+(psycopg2.errors.UndefinedTable) relation "charge_data" does not exist
+LINE 1: ... "sinter_2_mt", "sinter_3_mt", "sinter_4_mt" FROM "charge_da...
+                                                             ^
+
+[SQL: SELECT "charge_no", "coke_1_mt", "coke_2_mt", "date_time", "flux_1_mt", "flux_2_mt", "flux_3_mt", "id", "nut_coke_1_mt", "nut_coke_2_mt", "ore_10_mt", "ore_11_mt", "ore_12_mt", "ore_1_mt", "ore_2_mt", "ore_3_mt", "ore_4_mt", "ore_5_mt", "ore_6_mt", "ore_7_mt", "ore_8_mt", "ore_9_mt", "pci_mt", "pellet_1_mt", "pellet_2_mt", "sinter_1_mt", "sinter_2_mt", "sinter_3_mt", "sinter_4_mt" FROM "charge_data" WHERE "date_time" >= %(start_time)s AND "date_time" <= %(end_time)s ORDER BY "date_time"]
+[parameters: {'start_time': datetime.datetime(2026, 5, 2, 0, 0, tzinfo=datetime.timezone.utc), 'end_time': datetime.datetime(2026, 5, 5, 0, 0, tzinfo=datetime.timezone.utc)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+```

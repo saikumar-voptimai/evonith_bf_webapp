@@ -455,71 +455,87 @@ UTC = pytz.UTC
 
 st.header("📄 Offline Data Viewer")
 
+st.caption("Source switch applies to this raw offline fetch only.")
+
 if "offline_source" not in st.session_state:
     st.session_state.offline_source = "Neon DB"
-if "selected_offline" not in st.session_state:
-    st.session_state.selected_offline = list(NEON_OFFLINE_REPORT_MAP.keys())[0]
+if "neon_fetch_type" not in st.session_state:
+    st.session_state.neon_fetch_type = "Logical report"
+if "selected_neon_report" not in st.session_state:
+    st.session_state.selected_neon_report = list(NEON_OFFLINE_REPORT_MAP.keys())[0]
+if "selected_neon_table" not in st.session_state:
+    st.session_state.selected_neon_table = sorted(NEON_OFFLINE_TABLES.keys())[0]
+if "selected_influx_measurement" not in st.session_state:
+    st.session_state.selected_influx_measurement = list(offline_measurements.keys())[0]
 
 TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
 
 
-with st.form("offline_fetch_form"):
+col_left, col_right = st.columns(2)
 
-    col_left, col_right = st.columns(2)
+with col_left:
+    offline_source = st.radio(
+        "Offline Source",
+        ["Neon DB", "InfluxDB rollback"],
+        horizontal=True,
+        key="offline_source",
+    )
 
-    with col_left:
-        offline_source = st.radio(
-            "Offline Source",
-            ["Neon DB", "InfluxDB rollback"],
+    if offline_source == "Neon DB":
+        neon_mode = st.radio(
+            "Neon Fetch Type",
+            ["Logical report", "Explicit table"],
             horizontal=True,
-            index=["Neon DB", "InfluxDB rollback"].index(
-                st.session_state.offline_source
-            ),
+            key="neon_fetch_type",
         )
-        st.session_state.offline_source = offline_source
-
-        if offline_source == "Neon DB":
-            neon_mode = st.radio(
-                "Neon Fetch Type",
-                ["Logical report", "Explicit table"],
-                horizontal=True,
+        if neon_mode == "Logical report":
+            neon_reports = list(NEON_OFFLINE_REPORT_MAP.keys())
+            selected_neon_report = st.selectbox(
+                "Select Offline Report",
+                neon_reports,
+                format_func=lambda key: OFFLINE_REPORT_LABEL_MAP.get(key, key),
+                key="selected_neon_report",
             )
-            if neon_mode == "Logical report":
-                neon_reports = list(NEON_OFFLINE_REPORT_MAP.keys())
-                selected_neon_report = st.selectbox(
-                    "Select Offline Report",
-                    neon_reports,
-                    format_func=lambda key: OFFLINE_REPORT_LABEL_MAP.get(key, key),
-                )
-                selected_neon_table = None
-            else:
-                selected_neon_report = "RM_COMPOSITION"
-                selected_neon_table = st.selectbox(
-                    "Select Neon Table",
-                    sorted(NEON_OFFLINE_TABLES.keys()),
-                )
-            selected_influx_measurement = None
-        else:
-            selected_influx_measurement = st.selectbox(
-                "Select Influx Offline Measurement",
-                list(offline_measurements.keys()),
-                index=0,
-            )
-            selected_neon_report = None
             selected_neon_table = None
+        else:
+            selected_neon_report = None
+            selected_neon_table = st.selectbox(
+                "Select Neon Table",
+                sorted(NEON_OFFLINE_TABLES.keys()),
+                key="selected_neon_table",
+            )
+        selected_influx_measurement = None
+    else:
+        selected_influx_measurement = st.selectbox(
+            "Select Influx Offline Measurement",
+            list(offline_measurements.keys()),
+            key="selected_influx_measurement",
+        )
+        selected_neon_report = None
+        selected_neon_table = None
 
-    with col_right:
-        time_range_choice = st.selectbox(
-            "Select Time Range (optional):", ["Use Start/End Dates"] + TIME_OPTIONS_UI
+with col_right:
+    time_range_choice = st.selectbox(
+        "Select Time Range (optional):",
+        ["Use Start/End Dates"] + TIME_OPTIONS_UI,
+        key="offline_time_range_choice",
+    )
+
+    d1, d2 = st.columns(2)
+    with d1:
+        start_date = st.date_input(
+            "Start Date",
+            value=datetime.now().date(),
+            key="offline_start_date",
+        )
+    with d2:
+        end_date = st.date_input(
+            "End Date",
+            value=datetime.now().date(),
+            key="offline_end_date",
         )
 
-        d1, d2 = st.columns(2)
-        with d1:
-            start_date = st.date_input("Start Date", value=datetime.now().date())
-        with d2:
-            end_date = st.date_input("End Date", value=datetime.now().date())
-
-    submitted = st.form_submit_button("Fetch Offline Data")
+submitted = st.button("Fetch Offline Data", key="offline_fetch_button")
 
 
 if submitted:
@@ -608,7 +624,17 @@ left_col, right_col = st.columns(2)
 with left_col:
     st.header("📄 ML Dataset")
 
+    st.caption(
+        "Source: Neon DB by default for RM Charge/RM DPR, RM-HM, HM & Slag, "
+        "and burden distribution. InfluxDB remains available for rollback."
+    )
+
     with st.form("ml_form"):
+        ml_source_label = st.radio(
+            "ML Source",
+            ["Neon DB", "InfluxDB rollback"],
+            horizontal=True,
+        )
         rm_choice_raw = st.radio(
             "Select RM Dataset",
             ["RM Charge", "RM DPR"],
@@ -634,6 +660,11 @@ with left_col:
                     end_date=end_date,
                     rm_choice=rm_choice_raw,
                     cache_override=cache_override,
+                    source=(
+                        "neon_db"
+                        if ml_source_label == "Neon DB"
+                        else "influx"
+                    ),
                 )
 
             if df_final.empty:
@@ -653,6 +684,10 @@ with left_col:
 
 with right_col:
     st.header("📄 Filtered ML Dataset")
+    st.caption(
+        "Source: static ML dataset updater. It uses the ML dataset pipeline, "
+        "not the raw Offline Source switch or the interactive ML Source selector."
+    )
     with st.container(border=True):
 
         sm = StaticDatasetManager(fullpath)

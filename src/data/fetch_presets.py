@@ -25,9 +25,11 @@ WINDOW_FREQUENCY_MAP: dict[str, str | None] = {
 OFFLINE_REPORT_LABEL_MAP: dict[str, str] = {
     "HM_SLAG": "HM & Slag",
     "CHARGE": "Charge",
+    "RM_CHARGE": "RM Charge",
     "RAW_MATERIAL_COMPOSITION": "Bunker Report",
     "RM_COMPOSITION": "Raw Material Composition",
     "DPR": "DPR",
+    "RM_DPR": "RM DPR",
     "BURDEN_DISTRIBUTION": "Burden Distribution",
     "HOPPER_MANAGEMENT": "Hopper Management",
 }

@@ -39,8 +39,10 @@ class OfflineDataSource(str, Enum):
 class OfflineReportType(str, Enum):
     hm_slag = "HM_SLAG"
     charge = "CHARGE"
+    rm_charge = "RM_CHARGE"
     rm_composition = "RM_COMPOSITION"
     dpr = "DPR"
+    rm_dpr = "RM_DPR"
     burden_distribution = "BURDEN_DISTRIBUTION"
     hopper_management = "HOPPER_MANAGEMENT"
 

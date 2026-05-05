@@ -26,10 +26,16 @@ from furnace_data.relational import BurdenDistributionHistory, build_relational_
 
 from furnace_data.config import load_config
 from furnace_data.influx.offline import fetch_offline_data
+from furnace_data.neon_db.offline import fetch_offline_data as fetch_neon_offline_data
 
 log = logging.getLogger(__name__)
 
 config = load_config("setting_ds_dv.yml")
+
+_NEON_RM_TABLES = {
+    "charge": "charge_data",
+    "dpr": "dpr_data",
+}
 
 
 @dataclass
@@ -136,6 +142,60 @@ class DatasetService:
         df.index.name = "time"
         return df.sort_index()
 
+    @staticmethod
+    def _sum_existing_columns(df: pd.DataFrame, columns: list[str]) -> pd.Series | None:
+        existing = [col for col in columns if col in df.columns]
+        if not existing:
+            return None
+        values = df[existing].apply(pd.to_numeric, errors="coerce")
+        return values.sum(axis=1, min_count=1)
+
+    def _add_neon_ml_aliases(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add ML-compatible aggregate aliases for Neon report table columns."""
+        if df.empty:
+            return df
+
+        df = df.copy()
+        aliases = {
+            "sinter_mt": [f"sinter_{i}_mt" for i in range(1, 5)],
+            "lloyds_pellet_mt": [f"pellet_{i}_mt" for i in range(1, 3)],
+            "ore_mt": [f"ore_{i}_mt" for i in range(1, 13)],
+            "nutcoke_prime_mt": [f"nut_coke_{i}_mt" for i in range(1, 3)],
+            "coke_mt": [f"coke_{i}_mt" for i in range(1, 3)],
+            "flux_mt": [f"flux_{i}_mt" for i in range(1, 4)],
+            "pci2_mt": ["pci_mt"],
+        }
+        for alias, columns in aliases.items():
+            summed = self._sum_existing_columns(df, columns)
+            if summed is not None:
+                df[alias] = summed
+
+        rm_hm_aliases = {
+            "ai": "sinter_cold_strength_ai",
+            "ti": "sinter_cold_strength_ti",
+            "ri": "sinter_hot_strength_ri",
+            "rdi": "sinter_hot_strength_rdi",
+        }
+        for source_col, alias in rm_hm_aliases.items():
+            if source_col in df.columns and alias not in df.columns:
+                df[alias] = df[source_col]
+
+        return df
+
+    def _fetch_neon_table(
+        self,
+        table_name: str,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> pd.DataFrame:
+        df = fetch_neon_offline_data(
+            table_name=table_name,
+            time_range=(start_dt, end_dt),
+        )
+        if df is None or df.empty:
+            return pd.DataFrame()
+        return self._normalize_timezone(df)
+
     # ------------------- STEP 1: LEGACY DATASET -------------------
 
     def fetch(
@@ -171,6 +231,7 @@ class DatasetService:
         end_date: date,
         mode: str = "charge",
         allowed_columns: dict | None = None,
+        source: str = "influx",
     ) -> pd.DataFrame:
         """Fetch RM Charge or RM DPR dataset.
 
@@ -179,14 +240,32 @@ class DatasetService:
             end_date:         Inclusive end date (local timezone).
             mode:             ``"charge"`` or ``"dpr"``.
             allowed_columns:  If given, restrict to these column names.
+            source:           ``"influx"`` for rollback or ``"neon_db"``.
 
         Returns:
             Time-indexed :class:`pandas.DataFrame` with RM composition columns.
         """
+        start_dt, end_dt = self._to_utc_window(start_date, end_date)
+
+        if source == "neon_db":
+            table_name = _NEON_RM_TABLES.get(mode)
+            if table_name is None:
+                raise ValueError("mode must be 'charge' or 'dpr'")
+
+            df_rm = self._fetch_neon_table(table_name, start_dt, end_dt)
+            df_rm_hm = self._fetch_neon_table("rm_hm", start_dt, end_dt)
+
+            frames = [df for df in [df_rm, df_rm_hm] if df is not None and not df.empty]
+            if not frames:
+                return pd.DataFrame()
+
+            df = pd.concat(frames, axis=1).sort_index()
+            df = df.loc[:, ~df.columns.duplicated()]
+            return self._add_neon_ml_aliases(df)
+
         measurement = (
             self.measurement_rm_charge if mode == "charge" else self.measurement_rm_dpr
         )
-        start_dt, end_dt = self._to_utc_window(start_date, end_date)
         df = self._safe_influx_call(measurement, start_dt, end_dt)
         if df is None or df.empty:
             return pd.DataFrame()
@@ -203,6 +282,7 @@ class DatasetService:
         end_date: date,
         keep_columns: list[str] | None = None,
         interval_minutes: int = 60,
+        source: str = "influx",
     ) -> pd.DataFrame:
         """Fetch Hot Metal & Slag and interpolate to a regular hourly grid.
 
@@ -214,6 +294,7 @@ class DatasetService:
             end_date:          Inclusive end date.
             keep_columns:      If given, subset to these column names after fetch.
             interval_minutes:  Target grid resolution in minutes (default 60).
+            source:            ``"influx"`` for rollback or ``"neon_db"``.
 
         Returns:
             Time-indexed :class:`pandas.DataFrame` on an hourly grid (no timezone).
@@ -229,16 +310,24 @@ class DatasetService:
         fetch_start_utc = fetch_start.tz_convert("UTC")
         fetch_end_utc = fetch_end.tz_convert("UTC")
 
-        df = self._safe_influx_call(
-            measurement=self.hotmetal_measurement,
-            start_dt=fetch_start_utc,
-            end_dt=fetch_end_utc,
-            bucket=self.hotmetal_bucket,
-        )
+        if source == "neon_db":
+            df = fetch_neon_offline_data(
+                table_name="hot_metal_chemistry",
+                time_range=(fetch_start_utc, fetch_end_utc),
+            )
+        else:
+            df = self._safe_influx_call(
+                measurement=self.hotmetal_measurement,
+                start_dt=fetch_start_utc,
+                end_dt=fetch_end_utc,
+                bucket=self.hotmetal_bucket,
+            )
 
         if df is None or df.empty:
             return pd.DataFrame()
 
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
         df.index = df.index.tz_convert(tz)
         df = df.sort_index().loc[~df.index.duplicated(keep="last")]
 
@@ -404,6 +493,13 @@ class DatasetService:
         """Alias for :meth:`fetch` (legacy pre-cutoff dataset)."""
         return self.fetch(start_date, end_date, allowed_columns)
 
-    def fetch_step2(self, start_date: date, end_date: date, mode: str, allowed_columns=None):
+    def fetch_step2(
+        self,
+        start_date: date,
+        end_date: date,
+        mode: str,
+        allowed_columns=None,
+        source: str = "influx",
+    ):
         """Alias for :meth:`fetch_rm_data` (RM Charge / DPR dataset)."""
-        return self.fetch_rm_data(start_date, end_date, mode, allowed_columns)
+        return self.fetch_rm_data(start_date, end_date, mode, allowed_columns, source)
