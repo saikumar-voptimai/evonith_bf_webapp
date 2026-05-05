@@ -17,6 +17,7 @@ from agents.furnacemind.context import SystemPromptContext
 from agents.furnacemind.prompts import TOOL_POLICY
 from agents.furnacemind.skills import SkillEngine
 from agents.llm.llm_client import OpenRouterClient
+from agents.memory.conversation_history import ConversationHistoryStore
 from agents.memory.fm_memory import add_recent_turn, save_fm_memory
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
@@ -56,6 +57,37 @@ def _cached_skill_engine() -> SkillEngine:
     return SkillEngine()
 
 
+@st.cache_resource(show_spinner=False)
+def _cached_history_store() -> ConversationHistoryStore | None:
+    """
+    Return a singleton PostgreSQL conversation history store when configured.
+
+    Args:
+         - None
+
+    Returns:
+         - return: ConversationHistoryStore | None - Store instance when available.
+    """
+    try:
+        return ConversationHistoryStore()
+    except Exception:
+        return None
+
+
+def _current_user_id() -> str:
+    """
+    Return the current authenticated user id for persistence.
+
+    Args:
+         - None
+
+    Returns:
+         - return: str - Current user id or anonymous fallback.
+    """
+    user_id = str(st.session_state.get("auth_user") or "anonymous").strip()
+    return user_id or "anonymous"
+
+
 def _last_completed_shift() -> tuple[date, str]:
     """Return date/label for most recently completed IST shift."""
     now = datetime.now(_IST)
@@ -76,7 +108,11 @@ def _chat_history_to_messages(max_messages: int = 14) -> list[dict]:
             continue
         role = item.get("role")
         content = item.get("content")
-        if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+        if (
+            role in {"user", "assistant"}
+            and isinstance(content, str)
+            and content.strip()
+        ):
             messages.append({"role": role, "content": content})
     return messages
 
@@ -94,7 +130,9 @@ def _render_message(item: dict) -> None:
         artifact_key = item.get("artifact_key", "")
         figure = artifact_store.get(artifact_key)
         if figure is not None:
-            st.plotly_chart(figure, use_container_width=True, key=f"chat_{artifact_key}")
+            st.plotly_chart(
+                figure, use_container_width=True, key=f"chat_{artifact_key}"
+            )
         else:
             st.caption("_Chart no longer in session._")
         return
@@ -174,7 +212,9 @@ def _queue_skill(prompt: str, display: str, skill_id: str) -> None:
     st.rerun()
 
 
-def _render_quick_skills(engine: SkillEngine, shift_date: date, shift_label: str) -> None:
+def _render_quick_skills(
+    engine: SkillEngine, shift_date: date, shift_label: str
+) -> None:
     """Render quick-skill buttons directly above chat input."""
     st.caption("Quick skills")
     c1, c2, c3 = st.columns(3)
@@ -238,11 +278,15 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     knowledge_store = _cached_knowledge_store()
     context = _cached_context()
     engine = _cached_skill_engine()
+    history_store = _cached_history_store()
+    user_id = _current_user_id()
 
     context.refresh_session_context()
     st.session_state["knowledge_store"] = knowledge_store
 
-    with st.sidebar.expander("Knowledge (optional)", expanded=False, key="fm_knowledge"):
+    with st.sidebar.expander(
+        "Knowledge (optional)", expanded=False, key="fm_knowledge"
+    ):
         uploaded_files = st.file_uploader(
             "Upload Knowledge Files",
             type="document",
@@ -258,6 +302,23 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     st.session_state.setdefault("fm_artifact_store", {})
+    if history_store is not None:
+        try:
+            conversation_id = history_store.ensure_conversation(
+                user_id=user_id,
+                conversation_id=st.session_state.get("fm_conversation_id"),
+            )
+            st.session_state["fm_conversation_id"] = conversation_id
+            if st.session_state.get("_fm_loaded_conversation_id") != conversation_id:
+                st.session_state.chat_history = history_store.load_chat_history(
+                    conversation_id=conversation_id
+                )
+                st.session_state["_fm_loaded_conversation_id"] = conversation_id
+        except Exception as exc:
+            history_store = None
+            st.sidebar.caption(f"Chat history database unavailable: {exc}")
+    else:
+        st.sidebar.caption("Chat history database unavailable.")
 
     default_date, default_label = _last_completed_shift()
 
@@ -290,12 +351,27 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if not user_query:
         return
 
+    conversation_id = st.session_state.get("fm_conversation_id")
+    user_message_id: str | None = None
+    if history_store is not None and conversation_id:
+        try:
+            user_message_id = history_store.add_user_message(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                content=user_query,
+                display=user_display or user_query,
+            )
+        except Exception as exc:
+            st.sidebar.caption(f"Could not save user message: {exc}")
+
     st.session_state.chat_history.append(
         {
             "role": "user",
             "content": user_query,
             "display": user_display or user_query,
             "type": "text",
+            "message_id": user_message_id,
+            "conversation_id": conversation_id,
         }
     )
     with st.chat_message("user"):
@@ -328,15 +404,32 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
     _inject_artifacts(history_len_before)
 
+    assistant_message_id: str | None = None
+    if history_store is not None and conversation_id:
+        try:
+            assistant_message_id = history_store.add_assistant_message(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                content=final_response,
+                model=getattr(llm, "model", None),
+                metadata={"source": "furnacemind"},
+            )
+        except Exception as exc:
+            st.sidebar.caption(f"Could not save assistant message: {exc}")
+
     st.session_state.chat_history.append(
         {
             "role": "assistant",
             "content": final_response,
             "display": final_response,
             "type": "text",
+            "message_id": assistant_message_id,
+            "conversation_id": conversation_id,
         }
     )
 
-    updated_memory = add_recent_turn(context.memory, user=user_query, assistant=final_response)
+    updated_memory = add_recent_turn(
+        context.memory, user=user_query, assistant=final_response
+    )
     save_fm_memory(updated_memory)
     st.rerun()
