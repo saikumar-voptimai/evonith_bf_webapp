@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from agents.memory.fm_memory import DEFAULT_MEMORY
 from furnace_data.relational import (
     ConversationMessageRepository,
     ConversationRepository,
+    MemorySummaryRepository,
     build_relational_engine,
     build_relational_session_factory,
 )
@@ -45,6 +47,7 @@ class ConversationHistoryStore:
         session_factory = build_relational_session_factory(engine)
         self._conversations = ConversationRepository(session_factory)
         self._messages = ConversationMessageRepository(session_factory)
+        self._summaries = MemorySummaryRepository(session_factory)
 
     def ensure_conversation(
         self,
@@ -110,6 +113,52 @@ class ConversationHistoryStore:
                 }
             )
         return history
+
+    def load_memory(
+        self,
+        *,
+        conversation_id: str,
+        max_turns: int = 8,
+    ) -> dict[str, Any]:
+        """
+        Build FurnaceMind prompt memory from PostgreSQL rows.
+
+        Args:
+             - conversation_id: str - Conversation id used to load memory context.
+             - max_turns: int - Maximum recent user/assistant turns to include.
+
+        Returns:
+             - return: dict[str, Any] - Memory payload compatible with prompt builders.
+        """
+        memory = dict(DEFAULT_MEMORY)
+        summaries = self._summaries.list_summaries(
+            conversation_id=conversation_id,
+            limit=1,
+        )
+        if summaries:
+            memory["conversation_summary"] = summaries[0].summary_text
+
+        rows = self._messages.list_recent_messages(
+            conversation_id=conversation_id,
+            limit=max_turns * 2,
+        )
+        recent_turns: list[dict[str, Any]] = []
+        pending_user: Any | None = None
+        for row in rows:
+            if row.role == "user":
+                pending_user = row
+                continue
+            if row.role == "assistant" and pending_user is not None:
+                recent_turns.append(
+                    {
+                        "ts_utc": row.created_at.isoformat(),
+                        "user": pending_user.content,
+                        "assistant": row.content,
+                    }
+                )
+                pending_user = None
+        memory["recent_turns"] = recent_turns[-max_turns:]
+        return memory
 
     def add_user_message(
         self,

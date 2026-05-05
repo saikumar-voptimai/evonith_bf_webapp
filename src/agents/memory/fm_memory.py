@@ -1,9 +1,8 @@
-"""Persistent memory for the AI Co-Operate chatbot (FurnaceMind).
+"""Prompt-memory helpers for the AI Co-Operate chatbot.
 
-Stores a rolling conversation summary, do-not-repeat rules, and operator
-preferences in a JSON file.  All writes are non-destructive: the file is
-created on first access and errors during read/write are silently swallowed
-to prevent UI disruption.
+FurnaceMind runtime memory is loaded from PostgreSQL when the relational
+conversation store is available. The JSON helpers remain as a fallback for
+local development or unavailable database sessions.
 """
 
 from __future__ import annotations
@@ -183,5 +182,22 @@ def build_persistent_context(memory: Dict[str, Any]) -> str:
     if prefs:
         prefs_block = "\n".join(f"- {p}" for p in prefs)
         parts.append("OPERATOR PREFERENCES:\n" + prefs_block)
+
+    recent_turns = [
+        turn
+        for turn in (memory.get("recent_turns") or [])
+        if isinstance(turn, dict)
+        and str(turn.get("user") or "").strip()
+        and str(turn.get("assistant") or "").strip()
+    ]
+    if recent_turns:
+        turn_lines = []
+        for turn in recent_turns[-4:]:
+            user_text = str(turn.get("user") or "").strip()
+            assistant_text = str(turn.get("assistant") or "").strip()
+            turn_lines.append(
+                f"- User: {user_text[:240]}\n  Assistant: {assistant_text[:320]}"
+            )
+        parts.append("RECENT DATABASE MEMORY TURNS:\n" + "\n".join(turn_lines))
 
     return "\n\n".join(parts).strip()

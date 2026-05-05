@@ -18,7 +18,7 @@ from agents.furnacemind.prompts import TOOL_POLICY
 from agents.furnacemind.skills import SkillEngine
 from agents.llm.llm_client import OpenRouterClient
 from agents.memory.conversation_history import ConversationHistoryStore
-from agents.memory.fm_memory import add_recent_turn, save_fm_memory
+from agents.memory.fm_memory import add_recent_turn
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
 from agents.multimodal.ingestion import process_file
@@ -281,7 +281,6 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     history_store = _cached_history_store()
     user_id = _current_user_id()
 
-    context.refresh_session_context()
     st.session_state["knowledge_store"] = knowledge_store
 
     with st.sidebar.expander(
@@ -302,6 +301,8 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     st.session_state.setdefault("fm_artifact_store", {})
+    conversation_id: str | None = None
+    prompt_memory: dict | None = None
     if history_store is not None:
         try:
             conversation_id = history_store.ensure_conversation(
@@ -314,11 +315,13 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
                     conversation_id=conversation_id
                 )
                 st.session_state["_fm_loaded_conversation_id"] = conversation_id
+            prompt_memory = history_store.load_memory(conversation_id=conversation_id)
         except Exception as exc:
             history_store = None
             st.sidebar.caption(f"Chat history database unavailable: {exc}")
     else:
         st.sidebar.caption("Chat history database unavailable.")
+    context.refresh_session_context(memory=prompt_memory)
 
     default_date, default_label = _last_completed_shift()
 
@@ -428,8 +431,17 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         }
     )
 
-    updated_memory = add_recent_turn(
-        context.memory, user=user_query, assistant=final_response
-    )
-    save_fm_memory(updated_memory)
+    if history_store is not None and conversation_id:
+        try:
+            context.refresh_memory(
+                memory=history_store.load_memory(conversation_id=conversation_id)
+            )
+        except Exception:
+            pass
+    else:
+        context.refresh_memory(
+            memory=add_recent_turn(
+                context.memory, user=user_query, assistant=final_response
+            )
+        )
     st.rerun()

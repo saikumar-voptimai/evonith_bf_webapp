@@ -26,11 +26,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]  # …/evonith_webapp
 
 # Which SKILLS*.md files to inject per active skill. None = free chat (no skill docs).
 _SKILL_FILES: dict[str | None, list[str]] = {
-    "optimise":      ["SKILLS_BESTSHIFT.md", "SKILLS_OPTIMISE.md"],
+    "optimise": ["SKILLS_BESTSHIFT.md", "SKILLS_OPTIMISE.md"],
     "shift_to_best": ["SKILLS_BESTSHIFT.md"],
-    "heatload":      ["SKILLS_HEATLOAD.md"],
-    "shift_report":  ["SKILLS_SHIFTREPORT.md"],
-    None:            [],
+    "heatload": ["SKILLS_HEATLOAD.md"],
+    "shift_report": ["SKILLS_SHIFTREPORT.md"],
+    None: [],
 }
 
 
@@ -97,19 +97,30 @@ class SystemPromptContext:
             parts.append(extra.strip())
         return "\n\n".join(parts).strip()
 
-    def refresh_memory(self) -> None:
-        """Reload memory from disk (call after saving a new conversation turn)."""
-        self.memory = load_fm_memory()
+    def refresh_memory(self, memory: dict | None = None) -> None:
+        """
+        Refresh prompt memory from PostgreSQL payload or fallback JSON.
+
+        Args:
+             - memory: dict | None - Optional preloaded database memory payload.
+
+        Returns:
+             - return: None - This function does not return a value.
+        """
+        self.memory = memory if memory is not None else load_fm_memory()
         self._persistent = build_persistent_context(self.memory)
 
-    def refresh_session_context(self) -> None:
-        """Refresh all per-session data (memory + recent tool errors).
-
-        Call this once per render on the cached SystemPromptContext instance so
-        that new conversation turns and new tool errors are picked up without
-        re-loading the expensive static files (TOOLS*.md, CLAUDE.md).
+    def refresh_session_context(self, memory: dict | None = None) -> None:
         """
-        self.refresh_memory()
+        Refresh all per-session data.
+
+        Args:
+             - memory: dict | None - Optional preloaded database memory payload.
+
+        Returns:
+             - return: None - This function does not return a value.
+        """
+        self.refresh_memory(memory=memory)
         self._errors = self._load_errors()
 
     # ── Private loaders ─────────────────────────────────────────────────────
@@ -137,7 +148,12 @@ class SystemPromptContext:
         for name in filenames:
             txt = _read_file(_COPILOT_DATA_DIR / name, max_chars=14_000)
             if txt:
-                logger.info("Loaded skill file %s (%d chars) for skill=%s", name, len(txt), skill_id)
+                logger.info(
+                    "Loaded skill file %s (%d chars) for skill=%s",
+                    name,
+                    len(txt),
+                    skill_id,
+                )
                 parts.append(f"{name} (skill benchmark data):\n" + txt)
         return "\n\n---\n\n".join(parts)
 
