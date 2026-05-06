@@ -204,6 +204,7 @@ class Skill(Base):
 
     skill_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
+    icon: Mapped[str | None] = mapped_column(String(64), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     instruction: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[str] = mapped_column(

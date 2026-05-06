@@ -39,6 +39,9 @@ def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid4().hex}"
 
 
+_UNSET: Any = object()
+
+
 class UserRepository:
     """User/auth repository operations."""
 
@@ -1140,6 +1143,7 @@ class SkillRepository:
         *,
         name: str,
         instruction: str,
+        icon: str | None = None,
         description: str | None = None,
         source_type: str = "uploaded",
         qdrant_collection: str | None = None,
@@ -1153,6 +1157,7 @@ class SkillRepository:
         Args:
              - name: str - Skill display name.
              - instruction: str - Prompt instruction used when the skill is selected.
+             - icon: str | None - Optional icon label for the skill.
              - description: str | None - Optional skill description.
              - source_type: str - Skill source, such as built_in or uploaded.
              - qdrant_collection: str | None - Optional Qdrant collection name.
@@ -1167,6 +1172,7 @@ class SkillRepository:
         skill = Skill(
             skill_id=_new_id("skill"),
             name=name,
+            icon=icon,
             description=description,
             instruction=instruction,
             source_type=source_type,
@@ -1203,12 +1209,25 @@ class SkillRepository:
                 session.expunge(row)
             return rows
 
-    def update_skill(self, *, skill_id: str, is_active: bool) -> Skill | None:
+    def update_skill(
+        self,
+        *,
+        skill_id: str,
+        name: str = _UNSET,
+        icon: str | None = _UNSET,
+        description: str | None = _UNSET,
+        instruction: str = _UNSET,
+        is_active: bool = _UNSET,
+    ) -> Skill | None:
         """
-        Update a skill active flag and return the row.
+        Update a skill definition and return the row.
 
         Args:
              - skill_id: str - Skill id to update.
+             - name: str - New skill display name.
+             - icon: str | None - New optional icon label.
+             - description: str | None - New skill description.
+             - instruction: str - New prompt instruction.
              - is_active: bool - New active state.
 
         Returns:
@@ -1218,7 +1237,16 @@ class SkillRepository:
             skill = session.get(Skill, skill_id)
             if skill is None:
                 return None
-            skill.is_active = is_active
+            if name is not _UNSET:
+                skill.name = name
+            if icon is not _UNSET:
+                skill.icon = icon
+            if description is not _UNSET:
+                skill.description = description
+            if instruction is not _UNSET:
+                skill.instruction = instruction
+            if is_active is not _UNSET:
+                skill.is_active = is_active
             skill.updated_at = utc_now()
             session.commit()
             session.refresh(skill)
