@@ -92,7 +92,7 @@ class KnowledgeVectorStore:
                 f"expected {self.embedding_dim}, got {vectors.size}"
             )
 
-    def add_document(self, content: str, metadata: Dict) -> None:
+    def add_document(self, content: str, metadata: Dict) -> str:
         """Embed *content* and upsert the document into Qdrant.
 
         A random UUID is generated for each document (documents are not
@@ -102,6 +102,9 @@ class KnowledgeVectorStore:
             content:  Text content to embed and store.
             metadata: Arbitrary metadata dict stored alongside the vector
                       (e.g. ``source``, ``page``, ``file_name``).
+
+        Returns:
+            Qdrant point id generated for the stored document chunk.
 
         Raises:
             ValueError: If the generated embedding dimension does not match
@@ -114,17 +117,19 @@ class KnowledgeVectorStore:
                 f"Embedding dimension {len(embedding)} does not match expected {self.embedding_dim}"
             )
 
+        point_id = str(uuid.uuid4())
         self.client.upsert(
             collection_name=self.collection_name,
             points=[
                 PointStruct(
-                    id=str(uuid.uuid4()),
+                    id=point_id,
                     vector=embedding,
                     payload={**metadata, "content": content},
                 )
             ],
             wait=True,
         )
+        return point_id
 
     def search(self, query: str, top_k: int = 5) -> List[Dict]:
         """Semantic search over the knowledge document collection.
