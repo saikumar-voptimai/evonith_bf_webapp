@@ -11,15 +11,6 @@ import streamlit as st
 from agents.embeddings.cloud_embedding import CloudEmbeddingClient
 from agents.furnace_tools import get_openai_tool_schemas
 from agents.furnacemind.agent import run_agent_loop
-from agents.furnacemind.chat_ui import (
-    chat_history_to_messages,
-    extract_submission,
-    inject_artifacts,
-    last_completed_shift,
-    render_chat_history,
-    render_knowledge_sidebar,
-    render_quick_skills,
-)
 from agents.furnacemind.context import SystemPromptContext
 from agents.furnacemind.prompts import TOOL_POLICY
 from agents.furnacemind.skills import SkillEngine
@@ -28,35 +19,76 @@ from agents.memory.conversation_history import ConversationHistoryStore
 from agents.memory.fm_memory import add_recent_turn, save_fm_memory
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
+from ui.furnacemind import chat_ui
 
 
 @st.cache_resource(show_spinner=False)
 def _cached_embedding_client() -> CloudEmbeddingClient:
-    """Return singleton embedding client."""
+    """
+    Return the cached embedding client.
+
+    Args:
+         - None
+
+    Returns:
+         - return: CloudEmbeddingClient - Singleton embedding client instance.
+    """
     return CloudEmbeddingClient()
 
 
 @st.cache_resource(show_spinner=False)
 def _cached_knowledge_store() -> KnowledgeVectorStore:
-    """Return singleton knowledge vector store."""
+    """
+    Return the cached knowledge vector store.
+
+    Args:
+         - None
+
+    Returns:
+         - return: KnowledgeVectorStore - Singleton knowledge vector store.
+    """
     return KnowledgeVectorStore(_cached_embedding_client())
 
 
 @st.cache_resource(show_spinner=False)
 def _cached_shift_store() -> QdrantVectorStore:
-    """Return singleton shift vector store."""
+    """
+    Return the cached shift vector store.
+
+    Args:
+         - None
+
+    Returns:
+         - return: QdrantVectorStore - Singleton shift vector store.
+    """
     return QdrantVectorStore()
 
 
 @st.cache_resource(show_spinner=False)
 def _cached_context() -> SystemPromptContext:
-    """Return singleton system prompt context."""
+    """
+    Return the cached system prompt context.
+
+    Args:
+         - None
+
+    Returns:
+         - return: SystemPromptContext - Singleton prompt context.
+    """
     return SystemPromptContext()
 
 
 @st.cache_resource(show_spinner=False)
 def _cached_skill_engine() -> SkillEngine:
-    """Return singleton skill engine."""
+    """
+    Return the cached skill engine.
+
+    Args:
+         - None
+
+    Returns:
+         - return: SkillEngine - Singleton FurnaceMind skill engine.
+    """
     return SkillEngine()
 
 
@@ -92,7 +124,15 @@ def _current_user_id() -> str:
 
 
 def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
-    """Render FurnaceMind AI Co-Operate tab."""
+    """
+    Render FurnaceMind AI Co-Operate tab.
+
+    Args:
+         - field_labels: dict - Page field labels passed by the app shell.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
     embedding_client = _cached_embedding_client()
     knowledge_store = _cached_knowledge_store()
     context = _cached_context()
@@ -103,7 +143,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     context.refresh_session_context()
     st.session_state["knowledge_store"] = knowledge_store
 
-    render_knowledge_sidebar(
+    chat_ui.render_knowledge_sidebar(
         knowledge_store=knowledge_store,
         embedding_client=embedding_client,
     )
@@ -129,11 +169,11 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     else:
         st.sidebar.caption("Chat history database unavailable.")
 
-    default_date, default_label = last_completed_shift()
+    default_date, default_label = chat_ui.last_completed_shift()
 
-    render_chat_history()
+    chat_ui.render_chat_history()
 
-    render_quick_skills(engine, default_date, default_label)
+    chat_ui.render_quick_skills(engine, default_date, default_label)
     chat_submission = st.chat_input(
         "Ask FurnaceMind or attach a document...",
         accept_file="multiple",
@@ -151,7 +191,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         user_display = pending.get("display")
         active_skill_id = pending.get("skill_id")
     else:
-        user_query, user_display = extract_submission(
+        user_query, user_display = chat_ui.extract_submission(
             chat_submission,
             knowledge_store=knowledge_store,
             embedding_client=embedding_client,
@@ -195,7 +235,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             "role": "system",
             "content": context.build(extra=TOOL_POLICY, skill_id=active_skill_id),
         },
-        *chat_history_to_messages(),
+        *chat_ui.chat_history_to_messages(),
     ]
     history_len_before = len(st.session_state.chat_history)
 
@@ -211,7 +251,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             response_box=response_box,
         )
 
-    inject_artifacts(history_len_before)
+    chat_ui.inject_artifacts(history_len_before)
 
     assistant_message_id: str | None = None
     if history_store is not None and conversation_id:

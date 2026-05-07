@@ -1,0 +1,12 @@
+timezone: "Asia/Kolkata"
+
+shift_windows:
+  - label: "A"
+    start_hour: 6
+    end_hour: 14
+  - label: "B"
+    start_hour: 14
+    end_hour: 22
+  - label: "C"
+    start_hour: 22
+    end_hour: 6

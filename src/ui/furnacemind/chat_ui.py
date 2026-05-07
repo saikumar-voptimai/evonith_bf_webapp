@@ -2,32 +2,69 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
+import pytz
 import streamlit as st
 
-from agents.furnacemind.skills import SkillEngine
 from agents.multimodal.ingestion import process_file
+from config.config_loader import load_config
 
-_IST = timezone(timedelta(hours=5, minutes=30))
+if TYPE_CHECKING:
+    from agents.furnacemind.skills import SkillEngine
+
 _ARTIFACT_TYPES = {"plotly", "dataframe"}
+_CHAT_HISTORY_LIMIT = 14
+_CHAT_HISTORY_HEIGHT = 560
+_KNOWLEDGE_FILE_TYPE = "document"
+_FURNACEMIND_CONFIG = load_config("furnacemind.yml") or {}
+_IST = pytz.timezone(str(_FURNACEMIND_CONFIG["timezone"]))
+_SHIFT_WINDOWS = tuple(_FURNACEMIND_CONFIG["shift_windows"])
 
 
 def last_completed_shift() -> tuple[date, str]:
-    """Return date/label for most recently completed IST shift."""
+    """
+    Return the date and label for the configured FurnaceMind shift.
+
+    Args:
+         - None
+
+    Returns:
+         - return: tuple[date, str] - Shift date and label.
+    """
     now = datetime.now(_IST)
-    if now.hour < 6:
-        return (now.date() - timedelta(days=1)), "C"
-    if now.hour < 14:
-        return now.date(), "A"
-    if now.hour < 22:
-        return now.date(), "B"
-    return now.date(), "C"
+    hour = now.hour
+
+    for shift in _SHIFT_WINDOWS:
+        start_hour = int(shift["start_hour"])
+        end_hour = int(shift["end_hour"])
+        label = str(shift["label"])
+
+        if start_hour < end_hour and start_hour <= hour < end_hour:
+            return now.date(), label
+        if start_hour > end_hour:
+            if hour >= start_hour:
+                return now.date(), label
+            if hour < end_hour:
+                return now.date() - timedelta(days=1), label
+
+    first_shift = _SHIFT_WINDOWS[0]
+    return now.date(), str(first_shift["label"])
 
 
-def chat_history_to_messages(max_messages: int = 14) -> list[dict]:
-    """Convert chat history to OpenAI messages, skipping artifact entries."""
+def chat_history_to_messages(
+    max_messages: int = _CHAT_HISTORY_LIMIT,
+) -> list[dict]:
+    """
+    Convert chat history to OpenAI messages, skipping artifact entries.
+
+    Args:
+         - max_messages: int - Maximum recent messages to include.
+
+    Returns:
+         - return: list[dict] - Chat messages compatible with the LLM client.
+    """
     messages: list[dict] = []
     for item in (st.session_state.get("chat_history") or [])[-max_messages:]:
         if item.get("type") in _ARTIFACT_TYPES:
@@ -43,8 +80,16 @@ def chat_history_to_messages(max_messages: int = 14) -> list[dict]:
     return messages
 
 
-def render_chat_history(*, height: int = 560) -> None:
-    """Render persisted and in-session chat messages."""
+def render_chat_history(*, height: int = _CHAT_HISTORY_HEIGHT) -> None:
+    """
+    Render persisted and in-session chat messages.
+
+    Args:
+         - height: int - Streamlit chat history container height.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
     with st.container(height=height, border=False):
         for item in st.session_state.chat_history:
             role = item.get("role", "assistant")
@@ -53,7 +98,15 @@ def render_chat_history(*, height: int = 560) -> None:
 
 
 def render_message(item: dict) -> None:
-    """Render one chat message including inline artifacts."""
+    """
+    Render one chat message including inline artifacts.
+
+    Args:
+         - item: dict - Chat history item to render.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
     message_type = item.get("type") or "text"
     artifact_store: dict = st.session_state.get("fm_artifact_store") or {}
 
@@ -100,7 +153,15 @@ def render_message(item: dict) -> None:
 
 
 def inject_artifacts(history_len_before: int) -> None:
-    """Append inline artifact messages for plot/dataframe produced this turn."""
+    """
+    Append inline artifact messages for plot/dataframe produced this turn.
+
+    Args:
+         - history_len_before: int - Chat history length before agent execution.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
     artifact_store: dict = st.session_state.setdefault("fm_artifact_store", {})
     history: list = st.session_state.chat_history
 
@@ -135,13 +196,22 @@ def inject_artifacts(history_len_before: int) -> None:
 
 
 def render_knowledge_sidebar(*, knowledge_store: Any, embedding_client: Any) -> None:
-    """Render optional knowledge upload controls."""
+    """
+    Render optional knowledge upload controls.
+
+    Args:
+         - knowledge_store: Any - Vector store used to index uploaded files.
+         - embedding_client: Any - Embedding client used for uploaded files.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
     with st.sidebar.expander(
         "Knowledge (optional)", expanded=False, key="fm_knowledge"
     ):
         uploaded_files = st.file_uploader(
             "Upload Knowledge Files",
-            type="document",
+            type=_KNOWLEDGE_FILE_TYPE,
             accept_multiple_files=True,
             key="knowledge_uploader",
         )
@@ -152,10 +222,43 @@ def render_knowledge_sidebar(*, knowledge_store: Any, embedding_client: Any) -> 
             upload_status.success("Documents indexed successfully.")
 
 
+def _queue_skill(prompt: str, display: str, skill_id: str) -> None:
+    """
+    Queue quick-skill execution and rerun the Streamlit page.
+
+    Args:
+         - prompt: str - Prompt generated by the selected quick skill.
+         - display: str - User-facing text shown in chat history.
+         - skill_id: str - Skill identifier used for prompt context.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
+    st.session_state.pop("fm_fig", None)
+    st.session_state.pop("fm_df", None)
+    st.session_state.pop("fm_df_meta", None)
+    st.session_state["pending_skill_prompt"] = {
+        "prompt": prompt,
+        "display": display,
+        "skill_id": skill_id,
+    }
+    st.rerun()
+
+
 def render_quick_skills(
     engine: SkillEngine, shift_date: date, shift_label: str
 ) -> None:
-    """Render quick-skill buttons directly above chat input."""
+    """
+    Render quick-skill buttons directly above chat input.
+
+    Args:
+         - engine: SkillEngine - FurnaceMind quick-skill prompt engine.
+         - shift_date: date - Shift date used for shift-based prompts.
+         - shift_label: str - Shift label used for shift-based prompts.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
     st.caption("Quick skills")
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -187,7 +290,17 @@ def extract_submission(
     knowledge_store: Any,
     embedding_client: Any,
 ) -> tuple[str | None, str | None]:
-    """Extract user query/display from chat_input object."""
+    """
+    Extract user query and display text from the Streamlit chat input.
+
+    Args:
+         - chat_submission: object - Streamlit chat input payload.
+         - knowledge_store: Any - Vector store used to index attached files.
+         - embedding_client: Any - Embedding client used for attached files.
+
+    Returns:
+         - return: tuple[str | None, str | None] - Query and display text.
+    """
     if not chat_submission:
         return None, None
 
@@ -213,16 +326,3 @@ def extract_submission(
         display = f"Attached files: {file_label}"
         return display, display
     return None, None
-
-
-def _queue_skill(prompt: str, display: str, skill_id: str) -> None:
-    """Queue quick-skill execution and rerun."""
-    st.session_state.pop("fm_fig", None)
-    st.session_state.pop("fm_df", None)
-    st.session_state.pop("fm_df_meta", None)
-    st.session_state["pending_skill_prompt"] = {
-        "prompt": prompt,
-        "display": display,
-        "skill_id": skill_id,
-    }
-    st.rerun()
