@@ -497,7 +497,7 @@ The static dataset at `assets/data/ml_dataset_filtered.csv` is the latest commit
 
 ### PostgreSQL
 
-Used for authentication and admin data (users, hoppers, materials, burden config). Accessed via SQLAlchemy through `data/db.py`. Schema uses **SCD Type-2** pattern (`valid_upto IS NULL` = current row).
+Used for authentication and admin data (users, hoppers, materials, burden config). Accessed via SQLAlchemy through `data/db.py`. Burden config uses **SCD Type-2** rows (`valid_upto IS NULL` = current row); hopper raw materials use timestamped all-hopper snapshots in `hopper_raw_material_history`.
 
 ### Tickets Database
 

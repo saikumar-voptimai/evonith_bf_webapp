@@ -2,8 +2,8 @@
 
 Allows supervisors and admins to assign raw materials to hoppers with
 a user-specified effective timestamp.  All changes are written via
-:meth:`~data.db.Database.update_hopper_material_with_time` which appends
-a new SCD Type-2 history row.
+:meth:`~data.db.Database.update_hopper_materials_with_time` which appends
+a new all-hopper raw-material snapshot.
 """
 
 from datetime import datetime
@@ -16,8 +16,8 @@ from data.db import Database
 class HopperAdminPage:
     """Streamlit admin interface for hopper-to-material mapping management.
 
-    Derives the current mapping entirely from the ``hopper_material_history``
-    table (no separate snapshot table required).
+    Derives the current mapping from the latest row in
+    ``hopper_raw_material_history``.
 
     Attributes:
         db:              :class:`~data.db.Database` instance.
@@ -32,7 +32,6 @@ class HopperAdminPage:
         self.materials = self.db.materials
         self.hoppers = self.db.hoppers
 
-        # \u2705 UPDATED: derive current mapping from history table
         self.hopper_materials = self.db.get_current_hopper_materials()
 
     def get_client_ip(self):
@@ -110,34 +109,31 @@ class HopperAdminPage:
         ip_address: str,
     ) -> None:
 
-        changes = 0
-        errors = False
+        changes = {
+            hopper: new_material
+            for hopper, new_material in updated_values.items()
+            if new_material != self.hopper_materials.get(hopper, "UNASSIGNED")
+        }
 
-        for hopper, new_material in updated_values.items():
-            current_material = self.hopper_materials.get(hopper, "UNASSIGNED")
+        if not changes:
+            st.info("ℹ️ No changes detected.")
+            return
 
-            if new_material != current_material:
-                try:
-                    self.db.update_hopper_material_with_time(
-                        hopper=hopper,
-                        material=new_material,
-                        from_time=from_time,
-                        modifier=username,
-                        ip_address=ip_address,
-                    )
-                    changes += 1
-                except Exception as e:
-                    st.error(f"❌ Error updating {hopper}: {e}")
-                    errors = True
+        try:
+            self.db.update_hopper_materials_with_time(
+                updates=changes,
+                from_time=from_time,
+                modifier=username,
+                ip_address=ip_address,
+            )
+        except Exception as e:
+            st.error(f"❌ Error updating hopper materials: {e}")
+            return
 
-        if not errors:
-            if changes == 0:
-                st.info("ℹ️ No changes detected.")
-            else:
-                st.session_state["hopper_success_message"] = (
-                    f"✅ {changes} hopper(s) updated successfully."
-                )
-                st.rerun()
+        st.session_state["hopper_success_message"] = (
+            f"✅ {len(changes)} hopper(s) updated successfully."
+        )
+        st.rerun()
 
     # ----------------------------------------------------
     # Render Page
@@ -169,10 +165,8 @@ class HopperAdminPage:
                 },
                 column_order=[
                     "id",
-                    "hopper",
-                    "material",
-                    "valid_from",
-                    "valid_upto",
+                    "ts",
+                    *[f"hopper_{index:02d}" for index in range(1, 20)],
                     "modifier",
                     "ip_address",
                 ],

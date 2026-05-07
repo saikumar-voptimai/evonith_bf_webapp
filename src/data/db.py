@@ -17,14 +17,41 @@ import yaml
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 
-try:
-    from furnace_data import relational as _relational
-except ModuleNotFoundError:
-    # Prefer in-repo furnace_data source when an older site-packages build is present.
-    furnace_data_src = Path(__file__).resolve().parents[2] / "furnace_data"
-    if str(furnace_data_src) not in sys.path:
-        sys.path.insert(0, str(furnace_data_src))
-    from furnace_data import relational as _relational
+furnace_data_src = Path(__file__).resolve().parents[2] / "furnace_data"
+if furnace_data_src.exists() and str(furnace_data_src) not in sys.path:
+    sys.path.insert(0, str(furnace_data_src))
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+def _drop_stale_furnace_data_modules() -> None:
+    local_package_dir = furnace_data_src / "furnace_data"
+    loaded_package = sys.modules.get("furnace_data")
+    if loaded_package is None:
+        return
+
+    loaded_file = getattr(loaded_package, "__file__", None)
+    is_local_package = bool(
+        loaded_file
+        and _is_relative_to(Path(loaded_file).resolve(), local_package_dir)
+    )
+    if is_local_package:
+        return
+
+    for module_name in list(sys.modules):
+        if module_name == "furnace_data" or module_name.startswith("furnace_data."):
+            del sys.modules[module_name]
+
+
+_drop_stale_furnace_data_modules()
+
+from furnace_data import relational as _relational
 
 Base = _relational.Base
 BurdenHistoryRepository = _relational.BurdenHistoryRepository
@@ -75,7 +102,7 @@ class Database:
         )
         self._hopper_repository.seed_hoppers_if_missing(
             hoppers=self.hoppers,
-            now=datetime.now(timezone.utc).replace(tzinfo=None),
+            now=datetime.now(timezone.utc),
         )
 
     def add_user(self, username: str, password: str, role: str = "user") -> None:
@@ -155,7 +182,7 @@ class Database:
         modifier: str,
         ip_address: str,
     ) -> None:
-        """Record a new hopper-to-material assignment using SCD Type-2."""
+        """Record a new raw-material snapshot with one hopper changed."""
         if hopper not in self.hoppers:
             raise ValueError("Invalid hopper")
         if material not in self.materials and material != "UNASSIGNED":
@@ -169,16 +196,54 @@ class Database:
             ip_address=ip_address,
         )
 
+    def update_hopper_materials_with_time(
+        self,
+        updates: dict[str, str],
+        from_time: datetime,
+        modifier: str,
+        ip_address: str,
+    ) -> None:
+        """Record one raw-material snapshot with multiple hopper changes."""
+        invalid_hoppers = [hopper for hopper in updates if hopper not in self.hoppers]
+        if invalid_hoppers:
+            raise ValueError(f"Invalid hopper: {invalid_hoppers[0]}")
+
+        invalid_materials = [
+            material
+            for material in updates.values()
+            if material not in self.materials and material != "UNASSIGNED"
+        ]
+        if invalid_materials:
+            raise ValueError(f"Invalid material: {invalid_materials[0]}")
+
+        self._hopper_repository.update_hopper_materials_with_time(
+            updates=updates,
+            from_time=from_time,
+            modifier=modifier,
+            ip_address=ip_address,
+        )
+
     def get_current_hopper_materials(self) -> dict[str, str]:
         """Return current hopper-to-material mapping."""
-        return self._hopper_repository.get_current_hopper_materials()
+        try:
+            return self._hopper_repository.get_current_hopper_materials(
+                hoppers=self.hoppers
+            )
+        except TypeError as exc:
+            if "unexpected keyword argument 'hoppers'" not in str(exc):
+                raise
+            current_map = self._hopper_repository.get_current_hopper_materials()
+            return {
+                hopper: current_map.get(hopper, "UNASSIGNED")
+                for hopper in self.hoppers
+            }
 
     def get_hopper_material_at(self, hopper: str, ts: datetime) -> str | None:
         """Return material assigned to hopper at timestamp."""
         return self._hopper_repository.get_hopper_material_at(hopper=hopper, ts=ts)
 
     def get_hopper_material_history(self) -> list[dict[str, Any]]:
-        """Return full hopper-material history rows."""
+        """Return full hopper raw-material snapshot rows."""
         return self._hopper_repository.get_hopper_material_history()
 
     def delete_hopper_material_history(self, record_ids: list[int]) -> None:

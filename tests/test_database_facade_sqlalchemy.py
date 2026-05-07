@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
 from src.data.db import Database
 
 
-def _sqlite_url() -> tuple[str, Path]:
-    db_name = f"db_facade_test_{uuid4().hex}.db"
-    db_path = Path.cwd() / db_name
-    return f"sqlite:///{db_path.as_posix()}", db_path
+def _sqlite_url() -> tuple[str, Path | None]:
+    return "sqlite:///:memory:", None
 
 
 def test_auth_seed_and_user_registration_flow() -> None:
@@ -33,27 +30,30 @@ def test_auth_seed_and_user_registration_flow() -> None:
             db.add_user("qa_user", "pass123", "user")
     finally:
         db.dispose()
-        if db_path.exists():
+        if db_path is not None and db_path.exists():
             db_path.unlink()
 
 
-def test_hopper_history_scd_type2_update() -> None:
-    """Hopper material update should close old row and insert new active row."""
+def test_hopper_history_snapshot_update() -> None:
+    """Hopper material update should insert one full snapshot row."""
     db_url, db_path = _sqlite_url()
     db = Database(db_url=db_url)
     try:
         assert db.hoppers, "Expected hopper list from materials.yml."
         hopper = db.hoppers[0]
+        second_hopper = db.hoppers[1]
 
         current_map = db.get_current_hopper_materials()
         original_material = current_map[hopper]
+        second_original_material = current_map[second_hopper]
 
         next_material = (
             db.materials[0]
             if db.materials and db.materials[0] != original_material
             else "UNASSIGNED"
         )
-        from_time = datetime.utcnow()
+        from_time = datetime.now(timezone.utc)
+        original_history_count = len(db.get_hopper_material_history())
 
         db.update_hopper_material_with_time(
             hopper=hopper,
@@ -65,20 +65,35 @@ def test_hopper_history_scd_type2_update() -> None:
 
         updated_map = db.get_current_hopper_materials()
         assert updated_map[hopper] == next_material
+        assert updated_map[second_hopper] == second_original_material
 
         at_new_time = db.get_hopper_material_at(hopper, from_time + timedelta(seconds=1))
         assert at_new_time == next_material
 
-        history = [
-            row for row in db.get_hopper_material_history() if row["hopper"] == hopper
-        ]
-        assert len(history) >= 2
-        assert history[0]["material"] == next_material
-        assert history[1]["material"] == original_material
-        assert history[1]["valid_upto"] is not None
+        history = db.get_hopper_material_history()
+        assert len(history) == original_history_count + 1
+        assert history[0]["hopper_01"] == next_material
+        assert history[0]["hopper_02"] == second_original_material
+
+        second_next_material = db.materials[1] if len(db.materials) > 1 else "UNASSIGNED"
+        batch_time = from_time + timedelta(minutes=1)
+        db.update_hopper_materials_with_time(
+            updates={
+                hopper: original_material,
+                second_hopper: second_next_material,
+            },
+            from_time=batch_time,
+            modifier="qa",
+            ip_address="127.0.0.1",
+        )
+
+        batch_history = db.get_hopper_material_history()
+        assert len(batch_history) == len(history) + 1
+        assert batch_history[0]["hopper_01"] == original_material
+        assert batch_history[0]["hopper_02"] == second_next_material
     finally:
         db.dispose()
-        if db_path.exists():
+        if db_path is not None and db_path.exists():
             db_path.unlink()
 
 
@@ -87,7 +102,7 @@ def test_burden_history_update_current_values_and_delete() -> None:
     db_url, db_path = _sqlite_url()
     db = Database(db_url=db_url)
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         db.update_burden_field(
             field_name="COKE_CHARGE_PATTERN",
@@ -114,5 +129,5 @@ def test_burden_history_update_current_values_and_delete() -> None:
         assert db.get_burden_history() == []
     finally:
         db.dispose()
-        if db_path.exists():
+        if db_path is not None and db_path.exists():
             db_path.unlink()

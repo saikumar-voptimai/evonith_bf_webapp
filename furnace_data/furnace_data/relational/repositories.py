@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, time, timedelta
 from typing import Any
 from uuid import uuid4
@@ -15,6 +16,7 @@ from .models import (
     Conversation,
     ConversationMessage,
     FeedbackItem,
+    HOPPER_MATERIAL_COLUMN_NAMES,
     HopperMaterialHistory,
     LongTermMemory,
     MemoryDocument,
@@ -134,7 +136,7 @@ class UserRepository:
 
 
 class HopperHistoryRepository:
-    """SCD Type-2 repository for hopper-material mapping."""
+    """Repository for timestamped hopper raw-material snapshots."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         """
@@ -148,30 +150,143 @@ class HopperHistoryRepository:
         """
         self._session_factory = session_factory
 
+    @staticmethod
+    def _hopper_to_column(hopper: str) -> str:
+        """
+        Return the raw snapshot column name for a hopper label.
+
+        Args:
+             - hopper: str - Hopper label such as ``HOPPER 01`` or ``hopper_01``.
+
+        Returns:
+             - return: str - Matching snapshot column name.
+        """
+        normalized = hopper.strip().lower().replace(" ", "_")
+        if normalized in HOPPER_MATERIAL_COLUMN_NAMES:
+            return normalized
+
+        match = re.search(r"(\d{1,2})$", normalized)
+        if not match:
+            raise ValueError(f"Unsupported hopper name: {hopper}")
+
+        column = f"hopper_{int(match.group(1)):02d}"
+        if column not in HOPPER_MATERIAL_COLUMN_NAMES:
+            raise ValueError(f"Unsupported hopper name: {hopper}")
+        return column
+
+    @staticmethod
+    def _hopper_name(column: str, hoppers: list[str] | None = None) -> str:
+        """
+        Return the configured display name for a snapshot hopper column.
+
+        Args:
+             - column: str - Snapshot column name, such as ``hopper_01``.
+             - hoppers: list[str] | None - Optional configured hopper labels.
+
+        Returns:
+             - return: str - Display hopper label.
+        """
+        hopper_index = int(column.rsplit("_", 1)[1]) - 1
+        if hoppers and 0 <= hopper_index < len(hoppers):
+            return hoppers[hopper_index]
+        return f"HOPPER {hopper_index + 1:02d}"
+
+    @staticmethod
+    def _configured_columns(hoppers: list[str] | None = None) -> list[str]:
+        """
+        Return snapshot columns represented by the configured hoppers.
+
+        Args:
+             - hoppers: list[str] | None - Optional configured hopper labels.
+
+        Returns:
+             - return: list[str] - Hopper snapshot columns.
+        """
+        if not hoppers:
+            return list(HOPPER_MATERIAL_COLUMN_NAMES)
+        return [HopperHistoryRepository._hopper_to_column(hopper) for hopper in hoppers]
+
+    @staticmethod
+    def _snapshot_values(
+        row: HopperMaterialHistory | None = None,
+    ) -> dict[str, str]:
+        """
+        Return complete hopper column values from a snapshot row.
+
+        Args:
+             - row: HopperMaterialHistory | None - Existing snapshot row.
+
+        Returns:
+             - return: dict[str, str] - Material values keyed by hopper column.
+        """
+        if row is None:
+            return {
+                column: "UNASSIGNED" for column in HOPPER_MATERIAL_COLUMN_NAMES
+            }
+        return {
+            column: getattr(row, column) or "UNASSIGNED"
+            for column in HOPPER_MATERIAL_COLUMN_NAMES
+        }
+
+    @staticmethod
+    def _latest_snapshot(
+        session: Session,
+        *,
+        at_or_before: datetime | None = None,
+    ) -> HopperMaterialHistory | None:
+        """
+        Return the newest snapshot, optionally constrained by timestamp.
+
+        Args:
+             - session: Session - Active SQLAlchemy session.
+             - at_or_before: datetime | None - Optional maximum snapshot timestamp.
+
+        Returns:
+             - return: HopperMaterialHistory | None - Latest matching snapshot row.
+        """
+        stmt = select(HopperMaterialHistory)
+        if at_or_before is not None:
+            stmt = stmt.where(HopperMaterialHistory.ts <= at_or_before)
+        stmt = stmt.order_by(
+            HopperMaterialHistory.ts.desc(),
+            HopperMaterialHistory.id.desc(),
+        ).limit(1)
+        return session.execute(stmt).scalar_one_or_none()
+
     def seed_hoppers_if_missing(self, hoppers: list[str], now: datetime) -> None:
         """
-        Seed missing hoppers with UNASSIGNED records.
+        Seed the initial all-hopper snapshot when history is empty.
 
         Args:
              - hoppers: list[str] - Hopper names that should exist.
-             - now: datetime - Timestamp to use as the valid-from time.
+             - now: datetime - Timestamp to use for the seed snapshot.
 
         Returns:
              - return: None - This function does not return a value.
         """
         with self._session_factory() as session:
-            existing_stmt = select(HopperMaterialHistory.hopper).distinct()
-            existing = {row[0] for row in session.execute(existing_stmt).all()}
-            for hopper in hoppers:
-                if hopper in existing:
-                    continue
+            latest = self._latest_snapshot(session)
+            if latest is None:
                 session.add(
                     HopperMaterialHistory(
-                        hopper=hopper,
-                        material="UNASSIGNED",
-                        valid_from=now,
+                        ts=now,
+                        **self._snapshot_values(),
                     )
                 )
+                session.commit()
+                return
+
+            configured_columns = self._configured_columns(hoppers)
+            has_missing_configured_value = any(
+                not getattr(latest, column) for column in configured_columns
+            )
+            if not has_missing_configured_value:
+                return
+
+            values = self._snapshot_values(latest)
+            for column in configured_columns:
+                values[column] = values[column] or "UNASSIGNED"
+            session.add(HopperMaterialHistory(ts=now, **values))
             session.commit()
 
     def update_hopper_material_with_time(
@@ -184,59 +299,84 @@ class HopperHistoryRepository:
         ip_address: str,
     ) -> None:
         """
-        Close the current hopper-material row and insert a new active record.
+        Insert a new all-hopper snapshot with one hopper changed.
 
         Args:
              - hopper: str - Hopper name to update.
              - material: str - New material assigned to the hopper.
-             - from_time: datetime - Time from which the new assignment is valid.
+             - from_time: datetime - Snapshot timestamp for the new assignment.
              - modifier: str - User or process making the change.
              - ip_address: str - Client IP address for audit context.
 
         Returns:
              - return: None - This function does not return a value.
         """
+        self.update_hopper_materials_with_time(
+            updates={hopper: material},
+            from_time=from_time,
+            modifier=modifier,
+            ip_address=ip_address,
+        )
+
+    def update_hopper_materials_with_time(
+        self,
+        *,
+        updates: dict[str, str],
+        from_time: datetime,
+        modifier: str,
+        ip_address: str,
+    ) -> None:
+        """
+        Insert one all-hopper snapshot after applying material changes.
+
+        Args:
+             - updates: dict[str, str] - Hopper-to-material changes to apply.
+             - from_time: datetime - Snapshot timestamp for the new assignments.
+             - modifier: str - User or process making the change.
+             - ip_address: str - Client IP address for audit context.
+
+        Returns:
+             - return: None - This function does not return a value.
+        """
+        if not updates:
+            return
+
         with self._session_factory() as session:
-            close_stmt = (
-                update(HopperMaterialHistory)
-                .where(
-                    and_(
-                        HopperMaterialHistory.hopper == hopper,
-                        HopperMaterialHistory.valid_upto.is_(None),
-                    )
-                )
-                .values(valid_upto=from_time - timedelta(seconds=1))
-            )
-            session.execute(close_stmt)
+            latest = self._latest_snapshot(session, at_or_before=from_time)
+            values = self._snapshot_values(latest)
+            for hopper, material in updates.items():
+                values[self._hopper_to_column(hopper)] = material
 
             session.add(
                 HopperMaterialHistory(
-                    hopper=hopper,
-                    material=material,
-                    valid_from=from_time,
+                    ts=from_time,
                     modifier=modifier,
                     ip_address=ip_address,
+                    **values,
                 )
             )
             session.commit()
 
-    def get_current_hopper_materials(self) -> dict[str, str]:
+    def get_current_hopper_materials(
+        self,
+        hoppers: list[str] | None = None,
+    ) -> dict[str, str]:
         """
         Return the current hopper-to-material map.
 
         Args:
-             - None
+             - hoppers: list[str] | None - Optional configured hopper labels.
 
         Returns:
              - return: dict[str, str] - Mapping from hopper name to current material.
         """
         with self._session_factory() as session:
-            stmt = (
-                select(HopperMaterialHistory.hopper, HopperMaterialHistory.material)
-                .where(HopperMaterialHistory.valid_upto.is_(None))
-                .order_by(HopperMaterialHistory.hopper.asc())
-            )
-            return {row[0]: row[1] for row in session.execute(stmt).all()}
+            latest = self._latest_snapshot(session)
+            values = self._snapshot_values(latest)
+            return {
+                self._hopper_name(column, hoppers): values[column]
+                for column in self._configured_columns(hoppers)
+            }
 
     def get_hopper_material_at(self, hopper: str, ts: datetime) -> str | None:
         """
@@ -250,23 +390,10 @@ class HopperHistoryRepository:
              - return: str | None - Assigned material when found, otherwise None.
         """
         with self._session_factory() as session:
-            stmt = (
-                select(HopperMaterialHistory.material)
-                .where(
-                    and_(
-                        HopperMaterialHistory.hopper == hopper,
-                        HopperMaterialHistory.valid_from <= ts,
-                        or_(
-                            HopperMaterialHistory.valid_upto.is_(None),
-                            HopperMaterialHistory.valid_upto >= ts,
-                        ),
-                    )
-                )
-                .order_by(HopperMaterialHistory.valid_from.desc())
-                .limit(1)
-            )
-            row = session.execute(stmt).first()
-            return row[0] if row else None
+            latest = self._latest_snapshot(session, at_or_before=ts)
+            if latest is None:
+                return None
+            return getattr(latest, self._hopper_to_column(hopper)) or "UNASSIGNED"
 
     def get_hopper_material_history(self) -> list[dict[str, Any]]:
         """
@@ -280,18 +407,18 @@ class HopperHistoryRepository:
         """
         with self._session_factory() as session:
             stmt = select(HopperMaterialHistory).order_by(
-                HopperMaterialHistory.hopper.asc(),
-                HopperMaterialHistory.valid_from.desc(),
+                HopperMaterialHistory.ts.desc(),
                 HopperMaterialHistory.id.desc(),
             )
             rows = session.execute(stmt).scalars().all()
             return [
                 {
                     "id": row.id,
-                    "hopper": row.hopper,
-                    "material": row.material,
-                    "valid_from": row.valid_from,
-                    "valid_upto": row.valid_upto,
+                    "ts": row.ts,
+                    **{
+                        column: getattr(row, column)
+                        for column in HOPPER_MATERIAL_COLUMN_NAMES
+                    },
                     "modifier": row.modifier,
                     "ip_address": row.ip_address,
                 }

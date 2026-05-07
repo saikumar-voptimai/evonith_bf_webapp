@@ -5,10 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import JSON, Boolean, DateTime
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy import Float, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+HOPPER_MATERIAL_COLUMN_NAMES = tuple(f"hopper_{index:02d}" for index in range(1, 20))
 
 
 def utc_now() -> datetime:
@@ -259,25 +262,42 @@ class FeedbackItem(Base):
 
 
 class HopperMaterialHistory(Base):
-    """SCD Type-2 history for hopper to material assignments."""
+    """Timestamped raw-material snapshot for all hoppers."""
 
-    __tablename__ = "hopper_material_history"
-    __table_args__ = (
-        Index("ix_hopper_history_hopper_valid_from", "hopper", "valid_from"),
-        Index("ix_hopper_history_hopper_valid_upto", "hopper", "valid_upto"),
-    )
+    __tablename__ = "hopper_raw_material_history"
+    __table_args__ = (Index("ix_hopper_raw_material_history_ts", "ts"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    hopper: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
-    material: Mapped[str] = mapped_column(String(256), nullable=False)
-    valid_from: Mapped[datetime] = mapped_column(
-        DateTime(timezone=False), nullable=False
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
-    valid_upto: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=False), nullable=True
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
     )
-    modifier: Mapped[str] = mapped_column(String(128), nullable=False, default="system")
-    ip_address: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    hopper_01: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_02: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_03: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_04: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_05: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_06: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_07: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_08: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_09: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_10: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_11: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_12: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_13: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_14: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_15: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_16: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_17: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_18: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hopper_19: Mapped[str | None] = mapped_column(Text, nullable=True)
+    modifier: Mapped[str] = mapped_column(Text, nullable=False, default="system")
+    ip_address: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class BurdenDistributionHistory(Base):
