@@ -201,8 +201,8 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
         sio2 = _hm_mean(hm, "slag_sio2")
         slag_basicity = round(cao / sio2, 2) if cao and sio2 else None
 
-        # HM temp: prefer runner temp (online proxy); fall back to offline hm_temp
-        hm_temp = _mean(df, "runner_temp") or _hm_mean(hm, "hm_temp")
+        # HM temp: use from hot_metal_slag_data reports 
+        hm_temp = _hm_mean(hm, "hmt_gt_1480c")
 
         prod_rate = _mean(df, "prod_rate")
         fuel_rate_val = _mean(df, "fuel_rate")
