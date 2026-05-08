@@ -12,7 +12,7 @@ import streamlit as st
 from agents.furnacemind import render_ai_cooperate
 from config.config_loader import load_config
 from ui.furnacemind_sections import select_nav_tab
-from ui.reports import render_reports
+from ui.furnacemind.reports import render_reports
 from ui.styles import apply_styles
 from utils.dataset_refresher import (
     get_version as _ds_get_version,

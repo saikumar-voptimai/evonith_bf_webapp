@@ -20,6 +20,7 @@ from agents.memory.fm_memory import add_recent_turn, save_fm_memory
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
 from ui.furnacemind import chat_ui
+from utils.shift_windows import last_completed_shift
 
 
 @st.cache_resource(show_spinner=False)
@@ -169,7 +170,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     else:
         st.sidebar.caption("Chat history database unavailable.")
 
-    default_date, default_label = chat_ui.last_completed_shift()
+    default_date, default_label = last_completed_shift()
 
     chat_ui.render_chat_history()
 
