@@ -1,7 +1,8 @@
 """Fetch all raw data needed for one shift from InfluxDB."""
+
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timezone
 from typing import Literal
 
 import pandas as pd
@@ -10,9 +11,7 @@ from furnace_data.influx.offline import fetch_offline_data as _fetch_offline
 from furnace_data.influx.online import fetch_online_df
 from reports.base import ReportFetcher
 from reports.shift_report.data import ShiftRawData
-
-_IST = timezone(timedelta(hours=5, minutes=30))
-_SHIFT_START_H: dict[str, int] = {"A": 6, "B": 14, "C": 22}
+from utils.shift_windows import shift_window
 
 _ONLINE_GROUPS = [
     "process_params",
@@ -23,25 +22,39 @@ _ONLINE_GROUPS = [
 _OFFLINE_DB = "bf2_evonith_offline_utc"
 
 
-def _shift_window(d: date, label: str) -> tuple[datetime, datetime]:
-    """Return (start_ist, end_ist) for the given shift."""
-    h = _SHIFT_START_H[label]
-    start = datetime(d.year, d.month, d.day, h, 0, 0, tzinfo=_IST)
-    return start, start + timedelta(hours=8)
-
-
 def _safe(df: pd.DataFrame | None) -> pd.DataFrame:
+    """
+    Return a non-empty dataframe or an empty dataframe fallback.
+
+    Args:
+         - df: pd.DataFrame | None - Optional dataframe returned by a data fetch.
+
+    Returns:
+         - return: pd.DataFrame - Original dataframe or empty fallback.
+    """
     return df if df is not None and not df.empty else pd.DataFrame()
 
 
 class ShiftFetcher(ReportFetcher[ShiftRawData]):
+    """Fetch raw online and offline data for one configured shift."""
+
     def fetch(  # type: ignore[override]
         self,
         *,
         shift_date: date,
         shift_label: Literal["A", "B", "C"],
     ) -> ShiftRawData:
-        start_ist, end_ist = _shift_window(shift_date, shift_label)
+        """
+        Fetch raw datasets for one configured shift window.
+
+        Args:
+             - shift_date: date - Calendar date assigned to the shift.
+             - shift_label: Literal["A", "B", "C"] - Shift label to fetch.
+
+        Returns:
+             - return: ShiftRawData - Raw online and offline shift data.
+        """
+        start_ist, end_ist = shift_window(shift_date, shift_label)
         start_utc = start_ist.astimezone(timezone.utc)
         end_utc = end_ist.astimezone(timezone.utc)
 

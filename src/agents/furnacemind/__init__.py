@@ -1,3 +1,3 @@
-from agents.furnacemind.page import render_ai_cooperate
+from src.agents.furnacemind.ai_cooperate_page import render_ai_cooperate
 
 __all__ = ["render_ai_cooperate"]
