@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
-import pytz
 import streamlit as st
 
 from agents.multimodal.ingestion import process_file
-from config.config_loader import load_config
 
 if TYPE_CHECKING:
     from agents.furnacemind.skills import SkillEngine
@@ -18,39 +16,6 @@ _ARTIFACT_TYPES = {"plotly", "dataframe"}
 _CHAT_HISTORY_LIMIT = 14
 _CHAT_HISTORY_HEIGHT = 560
 _KNOWLEDGE_FILE_TYPE = "document"
-_FURNACEMIND_CONFIG = load_config("furnacemind.yml") or {}
-_IST = pytz.timezone(str(_FURNACEMIND_CONFIG["timezone"]))
-_SHIFT_WINDOWS = tuple(_FURNACEMIND_CONFIG["shift_windows"])
-
-
-def last_completed_shift() -> tuple[date, str]:
-    """
-    Return the date and label for the configured FurnaceMind shift.
-
-    Args:
-         - None
-
-    Returns:
-         - return: tuple[date, str] - Shift date and label.
-    """
-    now = datetime.now(_IST)
-    hour = now.hour
-
-    for shift in _SHIFT_WINDOWS:
-        start_hour = int(shift["start_hour"])
-        end_hour = int(shift["end_hour"])
-        label = str(shift["label"])
-
-        if start_hour < end_hour and start_hour <= hour < end_hour:
-            return now.date(), label
-        if start_hour > end_hour:
-            if hour >= start_hour:
-                return now.date(), label
-            if hour < end_hour:
-                return now.date() - timedelta(days=1), label
-
-    first_shift = _SHIFT_WINDOWS[0]
-    return now.date(), str(first_shift["label"])
 
 
 def chat_history_to_messages(

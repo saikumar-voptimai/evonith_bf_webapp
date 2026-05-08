@@ -29,14 +29,12 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field, ValidationError
 
 from config.config_loader import load_config
+from data.fetch_presets import OFFLINE_REPORT_LABEL_MAP
+from data.ml.static_csv import get_static_dataset_path, load_static_dataset
 from furnace_data.influx.offline import clean_rm_data, fetch_offline_data as _fetch_offline_df  # noqa: F401
 from furnace_data.influx.online import fetch_online_df  # noqa: F401
 from furnace_data.influx.query import TIMEDELTAS  # noqa: F401
-
-from data.fetch_presets import (
-    OFFLINE_REPORT_LABEL_MAP,
-)
-from data.ml.static_csv import get_static_dataset_path, load_static_dataset
+from utils.shift_windows import shift_window_naive, shift_windows_description
 
 # CONFIG
 config = load_config("setting_ds_dv.yml")
@@ -53,8 +51,7 @@ _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
 # Absolute path: src/agents/furnace_tools.py -> parents[1] = src/ -> assets/data/
 _ML_DATASET_PATH = get_static_dataset_path()
 
-# IST offset (tz-naive CSV index matches this)
-_IST_OFFSET = timedelta(hours=5, minutes=30)
+_SHIFT_WINDOWS_DESCRIPTION = shift_windows_description()
 
 
 def _ensure_dataset_store() -> Dict[str, Any]:
@@ -92,7 +89,6 @@ def _parse_iso8601_utc(s: str) -> datetime:
     if isinstance(dt, pd.Timestamp):
         return dt.to_pydatetime()
     raise ValueError(f"Invalid datetime: {s}")
-
 
 
 def _resolve_online_window(*, lookback: timedelta, window: Optional[str]) -> str:
@@ -182,9 +178,7 @@ class MergeArgs(BaseModel):
 
 class StaticShiftArgs(BaseModel):
     shift_date: str = Field(description="ISO date string YYYY-MM-DD")
-    shift_label: Literal["A", "B", "C"] = Field(
-        description="Shift: A (06:00-14:00), B (14:00-22:00), C (22:00-06:00 next day) IST"
-    )
+    shift_label: Literal["A", "B", "C"] = Field(description=_SHIFT_WINDOWS_DESCRIPTION)
 
 
 class MLDataArgs(BaseModel):
@@ -484,8 +478,7 @@ def concat_datasets(*, dataset_ids: list[str]) -> str:
             for f in frames
         )
         has_tz_naive = any(
-            isinstance(f.index, pd.DatetimeIndex) and f.index.tz is None
-            for f in frames
+            isinstance(f.index, pd.DatetimeIndex) and f.index.tz is None for f in frames
         )
         if has_tz_aware and has_tz_naive:
             normalized_frames: list[pd.DataFrame] = []
@@ -539,17 +532,13 @@ def load_static_shift_data(*, shift_date: str, shift_label: str) -> str:
     try:
         args = StaticShiftArgs.model_validate(params)
 
-        # Compute shift window (IST, tz-naive to match CSV)
-        # A: 06:00-14:00, B: 14:00-22:00, C: 22:00-06:00 (next day)
-        date = pd.to_datetime(args.shift_date).normalize()
-        if args.shift_label == "C":
-            shift_start = date + pd.Timedelta(hours=22)
-            shift_end = date + pd.Timedelta(hours=30)  # 30h = next day 06:00
-        else:
-            _hours = {"A": (6, 14), "B": (14, 22)}
-            start_h, end_h = _hours[args.shift_label]
-            shift_start = date + pd.Timedelta(hours=start_h)
-            shift_end = date + pd.Timedelta(hours=end_h)
+        shift_date_value = pd.to_datetime(args.shift_date).date()
+        shift_start_dt, shift_end_dt = shift_window_naive(
+            shift_date_value,
+            args.shift_label,
+        )
+        shift_start = pd.Timestamp(shift_start_dt)
+        shift_end = pd.Timestamp(shift_end_dt)
 
         df, csv_min, csv_max = _load_ml_dataset()
         if shift_start < csv_min or shift_end > csv_max + pd.Timedelta(hours=1):
@@ -648,9 +637,7 @@ def fetch_online_data(
             start_dt = _parse_iso8601_utc(args.start_time_utc)
             _now = datetime.now(timezone.utc)
             end_dt = (
-                _parse_iso8601_utc(args.end_time_utc)
-                if args.end_time_utc
-                else _now
+                _parse_iso8601_utc(args.end_time_utc) if args.end_time_utc else _now
             )
             # Guard: reject future windows
             if start_dt > _now:
@@ -673,12 +660,16 @@ def fetch_online_data(
             time_range_label = f"{args.start_time_utc} → {args.end_time_utc or 'now'}"
         else:
             # Relative lookback path — normalise the string to a TIMEDELTAS key
-            normalized_time_range = _normalize_time_range(args.lookback or "last 8 hours")
+            normalized_time_range = _normalize_time_range(
+                args.lookback or "last 8 hours"
+            )
 
             lookback_td = TIMEDELTAS.get(normalized_time_range)
             if not isinstance(lookback_td, timedelta):
                 lookback_td = timedelta(hours=8)
-            window_final = _resolve_online_window(lookback=lookback_td, window=args.window)
+            window_final = _resolve_online_window(
+                lookback=lookback_td, window=args.window
+            )
 
             df = fetch_online_df(
                 selected_measurements=selected_measurements,
@@ -1112,7 +1103,7 @@ def get_openai_tool_schemas() -> list[dict]:
                         "shift_label": {
                             "type": "string",
                             "enum": ["A", "B", "C"],
-                            "description": "Shift: A (06:00-14:00), B (14:00-22:00), C (22:00-06:00 next day) IST",
+                            "description": _SHIFT_WINDOWS_DESCRIPTION,
                         },
                     },
                     "required": ["shift_date", "shift_label"],
@@ -1283,9 +1274,11 @@ def _safe_exec(
 
     # Route print() to the buffer when one is provided so callers can capture output.
     if stdout_buf is not None:
+
         def _buffered_print(*args, **kwargs):  # noqa: ANN202
             kwargs.setdefault("file", stdout_buf)
             print(*args, **kwargs)  # noqa: T201
+
         captured_print = _buffered_print
     else:
         captured_print = print
