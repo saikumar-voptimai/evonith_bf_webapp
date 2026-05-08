@@ -489,6 +489,7 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
 
     BF2_TUYERE VELOCITY: tuyere_velocity
     BF2_PRODUCTION TONNES PER HR: production_per_hour
+    BF2_OXYGEN FLOW: oxygen_flow
     BF2_OXYGEN ENRICHMENT PCT: oxygen_enrichment_pct
     BF2_THEORETICAL PRODUCTION PER DAY: theoretical_production_per_day
     BF2_STEAM INJECTION: steam_injections
