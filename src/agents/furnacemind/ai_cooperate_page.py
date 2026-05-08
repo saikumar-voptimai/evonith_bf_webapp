@@ -19,7 +19,7 @@ from agents.memory.conversation_history import ConversationHistoryStore
 from agents.memory.fm_memory import add_recent_turn, save_fm_memory
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
-from ui.furnacemind import chat_ui
+from src.ui.furnacemind import chat_interface
 from utils.shift_windows import last_completed_shift
 
 
@@ -144,7 +144,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     context.refresh_session_context()
     st.session_state["knowledge_store"] = knowledge_store
 
-    chat_ui.render_knowledge_sidebar(
+    chat_interface.render_knowledge_sidebar(
         knowledge_store=knowledge_store,
         embedding_client=embedding_client,
     )
@@ -172,9 +172,9 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
     default_date, default_label = last_completed_shift()
 
-    chat_ui.render_chat_history()
+    chat_interface.render_chat_history()
 
-    chat_ui.render_quick_skills(engine, default_date, default_label)
+    chat_interface.render_quick_skills(engine, default_date, default_label)
     chat_submission = st.chat_input(
         "Ask FurnaceMind or attach a document...",
         accept_file="multiple",
@@ -192,7 +192,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         user_display = pending.get("display")
         active_skill_id = pending.get("skill_id")
     else:
-        user_query, user_display = chat_ui.extract_submission(
+        user_query, user_display = chat_interface.extract_submission(
             chat_submission,
             knowledge_store=knowledge_store,
             embedding_client=embedding_client,
@@ -236,7 +236,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             "role": "system",
             "content": context.build(extra=TOOL_POLICY, skill_id=active_skill_id),
         },
-        *chat_ui.chat_history_to_messages(),
+        *chat_interface.chat_history_to_messages(),
     ]
     history_len_before = len(st.session_state.chat_history)
 
@@ -252,7 +252,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             response_box=response_box,
         )
 
-    chat_ui.inject_artifacts(history_len_before)
+    chat_interface.inject_artifacts(history_len_before)
 
     assistant_message_id: str | None = None
     if history_store is not None and conversation_id:
