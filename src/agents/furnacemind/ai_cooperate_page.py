@@ -19,7 +19,7 @@ from agents.memory.conversation_history import ConversationHistoryStore
 from agents.memory.fm_memory import add_recent_turn, save_fm_memory
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
-from src.ui.furnacemind import chat_interface
+from ui.furnacemind import chat_interface
 from utils.shift_windows import last_completed_shift
 
 
@@ -141,7 +141,6 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     history_store = _cached_history_store()
     user_id = _current_user_id()
 
-    context.refresh_session_context()
     st.session_state["knowledge_store"] = knowledge_store
 
     chat_interface.render_knowledge_sidebar(
@@ -152,11 +151,12 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     st.session_state.setdefault("fm_artifact_store", {})
+    conversation_id: str | None = st.session_state.get("fm_conversation_id")
     if history_store is not None:
         try:
             conversation_id = history_store.ensure_conversation(
                 user_id=user_id,
-                conversation_id=st.session_state.get("fm_conversation_id"),
+                conversation_id=conversation_id,
             )
             st.session_state["fm_conversation_id"] = conversation_id
             if st.session_state.get("_fm_loaded_conversation_id") != conversation_id:
@@ -169,6 +169,11 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             st.sidebar.caption(f"Chat history database unavailable: {exc}")
     else:
         st.sidebar.caption("Chat history database unavailable.")
+
+    context.refresh_session_context(
+        user_id=user_id,
+        conversation_id=conversation_id,
+    )
 
     default_date, default_label = last_completed_shift()
 
@@ -201,7 +206,6 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if not user_query:
         return
 
-    conversation_id = st.session_state.get("fm_conversation_id")
     user_message_id: str | None = None
     if history_store is not None and conversation_id:
         try:
@@ -281,5 +285,11 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     updated_memory = add_recent_turn(
         context.memory, user=user_query, assistant=final_response
     )
-    save_fm_memory(updated_memory)
+    save_fm_memory(
+        updated_memory,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        source_message_id_start=user_message_id,
+        source_message_id_end=assistant_message_id,
+    )
     st.rerun()
