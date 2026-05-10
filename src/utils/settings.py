@@ -36,12 +36,14 @@ class OpenRouterLLMConfig:
         api_key:    OpenRouter API key (``OPENROUTER_API_KEY`` env var).
         base_url:   OpenRouter API base URL.
         model_name: Fully-qualified model identifier (e.g. ``openai/gpt-4o-mini``).
+        memory_compression_model_name: Model used for memory summary compression.
         max_tokens: Maximum completion tokens to request.
     """
 
     api_key: str | None
     base_url: str = "https://openrouter.ai/api/v1"
     model_name: str = "openai/gpt-4o-mini"
+    memory_compression_model_name: str = "openai/gpt-4o-mini"
     max_tokens: int = 800
 
 
@@ -199,10 +201,16 @@ class Settings:
     # ------------------------------------------------------
     @staticmethod
     def _load_llm_settings() -> LLMSettings:
-        """Build :class:`LLMSettings` from environment variables.
+        """
+        Build LLM configuration from environment variables.
+
+        This loader keeps the default chat model and the memory-compression
+        model in the same OpenRouter configuration section. If
+        ``MEMORY_COMPRESSION_MODEL`` is not set, memory summaries use the normal
+        ``OPENROUTER_MODEL`` value so local setups continue to work.
 
         Returns:
-            Populated :class:`LLMSettings` instance.
+             - return: LLMSettings - Populated LLM settings for OpenRouter and OpenAI.
         """
         provider = os.getenv("LLM_PROVIDER", "openrouter").strip().lower()
 
@@ -211,6 +219,10 @@ class Settings:
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         )
         openrouter_model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+        memory_compression_model = (
+            os.getenv("MEMORY_COMPRESSION_MODEL", openrouter_model).strip()
+            or openrouter_model
+        )
 
         openai_api_key = os.getenv("OPENAI_API_KEY")
         openai_base_url = os.getenv("OPENAI_BASE_URL")
@@ -225,6 +237,7 @@ class Settings:
                 api_key=openrouter_api_key,
                 base_url=openrouter_base_url,
                 model_name=openrouter_model,
+                memory_compression_model_name=memory_compression_model,
                 max_tokens=max_tokens,
             ),
             openai=OpenAILLMConfig(
@@ -337,8 +350,6 @@ class Settings:
             raise ValueError(
                 "OPENAI_API_MODE must be 'responses' or 'chat_completions'."
             )
-
-
 
 
 # ==========================================================

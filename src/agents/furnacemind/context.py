@@ -1,14 +1,14 @@
-"""SystemPromptContext — assembles the LLM system prompt from static files + memory.
+"""Build FurnaceMind system prompts from static context and saved memory.
 
-Construct once per page render (``__init__`` does file I/O).
-``build()`` is a cheap pure-string join — call it as often as needed.
+The page creates one ``SystemPromptContext`` and refreshes it for the active
+user/conversation before each model call. Static files provide domain and tool
+instructions, while the PostgreSQL-backed memory summary adds durable context
+from earlier turns in the same conversation.
 
-Static context loaded (in order, concatenated):
-  1. CLAUDE.md          — blast furnace domain knowledge
-  2. TOOLS*.md          — tool routing rules
-  3. SKILLS*.md         — injected only for the active skill (not all at once)
-
-All files live in ``src/storage/furnacemind/``.
+Static context loaded by this module:
+  1. ``CLAUDE.md`` for blast furnace domain knowledge.
+  2. ``TOOLS*.md`` for tool routing and usage rules.
+  3. ``SKILLS*.md`` only for the selected quick skill.
 """
 
 from __future__ import annotations
@@ -35,7 +35,21 @@ _SKILL_FILES: dict[str | None, list[str]] = {
 
 
 def _read_file(path: Path, *, max_chars: int) -> str:
-    """Read a text file up to *max_chars*, truncating with a marker if needed."""
+    """
+    Read a prompt-support file and return bounded text for LLM injection.
+
+    Prompt files can be large, missing, or temporarily unreadable during local
+    development. This helper keeps the prompt builder resilient by returning an
+    empty string for missing/failed files and truncating oversized files with a
+    visible marker before they are appended to the system prompt.
+
+    Args:
+         - path: Path - File path to read from disk.
+         - max_chars: int - Maximum number of characters to keep.
+
+    Returns:
+         - return: str - Cleaned file text, truncated text, or an empty string.
+    """
     try:
         if not path.exists():
             return ""
@@ -52,17 +66,29 @@ def _read_file(path: Path, *, max_chars: int) -> str:
 
 
 class SystemPromptContext:
-    """Loads and caches all context needed to build the LLM system prompt.
+    """Load and refresh the context needed to build FurnaceMind prompts.
 
-    Usage::
-
-        ctx = SystemPromptContext()
-        system_prompt = ctx.build(extra=tool_policy)
-        # later, to refresh memory after a conversation turn:
-        ctx.refresh_memory()
+    The class separates static context from per-session context. Static domain
+    and tool files are loaded once during initialization, while memory summaries
+    and recent tool-error notes can be refreshed for the current user and
+    conversation before each chat response.
     """
 
     def __init__(self) -> None:
+        """
+        Initialize static prompt context and the default memory snapshot.
+
+        Static files are read once so Streamlit reruns do not repeatedly touch
+        the filesystem. Memory starts empty because the page later calls
+        ``refresh_session_context`` with the active user and conversation after
+        the conversation id has been created or restored.
+
+        Args:
+             - None
+
+        Returns:
+             - return: None - This function does not return a value.
+        """
         self._static = self._load_static()
         self._errors = self._load_errors()
         self.memory = load_fm_memory()
@@ -71,12 +97,15 @@ class SystemPromptContext:
     # ── Public ──────────────────────────────────────────────────────────────
 
     def build(self, extra: str = "", skill_id: str | None = None) -> str:
-        """Assemble the full system prompt string.
+        """
+        Assemble the complete system prompt for the next FurnaceMind model call.
 
         Args:
-            extra:    Additional text appended at the end (e.g. TOOL_POLICY).
-            skill_id: Active skill key — controls which SKILLS*.md is injected.
-                      Pass None for free-chat turns (no skill docs loaded).
+             - extra: str - Additional instructions appended at the end.
+             - skill_id: str | None - Active quick-skill key for skill context.
+
+        Returns:
+             - return: str - System prompt containing persona, context, memory, and policy.
         """
         parts = [AI_COOPERATE_SYSTEM]
         if self._static:
@@ -104,7 +133,12 @@ class SystemPromptContext:
         conversation_id: str | None = None,
     ) -> None:
         """
-        Reload persistent memory from PostgreSQL.
+        Reload the persistent conversation summary for the active chat.
+
+        FurnaceMind stores compressed memory summaries per user and
+        conversation. This method refreshes that saved summary and rebuilds the
+        prompt-ready persistent context block so the next LLM call can include
+        durable facts from earlier message windows.
 
         Args:
              - user_id: str | None - User whose memory should be loaded.
@@ -126,7 +160,12 @@ class SystemPromptContext:
         conversation_id: str | None = None,
     ) -> None:
         """
-        Refresh all per-session data.
+        Refresh per-session prompt inputs before running the agent.
+
+        The page calls this after the conversation id is known and before the
+        model prompt is built. It reloads the PostgreSQL memory summary for the
+        active chat and also refreshes recent tool-error notes so the agent can
+        avoid repeating known tool failures.
 
         Args:
              - user_id: str | None - User whose memory should be loaded.
@@ -141,6 +180,20 @@ class SystemPromptContext:
     # ── Private loaders ─────────────────────────────────────────────────────
 
     def _load_static(self) -> str:
+        """
+        Load static FurnaceMind domain and tool context from repository files.
+
+        Static context is the shared instruction base for all FurnaceMind chat
+        turns. This includes the repository-level furnace knowledge from
+        ``CLAUDE.md`` and any tool-routing files stored under the FurnaceMind
+        storage directory.
+
+        Args:
+             - None
+
+        Returns:
+             - return: str - Joined static context sections for prompt injection.
+        """
         parts: list[str] = []
 
         claude_md = _read_file(_REPO_ROOT / "CLAUDE.md", max_chars=24_000)
@@ -157,7 +210,20 @@ class SystemPromptContext:
         return "\n\n---\n\n".join(parts).strip()
 
     def _load_skills(self, skill_id: str | None) -> str:
-        """Load only the SKILLS*.md files relevant to *skill_id*."""
+        """
+        Load skill-specific prompt context for the selected quick skill.
+
+        FurnaceMind should not inject every skill file on every request because
+        that would increase prompt size and mix unrelated instructions. This
+        method maps the active skill id to the small set of skill files needed
+        for that turn and returns only those sections.
+
+        Args:
+             - skill_id: str | None - Active quick-skill key from the UI.
+
+        Returns:
+             - return: str - Joined skill context sections, or an empty string.
+        """
         filenames = _SKILL_FILES.get(skill_id, [])
         parts: list[str] = []
         for name in filenames:
@@ -173,6 +239,20 @@ class SystemPromptContext:
         return "\n\n---\n\n".join(parts)
 
     def _load_errors(self) -> str:
+        """
+        Load recent tool-error notes for prompt-level failure avoidance.
+
+        FurnaceMind records recent tool issues in ``tool_errors.md``. Including
+        only the tail of that file gives the agent enough context to avoid
+        repeating recent bad calls without allowing old errors to dominate the
+        system prompt.
+
+        Args:
+             - None
+
+        Returns:
+             - return: str - Recent tool-error text, or an empty string.
+        """
         try:
             path = Path(__file__).resolve().parents[2] / "agents" / "tool_errors.md"
             if not path.exists():

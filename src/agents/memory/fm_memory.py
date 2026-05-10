@@ -1,20 +1,29 @@
-"""PostgreSQL-backed conversation summaries for FurnaceMind AI Co-Operate."""
+"""Manage FurnaceMind AI Co-Operate conversation memory.
+
+This module owns the PostgreSQL-backed memory summary flow for FurnaceMind.
+It loads the latest saved conversation summary, generates a new rolling summary
+with the LLM whenever the chat reaches the configured message window, and saves
+the updated summary back to the ``memory_summaries`` table.
+
+The raw chat messages remain stored separately in ``conversation_messages``.
+This module stores only the compressed conversation summary that is later
+injected into the FurnaceMind system prompt along with the recent chat window.
+"""
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 from furnace_data import relational
 
 DEFAULT_MEMORY: dict[str, Any] = {
     "conversation_summary": "",
-    "recent_turns": [],
     "last_updated_utc": None,
 }
+
+MEMORY_SUMMARY_MESSAGE_WINDOW = 8
 
 _MEMORY_SOURCE = "furnacemind_memory"
 _SUMMARY_KIND = "conversation_summary"
@@ -22,39 +31,34 @@ _SUMMARY_KIND = "conversation_summary"
 
 def _utc_now_iso() -> str:
     """
-    Return the current UTC time as an ISO-8601 string.
+    Create a consistent timestamp for FurnaceMind memory metadata.
+
+    Memory summaries are stored in PostgreSQL, but the in-memory payload also
+    carries a lightweight update marker. UTC keeps this value independent of the
+    operator's local timezone and makes it safe to compare across environments.
 
     Args:
          - None
 
     Returns:
-         - return: str - Current UTC timestamp.
+         - return: str - Current UTC timestamp formatted as ISO-8601 text.
     """
     return datetime.now(timezone.utc).isoformat()
 
 
-def get_default_memory_path() -> Path:
-    """
-    Return the legacy FurnaceMind memory JSON path.
-
-    Args:
-         - None
-
-    Returns:
-         - return: Path - Legacy JSON file path used only for one-time migration.
-    """
-    return Path("src/storage/furnacemind/ai_cooperate_memory.json")
-
-
 def _estimate_text_tokens(text: str | None) -> int:
     """
-    Estimate token count for memory records.
+    Estimate summary token count for the ``memory_summaries`` table.
+
+    The relational table stores a token count for reporting and future context
+    budgeting. This helper uses a small character-based estimate so saving a
+    summary does not need an extra tokenizer dependency or model call.
 
     Args:
-         - text: str | None - Text content to estimate.
+         - text: str | None - Summary text whose approximate token count is needed.
 
     Returns:
-         - return: int - Approximate token count.
+         - return: int - Approximate token count, returning zero for blank text.
     """
     normalized = (text or "").strip()
     if not normalized:
@@ -64,65 +68,223 @@ def _estimate_text_tokens(text: str | None) -> int:
 
 def _normalize_memory(memory: dict[str, Any] | None) -> dict[str, Any]:
     """
-    Normalize a partial memory payload into the expected structure.
+    Convert any partial memory payload into the FurnaceMind memory shape.
+
+    Callers may pass ``None``, an empty dictionary, or a dictionary loaded from
+    PostgreSQL. This helper guarantees that downstream code can safely read the
+    expected keys without repeating defensive checks at every call site.
 
     Args:
-         - memory: dict[str, Any] | None - Raw memory payload.
+         - memory: dict[str, Any] | None - Raw memory payload from storage or caller code.
 
     Returns:
-         - return: dict[str, Any] - Memory payload with all default keys present.
+         - return: dict[str, Any] - Memory payload with default keys and safe value types.
     """
     normalized = dict(DEFAULT_MEMORY)
     if isinstance(memory, dict):
         for key in DEFAULT_MEMORY:
             if key in memory:
                 normalized[key] = memory[key]
-    if not isinstance(normalized.get("recent_turns"), list):
-        normalized["recent_turns"] = []
     if not isinstance(normalized.get("conversation_summary"), str):
         normalized["conversation_summary"] = ""
     return normalized
 
 
-def _load_legacy_memory(path: Path | None = None) -> dict[str, Any]:
+def _is_text_chat_message(item: dict[str, Any]) -> bool:
     """
-    Load the legacy JSON memory file for migration fallback.
+    Decide whether a Streamlit chat-history item belongs in memory compression.
+
+    FurnaceMind chat history can contain text messages as well as rendered
+    artifacts such as plots or dataframes. Only non-empty user and assistant
+    text messages are safe to send to the memory-summary LLM.
 
     Args:
-         - path: Path | None - Optional legacy JSON path override.
+         - item: dict[str, Any] - Streamlit chat-history entry.
 
     Returns:
-         - return: dict[str, Any] - Normalized memory payload.
+         - return: bool - True when the item is a text user/assistant message.
     """
-    p = path or get_default_memory_path()
+    if item.get("type") in {"plotly", "dataframe"}:
+        return False
+    role = item.get("role")
+    content = item.get("content")
+    return (
+        role in {"user", "assistant"}
+        and isinstance(content, str)
+        and bool(content.strip())
+    )
+
+
+def _text_chat_messages(chat_history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Return only the chat messages that can be used for summary generation.
+
+    This keeps the summary window aligned to real conversation turns and removes
+    UI artifacts before message counts, source message ids, and LLM input text
+    are calculated.
+
+    Args:
+         - chat_history: list[dict[str, Any]] - Raw Streamlit chat-history items.
+
+    Returns:
+         - return: list[dict[str, Any]] - Summarizable chat messages.
+    """
+    return [item for item in chat_history if _is_text_chat_message(item)]
+
+
+def _format_summary_window(messages: list[dict[str, Any]]) -> str:
+    """
+    Format the latest message window into readable input for the summary LLM.
+
+    The summary model receives the previous cumulative summary plus a numbered
+    list of recent text messages. Numbering and role labels make the input clear
+    without asking the model to parse Streamlit's internal dictionary structure.
+
+    Args:
+         - messages: list[dict[str, Any]] - Text chat messages to summarize.
+
+    Returns:
+         - return: str - Prompt-ready message window.
+    """
+    formatted: list[str] = []
+    for index, item in enumerate(messages, start=1):
+        role = str(item.get("role") or "unknown").upper()
+        content = str(item.get("content") or "").strip()
+        formatted.append(f"{index}. {role}: {content}")
+    return "\n\n".join(formatted)
+
+
+def should_generate_memory_summary(
+    chat_history: list[dict[str, Any]],
+    *,
+    window: int = MEMORY_SUMMARY_MESSAGE_WINDOW,
+) -> bool:
+    """
+    Check whether the chat has reached the next memory-summary boundary.
+
+    FurnaceMind summarizes on fixed text-message windows so the LLM does not run
+    after every turn. A summary is due only when the number of summarizable text
+    messages is an exact multiple of the configured window size.
+
+    Args:
+         - chat_history: list[dict[str, Any]] - Raw Streamlit chat-history items.
+         - window: int - Number of text messages per summary window.
+
+    Returns:
+         - return: bool - True when an LLM summary should be generated.
+    """
+    if window <= 0:
+        return False
+    message_count = len(_text_chat_messages(chat_history))
+    return message_count >= window and message_count % window == 0
+
+
+def summary_source_message_ids(
+    chat_history: list[dict[str, Any]],
+    *,
+    window: int = MEMORY_SUMMARY_MESSAGE_WINDOW,
+) -> tuple[str | None, str | None]:
+    """
+    Find the message id range represented by the latest summary window.
+
+    The memory summary row stores the first and last source message ids so a
+    reviewer can trace which chat messages were compressed into that summary.
+    If message persistence was unavailable, either id may be missing.
+
+    Args:
+         - chat_history: list[dict[str, Any]] - Raw Streamlit chat-history items.
+         - window: int - Number of text messages per summary window.
+
+    Returns:
+         - return: tuple[str | None, str | None] - Start and end message ids.
+    """
+    messages = _text_chat_messages(chat_history)
+    if not messages:
+        return None, None
+    window_messages = messages[-window:]
+    start_id = window_messages[0].get("message_id")
+    end_id = window_messages[-1].get("message_id")
+    return (
+        str(start_id) if start_id else None,
+        str(end_id) if end_id else None,
+    )
+
+
+def generate_memory_summary(
+    memory: dict[str, Any],
+    *,
+    chat_history: list[dict[str, Any]],
+    llm: Any,
+    summary_system_prompt: str,
+    summary_token_limit: int,
+    window: int = MEMORY_SUMMARY_MESSAGE_WINDOW,
+) -> dict[str, Any]:
+    """
+    Generate the next cumulative memory summary when a window is complete.
+
+    The function keeps the previous saved summary and sends it together with the
+    latest text-message window to the memory-compression model. The returned
+    summary replaces the prior summary, so each saved row should carry forward
+    useful older facts while adding durable new facts from the latest window.
+
+    Args:
+         - memory: dict[str, Any] - Current persistent memory payload.
+         - chat_history: list[dict[str, Any]] - Raw Streamlit chat-history items.
+         - llm: Any - LLM client used to create the updated summary.
+         - summary_system_prompt: str - System prompt used for summary generation.
+         - summary_token_limit: int - Maximum summary length requested from the LLM.
+         - window: int - Number of text messages per summary window.
+
+    Returns:
+         - return: dict[str, Any] - Memory payload with an updated summary when due.
+    """
+    normalized = _normalize_memory(memory)
+    if not should_generate_memory_summary(chat_history, window=window):
+        return normalized
+
+    messages = _text_chat_messages(chat_history)[-window:]
+    previous_summary = normalized.get("conversation_summary") or "(none yet)"
+    user_prompt = (
+        "Previous cumulative memory summary:\n"
+        f"{previous_summary}\n\n"
+        f"New message window ({len(messages)} messages):\n"
+        f"{_format_summary_window(messages)}\n\n"
+        "Create the next cumulative memory summary by preserving useful facts "
+        "from the previous summary and adding durable facts from the new "
+        "message window. Return only the replacement cumulative summary. "
+        f"Keep it under {summary_token_limit} tokens."
+    )
+
     try:
-        if not p.exists():
-            return _normalize_memory(None)
-        data = json.loads(p.read_text(encoding="utf-8"))
-        return _normalize_memory(data if isinstance(data, dict) else None)
+        summary_text = llm.generate(
+            system_prompt=summary_system_prompt,
+            user_prompt=user_prompt,
+        ).strip()
     except Exception:
-        return _normalize_memory(None)
+        return normalized
 
-
-def _has_persistent_content(memory: dict[str, Any]) -> bool:
-    """
-    Return whether a memory payload has SQL-backed persistent content.
-
-    Args:
-         - memory: dict[str, Any] - Normalized memory payload.
-
-    Returns:
-         - return: bool - True when a conversation summary exists.
-    """
-    return bool(str(memory.get("conversation_summary") or "").strip())
+    if summary_text:
+        normalized["conversation_summary"] = summary_text
+        normalized["last_updated_utc"] = _utc_now_iso()
+    return normalized
 
 
 class FurnaceMindMemoryStore:
-    """Database adapter for FurnaceMind conversation summaries."""
+    """Database adapter for FurnaceMind conversation summaries.
+
+    This class hides the repository details from the Streamlit page. It loads
+    and saves only FurnaceMind conversation-summary rows, identified by the
+    metadata source/kind pair used by this module.
+    """
 
     def __init__(self) -> None:
         """
-        Create memory repositories from the configured relational database.
+        Create the repository needed for SQL-backed memory summaries.
+
+        The relational engine reads the normal application database settings.
+        A session factory is passed into ``MemorySummaryRepository`` so the rest
+        of this adapter can load and write summary rows without owning session
+        management details.
 
         Args:
              - None
@@ -136,7 +298,11 @@ class FurnaceMindMemoryStore:
 
     def load_memory(self, *, user_id: str, conversation_id: str) -> dict[str, Any]:
         """
-        Load FurnaceMind memory from PostgreSQL.
+        Load the latest FurnaceMind summary for one user conversation.
+
+        The repository returns recent summaries for the conversation. This
+        method filters them to the current user and the FurnaceMind summary
+        metadata so unrelated summary rows cannot be injected into the prompt.
 
         Args:
              - user_id: str - User that owns the memory.
@@ -145,9 +311,28 @@ class FurnaceMindMemoryStore:
         Returns:
              - return: dict[str, Any] - Normalized memory payload.
         """
-        memory = _normalize_memory(None)
-        self._load_summary(memory, conversation_id=conversation_id)
-        return memory
+        summaries = self._summaries.list_summaries(
+            conversation_id=conversation_id,
+            limit=20,
+        )
+
+        for summary in summaries:
+            metadata = (
+                summary.metadata_json if isinstance(summary.metadata_json, dict) else {}
+            )
+            same_user = summary.user_id == user_id
+            same_source = metadata.get("source") == _MEMORY_SOURCE
+            same_kind = metadata.get("kind") == _SUMMARY_KIND
+
+            if same_user and same_source and same_kind:
+                return _normalize_memory(
+                    {
+                        "conversation_summary": summary.summary_text or "",
+                        "last_updated_utc": summary.created_at.isoformat(),
+                    }
+                )
+
+        return _normalize_memory(None)
 
     def save_memory(
         self,
@@ -159,7 +344,12 @@ class FurnaceMindMemoryStore:
         source_message_id_end: str | None = None,
     ) -> None:
         """
-        Persist FurnaceMind conversation summary to PostgreSQL.
+        Save a new FurnaceMind summary row when the summary has changed.
+
+        Empty summaries are ignored, and duplicate text is not written again.
+        When a new summary is saved, the row is linked to the conversation,
+        user, source message range, approximate token count, and FurnaceMind
+        metadata used later by ``load_memory``.
 
         Args:
              - memory: dict[str, Any] - Memory payload containing the summary.
@@ -173,76 +363,14 @@ class FurnaceMindMemoryStore:
         """
         normalized = _normalize_memory(memory)
         existing = self.load_memory(user_id=user_id, conversation_id=conversation_id)
-        self._save_summary(
-            normalized,
-            existing=existing,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            source_message_id_start=source_message_id_start,
-            source_message_id_end=source_message_id_end,
-        )
 
-    def _load_summary(
-        self,
-        memory: dict[str, Any],
-        *,
-        conversation_id: str,
-    ) -> None:
-        """
-        Load the latest FurnaceMind conversation summary into memory.
-
-        Args:
-             - memory: dict[str, Any] - Memory payload to mutate.
-             - conversation_id: str - Conversation id to inspect.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
-        summaries = self._summaries.list_summaries(
-            conversation_id=conversation_id,
-            limit=20,
-        )
-        for summary in summaries:
-            metadata = (
-                summary.metadata_json if isinstance(summary.metadata_json, dict) else {}
-            )
-            if metadata.get("source") != _MEMORY_SOURCE:
-                continue
-            if metadata.get("kind") != _SUMMARY_KIND:
-                continue
-            memory["conversation_summary"] = summary.summary_text or ""
-            memory["last_updated_utc"] = summary.created_at.isoformat()
-            return
-
-    def _save_summary(
-        self,
-        memory: dict[str, Any],
-        *,
-        existing: dict[str, Any],
-        user_id: str,
-        conversation_id: str,
-        source_message_id_start: str | None,
-        source_message_id_end: str | None,
-    ) -> None:
-        """
-        Store a new conversation summary when it changed.
-
-        Args:
-             - memory: dict[str, Any] - Incoming normalized memory.
-             - existing: dict[str, Any] - Existing normalized memory from DB.
-             - user_id: str - User that owns the summary.
-             - conversation_id: str - Conversation that owns the summary.
-             - source_message_id_start: str | None - First source message id.
-             - source_message_id_end: str | None - Last source message id.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
-        summary_text = str(memory.get("conversation_summary") or "").strip()
+        summary_text = str(normalized.get("conversation_summary") or "").strip()
         if not summary_text:
             return
+
         if summary_text == str(existing.get("conversation_summary") or "").strip():
             return
+
         self._summaries.create_summary(
             conversation_id=conversation_id,
             user_id=user_id,
@@ -257,7 +385,11 @@ class FurnaceMindMemoryStore:
 @lru_cache(maxsize=1)
 def _memory_store() -> FurnaceMindMemoryStore:
     """
-    Return a cached PostgreSQL memory store.
+    Return the cached PostgreSQL adapter for FurnaceMind summaries.
+
+    The page can call load/save helpers multiple times during Streamlit reruns.
+    Caching the adapter avoids rebuilding the relational engine and repository
+    for every call while still using repository-managed sessions per operation.
 
     Args:
          - None
@@ -272,15 +404,17 @@ def load_fm_memory(
     *,
     user_id: str | None = None,
     conversation_id: str | None = None,
-    legacy_path: Path | None = None,
 ) -> dict[str, Any]:
     """
-    Load FurnaceMind conversation summary memory from PostgreSQL.
+    Load normalized FurnaceMind memory for prompt injection.
+
+    This is the page-facing read helper. It returns an empty default memory
+    object when the user or conversation is not known, or when PostgreSQL is not
+    available, so the chat page can continue without breaking the UI.
 
     Args:
          - user_id: str | None - User that owns the memory.
          - conversation_id: str | None - Conversation whose summary should be loaded.
-         - legacy_path: Path | None - Optional legacy JSON path for migration fallback.
 
     Returns:
          - return: dict[str, Any] - Normalized memory payload.
@@ -289,22 +423,10 @@ def load_fm_memory(
         return _normalize_memory(None)
 
     try:
-        memory = _memory_store().load_memory(
+        return _memory_store().load_memory(
             user_id=user_id,
             conversation_id=conversation_id,
         )
-        if _has_persistent_content(memory):
-            return memory
-
-        legacy_memory = _load_legacy_memory(legacy_path)
-        if _has_persistent_content(legacy_memory):
-            _memory_store().save_memory(
-                legacy_memory,
-                user_id=user_id,
-                conversation_id=conversation_id,
-            )
-            return legacy_memory
-        return memory
     except Exception:
         return _normalize_memory(None)
 
@@ -318,7 +440,11 @@ def save_fm_memory(
     source_message_id_end: str | None = None,
 ) -> None:
     """
-    Persist FurnaceMind conversation summary memory to PostgreSQL.
+    Persist the generated FurnaceMind memory summary if it is safe to save.
+
+    This is the page-facing write helper. It requires both user and conversation
+    ids, refreshes the payload timestamp, and delegates duplicate detection plus
+    row creation to ``FurnaceMindMemoryStore``.
 
     Args:
          - memory: dict[str, Any] - Memory payload containing the summary.
@@ -346,45 +472,13 @@ def save_fm_memory(
         return
 
 
-def add_recent_turn(
-    memory: dict[str, Any],
-    *,
-    user: str,
-    assistant: str,
-    max_turns: int = 8,
-) -> dict[str, Any]:
-    """
-    Append a user/assistant turn to the in-memory rolling turn buffer.
-
-    Recent chat turns are persisted durably by ``conversation_messages`` from
-    ticket #111.  This helper keeps the existing memory shape for prompt-context
-    callers without writing duplicate turn rows into the legacy JSON file.
-
-    Args:
-         - memory: dict[str, Any] - Current memory dict.
-         - user: str - User message text.
-         - assistant: str - Assistant response text.
-         - max_turns: int - Maximum number of turns to retain.
-
-    Returns:
-         - return: dict[str, Any] - New memory dict with the turn appended.
-    """
-    memory = dict(memory or {})
-    turns: list[dict[str, Any]] = list(memory.get("recent_turns") or [])
-    turns.append(
-        {
-            "ts_utc": _utc_now_iso(),
-            "user": (user or "").strip(),
-            "assistant": (assistant or "").strip(),
-        }
-    )
-    memory["recent_turns"] = turns[-max_turns:]
-    return memory
-
-
 def build_persistent_context(memory: dict[str, Any]) -> str:
     """
-    Create a compact text block to inject into the system prompt.
+    Convert stored FurnaceMind memory into a system-prompt context block.
+
+    The agent should receive compressed durable memory, not the raw SQL row.
+    This helper extracts the saved conversation summary and labels it clearly so
+    the LLM can treat it as prior context instead of a new user instruction.
 
     Args:
          - memory: dict[str, Any] - Persistent FurnaceMind memory payload.
