@@ -181,6 +181,8 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     engine = _cached_skill_engine()
     history_store = _cached_history_store()
     user_id = _current_user_id()
+    memory_summary_window = settings.memory_summary_message_window
+    memory_summary_token_limit = settings.memory_summary_token_limit
 
     st.session_state["knowledge_store"] = knowledge_store
 
@@ -285,7 +287,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             ),
         },
         *chat_interface.chat_history_to_messages(
-            max_messages=fm_memory.MEMORY_SUMMARY_MESSAGE_WINDOW
+            max_messages=memory_summary_window,
         ),
     ]
     history_len_before = len(st.session_state.chat_history)
@@ -328,7 +330,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         }
     )
 
-    if fm_memory.should_generate_memory_summary(st.session_state.chat_history):
+    if fm_memory.should_generate_memory_summary(
+        st.session_state.chat_history,
+        window=memory_summary_window,
+    ):
         memory_llm = OpenRouterClient(
             model_name=settings.llm.openrouter.memory_compression_model_name
         )
@@ -336,11 +341,17 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             context.memory,
             chat_history=st.session_state.chat_history,
             llm=memory_llm,
-            summary_system_prompt=prompts.MEMORY_SUMMARY_SYSTEM_PROMPT,
-            summary_token_limit=prompts.MEMORY_SUMMARY_TOKEN_LIMIT,
+            summary_system_prompt=prompts.memory_summary_system_prompt(
+                memory_summary_token_limit
+            ),
+            summary_token_limit=memory_summary_token_limit,
+            window=memory_summary_window,
         )
         source_message_id_start, source_message_id_end = (
-            fm_memory.summary_source_message_ids(st.session_state.chat_history)
+            fm_memory.summary_source_message_ids(
+                st.session_state.chat_history,
+                window=memory_summary_window,
+            )
         )
         fm_memory.save_fm_memory(
             updated_memory,

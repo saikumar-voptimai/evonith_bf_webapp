@@ -156,6 +156,8 @@ class Settings:
         qdrant_knowledge:  :class:`QdrantConfig` for the knowledge document collection.
         qdrant:            Alias for ``qdrant_shift`` (backward compatibility).
         app:               :class:`AppConfig` general runtime settings.
+        memory_summary_message_window: Number of chat messages per memory summary.
+        memory_summary_token_limit:    Maximum requested memory summary tokens.
     """
 
     def __init__(self) -> None:
@@ -194,6 +196,12 @@ class Settings:
         self.qdrant = self.qdrant_shift
 
         self.app = AppConfig()
+        self.memory_summary_message_window = int(
+            os.getenv("MEMORY_SUMMARY_MESSAGE_WINDOW", 8)
+        )
+        self.memory_summary_token_limit = int(
+            os.getenv("MEMORY_SUMMARY_TOKEN_LIMIT", 2000)
+        )
         self._validate()
 
     # ------------------------------------------------------

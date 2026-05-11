@@ -23,8 +23,6 @@ DEFAULT_MEMORY: dict[str, Any] = {
     "last_updated_utc": None,
 }
 
-MEMORY_SUMMARY_MESSAGE_WINDOW = 8
-
 _MEMORY_SOURCE = "furnacemind_memory"
 _SUMMARY_KIND = "conversation_summary"
 
@@ -157,7 +155,7 @@ def _format_summary_window(messages: list[dict[str, Any]]) -> str:
 def should_generate_memory_summary(
     chat_history: list[dict[str, Any]],
     *,
-    window: int = MEMORY_SUMMARY_MESSAGE_WINDOW,
+    window: int,
 ) -> bool:
     """
     Check whether the chat has reached the next memory-summary boundary.
@@ -182,7 +180,7 @@ def should_generate_memory_summary(
 def summary_source_message_ids(
     chat_history: list[dict[str, Any]],
     *,
-    window: int = MEMORY_SUMMARY_MESSAGE_WINDOW,
+    window: int,
 ) -> tuple[str | None, str | None]:
     """
     Find the message id range represented by the latest summary window.
@@ -217,7 +215,7 @@ def generate_memory_summary(
     llm: Any,
     summary_system_prompt: str,
     summary_token_limit: int,
-    window: int = MEMORY_SUMMARY_MESSAGE_WINDOW,
+    window: int,
 ) -> dict[str, Any]:
     """
     Generate the next cumulative memory summary when a window is complete.
