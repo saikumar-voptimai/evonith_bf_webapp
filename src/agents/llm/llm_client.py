@@ -15,6 +15,8 @@ Use :func:`get_llm_client` to obtain the default client.
 
 from __future__ import annotations
 
+import io as _io
+import os as _os
 from typing import Any, List, Literal, Optional
 
 from openai import OpenAI
@@ -32,11 +34,20 @@ class OpenRouterClient:
     Text generation only.
     """
 
-    def __init__(self) -> None:
-        """Initialise the OpenRouter client from :data:`~utils.settings.settings`.
+    def __init__(self, *, model_name: str | None = None) -> None:
+        """
+        Initialize an OpenRouter chat client from application settings.
+
+        FurnaceMind uses the configured default model for normal chat turns, but
+        some background tasks such as memory compression can pass a model
+        override. The same OpenRouter credentials and base URL are still reused
+        so specialized LLM work does not need a separate client class.
+
+        Args:
+             - model_name: str | None - Optional model override for specialized LLM tasks.
 
         Raises:
-            ValueError: If ``OPENROUTER_API_KEY`` is not set.
+             - ValueError - Raised when ``OPENROUTER_API_KEY`` is not configured.
         """
         cfg = settings.llm.openrouter
         if not cfg.api_key:
@@ -47,7 +58,7 @@ class OpenRouterClient:
             base_url=cfg.base_url,
         )
 
-        self.model = cfg.model_name
+        self.model = (model_name or cfg.model_name).strip()
         self.max_tokens = cfg.max_tokens
 
         self.extra_headers = {
@@ -298,9 +309,6 @@ def get_llm_client(prefer: Optional[Provider] = None):
 # 🔹 OPENAI RESPONSES API — code_interpreter helper
 # ==========================================================
 
-import io as _io
-import os as _os
-
 OPENAI_MODEL: str = _os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 
@@ -330,9 +338,7 @@ def call_llm(
     if not api_key:
         return "⚠️ OPENAI_API_KEY not set."
 
-    from openai import OpenAI as _OpenAI  # local import to keep module-level imports clean
-
-    client = _OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key)
     file_ids: list[str] = []
 
     if files:

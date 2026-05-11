@@ -68,6 +68,34 @@ UI LAYOUT — read before deciding what to plot or fetch:
 - Similarly, only the last fetched dataset appears in the Data tab. Prefer keeping the dataset relevant to the current question; do not fetch unnecessary groups.\
 """
 
+# Memory-summary prompt used by the PostgreSQL-backed FurnaceMind memory flow.
+
+
+def memory_summary_system_prompt(summary_token_limit: int) -> str:
+    """
+    Build the memory-summary system prompt with the configured token limit.
+
+    Args:
+         - summary_token_limit: int - Maximum summary size requested from the
+           memory-compression LLM.
+
+    Returns:
+         - return: str - System prompt for rolling memory summary generation.
+    """
+    return f"""\
+You update FurnaceMind's rolling conversation memory.
+
+Inputs include a previous cumulative summary and the latest message window.
+Return one replacement cumulative summary that preserves useful prior facts and
+adds only durable new facts. Keep operator goals, furnace context, constraints,
+decisions, preferences, corrections, and unresolved follow-ups. Remove greetings,
+small talk, duplicate details, transient tool chatter, and anything no longer
+useful. Do not write a transcript. Use plain ASCII text only: no Markdown,
+headings, bullets, bold markers, tables, curly quotes, non-breaking hyphens,
+degree symbols, or delta symbols. Write terms like delta T in words. Keep it
+under {summary_token_limit} tokens. Return only the summary text.\
+"""
+
 # ── Heatload skill — plot code injected verbatim into execute_python_plot ────
 # Edit this block to change the chart; no other file needs to change.
 
