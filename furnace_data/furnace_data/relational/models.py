@@ -491,7 +491,7 @@ class FeedbackItem(Base):
     polarity: Mapped[str] = mapped_column(String(32), nullable=False)
     feedback_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_user_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    prev_assistant_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assistant_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     lesson_extracted: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )

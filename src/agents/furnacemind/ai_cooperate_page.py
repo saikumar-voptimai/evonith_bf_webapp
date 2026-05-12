@@ -12,6 +12,8 @@ from __future__ import annotations
 import streamlit as st
 
 from agents.embeddings.cloud_embedding import CloudEmbeddingClient
+from agents.feedback import ui_flow
+from agents.feedback.feedback_service import FurnaceMindFeedbackService
 from agents.furnace_tools import get_openai_tool_schemas
 from agents.furnacemind import prompts
 from agents.furnacemind.agent import run_agent_loop
@@ -141,23 +143,48 @@ def _cached_history_store() -> ConversationHistoryStore | None:
         return None
 
 
-def _current_user_id() -> str:
+@st.cache_resource(show_spinner=False)
+def _cached_feedback_service() -> FurnaceMindFeedbackService | None:
     """
-    Resolve the user id used for FurnaceMind persistence records.
+    Build the feedback service used for SQL and Qdrant lesson persistence.
 
-    The relational tables link conversations, messages, and summaries by user.
-    When the app does not provide an authenticated user in Streamlit session
-    state, this function returns a stable ``anonymous`` fallback so local testing
-    and unauthenticated sessions still work.
+    Feedback should never break the chat page. If the database, embedding
+    provider, or Qdrant is unavailable during startup, the page continues
+    without feedback persistence and shows a sidebar notice when needed.
 
     Args:
          - None
 
     Returns:
-         - return: str - Current user id or anonymous fallback.
+         - return: FurnaceMindFeedbackService | None - Feedback service when ready.
     """
-    user_id = str(st.session_state.get("auth_user") or "anonymous").strip()
-    return user_id or "anonymous"
+    try:
+        return FurnaceMindFeedbackService(embedding_client=_cached_embedding_client())
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_feedback_llm() -> OpenRouterClient | None:
+    """
+    Build the LLM client used for feedback detection and lesson extraction.
+
+    Feedback work uses the configured memory-compression model so lightweight
+    classification and lesson generation stay separate from the main answering
+    model while reusing the same OpenRouter connection settings.
+
+    Args:
+         - None
+
+    Returns:
+         - return: OpenRouterClient | None - LLM client for feedback helper tasks.
+    """
+    try:
+        return OpenRouterClient(
+            model_name=settings.llm.openrouter.memory_compression_model_name
+        )
+    except Exception:
+        return None
 
 
 def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
@@ -180,7 +207,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     context = _cached_context()
     engine = _cached_skill_engine()
     history_store = _cached_history_store()
-    user_id = _current_user_id()
+    feedback_service = _cached_feedback_service()
+    feedback_llm = _cached_feedback_llm()
+    user_id = str(st.session_state.get("auth_user") or "anonymous").strip()
+    user_id = user_id or "anonymous"
     memory_summary_window = settings.memory_summary_message_window
     memory_summary_token_limit = settings.memory_summary_token_limit
 
@@ -212,6 +242,12 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             st.sidebar.caption(f"Chat history database unavailable: {exc}")
     else:
         st.sidebar.caption("Chat history database unavailable.")
+
+    ui_flow.process_pending_explicit_feedback(
+        feedback_service=feedback_service,
+        feedback_llm=feedback_llm,
+        user_id=user_id,
+    )
 
     context.refresh_session_context(
         user_id=user_id,
@@ -249,6 +285,19 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if not user_query:
         return
 
+    ui_flow.detect_and_save_chat_feedback(
+        feedback_service=feedback_service,
+        feedback_llm=feedback_llm,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        user_query=user_query,
+    )
+    feedback_lesson_context = (
+        feedback_service.feedback_context(query=user_query, user_id=user_id)
+        if feedback_service is not None
+        else ""
+    )
+
     user_message_id: str | None = None
     if history_store is not None and conversation_id:
         try:
@@ -278,11 +327,14 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
     tools = get_openai_tool_schemas()
+    extra_context = prompts.TOOL_POLICY
+    if feedback_lesson_context:
+        extra_context = f"{extra_context}\n\n{feedback_lesson_context}"
     messages = [
         {
             "role": "system",
             "content": context.build(
-                extra=prompts.TOOL_POLICY,
+                extra=extra_context,
                 skill_id=active_skill_id,
             ),
         },
