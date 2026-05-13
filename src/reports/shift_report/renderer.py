@@ -70,6 +70,7 @@ def as_markdown(report: ShiftReportData, analysis: str = "") -> str:
     pe, pes = _ps(r.permeability)
     ec, ecs = _ps(r.etaco)
     ra, ras = _ps(r.raft)
+    of, ofs = _ps(r.o2_flow)
     oe, oes = _ps(r.o2_enrichment)
 
     params_table = (
@@ -78,7 +79,7 @@ def as_markdown(report: ShiftReportData, analysis: str = "") -> str:
         f"| Hot blast volume | Nm3/hr | {bv} | {bs} |\n"
         f"| Hot blast temperature | degC | {bt} | {bts} |\n"
         f"| Hot blast pressure | bar | {bp} | {bps} |\n"
-        f"| Oxygen Flow | Nm3/hr | {_v(r.o2_flow.mean)} | - |\n"
+        f"| Oxygen Flow | Nm3/hr | {of} | {ofs} |\n"
         f"| Oxygen enrichment | % | {oe} | {oes} |\n"
         f"| Permeability | — | {pe} | {pes} |\n"
         f"| ETA CO | % | {ec} | {ecs} |\n"
