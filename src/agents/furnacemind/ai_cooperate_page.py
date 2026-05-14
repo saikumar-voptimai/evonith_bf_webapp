@@ -12,8 +12,6 @@ from __future__ import annotations
 import streamlit as st
 
 from agents.embeddings.cloud_embedding import CloudEmbeddingClient
-from agents.feedback import ui_flow
-from agents.feedback.feedback_service import FurnaceMindFeedbackService
 from agents.furnace_tools import get_openai_tool_schemas
 from agents.furnacemind import prompts
 from agents.furnacemind.agent import run_agent_loop
@@ -24,7 +22,8 @@ from agents.memory import fm_memory
 from agents.memory.conversation_history import ConversationHistoryStore
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
-from ui.furnacemind import chat_interface
+from ui.furnacemind import chat_interface, feedback_flow
+from utils.furnacemind.feedback_service import FurnaceMindFeedbackService
 from utils.settings import settings
 from utils.shift_windows import last_completed_shift
 
@@ -243,7 +242,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     else:
         st.sidebar.caption("Chat history database unavailable.")
 
-    ui_flow.process_pending_explicit_feedback(
+    feedback_flow.process_pending_explicit_feedback(
         feedback_service=feedback_service,
         feedback_llm=feedback_llm,
         user_id=user_id,
@@ -285,7 +284,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if not user_query:
         return
 
-    ui_flow.detect_and_save_chat_feedback(
+    feedback_flow.detect_and_save_chat_feedback(
         feedback_service=feedback_service,
         feedback_llm=feedback_llm,
         user_id=user_id,

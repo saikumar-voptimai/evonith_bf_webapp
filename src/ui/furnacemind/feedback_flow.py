@@ -3,7 +3,7 @@
 This module keeps feedback UI events out of the main Streamlit page renderer.
 It consumes explicit thumbs feedback queued by the chat UI, detects feedback
 written directly in chat, and delegates persistence/lesson generation to the
-feedback service in ``agents.feedback.feedback_service``.
+feedback service in ``utils.furnacemind.feedback_service``.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Any
 
 import streamlit as st
 
-from agents.feedback.feedback_service import (
+from utils.furnacemind.feedback_service import (
     FurnaceMindFeedbackService,
     latest_assistant_exchange,
 )
