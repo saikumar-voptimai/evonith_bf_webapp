@@ -291,7 +291,10 @@ class Conversation(Base):
     """FurnaceMind chat conversation metadata."""
 
     __tablename__ = "conversations"
-    __table_args__ = (Index("ix_conversations_user_updated", "user_id", "updated_at"),)
+    __table_args__ = (
+        Index("ix_conversations_user_updated", "user_id", "updated_at"),
+        {"schema": "furnace_mind"},
+    )
 
     conversation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
@@ -322,6 +325,7 @@ class ConversationMessage(Base):
         Index(
             "ix_conversation_messages_conversation", "conversation_id", "sequence_num"
         ),
+        {"schema": "furnace_mind"},
     )
 
     message_id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -345,7 +349,10 @@ class MemoryDocument(Base):
     """Uploaded FurnaceMind knowledge document metadata."""
 
     __tablename__ = "memory_documents"
-    __table_args__ = (Index("ix_memory_documents_user_active", "user_id", "is_active"),)
+    __table_args__ = (
+        Index("ix_memory_documents_user_active", "user_id", "is_active"),
+        {"schema": "furnace_mind"},
+    )
 
     document_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
@@ -376,6 +383,7 @@ class MemorySummary(Base):
     __tablename__ = "memory_summaries"
     __table_args__ = (
         Index("ix_memory_summaries_conversation", "conversation_id", "created_at"),
+        {"schema": "furnace_mind"},
     )
 
     summary_id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -399,7 +407,10 @@ class LongTermMemory(Base):
     """Durable user-specific memory fact extracted from chat."""
 
     __tablename__ = "long_term_memories"
-    __table_args__ = (Index("ix_long_term_memories_user", "user_id"),)
+    __table_args__ = (
+        Index("ix_long_term_memories_user", "user_id"),
+        {"schema": "furnace_mind"},
+    )
 
     memory_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
@@ -433,7 +444,10 @@ class Skill(Base):
     """Built-in or uploaded FurnaceMind skill definition."""
 
     __tablename__ = "skills"
-    __table_args__ = (Index("ix_skills_active", "is_active"),)
+    __table_args__ = (
+        Index("ix_skills_active", "is_active"),
+        {"schema": "furnace_mind"},
+    )
 
     skill_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -466,6 +480,7 @@ class FeedbackItem(Base):
     __table_args__ = (
         Index("ix_feedback_items_user_created", "user_id", "created_at"),
         Index("ix_feedback_items_pending_lesson", "lesson_extracted", "created_at"),
+        {"schema": "furnace_mind"},
     )
 
     feedback_id: Mapped[str] = mapped_column(String(64), primary_key=True)
