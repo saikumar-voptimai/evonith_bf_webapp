@@ -417,7 +417,7 @@ Disallowed token in code: \bimport\b
 ## 2026-04-03T10:13:00.525666+00:00
 **Tool:** execute_python_plot
 
-**Params:** `{"code": "import pandas as pd\nimport numpy as np\nimport plotly.graph_objects as go\n\ndf = pd.read_csv('current_furnace_data.csv', index_col=0, parse_dates=True)\ndf = df.sort_index().dropna(how='all')\n\n# Target: HM Sulphur\ntarget = 'CHEM_PCT_SI'  # Will check actual S column\n\n# Check columns\ncols = df.columns.tolist()\ns_col = None\nfor c in cols:\n    if 'CHEM' in c and 'S' in c.upper() and 'SLAG' not in c:\n        s_col = c\n        break\n        \nif s_col is None:\n    s_col = 'SLAG_PCT_S'\n    \nprint('Using S column:', s_col)\nprint('Sample values:', df[s_col].dropna().head())\n\n# Key factors to correlate (using available columns)\nfactors = ['SLAG_BASICITY', 'SLAG_PCT_FEO', 'SLAG_PCT_CAO', 'SLAG_PCT_SIO2',\n           'COKE_ASH%', 'COKE_MOIST%', 'PCI_2_ASH%', 'PCI_2_S%', \n           'SINTER_SP_02_SIO2%', 'SINTER_SP_02_AL2O3%', 'ORE_SIO2%',\n           'HOT BLAST TEMP.OC', 'O2 ENRICHMENT %', 'PRODUCTIONTONNESPERHR']\n\n# Filter to available\navail = [f for f in factors if f in df.columns]\nprint('Available factors:', avail)\n\n# Compute correlations\ncorrs = {}\nfor f in avail:\n    valid = df[[s_col, f]].dropna()\n    if len(valid) > 10:\n        corrs[f] = valid[s_col].corr(valid[f])\n\n# Sort by absolute correlation\nranked = sorted(corrs.items(), key=lambda x: abs(x[1]) if x[1] else 0, reverse=True)\nprint('\\nCorrelations with S%:')\nfor f, c in ranked[:10]:\n    print(f'  {f}: {c:.3f}')"}`
+**Params:** `{"code": "import pandas as pd\nimport numpy as np\nimport plotly.graph_objects as go\n\ndf = pd.read_csv('current_furnace_data.csv', index_col=0, parse_dates=True)\ndf = df.sort_index().dropna(how='all')\n\n# Target: HM Sulphur\ntarget = 'CHEM_PCT_SI'  # Will check actual S column\n\n# Check columns\ncols = df.columns.tolist()\ns_col = None\nfor c in cols:\n    if 'CHEM' in c and 'S' in c.upper() and 'SLAG' not in c:\n        s_col = c\n        break\n        \nif s_col is None:\n    s_col = 'SLAG_PCT_S'\n    \nprint('Using S column:', s_col)\nprint('Sample values:', df[s_col].dropna().head())\n\n# Key factors to correlate (using available columns)\nfactors = ['SLAG_BASICITY', 'SLAG_PCT_FEO', 'SLAG_PCT_CAO', 'SLAG_PCT_SIO2',\n           'COKE_ASH%', 'COKE_MOIST%', 'PCI_ASH%', 'PCI_2_S%', \n           'SINTER_SIO2%', 'SINTER_AL2O3%', 'ORE_SIO2%',\n           'HOT BLAST TEMP.OC', 'O2 ENRICHMENT %', 'PRODUCTIONTONNESPERHR']\n\n# Filter to available\navail = [f for f in factors if f in df.columns]\nprint('Available factors:', avail)\n\n# Compute correlations\ncorrs = {}\nfor f in avail:\n    valid = df[[s_col, f]].dropna()\n    if len(valid) > 10:\n        corrs[f] = valid[s_col].corr(valid[f])\n\n# Sort by absolute correlation\nranked = sorted(corrs.items(), key=lambda x: abs(x[1]) if x[1] else 0, reverse=True)\nprint('\\nCorrelations with S%:')\nfor f, c in ranked[:10]:\n    print(f'  {f}: {c:.3f}')"}`
 
 **Error:**
 
@@ -897,7 +897,7 @@ Provide only one of lookback_days, lookback_hours, lookback_minutes
 ## 2026-05-05T02:12:36.439959+00:00
 **Tool:** fetch_offline_data
 
-**Params:** `{"report_type": "HM_SLAG", "source": "neon_db", "table_name": "hot_metal_chemistry", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
+**Params:** `{"report_type": "HM_SLAG", "source": "offline_database", "table_name": "hot_metal_chemistry", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
 
 **Error:**
 
@@ -915,7 +915,7 @@ LINE 1: ...ct_sio2", "slag_pct_tio2", "slag_t_basicity" FROM "hot_metal...
 ## 2026-05-05T02:12:39.016584+00:00
 **Tool:** fetch_offline_data
 
-**Params:** `{"report_type": "HM_SLAG", "source": "neon_db", "table_name": "rm_hm", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
+**Params:** `{"report_type": "HM_SLAG", "source": "offline_database", "table_name": "rm_hm", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
 
 **Error:**
 
@@ -933,7 +933,7 @@ LINE 1: ...ed_at", "date_time", "id", "rdi", "ri", "ti" FROM "rm_hm" WH...
 ## 2026-05-05T02:12:40.950029+00:00
 **Tool:** fetch_offline_data
 
-**Params:** `{"report_type": "HM_SLAG", "source": "neon_db", "table_name": "charge_data", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
+**Params:** `{"report_type": "HM_SLAG", "source": "offline_database", "table_name": "charge_data", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
 
 **Error:**
 

@@ -24,9 +24,11 @@ def test_neon_table_discovery_includes_migrated_reports():
     assert "RM_COMPOSITION" in listing["report_map"]
     assert "BURDEN_DISTRIBUTION" in listing["report_map"]
     assert "HOPPER_MANAGEMENT" in listing["report_map"]
-    assert "ore_chemistry" in listing["report_map"]["RM_COMPOSITION"]
-    assert "burden_distribution_history" in listing["tables"]
-    assert "hopper_material_history" in listing["tables"]
+    assert "offline_feed.ore_chemistry" in listing["report_map"]["RM_COMPOSITION"]
+    assert "ops_config.burden_history" in listing["tables"]
+    assert "ops_config.hopper_raw_material_history" in listing["tables"]
+    assert listing["aliases"]["rm_hm"] == "offline_feed.raw_material_strength_analysis"
+    assert "ore_6_mt" in listing["tables"]["offline_feed.charge_data"]["columns"]
 
 
 def test_fetch_table_uses_database_url_and_sets_time_index(monkeypatch):
@@ -60,7 +62,7 @@ def test_fetch_table_uses_database_url_and_sets_time_index(monkeypatch):
 
     assert calls["database_url"] == "postgresql://unit-test"
     assert calls["engine"] is fake_engine
-    assert '"charge_data"' in calls["query"]
+    assert '"offline_feed"."charge_data"' in calls["query"]
     assert fake_engine.disposed is True
     assert df.index.name == "time"
     assert str(df.index.tz) == "UTC"
@@ -82,6 +84,24 @@ def test_combined_rm_report_concats_source_tables(monkeypatch):
     assert len(df) == len(neon.NEON_OFFLINE_REPORT_MAP["RM_COMPOSITION"])
 
 
+def test_report_with_mixed_time_and_master_tables_does_not_sort_mixed_index(monkeypatch):
+    def fake_fetch_table(table_name, time_range, query_type="ts", window=None, database_url=None, columns=None):
+        if table_name == "plant_master.materials":
+            return pd.DataFrame({"material_code": ["ore_1"]})
+        idx = pd.DatetimeIndex([pd.Timestamp("2026-01-01T00:00:00Z")], name="time")
+        return pd.DataFrame({"value": [table_name]}, index=idx)
+
+    monkeypatch.setattr(neon, "fetch_offline_data", fake_fetch_table)
+
+    df = neon.fetch_offline_report(
+        report_type="RM_COMPOSITION",
+        time_range=("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"),
+    )
+
+    assert "plant_master.materials" in set(df["source_table"])
+    assert len(df) == len(neon.NEON_OFFLINE_REPORT_MAP["RM_COMPOSITION"])
+
+
 def test_burden_history_rejects_aggregation():
     with pytest.raises(ValueError, match="does not support SQL aggregation"):
         neon.fetch_offline_data(
@@ -89,3 +109,13 @@ def test_burden_history_rejects_aggregation():
             time_range=("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"),
             query_type="average",
         )
+
+
+def test_legacy_table_alias_resolves_to_schema_qualified_name():
+    assert (
+        neon.resolve_neon_table_name("hot_metal_chemistry")
+        == "offline_feed.hot_metal_slag_analysis"
+    )
+    assert neon.resolve_neon_table_name("rm_hm") == (
+        "offline_feed.raw_material_strength_analysis"
+    )

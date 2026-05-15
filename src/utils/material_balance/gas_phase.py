@@ -26,15 +26,16 @@ def compute_blast_elements(online: Dict[str, float]) -> Tuple[Dict[str, float], 
     O + N) and a pure O₂ enrichment portion (carrying only O).
 
     Args:
-        online (dict): Day-averaged ``process_params`` fields. Must
-            contain ``hot_blast_vol_nm3h`` and ``oxygen_enrichment_pct``.
+        online (dict): Day-averaged process fields using
+            ``setting_ds_dv.yml`` mapping names. Must contain
+            ``hot_blast_volume_nm3hr`` and ``oxygen_enrichment_pct``.
 
     Returns:
         tuple: ``(elements, debug)`` where *elements* has keys
         ``blast_O_t``, ``blast_N_t``, ``enrich_O_t`` (tonnes) and
         *debug* exposes intermediate quantities for the page expander.
     """
-    wind = float(online.get("hot_blast_vol_nm3h", 0.0) or 0.0)
+    wind = float(online.get("hot_blast_volume_nm3hr", 0.0) or 0.0)
     enr = float(online.get("oxygen_enrichment_pct", 0.0) or 0.0)
 
     if wind <= 0:
@@ -73,13 +74,13 @@ def compute_steam_elements(online: Dict[str, float]) -> Dict[str, float]:
     """Compute H + O tonnes from steam injection (kg/h).
 
     Args:
-        online (dict): Day-averaged ``process_params`` fields. Must
-            contain ``steam_injection``.
+        online (dict): Day-averaged process fields using mapping names.
+            Must contain ``steam_kgs_hr``.
 
     Returns:
         dict: ``{"steam_H_t": float, "steam_O_t": float}`` in tonnes.
     """
-    steam_kgh = float(online.get("steam_injection", 0.0) or 0.0)
+    steam_kgh = float(online.get("steam_kgs_hr", 0.0) or 0.0)
     if steam_kgh <= 0:
         return {"steam_H_t": 0.0, "steam_O_t": 0.0}
 
@@ -111,9 +112,11 @@ def compute_top_gas_elements(
     gap / startup transient).
 
     Args:
-        online (dict): Day-averaged ``process_params`` fields. Must
-            contain ``hot_blast_vol_nm3h``, ``oxygen_enrichment_pct``,
-            ``co_pct``, ``co2_pct``, ``h2_pct``.
+        online (dict): Day-averaged process fields using mapping names. Must
+            contain ``hot_blast_volume_nm3hr``, ``oxygen_enrichment_pct``,
+            ``furnace_top_gas_analysis_co_pct``,
+            ``furnace_top_gas_analysis_co2_pct``, and
+            ``furnace_top_gas_analysis_h2_pct``.
         warnings (list): Mutable list — sanity-check notices are
             appended.
 
@@ -122,10 +125,10 @@ def compute_top_gas_elements(
         dict has keys ``C``, ``O``, ``H``, ``N`` and *debug_dict*
         exposes ``top_gas_nm3_per_day`` and per-species kmol values.
     """
-    wind = float(online.get("hot_blast_vol_nm3h", 0.0) or 0.0)
-    co_pct = float(online.get("co_pct", 0.0) or 0.0)
-    co2_pct = float(online.get("co2_pct", 0.0) or 0.0)
-    h2_pct = float(online.get("h2_pct", 0.0) or 0.0)
+    wind = float(online.get("hot_blast_volume_nm3hr", 0.0) or 0.0)
+    co_pct = float(online.get("furnace_top_gas_analysis_co_pct", 0.0) or 0.0)
+    co2_pct = float(online.get("furnace_top_gas_analysis_co2_pct", 0.0) or 0.0)
+    h2_pct = float(online.get("furnace_top_gas_analysis_h2_pct", 0.0) or 0.0)
 
     if wind <= 0 or (co_pct + co2_pct + h2_pct) <= 0:
         return {}, {"top_gas_nm3_per_day": 0.0}

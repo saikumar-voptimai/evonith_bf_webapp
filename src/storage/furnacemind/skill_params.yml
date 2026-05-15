@@ -62,7 +62,7 @@ tier1:
 # null band_lo/band_hi means "keep near best-shift — no hard band available yet".
 
 tier2:
-  "PCI_2_ASH%":
+  "PCI_ASH%":
     band_lo: 8.4
     band_hi: 10.4
     adverse_threshold: 11.1
@@ -90,7 +90,7 @@ tier2:
     lag_hours: 2
     unit: "%"
 
-  "SINTER_SP_02_BASICITY":
+  "SINTER_BASICITY":
     band_lo: null
     band_hi: null
     adverse_threshold: null

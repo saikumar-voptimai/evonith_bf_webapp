@@ -1,0 +1,76 @@
+materials:
+  - client_name: Coke Online
+    material_name: coke_online
+    is_primary: true
+  - client_name: Coke Offline
+    material_name: coke_offline
+    is_primary: true
+  - client_name: Nut Coke
+    material_name: nut_coke
+    is_primary: true
+  - client_name: Sinter
+    material_name: sinter_sp02_online
+    is_primary: true
+  - client_name: Lloyds Pellet
+    material_name: pellet
+    is_primary: true
+  - client_name: Dolomite
+    material_name: dolomite
+    is_primary: true
+  - client_name: Quartz
+    material_name: quartz
+    is_primary: true
+  - client_name: Lime Stone
+    material_name: limestone
+    is_primary: true
+  - client_name: Lloyds CLO
+    material_name: lloyds_ore
+    is_primary: true
+  - client_name: Lloyds Metals Iron Fines Oversize (+10MM)
+    material_name: lloyds_oversize
+    is_primary: true
+  - client_name: LLOYDS FINES OVER SIZE
+    material_name: lloyds_oversize
+    is_primary: false
+  - client_name: NMDC Limited (Donimalai)
+    material_name: nmdc_donimalai_ore
+    is_primary: true
+  - client_name: NMDC Limited (Donimalai) Iron Fines Oversize (+10MM)
+    material_name: nmdc_donimalai_oversize
+    is_primary: true
+  - client_name: Donimalai Fines Over size
+    material_name: nmdc_donimalai_oversize
+    is_primary: false
+  - client_name: NMDC Limited Crushed ROM (10-40MM) (Kirandul)
+    material_name: nmdc_rom_kirandul
+    is_primary: true
+  - client_name: NMDC Limited Lumps (10-150 MM) (Kirandul)
+    material_name: nmdc_rom_kirandul
+    is_primary: false
+  - client_name: ACORE INDUSTRIES PRIVATE LIMITED (MANGANESE ORE LUMP)
+    material_name: mn_ore
+    is_primary: false
+  - client_name: MN Ore
+    material_name: mn_ore
+    is_primary: true
+  - client_name: TITANI FERROUS CLO
+    material_name: titani_ferrous_clo
+    is_primary: true
+  - client_name: Geomin CLO
+    material_name: geomin_clo
+    is_primary: true
+  - client_name: Bacheli oversize CLO
+    material_name: bacheli_clo
+    is_primary: true
+  - client_name: GOMTI
+    material_name: gomti_ore
+    is_primary: true
+  - client_name: JAYASWAL NECO INDUSTRIES LIMITED
+    material_name: neco_ore
+    is_primary: true
+  - client_name: JRS Ventures
+    material_name: jrs_ore
+    is_primary: true
+  - client_name: Sarda Energy & Minerals Limited
+    material_name: sarda_ore
+    is_primary: true

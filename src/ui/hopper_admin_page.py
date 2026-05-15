@@ -2,7 +2,7 @@
 
 Allows supervisors and admins to assign raw materials to hoppers with
 a user-specified effective timestamp.  All changes are written via
-:meth:`~data.db.Database.update_hopper_material_with_time` which appends
+:meth:`~data.db.HopperConfigService.update_hopper_material_with_time` which appends
 a new SCD Type-2 history row.
 """
 
@@ -10,7 +10,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from data.db import Database
+from data.db import HopperConfigService
 
 
 class HopperAdminPage:
@@ -20,7 +20,7 @@ class HopperAdminPage:
     table (no separate snapshot table required).
 
     Attributes:
-        db:              :class:`~data.db.Database` instance.
+        db:              :class:`~data.db.HopperConfigService` instance.
         materials:       List of material names available for assignment.
         hoppers:         List of hopper identifiers.
         hopper_materials: Dict of ``{hopper_id: material_name}`` (current mapping).
@@ -28,7 +28,7 @@ class HopperAdminPage:
 
     def __init__(self) -> None:
         """Initialise with a fresh database connection and current hopper mapping."""
-        self.db = Database()
+        self.db = HopperConfigService()
         self.materials = self.db.materials
         self.hoppers = self.db.hoppers
 
@@ -82,7 +82,7 @@ class HopperAdminPage:
                     options = ["UNASSIGNED"] + self.materials
 
                     selected_material = st.selectbox(
-                        hopper,
+                        self.db.hopper_display_names.get(hopper, hopper),
                         options,
                         index=(
                             options.index(current_material)
@@ -113,22 +113,25 @@ class HopperAdminPage:
         changes = 0
         errors = False
 
+        changed_values = {}
         for hopper, new_material in updated_values.items():
             current_material = self.hopper_materials.get(hopper, "UNASSIGNED")
 
             if new_material != current_material:
-                try:
-                    self.db.update_hopper_material_with_time(
-                        hopper=hopper,
-                        material=new_material,
-                        from_time=from_time,
-                        modifier=username,
-                        ip_address=ip_address,
-                    )
-                    changes += 1
-                except Exception as e:
-                    st.error(f"❌ Error updating {hopper}: {e}")
-                    errors = True
+                changed_values[hopper] = new_material
+                changes += 1
+
+        if changed_values:
+            try:
+                self.db.update_hopper_materials_snapshot(
+                    hopper_materials=changed_values,
+                    from_time=from_time,
+                    modifier=username,
+                    ip_address=ip_address,
+                )
+            except Exception as e:
+                st.error(f"Error updating hopper mapping: {e}")
+                errors = True
 
         if not errors:
             if changes == 0:
@@ -169,12 +172,12 @@ class HopperAdminPage:
                 },
                 column_order=[
                     "id",
-                    "hopper",
-                    "material",
-                    "valid_from",
-                    "valid_upto",
-                    "modifier",
+                    "date_time",
+                    *self.hoppers,
+                    "source_type",
+                    "user_modified",
                     "ip_address",
+                    "delete",
                 ],
             )
 

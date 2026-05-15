@@ -10,9 +10,9 @@ import pandas as pd
 
 from furnace_data.neon_db.offline import (
     NEON_OFFLINE_REPORT_MAP,
-    NEON_OFFLINE_TABLES,
     fetch_offline_data,
     fetch_offline_report,
+    resolve_neon_table_name,
 )
 
 log = logging.getLogger(__name__)
@@ -69,20 +69,21 @@ def fetch_neon_offline(
     )
 
     if table_name:
-        if table_name not in NEON_OFFLINE_TABLES:
+        try:
+            resolved_table = resolve_neon_table_name(table_name)
+        except ValueError as exc:
             raise ValueError(
-                f"Unknown Neon offline table '{table_name}'. "
-                f"Valid tables: {sorted(NEON_OFFLINE_TABLES)}"
-            )
+                str(exc)
+            ) from exc
         log.info(
             "Fetching Neon offline table %s from %s to %s as %s",
-            table_name,
+            resolved_table,
             start_time,
             end_time,
             query_type,
         )
         return fetch_offline_data(
-            table_name=table_name,
+            table_name=resolved_table,
             time_range=(start_time, end_time),
             query_type=query_type,
             window=window,

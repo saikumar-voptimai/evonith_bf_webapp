@@ -1,94 +1,59 @@
-"""Relational database facade for the BF2 blast furnace web application.
+"""Streamlit-facing relational services for the BF2 web application.
 
-This module keeps the legacy :class:`Database` public API stable while routing
-all persistence through SQLAlchemy 2.0 ORM repositories.
+The persistence implementation lives in :mod:`furnace_data.relational`.
+This module only adapts repository methods to the webapp's session/auth and
+client material-name workflows.
 """
 
 from __future__ import annotations
 
 import hashlib
-import os
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime
 from typing import Any
 
-import yaml
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 
-try:
-    from furnace_data import relational as _relational
-except ModuleNotFoundError:
-    # Prefer in-repo furnace_data source when an older site-packages build is present.
-    furnace_data_src = Path(__file__).resolve().parents[2] / "furnace_data"
-    if str(furnace_data_src) not in sys.path:
-        sys.path.insert(0, str(furnace_data_src))
-    from furnace_data import relational as _relational
+from data.material_mapping import MaterialNameMapper
+from furnace_data.relational import (
+    BurdenHistoryRepository,
+    HopperHistoryRepository,
+    PlantMasterRepository,
+    UserRepository,
+    build_relational_engine,
+    build_relational_session_factory,
+)
 
-Base = _relational.Base
-BurdenHistoryRepository = _relational.BurdenHistoryRepository
-HopperHistoryRepository = _relational.HopperHistoryRepository
-UserRepository = _relational.UserRepository
-build_relational_engine = _relational.build_relational_engine
-build_relational_session_factory = _relational.build_relational_session_factory
-
-# ------------------------------------------------------------
-# Load Environment Variables
-# ------------------------------------------------------------
 load_dotenv()
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(BASE_DIR)
-MATERIALS_FILE = os.path.join(PROJECT_ROOT, "config", "materials.yml")
 
-
-class Database:
-    """Compatibility facade over SQLAlchemy 2.0 repositories.
-
-    Public method names and return shapes are kept stable for existing UI/auth
-    call-sites while implementation moves away from raw SQL text.
-    """
+class _RelationalService:
+    """Base class that owns a PostgreSQL engine and session factory."""
 
     def __init__(self, db_url: str | None = None) -> None:
         self.engine = build_relational_engine(db_url=db_url)
         self._session_factory = build_relational_session_factory(self.engine)
 
-        self.hoppers, self.materials = self._safe_load_materials()
-        self.burden_fields = self._safe_load_burden_fields()
+    def dispose(self) -> None:
+        """Dispose the underlying SQLAlchemy engine."""
+        self.engine.dispose()
 
+
+class UserDataService(_RelationalService):
+    """User registration and credential validation service."""
+
+    def __init__(self, db_url: str | None = None) -> None:
+        super().__init__(db_url=db_url)
         self._user_repository = UserRepository(self._session_factory)
-        self._hopper_repository = HopperHistoryRepository(self._session_factory)
-        self._burden_repository = BurdenHistoryRepository(self._session_factory)
-
-        # Managed by Alembic going forward; kept for compatibility bootstrap.
-        Base.metadata.create_all(self.engine)
         self._seed_defaults()
 
-    # ============================================================
-    # USERS
-    # ============================================================
     def _seed_defaults(self) -> None:
-        """Seed initial admin user and hopper rows where missing."""
         self._user_repository.seed_admin_user(
             password_hash=hashlib.sha256("admin123".encode()).hexdigest()
         )
-        self._hopper_repository.seed_hoppers_if_missing(
-            hoppers=self.hoppers,
-            now=datetime.now(timezone.utc).replace(tzinfo=None),
-        )
 
     def add_user(self, username: str, password: str, role: str = "user") -> None:
-        """Add a new user to the database.
-
-        Args:
-            username: Unique username string.
-            password: Plain-text password (stored as SHA-256 digest).
-            role: One of ``"admin"``, ``"supervisor"``, or ``"user"``.
-
-        Raises:
-            ValueError: If username already exists or role is invalid.
-        """
+        """Add a new user to the identity schema."""
         try:
             self._user_repository.add_user(
                 username=username,
@@ -107,46 +72,67 @@ class Database:
             password_hash=hashlib.sha256(password.encode()).hexdigest(),
         )
 
-    # ============================================================
-    # YAML
-    # ============================================================
-    def _safe_load_materials(self) -> tuple[list[str], list[str]]:
-        """Load hoppers/materials from YAML, returning empty lists on error."""
-        try:
-            return self._load_materials_from_yaml()
-        except Exception:
-            return [], []
 
-    def _load_materials_from_yaml(self) -> tuple[list[str], list[str]]:
-        """Parse ``materials.yml`` and return ``(hoppers, materials)`` lists."""
-        with open(MATERIALS_FILE, "r", encoding="utf-8-sig") as file:
-            data = yaml.safe_load(file) or {}
-        return data.get("hoppers", []), data.get("materials", [])
+class PlantMasterService(_RelationalService):
+    """Plant master lookup service used by hopper/material workflows."""
 
-    def _safe_load_burden_fields(self) -> list[str]:
-        """Safely load burden distribution field names from YAML."""
-        try:
-            return self._load_burden_fields_from_yaml()
-        except Exception as exc:  # pragma: no cover - defensive guard
-            print(f"Warning: Failed to load burden_fields from YAML: {exc}")
-            return []
+    def __init__(self, db_url: str | None = None) -> None:
+        super().__init__(db_url=db_url)
+        self._plant_master_repository = PlantMasterRepository(self._session_factory)
+        self._material_mapper = MaterialNameMapper.from_file()
+        self.refresh()
 
-    def _load_burden_fields_from_yaml(self) -> list[str]:
-        """Load burden field definitions from ``materials.yml``."""
-        if not os.path.exists(MATERIALS_FILE):
-            raise FileNotFoundError(f"Missing configuration file: {MATERIALS_FILE}")
+    def refresh(self) -> None:
+        """Refresh active hopper/material lookup caches from plant master."""
+        hoppers = self._plant_master_repository.list_active_hoppers()
+        materials = self._plant_master_repository.list_active_materials()
+        active_material_names = {row["material_name"] for row in materials}
+        self._material_mapper.validate_material_names(active_material_names)
 
-        with open(MATERIALS_FILE, "r", encoding="utf-8-sig") as file:
-            data = yaml.safe_load(file) or {}
+        self.hopper_rows = hoppers
+        self.hoppers = [row["hopper_code"] for row in hoppers]
+        self.hopper_display_names = {
+            row["hopper_code"]: row["display_name"] for row in hoppers
+        }
+        self.material_rows = materials
+        self.materials = [
+            entry.client_name
+            for entry in self._material_mapper.entries
+            if entry.material_name in active_material_names
+        ]
+        self._material_code_by_name = {
+            row["material_name"]: row["material_code"] for row in materials
+        }
+        self._material_name_by_code = {
+            row["material_code"]: row["material_name"] for row in materials
+        }
 
-        fields = data.get("burden_fields", [])
-        if not isinstance(fields, list):
-            raise ValueError("'burden_fields' must be a list in materials.yml")
-        return fields
+    def client_material_to_code(self, material: str | None) -> str | None:
+        """Map a webapp material display name to a plant master material code."""
+        if material == "UNASSIGNED" or material is None:
+            return None
+        material_name = self._material_mapper.material_name_for_client(material)
+        material_code = self._material_code_by_name.get(material_name)
+        if material_code is None:
+            raise ValueError(f"Material not active in plant_master: {material_name}")
+        return material_code
 
-    # ============================================================
-    # HOPPER TO MATERIAL HISTORY
-    # ============================================================
+    def material_code_to_client(self, material_code: str | None) -> str:
+        """Map a stored material code back to the primary webapp display name."""
+        if material_code is None:
+            return "UNASSIGNED"
+        material_name = self._material_name_by_code.get(material_code, material_code)
+        return self._material_mapper.primary_client_name_for_material(material_name)
+
+
+class HopperConfigService(PlantMasterService):
+    """Hopper-material snapshot service."""
+
+    def __init__(self, db_url: str | None = None) -> None:
+        super().__init__(db_url=db_url)
+        self._user_repository = UserRepository(self._session_factory)
+        self._hopper_repository = HopperHistoryRepository(self._session_factory)
+
     def update_hopper_material_with_time(
         self,
         hopper: str,
@@ -155,39 +141,75 @@ class Database:
         modifier: str,
         ip_address: str,
     ) -> None:
-        """Record a new hopper-to-material assignment using SCD Type-2."""
+        """Record a new single-hopper assignment as a wide snapshot."""
         if hopper not in self.hoppers:
             raise ValueError("Invalid hopper")
-        if material not in self.materials and material != "UNASSIGNED":
-            raise ValueError("Invalid material")
-
-        self._hopper_repository.update_hopper_material_with_time(
-            hopper=hopper,
-            material=material,
+        self._hopper_repository.update_hopper_snapshot(
+            hopper_material_codes={hopper: self.client_material_to_code(material)},
             from_time=from_time,
-            modifier=modifier,
+            user_id=self._user_repository.get_user_id(modifier),
+            ip_address=ip_address,
+        )
+
+    def update_hopper_materials_snapshot(
+        self,
+        hopper_materials: dict[str, str],
+        from_time: datetime,
+        modifier: str,
+        ip_address: str,
+    ) -> None:
+        """Record one full hopper-material snapshot from client material names."""
+        unknown_hoppers = sorted(set(hopper_materials) - set(self.hoppers))
+        if unknown_hoppers:
+            raise ValueError(f"Invalid hopper(s): {unknown_hoppers}")
+        codes = {
+            hopper: self.client_material_to_code(material)
+            for hopper, material in hopper_materials.items()
+        }
+        self._hopper_repository.update_hopper_snapshot(
+            hopper_material_codes=codes,
+            from_time=from_time,
+            user_id=self._user_repository.get_user_id(modifier),
             ip_address=ip_address,
         )
 
     def get_current_hopper_materials(self) -> dict[str, str]:
-        """Return current hopper-to-material mapping."""
-        return self._hopper_repository.get_current_hopper_materials()
+        """Return current hopper-to-client-material mapping."""
+        codes = self._hopper_repository.get_current_hopper_material_codes()
+        return {
+            hopper: self.material_code_to_client(codes.get(hopper))
+            for hopper in self.hoppers
+        }
 
-    def get_hopper_material_at(self, hopper: str, ts: datetime) -> str | None:
+    def get_hopper_material_at(self, hopper: str, ts: datetime) -> str:
         """Return material assigned to hopper at timestamp."""
-        return self._hopper_repository.get_hopper_material_at(hopper=hopper, ts=ts)
+        code = self._hopper_repository.get_hopper_material_code_at(
+            hopper=hopper, ts=ts
+        )
+        return self.material_code_to_client(code)
 
     def get_hopper_material_history(self) -> list[dict[str, Any]]:
-        """Return full hopper-material history rows."""
-        return self._hopper_repository.get_hopper_material_history()
+        """Return full hopper-material history rows with client material labels."""
+        rows = self._hopper_repository.get_hopper_material_history()
+        for row in rows:
+            for hopper in self.hoppers:
+                row[hopper] = self.material_code_to_client(row.get(hopper))
+        return rows
 
     def delete_hopper_material_history(self, record_ids: list[int]) -> None:
         """Delete hopper history rows by IDs."""
         self._hopper_repository.delete_hopper_material_history(record_ids)
 
-    # ============================================================
-    # BURDEN DISTRIBUTION HISTORY
-    # ============================================================
+
+class BurdenConfigService(_RelationalService):
+    """Burden distribution snapshot service."""
+
+    def __init__(self, db_url: str | None = None) -> None:
+        super().__init__(db_url=db_url)
+        self._user_repository = UserRepository(self._session_factory)
+        self._burden_repository = BurdenHistoryRepository(self._session_factory)
+        self.burden_fields = self._burden_repository.burden_fields()
+
     def update_burden_field(
         self,
         field_name: str,
@@ -196,12 +218,12 @@ class Database:
         modifier: str = "system",
         ip: str = "",
     ) -> None:
-        """Record a new burden field value using SCD Type-2."""
+        """Record a new burden field value as a wide snapshot."""
         self._burden_repository.update_burden_field(
             field_name=field_name,
             value=value,
             valid_from=valid_from,
-            modifier=modifier,
+            user_id=self._user_repository.get_user_id(modifier),
             ip=ip,
         )
 
@@ -216,8 +238,7 @@ class Database:
         self._burden_repository.update_burden_row(
             row_values=dict(df_row.items()),
             timestamp=timestamp,
-            burden_fields=self.burden_fields,
-            modifier=modifier,
+            user_id=self._user_repository.get_user_id(modifier),
             ip=ip,
         )
 
@@ -232,7 +253,3 @@ class Database:
     def delete_burden_history(self, record_ids: list[int]) -> None:
         """Delete burden-history records by IDs."""
         self._burden_repository.delete_burden_history(record_ids)
-
-    def dispose(self) -> None:
-        """Dispose underlying SQLAlchemy engine and release pooled connections."""
-        self.engine.dispose()

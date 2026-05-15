@@ -29,7 +29,7 @@ if _ds_maybe_refresh(config):
     st.sidebar.caption("⏳ Refreshing dataset in background…")
 
 # If a new dataset version landed since this session was started, force
-# DataframesProcessor to re-initialise with the fresh CSV on next run.
+# DataframesProcessor to re-initialise with the fresh static dataset on next run.
 _current_ds_version = _ds_get_version()
 if st.session_state.get("_ds_version") != _current_ds_version:
     st.session_state.pop("dfprocessor", None)
@@ -208,7 +208,7 @@ with st.form(f"Control Params Form"):
 
 # User-specified input variables:
 latest_row = st.session_state.dfprocessor.fetch_live_rm_data()
-latest_row.name = latest_row.name.tz_convert("Asia/Kolkata")
+latest_row.name = latest_row.name.tz_localize("Asia/Kolkata")
 with st.expander(
     f"Input Params at {latest_row.name.strftime('%Y-%m-%d %H:%M:%S')}  - Click to expand and override"
 ):

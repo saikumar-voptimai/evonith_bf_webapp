@@ -4,7 +4,7 @@ Exposes nine tool functions dispatched by
 :func:`execute_openai_tool_call`:
 
 1. ``fetch_online_data`` — fetch InfluxDB telemetry for any measurement group.
-2. ``fetch_offline_data`` — fetch shift/daily report data from the offline bucket.
+2. ``fetch_offline_data`` — fetch shift/daily report data from the offline database.
 3. ``merge_furnace_data`` — align and merge online + offline datasets on timestamps.
 4. ``fetch_ml_data`` — load a date-range slice from the static pre-merged ML dataset.
 5. ``concat_datasets`` — concatenate multiple datasets vertically (temporal union).
@@ -29,31 +29,22 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field, ValidationError
 
 from config.config_loader import load_config
-from data.fetch_presets import OFFLINE_REPORT_LABEL_MAP
-from data.ml.static_csv import get_static_dataset_path, load_static_dataset
-from furnace_data.influx.offline import clean_rm_data, fetch_offline_data as _fetch_offline_df  # noqa: F401
 from furnace_data.influx.online import fetch_online_df  # noqa: F401
 from furnace_data.influx.query import TIMEDELTAS  # noqa: F401
-from utils.shift_windows import shift_window_naive, shift_windows_description
-
 from furnace_data.neon_db.offline import (
     NEON_OFFLINE_TABLES,
     fetch_offline_data as _fetch_neon_table_df,
     fetch_offline_report as _fetch_neon_report_df,
+    resolve_neon_table_name,
 )
 
 from data.fetch_presets import (
     OFFLINE_REPORT_LABEL_MAP,
 )
-from data.ml.static_csv import get_static_dataset_path, load_static_dataset
+from data.ml.static_csv import load_static_dataset
 
 # CONFIG
 config = load_config("setting_ds_dv.yml")
-
-OFFLINE_MEASUREMENTS = config.get("offline_measurements", {}) or {}
-INFLUX_OFFLINE_DB = (config.get("influx_offline", {}) or {}).get(
-    "database", "bf2_evonith_offline_utc"
-)
 
 _NEON_REPORT_TYPE_ALIASES = {
     "RAW_MATERIAL_COMPOSITION": "RM_COMPOSITION",
@@ -64,9 +55,8 @@ _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
 
 
 # Absolute path: src/agents/furnace_tools.py -> parents[1] = src/ -> assets/data/
-_ML_DATASET_PATH = get_static_dataset_path()
-
-_SHIFT_WINDOWS_DESCRIPTION = shift_windows_description()
+# IST offset (tz-naive static ML dataset index matches this)
+_IST_OFFSET = timedelta(hours=5, minutes=30)
 
 
 def _ensure_dataset_store() -> Dict[str, Any]:
@@ -104,6 +94,7 @@ def _parse_iso8601_utc(s: str) -> datetime:
     if isinstance(dt, pd.Timestamp):
         return dt.to_pydatetime()
     raise ValueError(f"Invalid datetime: {s}")
+
 
 
 def _resolve_online_window(*, lookback: timedelta, window: Optional[str]) -> str:
@@ -160,23 +151,17 @@ class OfflineFetchArgs(BaseModel):
     report_type: Literal[
         "HM_SLAG",
         "CHARGE",
-        "RM_CHARGE",
+        "DPR",
         "RAW_MATERIAL_COMPOSITION",
         "RM_COMPOSITION",
-        "DPR",
-        "RM_DPR",
         "BURDEN_DISTRIBUTION",
         "HOPPER_MANAGEMENT",
     ] = Field(
-        description="Which offline dataset to fetch. Defaults to Neon DB; use source='influx' for rollback."
-    )
-    source: Literal["neon_db", "influx"] = Field(
-        default="neon_db",
-        description="Offline backend. Defaults to Neon DB; set to 'influx' for rollback.",
+        description="Which offline dataset to fetch. Use RM_COMPOSITION for raw material chemistry + strength data."
     )
     table_name: Optional[str] = Field(
         default=None,
-        description="Optional explicit Neon table override, e.g. ore_chemistry or charge_data.",
+        description="Optional explicit table override, e.g. ore_chemistry or charge_data.",
     )
     start_time_utc: Optional[str] = Field(
         default=None,
@@ -209,12 +194,14 @@ class MergeArgs(BaseModel):
 
 class StaticShiftArgs(BaseModel):
     shift_date: str = Field(description="ISO date string YYYY-MM-DD")
-    shift_label: Literal["A", "B", "C"] = Field(description=_SHIFT_WINDOWS_DESCRIPTION)
+    shift_label: Literal["A", "B", "C"] = Field(
+        description="Shift: A (06:00-14:00), B (14:00-22:00), C (22:00-06:00 next day) IST"
+    )
 
 
 class MLDataArgs(BaseModel):
     start_time: str = Field(
-        description="Start of range. ISO-8601 or YYYY-MM-DD. Treated as IST (matches CSV index). E.g. '2026-03-01' or '2026-03-01T06:00:00'."
+        description="Start of range. ISO-8601 or YYYY-MM-DD. Treated as IST (matches static dataset index). E.g. '2026-03-01' or '2026-03-01T06:00:00'."
     )
     end_time: Optional[str] = Field(
         default=None,
@@ -256,7 +243,7 @@ def _summarize_df(df: pd.DataFrame, *, dataset_id: str, title: str) -> str:
 
 
 def _now_ist_naive() -> pd.Timestamp:
-    """Current time as IST tz-naive Timestamp (matches the CSV index)."""
+    """Current time as IST tz-naive Timestamp (matches the static dataset index)."""
     return pd.Timestamp.utcnow().tz_localize(None) + pd.Timedelta(hours=5, minutes=30)
 
 
@@ -271,17 +258,13 @@ def _parse_ist_naive(s: str) -> pd.Timestamp:
 def _load_ml_dataset() -> tuple[pd.DataFrame, pd.Timestamp, pd.Timestamp]:
     """
     Load the static ML dataset with aggressive session-level caching.
-    Returns (df, csv_start, csv_end). The index is tz-naive IST at hourly resolution.
-    Raises FileNotFoundError if the CSV is missing.
+    Returns (df, data_start, data_end). The index is tz-naive IST at hourly resolution.
     """
     cache_key = "fm_ml_df_cache"
     if cache_key not in st.session_state:
-        if not _ML_DATASET_PATH.exists():
-            raise FileNotFoundError(
-                f"Static ML dataset not found at {_ML_DATASET_PATH}. "
-                f"Expected: src/assets/data/furnace_dataset.csv"
-            )
-        df = load_static_dataset(_ML_DATASET_PATH)
+        df = load_static_dataset()
+        if df.empty:
+            raise ValueError("Static ML dataset returned no rows.")
         st.session_state[cache_key] = df
     df: pd.DataFrame = st.session_state[cache_key]
     return df, df.index.min(), df.index.max()
@@ -331,12 +314,12 @@ def _ml_column_summary(df: pd.DataFrame) -> str:
         elif any(
             k in cu
             for k in [
-                "TEMP.",
-                "HEARTH PAD",
-                "BELLY",
-                "BOSH",
-                "LOWER STACK",
-                "UPTAKE TEMP",
+                "_TEMP_",
+                "HEARTH_TEMP",
+                "BELLY_TEMP",
+                "BOSH_TEMP",
+                "LOWER_STACK",
+                "UPTAKE_TEMP",
                 "HEAT LOAD",
             ]
         ):
@@ -381,9 +364,9 @@ def fetch_ml_data(
 ) -> str:
     """
     Fetch a date-range slice from the static pre-merged ML dataset (hourly, IST-naive index).
-    Covers 2024-01-01 to ~current month. Fast — reads from local CSV cached in session.
+    Covers 2024-01-01 to ~current month. Fast: reads the static dataset cached in session.
 
-    If the requested range extends beyond the CSV end (recent gap):
+    If the requested range extends beyond the static dataset end (recent gap):
     - Returns the covered static portion as a dataset.
     - Includes a GAP NOTE instructing the caller to also run fetch_online_data for the gap,
       then concat_datasets to stitch them together.
@@ -442,7 +425,7 @@ def fetch_ml_data(
         meta = {
             "dataset_id": dataset_id,
             "type": "ml_static",
-            "source": _ML_DATASET_PATH.name,
+            "source": "offline_feed.historical_static_ml_dataset",
             "start": str(overlap_start.date()),
             "end": str(overlap_end.date()),
             "resample": args.resample or "1h (native)",
@@ -460,7 +443,7 @@ def fetch_ml_data(
             f"Columns available:\n{col_summary}"
         )
 
-        # Gap note: if request extends beyond CSV end by more than 2 hours
+        # Gap note: if request extends beyond static dataset end by more than 2 hours
         gap_threshold = pd.Timedelta(hours=2)
         if req_end > csv_end + gap_threshold:
             gap_hours = max(1, int((req_end - csv_end).total_seconds() / 3600) + 1)
@@ -509,7 +492,8 @@ def concat_datasets(*, dataset_ids: list[str]) -> str:
             for f in frames
         )
         has_tz_naive = any(
-            isinstance(f.index, pd.DatetimeIndex) and f.index.tz is None for f in frames
+            isinstance(f.index, pd.DatetimeIndex) and f.index.tz is None
+            for f in frames
         )
         if has_tz_aware and has_tz_naive:
             normalized_frames: list[pd.DataFrame] = []
@@ -563,13 +547,17 @@ def load_static_shift_data(*, shift_date: str, shift_label: str) -> str:
     try:
         args = StaticShiftArgs.model_validate(params)
 
-        shift_date_value = pd.to_datetime(args.shift_date).date()
-        shift_start_dt, shift_end_dt = shift_window_naive(
-            shift_date_value,
-            args.shift_label,
-        )
-        shift_start = pd.Timestamp(shift_start_dt)
-        shift_end = pd.Timestamp(shift_end_dt)
+        # Compute shift window (IST, tz-naive to match the static dataset)
+        # A: 06:00-14:00, B: 14:00-22:00, C: 22:00-06:00 (next day)
+        date = pd.to_datetime(args.shift_date).normalize()
+        if args.shift_label == "C":
+            shift_start = date + pd.Timedelta(hours=22)
+            shift_end = date + pd.Timedelta(hours=30)  # 30h = next day 06:00
+        else:
+            _hours = {"A": (6, 14), "B": (14, 22)}
+            start_h, end_h = _hours[args.shift_label]
+            shift_start = date + pd.Timedelta(hours=start_h)
+            shift_end = date + pd.Timedelta(hours=end_h)
 
         df, csv_min, csv_max = _load_ml_dataset()
         if shift_start < csv_min or shift_end > csv_max + pd.Timedelta(hours=1):
@@ -591,7 +579,7 @@ def load_static_shift_data(*, shift_date: str, shift_label: str) -> str:
             "shift_label": shift_label,
             "shift_start": str(shift_start),
             "shift_end": str(shift_end),
-            "source": str(_ML_DATASET_PATH),
+            "source": "offline_feed.historical_static_ml_dataset",
             "rows": len(shift_df),
         }
         _save_dataset(dataset_id=dataset_id, df=shift_df, meta=meta)
@@ -668,7 +656,9 @@ def fetch_online_data(
             start_dt = _parse_iso8601_utc(args.start_time_utc)
             _now = datetime.now(timezone.utc)
             end_dt = (
-                _parse_iso8601_utc(args.end_time_utc) if args.end_time_utc else _now
+                _parse_iso8601_utc(args.end_time_utc)
+                if args.end_time_utc
+                else _now
             )
             # Guard: reject future windows
             if start_dt > _now:
@@ -691,16 +681,12 @@ def fetch_online_data(
             time_range_label = f"{args.start_time_utc} → {args.end_time_utc or 'now'}"
         else:
             # Relative lookback path — normalise the string to a TIMEDELTAS key
-            normalized_time_range = _normalize_time_range(
-                args.lookback or "last 8 hours"
-            )
+            normalized_time_range = _normalize_time_range(args.lookback or "last 8 hours")
 
             lookback_td = TIMEDELTAS.get(normalized_time_range)
             if not isinstance(lookback_td, timedelta):
                 lookback_td = timedelta(hours=8)
-            window_final = _resolve_online_window(
-                lookback=lookback_td, window=args.window
-            )
+            window_final = _resolve_online_window(lookback=lookback_td, window=args.window)
 
             df = fetch_online_df(
                 selected_measurements=selected_measurements,
@@ -729,7 +715,6 @@ def fetch_online_data(
 def fetch_offline_data(
     *,
     report_type: str,
-    source: str = "neon_db",
     table_name: str | None = None,
     start_time_utc: str | None = None,
     end_time_utc: str | None = None,
@@ -745,7 +730,6 @@ def fetch_offline_data(
     """
     params = {
         "report_type": report_type,
-        "source": source,
         "table_name": table_name,
         "start_time_utc": start_time_utc,
         "end_time_utc": end_time_utc,
@@ -763,14 +747,6 @@ def fetch_offline_data(
             if neon_report_type == "RM_COMPOSITION"
             else OFFLINE_REPORT_LABEL_MAP.get(neon_report_type, neon_report_type)
         )
-        measurement = None
-        if args.source == "influx":
-            measurement = OFFLINE_MEASUREMENTS.get(label)
-            if not measurement:
-                raise ValueError(
-                    f"Offline Influx measurement not configured for label: {label}"
-                )
-
         now = datetime.now(timezone.utc)
         end = _parse_iso8601_utc(args.end_time_utc) if args.end_time_utc else now
         if args.start_time_utc:
@@ -794,51 +770,37 @@ def fetch_offline_data(
         cadence_default = {
             "HM_SLAG": "1h",
             "CHARGE": "1h",
-            "RM_CHARGE": "8h",
             "RAW_MATERIAL_COMPOSITION": "8h",
             "RM_COMPOSITION": "8h",
             "DPR": "1d",
-            "RM_DPR": "1d",
             "BURDEN_DISTRIBUTION": "1d",
             "HOPPER_MANAGEMENT": "1d",
         }[args.report_type]
         cadence_final = args.cadence or cadence_default
 
-        if args.source == "neon_db":
-            if args.table_name:
-                if args.table_name not in NEON_OFFLINE_TABLES:
-                    raise ValueError(
-                        f"Unknown Neon table_name: {args.table_name}. "
-                        f"Valid: {sorted(NEON_OFFLINE_TABLES)}"
-                    )
-                df = _fetch_neon_table_df(
-                    table_name=args.table_name,
-                    time_range=(start, end),
-                )
-                source_detail = args.table_name
-            else:
-                df = _fetch_neon_report_df(
-                    report_type=neon_report_type,
-                    time_range=(start, end),
-                )
-                source_detail = neon_report_type
-        else:
-            df = _fetch_offline_df(
-                measurement=measurement,
+        if args.table_name:
+            try:
+                resolved_table = resolve_neon_table_name(args.table_name)
+            except ValueError as exc:
+                raise ValueError(str(exc)) from exc
+            df = _fetch_neon_table_df(
+                table_name=resolved_table,
                 time_range=(start, end),
-                database=INFLUX_OFFLINE_DB,
             )
-            source_detail = measurement
+            source_detail = resolved_table
+        else:
+            df = _fetch_neon_report_df(
+                report_type=neon_report_type,
+                time_range=(start, end),
+            )
+            source_detail = neon_report_type
 
         # Offline fetch returns UTC index (as per helper); convert + resample
         df = _to_ist_index(df)
         skip_resample = (
-            args.source == "neon_db"
-            and (
-                neon_report_type
-                in {"RM_COMPOSITION", "BURDEN_DISTRIBUTION", "HOPPER_MANAGEMENT"}
-                or bool(args.table_name)
-            )
+            neon_report_type
+            in {"RM_COMPOSITION", "BURDEN_DISTRIBUTION", "HOPPER_MANAGEMENT"}
+            or bool(args.table_name)
         )
         if (
             not skip_resample
@@ -860,11 +822,9 @@ def fetch_offline_data(
         meta = {
             "type": "offline",
             "report_type": args.report_type,
-            "source": args.source,
+            "source": "offline_database",
             "label": label,
-            "measurement": measurement,
             "source_detail": source_detail,
-            "db": INFLUX_OFFLINE_DB,
             "start_time_utc": start.isoformat(),
             "end_time_utc": end.isoformat(),
             "cadence": cadence_final,
@@ -1004,7 +964,7 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "fetch_offline_data",
-                "description": "Fetch offline report datasets from Neon DB by default, with source='influx' rollback. Covers HM/Slag, Charge, raw material composition, DPR, burden distribution, and hopper management. Stores the active dataframe in session (fm_df) and returns dataset_id + preview.",
+                "description": "Fetch offline report datasets. Covers HM/Slag, Charge, raw material composition, DPR, burden distribution, and hopper management. Stores the active dataframe in session (fm_df) and returns dataset_id + preview.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -1013,25 +973,17 @@ def get_openai_tool_schemas() -> list[dict]:
                             "enum": [
                                 "HM_SLAG",
                                 "CHARGE",
-                                "RM_CHARGE",
                                 "RAW_MATERIAL_COMPOSITION",
                                 "RM_COMPOSITION",
                                 "DPR",
-                                "RM_DPR",
                                 "BURDEN_DISTRIBUTION",
                                 "HOPPER_MANAGEMENT",
                             ],
                         },
-                        "source": {
-                            "type": "string",
-                            "enum": ["neon_db", "influx"],
-                            "default": "neon_db",
-                            "description": "Use neon_db by default; use influx only for rollback.",
-                        },
                         "table_name": {
                             "type": "string",
                             "enum": sorted(NEON_OFFLINE_TABLES.keys()),
-                            "description": "Optional explicit Neon table override.",
+                            "description": "Optional explicit table override.",
                         },
                         "start_time_utc": {
                             "type": "string",
@@ -1202,7 +1154,7 @@ def get_openai_tool_schemas() -> list[dict]:
                         "shift_label": {
                             "type": "string",
                             "enum": ["A", "B", "C"],
-                            "description": _SHIFT_WINDOWS_DESCRIPTION,
+                            "description": "Shift: A (06:00-14:00), B (14:00-22:00), C (22:00-06:00 next day) IST",
                         },
                     },
                     "required": ["shift_date", "shift_label"],
@@ -1373,11 +1325,9 @@ def _safe_exec(
 
     # Route print() to the buffer when one is provided so callers can capture output.
     if stdout_buf is not None:
-
         def _buffered_print(*args, **kwargs):  # noqa: ANN202
             kwargs.setdefault("file", stdout_buf)
             print(*args, **kwargs)  # noqa: T201
-
         captured_print = _buffered_print
     else:
         captured_print = print

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from utils.session import is_admin, is_supervisor, logout_user
+from utils.session import has_permission, logout_user
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 if "auth_user" not in st.session_state:
@@ -60,23 +60,23 @@ def _back_btn():
         st.rerun()
 
 
-if selection == "hopper" and (is_admin() or is_supervisor()):
+if selection == "hopper" and has_permission("hopper:write"):
     _back_btn()
     from ui.hopper_admin_page import hopper_admin_page
     hopper_admin_page(st.session_state.get("auth_user"))
     st.stop()
 
-if is_admin():
-    if selection == "burden":
-        _back_btn()
-        from ui.burden_admin_page import burden_admin_page
-        burden_admin_page(st.session_state.get("auth_user"))
-        st.stop()
-    elif selection == "register":
-        _back_btn()
-        from ui.user_management import register_page
-        register_page()
-        st.stop()
+if selection == "burden" and has_permission("burden:write"):
+    _back_btn()
+    from ui.burden_admin_page import burden_admin_page
+    burden_admin_page(st.session_state.get("auth_user"))
+    st.stop()
+
+if selection == "register" and has_permission("users:write"):
+    _back_btn()
+    from ui.user_management import register_page
+    register_page()
+    st.stop()
 
 # ── Top-right logout ──────────────────────────────────────────────────────────
 _, _top_btn = st.columns([6, 1])
@@ -263,7 +263,11 @@ _tile(_fc, "custom_pages/8_Feedback.py", "📮", "Feedback",
       "Submit feature requests, bug reports, and operational feedback.", "#b45309")
 
 # ── Admin tools ───────────────────────────────────────────────────────────────
-if is_admin() or is_supervisor():
+if (
+    has_permission("hopper:write")
+    or has_permission("burden:write")
+    or has_permission("users:write")
+):
     st.markdown("---")
     st.html("<p style='color:#94a3b8; font-size:0.75rem; font-weight:700;"
             "text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.8rem;'>"
@@ -273,7 +277,7 @@ if is_admin() or is_supervisor():
         if st.button("🛠  Hopper Mapping", use_container_width=True):
             st.session_state["admin_tool_selection"] = "hopper"
             st.rerun()
-    if is_admin():
+    if has_permission("burden:write"):
         with _a2:
             if st.button("📊  Burden Distribution", use_container_width=True):
                 st.session_state["admin_tool_selection"] = "burden"

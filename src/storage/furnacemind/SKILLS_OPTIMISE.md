@@ -52,15 +52,15 @@ Report these as advisory — not operator-adjustable in the current shift.
 
 | Column in ML dataset | Best-shift band | Adverse threshold | Lag | Coeff |
 |---|---|---|---|---|
-| `PCI_2_ASH%` | 8.4 – 10.4 % | > 11.1 % | 4h | — |
-| `PCI_2_IM%` | keep low | elevated = warning | 0h | — |
+| `PCI_ASH%` | 8.4 – 10.4 % | > 11.1 % | 4h | — |
+| `PCI_IM%` | keep low | elevated = warning | 0h | — |
 | `COKE_MOIST%` | 2.3 – 3.0 % | > 4.35 % | 1h | — |
 | `COKE_ASH%` | 11.39 – 11.60 % | > 11.85 % | 0h | +0.263 |
 | `NUTCOKE_ASH%` | keep near best-shift | elevated = warning | 2h | +0.657 |
 | `NUTCOKE_MOIST%` | keep near best-shift | elevated = warning | 4h | — |
-| `SINTER_SP_02_FEO%` | monitor | — | 0h | -0.405 |
-| `SINTER_SP_02_AL2O3%` | monitor | elevated = warning | 2h | +0.488 |
-| `SINTER_SP_02_BASICITY` | keep in proven range | — | 2h | -1.045 |
+| `SINTER_FEO%` | monitor | — | 0h | -0.405 |
+| `SINTER_AL2O3%` | monitor | elevated = warning | 2h | +0.488 |
+| `SINTER_BASICITY` | keep in proven range | — | 2h | -1.045 |
 | `ORE_TM%` | 3.05 – 3.30 % | > 3.63 % | 1h | +0.410 |
 | `ORE_LOI%` | keep low | elevated = warning | 1h | — |
 

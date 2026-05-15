@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+APP_DIRS = [
+    ROOT / "src",
+    ROOT / "furnace_data" / "furnace_data",
+    ROOT / "furnace-data-service" / "app",
+]
+
+
+def _python_files():
+    for base in APP_DIRS:
+        for path in base.rglob("*.py"):
+            yield path
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
+def test_no_runtime_path_patching_in_app_code() -> None:
+    offenders = [path for path in _python_files() if "sys.path.insert" in _read(path)]
+    assert offenders == []
+
+
+def test_no_hardcoded_material_fallback_map() -> None:
+    offenders = [path for path in _python_files() if "_fallback_material_code" in _read(path)]
+    assert offenders == []
+
+
+def test_offline_app_paths_do_not_import_influx_offline_fetcher() -> None:
+    offenders = []
+    for path in _python_files():
+        if "furnace_data/furnace_data/influx" in path.as_posix():
+            continue
+        text = _read(path)
+        if "from furnace_data.influx.offline" in text:
+            offenders.append(path)
+    assert offenders == []
+
+
+def test_no_offline_influx_rollback_copy_remains() -> None:
+    needles = [
+        "InfluxDB rollback",
+        "source='influx'",
+        'source="influx"',
+        '"source": "influx"',
+    ]
+    offenders = [
+        path
+        for path in _python_files()
+        if any(needle in _read(path) for needle in needles)
+    ]
+    assert offenders == []
+
+
+def test_sqlite_usage_is_limited_to_ticketing() -> None:
+    offenders = []
+    for path in _python_files():
+        text = _read(path).lower()
+        if "sqlite://" not in text and "sqlite3" not in text:
+            continue
+        relative = path.relative_to(ROOT).as_posix()
+        if relative.startswith("src/data/tickets/"):
+            continue
+        offenders.append(path)
+    assert offenders == []

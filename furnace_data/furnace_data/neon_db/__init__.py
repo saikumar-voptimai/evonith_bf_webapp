@@ -6,6 +6,7 @@ from .offline import (
     fetch_offline_data,
     fetch_offline_report,
     list_neon_offline_tables,
+    resolve_neon_table_name,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "fetch_offline_data",
     "fetch_offline_report",
     "list_neon_offline_tables",
+    "resolve_neon_table_name",
 ]

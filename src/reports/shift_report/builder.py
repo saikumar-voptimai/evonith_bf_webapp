@@ -27,7 +27,6 @@ _ONLINE: dict[str, str] = {
     "perm":          "Process Params - BF2_BODY_PERMEABILITY",
     "etaco":         "Process Params - BF2_BODY_ETACO",
     "raft":          "Process Params - BF2_BODY_RAFT",
-    "o2_flow":       "Process Params - BF2_OXYGEN FLOW",
     "o2_enr":        "Process Params - BF2_OXYGEN ENRICHMENT PCT",
     "fuel_rate":     "Process Params - BF2_FUEL RATE PER THM",
     "coke_rate":     "Process Params - BF2_COKE RATE PER THM",
@@ -192,13 +191,18 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
         else:
             total_charges = None
 
+        # O2 flow (derived)
+        hb_vol = _mean(df, "hb_vol")
+        o2_enr = _mean(df, "o2_enr")
+        o2_flow_mean = round(hb_vol * o2_enr / 100, 2) if hb_vol and o2_enr else None
+
         # Slag basicity
         cao = _hm_mean(hm, "slag_cao")
         sio2 = _hm_mean(hm, "slag_sio2")
         slag_basicity = round(cao / sio2, 2) if cao and sio2 else None
 
-        # HM temp: use from hot_metal_slag_data reports 
-        hm_temp = _hm_mean(hm, "hmt_gt_1480c")
+        # HM temp: hm_temp from slag reports
+        hm_temp = _hm_mean(hm, "hm_temp")
 
         prod_rate = _mean(df, "prod_rate")
         fuel_rate_val = _mean(df, "fuel_rate")
@@ -236,7 +240,7 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             blast_volume=_ps(df, "hb_vol"),
             blast_temp=_ps(df, "hb_temp"),
             blast_pressure=_ps(df, "hb_press"),
-            o2_flow=_ps(df, "o2_flow"),
+            o2_flow=ParamStats(mean=o2_flow_mean, std=None),
             o2_enrichment=_ps(df, "o2_enr"),
             permeability=_ps(df, "perm"),
             etaco=_ps(df, "etaco"),

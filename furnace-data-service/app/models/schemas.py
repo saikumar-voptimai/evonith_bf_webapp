@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RmChoice(str, Enum):
@@ -31,34 +31,13 @@ class ResponseFormat(str, Enum):
     csv = "csv"
 
 
-class OfflineDataSource(str, Enum):
-    neon_db = "neon_db"
-    influx = "influx"
-
-
 class OfflineReportType(str, Enum):
     hm_slag = "HM_SLAG"
     charge = "CHARGE"
-    rm_charge = "RM_CHARGE"
-    rm_composition = "RM_COMPOSITION"
     dpr = "DPR"
-    rm_dpr = "RM_DPR"
+    rm_composition = "RM_COMPOSITION"
     burden_distribution = "BURDEN_DISTRIBUTION"
     hopper_management = "HOPPER_MANAGEMENT"
-
-
-class NeonOfflineTable(str, Enum):
-    burden_distribution_history = "burden_distribution_history"
-    charge_data = "charge_data"
-    dpr_data = "dpr_data"
-    flux_chemistry = "flux_chemistry"
-    fuel_chemistry = "fuel_chemistry"
-    hopper_material_history = "hopper_material_history"
-    hot_metal_chemistry = "hot_metal_chemistry"
-    ore_chemistry = "ore_chemistry"
-    raw_materials = "raw_materials"
-    rm_hm = "rm_hm"
-    sinter_chemistry = "sinter_chemistry"
 
 
 # ---- Online/Offline requests ----
@@ -82,14 +61,15 @@ class OnlineFetchRequest(BaseModel):
 
 
 class OfflineFetchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     report_type: OfflineReportType
-    source: OfflineDataSource = Field(
-        OfflineDataSource.neon_db,
-        description="Offline backend. Defaults to Neon; use 'influx' for rollback.",
-    )
-    table_name: Optional[NeonOfflineTable] = Field(
+    table_name: Optional[str] = Field(
         None,
-        description="Optional explicit Neon table override. Used only with source='neon_db'.",
+        description=(
+            "Optional explicit Neon table override. Accepts schema-qualified "
+            "table names and legacy aliases such as 'rm_hm'."
+        ),
     )
     preset: Optional[str] = Field(
         None,
@@ -100,7 +80,7 @@ class OfflineFetchRequest(BaseModel):
     end_time: Optional[datetime] = Field(None, description="UTC end time (ignored if preset is set)")
     query_type: QueryType = Field(
         QueryType.ts,
-        description="For Neon: 'ts', 'windowed-average', or 'average'. Ignored for Influx rollback.",
+        description="'ts', 'windowed-average', or 'average'.",
     )
     window: Optional[str] = Field(
         "1 hour",

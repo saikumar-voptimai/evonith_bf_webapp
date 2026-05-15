@@ -16,7 +16,6 @@ from fastapi.responses import StreamingResponse
 from datetime import datetime, timedelta, timezone
 
 from app.core.neon_offline_fetcher import fetch_neon_offline
-from app.core.offline_fetcher import OFFLINE_REPORT_MAP, fetch_offline
 from app.core.online_fetcher import ONLINE_MEASUREMENTS, fetch_online, list_measurements
 from app.models.schemas import (
     DataFetchResponse,
@@ -26,19 +25,10 @@ from app.models.schemas import (
     ResponseFormat,
     RmLiveFetchRequest,
 )
-from furnace_data.config import load_config as _load_config
-from furnace_data.influx.offline import (
-    clean_rm_data,
-    fetch_offline_data as fetch_influx_offline_data,
-)
 from furnace_data.neon_db.offline import (
     NEON_OFFLINE_REPORT_MAP,
     list_neon_offline_tables,
 )
-
-_cfg = _load_config("setting_ds_dv.yml")
-_RM_MEASUREMENT: str = _cfg["offline_measurements"]["Bunker Report"]
-_OFFLINE_BUCKET: str = _cfg["influx_offline"]["database"]
 
 log = logging.getLogger(__name__)
 
@@ -149,7 +139,7 @@ def fetch_online_data(req: OnlineFetchRequest):
 @router.post("/offline/fetch")
 def fetch_offline_endpoint(req: OfflineFetchRequest):
     """
-    Fetch offline report data from Neon DB by default, or InfluxDB for rollback.
+    Fetch offline report data from Neon DB.
 
     Provide either `preset` or `start_time` + `end_time`.
     """
@@ -160,46 +150,33 @@ def fetch_offline_endpoint(req: OfflineFetchRequest):
         )
 
     try:
-        table_name = None
-        query_type = None
-        window = None
-
-        if req.source.value == "neon_db":
-            table_name = req.table_name.value if req.table_name else None
-            query_type = req.query_type.value
-            window = req.window if query_type == "windowed-average" else None
-            df = fetch_neon_offline(
-                report_type=req.report_type.value,
-                start_time=req.start_time,
-                end_time=req.end_time,
-                preset=req.preset,
-                table_name=table_name,
-                query_type=query_type,
-                window=window,
-            )
-            if table_name is None:
-                mapped_tables = NEON_OFFLINE_REPORT_MAP.get(req.report_type.value, [])
-                table_name = ",".join(mapped_tables) if mapped_tables else None
-        else:
-            df = fetch_offline(
-                report_type=req.report_type.value,
-                start_time=req.start_time,
-                end_time=req.end_time,
-                preset=req.preset,
-            )
+        table_name = req.table_name if req.table_name else None
+        query_type = req.query_type.value
+        window = req.window if query_type == "windowed-average" else None
+        df = fetch_neon_offline(
+            report_type=req.report_type.value,
+            start_time=req.start_time,
+            end_time=req.end_time,
+            preset=req.preset,
+            table_name=table_name,
+            query_type=query_type,
+            window=window,
+        )
+        if table_name is None:
+            mapped_tables = NEON_OFFLINE_REPORT_MAP.get(req.report_type.value, [])
+            table_name = ",".join(mapped_tables) if mapped_tables else None
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         log.exception("Offline fetch failed")
-        backend = "Neon DB" if req.source.value == "neon_db" else "InfluxDB"
-        raise HTTPException(status_code=502, detail=f"{backend} error: {e}")
+        raise HTTPException(status_code=502, detail=f"Neon DB error: {e}")
 
     if df.empty:
         raise HTTPException(status_code=204, detail="No data returned for the requested parameters.")
 
     meta = DataMeta(
         report_type=req.report_type.value,
-        source=req.source.value,
+        source="neon_db",
         table_name=table_name,
         query_type=query_type,
         window=window,
@@ -215,8 +192,8 @@ def fetch_offline_endpoint(req: OfflineFetchRequest):
 
 @router.get("/offline/report-types")
 def get_report_types() -> Dict[str, str]:
-    """List available offline report types and their InfluxDB measurement names."""
-    return {k: v for k, v in OFFLINE_REPORT_MAP.items()}
+    """List available Neon offline report types and their mapped tables."""
+    return {k: ",".join(v) for k, v in NEON_OFFLINE_REPORT_MAP.items()}
 
 
 @router.get("/offline/neon-tables")
@@ -232,11 +209,7 @@ def get_neon_tables() -> Dict[str, Any]:
 @router.post("/rm/live")
 def fetch_rm_live(req: RmLiveFetchRequest):
     """
-    Fetch and clean the latest Raw Material composition data.
-
-    Fetches ``rm_updated_data`` from the offline bucket for the requested
-    lookback window and applies :func:`furnace_data.influx.offline.clean_rm_data`
-    to drop all-NaN ore groups and rename ore variants.
+    Fetch the latest Raw Material composition data from Neon DB.
 
     Provide ``lookback_days`` (1–365) and ``cadence`` (``"8h"`` | ``"1h"`` | ``"1d"``).
     """
@@ -244,25 +217,23 @@ def fetch_rm_live(req: RmLiveFetchRequest):
     start_time = now - timedelta(days=req.lookback_days)
 
     try:
-        df = fetch_influx_offline_data(
-            measurement=_RM_MEASUREMENT,
-            time_range=(start_time, now),
-            database=_OFFLINE_BUCKET,
+        df = fetch_neon_offline(
+            report_type="RM_COMPOSITION",
+            start_time=start_time,
+            end_time=now,
+            preset=None,
+            query_type="ts",
         )
     except Exception as e:
         log.exception("RM live fetch failed")
-        raise HTTPException(status_code=502, detail=f"InfluxDB error: {e}")
+        raise HTTPException(status_code=502, detail=f"Neon DB error: {e}")
 
     if df is None or df.empty:
         raise HTTPException(status_code=204, detail="No RM data returned for the requested window.")
 
-    try:
-        df = clean_rm_data(df)
-    except Exception as e:
-        log.warning("clean_rm_data failed (returning raw): %s", e)
-
     meta = DataMeta(
         report_type="RM_LIVE",
+        source="neon_db",
         start=str(df.index.min()),
         end=str(df.index.max()),
         rows=len(df),

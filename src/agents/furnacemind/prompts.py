@@ -26,7 +26,7 @@ How to respond (keep it short and easy to scan):
 
 Tool & routing discipline:
 - Live behavior / trends / "last N hours"  → use fetch_online_data or fetch_ml_data.
-- Shift history / why performance changed  → use search_shift_history or fetch_ml_data.
+- Why performance changed / trend analysis  → use fetch_ml_data (primary). Only call search_shift_history if the user explicitly asks for saved shift reports; if it returns empty, do not retry — shift reports are not persisted in this deployment.
 - SOPs / procedures / specs / policies     → use search_knowledge_docs.
 - If context is empty, say so and request the missing artifact.
 
@@ -36,11 +36,11 @@ Keep the tone professional, concise, and operator-friendly.\
 # ── Tool-calling policy injected alongside the system prompt ─────────────────
 
 TOOL_POLICY = """\
-You may call tools. Use tools whenever you need live telemetry, offline reports, shift history, knowledge docs, or plots. Never guess numeric values.
+You may call tools. Use tools whenever you need live telemetry, offline reports, knowledge docs, or plots. Never guess numeric values. Do NOT call search_shift_history unless the user explicitly asks for saved shift reports — shift reports are not persisted in this deployment and the tool will return empty results.
 
 DATA SOURCE ROUTING (follow this order):
 1. fetch_ml_data — PRIMARY for any historical query > 2 days.
-   - Local CSV, no InfluxDB call, fast. Hourly IST data from 2024-01-01 to ~now.
+   - Static ML dataset, no InfluxDB call, fast. Hourly IST data from 2024-01-01 to ~now.
    - Covers: process params, KPIs, material quality (coke/sinter/pellet/ore/flux/PCI), burden, hot metal chemistry.
    - If it returns a GAP NOTE, follow its exact instructions: call fetch_online_data for the gap hours, then concat_datasets.
    - For multi-week/month views use resample='1d' or '8h' to reduce data volume.
