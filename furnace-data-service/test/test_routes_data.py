@@ -56,6 +56,16 @@ class TestOfflineReportTypes:
             assert isinstance(v, str)
             assert len(v) > 0
 
+    def test_neon_tables_endpoint_lists_migrated_reports(self, client):
+        resp = client.get("/data/offline/neon-tables")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "RM_COMPOSITION" in body["report_map"]
+        assert "BURDEN_DISTRIBUTION" in body["report_map"]
+        assert "HOPPER_MANAGEMENT" in body["report_map"]
+        assert "offline_feed.charge_data" in body["tables"]
+        assert body["aliases"]["charge_data"] == "offline_feed.charge_data"
+
 
 # ---------------------------------------------------------------------------
 # POST /data/online/fetch — input validation
@@ -179,7 +189,7 @@ class TestOfflineFetch:
         assert resp.status_code == 422
 
     def test_successful_fetch_json(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_offline", return_value=sample_hm_df):
+        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "HM_SLAG",
                 "preset": "last 3 days",
@@ -188,10 +198,12 @@ class TestOfflineFetch:
         assert resp.status_code == 200
         body = resp.json()
         assert body["meta"]["report_type"] == "HM_SLAG"
+        assert body["meta"]["source"] == "neon_db"
+        assert body["meta"]["table_name"] == "offline_feed.hot_metal_slag_analysis"
         assert body["meta"]["rows"] == len(sample_hm_df)
 
     def test_successful_fetch_csv(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_offline", return_value=sample_hm_df):
+        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "HM_SLAG",
                 "preset": "last 3 days",
@@ -201,9 +213,66 @@ class TestOfflineFetch:
         assert "text/csv" in resp.headers["content-type"]
 
     def test_empty_result_returns_204(self, client):
-        with patch("app.routes.data.fetch_offline", return_value=pd.DataFrame()):
+        with patch("app.routes.data.fetch_neon_offline", return_value=pd.DataFrame()):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "DPR",
                 "preset": "last 1 day",
             })
         assert resp.status_code == 204
+
+    def test_source_field_is_rejected(self, client):
+        resp = client.post("/data/offline/fetch", json={
+            "source": "influx",
+            "report_type": "HM_SLAG",
+            "preset": "last 3 days",
+        })
+        assert resp.status_code == 422
+
+    def test_neon_table_override_fetches_explicit_table(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df) as mocked:
+            resp = client.post("/data/offline/fetch", json={
+                "report_type": "RM_COMPOSITION",
+                "table_name": "sinter_chemistry",
+                "preset": "last 3 days",
+                "query_type": "ts",
+            })
+        assert resp.status_code == 200
+        assert resp.json()["meta"]["table_name"] == "sinter_chemistry"
+        assert mocked.call_args.kwargs["table_name"] == "sinter_chemistry"
+
+    def test_neon_combined_rm_metadata_lists_all_tables(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df):
+            resp = client.post("/data/offline/fetch", json={
+                "report_type": "RM_COMPOSITION",
+                "preset": "last 3 days",
+            })
+        assert resp.status_code == 200
+        table_name = resp.json()["meta"]["table_name"]
+        assert "ore_chemistry" in table_name
+        assert "plant_master.materials" in table_name
+
+    def test_neon_burden_and_hopper_reports(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df):
+            burden = client.post("/data/offline/fetch", json={
+                "report_type": "BURDEN_DISTRIBUTION",
+                "preset": "last 3 days",
+            })
+            hopper = client.post("/data/offline/fetch", json={
+                "report_type": "HOPPER_MANAGEMENT",
+                "preset": "last 3 days",
+            })
+        assert burden.status_code == 200
+        assert hopper.status_code == 200
+        assert burden.json()["meta"]["table_name"] == "ops_config.burden_history"
+        assert hopper.json()["meta"]["table_name"] == "ops_config.hopper_raw_material_history"
+
+    def test_rm_live_uses_neon_helper(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df) as mocked:
+            resp = client.post("/data/rm/live", json={
+                "lookback_days": 3,
+                "format": "json",
+            })
+        assert resp.status_code == 200
+        assert resp.json()["meta"]["report_type"] == "RM_LIVE"
+        assert resp.json()["meta"]["source"] == "neon_db"
+        mocked.assert_called_once()

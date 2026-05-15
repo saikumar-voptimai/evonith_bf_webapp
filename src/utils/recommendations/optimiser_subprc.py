@@ -1,18 +1,9 @@
 import json
 import sys
-from pathlib import Path
 
 import joblib
 import pandas as pd
 
-# Guarantee project root is on Python path
-ROOT1 = Path(__file__).resolve().parents[1]
-ROOT2 = Path(__file__).resolve().parents[2]
-print(ROOT1)
-print(ROOT2)
-sys.path.insert(0, str(ROOT1))
-sys.path.insert(0, str(ROOT2))
-print(sys.path)
 from src.utils.recommendations.optimiser import run_optimiser
 
 if __name__ == "__main__":

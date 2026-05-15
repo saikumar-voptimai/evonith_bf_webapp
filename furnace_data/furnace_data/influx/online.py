@@ -15,9 +15,23 @@ import pandas as pd
 
 from furnace_data.config import load_config
 from furnace_data.influx.base import BaseDataFetcher
-from furnace_data.influx.query import TIMEDELTAS, WINDOWING
+from furnace_data.influx.query import TIMEDELTAS
 
 _config = load_config("setting_ds_dv.yml")
+
+# Pandas-compatible resampling frequency aliases (human-readable → pandas freq string).
+_PANDAS_FREQ_MAP: dict[str, str] = {
+    "1 minute":  "1min",
+    "5 minutes": "5min",
+    "10 minutes": "10min",
+    "15 minutes": "15min",
+    "30 minutes": "30min",
+    "1 hour":    "1h",
+    "6 hours":   "6h",
+    "8 hours":   "8h",
+    "12 hours":  "12h",
+    "1 day":     "1d",
+}
 
 # Default human-readable labels for measurements (used for column prefixing).
 _DEFAULT_MEASUREMENT_LABELS: dict[str, str] = {
@@ -45,6 +59,8 @@ def fetch_online_df(
     measurement_labels: Optional[Dict[str, str]] = None,
     field_labels: Optional[Dict[str, str]] = None,
     frequency_map: Optional[Dict[str, str]] = None,
+    start_time_override: Optional[datetime] = None,
+    end_time_override: Optional[datetime] = None,
 ) -> pd.DataFrame:
     """Fetch and merge online (real-time) measurements from InfluxDB.
 
@@ -66,7 +82,11 @@ def fetch_online_df(
         field_labels:  Optional override for field → display label mapping.
             Falls back to config-derived defaults.
         frequency_map: Optional override for window string → pandas freq string
-            (e.g. ``{"15 minutes": "15min"}``).  Falls back to WINDOWING.
+            (e.g. ``{"15 minutes": "15min"}``).  Falls back to _PANDAS_FREQ_MAP.
+        start_time_override: UTC datetime for the start of the fetch window.
+            When provided, overrides the ``time_range`` lookback.
+        end_time_override: UTC datetime for the end of the fetch window.
+            Defaults to now when ``start_time_override`` is set but this is not.
 
     Returns:
         IST-indexed :class:`pandas.DataFrame` with deduplicated columns, or an
@@ -77,11 +97,15 @@ def fetch_online_df(
 
     m_labels = measurement_labels or _DEFAULT_MEASUREMENT_LABELS
     f_labels = field_labels or _DEFAULT_FIELD_LABELS
-    freq_map = frequency_map or WINDOWING
+    freq_map = frequency_map or _PANDAS_FREQ_MAP
 
     now = datetime.now(timezone.utc)
-    start_time = now - TIMEDELTAS[time_range]
-    end_time = now
+    if start_time_override is not None:
+        start_time = start_time_override
+        end_time = end_time_override if end_time_override is not None else now
+    else:
+        start_time = now - TIMEDELTAS[time_range]
+        end_time = now
 
     combined_df = pd.DataFrame()
 

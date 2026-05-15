@@ -7,10 +7,10 @@ detection, and general app settings.
 The module-level singleton :data:`settings` is the single source of truth
 for runtime configuration; import it via::
 
-    from FurnaceMind.utils.settings import settings
+    from utils.settings import settings
 """
 
-# FurnaceMind/utils/settings.py
+# utils/settings.py
 # Purpose: Centralized configuration for FurnaceMind application
 
 from __future__ import annotations
@@ -36,12 +36,14 @@ class OpenRouterLLMConfig:
         api_key:    OpenRouter API key (``OPENROUTER_API_KEY`` env var).
         base_url:   OpenRouter API base URL.
         model_name: Fully-qualified model identifier (e.g. ``openai/gpt-4o-mini``).
+        memory_compression_model_name: Model used for memory summary compression.
         max_tokens: Maximum completion tokens to request.
     """
 
     api_key: str | None
     base_url: str = "https://openrouter.ai/api/v1"
     model_name: str = "openai/gpt-4o-mini"
+    memory_compression_model_name: str = "openai/gpt-4o-mini"
     max_tokens: int = 800
 
 
@@ -85,45 +87,6 @@ class LLMSettings:
 
 
 # ==========================================================
-# 🔹 EMBEDDING CONFIGURATION (DUAL SUPPORT)
-# ==========================================================
-
-
-@dataclass
-class LocalEmbeddingConfig:
-    """Configuration for the local (on-device) sentence-transformer embedder.
-
-    Attributes:
-        provider:   Embedding library — always ``"sentence_transformer"``.
-        model_name: HuggingFace model path (e.g. ``all-MiniLM-L6-v2``).
-        device:     Torch device string — ``"cpu"`` or ``"cuda"``.
-        dimension:  Output embedding dimension (default 384).
-    """
-
-    provider: str
-    model_name: str
-    device: str
-    dimension: int
-
-
-@dataclass
-class CloudEmbeddingConfig:
-    """Configuration for the cloud embedding service (OpenAI / Voyage).
-
-    Attributes:
-        provider:   Service name — ``"openai"``, ``"voyage"``, or ``"openrouter"``.
-        model_name: Model identifier (e.g. ``text-embedding-3-large``).
-        api_key:    API key for the embedding service.
-        dimension:  Output embedding dimension (default 1024).
-    """
-
-    provider: str
-    model_name: str
-    api_key: str | None
-    dimension: int
-
-
-# ==========================================================
 # 🔹 VECTOR DATABASE CONFIG
 # ==========================================================
 
@@ -145,26 +108,6 @@ class QdrantConfig:
     collection_name: str
     embedding_dim: int
     timeout: int
-
-
-# ==========================================================
-# 🔹 ANOMALY CONFIGURATION
-# ==========================================================
-
-
-@dataclass
-class AnomalyConfig:
-    """Thresholds for the shift anomaly and stability index computations.
-
-    Attributes:
-        z_warn:     Z-score threshold that triggers a *warning* anomaly.
-        z_critical: Z-score threshold that triggers a *critical* anomaly.
-        delta_warn: Fractional delta threshold for early-drift detection.
-    """
-
-    z_warn: float = 2.0
-    z_critical: float = 3.0
-    delta_warn: float = 0.05
 
 
 # ==========================================================
@@ -209,12 +152,12 @@ class Settings:
 
     Attributes:
         llm:               :class:`LLMSettings` for the active LLM provider.
-        embedding:         ``dict`` with ``"local"`` and ``"cloud"`` embedding configs.
         qdrant_shift:      :class:`QdrantConfig` for the shift summary collection.
         qdrant_knowledge:  :class:`QdrantConfig` for the knowledge document collection.
         qdrant:            Alias for ``qdrant_shift`` (backward compatibility).
-        anomaly:           :class:`AnomalyConfig` detection thresholds.
         app:               :class:`AppConfig` general runtime settings.
+        memory_summary_message_window: Number of chat messages per memory summary.
+        memory_summary_token_limit:    Maximum requested memory summary tokens.
     """
 
     def __init__(self) -> None:
@@ -225,7 +168,6 @@ class Settings:
         """
 
         self.llm = self._load_llm_settings()
-        self.embedding = self._load_embedding_config()
 
         # Two Qdrant targets
         self.qdrant_shift = self._load_qdrant_config(
@@ -253,8 +195,13 @@ class Settings:
         # will keep using the shift store unless you change those call-sites.
         self.qdrant = self.qdrant_shift
 
-        self.anomaly = AnomalyConfig()
         self.app = AppConfig()
+        self.memory_summary_message_window = int(
+            os.getenv("MEMORY_SUMMARY_MESSAGE_WINDOW", 8)
+        )
+        self.memory_summary_token_limit = int(
+            os.getenv("MEMORY_SUMMARY_TOKEN_LIMIT", 2000)
+        )
         self._validate()
 
     # ------------------------------------------------------
@@ -262,10 +209,16 @@ class Settings:
     # ------------------------------------------------------
     @staticmethod
     def _load_llm_settings() -> LLMSettings:
-        """Build :class:`LLMSettings` from environment variables.
+        """
+        Build LLM configuration from environment variables.
+
+        This loader keeps the default chat model and the memory-compression
+        model in the same OpenRouter configuration section. If
+        ``MEMORY_COMPRESSION_MODEL`` is not set, memory summaries use the normal
+        ``OPENROUTER_MODEL`` value so local setups continue to work.
 
         Returns:
-            Populated :class:`LLMSettings` instance.
+             - return: LLMSettings - Populated LLM settings for OpenRouter and OpenAI.
         """
         provider = os.getenv("LLM_PROVIDER", "openrouter").strip().lower()
 
@@ -274,6 +227,10 @@ class Settings:
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         )
         openrouter_model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+        memory_compression_model = (
+            os.getenv("MEMORY_COMPRESSION_MODEL", openrouter_model).strip()
+            or openrouter_model
+        )
 
         openai_api_key = os.getenv("OPENAI_API_KEY")
         openai_base_url = os.getenv("OPENAI_BASE_URL")
@@ -288,6 +245,7 @@ class Settings:
                 api_key=openrouter_api_key,
                 base_url=openrouter_base_url,
                 model_name=openrouter_model,
+                memory_compression_model_name=memory_compression_model,
                 max_tokens=max_tokens,
             ),
             openai=OpenAILLMConfig(
@@ -298,46 +256,6 @@ class Settings:
                 api_mode=openai_api_mode,
             ),
         )
-
-    # ------------------------------------------------------
-    # EMBEDDING LOADER (DUAL MODE)
-    # ------------------------------------------------------
-    @staticmethod
-    def _load_embedding_config() -> dict:
-        """Build a dual-entry embedding config dict from environment variables.
-
-        Returns:
-            Dict with keys ``"local"`` (:class:`LocalEmbeddingConfig`) and
-            ``"cloud"`` (:class:`CloudEmbeddingConfig`).
-        """
-        # Local (Shift Reports)
-        local_provider = os.getenv("LOCAL_EMBEDDING_PROVIDER", "sentence_transformer")
-        local_model = os.getenv(
-            "LOCAL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
-        )
-        local_device = os.getenv("LOCAL_EMBEDDING_DEVICE", "cpu")
-        local_dim = int(os.getenv("LOCAL_EMBEDDING_DIM", 384))
-
-        # Cloud (Knowledge Hub)
-        cloud_provider = os.getenv("CLOUD_EMBEDDING_PROVIDER", "openai")
-        cloud_model = os.getenv("CLOUD_EMBEDDING_MODEL", "text-embedding-3-large")
-        cloud_api_key = os.getenv("CLOUD_EMBEDDING_API_KEY")
-        cloud_dim = int(os.getenv("CLOUD_EMBEDDING_DIM", 1024))
-
-        return {
-            "local": LocalEmbeddingConfig(
-                provider=local_provider,
-                model_name=local_model,
-                device=local_device,
-                dimension=local_dim,
-            ),
-            "cloud": CloudEmbeddingConfig(
-                provider=cloud_provider,
-                model_name=cloud_model,
-                api_key=cloud_api_key,
-                dimension=cloud_dim,
-            ),
-        }
 
     # ------------------------------------------------------
     # QDRANT LOADER (Reusable for Shift + Knowledge)
@@ -440,19 +358,6 @@ class Settings:
             raise ValueError(
                 "OPENAI_API_MODE must be 'responses' or 'chat_completions'."
             )
-
-        # Embedding validation
-        if self.embedding["local"].provider != "sentence_transformer":
-            raise ValueError("Unsupported local embedding provider.")
-        if self.embedding["cloud"].provider not in {"openai", "openrouter", "voyage"}:
-            raise ValueError("Unsupported cloud embedding provider.")
-
-        # Dimension sanity (optional but helpful)
-        if self.qdrant_shift.embedding_dim != self.embedding["local"].dimension:
-            # don’t hard-fail; just warn via exception message if you want
-            pass
-        if self.qdrant_knowledge.embedding_dim != self.embedding["cloud"].dimension:
-            pass
 
 
 # ==========================================================

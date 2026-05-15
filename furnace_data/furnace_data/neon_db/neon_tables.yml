@@ -1,0 +1,424 @@
+report_map:
+  HM_SLAG:
+    - offline_feed.hot_metal_slag_analysis
+  CHARGE:
+    - offline_feed.charge_data
+  DPR:
+    - offline_feed.dpr_data
+  RM_COMPOSITION:
+    - offline_feed.ore_chemistry
+    - offline_feed.sinter_chemistry
+    - offline_feed.fuel_chemistry
+    - offline_feed.flux_chemistry
+    - offline_feed.raw_material_strength_analysis
+    - plant_master.materials
+  BURDEN_DISTRIBUTION:
+    - ops_config.burden_history
+  HOPPER_MANAGEMENT:
+    - ops_config.hopper_raw_material_history
+
+table_aliases:
+  charge_data: offline_feed.charge_data
+  dpr_data: offline_feed.dpr_data
+  hot_metal_chemistry: offline_feed.hot_metal_slag_analysis
+  hot_metal_slag_analysis: offline_feed.hot_metal_slag_analysis
+  ore_chemistry: offline_feed.ore_chemistry
+  sinter_chemistry: offline_feed.sinter_chemistry
+  fuel_chemistry: offline_feed.fuel_chemistry
+  flux_chemistry: offline_feed.flux_chemistry
+  rm_hm: offline_feed.raw_material_strength_analysis
+  raw_material_strength_analysis: offline_feed.raw_material_strength_analysis
+  raw_material_stock: offline_feed.raw_material_stock
+  historical_static_ml_dataset: offline_feed.historical_static_ml_dataset
+  feed_material_columns: offline_feed.feed_material_columns
+  v_charge_material_quantities: offline_feed.v_charge_material_quantities
+  v_dpr_material_quantities: offline_feed.v_dpr_material_quantities
+  raw_materials: plant_master.materials
+  materials: plant_master.materials
+  hoppers: plant_master.hoppers
+  units: plant_master.units
+  material_categories: plant_master.material_categories
+  burden_distribution_history: ops_config.burden_history
+  burden_history: ops_config.burden_history
+  hopper_material_history: ops_config.hopper_raw_material_history
+  hopper_raw_material_history: ops_config.hopper_raw_material_history
+
+non_averaged_columns:
+  - id
+  - import_batch_id
+  - source_row_number
+  - created_at
+  - updated_at
+  - date_time
+  - charge_no
+  - lab_sample_id
+  - cast_no_ladle_spec
+  - material_code
+  - material_name
+  - material_description
+  - category_code
+  - category_name
+  - unit_code
+  - unit_name
+  - source_type
+  - ip_address
+  - user_modified
+  - source_column_name
+  - feed_name
+  - notes
+  - hopper_code
+  - display_name
+
+tables:
+  offline_feed.charge_data:
+    schema: offline_feed
+    table: charge_data
+    time_column: date_time
+    supports_aggregation: true
+    columns:
+      - id
+      - date_time
+      - charge_no
+      - sinter_1_mt
+      - sinter_2_mt
+      - sinter_3_mt
+      - sinter_4_mt
+      - pellet_1_mt
+      - pellet_2_mt
+      - ore_1_mt
+      - ore_2_mt
+      - ore_3_mt
+      - ore_4_mt
+      - ore_5_mt
+      - ore_6_mt
+      - ore_7_mt
+      - ore_8_mt
+      - ore_9_mt
+      - ore_10_mt
+      - ore_11_mt
+      - ore_12_mt
+      - flux_1_mt
+      - flux_2_mt
+      - flux_3_mt
+      - coke_1_mt
+      - coke_2_mt
+      - nut_coke_1_mt
+      - nut_coke_2_mt
+      - pci_mt
+      - import_batch_id
+      - source_row_number
+      - created_at
+
+  offline_feed.dpr_data:
+    schema: offline_feed
+    table: dpr_data
+    time_column: date_time
+    supports_aggregation: true
+    columns:
+      - id
+      - date_time
+      - sinter_1_mt
+      - sinter_2_mt
+      - sinter_3_mt
+      - sinter_4_mt
+      - pellet_1_mt
+      - pellet_2_mt
+      - ore_1_mt
+      - ore_2_mt
+      - ore_3_mt
+      - ore_4_mt
+      - ore_5_mt
+      - ore_6_mt
+      - ore_7_mt
+      - ore_8_mt
+      - ore_9_mt
+      - ore_10_mt
+      - ore_11_mt
+      - ore_12_mt
+      - flux_1_mt
+      - flux_2_mt
+      - flux_3_mt
+      - coke_1_mt
+      - coke_2_mt
+      - nut_coke_1_mt
+      - nut_coke_2_mt
+      - pci_mt
+      - cast_house_dust_mt
+      - flue_dust_mt
+      - gcp_dust_mt
+      - stock_house_dust_mt
+      - slag_generation_mt
+      - total_hot_metal_mt
+      - import_batch_id
+      - source_row_number
+      - created_at
+
+  offline_feed.hot_metal_slag_analysis:
+    schema: offline_feed
+    table: hot_metal_slag_analysis
+    time_column: date_time
+    supports_aggregation: true
+    columns:
+      - id
+      - date_time
+      - lab_sample_id
+      - cast_no_ladle_spec
+      - hmt_gt_1480c
+      - chem_pct_c
+      - chem_pct_mn
+      - chem_pct_si
+      - chem_pct_s
+      - chem_pct_p
+      - chem_pct_ti
+      - chem_pct_cr
+      - chem_pct_fe
+      - slag_pct_sio2
+      - slag_pct_cao
+      - slag_pct_mgo
+      - slag_pct_al2o3
+      - slag_pct_feo
+      - slag_pct_mno
+      - slag_pct_s
+      - slag_pct_na2o
+      - slag_pct_k2o
+      - slag_pct_tio2
+      - slag_basicity
+      - slag_t_basicity
+      - import_batch_id
+      - created_at
+
+  offline_feed.ore_chemistry:
+    schema: offline_feed
+    table: ore_chemistry
+    time_column: date_time
+    supports_aggregation: true
+    columns:
+      - id
+      - material_code
+      - date_time
+      - fe_t
+      - sio2
+      - al2o3
+      - p
+      - tio2
+      - na2o
+      - k2o
+      - mno
+      - cao
+      - mgo
+      - loi
+      - tm
+      - import_batch_id
+      - source_row_number
+      - created_at
+
+  offline_feed.sinter_chemistry:
+    schema: offline_feed
+    table: sinter_chemistry
+    time_column: date_time
+    supports_aggregation: true
+    columns:
+      - id
+      - material_code
+      - date_time
+      - fe_t
+      - feo
+      - sio2
+      - al2o3
+      - cao
+      - mgo
+      - na2o
+      - k2o
+      - p
+      - mno
+      - tio2
+      - basicity
+      - import_batch_id
+      - source_row_number
+      - created_at
+
+  offline_feed.fuel_chemistry:
+    schema: offline_feed
+    table: fuel_chemistry
+    time_column: date_time
+    supports_aggregation: true
+    columns:
+      - id
+      - material_code
+      - date_time
+      - tm
+      - moisture
+      - ash
+      - vm
+      - fc
+      - import_batch_id
+      - source_row_number
+      - created_at
+
+  offline_feed.flux_chemistry:
+    schema: offline_feed
+    table: flux_chemistry
+    time_column: date_time
+    supports_aggregation: true
+    columns:
+      - id
+      - material_code
+      - date_time
+      - cao
+      - mgo
+      - sio2
+      - al2o3
+      - fe2o3
+      - loi
+      - tm
+      - import_batch_id
+      - source_row_number
+      - created_at
+
+  offline_feed.raw_material_strength_analysis:
+    schema: offline_feed
+    table: raw_material_strength_analysis
+    time_column: date_time
+    supports_aggregation: true
+    columns:
+      - id
+      - date_time
+      - ai
+      - ti
+      - rdi
+      - ri
+      - import_batch_id
+      - created_at
+
+  offline_feed.raw_material_stock:
+    schema: offline_feed
+    table: raw_material_stock
+    time_column: date_time
+    supports_aggregation: true
+    columns:
+      - id
+      - date_time
+      - material_code
+      - stock_mt
+      - import_batch_id
+      - created_at
+
+  offline_feed.v_charge_material_quantities:
+    schema: offline_feed
+    table: v_charge_material_quantities
+    time_column: date_time
+    supports_aggregation: false
+    columns:
+      - charge_data_id
+      - date_time
+      - charge_no
+      - material_code
+      - quantity
+      - unit_code
+      - source_column_name
+      - import_batch_id
+      - source_row_number
+
+  offline_feed.v_dpr_material_quantities:
+    schema: offline_feed
+    table: v_dpr_material_quantities
+    time_column: date_time
+    supports_aggregation: false
+    columns:
+      - dpr_data_id
+      - date_time
+      - material_code
+      - quantity
+      - unit_code
+      - source_column_name
+      - import_batch_id
+      - source_row_number
+
+  offline_feed.feed_material_columns:
+    schema: offline_feed
+    table: feed_material_columns
+    time_column:
+    supports_aggregation: false
+    columns:
+      - feed_name
+      - source_column_name
+      - material_code
+      - unit_code
+      - is_active
+      - notes
+      - created_at
+      - updated_at
+
+  offline_feed.historical_static_ml_dataset:
+    schema: offline_feed
+    table: historical_static_ml_dataset
+    time_column: date_time
+    supports_aggregation: false
+    allow_all_columns: true
+
+  ops_config.burden_history:
+    schema: ops_config
+    table: burden_history
+    time_column: date_time
+    supports_aggregation: false
+    allow_all_columns: true
+
+  ops_config.hopper_raw_material_history:
+    schema: ops_config
+    table: hopper_raw_material_history
+    time_column: date_time
+    supports_aggregation: false
+    allow_all_columns: true
+
+  plant_master.materials:
+    schema: plant_master
+    table: materials
+    time_column:
+    supports_aggregation: false
+    columns:
+      - material_code
+      - material_name
+      - category_code
+      - material_description
+      - is_active
+      - created_at
+      - updated_at
+      - unit_code
+
+  plant_master.hoppers:
+    schema: plant_master
+    table: hoppers
+    time_column:
+    supports_aggregation: false
+    columns:
+      - hopper_code
+      - display_name
+      - sort_order
+      - is_active
+      - created_at
+      - updated_at
+
+  plant_master.units:
+    schema: plant_master
+    table: units
+    time_column:
+    supports_aggregation: false
+    columns:
+      - unit_code
+      - unit_name
+      - description
+      - created_at
+      - updated_at
+
+  plant_master.material_categories:
+    schema: plant_master
+    table: material_categories
+    time_column:
+    supports_aggregation: false
+    columns:
+      - category_code
+      - category_name
+      - description
+      - is_active
+      - created_at
+      - updated_at

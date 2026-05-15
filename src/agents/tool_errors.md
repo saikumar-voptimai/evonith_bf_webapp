@@ -417,7 +417,7 @@ Disallowed token in code: \bimport\b
 ## 2026-04-03T10:13:00.525666+00:00
 **Tool:** execute_python_plot
 
-**Params:** `{"code": "import pandas as pd\nimport numpy as np\nimport plotly.graph_objects as go\n\ndf = pd.read_csv('current_furnace_data.csv', index_col=0, parse_dates=True)\ndf = df.sort_index().dropna(how='all')\n\n# Target: HM Sulphur\ntarget = 'CHEM_PCT_SI'  # Will check actual S column\n\n# Check columns\ncols = df.columns.tolist()\ns_col = None\nfor c in cols:\n    if 'CHEM' in c and 'S' in c.upper() and 'SLAG' not in c:\n        s_col = c\n        break\n        \nif s_col is None:\n    s_col = 'SLAG_PCT_S'\n    \nprint('Using S column:', s_col)\nprint('Sample values:', df[s_col].dropna().head())\n\n# Key factors to correlate (using available columns)\nfactors = ['SLAG_BASICITY', 'SLAG_PCT_FEO', 'SLAG_PCT_CAO', 'SLAG_PCT_SIO2',\n           'COKE_ASH%', 'COKE_MOIST%', 'PCI_2_ASH%', 'PCI_2_S%', \n           'SINTER_SP_02_SIO2%', 'SINTER_SP_02_AL2O3%', 'ORE_SIO2%',\n           'HOT BLAST TEMP.OC', 'O2 ENRICHMENT %', 'PRODUCTIONTONNESPERHR']\n\n# Filter to available\navail = [f for f in factors if f in df.columns]\nprint('Available factors:', avail)\n\n# Compute correlations\ncorrs = {}\nfor f in avail:\n    valid = df[[s_col, f]].dropna()\n    if len(valid) > 10:\n        corrs[f] = valid[s_col].corr(valid[f])\n\n# Sort by absolute correlation\nranked = sorted(corrs.items(), key=lambda x: abs(x[1]) if x[1] else 0, reverse=True)\nprint('\\nCorrelations with S%:')\nfor f, c in ranked[:10]:\n    print(f'  {f}: {c:.3f}')"}`
+**Params:** `{"code": "import pandas as pd\nimport numpy as np\nimport plotly.graph_objects as go\n\ndf = pd.read_csv('current_furnace_data.csv', index_col=0, parse_dates=True)\ndf = df.sort_index().dropna(how='all')\n\n# Target: HM Sulphur\ntarget = 'CHEM_PCT_SI'  # Will check actual S column\n\n# Check columns\ncols = df.columns.tolist()\ns_col = None\nfor c in cols:\n    if 'CHEM' in c and 'S' in c.upper() and 'SLAG' not in c:\n        s_col = c\n        break\n        \nif s_col is None:\n    s_col = 'SLAG_PCT_S'\n    \nprint('Using S column:', s_col)\nprint('Sample values:', df[s_col].dropna().head())\n\n# Key factors to correlate (using available columns)\nfactors = ['SLAG_BASICITY', 'SLAG_PCT_FEO', 'SLAG_PCT_CAO', 'SLAG_PCT_SIO2',\n           'COKE_ASH%', 'COKE_MOIST%', 'PCI_ASH%', 'PCI_2_S%', \n           'SINTER_SIO2%', 'SINTER_AL2O3%', 'ORE_SIO2%',\n           'HOT BLAST TEMP.OC', 'O2 ENRICHMENT %', 'PRODUCTIONTONNESPERHR']\n\n# Filter to available\navail = [f for f in factors if f in df.columns]\nprint('Available factors:', avail)\n\n# Compute correlations\ncorrs = {}\nfor f in avail:\n    valid = df[[s_col, f]].dropna()\n    if len(valid) > 10:\n        corrs[f] = valid[s_col].corr(valid[f])\n\n# Sort by absolute correlation\nranked = sorted(corrs.items(), key=lambda x: abs(x[1]) if x[1] else 0, reverse=True)\nprint('\\nCorrelations with S%:')\nfor f, c in ranked[:10]:\n    print(f'  {f}: {c:.3f}')"}`
 
 **Error:**
 
@@ -627,4 +627,322 @@ Disallowed token in code: \bimport\b
 
 ```
 'Figure' object has no attribute 'update_xaxis'
+```
+
+
+## 2026-04-27T18:45:26.848126+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "df = pd.read_csv('current_furnace_data.csv', index_col=0, parse_dates=True)\ndf = df.sort_index()\n\n# Filter last 8 hours\nlast_8h = df.last('8H')\n\nfig = go.Figure()\nfig.add_trace(go.Scatter(x=last_8h.index, y=last_8h['Process Params - BF2_BODY_ETACO'],\n                        mode='lines+markers', name='ETACO %',\n                        line=dict(color='green', width=2)))\n\nfig.update_layout(title='ETACO Trend - Last 8 Hours',\n                  yaxis_title='ETACO %',\n                  xaxis_title='Time (IST)',\n                  template='plotly_white')\nfig.update_xaxes(tickformat='%H:%M')\n"}`
+
+**Error:**
+
+```
+[Errno 2] No such file or directory: 'current_furnace_data.csv'
+```
+
+
+## 2026-04-27T18:45:30.024067+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import os\nprint(os.listdir('.'))\n"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```
+
+
+## 2026-04-30T20:12:20.044615+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "# Let's examine the data to extract values for Shift B (08:30-16:30 UTC = 14:00-22:30 IST)\nimport pandas as pd\nimport numpy as np\n\n# First check the online data range\nonline_df = df  # This is from the fetch_online_data result\nprint(\"Online data index range:\")\nprint(f\"Start: {online_df.index.min()}\")\nprint(f\"End: {online_df.index.max()}\")\nprint(f\"\\nNumber of rows: {len(online_df)}\")\n\n# Filter to Shift B window (08:30-16:30 UTC = 14:00-22:30 IST)\n# Convert to UTC for filtering\nshift_b_start = pd.Timestamp('2026-04-30T08:30:00Z')\nshift_b_end = pd.Timestamp('2026-04-30T16:30:00Z')\n\n# Filter the dataframe\nshift_b_data = online_df.loc[shift_b_start:shift_b_end]\nprint(f\"\\nShift B data (filtered):\")\nprint(f\"Rows in shift window: {len(shift_b_data)}\")\nprint(f\"Start (UTC): {shift_b_data.index.min()}\")\nprint(f\"End (UTC): {shift_b_data.index.max()}\")"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```
+
+
+## 2026-04-30T20:20:43.045615+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 3, "lookback_hours": 1, "lookback_minutes": null, "window": "15 minutes", "measurement_groups": ["process_params", "temperature_profile", "delta_t", "miscellaneous"]}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-01T05:37:08.606349+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": null, "lookback_hours": null, "lookback_minutes": null, "window": "15 minutes", "measurement_groups": ["process_params", "temperature_profile", "delta_t", "miscellaneous"], "start_time_utc": "2026-05-29T00:30:00Z", "end_time_utc": "2026-05-29T08:30:00Z"}`
+
+**Error:**
+
+```
+fetch_online_df() got an unexpected keyword argument 'start_time_override'
+```
+
+
+## 2026-05-01T05:37:13.534092+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": null, "lookback_hours": null, "lookback_minutes": null, "window": "15 minutes", "measurement_groups": ["process_params", "temperature_profile", "delta_t", "miscellaneous"], "start_time_utc": "2026-05-29T00:30:00Z", "end_time_utc": "2026-05-29T08:30:00Z"}`
+
+**Error:**
+
+```
+fetch_online_df() got an unexpected keyword argument 'start_time_override'
+```
+
+
+## 2026-05-01T05:37:15.459741+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": null, "lookback_hours": null, "lookback_minutes": null, "window": null, "measurement_groups": null, "start_time_utc": "2026-05-29T00:30:00Z", "end_time_utc": "2026-05-29T08:30:00Z"}`
+
+**Error:**
+
+```
+fetch_online_df() got an unexpected keyword argument 'start_time_override'
+```
+
+
+## 2026-05-01T08:21:21.053957+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "start_time_utc": "2026-04-23T08:30:00Z", "end_time_utc": "2026-04-23T16:30:00Z", "lookback_days": 10, "cadence": null}`
+
+**Error:**
+
+```
+fetch_offline_data() got an unexpected keyword argument 'measurement'
+```
+
+
+## 2026-05-01T08:21:22.367783+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "start_time_utc": "2026-04-23T08:30:00Z", "end_time_utc": "2026-04-23T16:30:00Z", "lookback_days": 10, "cadence": null}`
+
+**Error:**
+
+```
+fetch_offline_data() got an unexpected keyword argument 'measurement'
+```
+
+
+## 2026-05-01T08:21:24.214542+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "start_time_utc": "2026-04-23T08:30:00Z", "end_time_utc": "2026-04-23T16:30:00Z", "lookback_days": 10, "cadence": null}`
+
+**Error:**
+
+```
+fetch_offline_data() got an unexpected keyword argument 'measurement'
+```
+
+
+## 2026-05-01T08:21:26.166107+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "start_time_utc": "2026-04-23T08:30:00Z", "end_time_utc": "2026-04-23T16:30:00Z", "lookback_days": 10, "cadence": null}`
+
+**Error:**
+
+```
+fetch_offline_data() got an unexpected keyword argument 'measurement'
+```
+
+
+## 2026-05-01T08:21:29.511960+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "start_time_utc": null, "end_time_utc": null, "lookback_days": 10, "cadence": null}`
+
+**Error:**
+
+```
+fetch_offline_data() got an unexpected keyword argument 'measurement'
+```
+
+
+## 2026-05-01T08:21:32.014983+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "start_time_utc": "2026-04-23T08:30:00Z", "end_time_utc": "2026-04-23T16:30:00Z", "lookback_days": 10, "cadence": null}`
+
+**Error:**
+
+```
+fetch_offline_data() got an unexpected keyword argument 'measurement'
+```
+
+
+## 2026-05-01T08:21:34.807922+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "start_time_utc": "2026-04-23T08:30:00Z", "end_time_utc": "2026-04-23T16:30:00Z", "lookback_days": 10, "cadence": null}`
+
+**Error:**
+
+```
+fetch_offline_data() got an unexpected keyword argument 'measurement'
+```
+
+
+## 2026-05-03T12:12:33.480631+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:34.971464+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 8, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:36.564724+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 1, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:38.794539+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:40.362108+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:43.066655+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["process_params"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:44.584181+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["delta_t"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-03T12:12:46.236445+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback_days": 1, "lookback_hours": 8, "lookback_minutes": 1, "window": "15 minutes", "measurement_groups": ["miscellaneous"], "start_time_utc": "", "end_time_utc": ""}`
+
+**Error:**
+
+```
+Provide only one of lookback_days, lookback_hours, lookback_minutes
+```
+
+
+## 2026-05-05T02:12:36.439959+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "source": "offline_database", "table_name": "hot_metal_chemistry", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
+
+**Error:**
+
+```
+(psycopg2.errors.UndefinedTable) relation "hot_metal_chemistry" does not exist
+LINE 1: ...ct_sio2", "slag_pct_tio2", "slag_t_basicity" FROM "hot_metal...
+                                                             ^
+
+[SQL: SELECT "cast_no_ladle_spec", "chem_pct_c", "chem_pct_cr", "chem_pct_fe", "chem_pct_mn", "chem_pct_p", "chem_pct_s", "chem_pct_si", "chem_pct_ti", "created_at", "date", "hmt_gt_1480c", "id", "lab_sample_id", "slag_basicity", "slag_pct_al2o3", "slag_pct_cao", "slag_pct_feo", "slag_pct_k2o", "slag_pct_mgo", "slag_pct_mno", "slag_pct_na2o", "slag_pct_s", "slag_pct_sio2", "slag_pct_tio2", "slag_t_basicity" FROM "hot_metal_chemistry" WHERE "date" >= %(start_time)s AND "date" <= %(end_time)s ORDER BY "date"]
+[parameters: {'start_time': datetime.datetime(2026, 5, 2, 0, 0, tzinfo=datetime.timezone.utc), 'end_time': datetime.datetime(2026, 5, 5, 0, 0, tzinfo=datetime.timezone.utc)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+```
+
+
+## 2026-05-05T02:12:39.016584+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "source": "offline_database", "table_name": "rm_hm", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
+
+**Error:**
+
+```
+(psycopg2.errors.UndefinedTable) relation "rm_hm" does not exist
+LINE 1: ...ed_at", "date_time", "id", "rdi", "ri", "ti" FROM "rm_hm" WH...
+                                                             ^
+
+[SQL: SELECT "ai", "created_at", "date_time", "id", "rdi", "ri", "ti" FROM "rm_hm" WHERE "date_time" >= %(start_time)s AND "date_time" <= %(end_time)s ORDER BY "date_time"]
+[parameters: {'start_time': datetime.datetime(2026, 5, 2, 0, 0, tzinfo=datetime.timezone.utc), 'end_time': datetime.datetime(2026, 5, 5, 0, 0, tzinfo=datetime.timezone.utc)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+```
+
+
+## 2026-05-05T02:12:40.950029+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "HM_SLAG", "source": "offline_database", "table_name": "charge_data", "start_time_utc": "2026-05-02T00:00:00Z", "end_time_utc": "2026-05-05T00:00:00Z", "lookback_days": 3, "cadence": "1h"}`
+
+**Error:**
+
+```
+(psycopg2.errors.UndefinedTable) relation "charge_data" does not exist
+LINE 1: ... "sinter_2_mt", "sinter_3_mt", "sinter_4_mt" FROM "charge_da...
+                                                             ^
+
+[SQL: SELECT "charge_no", "coke_1_mt", "coke_2_mt", "date_time", "flux_1_mt", "flux_2_mt", "flux_3_mt", "id", "nut_coke_1_mt", "nut_coke_2_mt", "ore_10_mt", "ore_11_mt", "ore_12_mt", "ore_1_mt", "ore_2_mt", "ore_3_mt", "ore_4_mt", "ore_5_mt", "ore_6_mt", "ore_7_mt", "ore_8_mt", "ore_9_mt", "pci_mt", "pellet_1_mt", "pellet_2_mt", "sinter_1_mt", "sinter_2_mt", "sinter_3_mt", "sinter_4_mt" FROM "charge_data" WHERE "date_time" >= %(start_time)s AND "date_time" <= %(end_time)s ORDER BY "date_time"]
+[parameters: {'start_time': datetime.datetime(2026, 5, 2, 0, 0, tzinfo=datetime.timezone.utc), 'end_time': datetime.datetime(2026, 5, 5, 0, 0, tzinfo=datetime.timezone.utc)}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
 ```

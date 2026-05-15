@@ -10,20 +10,10 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from config.config_loader import load_config
-from data.fetch_presets import ONLINE_MEASUREMENT_LABELS, WINDOW_FREQUENCY_MAP
-from data import retrieval as dr
-
-_config = load_config("setting_ds_dv.yml")
+from data.fetch_presets import ONLINE_MEASUREMENT_LABELS
+from furnace_data.influx.online import fetch_online_df
 
 MEASUREMENT_LABELS = ONLINE_MEASUREMENT_LABELS
-FREQUENCY_TO_TIMEDTA = WINDOW_FREQUENCY_MAP
-
-FIELD_LABELS: dict[str, str] = {
-    internal_key: human_label
-    for mapping in _config["data_mapping"].values()
-    for human_label, internal_key in mapping.items()
-}
 
 
 @st.cache_data(show_spinner=False, ttl=600)
@@ -38,13 +28,9 @@ def fetch_recent_online(
     tr:       InfluxDB time-range string, e.g. ``"last 8 hours"``.
     window_by: Aggregation window, e.g. ``"15 minutes"`` or ``"1 hour"``.
     """
-    return dr.fetch_online_df(
+    return fetch_online_df(
         selected_measurements=list(MEASUREMENT_LABELS.keys()),
         time_range=tr,
-        FREQUENCY_TO_TIMEDTA=FREQUENCY_TO_TIMEDTA,
-        MEASUREMENT_LABELS=MEASUREMENT_LABELS,
-        FIELD_LABELS=FIELD_LABELS,
-        request_type="windowed-average",
         window_by=window_by,
     )
 

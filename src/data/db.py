@@ -1,522 +1,255 @@
-"""PostgreSQL database layer for the BF2 blast furnace web application.
+"""Streamlit-facing relational services for the BF2 web application.
 
-Manages user authentication, hopper-to-material assignments, and burden
-distribution history using a SCD Type-2 pattern (``valid_upto IS NULL``
-identifies the current row).
+The persistence implementation lives in :mod:`furnace_data.relational`.
+This module only adapts repository methods to the webapp's session/auth and
+client material-name workflows.
 """
 
-import hashlib
-import os
-from datetime import datetime, timedelta
+from __future__ import annotations
 
-import yaml
+import hashlib
+from datetime import datetime
+from typing import Any
+
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
-# ------------------------------------------------------------
-# Load Environment Variables
-# ------------------------------------------------------------
+from data.material_mapping import MaterialNameMapper
+from furnace_data.relational import (
+    BurdenHistoryRepository,
+    HopperHistoryRepository,
+    PlantMasterRepository,
+    UserRepository,
+    build_relational_engine,
+    build_relational_session_factory,
+)
+
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("❌ Missing DATABASE_URL environment variable.")
 
-engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
+class _RelationalService:
+    """Base class that owns a PostgreSQL engine and session factory."""
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(BASE_DIR)
-MATERIALS_FILE = os.path.join(PROJECT_ROOT, "config", "materials.yml")
+    def __init__(self, db_url: str | None = None) -> None:
+        self.engine = build_relational_engine(db_url=db_url)
+        self._session_factory = build_relational_session_factory(self.engine)
+
+    def dispose(self) -> None:
+        """Dispose the underlying SQLAlchemy engine."""
+        self.engine.dispose()
 
 
-class Database:
-    """Thin ORM wrapper around the PostgreSQL schema for BF2 operational data.
+class UserDataService(_RelationalService):
+    """User registration and credential validation service."""
 
-    On first instantiation the class ensures all required tables exist and
-    seeds the database with initial hopper entries if none are present.
+    def __init__(self, db_url: str | None = None) -> None:
+        super().__init__(db_url=db_url)
+        self._user_repository = UserRepository(self._session_factory)
+        self._seed_defaults()
 
-    Attributes:
-        engine:        SQLAlchemy engine connected to the configured database.
-        hoppers:       List of valid hopper names loaded from ``materials.yml``.
-        materials:     List of valid material names loaded from ``materials.yml``.
-        burden_fields: List of burden distribution field names from ``materials.yml``.
-    """
-
-    def __init__(self) -> None:
-        self.engine = engine
-
-        self.hoppers, self.materials = self._safe_load_materials()
-        self.burden_fields = self._safe_load_burden_fields()
-
-        self._create_users_table()
-        self._create_hopper_material_history_table()
-        self._create_burden_distribution_history_table()
-        self._seed_hoppers_if_missing()
-
-    # ============================================================
-    # USERS
-    # ============================================================
-    def _create_users_table(self) -> None:
-        """Create the ``users`` table and seed the ``admin`` account if absent."""
-        with self.engine.begin() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS users (
-                    username TEXT PRIMARY KEY,
-                    password_hash TEXT NOT NULL,
-                    role TEXT CHECK (role IN ('admin','supervisor','user')) NOT NULL
-                )
-            """))
-
-            if not conn.execute(
-                text("SELECT 1 FROM users WHERE username='admin'")
-            ).fetchone():
-                conn.execute(
-                    text("""
-                    INSERT INTO users VALUES ('admin', :p, 'admin')
-                """),
-                    {"p": hashlib.sha256("admin123".encode()).hexdigest()},
-                )
+    def _seed_defaults(self) -> None:
+        self._user_repository.seed_admin_user(
+            password_hash=hashlib.sha256("admin123".encode()).hexdigest()
+        )
 
     def add_user(self, username: str, password: str, role: str = "user") -> None:
-        """Add a new user to the database.
-
-        Args:
-            username: Unique username string.
-            password: Plain-text password (stored as SHA-256 digest).
-            role:     One of ``"admin"``, ``"supervisor"``, or ``"user"``.
-
-        Raises:
-            ValueError: If *username* already exists.
-        """
+        """Add a new user to the identity schema."""
         try:
-            with self.engine.begin() as conn:
-                conn.execute(
-                    text("""
-                    INSERT INTO users VALUES (:u,:p,:r)
-                """),
-                    {
-                        "u": username,
-                        "p": hashlib.sha256(password.encode()).hexdigest(),
-                        "r": role,
-                    },
-                )
-        except IntegrityError:
-            raise ValueError("User already exists")
+            self._user_repository.add_user(
+                username=username,
+                password_hash=hashlib.sha256(password.encode()).hexdigest(),
+                role=role,
+            )
+        except IntegrityError as exc:
+            raise ValueError("User already exists") from exc
+        except ValueError as exc:
+            raise ValueError("Invalid role") from exc
 
-    def validate_user(self, username: str, password: str):
-        """Validate login credentials against the stored SHA-256 password hash.
+    def validate_user(self, username: str, password: str) -> tuple[str, str] | None:
+        """Validate credentials and return ``(username, role)`` or ``None``."""
+        return self._user_repository.validate_user(
+            username=username,
+            password_hash=hashlib.sha256(password.encode()).hexdigest(),
+        )
 
-        Args:
-            username: Account username.
-            password: Plain-text password to verify.
 
-        Returns:
-            A row tuple ``(username, role)`` if credentials are valid,
-            else ``None``.
-        """
-        with self.engine.begin() as conn:
-            return conn.execute(
-                text("""
-                SELECT username, role FROM users
-                WHERE username=:u AND password_hash=:p
-            """),
-                {"u": username, "p": hashlib.sha256(password.encode()).hexdigest()},
-            ).fetchone()
+class PlantMasterService(_RelationalService):
+    """Plant master lookup service used by hopper/material workflows."""
 
-    # ============================================================
-    # YAML
-    # ============================================================
-    def _safe_load_materials(self) -> tuple:
-        """Load hoppers and materials from YAML, returning empty lists on error."""
-        try:
-            return self._load_materials_from_yaml()
-        except Exception:
-            return [], []
+    def __init__(self, db_url: str | None = None) -> None:
+        super().__init__(db_url=db_url)
+        self._plant_master_repository = PlantMasterRepository(self._session_factory)
+        self._material_mapper = MaterialNameMapper.from_file()
+        self.refresh()
 
-    def _load_materials_from_yaml(self) -> tuple:
-        """Parse ``materials.yml`` and return ``(hoppers, materials)`` lists."""
-        with open(MATERIALS_FILE, "r", encoding="utf-8-sig") as f:
-            data = yaml.safe_load(f) or {}
-        return data.get("hoppers", []), data.get("materials", [])
+    def refresh(self) -> None:
+        """Refresh active hopper/material lookup caches from plant master."""
+        hoppers = self._plant_master_repository.list_active_hoppers()
+        materials = self._plant_master_repository.list_active_materials()
+        active_material_names = {row["material_name"] for row in materials}
+        self._material_mapper.validate_material_names(active_material_names)
 
-    # ============================================================
-    # HOPPER ↔ MATERIAL HISTORY (ONLY TABLE)
-    # ============================================================
-    def _create_hopper_material_history_table(self) -> None:
-        """Create the ``hopper_material_history`` table with a partial index for active rows."""
-        with self.engine.begin() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS hopper_material_history (
-                    id SERIAL PRIMARY KEY,
-                    hopper TEXT NOT NULL,
-                    material TEXT NOT NULL,
-                    valid_from TIMESTAMP NOT NULL,
-                    valid_upto TIMESTAMP,
-                    modifier TEXT DEFAULT 'system',
-                    ip_address TEXT
-                )
-            """))
+        self.hopper_rows = hoppers
+        self.hoppers = [row["hopper_code"] for row in hoppers]
+        self.hopper_display_names = {
+            row["hopper_code"]: row["display_name"] for row in hoppers
+        }
+        self.material_rows = materials
+        self.materials = [
+            entry.client_name
+            for entry in self._material_mapper.entries
+            if entry.material_name in active_material_names
+        ]
+        self._material_code_by_name = {
+            row["material_name"]: row["material_code"] for row in materials
+        }
+        self._material_name_by_code = {
+            row["material_code"]: row["material_name"] for row in materials
+        }
 
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_hopper_active
-                ON hopper_material_history (hopper)
-                WHERE valid_upto IS NULL
-            """))
+    def client_material_to_code(self, material: str | None) -> str | None:
+        """Map a webapp material display name to a plant master material code."""
+        if material == "UNASSIGNED" or material is None:
+            return None
+        material_name = self._material_mapper.material_name_for_client(material)
+        material_code = self._material_code_by_name.get(material_name)
+        if material_code is None:
+            raise ValueError(f"Material not active in plant_master: {material_name}")
+        return material_code
 
-    def _seed_hoppers_if_missing(self) -> None:
-        """Insert an ``UNASSIGNED`` entry for any hopper not yet in the history table."""
-        now = datetime.utcnow()
-        with self.engine.begin() as conn:
-            existing = {
-                r[0]
-                for r in conn.execute(
-                    text("SELECT DISTINCT hopper FROM hopper_material_history")
-                )
-            }
-            for hopper in self.hoppers:
-                if hopper not in existing:
-                    conn.execute(
-                        text("""
-                        INSERT INTO hopper_material_history
-                        (hopper, material, valid_from)
-                        VALUES (:h, 'UNASSIGNED', :t)
-                    """),
-                        {"h": hopper, "t": now},
-                    )
+    def material_code_to_client(self, material_code: str | None) -> str:
+        """Map a stored material code back to the primary webapp display name."""
+        if material_code is None:
+            return "UNASSIGNED"
+        material_name = self._material_name_by_code.get(material_code, material_code)
+        return self._material_mapper.primary_client_name_for_material(material_name)
+
+
+class HopperConfigService(PlantMasterService):
+    """Hopper-material snapshot service."""
+
+    def __init__(self, db_url: str | None = None) -> None:
+        super().__init__(db_url=db_url)
+        self._user_repository = UserRepository(self._session_factory)
+        self._hopper_repository = HopperHistoryRepository(self._session_factory)
 
     def update_hopper_material_with_time(
-        self, hopper: str, material: str, from_time, modifier: str, ip_address: str
+        self,
+        hopper: str,
+        material: str,
+        from_time: datetime,
+        modifier: str,
+        ip_address: str,
     ) -> None:
-        """Record a new hopper-to-material assignment using SCD Type-2.
-
-        Closes the previous active row (sets ``valid_upto``) and inserts a new
-        row starting from *from_time*.
-
-        Args:
-            hopper:     Hopper identifier (must be in ``self.hoppers``).
-            material:   Material name (must be in ``self.materials`` or
-                        ``"UNASSIGNED"``).
-            from_time:  Datetime at which the new assignment takes effect.
-            modifier:   Username of the operator making the change.
-            ip_address: IP address of the requesting client.
-
-        Raises:
-            ValueError: If *hopper* or *material* is invalid.
-        """
+        """Record a new single-hopper assignment as a wide snapshot."""
         if hopper not in self.hoppers:
             raise ValueError("Invalid hopper")
-        if material not in self.materials and material != "UNASSIGNED":
-            raise ValueError("Invalid material")
+        self._hopper_repository.update_hopper_snapshot(
+            hopper_material_codes={hopper: self.client_material_to_code(material)},
+            from_time=from_time,
+            user_id=self._user_repository.get_user_id(modifier),
+            ip_address=ip_address,
+        )
 
-        with self.engine.begin() as conn:
-            conn.execute(
-                text("""
-                UPDATE hopper_material_history
-                SET valid_upto=:u
-                WHERE hopper=:h AND valid_upto IS NULL
-            """),
-                {"h": hopper, "u": from_time - timedelta(seconds=1)},
-            )
-
-            conn.execute(
-                text("""
-                INSERT INTO hopper_material_history
-                (hopper, material, valid_from, modifier, ip_address)
-                VALUES (:h,:m,:t,:mod,:ip)
-            """),
-                {
-                    "h": hopper,
-                    "m": material,
-                    "t": from_time,
-                    "mod": modifier,
-                    "ip": ip_address,
-                },
-            )
-
-    def get_current_hopper_materials(self):
-        with self.engine.begin() as conn:
-            return dict(conn.execute(text("""
-                SELECT hopper, material
-                FROM hopper_material_history
-                WHERE valid_upto IS NULL
-                ORDER BY hopper
-            """)).fetchall())
-
-    def get_hopper_material_at(self, hopper: str, ts) -> str | None:
-        """Return the material assigned to *hopper* at timestamp *ts*.
-
-        Args:
-            hopper: Hopper identifier.
-            ts:     Timestamp to query.
-
-        Returns:
-            Material name string, or ``None`` if no record matches.
-        """
-        with self.engine.begin() as conn:
-            r = conn.execute(
-                text("""
-                SELECT material FROM hopper_material_history
-                WHERE hopper=:h AND valid_from<=:t
-                AND (valid_upto IS NULL OR valid_upto>=:t)
-                ORDER BY valid_from DESC LIMIT 1
-            """),
-                {"h": hopper, "t": ts},
-            ).fetchone()
-            return r[0] if r else None
+    def update_hopper_materials_snapshot(
+        self,
+        hopper_materials: dict[str, str],
+        from_time: datetime,
+        modifier: str,
+        ip_address: str,
+    ) -> None:
+        """Record one full hopper-material snapshot from client material names."""
+        unknown_hoppers = sorted(set(hopper_materials) - set(self.hoppers))
+        if unknown_hoppers:
+            raise ValueError(f"Invalid hopper(s): {unknown_hoppers}")
+        codes = {
+            hopper: self.client_material_to_code(material)
+            for hopper, material in hopper_materials.items()
+        }
+        self._hopper_repository.update_hopper_snapshot(
+            hopper_material_codes=codes,
+            from_time=from_time,
+            user_id=self._user_repository.get_user_id(modifier),
+            ip_address=ip_address,
+        )
 
     def get_current_hopper_materials(self) -> dict[str, str]:
-        """
-        Returns the CURRENT hopper->material mapping.
-        Current = valid_upto IS NULL
-        """
-        with self.engine.begin() as conn:
-            rows = conn.execute(text("""
-                SELECT hopper, material
-                FROM hopper_material_history
-                WHERE valid_upto IS NULL
-                ORDER BY hopper
-            """)).fetchall()
-        return dict(rows)
+        """Return current hopper-to-client-material mapping."""
+        codes = self._hopper_repository.get_current_hopper_material_codes()
+        return {
+            hopper: self.material_code_to_client(codes.get(hopper))
+            for hopper in self.hoppers
+        }
 
-    def get_hopper_material_history(self) -> list[dict]:
-        """
-        Returns FULL hopper->material history (all rows).
-        """
-        with self.engine.begin() as conn:
-            rows = conn.execute(text("""
-                SELECT
-                    id,
-                    hopper,
-                    material,
-                    valid_from,
-                    valid_upto,
-                    modifier,
-                    ip_address
-                FROM hopper_material_history
-                ORDER BY hopper, valid_from DESC
-            """)).fetchall()
+    def get_hopper_material_at(self, hopper: str, ts: datetime) -> str:
+        """Return material assigned to hopper at timestamp."""
+        code = self._hopper_repository.get_hopper_material_code_at(
+            hopper=hopper, ts=ts
+        )
+        return self.material_code_to_client(code)
 
-        return [
-            {
-                "id": r.id,
-                "hopper": r.hopper,
-                "material": r.material,
-                "valid_from": r.valid_from,
-                "valid_upto": r.valid_upto,
-                "modifier": r.modifier,
-                "ip_address": r.ip_address,
-            }
-            for r in rows
-        ]
+    def get_hopper_material_history(self) -> list[dict[str, Any]]:
+        """Return full hopper-material history rows with client material labels."""
+        rows = self._hopper_repository.get_hopper_material_history()
+        for row in rows:
+            for hopper in self.hoppers:
+                row[hopper] = self.material_code_to_client(row.get(hopper))
+        return rows
 
     def delete_hopper_material_history(self, record_ids: list[int]) -> None:
-        """
-        Deletes hopper_material_history records by ID.
-        """
-        if not record_ids:
-            return
+        """Delete hopper history rows by IDs."""
+        self._hopper_repository.delete_hopper_material_history(record_ids)
 
-        with self.engine.begin() as conn:
-            conn.execute(
-                text("DELETE FROM hopper_material_history WHERE id = ANY(:ids)"),
-                {"ids": record_ids},
-            )
 
-    # ============================================================
-    #  LOAD BURDEN FIELDS FROM YAML
-    # ============================================================
-    def _safe_load_burden_fields(self):
-        """Safely loads burden distribution field names from materials.yml."""
-        try:
-            return self._load_burden_fields_from_yaml()
-        except Exception as e:
-            print(f"⚠️ Warning: Failed to load burden_fields from YAML: {e}")
-            return []
+class BurdenConfigService(_RelationalService):
+    """Burden distribution snapshot service."""
 
-    def _load_burden_fields_from_yaml(self):
-        if not os.path.exists(MATERIALS_FILE):
-            raise FileNotFoundError(f"Missing configuration file: {MATERIALS_FILE}")
+    def __init__(self, db_url: str | None = None) -> None:
+        super().__init__(db_url=db_url)
+        self._user_repository = UserRepository(self._session_factory)
+        self._burden_repository = BurdenHistoryRepository(self._session_factory)
+        self.burden_fields = self._burden_repository.burden_fields()
 
-        with open(MATERIALS_FILE, "r", encoding="utf-8-sig") as f:
-            data = yaml.safe_load(f) or {}
-
-        fields = data.get("burden_fields", [])
-        if not isinstance(fields, list):
-            raise ValueError("'burden_fields' must be a list in materials.yml")
-
-        return fields
-
-    # --------------------------------------------------------
-    # Create burden distribution history table
-    # --------------------------------------------------------
-    def _create_burden_distribution_history_table(self):
-        with self.engine.begin() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS burden_distribution_history (
-                    id SERIAL PRIMARY KEY,
-                    field_name TEXT NOT NULL,
-                    field_value_float DOUBLE PRECISION,
-                    field_value_text TEXT,
-                    valid_from TIMESTAMPTZ NOT NULL,
-                    valid_upto TIMESTAMPTZ,
-                    modifier TEXT DEFAULT 'system',
-                    ip_address TEXT
-                );
-            """))
-
-            conn.execute(text("""
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_burden_active_record
-                ON burden_distribution_history (field_name, valid_upto);
-            """))
-
-    # --------------------------------------------------------
-    # Update (SCD Type-2)
-    # --------------------------------------------------------
     def update_burden_field(
-        self, field_name: str, value, valid_from, modifier: str = "system", ip: str = ""
+        self,
+        field_name: str,
+        value: Any,
+        valid_from: datetime,
+        modifier: str = "system",
+        ip: str = "",
     ) -> None:
-        """Record a new burden distribution field value using SCD Type-2.
+        """Record a new burden field value as a wide snapshot."""
+        self._burden_repository.update_burden_field(
+            field_name=field_name,
+            value=value,
+            valid_from=valid_from,
+            user_id=self._user_repository.get_user_id(modifier),
+            ip=ip,
+        )
 
-        Text fields (``*_PATTERN`` and ``BURDEN_CHANGING_PURPOSE``) are stored
-        in ``field_value_text``; all other fields use ``field_value_float``.
-
-        Args:
-            field_name:  Name of the burden distribution field.
-            value:       New value (numeric or string depending on field type).
-            valid_from:  Datetime at which the value becomes effective.
-            modifier:    Username of the person making the change.
-            ip:          Client IP address.
-        """
-        # Pattern fields use TEXT values, others use FLOAT
-        is_text_field = field_name in [
-            "COKE_CHARGE_PATTERN",
-            "NON_COKE_CHARGE_PATTERN",
-            "BURDEN_CHANGING_PURPOSE",
-        ]
-
-        with self.engine.begin() as conn:
-            conn.execute(
-                text("""
-                UPDATE burden_distribution_history
-                SET valid_upto = :end_time
-                WHERE field_name = :f AND valid_upto IS NULL
-            """),
-                {"f": field_name, "end_time": valid_from - timedelta(seconds=1)},
-            )
-
-            if is_text_field:
-                conn.execute(
-                    text("""
-                    INSERT INTO burden_distribution_history
-                        (field_name, field_value_text, valid_from, valid_upto, modifier, ip_address)
-                    VALUES (:f, :v_text, :start, NULL, :m, :ip)
-                """),
-                    {
-                        "f": field_name,
-                        "v_text": str(value),
-                        "start": valid_from,
-                        "m": modifier,
-                        "ip": ip,
-                    },
-                )
-            else:
-                conn.execute(
-                    text("""
-                    INSERT INTO burden_distribution_history
-                        (field_name, field_value_float, valid_from, valid_upto, modifier, ip_address)
-                    VALUES (:f, :v_float, :start, NULL, :m, :ip)
-                """),
-                    {
-                        "f": field_name,
-                        "v_float": float(value),
-                        "start": valid_from,
-                        "m": modifier,
-                        "ip": ip,
-                    },
-                )
-
-    # --------------------------------------------------------
-    # Bulk update from DataFrame row (timestamp-indexed)
-    # --------------------------------------------------------
     def update_burden_row(
-        self, df_row, timestamp, modifier: str = "system", ip: str = ""
+        self,
+        df_row: dict[str, Any],
+        timestamp: datetime,
+        modifier: str = "system",
+        ip: str = "",
     ) -> None:
-        """Bulk-update burden distribution fields from a single DataFrame row.
+        """Bulk-update burden fields from one row mapping."""
+        self._burden_repository.update_burden_row(
+            row_values=dict(df_row.items()),
+            timestamp=timestamp,
+            user_id=self._user_repository.get_user_id(modifier),
+            ip=ip,
+        )
 
-        Iterates over the row and calls :meth:`update_burden_field` for every
-        column that is listed in ``self.burden_fields`` and has a non-``None``
-        value.
+    def get_burden_history(self) -> list[dict[str, Any]]:
+        """Return full burden-history rows."""
+        return self._burden_repository.get_burden_history()
 
-        Args:
-            df_row:    A pandas Series or dict mapping field names to values.
-            timestamp: Effective datetime for the update.
-            modifier:  Username of the operator.
-            ip:        Client IP address.
-        """
-        for field, value in df_row.items():
-            if field in self.burden_fields and value is not None:
-                self.update_burden_field(field, value, timestamp, modifier, ip)
+    def get_all_current_burden_values(self, ts: datetime) -> dict[str, Any]:
+        """Return current burden field values at timestamp."""
+        return self._burden_repository.get_all_current_burden_values(ts)
 
-    # --------------------------------------------------------
-    # Read history
-    # --------------------------------------------------------
-    def get_burden_history(self):
-        with self.engine.begin() as conn:
-            rows = conn.execute(text("""
-                SELECT id, field_name,
-                    field_value_float, field_value_text,
-                    valid_from, valid_upto, modifier, ip_address
-                FROM burden_distribution_history
-                ORDER BY field_name, valid_from DESC
-            """)).fetchall()
-
-        output = []
-        for r in rows:
-            value = (
-                r.field_value_text
-                if r.field_value_text is not None
-                else r.field_value_float
-            )
-
-            output.append(
-                {
-                    "id": r.id,
-                    "field_name": r.field_name,
-                    "value": value,
-                    "valid_from": r.valid_from,
-                    "valid_upto": r.valid_upto,
-                    "modifier": r.modifier,
-                    "ip_address": r.ip_address,
-                }
-            )
-
-        return output
-
-    # --------------------------------------------------------
-    # Query field value at a specific time
-    # --------------------------------------------------------
-    def get_all_current_burden_values(self, ts):
-        with self.engine.begin() as conn:
-            rows = conn.execute(
-                text("""
-                SELECT DISTINCT ON (field_name)
-                    field_name,
-                    field_value_float,
-                    field_value_text
-                FROM burden_distribution_history
-                WHERE valid_from <= :ts
-                AND (valid_upto IS NULL OR valid_upto >= :ts)
-                ORDER BY field_name, valid_from DESC
-            """),
-                {"ts": ts},
-            ).fetchall()
-
-        return {
-            r.field_name: (
-                r.field_value_text
-                if r.field_value_text is not None
-                else r.field_value_float
-            )
-            for r in rows
-        }
+    def delete_burden_history(self, record_ids: list[int]) -> None:
+        """Delete burden-history records by IDs."""
+        self._burden_repository.delete_burden_history(record_ids)

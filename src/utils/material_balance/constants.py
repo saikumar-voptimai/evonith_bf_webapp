@@ -114,6 +114,10 @@ class MaterialSpec:
     mass_field: str
     composition: Dict[str, Tuple[str, str]] = field(default_factory=dict)
     ash_assumption_key: str | None = None
+    # Column on the RM row that carries gross moisture wt% for this fuel.
+    # Used by the ASH handler to convert net-fuel-basis species (e.g. S)
+    # from % of gross mass to % of dry fuel.  None = treat fuel as moisture-free.
+    moisture_col: str | None = None
 
 
 # Coke composition columns: FC% goes to C; ash distributed via assumption;
@@ -128,6 +132,7 @@ _COKE = MaterialSpec(
         "coke_moist_pct": ("H2O", "H2O"),
     },
     ash_assumption_key="coke",
+    moisture_col="coke_moist_pct",
 )
 
 _NUT_COKE = MaterialSpec(
@@ -139,6 +144,7 @@ _NUT_COKE = MaterialSpec(
         "nutcoke_moist_pct": ("H2O", "H2O"),
     },
     ash_assumption_key="nutcoke",
+    moisture_col="nutcoke_moist_pct",
 )
 
 _PCI = MaterialSpec(
@@ -197,20 +203,20 @@ _SINTER = MaterialSpec(
 
 _PELLET = MaterialSpec(
     name="Pellet",
-    mass_field="lloyds_pellet_mt",
+    mass_field="pellet_mt",
     composition={
-        "lloyds_pellet_pct_fe2o3": ("Fe2O3", "oxide"),
-        "lloyds_pellet_pct_sio2": ("SiO2", "oxide"),
-        "lloyds_pellet_pct_cao": ("CaO", "oxide"),
-        "lloyds_pellet_pct_mgo": ("MgO", "oxide"),
-        "lloyds_pellet_pct_al2o3": ("Al2O3", "oxide"),
-        "lloyds_pellet_pct_mno": ("MnO", "oxide"),
-        "lloyds_pellet_pct_k2o": ("K2O", "oxide"),
-        "lloyds_pellet_pct_na2o": ("Na2O", "oxide"),
-        "lloyds_pellet_pct_tio2": ("TiO2", "oxide"),
-        "lloyds_pellet_pct_p": ("P", "direct"),
-        "lloyds_pellet_pct_tm": ("H2O", "H2O"),
-        "lloyds_pellet_pct_loi": ("LOI", "LOI"),
+        "pellet_pct_fe2o3": ("Fe2O3", "oxide"),
+        "pellet_pct_sio2": ("SiO2", "oxide"),
+        "pellet_pct_cao": ("CaO", "oxide"),
+        "pellet_pct_mgo": ("MgO", "oxide"),
+        "pellet_pct_al2o3": ("Al2O3", "oxide"),
+        "pellet_pct_mno": ("MnO", "oxide"),
+        "pellet_pct_k2o": ("K2O", "oxide"),
+        "pellet_pct_na2o": ("Na2O", "oxide"),
+        "pellet_pct_tio2": ("TiO2", "oxide"),
+        "pellet_pct_p": ("P", "direct"),
+        "pellet_pct_tm": ("H2O", "H2O"),
+        "pellet_pct_loi": ("LOI", "LOI"),
     },
 )
 

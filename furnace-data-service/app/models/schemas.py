@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RmChoice(str, Enum):
@@ -34,8 +34,10 @@ class ResponseFormat(str, Enum):
 class OfflineReportType(str, Enum):
     hm_slag = "HM_SLAG"
     charge = "CHARGE"
-    rm_composition = "RM_COMPOSITION"
     dpr = "DPR"
+    rm_composition = "RM_COMPOSITION"
+    burden_distribution = "BURDEN_DISTRIBUTION"
+    hopper_management = "HOPPER_MANAGEMENT"
 
 
 # ---- Online/Offline requests ----
@@ -59,7 +61,16 @@ class OnlineFetchRequest(BaseModel):
 
 
 class OfflineFetchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     report_type: OfflineReportType
+    table_name: Optional[str] = Field(
+        None,
+        description=(
+            "Optional explicit Neon table override. Accepts schema-qualified "
+            "table names and legacy aliases such as 'rm_hm'."
+        ),
+    )
     preset: Optional[str] = Field(
         None,
         description="Preset time window e.g. 'last 1 month'.",
@@ -67,6 +78,14 @@ class OfflineFetchRequest(BaseModel):
     )
     start_time: Optional[datetime] = Field(None, description="UTC start time (ignored if preset is set)")
     end_time: Optional[datetime] = Field(None, description="UTC end time (ignored if preset is set)")
+    query_type: QueryType = Field(
+        QueryType.ts,
+        description="'ts', 'windowed-average', or 'average'.",
+    )
+    window: Optional[str] = Field(
+        "1 hour",
+        description="PostgreSQL interval for Neon windowed-average, e.g. '1 hour'.",
+    )
     format: ResponseFormat = ResponseFormat.json
 
 
@@ -75,6 +94,8 @@ class OfflineFetchRequest(BaseModel):
 class DataMeta(BaseModel):
     measurements: Optional[List[str]] = None
     report_type: Optional[str] = None
+    source: Optional[str] = None
+    table_name: Optional[str] = None
     query_type: Optional[str] = None
     window: Optional[str] = None
     start: Optional[str] = None

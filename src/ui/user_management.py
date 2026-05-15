@@ -7,7 +7,7 @@ to add new users with role assignment from an admin interface.
 # register_page.py
 import streamlit as st
 
-from data.db import Database
+from data.db import UserDataService
 from domain.auth_service import AuthService
 
 
@@ -18,13 +18,13 @@ class RegisterPage:
     with :class:`~domain.auth_service.AuthService` for creating new users.
 
     Attributes:
-        db:           :class:`~data.db.Database` instance for persistence.
+        db:           :class:`~data.db.UserDataService` instance for persistence.
         auth_service: :class:`~domain.auth_service.AuthService` facade.
     """
 
     def __init__(self) -> None:
         """Initialise the database connection and authentication service."""
-        self.db = Database()
+        self.db = UserDataService()
         self.auth_service = AuthService(self.db)
 
     # ------------------------------

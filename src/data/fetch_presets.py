@@ -25,6 +25,39 @@ WINDOW_FREQUENCY_MAP: dict[str, str | None] = {
 OFFLINE_REPORT_LABEL_MAP: dict[str, str] = {
     "HM_SLAG": "HM & Slag",
     "CHARGE": "Charge",
-    "RAW_MATERIAL_COMPOSITION": "Bunker Report",
     "DPR": "DPR",
+    "RAW_MATERIAL_COMPOSITION": "Bunker Report",
+    "RM_COMPOSITION": "Raw Material Composition",
+    "BURDEN_DISTRIBUTION": "Burden Distribution",
+    "HOPPER_MANAGEMENT": "Hopper Management",
 }
+
+OFFLINE_TABLE_LABEL_MAP: dict[str, str] = {
+    "offline_feed.charge_data": "Charge",
+    "offline_feed.dpr_data": "DPR",
+    "offline_feed.hot_metal_slag_analysis": "HM & Slag",
+    "offline_feed.ore_chemistry": "Ore Chemistry",
+    "offline_feed.sinter_chemistry": "Sinter Chemistry",
+    "offline_feed.fuel_chemistry": "Fuel Chemistry",
+    "offline_feed.flux_chemistry": "Flux Chemistry",
+    "offline_feed.raw_material_strength_analysis": "Raw Material Strength",
+    "offline_feed.raw_material_stock": "Raw Material Stock",
+    "offline_feed.v_charge_material_quantities": "Charge Material Quantities",
+    "offline_feed.v_dpr_material_quantities": "DPR Material Quantities",
+    "offline_feed.feed_material_columns": "Feed Material Column Map",
+    "offline_feed.historical_static_ml_dataset": "Static ML Dataset",
+    "ops_config.burden_history": "Burden History",
+    "ops_config.hopper_raw_material_history": "Hopper Raw Material History",
+    "plant_master.materials": "Materials",
+    "plant_master.hoppers": "Hoppers",
+    "plant_master.units": "Units",
+    "plant_master.material_categories": "Material Categories",
+}
+
+
+def offline_table_label(table_name: str) -> str:
+    """Return the user-facing label for a configured database table."""
+    if table_name in OFFLINE_TABLE_LABEL_MAP:
+        return OFFLINE_TABLE_LABEL_MAP[table_name]
+    short_name = table_name.rsplit(".", 1)[-1]
+    return short_name.replace("_", " ").title()

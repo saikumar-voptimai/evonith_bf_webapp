@@ -7,7 +7,7 @@ and session state initialisation via :func:`~utils.session.login_user`.
 # # ui/login_page.py
 import streamlit as st
 
-from data.db import Database
+from data.db import UserDataService
 from domain.auth_service import AuthService
 from utils.session import login_user
 
@@ -20,13 +20,13 @@ class LoginPage:
     session via :func:`~utils.session.login_user`.
 
     Attributes:
-        db:           :class:`~data.db.Database` instance for credential lookup.
+        db:           :class:`~data.db.UserDataService` instance for credential lookup.
         auth_service: :class:`~domain.auth_service.AuthService` facade.
     """
 
     def __init__(self) -> None:
         """Initialise the login page with a fresh database connection."""
-        self.db = Database()
+        self.db = UserDataService()
         self.auth_service = AuthService(self.db)
 
     # ---------------------------------------------------

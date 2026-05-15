@@ -1,9 +1,11 @@
 import re
 from datetime import date
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
-from memory.vector_store import QdrantVectorStore
 from utils.payload_helpers import window_id_to_uuid
+
+if TYPE_CHECKING:
+    from agents.memory.vector_store import QdrantVectorStore
 
 # Window ID builders (DERIVABLE LEVELS ONLY)
 
@@ -52,7 +54,7 @@ def _parse_shift_window_id(window_id: str) -> Optional[tuple[str, str]]:
 
 # Qdrant fetch helper (EXACT ID LOOKUP)
 def fetch_from_qdrant(
-    vector_store: QdrantVectorStore,
+    vector_store: "QdrantVectorStore",
     window_id: str,
 ) -> Optional[Dict]:
     """

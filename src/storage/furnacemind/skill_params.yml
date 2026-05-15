@@ -1,0 +1,120 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Blast Furnace — Skill Calibration Parameters
+# ─────────────────────────────────────────────────────────────────────────────
+# Source: Feb–Mar 2026 best-shift regression (best 20% of shifts by unit cost)
+# To update: re-run notebooks/skill_calibration.ipynb, paste new values here.
+# Python code never needs to change — only this file.
+# Last updated: 2026-04-04
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Tier 1: Operator-controllable in the current shift ──────────────────────
+# abs_coeff  = |OLS regression coefficient| on the unit-cost model
+# adverse    = condition under which the current value is flagged as adverse
+#   type: "lt"    → adverse if value < threshold
+#   type: "range" → adverse if lo ≤ value ≤ hi  (the bad band, not the good band)
+# lag_hours  = how many hours before the change shows up in unit cost
+
+tier1:
+  "O2 ENRICHMENT %":
+    best_mid: 4.6
+    best_band: [4.4, 4.8]
+    abs_coeff: 1.204
+    adverse: {type: lt, threshold: 3.8}
+    lag_hours: 0
+    unit: "%"
+
+  "HOT BLAST TEMP.OC":
+    best_mid: 1212.0
+    best_band: [1199.0, 1225.0]
+    abs_coeff: 0.390
+    adverse: {type: lt, threshold: 1190.0}
+    lag_hours: 0
+    unit: "°C"
+
+  "WEIGHTED_COKE_ANGLE":
+    best_mid: 27.3
+    best_band: [27.0, 27.6]
+    abs_coeff: 3.732
+    adverse: {type: range, lo: 25.1, hi: 26.8}
+    lag_hours: 4
+    unit: "deg"
+
+  "WEIGHTED_NON_COKE_ANGLE":
+    best_mid: 27.3
+    best_band: [27.0, 27.6]
+    abs_coeff: 3.092
+    adverse: {type: lt, threshold: 25.8}
+    lag_hours: 4
+    unit: "deg"
+
+  "CHARGES/HRS.":
+    best_mid: 6.5
+    best_band: [6.5, 7.5]
+    abs_coeff: 0.300
+    adverse: {type: lt, threshold: 6.35}
+    lag_hours: 0
+    unit: "ch/hr"
+
+
+# ── Tier 2: Raw material / quality — advisory only (next procurement cycle) ──
+# band_lo / band_hi: best-shift operating band.
+# adverse_threshold: value above this threshold triggers ADVERSE flag (null = not checked).
+# null band_lo/band_hi means "keep near best-shift — no hard band available yet".
+
+tier2:
+  "PCI_ASH%":
+    band_lo: 8.4
+    band_hi: 10.4
+    adverse_threshold: 11.1
+    lag_hours: 4
+    unit: "%"
+
+  "COKE_MOIST%":
+    band_lo: 2.3
+    band_hi: 3.0
+    adverse_threshold: 4.35
+    lag_hours: 1
+    unit: "%"
+
+  "COKE_ASH%":
+    band_lo: 11.39
+    band_hi: 11.60
+    adverse_threshold: 11.85
+    lag_hours: 0
+    unit: "%"
+
+  "NUTCOKE_ASH%":
+    band_lo: null
+    band_hi: null
+    adverse_threshold: null
+    lag_hours: 2
+    unit: "%"
+
+  "SINTER_BASICITY":
+    band_lo: null
+    band_hi: null
+    adverse_threshold: null
+    lag_hours: 2
+    unit: "-"
+
+  "ORE_TM%":
+    band_lo: 3.05
+    band_hi: 3.30
+    adverse_threshold: 3.63
+    lag_hours: 1
+    unit: "%"
+
+
+# ── Tier 3: Guardrails — do NOT push Tier 1 harder if these are adverse ─────
+tier3_guardrail_cols:
+  - "TOPBAR"
+  - "DIFFERENTIAL PRESSURETOTALBAR"
+  - "PERMEABILITYKGS/HR."
+  - "CHEM_PCT_SI"
+  - "TOTAL HEAT LOAD"
+
+
+# ── Unit cost formula ────────────────────────────────────────────────────────
+unit_cost_col: "UNITCOST LAKHS/THM"
+# Benchmark = bottom X-th percentile of 30-day history (lower cost = better)
+benchmark_percentile: 0.20

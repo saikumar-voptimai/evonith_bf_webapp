@@ -11,6 +11,41 @@ elements:
 - O
 - N
 - H
+static_dataset:
+  mass_alias_keys:
+  - coke_mt
+  - nutcoke_prime_mt
+  - pci2_mt
+  - ore_mt
+  - sinter_mt
+  - pellet_mt
+  - flux_mt
+  process_alias_keys:
+  - hot_blast_volume_nm3hr
+  - hot_blast_temp_c
+  - hot_blast_pressure_bar
+  - oxygen_enrichment_pct
+  - steam_kgs_hr
+  - furnace_top_gas_analysis_co_pct
+  - furnace_top_gas_analysis_co2_pct
+  - furnace_top_gas_analysis_h2_pct
+  - top_pressure_bar
+  - body_etaco
+  - production_per_hour
+  - oxygen_flow_nm3hr
+  online_influx_alias_keys:
+    hot_blast_vol_nm3h: hot_blast_volume_nm3hr
+    hot_blast_temp: hot_blast_temp_c
+    hot_blast_press: hot_blast_pressure_bar
+    oxygen_enrichment_pct: oxygen_enrichment_pct
+    steam_injection: steam_kgs_hr
+    co_pct: furnace_top_gas_analysis_co_pct
+    co2_pct: furnace_top_gas_analysis_co2_pct
+    h2_pct: furnace_top_gas_analysis_h2_pct
+    top_press_avg: top_pressure_bar
+    body_etaco: body_etaco
+    production_per_hour: production_per_hour
+    oxygen_flow_nm3h: oxygen_flow_nm3hr
 constants:
   rho_air_ntp_kg_per_nm3: 1.293
   air_o2_vol_frac: 0.208
@@ -29,6 +64,10 @@ coke_ash_analysis_pct:
   K2O: 0.18
   S: 0.72
   P: 0.042
+# Species listed here are reported as wt% of NET FUEL (gross minus moisture),
+# not as wt% of ash. S in standard ash-analysis reports is on this basis.
+coke_net_fuel_basis_species:
+  - S
 nutcoke_ash_analysis_pct:
   SiO2: 55.64
   Al2O3: 27.25
@@ -40,6 +79,8 @@ nutcoke_ash_analysis_pct:
   K2O: 0.17
   S: 0.76
   P: 0.040
+nutcoke_net_fuel_basis_species:
+  - S
 pci_ash_analysis_pct:
   SiO2: 47.12
   Al2O3: 24.68
@@ -51,6 +92,8 @@ pci_ash_analysis_pct:
   K2O: 1.524
   S: 0.40
   P: 0.042
+pci_net_fuel_basis_species:
+  - S
 dpr_field_mapping:
   hm_mass_t: null
   slag_mass_t: null

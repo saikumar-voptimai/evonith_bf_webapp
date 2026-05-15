@@ -46,6 +46,7 @@ from utils.material_balance.outputs import (
 log = logging.getLogger("root")
 
 # Stream labels used in the inputs/outputs nested dicts.
+#TODO: Standardise the name. Maybe all caps?
 GAS_INPUT_BLAST = "Hot Blast"
 GAS_INPUT_O2 = "O2 Enrichment"
 GAS_INPUT_STEAM = "Steam"
@@ -71,7 +72,7 @@ class BalanceResult:
             "Assumptions & limitations" expander on the page.
         warnings: List of human-readable issues raised during the run.
         used_dpr: True iff DPR mass mapping was complete and applied.
-        n_rm_rows: How many hourly CSV rows were available for the day.
+        n_rm_rows: How many hourly static-dataset rows were available for the day.
         rm_lag_hours: Lag applied to RM / composition window.
         blast_lag_hours: Lag applied to blast / process-param window.
         dust_catcher_t: Manually-entered dust catcher daily tonnage.
@@ -165,7 +166,7 @@ def run_full_balance(
 ) -> BalanceResult:
     """Compute the full element balance for one IST calendar day.
 
-    Primary data source is the static ML-dataset CSV (via
+    Primary data source is the static ML dataset (via
     :func:`~utils.material_balance.data_sources.fetch_static_rm_for_day` and
     siblings).  DPR from InfluxDB is used as an optional override for masses
     when the mapping is configured.
@@ -196,6 +197,10 @@ def run_full_balance(
         "coke":    cfg.get("coke_ash_analysis_pct") or cfg.get("coke_ash_assumption_pct", {}),
         "nutcoke": cfg.get("nutcoke_ash_analysis_pct", {}),
         "pci":     cfg.get("pci_ash_analysis_pct") or cfg.get("pci_ash_assumption_pct", {}),
+        # Species whose wt% is reported on net-fuel basis (after moisture), not ash basis.
+        "coke_net_fuel_basis_species":    cfg.get("coke_net_fuel_basis_species", []),
+        "nutcoke_net_fuel_basis_species": cfg.get("nutcoke_net_fuel_basis_species", []),
+        "pci_net_fuel_basis_species":     cfg.get("pci_net_fuel_basis_species", []),
     }
     dust_composition = cfg.get("dust_catcher_composition_pct", {}) or {}
 
@@ -209,7 +214,7 @@ def run_full_balance(
     if rm_df is None or rm_df.empty:
         warnings.append(
             f"No raw-material data found for {day.isoformat()} in the static "
-            "CSV. Select a different date or check the CSV date range."
+            "static dataset. Select a different date or check the available date range."
         )
 
     rm_row = (
@@ -321,7 +326,7 @@ def run_full_balance(
     gas_phase: Dict[str, float] = {}
     gas_phase.update(blast_dbg)
     gas_phase.update(top_gas_dbg)
-    gas_phase["steam_kgh"] = float(online.get("steam_injection", 0.0) or 0.0)
+    gas_phase["steam_kgh"] = float(online.get("steam_kgs_hr", 0.0) or 0.0)
     gas_phase["hm_mass_t"] = hm_mass_t
     gas_phase["slag_mass_t"] = slag_mass_t
     gas_phase["dust_catcher_t"] = dust_catcher_t

@@ -1,0 +1,149 @@
+.feedback-shell {
+    padding: 0.75rem 0 1rem 0;
+}
+
+.feedback-hero {
+    border-radius: 18px;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+    color: #08242a;
+    background:
+        radial-gradient(circle at 90% -10%, rgba(255, 255, 255, 0.65), transparent 45%),
+        linear-gradient(115deg, #c7f6ef 0%, #d7efff 42%, #ffe9d4 100%);
+    border: 1px solid #9cd5cf;
+    box-shadow: 0 10px 30px rgba(7, 72, 86, 0.12);
+}
+
+.feedback-hero h2 {
+    margin: 0;
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+
+.feedback-hero p {
+    margin: 0.35rem 0 0;
+    opacity: 0.9;
+    font-size: 0.97rem;
+}
+
+.feedback-section-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #113842;
+    margin: 1rem 0 0.6rem 0;
+}
+
+.feedback-shell div[data-testid="stForm"] {
+    border: 1px solid #d9e6eb;
+    border-radius: 14px;
+    padding: 0.95rem 1rem 1.1rem;
+    background: linear-gradient(180deg, #ffffff, #fbfcff);
+    box-shadow: 0 8px 22px rgba(17, 56, 66, 0.06);
+}
+
+.feedback-shell div[data-testid="stMetric"] {
+    border: 1px solid #d9e6eb;
+    border-radius: 10px;
+    padding: 0.75rem 0.8rem;
+    background: #f8fbfd;
+}
+
+.feedback-note {
+    margin-top: 0.2rem;
+    color: #40666f;
+    font-size: 0.88rem;
+}
+
+.feedback-chip {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 0.18rem 0.62rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: lowercase;
+}
+
+.feedback-chip-criticality-low {
+    background: #e8fff2;
+    color: #0d7a3f;
+    border: 1px solid #a8ebc3;
+}
+
+.feedback-chip-criticality-medium {
+    background: #f9f5dc;
+    color: #85640f;
+    border: 1px solid #e8d995;
+}
+
+.feedback-chip-criticality-high {
+    background: #ffe8da;
+    color: #a7410d;
+    border: 1px solid #ffb895;
+}
+
+.feedback-chip-criticality-critical {
+    background: #ffe2e4;
+    color: #a20822;
+    border: 1px solid #f3a7b1;
+}
+
+.feedback-chip-status-open {
+    background: #e7f6ff;
+    color: #005f92;
+    border: 1px solid #abd9f3;
+}
+
+.feedback-chip-status-in-progress {
+    background: #ede9ff;
+    color: #3a2b90;
+    border: 1px solid #c6b9f8;
+}
+
+.feedback-chip-status-closed {
+    background: #ececec;
+    color: #4f4f4f;
+    border: 1px solid #cecece;
+}
+
+.feedback-chip-status-resolved {
+    background: #e3faed;
+    color: #07663a;
+    border: 1px solid #aee7c6;
+}
+
+.feedback-chip-status-dependency-conflict {
+    background: #fff0df;
+    color: #9b5f00;
+    border: 1px solid #f1c48a;
+}
+
+.feedback-board-card {
+    border: 1px solid #d9e6eb;
+    border-radius: 14px;
+    padding: 0.9rem 1rem;
+    margin-bottom: 0.55rem;
+    background: linear-gradient(180deg, #ffffff, #fbfcff);
+    box-shadow: 0 8px 22px rgba(17, 56, 66, 0.06);
+}
+
+.feedback-board-card code {
+    font-size: 0.85rem;
+}
+
+.feedback-meta {
+    color: #4f6970;
+    font-size: 0.86rem;
+}
+
+.feedback-board-empty {
+    border: 1px dashed #b7ced3;
+    border-radius: 12px;
+    padding: 1.1rem 1rem;
+    color: #45656d;
+    background: #f8fbfd;
+}
+
+.feedback-shell img {
+    border-radius: 10px;
+}

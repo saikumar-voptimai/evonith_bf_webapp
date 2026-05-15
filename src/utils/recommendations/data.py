@@ -6,7 +6,6 @@ import pandas as pd
 
 from furnace_data.influx.base import BaseDataFetcher
 from data.ml.static_csv import load_static_dataset
-from data.retrieval import fetch_offline_data
 
 
 class DataframesProcessor:
@@ -45,31 +44,25 @@ class DataframesProcessor:
 
     def fetch_historical_data(self) -> pd.DataFrame:
         """
-        Fetch historical data from the CSV file specified in the configuration.
+        Fetch historical data from the static ML dataset.
         Returns:
             pd.DataFrame: DataFrame containing historical data.
         """
         data_rel_path = self.config["DATA"]
         df_hist = load_static_dataset(data_rel_path)
-        df_hist.index = pd.to_datetime(df_hist.index, format="%d/%m/%Y %H:%M", utc=True)
+        df_hist.index = pd.to_datetime(df_hist.index, errors="coerce")
         return df_hist
 
-    def fetch_live_rm_data(self) -> pd.DataFrame:
+    def fetch_live_rm_data(self) -> pd.Series:
         """
-        Fetch latest raw material input data from InfluxDB.
+        Return the most recent raw material row from the static ML dataset.
+
+        The static ML dataset is already a wide flat frame with ML column names,
+        so no Neon query or rename is needed here.
         Returns:
-            pd.DataFrame: DataFrame containing latest raw material input data.
+            pd.Series: Latest row from the static ML dataset.
         """
-        field_mapping = self.config_vsense.get("field_mapping", {})
-        ml_cfg = self.config_vsense.get("influxdb_ml_database", {})
-        df_live_ip = fetch_offline_data(
-            measurement=ml_cfg.get("measurements", "rm_charge_data"),
-            time_range=ml_cfg.get("time_range", "last 1 month"),
-            database=ml_cfg.get("database", "ml_dataset"),
-        )
-        df_live_ip = df_live_ip.rename(columns=field_mapping)
-        latest_row = df_live_ip.iloc[-1]
-        return latest_row
+        return self.df_hist.iloc[-1]
 
     def create_latest_row(self) -> pd.DataFrame:
         """
@@ -114,7 +107,7 @@ class DataframesProcessor:
         # Example: Unit cost feature
         live_data["UNITCOST LAKHS/THM"] = 0.25 * (
             live_data["COKE RATE KG/THM"]
-            + self.config["Coke to PCI"] * live_data["ACTUALKG/THM."]
+            + self.config["Coke to PCI"] * live_data["PCI_KG/THM"]
         )
         return live_data
 

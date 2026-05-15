@@ -1,0 +1,1 @@
+"""FurnaceMind UI helpers package."""

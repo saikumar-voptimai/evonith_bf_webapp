@@ -39,8 +39,8 @@ The Streamlit app serves 8 pages, each tackling a distinct operational concern:
 - **AI optimisation** — blast parameter recommendations against 3 objectives
 - **Channeling detection** — propensity scoring for gas-flow asymmetry
 - **Material balance** — per-element daily mass balance with Sankey, bars, and closure table
-- **FurnaceMind** — conversational AI co-operator with structured shift memory
-- **Reports** — shift/daily/weekly/bi-weekly operational summaries
+- **FurnaceMind** — conversational AI co-operator with structured shift memory and reports
+- **Feedback** — ticket board for bug reports, feature requests, and issue tracking
 
 ---
 
@@ -52,19 +52,16 @@ The Streamlit app serves 8 pages, each tackling a distinct operational concern:
 │                                                                  │
 │  custom_pages/         ← 8 page entry points                    │
 │  │                                                               │
-│  ├── agents/           ← FurnaceMind tool definitions + agent    │
-│  │   └── cooperate/   ← AI Co-Operate: agent loop, skills,       │
-│  │                       context, artifacts, prompts             │
-│  │                                                               │
-│  ├── core/             ← Shift building, z-score analysis,       │
-│  │                       stability index, contextual comparison  │
+│  ├── agents/           ← FurnaceMind subsystem (all AI code)      │
+│  │   ├── furnacemind/  ← Agent loop, skills, context, prompts    │
+│  │   ├── llm/          ← OpenRouter + OpenAI client wrappers     │
+│  │   ├── memory/       ← Qdrant vector stores, structured JSON   │
+│  │   ├── embeddings/   ← Sentence-transformer + cloud embeddings │
+│  │   └── multimodal/   ← File ingestion (PDF, DOCX, XLSX…)       │
 │  │                                                               │
 │  ├── data/             ← InfluxDB fetchers, ML pipeline,         │
 │  │   ├── fetchers/     ← specialised time-series fetchers        │
 │  │   └── ml/           ← ML dataset service, cleaning, caching   │
-│  │                                                               │
-│  ├── memory/           ← Qdrant vector stores, structured JSON   │
-│  │                       store, shift schemas, aggregation       │
 │  │                                                               │
 │  ├── utils/            ← Logger, session, settings, prompts,     │
 │  │   ├── copilot/      ← AI Copilot page helpers                 │
@@ -72,9 +69,6 @@ The Streamlit app serves 8 pages, each tackling a distinct operational concern:
 │  │                                                               │
 │  ├── ui/               ← Shared Streamlit components             │
 │  ├── plotters/         ← Contour chart builders                  │
-│  ├── llm/              ← OpenRouter + OpenAI client wrappers     │
-│  ├── embeddings/       ← Sentence-transformer + cloud embeddings │
-│  ├── multimodal/       ← File ingestion (PDF, DOCX, XLSX…)       │
 │  ├── domain/           ← Auth service (PostgreSQL)               │
 │  └── geometries/       ← Furnace shape geometry                  │
 └─────────────────────────────────────────────────────────────────┘
@@ -109,21 +103,19 @@ evonith_webapp/
 │   ├── __init__.py
 │   │
 │   ├── custom_pages/           Page modules (named for Streamlit ordering)
-│   │   ├── 1_🏭_Welcome.py
-│   │   ├── 2_📓_Data_Explorer.py
-│   │   ├── 3_📈_Data_Visualisation.py
-│   │   ├── 4_💡_Recommendations.py
-│   │   ├── 5_🤖_AI_Copilot.py
-│   │   ├── 6_📝_Reports.py
-│   │   ├── 6_⚖️_Material_Balance.py
-│   │   └── 7_🧠_FurnaceMind.py
+│   │   ├── 1_Welcome.py
+│   │   ├── 2_Data_Explorer.py
+│   │   ├── 3_Data_Visualisation.py
+│   │   ├── 4_Recommendations.py
+│   │   ├── 5_AI_Copilot.py
+│   │   ├── 6_Material_Balance.py
+│   │   ├── 7_FurnaceMind.py
+│   │   └── 8_Feedback.py
 │   │
 │   ├── agents/                 LLM agent machinery
-│   │   ├── furnace_tools.py    Tool functions (fetch, merge, plot, search)
-│   │   ├── mcp_tools.py        Alternative MCP-style tool definitions
-│   │   ├── rag_router.py       RAG routing (backward compat)
+│   │   ├── furnace_tools.py    9 tool functions (fetch, merge, plot, search)
 │   │   ├── tool_errors.md      Log of recent tool call failures (fed to LLM context)
-│   │   └── cooperate/          AI Co-Operate sub-package
+│   │   └── furnacemind/         Agent orchestration sub-package
 │   │       ├── agent.py        Tool-calling loop + reasoning-model cleanup
 │   │       ├── artifacts.py    Plot/Data artifact panel renderer
 │   │       ├── context.py      SystemPromptContext: assembles system prompt
@@ -131,17 +123,14 @@ evonith_webapp/
 │   │       ├── prompts.py      Static prompt strings (TOOL_POLICY, heatload, etc.)
 │   │       └── skills.py       SkillEngine: pre-computes analysis, builds skill prompts
 │   │
-│   ├── core/                   Shift intelligence (no Streamlit dependencies)
-│   │   ├── shift_builder.py    Partitions DataFrames into 8-hour A/B/C windows
-│   │   ├── shift_analyzer.py   Z-score anomaly detection + LLM shift report
-│   │   ├── stability_index.py  FurnaceStabilityIndex: variability + anomaly + trend penalties
-│   │   ├── contextual_analyzer.py  Compares a shift against prior history
-│   │   ├── influence_attribution.py  Parameter influence scoring
-│   │   └── recurring_anomaly_tracker.py  Cross-shift anomaly persistence
-│   │
 │   ├── data/                   Data access layer
 │   │   ├── retrieval.py        Low-level InfluxDB fetch helpers (online + offline)
 │   │   ├── db.py               PostgreSQL SQLAlchemy session
+│   │   ├── tickets/            Feedback ticket persistence (SQLAlchemy 2.0)
+│   │   │   ├── models.py       ORM models: Ticket, TicketEvent, TicketImage
+│   │   │   ├── engine.py       Engine/session factory (SQLite default)
+│   │   │   ├── repository.py   Low-level CRUD
+│   │   │   └── service.py      Business logic + Pydantic view models
 │   │   ├── fetchers/           Specialised InfluxDB fetcher classes
 │   │   │   ├── base_data_fetcher.py
 │   │   │   ├── ts_data_fetcher.py
@@ -156,14 +145,13 @@ evonith_webapp/
 │   │       ├── static_dataset_manager.py  StaticDatasetManager — lag-aware CSV caching
 │   │       └── data_cleaning.py  DataCleaner — 16-stage configurable pipeline
 │   │
-│   ├── memory/                 Operational memory
-│   │   ├── schemas.py          Pydantic models: ShiftSummary, DailySummary, …
-│   │   ├── structured_store.py JSON file store (shift/daily/weekly/biweekly)
-│   │   ├── vector_store.py     QdrantVectorStore — 384-dim local embeddings
-│   │   ├── knowledge_vector_store.py  KnowledgeVectorStore — 1024-dim cloud embeddings
-│   │   ├── copilot_memory.py   Persistent conversation memory (JSON)
-│   │   ├── aggregation.py      Shift→day→week→biweek aggregation pipeline
-│   │   └── retriever.py        Hybrid retrieval from structured + vector store
+│   ├── agents/                 FurnaceMind agent subsystem
+│   │   ├── furnacemind/         Agent orchestration (page, agent loop, context, skills)
+│   │   ├── llm/                LLM clients (OpenRouter, OpenAI)
+│   │   ├── memory/             Operational memory (schemas, stores, fm_memory, aggregation)
+│   │   ├── embeddings/         Embedding clients (local sentence-transformers, cloud)
+│   │   ├── multimodal/         Document ingestion + parsers
+│   │   └── furnace_tools.py    9 tool functions (fetch, merge, search, plot)
 │   │
 │   ├── ui/                     Streamlit UI components
 │   │   ├── layout.py           Page header, sidebar layout helpers
@@ -178,6 +166,7 @@ evonith_webapp/
 │   │   └── hopper_admin_page.py  Admin: hopper/material config
 │   │
 │   ├── utils/                  Cross-cutting utilities
+│   │   ├── feedback_page.py    Feedback page UI helpers (board, KPIs, management)
 │   │   ├── logger.py           setup_logger() (YAML config) + get_logger(name)
 │   │   ├── session.py          is_logged_in(), is_admin(), is_supervisor()
 │   │   ├── settings.py         Pydantic Settings singleton (LLM, Qdrant, embeddings)
@@ -233,6 +222,8 @@ evonith_webapp/
 │   │
 │   ├── config/                 Static configuration
 │   │   ├── config_loader.py    load_config(filename) → dict
+│   │   ├── page_registry.py    Central page navigation registry (PAGE_REGISTRY)
+│   │   ├── logger_setting.yml  Logging configuration (YAML-based)
 │   │   ├── setting_ds_dv.yml   InfluxDB mappings, data_mapping, furnace geometry
 │   │   ├── setting_vsense.yml  V-OptimAIse: models, control/input/output params
 │   │   ├── materials.yml       Hopper + raw material definitions
@@ -245,7 +236,7 @@ evonith_webapp/
 │   │   │   ├── control_bounds.json       V-OptimAIse parameter bounds
 │   │   │   └── copilot_analysis/         Static LLM context docs
 │   │   ├── models/             Pre-trained joblib models + scalers (3 objectives)
-│   │   ├── css/                Custom CSS for pages
+│   │   ├── css/                Custom CSS for pages (incl. feedback_style.css)
 │   │   └── templates/          Jinja/HTML templates
 │   │
 │   ├── storage/                Runtime-generated storage
@@ -253,16 +244,15 @@ evonith_webapp/
 │   │   ├── daily_summaries.json
 │   │   ├── weekly_summaries.json
 │   │   ├── biweekly_summaries.json
-│   │   └── copilot/            FurnaceMind copilot storage
+│   │   └── furnacemind/         FurnaceMind storage
 │   │       ├── ai_cooperate_memory.json  Persistent conversation memory
 │   │       ├── skill_params.yml          SkillEngine calibration (recalibrate without code changes)
 │   │       ├── TOOLS1.md / TOOLS2.md     Tool routing rules (injected into system prompt)
 │   │       ├── SKILLS_BESTSHIFT.md       Best-shift parameter bands
 │   │       ├── SKILLS_HEATLOAD.md        Heatload skill reference
-│   │       └── SKILLS_OPTIMISE.md        Optimise skill reference
+│   │       ├── SKILLS_OPTIMISE.md        Optimise skill reference
+│   │       └── SKILLS_SHIFTREPORT.md    Shift report skill reference
 │   │
-│   └── notebooks/              Exploration notebooks
-│       └── exploration.ipynb
 │
 └── ml-dataset-api/             FastAPI sidecar (see §12)
     ├── app/
@@ -391,14 +381,6 @@ Single-date element balance: for each of 12 elements (Fe, C, Si, Ca, Mg, Al, Mn,
 
 ---
 
-### Page 6b — Reports (`6_📝_Reports.py`)
-
-Structured report viewer for persisted shift/daily/weekly/bi-weekly summaries stored in `storage/`.
-
-Reads directly from `memory/structured_store.py` via `StructuredStore.get_report(level, window_id)`.
-
----
-
 ### Page 7 — FurnaceMind (`7_🧠_FurnaceMind.py`)
 
 **Two-tab AI assistant for operators.**
@@ -407,7 +389,7 @@ Reads directly from `memory/structured_store.py` via `StructuredStore.get_report
 
 Conversational AI backed by OpenRouter with a full tool-calling loop. Supports reasoning models (DeepSeek-R1, MiniMax M2.5) — `<think>` blocks are stripped before display.
 
-**System prompt assembly** (`agents/cooperate/context.py`):
+**System prompt assembly** (`agents/furnacemind/context.py`):
 1. `AI_COOPERATE_SYSTEM` base prompt
 2. `CLAUDE.md` domain knowledge (up to 24,000 chars)
 3. `TOOLS*.md` — tool routing rules
@@ -434,10 +416,10 @@ Conversational AI backed by OpenRouter with a full tool-calling loop. Supports r
 | `load_static_shift_data` | Load a specific shift's data slice |
 | `search_shift_history` | Semantic search on Qdrant shift summaries (384-dim) |
 | `search_knowledge_docs` | Semantic search on uploaded operator docs (1024-dim) |
-| `execute_python_plot` | Execute sandboxed Plotly code; result in `st.session_state["copilot_fig"]` |
+| `execute_python_plot` | Execute sandboxed Plotly code; result in `st.session_state["fm_fig"]` |
 | `concat_datasets` | Concatenate two datasets |
 
-**Persistent memory** (`memory/copilot_memory.py`):
+**Persistent memory** (`agents/memory/fm_memory.py`):
 - `conversation_summary` — compressed summary of past sessions
 - `do_not_repeat` — rules learned from operator corrections (max 12)
 - `preferences` — operator preferences
@@ -445,7 +427,23 @@ Conversational AI backed by OpenRouter with a full tool-calling loop. Supports r
 
 #### Tab: Reports
 
-Renders `ui/reports.py` — the same report viewer as Page 6 but embedded in the FurnaceMind layout.
+Renders `ui/reports.py` — shift/daily/weekly/bi-weekly report viewer embedded in the FurnaceMind layout.
+
+---
+
+### Page 8 — Feedback (`8_Feedback.py`)
+
+A shared ticket board for operators and engineers to report bugs, suggest improvements, and track resolution.
+
+**Key features:**
+- New Feedback form: page selector, criticality, description, ideal closure, screenshot uploads
+- Board view: filterable/sortable ticket cards with status badges and criticality indicators
+- Overview KPIs: open/in-progress/resolved counts
+- Management panel (admin/supervisor only): status updates, comments, deletion
+
+**Data layer:** `data/tickets/` — SQLAlchemy 2.0 ORM with service/repository pattern. Three tables: `tickets`, `ticket_events` (audit trail), `ticket_images` (screenshot metadata). SQLite by default (`src/storage/feedback/tickets.db`); override via `TICKETS_DB_URL` env var.
+
+**Dependencies:** `data/tickets/`, `utils/feedback_page.py`, `config/page_registry.py`, `assets/css/feedback_style.css`
 
 ---
 
@@ -500,6 +498,12 @@ The static dataset at `assets/data/ml_dataset_filtered.csv` is the latest commit
 ### PostgreSQL
 
 Used for authentication and admin data (users, hoppers, materials, burden config). Accessed via SQLAlchemy through `data/db.py`. Schema uses **SCD Type-2** pattern (`valid_upto IS NULL` = current row).
+
+### Tickets Database
+
+SQLite-first, PostgreSQL-ready persistence for the Feedback page. Default location: `src/storage/feedback/tickets.db`. Override via `TICKETS_DB_URL` env var.
+
+Three tables: `tickets`, `ticket_events`, `ticket_images`. Schema auto-created via `Base.metadata.create_all()`. Follows service → repository → models pattern in `data/tickets/`.
 
 ### Qdrant Vector Store
 
@@ -560,13 +564,13 @@ Compares the current shift against the N most recent shifts from `StructuredStor
 ### FurnaceMind AI Co-Operate
 
 **LLM:** OpenRouter (any model — tested with GPT-4o, DeepSeek-R1, MiniMax M2.5)  
-**Architecture:** Custom tool-calling loop (`agents/cooperate/agent.py`) — NOT LangChain AgentExecutor  
+**Architecture:** Custom tool-calling loop (`agents/furnacemind/agent.py`) — NOT LangChain AgentExecutor  
 **Max iterations:** 8 tool calls per turn  
 **Thinking models:** `<think>…</think>` blocks stripped from output
 
-The `SkillEngine` (`agents/cooperate/skills.py`) pre-computes all numerical analysis before calling the LLM. The model receives only numbers and a report template — never generates or runs code for analysis.
+The `SkillEngine` (`agents/furnacemind/skills.py`) pre-computes all numerical analysis before calling the LLM. The model receives only numbers and a report template — never generates or runs code for analysis.
 
-Calibration lives entirely in `storage/copilot/skill_params.yml` — recalibrate regression coefficients, benchmark percentiles, and parameter bands without touching Python.
+Calibration lives entirely in `storage/furnacemind/skill_params.yml` — recalibrate regression coefficients, benchmark percentiles, and parameter bands without touching Python.
 
 ### V-OptimAIse
 
@@ -661,7 +665,7 @@ Material Balance Visualiser configuration:
 - `future_streams` — placeholder fields for dust catcher, sludge, granulation loss (all null in v1)
 - `closure_thresholds` — `good: [95, 105]`, `warning: [85, 115]` for traffic-light row colours
 
-### `storage/copilot/skill_params.yml`
+### `storage/furnacemind/skill_params.yml`
 
 SkillEngine calibration — recalibrate after a new regression run without touching Python:
 - `tier1` — `{col: {best_mid, abs_coeff, lag_hours, unit, adverse: {type, threshold}}}`
@@ -694,6 +698,9 @@ KNOWLEDGE_QDRANT_COLLECTION=knowledge_docs_voyage_1024
 
 # PostgreSQL
 DATABASE_URL=postgresql+psycopg2://user:pass@host/db
+
+# Tickets (optional — SQLite default if unset)
+TICKETS_DB_URL=sqlite:///src/storage/feedback/tickets.db
 
 # InfluxDB
 INFLUX_ONLINE_TOKEN=...
@@ -731,8 +738,8 @@ uv add <package>
 
 All pages execute with `src/` as the Python working directory. Use:
 ```python
-from agents.cooperate.agent import run_agent_loop   # correct
-from src.agents.cooperate.agent import run_agent_loop  # wrong
+from agents.furnacemind.agent import run_agent_loop   # correct
+from src.agents.furnacemind.agent import run_agent_loop  # wrong
 ```
 
 ---
@@ -775,6 +782,11 @@ pytest tests/ --cov=src --cov-report=term-missing
 cd ml-dataset-api
 uv run --group dev pytest test/ --cov=app --cov-fail-under=80
 ```
+
+**Key test files:**
+- `tests/test_tickets_service.py` — Ticket CRUD, status transitions, audit events (uses in-memory SQLite)
+- `tests/test_page_registry.py` — Page registry consistency checks
+- `tests/test_database_facade_sqlalchemy.py` — PostgreSQL database facade
 
 ---
 
