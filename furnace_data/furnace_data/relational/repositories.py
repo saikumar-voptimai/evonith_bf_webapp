@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pandas as pd
-from sqlalchemy import delete, select
+from sqlalchemy import String, and_, cast, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -15,13 +15,29 @@ from .models import (
     BURDEN_VALUE_COLUMNS,
     HOPPER_COLUMNS,
     BurdenHistory,
+    Conversation,
+    ConversationMessage,
+    FeedbackItem,
     Hopper,
     HopperRawMaterialHistory,
+    LongTermMemory,
     Material,
+    MemoryDocument,
+    MemorySummary,
+    Skill,
     User,
     UserRole,
     UserRoleAssignment,
+    utc_now,
 )
+
+
+def _new_id(prefix: str) -> str:
+    """Return a compact application id with a stable prefix."""
+    return f"{prefix}_{uuid4().hex}"
+
+
+_UNSET: Any = object()
 
 
 def _as_aware_utc(value: datetime) -> datetime:
