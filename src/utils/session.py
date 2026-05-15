@@ -49,6 +49,42 @@ def is_logged_in() -> bool:
     return False
 
 
+def current_user_id() -> str | None:
+    """
+    Return the database UUID for the authenticated Streamlit user.
+
+    The UI stores ``auth_user`` as the login name for display and older pages.
+    FurnaceMind persistence in UAT needs the UUID from ``identity.users``.
+    This helper first uses the UUID already stored at login time, then lazily
+    resolves older sessions that only have the username.
+
+    Args:
+         - None
+
+    Returns:
+         - return: str | None - Authenticated user's UUID string, or None when
+           the session user cannot be resolved.
+    """
+    user_id = str(st.session_state.get("auth_user_id") or "").strip()
+    if user_id:
+        return user_id
+
+    username = str(st.session_state.get("auth_user") or "").strip()
+    if not username:
+        return None
+
+    try:
+        from data.db import UserDataService
+
+        resolved_user_id = UserDataService().get_user_id(username)
+    except Exception:
+        return None
+
+    if resolved_user_id:
+        st.session_state["auth_user_id"] = resolved_user_id
+    return resolved_user_id
+
+
 def current_permissions() -> set[str]:
     """Return permissions for the current session role."""
     _set_permissions(st.session_state.get("role"))
@@ -75,16 +111,36 @@ def is_supervisor() -> bool:
     return is_logged_in() and st.session_state.get("role") == "supervisor"
 
 
-def login_user(username: str, role: str) -> None:
-    """Store the authenticated user and derived permissions for this session."""
+def login_user(username: str, role: str, user_id: str | None = None) -> None:
+    """
+    Store the authenticated user, database UUID, and permissions in session.
+
+    Args:
+         - username: str - Login username used by UI display and legacy pages.
+         - role: str - Authenticated role name.
+         - user_id: str | None - Optional ``identity.users.id`` UUID string.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
     role = str(role).strip().lower()
     st.session_state["auth_user"] = username
+    if user_id:
+        st.session_state["auth_user_id"] = str(user_id)
+    else:
+        st.session_state.pop("auth_user_id", None)
     st.session_state["role"] = role
     _set_permissions(role)
 
 
 def logout_user() -> None:
     """Clear authenticated session state and rerun the app."""
-    for key in ("auth_user", "role", "permissions", "admin_tool_selection"):
+    for key in (
+        "auth_user",
+        "auth_user_id",
+        "role",
+        "permissions",
+        "admin_tool_selection",
+    ):
         st.session_state.pop(key, None)
     st.rerun()

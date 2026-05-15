@@ -24,6 +24,7 @@ from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
 from ui.furnacemind import chat_interface, feedback_flow
 from utils.furnacemind.feedback_service import FurnaceMindFeedbackService
+from utils.session import current_user_id
 from utils.settings import settings
 from utils.shift_windows import last_completed_shift
 
@@ -208,8 +209,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     history_store = _cached_history_store()
     feedback_service = _cached_feedback_service()
     feedback_llm = _cached_feedback_llm()
-    user_id = str(st.session_state.get("auth_user") or "anonymous").strip()
-    user_id = user_id or "anonymous"
+    user_id = current_user_id()
     memory_summary_window = settings.memory_summary_message_window
     memory_summary_token_limit = settings.memory_summary_token_limit
 
@@ -223,8 +223,14 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     st.session_state.setdefault("fm_artifact_store", {})
+
+    if not user_id:
+        history_store = None
+        feedback_service = None
+        st.sidebar.caption("FurnaceMind user id unavailable for SQL persistence.")
+
     conversation_id: str | None = st.session_state.get("fm_conversation_id")
-    if history_store is not None:
+    if history_store is not None and user_id:
         try:
             conversation_id = history_store.ensure_conversation(
                 user_id=user_id,
@@ -245,7 +251,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     feedback_flow.process_pending_explicit_feedback(
         feedback_service=feedback_service,
         feedback_llm=feedback_llm,
-        user_id=user_id,
+        user_id=user_id or "",
     )
 
     context.refresh_session_context(
@@ -287,18 +293,18 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     feedback_flow.detect_and_save_chat_feedback(
         feedback_service=feedback_service,
         feedback_llm=feedback_llm,
-        user_id=user_id,
+        user_id=user_id or "",
         conversation_id=conversation_id,
         user_query=user_query,
     )
     feedback_lesson_context = (
         feedback_service.feedback_context(query=user_query, user_id=user_id)
-        if feedback_service is not None
+        if feedback_service is not None and user_id
         else ""
     )
 
     user_message_id: str | None = None
-    if history_store is not None and conversation_id:
+    if history_store is not None and conversation_id and user_id:
         try:
             user_message_id = history_store.add_user_message(
                 conversation_id=conversation_id,
@@ -358,7 +364,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     chat_interface.inject_artifacts(history_len_before)
 
     assistant_message_id: str | None = None
-    if history_store is not None and conversation_id:
+    if history_store is not None and conversation_id and user_id:
         try:
             assistant_message_id = history_store.add_assistant_message(
                 conversation_id=conversation_id,

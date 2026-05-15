@@ -297,7 +297,11 @@ class Conversation(Base):
     )
 
     conversation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("identity.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     model_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -330,7 +334,11 @@ class ConversationMessage(Base):
 
     message_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     conversation_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("identity.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sequence_num: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -355,7 +363,11 @@ class MemoryDocument(Base):
     )
 
     document_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("identity.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     file_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
@@ -387,7 +399,11 @@ class MemorySummary(Base):
     )
 
     summary_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("identity.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     conversation_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     summary_text: Mapped[str] = mapped_column(Text, nullable=False)
     source_message_id_start: Mapped[str | None] = mapped_column(
@@ -413,7 +429,11 @@ class LongTermMemory(Base):
     )
 
     memory_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("identity.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     memory_text: Mapped[str] = mapped_column(Text, nullable=False)
     qdrant_collection: Mapped[str | None] = mapped_column(String(128), nullable=True)
     qdrant_point_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -486,7 +506,11 @@ class FeedbackItem(Base):
     feedback_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     message_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     conversation_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("identity.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     source: Mapped[str] = mapped_column(String(64), nullable=False)
     polarity: Mapped[str] = mapped_column(String(32), nullable=False)
     feedback_text: Mapped[str | None] = mapped_column(Text, nullable=True)
