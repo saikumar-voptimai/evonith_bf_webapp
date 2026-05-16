@@ -56,10 +56,16 @@ def render_chat_history(*, height: int = _CHAT_HISTORY_HEIGHT) -> None:
          - return: None - This function does not return a value.
     """
     with st.container(height=height, border=False):
-        for item in st.session_state.chat_history:
+        history = st.session_state.chat_history
+        for index, item in enumerate(history):
             role = item.get("role", "assistant")
             with st.chat_message(role):
                 render_message(item)
+                if _can_collect_feedback(item):
+                    render_feedback_controls(
+                        item,
+                        raw_user_message=_previous_user_message(history, index),
+                    )
 
 
 def render_message(item: dict) -> None:
@@ -115,6 +121,118 @@ def render_message(item: dict) -> None:
             )
         else:
             st.caption("_Data no longer in session._")
+
+
+def _can_collect_feedback(item: dict) -> bool:
+    """
+    Check whether an assistant chat item can receive explicit feedback.
+
+    Feedback must be linked to a persisted assistant message. Artifact entries
+    are skipped because the feedback table expects the assistant answer text and
+    message id, not transient chart or dataframe render entries.
+
+    Args:
+         - item: dict - Chat history item being rendered.
+
+    Returns:
+         - return: bool - True when thumbs feedback can be shown.
+    """
+    return (
+        item.get("role") == "assistant"
+        and item.get("type", "text") == "text"
+        and bool(item.get("message_id"))
+        and bool(item.get("conversation_id"))
+        and bool(str(item.get("content") or "").strip())
+    )
+
+
+def _previous_user_message(history: list[dict], assistant_index: int) -> str:
+    """
+    Return the user message that produced an assistant response.
+
+    Args:
+         - history: list[dict] - Current Streamlit chat history.
+         - assistant_index: int - Index of the assistant message being rendered.
+
+    Returns:
+         - return: str - Previous user message text, or an empty string.
+    """
+    for index in range(assistant_index - 1, -1, -1):
+        item = history[index]
+        if item.get("type", "text") != "text":
+            continue
+        if item.get("role") == "user":
+            return str(item.get("content") or "").strip()
+    return ""
+
+
+def render_feedback_controls(item: dict, *, raw_user_message: str) -> None:
+    """
+    Render thumbs feedback controls below one assistant response.
+
+    The first click only selects positive or negative feedback. The user must
+    then write a short comment and submit it. The UI does not write to
+    PostgreSQL directly; it stores a pending feedback event in Streamlit
+    session state so the page renderer can process it through the feedback
+    service on the next rerun.
+
+    Args:
+         - item: dict - Assistant chat-history item receiving feedback.
+         - raw_user_message: str - User question that produced the answer.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
+    message_id = str(item.get("message_id") or "")
+    saved = st.session_state.setdefault("fm_feedback_saved_message_ids", set())
+    if message_id in saved:
+        st.caption("Feedback saved.")
+        return
+
+    feedback_key = f"fm_feedback_{message_id}"
+    selection = st.feedback("thumbs", key=feedback_key)
+    if selection is None:
+        return
+
+    polarity = "negative" if selection == 0 else "positive"
+    placeholder = (
+        "What should FurnaceMind repeat next time?"
+        if polarity == "positive"
+        else "What was wrong or missing in this answer?"
+    )
+
+    feedback_text = st.text_input(
+        "Feedback details",
+        placeholder=placeholder,
+        key=f"fm_feedback_text_{message_id}",
+        label_visibility="collapsed",
+    )
+    _, save_col = st.columns([0.82, 0.18])
+    with save_col:
+        submitted = st.button(
+            "Save",
+            key=f"fm_feedback_save_{message_id}",
+            use_container_width=True,
+        )
+
+    if not submitted:
+        return
+
+    feedback_text = feedback_text.strip()
+    if not feedback_text:
+        st.warning("Please add feedback details before saving.")
+        return
+
+    st.session_state["pending_fm_feedback"] = {
+        "source": "explicit",
+        "polarity": polarity,
+        "feedback_text": feedback_text,
+        "message_id": message_id,
+        "conversation_id": item.get("conversation_id"),
+        "raw_user_message": raw_user_message,
+        "assistant_response": str(item.get("content") or "").strip(),
+    }
+    st.rerun()
 
 
 def inject_artifacts(history_len_before: int) -> None:

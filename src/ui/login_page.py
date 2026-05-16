@@ -101,7 +101,7 @@ class LoginPage:
         result = self.auth_service.authenticate(username, password)
 
         if result:
-            login_user(result[0], result[1])
+            login_user(result[0], result[1], user_id=self.db.get_user_id(result[0]))
             st.success(f"✅ Welcome, {result[0]}!")
             st.rerun()
         else:

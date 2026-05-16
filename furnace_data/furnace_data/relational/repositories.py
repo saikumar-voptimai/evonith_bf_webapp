@@ -1113,7 +1113,7 @@ class FeedbackItemRepository:
         polarity: str,
         feedback_text: str | None = None,
         raw_user_message: str | None = None,
-        prev_assistant_message: str | None = None,
+        assistant_response: str | None = None,
         metadata: dict | None = None,
     ) -> FeedbackItem:
         """
@@ -1127,7 +1127,7 @@ class FeedbackItemRepository:
              - polarity: str - Feedback polarity, such as positive or negative.
              - feedback_text: str | None - Optional feedback comment.
              - raw_user_message: str | None - Original user message before the response.
-             - prev_assistant_message: str | None - Assistant response being reviewed.
+             - assistant_response: str | None - Assistant response being reviewed.
              - metadata: dict | None - Optional JSON metadata for the feedback.
 
         Returns:
@@ -1142,7 +1142,7 @@ class FeedbackItemRepository:
             polarity=polarity,
             feedback_text=feedback_text,
             raw_user_message=raw_user_message,
-            prev_assistant_message=prev_assistant_message,
+            assistant_response=assistant_response,
             metadata_json=metadata or {},
         )
         with self._session_factory() as session:

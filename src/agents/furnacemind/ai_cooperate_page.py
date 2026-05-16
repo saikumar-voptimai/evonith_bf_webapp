@@ -22,7 +22,9 @@ from agents.memory import fm_memory
 from agents.memory.conversation_history import ConversationHistoryStore
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
-from ui.furnacemind import chat_interface
+from ui.furnacemind import chat_interface, feedback_flow
+from utils.furnacemind.feedback_service import FurnaceMindFeedbackService
+from utils.session import current_user_id
 from utils.settings import settings
 from utils.shift_windows import last_completed_shift
 
@@ -141,23 +143,48 @@ def _cached_history_store() -> ConversationHistoryStore | None:
         return None
 
 
-def _current_user_id() -> str:
+@st.cache_resource(show_spinner=False)
+def _cached_feedback_service() -> FurnaceMindFeedbackService | None:
     """
-    Resolve the user id used for FurnaceMind persistence records.
+    Build the feedback service used for SQL and Qdrant lesson persistence.
 
-    The relational tables link conversations, messages, and summaries by user.
-    When the app does not provide an authenticated user in Streamlit session
-    state, this function returns a stable ``anonymous`` fallback so local testing
-    and unauthenticated sessions still work.
+    Feedback should never break the chat page. If the database, embedding
+    provider, or Qdrant is unavailable during startup, the page continues
+    without feedback persistence and shows a sidebar notice when needed.
 
     Args:
          - None
 
     Returns:
-         - return: str - Current user id or anonymous fallback.
+         - return: FurnaceMindFeedbackService | None - Feedback service when ready.
     """
-    user_id = str(st.session_state.get("auth_user") or "anonymous").strip()
-    return user_id or "anonymous"
+    try:
+        return FurnaceMindFeedbackService(embedding_client=_cached_embedding_client())
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_feedback_llm() -> OpenRouterClient | None:
+    """
+    Build the LLM client used for feedback detection and lesson extraction.
+
+    Feedback work uses the configured memory-compression model so lightweight
+    classification and lesson generation stay separate from the main answering
+    model while reusing the same OpenRouter connection settings.
+
+    Args:
+         - None
+
+    Returns:
+         - return: OpenRouterClient | None - LLM client for feedback helper tasks.
+    """
+    try:
+        return OpenRouterClient(
+            model_name=settings.llm.openrouter.memory_compression_model_name
+        )
+    except Exception:
+        return None
 
 
 def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
@@ -180,7 +207,9 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     context = _cached_context()
     engine = _cached_skill_engine()
     history_store = _cached_history_store()
-    user_id = _current_user_id()
+    feedback_service = _cached_feedback_service()
+    feedback_llm = _cached_feedback_llm()
+    user_id = current_user_id()
     memory_summary_window = settings.memory_summary_message_window
     memory_summary_token_limit = settings.memory_summary_token_limit
 
@@ -194,8 +223,14 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     st.session_state.setdefault("fm_artifact_store", {})
+
+    if not user_id:
+        history_store = None
+        feedback_service = None
+        st.sidebar.caption("FurnaceMind user id unavailable for SQL persistence.")
+
     conversation_id: str | None = st.session_state.get("fm_conversation_id")
-    if history_store is not None:
+    if history_store is not None and user_id:
         try:
             conversation_id = history_store.ensure_conversation(
                 user_id=user_id,
@@ -212,6 +247,12 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             st.sidebar.caption(f"Chat history database unavailable: {exc}")
     else:
         st.sidebar.caption("Chat history database unavailable.")
+
+    feedback_flow.process_pending_explicit_feedback(
+        feedback_service=feedback_service,
+        feedback_llm=feedback_llm,
+        user_id=user_id or "",
+    )
 
     context.refresh_session_context(
         user_id=user_id,
@@ -249,8 +290,21 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if not user_query:
         return
 
+    feedback_flow.detect_and_save_chat_feedback(
+        feedback_service=feedback_service,
+        feedback_llm=feedback_llm,
+        user_id=user_id or "",
+        conversation_id=conversation_id,
+        user_query=user_query,
+    )
+    feedback_lesson_context = (
+        feedback_service.feedback_context(query=user_query, user_id=user_id)
+        if feedback_service is not None and user_id
+        else ""
+    )
+
     user_message_id: str | None = None
-    if history_store is not None and conversation_id:
+    if history_store is not None and conversation_id and user_id:
         try:
             user_message_id = history_store.add_user_message(
                 conversation_id=conversation_id,
@@ -278,11 +332,14 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
     tools = get_openai_tool_schemas()
+    extra_context = prompts.TOOL_POLICY
+    if feedback_lesson_context:
+        extra_context = f"{extra_context}\n\n{feedback_lesson_context}"
     messages = [
         {
             "role": "system",
             "content": context.build(
-                extra=prompts.TOOL_POLICY,
+                extra=extra_context,
                 skill_id=active_skill_id,
             ),
         },
@@ -307,7 +364,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     chat_interface.inject_artifacts(history_len_before)
 
     assistant_message_id: str | None = None
-    if history_store is not None and conversation_id:
+    if history_store is not None and conversation_id and user_id:
         try:
             assistant_message_id = history_store.add_assistant_message(
                 conversation_id=conversation_id,

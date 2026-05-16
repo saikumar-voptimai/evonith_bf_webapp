@@ -72,6 +72,20 @@ class UserDataService(_RelationalService):
             password_hash=hashlib.sha256(password.encode()).hexdigest(),
         )
 
+    def get_user_id(self, username: str | None) -> str | None:
+        """
+        Return the identity UUID string for an active username.
+
+        Args:
+             - username: str | None - Login username stored in Streamlit session.
+
+        Returns:
+             - return: str | None - Matching ``identity.users.id`` UUID as text,
+               or None when the username is empty or not active.
+        """
+        user_id = self._user_repository.get_user_id(username)
+        return str(user_id) if user_id else None
+
 
 class PlantMasterService(_RelationalService):
     """Plant master lookup service used by hopper/material workflows."""

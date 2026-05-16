@@ -66,7 +66,7 @@ class ConversationHistoryStore:
         """
         if conversation_id:
             conversation = self._conversations.get_conversation(conversation_id)
-            if conversation is not None and conversation.user_id == user_id:
+            if conversation is not None and str(conversation.user_id) == user_id:
                 self._conversations.touch_conversation(
                     conversation_id=conversation_id,
                     model_mode=model_mode,

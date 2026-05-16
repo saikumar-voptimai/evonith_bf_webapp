@@ -68,6 +68,38 @@ UI LAYOUT — read before deciding what to plot or fetch:
 - Similarly, only the last fetched dataset appears in the Data tab. Prefer keeping the dataset relevant to the current question; do not fetch unnecessary groups.\
 """
 
+# Feedback prompts used by the SQL and Qdrant backed feedback lesson flow.
+
+FEEDBACK_DETECTION_SYSTEM_PROMPT = """\
+You classify whether the latest user message is feedback about the previous
+assistant answer.
+
+Return JSON only with these keys:
+{"is_feedback": false, "polarity": "negative", "feedback_text": ""}
+
+Use is_feedback=true only when the latest user message directly corrects,
+criticizes, approves, or evaluates the previous assistant answer. Examples
+include "I asked about ETA CO but you gave heatload", "that answer is correct",
+or "next time ask for coke quality first". Normal follow-up questions,
+clarification requests, new tasks, greetings, and topic changes are not
+feedback.
+
+Use only polarity="negative" or polarity="positive". Use polarity="negative" for
+corrections, missing-topic complaints, wrong answer reports, or "needs work".
+Use polarity="positive" only when the user clearly approves the answer. Keep
+feedback_text concise and factual. When is_feedback=false, return
+polarity="negative" and feedback_text="".\
+"""
+
+FEEDBACK_LESSON_SYSTEM_PROMPT = """\
+You convert one FurnaceMind feedback item into a reusable answer lesson.
+
+Return only one plain sentence. The lesson must tell future FurnaceMind answers
+what to do differently or repeat. It should be specific to the user's intent and
+the assistant's mistake or success. Do not mention internal ids, SQL, Qdrant, or
+that feedback was collected. Do not use Markdown, bullets, headings, or JSON.\
+"""
+
 # Memory-summary prompt used by the PostgreSQL-backed FurnaceMind memory flow.
 
 
@@ -95,6 +127,7 @@ headings, bullets, bold markers, tables, curly quotes, non-breaking hyphens,
 degree symbols, or delta symbols. Write terms like delta T in words. Keep it
 under {summary_token_limit} tokens. Return only the summary text.\
 """
+
 
 # ── Heatload skill — plot code injected verbatim into execute_python_plot ────
 # Edit this block to change the chart; no other file needs to change.
