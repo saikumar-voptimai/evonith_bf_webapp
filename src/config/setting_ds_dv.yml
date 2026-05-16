@@ -63,6 +63,13 @@ ml_dataset:
     temp_18660_c: lower_stack_c_c
     temp_18660_d: lower_stack_d_c
 
+feedback:
+  attachments:
+    max_files_per_ticket: 5
+    max_file_size_mb: 5
+    allowed_extensions: ["png", "jpg", "jpeg", "webp"]
+    store_mode: "database"
+
 # Geometries
 paths:
  geometry: "./src/geometries"

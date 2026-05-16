@@ -37,6 +37,8 @@ def ticket_service() -> TicketService:
 
 def test_create_ticket_persists_fields_and_code(ticket_service: TicketService) -> None:
     """Creating a ticket should persist values and emit a formatted code."""
+    reporter_user_id = uuid4()
+    creator_user_id = uuid4()
     created = ticket_service.create_ticket(
         TicketCreateRequest(
             page_name="V-Sense",
@@ -44,6 +46,9 @@ def test_create_ticket_persists_fields_and_code(ticket_service: TicketService) -
             criticality="high",
             description="Prediction panel failed to render.",
             ideal_closure_text="Need it fixed before next shift.",
+            created_by="operator_1",
+            reported_by_user_id=reporter_user_id,
+            created_by_user_id=creator_user_id,
         )
     )
 
@@ -52,14 +57,22 @@ def test_create_ticket_persists_fields_and_code(ticket_service: TicketService) -
     assert created.status == TicketStatus.OPEN.value
     assert created.criticality == "high"
     assert created.reported_by == "operator_1"
+    assert created.updated_by == "operator_1"
+    assert created.reported_by_user_id == str(reporter_user_id)
+    assert created.updated_by_user_id == str(creator_user_id)
 
     listed = ticket_service.list_tickets()
     assert len(listed) == 1
     assert listed[0].ticket_code == created.ticket_code
 
+    events = ticket_service.list_events(created.id)
+    assert events[0].event_type == "created"
+    assert events[0].actor_user_id == str(creator_user_id)
+
 
 def test_status_update_creates_audit_event(ticket_service: TicketService) -> None:
     """Status update should change ticket status and append event history."""
+    actor_user_id = uuid4()
     created = ticket_service.create_ticket(
         TicketCreateRequest(
             page_name="Data Explorer",
@@ -76,11 +89,14 @@ def test_status_update_creates_audit_event(ticket_service: TicketService) -> Non
             new_status="in_progress",
             actor="admin_1",
             actor_role="admin",
+            actor_user_id=actor_user_id,
             comment="Assigned to data platform team.",
         )
     )
 
     assert updated.status == TicketStatus.IN_PROGRESS.value
+    assert updated.updated_by == "admin_1"
+    assert updated.updated_by_user_id == str(actor_user_id)
 
     events = ticket_service.list_events(created.id)
     assert len(events) == 2
@@ -88,6 +104,10 @@ def test_status_update_creates_audit_event(ticket_service: TicketService) -> Non
     assert events[0].old_status == TicketStatus.OPEN.value
     assert events[0].new_status == TicketStatus.IN_PROGRESS.value
     assert events[0].comment == "Assigned to data platform team."
+    assert events[0].actor_user_id == str(actor_user_id)
+
+    listed = ticket_service.list_tickets()
+    assert listed[0].updated_by == "admin_1"
 
 
 def test_non_admin_or_supervisor_cannot_update_status(
@@ -103,6 +123,9 @@ def test_non_admin_or_supervisor_cannot_update_status(
             ideal_closure_text="Fix in upcoming patch release.",
         )
     )
+    events = ticket_service.list_events(created.id)
+    assert events[0].actor == "user_1"
+    assert events[0].actor_user_id is None
 
     with pytest.raises(PermissionError):
         ticket_service.update_status(
@@ -167,11 +190,12 @@ def test_list_filters_status_page_criticality_reporter_keyword(
 def test_create_ticket_with_attachments_persists_images(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ticket creation should persist screenshot metadata and files."""
+    """Ticket creation should persist screenshot metadata and bytes."""
     local_temp = _make_local_test_dir()
     try:
         monkeypatch.chdir(local_temp)
         service = TicketService(db_url="sqlite:///:memory:")
+        user_id = uuid4()
 
         created = service.create_ticket(
             TicketCreateRequest(
@@ -180,6 +204,8 @@ def test_create_ticket_with_attachments_persists_images(
                 criticality="high",
                 description="Issue with screenshot flow.",
                 ideal_closure_text="Need attachments visible in board.",
+                reported_by_user_id=user_id,
+                created_by_user_id=user_id,
             ),
             attachments=[
                 TicketImageUpload(filename="screen1.png", content=b"png-bytes-1"),
@@ -191,10 +217,11 @@ def test_create_ticket_with_attachments_persists_images(
         assert len(images) == 2
         assert images[0].ticket_id == created.id
         assert images[0].original_filename in {"screen1.png", "screen2.jpg"}
+        assert {image.uploaded_by_user_id for image in images} == {str(user_id)}
 
-        for image in images:
-            file_path = service._resolve_stored_image_path(image.image_path)
-            assert file_path.exists()
+        contents = [service.get_ticket_image_content(image.id) for image in images]
+        assert {item[0] for item in contents if item} == {b"png-bytes-1", b"jpg-bytes-2"}
+        assert not (local_temp / "src" / "storage" / "feedback" / "images").exists()
 
         service.delete_ticket(
             TicketDeleteRequest(
@@ -246,7 +273,7 @@ def test_attachment_validation_enforces_count_and_size(
 def test_delete_ticket_cleans_up_images_and_enforces_role(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Delete should be role-guarded and remove linked screenshot files."""
+    """Delete should be role-guarded and remove linked screenshot rows."""
     local_temp = _make_local_test_dir()
     try:
         monkeypatch.chdir(local_temp)
@@ -265,8 +292,7 @@ def test_delete_ticket_cleans_up_images_and_enforces_role(
             ],
         )
         image = service.list_ticket_images(created.id)[0]
-        full_image_path = service._resolve_stored_image_path(image.image_path)
-        assert full_image_path.exists()
+        assert service.get_ticket_image_content(image.id)[0] == b"image-bytes"
 
         with pytest.raises(PermissionError):
             service.delete_ticket(
@@ -277,7 +303,7 @@ def test_delete_ticket_cleans_up_images_and_enforces_role(
                 )
             )
         assert service.list_tickets()
-        assert full_image_path.exists()
+        assert service.get_ticket_image_content(image.id)[0] == b"image-bytes"
 
         service.delete_ticket(
             TicketDeleteRequest(
@@ -288,5 +314,6 @@ def test_delete_ticket_cleans_up_images_and_enforces_role(
         )
         assert not service.list_tickets()
         assert not service.list_ticket_images(created.id)
+        assert service.get_ticket_image_content(image.id) is None
     finally:
         shutil.rmtree(local_temp, ignore_errors=True)

@@ -6,7 +6,7 @@ import os
 import shutil
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -28,7 +28,7 @@ def resolve_tickets_db_url(db_url: str | None = None) -> str:
     """
     if db_url:
         return db_url
-    return os.getenv("TICKETS_DB_URL", DEFAULT_TICKETS_DB_URL)
+    return os.getenv("TICKETS_DB_URL") or os.getenv("DATABASE_URL", DEFAULT_TICKETS_DB_URL)
 
 
 def _sqlite_url_to_path(db_url: str) -> Path | None:
@@ -84,12 +84,21 @@ def build_tickets_engine(db_url: str | None = None) -> Engine:
     connect_args = (
         {"check_same_thread": False} if resolved_url.startswith("sqlite") else {}
     )
-    return create_engine(
+    engine = create_engine(
         resolved_url,
         future=True,
         pool_pre_ping=True,
         connect_args=connect_args,
     )
+    if not resolved_url.startswith("sqlite"):
+        @event.listens_for(engine, "connect")
+        def _set_feedback_search_path(dbapi_connection, connection_record):  # noqa: ANN001, ARG001
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("SET search_path TO feedback, public")
+            finally:
+                cursor.close()
+    return engine
 
 
 def build_tickets_session_factory(engine: Engine) -> sessionmaker[Session]:

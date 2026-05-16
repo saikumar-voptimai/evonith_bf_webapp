@@ -21,10 +21,7 @@ from data.tickets import (
     TicketStatusUpdateRequest,
     TicketView,
 )
-from utils.session import is_admin, is_supervisor
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
+from utils.session import current_user_id, is_admin, is_supervisor
 
 def load_feedback_css(page_file: Path) -> None:
     """Load scoped CSS for Feedback page widgets."""
@@ -130,7 +127,10 @@ def build_events_dataframe(events: Sequence[TicketEventView]) -> pd.DataFrame:
     )
 
 
-def render_ticket_images_gallery(images: Sequence[TicketImageView]) -> None:
+def render_ticket_images_gallery(
+    ticket_service: TicketService,
+    images: Sequence[TicketImageView],
+) -> None:
     """Render thumbnail gallery for ticket screenshots."""
     if not images:
         return
@@ -138,23 +138,14 @@ def render_ticket_images_gallery(images: Sequence[TicketImageView]) -> None:
     st.markdown("**Screenshots**")
     cols = st.columns(3)
     for idx, image in enumerate(images):
-        image_path = Path(image.image_path)
-        if image_path.is_absolute():
-            full_path = image_path
-        else:
-            project_candidate = PROJECT_ROOT / image_path
-            full_path = (
-                project_candidate
-                if project_candidate.exists()
-                else Path.cwd() / image_path
-            )
-
         with cols[idx % 3]:
-            if not full_path.exists():
-                st.caption(f"{image.original_filename} (missing file)")
+            content = ticket_service.get_ticket_image_content(image.id)
+            if content is None:
+                st.caption(f"{image.original_filename} (missing content)")
                 continue
+            image_bytes, _, _ = content
             st.image(
-                str(full_path),
+                image_bytes,
                 caption=image.original_filename,
                 use_container_width=True,
             )
@@ -175,6 +166,7 @@ def render_management_panel(
         return
 
     actor = str(st.session_state.get("auth_user", "")).strip()
+    actor_user_id = current_user_id()
     actor_role = str(st.session_state.get("role", "")).strip().lower()
     st.markdown(
         "<div class='feedback-section-title'>Case Manager</div>",
@@ -215,6 +207,7 @@ def render_management_panel(
                     new_status=next_status,
                     actor=actor,
                     actor_role=actor_role,
+                    actor_user_id=actor_user_id,
                     comment=update_comment or None,
                 )
             )
@@ -391,6 +384,7 @@ def render_board(
         ticket = selected_ticket
         can_manage = is_admin() or is_supervisor()
         actor = str(st.session_state.get("auth_user", "")).strip()
+        actor_user_id = current_user_id()
         actor_role = str(st.session_state.get("role", "")).strip().lower()
 
         status_css_class = f"feedback-chip-status-{ticket.status.replace('_', '-')}"
@@ -431,7 +425,7 @@ def render_board(
 
         images = ticket_service.list_ticket_images(ticket.id)
         if images:
-            render_ticket_images_gallery(images)
+            render_ticket_images_gallery(ticket_service, images)
 
         if can_manage:
             st.markdown("**Update status**")
@@ -456,6 +450,7 @@ def render_board(
                                 new_status=next_status,
                                 actor=actor,
                                 actor_role=actor_role,
+                                actor_user_id=actor_user_id,
                                 comment=update_comment or None,
                             )
                         )

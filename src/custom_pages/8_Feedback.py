@@ -6,6 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from config.config_loader import load_config
 from config.page_registry import get_feedback_page_options
 from data.tickets import TicketCreateRequest, TicketCriticality, TicketService, TicketStatus
 from utils.feedback_page import (
@@ -15,9 +16,16 @@ from utils.feedback_page import (
     render_management_panel,
     render_overview_kpis,
 )
+from utils.session import current_user_id
 
-MAX_UPLOAD_FILES = 5
-MAX_UPLOAD_SIZE_MB = 5
+_ATTACHMENT_CONFIG = (
+    load_config("setting_ds_dv.yml").get("feedback", {}).get("attachments", {}) or {}
+)
+MAX_UPLOAD_FILES = int(_ATTACHMENT_CONFIG.get("max_files_per_ticket", 5))
+MAX_UPLOAD_SIZE_MB = int(_ATTACHMENT_CONFIG.get("max_file_size_mb", 5))
+ALLOWED_UPLOAD_EXTENSIONS = list(
+    _ATTACHMENT_CONFIG.get("allowed_extensions", ["png", "jpg", "jpeg", "webp"])
+)
 
 CRITICALITY_OPTIONS = [
     TicketCriticality.LOW.value,
@@ -49,6 +57,7 @@ def _render_form(ticket_service: TicketService) -> None:
 
     page_options = get_feedback_page_options()
     auth_user = str(st.session_state.get("auth_user", "")).strip()
+    auth_user_id = current_user_id()
     if "feedback_upload_nonce" not in st.session_state:
         st.session_state["feedback_upload_nonce"] = 0
     uploader_key = f"feedback_upload_{st.session_state['feedback_upload_nonce']}"
@@ -83,7 +92,7 @@ def _render_form(ticket_service: TicketService) -> None:
         )
         uploaded_files = st.file_uploader(
             "Screenshots (optional)",
-            type=["png", "jpg", "jpeg", "webp"],
+            type=ALLOWED_UPLOAD_EXTENSIONS,
             accept_multiple_files=True,
             help=f"Up to {MAX_UPLOAD_FILES} files, max {MAX_UPLOAD_SIZE_MB} MB each.",
             key=uploader_key,
@@ -113,6 +122,8 @@ def _render_form(ticket_service: TicketService) -> None:
                 description=description,
                 ideal_closure_text=ideal_closure,
                 created_by=auth_user,
+                reported_by_user_id=auth_user_id,
+                created_by_user_id=auth_user_id,
             ),
             attachments=build_attachment_payloads(uploaded_files or []),
         )

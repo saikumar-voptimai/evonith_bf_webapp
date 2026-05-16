@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
-import logging
+import hashlib
+import mimetypes
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from config.config_loader import load_config
 from .engine import build_tickets_engine, build_tickets_session_factory
 from .models import (
     Base,
@@ -21,15 +24,11 @@ from .models import (
 )
 from .repository import TicketRepository
 
-log = logging.getLogger(__name__)
-
 ALLOWED_STATUS_EDIT_ROLES = frozenset({"admin", "supervisor"})
 ALLOWED_DELETE_ROLES = frozenset({"admin", "supervisor"})
 ALLOWED_IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "webp"})
 MAX_ATTACHMENTS_PER_TICKET = 5
 MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_TICKET_IMAGES_DIR = PROJECT_ROOT / "src" / "storage" / "feedback" / "images"
 
 
 @dataclass(frozen=True)
@@ -50,6 +49,8 @@ class TicketCreateRequest:
     description: str
     ideal_closure_text: str
     created_by: str | None = None
+    reported_by_user_id: str | UUID | None = None
+    created_by_user_id: str | UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,7 @@ class TicketStatusUpdateRequest:
     new_status: str | TicketStatus
     actor: str
     actor_role: str
+    actor_user_id: str | UUID | None = None
     comment: str | None = None
 
 
@@ -93,6 +95,7 @@ class TicketView:
     ticket_code: str
     page_name: str
     reported_by: str
+    reported_by_user_id: str | None
     criticality: str
     description: str
     ideal_closure_text: str
@@ -101,6 +104,7 @@ class TicketView:
     updated_at: datetime
     created_by: str
     updated_by: str
+    updated_by_user_id: str | None
 
 
 @dataclass(frozen=True)
@@ -114,6 +118,7 @@ class TicketEventView:
     new_status: str | None
     comment: str | None
     actor: str
+    actor_user_id: str | None
     created_at: datetime
 
 
@@ -123,9 +128,11 @@ class TicketImageView:
 
     id: int
     ticket_id: int
-    image_path: str
     original_filename: str
     uploaded_by: str
+    uploaded_by_user_id: str | None
+    mime_type: str
+    size_bytes: int
     created_at: datetime
 
 
@@ -142,6 +149,7 @@ class TicketService:
     def ensure_schema(self) -> None:
         """Create ticket tables if they do not already exist."""
         Base.metadata.create_all(bind=self._engine)
+        self._ensure_attachment_columns()
 
     def create_ticket(
         self,
@@ -175,6 +183,8 @@ class TicketService:
             description=description,
             ideal_closure_text=ideal_closure_text,
             created_by=actor,
+            reported_by_user_id=request.reported_by_user_id,
+            created_by_user_id=request.created_by_user_id or request.reported_by_user_id,
             initial_status=TicketStatus.OPEN,
         )
         ticket_view = self._to_ticket_view(ticket)
@@ -182,6 +192,7 @@ class TicketService:
             self._persist_attachments(
                 ticket=ticket_view,
                 uploaded_by=actor,
+                uploaded_by_user_id=request.created_by_user_id or request.reported_by_user_id,
                 attachments=validated_attachments,
             )
         return ticket_view
@@ -234,12 +245,13 @@ class TicketService:
             ticket_id=request.ticket_id,
             new_status=new_status,
             actor=actor,
+            actor_user_id=request.actor_user_id,
             comment=request.comment.strip() if request.comment else None,
         )
         return self._to_ticket_view(ticket)
 
     def delete_ticket(self, request: TicketDeleteRequest) -> None:
-        """Delete a ticket and remove linked screenshot files from disk."""
+        """Delete a ticket and linked database attachments."""
         actor_role = request.actor_role.strip().lower()
         if actor_role not in ALLOWED_DELETE_ROLES:
             raise PermissionError(
@@ -249,15 +261,7 @@ class TicketService:
         if not actor:
             raise ValueError("Actor is required for ticket deletion.")
 
-        image_paths = self._repository.delete_ticket(ticket_id=request.ticket_id)
-        for stored_path in image_paths:
-            absolute_path = self._resolve_stored_image_path(stored_path)
-            try:
-                absolute_path.unlink(missing_ok=True)
-            except OSError as exc:
-                log.warning(
-                    "Failed to delete ticket image '%s': %s", absolute_path, exc
-                )
+        self._repository.delete_ticket(ticket_id=request.ticket_id)
 
     def list_events(self, ticket_id: int) -> list[TicketEventView]:
         """List audit events for a ticket."""
@@ -268,6 +272,10 @@ class TicketService:
         """List screenshot entries for one ticket."""
         images = self._repository.list_images(ticket_id=ticket_id)
         return [self._to_ticket_image_view(image) for image in images]
+
+    def get_ticket_image_content(self, image_id: int) -> tuple[bytes, str, str] | None:
+        """Fetch attachment bytes only when the detail panel renders them."""
+        return self._repository.get_image_content(image_id=image_id)
 
     @staticmethod
     def status_label(status: str | TicketStatus) -> str:
@@ -333,9 +341,10 @@ class TicketService:
         attachments: list[TicketImageUpload],
     ) -> list[TicketImageUpload]:
         """Validate image upload constraints and normalize names/content."""
-        if len(attachments) > MAX_ATTACHMENTS_PER_TICKET:
+        max_files, max_size_bytes, allowed_extensions = self._attachment_limits()
+        if len(attachments) > max_files:
             raise ValueError(
-                f"Maximum {MAX_ATTACHMENTS_PER_TICKET} screenshots are allowed per ticket."
+                f"Maximum {max_files} screenshots are allowed per ticket."
             )
 
         validated: list[TicketImageUpload] = []
@@ -345,17 +354,20 @@ class TicketService:
                 raise ValueError("Attachment filename is required.")
 
             extension = self._resolve_upload_extension(filename)
-            if extension not in ALLOWED_IMAGE_EXTENSIONS:
-                allowed = ", ".join(sorted(ALLOWED_IMAGE_EXTENSIONS))
+            if extension not in allowed_extensions:
+                allowed = ", ".join(sorted(allowed_extensions))
                 raise ValueError(
                     f"Unsupported image format for '{filename}'. Allowed formats: {allowed}."
                 )
 
             size_bytes = len(attachment.content)
-            if size_bytes > MAX_ATTACHMENT_SIZE_BYTES:
+            if size_bytes > max_size_bytes:
+                max_size_mb = max_size_bytes // (1024 * 1024)
                 raise ValueError(
-                    f"File '{filename}' exceeds the 5 MB size limit per screenshot."
+                    f"File '{filename}' exceeds the {max_size_mb} MB size limit per screenshot."
                 )
+            if size_bytes <= 0:
+                raise ValueError(f"File '{filename}' is empty.")
 
             validated.append(
                 TicketImageUpload(filename=filename, content=attachment.content)
@@ -368,74 +380,144 @@ class TicketService:
         *,
         ticket: TicketView,
         uploaded_by: str,
+        uploaded_by_user_id: str | UUID | None,
         attachments: list[TicketImageUpload],
     ) -> list[TicketImageView]:
-        """Write screenshot files and persist image metadata rows."""
-        image_dir = DEFAULT_TICKET_IMAGES_DIR
-        image_dir.mkdir(parents=True, exist_ok=True)
-
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        image_rows: list[tuple[str, str, str]] = []
-        written_files: list[Path] = []
+        """Persist screenshot bytes and metadata in the ticket attachment table."""
+        image_rows: list[dict[str, object]] = []
 
         for attachment in attachments:
             extension = self._resolve_upload_extension(attachment.filename)
-            target_name = (
-                f"ticket_{ticket.ticket_code}_{timestamp}_{uuid4().hex}.{extension}"
+            content_sha256 = hashlib.sha256(attachment.content).hexdigest()
+            mime_type = (
+                mimetypes.guess_type(attachment.filename)[0]
+                or f"image/{'jpeg' if extension == 'jpg' else extension}"
             )
-            target_path = image_dir / target_name
-            target_path.write_bytes(attachment.content)
-            written_files.append(target_path)
-
-            try:
-                stored_path = target_path.relative_to(PROJECT_ROOT).as_posix()
-            except ValueError:
-                stored_path = str(target_path)
-
-            image_rows.append((stored_path, attachment.filename, uploaded_by))
-
-        try:
-            images = self._repository.add_images(
-                ticket_id=ticket.id,
-                image_rows=image_rows,
+            image_rows.append(
+                {
+                    "image_path": f"db://feedback/ticket_attachments/{content_sha256}",
+                    "original_filename": attachment.filename,
+                    "uploaded_by": uploaded_by,
+                    "uploaded_by_user_id": uploaded_by_user_id,
+                    "mime_type": mime_type,
+                    "file_extension": extension,
+                    "size_bytes": len(attachment.content),
+                    "content_sha256": content_sha256,
+                    "image_bytes": attachment.content,
+                    "metadata": {},
+                }
             )
-        except Exception:
-            for path in written_files:
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-            raise
 
+        images = self._repository.add_images(ticket_id=ticket.id, image_rows=image_rows)
         return [self._to_ticket_image_view(image) for image in images]
 
     @staticmethod
-    def _resolve_stored_image_path(stored_path: str) -> Path:
-        """Resolve stored image path from DB to an absolute filesystem path."""
-        path_obj = Path(stored_path)
-        if path_obj.is_absolute():
-            return path_obj
-        project_candidate = PROJECT_ROOT / path_obj
-        if project_candidate.exists():
-            return project_candidate
-        return Path.cwd() / path_obj
+    def _attachment_limits() -> tuple[int, int, frozenset[str]]:
+        """Return attachment limits from config with conservative defaults."""
+        config = (
+            load_config("setting_ds_dv.yml")
+            .get("feedback", {})
+            .get("attachments", {})
+            or {}
+        )
+        max_files = int(config.get("max_files_per_ticket", MAX_ATTACHMENTS_PER_TICKET))
+        max_mb = int(config.get("max_file_size_mb", 5))
+        allowed = frozenset(
+            str(ext).strip().lower().lstrip(".")
+            for ext in config.get("allowed_extensions", ALLOWED_IMAGE_EXTENSIONS)
+        )
+        return max_files, max_mb * 1024 * 1024, allowed
+
+    def _ensure_attachment_columns(self) -> None:
+        """Add DB-backed attachment columns when an older table already exists."""
+        if self._engine.dialect.name != "postgresql":
+            return
+        ddl = [
+            """
+            DO $$
+            DECLARE
+                seq_name text;
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'feedback'
+                      AND table_name = 'tickets'
+                      AND column_name = 'id'
+                      AND is_identity = 'NO'
+                      AND column_default IS NULL
+                ) THEN
+                    ALTER TABLE feedback.tickets ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY;
+                END IF;
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'feedback'
+                      AND table_name = 'ticket_events'
+                      AND column_name = 'id'
+                      AND is_identity = 'NO'
+                      AND column_default IS NULL
+                ) THEN
+                    ALTER TABLE feedback.ticket_events ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY;
+                END IF;
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'feedback'
+                      AND table_name = 'ticket_attachments'
+                      AND column_name = 'id'
+                      AND is_identity = 'NO'
+                      AND column_default IS NULL
+                ) THEN
+                    ALTER TABLE feedback.ticket_attachments ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY;
+                END IF;
+
+                seq_name := pg_get_serial_sequence('feedback.tickets', 'id');
+                IF seq_name IS NOT NULL THEN
+                    PERFORM setval(seq_name, GREATEST((SELECT COALESCE(MAX(id), 0) + 1 FROM feedback.tickets), 1), false);
+                END IF;
+
+                seq_name := pg_get_serial_sequence('feedback.ticket_events', 'id');
+                IF seq_name IS NOT NULL THEN
+                    PERFORM setval(seq_name, GREATEST((SELECT COALESCE(MAX(id), 0) + 1 FROM feedback.ticket_events), 1), false);
+                END IF;
+
+                seq_name := pg_get_serial_sequence('feedback.ticket_attachments', 'id');
+                IF seq_name IS NOT NULL THEN
+                    PERFORM setval(seq_name, GREATEST((SELECT COALESCE(MAX(id), 0) + 1 FROM feedback.ticket_attachments), 1), false);
+                END IF;
+            END $$;
+            """,
+            "ALTER TABLE feedback.ticket_attachments ADD COLUMN IF NOT EXISTS mime_type text",
+            "ALTER TABLE feedback.ticket_attachments ADD COLUMN IF NOT EXISTS file_extension text",
+            "ALTER TABLE feedback.ticket_attachments ADD COLUMN IF NOT EXISTS size_bytes integer",
+            "ALTER TABLE feedback.ticket_attachments ADD COLUMN IF NOT EXISTS content_sha256 text",
+            "ALTER TABLE feedback.ticket_attachments ADD COLUMN IF NOT EXISTS image_bytes bytea",
+            'ALTER TABLE feedback.ticket_attachments ADD COLUMN IF NOT EXISTS "metadata" jsonb',
+        ]
+        with self._engine.begin() as conn:
+            for statement in ddl:
+                conn.execute(text(statement))
 
     @staticmethod
     def _to_ticket_view(ticket: Ticket) -> TicketView:
         """Map ORM ticket to immutable read model."""
+        latest_actor = getattr(ticket, "_updated_by_name", None)
+        if latest_actor is None:
+            events = ticket.__dict__.get("events") or []
+            latest_actor = next((event.actor for event in events if event.actor), None)
         return TicketView(
             id=ticket.id,
             ticket_code=ticket.ticket_code or "",
             page_name=ticket.page_name,
             reported_by=ticket.reported_by,
-            criticality=ticket.criticality.value,
+            reported_by_user_id=str(ticket.reported_by_user_id) if ticket.reported_by_user_id else None,
+            criticality=str(ticket.criticality),
             description=ticket.description,
             ideal_closure_text=ticket.ideal_closure_text,
-            status=ticket.status.value,
+            status=str(ticket.status),
             created_at=ticket.created_at,
             updated_at=ticket.updated_at,
-            created_by=ticket.created_by,
-            updated_by=ticket.updated_by,
+            created_by=ticket.reported_by,
+            updated_by=latest_actor or ticket.reported_by,
+            updated_by_user_id=str(ticket.updated_by_user_id) if ticket.updated_by_user_id else None,
         )
 
     @staticmethod
@@ -445,10 +527,11 @@ class TicketService:
             id=event.id,
             ticket_id=event.ticket_id,
             event_type=event.event_type,
-            old_status=event.old_status.value if event.old_status else None,
-            new_status=event.new_status.value if event.new_status else None,
+            old_status=str(event.old_status) if event.old_status else None,
+            new_status=str(event.new_status) if event.new_status else None,
             comment=event.comment,
-            actor=event.actor,
+            actor=event.actor or "",
+            actor_user_id=str(event.actor_user_id) if event.actor_user_id else None,
             created_at=event.created_at,
         )
 
@@ -458,8 +541,10 @@ class TicketService:
         return TicketImageView(
             id=image.id,
             ticket_id=image.ticket_id,
-            image_path=image.image_path,
             original_filename=image.original_filename,
-            uploaded_by=image.uploaded_by,
+            uploaded_by=image.uploaded_by or "",
+            uploaded_by_user_id=str(image.uploaded_by_user_id) if image.uploaded_by_user_id else None,
+            mime_type=image.mime_type or "application/octet-stream",
+            size_bytes=int(image.size_bytes or 0),
             created_at=image.created_at,
         )

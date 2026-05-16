@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Sequence
+from uuid import UUID
 
 from sqlalchemy import delete, or_, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from .models import (
     Ticket,
@@ -21,6 +22,19 @@ from .models import (
 def format_ticket_code(ticket_id: int) -> str:
     """Format a numeric ticket ID into a fixed-width public code."""
     return f"TKT-{ticket_id:06d}"
+
+
+def _coerce_uuid(value: UUID | str | None) -> UUID | None:
+    """Return UUID object for DB writes, or None when unavailable."""
+    if value is None or isinstance(value, UUID):
+        return value
+    value = str(value).strip()
+    if not value:
+        return None
+    try:
+        return UUID(value)
+    except ValueError:
+        return None
 
 
 class TicketRepository:
@@ -39,19 +53,23 @@ class TicketRepository:
         description: str,
         ideal_closure_text: str,
         created_by: str,
+        reported_by_user_id: UUID | str | None = None,
+        created_by_user_id: UUID | str | None = None,
         initial_status: TicketStatus = TicketStatus.OPEN,
     ) -> Ticket:
         """Insert a ticket row plus its initial creation event."""
         with self._session_factory() as session:
+            reporter_uuid = _coerce_uuid(reported_by_user_id)
+            creator_uuid = _coerce_uuid(created_by_user_id) or reporter_uuid
             ticket = Ticket(
                 page_name=page_name,
                 reported_by=reported_by,
-                criticality=criticality,
+                reported_by_user_id=reporter_uuid,
+                criticality=criticality.value,
                 description=description,
                 ideal_closure_text=ideal_closure_text,
-                status=initial_status,
-                created_by=created_by,
-                updated_by=created_by,
+                status=initial_status.value,
+                updated_by_user_id=creator_uuid,
             )
             session.add(ticket)
             session.flush()
@@ -65,10 +83,12 @@ class TicketRepository:
                 new_status=ticket.status,
                 comment="Ticket created",
                 actor=created_by,
+                actor_user_id=creator_uuid,
             )
 
             session.commit()
             session.refresh(ticket)
+            ticket._updated_by_name = created_by
             session.expunge(ticket)
             return ticket
 
@@ -94,12 +114,12 @@ class TicketRepository:
     ) -> list[Ticket]:
         """Return filtered ticket rows sorted by latest update."""
         with self._session_factory() as session:
-            query = select(Ticket)
+            query = select(Ticket).options(selectinload(Ticket.events))
 
             if statuses:
-                query = query.where(Ticket.status.in_(statuses))
+                query = query.where(Ticket.status.in_([status.value for status in statuses]))
             if criticalities:
-                query = query.where(Ticket.criticality.in_(criticalities))
+                query = query.where(Ticket.criticality.in_([item.value for item in criticalities]))
             if page_names:
                 query = query.where(Ticket.page_name.in_(page_names))
             if reported_bys:
@@ -132,6 +152,7 @@ class TicketRepository:
         ticket_id: int,
         new_status: TicketStatus,
         actor: str,
+        actor_user_id: UUID | str | None = None,
         comment: str | None = None,
     ) -> Ticket:
         """Update ticket status and append a status event."""
@@ -141,8 +162,8 @@ class TicketRepository:
                 raise ValueError(f"Ticket {ticket_id} not found.")
 
             old_status = ticket.status
-            ticket.status = new_status
-            ticket.updated_by = actor
+            ticket.status = new_status.value
+            ticket.updated_by_user_id = _coerce_uuid(actor_user_id)
             ticket.updated_at = utc_now()
 
             self._add_event(
@@ -153,10 +174,12 @@ class TicketRepository:
                 new_status=new_status,
                 comment=comment,
                 actor=actor,
+                actor_user_id=actor_user_id,
             )
 
             session.commit()
             session.refresh(ticket)
+            ticket._updated_by_name = actor
             session.expunge(ticket)
             return ticket
 
@@ -177,14 +200,13 @@ class TicketRepository:
         self,
         *,
         ticket_id: int,
-        image_rows: Sequence[tuple[str, str, str]],
+        image_rows: Sequence[dict[str, object]],
     ) -> list[TicketImage]:
         """Insert image metadata rows for one ticket.
 
         Args:
             ticket_id: Primary key of the ticket.
-            image_rows: Sequence of
-                ``(image_path, original_filename, uploaded_by)`` tuples.
+            image_rows: Attachment metadata and byte payload dictionaries.
         """
         if not image_rows:
             return []
@@ -195,12 +217,19 @@ class TicketRepository:
                 raise ValueError(f"Ticket {ticket_id} not found.")
 
             images: list[TicketImage] = []
-            for image_path, original_filename, uploaded_by in image_rows:
+            for row in image_rows:
                 image = TicketImage(
                     ticket_id=ticket_id,
-                    image_path=image_path,
-                    original_filename=original_filename,
-                    uploaded_by=uploaded_by,
+                    image_path=str(row["image_path"]),
+                    original_filename=str(row["original_filename"]),
+                    uploaded_by_user_id=_coerce_uuid(row.get("uploaded_by_user_id")),
+                    uploaded_by=str(row["uploaded_by"]),
+                    mime_type=str(row["mime_type"]),
+                    file_extension=str(row["file_extension"]),
+                    size_bytes=int(row["size_bytes"]),
+                    content_sha256=str(row["content_sha256"]),
+                    image_bytes=row["image_bytes"],
+                    metadata_json=row.get("metadata") or {},
                 )
                 session.add(image)
                 images.append(image)
@@ -212,7 +241,8 @@ class TicketRepository:
                 old_status=None,
                 new_status=ticket.status,
                 comment=f"{len(images)} screenshot(s) attached",
-                actor=ticket.updated_by,
+                actor=ticket.reported_by,
+                actor_user_id=ticket.reported_by_user_id,
             )
             session.commit()
 
@@ -220,6 +250,20 @@ class TicketRepository:
                 session.refresh(image)
                 session.expunge(image)
             return images
+
+    def get_image_content(self, image_id: int) -> tuple[bytes, str, str] | None:
+        """Return one attachment's bytes, MIME type, and filename."""
+        with self._session_factory() as session:
+            row = session.execute(
+                select(
+                    TicketImage.image_bytes,
+                    TicketImage.mime_type,
+                    TicketImage.original_filename,
+                ).where(TicketImage.id == image_id)
+            ).one_or_none()
+            if row is None or row[0] is None:
+                return None
+            return bytes(row[0]), str(row[1] or "application/octet-stream"), str(row[2])
 
     def list_images(self, ticket_id: int) -> list[TicketImage]:
         """List ticket image metadata newest-first."""
@@ -234,25 +278,17 @@ class TicketRepository:
                 session.expunge(image)
             return images
 
-    def delete_ticket(self, ticket_id: int) -> list[str]:
-        """Delete a ticket and return linked image paths for filesystem cleanup."""
+    def delete_ticket(self, ticket_id: int) -> None:
+        """Delete a ticket and rely on database cascade/transaction cleanup."""
         with self._session_factory() as session:
             ticket = session.get(Ticket, ticket_id)
             if ticket is None:
                 raise ValueError(f"Ticket {ticket_id} not found.")
 
-            image_paths = list(
-                session.execute(
-                    select(TicketImage.image_path).where(
-                        TicketImage.ticket_id == ticket_id
-                    )
-                ).scalars()
-            )
             session.execute(delete(TicketImage).where(TicketImage.ticket_id == ticket_id))
             session.execute(delete(TicketEvent).where(TicketEvent.ticket_id == ticket_id))
             session.delete(ticket)
             session.commit()
-            return image_paths
 
     @staticmethod
     def _add_event(
@@ -260,19 +296,21 @@ class TicketRepository:
         session: Session,
         ticket_id: int,
         event_type: str,
-        old_status: TicketStatus | None,
-        new_status: TicketStatus | None,
+        old_status: TicketStatus | str | None,
+        new_status: TicketStatus | str | None,
         comment: str | None,
         actor: str,
+        actor_user_id: UUID | str | None = None,
     ) -> None:
         """Insert one ticket event row inside an active transaction."""
         session.add(
             TicketEvent(
                 ticket_id=ticket_id,
                 event_type=event_type,
-                old_status=old_status,
-                new_status=new_status,
+                old_status=old_status.value if isinstance(old_status, TicketStatus) else old_status,
+                new_status=new_status.value if isinstance(new_status, TicketStatus) else new_status,
                 comment=comment,
                 actor=actor,
+                actor_user_id=_coerce_uuid(actor_user_id),
             )
         )
