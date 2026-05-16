@@ -195,6 +195,13 @@ class Settings:
         # will keep using the shift store unless you change those call-sites.
         self.qdrant = self.qdrant_shift
 
+        # True only when SHIFT_QDRANT_COLLECTION is explicitly configured.
+        # When absent the shift-history vector tool is suppressed entirely so
+        # FurnaceMind starts without connecting to Qdrant shift summaries.
+        self.enable_shift_history_vector: bool = bool(
+            os.getenv("SHIFT_QDRANT_COLLECTION", "").strip()
+        )
+
         self.app = AppConfig()
         self.memory_summary_message_window = int(
             os.getenv("MEMORY_SUMMARY_MESSAGE_WINDOW", 8)

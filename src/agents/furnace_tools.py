@@ -905,8 +905,14 @@ def merge_furnace_data(
 
 
 def get_openai_tool_schemas() -> list[dict]:
-    """Return OpenAI/OpenRouter tool schemas for LLM function-calling."""
-    return [
+    """Return OpenAI/OpenRouter tool schemas for LLM function-calling.
+
+    ``search_shift_history`` is omitted when shift-history vector search is
+    disabled (``SHIFT_QDRANT_COLLECTION`` not configured).
+    """
+    from utils.settings import settings as _settings
+
+    _all = [
         {
             "type": "function",
             "function": {
@@ -1163,6 +1169,9 @@ def get_openai_tool_schemas() -> list[dict]:
             },
         },
     ]
+    if not _settings.enable_shift_history_vector:
+        _all = [t for t in _all if t["function"]["name"] != "search_shift_history"]
+    return _all
 
 
 def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:

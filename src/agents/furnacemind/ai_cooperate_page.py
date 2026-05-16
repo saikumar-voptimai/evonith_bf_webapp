@@ -329,7 +329,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         st.markdown(user_display or user_query)
 
     llm = OpenRouterClient()
-    if st.session_state.get("shift_store") is None:
+    if settings.enable_shift_history_vector and st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
     tools = get_openai_tool_schemas()
     extra_context = prompts.TOOL_POLICY
