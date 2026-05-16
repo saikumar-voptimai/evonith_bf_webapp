@@ -33,6 +33,12 @@ def test_dataset_fetcher_routes_interactive_ml_to_neon() -> None:
             idx = pd.DatetimeIndex(["2026-01-01"], name="time")
             return pd.DataFrame({"TOTAL_COKE_PORTIONS": [10.0]}, index=idx)
 
+        def fetch_online_process_params(self, start, end):
+            return pd.DataFrame()
+
+        def fetch_online_temperature_params(self, start, end):
+            return pd.DataFrame()
+
     service = FakeService()
     fetcher = DatasetFetcher(service=service)
 
@@ -72,6 +78,12 @@ def test_dataset_fetcher_default_source_is_neon_for_static_manager() -> None:
         def fetch_distribution_data(self, start, end):
             return pd.DataFrame()
 
+        def fetch_online_process_params(self, start, end):
+            return pd.DataFrame()
+
+        def fetch_online_temperature_params(self, start, end):
+            return pd.DataFrame()
+
     service = FakeService()
     fetcher = DatasetFetcher(service=service)
 
@@ -96,6 +108,12 @@ def test_dataset_fetcher_slices_datetime_index_with_date_bounds() -> None:
             return pd.DataFrame()
 
         def fetch_distribution_data(self, start, end):
+            return pd.DataFrame()
+
+        def fetch_online_process_params(self, start, end):
+            return pd.DataFrame()
+
+        def fetch_online_temperature_params(self, start, end):
             return pd.DataFrame()
 
     output = DatasetFetcher(service=FakeService()).get_dataset(

@@ -17,12 +17,15 @@ from agents.furnacemind import prompts
 from agents.furnacemind.agent import run_agent_loop
 from agents.furnacemind.context import SystemPromptContext
 from agents.furnacemind.skills import SkillEngine
+from agents.furnacemind.tools.memory_tool_adapters import configure_memory_stores
+from agents.furnacemind.tools.registry import configure_artifact_store
 from agents.llm.llm_client import OpenRouterClient
 from agents.memory import fm_memory
 from agents.memory.conversation_history import ConversationHistoryStore
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
 from ui.furnacemind import chat_interface, feedback_flow
+from ui.furnacemind.artifact_adapter import StreamlitArtifactStore
 from utils.furnacemind.feedback_service import FurnaceMindFeedbackService
 from utils.session import current_user_id
 from utils.settings import settings
@@ -223,6 +226,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     st.session_state.setdefault("fm_artifact_store", {})
+    configure_artifact_store(StreamlitArtifactStore())
 
     if not user_id:
         history_store = None
@@ -331,6 +335,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     llm = OpenRouterClient()
     if settings.enable_shift_history_vector and st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
+    configure_memory_stores(
+        shift_store=st.session_state.get("shift_store"),
+        knowledge_store=knowledge_store,
+    )
     tools = get_openai_tool_schemas()
     extra_context = prompts.TOOL_POLICY
     if feedback_lesson_context:

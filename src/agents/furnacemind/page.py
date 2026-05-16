@@ -16,11 +16,14 @@ from agents.furnacemind.agent import run_agent_loop
 from agents.furnacemind.context import SystemPromptContext
 from agents.furnacemind.prompts import TOOL_POLICY
 from agents.furnacemind.skills import SkillEngine
+from agents.furnacemind.tools.memory_tool_adapters import configure_memory_stores
+from agents.furnacemind.tools.registry import configure_artifact_store
 from agents.llm.llm_client import OpenRouterClient
 from agents.memory.fm_memory import add_recent_turn, save_fm_memory
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.vector_store import QdrantVectorStore
 from agents.multimodal.ingestion import process_file
+from ui.furnacemind.artifact_adapter import StreamlitArtifactStore
 
 _IST = timezone(timedelta(hours=5, minutes=30))
 _ARTIFACT_TYPES = {"plotly", "dataframe"}
@@ -258,6 +261,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     st.session_state.setdefault("fm_artifact_store", {})
+    configure_artifact_store(StreamlitArtifactStore())
 
     default_date, default_label = _last_completed_shift()
 
@@ -304,6 +308,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     llm = OpenRouterClient()
     if st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
+    configure_memory_stores(
+        shift_store=st.session_state.get("shift_store"),
+        knowledge_store=knowledge_store,
+    )
     tools = get_openai_tool_schemas()
     messages = [
         {

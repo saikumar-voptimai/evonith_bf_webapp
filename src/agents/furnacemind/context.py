@@ -70,8 +70,8 @@ class SystemPromptContext:
 
     The class separates static context from per-session context. Static domain
     and tool files are loaded once during initialization, while memory summaries
-    and recent tool-error notes can be refreshed for the current user and
-    conversation before each chat response.
+    can be refreshed for the current user and conversation before each chat
+    response.
     """
 
     def __init__(self) -> None:
@@ -90,7 +90,6 @@ class SystemPromptContext:
              - return: None - This function does not return a value.
         """
         self._static = self._load_static()
-        self._errors = self._load_errors()
         self.memory = load_fm_memory()
         self._persistent = build_persistent_context(self.memory)
 
@@ -117,11 +116,6 @@ class SystemPromptContext:
             parts.append("SKILL CONTEXT (active skill reference data):\n" + skill_ctx)
         if self._persistent:
             parts.append(self._persistent)
-        if self._errors:
-            parts.append(
-                "RECENT TOOL ERRORS (avoid repeating these failure modes):\n"
-                + self._errors
-            )
         if extra:
             parts.append(extra.strip())
         return "\n\n".join(parts).strip()
@@ -164,8 +158,7 @@ class SystemPromptContext:
 
         The page calls this after the conversation id is known and before the
         model prompt is built. It reloads the PostgreSQL memory summary for the
-        active chat and also refreshes recent tool-error notes so the agent can
-        avoid repeating known tool failures.
+        active chat.
 
         Args:
              - user_id: str | None - User whose memory should be loaded.
@@ -175,7 +168,6 @@ class SystemPromptContext:
              - return: None - This function does not return a value.
         """
         self.refresh_memory(user_id=user_id, conversation_id=conversation_id)
-        self._errors = self._load_errors()
 
     # ── Private loaders ─────────────────────────────────────────────────────
 
@@ -238,25 +230,3 @@ class SystemPromptContext:
                 parts.append(f"{name} (skill benchmark data):\n" + txt)
         return "\n\n---\n\n".join(parts)
 
-    def _load_errors(self) -> str:
-        """
-        Load recent tool-error notes for prompt-level failure avoidance.
-
-        FurnaceMind records recent tool issues in ``tool_errors.md``. Including
-        only the tail of that file gives the agent enough context to avoid
-        repeating recent bad calls without allowing old errors to dominate the
-        system prompt.
-
-        Args:
-             - None
-
-        Returns:
-             - return: str - Recent tool-error text, or an empty string.
-        """
-        try:
-            path = Path(__file__).resolve().parents[2] / "agents" / "tool_errors.md"
-            if not path.exists():
-                return ""
-            return path.read_text(encoding="utf-8")[-2_500:].strip()
-        except Exception:
-            return ""

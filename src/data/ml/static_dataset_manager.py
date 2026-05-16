@@ -206,6 +206,10 @@ class StaticDatasetManager:
             raise ValueError("Cannot save an empty static ML dataset.")
 
         saved_path = self.static_path.parent / self._versioned_filename()
+        sequence = 1
+        while saved_path.exists():
+            saved_path = self.static_path.parent / self._versioned_filename(sequence)
+            sequence += 1
         df.to_csv(saved_path, index=True)
         if saved_path.resolve() != self.static_path.resolve():
             shutil.copyfile(saved_path, self.static_path)
@@ -261,9 +265,10 @@ class StaticDatasetManager:
             return latest
         return self.static_path
 
-    def _versioned_filename(self) -> str:
+    def _versioned_filename(self, sequence: int | None = None) -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        return f"{self.static_path.stem}_{timestamp}{self.static_path.suffix}"
+        suffix = f"_{sequence}" if sequence is not None else ""
+        return f"{self.static_path.stem}_{timestamp}{suffix}{self.static_path.suffix}"
 
     def _latest_versioned_file(self) -> Path | None:
         files = sorted(
