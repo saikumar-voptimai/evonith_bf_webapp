@@ -8,26 +8,19 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from furnace_data.config import load_config
-from furnace_data.neon_db.offline import fetch_offline_data
 from furnace_data.relational.engine import build_relational_engine
 
 log = logging.getLogger(__name__)
 
-_STATIC_ML_TABLE = "historical_static_ml_dataset"
-_STATIC_ML_SCHEMA = "offline_feed"
+_STATIC_ML_TABLE = "active_hourly"
+_STATIC_ML_SCHEMA = "ml_dataset"
 _RAW_BURDEN_COLUMN_RE = re.compile(
     r"^(?:coke|noncoke|non_coke)__p\d+_(?:angles|rings)$",
     re.IGNORECASE,
 )
-
-
-def get_static_dataset_path(data_rel_path: str | None = None) -> Path:
-    """Resolve the legacy local static dataset path inside the app repo."""
-    rel_path = data_rel_path or load_config("setting_ds_dv.yml")["DATA"]
-    return (Path(__file__).resolve().parents[3] / rel_path).resolve()
 
 
 def normalise_index(df: pd.DataFrame, *, assume_naive_utc: bool) -> pd.DataFrame:
@@ -102,10 +95,20 @@ def configured_static_dataset_columns() -> list[str]:
 def static_dataset_fetch_columns() -> list[str]:
     """Return configured static columns that exist in the database table."""
     available_columns = available_static_dataset_columns()
-    candidates = [
+    configured_candidates = [
         col
         for col in configured_static_dataset_columns()
         if col in available_columns and not _RAW_BURDEN_COLUMN_RE.match(col)
+    ]
+
+    if configured_candidates:
+        return configured_candidates
+
+    time_columns = {"time", "date_time", "timestamp"}
+    candidates = [
+        col
+        for col in available_columns
+        if col not in time_columns and not _RAW_BURDEN_COLUMN_RE.match(col)
     ]
 
     if not candidates:
@@ -116,15 +119,18 @@ def static_dataset_fetch_columns() -> list[str]:
 
 def fetch_static_dataset_from_database(sort_index: bool = True) -> pd.DataFrame:
     """Fetch the full static ML dataset from the configured database."""
+    time_column = _static_dataset_time_column()
+    columns = [time_column, *static_dataset_fetch_columns()]
+    select_list = ", ".join(_quote_identifier(column) for column in columns)
+    table_sql = _qualified_table_sql(_STATIC_ML_SCHEMA, _STATIC_ML_TABLE)
+    query = text(f"SELECT {select_list} FROM {table_sql} ORDER BY {_quote_identifier(time_column)}")
+    engine = build_relational_engine()
     try:
-        df = fetch_offline_data(
-            _STATIC_ML_TABLE,
-            "full",
-            query_type="raw",
-            columns=static_dataset_fetch_columns(),
-        )
+        df = pd.read_sql_query(query, engine)
     except Exception as exc:
         raise RuntimeError(f"Could not load static ML dataset: {exc}") from exc
+    finally:
+        engine.dispose()
 
     if df.empty:
         raise RuntimeError("Static ML dataset returned 0 rows.")
@@ -143,23 +149,28 @@ def load_static_dataset(
     low_memory: bool = False,
     sort_index: bool = True,
 ) -> pd.DataFrame:
-    """Load the static ML dataset from local CSV or the database."""
-    if path is None:
-        csv_path = get_static_dataset_path()
-    else:
-        csv_path = Path(path)
-        if not csv_path.is_absolute():
-            csv_path = (Path(__file__).resolve().parents[3] / csv_path).resolve()
+    """Load the active static ML dataset from the database."""
+    _ = (path, index_col, parse_dates, low_memory)
+    return fetch_static_dataset_from_database(sort_index=sort_index)
 
-    if not csv_path.exists():
-        return fetch_static_dataset_from_database(sort_index=sort_index)
 
-    df = pd.read_csv(
-        csv_path,
-        index_col=index_col,
-        parse_dates=parse_dates,
-        low_memory=low_memory,
-    )
-    df = normalise_index(df, assume_naive_utc=False)
-    df = rename_columns_for_app(df)
-    return df.sort_index() if sort_index else df
+def _static_dataset_time_column() -> str:
+    available = available_static_dataset_columns()
+    for candidate in ("time", "date_time", "timestamp"):
+        if candidate in available:
+            return candidate
+    raise RuntimeError("Static ML dataset active view has no time column.")
+
+
+def _quote_identifier(name: str) -> str:
+    if "\x00" in name:
+        raise ValueError(f"Invalid database identifier: {name!r}")
+    escaped = name.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _qualified_table_sql(schema: str, table: str) -> str:
+    for part in (schema, table):
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", part):
+            raise ValueError(f"Invalid schema-qualified table name: {schema}.{table}")
+    return f"{_quote_identifier(schema)}.{_quote_identifier(table)}"

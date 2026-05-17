@@ -207,22 +207,30 @@ def test_static_dataset_service_filters_and_renames_database_columns(monkeypatch
             },
         }
 
-    calls: list[dict] = []
+    queries: list[str] = []
 
-    def fake_fetch(table_name, time_range, **kwargs):
-        calls.append({"table_name": table_name, "time_range": time_range, **kwargs})
+    class FakeEngine:
+        def dispose(self):
+            pass
+
+    def fake_read_sql(query, engine):
+        queries.append(str(query))
         return pd.DataFrame(
-            {"pellet_sio2_pct": [4.2], "weighted_coke_angle": [37.0]},
-            index=pd.DatetimeIndex(["2026-05-05T00:00:00Z"], name="time"),
+            {
+                "time": ["2026-05-05T00:00:00Z"],
+                "pellet_sio2_pct": [4.2],
+                "weighted_coke_angle": [37.0],
+            }
         )
 
     monkeypatch.setattr(ml_dataset_service, "load_config", config)
     monkeypatch.setattr(
         ml_dataset_service,
         "available_static_dataset_columns",
-        lambda: {"pellet_sio2_pct", "weighted_coke_angle", "coke__p01_angles"},
+        lambda: {"time", "pellet_sio2_pct", "weighted_coke_angle", "coke__p01_angles"},
     )
-    monkeypatch.setattr(ml_dataset_service, "fetch_offline_data", fake_fetch)
+    monkeypatch.setattr(ml_dataset_service, "build_relational_engine", lambda: FakeEngine())
+    monkeypatch.setattr(ml_dataset_service.pd, "read_sql_query", fake_read_sql)
 
     assert ml_dataset_service.static_dataset_fetch_columns() == [
         "pellet_sio2_pct",
@@ -231,44 +239,35 @@ def test_static_dataset_service_filters_and_renames_database_columns(monkeypatch
 
     df = ml_dataset_service.fetch_static_dataset_from_database()
 
-    assert calls == [
-        {
-            "table_name": "historical_static_ml_dataset",
-            "time_range": "full",
-            "query_type": "raw",
-            "columns": ["pellet_sio2_pct", "weighted_coke_angle"],
-        }
-    ]
+    assert "ml_dataset" in queries[0]
+    assert "active_hourly" in queries[0]
+    assert '"pellet_sio2_pct"' in queries[0]
+    assert "coke__p01_angles" not in queries[0]
     assert list(df.columns) == ["PELLET_PCT_SIO2", "WEIGHTED_COKE_ANGLE"]
     assert df.index[0] == pd.Timestamp("2026-05-05 05:30:00")
 
 
-def test_static_dataset_service_loads_local_csv_without_database(monkeypatch, tmp_path) -> None:
+def test_static_dataset_service_loads_active_database_dataset(monkeypatch, tmp_path) -> None:
     csv_path = tmp_path / "furnace_dataset.csv"
     pd.DataFrame(
         {"pellet_sio2_pct": [4.2]},
         index=pd.DatetimeIndex(["2026-05-05 05:30:00"], name="time"),
     ).to_csv(csv_path)
 
-    monkeypatch.setattr(
-        ml_dataset_service,
-        "load_config",
-        lambda _: {
-            "DATA": "src/assets/data/furnace_dataset.csv",
-            "ml_dataset": {"local_tz": "Asia/Kolkata"},
-            "rename_dict": {"pellet_sio2_pct": "PELLET_PCT_SIO2"},
-        },
+    db_df = pd.DataFrame(
+        {"PELLET_PCT_SIO2": [5.1]},
+        index=pd.DatetimeIndex(["2026-05-06 05:30:00"], name="time"),
     )
     monkeypatch.setattr(
         ml_dataset_service,
         "fetch_static_dataset_from_database",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("database hit")),
+        lambda *args, **kwargs: db_df,
     )
 
     df = ml_dataset_service.load_static_dataset(csv_path)
 
     assert list(df.columns) == ["PELLET_PCT_SIO2"]
-    assert df.index[0] == pd.Timestamp("2026-05-05 05:30:00")
+    assert df.index[0] == pd.Timestamp("2026-05-06 05:30:00")
 
 
 def test_data_fetch_service_time_window_and_concat_helpers() -> None:

@@ -19,6 +19,16 @@ offline_measurements:
   HM & Slag: "hotmetal_slag_updated_data"
   Charge: "latest_charge_data"
 
+dataset_refresh:
+  enabled: true
+  auto_enqueue_on_page_hit: true
+  min_refresh_interval_hours: 6
+  offline_lag_days: 2
+  active_table: "ml_dataset.active_hourly"
+  keep_versions: 3
+  allow_manual_refresh_roles: ["admin", "supervisor"]
+  stale_running_timeout_hours: 12
+
 ml_dataset:
   bucket: "ML DATASET"
   measurement_step1: "rm_charge_dis_hm_slag"

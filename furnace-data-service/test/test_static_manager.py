@@ -73,25 +73,25 @@ class TestCsvRotation:
     def test_rotates_to_max_versions(self, tmp_path):
         # Create 5 CSV files with different mtimes
         for i in range(5):
-            f = tmp_path / f"ml_dataset_202601{i:02d}_000000.csv"
+            f = tmp_path / f"furnace_dataset_202601{i:02d}_000000.csv"
             f.write_text("a,b\n1,2")
             import time; time.sleep(0.01)   # ensure distinct mtimes
 
         _rotate_csvs(tmp_path, keep=3)
-        remaining = list(tmp_path.glob("ml_dataset_*.csv"))
+        remaining = list(tmp_path.glob("furnace_dataset_*.csv"))
         assert len(remaining) == 3
 
     def test_no_deletion_when_under_limit(self, tmp_path):
         for i in range(2):
-            (tmp_path / f"ml_dataset_2026010{i}_000000.csv").write_text("a")
+            (tmp_path / f"furnace_dataset_2026010{i}_000000.csv").write_text("a")
         _rotate_csvs(tmp_path, keep=3)
-        assert len(list(tmp_path.glob("ml_dataset_*.csv"))) == 2
+        assert len(list(tmp_path.glob("furnace_dataset_*.csv"))) == 2
 
     def test_versioned_filename_format(self):
         fn = _versioned_filename()
-        assert fn.startswith("ml_dataset_")
+        assert fn.startswith("furnace_dataset_")
         assert fn.endswith(".csv")
-        assert len(fn) == len("ml_dataset_20260401_123456.csv")
+        assert len(fn) == len("furnace_dataset_20260401_123456.csv")
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ class TestSave:
         path = mgr.save(sample_ml_df, "RM Charge")
 
         assert path.exists()
-        assert path.name.startswith("ml_dataset_")
+        assert path.name.startswith("furnace_dataset_")
         meta = _load_meta(tmp_path)
         assert meta is not None
         assert meta.rows == len(sample_ml_df)
@@ -191,12 +191,12 @@ class TestSave:
         # Pre-seed 3 old CSVs
         import time
         for i in range(3):
-            (tmp_path / f"ml_dataset_20260{i+1}01_000000.csv").write_text("old")
+            (tmp_path / f"furnace_dataset_20260{i+1}01_000000.csv").write_text("old")
             time.sleep(0.01)
 
         mgr.save(sample_ml_df, "RM Charge")
 
-        remaining = list(tmp_path.glob("ml_dataset_*.csv"))
+        remaining = list(tmp_path.glob("furnace_dataset_*.csv"))
         assert len(remaining) == 3  # old ones rotated out, new one in
 
 
@@ -218,12 +218,12 @@ class TestUpdateStatic:
 
     def test_empty_cache_fetches_from_default_start(self, tmp_path, sample_ml_df):
         mgr = self._make_manager(tmp_path)
-        mgr.fetcher.get_ml_dataset.return_value = sample_ml_df
+        mgr.fetcher.get_dataset.return_value = sample_ml_df
 
         result = mgr.update_static(rm_choice="RM Charge", apply_cleaning=False)
 
-        mgr.fetcher.get_ml_dataset.assert_called_once()
-        call_kwargs = mgr.fetcher.get_ml_dataset.call_args
+        mgr.fetcher.get_dataset.assert_called_once()
+        call_kwargs = mgr.fetcher.get_dataset.call_args
         assert call_kwargs.kwargs["start_date"] == StaticDatasetManager._DEFAULT_START
         assert not result.empty
 
@@ -231,18 +231,18 @@ class TestUpdateStatic:
         # Write a CSV with data going up to Nov 1
         idx = pd.date_range("2025-09-01", periods=60, freq="1D")
         existing_df = pd.DataFrame({"col": range(60)}, index=idx)
-        existing_df.to_csv(tmp_path / "ml_dataset_20260101_000000.csv")
+        existing_df.to_csv(tmp_path / "furnace_dataset_20260101_000000.csv")
 
         meta = CacheMeta(
             raw_end="2025-10-31",
             confirmed_end="2025-10-28",
-            csv_file="ml_dataset_20260101_000000.csv",
+            csv_file="furnace_dataset_20260101_000000.csv",
             rm_choice="charge",
         )
         _save_meta(tmp_path, meta)
 
         mgr = self._make_manager(tmp_path)
-        mgr.fetcher.get_ml_dataset.return_value = sample_ml_df
+        mgr.fetcher.get_dataset.return_value = sample_ml_df
 
         result = mgr.update_static(
             rm_choice="RM Charge",
@@ -251,7 +251,7 @@ class TestUpdateStatic:
         )
 
         # Frozen part: rows before Oct 1 (Sep rows only)
-        call_kwargs = mgr.fetcher.get_ml_dataset.call_args
+        call_kwargs = mgr.fetcher.get_dataset.call_args
         assert call_kwargs.kwargs["start_date"] == date(2025, 10, 1)
         assert not result.empty
 
@@ -259,18 +259,18 @@ class TestUpdateStatic:
         # raw_end = today → nothing to fetch
         today = date.today()
         confirmed_end = today - timedelta(days=3)
-        sample_ml_df.to_csv(tmp_path / "ml_dataset_20260101_000000.csv")
+        sample_ml_df.to_csv(tmp_path / "furnace_dataset_20260101_000000.csv")
         meta = CacheMeta(
             raw_end=today.isoformat(),
             confirmed_end=confirmed_end.isoformat(),
-            csv_file="ml_dataset_20260101_000000.csv",
+            csv_file="furnace_dataset_20260101_000000.csv",
         )
         _save_meta(tmp_path, meta)
 
         mgr = self._make_manager(tmp_path)
         result = mgr.update_static(rm_choice="RM Charge", apply_cleaning=False)
 
-        mgr.fetcher.get_ml_dataset.assert_not_called()
+        mgr.fetcher.get_dataset.assert_not_called()
         assert not result.empty
 
     def test_legacy_bootstrap(self, tmp_path, sample_ml_df):
@@ -278,9 +278,9 @@ class TestUpdateStatic:
         sample_ml_df.to_csv(legacy_path)
 
         mgr = self._make_manager(tmp_path, legacy=legacy_path)
-        mgr.fetcher.get_ml_dataset.return_value = pd.DataFrame()  # nothing new
+        mgr.fetcher.get_dataset.return_value = pd.DataFrame()  # nothing new
 
         # Should not crash; legacy data loaded as base
         result = mgr.update_static(rm_choice="RM Charge", apply_cleaning=False)
-        # get_ml_dataset was called (to fetch from confirmed_end onward)
-        mgr.fetcher.get_ml_dataset.assert_called_once()
+        # get_dataset was called (to fetch from confirmed_end onward)
+        mgr.fetcher.get_dataset.assert_called_once()

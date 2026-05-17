@@ -10,14 +10,10 @@ from __future__ import annotations
 import streamlit as st
 
 from agents.furnacemind.ai_cooperate_page import render_ai_cooperate
-from config.config_loader import load_config
 from ui.furnacemind_sections import select_nav_tab
 from ui.furnacemind.reports import render_reports
 from ui.styles import apply_styles
-from utils.dataset_refresher import (
-    get_version as _ds_get_version,
-    maybe_refresh as _ds_maybe_refresh,
-)
+from utils.dataset_refresh_status import sync_static_dataset_status
 
 
 def main() -> None:
@@ -28,15 +24,11 @@ def main() -> None:
     st.title("FurnaceMind")
     st.caption("Blast Furnace Operational Intelligence")
 
-    # ── ML dataset auto-refresh ────────────────────────────────────────────
-    _config = load_config("setting_ds_dv.yml")
-    if _ds_maybe_refresh(_config):
-        st.sidebar.caption("⏳ Refreshing dataset in background…")
-
-    _current_ds_version = _ds_get_version()
-    if st.session_state.get("_ds_version") != _current_ds_version:
-        st.session_state.pop("fm_ml_df_cache", None)
-        st.session_state["_ds_version"] = _current_ds_version
+    # Dataset status is checked by the backend; no Streamlit background refresh.
+    sync_static_dataset_status(
+        cache_keys_to_clear=("fm_ml_df_cache",),
+        key_prefix="furnacemind_static_dataset",
+    )
 
     app_mode = select_nav_tab()
 

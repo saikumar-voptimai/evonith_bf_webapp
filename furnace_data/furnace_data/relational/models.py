@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import JSON, Boolean, DateTime
@@ -151,6 +152,94 @@ class Hopper(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class DatasetVersion(Base):
+    """Published static ML dataset version metadata."""
+
+    __tablename__ = "dataset_versions"
+    __table_args__ = (
+        Index(
+            "ix_dataset_versions_dataset_status",
+            "dataset_name",
+            "rm_choice",
+            "status",
+        ),
+        Index(
+            "uq_dataset_versions_active",
+            "dataset_name",
+            "rm_choice",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+        {"schema": "ml_dataset"},
+    )
+
+    version_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    dataset_name: Mapped[str] = mapped_column(Text, nullable=False)
+    rm_choice: Mapped[str] = mapped_column(Text, nullable=False, default="Full")
+    storage_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    target_table: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    confirmed_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    confirmed_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    activated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    metadata_json: Mapped[dict] = mapped_column(
+        "metadata", JSON, nullable=False, default=dict
+    )
+
+
+class DatasetRefreshRun(Base):
+    """Refresh run metadata and cross-user lock state."""
+
+    __tablename__ = "dataset_refresh_runs"
+    __table_args__ = (
+        Index(
+            "ix_dataset_refresh_runs_dataset_created",
+            "dataset_name",
+            "rm_choice",
+            "started_at",
+        ),
+        Index(
+            "uq_dataset_refresh_running",
+            "dataset_name",
+            "rm_choice",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
+        {"schema": "ml_dataset"},
+    )
+
+    run_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    dataset_name: Mapped[str] = mapped_column(Text, nullable=False)
+    rm_choice: Mapped[str] = mapped_column(Text, nullable=False, default="Full")
+    trigger_type: Mapped[str] = mapped_column(Text, nullable=False)
+    triggered_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    output_version_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("ml_dataset.dataset_versions.version_id"), nullable=True
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(
+        "metadata", JSON, nullable=False, default=dict
     )
 
 

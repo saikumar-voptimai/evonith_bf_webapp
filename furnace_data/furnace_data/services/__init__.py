@@ -6,5 +6,5 @@ Submodules
 ----------
 data_fetch_service   Online/offline fetch, merge, and concat helpers.
 ml_service           ML dataset slicing, shift windows, and IST time helpers.
-ml_dataset_service   Static ML dataset loading from local CSV or database.
+ml_dataset_service   Static ML dataset loading from the active database view.
 """

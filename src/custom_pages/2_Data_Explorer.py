@@ -1,5 +1,5 @@
 import os
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import matplotlib.pyplot as plt
@@ -22,9 +22,8 @@ from furnace_data.neon_db.offline import (
 )
 from furnace_data.dataset.fetcher import DatasetFetcher as MlDatasetFetcher
 from data.fetch_presets import OFFLINE_REPORT_LABEL_MAP, offline_table_label
-from data.ml.static_csv import get_static_dataset_path, load_static_dataset
-from data.ml.static_dataset_manager import StaticDatasetManager
-from utils.dataset_refresher import maybe_refresh
+from data.ml.static_csv import load_static_dataset
+from utils.dataset_refresh_status import sync_static_dataset_status
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config("setting_vsense.yml")
@@ -34,12 +33,13 @@ load_dotenv()
 local_tz = pytz.timezone("Asia/Kolkata")  # or use your actual timezone
 os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
 
-if maybe_refresh(config):
-    st.sidebar.caption("Refreshing static dataset cache...")
+sync_static_dataset_status(
+    cache_keys_to_clear=(),
+    key_prefix="data_explorer_static_dataset",
+)
 
-fullpath = get_static_dataset_path(config["DATA"])
 try:
-    df = load_static_dataset(fullpath)
+    df = load_static_dataset()
 except Exception as exc:  # noqa: BLE001
     st.error(f"Static ML dataset could not be loaded: {exc}")
     st.stop()
@@ -660,190 +660,18 @@ with left_col:
                     mime="text/csv",
                 )
 
-# -------------- GENERATE & REFRESH ML DATASET --------------
+# -------------- STATIC ML DATASET --------------
 
 with right_col:
-    st.header("📄 Generate & Refresh ML Dataset")
-    st.caption("Extend Neon DB → rebuild cleaned local CSV → validate.")
-
-    sm = StaticDatasetManager(fullpath)
-    meta = sm.get_meta()
-    db_end = sm.get_db_end_date()
-
-    # Status row
-    _today_gen = datetime.now(local_tz).date()
-    _db_end_str  = str(db_end)  if db_end  else "unknown"
-    _csv_upd_str = meta.last_updated[:16] if meta and meta.last_updated else "never"
-    _csv_rows    = meta.rows    if meta else "?"
-    _csv_cols    = meta.columns if meta else "?"
-    st.caption(
-        f"DB end: **{_db_end_str}** · "
-        f"Local CSV: **{_csv_upd_str}** · "
-        f"**{_csv_rows}** rows × **{_csv_cols}** cols"
-    )
-
-    with st.container(border=True):
-
-        _tab_ext, _tab_ovr = st.tabs(["Extend to Date", "Override from Date"])
-
-        # ── Extend tab ──────────────────────────────────────────────────────
-        with _tab_ext:
-            st.caption(
-                "Fetches data from the DB end date up to the chosen date "
-                "(Steps 2-5: charge/DPR, HM/Slag, burden, InfluxDB), "
-                "writes new rows to Neon, then rebuilds the cleaned local CSV."
-            )
-            with st.form("extend_form"):
-                _ext_rm = st.radio(
-                    "RM Mode", ["RM Charge", "RM DPR"], horizontal=True, key="ext_rm"
-                )
-                _ext_end = st.date_input(
-                    "Generate to date", value=_today_gen, key="ext_end_date"
-                )
-                _ext_submit = st.form_submit_button(
-                    "Extend & Rebuild Dataset", use_container_width=True
-                )
-
-            if _ext_submit:
-                if db_end and _ext_end <= db_end:
-                    st.warning(
-                        f"No new data: DB already has data up to {db_end}. "
-                        f"Choose a date after {db_end} or use Override."
-                    )
-                else:
-                    with st.spinner("Fetching new data and writing to Neon…"):
-                        _raw = fetcher.extend_and_persist(
-                            start_date=db_end or _today_gen,
-                            end_date=_ext_end,
-                            rm_choice=_ext_rm,
-                            override_from_date=None,
-                        )
-                    if _raw.empty:
-                        st.warning("No new data was returned.")
-                    else:
-                        st.info(f"Wrote {len(_raw)} raw rows to Neon DB.")
-                        with st.spinner("Rebuilding cleaned static dataset…"):
-                            _full_df = sm.update_static()
-                            sm.save(_full_df)
-                            from data.ml.static_csv import update_cutoff_date
-                            update_cutoff_date(_ext_end)
-                        st.session_state["static_ml_dataset_df"] = _full_df
-                        st.success(
-                            f"Dataset rebuilt: {len(_full_df)} rows, "
-                            f"{_full_df.index.min().date()} → {_full_df.index.max().date()}"
-                        )
-                        with st.spinner("Running validation…"):
-                            from furnace_data.dataset.validator import validate_dataset
-                            st.session_state["ml_validation_report"] = validate_dataset(_full_df)
-
-        # ── Override tab ─────────────────────────────────────────────────────
-        with _tab_ovr:
-            st.caption(
-                "Deletes existing DB rows from the chosen date onwards, "
-                "then re-generates and rewrites them.  Use this to fix bad data."
-            )
-            with st.form("override_form"):
-                _ovr_rm = st.radio(
-                    "RM Mode", ["RM Charge", "RM DPR"], horizontal=True, key="ovr_rm"
-                )
-                _ovr_from = st.date_input(
-                    "Override from date",
-                    value=(db_end - timedelta(days=30)) if db_end else _today_gen - timedelta(days=30),
-                    key="ovr_from_date",
-                )
-                _ovr_end = st.date_input(
-                    "Generate to date", value=_today_gen, key="ovr_end_date"
-                )
-                st.warning(
-                    f"This will DELETE all DB rows from {_ovr_from} onwards "
-                    "and re-generate them.",
-                    icon="⚠️",
-                )
-                _ovr_submit = st.form_submit_button(
-                    "Override & Rebuild", use_container_width=True
-                )
-
-            if _ovr_submit:
-                with st.spinner(f"Deleting rows from {_ovr_from} and re-generating…"):
-                    _raw = fetcher.extend_and_persist(
-                        start_date=_ovr_from,
-                        end_date=_ovr_end,
-                        rm_choice=_ovr_rm,
-                        override_from_date=_ovr_from,
-                    )
-                if _raw.empty:
-                    st.warning("No data returned for the override range.")
-                else:
-                    st.info(f"Wrote {len(_raw)} raw rows to Neon DB.")
-                    with st.spinner("Rebuilding cleaned static dataset…"):
-                        _full_df = sm.update_static()
-                        sm.save(_full_df)
-                        from data.ml.static_csv import update_cutoff_date
-                        update_cutoff_date(_ovr_end)
-                    st.session_state["static_ml_dataset_df"] = _full_df
-                    st.success(
-                        f"Dataset rebuilt: {len(_full_df)} rows, "
-                        f"{_full_df.index.min().date()} → {_full_df.index.max().date()}"
-                    )
-                    with st.spinner("Running validation…"):
-                        from furnace_data.dataset.validator import validate_dataset
-                        st.session_state["ml_validation_report"] = validate_dataset(_full_df)
-
-    # Download
-    _dl_df = st.session_state.get("static_ml_dataset_df") or df
+    st.header("Static ML Dataset")
+    st.caption("Refresh is managed by the backend. This page uses the last active database version.")
     st.download_button(
         label="Download ML Dataset",
-        data=_dl_df.to_csv(index=True).encode("utf-8"),
+        data=df.to_csv(index=True).encode("utf-8"),
         file_name="furnace_static_ml_dataset.csv",
         mime="text/csv",
-        disabled=_dl_df.empty,
+        disabled=df.empty,
     )
-
-    # Validation report expander
-    _vr = st.session_state.get("ml_validation_report")
-    if _vr:
-        with st.expander(
-            ("✅ Validation passed" if _vr["passed"] else "❌ Validation has errors")
-            + f"  —  {len(_vr['warnings'])} warnings, {len(_vr['errors'])} errors"
-        ):
-            _chk = _vr["checks"]
-
-            # Shape + date range
-            _sh = _chk.get("shape", {})
-            st.markdown(
-                f"**Rows:** {_sh.get('rows')} &nbsp;|&nbsp; "
-                f"**Cols:** {_sh.get('cols')} &nbsp;|&nbsp; "
-                f"**Range:** {_sh.get('start', '')[:10]} → {_sh.get('end', '')[:10]}"
-            )
-
-            # Monthly coverage
-            _mc = _chk.get("monthly_coverage")
-            if _mc is not None and not _mc.empty:
-                st.markdown("**Monthly row coverage:**")
-                _mc_df = _mc.reset_index()
-                _mc_df.columns = ["Month", "Rows"]
-                _mc_df = _mc_df.set_index("Month")
-                st.dataframe(
-                    _mc_df.style.highlight_between(
-                        subset=["Rows"], left=0, right=20, color="#ffd0d0"
-                    ),
-                    use_container_width=True,
-                    height=min(300, 35 * len(_mc_df) + 40),
-                )
-
-            # KPI stats
-            _kpi = _chk.get("kpi_stats")
-            if _kpi is not None and not _kpi.empty:
-                st.markdown("**KPI statistics:**")
-                st.dataframe(_kpi.round(2), use_container_width=True)
-
-            # Warnings and errors
-            if _vr["errors"]:
-                for _e in _vr["errors"]:
-                    st.error(_e)
-            if _vr["warnings"]:
-                for _w in _vr["warnings"]:
-                    st.warning(_w)
 
 
 # 10 --- HOT METAL AND SLAG DATA SECTION ---
