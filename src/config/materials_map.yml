@@ -6,13 +6,13 @@ materials:
     material_name: coke_offline
     is_primary: true
   - client_name: Nut Coke
-    material_name: nut_coke
+    material_name: nut_coke_online
     is_primary: true
   - client_name: Sinter
     material_name: sinter_sp02_online
     is_primary: true
   - client_name: Lloyds Pellet
-    material_name: pellet
+    material_name: lloyds_pellet
     is_primary: true
   - client_name: Dolomite
     material_name: dolomite
