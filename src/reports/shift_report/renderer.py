@@ -3,6 +3,7 @@
 No Streamlit imports — the output is plain text that ui/components.show_report()
 renders.  This keeps the renderer fully unit-testable.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -84,8 +85,8 @@ def as_markdown(report: ShiftReportData, analysis: str = "") -> str:
         f"| Permeability | — | {pe} | {pes} |\n"
         f"| ETA CO | % | {ec} | {ecs} |\n"
         f"| RAFT | degC | {ra} | {ras} |\n"
-        "| Burden Moisture Input | kg/thm | - | - |\n"
-        "| Fines Input | kg/thm | - | - |"
+        f"| Burden Moisture Input | kg/thm | {_v(r.burden_moisture_input)} | - |\n"
+        f"| Fines Input | kg/thm | {_v(r.fines_input)} | - |"
     )
 
     temp_table = (
