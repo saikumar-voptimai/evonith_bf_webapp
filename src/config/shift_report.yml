@@ -1,0 +1,82 @@
+analysis_lookback_days: 30
+
+online_groups:
+  - process_params
+  - temperature_profile
+  - delta_t
+  - miscellaneous
+
+analysis_tables:
+  ore: offline_feed.ore_chemistry
+  fuel: offline_feed.fuel_chemistry
+  flux: offline_feed.flux_chemistry
+
+material_fines_table:
+  schema: offline_feed
+  table: material_fines_analysis
+
+status_thresholds:
+  etaco: {warn: 42.0, crit: 40.0}
+  fuel_rate: {warn: 530.0, crit: 570.0}
+  raft_lo: 2100.0
+  raft_hi: 2350.0
+  perm_lo: 1000.0
+  perm_hi: 1600.0
+
+charge_columns:
+  coke: [coke_1_mt, coke_2_mt]
+  nut_coke: [nut_coke_1_mt, nut_coke_2_mt]
+  sinter: [sinter_1_mt, sinter_2_mt, sinter_3_mt, sinter_4_mt]
+  ore:
+    - ore_1_mt
+    - ore_2_mt
+    - ore_3_mt
+    - ore_4_mt
+    - ore_5_mt
+    - ore_6_mt
+    - ore_7_mt
+    - ore_8_mt
+    - ore_9_mt
+    - ore_10_mt
+    - ore_11_mt
+    - ore_12_mt
+  pellet: [pellet_1_mt, pellet_2_mt]
+  flux: [flux_1_mt, flux_2_mt, flux_3_mt]
+  pci: [pci_mt]
+
+charge_fallback_columns:
+  coke: [coke_total_mt, coke_mt]
+  nut_coke: [total_nutcoke_mt, nut_coke_mt, nutcoke_prime_mt]
+  sinter: [sinter_mt]
+  ore: [ore_mt]
+  pellet: [ll_pellet_mt, pellet_mt]
+  flux: [flux_mt]
+  pci: [pci2_mt]
+
+material_code_candidates:
+  pci_mt: [pci_1, pci_2, pci]
+
+moisture_sources:
+  fuel:
+    charge_groups: [coke, nut_coke, pci]
+    analysis_columns: [tm, moisture]
+  ore:
+    charge_groups: [ore]
+    analysis_columns: [tm]
+  flux:
+    charge_groups: [flux]
+    analysis_columns: [tm]
+
+fines_sources:
+  coke:
+    charge_groups: [coke, pci]
+    column_pattern: '^(?:plus|minus)_[0-9]+_?mm(?:_pct)?$'
+  nut_coke:
+    charge_groups: [nut_coke]
+    column_pattern: '^(?:plus|minus)_[0-9]+_?mm(?:_pct)?$'
+  ore:
+    charge_groups: [ore]
+    column_pattern: '^(?:plus|minus)_6_?mm(?:_pct)?$'
+  flux:
+    charge_groups: [flux]
+    column_pattern: '^minus_10_?mm(?:_pct)?$'

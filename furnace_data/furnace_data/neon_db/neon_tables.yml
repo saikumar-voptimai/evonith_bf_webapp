@@ -10,6 +10,7 @@ report_map:
     - offline_feed.sinter_chemistry
     - offline_feed.fuel_chemistry
     - offline_feed.flux_chemistry
+    - offline_feed.material_fines_analysis
     - offline_feed.raw_material_strength_analysis
     - plant_master.materials
   BURDEN_DISTRIBUTION:
@@ -26,6 +27,7 @@ table_aliases:
   sinter_chemistry: offline_feed.sinter_chemistry
   fuel_chemistry: offline_feed.fuel_chemistry
   flux_chemistry: offline_feed.flux_chemistry
+  material_fines_analysis: offline_feed.material_fines_analysis
   rm_hm: offline_feed.raw_material_strength_analysis
   raw_material_strength_analysis: offline_feed.raw_material_strength_analysis
   raw_material_stock: offline_feed.raw_material_stock
@@ -274,6 +276,13 @@ tables:
       - import_batch_id
       - source_row_number
       - created_at
+
+  offline_feed.material_fines_analysis:
+    schema: offline_feed
+    table: material_fines_analysis
+    time_column: date_time
+    supports_aggregation: false
+    allow_all_columns: true
 
   offline_feed.raw_material_strength_analysis:
     schema: offline_feed

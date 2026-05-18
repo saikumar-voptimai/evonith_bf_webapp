@@ -7,6 +7,24 @@ import streamlit as st
 from ui.components import show_report
 from utils.window_helpers import fetch_from_qdrant
 
+_LAST_REPORT_KEY = "furnacemind_last_report"
+
+
+def _remember_report(title: str, summary_text: str) -> None:
+    st.session_state[_LAST_REPORT_KEY] = {
+        "title": title,
+        "summary_text": summary_text,
+    }
+
+
+def _show_last_report() -> bool:
+    report = st.session_state.get(_LAST_REPORT_KEY)
+    if not report:
+        return False
+
+    show_report(report["title"], report["summary_text"])
+    return True
+
 
 def _run_live_shift_report(
     shift_date: date,
@@ -67,6 +85,7 @@ def render_reports() -> None:
         )
 
     if not generate_report:
+        _show_last_report()
         return
 
     window_id = f"{selected_date:%Y-%m-%d}_SHIFT_{shift_label}"
@@ -77,7 +96,9 @@ def render_reports() -> None:
         vector_store = QdrantVectorStore()
         payload = fetch_from_qdrant(vector_store, window_id)
         if payload:
-            show_report(f"Report ({window_id})", payload["summary_text"])
+            title = f"Report ({window_id})"
+            _remember_report(title, payload["summary_text"])
+            show_report(title, payload["summary_text"])
         else:
             st.warning(
                 f"No saved report found for {window_id}. "
@@ -93,14 +114,14 @@ def render_reports() -> None:
             "Showing cached live report for "
             f"{window_id} ({analysis_mode}). Re-submit to refresh."
         )
-        show_report(f"Live Report ({window_id})", st.session_state[cache_key])
+        title = f"Live Report ({window_id})"
+        _remember_report(title, st.session_state[cache_key])
+        show_report(title, st.session_state[cache_key])
         return
 
     status_box = st.empty()
-    spinner_message = (
-        f"Generating live report for {window_id} "
-        "from source data" + (" and LLM analysis..." if agentic_analysis else "...")
-    )
+    spinner_message = f"Generating live report for {window_id} from source data"
+    spinner_message += " and LLM analysis..." if agentic_analysis else "..."
 
     with st.spinner(spinner_message):
         report_text = _run_live_shift_report(
@@ -112,4 +133,6 @@ def render_reports() -> None:
 
     status_box.empty()
     st.session_state[cache_key] = report_text
-    show_report(f"Live Report ({window_id})", report_text)
+    title = f"Live Report ({window_id})"
+    _remember_report(title, report_text)
+    show_report(title, report_text)
