@@ -27,6 +27,7 @@ _ONLINE: dict[str, str] = {
     "perm":          "Process Params - BF2_BODY_PERMEABILITY",
     "etaco":         "Process Params - BF2_BODY_ETACO",
     "raft":          "Process Params - BF2_BODY_RAFT",
+    "o2_flow":       "Process Params - BF2_OXYGEN FLOW",
     "o2_enr":        "Process Params - BF2_OXYGEN ENRICHMENT PCT",
     "fuel_rate":     "Process Params - BF2_FUEL RATE PER THM",
     "coke_rate":     "Process Params - BF2_COKE RATE PER THM",
@@ -65,15 +66,25 @@ _HM: dict[str, str] = {
     "slag_sio2": "slag_pct_sio2",
 }
 
-# CHARGE column names — list = try in order (fallback aliases)
-_CH: dict[str, str | list[str]] = {
-    "coke":     "coke_total_mt",
-    "nut_coke": ["total_nutcoke_mt", "nut_coke_mt"],
-    "sinter":   "sinter_mt",
-    "ore":      "ore_mt",
-    "pellet":   ["ll_pellet_mt", "pellet_mt"],
-    "flux":     "flux_mt",
-    "pci":      "pci_mt",
+# CHARGE column names from offline_feed.charge_data.
+_CHARGE_DETAIL_COLS: dict[str, list[str]] = {
+    "coke": [f"coke_{i}_mt" for i in range(1, 3)],
+    "nut_coke": [f"nut_coke_{i}_mt" for i in range(1, 3)],
+    "sinter": [f"sinter_{i}_mt" for i in range(1, 5)],
+    "ore": [f"ore_{i}_mt" for i in range(1, 13)],
+    "pellet": [f"pellet_{i}_mt" for i in range(1, 3)],
+    "flux": [f"flux_{i}_mt" for i in range(1, 4)],
+    "pci": ["pci_mt"],
+}
+
+_CHARGE_FALLBACK_COLS: dict[str, list[str]] = {
+    "coke": ["coke_total_mt", "coke_mt"],
+    "nut_coke": ["total_nutcoke_mt", "nut_coke_mt", "nutcoke_prime_mt"],
+    "sinter": ["sinter_mt"],
+    "ore": ["ore_mt"],
+    "pellet": ["ll_pellet_mt", "pellet_mt"],
+    "flux": ["flux_mt"],
+    "pci": ["pci2_mt"],
 }
 
 # ── Status thresholds ────────────────────────────────────────────────────────
@@ -117,18 +128,30 @@ def _hm_mean(df: pd.DataFrame, key: str) -> Optional[float]:
     return round(float(s.mean()), 2) if len(s) else None
 
 
-def _charge_sum(df: pd.DataFrame, key: str) -> Optional[float]:
-    cols = _CH[key]
-    if isinstance(cols, str):
-        cols = [cols]
+def _sum_charge_columns(df: pd.DataFrame, cols: list[str]) -> Optional[float]:
     if df.empty:
         return None
-    for col in cols:
-        if col in df.columns:
-            s = df[col].dropna()
-            if len(s):
-                v = float(s.sum())
-                return round(v, 2) if v > 0 else None
+    present = [col for col in cols if col in df.columns]
+    if not present:
+        return None
+
+    values = df[present].apply(pd.to_numeric, errors="coerce")
+    if not values.notna().to_numpy().any():
+        return None
+
+    total = float(values.sum(skipna=True).sum())
+    return round(total, 2)
+
+
+def _charge_sum(df: pd.DataFrame, key: str) -> Optional[float]:
+    value = _sum_charge_columns(df, _CHARGE_DETAIL_COLS[key])
+    if value is not None:
+        return value
+
+    for fallback_col in _CHARGE_FALLBACK_COLS.get(key, []):
+        value = _sum_charge_columns(df, [fallback_col])
+        if value is not None:
+            return value
     return None
 
 
@@ -191,18 +214,13 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
         else:
             total_charges = None
 
-        # O2 flow (derived)
-        hb_vol = _mean(df, "hb_vol")
-        o2_enr = _mean(df, "o2_enr")
-        o2_flow_mean = round(hb_vol * o2_enr / 100, 2) if hb_vol and o2_enr else None
-
         # Slag basicity
         cao = _hm_mean(hm, "slag_cao")
         sio2 = _hm_mean(hm, "slag_sio2")
         slag_basicity = round(cao / sio2, 2) if cao and sio2 else None
 
-        # HM temp: hm_temp from slag reports
-        hm_temp = _hm_mean(hm, "hm_temp")
+        # HM temp: use from hot_metal_slag_data reports
+        hm_temp = _hm_mean(hm, "hmt_gt_1480c")
 
         prod_rate = _mean(df, "prod_rate")
         fuel_rate_val = _mean(df, "fuel_rate")
@@ -240,7 +258,7 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             blast_volume=_ps(df, "hb_vol"),
             blast_temp=_ps(df, "hb_temp"),
             blast_pressure=_ps(df, "hb_press"),
-            o2_flow=ParamStats(mean=o2_flow_mean, std=None),
+            o2_flow=_ps(df, "o2_flow"),
             o2_enrichment=_ps(df, "o2_enr"),
             permeability=_ps(df, "perm"),
             etaco=_ps(df, "etaco"),
