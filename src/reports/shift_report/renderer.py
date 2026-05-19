@@ -96,7 +96,7 @@ def as_markdown(report: ShiftReportData, analysis: str = "") -> str:
         "| Skin flow | - | - | - | - | - |\n"
         f"| Lower stack (degC) {_tr(r.lower_stack)}\n"
         f"| Belly (degC) {_tr(r.belly)}\n"
-        f"| Bosh delta-T {_tr(r.bosh)}"
+        f"| Bosh (degC) {_tr(r.bosh)}"
     )
 
     hearth_table = (
