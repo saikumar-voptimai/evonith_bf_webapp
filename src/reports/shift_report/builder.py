@@ -42,23 +42,22 @@ _ONLINE: dict[str, str] = {
     "hearth_5_4_c": "Temperature Profile - BF2_BFBD Furnace Body 5411mm Temp C",
     "hearth_5_7_c": "Temperature Profile - BF2_BFBD Furnace Body 5757mm Temp C",
     "hearth_6_1_b": "Temperature Profile - BF2_BFBD Furnace Body 6103mm Temp B",
-    "ls_q1": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp A",
-    "ls_q2": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp B",
-    "ls_q3": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp C",
-    "ls_q4": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp D",
-    "belly_q1": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp A",
-    "belly_q2": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp B",
-    "belly_q3": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp C",
-    "belly_q4": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp D",
+    "ls_q1": "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp A",
+    "ls_q2": "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp B",
+    "ls_q3": "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp C",
+    "ls_q4": "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp D",
+    "belly_q1": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp A",
+    "belly_q2": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp B",
+    "belly_q3": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp C",
+    "belly_q4": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp D",
     "uptake_q1": "Process Params - BF2_PROC Top Temp 1",
     "uptake_q2": "Process Params - BF2_PROC Top Temp 2",
     "uptake_q3": "Process Params - BF2_PROC Top Temp 3",
     "uptake_q4": "Process Params - BF2_PROC Top Temp 4",
-    # delta_t
-    "bosh_q1": "Delta T - DELTA T avg Row6-10 Q1(Stave 1-8)",
-    "bosh_q2": "Delta T - DELTA T avg Row6-10 Q2(Stave 9-16)",
-    "bosh_q3": "Delta T - DELTA T avg Row6-10 Q3(Stave 17-24)",
-    "bosh_q4": "Delta T - DELTA T avg Row6-10 Q4(Stave 25-32)",
+    "bosh_q1": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp A",
+    "bosh_q2": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp B",
+    "bosh_q3": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp C",
+    "bosh_q4": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp D",
 }
 
 _HM: dict[str, str] = {
@@ -380,6 +379,7 @@ def _status(
 class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
     def build(self, raw: ShiftRawData) -> ShiftReportData:  # type: ignore[override]
         df = raw.online_df
+        #
         hm = raw.hm_slag_df
         ch = raw.charge_df
 
