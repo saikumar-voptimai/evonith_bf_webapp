@@ -12,17 +12,35 @@ _BOLD_RE = re.compile(r"\*\*(.*?)\*\*")
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _TABLE_SEP = re.compile(r"^\|[-:| ]+\|", re.MULTILINE)
+_SHIFT_REPORT_TITLE_RE = re.compile(
+    r"\((\d{4}-\d{2}-\d{2})_SHIFT_([A-Za-z0-9]+)\)"
+)
 _TABLE_TITLES = (
-    "Shift Report",
+    "",
     "Process Parameters",
     "Temperature Profile",
     "Hearth Pad Temperature",
     "Tapping Summary",
 )
+_REPORT_TABLE_IMAGE_STYLE_VERSION = 7
 
 
 class ReportTableImageRenderer:
     """Render shift-report markdown tables into one two-column PNG."""
+
+    image_width_px = 3840
+    image_height_px = 2160
+    dpi = 150
+    title_size = 34
+    section_title_size = 24
+    body_size = 20
+    dense_body_size = 18
+    cell_padding = 0.075
+    right_cell_padding = 0.12
+    right_table_hspace = 0.18
+    content_top = 0.935
+    section_title_pad = 4
+    titled_table_height = 0.96
 
     text = "#172033"
     header = "#17324d"
@@ -31,8 +49,15 @@ class ReportTableImageRenderer:
     stripe = "#f8fafc"
 
     def __init__(self, title: str, summary_text: str) -> None:
-        self.title = title
+        self.title = self._image_title(title)
         self.tables = self._tables(summary_text)
+
+    @staticmethod
+    def _image_title(title: str) -> str:
+        match = _SHIFT_REPORT_TITLE_RE.search(title)
+        if match:
+            return f"{match.group(1)} {match.group(2)} SHIFT REPORT"
+        return title
 
     @staticmethod
     def split_blocks(summary_text: str) -> tuple[list[str], list[str], list[str]]:
@@ -58,8 +83,11 @@ class ReportTableImageRenderer:
 
         two_col = len(self.tables) > 1
         fig = Figure(
-            figsize=(15 if two_col else 8, self._figure_height(two_col)),
-            dpi=150,
+            figsize=(
+                self.image_width_px / self.dpi,
+                self.image_height_px / self.dpi,
+            ),
+            dpi=self.dpi,
             facecolor="white",
         )
         FigureCanvasAgg(fig)
@@ -68,28 +96,48 @@ class ReportTableImageRenderer:
             x=0.02,
             y=0.995,
             ha="left",
-            fontsize=15,
+            fontsize=self.title_size,
             fontweight="bold",
             color=self.text,
         )
 
         if two_col:
-            grid = fig.add_gridspec(1, 2, width_ratios=[1.05, 1], wspace=0.12, top=0.92)
+            grid = fig.add_gridspec(
+                1,
+                2,
+                width_ratios=[1.05, 1],
+                wspace=0.08,
+                left=0.035,
+                right=0.985,
+                top=self.content_top,
+                bottom=0.055,
+            )
             self._draw_table(fig.add_subplot(grid[0, 0]), self.tables[0])
             right = grid[0, 1].subgridspec(
                 len(self.tables) - 1,
                 1,
-                hspace=0.34,
+                hspace=self.right_table_hspace,
                 height_ratios=[self._table_weight(table) for table in self.tables[1:]],
             )
             for index, table in enumerate(self.tables[1:]):
-                self._draw_table(fig.add_subplot(right[index, 0]), table)
+                self._draw_table(
+                    fig.add_subplot(right[index, 0]),
+                    table,
+                    cell_padding=self.right_cell_padding,
+                )
         else:
-            self._draw_table(fig.add_subplot(111), self.tables[0])
-            fig.subplots_adjust(top=0.9)
+            grid = fig.add_gridspec(
+                1,
+                1,
+                left=0.035,
+                right=0.985,
+                top=self.content_top,
+                bottom=0.055,
+            )
+            self._draw_table(fig.add_subplot(grid[0, 0]), self.tables[0])
 
         output = BytesIO()
-        fig.savefig(output, format="png", bbox_inches="tight", pad_inches=0.25)
+        fig.savefig(output, format="png", dpi=self.dpi)
         return output.getvalue()
 
     def _tables(
@@ -107,39 +155,45 @@ class ReportTableImageRenderer:
                 tables.append((title, headers, rows))
         return tables
 
-    def _figure_height(self, two_col: bool) -> float:
-        if not two_col:
-            return max(3.0, self._table_weight(self.tables[0]) * 0.32)
-        left = self._table_weight(self.tables[0])
-        right = sum(self._table_weight(table) for table in self.tables[1:]) + len(
-            self.tables
-        )
-        return max(4.5, max(left, right) * 0.32)
-
     @staticmethod
     def _table_weight(table: tuple[str, list[str], list[list[str]]]) -> int:
         return max(4, len(table[2]) + 2)
 
-    def _draw_table(self, ax, table: tuple[str, list[str], list[list[str]]]) -> None:
+    def _draw_table(
+        self,
+        ax,
+        table: tuple[str, list[str], list[list[str]]],
+        *,
+        cell_padding: float | None = None,
+    ) -> None:
         title, headers, rows = table
+        padding = self.cell_padding if cell_padding is None else cell_padding
         ax.set_axis_off()
-        ax.set_title(
-            title, loc="left", pad=8, fontsize=10, fontweight="bold", color=self.text
-        )
+        if title:
+            ax.set_title(
+                title,
+                loc="left",
+                pad=self.section_title_pad,
+                fontsize=self.section_title_size,
+                fontweight="bold",
+                color=self.text,
+            )
         artist = ax.table(
             cellText=rows or [[""] * len(headers)],
             colLabels=headers,
             cellLoc="left",
             colLoc="left",
-            bbox=[0, 0, 1, 0.92],
+            bbox=[0, 0, 1, self.titled_table_height if title else 1],
         )
         artist.auto_set_font_size(False)
-        artist.set_fontsize(7.5 if len(headers) > 4 else 8.5)
+        artist.set_fontsize(
+            self.dense_body_size if len(headers) > 4 else self.body_size
+        )
         artist.auto_set_column_width(col=list(range(len(headers))))
 
         for (row_index, _), cell in artist.get_celld().items():
             cell.set_edgecolor(self.line)
-            cell.PAD = 0.035
+            cell.PAD = padding
             text = cell.get_text()
             text.set_ha("left")
             text.set_va("center")
@@ -226,7 +280,11 @@ class ReportView:
         self._download_button()
 
     def _download_button(self) -> None:
-        image = _report_tables_png(self.summary_text, self.title)
+        image = _report_tables_png(
+            self.summary_text,
+            self.title,
+            _REPORT_TABLE_IMAGE_STYLE_VERSION,
+        )
         if image:
             st.download_button(
                 "Download Report",
@@ -252,7 +310,12 @@ def _extract_report_tables(summary_text: str) -> tuple[list[str], list[str], lis
 
 
 @st.cache_data(show_spinner=False)
-def _report_tables_png(summary_text: str, report_title: str) -> bytes:
+def _report_tables_png(
+    summary_text: str,
+    report_title: str,
+    style_version: int = _REPORT_TABLE_IMAGE_STYLE_VERSION,
+) -> bytes:
+    del style_version
     return ReportTableImageRenderer(report_title, summary_text).render()
 
 
