@@ -71,6 +71,19 @@ def _safe_material_fines_table(start_utc: datetime, end_utc: datetime) -> pd.Dat
     return df
 
 
+def _safe_materials_table() -> pd.DataFrame:
+    try:
+        return _safe(
+            _fetch_neon_table(
+                "materials",
+                time_range="full",
+                columns=("material_code", "material_name", "is_active"),
+            )
+        )
+    except Exception:
+        return pd.DataFrame()
+
+
 class ShiftFetcher(ReportFetcher[ShiftRawData]):
     def fetch(  # type: ignore[override]
         self,
@@ -131,4 +144,5 @@ class ShiftFetcher(ReportFetcher[ShiftRawData]):
                 end_utc,
             ),
             material_fines_df=_safe_material_fines_table(analysis_start_utc, end_utc),
+            materials_df=_safe_materials_table(),
         )

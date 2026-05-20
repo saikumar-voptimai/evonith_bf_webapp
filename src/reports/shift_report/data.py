@@ -25,6 +25,7 @@ class ShiftRawData:
     fuel_chemistry_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     flux_chemistry_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     material_fines_df: pd.DataFrame = field(default_factory=pd.DataFrame)
+    materials_df: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass
@@ -88,6 +89,9 @@ class ShiftReportData:
     blast_volume: ParamStats
     blast_temp: ParamStats
     blast_pressure: ParamStats
+    furnace_top_dp: ParamStats
+    furnace_bottom_dp: ParamStats
+    furnace_total_dp: ParamStats
     o2_flow: ParamStats
     o2_enrichment: ParamStats
     permeability: ParamStats
@@ -109,3 +113,4 @@ class ShiftReportData:
     # Material quality derived from charge tonnage and latest analysis
     burden_moisture_input: Optional[float] = None  # kg/thm
     fines_input: Optional[float] = None  # kg/thm
+    used_materials: dict[str, str] = field(default_factory=dict)

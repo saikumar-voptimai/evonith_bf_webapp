@@ -8,6 +8,7 @@ from typing import Any, Literal, Optional
 import pandas as pd
 
 from config.config_loader import load_config
+from data.material_mapping import MaterialNameMapper
 from reports.base import ReportBuilder
 from reports.shift_report.data import (
     ParamStats,
@@ -37,6 +38,10 @@ _ONLINE: dict[str, str] = {
     "nutcoke_rate": "Process Params - BF2_NUT COKE RATE PER THM",
     "pci_rate": "Process Params - BF2_COAL RATE PER THM",
     "runner_temp": "Process Params - TE_40532A Runner Temp PCI side near to Taphole",
+    # Differential pressure
+    "furnace_top_dp": "Process Params - BF2_BODY_TOP DP",
+    "furnace_bottom_dp": "Process Params - BF2_BODY_BOTTOM DP",
+    "furnace_total_dp": "Process Params - BF2_BODY_TOTAL DP",
     # temperature_profile
     "hearth_4_3_a": "Temperature Profile - BF2_BFBD Furnace Body 4373mm Temp A",
     "hearth_5_4_c": "Temperature Profile - BF2_BFBD Furnace Body 5411mm Temp C",
@@ -113,6 +118,10 @@ _FINES_SOURCE_BY_CHARGE_COL = {
     for source, spec in _FINES_SOURCES.items()
     for col in _charge_columns(spec)
 }
+try:
+    _MATERIAL_NAME_MAPPER = MaterialNameMapper.from_file()
+except Exception:
+    _MATERIAL_NAME_MAPPER = None
 
 # ── Status thresholds ────────────────────────────────────────────────────────
 _THRESH = dict(_SHIFT_REPORT_CONFIG.get("status_thresholds") or {})
@@ -183,6 +192,78 @@ def _charge_sum(df: pd.DataFrame, key: str) -> Optional[float]:
     return None
 
 
+def _material_name_lookup(materials_df: pd.DataFrame) -> dict[str, str]:
+    if materials_df.empty or not {"material_code", "material_name"}.issubset(
+        materials_df.columns
+    ):
+        return {}
+
+    df = materials_df.copy()
+    if "is_active" in df.columns:
+        df = df[df["is_active"].fillna(True).astype(bool)]
+
+    lookup: dict[str, str] = {}
+    for _, row in df.dropna(subset=["material_code", "material_name"]).iterrows():
+        code = str(row["material_code"])
+        name = str(row["material_name"])
+        code_without_underscores = code.replace("_", "")
+        for key in dict.fromkeys(
+            [
+                code,
+                code.casefold(),
+                code_without_underscores,
+                code_without_underscores.casefold(),
+            ]
+        ):
+            lookup.setdefault(key, name)
+    return lookup
+
+
+def _display_material_name(material_name: str) -> str:
+    if _MATERIAL_NAME_MAPPER is None:
+        return material_name
+    return _MATERIAL_NAME_MAPPER.primary_client_name_for_material(material_name)
+
+
+def _display_material_code(material_code: str) -> str:
+    return material_code.replace("_", "")
+
+
+def _used_charge_materials(
+    charge_df: pd.DataFrame,
+    materials_df: pd.DataFrame,
+) -> dict[str, str]:
+    material_names = _material_name_lookup(materials_df)
+    used: dict[str, str] = {}
+
+    for label, key in (("Flux", "flux"), ("Ore", "ore")):
+        items: list[str] = []
+        seen: set[str] = set()
+        for charge_col in _CHARGE_COLS.get(key, []):
+            if _charge_column_total(charge_df, charge_col) <= 0:
+                continue
+            material_codes = _material_candidates(charge_col)
+            material_name = next(
+                (
+                    material_names[material_code]
+                    for material_code in material_codes
+                    if material_code in material_names
+                ),
+                None,
+            )
+            if material_name:
+                item = _display_material_name(material_name)
+            else:
+                item = _display_material_code(material_codes[0])
+            if item not in seen:
+                items.append(item)
+                seen.add(item)
+        if items:
+            used[label] = ", ".join(items)
+
+    return used
+
+
 def _analysis_with_time(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
@@ -199,7 +280,11 @@ def _analysis_with_time(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _material_candidates(charge_col: str) -> list[str]:
-    return _MATERIAL_CODE_CANDIDATES.get(charge_col, [charge_col.removesuffix("_mt")])
+    base = charge_col.removesuffix("_mt")
+    return _MATERIAL_CODE_CANDIDATES.get(
+        charge_col,
+        list(dict.fromkeys([base, base.replace("_", "")])),
+    )
 
 
 def _analysis_rows(
@@ -445,6 +530,9 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             blast_volume=_ps(df, "hb_vol"),
             blast_temp=_ps(df, "hb_temp"),
             blast_pressure=_ps(df, "hb_press"),
+            furnace_top_dp=_ps(df, "furnace_top_dp"),
+            furnace_bottom_dp=_ps(df, "furnace_bottom_dp"),
+            furnace_total_dp=_ps(df, "furnace_total_dp"),
             o2_flow=_ps(df, "o2_flow"),
             o2_enrichment=_ps(df, "o2_enr"),
             permeability=_ps(df, "perm"),
@@ -460,4 +548,5 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             hearth_6_1_b=_mean(df, "hearth_6_1_b"),
             burden_moisture_input=burden_moisture_input,
             fines_input=fines_input,
+            used_materials=_used_charge_materials(ch, raw.materials_df),
         )
