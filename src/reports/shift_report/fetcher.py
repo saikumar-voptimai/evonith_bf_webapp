@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
+import logging
 from typing import Literal
 
 import pandas as pd
@@ -28,6 +30,7 @@ _MATERIAL_FINES_TABLE = {
     str(key): str(value)
     for key, value in _SHIFT_REPORT_CONFIG.get("material_fines_table", {}).items()
 }
+logger = logging.getLogger(__name__)
 
 
 def _safe(df: pd.DataFrame | None) -> pd.DataFrame:
@@ -40,6 +43,7 @@ def _safe_table(
     try:
         return _safe(_fetch_neon_table(table_name, time_range=(start_utc, end_utc)))
     except Exception:
+        logger.warning("Failed to fetch shift report table %s", table_name, exc_info=True)
         return pd.DataFrame()
 
 
@@ -59,6 +63,7 @@ def _safe_material_fines_table(start_utc: datetime, end_utc: datetime) -> pd.Dat
             params={"start_time": start_utc, "end_time": end_utc},
         )
     except Exception:
+        logger.warning("Failed to fetch material fines table", exc_info=True)
         return pd.DataFrame()
     finally:
         if engine is not None:
@@ -71,16 +76,23 @@ def _safe_material_fines_table(start_utc: datetime, end_utc: datetime) -> pd.Dat
     return df
 
 
+@lru_cache(maxsize=1)
+def _cached_materials_table() -> pd.DataFrame:
+    return _safe(
+        _fetch_neon_table(
+            "materials",
+            time_range="full",
+            columns=("material_code", "material_name", "is_active"),
+        )
+    )
+
+
 def _safe_materials_table() -> pd.DataFrame:
     try:
-        return _safe(
-            _fetch_neon_table(
-                "materials",
-                time_range="full",
-                columns=("material_code", "material_name", "is_active"),
-            )
-        )
+        return _cached_materials_table().copy()
     except Exception:
+        logger.warning("Failed to fetch materials table", exc_info=True)
+        _cached_materials_table.cache_clear()
         return pd.DataFrame()
 
 

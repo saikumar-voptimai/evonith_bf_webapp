@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from datetime import date
+import logging
 from typing import Literal, Optional
 
+from reports.rendering import ReportDocument, document_to_markdown
 from reports.shift_report.analyser import ShiftAnalyser
 from reports.shift_report.builder import ShiftBuilder
 from reports.shift_report.data import ShiftReportData
 from reports.shift_report.fetcher import ShiftFetcher
-from reports.shift_report.renderer import as_markdown
+from reports.shift_report.renderer import as_document
 from utils.shift_windows import previous_shift
+
+logger = logging.getLogger(__name__)
 
 
 class ShiftReportService:
@@ -57,6 +61,21 @@ class ShiftReportService:
         Returns:
              - return: tuple[ShiftReportData, str] - Report data and markdown.
         """
+        report_data, document = self.generate_document(
+            shift_date,
+            shift_label,
+            include_analysis=include_analysis,
+        )
+        return report_data, document_to_markdown(document)
+
+    def generate_document(
+        self,
+        shift_date: date,
+        shift_label: Literal["A", "B", "C"],
+        *,
+        include_analysis: bool = True,
+    ) -> tuple[ShiftReportData, ReportDocument]:
+        """Fetch data, build metrics, and return a structured report document."""
         raw = self._fetcher.fetch(shift_date=shift_date, shift_label=shift_label)
         current = self._builder.build(raw)
 
@@ -69,6 +88,7 @@ class ShiftReportService:
                 )
                 previous = self._builder.build(prev_raw)
             except Exception:
+                logger.warning("Unable to build previous shift for analysis", exc_info=True)
                 previous = None
 
         analysis = ""
@@ -76,6 +96,8 @@ class ShiftReportService:
             try:
                 analysis = self._analyser.analyse(current, previous)
             except Exception:
+                logger.warning("Shift report analysis failed", exc_info=True)
                 analysis = ""
 
-        return current, as_markdown(current, analysis)
+        title = f"Live Report ({shift_date:%Y-%m-%d}_SHIFT_{shift_label})"
+        return current, as_document(current, analysis, title=title)
