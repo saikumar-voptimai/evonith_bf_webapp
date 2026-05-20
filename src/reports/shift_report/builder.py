@@ -1,4 +1,4 @@
-"""Compute all shift metrics from raw DataFrames — pure Python, no I/O."""
+"""Compute all shift metrics from raw DataFrames; pure Python, no I/O."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from typing import Any, Literal, Optional
 import pandas as pd
 
 from config.config_loader import load_config
-from data.material_mapping import MaterialNameMapper
 from reports.base import ReportBuilder
 from reports.shift_report.data import (
     ParamStats,
@@ -16,8 +15,12 @@ from reports.shift_report.data import (
     ShiftReportData,
     TempRow,
 )
+from reports.shift_report.materials import (
+    MaterialAliasResolver,
+    material_code_candidates,
+)
 
-# ── Column name registry ────────────────────────────────────────────────────
+# Column name registry.
 # Keys are short internal names; values are the exact DataFrame column names
 # produced by fetch_online_df() and fetch_offline_data().
 
@@ -118,16 +121,11 @@ _FINES_SOURCE_BY_CHARGE_COL = {
     for source, spec in _FINES_SOURCES.items()
     for col in _charge_columns(spec)
 }
-try:
-    _MATERIAL_NAME_MAPPER = MaterialNameMapper.from_file()
-except Exception:
-    _MATERIAL_NAME_MAPPER = None
-
-# ── Status thresholds ────────────────────────────────────────────────────────
+# Status thresholds.
 _THRESH = dict(_SHIFT_REPORT_CONFIG.get("status_thresholds") or {})
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# Helpers.
 
 
 def _mean(df: pd.DataFrame, key: str) -> Optional[float]:
@@ -192,48 +190,10 @@ def _charge_sum(df: pd.DataFrame, key: str) -> Optional[float]:
     return None
 
 
-def _material_name_lookup(materials_df: pd.DataFrame) -> dict[str, str]:
-    if materials_df.empty or not {"material_code", "material_name"}.issubset(
-        materials_df.columns
-    ):
-        return {}
-
-    df = materials_df.copy()
-    if "is_active" in df.columns:
-        df = df[df["is_active"].fillna(True).astype(bool)]
-
-    lookup: dict[str, str] = {}
-    for _, row in df.dropna(subset=["material_code", "material_name"]).iterrows():
-        code = str(row["material_code"])
-        name = str(row["material_name"])
-        code_without_underscores = code.replace("_", "")
-        for key in dict.fromkeys(
-            [
-                code,
-                code.casefold(),
-                code_without_underscores,
-                code_without_underscores.casefold(),
-            ]
-        ):
-            lookup.setdefault(key, name)
-    return lookup
-
-
-def _display_material_name(material_name: str) -> str:
-    if _MATERIAL_NAME_MAPPER is None:
-        return material_name
-    return _MATERIAL_NAME_MAPPER.primary_client_name_for_material(material_name)
-
-
-def _display_material_code(material_code: str) -> str:
-    return material_code.replace("_", "")
-
-
 def _used_charge_materials(
     charge_df: pd.DataFrame,
-    materials_df: pd.DataFrame,
+    resolver: MaterialAliasResolver,
 ) -> dict[str, str]:
-    material_names = _material_name_lookup(materials_df)
     used: dict[str, str] = {}
 
     for label, key in (("Flux", "flux"), ("Ore", "ore")):
@@ -242,19 +202,7 @@ def _used_charge_materials(
         for charge_col in _CHARGE_COLS.get(key, []):
             if _charge_column_total(charge_df, charge_col) <= 0:
                 continue
-            material_codes = _material_candidates(charge_col)
-            material_name = next(
-                (
-                    material_names[material_code]
-                    for material_code in material_codes
-                    if material_code in material_names
-                ),
-                None,
-            )
-            if material_name:
-                item = _display_material_name(material_name)
-            else:
-                item = _display_material_code(material_codes[0])
+            item = resolver.display_name(_material_candidates(charge_col))
             if item not in seen:
                 items.append(item)
                 seen.add(item)
@@ -280,11 +228,7 @@ def _analysis_with_time(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _material_candidates(charge_col: str) -> list[str]:
-    base = charge_col.removesuffix("_mt")
-    return _MATERIAL_CODE_CANDIDATES.get(
-        charge_col,
-        list(dict.fromkeys([base, base.replace("_", "")])),
-    )
+    return material_code_candidates(charge_col, _MATERIAL_CODE_CANDIDATES)
 
 
 def _analysis_rows(
@@ -458,15 +402,15 @@ def _status(
     return "UNSTABLE", flags
 
 
-# ── Builder ──────────────────────────────────────────────────────────────────
+# Builder.
 
 
 class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
     def build(self, raw: ShiftRawData) -> ShiftReportData:  # type: ignore[override]
         df = raw.online_df
-        #
         hm = raw.hm_slag_df
         ch = raw.charge_df
+        material_resolver = MaterialAliasResolver.from_dataframe(raw.materials_df)
 
         # One row in offline_feed.charge_data represents one charge in the shift.
         total_charges = int(ch.shape[0]) if not ch.empty else 0
@@ -548,5 +492,5 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             hearth_6_1_b=_mean(df, "hearth_6_1_b"),
             burden_moisture_input=burden_moisture_input,
             fines_input=fines_input,
-            used_materials=_used_charge_materials(ch, raw.materials_df),
+            used_materials=_used_charge_materials(ch, material_resolver),
         )
