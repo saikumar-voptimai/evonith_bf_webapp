@@ -69,14 +69,14 @@ moisture_sources:
 
 fines_sources:
   coke:
-    charge_groups: [coke, pci]
-    column_pattern: '^(?:plus|minus)_[0-9]+_?mm(?:_pct)?$'
+    charge_groups: [coke]
+    column_pattern: '^(?:plus_20_?mm|plus_10_?mm|minus_10_?mm)(?:_pct)?$'
   nut_coke:
     charge_groups: [nut_coke]
-    column_pattern: '^(?:plus|minus)_[0-9]+_?mm(?:_pct)?$'
+    column_pattern: '^(?:plus_10_?mm|plus_6_?mm|minus_6_?mm)(?:_pct)?$'
+  sinter:
+    charge_groups: [sinter]
+    column_pattern: '^(?:plus_5_?mm|minus_5_?mm)(?:_pct)?$'
   ore:
     charge_groups: [ore]
     column_pattern: '^(?:plus|minus)_6_?mm(?:_pct)?$'
-  flux:
-    charge_groups: [flux]
-    column_pattern: '^minus_10_?mm(?:_pct)?$'

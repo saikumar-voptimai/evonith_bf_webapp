@@ -30,6 +30,10 @@ def _v(val: Optional[float]) -> str:
     return f"{val:.2f}" if val is not None else "-"
 
 
+def _r(val: Optional[float]) -> str:
+    return f"{val:.0f}" if val is not None else "-"
+
+
 def _vi(val: Optional[int]) -> str:
     return str(val) if val is not None else "-"
 
@@ -38,8 +42,12 @@ def _ps(stats: ParamStats) -> tuple[str, str]:
     return _v(stats.mean), _v(stats.std)
 
 
+def _psr(stats: ParamStats) -> tuple[str, str]:
+    return _r(stats.mean), _r(stats.std)
+
+
 def _temp_cells(row: TempRow) -> list[str]:
-    return [_v(row.q1), _v(row.q2), _v(row.q3), _v(row.q4), _v(row.spread_std)]
+    return [_r(row.q1), _r(row.q2), _r(row.q3), _r(row.q4), _r(row.spread_std)]
 
 
 def as_document(
@@ -50,14 +58,11 @@ def as_document(
 ) -> ReportDocument:
     """Render computed shift data as a structured report document."""
     r = report
-    flags_text = "; ".join(r.status_flags) if r.status_flags else "None"
     preamble = (
         "**SHIFT HANDOVER REPORT - BF2 EVONITH STEEL**\n"
         f"**Shift ID:** {r.shift_label} &nbsp;"
         f" **Period:** {r.shift_start_ist.strftime('%Y-%m-%d %H:%M')}"
-        f" -> {r.shift_end_ist.strftime('%Y-%m-%d %H:%M')} (IST)\n\n"
-        f"**Status:** {r.status}\n\n"
-        f"**Flags:** {flags_text}"
+        f" -> {r.shift_end_ist.strftime('%Y-%m-%d %H:%M')} (IST)"
     )
 
     sections = (
@@ -95,10 +100,10 @@ def as_document(
             [
                 [
                     "Hearth Pad Temp (degC)",
-                    _v(r.hearth_4_3_a),
-                    _v(r.hearth_5_4_c),
-                    _v(r.hearth_5_7_c),
-                    _v(r.hearth_6_1_b),
+                    _r(r.hearth_4_3_a),
+                    _r(r.hearth_5_4_c),
+                    _r(r.hearth_5_7_c),
+                    _r(r.hearth_6_1_b),
                 ]
             ],
         ),
@@ -140,8 +145,8 @@ def as_document(
     if r.used_materials:
         notes.append(
             ReportNote(
-                "\n".join(
-                    f"{category} : {materials}"
+                "\n\n".join(
+                    f"{category} :\n{materials}"
                     for category, materials in r.used_materials.items()
                 ),
                 kind="material_usage",
@@ -190,16 +195,16 @@ def _classify_shift_note(note: ReportNote) -> ReportNote:
 
 
 def _parameter_rows(r: ShiftReportData) -> list[list[str]]:
-    bv, bs = _ps(r.blast_volume)
-    bt, bts = _ps(r.blast_temp)
+    bv, bs = _psr(r.blast_volume)
+    bt, bts = _psr(r.blast_temp)
     bp, bps = _ps(r.blast_pressure)
     top_dp, top_dps = _ps(r.furnace_top_dp)
     bottom_dp, bottom_dps = _ps(r.furnace_bottom_dp)
     total_dp, total_dps = _ps(r.furnace_total_dp)
-    pe, pes = _ps(r.permeability)
+    pe, pes = _psr(r.permeability)
     ec, ecs = _ps(r.etaco)
-    ra, ras = _ps(r.raft)
-    of, ofs = _ps(r.o2_flow)
+    ra, ras = _psr(r.raft)
+    of, ofs = _psr(r.o2_flow)
     oe, oes = _ps(r.o2_enrichment)
 
     return [
@@ -219,12 +224,12 @@ def _parameter_rows(r: ShiftReportData) -> list[list[str]]:
         ["Permeability", "-", pe, pes],
         ["ETA CO", "%", ec, ecs],
         ["RAFT", "degC", ra, ras],
-        ["Burden Moisture Input", "kg/thm", _v(r.burden_moisture_input), "-"],
-        ["Fines Input", "kg/thm", _v(r.fines_input), "-"],
+        ["Burden Moisture Input", "kg/thm", _r(r.burden_moisture_input), "-"],
+        ["Fines Input", "kg/thm", _r(r.fines_input), "-"],
         ["**Quality**", "", "", ""],
         ["HM Si", "%", _v(r.hm_si), "-"],
         ["HM S", "%", _v(r.hm_s), "-"],
-        ["HM Temperature", "degC", _v(r.hm_temp), "-"],
+        ["HM Temperature", "degC", _r(r.hm_temp), "-"],
         ["Slag Basicity", "-", _v(r.slag_basicity), "-"],
     ]
 
