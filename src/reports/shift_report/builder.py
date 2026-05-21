@@ -36,7 +36,6 @@ _ONLINE: dict[str, str] = {
     "raft": "Process Params - BF2_BODY_RAFT",
     "o2_flow": "Process Params - BF2_OXYGEN FLOW",
     "o2_enr": "Process Params - BF2_OXYGEN ENRICHMENT PCT",
-    "fuel_rate": "Process Params - BF2_FUEL RATE PER THM",
     "coke_rate": "Process Params - BF2_COKE RATE PER THM",
     "nutcoke_rate": "Process Params - BF2_NUT COKE RATE PER THM",
     "pci_rate": "Process Params - BF2_COAL RATE PER THM",
@@ -146,6 +145,12 @@ def _std(df: pd.DataFrame, key: str) -> Optional[float]:
 
 def _ps(df: pd.DataFrame, key: str) -> ParamStats:
     return ParamStats(mean=_mean(df, key), std=_std(df, key))
+
+
+def _sum_required(*values: Optional[float]) -> Optional[float]:
+    if any(value is None for value in values):
+        return None
+    return round(sum(value for value in values if value is not None), 2)
 
 
 def _hm_mean(df: pd.DataFrame, key: str) -> Optional[float]:
@@ -425,7 +430,10 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
         # HM temp: use from hot_metal_slag_data reports
         hm_temp = _hm_mean(hm, "hmt_gt_1480c")
 
-        fuel_rate_val = _mean(df, "fuel_rate")
+        coke_rate_val = _mean(df, "coke_rate")
+        nut_coke_rate_val = _mean(df, "nutcoke_rate")
+        pci_rate_val = _mean(df, "pci_rate")
+        fuel_rate_val = _sum_required(coke_rate_val, nut_coke_rate_val, pci_rate_val)
         raft_val = _mean(df, "raft")
         perm_val = _mean(df, "perm")
         etaco_val = _mean(df, "etaco")
@@ -463,9 +471,9 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             pellet_t=_charge_sum(ch, "pellet"),
             flux_t=_charge_sum(ch, "flux"),
             fuel_rate=fuel_rate_val,
-            coke_rate=_mean(df, "coke_rate"),
-            nut_coke_rate=_mean(df, "nutcoke_rate"),
-            pci_rate=_mean(df, "pci_rate"),
+            coke_rate=coke_rate_val,
+            nut_coke_rate=nut_coke_rate_val,
+            pci_rate=pci_rate_val,
             hm_si=_hm_mean(hm, "si"),
             hm_s=_hm_mean(hm, "s"),
             hm_temp=hm_temp,
