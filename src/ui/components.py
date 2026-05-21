@@ -164,7 +164,7 @@ class ReportTableImageRenderer:
             hspace=self.stack_hspace,
             height_ratios=[
                 *[self._section_weight(section) for section in sections],
-                *([0.9] * len(notes)),
+                *[self._note_weight(note) for note in notes],
             ],
         )
         for index, section in enumerate(sections):
@@ -177,6 +177,10 @@ class ReportTableImageRenderer:
     @staticmethod
     def _section_weight(section: ReportSection) -> int:
         return max(4, len(section.rows) + 2)
+
+    @staticmethod
+    def _note_weight(note: ReportNote) -> float:
+        return max(2.5, len(note.text.splitlines()) * 0.9)
 
     def _draw_table(
         self,
@@ -239,7 +243,7 @@ class ReportTableImageRenderer:
             transform=ax.transAxes,
             ha="left",
             va="top",
-            fontsize=self.body_size,
+            fontsize=self.dense_body_size,
             color=self.text,
             wrap=True,
         )
@@ -264,8 +268,9 @@ class ReportView:
 
     def render(self) -> None:
         st.subheader(self.document.title)
-        if self.document.pre_blocks:
-            st.markdown("\n\n".join(self.document.pre_blocks))
+        pre_blocks = _visible_pre_blocks(self.document.pre_blocks)
+        if pre_blocks:
+            st.markdown("\n\n".join(pre_blocks))
 
         left_sections = [
             section for section in self.document.sections if section.placement == "left"
@@ -318,6 +323,17 @@ class ReportView:
 def show_shift_summary(title: str, text: str) -> None:
     st.subheader(title)
     st.text_area(label="", value=text, height=250)
+
+
+def _visible_pre_blocks(blocks: tuple[str, ...]) -> list[str]:
+    hidden = ("**Status:**", "**Flags:**")
+    return [
+        "\n".join(
+            line for line in block.splitlines() if not line.startswith(hidden)
+        ).strip()
+        for block in blocks
+        if block.strip()
+    ]
 
 
 def show_report_document(document: ReportDocument) -> None:

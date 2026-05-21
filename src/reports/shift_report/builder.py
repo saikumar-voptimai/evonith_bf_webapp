@@ -202,17 +202,17 @@ def _used_charge_materials(
     used: dict[str, str] = {}
 
     for label, key in (("Flux", "flux"), ("Ore", "ore")):
-        items: list[str] = []
-        seen: set[str] = set()
+        totals: dict[str, float] = {}
         for charge_col in _CHARGE_COLS.get(key, []):
-            if _charge_column_total(charge_df, charge_col) <= 0:
+            mt = _charge_column_total(charge_df, charge_col)
+            if mt <= 0:
                 continue
             item = resolver.display_name(_material_candidates(charge_col))
-            if item not in seen:
-                items.append(item)
-                seen.add(item)
-        if items:
-            used[label] = ", ".join(items)
+            totals[item] = totals.get(item, 0.0) + mt
+        if totals:
+            used[label] = "\n".join(
+                f"- {item} - {mt:.2f} mt" for item, mt in totals.items()
+            )
 
     return used
 
