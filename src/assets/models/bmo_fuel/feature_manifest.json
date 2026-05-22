@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "target_name": "fuel_unit_cost_rs_per_thm",
+  "feature_names": [
+    "sinter_share_pct",
+    "ore_share_pct",
+    "COKE RATE KG/THM",
+    "ACTUALKG/THM.",
+    "TOTAL OXYGENNM3/HR.",
+    "HOT BLAST VOLUMENM3/HR."
+  ],
+  "defaults": {
+    "sinter_share_pct": 60.0,
+    "ore_share_pct": 40.0
+  },
+  "notes": "Replace with the final feature schema exported from training."
+}

@@ -1,0 +1,90 @@
+bmo:
+  objective_basis: rs_per_thm
+  timezone: Asia/Kolkata
+  chemistry_mode: latest
+  chemistry_window_days: 30
+
+  target:
+    target_total_qty_mt: 3800.0
+    min_fe_production_mt: 2350.0
+    max_fe_production_mt: 2500.0
+    target_slag_qty_mt: 750.0
+
+  chemistry:
+    feo_in_slag_pct: 0.4
+    si_in_slag_pct: 0.5
+
+  optimization:
+    enabled: true
+    strategy: best1bin
+    maxiter: 40
+    popsize: 12
+    tol: 0.01
+    polish: true
+    seed: 42
+    penalty_large: 1000000.0
+    penalty_stock: 2500.0
+    penalty_share: 2500.0
+    penalty_sum: 5000.0
+    penalty_fe: 3000.0
+    penalty_slag: 3000.0
+
+  fallback_fuel_model:
+    target_sinter_share_pct: 60.0
+    sinter_deviation_sensitivity_rs_per_thm: 1200.0
+    default_rates_kg_per_thm:
+      coke_rate_kg_per_thm: 340.0
+      nut_coke_rate_kg_per_thm: 20.0
+      pci_rate_kg_per_thm: 170.0
+    default_prices_rs_per_kg:
+      coke_price_rs_per_kg: 34.0
+      nut_coke_price_rs_per_kg: 32.0
+      pci_price_rs_per_kg: 22.0
+
+  model_bundle:
+    strict_loading: false
+    model_path: src/assets/models/bmo_fuel/model.joblib
+    scaler_path: src/assets/models/bmo_fuel/scaler.joblib
+    feature_manifest_path: src/assets/models/bmo_fuel/feature_manifest.json
+    lag_map_path: src/assets/models/bmo_fuel/lag_map.json
+    training_metrics_path: src/assets/models/bmo_fuel/training_metrics.json
+
+  data_sources:
+    static_dataset_path: src/assets/data/furnace_dataset.csv
+    chemistry_bucket: bf2_evonith_offline_utc
+    chemistry_measurement: rm_updated_data
+    stock_bucket: Test
+    stock_measurement: rm_stock
+    stock_time_range: last 7 days
+    chemistry_time_range_days: 30
+
+  ui:
+    show_manual_compare: true
+    default_selected_ores:
+      - SINTER (SP-02)
+      - GEOMIN CLO
+      - LLOYDS CLO
+      - NMDC DONIMALAI
+      - GOMTI CLO
+
+  optimization_runtime:
+    dataset:
+      static_dataset_path: src/assets/data/furnace_dataset.csv
+      refresh_enabled: false
+      refresh_rm_choice: RM Charge
+    model_bundle:
+      model_path: src/assets/models/bmo_fuel/model.joblib
+      scaler_path: src/assets/models/bmo_fuel/scaler.joblib
+      feature_manifest_path: src/assets/models/bmo_fuel/feature_manifest.json
+      lag_map_path: src/assets/models/bmo_fuel/lag_map.json
+      training_metrics_path: src/assets/models/bmo_fuel/training_metrics.json
+      strict_loading: false
+    feature_policy:
+      missing_feature_policy: default_warn
+    optimizer:
+      strategy: best1bin
+      maxiter: 40
+      popsize: 12
+      tol: 0.01
+      polish: true
+      seed: 42

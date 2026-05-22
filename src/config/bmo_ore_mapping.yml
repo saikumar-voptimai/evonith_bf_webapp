@@ -1,0 +1,234 @@
+ores:
+  - id: sinter_sp_02
+    display_name: SINTER (SP-02)
+    material_key: sinter_sp_02
+    stock_field: g1_total_mt
+    price_rs_per_mt: 7789.0
+    min_share_pct: 58.0
+    max_share_pct: 70.0
+    fallback_chemistry:
+      fe_t_pct: 55.0
+      feo_pct: 10.0
+      sio2_pct: 4.8
+      al2o3_pct: 2.2
+      cao_pct: 10.6
+      mgo_pct: 1.5
+      mno_pct: 0.1
+      tio2_pct: 0.1
+      p_pct: 0.08
+  - id: geomin_clo
+    display_name: GEOMIN CLO
+    material_key: ore_3
+    stock_field: geomin_mt
+    price_rs_per_mt: 3827.0
+    min_share_pct: 0.0
+    max_share_pct: 20.0
+    fallback_chemistry:
+      fe_t_pct: 61.0
+      feo_pct: 0.0
+      sio2_pct: 5.5
+      al2o3_pct: 2.7
+      cao_pct: 0.3
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.05
+      p_pct: 0.05
+  - id: lloyds_clo
+    display_name: LLOYDS CLO
+    material_key: ore_2
+    stock_field: lloyds_mt
+    price_rs_per_mt: 8051.0
+    min_share_pct: 0.0
+    max_share_pct: 30.0
+    fallback_chemistry:
+      fe_t_pct: 63.0
+      feo_pct: 0.0
+      sio2_pct: 4.2
+      al2o3_pct: 2.5
+      cao_pct: 0.2
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.05
+      p_pct: 0.04
+  - id: nmdc_donimalai
+    display_name: NMDC DONIMALAI
+    material_key: ore_1
+    stock_field: nmdc_donimalai_mt
+    price_rs_per_mt: 5684.0
+    min_share_pct: 0.0
+    max_share_pct: 15.0
+    fallback_chemistry:
+      fe_t_pct: 59.0
+      feo_pct: 0.0
+      sio2_pct: 14.0
+      al2o3_pct: 2.9
+      cao_pct: 0.2
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.07
+      p_pct: 0.05
+  - id: gomti_clo
+    display_name: GOMTI CLO
+    material_key: ore_10
+    stock_field: gomti_mt
+    price_rs_per_mt: 5349.0
+    min_share_pct: 0.0
+    max_share_pct: 30.0
+    fallback_chemistry:
+      fe_t_pct: 60.0
+      feo_pct: 0.0
+      sio2_pct: 6.2
+      al2o3_pct: 2.8
+      cao_pct: 0.2
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.06
+      p_pct: 0.05
+  - id: jrs_ventures
+    display_name: JRS VENTURES
+    material_key: ore_4
+    stock_field: jrs_ventures_mt
+    price_rs_per_mt: 6831.0
+    min_share_pct: 0.0
+    max_share_pct: 20.0
+    fallback_chemistry:
+      fe_t_pct: 61.0
+      feo_pct: 0.0
+      sio2_pct: 6.0
+      al2o3_pct: 2.8
+      cao_pct: 0.2
+      mgo_pct: 0.3
+      mno_pct: 0.1
+      tio2_pct: 0.06
+      p_pct: 0.05
+  - id: jayaswal_neco
+    display_name: JAYASWAL NECO
+    material_key: ore_9
+    stock_field: jayaswal_neco_mt
+    price_rs_per_mt: 6650.0
+    min_share_pct: 0.0
+    max_share_pct: 20.0
+    fallback_chemistry:
+      fe_t_pct: 60.0
+      feo_pct: 0.0
+      sio2_pct: 6.6
+      al2o3_pct: 2.8
+      cao_pct: 0.2
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.06
+      p_pct: 0.05
+  - id: titani_ferrous_clo
+    display_name: TITANI FERROUS CLO
+    material_key: ore_11
+    stock_field: titaniferrous_mt
+    price_rs_per_mt: 4939.0
+    min_share_pct: 0.0
+    max_share_pct: 3.0
+    fallback_chemistry:
+      fe_t_pct: 56.0
+      feo_pct: 0.0
+      sio2_pct: 5.5
+      al2o3_pct: 2.5
+      cao_pct: 0.2
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 12.0
+      p_pct: 0.05
+  - id: acore_ind_pvt_ltd
+    display_name: ACORE IND.PVT LTD
+    material_key: ore_8
+    stock_field: acore_mt
+    price_rs_per_mt: 8473.0
+    min_share_pct: 0.0
+    max_share_pct: 3.0
+    fallback_chemistry:
+      fe_t_pct: 27.0
+      feo_pct: 0.0
+      sio2_pct: 8.2
+      al2o3_pct: 3.0
+      cao_pct: 0.2
+      mgo_pct: 0.2
+      mno_pct: 35.0
+      tio2_pct: 0.08
+      p_pct: 0.09
+  - id: nmdc_rom
+    display_name: NMDC ROM
+    material_key: ore_5
+    stock_field: nmdc_rom_mt
+    price_rs_per_mt: 8739.0
+    min_share_pct: 0.0
+    max_share_pct: 30.0
+    fallback_chemistry:
+      fe_t_pct: 62.0
+      feo_pct: 0.0
+      sio2_pct: 4.0
+      al2o3_pct: 2.6
+      cao_pct: 0.2
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.05
+      p_pct: 0.04
+  - id: lloyds_oversize_clo
+    display_name: LLOYDS OVERSIZE CLO
+    material_key: ore_6
+    stock_field: lloyds_fines_oversize_10mm_mt
+    price_rs_per_mt: 6162.0
+    min_share_pct: 0.0
+    max_share_pct: 10.0
+    fallback_chemistry:
+      fe_t_pct: 61.0
+      feo_pct: 0.0
+      sio2_pct: 5.1
+      al2o3_pct: 2.6
+      cao_pct: 0.2
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.05
+      p_pct: 0.05
+  - id: bacheli_fines_over_size
+    display_name: BACHELI FINES OVER SIZE
+    material_key: ore_7
+    stock_field: nmdc_bachelli_fines_oversize_10mm_mt
+    price_rs_per_mt: 10000.0
+    min_share_pct: 0.0
+    max_share_pct: 10.0
+    fallback_chemistry:
+      fe_t_pct: 61.0
+      feo_pct: 0.0
+      sio2_pct: 5.8
+      al2o3_pct: 2.7
+      cao_pct: 0.2
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.05
+      p_pct: 0.05
+  - id: lloyds_pellet_sarda
+    display_name: LLOYDS PELLET (SARDA)
+    material_key: lloyds_pellet
+    stock_field: lloyds_pellet_sarda_mt
+    price_rs_per_mt: 9650.0
+    min_share_pct: 0.0
+    max_share_pct: 10.0
+    fallback_chemistry:
+      fe_t_pct: 64.0
+      feo_pct: 0.0
+      sio2_pct: 3.1
+      al2o3_pct: 1.8
+      cao_pct: 0.3
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.04
+      p_pct: 0.04
+
+chemistry_field_map:
+  fe_t_pct: fe_t
+  feo_pct: feo
+  sio2_pct: sio2
+  al2o3_pct: al2o3
+  cao_pct: cao
+  mgo_pct: mgo
+  mno_pct: mno
+  tio2_pct: tio2
+  p_pct: p
+
