@@ -53,9 +53,9 @@ bmo:
     static_dataset_path: src/assets/data/furnace_dataset.csv
     chemistry_bucket: bf2_evonith_offline_utc
     chemistry_measurement: rm_updated_data
-    stock_bucket: Test
+    stock_bucket: bf2_evonith_offline_utc
     stock_measurement: rm_stock
-    stock_time_range: last 7 days
+    stock_time_range: last 1 week
     chemistry_time_range_days: 30
 
   ui:

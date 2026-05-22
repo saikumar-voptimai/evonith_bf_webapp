@@ -101,8 +101,8 @@ class EvonithBmoContextProvider:
     def get_stock_snapshot(self) -> tuple[dict[str, float], list[str]]:
         cfg = self.settings.get("data_sources", {})
         measurement = str(cfg.get("stock_measurement", "rm_stock"))
-        bucket = str(cfg.get("stock_bucket", "Test"))
-        time_range = str(cfg.get("stock_time_range", "last 7 days"))
+        bucket = str(cfg.get("stock_bucket", "bf2_evonith_offline_utc"))
+        time_range = str(cfg.get("stock_time_range", "last 1 week"))
 
         row, err = self._query_latest_row(measurement, bucket, time_range)
         warnings: list[str] = []

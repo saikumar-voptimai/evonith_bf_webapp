@@ -24,6 +24,7 @@ import streamlit as st
 import yaml
 
 from agents.furnacemind.prompts import HEATLOAD_PLOT_CODE, HEATLOAD_REPORT_TEMPLATE
+from agents.furnace_tools import fetch_ml_data, load_static_shift_data
 
 _PARAMS_PATH = (
     Path(__file__).resolve().parents[2] / "storage" / "furnacemind" / "skill_params.yml"
@@ -37,18 +38,6 @@ def _load_params() -> dict:
 
 # Load once at module import — YAML is ~2 KB, negligible cost.
 _PARAMS: dict = _load_params()
-
-
-def fetch_ml_data(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
-    from agents.furnace_tools import fetch_ml_data as _fetch_ml_data
-
-    return _fetch_ml_data(*args, **kwargs)
-
-
-def load_static_shift_data(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
-    from agents.furnace_tools import load_static_shift_data as _load_static_shift_data
-
-    return _load_static_shift_data(*args, **kwargs)
 
 
 # ── Low-level helpers (also useful for testing in isolation) ─────────────────

@@ -12,6 +12,7 @@ from __future__ import annotations
 import streamlit as st
 
 from agents.embeddings.cloud_embedding import CloudEmbeddingClient
+from agents.furnace_tools import get_openai_tool_schemas
 from agents.furnacemind import prompts
 from agents.furnacemind.agent import run_agent_loop
 from agents.furnacemind.context import SystemPromptContext
@@ -26,12 +27,6 @@ from utils.furnacemind.feedback_service import FurnaceMindFeedbackService
 from utils.session import current_user_id
 from utils.settings import settings
 from utils.shift_windows import last_completed_shift
-
-
-def _get_openai_tool_schemas() -> list[dict]:
-    from agents.furnace_tools import get_openai_tool_schemas
-
-    return get_openai_tool_schemas()
 
 
 @st.cache_resource(show_spinner=False)
@@ -336,7 +331,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     llm = OpenRouterClient()
     if st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
-    tools = _get_openai_tool_schemas()
+    tools = get_openai_tool_schemas()
     extra_context = prompts.TOOL_POLICY
     if feedback_lesson_context:
         extra_context = f"{extra_context}\n\n{feedback_lesson_context}"

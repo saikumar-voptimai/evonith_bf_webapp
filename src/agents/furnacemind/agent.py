@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 
+from agents.furnace_tools import execute_openai_tool_call
 from agents.llm.llm_client import OpenRouterClient
 
 # ── Status labels shown in the UI while a tool is running ───────────────────
@@ -29,12 +30,6 @@ _TOOL_LABELS: dict[str, str] = {
 }
 
 _MAX_ITERATIONS = 8
-
-
-def _execute_openai_tool_call(*, name: str, arguments: dict) -> str:
-    from agents.furnace_tools import execute_openai_tool_call
-
-    return execute_openai_tool_call(name=name, arguments=arguments)
 
 
 def _strip_thinking(text: str) -> str:
@@ -107,10 +102,7 @@ def run_agent_loop(
                     args = json.loads(tc.function.arguments or "{}")
                 except Exception:
                     args = {}
-                result = _execute_openai_tool_call(
-                    name=tc.function.name,
-                    arguments=args,
-                )
+                result = execute_openai_tool_call(name=tc.function.name, arguments=args)
                 last_tool_result = result
                 messages.append(
                     {
