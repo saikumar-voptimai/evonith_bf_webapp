@@ -318,7 +318,7 @@ class FurnaceMindMemoryStore:
             metadata = (
                 summary.metadata_json if isinstance(summary.metadata_json, dict) else {}
             )
-            same_user = summary.user_id == user_id
+            same_user = str(summary.user_id) == user_id
             same_source = metadata.get("source") == _MEMORY_SOURCE
             same_kind = metadata.get("kind") == _SUMMARY_KIND
 

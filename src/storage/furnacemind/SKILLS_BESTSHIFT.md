@@ -41,11 +41,11 @@ These are **standardized coefficients** from a lag-adjusted ridge regression on 
 - **WEIGHTED_COKE_ANGLE**: `-3.732`
 - **WEIGHTED_NON_COKE_ANGLE**: `+3.092`
 - **O2 ENRICHMENT %**: `-1.204`
-- **SINTER_SP_02_BASICITY**: `-1.045`
+- **SINTER_BASICITY**: `-1.045`
 - **NUTCOKE_ASH%**: `+0.657`
-- **SINTER_SP_02_AL2O3%**: `+0.488`
+- **SINTER_AL2O3%**: `+0.488`
 - **ORE_LOI%**: `+0.410`
-- **SINTER_SP_02_FEO%**: `-0.405`
+- **SINTER_FEO%**: `-0.405`
 - **HOT BLAST TEMP.OC**: `+0.390`
 - **COKE_ASH%**: `+0.263`
 
@@ -123,7 +123,7 @@ Interpretation:
 
 ## Tier 2 — Semi-controllable raw-material / quality levers
 
-### 1) PCI_2_ASH%
+### 1) PCI_ASH%
 - **Best lag:** `4 h`
 - **Direction:** higher values hurt
 - **Best-shift operating band:** roughly **8.4 to 10.4 %**
@@ -131,7 +131,7 @@ Interpretation:
 - **Sensitivity:** lowest cost occurred near **~9.7 %**; practical low-cost plateau was below roughly **10.4–10.9 %**
 - **Rule:** treat rising PCI ash as a next-shift fuel-cost penalty signal
 
-### 2) PCI_2_IM%
+### 2) PCI_IM%
 - **Best lag:** `0 h`
 - **Direction:** higher values hurt
 - **Best-shift operating band:** keep near the lower end of recent history
@@ -162,22 +162,22 @@ Interpretation:
 - **Direction:** higher values generally hurt
 - **Interpretation:** supportive quality lever, but weaker than coke moisture and coke ash in this window
 
-### 7) SINTER_SP_02_FEO%
+### 7) SINTER_FEO%
 - **Best lag:** `0 h`
 - **Direction in regression:** mixed / confounded
 - **Use:** monitor as part of the burden-reducibility package rather than as a single independent knob
 
-### 8) SINTER_SP_02_AL2O3%
+### 8) SINTER_AL2O3%
 - **Best lag:** `2 h`
 - **Direction:** higher values hurt
 - **Interpretation:** more alumina generally increases slag burden / viscosity burden and aligned with higher cost here
 
-### 9) SINTER_SP_02_SIO2%
+### 9) SINTER_SIO2%
 - **Best lag:** `4 h`
 - **Direction:** higher values generally hurt
 - **Interpretation:** use as a burden-penalty feature together with Al2O3 and FeO
 
-### 10) SINTER_SP_02_BASICITY
+### 10) SINTER_BASICITY
 - **Best lag:** `2 h`
 - **Regression direction:** favorable when higher, but this is not monotonic in the raw bins
 - **Practical interpretation:** best to keep within the plant’s proven best-shift envelope rather than push aggressively in either direction

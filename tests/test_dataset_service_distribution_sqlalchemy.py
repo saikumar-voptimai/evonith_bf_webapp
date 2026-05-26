@@ -1,80 +1,90 @@
-"""Regression tests for DatasetService burden-distribution SQLAlchemy query path."""
+"""Regression tests for DatasetService burden-distribution repository path."""
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
-from uuid import uuid4
+from datetime import date, datetime
 
-from sqlalchemy.orm import Session
+import pandas as pd
 
+import furnace_data.dataset.service as service_module
 from furnace_data.dataset.service import DatasetService
-from furnace_data.relational import (
-    Base,
-    BurdenDistributionHistory,
-    build_relational_engine,
-)
 
 
-def _sqlite_url() -> tuple[str, Path]:
-    db_name = f"dataset_distribution_test_{uuid4().hex}.db"
-    db_path = Path.cwd() / db_name
-    return f"sqlite:///{db_path.as_posix()}", db_path
+class FakeEngine:
+    disposed = False
+
+    def dispose(self):
+        self.disposed = True
 
 
-def test_fetch_distribution_data_returns_expected_windowed_rows() -> None:
-    """DatasetService should return burden rows built from ORM query results."""
-    db_url, db_path = _sqlite_url()
-    engine = None
-    try:
-        engine = build_relational_engine(db_url)
-        Base.metadata.create_all(engine)
-        with Session(engine) as session:
-            session.add_all(
-                [
-                    BurdenDistributionHistory(
-                        field_name="COKE_RINGS_1",
-                        field_value_float=4.0,
-                        valid_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
-                        valid_upto=datetime(2026, 1, 3, tzinfo=timezone.utc),
-                    ),
-                    BurdenDistributionHistory(
-                        field_name="COKE_ANGLES_1",
-                        field_value_float=30.0,
-                        valid_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
-                        valid_upto=datetime(2026, 1, 3, tzinfo=timezone.utc),
-                    ),
-                    BurdenDistributionHistory(
-                        field_name="BURDEN_CHANGING_PURPOSE",
-                        field_value_text="stability",
-                        valid_from=datetime(2026, 1, 2, tzinfo=timezone.utc),
-                        valid_upto=None,
-                    ),
-                ]
-            )
-            session.commit()
+class FakeRepository:
+    def __init__(self, session_factory):
+        self.session_factory = session_factory
 
-        service = DatasetService(db_url=db_url)
-        output = service.fetch_distribution_data(
-            start_date=date(2026, 1, 2),
-            end_date=date(2026, 1, 3),
+    def fetch_distribution_frame(self, *, start_date, end_date):
+        idx = pd.DatetimeIndex(
+            [
+                pd.Timestamp("2026-01-01T00:00:00Z"),
+                pd.Timestamp("2026-01-02T00:00:00Z"),
+            ],
+            name="time",
+        )
+        return pd.DataFrame(
+            {
+                "coke_p01_rings": [4.0, 4.0],
+                "coke_p01_angles": [30.0, 35.0],
+                "burden_changing_purpose": [None, "stability"],
+            },
+            index=idx,
         )
 
-        assert not output.empty
-        assert "COKE_RINGS_1" in output.columns
-        assert "COKE_ANGLES_1" in output.columns
-        assert "BURDEN_CHANGING_PURPOSE" in output.columns
-        assert "TOTAL_COKE_PORTIONS" in output.columns
-        assert "WEIGHTED_COKE_ANGLE" in output.columns
 
-        day = output.loc[datetime(2026, 1, 2)]
-        assert float(day["COKE_RINGS_1"]) == 4.0
-        assert float(day["COKE_ANGLES_1"]) == 30.0
-        assert str(day["BURDEN_CHANGING_PURPOSE"]) == "stability"
-        assert float(day["TOTAL_COKE_PORTIONS"]) == 4.0
-        assert float(day["WEIGHTED_COKE_ANGLE"]) == 30.0
-    finally:
-        if engine is not None:
-            engine.dispose()
-        if db_path.exists():
-            db_path.unlink()
+def test_fetch_distribution_data_returns_expected_windowed_rows(monkeypatch) -> None:
+    """DatasetService should expand burden rows from the repository."""
+    engine = FakeEngine()
+    monkeypatch.setattr(DatasetService, "_get_engine", lambda self: engine)
+    monkeypatch.setattr(
+        service_module,
+        "build_relational_session_factory",
+        lambda engine: object(),
+    )
+    monkeypatch.setattr(service_module, "BurdenHistoryRepository", FakeRepository)
+
+    output = DatasetService().fetch_distribution_data(
+        start_date=date(2026, 1, 2),
+        end_date=date(2026, 1, 3),
+    )
+
+    assert engine.disposed is True
+    assert not output.empty
+    assert "coke_p01_rings" in output.columns
+    assert "coke_p01_angles" in output.columns
+    assert "burden_changing_purpose" in output.columns
+    assert "total_coke_portions" in output.columns
+    assert "weighted_coke_angle" in output.columns
+
+    day = output.loc[datetime(2026, 1, 2)]
+    assert float(day["coke_p01_rings"]) == 4.0
+    assert float(day["coke_p01_angles"]) == 35.0
+    assert str(day["burden_changing_purpose"]) == "stability"
+    assert float(day["total_coke_portions"]) == 4.0
+    assert float(day["weighted_coke_angle"]) == 35.0
+
+
+def test_fetch_distribution_data_propagates_engine_errors(monkeypatch) -> None:
+    """No silent empty-frame fallback when PostgreSQL configuration is invalid."""
+    monkeypatch.setattr(
+        DatasetService,
+        "_get_engine",
+        lambda self: (_ for _ in ()).throw(ValueError("Shared relational persistence requires PostgreSQL.")),
+    )
+
+    try:
+        DatasetService().fetch_distribution_data(
+            start_date=date(2026, 3, 15),
+            end_date=date(2026, 3, 15),
+        )
+    except ValueError as exc:
+        assert "PostgreSQL" in str(exc)
+    else:
+        raise AssertionError("Expected invalid PostgreSQL configuration to propagate")

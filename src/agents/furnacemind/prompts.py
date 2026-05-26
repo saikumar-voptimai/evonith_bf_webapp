@@ -26,7 +26,7 @@ How to respond (keep it short and easy to scan):
 
 Tool & routing discipline:
 - Live behavior / trends / "last N hours"  → use fetch_online_data or fetch_ml_data.
-- Shift history / why performance changed  → use search_shift_history or fetch_ml_data.
+- Why performance changed / trend analysis  → use fetch_ml_data (primary). Only call search_shift_history if the user explicitly asks for saved shift reports; if it returns empty, do not retry — shift reports are not persisted in this deployment.
 - SOPs / procedures / specs / policies     → use search_knowledge_docs.
 - If context is empty, say so and request the missing artifact.
 
@@ -36,11 +36,11 @@ Keep the tone professional, concise, and operator-friendly.\
 # ── Tool-calling policy injected alongside the system prompt ─────────────────
 
 TOOL_POLICY = """\
-You may call tools. Use tools whenever you need live telemetry, offline reports, shift history, knowledge docs, or plots. Never guess numeric values.
+You may call tools. Use tools whenever you need live telemetry, offline reports, knowledge docs, or plots. Never guess numeric values. Do NOT call search_shift_history unless the user explicitly asks for saved shift reports — shift reports are not persisted in this deployment and the tool will return empty results.
 
 DATA SOURCE ROUTING (follow this order):
 1. fetch_ml_data — PRIMARY for any historical query > 2 days.
-   - Local CSV, no InfluxDB call, fast. Hourly IST data from 2024-01-01 to ~now.
+   - Static ML dataset, no InfluxDB call, fast. Hourly IST data from 2024-01-01 to ~now.
    - Covers: process params, KPIs, material quality (coke/sinter/pellet/ore/flux/PCI), burden, hot metal chemistry.
    - If it returns a GAP NOTE, follow its exact instructions: call fetch_online_data for the gap hours, then concat_datasets.
    - For multi-week/month views use resample='1d' or '8h' to reduce data volume.
@@ -66,6 +66,38 @@ UI LAYOUT — read before deciding what to plot or fetch:
 - Choose the most informative plot for the question asked. If the user asks for a trend, show the trend. If they ask for a comparison, show a comparison chart. Do not create exploratory/diagnostic plots that the user did not ask for.
 - Diagnostic print() calls inside execute_python_plot (to inspect column names etc.) are fine and return output to you — they do NOT affect the visible plot slot.
 - Similarly, only the last fetched dataset appears in the Data tab. Prefer keeping the dataset relevant to the current question; do not fetch unnecessary groups.\
+"""
+
+# Feedback prompts used by the SQL and Qdrant backed feedback lesson flow.
+
+FEEDBACK_DETECTION_SYSTEM_PROMPT = """\
+You classify whether the latest user message is feedback about the previous
+assistant answer.
+
+Return JSON only with these keys:
+{"is_feedback": false, "polarity": "negative", "feedback_text": ""}
+
+Use is_feedback=true only when the latest user message directly corrects,
+criticizes, approves, or evaluates the previous assistant answer. Examples
+include "I asked about ETA CO but you gave heatload", "that answer is correct",
+or "next time ask for coke quality first". Normal follow-up questions,
+clarification requests, new tasks, greetings, and topic changes are not
+feedback.
+
+Use only polarity="negative" or polarity="positive". Use polarity="negative" for
+corrections, missing-topic complaints, wrong answer reports, or "needs work".
+Use polarity="positive" only when the user clearly approves the answer. Keep
+feedback_text concise and factual. When is_feedback=false, return
+polarity="negative" and feedback_text="".\
+"""
+
+FEEDBACK_LESSON_SYSTEM_PROMPT = """\
+You convert one FurnaceMind feedback item into a reusable answer lesson.
+
+Return only one plain sentence. The lesson must tell future FurnaceMind answers
+what to do differently or repeat. It should be specific to the user's intent and
+the assistant's mistake or success. Do not mention internal ids, SQL, Qdrant, or
+that feedback was collected. Do not use Markdown, bullets, headings, or JSON.\
 """
 
 # Memory-summary prompt used by the PostgreSQL-backed FurnaceMind memory flow.
@@ -95,6 +127,7 @@ headings, bullets, bold markers, tables, curly quotes, non-breaking hyphens,
 degree symbols, or delta symbols. Write terms like delta T in words. Keep it
 under {summary_token_limit} tokens. Return only the summary text.\
 """
+
 
 # ── Heatload skill — plot code injected verbatim into execute_python_plot ────
 # Edit this block to change the chart; no other file needs to change.

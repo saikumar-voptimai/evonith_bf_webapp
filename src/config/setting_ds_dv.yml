@@ -25,8 +25,43 @@ ml_dataset:
   rm_charge_measurement: "rm_charge_dataset"
   rm_dpr_measurement: "rm_dpr_data"
   local_tz: "Asia/Kolkata"
-  cutoff_date: "2025-08-24"
+  cutoff_date: "2025-12-06"
   static_dataset_path: "src/data/V14_df_filtered.csv"
+  # InfluxDB process_params field name → ML dataset column name (rename_dict key)
+  online_params:
+    fuel_rate: fuel_rate
+    coke_rate: coke_rate
+    coal_rate_actual_value: actual_kg_thm
+    production_per_hour: production_per_hour
+    body_etaco: body_etaco
+    body_raft: raft_temp_c
+    body_perm: permeability_kgs_hr
+    hot_blast_vol_nm3h: hot_blast_volume_nm3hr
+    hot_blast_press: hot_blast_pressure_bar
+    hot_blast_temp: hot_blast_temp_c
+    top_press_avg: top_pressure_bar
+    oxygen_enrichment_pct: o2_enrichment_pct
+    steam_injections: steam_kgs_hr
+    tuyere_velocity: tuyere_velocity_ms
+    body_dp_total: differential_pressure_total_bar
+    body_dp_bottom: bottom_pressure_bar
+    co_pct: furnace_top_gas_analysis_co_pct
+    co2_pct: furnace_top_gas_analysis_co2_pct
+    h2_pct: furnace_top_gas_analysis_h2_pct
+  # InfluxDB temperature_profile field → rename_dict intermediate key
+  temperature_params:
+    temp_12975_a: bosh_a_c
+    temp_12975_b: bosh_b_c
+    temp_12975_c: bosh_c_c
+    temp_12975_d: bosh_d_c
+    temp_15162_a: belly_a_c
+    temp_15162_b: belly_b_c
+    temp_15162_c: belly_c_c
+    temp_15162_d: belly_d_c
+    temp_18660_a: lower_stack_a_c
+    temp_18660_b: lower_stack_b_c
+    temp_18660_c: lower_stack_c_c
+    temp_18660_d: lower_stack_d_c
 
 # Geometries
 paths:
@@ -735,7 +770,7 @@ rename_dict:
     "hot_blast_volume_nm3hr": "HOT BLAST VOLUMENM3/HR."
     "total_oxygen_nm3hr": "TOTAL OXYGENNM3/HR."
     "actual_ton_hr": "ACTUALTON/HR."
-    "actual_kg_thm": "ACTUALKG/THM."
+    "actual_kg_thm": "PCI_KG/THM"
     "fuel_rate": "ACT. FUEL RATEKG/THM."
     "hot_blast_pressure_bar": "HOT BLAST PRESSUREBAR"
     "top_pressure_bar": "TOPPRESSUREBAR"
@@ -749,41 +784,42 @@ rename_dict:
     "tuyere_velocity_ms": "TUYEREVELOCITYM/S"
     "raft_temp_c": "RAFTOC"
 
-    "ftg_uptake_cat16_c": "FURNACE TOP GAS_UPTAKE TEMP. OCAT-16DEG. OC"
-    "ftg_uptake_bt12_c": "FURNACE TOP GAS_UPTAKE TEMP. OC.1BT-12DEG. OC"
-    "ftg_uptake_ct08_c": "FURNACE TOP GAS_UPTAKE TEMP. OC.2CT-08DEG. OC"
-    "ftg_uptake_dt04_c": "FURNACE TOP GAS_UPTAKE TEMP. OC.3DT-04DEG. OC"
-    "ftg_uptake_avg_c": "FURNACE TOP GAS_UPTAKE TEMP. OC.4AVG.DEG. OC"
+    "ftg_uptake_cat16_c": "FTG_UPTAKE_TEMP_A"
+    "ftg_uptake_bt12_c": "FTG_UPTAKE_TEMP_B"
+    "ftg_uptake_ct08_c": "FTG_UPTAKE_TEMP_C"
+    "ftg_uptake_dt04_c": "FTG_UPTAKE_TEMP_D"
+    "ftg_uptake_avg_c": "FTG_UPTAKE_TEMP_AVG"
 
-    "hearth_pad_a_c": "HEARTH PAD CENTER_TEMP. OCA4.3 MTR.DEG. OC"
-    "hearth_pad_b_c": "HEARTH PAD CENTER_TEMP. OC.1B5.4 MTR.DEG. OC"
-    "hearth_pad_c_c": "HEARTH PAD CENTER_TEMP. OC.2C5.7 MTR.DEG. OC"
-    "hearth_pad_d_c": "HEARTH PAD CENTER_TEMP. OC.3D6.1 MTR.DEG. OC"
-    "hearth_pad_avg_c": "HEARTH PAD CENTER_TEMP. OC.4AVG.DEG. OC"
+    "hearth_pad_a_c": "HEARTH_TEMP_A"
+    "hearth_pad_b_c": "HEARTH_TEMP_B"
+    "hearth_pad_c_c": "HEARTH_TEMP_C"
+    "hearth_pad_d_c": "HEARTH_TEMP_D"
+    "hearth_pad_avg_c": "HEARTH_TEMP_AVG"
 
-    "bosh_a_c": "BOSH - 12975_TEMP. OCAT-07DEG. OC"
-    "bosh_b_c": "BOSH - 12975_TEMP. OC.1BT-12DEG. OC"
-    "bosh_c_c": "BOSH - 12975_TEMP. OC.2CT-17DEG. OC"
-    "bosh_d_c": "BOSH - 12975_TEMP. OC.3DT-03DEG. OC"
-    "bosh_avg_c": "BOSH - 12975_TEMP. OC.4AVG.DEG. OC"
+    "bosh_a_c": "BOSH_TEMP_A"
+    "bosh_b_c": "BOSH_TEMP_B"
+    "bosh_c_c": "BOSH_TEMP_C"
+    "bosh_d_c": "BOSH_TEMP_D"
+    "bosh_avg_c": "BOSH_TEMP_AVG"
 
-    "belly_a_c": "BELLY - 15162_TEMP. OCAT-07DEG. OC"
-    "belly_b_c": "BELLY - 15162_TEMP. OC.1BT-12DEG. OC"
-    "belly_c_c": "BELLY - 15162_TEMP. OC.2CT-17DEG. OC"
-    "belly_d_c": "BELLY - 15162_TEMP. OC.3DT-03DEG. OC"
-    "belly_avg_c": "BELLY - 15162_TEMP. OC.4AVG.DEG. OC"
+    "belly_a_c": "BELLY_TEMP_A"
+    "belly_b_c": "BELLY_TEMP_B"
+    "belly_c_c": "BELLY_TEMP_C"
+    "belly_d_c": "BELLY_TEMP_D"
+    "belly_avg_c": "BELLY_TEMP_AVG"
 
-    "lower_stack_a_c": "LOWER STACK - 18660_TEMP. OCAT-07DEG. OC"
-    "lower_stack_b_c": "LOWER STACK - 18660_TEMP. OC.1BT-12DEG. OC"
-    "lower_stack_c_c": "LOWER STACK - 18660_TEMP. OC.2CT-17DEG. OC"
-    "lower_stack_d_c": "LOWER STACK - 18660_TEMP. OC.3DT-03DEG. OC"
-    "lower_stack_avg_c": "LOWER STACK - 18660_TEMP. OC.4AVG.DEG. OC"
+    "lower_stack_a_c": "LOWER_STACK_TEMP_A"
+    "lower_stack_b_c": "LOWER_STACK_TEMP_B"
+    "lower_stack_c_c": "LOWER_STACK_TEMP_C"
+    "lower_stack_d_c": "LOWER_STACK_TEMP_D"
+    "lower_stack_avg_c": "LOWER_STACK_TEMP_AVG"
 
     "bf_gas_network_pressure_mmw": "BF GAS NETWORK PRESSUREMMWC"
     "furnace_top_gas_analysis_co_pct": "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%"
     "furnace_top_gas_analysis_co2_pct": "FURNACE TOP GAS ANALYSISCO2%"
     "furnace_top_gas_analysis_h2_pct": "FURNACE TOP GAS ANALYSISH2%"
     "oxygen_enrichment_pct": "O2 ENRICHMENT %"
+    "o2_enrichment_pct": "O2 ENRICHMENT %"
     "total_heat_load": "TOTAL HEAT LOAD"
 
     "nutcoke_moist_pct": "NUTCOKE_MOIST%"
@@ -794,29 +830,29 @@ rename_dict:
     "nutcoke_yard_mt": "NUTCOKE_YARD_YARD_MT"
     "nutcoke_ash_pct": "NUTCOKE_ASH%"
 
-    "pci2_fc_pct": "PCI_2_FC%"
-    "pci2_ash_pct": "PCI_2_ASH%"
-    "pci2_vm_pct": "PCI_2_VM%"
-    "pci2_im_pct": "PCI_2_IM%"
-    "pci2_mt": "PCI_2_CALC_MT"
+    "pci2_fc_pct": "PCI_FC%"
+    "pci2_ash_pct": "PCI_ASH%"
+    "pci2_vm_pct": "PCI_VM%"
+    "pci2_im_pct": "PCI_IM%"
+    "pci2_mt": "PCI_CALC_MT"
 
-    "sinter_cold_strength_ai": "SINTER_SP_02_COLD_STRENGTH_AI"
-    "sinter_cold_strength_ti": "SINTER_SP_02_COLD_STRENGTH_TI"
-    "sinter_hot_strength_ri": "SINTER_SP_02_HOT_STRENGTH_RI"
-    "sinter_hot_strength_rdi": "SINTER_SP_02_HOT_STRENGTH_RDI"
-    "sinter_p_pct": "SINTER_SP_02_P%"
-    "sinter_sio2_pct": "SINTER_SP_02_SIO2%"
-    "sinter_mgo_pct": "SINTER_SP_02_MGO%"
-    "sinter_feo_pct": "SINTER_SP_02_FEO%"
-    "sinter_al2o3_pct": "SINTER_SP_02_AL2O3%"
-    "sinter_na2o_pct": "SINTER_SP_02_NA2O%"
-    "sinter_tio2_pct": "SINTER_SP_02_TIO2%"
-    "sinter_fe_total_pct": "SINTER_SP_02_FE(T)%"
-    "sinter_cao_pct": "SINTER_SP_02_CAO%"
-    "sinter_k2o_pct": "SINTER_SP_02_K2O%"
-    "sinter_basicity": "SINTER_SP_02_BASICITY"
-    "sinter_sp_02_basicity": "SINTER_SP_02_BASICITY"
-    "sinter_mno_pct": "SINTER_SP_02_MNO%"
+    "sinter_cold_strength_ai": "SINTER_COLD_STRENGTH_AI"
+    "sinter_cold_strength_ti": "SINTER_COLD_STRENGTH_TI"
+    "sinter_hot_strength_ri": "SINTER_HOT_STRENGTH_RI"
+    "sinter_hot_strength_rdi": "SINTER_HOT_STRENGTH_RDI"
+    "sinter_p_pct": "SINTER_P%"
+    "sinter_sio2_pct": "SINTER_SIO2%"
+    "sinter_mgo_pct": "SINTER_MGO%"
+    "sinter_feo_pct": "SINTER_FEO%"
+    "sinter_al2o3_pct": "SINTER_AL2O3%"
+    "sinter_na2o_pct": "SINTER_NA2O%"
+    "sinter_tio2_pct": "SINTER_TIO2%"
+    "sinter_fe_total_pct": "SINTER_FE(T)%"
+    "sinter_cao_pct": "SINTER_CAO%"
+    "sinter_k2o_pct": "SINTER_K2O%"
+    "sinter_basicity": "SINTER_BASICITY"
+    "sinter_sp_02_basicity": "SINTER_BASICITY"
+    "sinter_mno_pct": "SINTER_MNO%"
     "sinter_mt": "SINTER_CALC_MT"
     "sinter01_mt": "SINTER_SP_01_MT"
 
@@ -864,13 +900,14 @@ rename_dict:
     "ore_10_mt": "ORE_10_CALC_MT"
     "ore_11_mt": "ORE_11_CALC_MT"
     "ore_12_mt": "ORE_12_CALC_MT"
-    "Geomin Type": "GEOMIN TYPE"
-    "GeominType": "GEOMIN TYPE"
 
     "body_etaco": "FURNACETOPGASANALYSISCO2ETACO"
     "coke_rate": "COKE RATE KG/THM"
     "production_per_hour": "PRODUCTIONTONNESPERHR"
     "unit_cost_rs_thm": "UNITCOST 1000RS/THM"
+    "unit_cost_lakhs_thm": "UNITCOST LAKHS/THM"
+    "daily_production": "DAILYPRODUCTION"
+    "pci2_tm_pct": "PCI_TM%"
 
     "weighted_coke_angle": "WEIGHTED_COKE_ANGLE"
     "total_coke_portions": "TOTAL_COKE_PORTIONS"
@@ -906,18 +943,364 @@ rename_dict:
     "slag_pct_tio2": "SLAG_PCT_TIO2"
     "slag_t_basicity": "SLAG_T_BASICITY"
 
-    "lloyds_pellet_mt": "TOTAL_PELLET_CALC_MT"
-    "lloyds_pellet_pct_al2o3": "LLOYDS_PELLET_PCT_AL2O3"
-    "lloyds_pellet_pct_cao": "LLOYDS_PELLET_PCT_CAO"
-    "lloyds_pellet_cao_pct": "LLOYDS_PELLET_PCT_CAO"
-    "lloyds_pellet_pct_fe2o3": "LLOYDS_PELLET_PCT_FE2O3"
-    "lloyds_pellet_pct_k2o": "LLOYDS_PELLET_PCT_K2O"
-    "lloyds_pellet_pct_loi": "LLOYDS_PELLET_PCT_LOI"
-    "lloyds_pellet_pct_mgo": "LLOYDS_PELLET_PCT_MGO"
-    "lloyds_pellet_pct_mno": "LLOYDS_PELLET_PCT_MNO"
-    "lloyds_pellet_pct_na2o": "LLOYDS_PELLET_PCT_NA2O"
-    "lloyds_pellet_pct_p": "LLOYDS_PELLET_PCT_P"
-    "lloyds_pellet_pct_sio2": "LLOYDS_PELLET_PCT_SIO2"
-    "lloyds_pellet_pct_tio2": "LLOYDS_PELLET_PCT_TIO2"
-    "lloyds_pellet_pct_tm": "LLOYDS_PELLET_PCT_TM"
+    "pellet_mt": "TOTAL_PELLET_CALC_MT"
+    "pellet_al2o3_pct": "PELLET_PCT_AL2O3"
+    "pellet_pct_al2o3": "PELLET_PCT_AL2O3"
+    "pellet_pct_cao": "PELLET_PCT_CAO"
+    "pellet_cao_pct": "PELLET_PCT_CAO"
+    "pellet_fe2o3_pct": "PELLET_PCT_FE2O3"
+    "pellet_pct_fe2o3": "PELLET_PCT_FE2O3"
+    "pellet_k2o_pct": "PELLET_PCT_K2O"
+    "pellet_pct_k2o": "PELLET_PCT_K2O"
+    "pellet_loi_pct": "PELLET_PCT_LOI"
+    "pellet_pct_loi": "PELLET_PCT_LOI"
+    "pellet_mgo_pct": "PELLET_PCT_MGO"
+    "pellet_pct_mgo": "PELLET_PCT_MGO"
+    "pellet_mno_pct": "PELLET_PCT_MNO"
+    "pellet_pct_mno": "PELLET_PCT_MNO"
+    "pellet_na2o_pct": "PELLET_PCT_NA2O"
+    "pellet_pct_na2o": "PELLET_PCT_NA2O"
+    "pellet_p_pct": "PELLET_PCT_P"
+    "pellet_pct_p": "PELLET_PCT_P"
+    "pellet_sio2_pct": "PELLET_PCT_SIO2"
+    "pellet_pct_sio2": "PELLET_PCT_SIO2"
+    "pellet_tio2_pct": "PELLET_PCT_TIO2"
+    "pellet_pct_tio2": "PELLET_PCT_TIO2"
+    "pellet_tm_pct": "PELLET_PCT_TM"
+    "pellet_pct_tm": "PELLET_PCT_TM"
+
+cleaning:
+  column_groups:
+    rm_params:
+      - coke_vm_pct
+      - coke_ash_pct
+      - coke_im_pct
+      - coke_fc_pct
+      - coke_moist_pct
+      - coke_mt
+      - nutcoke_moist_pct
+      - nutcoke_vm_pct
+      - nutcoke_im_pct
+      - nutcoke_fc_pct
+      - nutcoke_ash_pct
+      - nutcoke_prime_mt
+      - pci2_fc_pct
+      - pci2_ash_pct
+      - pci2_vm_pct
+      - pci2_im_pct
+      - pci2_mt
+      - sinter_cold_strength_ai
+      - sinter_cold_strength_ti
+      - sinter_hot_strength_ri
+      - sinter_hot_strength_rdi
+      - sinter_p_pct
+      - sinter_sio2_pct
+      - sinter_mgo_pct
+      - sinter_feo_pct
+      - sinter_al2o3_pct
+      - sinter_na2o_pct
+      - sinter_tio2_pct
+      - sinter_fe_total_pct
+      - sinter_cao_pct
+      - sinter_k2o_pct
+      - sinter_basicity
+      - sinter_mno_pct
+      - sinter_mt
+      - flux_tm_pct
+      - flux_sio2_pct
+      - flux_fe2o3_pct
+      - flux_al2o3_pct
+      - flux_loi_pct
+      - flux_mgo_pct
+      - flux_cao_pct
+      - flux_mt
+      - ore_fe_total_pct
+      - ore_loi_pct
+      - ore_tm_pct
+      - ore_mgo_pct
+      - ore_na2o_pct
+      - ore_p_pct
+      - ore_tio2_pct
+      - ore_al2o3_pct
+      - ore_sio2_pct
+      - ore_mno_pct
+      - ore_cao_pct
+      - ore_k2o_pct
+      - ore_mt
+      - pellet_sio2_pct
+      - pellet_al2o3_pct
+      - pellet_fe2o3_pct
+      - pellet_mgo_pct
+      - pellet_tio2_pct
+      - pellet_na2o_pct
+      - pellet_mt
+      - pellet_k2o_pct
+      - pellet_tm_pct
+      - pellet_loi_pct
+      - pellet_mno_pct
+      - pellet_cao_pct
+      - pellet_p_pct
+      - daily_production
+      - charges_per_hr
+      - stock_rod_level
+    hm_slag_params:
+      - chem_pct_c
+      - chem_pct_cr
+      - chem_pct_fe
+      - chem_pct_mn
+      - chem_pct_p
+      - chem_pct_s
+      - chem_pct_si
+      - chem_pct_ti
+      - slag_basicity
+      - slag_pct_al2o3
+      - slag_pct_cao
+      - slag_pct_feo
+      - slag_pct_k2o
+      - slag_pct_mgo
+      - slag_pct_mno
+      - slag_pct_na2o
+      - slag_pct_s
+      - slag_pct_sio2
+      - slag_pct_tio2
+      - slag_t_basicity
+      - hmt_gt_1480c
+    bd_params:
+      - coke_discharge_time
+      - weighted_coke_angle
+      - total_coke_portions
+      - non_coke_discharge_time
+      - weighted_non_coke_angle
+      - total_non_coke_portions
+    temp_params:
+      - total_heat_load
+      - ftg_uptake_cat16_c
+      - ftg_uptake_bt12_c
+      - ftg_uptake_ct08_c
+      - ftg_uptake_dt04_c
+      - ftg_uptake_avg_c
+      - hearth_pad_a_c
+      - hearth_pad_b_c
+      - hearth_pad_c_c
+      - hearth_pad_d_c
+      - hearth_pad_avg_c
+      - bosh_a_c
+      - bosh_b_c
+      - bosh_c_c
+      - bosh_d_c
+      - bosh_avg_c
+      - belly_a_c
+      - belly_c_c
+      - belly_d_c
+      - belly_b_c
+      - belly_avg_c
+      - lower_stack_a_c
+      - lower_stack_b_c
+      - lower_stack_c_c
+      - lower_stack_d_c
+      - lower_stack_avg_c
+    op_params:
+      - actual_kg_thm
+      - fuel_rate
+      - body_etaco
+      - coke_rate
+      - production_per_hour
+    prcs_params:
+      - hot_blast_pressure_bar
+      - top_pressure_bar
+      - differential_pressure_total_bar
+      - hot_blast_temp_c
+      - oxygen_flow_nm3hr
+      - steam_kgs_hr
+      - raft_temp_c
+      - permeability_kgs_hr
+      - tuyere_velocity_ms
+      - hot_blast_volume_nm3hr
+      - o2_enrichment_pct
+      - furnace_top_gas_analysis_co2_pct
+      - bottom_pressure_bar
+      - furnace_top_gas_analysis_co_pct
+      - top_bar
+    proxy_params:
+      - furnace_top_gas_analysis_h2_pct
+
+  extra_keep_columns:
+    calc_alias_keys:
+      - sinter01_mt
+
+  zero_fill:
+    alias_keys:
+      - sinter_mt
+      - steam_kgs_hr
+      - flux_tm_pct
+      - flux_sio2_pct
+      - flux_fe2o3_pct
+      - flux_al2o3_pct
+      - flux_loi_pct
+      - flux_mgo_pct
+      - flux_cao_pct
+      - flux_mt
+      - pellet_sio2_pct
+      - pellet_al2o3_pct
+      - pellet_fe2o3_pct
+      - pellet_mgo_pct
+      - pellet_tio2_pct
+      - pellet_na2o_pct
+      - pellet_mt
+      - pellet_k2o_pct
+      - pellet_tm_pct
+      - pellet_loi_pct
+      - pellet_mno_pct
+      - pellet_cao_pct
+      - pellet_p_pct
+      - pci2_mt
+    calc_alias_keys:
+      - sinter01_mt
+
+  sinter:
+    combine_sources: false
+    sp01_calc_alias_key: sinter01_mt
+    sp02_alias_key: sinter_mt
+    combined_alias_key: sinter_mt
+
+  unnecessary_alias_keys:
+    - actual_ton_hr
+    - bf_gas_network_pressure_mmw
+    - daily_production
+    - non_coke_charge_pattern
+    - coke_charge_pattern
+    - pci2_tm_pct
+    - belly_avg_c
+    - lower_stack_avg_c
+    - bosh_avg_c
+    - belly_b_c
+
+  unit_cost:
+    enabled: true
+    output_alias_key: unit_cost_lakhs_thm
+    coke_rate_alias_key: coke_rate
+    pci_rate_alias_key: actual_kg_thm
+    pci_multiplier: 0.53
+    unit_multiplier: 0.25
+
+  cruising_filters:
+    - alias_key: hot_blast_volume_nm3hr
+      min_value: 90000
+    - alias_key: actual_kg_thm
+      min_value: 70
+    - alias_key: body_etaco
+      min_value: 38
+      max_value: 47
+    - alias_key: production_per_hour
+      min_value: 60
+    - alias_key: fuel_rate
+      min_value: 100
+      max_value: 670
+
+  outlier_rules:
+    - alias_key: raft_temp_c
+      min_value: 300
+      max_value: 2800
+    - alias_key: pci2_mt
+      min_value: 0.5
+      max_value: 200
+    - alias_key: sinter_hot_strength_ri
+      min_value: 0.5
+      max_value: 100
+    - alias_key: charges_per_hr
+      min_value: 3
+      max_value: 10
+    - alias_key: oxygen_enrichment_pct
+      min_value: 0.5
+      max_value: 10
+    - alias_key: oxygen_flow_nm3hr
+      min_value: 1000
+      max_value: 6000
+    - alias_key: differential_pressure_total_bar
+      min_value: 0.5
+      max_value: 2
+    - alias_key: production_per_hour
+      min_value: 60
+      max_value: 100
+    - alias_key: coke_ash_pct
+      min_value: 5
+      max_value: 20
+    - alias_key: pci2_fc_pct
+      min_value: 60
+      max_value: 90
+    - alias_key: nutcoke_fc_pct
+      min_value: 60
+      max_value: 90
+    - alias_key: pellet_mt
+      min_value: 0
+      max_value: 100
+    # Ore composition — zeros are invalid (lab data not yet entered); replace with NaN for imputation
+    - alias_key: ore_fe_total_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_sio2_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_al2o3_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_cao_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_mgo_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_loi_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_tm_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_na2o_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_k2o_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_p_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_tio2_pct
+      min_value: 0
+      inclusive: false
+    - alias_key: ore_mno_pct
+      min_value: 0
+      inclusive: false
+
+  imputation:
+    iterative_base_alias_keys:
+      - raft_temp_c
+      - pci2_mt
+      - sinter_hot_strength_ri
+      - differential_pressure_total_bar
+      - oxygen_enrichment_pct
+      - oxygen_flow_nm3hr
+      - production_per_hour
+    include_temperature_columns: true
+    iterative_random_state: 0
+    iterative_max_iter: 10
+    simple_strategies:
+      - alias_key: charges_per_hr
+        strategy: most_frequent
+
+  tonnage_caps:
+    - alias_key: coke_mt
+      max_value: 55
+    - alias_key: nutcoke_prime_mt
+      max_value: 20
+    - alias_key: pci2_mt
+      max_value: 30
+    - alias_key: sinter_mt
+      max_value: 200
+    - alias_key: flux_mt
+      max_value: 10
+    - alias_key: ore_mt
+      max_value: 150
+    - alias_key: pellet_mt
+      max_value: 150
 

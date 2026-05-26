@@ -3,7 +3,7 @@
 Provides
 --------
 DatasetService   Dataclass with four fetch methods:
-                   fetch / fetch_step1  — legacy pre-cutoff dataset
+                   fetch / fetch_step1  — historical static ML dataset
                    fetch_rm_data / fetch_step2 — RM Charge / RM DPR dataset
                    fetch_hotmetal_hourly       — HM & Slag, interpolated hourly
                    fetch_distribution_data     — burden distribution from PostgreSQL
@@ -11,55 +11,50 @@ DatasetService   Dataclass with four fetch methods:
 
 from __future__ import annotations
 
-import logging
 import os
-import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from sqlalchemy import String, and_, cast, func, or_, select
-from sqlalchemy.orm import Session
-
-from furnace_data.relational import BurdenDistributionHistory, build_relational_engine
+from furnace_data.relational import (
+    BurdenHistoryRepository,
+    build_relational_engine,
+    build_relational_session_factory,
+)
 
 from furnace_data.config import load_config
-from furnace_data.influx.offline import fetch_offline_data
-
-log = logging.getLogger(__name__)
+from furnace_data.neon_db.offline import fetch_offline_data as fetch_neon_offline_data
 
 config = load_config("setting_ds_dv.yml")
+
+_NEON_RM_TABLES = {
+    "charge": "offline_feed.charge_data",
+    "dpr": "offline_feed.dpr_data",
+}
+_NEON_RM_QUANTITY_VIEWS = {
+    "charge": "offline_feed.v_charge_material_quantities",
+    "dpr": "offline_feed.v_dpr_material_quantities",
+}
+_NEON_STATIC_ML_TABLE = "offline_feed.historical_static_ml_dataset"
+_NEON_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
+_NEON_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
 
 
 @dataclass
 class DatasetService:
     """4-step fetch pipeline for the furnace dataset.
 
-    Step 1: Fetch legacy ML dataset (pre-cutoff, from a dedicated measurement).
+    Step 1: Fetch the historical static ML dataset from PostgreSQL.
     Step 2: Fetch RM Charge or RM DPR dataset (post-cutoff).
     Step 3: Fetch Hot Metal & Slag and interpolate to a regular hourly grid.
     Step 4: Fetch burden distribution records from PostgreSQL and pivot to daily rows.
 
     Attributes:
-        bucket:               InfluxDB bucket for steps 1 & 2.
-        measurement_step1:    Measurement name for the legacy dataset (step 1).
-        measurement_rm_charge: Measurement name for RM-charge dataset (step 2).
-        measurement_rm_dpr:   Measurement name for RM-DPR dataset (step 2).
-        hotmetal_bucket:      InfluxDB bucket for step 3 (offline).
-        hotmetal_measurement: Measurement name for HM & Slag (step 3).
         local_tz:             Timezone string for index localisation.
-        cutoff_date:          Date separating legacy (step 1) from new (step 2) data.
+        cutoff_date:          Date separating historical static and generated data.
         db_url:               PostgreSQL connection URL for step 4.
     """
-
-    bucket: str = config["ml_dataset"]["bucket"]
-    measurement_step1: str = config["ml_dataset"]["measurement_step1"]
-    measurement_rm_charge: str = config["ml_dataset"]["rm_charge_measurement"]
-    measurement_rm_dpr: str = config["ml_dataset"]["rm_dpr_measurement"]
-
-    hotmetal_bucket: str = config["influx_offline"]["database"]
-    hotmetal_measurement: str = config["offline_measurements"]["HM & Slag"]
 
     local_tz: str = config["ml_dataset"].get("local_tz", "Asia/Kolkata")
 
@@ -75,48 +70,6 @@ class DatasetService:
         # set to a non-empty string (e.g. in tests or the API sidecar).
         url = self.db_url or os.getenv("DATABASE_URL", "")
         return build_relational_engine(url)
-
-    # --------------- INFLUX FETCH WITH RETRIES ---------------
-
-    def _safe_influx_call(
-        self,
-        measurement: str,
-        start_dt: datetime,
-        end_dt: datetime,
-        bucket: str | None = None,
-        retries: int = 3,
-        wait: int = 2,
-    ) -> pd.DataFrame:
-        db = bucket or self.bucket
-        transient_errors = [
-            "resourceexhausted",
-            "simultaneous query limit exceeded",
-            "flightunavailable",
-            "timed out",
-            "deadline exceeded",
-            "504",
-            "unavailable",
-            "server never sent a data message",
-        ]
-        for attempt in range(retries):
-            try:
-                return fetch_offline_data(
-                    measurement=measurement,
-                    time_range=(start_dt, end_dt),
-                    database=db,
-                )
-            except Exception as e:
-                msg = str(e).lower()
-                if any(err in msg for err in transient_errors) and attempt < retries - 1:
-                    log.warning(
-                        "Transient InfluxDB error (attempt %d/%d): %s",
-                        attempt + 1,
-                        retries,
-                        e,
-                    )
-                    time_module.sleep(wait)
-                    continue
-                raise
 
     # --------------- TIMEZONE CONVERSIONS ---------------
 
@@ -136,7 +89,283 @@ class DatasetService:
         df.index.name = "time"
         return df.sort_index()
 
-    # ------------------- STEP 1: LEGACY DATASET -------------------
+    @staticmethod
+    def _sum_existing_columns(df: pd.DataFrame, columns: list[str]) -> pd.Series | None:
+        existing = [col for col in columns if col in df.columns]
+        if not existing:
+            return None
+        values = df[existing].apply(pd.to_numeric, errors="coerce")
+        return values.sum(axis=1, min_count=1)
+
+    def _add_neon_ml_aliases(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add ML-compatible aggregate aliases for offline report table columns."""
+        if df.empty:
+            return df
+
+        df = df.copy()
+        aliases = {
+            "sinter_mt": [f"sinter_{i}_mt" for i in range(1, 5)],
+            "pellet_mt": [f"pellet_{i}_mt" for i in range(1, 3)],
+            "ore_mt": [
+                "ore_1_mt",
+                "ore_2_mt",
+                "ore_3_mt",
+                "ore_4_mt",
+                "ore_5_mt",
+                "ore_6_mt",
+                "ore_7_mt",
+                "ore_8_mt",
+                "ore_9_mt",
+                "ore_10_mt",
+                "ore_11_mt",
+                "ore_12_mt",
+            ],
+            "nutcoke_prime_mt": [f"nut_coke_{i}_mt" for i in range(1, 3)],
+            "coke_mt": [f"coke_{i}_mt" for i in range(1, 3)],
+            "flux_mt": [f"flux_{i}_mt" for i in range(1, 4)],
+            "pci2_mt": ["pci_mt"],
+        }
+        for alias, columns in aliases.items():
+            summed = self._sum_existing_columns(df, columns)
+            if summed is not None:
+                df[alias] = summed
+
+        rm_hm_aliases = {
+            "ai": "sinter_cold_strength_ai",
+            "ti": "sinter_cold_strength_ti",
+            "ri": "sinter_hot_strength_ri",
+            "rdi": "sinter_hot_strength_rdi",
+        }
+        for source_col, alias in rm_hm_aliases.items():
+            if source_col in df.columns and alias not in df.columns:
+                df[alias] = df[source_col]
+
+        return df
+
+    @staticmethod
+    def _weighted_latest_before(
+        quantities: pd.DataFrame,
+        chemistry: pd.DataFrame,
+        *,
+        material_codes: set[str],
+        column_map: dict[str, str],
+    ) -> pd.DataFrame:
+        """Build weighted chemistry columns using latest sample before timestamp."""
+        if quantities.empty or chemistry.empty:
+            return pd.DataFrame()
+
+        q = quantities[quantities["material_code"].isin(material_codes)].copy()
+        c = chemistry[chemistry["material_code"].isin(material_codes)].copy()
+        if q.empty or c.empty:
+            return pd.DataFrame()
+
+        q["quantity"] = pd.to_numeric(q["quantity"], errors="coerce")
+        q = q.dropna(subset=["quantity"])
+        if q.empty:
+            return pd.DataFrame()
+
+        merged_parts = []
+        for material_code, q_group in q.groupby("material_code", sort=False):
+            c_group = c[c["material_code"] == material_code]
+            if c_group.empty:
+                continue
+            q_group = q_group.sort_values("time")
+            c_group = c_group.sort_values("time")
+            merged_parts.append(
+                pd.merge_asof(
+                    q_group,
+                    c_group,
+                    on="time",
+                    direction="backward",
+                    suffixes=("", "_chem"),
+                )
+            )
+
+        if not merged_parts:
+            return pd.DataFrame()
+
+        merged = pd.concat(merged_parts, ignore_index=True)
+        out = pd.DataFrame(index=pd.DatetimeIndex(sorted(q["time"].unique()), name="time"))
+
+        for source_col, target_col in column_map.items():
+            if source_col not in merged.columns:
+                continue
+            values = pd.to_numeric(merged[source_col], errors="coerce")
+            valid = values.notna() & merged["quantity"].notna()
+            if not valid.any():
+                continue
+            weighted_sum = (values[valid] * merged.loc[valid, "quantity"]).groupby(
+                merged.loc[valid, "time"]
+            ).sum()
+            weight = merged.loc[valid].groupby("time")["quantity"].sum()
+            out[target_col] = weighted_sum / weight.replace(0, pd.NA)
+
+        return out.dropna(how="all")
+
+    @staticmethod
+    def _table_with_time_column(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+        out = df.reset_index()
+        if "index" in out.columns and "time" not in out.columns:
+            out = out.rename(columns={"index": "time"})
+        out["time"] = pd.to_datetime(out["time"])
+        if out["time"].dt.tz is not None:
+            out["time"] = out["time"].dt.tz_convert(None)
+        return out.sort_values("time")
+
+    def _fetch_neon_weighted_chemistry(
+        self,
+        *,
+        mode: str,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> pd.DataFrame:
+        quantity_table = _NEON_RM_QUANTITY_VIEWS[mode]
+        quantities = self._fetch_neon_table(quantity_table, start_dt, end_dt)
+        if quantities.empty:
+            return pd.DataFrame()
+        quantities = self._table_with_time_column(quantities)
+
+        chem_start = start_dt - timedelta(days=30)
+        outputs: list[pd.DataFrame] = []
+
+        ore = self._table_with_time_column(
+            self._fetch_neon_table("offline_feed.ore_chemistry", chem_start, end_dt)
+        )
+        outputs.append(
+            self._weighted_latest_before(
+                quantities,
+                ore,
+                material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("ore_")},
+                column_map={
+                    "fe_t": "ore_fe_total_pct",
+                    "loi": "ore_loi_pct",
+                    "tm": "ore_tm_pct",
+                    "mgo": "ore_mgo_pct",
+                    "na2o": "ore_na2o_pct",
+                    "p": "ore_p_pct",
+                    "tio2": "ore_tio2_pct",
+                    "al2o3": "ore_al2o3_pct",
+                    "sio2": "ore_sio2_pct",
+                    "mno": "ore_mno_pct",
+                    "cao": "ore_cao_pct",
+                    "k2o": "ore_k2o_pct",
+                },
+            )
+        )
+
+        sinter = self._table_with_time_column(
+            self._fetch_neon_table("offline_feed.sinter_chemistry", chem_start, end_dt)
+        )
+        outputs.append(
+            self._weighted_latest_before(
+                quantities,
+                sinter,
+                material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("sinter_")},
+                column_map={
+                    "ai": "sinter_cold_strength_ai",
+                    "ti": "sinter_cold_strength_ti",
+                    "ri": "sinter_hot_strength_ri",
+                    "rdi": "sinter_hot_strength_rdi",
+                    "p": "sinter_p_pct",
+                    "sio2": "sinter_sio2_pct",
+                    "mgo": "sinter_mgo_pct",
+                    "feo": "sinter_feo_pct",
+                    "al2o3": "sinter_al2o3_pct",
+                    "na2o": "sinter_na2o_pct",
+                    "tio2": "sinter_tio2_pct",
+                    "fe_t": "sinter_fe_total_pct",
+                    "cao": "sinter_cao_pct",
+                    "k2o": "sinter_k2o_pct",
+                    "basicity": "sinter_basicity",
+                    "mno": "sinter_mno_pct",
+                },
+            )
+        )
+
+        fuel = self._table_with_time_column(
+            self._fetch_neon_table("offline_feed.fuel_chemistry", chem_start, end_dt)
+        )
+        outputs.extend(
+            [
+                self._weighted_latest_before(
+                    quantities,
+                    fuel,
+                    material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("coke_")},
+                    column_map={
+                        "moisture": "coke_moist_pct",
+                        "ash": "coke_ash_pct",
+                        "vm": "coke_vm_pct",
+                        "fc": "coke_fc_pct",
+                    },
+                ),
+                self._weighted_latest_before(
+                    quantities,
+                    fuel,
+                    material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("nut_coke_")},
+                    column_map={
+                        "moisture": "nutcoke_moist_pct",
+                        "ash": "nutcoke_ash_pct",
+                        "vm": "nutcoke_vm_pct",
+                        "fc": "nutcoke_fc_pct",
+                    },
+                ),
+                self._weighted_latest_before(
+                    quantities,
+                    fuel,
+                    material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("pci_")},
+                    column_map={
+                        "tm": "pci2_tm_pct",
+                        "moisture": "pci2_im_pct",
+                        "ash": "pci2_ash_pct",
+                        "vm": "pci2_vm_pct",
+                        "fc": "pci2_fc_pct",
+                    },
+                ),
+            ]
+        )
+
+        flux = self._table_with_time_column(
+            self._fetch_neon_table("offline_feed.flux_chemistry", chem_start, end_dt)
+        )
+        outputs.append(
+            self._weighted_latest_before(
+                quantities,
+                flux,
+                material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("flux_")},
+                column_map={
+                    "tm": "flux_tm_pct",
+                    "sio2": "flux_sio2_pct",
+                    "fe2o3": "flux_fe2o3_pct",
+                    "al2o3": "flux_al2o3_pct",
+                    "loi": "flux_loi_pct",
+                    "mgo": "flux_mgo_pct",
+                    "cao": "flux_cao_pct",
+                },
+            )
+        )
+
+        frames = [frame for frame in outputs if frame is not None and not frame.empty]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, axis=1).sort_index()
+
+    def _fetch_neon_table(
+        self,
+        table_name: str,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> pd.DataFrame:
+        df = fetch_neon_offline_data(
+            table_name=table_name,
+            time_range=(start_dt, end_dt),
+        )
+        if df is None or df.empty:
+            return pd.DataFrame()
+        return self._normalize_timezone(df)
+
+    # ------------------- STEP 1: HISTORICAL STATIC DATASET -------------------
 
     def fetch(
         self,
@@ -144,7 +373,7 @@ class DatasetService:
         end_date: date,
         allowed_columns: dict | None = None,
     ) -> pd.DataFrame:
-        """Fetch the legacy pre-cutoff ML dataset from InfluxDB.
+        """Fetch the historical static ML dataset from PostgreSQL.
 
         Args:
             start_date:       Inclusive start date (local timezone).
@@ -152,13 +381,12 @@ class DatasetService:
             allowed_columns:  If given, restrict to these column names (keys of the dict).
 
         Returns:
-            Time-indexed :class:`pandas.DataFrame` with the legacy dataset columns.
+            Time-indexed :class:`pandas.DataFrame` with the historical dataset columns.
         """
         start_dt, end_dt = self._to_utc_window(start_date, end_date)
-        df = self._safe_influx_call(self.measurement_step1, start_dt, end_dt)
+        df = self._fetch_neon_table(_NEON_STATIC_ML_TABLE, start_dt, end_dt)
         if df is None or df.empty:
             return pd.DataFrame()
-        df = self._normalize_timezone(df)
         if allowed_columns:
             df = df[df.columns.intersection(allowed_columns.keys())]
         return df
@@ -183,14 +411,31 @@ class DatasetService:
         Returns:
             Time-indexed :class:`pandas.DataFrame` with RM composition columns.
         """
-        measurement = (
-            self.measurement_rm_charge if mode == "charge" else self.measurement_rm_dpr
-        )
         start_dt, end_dt = self._to_utc_window(start_date, end_date)
-        df = self._safe_influx_call(measurement, start_dt, end_dt)
-        if df is None or df.empty:
+
+        table_name = _NEON_RM_TABLES.get(mode)
+        if table_name is None:
+            raise ValueError("mode must be 'charge' or 'dpr'")
+
+        df_rm = self._fetch_neon_table(table_name, start_dt, end_dt)
+        df_rm_hm = self._fetch_neon_table(_NEON_STRENGTH_TABLE, start_dt, end_dt)
+        df_chem = self._fetch_neon_weighted_chemistry(
+            mode=mode,
+            start_dt=start_dt,
+            end_dt=end_dt,
+        )
+
+        frames = [
+            df
+            for df in [df_rm, df_rm_hm, df_chem]
+            if df is not None and not df.empty
+        ]
+        if not frames:
             return pd.DataFrame()
-        df = self._normalize_timezone(df)
+
+        df = pd.concat(frames, axis=1).sort_index()
+        df = df.loc[:, ~df.columns.duplicated()]
+        df = self._add_neon_ml_aliases(df)
         if allowed_columns:
             df = df[df.columns.intersection(allowed_columns.keys())]
         return df
@@ -229,16 +474,16 @@ class DatasetService:
         fetch_start_utc = fetch_start.tz_convert("UTC")
         fetch_end_utc = fetch_end.tz_convert("UTC")
 
-        df = self._safe_influx_call(
-            measurement=self.hotmetal_measurement,
-            start_dt=fetch_start_utc,
-            end_dt=fetch_end_utc,
-            bucket=self.hotmetal_bucket,
+        df = fetch_neon_offline_data(
+            table_name=_NEON_HM_SLAG_TABLE,
+            time_range=(fetch_start_utc, fetch_end_utc),
         )
 
         if df is None or df.empty:
             return pd.DataFrame()
 
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
         df.index = df.index.tz_convert(tz)
         df = df.sort_index().loc[~df.index.duplicated(keep="last")]
 
@@ -280,130 +525,171 @@ class DatasetService:
     # ------------------- STEP 4: BURDEN DISTRIBUTION -------------------
 
     def fetch_distribution_data(self, start_date: date, end_date: date) -> pd.DataFrame:
-        """Fetch burden distribution from PostgreSQL and expand to daily rows.
-
-        Reads ``burden_distribution_history`` (SCD Type-2), pivots field_name /
-        field_value to columns, and computes weighted-average coke/non-coke angles
-        plus total portions.
-
-        Args:
-            start_date: Inclusive start date.
-            end_date:   Inclusive end date.
-
-        Returns:
-            Time-indexed :class:`pandas.DataFrame` with one row per day, columns
-            for each burden distribution field plus derived aggregate columns.
-        """
+        """Fetch wide burden snapshots from PostgreSQL and expand to daily rows."""
+        engine = self._get_engine()
         try:
-            engine = self._get_engine()
-        except (ValueError, Exception) as exc:
-            log.warning("fetch_distribution_data: DB engine unavailable (%s) — skipping.", exc)
-            return pd.DataFrame()
-
-        window_start = datetime.combine(start_date, time.min)
-        window_end = datetime.combine(end_date, time.max)
-        value_expr = func.coalesce(
-            cast(BurdenDistributionHistory.field_value_float, String),
-            BurdenDistributionHistory.field_value_text,
-        ).label("field_value")
-
-        stmt = (
-            select(
-                BurdenDistributionHistory.field_name,
-                value_expr,
-                BurdenDistributionHistory.valid_from,
-                BurdenDistributionHistory.valid_upto,
+            repository = BurdenHistoryRepository(
+                build_relational_session_factory(engine)
             )
-            .where(
-                and_(
-                    BurdenDistributionHistory.valid_from <= window_end,
-                    or_(
-                        BurdenDistributionHistory.valid_upto.is_(None),
-                        BurdenDistributionHistory.valid_upto >= window_start,
-                    ),
-                )
+            snapshots = repository.fetch_distribution_frame(
+                start_date=start_date,
+                end_date=end_date,
             )
-            .order_by(BurdenDistributionHistory.valid_from.asc())
-        )
-
-        try:
-            with Session(engine) as session:
-                rows = session.execute(stmt).all()
         finally:
             engine.dispose()
 
-        if not rows:
+        if snapshots.empty:
             return pd.DataFrame()
 
-        df = pd.DataFrame(
-            rows,
-            columns=["field_name", "field_value", "valid_from", "valid_upto"],
-        )
-        df["valid_from"] = pd.to_datetime(df["valid_from"])
-        df["valid_upto"] = pd.to_datetime(df["valid_upto"])
+        snapshots.index = pd.DatetimeIndex(pd.to_datetime(snapshots.index))
+        if snapshots.index.tz is not None:
+            snapshots.index = snapshots.index.tz_convert(None)
 
-        if df.empty:
-            return pd.DataFrame()
+        daily_index = pd.date_range(start=start_date, end=end_date, freq="D")
+        snapshots = snapshots[~snapshots.index.duplicated(keep="last")]
+        df_pivot = snapshots.reindex(snapshots.index.union(daily_index)).sort_index().ffill()
+        df_pivot = df_pivot.reindex(daily_index)
+        df_pivot.index.name = "time"
 
-        def _to_date(value):
-            return value.date() if hasattr(value, "date") else value
+        coke_rings = [f"coke_p{i:02d}_rings" for i in range(1, 12)]
+        coke_angles = [f"coke_p{i:02d}_angles" for i in range(1, 12)]
+        nc_rings = [f"noncoke_p{i:02d}_rings" for i in range(1, 12)]
+        nc_angles = [f"noncoke_p{i:02d}_angles" for i in range(1, 12)]
 
-        df["valid_upto"] = df["valid_upto"].fillna(end_date)
+        for columns in [coke_rings, coke_angles, nc_rings, nc_angles]:
+            present = [col for col in columns if col in df_pivot.columns]
+            df_pivot[present] = df_pivot[present].apply(pd.to_numeric, errors="coerce")
 
-        expanded_rows = []
-        for _, row in df.iterrows():
-            valid_from = max(_to_date(row["valid_from"]), start_date)
-            valid_upto = min(_to_date(row["valid_upto"]), end_date)
-            rng = pd.date_range(start=valid_from, end=valid_upto, freq="D")
-            for t in rng:
-                expanded_rows.append([t, row["field_name"], row["field_value"]])
+        present_coke_rings = [col for col in coke_rings if col in df_pivot.columns]
+        present_coke_angles = [col for col in coke_angles if col in df_pivot.columns]
+        present_nc_rings = [col for col in nc_rings if col in df_pivot.columns]
+        present_nc_angles = [col for col in nc_angles if col in df_pivot.columns]
 
-        df2 = pd.DataFrame(expanded_rows, columns=["time", "field_name", "field_value"])
+        df_pivot["total_coke_portions"] = df_pivot[present_coke_rings].sum(axis=1)
+        df_pivot["total_non_coke_portions"] = df_pivot[present_nc_rings].sum(axis=1)
 
-        df_pivot = df2.pivot_table(
-            index="time",
-            columns="field_name",
-            values="field_value",
-            aggfunc="last",
-        ).sort_index()
+        def _weighted_angle(ring_cols: list[str], angle_cols: list[str]) -> pd.Series:
+            rings = df_pivot[ring_cols].apply(pd.to_numeric, errors="coerce")
+            angles = df_pivot[angle_cols].apply(pd.to_numeric, errors="coerce")
+            angles.columns = ring_cols
+            valid = rings.notna() & angles.notna()
+            numerator = (rings.where(valid, 0) * angles.where(valid, 0)).sum(axis=1)
+            denominator = rings.where(valid, 0).sum(axis=1)
+            return numerator / denominator.replace(0, pd.NA)
 
-        coke_rings = [c for c in df_pivot.columns if "COKE" in c and "RINGS" in c]
-        coke_angles = [c for c in df_pivot.columns if "COKE" in c and "ANGLES" in c]
-        nc_rings = [c for c in df_pivot.columns if "NONCOKE" in c and "RINGS" in c]
-        nc_angles = [c for c in df_pivot.columns if "NONCOKE" in c and "ANGLES" in c]
-
-        df_pivot[coke_rings] = df_pivot[coke_rings].apply(pd.to_numeric, errors="coerce")
-        df_pivot[coke_angles] = df_pivot[coke_angles].apply(pd.to_numeric, errors="coerce")
-        df_pivot[nc_rings] = df_pivot[nc_rings].apply(pd.to_numeric, errors="coerce")
-        df_pivot[nc_angles] = df_pivot[nc_angles].apply(pd.to_numeric, errors="coerce")
-
-        df_pivot["TOTAL_COKE_PORTIONS"] = df_pivot[coke_rings].sum(axis=1)
-        df_pivot["TOTAL_NON_COKE_PORTIONS"] = df_pivot[nc_rings].sum(axis=1)
-
-        df_pivot["WEIGHTED_COKE_ANGLE"] = (
-            (df_pivot[coke_rings].values * df_pivot[coke_angles].values).sum(axis=1)
-            / df_pivot["TOTAL_COKE_PORTIONS"].replace(0, pd.NA)
-        )
-        df_pivot["WEIGHTED_NON_COKE_ANGLE"] = (
-            (df_pivot[nc_rings].values * df_pivot[nc_angles].values).sum(axis=1)
-            / df_pivot["TOTAL_NON_COKE_PORTIONS"].replace(0, pd.NA)
-        )
-
-        for col in df_pivot.columns:
-            if df_pivot[col].dtype == "object":
-                try:
-                    df_pivot[col] = pd.to_numeric(df_pivot[col])
-                except (ValueError, TypeError):
-                    pass
+        if present_coke_rings and present_coke_angles:
+            df_pivot["weighted_coke_angle"] = _weighted_angle(
+                present_coke_rings, present_coke_angles
+            )
+        if present_nc_rings and present_nc_angles:
+            df_pivot["weighted_non_coke_angle"] = _weighted_angle(
+                present_nc_rings, present_nc_angles
+            )
 
         return df_pivot
+
+    # ------------------- STEP 5: ONLINE PROCESS PARAMS (InfluxDB) -------------------
+
+    def fetch_online_process_params(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """Step 5: hourly-averaged InfluxDB process params for post-cutoff ML dataset.
+
+        Reads the ``ml_dataset.online_params`` mapping from the shared config
+        (InfluxDB field name → ML dataset column name) and fetches the
+        ``process_params`` measurement over the date window.
+
+        Args:
+            start_date: Inclusive start date (local timezone).
+            end_date:   Inclusive end date (local timezone).
+
+        Returns:
+            IST tz-naive, hourly-indexed :class:`pandas.DataFrame` with ML
+            column names, or an empty DataFrame if InfluxDB is unreachable or
+            the mapping is absent.
+        """
+        from furnace_data.influx.base import BaseDataFetcher
+
+        influx_to_ml: dict = config.get("ml_dataset", {}).get("online_params", {})
+        if not influx_to_ml:
+            return pd.DataFrame()
+
+        start_dt, end_dt = self._to_utc_window(start_date, end_date)
+        try:
+            df = BaseDataFetcher("process_params").fetch_averaged_data(
+                recent_data_of="over selected range",
+                start_time=start_dt,
+                end_time=end_dt,
+                request_type="windowed-average",
+                window_by="1 hour",
+            )
+        except Exception:
+            return pd.DataFrame()
+
+        if df is None or df.empty or "time" not in df.columns:
+            return pd.DataFrame()
+
+        df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)
+        df = df.dropna(subset=["time"]).set_index("time")
+
+        mapped = {k: v for k, v in influx_to_ml.items() if k in df.columns}
+        if not mapped:
+            return pd.DataFrame()
+
+        return self._normalize_timezone(df[list(mapped.keys())].rename(columns=mapped))
+
+    def fetch_online_temperature_params(
+        self,
+        start_date: date,
+        end_date: date,
+    ) -> pd.DataFrame:
+        """Step 5b: hourly-averaged InfluxDB temperature profile for the delta.
+
+        Reads ``ml_dataset.temperature_params`` (InfluxDB field → rename_dict
+        intermediate key) and fetches the ``temperature_profile`` measurement.
+        Returns an empty DataFrame if the config key is absent or InfluxDB is
+        unreachable.
+        """
+        from furnace_data.influx.base import BaseDataFetcher
+
+        influx_to_intermediate: dict = config.get("ml_dataset", {}).get("temperature_params", {})
+        if not influx_to_intermediate:
+            return pd.DataFrame()
+
+        start_dt, end_dt = self._to_utc_window(start_date, end_date)
+        try:
+            df = BaseDataFetcher("temperature_profile").fetch_averaged_data(
+                recent_data_of="over selected range",
+                start_time=start_dt,
+                end_time=end_dt,
+                request_type="windowed-average",
+                window_by="1 hour",
+            )
+        except Exception:
+            return pd.DataFrame()
+
+        if df is None or df.empty or "time" not in df.columns:
+            return pd.DataFrame()
+
+        df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)
+        df = df.dropna(subset=["time"]).set_index("time")
+
+        mapped = {k: v for k, v in influx_to_intermediate.items() if k in df.columns}
+        if not mapped:
+            return pd.DataFrame()
+
+        return self._normalize_timezone(df[list(mapped.keys())].rename(columns=mapped))
 
     # ------------------- ALIASES -------------------
 
     def fetch_step1(self, start_date: date, end_date: date, allowed_columns=None):
-        """Alias for :meth:`fetch` (legacy pre-cutoff dataset)."""
+        """Alias for :meth:`fetch` (historical static dataset)."""
         return self.fetch(start_date, end_date, allowed_columns)
 
-    def fetch_step2(self, start_date: date, end_date: date, mode: str, allowed_columns=None):
+    def fetch_step2(
+        self,
+        start_date: date,
+        end_date: date,
+        mode: str,
+        allowed_columns=None,
+    ):
         """Alias for :meth:`fetch_rm_data` (RM Charge / DPR dataset)."""
         return self.fetch_rm_data(start_date, end_date, mode, allowed_columns)

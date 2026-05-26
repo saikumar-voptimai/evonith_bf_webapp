@@ -4,7 +4,7 @@ Single-date element balance showing how much of each element (Fe, C, Si,
 Ca, Mg, Al, Mn, S, P, O, N, H) enters via raw materials + blast + steam
 and leaves via hot metal + slag + top gas + dust catcher.
 
-Data source: static furnace dataset CSV (``src/assets/data/furnace_dataset.csv``).
+Data source: static furnace ML dataset.
 
 Layout:
     Top row : date picker | refresh | dust catcher input
@@ -53,17 +53,16 @@ from plotters.material_balance_plots import (
 # ── Page chrome ───────────────────────────────────────────────────────
 st.title("⚖️ Material Balance — BF2")
 
-# ── CSV date availability hint ────────────────────────────────────────
+# ── static dataset date availability hint ─────────────────────────────
 csv_min, csv_max = get_csv_date_range()
 if csv_min and csv_max:
     st.caption(
-        f"Data source: static ML-dataset CSV  ·  "
+        f"Data source: static ML dataset  ·  "
         f"Available range: **{csv_min}** → **{csv_max}**"
     )
 else:
     st.warning(
-        "Static ML-dataset CSV not found. Expected at "
-        "`src/assets/data/furnace_dataset.csv`."
+        "Static ML dataset is not available."
     )
 
 # ── Top control row ───────────────────────────────────────────────────
@@ -312,12 +311,12 @@ with st.expander("🔬 Ash Analysis — Coke / Nut Coke / PCI", expanded=False, 
 current_mapping = load_dpr_mapping()
 mapping_ok = mapping_is_complete(current_mapping)
 with st.expander(
-    "🗂 DPR field mapping" + ("" if mapping_ok else " (optional — not required for CSV path)"),
+    "🗂 DPR field mapping" + ("" if mapping_ok else " (optional)"),
     expanded=False,
     key="mb_dpr_mapping",
 ):
     st.caption(
-        "The DPR mapping is optional when using the static CSV. "
+        "The DPR mapping is optional when using the static dataset. "
         "It allows you to override material masses from the live InfluxDB "
         "daily production report if configured."
     )
@@ -325,7 +324,7 @@ with st.expander(
     if not dpr_fields:
         st.info(
             "No DPR data found for the selected day in InfluxDB. "
-            "The page uses static CSV masses instead."
+            "The page uses static ML dataset masses instead."
         )
     else:
         options = ["(unmapped)"] + dpr_fields
@@ -360,12 +359,12 @@ with st.expander("ℹ️ Assumptions & limitations", key="mb_assumptions"):
     )
     st.markdown(
         f"""
-**Data source**: Static furnace dataset CSV (`furnace_dataset.csv`).
+**Data source**: Static furnace ML dataset.
 {result.n_rm_rows} hourly rows found for the selected day.
 
 **RM lag**: {result.rm_lag_hours} h &nbsp;|&nbsp; **Blast lag**: {result.blast_lag_hours} h
 
-**Material masses**: {"DPR override applied" if result.used_dpr else "Summed from hourly *_CALC_MT columns in CSV"}.
+**Material masses**: {"DPR override applied" if result.used_dpr else "Summed from hourly *_CALC_MT columns in the static dataset"}.
 
 **Ash composition**: Coke and PCI ash distributed into oxides using constants in
 `material_balance.yml` (coke_ash_assumption_pct / pci_ash_assumption_pct).

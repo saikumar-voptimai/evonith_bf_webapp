@@ -1,107 +1,85 @@
-"""Repository classes for BF2 relational persistence."""
+"""Repository classes for Neon-backed relational persistence."""
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timezone
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import pandas as pd
 from sqlalchemy import String, and_, cast, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import (
-    BurdenDistributionHistory,
+    BURDEN_VALUE_COLUMNS,
+    HOPPER_COLUMNS,
+    BurdenHistory,
     Conversation,
     ConversationMessage,
     FeedbackItem,
-    HopperMaterialHistory,
+    Hopper,
+    HopperRawMaterialHistory,
     LongTermMemory,
+    Material,
     MemoryDocument,
     MemorySummary,
     Skill,
     User,
     UserRole,
+    UserRoleAssignment,
     utc_now,
 )
 
 
 def _new_id(prefix: str) -> str:
-    """
-    Return a compact application id with a stable prefix.
-
-    Args:
-         - prefix: str - Prefix that identifies the entity type.
-
-    Returns:
-         - return: str - Generated application id.
-    """
+    """Return a compact application id with a stable prefix."""
     return f"{prefix}_{uuid4().hex}"
 
 
 _UNSET: Any = object()
 
 
+def _as_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 class UserRepository:
     """User/auth repository operations."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
-        """
-        Create the repository with a SQLAlchemy session factory.
-
-        Args:
-             - session_factory: sessionmaker[Session] - Factory used to open database sessions.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
         self._session_factory = session_factory
 
     def seed_admin_user(self, *, password_hash: str) -> None:
-        """
-        Seed the default admin user when it is missing.
-
-        Args:
-             - password_hash: str - Password hash to store for the default admin user.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
+        """Seed default admin user if missing."""
         with self._session_factory() as session:
-            exists_stmt = select(User.username).where(User.username == "admin").limit(1)
-            if session.execute(exists_stmt).first():
+            exists_stmt = select(User).where(User.username == "admin").limit(1)
+            if session.execute(exists_stmt).scalar_one_or_none():
                 return
 
+            user = User(
+                username="admin",
+                password_hash=password_hash,
+                role=UserRole.ADMIN.value,
+            )
+            session.add(user)
+            session.flush()
             session.add(
-                User(
-                    username="admin",
-                    password_hash=password_hash,
-                    role=UserRole.ADMIN,
-                )
+                UserRoleAssignment(user_id=user.id, role=UserRole.ADMIN.value)
             )
             session.commit()
 
     def add_user(self, username: str, password_hash: str, role: str) -> None:
-        """
-        Create a user row.
-
-        Args:
-             - username: str - Username to create.
-             - password_hash: str - Password hash for the user.
-             - role: str - Role value for the user.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
+        """Create a user row."""
+        role = UserRole(role).value
         with self._session_factory() as session:
-            session.add(
-                User(
-                    username=username,
-                    password_hash=password_hash,
-                    role=UserRole(role),
-                )
-            )
+            user = User(username=username, password_hash=password_hash, role=role)
+            session.add(user)
             try:
+                session.flush()
+                session.add(UserRoleAssignment(user_id=user.id, role=role))
                 session.commit()
             except IntegrityError:
                 session.rollback()
@@ -110,236 +88,208 @@ class UserRepository:
     def validate_user(
         self, username: str, password_hash: str
     ) -> tuple[str, str] | None:
-        """
-        Validate user credentials and return identity details when valid.
-
-        Args:
-             - username: str - Username to validate.
-             - password_hash: str - Password hash to compare.
-
-        Returns:
-             - return: tuple[str, str] | None - Username and role when valid, otherwise None.
-        """
+        """Return ``(username, role)`` when credentials are valid."""
         with self._session_factory() as session:
             stmt = select(User.username, User.role).where(
-                and_(
-                    User.username == username,
-                    User.password_hash == password_hash,
-                )
+                User.username == username,
+                User.password_hash == password_hash,
+                User.is_active.is_(True),
             )
             row = session.execute(stmt).first()
-            if row is None:
-                return None
-            return row[0], row[1].value if isinstance(row[1], UserRole) else str(row[1])
+            return (row[0], row[1]) if row else None
 
-
-class HopperHistoryRepository:
-    """SCD Type-2 repository for hopper-material mapping."""
-
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
-        """
-        Create the repository with a SQLAlchemy session factory.
-
-        Args:
-             - session_factory: sessionmaker[Session] - Factory used to open database sessions.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
-        self._session_factory = session_factory
-
-    def seed_hoppers_if_missing(self, hoppers: list[str], now: datetime) -> None:
-        """
-        Seed missing hoppers with UNASSIGNED records.
-
-        Args:
-             - hoppers: list[str] - Hopper names that should exist.
-             - now: datetime - Timestamp to use as the valid-from time.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
+    def get_user_id(self, username: str | None) -> UUID | None:
+        """Return the identity UUID for *username*, if present."""
+        if not username:
+            return None
         with self._session_factory() as session:
-            existing_stmt = select(HopperMaterialHistory.hopper).distinct()
-            existing = {row[0] for row in session.execute(existing_stmt).all()}
-            for hopper in hoppers:
-                if hopper in existing:
-                    continue
-                session.add(
-                    HopperMaterialHistory(
-                        hopper=hopper,
-                        material="UNASSIGNED",
-                        valid_from=now,
-                    )
-                )
-            session.commit()
-
-    def update_hopper_material_with_time(
-        self,
-        *,
-        hopper: str,
-        material: str,
-        from_time: datetime,
-        modifier: str,
-        ip_address: str,
-    ) -> None:
-        """
-        Close the current hopper-material row and insert a new active record.
-
-        Args:
-             - hopper: str - Hopper name to update.
-             - material: str - New material assigned to the hopper.
-             - from_time: datetime - Time from which the new assignment is valid.
-             - modifier: str - User or process making the change.
-             - ip_address: str - Client IP address for audit context.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
-        with self._session_factory() as session:
-            close_stmt = (
-                update(HopperMaterialHistory)
-                .where(
-                    and_(
-                        HopperMaterialHistory.hopper == hopper,
-                        HopperMaterialHistory.valid_upto.is_(None),
-                    )
-                )
-                .values(valid_upto=from_time - timedelta(seconds=1))
-            )
-            session.execute(close_stmt)
-
-            session.add(
-                HopperMaterialHistory(
-                    hopper=hopper,
-                    material=material,
-                    valid_from=from_time,
-                    modifier=modifier,
-                    ip_address=ip_address,
-                )
-            )
-            session.commit()
-
-    def get_current_hopper_materials(self) -> dict[str, str]:
-        """
-        Return the current hopper-to-material map.
-
-        Args:
-             - None
-
-        Returns:
-             - return: dict[str, str] - Mapping from hopper name to current material.
-        """
-        with self._session_factory() as session:
-            stmt = (
-                select(HopperMaterialHistory.hopper, HopperMaterialHistory.material)
-                .where(HopperMaterialHistory.valid_upto.is_(None))
-                .order_by(HopperMaterialHistory.hopper.asc())
-            )
-            return {row[0]: row[1] for row in session.execute(stmt).all()}
-
-    def get_hopper_material_at(self, hopper: str, ts: datetime) -> str | None:
-        """
-        Return the assigned material for a hopper at a timestamp.
-
-        Args:
-             - hopper: str - Hopper name to inspect.
-             - ts: datetime - Timestamp for historical lookup.
-
-        Returns:
-             - return: str | None - Assigned material when found, otherwise None.
-        """
-        with self._session_factory() as session:
-            stmt = (
-                select(HopperMaterialHistory.material)
-                .where(
-                    and_(
-                        HopperMaterialHistory.hopper == hopper,
-                        HopperMaterialHistory.valid_from <= ts,
-                        or_(
-                            HopperMaterialHistory.valid_upto.is_(None),
-                            HopperMaterialHistory.valid_upto >= ts,
-                        ),
-                    )
-                )
-                .order_by(HopperMaterialHistory.valid_from.desc())
-                .limit(1)
-            )
+            stmt = select(User.id).where(User.username == username, User.is_active.is_(True))
             row = session.execute(stmt).first()
             return row[0] if row else None
 
-    def get_hopper_material_history(self) -> list[dict[str, Any]]:
-        """
-        Return complete hopper material history rows.
 
-        Args:
-             - None
+class PlantMasterRepository:
+    """Read-only plant master lookups used by app repositories and UI."""
 
-        Returns:
-             - return: list[dict[str, Any]] - Display-ready hopper material history rows.
-        """
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def list_active_hoppers(self) -> list[dict[str, Any]]:
         with self._session_factory() as session:
-            stmt = select(HopperMaterialHistory).order_by(
-                HopperMaterialHistory.hopper.asc(),
-                HopperMaterialHistory.valid_from.desc(),
-                HopperMaterialHistory.id.desc(),
+            stmt = (
+                select(Hopper)
+                .where(Hopper.is_active.is_(True))
+                .order_by(Hopper.sort_order.asc(), Hopper.hopper_code.asc())
             )
-            rows = session.execute(stmt).scalars().all()
             return [
                 {
-                    "id": row.id,
-                    "hopper": row.hopper,
-                    "material": row.material,
-                    "valid_from": row.valid_from,
-                    "valid_upto": row.valid_upto,
-                    "modifier": row.modifier,
-                    "ip_address": row.ip_address,
+                    "hopper_code": row.hopper_code,
+                    "display_name": row.display_name or row.hopper_code,
+                    "sort_order": row.sort_order,
                 }
-                for row in rows
+                for row in session.execute(stmt).scalars().all()
             ]
 
+    def list_active_materials(self) -> list[dict[str, Any]]:
+        with self._session_factory() as session:
+            stmt = (
+                select(Material)
+                .where(Material.is_active.is_(True))
+                .order_by(Material.category_code.asc(), Material.material_code.asc())
+            )
+            return [
+                {
+                    "material_code": row.material_code,
+                    "material_name": row.material_name,
+                    "category_code": row.category_code,
+                    "unit_code": row.unit_code,
+                }
+                for row in session.execute(stmt).scalars().all()
+            ]
+
+    def material_code_by_name(self) -> dict[str, str]:
+        return {
+            row["material_name"]: row["material_code"]
+            for row in self.list_active_materials()
+        }
+
+    def material_name_by_code(self) -> dict[str, str]:
+        return {
+            row["material_code"]: row["material_name"]
+            for row in self.list_active_materials()
+        }
+
+class HopperHistoryRepository:
+    """Repository for wide hopper-material snapshot history."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    @staticmethod
+    def _row_to_codes(row: HopperRawMaterialHistory | None) -> dict[str, str | None]:
+        if row is None:
+            return {column: None for column in HOPPER_COLUMNS}
+        return {column: getattr(row, column) for column in HOPPER_COLUMNS}
+
+    def _latest_row(
+        self, session: Session, ts: datetime | None = None
+    ) -> HopperRawMaterialHistory | None:
+        stmt = select(HopperRawMaterialHistory)
+        if ts is not None:
+            stmt = stmt.where(HopperRawMaterialHistory.date_time <= _as_aware_utc(ts))
+        stmt = stmt.order_by(
+            HopperRawMaterialHistory.date_time.desc(),
+            HopperRawMaterialHistory.id.desc(),
+        ).limit(1)
+        return session.execute(stmt).scalar_one_or_none()
+
+    def update_hopper_snapshot(
+        self,
+        *,
+        hopper_material_codes: dict[str, str | None],
+        from_time: datetime,
+        user_id: UUID | None,
+        ip_address: str | None,
+        source_type: str = "webapp",
+    ) -> None:
+        """Insert one full hopper-material snapshot."""
+        from_time = _as_aware_utc(from_time)
+        with self._session_factory() as session:
+            snapshot = self._row_to_codes(self._latest_row(session, from_time))
+            for hopper, material_code in hopper_material_codes.items():
+                if hopper not in HOPPER_COLUMNS:
+                    raise ValueError(f"Invalid hopper: {hopper}")
+                snapshot[hopper] = material_code
+            session.add(
+                HopperRawMaterialHistory(
+                    date_time=from_time,
+                    ip_address=ip_address,
+                    user_modified=user_id,
+                    source_type=source_type,
+                    **snapshot,
+                )
+            )
+            session.commit()
+
+    def get_current_hopper_material_codes(self) -> dict[str, str | None]:
+        """Return current hopper to material-code map."""
+        with self._session_factory() as session:
+            return self._row_to_codes(self._latest_row(session))
+
+    def get_hopper_material_code_at(
+        self, hopper: str, ts: datetime
+    ) -> str | None:
+        """Return assigned material code for hopper at timestamp."""
+        if hopper not in HOPPER_COLUMNS:
+            raise ValueError(f"Invalid hopper: {hopper}")
+        with self._session_factory() as session:
+            row = self._latest_row(session, ts)
+            return getattr(row, hopper) if row else None
+
+    def get_hopper_material_history(self) -> list[dict[str, Any]]:
+        """Return complete hopper snapshot history rows."""
+        with self._session_factory() as session:
+            stmt = select(HopperRawMaterialHistory).order_by(
+                HopperRawMaterialHistory.date_time.desc(),
+                HopperRawMaterialHistory.id.desc(),
+            )
+            rows = session.execute(stmt).scalars().all()
+            out = []
+            for row in rows:
+                payload = {
+                    "id": row.id,
+                    "date_time": row.date_time,
+                    "source_type": row.source_type,
+                    "ip_address": row.ip_address,
+                    "user_modified": str(row.user_modified) if row.user_modified else None,
+                }
+                payload.update({column: getattr(row, column) for column in HOPPER_COLUMNS})
+                out.append(payload)
+            return out
+
     def delete_hopper_material_history(self, record_ids: list[int]) -> None:
-        """
-        Delete hopper history rows by ids.
-
-        Args:
-             - record_ids: list[int] - Hopper history row ids to delete.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
+        """Delete hopper snapshot rows by IDs."""
         if not record_ids:
             return
         with self._session_factory() as session:
-            stmt = delete(HopperMaterialHistory).where(
-                HopperMaterialHistory.id.in_(record_ids)
+            session.execute(
+                delete(HopperRawMaterialHistory).where(
+                    HopperRawMaterialHistory.id.in_(record_ids)
+                )
             )
-            session.execute(stmt)
             session.commit()
 
 
 class BurdenHistoryRepository:
-    """SCD Type-2 repository for burden-distribution fields."""
+    """Repository for wide burden-distribution snapshot history."""
 
     TEXT_FIELDS = frozenset(
         {
-            "COKE_CHARGE_PATTERN",
-            "NON_COKE_CHARGE_PATTERN",
-            "BURDEN_CHANGING_PURPOSE",
+            "coke_charge_pattern",
+            "non_coke_charge_pattern",
+            "burden_changing_purpose",
         }
     )
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
-        """
-        Create the repository with a SQLAlchemy session factory.
-
-        Args:
-             - session_factory: sessionmaker[Session] - Factory used to open database sessions.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
         self._session_factory = session_factory
+
+    @staticmethod
+    def burden_fields() -> list[str]:
+        return list(BURDEN_VALUE_COLUMNS)
+
+    def _latest_row(self, session: Session, ts: datetime | None = None) -> BurdenHistory | None:
+        stmt = select(BurdenHistory)
+        if ts is not None:
+            stmt = stmt.where(BurdenHistory.date_time <= _as_aware_utc(ts))
+        stmt = stmt.order_by(BurdenHistory.date_time.desc(), BurdenHistory.id.desc()).limit(1)
+        return session.execute(stmt).scalar_one_or_none()
+
+    @staticmethod
+    def _row_to_values(row: BurdenHistory | None) -> dict[str, Any]:
+        if row is None:
+            return {column: None for column in BURDEN_VALUE_COLUMNS}
+        return {column: getattr(row, column) for column in BURDEN_VALUE_COLUMNS}
 
     def update_burden_field(
         self,
@@ -347,226 +297,110 @@ class BurdenHistoryRepository:
         field_name: str,
         value: Any,
         valid_from: datetime,
-        modifier: str = "system",
+        user_id: UUID | None = None,
         ip: str = "",
     ) -> None:
-        """
-        Close the active burden value and append a new value row.
-
-        Args:
-             - field_name: str - Burden field name to update.
-             - value: Any - New value to store for the field.
-             - valid_from: datetime - Time from which the new value is valid.
-             - modifier: str - User or process making the change.
-             - ip: str - Client IP address for audit context.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
-        end_time = valid_from - timedelta(seconds=1)
-        is_text_field = field_name in self.TEXT_FIELDS
-
-        with self._session_factory() as session:
-            close_stmt = (
-                update(BurdenDistributionHistory)
-                .where(
-                    and_(
-                        BurdenDistributionHistory.field_name == field_name,
-                        BurdenDistributionHistory.valid_upto.is_(None),
-                    )
-                )
-                .values(valid_upto=end_time)
-            )
-            session.execute(close_stmt)
-
-            payload = {
-                "field_name": field_name,
-                "valid_from": valid_from,
-                "valid_upto": None,
-                "modifier": modifier,
-                "ip_address": ip,
-                "field_value_text": str(value) if is_text_field else None,
-                "field_value_float": None if is_text_field else float(value),
-            }
-            session.add(BurdenDistributionHistory(**payload))
-            session.commit()
+        """Insert one snapshot with a single changed burden value."""
+        self.update_burden_row(
+            row_values={field_name: value},
+            timestamp=valid_from,
+            user_id=user_id,
+            ip=ip,
+        )
 
     def update_burden_row(
         self,
         *,
         row_values: dict[str, Any],
         timestamp: datetime,
-        burden_fields: list[str],
-        modifier: str = "system",
+        user_id: UUID | None = None,
         ip: str = "",
+        source_type: str = "webapp",
     ) -> None:
-        """
-        Bulk-update applicable burden fields from one row-like mapping.
+        """Insert one full burden snapshot copied from latest prior row plus edits."""
+        timestamp = _as_aware_utc(timestamp)
+        unknown = sorted(set(row_values) - set(BURDEN_VALUE_COLUMNS))
+        if unknown:
+            raise ValueError(f"Invalid burden field(s): {unknown}")
 
-        Args:
-             - row_values: dict[str, Any] - Source values keyed by field name.
-             - timestamp: datetime - Time from which the new values are valid.
-             - burden_fields: list[str] - Allowed burden field names to update.
-             - modifier: str - User or process making the change.
-             - ip: str - Client IP address for audit context.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
-        for field, value in row_values.items():
-            if field in burden_fields and value is not None:
-                self.update_burden_field(
-                    field_name=field,
-                    value=value,
-                    valid_from=timestamp,
-                    modifier=modifier,
-                    ip=ip,
+        with self._session_factory() as session:
+            snapshot = self._row_to_values(self._latest_row(session, timestamp))
+            for field, value in row_values.items():
+                if value == "":
+                    snapshot[field] = None
+                elif field in self.TEXT_FIELDS or value is None:
+                    snapshot[field] = value
+                else:
+                    snapshot[field] = float(value)
+            session.add(
+                BurdenHistory(
+                    date_time=timestamp,
+                    source_type=source_type,
+                    ip_address=ip,
+                    user_modified=user_id,
+                    **snapshot,
                 )
+            )
+            session.commit()
 
     def get_burden_history(self) -> list[dict[str, Any]]:
-        """
-        Return full burden history as display-ready dictionaries.
-
-        Args:
-             - None
-
-        Returns:
-             - return: list[dict[str, Any]] - Display-ready burden history rows.
-        """
+        """Return full burden snapshot history."""
         with self._session_factory() as session:
-            stmt = select(BurdenDistributionHistory).order_by(
-                BurdenDistributionHistory.field_name.asc(),
-                BurdenDistributionHistory.valid_from.desc(),
+            stmt = select(BurdenHistory).order_by(
+                BurdenHistory.date_time.desc(),
+                BurdenHistory.id.desc(),
             )
             rows = session.execute(stmt).scalars().all()
-            return [
-                {
+            out = []
+            for row in rows:
+                payload = {
                     "id": row.id,
-                    "field_name": row.field_name,
-                    "value": (
-                        row.field_value_text
-                        if row.field_value_text is not None
-                        else row.field_value_float
-                    ),
-                    "valid_from": row.valid_from,
-                    "valid_upto": row.valid_upto,
-                    "modifier": row.modifier,
+                    "date_time": row.date_time,
+                    "source_type": row.source_type,
                     "ip_address": row.ip_address,
+                    "user_modified": str(row.user_modified) if row.user_modified else None,
                 }
-                for row in rows
-            ]
+                payload.update(self._row_to_values(row))
+                out.append(payload)
+            return out
 
     def get_all_current_burden_values(self, ts: datetime) -> dict[str, Any]:
-        """
-        Return active burden field values at a timestamp.
-
-        Args:
-             - ts: datetime - Timestamp for historical lookup.
-
-        Returns:
-             - return: dict[str, Any] - Mapping from burden field name to active value.
-        """
+        """Return active burden values at timestamp."""
         with self._session_factory() as session:
-            ranked_subquery = (
-                select(
-                    BurdenDistributionHistory.field_name.label("field_name"),
-                    BurdenDistributionHistory.field_value_float.label(
-                        "field_value_float"
-                    ),
-                    BurdenDistributionHistory.field_value_text.label(
-                        "field_value_text"
-                    ),
-                    func.row_number()
-                    .over(
-                        partition_by=BurdenDistributionHistory.field_name,
-                        order_by=BurdenDistributionHistory.valid_from.desc(),
-                    )
-                    .label("row_num"),
-                )
-                .where(
-                    and_(
-                        BurdenDistributionHistory.valid_from <= ts,
-                        or_(
-                            BurdenDistributionHistory.valid_upto.is_(None),
-                            BurdenDistributionHistory.valid_upto >= ts,
-                        ),
-                    )
-                )
-                .subquery()
-            )
-
-            stmt = select(
-                ranked_subquery.c.field_name,
-                ranked_subquery.c.field_value_float,
-                ranked_subquery.c.field_value_text,
-            ).where(ranked_subquery.c.row_num == 1)
-
-            rows = session.execute(stmt).all()
-            return {row[0]: (row[2] if row[2] is not None else row[1]) for row in rows}
+            return self._row_to_values(self._latest_row(session, ts))
 
     def delete_burden_history(self, record_ids: list[int]) -> None:
-        """
-        Delete burden history rows by ids.
-
-        Args:
-             - record_ids: list[int] - Burden history row ids to delete.
-
-        Returns:
-             - return: None - This function does not return a value.
-        """
+        """Delete burden snapshot rows by IDs."""
         if not record_ids:
             return
         with self._session_factory() as session:
-            stmt = delete(BurdenDistributionHistory).where(
-                BurdenDistributionHistory.id.in_(record_ids)
-            )
-            session.execute(stmt)
+            session.execute(delete(BurdenHistory).where(BurdenHistory.id.in_(record_ids)))
             session.commit()
 
-    def list_distribution_rows_for_window(
-        self,
-        *,
-        start_date: date,
-        end_date: date,
-    ) -> list[tuple[str, str | None, datetime, datetime | None]]:
-        """
-        Return burden rows overlapping a date window for analytics joins.
-
-        Args:
-             - start_date: date - Start date of the lookup window.
-             - end_date: date - End date of the lookup window.
-
-        Returns:
-             - return: list[tuple[str, str | None, datetime, datetime | None]] - Burden rows overlapping the window.
-        """
-        window_start = datetime.combine(start_date, time.min)
-        window_end = datetime.combine(end_date, time.max)
-
+    def fetch_distribution_frame(self, *, start_date: date, end_date: date) -> pd.DataFrame:
+        """Return latest burden snapshots overlapping the date window."""
+        window_start = datetime.combine(start_date, time.min).replace(tzinfo=timezone.utc)
+        window_end = datetime.combine(end_date, time.max).replace(tzinfo=timezone.utc)
         with self._session_factory() as session:
-            field_value = func.coalesce(
-                cast(BurdenDistributionHistory.field_value_float, String),
-                BurdenDistributionHistory.field_value_text,
-            ).label("field_value")
-
+            prior = self._latest_row(session, window_start)
             stmt = (
-                select(
-                    BurdenDistributionHistory.field_name,
-                    field_value,
-                    BurdenDistributionHistory.valid_from,
-                    BurdenDistributionHistory.valid_upto,
-                )
-                .where(
-                    and_(
-                        BurdenDistributionHistory.valid_from <= window_end,
-                        or_(
-                            BurdenDistributionHistory.valid_upto.is_(None),
-                            BurdenDistributionHistory.valid_upto >= window_start,
-                        ),
-                    )
-                )
-                .order_by(BurdenDistributionHistory.valid_from.asc())
+                select(BurdenHistory)
+                .where(BurdenHistory.date_time >= window_start)
+                .where(BurdenHistory.date_time <= window_end)
+                .order_by(BurdenHistory.date_time.asc(), BurdenHistory.id.asc())
             )
-            return list(session.execute(stmt).all())
+            rows = session.execute(stmt).scalars().all()
+            if prior and (not rows or prior.id != rows[0].id):
+                rows.insert(0, prior)
+
+        if not rows:
+            return pd.DataFrame()
+        records = []
+        for row in rows:
+            payload = {"time": pd.to_datetime(row.date_time)}
+            payload.update(self._row_to_values(row))
+            records.append(payload)
+        return pd.DataFrame(records).set_index("time").sort_index()
 
 
 class ConversationRepository:
@@ -1279,7 +1113,7 @@ class FeedbackItemRepository:
         polarity: str,
         feedback_text: str | None = None,
         raw_user_message: str | None = None,
-        prev_assistant_message: str | None = None,
+        assistant_response: str | None = None,
         metadata: dict | None = None,
     ) -> FeedbackItem:
         """
@@ -1293,7 +1127,7 @@ class FeedbackItemRepository:
              - polarity: str - Feedback polarity, such as positive or negative.
              - feedback_text: str | None - Optional feedback comment.
              - raw_user_message: str | None - Original user message before the response.
-             - prev_assistant_message: str | None - Assistant response being reviewed.
+             - assistant_response: str | None - Assistant response being reviewed.
              - metadata: dict | None - Optional JSON metadata for the feedback.
 
         Returns:
@@ -1308,7 +1142,7 @@ class FeedbackItemRepository:
             polarity=polarity,
             feedback_text=feedback_text,
             raw_user_message=raw_user_message,
-            prev_assistant_message=prev_assistant_message,
+            assistant_response=assistant_response,
             metadata_json=metadata or {},
         )
         with self._session_factory() as session:

@@ -1,4 +1,4 @@
-"""Authentication service wrapping the :class:`~data.db.Database` layer.
+"""Authentication service wrapping the user persistence service.
 
 Provides a thin facade so that UI pages and admin panels call
 high-level ``authenticate`` / ``register`` methods instead of
@@ -13,18 +13,18 @@ class AuthService:
     """High-level authentication and user registration service.
 
     Attributes:
-        db: A :class:`~data.db.Database` instance used for credential storage.
+        db: A user persistence service used for credential storage.
     """
 
     def __init__(self, db) -> None:
         """Initialise the service with a database backend.
 
         Args:
-            db: Initialised :class:`~data.db.Database` instance.
+            db: Initialised object with validate_user/add_user methods.
         """
         self.db = db
 
-    def authenticate(self, username: str, password: str) -> bool:
+    def authenticate(self, username: str, password: str) -> tuple[str, str] | None:
         """Validate a username/password pair against the database.
 
         Args:
@@ -32,7 +32,7 @@ class AuthService:
             password: Plaintext password to verify (hashed in DB).
 
         Returns:
-            ``True`` if credentials are valid, ``False`` otherwise.
+            ``(username, role)`` if credentials are valid, otherwise ``None``.
         """
         return self.db.validate_user(username, password)
 

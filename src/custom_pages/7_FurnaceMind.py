@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from agents.furnacemind import render_ai_cooperate
+from agents.furnacemind.ai_cooperate_page import render_ai_cooperate
 from config.config_loader import load_config
 from ui.furnacemind_sections import select_nav_tab
 from ui.furnacemind.reports import render_reports

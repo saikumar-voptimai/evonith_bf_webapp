@@ -266,7 +266,7 @@ Models are pre-trained XGBoost/sklearn joblib models with paired scalers (`*_sca
 4. `STEAMKGS/HR.`
 5. `HOT BLAST VOLUMENM3/HR.`
 6. `O2 ENRICHMENT %`
-7. `ACTUALKG/THM.` (PCI injection rate)
+7. `PCI_KG/THM` (PCI injection rate)
 
 The user can **fix** any control parameter (checkbox override), locking it at a specified value. Only free parameters are passed to the optimizer. Bounds are persisted in `src/data/control_bounds.json` and loaded on page startup.
 
@@ -654,6 +654,141 @@ A shared ticket board for operators and engineers to report bugs, suggest improv
 ### UI Helpers
 - `src/utils/feedback_page.py` — `render_board()`, `render_overview_kpis()`, `render_management_panel()`
 - `src/assets/css/feedback_style.css` — ticket card styling
+
+---
+
+## 10. Neon DB Offline Data Layer (branch: `109_data_feed_neon`)
+
+All "offline" manual-entry data has migrated from InfluxDB (`bf2_evonith_offline_utc`) to **Neon PostgreSQL**. The shared library lives in `furnace_data/furnace_data/neon_db/` and is consumed by the webapp, the FastAPI sidecar, and the `DatasetService` pipeline.
+
+### PostgreSQL Schema Structure (4 schemas)
+
+| Schema | Purpose |
+|---|---|
+| `offline_feed` | Operational offline data — charge, DPR, HM/Slag, raw material chemistry, static ML dataset |
+| `ops_config` | Operator configuration snapshots — burden distribution, hopper material assignments |
+| `plant_master` | Reference data — materials, hoppers, units, material categories |
+| `identity` | User auth — users, user_roles |
+
+### Key Tables (`furnace_data/furnace_data/neon_db/neon_tables.yml`)
+
+**`offline_feed` schema:**
+| Table | Time col | Aggregatable | Key columns |
+|---|---|---|---|
+| `charge_data` | `date_time` | yes | sinter/pellet/ore/flux/coke/nut_coke/pci _mt (1..N variants) |
+| `dpr_data` | `date_time` | yes | same + dust/slag/hm mass columns |
+| `hot_metal_slag_analysis` | `date_time` | yes | chem_pct_c/mn/si/s/p/ti/fe, slag_pct_sio2/cao/mgo/al2o3/feo/s/na2o/k2o/tio2 |
+| `ore_chemistry` | `date_time` | yes | material_code, fe_t, sio2, al2o3, cao, mgo, loi, tm, p, tio2, na2o, k2o, mno |
+| `sinter_chemistry` | `date_time` | yes | material_code, fe_t, feo, sio2, al2o3, cao, mgo, basicity |
+| `fuel_chemistry` | `date_time` | yes | material_code, tm, moisture, ash, vm, fc |
+| `flux_chemistry` | `date_time` | yes | material_code, cao, mgo, sio2, al2o3, fe2o3, loi, tm |
+| `raw_material_strength_analysis` | `date_time` | yes | ai, ti, rdi, ri |
+| `raw_material_stock` | `date_time` | yes | material_code, stock_mt |
+| `v_charge_material_quantities` | `date_time` | no | charge_data_id, material_code, quantity, unit_code |
+| `v_dpr_material_quantities` | `date_time` | no | dpr_data_id, material_code, quantity |
+| `feed_material_columns` | — | no | feed_name, source_column_name, material_code |
+| `historical_static_ml_dataset` | `date_time` | no | allow_all_columns: all ML feature columns |
+
+**`ops_config` schema:**
+| Table | Description |
+|---|---|
+| `burden_history` | Wide snapshot: coke/noncoke _p01..p11 _rings/_angles, discharge_time, charge_pattern, purpose |
+| `hopper_raw_material_history` | Wide snapshot: hopper_01..hopper_19 material codes |
+
+**`plant_master` schema:** `materials`, `hoppers`, `units`, `material_categories`
+
+### Logical Report Types (8 — maps multiple tables)
+
+| Report Key | Tables Joined |
+|---|---|
+| `HM_SLAG` | `offline_feed.hot_metal_slag_analysis` |
+| `CHARGE` | `offline_feed.charge_data` |
+| `DPR` | `offline_feed.dpr_data` |
+| `RM_COMPOSITION` | ore_chemistry + sinter_chemistry + fuel_chemistry + flux_chemistry + raw_material_strength_analysis + plant_master.materials |
+| `BURDEN_DISTRIBUTION` | `ops_config.burden_history` |
+| `HOPPER_MANAGEMENT` | `ops_config.hopper_raw_material_history` |
+
+### Query Types
+
+| `query_type` | Description |
+|---|---|
+| `ts` / `raw` | Raw time-series rows, ordered by time |
+| `average` | Single average row over entire window |
+| `windowed-average` | Time-binned averages via PostgreSQL `date_bin()` |
+| `hourly-average` | Alias for windowed-average with 1-hour bin |
+
+### Core Library (`furnace_data/furnace_data/neon_db/offline.py`)
+
+```python
+fetch_offline_data(table_name, time_range, query_type, window, columns, database_url) -> pd.DataFrame
+fetch_offline_report(report_type, time_range, query_type, window, database_url) -> pd.DataFrame
+get_offline_table_bounds(table_name) -> (start, end, count)
+get_offline_report_bounds(report_type) -> (start, end, count)
+resolve_neon_table_name(alias_or_full_name) -> canonical_name
+list_neon_offline_tables() -> dict  # JSON-serialisable whitelist snapshot
+```
+
+`time_range` accepts: preset string (e.g. `"last 1 week"`), `"full"` (2023-01-01 → now), or `(start, end)` tuple.
+
+Table whitelist enforced: unknown columns raise `ValueError`. `non_averaged_columns` (id, import_batch_id, date_time, etc.) are excluded from AVG aggregates.
+
+### 4-Step Interactive ML Dataset Pipeline (`furnace_data/furnace_data/dataset/service.py`)
+
+`DatasetService` feeds the interactive date-range selector in the Data Explorer:
+
+- **Step 1 (`fetch` / `fetch_step1`)** — historical static: queries `offline_feed.historical_static_ml_dataset` for the pre-cutoff range
+- **Step 2 (`fetch_rm_data` / `fetch_step2`)** — post-cutoff: fetches `charge_data` or `dpr_data` + `raw_material_strength_analysis` + weighted chemistry (ore/sinter/fuel/flux via `v_charge/dpr_material_quantities` and `merge_asof` to match latest lab sample before each charge)
+- **Step 3 (`fetch_hotmetal_hourly`)** — `hot_metal_slag_analysis` interpolated onto a regular hourly grid
+- **Step 4 (`fetch_distribution_data`)** — `ops_config.burden_history` via ORM, pivoted to daily rows with derived `total_coke_portions`, `weighted_coke_angle`, etc.
+
+`DatasetFetcher` (`fetcher.py`) wraps `DatasetService` with a range-aware in-memory cache (`RangeCache`) and incremental fetch logic (only fetches missing date slices).
+
+### Static ML Dataset (from Neon)
+
+`src/data/ml/static_csv.py::fetch_static_dataset_from_database()`:
+- Queries `offline_feed.historical_static_ml_dataset` with `query_type="raw"`
+- Selects only columns present both in the DB table and in `setting_ds_dv.yml` cleaning config
+- Normalises index: UTC → IST (Asia/Kolkata), tz-naive
+- Applies `rename_dict` from config
+
+`StaticDatasetManager` (`src/data/ml/static_dataset_manager.py`):
+- Maintains a rotating local CSV cache (max 3 versioned files, e.g. `furnace_dataset_20260512_...csv`)
+- `update_static()` → fetch from DB → `DataCleaner.clean()` → `save()` (atomic copy + metadata)
+- Background refresh via `dataset_refresher.py::maybe_refresh()` — triggers if cache > 6 hours old
+
+### FastAPI Sidecar (`furnace-data-service/`)
+
+New REST endpoints (replaces old `offline_fetcher.py`):
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/data/offline/fetch` | Fetch offline data by report type or explicit table name |
+| `GET` | `/data/offline/report-types` | List report types → table mappings |
+| `GET` | `/data/offline/neon-tables` | Full whitelist: tables, columns, aliases |
+| `POST` | `/data/rm/live` | Latest RM composition (`RM_COMPOSITION`, last N days) |
+| `POST` | `/data/online/fetch` | Online InfluxDB fetch (unchanged) |
+| `GET` | `/data/online/measurements` | List InfluxDB measurements (unchanged) |
+
+`OfflineFetchRequest` schema:
+```python
+report_type: OfflineReportType  # HM_SLAG, CHARGE, DPR, RM_COMPOSITION, BURDEN_DISTRIBUTION, HOPPER_MANAGEMENT
+table_name: Optional[str]       # explicit table override (alias or schema-qualified)
+preset: Optional[str]           # e.g. "last 1 month"
+start_time / end_time: Optional[datetime]
+query_type: QueryType           # ts, windowed-average, average
+window: Optional[str]           # PostgreSQL interval, e.g. "1 hour"
+format: ResponseFormat          # json (default) or csv
+```
+
+### Data Explorer Integration (`src/custom_pages/2_Data_Explorer.py`)
+
+- Imports `NEON_OFFLINE_REPORT_MAP as OFFLINE_DATABASE_REPORT_MAP` and `NEON_OFFLINE_TABLES as OFFLINE_DATABASE_TABLES` from `furnace_data.neon_db.offline`
+- Two browse modes: **"Logical report"** (uses report map) and **"Table"** (explicit table from whitelist)
+- `OFFLINE_REPORT_LABEL_MAP` in `src/data/fetch_presets.py` provides UI labels for all 8 report types + legacy aliases
+
+### FurnaceMind Tool Integration
+
+`fetch_offline_data` tool in `src/agents/furnace_tools.py` routes through `furnace_data.neon_db.offline` (`_fetch_neon_table_df`, `_fetch_neon_report_df`). The `RAW_MATERIAL_COMPOSITION` alias is mapped to `RM_COMPOSITION` internally.
 
 ---
 
