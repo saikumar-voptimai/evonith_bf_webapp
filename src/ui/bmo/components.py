@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from domain.bmo.types import BlendEvaluation, OreInput
+from utils.bmo.types import BlendEvaluation, OreInput
 
 
 def apply_bmo_styles() -> None:

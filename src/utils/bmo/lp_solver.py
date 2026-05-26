@@ -3,13 +3,13 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import linprog
 
-from domain.bmo.calculations import (
+from utils.bmo.calculations import (
     compute_effective_fe_pct,
     compute_slag_pct,
     evaluate_blend,
 )
-from domain.bmo.constraints import check_blend_constraints, validate_ore_bounds
-from domain.bmo.types import BlendEvaluation, OreInput
+from utils.bmo.constraints import check_blend_constraints, validate_ore_bounds
+from utils.bmo.types import BlendEvaluation, OreInput
 
 
 def run_lp_baseline(

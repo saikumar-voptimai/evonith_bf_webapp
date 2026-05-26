@@ -11,9 +11,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from domain.bmo.model_service import FuelUnitCostModelService
-from domain.bmo.objective import BmoObjectiveEvaluator
-from domain.bmo.types import OreChemistry, OreInput
+from utils.bmo.model_service import FuelUnitCostModelService
+from utils.bmo.objective import BmoObjectiveEvaluator
+from utils.bmo.types import OreChemistry, OreInput
 from domain.optimization_runtime import (
     FeatureVectorBuilder,
     ModelBundleInfo,

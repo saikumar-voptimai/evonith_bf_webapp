@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from domain.bmo.types import ModelPrediction
+from utils.bmo.types import ModelPrediction
 from domain.optimization_runtime import (
     FeatureVectorBuilder,
     ModelBundleService,

@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from domain.bmo.types import OreChemistry, OreInput
+from utils.bmo.types import OreChemistry, OreInput
 from domain.optimization_runtime import DatasetContextService, build_runtime_config
 
 try:

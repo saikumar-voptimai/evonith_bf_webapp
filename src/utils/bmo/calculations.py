@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from math import isfinite
 
-from domain.bmo.types import BlendEvaluation, OreInput
+from utils.bmo.types import BlendEvaluation, OreInput
 
 FE_FROM_FEO_FACTOR = 55.845 / 71.844
 SIO2_FROM_SI_FACTOR = 60.0 / 28.0

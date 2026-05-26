@@ -6,11 +6,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from domain.bmo.calculations import evaluate_blend
-from domain.bmo.constraints import check_blend_constraints
-from domain.bmo.feature_builder import build_feature_payload
-from domain.bmo.model_service import FuelUnitCostModelService
-from domain.bmo.types import OreInput
+from utils.bmo.calculations import evaluate_blend
+from utils.bmo.constraints import check_blend_constraints
+from utils.bmo.feature_builder import build_feature_payload
+from utils.bmo.model_service import FuelUnitCostModelService
+from utils.bmo.types import OreInput
 from domain.optimization_runtime import ObjectiveResult
 
 

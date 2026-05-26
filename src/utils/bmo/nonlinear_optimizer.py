@@ -5,10 +5,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from domain.bmo.constraints import check_blend_constraints, validate_ore_bounds
-from domain.bmo.model_service import FuelUnitCostModelService
-from domain.bmo.objective import BmoObjectiveEvaluator
-from domain.bmo.types import BlendEvaluation, OreInput
+from utils.bmo.constraints import check_blend_constraints, validate_ore_bounds
+from utils.bmo.model_service import FuelUnitCostModelService
+from utils.bmo.objective import BmoObjectiveEvaluator
+from utils.bmo.types import BlendEvaluation, OreInput
 from domain.optimization_runtime import ObjectiveResult, OptimizerRunner
 
 

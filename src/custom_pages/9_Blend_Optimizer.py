@@ -9,7 +9,7 @@ import streamlit as st
 
 from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
-from domain.bmo import (
+from utils.bmo import (
     FuelUnitCostModelService,
     OreInput,
     run_lp_baseline,

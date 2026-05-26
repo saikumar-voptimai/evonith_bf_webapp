@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from domain.bmo.types import BlendEvaluation, OreInput
+from utils.bmo.types import BlendEvaluation, OreInput
 
 
 def check_blend_constraints(
