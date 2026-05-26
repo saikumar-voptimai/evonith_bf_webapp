@@ -14,29 +14,39 @@ from dotenv import load_dotenv
 
 from config.config_loader import load_config
 from furnace_data.influx.online import fetch_online_df
-from furnace_data.influx.offline import fetch_offline_data, clean_rm_data
+from furnace_data.neon_db.offline import (
+    NEON_OFFLINE_REPORT_MAP as OFFLINE_DATABASE_REPORT_MAP,
+    NEON_OFFLINE_TABLES as OFFLINE_DATABASE_TABLES,
+    fetch_offline_data as fetch_table_data,
+    fetch_offline_report as fetch_database_report,
+)
 from furnace_data.dataset.fetcher import DatasetFetcher as MlDatasetFetcher
+from data.fetch_presets import OFFLINE_REPORT_LABEL_MAP, offline_table_label
 from data.ml.static_csv import get_static_dataset_path, load_static_dataset
 from data.ml.static_dataset_manager import StaticDatasetManager
 from utils.dataset_refresher import maybe_refresh
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config("setting_vsense.yml")
-offline_measurements = config.get("offline_measurements", {})
-influx_cfg = config.get("influx_offline", {})
 
 load_dotenv()
-INFLUX_OFFLINE_TOKEN = os.getenv("INFLUX_OFFLINE_TOKEN", "")
 
 local_tz = pytz.timezone("Asia/Kolkata")  # or use your actual timezone
 os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
 
-# ── dataset auto-refresh ───────────────────────────────────────────────────
 if maybe_refresh(config):
-    st.sidebar.caption("⏳ Refreshing dataset in background…")
+    st.sidebar.caption("Refreshing static dataset cache...")
 
 fullpath = get_static_dataset_path(config["DATA"])
-df = load_static_dataset(fullpath)
+try:
+    df = load_static_dataset(fullpath)
+except Exception as exc:  # noqa: BLE001
+    st.error(f"Static ML dataset could not be loaded: {exc}")
+    st.stop()
+
+if df.empty:
+    st.warning("Static ML dataset returned no rows.")
+    st.stop()
 
 
 TIME_OPTIONS = {
@@ -119,7 +129,7 @@ with st.sidebar:
     )
 
 df["UNITCOST LAKHS/THM"] = (
-    df["COKE RATE KG/THM"] + factor * df["ACTUALKG/THM."]
+    df["COKE RATE KG/THM"] + factor * df["PCI_KG/THM"]
 ) * 0.25
 df_filt = df[
     (pd.to_datetime(df.index, format="%d/%m/%Y %H:%M").date >= from_date)
@@ -145,25 +155,6 @@ with cols[3]:
 with cols[4]:
     inverse_filter = st.checkbox("Invert", value=True)
 
-# Fit
-coeffs = np.polyfit(df_filt[x_p], df_filt[y_p], deg=order)
-eqn_str = None
-for i in range(len(coeffs)):
-    if i == 0:
-        eqn_str = f"{coeffs[len(coeffs) - 1]:.3g}"
-    else:
-        coeff_i = coeffs[len(coeffs) - (i + 1)]
-        if i == 1:
-            eqn_str += (
-                f" + {coeff_i:.3g}x" if coeff_i >= 0 else f" - {abs(coeff_i):.3g}x"
-            )
-        else:
-            eqn_str += (
-                f" + {coeff_i:.3g}x^{i}"
-                if coeff_i >= 0
-                else f" - {abs(coeff_i):.3g}x^{i}"
-            )
-
 # Range filter
 if inverse_filter:
     df_filt = df_filt[
@@ -178,35 +169,58 @@ df_filt["Type"] = df_filt[filter_feature].apply(
 )
 
 # Scatter and fit
-graph = sns.lmplot(
-    x=x_p,
-    y=y_p,
-    markers="x",
-    hue="Type",
-    scatter_kws={"s": 8, "marker": "x"},
-    data=df_filt,
-    fit_reg=False,
-)
+if df_filt.empty:
+    st.warning("No rows are available for the selected scatter plot.")
+else:
+    coeffs = np.polyfit(df_filt[x_p], df_filt[y_p], deg=order)
+    eqn_str = None
+    for i in range(len(coeffs)):
+        if i == 0:
+            eqn_str = f"{coeffs[len(coeffs) - 1]:.3g}"
+        else:
+            coeff_i = coeffs[len(coeffs) - (i + 1)]
+            if i == 1:
+                eqn_str += (
+                    f" + {coeff_i:.3g}x"
+                    if coeff_i >= 0
+                    else f" - {abs(coeff_i):.3g}x"
+                )
+            else:
+                eqn_str += (
+                    f" + {coeff_i:.3g}x^{i}"
+                    if coeff_i >= 0
+                    else f" - {abs(coeff_i):.3g}x^{i}"
+                )
 
-# Create the regplot
-ax = graph.axes[0, 0]
-plot = sns.regplot(data=df_filt, x=x_p, y=y_p, order=order, scatter=False, ax=ax)
-
-if eqn_str:
-    plt.text(
-        0.05,
-        0.95,
-        f"y = {eqn_str}",
-        transform=plot.transAxes,
-        fontsize=12,
-        verticalalignment="top",
-        bbox=dict(boxstyle="round", facecolor="white", alpha=0.5),
+    graph = sns.lmplot(
+        x=x_p,
+        y=y_p,
+        markers="x",
+        hue="Type",
+        scatter_kws={"s": 8, "marker": "x"},
+        data=df_filt,
+        fit_reg=False,
     )
 
-# Resize and render with Streamlit
-fig = plot.get_figure()
-fig.set_size_inches(10, 5)
-st.pyplot(fig, width="content")
+    ax = graph.axes[0, 0]
+    plot = graph.axes[0, 0]
+    sns.regplot(data=df_filt, x=x_p, y=y_p, order=order, scatter=False, ax=ax)
+
+    if eqn_str:
+        plt.text(
+            0.05,
+            0.95,
+            f"y = {eqn_str}",
+            transform=plot.transAxes,
+            fontsize=12,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.5),
+        )
+
+    # Resize and render with Streamlit
+    fig = plot.get_figure()
+    fig.set_size_inches(10, 5)
+    st.pyplot(fig, width="content")
 
 # --------------------------------------------------------------------------
 st.subheader("Timeseries plot")
@@ -442,87 +456,139 @@ else:
 # 8 --- UI Section for Offline Data ---
 UTC = pytz.UTC
 
-
 st.header("📄 Offline Data Viewer")
+st.caption("Source: Neon database.")
 
-if "selected_offline" not in st.session_state:
-    st.session_state.selected_offline = list(offline_measurements.keys())[0]
-
+# ── Pre-compute options ──
 TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
+_REPORT_KEYS = list(OFFLINE_DATABASE_REPORT_MAP.keys())
+_TABLE_KEYS = sorted(OFFLINE_DATABASE_TABLES.keys())
 
+# Session-state defaults
+if "db_fetch_type" not in st.session_state:
+    st.session_state.db_fetch_type = "Logical report"
+if "selected_db_report" not in st.session_state or st.session_state.selected_db_report not in _REPORT_KEYS:
+    st.session_state.selected_db_report = _REPORT_KEYS[0]
+if "selected_db_table" not in st.session_state or st.session_state.selected_db_table not in _TABLE_KEYS:
+    st.session_state.selected_db_table = _TABLE_KEYS[0]
+if "offline_time_range_choice" not in st.session_state:
+    st.session_state.offline_time_range_choice = "Use Start/End Dates"
 
-with st.form("offline_fetch_form"):
+# ── Structural controls — outside the form so switching immediately re-renders ──
+ctrl_left, ctrl_right = st.columns([1, 1])
+with ctrl_left:
+    db_mode = st.radio(
+        "Fetch Type",
+        ["Logical report", "Explicit table"],
+        horizontal=True,
+        key="db_fetch_type",
+    )
+with ctrl_right:
+    time_range_choice = st.selectbox(
+        "Select Time Range",
+        ["Use Start/End Dates"] + TIME_OPTIONS_UI,
+        key="offline_time_range_choice",
+    )
 
-    col_left, col_right = st.columns(2)
+# ── Form — data selection + dates + submit (no live refetch on widget change) ──
+with st.form("offline_data_form"):
+    fcol_sel, fcol_dates = st.columns([1, 1])
 
-    with col_left:
-        selected_offline = st.selectbox(
-            "Select Offline Measurement",
-            list(offline_measurements.keys()),
-            index=list(offline_measurements.keys()).index(
-                st.session_state.selected_offline
-            ),
-        )
+    with fcol_sel:
+        if db_mode == "Logical report":
+            selected_db_report = st.selectbox(
+                "Select Offline Report",
+                _REPORT_KEYS,
+                format_func=lambda k: OFFLINE_REPORT_LABEL_MAP.get(k, k),
+                key="selected_db_report",
+            )
+            selected_db_table = None
+        else:
+            selected_db_report = None
+            selected_db_table = st.selectbox(
+                "Select Table",
+                _TABLE_KEYS,
+                format_func=offline_table_label,
+                key="selected_db_table",
+            )
 
-    with col_right:
-        time_range_choice = st.selectbox(
-            "Select Time Range (optional):", ["Use Start/End Dates"] + TIME_OPTIONS_UI
-        )
+    with fcol_dates:
+        if time_range_choice == "Use Start/End Dates":
+            d1, d2 = st.columns(2)
+            with d1:
+                start_date = st.date_input(
+                    "Start Date",
+                    value=datetime.now().date() - timedelta(days=30),
+                    key="offline_start_date",
+                )
+            with d2:
+                end_date = st.date_input(
+                    "End Date",
+                    value=datetime.now().date(),
+                    key="offline_end_date",
+                )
+        else:
+            start_date = end_date = None
+            st.info(f"Fetching: **{time_range_choice}**")
 
-        d1, d2 = st.columns(2)
-        with d1:
-            start_date = st.date_input("Start Date", value=datetime.now().date())
-        with d2:
-            end_date = st.date_input("End Date", value=datetime.now().date())
+    submitted = st.form_submit_button("Fetch Offline Data", use_container_width=False)
 
-    submitted = st.form_submit_button("Fetch Offline Data")
-
-
+# ── Fetch on submit ──
 if submitted:
-
-    if start_date > end_date:
-        st.error("❌ Invalid date range: Start Date cannot be after End Date.")
-        st.stop()
-
-    database = influx_cfg.get("database", "bf2_evonith_offline_utc")
-
-    # ---- CORRECT TIME RANGE HANDLING ----
+    time_range_to_fetch = None
     if time_range_choice == "Use Start/End Dates":
-
-        start_local = local_tz.localize(datetime.combine(start_date, time.min))
-        end_local = local_tz.localize(datetime.combine(end_date, time.max))
-
-        time_range_to_fetch = (
-            start_local.astimezone(UTC),
-            end_local.astimezone(UTC),
-        )
+        if start_date > end_date:
+            st.error("❌ Start Date cannot be after End Date.")
+        else:
+            start_local = local_tz.localize(datetime.combine(start_date, time.min))
+            end_local = local_tz.localize(datetime.combine(end_date, time.max))
+            time_range_to_fetch = (start_local.astimezone(UTC), end_local.astimezone(UTC))
     else:
         time_range_to_fetch = time_range_choice
 
-    df_offline = fetch_offline_data(
-        measurement=offline_measurements[selected_offline],
-        time_range=time_range_to_fetch,
-        database=database,
-    )
+    if time_range_to_fetch is not None:
+        with st.spinner("Fetching from database…"):
+            if selected_db_table:
+                df_offline = fetch_table_data(
+                    table_name=selected_db_table,
+                    time_range=time_range_to_fetch,
+                )
+                output_name = selected_db_table
+            else:
+                df_offline = fetch_database_report(
+                    report_type=selected_db_report,
+                    time_range=time_range_to_fetch,
+                )
+                output_name = selected_db_report.lower()
 
-    if df_offline.empty:
-        st.warning(f"No data found for {selected_offline}")
-        st.stop()
+        if df_offline.empty:
+            st.warning(f"No data found for **{output_name}**.")
+            st.session_state.offline_viewer_result = None
+        else:
+            if isinstance(df_offline.index, pd.DatetimeIndex):
+                if df_offline.index.tz is None:
+                    df_offline.index = df_offline.index.tz_localize(UTC)
+                df_offline.index = df_offline.index.tz_convert(local_tz)
+                df_offline.index.name = "time (IST)"
+            st.session_state.offline_viewer_result = {
+                "df": df_offline,
+                "name": output_name,
+            }
 
-    if selected_offline == "rm_data":
-        df_offline = clean_rm_data(df_offline)
-
-    # Index is already UTC → convert once
-    df_offline.index = df_offline.index.tz_convert(local_tz)
-    df_offline.index.name = "time (IST)"
-
-    st.dataframe(df_offline)
-    df_download = df_offline.reset_index()
+# ── Show results (persisted in session state across reruns) ──
+_result = st.session_state.get("offline_viewer_result")
+if _result:
+    _df = _result["df"]
+    _name = _result["name"]
+    _label = OFFLINE_REPORT_LABEL_MAP.get(_name.upper(), offline_table_label(_name))
+    st.caption(f"Showing **{len(_df):,}** rows × **{len(_df.columns)}** cols — {_label}")
+    st.dataframe(_df, use_container_width=True)
     st.download_button(
         label="Download as CSV",
-        data=df_download.to_csv(index=False).encode("utf-8"),
-        file_name=f"{selected_offline}.csv",
+        data=_df.reset_index().to_csv(index=False).encode("utf-8"),
+        file_name=f"{_name}.csv",
         mime="text/csv",
+        key="offline_download_btn",
     )
 
 
@@ -547,6 +613,11 @@ left_col, right_col = st.columns(2)
 with left_col:
     st.header("📄 ML Dataset")
 
+    st.caption(
+        "Source: Neon DB — joins charge quantities, weighted raw material chemistry, "
+        "HM & Slag (hourly-interpolated), and burden distribution into one hourly dataset."
+    )
+
     with st.form("ml_form"):
         rm_choice_raw = st.radio(
             "Select RM Dataset",
@@ -554,13 +625,14 @@ with left_col:
             horizontal=True,
         )
 
+        _today_ml = datetime.now(local_tz).date()
         col1, col2 = st.columns(2)
         with col1:
-            start_date = st.date_input("Start Date", datetime.now(local_tz).date())
+            start_date = st.date_input("Start Date", _today_ml - timedelta(days=7))
         with col2:
-            end_date = st.date_input("End Date", datetime.now(local_tz).date())
+            end_date = st.date_input("End Date", _today_ml)
 
-        cache_override = st.checkbox("Override Cache")
+        cache_override = st.checkbox("Override Cache", value=True)
         submitted = st.form_submit_button("Fetch Dataset")
 
     if submitted:
@@ -588,66 +660,190 @@ with left_col:
                     mime="text/csv",
                 )
 
-# -------------- STATIC FILTERED DATASET MANAGER --------------
+# -------------- GENERATE & REFRESH ML DATASET --------------
 
 with right_col:
-    st.header("📄 Filtered ML Dataset")
+    st.header("📄 Generate & Refresh ML Dataset")
+    st.caption("Extend Neon DB → rebuild cleaned local CSV → validate.")
+
+    sm = StaticDatasetManager(fullpath)
+    meta = sm.get_meta()
+    db_end = sm.get_db_end_date()
+
+    # Status row
+    _today_gen = datetime.now(local_tz).date()
+    _db_end_str  = str(db_end)  if db_end  else "unknown"
+    _csv_upd_str = meta.last_updated[:16] if meta and meta.last_updated else "never"
+    _csv_rows    = meta.rows    if meta else "?"
+    _csv_cols    = meta.columns if meta else "?"
+    st.caption(
+        f"DB end: **{_db_end_str}** · "
+        f"Local CSV: **{_csv_upd_str}** · "
+        f"**{_csv_rows}** rows × **{_csv_cols}** cols"
+    )
+
     with st.container(border=True):
 
-        sm = StaticDatasetManager(fullpath)
+        _tab_ext, _tab_ovr = st.tabs(["Extend to Date", "Override from Date"])
 
-        # ---------------- RESET FLAG INIT ----------------
-        if "reset_reprocess_date" not in st.session_state:
-            st.session_state.reset_reprocess_date = False
-
-        # ---------------- APPLY RESET BEFORE WIDGET ----------------
-        if st.session_state.reset_reprocess_date:
-            st.session_state.reprocess_date = None
-            st.session_state.reset_reprocess_date = False
-
-        # ---------------- INPUTS ----------------
-        rm_choice = st.radio(
-            "Select RM Dataset",
-            ["RM Charge", "RM DPR"],
-            horizontal=True,
-            key="rm_static",
-        )
-
-        reprocess_date = st.date_input(
-            "Reprocess data from date (optional)",
-            value=None,
-            key="reprocess_date",
-        )
-
-        # ---------------- ACTION BUTTON ---------------
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button(" Fetch & Process"):
-                with st.spinner("Fetching & updating static dataset..."):
-                    df = sm.update_static(
-                        rm_choice=rm_choice,
-                        start_date=reprocess_date,
-                    )
-
-                    if df.empty:
-                        st.warning("No data fetched.")
-                    else:
-                        sm.save(df)
-                        st.success(f"Dataset ready ({len(df)} rows)")
-
-                        # request reset for next rerun
-                        st.session_state.reset_reprocess_date = True
-                        st.rerun()
-
-        with col2:
-            with open(fullpath, "rb") as f:
-                st.download_button(
-                    label="Download ML Dataset",
-                    data=f,
-                    file_name="furnace_dataset.csv",
-                    mime="text/csv",
+        # ── Extend tab ──────────────────────────────────────────────────────
+        with _tab_ext:
+            st.caption(
+                "Fetches data from the DB end date up to the chosen date "
+                "(Steps 2-5: charge/DPR, HM/Slag, burden, InfluxDB), "
+                "writes new rows to Neon, then rebuilds the cleaned local CSV."
+            )
+            with st.form("extend_form"):
+                _ext_rm = st.radio(
+                    "RM Mode", ["RM Charge", "RM DPR"], horizontal=True, key="ext_rm"
                 )
+                _ext_end = st.date_input(
+                    "Generate to date", value=_today_gen, key="ext_end_date"
+                )
+                _ext_submit = st.form_submit_button(
+                    "Extend & Rebuild Dataset", use_container_width=True
+                )
+
+            if _ext_submit:
+                if db_end and _ext_end <= db_end:
+                    st.warning(
+                        f"No new data: DB already has data up to {db_end}. "
+                        f"Choose a date after {db_end} or use Override."
+                    )
+                else:
+                    with st.spinner("Fetching new data and writing to Neon…"):
+                        _raw = fetcher.extend_and_persist(
+                            start_date=db_end or _today_gen,
+                            end_date=_ext_end,
+                            rm_choice=_ext_rm,
+                            override_from_date=None,
+                        )
+                    if _raw.empty:
+                        st.warning("No new data was returned.")
+                    else:
+                        st.info(f"Wrote {len(_raw)} raw rows to Neon DB.")
+                        with st.spinner("Rebuilding cleaned static dataset…"):
+                            _full_df = sm.update_static()
+                            sm.save(_full_df)
+                            from data.ml.static_csv import update_cutoff_date
+                            update_cutoff_date(_ext_end)
+                        st.session_state["static_ml_dataset_df"] = _full_df
+                        st.success(
+                            f"Dataset rebuilt: {len(_full_df)} rows, "
+                            f"{_full_df.index.min().date()} → {_full_df.index.max().date()}"
+                        )
+                        with st.spinner("Running validation…"):
+                            from furnace_data.dataset.validator import validate_dataset
+                            st.session_state["ml_validation_report"] = validate_dataset(_full_df)
+
+        # ── Override tab ─────────────────────────────────────────────────────
+        with _tab_ovr:
+            st.caption(
+                "Deletes existing DB rows from the chosen date onwards, "
+                "then re-generates and rewrites them.  Use this to fix bad data."
+            )
+            with st.form("override_form"):
+                _ovr_rm = st.radio(
+                    "RM Mode", ["RM Charge", "RM DPR"], horizontal=True, key="ovr_rm"
+                )
+                _ovr_from = st.date_input(
+                    "Override from date",
+                    value=(db_end - timedelta(days=30)) if db_end else _today_gen - timedelta(days=30),
+                    key="ovr_from_date",
+                )
+                _ovr_end = st.date_input(
+                    "Generate to date", value=_today_gen, key="ovr_end_date"
+                )
+                st.warning(
+                    f"This will DELETE all DB rows from {_ovr_from} onwards "
+                    "and re-generate them.",
+                    icon="⚠️",
+                )
+                _ovr_submit = st.form_submit_button(
+                    "Override & Rebuild", use_container_width=True
+                )
+
+            if _ovr_submit:
+                with st.spinner(f"Deleting rows from {_ovr_from} and re-generating…"):
+                    _raw = fetcher.extend_and_persist(
+                        start_date=_ovr_from,
+                        end_date=_ovr_end,
+                        rm_choice=_ovr_rm,
+                        override_from_date=_ovr_from,
+                    )
+                if _raw.empty:
+                    st.warning("No data returned for the override range.")
+                else:
+                    st.info(f"Wrote {len(_raw)} raw rows to Neon DB.")
+                    with st.spinner("Rebuilding cleaned static dataset…"):
+                        _full_df = sm.update_static()
+                        sm.save(_full_df)
+                        from data.ml.static_csv import update_cutoff_date
+                        update_cutoff_date(_ovr_end)
+                    st.session_state["static_ml_dataset_df"] = _full_df
+                    st.success(
+                        f"Dataset rebuilt: {len(_full_df)} rows, "
+                        f"{_full_df.index.min().date()} → {_full_df.index.max().date()}"
+                    )
+                    with st.spinner("Running validation…"):
+                        from furnace_data.dataset.validator import validate_dataset
+                        st.session_state["ml_validation_report"] = validate_dataset(_full_df)
+
+    # Download
+    _dl_df = st.session_state.get("static_ml_dataset_df") or df
+    st.download_button(
+        label="Download ML Dataset",
+        data=_dl_df.to_csv(index=True).encode("utf-8"),
+        file_name="furnace_static_ml_dataset.csv",
+        mime="text/csv",
+        disabled=_dl_df.empty,
+    )
+
+    # Validation report expander
+    _vr = st.session_state.get("ml_validation_report")
+    if _vr:
+        with st.expander(
+            ("✅ Validation passed" if _vr["passed"] else "❌ Validation has errors")
+            + f"  —  {len(_vr['warnings'])} warnings, {len(_vr['errors'])} errors"
+        ):
+            _chk = _vr["checks"]
+
+            # Shape + date range
+            _sh = _chk.get("shape", {})
+            st.markdown(
+                f"**Rows:** {_sh.get('rows')} &nbsp;|&nbsp; "
+                f"**Cols:** {_sh.get('cols')} &nbsp;|&nbsp; "
+                f"**Range:** {_sh.get('start', '')[:10]} → {_sh.get('end', '')[:10]}"
+            )
+
+            # Monthly coverage
+            _mc = _chk.get("monthly_coverage")
+            if _mc is not None and not _mc.empty:
+                st.markdown("**Monthly row coverage:**")
+                _mc_df = _mc.reset_index()
+                _mc_df.columns = ["Month", "Rows"]
+                _mc_df = _mc_df.set_index("Month")
+                st.dataframe(
+                    _mc_df.style.highlight_between(
+                        subset=["Rows"], left=0, right=20, color="#ffd0d0"
+                    ),
+                    use_container_width=True,
+                    height=min(300, 35 * len(_mc_df) + 40),
+                )
+
+            # KPI stats
+            _kpi = _chk.get("kpi_stats")
+            if _kpi is not None and not _kpi.empty:
+                st.markdown("**KPI statistics:**")
+                st.dataframe(_kpi.round(2), use_container_width=True)
+
+            # Warnings and errors
+            if _vr["errors"]:
+                for _e in _vr["errors"]:
+                    st.error(_e)
+            if _vr["warnings"]:
+                for _w in _vr["warnings"]:
+                    st.warning(_w)
 
 
 # 10 --- HOT METAL AND SLAG DATA SECTION ---
@@ -656,23 +852,30 @@ with right_col:
 service = fetcher.service
 
 # ---------------- UI ----------------
-st.header("📄 HOT METAL AND SLAG")
+st.header("📄 Hot Metal & Slag")
+st.caption(
+    "⚠️ **Interpolated data** — cast-level HM/Slag samples (typically spaced 1–3 hours "
+    "apart) are time-interpolated onto a regular grid. Every row between actual casts is "
+    "**synthetic** (linear interpolation). Use the Interval field to control grid spacing; "
+    "default is 60 min (1 hour)."
+)
 
 with st.form("hotmetal_form_2"):
+    _today_hm = datetime.now(local_tz).date()
     col1, col2 = st.columns(2)
     with col1:
-        from_date = st.date_input("From Date")
+        from_date = st.date_input("From Date", _today_hm - timedelta(days=7))
     with col2:
-        to_date = st.date_input("To Date")
+        to_date = st.date_input("To Date", _today_hm)
 
     interval_min = st.number_input(
-        "Interval (minutes)",
+        "Grid interval (minutes) — data interpolated to this resolution",
         min_value=1,
         max_value=600,
         value=60,
     )
 
-    fetch_btn = st.form_submit_button("Fetch HM & SLAG DATA")
+    fetch_btn = st.form_submit_button("Fetch HM & Slag Data")
 
 # ---------------- ACTION ----------------
 if fetch_btn:

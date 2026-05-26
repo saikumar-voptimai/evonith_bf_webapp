@@ -8,7 +8,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-
 def resolve_database_url(db_url: str | None = None) -> str:
     """Resolve relational database URL from explicit arg or environment.
 
@@ -30,6 +29,8 @@ def resolve_database_url(db_url: str | None = None) -> str:
 def build_relational_engine(db_url: str | None = None) -> Engine:
     """Build a pooled SQLAlchemy engine for relational operations."""
     resolved_url = resolve_database_url(db_url=db_url)
+    if resolved_url.startswith("sqlite"):
+        raise ValueError("Shared relational persistence requires PostgreSQL.")
     return create_engine(resolved_url, future=True, pool_pre_ping=True)
 
 

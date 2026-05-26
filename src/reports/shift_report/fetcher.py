@@ -1,59 +1,108 @@
-"""Fetch all raw data needed for one shift from InfluxDB."""
+"""Fetch all raw data needed for one shift."""
 
 from __future__ import annotations
 
-from datetime import date, timezone
+from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
+import logging
 from typing import Literal
 
 import pandas as pd
+from sqlalchemy import text
 
-from furnace_data.influx.offline import fetch_offline_data as _fetch_offline
+from config.config_loader import load_config
 from furnace_data.influx.online import fetch_online_df
+from furnace_data.neon_db.offline import fetch_offline_data as _fetch_neon_table
+from furnace_data.neon_db.offline import fetch_offline_report as _fetch_neon_offline
+from furnace_data.relational.engine import build_relational_engine
 from reports.base import ReportFetcher
 from reports.shift_report.data import ShiftRawData
 from utils.shift_windows import shift_window
 
-_ONLINE_GROUPS = [
-    "process_params",
-    "temperature_profile",
-    "delta_t",
-    "miscellaneous",
-]
-_OFFLINE_DB = "bf2_evonith_offline_utc"
+_SHIFT_REPORT_CONFIG = load_config("shift_report.yml") or {}
+_ONLINE_GROUPS = tuple(str(group) for group in _SHIFT_REPORT_CONFIG["online_groups"])
+_ANALYSIS_LOOKBACK_DAYS = int(_SHIFT_REPORT_CONFIG["analysis_lookback_days"])
+_ANALYSIS_TABLES = {
+    str(key): str(value)
+    for key, value in _SHIFT_REPORT_CONFIG.get("analysis_tables", {}).items()
+}
+_MATERIAL_FINES_TABLE = {
+    str(key): str(value)
+    for key, value in _SHIFT_REPORT_CONFIG.get("material_fines_table", {}).items()
+}
+logger = logging.getLogger(__name__)
 
 
 def _safe(df: pd.DataFrame | None) -> pd.DataFrame:
-    """
-    Return a non-empty dataframe or an empty dataframe fallback.
-
-    Args:
-         - df: pd.DataFrame | None - Optional dataframe returned by a data fetch.
-
-    Returns:
-         - return: pd.DataFrame - Original dataframe or empty fallback.
-    """
     return df if df is not None and not df.empty else pd.DataFrame()
 
 
-class ShiftFetcher(ReportFetcher[ShiftRawData]):
-    """Fetch raw online and offline data for one configured shift."""
+def _safe_table(
+    table_name: str, start_utc: datetime, end_utc: datetime
+) -> pd.DataFrame:
+    try:
+        return _safe(_fetch_neon_table(table_name, time_range=(start_utc, end_utc)))
+    except Exception:
+        logger.warning("Failed to fetch shift report table %s", table_name, exc_info=True)
+        return pd.DataFrame()
 
+
+def _safe_material_fines_table(start_utc: datetime, end_utc: datetime) -> pd.DataFrame:
+    query = text(
+        f'SELECT * FROM "{_MATERIAL_FINES_TABLE["schema"]}".'
+        f'"{_MATERIAL_FINES_TABLE["table"]}" '
+        'WHERE "date_time" >= :start_time AND "date_time" <= :end_time '
+        'ORDER BY "date_time"'
+    )
+    engine = None
+    try:
+        engine = build_relational_engine()
+        df = pd.read_sql_query(
+            query,
+            engine,
+            params={"start_time": start_utc, "end_time": end_utc},
+        )
+    except Exception:
+        logger.warning("Failed to fetch material fines table", exc_info=True)
+        return pd.DataFrame()
+    finally:
+        if engine is not None:
+            engine.dispose()
+
+    if "date_time" in df.columns:
+        df["date_time"] = pd.to_datetime(df["date_time"], utc=True)
+        df = df.set_index("date_time")
+        df.index.name = "time"
+    return df
+
+
+@lru_cache(maxsize=1)
+def _cached_materials_table() -> pd.DataFrame:
+    return _safe(
+        _fetch_neon_table(
+            "materials",
+            time_range="full",
+            columns=("material_code", "material_name", "is_active"),
+        )
+    )
+
+
+def _safe_materials_table() -> pd.DataFrame:
+    try:
+        return _cached_materials_table().copy()
+    except Exception:
+        logger.warning("Failed to fetch materials table", exc_info=True)
+        _cached_materials_table.cache_clear()
+        return pd.DataFrame()
+
+
+class ShiftFetcher(ReportFetcher[ShiftRawData]):
     def fetch(  # type: ignore[override]
         self,
         *,
         shift_date: date,
         shift_label: Literal["A", "B", "C"],
     ) -> ShiftRawData:
-        """
-        Fetch raw datasets for one configured shift window.
-
-        Args:
-             - shift_date: date - Calendar date assigned to the shift.
-             - shift_label: Literal["A", "B", "C"] - Shift label to fetch.
-
-        Returns:
-             - return: ShiftRawData - Raw online and offline shift data.
-        """
         start_ist, end_ist = shift_window(shift_date, shift_label)
         start_utc = start_ist.astimezone(timezone.utc)
         end_utc = end_ist.astimezone(timezone.utc)
@@ -69,20 +118,19 @@ class ShiftFetcher(ReportFetcher[ShiftRawData]):
         )
 
         hm_slag_df = _safe(
-            _fetch_offline(
-                measurement="hotmetal_slag_updated_data",
+            _fetch_neon_offline(
+                report_type="HM_SLAG",
                 time_range=(start_utc, end_utc),
-                database=_OFFLINE_DB,
             )
         )
 
         charge_df = _safe(
-            _fetch_offline(
-                measurement="latest_charge_data",
+            _fetch_neon_offline(
+                report_type="CHARGE",
                 time_range=(start_utc, end_utc),
-                database=_OFFLINE_DB,
             )
         )
+        analysis_start_utc = start_utc - timedelta(days=_ANALYSIS_LOOKBACK_DAYS)
 
         return ShiftRawData(
             shift_date=shift_date,
@@ -92,4 +140,21 @@ class ShiftFetcher(ReportFetcher[ShiftRawData]):
             online_df=online_df,
             hm_slag_df=hm_slag_df,
             charge_df=charge_df,
+            ore_chemistry_df=_safe_table(
+                _ANALYSIS_TABLES["ore"],
+                analysis_start_utc,
+                end_utc,
+            ),
+            fuel_chemistry_df=_safe_table(
+                _ANALYSIS_TABLES["fuel"],
+                analysis_start_utc,
+                end_utc,
+            ),
+            flux_chemistry_df=_safe_table(
+                _ANALYSIS_TABLES["flux"],
+                analysis_start_utc,
+                end_utc,
+            ),
+            material_fines_df=_safe_material_fines_table(analysis_start_utc, end_utc),
+            materials_df=_safe_materials_table(),
         )

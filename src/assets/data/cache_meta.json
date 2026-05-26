@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "rm_choice": "charge",
-  "data_start": "2024-01-01",
-  "confirmed_end": "2026-05-01",
-  "raw_end": "2026-05-04",
-  "last_updated": "2026-05-04T14:48:17",
-  "offline_lag_days": 3,
-  "rows": 15965,
-  "columns": 142,
-  "csv_file": "furnace_dataset_20260504_144811.csv"
+  "rm_choice": "full",
+  "data_start": "2025-09-06",
+  "confirmed_end": "2026-05-13",
+  "raw_end": "2026-05-13",
+  "last_updated": "2026-05-15T05:39:58",
+  "offline_lag_days": 0,
+  "rows": 4579,
+  "columns": 139,
+  "csv_file": "furnace_dataset_20260515_053957_400509.csv"
 }

@@ -85,7 +85,7 @@ def resolve_hm_slag_masses(
         1. ``total_hot_metal_mt`` / ``slag_generation_mt`` from DPR
            (``dpr_data`` measurement — no user mapping required)
         2. User-configured DPR mapping fields (``hm_mass_t`` / ``slag_mass_t``)
-        3. ``production_per_hour * 24`` from static CSV (HM fallback)
+        3. ``production_per_hour * 24`` from the static dataset (HM fallback)
         4. ``0.30 × HM`` (slag fallback)
 
     Args:

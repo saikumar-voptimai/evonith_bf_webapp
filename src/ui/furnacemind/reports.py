@@ -4,8 +4,37 @@ from datetime import date
 
 import streamlit as st
 
-from ui.components import show_report
+from reports.rendering import ReportDocument, document_to_markdown
+from reports.shift_report.renderer import document_from_markdown
+from ui.components import show_report_document
 from utils.window_helpers import fetch_from_qdrant
+
+_LAST_REPORT_KEY = "furnacemind_last_report"
+
+
+def _remember_report(
+    title: str,
+    summary_text: str,
+    document: ReportDocument | None = None,
+) -> None:
+    st.session_state[_LAST_REPORT_KEY] = {
+        "title": title,
+        "summary_text": summary_text,
+        "document": document,
+    }
+
+
+def _show_last_report() -> bool:
+    report = st.session_state.get(_LAST_REPORT_KEY)
+    if not report:
+        return False
+
+    document = report.get("document") or document_from_markdown(
+        report["title"],
+        report["summary_text"],
+    )
+    show_report_document(document)
+    return True
 
 
 def _run_live_shift_report(
@@ -14,18 +43,18 @@ def _run_live_shift_report(
     *,
     include_analysis: bool,
     status_box,
-) -> str:
+) -> tuple[ReportDocument, str]:
     """Fetch live shift data and render markdown report text."""
     from agents.llm.llm_client import OpenRouterClient
     from reports.shift_report import ShiftReportService
 
     status_box.status("Fetching shift data...", expanded=False)
-    _, markdown = ShiftReportService(llm_client=OpenRouterClient()).generate(
+    _, document = ShiftReportService(llm_client=OpenRouterClient()).generate_document(
         shift_date,
         shift_label,
         include_analysis=include_analysis,
     )
-    return markdown
+    return document, document_to_markdown(document)
 
 
 def render_reports() -> None:
@@ -67,6 +96,7 @@ def render_reports() -> None:
         )
 
     if not generate_report:
+        _show_last_report()
         return
 
     window_id = f"{selected_date:%Y-%m-%d}_SHIFT_{shift_label}"
@@ -77,7 +107,10 @@ def render_reports() -> None:
         vector_store = QdrantVectorStore()
         payload = fetch_from_qdrant(vector_store, window_id)
         if payload:
-            show_report(f"Report ({window_id})", payload["summary_text"])
+            title = f"Report ({window_id})"
+            document = document_from_markdown(title, payload["summary_text"])
+            _remember_report(title, payload["summary_text"], document)
+            show_report_document(document)
         else:
             st.warning(
                 f"No saved report found for {window_id}. "
@@ -93,17 +126,24 @@ def render_reports() -> None:
             "Showing cached live report for "
             f"{window_id} ({analysis_mode}). Re-submit to refresh."
         )
-        show_report(f"Live Report ({window_id})", st.session_state[cache_key])
+        title = f"Live Report ({window_id})"
+        cached = st.session_state[cache_key]
+        if isinstance(cached, dict):
+            document = cached["document"]
+            markdown = cached["summary_text"]
+        else:
+            markdown = cached
+            document = document_from_markdown(title, markdown)
+        _remember_report(title, markdown, document)
+        show_report_document(document)
         return
 
     status_box = st.empty()
-    spinner_message = (
-        f"Generating live report for {window_id} "
-        "from source data" + (" and LLM analysis..." if agentic_analysis else "...")
-    )
+    spinner_message = f"Generating live report for {window_id} from source data"
+    spinner_message += " and LLM analysis..." if agentic_analysis else "..."
 
     with st.spinner(spinner_message):
-        report_text = _run_live_shift_report(
+        document, report_text = _run_live_shift_report(
             selected_date,
             shift_label,
             include_analysis=agentic_analysis,
@@ -111,5 +151,10 @@ def render_reports() -> None:
         )
 
     status_box.empty()
-    st.session_state[cache_key] = report_text
-    show_report(f"Live Report ({window_id})", report_text)
+    st.session_state[cache_key] = {
+        "document": document,
+        "summary_text": report_text,
+    }
+    title = f"Live Report ({window_id})"
+    _remember_report(title, report_text, document)
+    show_report_document(document)

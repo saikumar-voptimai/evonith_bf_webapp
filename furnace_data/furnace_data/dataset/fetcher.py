@@ -3,7 +3,7 @@
 Provides
 --------
 RangeCache      Thread-safe holder for the last fetched date range + DataFrame.
-DatasetFetcher  Orchestrates mixed-source fetch (pre/post-cutoff) with range cache.
+DatasetFetcher  Orchestrates database-backed fetches with range cache.
 """
 
 from __future__ import annotations
@@ -48,12 +48,20 @@ class RangeCache:
         with self._lock:
             self.start = self.end = self.rm_mode = self.df = None
 
-    def snapshot(self) -> tuple[date | None, date | None, str | None, pd.DataFrame | None]:
+    def snapshot(
+        self,
+    ) -> tuple[date | None, date | None, str | None, pd.DataFrame | None]:
         """Return a consistent (start, end, rm_mode, df) snapshot."""
         with self._lock:
             return self.start, self.end, self.rm_mode, self.df
 
-    def update(self, start: date, end: date, rm_mode: str, df: pd.DataFrame) -> None:
+    def update(
+        self,
+        start: date,
+        end: date,
+        rm_mode: str,
+        df: pd.DataFrame,
+    ) -> None:
         """Atomically update the cache."""
         with self._lock:
             self.start = start
@@ -65,9 +73,9 @@ class RangeCache:
 class DatasetFetcher:
     """Fetches furnace datasets with range-aware caching.
 
-    Orchestrates between the legacy (pre-cutoff) and new (post-cutoff)
-    data sources exposed by :class:`~furnace_data.dataset.service.DatasetService`,
-    caching the last fetched range to avoid redundant InfluxDB queries.
+    Orchestrates historical static and current database-backed data exposed by
+    :class:`~furnace_data.dataset.service.DatasetService`, caching the last
+    fetched range to avoid redundant PostgreSQL queries.
 
     Args:
         service: A :class:`~furnace_data.dataset.service.DatasetService` instance.
@@ -83,11 +91,13 @@ class DatasetFetcher:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _clean_df(df: pd.DataFrame) -> pd.DataFrame:
+    def _clean_df(df: pd.DataFrame, *, keep_unmapped: bool = False) -> pd.DataFrame:
         """Rename columns and keep only the renamed subset."""
         if df.empty:
             return df
         df = df.rename(columns=RENAME_DICT)
+        if keep_unmapped:
+            return df
         return df.loc[:, df.columns.intersection(RENAME_SET)]
 
     @staticmethod
@@ -102,7 +112,34 @@ class DatasetFetcher:
         idx = df_rm.index.union(df_hm.index)
         return df_dist.reindex(idx).sort_index().ffill()
 
-    def _fetch_full_range(self, start: date, end: date, rm_mode: str) -> pd.DataFrame:
+    @staticmethod
+    def _slice_date_range(df: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
+        """Slice a time-indexed dataset by inclusive calendar dates."""
+        if df.empty:
+            out = df.copy()
+        else:
+            source = df
+            if not isinstance(source.index, pd.DatetimeIndex):
+                coerced_index = pd.to_datetime(source.index, errors="coerce")
+                if not pd.isna(coerced_index).any():
+                    source = source.copy()
+                    source.index = pd.DatetimeIndex(coerced_index)
+
+        if not df.empty and isinstance(source.index, pd.DatetimeIndex):
+            start_ts = pd.Timestamp(start)
+            end_ts = pd.Timestamp(end) + pd.Timedelta(days=1)
+            out = source.loc[(source.index >= start_ts) & (source.index < end_ts)].copy()
+        elif not df.empty:
+            out = df.loc[start:end].copy()
+        out.index.name = "time"
+        return out
+
+    def _fetch_full_range(
+        self,
+        start: date,
+        end: date,
+        rm_mode: str,
+    ) -> pd.DataFrame:
         cutoff = self.service.cutoff_date
 
         if end <= cutoff:
@@ -113,7 +150,7 @@ class DatasetFetcher:
         if start > cutoff:
             return self._fetch_new_range(start, end, rm_mode)
 
-        # Mixed range: legacy slice + new slice
+        # Mixed range: historical static slice + current generated slice
         df_old = self._clean_df(
             self.service.fetch_step1(start, cutoff, allowed_columns=RENAME_DICT)
         )
@@ -122,15 +159,104 @@ class DatasetFetcher:
 
         return pd.concat([df_old, df_new]).sort_index()
 
-    def _fetch_new_range(self, start: date, end: date, rm_mode: str) -> pd.DataFrame:
-        df_rm = self.service.fetch_step2(start, end, rm_mode, allowed_columns=RENAME_DICT)
-        df_hm = self.service.fetch_hotmetal_hourly(start, end, keep_columns=KEEP_COLS)
+    def _build_post_cutoff_df(
+        self,
+        start: date,
+        end: date,
+        rm_mode: str,
+    ) -> pd.DataFrame:
+        """Join Steps 2-5 into a raw DataFrame with ML column names (no rename)."""
+        df_rm = self.service.fetch_step2(
+            start,
+            end,
+            rm_mode,
+            allowed_columns=RENAME_DICT,
+        )
+        df_hm = self.service.fetch_hotmetal_hourly(
+            start,
+            end,
+            keep_columns=KEEP_COLS,
+        )
         df_dist = self.service.fetch_distribution_data(start, end)
+        df_online = self.service.fetch_online_process_params(start, end)
+        df_temp   = self.service.fetch_online_temperature_params(start, end)
 
         df_dist = self._align_distribution(df_dist, df_rm, df_hm)
 
-        df = df_rm.join([df_hm, df_dist], how="outer").sort_index()
-        return self._clean_df(df)
+        frames = [df_hm, df_dist]
+        if not df_online.empty:
+            frames.append(df_online)
+        if not df_temp.empty:
+            frames.append(df_temp)
+        return df_rm.join(frames, how="outer").sort_index()
+
+    def _fetch_new_range(
+        self,
+        start: date,
+        end: date,
+        rm_mode: str,
+    ) -> pd.DataFrame:
+        return self._clean_df(
+            self._build_post_cutoff_df(start, end, rm_mode),
+            keep_unmapped=True,
+        )
+
+    def extend_and_persist(
+        self,
+        start_date: date,
+        end_date: date,
+        rm_choice: str,
+        override_from_date: date | None = None,
+    ) -> pd.DataFrame:
+        """Fetch post-cutoff data (Steps 2-5), write to ``historical_static_ml_dataset``.
+
+        Args:
+            start_date:          Minimum start date for the fetch (ignored when
+                                 ``override_from_date`` is set).
+            end_date:            Inclusive end date to generate data to.
+            rm_choice:           ``"RM Charge"`` or ``"RM DPR"``.
+            override_from_date:  If given, existing DB rows from this date
+                                 onwards are deleted before re-generating.
+
+        Returns:
+            Raw (pre-cleaning) joined DataFrame written to the DB, or an
+            empty DataFrame if there is nothing new to generate.
+        """
+        from furnace_data.neon_db.writer import (
+            delete_from_static_table,
+            write_to_static_table,
+        )
+
+        rm_mode = "charge" if rm_choice == "RM Charge" else "dpr"
+
+        if override_from_date is not None:
+            deleted = delete_from_static_table(override_from_date)
+            log.info("Override: deleted %d rows from %s onwards.", deleted, override_from_date)
+            fetch_start = override_from_date
+        else:
+            fetch_start = max(
+                self.service.cutoff_date + timedelta(days=1),
+                start_date,
+            )
+
+        if fetch_start > end_date:
+            log.info("Nothing to generate: fetch_start %s > end_date %s.", fetch_start, end_date)
+            return pd.DataFrame()
+
+        log.info("Building post-cutoff data %s → %s (mode=%s).", fetch_start, end_date, rm_mode)
+        raw_df = self._build_post_cutoff_df(fetch_start, end_date, rm_mode)
+
+        if raw_df.empty:
+            log.warning("Steps 2-5 returned no data for %s → %s.", fetch_start, end_date)
+            return raw_df
+
+        rows_written = write_to_static_table(raw_df)
+        log.info(
+            "Persisted %d rows to historical_static_ml_dataset (%s → %s).",
+            rows_written, fetch_start, end_date,
+        )
+        self.cache.reset()
+        return raw_df
 
     # ------------------------------------------------------------------
     # Public API
@@ -154,7 +280,6 @@ class DatasetFetcher:
             end_date:       Inclusive end date.
             rm_choice:      ``"RM Charge"`` or ``"RM DPR"``.
             cache_override: If ``True``, clear the cache before fetching.
-
         Returns:
             Time-indexed :class:`pandas.DataFrame` sliced to [start_date, end_date]
             with the index named ``"time"``.
@@ -173,9 +298,7 @@ class DatasetFetcher:
             and cache_start <= start_date
             and cache_end >= end_date
         ):
-            out = cache_df.loc[start_date:end_date].copy()
-            out.index.name = "time"
-            return out
+            return self._slice_date_range(cache_df, start_date, end_date)
 
         # Partial / full fetch
         parts = []
@@ -185,7 +308,9 @@ class DatasetFetcher:
             if start_date < cache_start:
                 parts.append(
                     self._fetch_full_range(
-                        start_date, cache_start - timedelta(days=1), rm_mode
+                        start_date,
+                        cache_start - timedelta(days=1),
+                        rm_mode,
                     )
                 )
                 fetch_start = start_date
@@ -197,7 +322,9 @@ class DatasetFetcher:
             if end_date > cache_end:
                 parts.append(
                     self._fetch_full_range(
-                        cache_end + timedelta(days=1), end_date, rm_mode
+                        cache_end + timedelta(days=1),
+                        end_date,
+                        rm_mode,
                     )
                 )
                 fetch_end = end_date
@@ -210,9 +337,32 @@ class DatasetFetcher:
 
         self.cache.update(fetch_start, fetch_end, rm_mode, df_full)
 
-        out = df_full.loc[start_date:end_date].copy()
-        out.index.name = "time"
-        return out
+        return self._slice_date_range(df_full, start_date, end_date)
+
+    def build_local_delta(
+        self,
+        start: date,
+        end: date,
+        rm_mode: str = "charge",
+    ) -> pd.DataFrame:
+        """Return renamed (not yet fully cleaned) post-cutoff data for local caching.
+
+        Calls Steps 2-5 and applies the column rename, but does NOT run the full
+        DataCleaner pipeline and does NOT write to the Neon static table.
+        Returns an empty DataFrame on any failure so callers can fall back gracefully.
+        """
+        try:
+            raw = self._build_post_cutoff_df(start, end, rm_mode)
+            if raw.empty:
+                return raw
+            return self._clean_df(raw, keep_unmapped=True)
+        except Exception:
+            log.warning(
+                "build_local_delta failed for %s → %s (rm_mode=%s)",
+                start, end, rm_mode,
+                exc_info=True,
+            )
+            return pd.DataFrame()
 
     # Keep the old name as an alias so any callers that used MlDatasetFetcher.get_ml_dataset()
     # continue to work after renaming.
