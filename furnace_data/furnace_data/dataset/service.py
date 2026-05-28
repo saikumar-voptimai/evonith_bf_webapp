@@ -493,7 +493,18 @@ class DatasetService:
         if df.empty:
             return pd.DataFrame()
 
-        numeric_cols = df.columns
+        # Partition columns into numerically-imputable vs metadata-text.  Neon
+        # returns the lab/cast/batch identifiers as object-typed strings/UUIDs;
+        # passing them through pd.to_numeric blindly (the old behaviour) wiped
+        # them to all-NaN.  Detect "mostly numeric" columns via a sample coerce
+        # and forward-fill the rest so identifiers still travel with each hour.
+        sample = df.head(50).apply(pd.to_numeric, errors="coerce")
+        numeric_cols = [
+            c for c in df.columns
+            if sample[c].notna().sum() >= 0.5 * df[c].head(50).notna().sum()
+            and df[c].head(50).notna().any()
+        ]
+        non_numeric_cols = [c for c in df.columns if c not in numeric_cols]
 
         target_index = pd.date_range(
             start=start_local,
@@ -505,9 +516,16 @@ class DatasetService:
         combined_index = df.index.union(target_index)
         df2 = df.reindex(combined_index)
 
-        df2[numeric_cols] = df2[numeric_cols].infer_objects(copy=False)
-        df2[numeric_cols] = df2[numeric_cols].apply(pd.to_numeric, errors="coerce")
-        df2[numeric_cols] = df2[numeric_cols].interpolate(method="time")
+        if numeric_cols:
+            df2[numeric_cols] = df2[numeric_cols].infer_objects(copy=False)
+            df2[numeric_cols] = df2[numeric_cols].apply(pd.to_numeric, errors="coerce")
+            df2[numeric_cols] = df2[numeric_cols].interpolate(method="time")
+
+        if non_numeric_cols:
+            # Forward-fill metadata so each hourly slot inherits the most recent
+            # lab sample identifier; back-fill the first rows that have no prior
+            # value so they aren't NaN.
+            df2[non_numeric_cols] = df2[non_numeric_cols].ffill().bfill()
 
         df_final = df2.loc[target_index]
 
@@ -543,7 +561,11 @@ class DatasetService:
 
         snapshots.index = pd.DatetimeIndex(pd.to_datetime(snapshots.index))
         if snapshots.index.tz is not None:
-            snapshots.index = snapshots.index.tz_convert(None)
+            # Convert to local IST first, then strip tz so the timestamps are
+            # IST-naive and align with the daily_index anchors below.
+            # tz_convert(None) alone would silently shift to UTC-naive (off by
+            # 5h30m), causing burden rows to never forward-fill correctly.
+            snapshots.index = snapshots.index.tz_convert(ZoneInfo(self.local_tz)).tz_localize(None)
 
         daily_index = pd.date_range(start=start_date, end=end_date, freq="D")
         snapshots = snapshots[~snapshots.index.duplicated(keep="last")]

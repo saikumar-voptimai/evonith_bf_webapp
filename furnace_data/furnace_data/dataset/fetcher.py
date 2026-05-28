@@ -335,9 +335,85 @@ class DatasetFetcher:
         else:
             df_full = self._fetch_full_range(start_date, end_date, rm_mode)
 
+        # Apply per-source resampling so each source group keeps its own
+        # sampling cadence (vs the previous one-size-fits-all 1h mean + 24h
+        # ffill).  See _per_source_resample for the per-group rules.
+        if not df_full.empty:
+            df_full = self._per_source_resample(df_full)
+
         self.cache.update(fetch_start, fetch_end, rm_mode, df_full)
 
         return self._slice_date_range(df_full, start_date, end_date)
+
+    def _per_source_resample(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Resample a multi-source joined frame using per-source cadence rules.
+
+        Groups columns by where they came from in the Steps 2-5 pipeline and
+        applies the appropriate aggregation:
+
+        - **Charge masses** (``*_CALC_MT``, ``*_MT``): hourly **sum** (each
+          hour is the total tonnage charged within that hour; no ffill).
+        - **RM / HM-Slag chemistry** (``rm_params`` + ``hm_slag_params`` minus
+          masses): hourly mean with ``ffill(limit=8)`` — lab samples come at
+          8-hour shift cadence, so a sample propagates across the shift.
+        - **Burden distribution** (``bd_params`` — rings / angles / weighted_*
+          / total_*): hourly mean with **unlimited ffill** — burden is set
+          daily and stays valid until the next charging pattern change.
+        - **Everything else** (online process params, temperatures, KPIs):
+          hourly mean, no ffill (these arrive hourly from Influx already).
+
+        Non-numeric columns (lab_sample_id, cast_no_ladle_spec, …) are
+        forward-filled within the 1h grid so the metadata travels with each
+        hourly slot.
+        """
+        if df.empty:
+            return df
+
+        # Identify column buckets from the cleaning config (lazy import to
+        # avoid a hard fetcher → cleaning dependency at module load time).
+        from furnace_data.dataset.cleaning import build_default_config
+
+        groups = build_default_config().columns
+        cols_set = set(df.columns)
+
+        mass_cols = [
+            c for c in df.columns
+            if c.endswith("_CALC_MT")
+            or (c.endswith("_MT") and "TEMP" not in c.upper())
+        ]
+        bd_cols = [c for c in groups.bd_params if c in cols_set]
+        # Chemistry = rm_params + hm_slag_params minus mass columns
+        chem_cols = [
+            c for c in tuple(groups.rm_params) + tuple(groups.hm_slag_params)
+            if c in cols_set and c not in mass_cols and c not in bd_cols
+        ]
+
+        handled = set(mass_cols) | set(chem_cols) | set(bd_cols)
+        numeric_cols = df.select_dtypes(include="number").columns
+        other_numeric = [c for c in numeric_cols if c not in handled]
+        non_numeric = [c for c in df.columns if c not in numeric_cols]
+
+        parts: list[pd.DataFrame] = []
+        if mass_cols:
+            parts.append(df[mass_cols].resample("1h").sum(min_count=1))
+        if chem_cols:
+            parts.append(df[chem_cols].resample("1h").mean().ffill(limit=8))
+        if bd_cols:
+            parts.append(df[bd_cols].resample("1h").mean().ffill())
+        if other_numeric:
+            parts.append(df[other_numeric].resample("1h").mean())
+        if non_numeric:
+            # Treat text/UUID metadata as 1h-aligned ffill so lab identifiers
+            # stay attached to each hourly slot.
+            parts.append(df[non_numeric].resample("1h").first().ffill())
+
+        if not parts:
+            return df
+        out = pd.concat(parts, axis=1).sort_index()
+        # Preserve original column order so callers don't see arbitrary shuffling
+        ordered = [c for c in df.columns if c in out.columns]
+        ordered.extend(c for c in out.columns if c not in ordered)
+        return out[ordered]
 
     def build_local_delta(
         self,
@@ -364,6 +440,3 @@ class DatasetFetcher:
             )
             return pd.DataFrame()
 
-    # Keep the old name as an alias so any callers that used MlDatasetFetcher.get_ml_dataset()
-    # continue to work after renaming.
-    get_ml_dataset = get_dataset

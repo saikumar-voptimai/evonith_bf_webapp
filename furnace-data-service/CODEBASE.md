@@ -61,8 +61,9 @@ ml-dataset-api/
 │   └── tasks/
 │       └── task_manager.py   In-memory task registry; runs jobs in daemon threads
 │
-├── config/
-│   └── setting_ds_dv.yml     InfluxDB data mappings, measurement→field lists, rename dict
+├── (no `config/` dir)        Uses the monorepo's `<repo>/src/config/setting_ds_dv.yml`.
+│                              `run.py` sets `FURNACE_CONFIG_DIR` accordingly until
+│                              the UI/backend split happens.
 │
 ├── data/
 │   ├── results/              Temp CSVs for ad-hoc /dataset/fetch downloads (auto-rotated)
@@ -213,7 +214,7 @@ POST /data/offline/fetch│  offline_fetcher.fetch_offline()        │
                         └─────────────────────────────────────────┘
 
 POST /dataset/fetch      ┌──────────────────────────────────────────────────┐
-  (async)                │  MlDatasetFetcher.get_ml_dataset()               │
+  (async)                │  MlDatasetFetcher.get_dataset()                   │
                          │  ├─ before cutoff: fetch_step1()                 │
                          │  └─ after cutoff:                                │
                          │       fetch_step2() + fetch_hotmetal_hourly()    │
@@ -259,7 +260,7 @@ Interactive docs: `http://<pi-ip>:8080/docs`
 
 ## Adding a New Data Fetcher
 
-1. Add measurement config to `config/setting_ds_dv.yml` under `data_mapping`.
+1. Add measurement config to `<repo>/src/config/setting_ds_dv.yml` under `data_mapping`.
 2. If online bucket: add to `ONLINE_MEASUREMENTS` in `online_fetcher.py`.
 3. If offline bucket: add to `OFFLINE_REPORT_MAP` in `offline_fetcher.py`.
 4. Add enum value to `OfflineReportType` or extend `OnlineFetchRequest.measurements` validation in `schemas.py`.

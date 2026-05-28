@@ -1,9 +1,18 @@
 """Uvicorn entrypoint for the ML Dataset API."""
 
+import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+_SIDECAR_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SIDECAR_DIR.parent
+
+# Use the monorepo's main YAML config until the UI/backend split.  The sidecar
+# no longer ships its own `furnace-data-service/config/setting_ds_dv.yml`; this
+# env var redirects `furnace_data.config.load_config(...)` to the canonical one.
+os.environ.setdefault("FURNACE_CONFIG_DIR", str(_REPO_ROOT / "src" / "config"))
+
+load_dotenv(_SIDECAR_DIR / ".env")
 
 import uvicorn
 from app.config import settings
