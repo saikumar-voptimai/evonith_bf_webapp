@@ -1,23 +1,90 @@
+"""BMO fuel-cost model service.
+
+This module loads the configured BMO model bundle, builds model-ready feature
+frames, executes scaler/model inference, and falls back to a deterministic
+fuel-rate formula when artifacts or predictions are unavailable.
+"""
+
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from utils.bmo.types import ModelPrediction
 from domain.optimization_runtime import (
     FeatureVectorBuilder,
     ModelBundleService,
     build_runtime_config,
     normalize_feature_name,
 )
+from utils.bmo.feature_builder import build_bmo_v4_feature_frame
+from utils.bmo.types import ModelPrediction
+
+
+def _resolve_repo_path(path_str: str) -> Path:
+    """
+    Resolve a model-service path against common repository locations.
+
+    Model artifact paths are configured in YAML and may be absolute or
+    repository-relative. This helper keeps artifact lookup stable across tests,
+    Streamlit runs, and command-line validation scripts.
+
+    Args:
+         - path_str: str - Absolute or repository-relative path from config.
+
+    Returns:
+         - return Path - Existing resolved path when found, otherwise first candidate.
+    """
+
+    p = Path(str(path_str or "")).expanduser()
+    if p.is_absolute():
+        return p
+
+    repo_root = Path(__file__).resolve().parents[3]
+    candidates = [repo_root / p, repo_root / "src" / p, Path.cwd() / p]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 class FuelUnitCostModelService:
+    """
+    Predict BMO fuel unit cost from blend and process features.
+
+    The service owns model-bundle loading, feature construction, selected-column
+    inference, and deterministic fallback behavior. Callers only need to provide
+    a candidate blend payload and optional historical context.
+
+    Args:
+         - bundle_cfg: dict[str, Any] - Model bundle configuration.
+         - fallback_cfg: dict[str, Any] - Deterministic fallback fuel model settings.
+
+    Returns:
+         - return FuelUnitCostModelService - Cached service for fuel-cost inference.
+    """
+
     def __init__(
         self, bundle_cfg: dict[str, Any], fallback_cfg: dict[str, Any]
     ) -> None:
+        """
+        Initialize model bundle access and fallback configuration.
+
+        The expensive model/scaler load is deferred until prediction or status
+        inspection. That keeps Streamlit page construction fast while preserving
+        a single cached service for repeated candidate evaluations.
+
+        Args:
+             - bundle_cfg: dict[str, Any] - Model bundle configuration.
+             - fallback_cfg: dict[str, Any] - Deterministic fallback fuel model settings.
+
+        Returns:
+             - return None - Initializes lazy loading state for inference.
+        """
+
         self.bundle_cfg = bundle_cfg or {}
         self.fallback_cfg = fallback_cfg or {}
 
@@ -28,8 +95,28 @@ class FuelUnitCostModelService:
         self.missing_feature_policy = str(
             self.bundle_cfg.get("missing_feature_policy", "default_warn")
         )
+        self._selected_features: list[str] | None = None
+        self._selected_features_path = (
+            self.bundle_cfg.get("selected_feature_columns_path")
+            or self.bundle_cfg.get("feature_columns_path")
+            or self.bundle_cfg.get("selected_features_path")
+        )
 
     def _ensure_loaded(self) -> None:
+        """
+        Lazily load the model bundle and selected feature list.
+
+        This method is the single gate before inference. It populates bundle
+        metadata, the shared feature builder, and optional selected feature
+        columns exactly once per cached service instance.
+
+        Args:
+             - None
+
+        Returns:
+             - return None - Populates cached model bundle and feature builder.
+        """
+
         if self._bundle_info is not None:
             return
         self._bundle_info = self._bundle_service.get_bundle()
@@ -37,8 +124,59 @@ class FuelUnitCostModelService:
             self._bundle_info,
             missing_feature_policy=self.missing_feature_policy,
         )
+        self._selected_features = self._load_selected_features()
+
+    def _load_selected_features(self) -> list[str] | None:
+        """
+        Load optional post-scaler feature selection used by BMO V4 artifacts.
+
+        The training notebook exports the final XGBoost columns separately from
+        the scaler's raw feature list. Loading this file lets inference mirror
+        the scaler-then-column-selection flow used during training.
+
+        Args:
+             - None
+
+        Returns:
+             - return list[str] | None - Selected feature names or None when absent.
+        """
+
+        if not self._selected_features_path:
+            return None
+
+        path = _resolve_repo_path(str(self._selected_features_path))
+        if not path.exists() or path.is_dir():
+            return None
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+        if isinstance(data, list):
+            return [str(item) for item in data]
+        if isinstance(data, dict):
+            for key in ("feature_names", "selected_features", "columns"):
+                values = data.get(key)
+                if isinstance(values, list):
+                    return [str(item) for item in values]
+        return None
 
     def get_bundle_status(self) -> dict[str, Any]:
+        """
+        Return model/scaler load status for the BMO page header and diagnostics.
+
+        Streamlit uses this status to show whether predictions are coming from
+        the ML bundle or deterministic fallback. The status also includes
+        selected-feature metadata so model asset issues are easier to diagnose.
+
+        Args:
+             - None
+
+        Returns:
+             - return dict[str, Any] - Bundle status including selected feature metadata.
+        """
+
         self._ensure_loaded()
         if self._bundle_info is None:
             return {
@@ -47,11 +185,35 @@ class FuelUnitCostModelService:
                 "feature_count": 0,
                 "bundle_error": "bundle_not_loaded",
             }
-        return dict(self._bundle_info.status)
+        status = dict(self._bundle_info.status)
+        status["selected_feature_columns_path"] = (
+            str(_resolve_repo_path(str(self._selected_features_path)))
+            if self._selected_features_path
+            else None
+        )
+        status["selected_feature_count"] = len(self._selected_features or [])
+        status["selected_features_loaded"] = bool(self._selected_features)
+        return status
 
     def _pick_value(
         self, payload: dict[str, float], keys: list[str], default: float
     ) -> float:
+        """
+        Pick the first available payload value from raw or normalized key names.
+
+        The fallback formula accepts both model-style feature names and simpler
+        normalized aliases. This helper keeps that lookup behavior consistent
+        for coke, nut coke, PCI, and sinter-share inputs.
+
+        Args:
+             - payload: dict[str, float] - Feature payload supplied to prediction.
+             - keys: list[str] - Candidate key names to search.
+             - default: float - Value to return when no key is found.
+
+        Returns:
+             - return float - Matched payload value or default.
+        """
+
         norm_payload = {normalize_feature_name(k): float(v) for k, v in payload.items()}
         for key in keys:
             if key in payload:
@@ -62,6 +224,20 @@ class FuelUnitCostModelService:
         return float(default)
 
     def _fallback_predict(self, payload: dict[str, float]) -> float:
+        """
+        Estimate fuel cost with the configured deterministic fallback formula.
+
+        The fallback keeps BMO usable when model artifacts are missing or a
+        prediction is invalid. It combines coke, nut coke, and PCI cost with a
+        simple sinter-share adjustment.
+
+        Args:
+             - payload: dict[str, float] - Blend and process features for inference.
+
+        Returns:
+             - return float - Estimated fuel unit cost in Rs/THM.
+        """
+
         defaults_rates = self.fallback_cfg.get("default_rates_kg_per_thm", {})
         defaults_prices = self.fallback_cfg.get("default_prices_rs_per_kg", {})
 
@@ -107,9 +283,49 @@ class FuelUnitCostModelService:
         adjustment = ((target_sinter - sinter_share) / 100.0) * sensitivity
         return float(base_cost + adjustment)
 
+    def _prediction_issue(self, value: float) -> str | None:
+        """
+        Return a reason when an ML fuel-cost prediction is physically invalid.
+
+        Model predictions are still validated before being trusted in the
+        optimizer. Non-finite or non-positive values fall back to deterministic
+        fuel cost so DE does not chase invalid objective values.
+
+        Args:
+             - value: float - Raw model prediction in Rs/THM.
+
+        Returns:
+             - return str | None - Validation issue text, or None when valid.
+        """
+
+        if not np.isfinite(value):
+            return "Model prediction is not finite."
+        min_value = float(self.fallback_cfg.get("min_fuel_cost_rs_per_thm", 0.0))
+        if value <= min_value:
+            return (
+                f"Model prediction {value:.3f} is not above the minimum "
+                f"fuel cost {min_value:.3f} Rs/THM."
+            )
+        return None
+
     def predict(
         self, feature_payload: dict[str, float], history_df: pd.DataFrame | None
     ) -> ModelPrediction:
+        """
+        Predict fuel unit cost using ML artifacts or fallback logic.
+
+        This is the public inference entrypoint for LP enrichment and DE
+        objective calls. It handles missing artifacts, feature-build failures,
+        model errors, and invalid predictions with structured fallback details.
+
+        Args:
+             - feature_payload: dict[str, float] - Blend and process feature payload.
+             - history_df: pd.DataFrame | None - Historical process data for lag features.
+
+        Returns:
+             - return ModelPrediction - Fuel cost value plus model/fallback diagnostics.
+        """
+
         self._ensure_loaded()
         bundle = self._bundle_info
         builder = self._feature_builder
@@ -133,6 +349,12 @@ class FuelUnitCostModelService:
                 details={
                     "reason": "No expected feature list available in model/scaler/manifest."
                 },
+            )
+
+        if self._selected_features:
+            return self._predict_with_selected_features(
+                feature_payload=feature_payload,
+                history_df=history_df,
             )
 
         try:
@@ -162,6 +384,22 @@ class FuelUnitCostModelService:
 
                 pred = bundle.model.predict(x_in)
                 value = float(np.asarray(pred).reshape(-1)[0])
+                prediction_issue = self._prediction_issue(value)
+                if prediction_issue:
+                    fallback = self._fallback_predict(feature_payload)
+                    return ModelPrediction(
+                        value=float(fallback),
+                        model_loaded=True,
+                        scaler_loaded=bundle.scaler is not None,
+                        used_fallback=True,
+                        missing_features=feature_build.missing_features,
+                        imputed_features=feature_build.imputed_features,
+                        details={
+                            "reason": prediction_issue,
+                            "model_value": value,
+                            "feature_sources": feature_build.source_map,
+                        },
+                    )
                 return ModelPrediction(
                     value=value,
                     model_loaded=True,
@@ -199,3 +437,146 @@ class FuelUnitCostModelService:
                 "feature_sources": feature_build.source_map,
             },
         )
+
+    def _scaler_mean_defaults(self) -> dict[str, float]:
+        """
+        Build default raw feature values from scaler mean metadata.
+
+        When selected-feature inference needs a full raw feature row, scaler
+        means are a safer default than zero for unresolved training columns. The
+        values are keyed by the scaler's expected raw feature names.
+
+        Args:
+             - None
+
+        Returns:
+             - return dict[str, float] - Expected feature names mapped to scaler means.
+        """
+
+        bundle = self._bundle_info
+        if (
+            bundle is None
+            or bundle.scaler is None
+            or not hasattr(bundle.scaler, "mean_")
+        ):
+            return {}
+        try:
+            return {
+                str(feature): float(bundle.scaler.mean_[idx])
+                for idx, feature in enumerate(bundle.expected_features)
+            }
+        except Exception:
+            return {}
+
+    def _predict_with_selected_features(
+        self,
+        *,
+        feature_payload: dict[str, float],
+        history_df: pd.DataFrame | None,
+    ) -> ModelPrediction:
+        """
+        Run the BMO V4 scaler-then-selected-feature inference path.
+
+        The V4 bundle scales all raw features first and then feeds only the
+        selected training columns to XGBoost. This method mirrors that notebook
+        flow and records feature-source diagnostics for review.
+
+        Args:
+             - feature_payload: dict[str, float] - Blend and process feature payload.
+             - history_df: pd.DataFrame | None - Historical process data for lag features.
+
+        Returns:
+             - return ModelPrediction - Fuel cost prediction with feature diagnostics.
+        """
+
+        bundle = self._bundle_info
+        if bundle is None or bundle.model is None or bundle.scaler is None:
+            fallback = self._fallback_predict(feature_payload)
+            return ModelPrediction(
+                value=float(fallback),
+                model_loaded=bool(bundle and bundle.model is not None),
+                scaler_loaded=bool(bundle and bundle.scaler is not None),
+                used_fallback=True,
+                details={"reason": "Selected-feature model requires model and scaler."},
+            )
+
+        selected_features = list(self._selected_features or [])
+        missing_selected = [
+            feature
+            for feature in selected_features
+            if feature not in bundle.expected_features
+        ]
+        if missing_selected:
+            fallback = self._fallback_predict(feature_payload)
+            return ModelPrediction(
+                value=float(fallback),
+                model_loaded=True,
+                scaler_loaded=True,
+                used_fallback=True,
+                missing_features=missing_selected,
+                details={
+                    "reason": "Selected features are not present in scaler feature list.",
+                    "selected_feature_count": len(selected_features),
+                },
+            )
+
+        default_values = dict(bundle.defaults)
+        default_values.update(self._scaler_mean_defaults())
+
+        try:
+            feature_build = build_bmo_v4_feature_frame(
+                feature_payload=feature_payload,
+                history_df=history_df,
+                expected_features=list(bundle.expected_features),
+                default_values=default_values,
+            )
+            scaled = bundle.scaler.transform(feature_build.vector_df)
+            scaled_df = pd.DataFrame(
+                scaled,
+                columns=bundle.expected_features,
+                index=feature_build.vector_df.index,
+            )
+            model_input = scaled_df[selected_features]
+            pred = bundle.model.predict(model_input)
+            value = float(np.asarray(pred).reshape(-1)[0])
+            prediction_issue = self._prediction_issue(value)
+            if prediction_issue:
+                fallback = self._fallback_predict(feature_payload)
+                return ModelPrediction(
+                    value=float(fallback),
+                    model_loaded=True,
+                    scaler_loaded=True,
+                    used_fallback=True,
+                    missing_features=feature_build.missing_features,
+                    imputed_features=feature_build.imputed_features,
+                    details={
+                        "reason": prediction_issue,
+                        "model_value": value,
+                        "feature_sources": feature_build.source_map,
+                        "raw_feature_count": len(bundle.expected_features),
+                        "selected_feature_count": len(selected_features),
+                    },
+                )
+            return ModelPrediction(
+                value=value,
+                model_loaded=True,
+                scaler_loaded=True,
+                used_fallback=False,
+                missing_features=feature_build.missing_features,
+                imputed_features=feature_build.imputed_features,
+                details={
+                    "feature_sources": feature_build.source_map,
+                    "raw_feature_count": len(bundle.expected_features),
+                    "selected_feature_count": len(selected_features),
+                    "selected_features": selected_features,
+                },
+            )
+        except Exception as exc:
+            fallback = self._fallback_predict(feature_payload)
+            return ModelPrediction(
+                value=float(fallback),
+                model_loaded=True,
+                scaler_loaded=True,
+                used_fallback=True,
+                details={"reason": f"Selected-feature inference failed: {exc}"},
+            )

@@ -8,6 +8,7 @@ ores:
     max_share_pct: 70.0
     fallback_chemistry:
       fe_t_pct: 55.0
+      moisture_pct: 0.0
       feo_pct: 10.0
       sio2_pct: 4.8
       al2o3_pct: 2.2
@@ -16,6 +17,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.1
       p_pct: 0.08
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: geomin_clo
     display_name: GEOMIN CLO
     material_key: ore_3
@@ -25,6 +28,7 @@ ores:
     max_share_pct: 20.0
     fallback_chemistry:
       fe_t_pct: 61.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 5.5
       al2o3_pct: 2.7
@@ -33,6 +37,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.05
       p_pct: 0.05
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: lloyds_clo
     display_name: LLOYDS CLO
     material_key: ore_2
@@ -42,6 +48,7 @@ ores:
     max_share_pct: 30.0
     fallback_chemistry:
       fe_t_pct: 63.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 4.2
       al2o3_pct: 2.5
@@ -50,6 +57,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.05
       p_pct: 0.04
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: nmdc_donimalai
     display_name: NMDC DONIMALAI
     material_key: ore_1
@@ -59,6 +68,7 @@ ores:
     max_share_pct: 15.0
     fallback_chemistry:
       fe_t_pct: 59.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 14.0
       al2o3_pct: 2.9
@@ -67,6 +77,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.07
       p_pct: 0.05
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: gomti_clo
     display_name: GOMTI CLO
     material_key: ore_10
@@ -76,6 +88,7 @@ ores:
     max_share_pct: 30.0
     fallback_chemistry:
       fe_t_pct: 60.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 6.2
       al2o3_pct: 2.8
@@ -84,6 +97,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.06
       p_pct: 0.05
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: jrs_ventures
     display_name: JRS VENTURES
     material_key: ore_4
@@ -93,6 +108,7 @@ ores:
     max_share_pct: 20.0
     fallback_chemistry:
       fe_t_pct: 61.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 6.0
       al2o3_pct: 2.8
@@ -101,6 +117,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.06
       p_pct: 0.05
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: jayaswal_neco
     display_name: JAYASWAL NECO
     material_key: ore_9
@@ -110,6 +128,7 @@ ores:
     max_share_pct: 20.0
     fallback_chemistry:
       fe_t_pct: 60.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 6.6
       al2o3_pct: 2.8
@@ -118,6 +137,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.06
       p_pct: 0.05
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: titani_ferrous_clo
     display_name: TITANI FERROUS CLO
     material_key: ore_11
@@ -127,6 +148,7 @@ ores:
     max_share_pct: 3.0
     fallback_chemistry:
       fe_t_pct: 56.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 5.5
       al2o3_pct: 2.5
@@ -135,6 +157,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 12.0
       p_pct: 0.05
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: acore_ind_pvt_ltd
     display_name: ACORE IND.PVT LTD
     material_key: ore_8
@@ -144,6 +168,7 @@ ores:
     max_share_pct: 3.0
     fallback_chemistry:
       fe_t_pct: 27.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 8.2
       al2o3_pct: 3.0
@@ -152,6 +177,8 @@ ores:
       mno_pct: 35.0
       tio2_pct: 0.08
       p_pct: 0.09
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: nmdc_rom
     display_name: NMDC ROM
     material_key: ore_5
@@ -161,6 +188,7 @@ ores:
     max_share_pct: 30.0
     fallback_chemistry:
       fe_t_pct: 62.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 4.0
       al2o3_pct: 2.6
@@ -169,6 +197,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.05
       p_pct: 0.04
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: lloyds_oversize_clo
     display_name: LLOYDS OVERSIZE CLO
     material_key: ore_6
@@ -178,6 +208,7 @@ ores:
     max_share_pct: 10.0
     fallback_chemistry:
       fe_t_pct: 61.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 5.1
       al2o3_pct: 2.6
@@ -186,6 +217,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.05
       p_pct: 0.05
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: bacheli_fines_over_size
     display_name: BACHELI FINES OVER SIZE
     material_key: ore_7
@@ -195,6 +228,7 @@ ores:
     max_share_pct: 10.0
     fallback_chemistry:
       fe_t_pct: 61.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 5.8
       al2o3_pct: 2.7
@@ -203,6 +237,8 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.05
       p_pct: 0.05
+      na2o_pct: 0.0
+      k2o_pct: 0.0
   - id: lloyds_pellet_sarda
     display_name: LLOYDS PELLET (SARDA)
     material_key: lloyds_pellet
@@ -212,6 +248,7 @@ ores:
     max_share_pct: 10.0
     fallback_chemistry:
       fe_t_pct: 64.0
+      moisture_pct: 0.0
       feo_pct: 0.0
       sio2_pct: 3.1
       al2o3_pct: 1.8
@@ -220,9 +257,12 @@ ores:
       mno_pct: 0.1
       tio2_pct: 0.04
       p_pct: 0.04
+      na2o_pct: 0.0
+      k2o_pct: 0.0
 
 chemistry_field_map:
   fe_t_pct: fe_t
+  moisture_pct: tm
   feo_pct: feo
   sio2_pct: sio2
   al2o3_pct: al2o3
@@ -231,4 +271,6 @@ chemistry_field_map:
   mno_pct: mno
   tio2_pct: tio2
   p_pct: p
+  na2o_pct: na2o
+  k2o_pct: k2o
 

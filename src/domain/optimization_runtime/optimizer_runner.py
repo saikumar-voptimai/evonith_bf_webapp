@@ -1,3 +1,10 @@
+"""Differential-evolution runner for optimization-runtime objective functions.
+
+This module wraps SciPy differential evolution with BMO-specific bookkeeping:
+it tracks the best relaxed solution, the best feasible solution, and optional
+baseline comparison metrics for the Streamlit diagnostics panel.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -6,16 +13,39 @@ from typing import Any
 import numpy as np
 from scipy.optimize import differential_evolution
 
-from domain.optimization_runtime.types import (
-    ObjectiveResult,
-    OptimizationResult,
-)
+from domain.optimization_runtime.types import ObjectiveResult, OptimizationResult
 
 
 class OptimizerRunner:
-    """Shared DE runner that keeps best feasible and best relaxed solutions."""
+    """
+    Run differential evolution while retaining feasible and relaxed best states.
+
+    The runner keeps SciPy-specific execution details out of the BMO optimizer.
+    It records the best feasible candidate separately from the best penalized
+    candidate so diagnostics can explain whether DE improved on the LP seed.
+
+    Args:
+         - optimizer_cfg: dict[str, Any] | None - Runtime optimizer settings.
+
+    Returns:
+         - return OptimizerRunner - Runner configured for a single optimization mode.
+    """
 
     def __init__(self, optimizer_cfg: dict[str, Any] | None = None) -> None:
+        """
+        Store optimizer configuration for later DE runs.
+
+        The configuration is intentionally kept as plain data because Streamlit
+        pages and tests pass dictionaries loaded from YAML. Individual options
+        are validated at the point where SciPy is called.
+
+        Args:
+             - optimizer_cfg: dict[str, Any] | None - Runtime optimizer settings.
+
+        Returns:
+             - return None - Initializes the runner configuration.
+        """
+
         self.optimizer_cfg = optimizer_cfg or {}
 
     def run_differential_evolution(
@@ -25,10 +55,46 @@ class OptimizerRunner:
         objective_fn: Callable[[np.ndarray], ObjectiveResult],
         baseline_solution: dict[str, Any] | None = None,
     ) -> OptimizationResult:
-        best_feasible: dict[str, Any] | None = None
-        best_relaxed: dict[str, Any] | None = None
+        """
+        Execute SciPy differential evolution and summarize the best solution.
+
+        The method adapts a rich objective callback into SciPy's scalar API,
+        tracks baseline comparison data, and returns diagnostics such as
+        iterations and function evaluations for the UI.
+
+        Args:
+             - bounds: list[tuple[float, float]] - Per-variable lower and upper bounds.
+             - objective_fn: Callable[[np.ndarray], ObjectiveResult] - Objective callback.
+             - baseline_solution: dict[str, Any] | None - Optional LP baseline seed.
+
+        Returns:
+             - return OptimizationResult - Best solution, comparison metrics, and diagnostics.
+        """
+
+        best_relaxed: dict[str, Any] | None = (
+            dict(baseline_solution) if baseline_solution else None
+        )
+        best_feasible: dict[str, Any] | None = (
+            dict(baseline_solution)
+            if baseline_solution and bool(baseline_solution.get("feasible", False))
+            else None
+        )
 
         def wrapped(x: np.ndarray) -> float:
+            """
+            Adapt the rich objective result into SciPy's scalar objective API.
+
+            SciPy only consumes a float, but BMO needs feasibility flags,
+            components, violations, and diagnostics. This wrapper stores those
+            details while returning the penalized scalar objective.
+
+            Args:
+                 - x: np.ndarray - Candidate vector proposed by differential evolution.
+
+            Returns:
+                 - return float - Scalar objective value including any penalties.
+            """
+
             nonlocal best_feasible, best_relaxed
             x_arr = np.asarray(x, dtype=float)
             result = objective_fn(x_arr)
@@ -56,10 +122,10 @@ class OptimizerRunner:
             func=wrapped,
             bounds=bounds,
             strategy=str(self.optimizer_cfg.get("strategy", "best1bin")),
-            maxiter=int(self.optimizer_cfg.get("maxiter", 40)),
-            popsize=int(self.optimizer_cfg.get("popsize", 12)),
-            tol=float(self.optimizer_cfg.get("tol", 0.01)),
-            polish=bool(self.optimizer_cfg.get("polish", True)),
+            maxiter=int(self.optimizer_cfg.get("maxiter", 4)),
+            popsize=int(self.optimizer_cfg.get("popsize", 4)),
+            tol=float(self.optimizer_cfg.get("tol", 0.03)),
+            polish=bool(self.optimizer_cfg.get("polish", False)),
             seed=int(self.optimizer_cfg.get("seed", 42)),
             workers=1,
         )
