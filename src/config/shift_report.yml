@@ -6,6 +6,10 @@ online_groups:
   - delta_t
   - miscellaneous
 
+online_window_by:
+  Shift: 15 minutes
+  Day: 1 hour
+
 analysis_tables:
   ore: offline_feed.ore_chemistry
   fuel: offline_feed.fuel_chemistry
