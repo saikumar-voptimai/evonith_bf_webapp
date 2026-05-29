@@ -42,6 +42,7 @@ from data.fetch_presets import (
     OFFLINE_REPORT_LABEL_MAP,
 )
 from data.ml.static_csv import load_static_dataset
+from utils.shift_windows import shift_window_naive
 
 # CONFIG
 config = load_config("setting_ds_dv.yml")
@@ -547,17 +548,13 @@ def load_static_shift_data(*, shift_date: str, shift_label: str) -> str:
     try:
         args = StaticShiftArgs.model_validate(params)
 
-        # Compute shift window (IST, tz-naive to match the static dataset)
-        # A: 06:00-14:00, B: 14:00-22:00, C: 22:00-06:00 (next day)
-        date = pd.to_datetime(args.shift_date).normalize()
-        if args.shift_label == "C":
-            shift_start = date + pd.Timedelta(hours=22)
-            shift_end = date + pd.Timedelta(hours=30)  # 30h = next day 06:00
-        else:
-            _hours = {"A": (6, 14), "B": (14, 22)}
-            start_h, end_h = _hours[args.shift_label]
-            shift_start = date + pd.Timedelta(hours=start_h)
-            shift_end = date + pd.Timedelta(hours=end_h)
+        shift_day = pd.to_datetime(args.shift_date).date()
+        shift_start_dt, shift_end_dt = shift_window_naive(
+            shift_day,
+            args.shift_label,
+        )
+        shift_start = pd.Timestamp(shift_start_dt)
+        shift_end = pd.Timestamp(shift_end_dt)
 
         df, csv_min, csv_max = _load_ml_dataset()
         if shift_start < csv_min or shift_end > csv_max + pd.Timedelta(hours=1):
