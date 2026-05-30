@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 import re
 from typing import Literal, Sequence
 
@@ -58,6 +59,7 @@ class ReportDocument:
     pre_blocks: tuple[str, ...] = field(default_factory=tuple)
     sections: tuple[ReportSection, ...] = field(default_factory=tuple)
     notes: tuple[ReportNote, ...] = field(default_factory=tuple)
+    generated_at_ist: datetime | None = None
 
 
 def clean_inline(value: str) -> str:

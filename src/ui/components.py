@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 import re
 
@@ -15,13 +16,15 @@ from reports.rendering import (
     document_from_markdown,
     markdown_table,
 )
+from utils.shift_windows import LOCAL_TIMEZONE, LOCAL_TIMEZONE_NAME
 
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _SHIFT_REPORT_TITLE_RE = re.compile(
     r"\((\d{4}-\d{2}-\d{2})_SHIFT_([A-Za-z0-9]+)\)"
 )
+_DAY_REPORT_TITLE_RE = re.compile(r"\((\d{4}-\d{2}-\d{2})\)")
 _HEADER_UOM_RE = re.compile(r"^(.+?)\s+(\([^)]{1,24}\))$")
-_REPORT_TABLE_IMAGE_STYLE_VERSION = 16
+_REPORT_TABLE_IMAGE_STYLE_VERSION = 17
 
 
 class ReportTableImageRenderer:
@@ -34,6 +37,7 @@ class ReportTableImageRenderer:
     section_title_size = 24
     body_size = 20
     dense_body_size = 18
+    footer_size = 13
     cell_padding = 0.075
     right_cell_padding = 0.12
     top_cell_padding = 0.1
@@ -64,6 +68,9 @@ class ReportTableImageRenderer:
         match = _SHIFT_REPORT_TITLE_RE.search(title)
         if match:
             return f"{match.group(1)} {match.group(2)} SHIFT REPORT"
+        day_match = _DAY_REPORT_TITLE_RE.search(title)
+        if day_match and "day" in title.lower():
+            return f"{day_match.group(1)} DAY REPORT"
         return title
 
     def render(self) -> bytes:
@@ -143,9 +150,32 @@ class ReportTableImageRenderer:
                 first_padding=self.top_cell_padding,
             )
 
+        self._draw_generated_at(fig)
         output = BytesIO()
         fig.savefig(output, format="png", dpi=self.dpi)
         return output.getvalue()
+
+    def _draw_generated_at(self, fig) -> None:
+        fig.text(
+            0.985,
+            0.014,
+            self._generated_at_text(),
+            ha="right",
+            va="bottom",
+            fontsize=self.footer_size,
+            color="#64748b",
+        )
+
+    def _generated_at_text(self) -> str:
+        generated_at = self.document.generated_at_ist or datetime.now(LOCAL_TIMEZONE)
+        if generated_at.tzinfo is None:
+            generated_at = LOCAL_TIMEZONE.localize(generated_at)
+        else:
+            generated_at = generated_at.astimezone(LOCAL_TIMEZONE)
+        timezone_label = (
+            "IST" if LOCAL_TIMEZONE_NAME == "Asia/Kolkata" else LOCAL_TIMEZONE_NAME
+        )
+        return f"Generated: {generated_at:%Y-%m-%d %H:%M:%S} {timezone_label}"
 
     def _draw_stack(
         self,

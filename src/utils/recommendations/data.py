@@ -104,6 +104,8 @@ class DataframesProcessor:
         """
         Compute dependant features needed for the ML model.
         """
+        if "PCI_KG/THM" not in live_data:
+            return live_data
         # Example: Unit cost feature
         live_data["UNITCOST LAKHS/THM"] = 0.25 * (
             live_data["COKE RATE KG/THM"]

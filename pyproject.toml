@@ -169,7 +169,7 @@ dependencies = [
     "rich==13.9.4 ; python_full_version >= '3.10' and python_full_version < '4.0'",
     "rpds-py==0.22.3 ; python_full_version >= '3.10' and python_full_version < '4.0'",
     "rsa==4.9 ; python_full_version >= '3.10' and python_full_version < '4.0'",
-    "scikit-learn==1.7.0 ; python_full_version >= '3.10' and python_full_version < '4.0'",
+    "scikit-learn==1.6.1 ; python_full_version >= '3.10' and python_full_version < '4.0'",
     "scipy==1.15.0 ; python_full_version >= '3.10' and python_full_version < '4.0'",
     "seaborn==0.13.2 ; python_full_version >= '3.10' and python_full_version < '4.0'",
     "sentence-transformers==2.6.1 ; python_full_version >= '3.10' and python_full_version < '4.0'",
