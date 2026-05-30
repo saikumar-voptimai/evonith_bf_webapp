@@ -9,13 +9,13 @@ import pandas as pd
 
 from config.config_loader import load_config
 from reports.base import ReportBuilder
-from reports.shift_report.data import (
+from reports.furnace_report.data import (
     ParamStats,
     ShiftRawData,
     ShiftReportData,
     TempRow,
 )
-from reports.shift_report.materials import (
+from reports.furnace_report.materials import (
     MaterialAliasResolver,
     material_code_candidates,
 )
@@ -35,6 +35,7 @@ _ONLINE: dict[str, str] = {
     "etaco": "Process Params - BF2_BODY_ETACO",
     "raft": "Process Params - BF2_BODY_RAFT",
     "o2_flow": "Process Params - BF2_OXYGEN FLOW",
+    "total_o2_flow": "Process Params - BF2_TOTAL OXYGEN FLOW",
     "o2_enr": "Process Params - BF2_OXYGEN ENRICHMENT PCT",
     "coke_rate": "Process Params - BF2_COKE RATE PER THM",
     "nutcoke_rate": "Process Params - BF2_NUT COKE RATE PER THM",
@@ -127,24 +128,44 @@ _THRESH = dict(_SHIFT_REPORT_CONFIG.get("status_thresholds") or {})
 # Helpers.
 
 
-def _mean(df: pd.DataFrame, key: str) -> Optional[float]:
+def _series(df: pd.DataFrame, key: str) -> pd.Series:
     col = _ONLINE.get(key, key)
     if df.empty or col not in df.columns:
-        return None
-    s = df[col].dropna()
+        return pd.Series(dtype="float64")
+    return pd.to_numeric(df[col], errors="coerce").dropna()
+
+
+def _mean(df: pd.DataFrame, key: str) -> Optional[float]:
+    s = _series(df, key)
     return round(float(s.mean()), 2) if len(s) else None
 
 
 def _std(df: pd.DataFrame, key: str) -> Optional[float]:
-    col = _ONLINE.get(key, key)
-    if df.empty or col not in df.columns:
-        return None
-    s = df[col].dropna()
+    s = _series(df, key)
     return round(float(s.std()), 2) if len(s) >= 2 else None
 
 
 def _ps(df: pd.DataFrame, key: str) -> ParamStats:
     return ParamStats(mean=_mean(df, key), std=_std(df, key))
+
+
+def _dry_material_sum(
+    charge_df: pd.DataFrame,
+    analysis: pd.DataFrame,
+    key: str,
+    *,
+    end_time,
+) -> Optional[float]:
+    total = 0.0
+    for charge_col in _CHARGE_COLS[key]:
+        mt = _charge_column_total(charge_df, charge_col)
+        if mt <= 0:
+            continue
+        tm = _latest_value(analysis, charge_col, ["tm"], end_time=end_time)
+        if tm is None:
+            return None
+        total += mt * max(0.0, 100.0 - tm) / 100.0
+    return total
 
 
 def _sum_required(*values: Optional[float]) -> Optional[float]:
@@ -174,6 +195,32 @@ def _sum_charge_columns(df: pd.DataFrame, cols: list[str]) -> Optional[float]:
 
     total = float(values.sum(skipna=True).sum())
     return round(total, 2)
+
+
+def _format_ratio_part(value: float) -> str:
+    if value == 0:
+        return "0"
+    text = f"{value:.2f}"
+    return text if abs(value) < 1 else text.rstrip("0").rstrip(".")
+
+
+def calculate_burden_ratio(
+    ore_t: Optional[float],
+    sinter_t: Optional[float],
+    pellet_t: Optional[float],
+) -> Optional[str]:
+    if all(value is None for value in (ore_t, sinter_t, pellet_t)):
+        return None
+
+    numeric_values = [float(value or 0.0) for value in (ore_t, sinter_t, pellet_t)]
+    total = sum(numeric_values)
+    if total <= 0:
+        return None
+
+    return ": ".join(
+        _format_ratio_part((value / total) * 100)
+        for value in numeric_values
+    )
 
 
 def _charge_column_total(df: pd.DataFrame, col: str) -> float:
@@ -306,6 +353,47 @@ def _kg_per_thm(
     return round((percent_mt_sum * 10.0) / production_t, 2)
 
 
+def _source_percent_mt_sum(
+    charge_df: pd.DataFrame,
+    analysis: pd.DataFrame,
+    spec: dict[str, Any],
+    *,
+    end_time,
+) -> tuple[float, bool]:
+    total = 0.0
+    used = False
+    pct_cols = [str(col) for col in spec.get("analysis_columns", [])]
+    for charge_col in _charge_columns(spec):
+        mt = _charge_column_total(charge_df, charge_col)
+        if mt <= 0:
+            continue
+        pct = _latest_value(analysis, charge_col, pct_cols, end_time=end_time)
+        if pct is None:
+            continue
+        total += pct * mt
+        used = True
+    return total, used
+
+
+def calculate_ibrm(
+    charge_df: pd.DataFrame,
+    *,
+    production_t: Optional[float],
+    end_time,
+    ore_df: pd.DataFrame,
+    sinter_t: Optional[float],
+) -> Optional[float]:
+    if not production_t or sinter_t is None:
+        return None
+
+    analysis = _analysis_with_time(ore_df)
+    dry_ore_t = _dry_material_sum(charge_df, analysis, "ore", end_time=end_time)
+    dry_pellet_t = _dry_material_sum(charge_df, analysis, "pellet", end_time=end_time)
+    if dry_ore_t is None or dry_pellet_t is None:
+        return None
+    return round((dry_ore_t + dry_pellet_t + sinter_t) / production_t, 2)
+
+
 def _burden_moisture_input(
     charge_df: pd.DataFrame,
     *,
@@ -324,16 +412,14 @@ def _burden_moisture_input(
     used = False
     for source, spec in _MOISTURE_SOURCES.items():
         analysis = analyses.get(source, pd.DataFrame())
-        pct_cols = [str(col) for col in spec.get("analysis_columns", [])]
-        for charge_col in _charge_columns(spec):
-            mt = _charge_column_total(charge_df, charge_col)
-            if mt <= 0:
-                continue
-            pct = _latest_value(analysis, charge_col, pct_cols, end_time=end_time)
-            if pct is None:
-                continue
-            total += pct * mt
-            used = True
+        source_total, source_used = _source_percent_mt_sum(
+            charge_df,
+            analysis,
+            spec,
+            end_time=end_time,
+        )
+        total += source_total
+        used = used or source_used
     return _kg_per_thm(total, production_t) if used else None
 
 
@@ -420,7 +506,23 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
         # One row in offline_feed.charge_data represents one charge in the shift.
         total_charges = int(ch.shape[0]) if not ch.empty else 0
         prod_rate = _mean(df, "prod_rate")
-        theoretical_production = round(prod_rate * 8, 2) if prod_rate else None
+        theoretical_production = (
+            round(prod_rate * raw.duration_hours, 2) if prod_rate else None
+        )
+        coke_t = _charge_sum(ch, "coke")
+        nut_coke_t = _charge_sum(ch, "nut_coke")
+        sinter_t = _charge_sum(ch, "sinter")
+        ore_t = _charge_sum(ch, "ore")
+        pellet_t = _charge_sum(ch, "pellet")
+        flux_t = _charge_sum(ch, "flux")
+        burden_ratio = calculate_burden_ratio(ore_t, sinter_t, pellet_t)
+        ibrm = calculate_ibrm(
+            ch,
+            production_t=theoretical_production,
+            end_time=raw.shift_end_ist,
+            ore_df=raw.ore_chemistry_df,
+            sinter_t=sinter_t,
+        )
 
         # Slag basicity
         cao = _hm_mean(hm, "slag_cao")
@@ -464,12 +566,12 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             production_rate=prod_rate,
             theoretical_production=theoretical_production,
             total_charges=total_charges,
-            coke_t=_charge_sum(ch, "coke"),
-            nut_coke_t=_charge_sum(ch, "nut_coke"),
-            sinter_t=_charge_sum(ch, "sinter"),
-            ore_t=_charge_sum(ch, "ore"),
-            pellet_t=_charge_sum(ch, "pellet"),
-            flux_t=_charge_sum(ch, "flux"),
+            coke_t=coke_t,
+            nut_coke_t=nut_coke_t,
+            sinter_t=sinter_t,
+            ore_t=ore_t,
+            pellet_t=pellet_t,
+            flux_t=flux_t,
             fuel_rate=fuel_rate_val,
             coke_rate=coke_rate_val,
             nut_coke_rate=nut_coke_rate_val,
@@ -486,6 +588,7 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             furnace_bottom_dp=_ps(df, "furnace_bottom_dp"),
             furnace_total_dp=_ps(df, "furnace_total_dp"),
             o2_flow=_ps(df, "o2_flow"),
+            total_o2_flow=raw.total_o2_flow_max if raw.report_type == "Day" else None,
             o2_enrichment=_ps(df, "o2_enr"),
             permeability=_ps(df, "perm"),
             etaco=_ps(df, "etaco"),
@@ -500,5 +603,8 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             hearth_6_1_b=_mean(df, "hearth_6_1_b"),
             burden_moisture_input=burden_moisture_input,
             fines_input=fines_input,
+            burden_ratio=burden_ratio,
+            ibrm=ibrm,
             used_materials=_used_charge_materials(ch, material_resolver),
+            report_type=raw.report_type,
         )

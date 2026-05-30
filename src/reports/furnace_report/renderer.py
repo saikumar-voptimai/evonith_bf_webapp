@@ -1,4 +1,4 @@
-"""Structured presentation for shift reports."""
+"""Structured presentation for furnace reports."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from reports.rendering import (
     markdown_table,
     parse_markdown_table,
 )
-from reports.shift_report.data import ParamStats, ShiftReportData, TempRow
+from reports.furnace_report.data import ParamStats, ShiftReportData, TempRow
 
 SHIFT_SECTION_TITLES = (
     "Fuel Rate",
@@ -58,9 +58,16 @@ def as_document(
 ) -> ReportDocument:
     """Render computed shift data as a structured report document."""
     r = report
+    heading = (
+        "SHIFT HANDOVER REPORT - BF2 EVONITH STEEL"
+        if r.report_type == "Shift"
+        else "DAY REPORT - BF2 EVONITH STEEL"
+    )
+    id_label = "Shift ID" if r.report_type == "Shift" else "Report ID"
+    id_value = r.shift_label if r.report_type == "Shift" else "Day"
     preamble = (
-        "**SHIFT HANDOVER REPORT - BF2 EVONITH STEEL**\n"
-        f"**Shift ID:** {r.shift_label} &nbsp;"
+        f"**{heading}**\n"
+        f"**{id_label}:** {id_value} &nbsp;"
         f" **Period:** {r.shift_start_ist.strftime('%Y-%m-%d %H:%M')}"
         f" -> {r.shift_end_ist.strftime('%Y-%m-%d %H:%M')} (IST)"
     )
@@ -153,7 +160,7 @@ def as_document(
             )
         )
     if analysis.strip():
-        notes.append(ReportNote(f"**Shift Analysis**\n\n{analysis.strip()}", kind="analysis"))
+        notes.append(ReportNote(f"**Report Analysis**\n\n{analysis.strip()}", kind="analysis"))
 
     return ReportDocument(
         title=title,
@@ -169,7 +176,7 @@ def as_markdown(report: ShiftReportData, analysis: str = "") -> str:
 
 
 def document_from_markdown(title: str, summary_text: str) -> ReportDocument:
-    """Build a structured shift-report document from saved markdown."""
+    """Build a structured report document from saved markdown."""
     tables, pre, post = _normalize_shift_markdown_tables(summary_text)
     document = generic_document_from_markdown(
         title,
@@ -189,7 +196,7 @@ def _classify_shift_note(note: ReportNote) -> ReportNote:
     first_line = note.text.strip().splitlines()[0] if note.text.strip() else ""
     if first_line.startswith(("Flux :", "Ore :")):
         return ReportNote(note.text, placement=note.placement, kind="material_usage")
-    if first_line == "**Shift Analysis**":
+    if first_line in {"**Shift Analysis**", "**Report Analysis**"}:
         return ReportNote(note.text, placement=note.placement, kind="analysis")
     return note
 
@@ -207,12 +214,7 @@ def _parameter_rows(r: ShiftReportData) -> list[list[str]]:
     of, ofs = _psr(r.o2_flow)
     oe, oes = _ps(r.o2_enrichment)
 
-    return [
-        ["**Production**", "", "", ""],
-        ["Production rate", "t/hr", _v(r.production_rate), "-"],
-        ["Theoretical Production", "tons", _v(r.theoretical_production), "-"],
-        ["Total Charges", "no's", _vi(r.total_charges), "-"],
-        ["**Process Parameters**", "", "", ""],
+    process_rows = [
         ["Hot blast volume", "Nm3/hr", bv, bs],
         ["Hot blast temperature", "degC", bt, bts],
         ["Hot blast pressure", "bar", bp, bps],
@@ -220,12 +222,30 @@ def _parameter_rows(r: ShiftReportData) -> list[list[str]]:
         ["Furnace Bottom DP", "bar", bottom_dp, bottom_dps],
         ["Furnace Total DP", "bar", total_dp, total_dps],
         ["Oxygen Flow", "Nm3/hr", of, ofs],
-        ["Oxygen enrichment", "%", oe, oes],
-        ["Permeability", "-", pe, pes],
-        ["ETA CO", "%", ec, ecs],
-        ["RAFT", "degC", ra, ras],
-        ["Burden Moisture Input", "kg/thm", _r(r.burden_moisture_input), "-"],
-        ["Fines Input", "kg/thm", _r(r.fines_input), "-"],
+    ]
+    if r.report_type == "Day":
+        process_rows.append(["Day Total Oxygen Flow", "Nm3", _r(r.total_o2_flow), "-"])
+
+    process_rows.extend(
+        [
+            ["Oxygen enrichment", "%", oe, oes],
+            ["Permeability", "-", pe, pes],
+            ["ETA CO", "%", ec, ecs],
+            ["RAFT", "degC", ra, ras],
+            ["Burden Moisture Input", "kg/thm", _r(r.burden_moisture_input), "-"],
+            ["Fines Input", "kg/thm", _r(r.fines_input), "-"],
+            ["IBRM", "-", _v(r.ibrm), "-"],
+        ]
+    )
+
+    return [
+        ["**Production**", "", "", ""],
+        ["Production rate", "t/hr", _v(r.production_rate), "-"],
+        ["Theoretical Production", "tons", _v(r.theoretical_production), "-"],
+        ["Total Charges", "no's", _vi(r.total_charges), "-"],
+        ["Burden Ratio", "Ore:Sinter:Pellet", r.burden_ratio or "-", "-"],
+        ["**Process Parameters**", "", "", ""],
+        *process_rows,
         ["**Quality**", "", "", ""],
         ["HM Si", "%", _v(r.hm_si), "-"],
         ["HM S", "%", _v(r.hm_s), "-"],

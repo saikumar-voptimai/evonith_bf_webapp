@@ -1,4 +1,4 @@
-"""Material-code alias resolution for shift reports."""
+"""Material-code alias resolution for furnace reports."""
 
 from __future__ import annotations
 

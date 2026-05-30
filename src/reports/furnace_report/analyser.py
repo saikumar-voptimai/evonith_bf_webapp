@@ -1,6 +1,6 @@
-"""LLM analysis: compare current shift to previous shift.
+"""LLM analysis: compare current report window to the previous window.
 
-The only place in the shift report pipeline that calls an LLM.
+The only place in the furnace report pipeline that calls an LLM.
 Sends compact dicts (no DataFrames) — token-efficient by design.
 """
 from __future__ import annotations
@@ -9,14 +9,14 @@ import json
 from typing import Optional
 
 from reports.base import ReportAnalyser
-from reports.shift_report.data import ShiftReportData
+from reports.furnace_report.data import ShiftReportData
 
 _SYSTEM = (
     "You are a blast furnace process expert at BF2. "
-    "You receive key metrics for the current shift and (optionally) the previous shift. "
+    "You receive key metrics for the current report window and optionally the previous window. "
     "Write a concise handover analysis in 3 short paragraphs:\n"
-    "1. Current shift summary — status and the 2-3 most significant parameters.\n"
-    "2. Change vs previous shift — what improved, what deteriorated, and why.\n"
+    "1. Current window summary - status and the 2-3 most significant parameters.\n"
+    "2. Change vs previous window - what improved, what deteriorated, and why.\n"
     "3. Watchlist for incoming crew — specific parameters to monitor and suggested actions.\n"
     "Be direct and numeric. No preamble. Max 200 words total."
 )
@@ -25,7 +25,8 @@ _SYSTEM = (
 def _compact(r: ShiftReportData) -> dict:
     """Strip a ShiftReportData down to the key numbers the LLM needs."""
     return {
-        "shift": f"{r.shift_date} Shift {r.shift_label}",
+        "shift": r.display_name,
+        "report_type": r.report_type,
         "status": r.status,
         "status_flags": r.status_flags,
         "production_rate_t_hr": r.production_rate,
@@ -41,6 +42,8 @@ def _compact(r: ShiftReportData) -> dict:
         "blast_vol_nm3hr": r.blast_volume.mean,
         "blast_temp_degc": r.blast_temp.mean,
         "o2_enr_pct": r.o2_enrichment.mean,
+        "burden_ratio_ore_sinter_pellet": r.burden_ratio,
+        "ibrm": r.ibrm,
         "hm_si_pct": r.hm_si,
         "hm_s_pct": r.hm_s,
         "slag_basicity": r.slag_basicity,
@@ -61,9 +64,9 @@ class ShiftAnalyser(ReportAnalyser[ShiftReportData]):
         current: ShiftReportData,
         previous: Optional[ShiftReportData] = None,
     ) -> str:
-        payload: dict = {"current_shift": _compact(current)}
+        payload: dict = {"current_report": _compact(current)}
         if previous is not None:
-            payload["previous_shift"] = _compact(previous)
+            payload["previous_report"] = _compact(previous)
 
         user_msg = json.dumps(payload, indent=2, default=str)
         return self._llm.generate(system_prompt=_SYSTEM, user_prompt=user_msg)

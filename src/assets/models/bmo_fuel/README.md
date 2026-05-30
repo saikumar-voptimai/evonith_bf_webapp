@@ -1,11 +1,23 @@
-# BMO Fuel Model Bundle Placeholder
+# BMO Fuel Model Bundle
 
-Place the trained artifacts here:
+The BMO V4 fuel-cost model uses a two-stage inference contract:
 
-- `model.joblib`
-- `scaler.joblib` (optional)
+- build the full raw feature row expected by `bmo_scaler.joblib`
+- scale that full row
+- select the columns listed in `bmo_feature_columns.json`
+- pass only those selected scaled columns to `bmo_xgb_model.json`
+
+Required V4 artifacts:
+
+- `bmo_xgb_model.json`
+- `bmo_scaler.joblib`
+- `bmo_feature_columns.json`
+
+Optional metadata artifacts:
+
 - `feature_manifest.json`
 - `lag_map.json`
 - `training_metrics.json`
 
-The webapp runs in fallback mode when model/scaler are not present.
+The webapp runs in fallback mode when model/scaler/feature-selection artifacts are
+not present or cannot be used.
