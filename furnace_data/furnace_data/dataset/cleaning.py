@@ -59,6 +59,11 @@ class ImputationPlan:
     iterative_random_state: int = 0
     iterative_max_iter: int = 10
     simple_column_strategies: Dict[str, str] = field(default_factory=dict)
+    # Columns explicitly excluded from BOTH selective and final imputation.
+    # NaNs in these columns survive cleaning untouched — useful when the user
+    # wants to preserve data-quality gaps for downstream analysis instead of
+    # silently filling them with median / iterative estimates.
+    skip_columns: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -166,6 +171,82 @@ class DataCleaner:
         df = self._apply_tonnage_caps(df)
         df = self._final_imputation(df)
         return df
+
+    def describe_plan(self, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """Return a tabular description of the imputation plan per column.
+
+        The returned :class:`pandas.DataFrame` has one row per UI column the
+        cleaner is configured to retain (``columns.keep_columns``) and the
+        following columns:
+
+        - ``column``        — UI column name
+        - ``source_group``  — which ``ColumnGroups`` bucket holds the name
+                              (``rm_params``, ``temp_params``, ``op_params``, …)
+        - ``category``      — ``"skip"`` | ``"iterative"`` | ``"simple"`` |
+                              ``"final-numeric"`` | ``"final-non-numeric"``
+        - ``strategy``      — the imputer strategy (e.g. ``"iterative"``,
+                              ``"most_frequent"``, ``"median"``, ``"(skipped)"``)
+        - ``in_df``         — only present when ``df`` is passed; True if the
+                              column exists in the input frame
+
+        Use this to audit how each column will be filled before triggering a
+        full rebuild — particularly useful after editing
+        ``cleaning.imputation.skip_imputation_alias_keys`` in the yml.
+        """
+        plan = self.config.imputation_plan
+        groups = self.config.columns
+
+        group_lookup: Dict[str, str] = {}
+        for group_name in (
+            "rm_params", "hm_slag_params", "bd_params",
+            "temp_params", "op_params", "prcs_params", "proxy_params",
+        ):
+            for col in getattr(groups, group_name):
+                group_lookup.setdefault(col, group_name)
+        for col in groups.extra_keep_columns:
+            group_lookup.setdefault(col, "extra_keep_columns")
+
+        skip = set(plan.skip_columns)
+        iterative = set(plan.iterative_base_columns)
+        if plan.include_temperature_columns:
+            iterative |= set(groups.temp_params)
+        simple = dict(plan.simple_column_strategies or {})
+
+        non_numeric_strategy = self.config.final_non_numeric_strategy
+        numeric_strategy = self.config.final_numeric_strategy
+
+        in_df = df is not None
+        rows = []
+        for col in groups.keep_columns:
+            source_group = group_lookup.get(col, "?")
+            if col in skip:
+                category = "skip"
+                strategy = "(skipped)"
+            elif col in iterative:
+                category = "iterative"
+                strategy = "iterative"
+            elif col in simple:
+                category = "simple"
+                strategy = simple[col]
+            else:
+                # Falls through to _final_imputation; numeric vs non-numeric
+                # decided by dtype of the actual data when available.
+                if in_df and col in df.columns and not pd.api.types.is_numeric_dtype(df[col]):
+                    category = "final-non-numeric"
+                    strategy = non_numeric_strategy
+                else:
+                    category = "final-numeric"
+                    strategy = numeric_strategy
+            row = {
+                "column": col,
+                "source_group": source_group,
+                "category": category,
+                "strategy": strategy,
+            }
+            if in_df:
+                row["in_df"] = col in df.columns
+            rows.append(row)
+        return pd.DataFrame(rows)
 
     def _normalize_time_index(self, df):
         cfg = self.config
@@ -294,14 +375,24 @@ class DataCleaner:
 
     def _drop_high_nan_columns(self, df):
         thresh = self.config.col_max_nan_fraction
+        skip = set(self.config.imputation_plan.skip_columns)
         nan_frac = df.isna().mean()
-        drop_cols = nan_frac[nan_frac > thresh].index.tolist()
+        candidates = nan_frac[nan_frac > thresh].index.tolist()
+        # Columns explicitly marked "NaN is normal here" (skip_imputation_alias_keys)
+        # are exempt from this drop — the user opts to keep them with NaN intact.
+        drop_cols = [c for c in candidates if c not in skip]
+        spared = [c for c in candidates if c in skip]
         if drop_cols:
             self.logger.warning(
                 "Dropping %d high-NaN columns (>%d%% missing): %s",
                 len(drop_cols), int(thresh * 100), drop_cols,
             )
             df = df.drop(columns=drop_cols)
+        if spared:
+            self.logger.info(
+                "Preserved %d high-NaN columns via skip_imputation_alias_keys: %s",
+                len(spared), spared,
+            )
         return df
 
     def _apply_row_filters(self, df):
@@ -332,9 +423,15 @@ class DataCleaner:
 
     def _selective_imputation(self, df):
         plan = self.config.imputation_plan
-        iter_cols: List[str] = [c for c in plan.iterative_base_columns if c in df.columns]
+        skip = set(plan.skip_columns)
+        iter_cols: List[str] = [
+            c for c in plan.iterative_base_columns if c in df.columns and c not in skip
+        ]
         if plan.include_temperature_columns:
-            iter_cols.extend([c for c in self.config.columns.temp_params if c in df.columns])
+            iter_cols.extend(
+                c for c in self.config.columns.temp_params
+                if c in df.columns and c not in skip
+            )
         seen: set = set()
         iter_cols = [c for c in iter_cols if not (c in seen or seen.add(c))]  # type: ignore[func-returns-value]
         if iter_cols:
@@ -351,7 +448,7 @@ class DataCleaner:
                     index=df.index,
                 )
         for col, strategy in (plan.simple_column_strategies or {}).items():
-            if col not in df.columns:
+            if col not in df.columns or col in skip:
                 continue
             imp2 = SimpleImputer(strategy=strategy, keep_empty_features=True)
             df[col] = imp2.fit_transform(df[[col]]).ravel()
@@ -366,8 +463,12 @@ class DataCleaner:
         return df
 
     def _final_imputation(self, df):
-        num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        non_num  = [c for c in df.columns if c not in num_cols]
+        skip = set(self.config.imputation_plan.skip_columns)
+        num_cols = [
+            c for c in df.select_dtypes(include=[np.number]).columns.tolist()
+            if c not in skip
+        ]
+        non_num = [c for c in df.columns if c not in num_cols and c not in skip]
 
         if num_cols:
             # Columns that are entirely NaN after all filters have no signal;
@@ -570,6 +671,10 @@ def build_default_config() -> CleaningConfig:
             simple_column_strategies=_simple_strategies(
                 rename_dict,
                 imputation.get("simple_strategies", []) or [],
+            ),
+            skip_columns=_aliases_for(
+                rename_dict,
+                imputation.get("skip_imputation_alias_keys", []) or [],
             ),
         ),
         tonnage_caps=_tonnage_caps(

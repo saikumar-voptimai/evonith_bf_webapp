@@ -27,41 +27,70 @@ ml_dataset:
   local_tz: "Asia/Kolkata"
   cutoff_date: "2025-12-06"
   static_dataset_path: "src/data/V14_df_filtered.csv"
-  # InfluxDB process_params field name → ML dataset column name (rename_dict key)
+  # InfluxDB process_params field name → Neon-side ML dataset column name.
+  # The output of fetch_online_process_params() uses these Neon snake_case names
+  # so the post-cutoff dataframe shares the Neon historical_static_ml_dataset
+  # schema (required for extend_and_persist's Neon write).  The second-pass
+  # Neon → UI rename happens later in DataFetcher._clean_df via rename_dict.
   online_params:
-    fuel_rate: fuel_rate
-    coke_rate: coke_rate
+    # KPIs and rates
+    fuel_rate:              fuel_rate
+    coke_rate:              coke_rate
     coal_rate_actual_value: actual_kg_thm
-    production_per_hour: production_per_hour
-    body_etaco: body_etaco
-    body_raft: raft_temp_c
-    body_perm: permeability_kgs_hr
-    hot_blast_vol_nm3h: hot_blast_volume_nm3hr
-    hot_blast_press: hot_blast_pressure_bar
-    hot_blast_temp: hot_blast_temp_c
-    top_press_avg: top_pressure_bar
-    oxygen_enrichment_pct: o2_enrichment_pct
-    steam_injections: steam_kgs_hr
-    tuyere_velocity: tuyere_velocity_ms
-    body_dp_total: differential_pressure_total_bar
-    body_dp_bottom: bottom_pressure_bar
-    co_pct: furnace_top_gas_analysis_co_pct
-    co2_pct: furnace_top_gas_analysis_co2_pct
-    h2_pct: furnace_top_gas_analysis_h2_pct
-  # InfluxDB temperature_profile field → rename_dict intermediate key
+    production_per_hour:    production_per_hour
+    charges_per_hour:       charges_per_hr
+    body_etaco:             body_etaco
+    body_raft:              raft_temp_c
+    body_perm:              permeability_kgs_hr
+    # flows / pressures / temperatures
+    hot_blast_vol_nm3h:     hot_blast_volume_nm3hr
+    hot_blast_press:        hot_blast_pressure_bar
+    hot_blast_temp:         hot_blast_temp_c
+    top_press_avg:          top_pressure_bar
+    body_dp_top:            top_bar
+    body_dp_bottom:         bottom_pressure_bar
+    body_dp_total:          differential_pressure_total_bar
+    oxygen_flow:            oxygen_flow_nm3hr
+    oxygen_enrichment_pct:  o2_enrichment_pct
+    steam_injection:        steam_kgs_hr
+    tuyere_velocity:        tuyere_velocity_ms
+    # top gas analysis
+    co_pct:                 furnace_top_gas_analysis_co_pct
+    co2_pct:                furnace_top_gas_analysis_co2_pct
+    h2_pct:                 furnace_top_gas_analysis_h2_pct
+    # top temperatures — four FTG uptake-pipe thermocouples.  top_temp_{1..4}
+    # in InfluxDB correspond to the Neon-side ftg_uptake_{cat16,bt12,ct08,dt04}_c
+    # columns (rename_dict maps those to FTG_UPTAKE_TEMP_{A,B,C,D}).
+    top_temp_1:             ftg_uptake_cat16_c
+    top_temp_2:             ftg_uptake_bt12_c
+    top_temp_3:             ftg_uptake_ct08_c
+    top_temp_4:             ftg_uptake_dt04_c
+    top_temp_avg:           ftg_uptake_avg_c
+  # InfluxDB temperature_profile field → Neon-side ML dataset column name.
+  # The Neon historical dataset stores hearth/bosh/belly/lower-stack pad
+  # temperatures at fixed letter positions; the rename_dict then maps those
+  # to UI names (HEARTH_TEMP_A, BOSH_TEMP_A, etc.).
   temperature_params:
-    temp_12975_a: bosh_a_c
-    temp_12975_b: bosh_b_c
-    temp_12975_c: bosh_c_c
-    temp_12975_d: bosh_d_c
-    temp_15162_a: belly_a_c
-    temp_15162_b: belly_b_c
-    temp_15162_c: belly_c_c
-    temp_15162_d: belly_d_c
-    temp_18660_a: lower_stack_a_c
-    temp_18660_b: lower_stack_b_c
-    temp_18660_c: lower_stack_c_c
-    temp_18660_d: lower_stack_d_c
+    # hearth pad (4373 mm, A..D of 7 sensors A..G)
+    temp_4373_a:            hearth_pad_a_c
+    temp_4373_b:            hearth_pad_b_c
+    temp_4373_c:            hearth_pad_c_c
+    temp_4373_d:            hearth_pad_d_c
+    # bosh
+    temp_12975_a:           bosh_a_c
+    temp_12975_b:           bosh_b_c
+    temp_12975_c:           bosh_c_c
+    temp_12975_d:           bosh_d_c
+    # belly
+    temp_15162_a:           belly_a_c
+    temp_15162_b:           belly_b_c
+    temp_15162_c:           belly_c_c
+    temp_15162_d:           belly_d_c
+    # lower stack
+    temp_18660_a:           lower_stack_a_c
+    temp_18660_b:           lower_stack_b_c
+    temp_18660_c:           lower_stack_c_c
+    temp_18660_d:           lower_stack_d_c
 
 # Geometries
 paths:
@@ -528,7 +557,7 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
     BF2_TOTAL OXYGEN FLOW: total_oxygen
     BF2_OXYGEN ENRICHMENT PCT: oxygen_enrichment_pct
     BF2_THEORETICAL PRODUCTION PER DAY: theoretical_production_per_day
-    BF2_STEAM INJECTION: steam_injections
+    BF2_STEAM INJECTION: steam_injection
     BF2_CHARGES PER HR: charges_per_hour
     BF2_COAL RATE PER THM: coal_rate_actual_value
     BF2_COKE RATE PER THM: coke_rate
@@ -1278,6 +1307,9 @@ cleaning:
       - raft_temp_c
       - pci2_mt
       - sinter_hot_strength_ri
+      - sinter_cold_strength_ai
+      - sinter_cold_strength_ti
+      - sinter_hot_strength_rdi
       - differential_pressure_total_bar
       - oxygen_enrichment_pct
       - oxygen_flow_nm3hr
@@ -1288,6 +1320,12 @@ cleaning:
     simple_strategies:
       - alias_key: charges_per_hr
         strategy: most_frequent
+    # Alias keys whose columns should bypass BOTH selective and final
+    # imputation.  NaNs in these columns survive cleaning untouched, useful
+    # when downstream code needs honest data-quality gaps rather than median /
+    # iterative fills (e.g. pellet chemistry rows without lab samples).
+    # Use the same snake_case mapping names as the rest of this block.
+    skip_imputation_alias_keys: []
 
   tonnage_caps:
     - alias_key: coke_mt

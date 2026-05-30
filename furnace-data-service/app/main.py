@@ -1,12 +1,17 @@
 """FastAPI application entrypoint."""
 
 import logging
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 # Load .env BEFORE any module reads os.environ
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+_SERVICE_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = _SERVICE_ROOT.parent
+
+load_dotenv(_SERVICE_ROOT / ".env")
+os.environ.setdefault("FURNACE_CONFIG_DIR", str(_REPO_ROOT / "src" / "config"))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

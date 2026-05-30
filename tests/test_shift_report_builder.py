@@ -138,7 +138,11 @@ class TestShiftBuilder:
             )
         )
 
-        assert report.burden_ratio == "28: 70: 2"
+        assert report.burden_ratio == "70.0: 28.0: 2.0"
+        assert (
+            "| Burden Ratio | Sinter:Ore:Pellet | 70.0: 28.0: 2.0 | - |"
+            in as_markdown(report)
+        )
 
     def test_burden_ratio_treats_missing_consumption_group_as_zero(self) -> None:
         report = ShiftBuilder().build(
@@ -152,7 +156,7 @@ class TestShiftBuilder:
             )
         )
 
-        assert report.burden_ratio == "28.57: 71.43: 0"
+        assert report.burden_ratio == "71.4: 28.6: 0.0"
 
     def test_material_inputs_use_latest_available_analysis_before_shift_end(
         self,
@@ -243,4 +247,5 @@ class TestShiftBuilder:
         assert isclose(report.theoretical_production or 0.0, 800.0)
         assert report.burden_moisture_input == 1.39
         assert report.ibrm == 0.09
+        assert "| IBRM | - | 0.1 | - |" in as_markdown(report)
         assert report.fines_input == 3.25
