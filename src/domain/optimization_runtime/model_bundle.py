@@ -1,3 +1,11 @@
+"""Model artifact loading for optimization runtime inference.
+
+This module resolves repository-relative model paths, loads model/scaler
+artifacts, and exposes the expected feature schema used by BMO fuel-cost
+prediction. It also supports native XGBoost JSON models to avoid pickle
+compatibility warnings at app startup.
+"""
+
 from __future__ import annotations
 
 import json
@@ -9,7 +17,77 @@ import joblib
 from domain.optimization_runtime.types import ModelBundleInfo
 
 
+class XGBoostJsonModel:
+    """
+    Wrap a native XGBoost JSON booster with a predict-compatible interface.
+
+    The wrapper lets the app load the exported JSON model artifact instead of a
+    pickled estimator. That avoids XGBoost serialization warnings while keeping
+    the same ``predict`` shape expected by the model service.
+
+    Args:
+         - path: Path - Path to the JSON model exported by XGBoost.
+
+    Returns:
+         - return XGBoostJsonModel - Wrapper that can be used like a model object.
+    """
+
+    def __init__(self, path: Path) -> None:
+        """
+        Load the XGBoost booster from its JSON artifact.
+
+        The native booster is cached on the wrapper and exposed with minimal
+        metadata so feature-order discovery still works when XGBoost includes
+        feature names in the JSON model.
+
+        Args:
+             - path: Path - Path to the JSON model exported by XGBoost.
+
+        Returns:
+             - return None - Initializes the booster and feature metadata.
+        """
+
+        from xgboost import Booster
+
+        self.booster = Booster()
+        self.booster.load_model(str(path))
+        self.feature_names_in_ = list(self.booster.feature_names or [])
+
+    def predict(self, X: Any) -> Any:
+        """
+        Predict with the wrapped Booster using the input column order.
+
+        The model service passes a pandas frame or array in trained feature
+        order. This method converts it to ``DMatrix`` and delegates prediction
+        to the native XGBoost booster.
+
+        Args:
+             - X: Any - Tabular model input accepted by XGBoost DMatrix.
+
+        Returns:
+             - return Any - Prediction array returned by the XGBoost booster.
+        """
+
+        from xgboost import DMatrix
+
+        return self.booster.predict(DMatrix(X))
+
+
 def _resolve_repo_path(path_str: str) -> Path:
+    """
+    Resolve an artifact path against common repository locations.
+
+    Model paths in YAML are usually repository-relative, while tests sometimes
+    use temporary or absolute paths. This helper tries the common locations and
+    returns a deterministic candidate even when the file is missing.
+
+    Args:
+         - path_str: str - Absolute or repository-relative artifact path.
+
+    Returns:
+         - return Path - Existing resolved path when found, otherwise first candidate.
+    """
+
     p = Path(str(path_str or "")).expanduser()
     if p.is_absolute():
         return p
@@ -27,7 +105,20 @@ def _resolve_repo_path(path_str: str) -> Path:
 
 
 class ModelBundleService:
-    """Load model/scaler/metadata and expose the expected inference schema."""
+    """
+    Load model, scaler, and metadata artifacts for runtime inference.
+
+    This service centralizes artifact loading for the optimization runtime. It
+    resolves paths, supports native XGBoost JSON models, extracts expected
+    feature order, and records bundle status for Streamlit diagnostics.
+
+    Args:
+         - bundle_cfg: dict[str, Any] | None - Model bundle configuration.
+         - strict_loading: bool | None - Whether artifact load errors should raise.
+
+    Returns:
+         - return ModelBundleService - Service with cached model bundle access.
+    """
 
     def __init__(
         self,
@@ -35,6 +126,20 @@ class ModelBundleService:
         *,
         strict_loading: bool | None = None,
     ) -> None:
+        """
+        Initialize the model bundle loader and cache state.
+
+        Artifact loading is delayed until ``get_bundle`` is called so Streamlit
+        can construct the service cheaply and cache the loaded bundle afterward.
+
+        Args:
+             - bundle_cfg: dict[str, Any] | None - Model bundle configuration.
+             - strict_loading: bool | None - Whether artifact load errors should raise.
+
+        Returns:
+             - return None - Initializes service configuration and empty cache.
+        """
+
         self.bundle_cfg = bundle_cfg or {}
         self.strict_loading = (
             bool(strict_loading)
@@ -44,6 +149,20 @@ class ModelBundleService:
         self._bundle: ModelBundleInfo | None = None
 
     def _load_json(self, path: Path) -> dict[str, Any]:
+        """
+        Load a JSON metadata file when it exists.
+
+        Metadata files are optional in development and tests. Missing or invalid
+        JSON therefore returns an empty dictionary instead of failing the whole
+        model service when strict loading is disabled.
+
+        Args:
+             - path: Path - JSON file path to load.
+
+        Returns:
+             - return dict[str, Any] - Parsed JSON dictionary or an empty dictionary.
+        """
+
         if not path.exists() or path.is_dir():
             return {}
         try:
@@ -52,8 +171,24 @@ class ModelBundleService:
             return {}
 
     def _load_artifact(self, path: Path) -> Any | None:
+        """
+        Load a model or scaler artifact from disk.
+
+        JSON files are treated as native XGBoost model exports. Other artifact
+        formats are loaded with joblib because scalers and legacy model bundles
+        are persisted that way.
+
+        Args:
+             - path: Path - Artifact path for JSON, joblib, or pickle formats.
+
+        Returns:
+             - return Any | None - Loaded artifact, XGBoost wrapper, or None.
+        """
+
         if not path.exists() or path.is_dir():
             return None
+        if path.suffix.lower() == ".json":
+            return XGBoostJsonModel(path)
         return joblib.load(path)
 
     def _extract_expected_features(
@@ -64,6 +199,23 @@ class ModelBundleService:
         feature_manifest: dict[str, Any],
         target_name: str | None,
     ) -> list[str]:
+        """
+        Determine the expected model input feature order.
+
+        The scaler is treated as the source of truth when available because it
+        was fit on the raw training feature matrix. Model metadata and manifest
+        values are fallbacks for bundles that do not include scaler feature names.
+
+        Args:
+             - scaler: Any | None - Loaded scaler artifact, if available.
+             - model: Any | None - Loaded model artifact, if available.
+             - feature_manifest: dict[str, Any] - Optional feature manifest content.
+             - target_name: str | None - Target column that should be excluded.
+
+        Returns:
+             - return list[str] - Ordered feature names required for inference.
+        """
+
         expected_features: list[str]
         if scaler is not None and hasattr(scaler, "feature_names_in_"):
             expected_features = list(scaler.feature_names_in_)
@@ -77,6 +229,20 @@ class ModelBundleService:
         return expected_features
 
     def get_bundle(self) -> ModelBundleInfo:
+        """
+        Load and cache the full model bundle used by runtime inference.
+
+        The bundle combines model, scaler, feature metadata, lag metadata, and
+        training metrics into one object. Loading happens once so repeated BMO
+        predictions reuse the same artifacts and expose stable status details.
+
+        Args:
+             - None
+
+        Returns:
+             - return ModelBundleInfo - Model, scaler, feature metadata, and status.
+        """
+
         if self._bundle is not None:
             return self._bundle
 

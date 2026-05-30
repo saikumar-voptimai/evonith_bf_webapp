@@ -1,3 +1,10 @@
+"""Nonlinear BMO optimizer orchestration.
+
+This module prepares quantity bounds, seeds DE with the LP baseline, evaluates
+candidate wet-quantity vectors, and returns the best total-cost blend found by
+the differential-evolution runtime.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -5,81 +12,73 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from domain.optimization_runtime import ObjectiveResult, OptimizerRunner
 from utils.bmo.constraints import check_blend_constraints, validate_ore_bounds
+from utils.bmo.lp_solver import run_lp_baseline
 from utils.bmo.model_service import FuelUnitCostModelService
 from utils.bmo.objective import BmoObjectiveEvaluator
 from utils.bmo.types import BlendEvaluation, OreInput
-from domain.optimization_runtime import ObjectiveResult, OptimizerRunner
-
-
-def _project_to_bounds_and_sum_one(
-    raw_shares: np.ndarray, min_shares: np.ndarray, max_shares: np.ndarray
-) -> np.ndarray:
-    x = np.clip(raw_shares.astype(float), min_shares, max_shares)
-
-    for _ in range(8):
-        total = float(np.sum(x))
-        if abs(total - 1.0) <= 1e-8:
-            break
-
-        if total < 1.0:
-            deficit = 1.0 - total
-            room = np.clip(max_shares - x, 0.0, None)
-            room_sum = float(np.sum(room))
-            if room_sum <= 1e-10:
-                break
-            x = x + (room / room_sum) * deficit
-        else:
-            excess = total - 1.0
-            slack = np.clip(x - min_shares, 0.0, None)
-            slack_sum = float(np.sum(slack))
-            if slack_sum <= 1e-10:
-                break
-            x = x - (slack / slack_sum) * excess
-
-        x = np.clip(x, min_shares, max_shares)
-
-    total = float(np.sum(x))
-    if total > 0:
-        x = x / total
-        x = np.clip(x, min_shares, max_shares)
-    return x
 
 
 def run_nonlinear_optimizer(
     ores: list[OreInput],
     *,
-    target_total_qty_mt: float,
     min_fe_production_mt: float,
     max_fe_production_mt: float,
     target_slag_qty_mt: float,
     feo_in_slag_pct: float,
-    si_in_slag_pct: float,
     model_service: FuelUnitCostModelService,
     process_context: dict[str, float] | None,
     history_df: pd.DataFrame | None,
     de_cfg: dict[str, Any],
 ) -> tuple[BlendEvaluation | None, list[str]]:
-    pre_errors = validate_ore_bounds(ores, target_total_qty_mt)
+    """
+    Run nonlinear total-cost BMO optimization with DE.
+
+    The nonlinear path starts from the feasible LP baseline, then explores wet
+    quantity vectors with a fuel-aware objective. If the hard LP constraints are
+    infeasible, DE is skipped because there is no reliable feasible seed.
+
+    Args:
+         - ores: list[OreInput] - Ores selected for optimization.
+         - min_fe_production_mt: float - Minimum allowed Fe production in MT.
+         - max_fe_production_mt: float - Maximum allowed Fe production in MT.
+         - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
+         - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
+         - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
+         - process_context: dict[str, float] | None - Latest process variables.
+         - history_df: pd.DataFrame | None - Historical process data for lagged features.
+         - de_cfg: dict[str, Any] - Differential-evolution and penalty settings.
+
+    Returns:
+         - return tuple[BlendEvaluation | None, list[str]] - Best blend and errors.
+    """
+
+    pre_errors = validate_ore_bounds(ores)
     if pre_errors:
         return None, pre_errors
 
-    min_shares = np.array(
-        [float(ore.min_share_pct) / 100.0 for ore in ores], dtype=float
+    lp_blend, lp_errors = run_lp_baseline(
+        ores,
+        min_fe_production_mt=min_fe_production_mt,
+        max_fe_production_mt=max_fe_production_mt,
+        target_slag_qty_mt=target_slag_qty_mt,
+        feo_in_slag_pct=feo_in_slag_pct,
     )
-    max_shares = np.array(
-        [float(ore.max_share_pct) / 100.0 for ore in ores], dtype=float
-    )
-    bounds = list(zip(min_shares.tolist(), max_shares.tolist()))
+    if lp_blend is None:
+        return None, [
+            "Total-cost optimizer skipped because hard LP constraints are infeasible.",
+            *lp_errors,
+        ]
+
+    bounds = [(0.0, max(0.0, float(ore.stock_mt))) for ore in ores]
 
     evaluator = BmoObjectiveEvaluator(
         ores=ores,
-        target_total_qty_mt=float(target_total_qty_mt),
         min_fe_production_mt=float(min_fe_production_mt),
         max_fe_production_mt=float(max_fe_production_mt),
         target_slag_qty_mt=float(target_slag_qty_mt),
         feo_in_slag_pct=float(feo_in_slag_pct),
-        si_in_slag_pct=float(si_in_slag_pct),
         model_service=model_service,
         process_context=process_context,
         history_df=history_df,
@@ -87,15 +86,47 @@ def run_nonlinear_optimizer(
     )
 
     def objective(raw_x: np.ndarray) -> ObjectiveResult:
-        shares = _project_to_bounds_and_sum_one(raw_x, min_shares, max_shares)
-        result = evaluator.evaluate_shares(shares)
-        result.diagnostics["projected_shares"] = shares.tolist()
+        """
+        Evaluate a DE candidate wet-quantity vector.
+
+        This nested adapter keeps candidate diagnostics attached to each SciPy
+        evaluation. The outer runner can then recover the best blend and expose
+        the quantities that produced it.
+
+        Args:
+             - raw_x: np.ndarray - Candidate wet quantities from differential evolution.
+
+        Returns:
+             - return ObjectiveResult - Penalized objective result for the quantities.
+        """
+
+        result = evaluator.evaluate_quantities(raw_x)
+        result.diagnostics["candidate_quantities_mt"] = np.asarray(
+            raw_x, dtype=float
+        ).tolist()
         return result
+
+    baseline_solution: dict[str, Any] | None = None
+    if lp_blend.total_qty_mt > 0:
+        lp_quantities = np.array(
+            [float(lp_blend.quantities_mt.get(ore.ore_id, 0.0)) for ore in ores],
+            dtype=float,
+        )
+        baseline_result = objective(lp_quantities)
+        baseline_solution = {
+            "x": lp_quantities.tolist(),
+            "objective": float(baseline_result.objective_value),
+            "feasible": bool(baseline_result.feasible),
+            "components": dict(baseline_result.components),
+            "violations": list(baseline_result.violations),
+            "diagnostics": dict(baseline_result.diagnostics),
+        }
 
     runner = OptimizerRunner(de_cfg)
     optimization_result = runner.run_differential_evolution(
         bounds=bounds,
         objective_fn=objective,
+        baseline_solution=baseline_solution,
     )
 
     best_diag = dict(optimization_result.best_solution.get("diagnostics", {}))
@@ -116,7 +147,6 @@ def run_nonlinear_optimizer(
     violations = check_blend_constraints(
         blend,
         ores,
-        target_total_qty_mt=target_total_qty_mt,
         min_fe_production_mt=min_fe_production_mt,
         max_fe_production_mt=max_fe_production_mt,
         target_slag_qty_mt=target_slag_qty_mt,

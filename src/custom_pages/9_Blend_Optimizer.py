@@ -1,7 +1,14 @@
+"""Streamlit page flow for the Blend Mix Optimizer.
+
+This page wires BMO configuration, data context, fuel-cost model inference,
+LP baseline optimization, nonlinear DE optimization, and result rendering into
+one Streamlit workflow for ore blend planning.
+"""
+
 from __future__ import annotations
 
-from dataclasses import replace
 import inspect
+from dataclasses import replace
 from typing import Any
 
 import pandas as pd
@@ -9,12 +16,6 @@ import streamlit as st
 
 from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
-from utils.bmo import (
-    FuelUnitCostModelService,
-    OreInput,
-    run_lp_baseline,
-    run_nonlinear_optimizer,
-)
 from domain.optimization_runtime import build_runtime_config
 from ui.bmo import (
     apply_bmo_styles,
@@ -25,6 +26,13 @@ from ui.bmo import (
     render_header,
     render_ore_editor,
 )
+from utils.bmo import (
+    FuelUnitCostModelService,
+    OreInput,
+    run_lp_baseline,
+    run_nonlinear_optimizer,
+)
+from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.session import is_logged_in
 
 if not is_logged_in():
@@ -41,12 +49,40 @@ else:
 
 
 def _get_bmo_config() -> dict[str, Any]:
+    """
+    Load the BMO settings block from Streamlit app configuration.
+
+    The page keeps all optimizer, model, data-source, and UI defaults in the
+    dedicated BMO settings file. Returning only the ``bmo`` block avoids leaking
+    unrelated application settings into the optimizer flow.
+
+    Args:
+         - None
+
+    Returns:
+         - return dict[str, Any] - BMO configuration dictionary.
+    """
+
     cfg = load_config("setting_bmo.yml")
     return cfg.get("bmo", {})
 
 
 @_resource_cache(show_spinner=False)
 def _get_context_provider() -> EvonithBmoContextProvider:
+    """
+    Create or return the cached Evonith BMO context provider.
+
+    The provider can perform network and file reads, so Streamlit caches the
+    instance across reruns. This keeps the page responsive while preserving the
+    same mapping and settings for one app session.
+
+    Args:
+         - None
+
+    Returns:
+         - return EvonithBmoContextProvider - Cached stock, chemistry, and history provider.
+    """
+
     return EvonithBmoContextProvider(
         setting_path="src/config/setting_bmo.yml",
         mapping_path="src/config/bmo_ore_mapping.yml",
@@ -55,6 +91,20 @@ def _get_context_provider() -> EvonithBmoContextProvider:
 
 @_resource_cache(show_spinner=False)
 def _get_model_service() -> FuelUnitCostModelService:
+    """
+    Create or return the cached BMO fuel-cost model service.
+
+    Loading the XGBoost model, scaler, and selected feature list is relatively
+    expensive. Caching the service keeps model artifacts warm while allowing
+    each candidate blend to request fresh predictions.
+
+    Args:
+         - None
+
+    Returns:
+         - return FuelUnitCostModelService - Cached fuel-cost prediction service.
+    """
+
     bmo_cfg = _get_bmo_config()
     runtime_cfg = build_runtime_config(bmo_cfg)
     bundle_cfg = dict(runtime_cfg.get("model_bundle", {}))
@@ -73,6 +123,21 @@ def _get_model_service() -> FuelUnitCostModelService:
 def _selected_ores_from_editor(
     editor_df: pd.DataFrame, base_ores: list[OreInput]
 ) -> list[OreInput]:
+    """
+    Convert edited Streamlit ore rows into typed selected ore inputs.
+
+    The editor lets users change wet stock, price, share limits, and moisture.
+    Moisture is written back into the nested chemistry object so the optimizer
+    uses the same dry-weight Fe calculation that the result table displays.
+
+    Args:
+         - editor_df: pd.DataFrame - User-edited ore selection table.
+         - base_ores: list[OreInput] - Original ore inputs from the context provider.
+
+    Returns:
+         - return list[OreInput] - Selected ores with edited stock, price, and bounds.
+    """
+
     by_id = {ore.ore_id: ore for ore in base_ores}
     selected_ores: list[OreInput] = []
 
@@ -83,6 +148,9 @@ def _selected_ores_from_editor(
         if ore_id not in by_id:
             continue
         base = by_id[ore_id]
+        moisture_pct = row.get("moisture_pct", base.chemistry.moisture_pct)
+        if pd.isna(moisture_pct):
+            moisture_pct = base.chemistry.moisture_pct
         selected_ores.append(
             replace(
                 base,
@@ -90,6 +158,7 @@ def _selected_ores_from_editor(
                 price_rs_per_mt=float(row["price_rs_per_mt"]),
                 min_share_pct=float(row["min_share_pct"]),
                 max_share_pct=float(row["max_share_pct"]),
+                chemistry=replace(base.chemistry, moisture_pct=float(moisture_pct)),
             )
         )
     return selected_ores
@@ -126,26 +195,20 @@ with layout_col2:
         value=int(bmo_cfg.get("chemistry_window_days", 30)),
     )
 
-target_col1, target_col2, target_col3, target_col4 = st.columns(4)
-target_total_qty_mt = target_col1.number_input(
-    "Target total burden (MT)",
-    min_value=1.0,
-    value=float(target_cfg.get("target_total_qty_mt", 3800.0)),
-    step=10.0,
-)
-min_fe_production_mt = target_col2.number_input(
+target_col1, target_col2, target_col3 = st.columns(3)
+min_fe_production_mt = target_col1.number_input(
     "Min Fe (MT)",
     min_value=0.0,
     value=float(target_cfg.get("min_fe_production_mt", 2350.0)),
     step=5.0,
 )
-max_fe_production_mt = target_col3.number_input(
+max_fe_production_mt = target_col2.number_input(
     "Max Fe (MT)",
     min_value=0.0,
     value=float(target_cfg.get("max_fe_production_mt", 2500.0)),
     step=5.0,
 )
-target_slag_qty_mt = target_col4.number_input(
+target_slag_qty_mt = target_col3.number_input(
     "Max Slag (MT)",
     min_value=0.0,
     value=float(target_cfg.get("target_slag_qty_mt", 750.0)),
@@ -190,34 +253,47 @@ if run_lp_clicked or run_total_clicked:
         feo_in_slag_pct = float(
             bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4)
         )
-        si_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("si_in_slag_pct", 0.5))
 
-        lp_result, lp_errors = run_lp_baseline(
-            selected_ores,
-            target_total_qty_mt=target_total_qty_mt,
-            min_fe_production_mt=min_fe_production_mt,
-            max_fe_production_mt=max_fe_production_mt,
-            target_slag_qty_mt=target_slag_qty_mt,
-            feo_in_slag_pct=feo_in_slag_pct,
-            si_in_slag_pct=si_in_slag_pct,
-        )
-        st.session_state["bmo_lp_result"] = lp_result
-        st.session_state["bmo_lp_errors"] = lp_errors
-
-        if run_total_clicked:
-            de_result, de_errors = run_nonlinear_optimizer(
+        with st.spinner("Running LP baseline..."):
+            lp_result, lp_errors = run_lp_baseline(
                 selected_ores,
-                target_total_qty_mt=target_total_qty_mt,
                 min_fe_production_mt=min_fe_production_mt,
                 max_fe_production_mt=max_fe_production_mt,
                 target_slag_qty_mt=target_slag_qty_mt,
                 feo_in_slag_pct=feo_in_slag_pct,
-                si_in_slag_pct=si_in_slag_pct,
-                model_service=model_service,
-                process_context=process_context,
-                history_df=history_df,
-                de_cfg=opt_cfg,
             )
+            if lp_result is not None:
+                lp_physical_result = lp_result
+                lp_result = evaluate_blend_with_fuel_prediction(
+                    ores=selected_ores,
+                    quantities_mt=lp_physical_result.quantities_mt,
+                    feo_in_slag_pct=feo_in_slag_pct,
+                    model_service=model_service,
+                    process_context=process_context,
+                    history_df=history_df,
+                )
+                lp_result.feasible = lp_physical_result.feasible
+                lp_result.violations = lp_physical_result.violations
+                lp_result.diagnostics["lp_baseline_note"] = (
+                    "LP quantities are ore-cost optimized; fuel cost is predicted "
+                    "after solving for comparison."
+                )
+        st.session_state["bmo_lp_result"] = lp_result
+        st.session_state["bmo_lp_errors"] = lp_errors
+
+        if run_total_clicked:
+            with st.spinner("Running total cost optimizer..."):
+                de_result, de_errors = run_nonlinear_optimizer(
+                    selected_ores,
+                    min_fe_production_mt=min_fe_production_mt,
+                    max_fe_production_mt=max_fe_production_mt,
+                    target_slag_qty_mt=target_slag_qty_mt,
+                    feo_in_slag_pct=feo_in_slag_pct,
+                    model_service=model_service,
+                    process_context=process_context,
+                    history_df=history_df,
+                    de_cfg=opt_cfg,
+                )
             st.session_state["bmo_de_result"] = de_result
             st.session_state["bmo_de_errors"] = de_errors
         else:
@@ -282,6 +358,7 @@ if lp_result is not None or de_result is not None:
                         "fuel_cost_rs_per_thm": lp_result.fuel_cost_per_thm_rs,
                         "fe_production_mt": lp_result.fe_production_mt,
                         "slag_mt": lp_result.slag_mt,
+                        "slag_rate_kg_per_thm": lp_result.slag_rate_kg_per_thm,
                         "feasible": lp_result.feasible,
                     },
                     {
@@ -291,6 +368,7 @@ if lp_result is not None or de_result is not None:
                         "fuel_cost_rs_per_thm": de_result.fuel_cost_per_thm_rs,
                         "fe_production_mt": de_result.fe_production_mt,
                         "slag_mt": de_result.slag_mt,
+                        "slag_rate_kg_per_thm": de_result.slag_rate_kg_per_thm,
                         "feasible": de_result.feasible,
                     },
                 ]
@@ -299,7 +377,9 @@ if lp_result is not None or de_result is not None:
             dataframe_sig = inspect.signature(st.dataframe)
             if "hide_index" in dataframe_sig.parameters:
                 df_kwargs["hide_index"] = True
-            if "use_container_width" in dataframe_sig.parameters:
+            if "width" in dataframe_sig.parameters:
+                df_kwargs["width"] = "stretch"
+            elif "use_container_width" in dataframe_sig.parameters:
                 df_kwargs["use_container_width"] = True
             st.dataframe(comparison_df, **df_kwargs)
         else:
