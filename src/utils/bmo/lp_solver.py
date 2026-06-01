@@ -22,8 +22,7 @@ from utils.bmo.types import BlendEvaluation, OreInput
 def run_lp_baseline(
     ores: list[OreInput],
     *,
-    min_fe_production_mt: float,
-    max_fe_production_mt: float,
+    target_production_mt: float,
     target_slag_qty_mt: float,
     feo_in_slag_pct: float,
 ) -> tuple[BlendEvaluation | None, list[str]]:
@@ -36,8 +35,7 @@ def run_lp_baseline(
 
     Args:
          - ores: list[OreInput] - Ores selected for optimization.
-         - min_fe_production_mt: float - Minimum dry-weight Fe production in MT.
-         - max_fe_production_mt: float - Maximum dry-weight Fe production in MT.
+         - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum dry-weight slag quantity in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
 
@@ -80,13 +78,11 @@ def run_lp_baseline(
     )
 
     a_ub_rows = [
-        -fe_coeff,  # Fe >= min
-        fe_coeff,  # Fe <= max
+        -fe_coeff,  # Fe >= target
         slag_coeff,  # Slag <= target
     ]
     b_ub_values = [
-        -float(min_fe_production_mt),
-        float(max_fe_production_mt),
+        -float(target_production_mt),
         float(target_slag_qty_mt),
     ]
 
@@ -133,8 +129,7 @@ def run_lp_baseline(
     violations = check_blend_constraints(
         blend,
         ores,
-        min_fe_production_mt=min_fe_production_mt,
-        max_fe_production_mt=max_fe_production_mt,
+        target_production_mt=target_production_mt,
         target_slag_qty_mt=target_slag_qty_mt,
     )
     blend.feasible = len(violations) == 0

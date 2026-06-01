@@ -244,8 +244,7 @@ def test_lp_baseline_uses_dry_weight_fe_constraint():
 
     blend, errors = run_lp_baseline(
         ores,
-        min_fe_production_mt=55.0,
-        max_fe_production_mt=100.0,
+        target_production_mt=55.0,
         target_slag_qty_mt=100.0,
         feo_in_slag_pct=0.0,
     )
@@ -302,8 +301,7 @@ def test_bmo_objective_evaluator_runs_with_fallback_model():
     )
     evaluator = BmoObjectiveEvaluator(
         ores=ores,
-        min_fe_production_mt=2100.0,
-        max_fe_production_mt=2600.0,
+        target_production_mt=2100.0,
         target_slag_qty_mt=900.0,
         feo_in_slag_pct=0.4,
         model_service=model_service,
@@ -348,8 +346,7 @@ def test_blend_constraint_check_tolerates_small_fe_rounding_delta():
         check_blend_constraints(
             blend,
             [ore],
-            min_fe_production_mt=2350.0,
-            max_fe_production_mt=2500.0,
+            target_production_mt=2350.0,
             target_slag_qty_mt=750.0,
         )
         == []
@@ -396,8 +393,7 @@ def test_nonlinear_optimizer_respects_stock_caps_and_keeps_feasible_baseline():
 
     blend, errors = run_nonlinear_optimizer(
         ores,
-        min_fe_production_mt=58.0,
-        max_fe_production_mt=80.0,
+        target_production_mt=58.0,
         target_slag_qty_mt=30.0,
         feo_in_slag_pct=0.4,
         model_service=model_service,
@@ -445,8 +441,7 @@ def test_nonlinear_optimizer_skips_de_when_lp_constraints_are_infeasible():
 
     blend, errors = run_nonlinear_optimizer(
         ores,
-        min_fe_production_mt=130.0,
-        max_fe_production_mt=150.0,
+        target_production_mt=130.0,
         target_slag_qty_mt=100.0,
         feo_in_slag_pct=0.4,
         model_service=model_service,

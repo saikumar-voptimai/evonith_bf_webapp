@@ -74,9 +74,9 @@ def render_header(bundle_status: dict[str, Any]) -> None:
     """
     Render the BMO page header and model bundle status.
 
-    The header gives operators a quick signal about whether the fuel model is
-    loaded or the deterministic fallback is active. It keeps model status visible
-    before users run LP or DE.
+    The header gives operators a quick signal about the fuel model state before
+    they run LP or DE. It also surfaces bundle warnings when artifact versions
+    or paths prevent safe model inference.
 
     Args:
          - bundle_status: dict[str, Any] - Model/scaler status from model service.
@@ -85,8 +85,14 @@ def render_header(bundle_status: dict[str, Any]) -> None:
          - return None - Writes header and warnings to the Streamlit page.
     """
 
-    model_status = "Loaded" if bundle_status.get("model_loaded") else "Fallback"
-    scaler_status = "Loaded" if bundle_status.get("scaler_loaded") else "Missing"
+    if bundle_status:
+        model_status = "Loaded" if bundle_status.get("model_loaded") else "Fallback"
+        scaler_status = "Loaded" if bundle_status.get("scaler_loaded") else "Missing"
+        feature_count = bundle_status.get("feature_count", 0)
+    else:
+        model_status = "Not loaded"
+        scaler_status = "Not loaded"
+        feature_count = 0
     status_class = (
         "bmo-status-ok" if bundle_status.get("model_loaded") else "bmo-status-warn"
     )
@@ -100,7 +106,7 @@ def render_header(bundle_status: dict[str, Any]) -> None:
         <div class="bmo-subtle">
           Model: <span class="{status_class}">{model_status}</span>
           &nbsp;|&nbsp; Scaler: {scaler_status}
-          &nbsp;|&nbsp; Expected features: {bundle_status.get("feature_count", 0)}
+          &nbsp;|&nbsp; Expected features: {feature_count}
         </div>
         """,
         unsafe_allow_html=True,
@@ -169,10 +175,23 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "Editable table is not available in this Streamlit version. "
             "Using default ore mapping values for this run."
         )
-        _safe_dataframe(editor_df, hide_index=True, use_container_width=True)
+        _safe_dataframe(
+            editor_df.drop(columns=["ore_id"], errors="ignore"),
+            hide_index=True,
+            use_container_width=True,
+        )
         return editor_df
 
     sig = inspect.signature(editor_fn)
+    visible_columns = (
+        "selected",
+        "ore_name",
+        "stock_mt",
+        "price_rs_per_mt",
+        "moisture_pct",
+        "min_share_pct",
+        "max_share_pct",
+    )
     editor_kwargs: dict[str, Any] = {
         "hide_index": True,
         "column_config": {
@@ -196,6 +215,8 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             ),
         },
     }
+    if "column_order" in sig.parameters:
+        editor_kwargs["column_order"] = visible_columns
     if "width" in sig.parameters:
         editor_kwargs["width"] = "stretch"
     elif "use_container_width" in sig.parameters:
@@ -234,7 +255,7 @@ def render_blend_metrics(title: str, blend: BlendEvaluation) -> None:
 
     c9, c10, c11, c12 = st.columns(4)
     c9.metric("Slag Rate (kg/THM)", f"{blend.slag_rate_kg_per_thm:,.2f}")
-    c10.metric("Effective Fe (%)", f"{blend.effective_fe_pct:,.3f}")
+    c10.empty()
     c11.empty()
     c12.empty()
 

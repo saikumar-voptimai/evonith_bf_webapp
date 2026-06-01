@@ -20,6 +20,10 @@ from domain.optimization_runtime import (
 from domain.optimization_runtime import (
     normalize_feature_name as _normalize_feature_name,
 )
+from utils.bmo.calculations import (
+    compute_dry_weight_mt,
+    compute_fe_contribution_mt,
+)
 from utils.bmo.types import OreInput
 
 
@@ -102,6 +106,25 @@ _TRAINING_ALIASES: dict[str, str] = {
     "FURNACE TOP GAS_UPTAKE TEMP. OC.2CT-08DEG. OC": "FTG_UPTAKE_TEMP_C",
     "FURNACE TOP GAS_UPTAKE TEMP. OC.3DT-04DEG. OC": "FTG_UPTAKE_TEMP_D",
 }
+
+_THM_SOURCE_ALIASES: dict[str, tuple[str, ...]] = {
+    "COKE_CALC_THM": ("COKE_CALC_MT",),
+    "COKE_OFF_THM": ("COKE_OFF_MT",),
+    "COKE_ON_THM": ("COKE_ON_MT",),
+    "FLUX_CALC_THM": ("FLUX_CALC_MT",),
+    "NUTCOKE_CALC_THM": ("NUTCOKE_CALC_MT",),
+    "ORE_CALC_THM": ("ORE_CALC_MT",),
+    "PCI_2_CALC_THM": ("PCI_2_CALC_MT", "PCI_CALC_MT"),
+    "SINTER_CALC_THM": ("SINTER_CALC_MT",),
+    "TOTAL_PELLET_CALC_THM": ("TOTAL_PELLET_CALC_MT",),
+}
+
+_PRODUCTION_ALIASES: tuple[str, ...] = (
+    "PRODUCTIONTONNESPERHR",
+    "PRODUCTIONTONNESPERHR.",
+    "production_tonnes_per_hr",
+    "productiontonnesperhr",
+)
 
 
 _CHEMISTRY_TO_TRAINING_SUFFIX: dict[str, str] = {
@@ -287,9 +310,12 @@ def _candidate_blend_features(
     sinter_qty = 0.0
     pellet_qty = 0.0
     slot_ores: list[OreInput] = []
+    hot_metal_mt = 0.0
 
     for ore in ores:
         qty = float(quantities_mt.get(ore.ore_id, 0.0) or 0.0)
+        dry_qty = compute_dry_weight_mt(qty, ore.chemistry.moisture_pct)
+        hot_metal_mt += compute_fe_contribution_mt(dry_qty, ore.chemistry.fe_t_pct)
         if _is_sinter(ore):
             sinter_qty += qty
             continue
@@ -306,6 +332,13 @@ def _candidate_blend_features(
     payload["ORE_CALC_MT"] = ore_qty
     payload["SINTER_CALC_MT"] = sinter_qty
     payload["TOTAL_PELLET_CALC_MT"] = pellet_qty
+    payload["ORE_CALC_THM"] = (ore_qty / hot_metal_mt) if hot_metal_mt > 0 else 0.0
+    payload["SINTER_CALC_THM"] = (
+        (sinter_qty / hot_metal_mt) if hot_metal_mt > 0 else 0.0
+    )
+    payload["TOTAL_PELLET_CALC_THM"] = (
+        (pellet_qty / hot_metal_mt) if hot_metal_mt > 0 else 0.0
+    )
 
     for slot, qty in ore_quantities_by_slot.items():
         payload[f"ORE_{slot}_PCT"] = (qty / ore_qty * 100.0) if ore_qty > 0 else 0.0
@@ -464,6 +497,75 @@ def _payload_lookup(
             value = _numeric_or_none(norm_payload[norm_name])
             if value is not None:
                 return value, f"payload_norm:{candidate}"
+    value, source = _derived_thm_payload_lookup(payload, key)
+    if value is not None:
+        return value, source
+    return None, None
+
+
+def _mapping_lookup(mapping: Mapping[str, Any], key: str) -> Any | None:
+    """
+    Look up a value from a mapping using raw and normalized feature names.
+
+    Training features can arrive as exact notebook names, YAML aliases, or
+    normalized process keys. This helper keeps derived feature construction from
+    duplicating that matching logic.
+
+    Args:
+         - mapping: Mapping[str, Any] - Raw payload or row values.
+         - key: str - Feature name to resolve.
+
+    Returns:
+         - return Any | None - Matching value, or None when unavailable.
+    """
+
+    if key in mapping:
+        return mapping[key]
+    normalized = normalize_feature_name(key)
+    for candidate_key, value in mapping.items():
+        if normalize_feature_name(str(candidate_key)) == normalized:
+            return value
+    return None
+
+
+def _derived_thm_payload_lookup(
+    payload: Mapping[str, Any], key: str
+) -> tuple[float | None, str | None]:
+    """
+    Derive ``*_THM`` payload features from matching ``*_MT`` and production.
+
+    The updated V4 notebook converts material quantities to THM basis using
+    ``quantity_mt / PRODUCTIONTONNESPERHR``. Candidate burden features supply
+    direct THM values, but process materials such as coke, flux, nut coke, and
+    PCI may only be available as MT columns in the history payload.
+
+    Args:
+         - payload: Mapping[str, Any] - Candidate and process feature payload.
+         - key: str - Requested training feature name.
+
+    Returns:
+         - return tuple[float | None, str | None] - Derived THM value and source label.
+    """
+
+    source_keys = _THM_SOURCE_ALIASES.get(key)
+    if not source_keys:
+        return None, None
+
+    production_value = None
+    for production_key in _PRODUCTION_ALIASES:
+        production_value = _numeric_or_none(_mapping_lookup(payload, production_key))
+        if production_value and production_value > 0:
+            break
+    if not production_value or production_value <= 0:
+        return None, None
+
+    for source_key in source_keys:
+        source_value = _numeric_or_none(_mapping_lookup(payload, source_key))
+        if source_value is not None:
+            return (
+                float(source_value) / float(production_value),
+                f"payload_derived:{source_key}/PRODUCTIONTONNESPERHR",
+            )
     return None, None
 
 
@@ -513,6 +615,73 @@ def _history_lookup(
         if len(series) < idx:
             continue
         return float(series.iloc[-idx]), f"history:{column}:lag{lag_steps}"
+
+    value, source = _derived_thm_history_lookup(history_df, key, lag_steps=lag_steps)
+    if value is not None:
+        return value, source
+    return None, None
+
+
+def _derived_thm_history_lookup(
+    history_df: pd.DataFrame | None, key: str, *, lag_steps: int = 0
+) -> tuple[float | None, str | None]:
+    """
+    Derive ``*_THM`` history features from ``*_MT`` and production history.
+
+    The static history currently stores several burden quantities on MT basis,
+    while the updated notebook's scaler expects THM-basis columns. This resolver
+    reproduces the notebook conversion for current and lagged history rows.
+
+    Args:
+         - history_df: pd.DataFrame | None - Historical process data frame.
+         - key: str - Requested THM training feature.
+         - lag_steps: int - Number of rows to lag from the latest non-null value.
+
+    Returns:
+         - return tuple[float | None, str | None] - Derived value and source label.
+    """
+
+    if history_df is None or history_df.empty:
+        return None, None
+
+    source_keys = _THM_SOURCE_ALIASES.get(key)
+    if not source_keys:
+        return None, None
+
+    columns_norm = {normalize_feature_name(str(c)): str(c) for c in history_df.columns}
+    production_col = None
+    for production_key in _PRODUCTION_ALIASES:
+        production_col = (
+            production_key
+            if production_key in history_df.columns
+            else columns_norm.get(normalize_feature_name(production_key))
+        )
+        if production_col:
+            break
+    if not production_col:
+        return None, None
+
+    for source_key in source_keys:
+        source_col = (
+            source_key
+            if source_key in history_df.columns
+            else columns_norm.get(normalize_feature_name(source_key))
+        )
+        if not source_col:
+            continue
+
+        source = pd.to_numeric(history_df[source_col], errors="coerce")
+        production = pd.to_numeric(history_df[production_col], errors="coerce")
+        derived = (source / production.replace(0, pd.NA)).dropna()
+        if derived.empty:
+            continue
+        idx = max(0, int(lag_steps)) + 1
+        if len(derived) < idx:
+            continue
+        return (
+            float(derived.iloc[-idx]),
+            f"history_derived:{source_col}/{production_col}:lag{lag_steps}",
+        )
     return None, None
 
 
@@ -594,7 +763,15 @@ def default_candidate_lag_bases(feature_payload: Mapping[str, Any]) -> set[str]:
         text = str(key)
         if (
             re.fullmatch(r"ORE_\d+_PCT", text)
-            or text in {"ORE_CALC_MT", "SINTER_CALC_MT", "TOTAL_PELLET_CALC_MT"}
+            or text
+            in {
+                "ORE_CALC_MT",
+                "SINTER_CALC_MT",
+                "TOTAL_PELLET_CALC_MT",
+                "ORE_CALC_THM",
+                "SINTER_CALC_THM",
+                "TOTAL_PELLET_CALC_THM",
+            }
             or text in {"SINTER_CLO_RATIO", "PELLET_CLO_RATIO"}
             or text.startswith("ORE_")
             or text.startswith("SINTER_SP_02_")
@@ -616,7 +793,7 @@ def build_bmo_v4_feature_frame(
     """
     Build one raw BMO V4 feature row in scaler order.
 
-    The V4 fuel-cost model requires a raw 104-column row before scaling. This
+    The V4 fuel-cost model requires a raw notebook-feature row before scaling. This
     function resolves each feature from the candidate blend payload, historical
     data, temporal context, or scaler-mean defaults. Candidate-sensitive burden
     features can intentionally override their lagged ``GasImpact`` and

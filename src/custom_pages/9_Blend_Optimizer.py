@@ -120,6 +120,38 @@ def _get_model_service() -> FuelUnitCostModelService:
     )
 
 
+def _load_fuel_prediction_context(
+    provider: EvonithBmoContextProvider,
+) -> tuple[
+    FuelUnitCostModelService,
+    dict[str, float],
+    pd.DataFrame,
+    dict[str, Any],
+    list[str],
+]:
+    """
+    Load process, history, and model inputs required for fuel inference.
+
+    Fuel prediction needs the latest process context, recent history for lagged
+    features, and the cached model service. Keeping this as a small helper lets
+    LP post-solve inference and DE candidate optimization share the same loaded
+    inputs during one Streamlit run.
+
+    Args:
+         - provider: EvonithBmoContextProvider - Source for process context and history.
+
+    Returns:
+         - return tuple[FuelUnitCostModelService, dict[str, float], pd.DataFrame, dict[str, Any], list[str]] - Model service, process context, history, bundle status, and warnings.
+    """
+
+    process_context, process_warnings = provider.get_process_context()
+    history_df, history_warnings = provider.get_history_frame()
+    model_service = _get_model_service()
+    bundle_status = model_service.get_bundle_status()
+    warnings = [*process_warnings, *history_warnings]
+    return model_service, process_context, history_df, bundle_status, warnings
+
+
 def _selected_ores_from_editor(
     editor_df: pd.DataFrame, base_ores: list[OreInput]
 ) -> list[OreInput]:
@@ -169,6 +201,7 @@ bmo_cfg = _get_bmo_config()
 provider = _get_context_provider()
 model_service = _get_model_service()
 bundle_status = model_service.get_bundle_status()
+st.session_state["bmo_bundle_status"] = bundle_status
 render_header(bundle_status)
 
 ui_cfg = bmo_cfg.get("ui", {})
@@ -195,20 +228,14 @@ with layout_col2:
         value=int(bmo_cfg.get("chemistry_window_days", 30)),
     )
 
-target_col1, target_col2, target_col3 = st.columns(3)
-min_fe_production_mt = target_col1.number_input(
-    "Min Fe (MT)",
+target_col1, target_col2 = st.columns(2)
+target_production_mt = target_col1.number_input(
+    "Target Hot Metal (MT)",
     min_value=0.0,
-    value=float(target_cfg.get("min_fe_production_mt", 2350.0)),
+    value=float(target_cfg.get("target_production_mt", 2350.0)),
     step=5.0,
 )
-max_fe_production_mt = target_col2.number_input(
-    "Max Fe (MT)",
-    min_value=0.0,
-    value=float(target_cfg.get("max_fe_production_mt", 2500.0)),
-    step=5.0,
-)
-target_slag_qty_mt = target_col3.number_input(
+target_slag_qty_mt = target_col2.number_input(
     "Max Slag (MT)",
     min_value=0.0,
     value=float(target_cfg.get("target_slag_qty_mt", 750.0)),
@@ -219,14 +246,7 @@ target_slag_qty_mt = target_col3.number_input(
 ores, ore_diagnostics = provider.build_ore_inputs(
     mode=chemistry_mode, window_days=chemistry_window_days
 )
-process_context, process_warnings = provider.get_process_context()
-history_df, history_warnings = provider.get_history_frame()
-all_warnings = [
-    *ore_diagnostics.get("warnings", []),
-    *process_warnings,
-    *history_warnings,
-]
-ore_diagnostics["warnings"] = all_warnings
+ore_diagnostics["warnings"] = list(ore_diagnostics.get("warnings", []))
 
 default_selected_names = set(ui_cfg.get("default_selected_ores", []))
 default_selected_ids = [
@@ -253,16 +273,29 @@ if run_lp_clicked or run_total_clicked:
         feo_in_slag_pct = float(
             bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4)
         )
+        fuel_context = None
 
         with st.spinner("Running LP baseline..."):
             lp_result, lp_errors = run_lp_baseline(
                 selected_ores,
-                min_fe_production_mt=min_fe_production_mt,
-                max_fe_production_mt=max_fe_production_mt,
+                target_production_mt=target_production_mt,
                 target_slag_qty_mt=target_slag_qty_mt,
                 feo_in_slag_pct=feo_in_slag_pct,
             )
             if lp_result is not None:
+                fuel_context = _load_fuel_prediction_context(provider)
+                (
+                    model_service,
+                    process_context,
+                    history_df,
+                    bundle_status,
+                    fuel_warnings,
+                ) = fuel_context
+                ore_diagnostics["warnings"] = [
+                    *ore_diagnostics.get("warnings", []),
+                    *fuel_warnings,
+                ]
+                st.session_state["bmo_bundle_status"] = bundle_status
                 lp_physical_result = lp_result
                 lp_result = evaluate_blend_with_fuel_prediction(
                     ores=selected_ores,
@@ -274,19 +307,36 @@ if run_lp_clicked or run_total_clicked:
                 )
                 lp_result.feasible = lp_physical_result.feasible
                 lp_result.violations = lp_physical_result.violations
-                lp_result.diagnostics["lp_baseline_note"] = (
-                    "LP quantities are ore-cost optimized; fuel cost is predicted "
-                    "after solving for comparison."
-                )
         st.session_state["bmo_lp_result"] = lp_result
         st.session_state["bmo_lp_errors"] = lp_errors
 
         if run_total_clicked:
             with st.spinner("Running total cost optimizer..."):
+                if fuel_context is None:
+                    fuel_context = _load_fuel_prediction_context(provider)
+                    (
+                        model_service,
+                        process_context,
+                        history_df,
+                        bundle_status,
+                        fuel_warnings,
+                    ) = fuel_context
+                    ore_diagnostics["warnings"] = [
+                        *ore_diagnostics.get("warnings", []),
+                        *fuel_warnings,
+                    ]
+                    st.session_state["bmo_bundle_status"] = bundle_status
+                else:
+                    (
+                        model_service,
+                        process_context,
+                        history_df,
+                        bundle_status,
+                        _fuel_warnings,
+                    ) = fuel_context
                 de_result, de_errors = run_nonlinear_optimizer(
                     selected_ores,
-                    min_fe_production_mt=min_fe_production_mt,
-                    max_fe_production_mt=max_fe_production_mt,
+                    target_production_mt=target_production_mt,
                     target_slag_qty_mt=target_slag_qty_mt,
                     feo_in_slag_pct=feo_in_slag_pct,
                     model_service=model_service,
