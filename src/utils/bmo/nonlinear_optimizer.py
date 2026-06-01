@@ -23,8 +23,7 @@ from utils.bmo.types import BlendEvaluation, OreInput
 def run_nonlinear_optimizer(
     ores: list[OreInput],
     *,
-    min_fe_production_mt: float,
-    max_fe_production_mt: float,
+    target_production_mt: float,
     target_slag_qty_mt: float,
     feo_in_slag_pct: float,
     model_service: FuelUnitCostModelService,
@@ -41,8 +40,7 @@ def run_nonlinear_optimizer(
 
     Args:
          - ores: list[OreInput] - Ores selected for optimization.
-         - min_fe_production_mt: float - Minimum allowed Fe production in MT.
-         - max_fe_production_mt: float - Maximum allowed Fe production in MT.
+         - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
@@ -60,8 +58,7 @@ def run_nonlinear_optimizer(
 
     lp_blend, lp_errors = run_lp_baseline(
         ores,
-        min_fe_production_mt=min_fe_production_mt,
-        max_fe_production_mt=max_fe_production_mt,
+        target_production_mt=target_production_mt,
         target_slag_qty_mt=target_slag_qty_mt,
         feo_in_slag_pct=feo_in_slag_pct,
     )
@@ -75,8 +72,7 @@ def run_nonlinear_optimizer(
 
     evaluator = BmoObjectiveEvaluator(
         ores=ores,
-        min_fe_production_mt=float(min_fe_production_mt),
-        max_fe_production_mt=float(max_fe_production_mt),
+        target_production_mt=float(target_production_mt),
         target_slag_qty_mt=float(target_slag_qty_mt),
         feo_in_slag_pct=float(feo_in_slag_pct),
         model_service=model_service,
@@ -147,8 +143,7 @@ def run_nonlinear_optimizer(
     violations = check_blend_constraints(
         blend,
         ores,
-        min_fe_production_mt=min_fe_production_mt,
-        max_fe_production_mt=max_fe_production_mt,
+        target_production_mt=target_production_mt,
         target_slag_qty_mt=target_slag_qty_mt,
     )
     blend.feasible = len(violations) == 0

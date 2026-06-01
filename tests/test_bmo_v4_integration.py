@@ -85,6 +85,11 @@ def test_candidate_blend_payload_maps_ore_slots_and_ratios() -> None:
     assert payload["ORE_CALC_MT"] == pytest.approx(50.0)
     assert payload["SINTER_CALC_MT"] == pytest.approx(60.0)
     assert payload["TOTAL_PELLET_CALC_MT"] == pytest.approx(10.0)
+    hot_metal_mt = (60.0 * 0.92 * 0.55) + (20.0 * 0.94 * 0.61)
+    hot_metal_mt += (30.0 * 0.98 * 0.30) + (10.0 * 1.0 * 0.64)
+    assert payload["ORE_CALC_THM"] == pytest.approx(50.0 / hot_metal_mt)
+    assert payload["SINTER_CALC_THM"] == pytest.approx(60.0 / hot_metal_mt)
+    assert payload["TOTAL_PELLET_CALC_THM"] == pytest.approx(10.0 / hot_metal_mt)
     assert payload["ORE_3_PCT"] == pytest.approx(40.0)
     assert payload["ORE_8_PCT"] == pytest.approx(60.0)
     assert payload["ORE_12_PCT"] == pytest.approx(0.0)
@@ -101,31 +106,39 @@ def test_bmo_v4_feature_frame_handles_dual_lags_and_candidate_overrides() -> Non
             "STOCKRODLEVEL": [10.0, 11.0, 12.0, 13.0, 14.0],
             "TOPPRESSUREBAR": [1.0, 1.1, 1.2, 1.3, 1.4],
             "ORE_3_PCT": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "COKE_CALC_MT": [100.0, 110.0, 120.0, 130.0, 140.0],
+            "PRODUCTIONTONNESPERHR": [50.0, 55.0, 60.0, 65.0, 70.0],
         },
         index=pd.date_range("2026-05-21", periods=5, freq="h"),
     )
 
     result = build_bmo_v4_feature_frame(
-        feature_payload={"ORE_3_PCT": 42.0, "TOPBAR": 1.7},
+        feature_payload={"ORE_3_PCT": 42.0, "ORE_CALC_THM": 1.7, "TOPBAR": 1.7},
         history_df=history_df,
         expected_features=[
             "ORE_3_PCT_lag1_(GasImpact)",
             "ORE_3_PCT_lag4_(MeltImpact)",
+            "ORE_CALC_THM_lag1_(GasImpact)",
             "STOCKRODLEVEL_lag1",
             "TOPBAR",
+            "COKE_CALC_THM",
+            "COKE_CALC_THM_lag4",
             "day_of_year",
             "trend_index",
             "MISSING_FEATURE",
         ],
         default_values={"MISSING_FEATURE": 7.0},
-        candidate_lag_bases={"ORE_3_PCT"},
+        candidate_lag_bases={"ORE_3_PCT", "ORE_CALC_THM"},
     )
 
     row = result.vector_df.iloc[0]
     assert row["ORE_3_PCT_lag1_(GasImpact)"] == pytest.approx(42.0)
     assert row["ORE_3_PCT_lag4_(MeltImpact)"] == pytest.approx(42.0)
+    assert row["ORE_CALC_THM_lag1_(GasImpact)"] == pytest.approx(1.7)
     assert row["STOCKRODLEVEL_lag1"] == pytest.approx(13.0)
     assert row["TOPBAR"] == pytest.approx(1.7)
+    assert row["COKE_CALC_THM"] == pytest.approx(2.0)
+    assert row["COKE_CALC_THM_lag4"] == pytest.approx(2.0)
     assert row["day_of_year"] == pytest.approx(141.0)
     assert row["trend_index"] == pytest.approx(4.0)
     assert row["MISSING_FEATURE"] == pytest.approx(7.0)

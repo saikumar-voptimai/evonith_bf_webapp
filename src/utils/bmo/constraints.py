@@ -14,8 +14,7 @@ def check_blend_constraints(
     blend: BlendEvaluation,
     ores: list[OreInput],
     *,
-    min_fe_production_mt: float,
-    max_fe_production_mt: float,
+    target_production_mt: float,
     target_slag_qty_mt: float,
     fe_tolerance_mt: float = 0.5,
     slag_tolerance_mt: float = 0.5,
@@ -30,8 +29,7 @@ def check_blend_constraints(
     Args:
          - blend: BlendEvaluation - Evaluated blend to validate.
          - ores: list[OreInput] - Ore inputs used to produce the blend.
-         - min_fe_production_mt: float - Minimum allowed Fe production in MT.
-         - max_fe_production_mt: float - Maximum allowed Fe production in MT.
+         - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
          - fe_tolerance_mt: float - Allowed Fe production tolerance in MT.
          - slag_tolerance_mt: float - Allowed slag tolerance in MT.
@@ -42,14 +40,9 @@ def check_blend_constraints(
 
     violations: list[str] = []
 
-    if blend.fe_production_mt < min_fe_production_mt - fe_tolerance_mt:
+    if blend.fe_production_mt < target_production_mt - fe_tolerance_mt:
         violations.append(
-            f"Fe production below minimum: {blend.fe_production_mt:.2f} < {min_fe_production_mt:.2f} MT."
-        )
-
-    if blend.fe_production_mt > max_fe_production_mt + fe_tolerance_mt:
-        violations.append(
-            f"Fe production above maximum: {blend.fe_production_mt:.2f} > {max_fe_production_mt:.2f} MT."
+            f"Hot metal below target: {blend.fe_production_mt:.2f} < {target_production_mt:.2f} MT."
         )
 
     if blend.slag_mt > target_slag_qty_mt + slag_tolerance_mt:

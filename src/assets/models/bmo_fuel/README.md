@@ -4,8 +4,8 @@ The BMO V4 fuel-cost model uses a two-stage inference contract:
 
 - build the full raw feature row expected by `bmo_scaler.joblib`
 - scale that full row
-- select the columns listed in `bmo_feature_columns.json`
-- pass only those selected scaled columns to `bmo_xgb_model.json`
+- select the 184 columns listed in `bmo_feature_columns.json`
+- pass those scaled columns to `bmo_xgb_model.json`
 
 Required V4 artifacts:
 

@@ -5,8 +5,7 @@ bmo:
   chemistry_window_days: 30
 
   target:
-    min_fe_production_mt: 2350.0
-    max_fe_production_mt: 2500.0
+    target_production_mt: 2350.0
     target_slag_qty_mt: 750.0
 
   chemistry:
@@ -15,9 +14,9 @@ bmo:
   optimization:
     enabled: true
     strategy: best1bin
-    maxiter: 12
-    popsize: 8
-    tol: 0.01
+    maxiter: 8
+    popsize: 6
+    tol: 0.02
     polish: false
     seed: 42
     penalty_large: 1000000.0
@@ -84,8 +83,8 @@ bmo:
       missing_feature_policy: default_warn
     optimizer:
       strategy: best1bin
-      maxiter: 12
-      popsize: 8
-      tol: 0.01
+      maxiter: 6
+      popsize: 5
+      tol: 0.02
       polish: false
       seed: 42

@@ -30,8 +30,7 @@ class BmoObjectiveEvaluator:
 
     Args:
          - ores: list[OreInput] - Ores available to the optimizer.
-         - min_fe_production_mt: float - Minimum allowed Fe production in MT.
-         - max_fe_production_mt: float - Maximum allowed Fe production in MT.
+         - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
@@ -47,8 +46,7 @@ class BmoObjectiveEvaluator:
         self,
         *,
         ores: list[OreInput],
-        min_fe_production_mt: float,
-        max_fe_production_mt: float,
+        target_production_mt: float,
         target_slag_qty_mt: float,
         feo_in_slag_pct: float,
         model_service: FuelUnitCostModelService,
@@ -65,8 +63,7 @@ class BmoObjectiveEvaluator:
 
         Args:
              - ores: list[OreInput] - Ores available to the optimizer.
-             - min_fe_production_mt: float - Minimum allowed Fe production in MT.
-             - max_fe_production_mt: float - Maximum allowed Fe production in MT.
+             - target_production_mt: float - Target hot-metal production in MT.
              - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
              - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
              - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
@@ -79,8 +76,7 @@ class BmoObjectiveEvaluator:
         """
 
         self.ores = ores
-        self.min_fe_production_mt = float(min_fe_production_mt)
-        self.max_fe_production_mt = float(max_fe_production_mt)
+        self.target_production_mt = float(target_production_mt)
         self.target_slag_qty_mt = float(target_slag_qty_mt)
         self.feo_in_slag_pct = float(feo_in_slag_pct)
         self.model_service = model_service
@@ -143,13 +139,9 @@ class BmoObjectiveEvaluator:
         share_penalty = share_violation * penalty_share
 
         fe_penalty = 0.0
-        if blend.fe_production_mt < self.min_fe_production_mt:
+        if blend.fe_production_mt < self.target_production_mt:
             fe_penalty += (
-                self.min_fe_production_mt - blend.fe_production_mt
-            ) * penalty_fe
-        if blend.fe_production_mt > self.max_fe_production_mt:
-            fe_penalty += (
-                blend.fe_production_mt - self.max_fe_production_mt
+                self.target_production_mt - blend.fe_production_mt
             ) * penalty_fe
 
         slag_penalty = 0.0
@@ -170,8 +162,7 @@ class BmoObjectiveEvaluator:
         violations = check_blend_constraints(
             blend,
             self.ores,
-            min_fe_production_mt=self.min_fe_production_mt,
-            max_fe_production_mt=self.max_fe_production_mt,
+            target_production_mt=self.target_production_mt,
             target_slag_qty_mt=self.target_slag_qty_mt,
         )
         feasible = len(violations) == 0
