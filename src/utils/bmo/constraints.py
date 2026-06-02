@@ -1,8 +1,8 @@
 """Constraint validation helpers for BMO blend candidates.
 
-This module checks optimized blend outputs against production, slag, stock,
-and ore-share requirements. The same checks are used by LP and DE paths so
-the UI reports constraint warnings consistently across optimization methods.
+This module checks optimized blend outputs against target production, slag,
+stock, and ore-share requirements. The same checks are used by LP and DE paths
+so the UI reports constraint warnings consistently across optimization methods.
 """
 
 from __future__ import annotations
@@ -14,27 +14,28 @@ def check_blend_constraints(
     blend: BlendEvaluation,
     ores: list[OreInput],
     *,
-    min_fe_production_mt: float,
-    max_fe_production_mt: float,
+    target_production_mt: float,
     target_slag_qty_mt: float,
     fe_tolerance_mt: float = 0.5,
-    slag_tolerance_mt: float = 0.5,
+    slag_tolerance_mt: float = 0.0,
 ) -> list[str]:
     """
     Check a completed blend against BMO physical and planning constraints.
 
     LP and DE both call this helper after evaluating a candidate. Keeping the
-    final validation shared ensures the UI reports stock, share, Fe, and slag
-    violations the same way for every optimization path.
+    final validation shared ensures the UI reports stock, share, target hot
+    metal, and slag violations the same way for every optimization path. Target
+    hot metal is checked on both sides so DE cannot treat over-production as a
+    feasible result.
 
     Args:
          - blend: BlendEvaluation - Evaluated blend to validate.
          - ores: list[OreInput] - Ore inputs used to produce the blend.
-         - min_fe_production_mt: float - Minimum allowed Fe production in MT.
-         - max_fe_production_mt: float - Maximum allowed Fe production in MT.
+         - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
          - fe_tolerance_mt: float - Allowed Fe production tolerance in MT.
-         - slag_tolerance_mt: float - Allowed slag tolerance in MT.
+         - slag_tolerance_mt: float - Allowed slag tolerance in MT. The
+           default is zero because BMO treats max slag as a strict cap.
 
     Returns:
          - return list[str] - Human-readable constraint violation messages.
@@ -42,14 +43,13 @@ def check_blend_constraints(
 
     violations: list[str] = []
 
-    if blend.fe_production_mt < min_fe_production_mt - fe_tolerance_mt:
+    if blend.fe_production_mt < target_production_mt - fe_tolerance_mt:
         violations.append(
-            f"Fe production below minimum: {blend.fe_production_mt:.2f} < {min_fe_production_mt:.2f} MT."
+            f"Hot metal below target: {blend.fe_production_mt:.2f} < {target_production_mt:.2f} MT."
         )
-
-    if blend.fe_production_mt > max_fe_production_mt + fe_tolerance_mt:
+    if blend.fe_production_mt > target_production_mt + fe_tolerance_mt:
         violations.append(
-            f"Fe production above maximum: {blend.fe_production_mt:.2f} > {max_fe_production_mt:.2f} MT."
+            f"Hot metal above target: {blend.fe_production_mt:.2f} > {target_production_mt:.2f} MT."
         )
 
     if blend.slag_mt > target_slag_qty_mt + slag_tolerance_mt:

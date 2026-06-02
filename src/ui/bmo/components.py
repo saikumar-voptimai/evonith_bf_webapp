@@ -74,9 +74,9 @@ def render_header(bundle_status: dict[str, Any]) -> None:
     """
     Render the BMO page header and model bundle status.
 
-    The header gives operators a quick signal about whether the fuel model is
-    loaded or the deterministic fallback is active. It keeps model status visible
-    before users run LP or DE.
+    The header gives operators a quick signal about the fuel model state before
+    they run LP or DE. It also surfaces bundle warnings when artifact versions
+    or paths prevent safe model inference.
 
     Args:
          - bundle_status: dict[str, Any] - Model/scaler status from model service.
@@ -85,8 +85,14 @@ def render_header(bundle_status: dict[str, Any]) -> None:
          - return None - Writes header and warnings to the Streamlit page.
     """
 
-    model_status = "Loaded" if bundle_status.get("model_loaded") else "Fallback"
-    scaler_status = "Loaded" if bundle_status.get("scaler_loaded") else "Missing"
+    if bundle_status:
+        model_status = "Loaded" if bundle_status.get("model_loaded") else "Fallback"
+        scaler_status = "Loaded" if bundle_status.get("scaler_loaded") else "Missing"
+        feature_count = bundle_status.get("feature_count", 0)
+    else:
+        model_status = "Not loaded"
+        scaler_status = "Not loaded"
+        feature_count = 0
     status_class = (
         "bmo-status-ok" if bundle_status.get("model_loaded") else "bmo-status-warn"
     )
@@ -100,7 +106,7 @@ def render_header(bundle_status: dict[str, Any]) -> None:
         <div class="bmo-subtle">
           Model: <span class="{status_class}">{model_status}</span>
           &nbsp;|&nbsp; Scaler: {scaler_status}
-          &nbsp;|&nbsp; Expected features: {bundle_status.get("feature_count", 0)}
+          &nbsp;|&nbsp; Expected features: {feature_count}
         </div>
         """,
         unsafe_allow_html=True,
@@ -169,10 +175,23 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "Editable table is not available in this Streamlit version. "
             "Using default ore mapping values for this run."
         )
-        _safe_dataframe(editor_df, hide_index=True, use_container_width=True)
+        _safe_dataframe(
+            editor_df.drop(columns=["ore_id"], errors="ignore"),
+            hide_index=True,
+            use_container_width=True,
+        )
         return editor_df
 
     sig = inspect.signature(editor_fn)
+    visible_columns = (
+        "selected",
+        "ore_name",
+        "stock_mt",
+        "price_rs_per_mt",
+        "moisture_pct",
+        "min_share_pct",
+        "max_share_pct",
+    )
     editor_kwargs: dict[str, Any] = {
         "hide_index": True,
         "column_config": {
@@ -196,11 +215,561 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             ),
         },
     }
+    if "column_order" in sig.parameters:
+        editor_kwargs["column_order"] = visible_columns
     if "width" in sig.parameters:
         editor_kwargs["width"] = "stretch"
     elif "use_container_width" in sig.parameters:
         editor_kwargs["use_container_width"] = True
     return editor_fn(editor_df, **editor_kwargs)
+
+
+def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame:
+    """
+    Build the editable fuel ash chemistry table from BMO configuration.
+
+    Fuel ash defaults come from the laboratory ash-analysis workbook and can be
+    overridden by operators for each run. The table keeps rate, moisture, ash,
+    ash oxide chemistry, and dry-fuel-basis S/P together so the slag calculation
+    can apply the full fuel ash sequence.
+
+    Args:
+         - fuel_ash_cfg: list[dict[str, Any]] - Configured fuel ash defaults.
+
+    Returns:
+         - return pd.DataFrame - Editable fuel ash data for Streamlit.
+    """
+
+    rows = []
+    for item in fuel_ash_cfg or []:
+        rows.append(
+            {
+                "enabled": bool(item.get("enabled", True)),
+                "fuel_id": str(item.get("fuel_id", "")),
+                "fuel_name": str(item.get("display_name", item.get("fuel_id", ""))),
+                "rate_kg_per_thm": float(item.get("rate_kg_per_thm", 0.0) or 0.0),
+                "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
+                "ash_pct": float(item.get("ash_pct", 0.0) or 0.0),
+                "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
+                "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
+                "cao_pct": float(item.get("cao_pct", 0.0) or 0.0),
+                "mgo_pct": float(item.get("mgo_pct", 0.0) or 0.0),
+                "fe2o3_pct": float(item.get("fe2o3_pct", 0.0) or 0.0),
+                "tio2_pct": float(item.get("tio2_pct", 0.0) or 0.0),
+                "na2o_pct": float(item.get("na2o_pct", 0.0) or 0.0),
+                "k2o_pct": float(item.get("k2o_pct", 0.0) or 0.0),
+                "s_pct": float(item.get("s_pct", 0.0) or 0.0),
+                "p_pct": float(item.get("p_pct", 0.0) or 0.0),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Render the editable fuel ash table and return the user's edited values.
+
+    The fuel table is intentionally separate from ore selection because fuel
+    ash contributes to slag but does not participate in ore share constraints.
+    Operators can disable a fuel row or adjust rate/ash chemistry before
+    running LP or DE.
+
+    Args:
+         - editor_df: pd.DataFrame - Fuel ash defaults and editable values.
+
+    Returns:
+         - return pd.DataFrame - Edited fuel ash rows, or original table as fallback.
+    """
+
+    if editor_df.empty:
+        return editor_df
+
+    editor_fn = getattr(st, "data_editor", None) or getattr(
+        st, "experimental_data_editor", None
+    )
+    if editor_fn is None:
+        st.info(
+            "Editable fuel ash table is not available in this Streamlit version. "
+            "Using configured fuel ash defaults for this run."
+        )
+        _safe_dataframe(
+            editor_df.drop(columns=["fuel_id"], errors="ignore"),
+            hide_index=True,
+            use_container_width=True,
+        )
+        return editor_df
+
+    sig = inspect.signature(editor_fn)
+    visible_columns = (
+        "enabled",
+        "fuel_name",
+        "rate_kg_per_thm",
+        "moisture_pct",
+        "ash_pct",
+        "sio2_pct",
+        "al2o3_pct",
+        "cao_pct",
+        "mgo_pct",
+        "fe2o3_pct",
+        "tio2_pct",
+        "na2o_pct",
+        "k2o_pct",
+        "s_pct",
+        "p_pct",
+    )
+    editor_kwargs: dict[str, Any] = {
+        "hide_index": True,
+        "column_config": {
+            "enabled": st.column_config.CheckboxColumn("Use", default=True),
+            "fuel_id": st.column_config.TextColumn("Fuel ID", disabled=True),
+            "fuel_name": st.column_config.TextColumn("Fuel", disabled=True),
+            "rate_kg_per_thm": st.column_config.NumberColumn(
+                "Rate (kg/THM)", min_value=0.0, step=1.0
+            ),
+            "moisture_pct": st.column_config.NumberColumn(
+                "Moisture (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "ash_pct": st.column_config.NumberColumn(
+                "Ash (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "sio2_pct": st.column_config.NumberColumn(
+                "Ash SiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "al2o3_pct": st.column_config.NumberColumn(
+                "Ash Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "cao_pct": st.column_config.NumberColumn(
+                "Ash CaO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "mgo_pct": st.column_config.NumberColumn(
+                "Ash MgO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "fe2o3_pct": st.column_config.NumberColumn(
+                "Ash Fe2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "tio2_pct": st.column_config.NumberColumn(
+                "Ash TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "na2o_pct": st.column_config.NumberColumn(
+                "Ash Na2O (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "k2o_pct": st.column_config.NumberColumn(
+                "Ash K2O (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "s_pct": st.column_config.NumberColumn(
+                "S in Fuel (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "p_pct": st.column_config.NumberColumn(
+                "P in Fuel (%)", min_value=0.0, max_value=100.0, step=0.001
+            ),
+        },
+    }
+    if "column_order" in sig.parameters:
+        editor_kwargs["column_order"] = visible_columns
+    if "width" in sig.parameters:
+        editor_kwargs["width"] = "stretch"
+    elif "use_container_width" in sig.parameters:
+        editor_kwargs["use_container_width"] = True
+    return editor_fn(editor_df, **editor_kwargs)
+
+
+def build_flux_editor_df(flux_cfg: list[dict[str, Any]]) -> pd.DataFrame:
+    """
+    Build the editable fixed-flux chemistry table from BMO configuration.
+
+    Flux defaults come from plant flux chemistry references and can be adjusted
+    by operators for each run. Flux rows are fixed burden additions, so they
+    contribute to total slag but do not participate in ore share optimization.
+
+    Args:
+         - flux_cfg: list[dict[str, Any]] - Configured flux defaults.
+
+    Returns:
+         - return pd.DataFrame - Editable flux data for Streamlit.
+    """
+
+    rows = []
+    for item in flux_cfg or []:
+        rows.append(
+            {
+                "enabled": bool(item.get("enabled", True)),
+                "flux_id": str(item.get("flux_id", "")),
+                "flux_name": str(item.get("display_name", item.get("flux_id", ""))),
+                "wet_qty_mt": float(item.get("wet_qty_mt", 0.0) or 0.0),
+                "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
+                "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
+                "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
+                "cao_pct": float(item.get("cao_pct", 0.0) or 0.0),
+                "mgo_pct": float(item.get("mgo_pct", 0.0) or 0.0),
+                "fe2o3_pct": float(item.get("fe2o3_pct", 0.0) or 0.0),
+                "mno_pct": float(item.get("mno_pct", 0.0) or 0.0),
+                "tio2_pct": float(item.get("tio2_pct", 0.0) or 0.0),
+                "na2o_pct": float(item.get("na2o_pct", 0.0) or 0.0),
+                "k2o_pct": float(item.get("k2o_pct", 0.0) or 0.0),
+                "caf2_pct": float(item.get("caf2_pct", 0.0) or 0.0),
+                "p_pct": float(item.get("p_pct", 0.0) or 0.0),
+                "s_pct": float(item.get("s_pct", 0.0) or 0.0),
+                "zn_pct": float(item.get("zn_pct", 0.0) or 0.0),
+                "loi_pct": float(item.get("loi_pct", 0.0) or 0.0),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Render the editable fixed-flux table and return the user's edited values.
+
+    The flux table collects wet quantity, moisture, and core oxide chemistry.
+    BMO uses those values to reserve slag capacity for fixed fluxes before the
+    ore optimizer searches for a feasible blend.
+
+    Args:
+         - editor_df: pd.DataFrame - Flux defaults and editable values.
+
+    Returns:
+         - return pd.DataFrame - Edited flux rows, or original table as fallback.
+    """
+
+    if editor_df.empty:
+        return editor_df
+
+    editor_fn = getattr(st, "data_editor", None) or getattr(
+        st, "experimental_data_editor", None
+    )
+    if editor_fn is None:
+        st.info(
+            "Editable flux table is not available in this Streamlit version. "
+            "Using configured flux defaults for this run."
+        )
+        _safe_dataframe(
+            editor_df.drop(columns=["flux_id"], errors="ignore"),
+            hide_index=True,
+            use_container_width=True,
+        )
+        return editor_df
+
+    sig = inspect.signature(editor_fn)
+    visible_columns = (
+        "enabled",
+        "flux_name",
+        "wet_qty_mt",
+        "moisture_pct",
+        "sio2_pct",
+        "al2o3_pct",
+        "cao_pct",
+        "mgo_pct",
+        "fe2o3_pct",
+        "mno_pct",
+        "tio2_pct",
+        "na2o_pct",
+        "k2o_pct",
+        "caf2_pct",
+        "p_pct",
+        "s_pct",
+        "zn_pct",
+        "loi_pct",
+    )
+    editor_kwargs: dict[str, Any] = {
+        "hide_index": True,
+        "column_config": {
+            "enabled": st.column_config.CheckboxColumn("Use", default=True),
+            "flux_id": st.column_config.TextColumn("Flux ID", disabled=True),
+            "flux_name": st.column_config.TextColumn("Flux", disabled=True),
+            "wet_qty_mt": st.column_config.NumberColumn(
+                "Wet Qty (MT)", min_value=0.0, step=1.0
+            ),
+            "moisture_pct": st.column_config.NumberColumn(
+                "Moisture/TM (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "sio2_pct": st.column_config.NumberColumn(
+                "SiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "al2o3_pct": st.column_config.NumberColumn(
+                "Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "cao_pct": st.column_config.NumberColumn(
+                "CaO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "mgo_pct": st.column_config.NumberColumn(
+                "MgO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "fe2o3_pct": st.column_config.NumberColumn(
+                "Fe2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "mno_pct": st.column_config.NumberColumn(
+                "MnO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "tio2_pct": st.column_config.NumberColumn(
+                "TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "na2o_pct": st.column_config.NumberColumn(
+                "Na2O (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "k2o_pct": st.column_config.NumberColumn(
+                "K2O (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "caf2_pct": st.column_config.NumberColumn(
+                "CaF2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "p_pct": st.column_config.NumberColumn(
+                "P (%)", min_value=0.0, max_value=100.0, step=0.001
+            ),
+            "s_pct": st.column_config.NumberColumn(
+                "S (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "zn_pct": st.column_config.NumberColumn(
+                "Zn (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "loi_pct": st.column_config.NumberColumn(
+                "LOI (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+        },
+    }
+    if "column_order" in sig.parameters:
+        editor_kwargs["column_order"] = visible_columns
+    if "width" in sig.parameters:
+        editor_kwargs["width"] = "stretch"
+    elif "use_container_width" in sig.parameters:
+        editor_kwargs["use_container_width"] = True
+    return editor_fn(editor_df, **editor_kwargs)
+
+
+def build_dust_editor_df(dust_cfg: list[dict[str, Any]]) -> pd.DataFrame:
+    """
+    Build the editable BF gas dust deduction table from BMO configuration.
+
+    Dust rows are optional full slag-balance inputs. The table keeps wet
+    quantity, moisture, and component chemistry together so the calculator can
+    deduct dry dust component masses after ore, flux, and fuel ash are added.
+
+    Args:
+         - dust_cfg: list[dict[str, Any]] - Configured dust defaults.
+
+    Returns:
+         - return pd.DataFrame - Editable dust data for Streamlit.
+    """
+
+    rows = []
+    for item in dust_cfg or []:
+        rows.append(
+            {
+                "enabled": bool(item.get("enabled", True)),
+                "dust_id": str(item.get("dust_id", "")),
+                "dust_name": str(item.get("display_name", item.get("dust_id", ""))),
+                "wet_qty_mt": float(item.get("wet_qty_mt", 0.0) or 0.0),
+                "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
+                "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
+                "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
+                "cao_pct": float(item.get("cao_pct", 0.0) or 0.0),
+                "mgo_pct": float(item.get("mgo_pct", 0.0) or 0.0),
+                "fe_pct": float(item.get("fe_pct", 0.0) or 0.0),
+                "mn_pct": float(item.get("mn_pct", 0.0) or 0.0),
+                "p_pct": float(item.get("p_pct", 0.0) or 0.0),
+                "s_pct": float(item.get("s_pct", 0.0) or 0.0),
+                "ti_pct": float(item.get("ti_pct", 0.0) or 0.0),
+                "zn_pct": float(item.get("zn_pct", 0.0) or 0.0),
+                "na2o_pct": float(item.get("na2o_pct", 0.0) or 0.0),
+                "k2o_pct": float(item.get("k2o_pct", 0.0) or 0.0),
+                "caf2_pct": float(item.get("caf2_pct", 0.0) or 0.0),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def render_dust_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Render the editable BF gas dust table and return edited values.
+
+    Dust is deducted only by the full slag-balance calculator. Keeping this as
+    an editable table lets users use zero-dust defaults or enter plant dust
+    chemistry when available.
+
+    Args:
+         - editor_df: pd.DataFrame - Dust defaults and editable values.
+
+    Returns:
+         - return pd.DataFrame - Edited dust rows, or original table as fallback.
+    """
+
+    if editor_df.empty:
+        return editor_df
+
+    editor_fn = getattr(st, "data_editor", None) or getattr(
+        st, "experimental_data_editor", None
+    )
+    if editor_fn is None:
+        _safe_dataframe(
+            editor_df.drop(columns=["dust_id"], errors="ignore"),
+            hide_index=True,
+            use_container_width=True,
+        )
+        return editor_df
+
+    sig = inspect.signature(editor_fn)
+    visible_columns = (
+        "enabled",
+        "dust_name",
+        "wet_qty_mt",
+        "moisture_pct",
+        "sio2_pct",
+        "al2o3_pct",
+        "cao_pct",
+        "mgo_pct",
+        "fe_pct",
+        "mn_pct",
+        "p_pct",
+        "s_pct",
+        "ti_pct",
+        "zn_pct",
+        "na2o_pct",
+        "k2o_pct",
+        "caf2_pct",
+    )
+    editor_kwargs: dict[str, Any] = {
+        "hide_index": True,
+        "column_config": {
+            "enabled": st.column_config.CheckboxColumn("Use", default=True),
+            "dust_id": st.column_config.TextColumn("Dust ID", disabled=True),
+            "dust_name": st.column_config.TextColumn("Dust", disabled=True),
+            "wet_qty_mt": st.column_config.NumberColumn(
+                "Wet Qty (MT)", min_value=0.0, step=1.0
+            ),
+            "moisture_pct": st.column_config.NumberColumn(
+                "Moisture (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "sio2_pct": st.column_config.NumberColumn(
+                "SiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "al2o3_pct": st.column_config.NumberColumn(
+                "Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "cao_pct": st.column_config.NumberColumn(
+                "CaO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "mgo_pct": st.column_config.NumberColumn(
+                "MgO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "fe_pct": st.column_config.NumberColumn(
+                "Fe (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "mn_pct": st.column_config.NumberColumn(
+                "Mn (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "p_pct": st.column_config.NumberColumn(
+                "P (%)", min_value=0.0, max_value=100.0, step=0.001
+            ),
+            "s_pct": st.column_config.NumberColumn(
+                "S (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "ti_pct": st.column_config.NumberColumn(
+                "Ti (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "zn_pct": st.column_config.NumberColumn(
+                "Zn (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "na2o_pct": st.column_config.NumberColumn(
+                "Na2O (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "k2o_pct": st.column_config.NumberColumn(
+                "K2O (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "caf2_pct": st.column_config.NumberColumn(
+                "CaF2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+        },
+    }
+    if "column_order" in sig.parameters:
+        editor_kwargs["column_order"] = visible_columns
+    if "width" in sig.parameters:
+        editor_kwargs["width"] = "stretch"
+    elif "use_container_width" in sig.parameters:
+        editor_kwargs["use_container_width"] = True
+    return editor_fn(editor_df, **editor_kwargs)
+
+
+def render_slag_balance_settings(
+    settings_cfg: dict[str, Any],
+) -> dict[str, float | bool]:
+    """
+    Render full slag-balance correction and plant assumptions.
+
+    The UI uses one slag correction factor instead of exposing pig-iron
+    chemistry assumptions. Operators can still tune recovery, gas loss, alkali
+    reporting, and component conversion factors used after the BF component
+    balance is calculated.
+
+    Args:
+         - settings_cfg: dict[str, Any] - Configured slag-balance defaults.
+
+    Returns:
+         - return dict[str, float | bool] - Edited slag-balance settings.
+    """
+
+    values: dict[str, float | bool] = {}
+    values["enabled"] = st.checkbox(
+        "Use full slag balance",
+        value=bool(settings_cfg.get("enabled", True)),
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+    values["slag_correction_factor"] = c1.number_input(
+        "Slag Correction Factor",
+        min_value=0.0,
+        max_value=2.0,
+        value=float(settings_cfg.get("slag_correction_factor", 0.95)),
+        step=0.001,
+    )
+    values["pi_loss_pct"] = c2.number_input(
+        "PI Loss (%)",
+        min_value=0.0,
+        max_value=99.0,
+        value=float(settings_cfg.get("pi_loss_pct", 0.2)),
+        step=0.01,
+    )
+    values["fe_to_pig_iron_fraction"] = c3.number_input(
+        "Fe to PI Fraction",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(settings_cfg.get("fe_to_pig_iron_fraction", 0.999)),
+        step=0.001,
+    )
+    values["mn_recovery_pct"] = c4.number_input(
+        "Mn/Ti Recovery (%)",
+        min_value=0.0,
+        max_value=100.0,
+        value=float(settings_cfg.get("mn_recovery_pct", 60.0)),
+        step=0.1,
+    )
+
+    c5, c6, c7, c8 = st.columns(4)
+    values["sulphur_gas_loss_pct"] = c5.number_input(
+        "S Gas Loss (%)",
+        min_value=0.0,
+        max_value=100.0,
+        value=float(settings_cfg.get("sulphur_gas_loss_pct", 10.0)),
+        step=0.1,
+    )
+    values["alkali_to_slag_fraction"] = c6.number_input(
+        "Alkali to Slag",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(settings_cfg.get("alkali_to_slag_fraction", 0.8)),
+        step=0.01,
+    )
+    values["fe_to_feo_factor"] = c7.number_input(
+        "Fe to FeO",
+        min_value=0.0,
+        value=float(settings_cfg.get("fe_to_feo_factor", 72.0 / 56.0)),
+        step=0.001,
+    )
+    values["mn_to_mno_factor"] = c8.number_input(
+        "Mn to MnO",
+        min_value=0.0,
+        value=float(settings_cfg.get("mn_to_mno_factor", 1.291)),
+        step=0.001,
+    )
+    return values
 
 
 def render_blend_metrics(title: str, blend: BlendEvaluation) -> None:
@@ -229,14 +798,17 @@ def render_blend_metrics(title: str, blend: BlendEvaluation) -> None:
     dry_qty = float(blend.diagnostics.get("total_dry_qty_mt", 0.0) or 0.0)
     c5.metric("Wet Qty (MT)", f"{blend.total_qty_mt:,.2f}")
     c6.metric("Dry Qty (MT)", f"{dry_qty:,.2f}")
-    c7.metric("Slag (MT)", f"{blend.slag_mt:,.2f}")
-    c8.metric("Final Fe (%)", f"{blend.fe_t_pct:,.3f}")
+    c7.metric("Final Fe (%)", f"{blend.fe_t_pct:,.3f}")
+    c8.metric("Slag Rate (kg/THM)", f"{blend.slag_rate_kg_per_thm:,.2f}")
 
     c9, c10, c11, c12 = st.columns(4)
-    c9.metric("Slag Rate (kg/THM)", f"{blend.slag_rate_kg_per_thm:,.2f}")
-    c10.metric("Effective Fe (%)", f"{blend.effective_fe_pct:,.3f}")
-    c11.empty()
-    c12.empty()
+    c9.metric("Slag (MT)", f"{blend.slag_mt:,.2f}")
+    ore_slag_mt = float(blend.diagnostics.get("ore_slag_mt", 0.0) or 0.0)
+    c10.metric("Ore Slag (MT)", f"{ore_slag_mt:,.2f}")
+    fuel_ash_slag_mt = float(blend.diagnostics.get("fuel_ash_slag_mt", 0.0) or 0.0)
+    c11.metric("Fuel Ash Slag (MT)", f"{fuel_ash_slag_mt:,.2f}")
+    flux_slag_mt = float(blend.diagnostics.get("flux_slag_mt", 0.0) or 0.0)
+    c12.metric("Flux Slag (MT)", f"{flux_slag_mt:,.2f}")
 
     if blend.violations:
         st.warning("Constraint violations:\n- " + "\n- ".join(blend.violations))
@@ -327,6 +899,70 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
         st.dataframe(df, **df_kwargs)
     else:
         _safe_dataframe(df, hide_index=True, use_container_width=True)
+
+    fuel_ash_by_fuel = (
+        blend.diagnostics.get("fuel_ash_contribution_mt_by_fuel", {}) or {}
+    )
+    flux_by_flux = blend.diagnostics.get("flux_contribution_mt_by_flux", {}) or {}
+    full_balance = blend.diagnostics.get("full_slag_balance", {}) or {}
+    slag_components = full_balance.get("slag_components_mt", {}) or {}
+    has_fuel_details = any(
+        float(value or 0.0) > 0.0 for value in fuel_ash_by_fuel.values()
+    )
+    has_flux_details = any(float(value or 0.0) > 0.0 for value in flux_by_flux.values())
+
+    if has_fuel_details or has_flux_details or slag_components:
+        with st.expander("Slag Balance Details", expanded=False):
+            if has_fuel_details:
+                fuel_rows = [
+                    {
+                        "fuel": str(fuel_id).replace("_", " ").title(),
+                        "slag_contribution_mt": float(value or 0.0),
+                    }
+                    for fuel_id, value in fuel_ash_by_fuel.items()
+                ]
+                st.markdown("##### Fuel Ash Slag Contribution")
+                _safe_dataframe(
+                    pd.DataFrame(fuel_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            if has_flux_details:
+                flux_dry_weights = (
+                    blend.diagnostics.get("flux_dry_weight_mt_by_flux", {}) or {}
+                )
+                flux_rows = [
+                    {
+                        "flux": str(flux_id).replace("_", " ").title(),
+                        "dry_quantity_mt": float(
+                            flux_dry_weights.get(flux_id, 0.0) or 0.0
+                        ),
+                        "slag_contribution_mt": float(value or 0.0),
+                    }
+                    for flux_id, value in flux_by_flux.items()
+                ]
+                st.markdown("##### Flux Slag Contribution")
+                _safe_dataframe(
+                    pd.DataFrame(flux_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            if slag_components:
+                st.markdown("##### Full Slag Balance Components")
+                component_rows = [
+                    {
+                        "component": str(component).upper(),
+                        "quantity_mt": float(value or 0.0),
+                    }
+                    for component, value in slag_components.items()
+                ]
+                _safe_dataframe(
+                    pd.DataFrame(component_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
 
 def render_diagnostics(

@@ -9,12 +9,65 @@ compatibility warnings at app startup.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import joblib
 
 from domain.optimization_runtime.types import ModelBundleInfo
+
+
+def _parse_version_parts(version: Any) -> tuple[int, int, int] | None:
+    """
+    Parse a package or artifact version into comparable integer parts.
+
+    XGBoost JSON files store the writer version as a list, while the runtime
+    exposes a string. Normalizing both forms lets the loader block unsafe
+    older-runtime/newer-model combinations before they produce bad predictions.
+
+    Args:
+         - version: Any - Version value from package metadata or model JSON.
+
+    Returns:
+         - return tuple[int, int, int] | None - Comparable semantic version parts.
+    """
+
+    if isinstance(version, (list, tuple)):
+        parts = [int(part) for part in version[:3]]
+    else:
+        parts = [
+            int(match.group(1))
+            for item in str(version).split(".")[:3]
+            if (match := re.match(r"^(\d+)", item))
+        ]
+    if not parts:
+        return None
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts[:3])
+
+
+def _read_xgboost_json_version(path: Path) -> tuple[int, int, int] | None:
+    """
+    Read the XGBoost writer version from a native JSON model artifact.
+
+    Newer XGBoost JSON formats can contain metadata that older runtimes parse
+    incorrectly. Reading the artifact version before loading the booster gives
+    the app a chance to fail safely instead of trusting distorted predictions.
+
+    Args:
+         - path: Path - XGBoost JSON model path.
+
+    Returns:
+         - return tuple[int, int, int] | None - Writer version from the JSON file.
+    """
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return _parse_version_parts(data.get("version"))
 
 
 class XGBoostJsonModel:
@@ -47,9 +100,19 @@ class XGBoostJsonModel:
              - return None - Initializes the booster and feature metadata.
         """
 
-        from xgboost import Booster
+        import xgboost as xgb
 
-        self.booster = Booster()
+        model_version = _read_xgboost_json_version(path)
+        runtime_version = _parse_version_parts(xgb.__version__)
+        if model_version and runtime_version and runtime_version < model_version:
+            model_text = ".".join(str(part) for part in model_version)
+            raise RuntimeError(
+                f"XGBoost runtime {xgb.__version__} is older than model JSON "
+                f"version {model_text}. Use a matching/newer XGBoost runtime or "
+                "re-export the model with the deployed runtime version."
+            )
+
+        self.booster = xgb.Booster()
         self.booster.load_model(str(path))
         self.feature_names_in_ = list(self.booster.feature_names or [])
 

@@ -17,20 +17,30 @@ from utils.bmo.constraints import check_blend_constraints, validate_ore_bounds
 from utils.bmo.lp_solver import run_lp_baseline
 from utils.bmo.model_service import FuelUnitCostModelService
 from utils.bmo.objective import BmoObjectiveEvaluator
-from utils.bmo.types import BlendEvaluation, OreInput
+from utils.bmo.types import (
+    BlendEvaluation,
+    DustInput,
+    FluxInput,
+    FuelAshInput,
+    OreInput,
+    SlagBalanceSettings,
+)
 
 
 def run_nonlinear_optimizer(
     ores: list[OreInput],
     *,
-    min_fe_production_mt: float,
-    max_fe_production_mt: float,
+    target_production_mt: float,
     target_slag_qty_mt: float,
     feo_in_slag_pct: float,
     model_service: FuelUnitCostModelService,
     process_context: dict[str, float] | None,
     history_df: pd.DataFrame | None,
     de_cfg: dict[str, Any],
+    fuel_ash_inputs: list[FuelAshInput] | None = None,
+    flux_inputs: list[FluxInput] | None = None,
+    dust_inputs: list[DustInput] | None = None,
+    slag_balance_settings: SlagBalanceSettings | None = None,
 ) -> tuple[BlendEvaluation | None, list[str]]:
     """
     Run nonlinear total-cost BMO optimization with DE.
@@ -41,14 +51,17 @@ def run_nonlinear_optimizer(
 
     Args:
          - ores: list[OreInput] - Ores selected for optimization.
-         - min_fe_production_mt: float - Minimum allowed Fe production in MT.
-         - max_fe_production_mt: float - Maximum allowed Fe production in MT.
+         - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
          - process_context: dict[str, float] | None - Latest process variables.
          - history_df: pd.DataFrame | None - Historical process data for lagged features.
          - de_cfg: dict[str, Any] - Differential-evolution and penalty settings.
+         - fuel_ash_inputs: list[FuelAshInput] | None - Fuel ash records used for slag.
+         - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
+         - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
+         - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
 
     Returns:
          - return tuple[BlendEvaluation | None, list[str]] - Best blend and errors.
@@ -60,10 +73,13 @@ def run_nonlinear_optimizer(
 
     lp_blend, lp_errors = run_lp_baseline(
         ores,
-        min_fe_production_mt=min_fe_production_mt,
-        max_fe_production_mt=max_fe_production_mt,
+        target_production_mt=target_production_mt,
         target_slag_qty_mt=target_slag_qty_mt,
         feo_in_slag_pct=feo_in_slag_pct,
+        fuel_ash_inputs=fuel_ash_inputs,
+        flux_inputs=flux_inputs,
+        dust_inputs=dust_inputs,
+        slag_balance_settings=slag_balance_settings,
     )
     if lp_blend is None:
         return None, [
@@ -75,13 +91,16 @@ def run_nonlinear_optimizer(
 
     evaluator = BmoObjectiveEvaluator(
         ores=ores,
-        min_fe_production_mt=float(min_fe_production_mt),
-        max_fe_production_mt=float(max_fe_production_mt),
+        target_production_mt=float(target_production_mt),
         target_slag_qty_mt=float(target_slag_qty_mt),
         feo_in_slag_pct=float(feo_in_slag_pct),
         model_service=model_service,
         process_context=process_context,
         history_df=history_df,
+        fuel_ash_inputs=fuel_ash_inputs,
+        flux_inputs=flux_inputs,
+        dust_inputs=dust_inputs,
+        slag_balance_settings=slag_balance_settings,
         penalty_cfg=de_cfg,
     )
 
@@ -147,8 +166,7 @@ def run_nonlinear_optimizer(
     violations = check_blend_constraints(
         blend,
         ores,
-        min_fe_production_mt=min_fe_production_mt,
-        max_fe_production_mt=max_fe_production_mt,
+        target_production_mt=target_production_mt,
         target_slag_qty_mt=target_slag_qty_mt,
     )
     blend.feasible = len(violations) == 0

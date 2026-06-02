@@ -22,7 +22,16 @@ from utils.bmo.lp_solver import run_lp_baseline
 from utils.bmo.model_service import FuelUnitCostModelService
 from utils.bmo.nonlinear_optimizer import run_nonlinear_optimizer
 from utils.bmo.objective import BmoObjectiveEvaluator
-from utils.bmo.types import BlendEvaluation, OreChemistry, OreInput
+from utils.bmo.slag_balance import calculate_full_slag_balance
+from utils.bmo.types import (
+    BlendEvaluation,
+    DustInput,
+    FluxInput,
+    FuelAshInput,
+    OreChemistry,
+    OreInput,
+    SlagBalanceSettings,
+)
 
 
 class DummyScaler:
@@ -220,6 +229,397 @@ def test_blend_evaluation_uses_oxide_sum_for_slag_and_rate():
     )
 
 
+def test_blend_evaluation_adds_fuel_ash_slag_contribution():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=60.0, sio2_pct=10.0),
+        )
+    ]
+    fuels = [
+        FuelAshInput(
+            fuel_id="coke",
+            display_name="Coke",
+            rate_kg_per_thm=100.0,
+            ash_pct=10.0,
+            sio2_pct=50.0,
+        )
+    ]
+
+    blend = evaluate_blend(
+        ores=ores,
+        quantities_mt={"ore_a": 100.0},
+        feo_in_slag_pct=0.0,
+        fuel_ash_inputs=fuels,
+    )
+
+    expected_ore_slag_mt = 100.0 * 10.0 / 100.0
+    expected_fuel_ash_slag_mt = (100.0 * 60.0 / 100.0) * 0.1 * 0.1 * 0.5
+    assert blend.diagnostics["ore_slag_mt"] == pytest.approx(expected_ore_slag_mt)
+    assert blend.diagnostics["fuel_ash_slag_mt"] == pytest.approx(
+        expected_fuel_ash_slag_mt
+    )
+    assert blend.slag_mt == pytest.approx(
+        expected_ore_slag_mt + expected_fuel_ash_slag_mt
+    )
+
+
+def test_blend_evaluation_adds_fixed_flux_slag_contribution():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=60.0, sio2_pct=10.0),
+        )
+    ]
+    fluxes = [
+        FluxInput(
+            flux_id="limestone",
+            display_name="Limestone",
+            wet_qty_mt=10.0,
+            moisture_pct=10.0,
+            sio2_pct=5.0,
+            cao_pct=50.0,
+        )
+    ]
+
+    blend = evaluate_blend(
+        ores=ores,
+        quantities_mt={"ore_a": 100.0},
+        feo_in_slag_pct=0.0,
+        flux_inputs=fluxes,
+    )
+
+    expected_ore_slag_mt = 100.0 * 10.0 / 100.0
+    expected_flux_slag_mt = 9.0 * 55.0 / 100.0
+    assert blend.diagnostics["ore_slag_mt"] == pytest.approx(expected_ore_slag_mt)
+    assert blend.diagnostics["flux_slag_mt"] == pytest.approx(expected_flux_slag_mt)
+    assert blend.diagnostics["flux_dry_weight_mt_by_flux"]["limestone"] == (
+        pytest.approx(9.0)
+    )
+    assert blend.slag_mt == pytest.approx(expected_ore_slag_mt + expected_flux_slag_mt)
+
+
+def test_full_slag_balance_calculates_workbook_component_sequence():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(
+                fe_t_pct=60.0,
+                sio2_pct=10.0,
+                al2o3_pct=5.0,
+                cao_pct=2.0,
+                mgo_pct=1.0,
+                na2o_pct=1.0,
+                k2o_pct=1.0,
+            ),
+        )
+    ]
+    settings = SlagBalanceSettings(
+        enabled=True,
+        carbon_pct=4.0,
+        silicon_pct=0.0,
+        sulphur_pct=0.0,
+        other_pct=0.0,
+        fe_to_pig_iron_fraction=0.999,
+        mn_recovery_pct=0.0,
+        sulphur_gas_loss_pct=0.0,
+        alkali_to_slag_fraction=0.8,
+        fe_to_feo_factor=72.0 / 56.0,
+    )
+
+    result = calculate_full_slag_balance(
+        ores=ores,
+        quantities_mt={"ore_a": 100.0},
+        hot_metal_mt=60.0,
+        settings=settings,
+    )
+
+    expected_feo_mt = (60.0 - (60.0 * 0.999)) * (72.0 / 56.0)
+    expected_slag_mt = 10.0 + 5.0 + 2.0 + 1.0 + expected_feo_mt + (2.0 * 0.8)
+    assert result.theoretical_pig_iron_mt == pytest.approx(
+        (60.0 * 0.999) * 100.0 / 96.0
+    )
+    assert result.actual_pig_iron_mt == pytest.approx(
+        (60.0 * 0.999) * 100.0 / 96.0 * 0.998
+    )
+    assert result.slag_components_mt["sio2"] == pytest.approx(10.0)
+    assert result.slag_components_mt["feo"] == pytest.approx(expected_feo_mt)
+    assert result.slag_components_mt["alkali"] == pytest.approx(1.6)
+    assert result.total_slag_mt == pytest.approx(expected_slag_mt)
+
+
+def test_full_slag_balance_uses_new_burden_pig_iron_split():
+    mn_from_mno_factor = 54.938 / 70.937
+    ti_from_tio2_factor = 47.867 / 79.866
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(
+                fe_t_pct=50.0,
+                mno_pct=10.0 / mn_from_mno_factor,
+                tio2_pct=10.0 / ti_from_tio2_factor,
+                p_pct=1.0,
+                zn_pct=2.0,
+            ),
+        )
+    ]
+    settings = SlagBalanceSettings(
+        enabled=True,
+        carbon_pct=4.0,
+        silicon_pct=0.0,
+        sulphur_pct=0.0,
+        other_pct=1.0,
+        pi_loss_pct=0.2,
+        fe_to_pig_iron_fraction=0.999,
+        mn_recovery_pct=60.0,
+        sulphur_gas_loss_pct=10.0,
+        fe_to_feo_factor=72.0 / 56.0,
+        mn_to_mno_factor=1.291,
+    )
+
+    result = calculate_full_slag_balance(
+        ores=ores,
+        quantities_mt={"ore_a": 100.0},
+        hot_metal_mt=60.0,
+        settings=settings,
+    )
+
+    expected_fe_pi_mt = 50.0 * 0.999
+    expected_mn_pi_mt = 10.0 * 0.6
+    expected_ti_pi_mt = 10.0 * 0.6
+    expected_metallic_mass_mt = (
+        expected_fe_pi_mt + expected_mn_pi_mt + expected_ti_pi_mt + 1.0 + 2.0
+    )
+    expected_theoretical_pi_mt = expected_metallic_mass_mt * 100.0 / 95.0
+    expected_actual_pi_mt = expected_theoretical_pi_mt * 0.998
+    expected_feo_mt = (50.0 - expected_fe_pi_mt) * (72.0 / 56.0)
+    expected_mno_mt = (10.0 - expected_mn_pi_mt) * 1.291
+
+    assert result.diagnostics["fe_to_pig_iron_mt"] == pytest.approx(expected_fe_pi_mt)
+    assert result.diagnostics["mn_to_pig_iron_mt"] == pytest.approx(expected_mn_pi_mt)
+    assert result.diagnostics["ti_to_pig_iron_mt"] == pytest.approx(expected_ti_pi_mt)
+    assert result.diagnostics["metallic_mass_mt"] == pytest.approx(
+        expected_metallic_mass_mt
+    )
+    assert result.theoretical_pig_iron_mt == pytest.approx(expected_theoretical_pi_mt)
+    assert result.actual_pig_iron_mt == pytest.approx(expected_actual_pi_mt)
+    assert result.slag_components_mt["feo"] == pytest.approx(expected_feo_mt)
+    assert result.slag_components_mt["mno"] == pytest.approx(expected_mno_mt)
+    assert result.total_slag_mt == pytest.approx(expected_feo_mt + expected_mno_mt)
+
+
+def test_full_slag_balance_treats_fuel_s_and_p_on_dry_fuel_basis():
+    fuel = FuelAshInput(
+        fuel_id="coke",
+        display_name="Coke",
+        rate_kg_per_thm=100.0,
+        moisture_pct=10.0,
+        ash_pct=10.0,
+        sio2_pct=50.0,
+        s_pct=2.0,
+        p_pct=1.0,
+    )
+
+    result = calculate_full_slag_balance(
+        ores=[],
+        quantities_mt={},
+        hot_metal_mt=10.0,
+        settings=SlagBalanceSettings(enabled=True, sulphur_pct=0.0),
+        fuel_ash_inputs=[fuel],
+    )
+
+    assert result.fuel_ash_components_mt["sio2"] == pytest.approx(0.045)
+    assert result.fuel_ash_components_mt["s"] == pytest.approx(0.018)
+    assert result.fuel_ash_components_mt["p"] == pytest.approx(0.009)
+
+
+def test_full_slag_balance_applies_slag_correction_factor():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=0.0, sio2_pct=10.0),
+        )
+    ]
+
+    result = calculate_full_slag_balance(
+        ores=ores,
+        quantities_mt={"ore_a": 100.0},
+        hot_metal_mt=60.0,
+        settings=SlagBalanceSettings(
+            enabled=True,
+            fe_to_pig_iron_fraction=0.0,
+            mn_recovery_pct=0.0,
+            sulphur_gas_loss_pct=0.0,
+            alkali_to_slag_fraction=0.8,
+            slag_correction_factor=0.95,
+        ),
+    )
+
+    assert result.diagnostics["raw_total_slag_mt"] == pytest.approx(10.0)
+    assert result.diagnostics["slag_correction_factor"] == pytest.approx(0.95)
+    assert result.slag_components_mt["sio2"] == pytest.approx(9.5)
+    assert result.total_slag_mt == pytest.approx(9.5)
+
+
+def test_blend_evaluation_scales_slag_source_diagnostics_with_correction_factor():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=0.0, sio2_pct=10.0),
+        )
+    ]
+
+    blend = evaluate_blend(
+        ores=ores,
+        quantities_mt={"ore_a": 100.0},
+        feo_in_slag_pct=0.0,
+        slag_balance_settings=SlagBalanceSettings(
+            enabled=True,
+            fe_to_pig_iron_fraction=0.0,
+            mn_recovery_pct=0.0,
+            sulphur_gas_loss_pct=0.0,
+            slag_correction_factor=0.95,
+        ),
+    )
+
+    assert blend.slag_mt == pytest.approx(9.5)
+    assert blend.diagnostics["ore_slag_mt"] == pytest.approx(9.5)
+    assert blend.diagnostics["raw_ore_slag_mt"] == pytest.approx(10.0)
+    assert blend.diagnostics["slag_contribution_mt_by_ore"]["ore_a"] == pytest.approx(
+        9.5
+    )
+    assert blend.diagnostics["raw_slag_contribution_mt_by_ore"]["ore_a"] == (
+        pytest.approx(10.0)
+    )
+
+
+def test_blend_evaluation_uses_full_slag_balance_when_enabled():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(
+                fe_t_pct=60.0,
+                sio2_pct=10.0,
+                al2o3_pct=5.0,
+                cao_pct=2.0,
+                mgo_pct=1.0,
+                na2o_pct=1.0,
+                k2o_pct=1.0,
+            ),
+        )
+    ]
+
+    blend = evaluate_blend(
+        ores=ores,
+        quantities_mt={"ore_a": 100.0},
+        feo_in_slag_pct=0.0,
+        slag_balance_settings=SlagBalanceSettings(
+            enabled=True,
+            carbon_pct=4.0,
+            silicon_pct=0.0,
+            sulphur_pct=0.0,
+            other_pct=0.0,
+            fe_to_pig_iron_fraction=0.999,
+            mn_recovery_pct=0.0,
+            sulphur_gas_loss_pct=0.0,
+            alkali_to_slag_fraction=0.8,
+            fe_to_feo_factor=72.0 / 56.0,
+        ),
+    )
+
+    expected_feo_mt = (60.0 - (60.0 * 0.999)) * (72.0 / 56.0)
+    expected_slag_mt = 10.0 + 5.0 + 2.0 + 1.0 + expected_feo_mt + (2.0 * 0.8)
+    assert blend.diagnostics["simplified_slag_mt"] == pytest.approx(20.0)
+    assert blend.slag_mt == pytest.approx(expected_slag_mt)
+    assert blend.diagnostics["full_slag_balance"]["total_slag_mt"] == pytest.approx(
+        expected_slag_mt
+    )
+
+
+def test_full_slag_balance_deducts_bf_gas_dust_components():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(
+                fe_t_pct=60.0,
+                sio2_pct=10.0,
+                al2o3_pct=5.0,
+                cao_pct=2.0,
+                mgo_pct=1.0,
+            ),
+        )
+    ]
+    dust = [
+        DustInput(
+            dust_id="bf_gas_dust",
+            display_name="BF Gas Dust",
+            wet_qty_mt=10.0,
+            moisture_pct=0.0,
+            sio2_pct=10.0,
+        )
+    ]
+
+    result = calculate_full_slag_balance(
+        ores=ores,
+        quantities_mt={"ore_a": 100.0},
+        hot_metal_mt=60.0,
+        settings=SlagBalanceSettings(
+            enabled=True,
+            carbon_pct=4.0,
+            silicon_pct=0.0,
+            sulphur_pct=0.0,
+            other_pct=0.0,
+            fe_to_pig_iron_fraction=1.0,
+            alkali_to_slag_fraction=0.8,
+        ),
+        dust_inputs=dust,
+    )
+
+    assert result.dust_components_mt["sio2"] == pytest.approx(1.0)
+    assert result.net_into_bf_mt["sio2"] == pytest.approx(9.0)
+    assert result.total_slag_mt == pytest.approx(9.0 + 5.0 + 2.0 + 1.0)
+
+
 def test_lp_baseline_uses_dry_weight_fe_constraint():
     ores = [
         OreInput(
@@ -244,8 +644,7 @@ def test_lp_baseline_uses_dry_weight_fe_constraint():
 
     blend, errors = run_lp_baseline(
         ores,
-        min_fe_production_mt=55.0,
-        max_fe_production_mt=100.0,
+        target_production_mt=55.0,
         target_slag_qty_mt=100.0,
         feo_in_slag_pct=0.0,
     )
@@ -255,6 +654,131 @@ def test_lp_baseline_uses_dry_weight_fe_constraint():
     assert blend.fe_production_mt >= 55.0 - 1e-6
     assert blend.quantities_mt["cheap_moist"] == pytest.approx(100.0)
     assert blend.quantities_mt["rich_dry"] >= 1.42
+
+
+def test_lp_baseline_uses_slag_as_hard_cost_constraint():
+    ores = [
+        OreInput(
+            ore_id="cheap_high_slag",
+            display_name="CHEAP HIGH SLAG",
+            stock_mt=500.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0, sio2_pct=20.0),
+        ),
+        OreInput(
+            ore_id="costly_low_slag",
+            display_name="COSTLY LOW SLAG",
+            stock_mt=500.0,
+            price_rs_per_mt=2000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0, sio2_pct=5.0),
+        ),
+    ]
+
+    blend, errors = run_lp_baseline(
+        ores,
+        target_production_mt=50.0,
+        target_slag_qty_mt=10.0,
+        feo_in_slag_pct=0.0,
+    )
+
+    assert errors == []
+    assert blend is not None
+    assert blend.feasible is True
+    assert blend.violations == []
+    assert blend.fe_production_mt == pytest.approx(50.0, abs=0.5)
+    assert blend.slag_mt <= 10.0 + 1e-6
+    assert blend.quantities_mt["cheap_high_slag"] < 50.0
+    assert blend.quantities_mt["costly_low_slag"] > 50.0
+
+
+def test_lp_baseline_treats_fuel_ash_slag_as_hard_constraint():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=500.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0),
+        ),
+        OreInput(
+            ore_id="ore_b",
+            display_name="ORE B",
+            stock_mt=500.0,
+            price_rs_per_mt=1200.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0),
+        ),
+    ]
+    fuels = [
+        FuelAshInput(
+            fuel_id="coke",
+            display_name="Coke",
+            rate_kg_per_thm=1000.0,
+            ash_pct=100.0,
+            sio2_pct=1.0,
+        )
+    ]
+
+    blend, errors = run_lp_baseline(
+        ores,
+        target_production_mt=100.0,
+        target_slag_qty_mt=0.4,
+        feo_in_slag_pct=0.0,
+        fuel_ash_inputs=fuels,
+    )
+
+    assert blend is None
+    assert any("LP infeasible" in error for error in errors)
+
+
+def test_lp_baseline_treats_fixed_flux_slag_as_hard_constraint():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=500.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0),
+        ),
+        OreInput(
+            ore_id="ore_b",
+            display_name="ORE B",
+            stock_mt=500.0,
+            price_rs_per_mt=1200.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0),
+        ),
+    ]
+    fluxes = [
+        FluxInput(
+            flux_id="limestone",
+            display_name="Limestone",
+            wet_qty_mt=10.0,
+            moisture_pct=0.0,
+            cao_pct=50.0,
+        )
+    ]
+
+    blend, errors = run_lp_baseline(
+        ores,
+        target_production_mt=100.0,
+        target_slag_qty_mt=4.0,
+        feo_in_slag_pct=0.0,
+        flux_inputs=fluxes,
+    )
+
+    assert blend is None
+    assert any("LP infeasible" in error for error in errors)
 
 
 def test_bmo_objective_evaluator_runs_with_fallback_model():
@@ -302,8 +826,7 @@ def test_bmo_objective_evaluator_runs_with_fallback_model():
     )
     evaluator = BmoObjectiveEvaluator(
         ores=ores,
-        min_fe_production_mt=2100.0,
-        max_fe_production_mt=2600.0,
+        target_production_mt=2100.0,
         target_slag_qty_mt=900.0,
         feo_in_slag_pct=0.4,
         model_service=model_service,
@@ -315,6 +838,51 @@ def test_bmo_objective_evaluator_runs_with_fallback_model():
     assert np.isfinite(result.objective_value)
     assert "base_objective_rs_per_thm" in result.components
     assert "blend" in result.diagnostics
+
+
+def test_bmo_objective_penalizes_production_above_target():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=1000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0),
+        )
+    ]
+    model_service = FuelUnitCostModelService(
+        bundle_cfg={
+            "model_path": "src/assets/models/bmo_fuel/definitely_missing_model.joblib",
+            "scaler_path": "src/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
+        },
+        fallback_cfg={},
+    )
+    evaluator = BmoObjectiveEvaluator(
+        ores=ores,
+        target_production_mt=50.0,
+        target_slag_qty_mt=1000.0,
+        feo_in_slag_pct=0.0,
+        model_service=model_service,
+        process_context={},
+        history_df=pd.DataFrame(),
+        penalty_cfg={
+            "penalty_fe": 1000.0,
+            "penalty_production_excess": 1000.0,
+        },
+    )
+
+    exact_result = evaluator.evaluate_quantities(np.array([100.0], dtype=float))
+    over_result = evaluator.evaluate_quantities(np.array([120.0], dtype=float))
+
+    assert exact_result.components["penalty_production_excess"] == pytest.approx(0.0)
+    assert over_result.components["penalty_production_excess"] == pytest.approx(10000.0)
+    assert over_result.feasible is False
+    assert any(
+        "Hot metal above target" in violation for violation in over_result.violations
+    )
+    assert over_result.objective_value > exact_result.objective_value
 
 
 def test_blend_constraint_check_tolerates_small_fe_rounding_delta():
@@ -348,12 +916,85 @@ def test_blend_constraint_check_tolerates_small_fe_rounding_delta():
         check_blend_constraints(
             blend,
             [ore],
-            min_fe_production_mt=2350.0,
-            max_fe_production_mt=2500.0,
+            target_production_mt=2350.0,
             target_slag_qty_mt=750.0,
         )
         == []
     )
+
+
+def test_blend_constraint_check_flags_hot_metal_above_target():
+    ore = OreInput(
+        ore_id="ore_a",
+        display_name="ORE A",
+        stock_mt=5000.0,
+        price_rs_per_mt=6000.0,
+        min_share_pct=0.0,
+        max_share_pct=100.0,
+        chemistry=OreChemistry(fe_t_pct=62.0),
+    )
+    blend = BlendEvaluation(
+        quantities_mt={"ore_a": 3800.0},
+        shares_pct={"ore_a": 100.0},
+        total_qty_mt=3800.0,
+        ore_cost_total_rs=0.0,
+        ore_cost_per_thm_rs=0.0,
+        fuel_cost_per_thm_rs=0.0,
+        objective_rs_per_thm=0.0,
+        fe_t_pct=62.0,
+        effective_fe_pct=62.0,
+        fe_production_mt=2351.0,
+        slag_pct=0.0,
+        slag_mt=0.0,
+        feasible=True,
+        violations=[],
+    )
+
+    violations = check_blend_constraints(
+        blend,
+        [ore],
+        target_production_mt=2350.0,
+        target_slag_qty_mt=750.0,
+    )
+
+    assert any("Hot metal above target" in violation for violation in violations)
+
+
+def test_blend_constraint_check_uses_strict_slag_cap():
+    ore = OreInput(
+        ore_id="ore_a",
+        display_name="ORE A",
+        stock_mt=5000.0,
+        price_rs_per_mt=6000.0,
+        min_share_pct=0.0,
+        max_share_pct=100.0,
+        chemistry=OreChemistry(fe_t_pct=62.0),
+    )
+    blend = BlendEvaluation(
+        quantities_mt={"ore_a": 3800.0},
+        shares_pct={"ore_a": 100.0},
+        total_qty_mt=3800.0,
+        ore_cost_total_rs=0.0,
+        ore_cost_per_thm_rs=0.0,
+        fuel_cost_per_thm_rs=0.0,
+        objective_rs_per_thm=0.0,
+        fe_t_pct=62.0,
+        effective_fe_pct=62.0,
+        fe_production_mt=2350.0,
+        slag_pct=0.0,
+        slag_mt=800.01,
+        feasible=True,
+        violations=[],
+    )
+
+    violations = check_blend_constraints(
+        blend,
+        [ore],
+        target_production_mt=2350.0,
+        target_slag_qty_mt=800.0,
+    )
+
+    assert any("Slag exceeds bound" in violation for violation in violations)
 
 
 def test_nonlinear_optimizer_respects_stock_caps_and_keeps_feasible_baseline():
@@ -396,8 +1037,7 @@ def test_nonlinear_optimizer_respects_stock_caps_and_keeps_feasible_baseline():
 
     blend, errors = run_nonlinear_optimizer(
         ores,
-        min_fe_production_mt=58.0,
-        max_fe_production_mt=80.0,
+        target_production_mt=58.0,
         target_slag_qty_mt=30.0,
         feo_in_slag_pct=0.4,
         model_service=model_service,
@@ -445,8 +1085,7 @@ def test_nonlinear_optimizer_skips_de_when_lp_constraints_are_infeasible():
 
     blend, errors = run_nonlinear_optimizer(
         ores,
-        min_fe_production_mt=130.0,
-        max_fe_production_mt=150.0,
+        target_production_mt=130.0,
         target_slag_qty_mt=100.0,
         feo_in_slag_pct=0.4,
         model_service=model_service,
