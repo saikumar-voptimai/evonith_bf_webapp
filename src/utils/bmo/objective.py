@@ -17,7 +17,13 @@ from domain.optimization_runtime import ObjectiveResult
 from utils.bmo.constraints import check_blend_constraints
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.model_service import FuelUnitCostModelService
-from utils.bmo.types import OreInput
+from utils.bmo.types import (
+    DustInput,
+    FluxInput,
+    FuelAshInput,
+    OreInput,
+    SlagBalanceSettings,
+)
 
 
 class BmoObjectiveEvaluator:
@@ -37,6 +43,10 @@ class BmoObjectiveEvaluator:
          - process_context: dict[str, float] | None - Latest process variables.
          - history_df: pd.DataFrame | None - Historical process data for lagged features.
          - penalty_cfg: dict[str, Any] - Penalty weights used for soft constraints.
+         - fuel_ash_inputs: list[FuelAshInput] | None - Fuel ash records used for slag.
+         - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
+         - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
+         - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
 
     Returns:
          - return BmoObjectiveEvaluator - Configured evaluator for quantity vectors.
@@ -53,6 +63,10 @@ class BmoObjectiveEvaluator:
         process_context: dict[str, float] | None,
         history_df: pd.DataFrame | None,
         penalty_cfg: dict[str, Any],
+        fuel_ash_inputs: list[FuelAshInput] | None = None,
+        flux_inputs: list[FluxInput] | None = None,
+        dust_inputs: list[DustInput] | None = None,
+        slag_balance_settings: SlagBalanceSettings | None = None,
     ) -> None:
         """
         Store optimizer inputs and precompute array forms of bounds.
@@ -70,6 +84,10 @@ class BmoObjectiveEvaluator:
              - process_context: dict[str, float] | None - Latest process variables.
              - history_df: pd.DataFrame | None - Historical process data for lagged features.
              - penalty_cfg: dict[str, Any] - Penalty weights used for soft constraints.
+             - fuel_ash_inputs: list[FuelAshInput] | None - Fuel ash records used for slag.
+             - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
+             - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
+             - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
 
         Returns:
              - return None - Initializes evaluator state.
@@ -82,6 +100,10 @@ class BmoObjectiveEvaluator:
         self.model_service = model_service
         self.process_context = process_context or {}
         self.history_df = history_df
+        self.fuel_ash_inputs = fuel_ash_inputs
+        self.flux_inputs = flux_inputs
+        self.dust_inputs = dust_inputs
+        self.slag_balance_settings = slag_balance_settings
         self.penalty_cfg = penalty_cfg
         self.stocks = np.array([float(ore.stock_mt) for ore in ores], dtype=float)
         self.min_shares = np.array(
@@ -96,8 +118,11 @@ class BmoObjectiveEvaluator:
         Evaluate one candidate wet-quantity vector for DE optimization.
 
         The returned objective contains both the scalar value required by SciPy
-        and rich diagnostics for the Streamlit comparison view. Fe, slag, stock,
-        and share violations are penalized but also reported explicitly.
+        and rich diagnostics for the Streamlit comparison view. Production
+        shortfall, production excess, slag, stock, and share violations are
+        penalized but also reported explicitly. Penalizing production excess
+        keeps DE anchored to the operator's target hot metal without requiring
+        a separate maximum-production UI input.
 
         Args:
              - quantities_vector: np.ndarray - Candidate wet ore quantities in MT.
@@ -116,11 +141,18 @@ class BmoObjectiveEvaluator:
             model_service=self.model_service,
             process_context=self.process_context,
             history_df=self.history_df,
+            fuel_ash_inputs=self.fuel_ash_inputs,
+            flux_inputs=self.flux_inputs,
+            dust_inputs=self.dust_inputs,
+            slag_balance_settings=self.slag_balance_settings,
         )
 
         penalty_stock = float(self.penalty_cfg.get("penalty_stock", 2500.0))
         penalty_share = float(self.penalty_cfg.get("penalty_share", 2500.0))
         penalty_fe = float(self.penalty_cfg.get("penalty_fe", 3000.0))
+        penalty_production_excess = float(
+            self.penalty_cfg.get("penalty_production_excess", penalty_fe)
+        )
         penalty_slag = float(self.penalty_cfg.get("penalty_slag", 3000.0))
         penalty_large = float(self.penalty_cfg.get("penalty_large", 1_000_000.0))
 
@@ -143,6 +175,11 @@ class BmoObjectiveEvaluator:
             fe_penalty += (
                 self.target_production_mt - blend.fe_production_mt
             ) * penalty_fe
+        production_excess_penalty = 0.0
+        if blend.fe_production_mt > self.target_production_mt:
+            production_excess_penalty += (
+                blend.fe_production_mt - self.target_production_mt
+            ) * penalty_production_excess
 
         slag_penalty = 0.0
         if blend.slag_mt > self.target_slag_qty_mt:
@@ -155,7 +192,12 @@ class BmoObjectiveEvaluator:
             finite_penalty += penalty_large
 
         total_penalty = (
-            stock_penalty + share_penalty + fe_penalty + slag_penalty + finite_penalty
+            stock_penalty
+            + share_penalty
+            + fe_penalty
+            + production_excess_penalty
+            + slag_penalty
+            + finite_penalty
         )
         objective_value = float(blend.objective_rs_per_thm + total_penalty)
 
@@ -177,6 +219,7 @@ class BmoObjectiveEvaluator:
                 "penalty_stock": float(stock_penalty),
                 "penalty_share_bounds": float(share_penalty),
                 "penalty_fe": float(fe_penalty),
+                "penalty_production_excess": float(production_excess_penalty),
                 "penalty_slag": float(slag_penalty),
                 "penalty_non_finite": float(finite_penalty),
             },

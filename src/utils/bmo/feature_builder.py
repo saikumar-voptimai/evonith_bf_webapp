@@ -20,10 +20,7 @@ from domain.optimization_runtime import (
 from domain.optimization_runtime import (
     normalize_feature_name as _normalize_feature_name,
 )
-from utils.bmo.calculations import (
-    compute_dry_weight_mt,
-    compute_fe_contribution_mt,
-)
+from utils.bmo.calculations import compute_dry_weight_mt, compute_fe_contribution_mt
 from utils.bmo.types import OreInput
 
 

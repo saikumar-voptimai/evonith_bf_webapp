@@ -19,16 +19,27 @@ from data.bmo import EvonithBmoContextProvider
 from domain.optimization_runtime import build_runtime_config
 from ui.bmo import (
     apply_bmo_styles,
+    build_dust_editor_df,
+    build_flux_editor_df,
+    build_fuel_ash_editor_df,
     build_ore_editor_df,
     render_blend_metrics,
     render_blend_table,
     render_diagnostics,
+    render_dust_editor,
+    render_flux_editor,
+    render_fuel_ash_editor,
     render_header,
     render_ore_editor,
+    render_slag_balance_settings,
 )
 from utils.bmo import (
+    DustInput,
+    FluxInput,
+    FuelAshInput,
     FuelUnitCostModelService,
     OreInput,
+    SlagBalanceSettings,
     run_lp_baseline,
     run_nonlinear_optimizer,
 )
@@ -196,6 +207,218 @@ def _selected_ores_from_editor(
     return selected_ores
 
 
+def _float_from_row(row: pd.Series, key: str, default: float = 0.0) -> float:
+    """
+    Read one numeric value from a Streamlit editor row.
+
+    Data editor cells can return blank, NaN, or typed numeric values depending
+    on Streamlit version and user edits. This helper normalizes those cases so
+    fuel ash inputs always receive stable floats.
+
+    Args:
+         - row: pd.Series - Edited dataframe row.
+         - key: str - Column name to read.
+         - default: float - Value to use when the cell is blank or invalid.
+
+    Returns:
+         - return float - Parsed numeric value.
+    """
+
+    value = row.get(key, default)
+    if pd.isna(value):
+        return float(default)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _fuel_ash_inputs_from_editor(editor_df: pd.DataFrame) -> list[FuelAshInput]:
+    """
+    Convert edited fuel ash rows into typed fuel ash inputs.
+
+    The UI table stores fuel rates and ash chemistry as dataframe columns. This
+    helper converts those rows into dataclass records consumed by LP, DE, and
+    final blend evaluation.
+
+    Args:
+         - editor_df: pd.DataFrame - Edited fuel ash table.
+
+    Returns:
+         - return list[FuelAshInput] - Fuel ash inputs for slag calculations.
+    """
+
+    fuel_ash_inputs: list[FuelAshInput] = []
+    if editor_df.empty:
+        return fuel_ash_inputs
+
+    for _, row in editor_df.iterrows():
+        fuel_id = str(row.get("fuel_id", "")).strip()
+        if not fuel_id:
+            continue
+        fuel_ash_inputs.append(
+            FuelAshInput(
+                fuel_id=fuel_id,
+                display_name=str(row.get("fuel_name", fuel_id)),
+                enabled=bool(row.get("enabled", True)),
+                rate_kg_per_thm=_float_from_row(row, "rate_kg_per_thm"),
+                moisture_pct=_float_from_row(row, "moisture_pct"),
+                ash_pct=_float_from_row(row, "ash_pct"),
+                sio2_pct=_float_from_row(row, "sio2_pct"),
+                al2o3_pct=_float_from_row(row, "al2o3_pct"),
+                cao_pct=_float_from_row(row, "cao_pct"),
+                mgo_pct=_float_from_row(row, "mgo_pct"),
+                fe2o3_pct=_float_from_row(row, "fe2o3_pct"),
+                tio2_pct=_float_from_row(row, "tio2_pct"),
+                na2o_pct=_float_from_row(row, "na2o_pct"),
+                k2o_pct=_float_from_row(row, "k2o_pct"),
+                s_pct=_float_from_row(row, "s_pct"),
+                p_pct=_float_from_row(row, "p_pct"),
+            )
+        )
+    return fuel_ash_inputs
+
+
+def _flux_inputs_from_editor(editor_df: pd.DataFrame) -> list[FluxInput]:
+    """
+    Convert edited fixed-flux rows into typed flux inputs.
+
+    The Streamlit table stores flux wet quantity and chemistry as dataframe
+    columns. This helper converts those rows into dataclass records used by
+    LP, DE, and final blend evaluation.
+
+    Args:
+         - editor_df: pd.DataFrame - Edited fixed-flux table.
+
+    Returns:
+         - return list[FluxInput] - Flux inputs for slag calculations.
+    """
+
+    flux_inputs: list[FluxInput] = []
+    if editor_df.empty:
+        return flux_inputs
+
+    for _, row in editor_df.iterrows():
+        flux_id = str(row.get("flux_id", "")).strip()
+        if not flux_id:
+            continue
+        flux_inputs.append(
+            FluxInput(
+                flux_id=flux_id,
+                display_name=str(row.get("flux_name", flux_id)),
+                enabled=bool(row.get("enabled", True)),
+                wet_qty_mt=_float_from_row(row, "wet_qty_mt"),
+                moisture_pct=_float_from_row(row, "moisture_pct"),
+                sio2_pct=_float_from_row(row, "sio2_pct"),
+                al2o3_pct=_float_from_row(row, "al2o3_pct"),
+                cao_pct=_float_from_row(row, "cao_pct"),
+                mgo_pct=_float_from_row(row, "mgo_pct"),
+                fe2o3_pct=_float_from_row(row, "fe2o3_pct"),
+                mno_pct=_float_from_row(row, "mno_pct"),
+                tio2_pct=_float_from_row(row, "tio2_pct"),
+                na2o_pct=_float_from_row(row, "na2o_pct"),
+                k2o_pct=_float_from_row(row, "k2o_pct"),
+                caf2_pct=_float_from_row(row, "caf2_pct"),
+                p_pct=_float_from_row(row, "p_pct"),
+                s_pct=_float_from_row(row, "s_pct"),
+                zn_pct=_float_from_row(row, "zn_pct"),
+                loi_pct=_float_from_row(row, "loi_pct"),
+            )
+        )
+    return flux_inputs
+
+
+def _dust_inputs_from_editor(editor_df: pd.DataFrame) -> list[DustInput]:
+    """
+    Convert edited BF gas dust rows into typed dust inputs.
+
+    Dust rows are used only by the full slag-balance calculation. This helper
+    converts the editable dust table into dataclass records so component losses
+    can be deducted from total BF input.
+
+    Args:
+         - editor_df: pd.DataFrame - Edited BF gas dust table.
+
+    Returns:
+         - return list[DustInput] - Dust inputs for full slag balance.
+    """
+
+    dust_inputs: list[DustInput] = []
+    if editor_df.empty:
+        return dust_inputs
+
+    for _, row in editor_df.iterrows():
+        dust_id = str(row.get("dust_id", "")).strip()
+        if not dust_id:
+            continue
+        dust_inputs.append(
+            DustInput(
+                dust_id=dust_id,
+                display_name=str(row.get("dust_name", dust_id)),
+                enabled=bool(row.get("enabled", True)),
+                wet_qty_mt=_float_from_row(row, "wet_qty_mt"),
+                moisture_pct=_float_from_row(row, "moisture_pct"),
+                sio2_pct=_float_from_row(row, "sio2_pct"),
+                al2o3_pct=_float_from_row(row, "al2o3_pct"),
+                cao_pct=_float_from_row(row, "cao_pct"),
+                mgo_pct=_float_from_row(row, "mgo_pct"),
+                fe_pct=_float_from_row(row, "fe_pct"),
+                mn_pct=_float_from_row(row, "mn_pct"),
+                p_pct=_float_from_row(row, "p_pct"),
+                s_pct=_float_from_row(row, "s_pct"),
+                ti_pct=_float_from_row(row, "ti_pct"),
+                zn_pct=_float_from_row(row, "zn_pct"),
+                na2o_pct=_float_from_row(row, "na2o_pct"),
+                k2o_pct=_float_from_row(row, "k2o_pct"),
+                caf2_pct=_float_from_row(row, "caf2_pct"),
+            )
+        )
+    return dust_inputs
+
+
+def _slag_balance_settings_from_editor(
+    settings_values: dict[str, Any],
+) -> SlagBalanceSettings:
+    """
+    Convert edited slag-balance setting values into a typed settings object.
+
+    The page renderer returns settings as a small dictionary from Streamlit
+    controls. This helper normalizes those values into the dataclass consumed by
+    the full slag-balance calculator. Pig-iron chemistry percentages are held
+    at zero because BMO now uses the slag correction factor for plant
+    calibration instead of PI C/Si/S/Others assumptions.
+
+    Args:
+         - settings_values: dict[str, Any] - Edited slag-balance setting values.
+
+    Returns:
+         - return SlagBalanceSettings - Full slag-balance settings.
+    """
+
+    return SlagBalanceSettings(
+        enabled=bool(settings_values.get("enabled", True)),
+        carbon_pct=0.0,
+        silicon_pct=0.0,
+        sulphur_pct=0.0,
+        other_pct=0.0,
+        pi_loss_pct=float(settings_values.get("pi_loss_pct", 0.2)),
+        fe_to_pig_iron_fraction=float(
+            settings_values.get("fe_to_pig_iron_fraction", 0.999)
+        ),
+        mn_recovery_pct=float(settings_values.get("mn_recovery_pct", 60.0)),
+        sulphur_gas_loss_pct=float(settings_values.get("sulphur_gas_loss_pct", 10.0)),
+        alkali_to_slag_fraction=float(
+            settings_values.get("alkali_to_slag_fraction", 0.8)
+        ),
+        si_to_sio2_factor=float(settings_values.get("si_to_sio2_factor", 2.14)),
+        fe_to_feo_factor=float(settings_values.get("fe_to_feo_factor", 72.0 / 56.0)),
+        mn_to_mno_factor=float(settings_values.get("mn_to_mno_factor", 1.291)),
+        slag_correction_factor=float(
+            settings_values.get("slag_correction_factor", 0.95)
+        ),
+    )
+
+
 apply_bmo_styles()
 bmo_cfg = _get_bmo_config()
 provider = _get_context_provider()
@@ -257,6 +480,33 @@ editor_df = build_ore_editor_df(ores, default_selected_ids=default_selected_ids)
 st.markdown("### Ore Selection, Stock, Pricing, and Share Bounds")
 edited_df = render_ore_editor(editor_df)
 
+fuel_ash_df = build_fuel_ash_editor_df(bmo_cfg.get("fuel_ash_inputs", []))
+if not fuel_ash_df.empty:
+    st.markdown("### Fuel Ash Inputs")
+    edited_fuel_ash_df = render_fuel_ash_editor(fuel_ash_df)
+else:
+    edited_fuel_ash_df = fuel_ash_df
+fuel_ash_inputs = _fuel_ash_inputs_from_editor(edited_fuel_ash_df)
+
+flux_df = build_flux_editor_df(bmo_cfg.get("flux_inputs", []))
+if not flux_df.empty:
+    st.markdown("### Flux Inputs")
+    edited_flux_df = render_flux_editor(flux_df)
+else:
+    edited_flux_df = flux_df
+flux_inputs = _flux_inputs_from_editor(edited_flux_df)
+
+with st.expander("Advanced Slag Balance Inputs", expanded=False):
+    slag_settings_values = render_slag_balance_settings(bmo_cfg.get("slag_balance", {}))
+    dust_df = build_dust_editor_df(bmo_cfg.get("dust_inputs", []))
+    if not dust_df.empty:
+        st.markdown("##### BF Gas Dust")
+        edited_dust_df = render_dust_editor(dust_df)
+    else:
+        edited_dust_df = dust_df
+dust_inputs = _dust_inputs_from_editor(edited_dust_df)
+slag_balance_settings = _slag_balance_settings_from_editor(slag_settings_values)
+
 run_lp_clicked = False
 run_total_clicked = False
 with st.form("bmo_run_form", clear_on_submit=False):
@@ -281,8 +531,13 @@ if run_lp_clicked or run_total_clicked:
                 target_production_mt=target_production_mt,
                 target_slag_qty_mt=target_slag_qty_mt,
                 feo_in_slag_pct=feo_in_slag_pct,
+                fuel_ash_inputs=fuel_ash_inputs,
+                flux_inputs=flux_inputs,
+                dust_inputs=dust_inputs,
+                slag_balance_settings=slag_balance_settings,
             )
             if lp_result is not None:
+                lp_physical_result = lp_result
                 fuel_context = _load_fuel_prediction_context(provider)
                 (
                     model_service,
@@ -296,7 +551,6 @@ if run_lp_clicked or run_total_clicked:
                     *fuel_warnings,
                 ]
                 st.session_state["bmo_bundle_status"] = bundle_status
-                lp_physical_result = lp_result
                 lp_result = evaluate_blend_with_fuel_prediction(
                     ores=selected_ores,
                     quantities_mt=lp_physical_result.quantities_mt,
@@ -304,6 +558,10 @@ if run_lp_clicked or run_total_clicked:
                     model_service=model_service,
                     process_context=process_context,
                     history_df=history_df,
+                    fuel_ash_inputs=fuel_ash_inputs,
+                    flux_inputs=flux_inputs,
+                    dust_inputs=dust_inputs,
+                    slag_balance_settings=slag_balance_settings,
                 )
                 lp_result.feasible = lp_physical_result.feasible
                 lp_result.violations = lp_physical_result.violations
@@ -343,6 +601,10 @@ if run_lp_clicked or run_total_clicked:
                     process_context=process_context,
                     history_df=history_df,
                     de_cfg=opt_cfg,
+                    fuel_ash_inputs=fuel_ash_inputs,
+                    flux_inputs=flux_inputs,
+                    dust_inputs=dust_inputs,
+                    slag_balance_settings=slag_balance_settings,
                 )
             st.session_state["bmo_de_result"] = de_result
             st.session_state["bmo_de_errors"] = de_errors

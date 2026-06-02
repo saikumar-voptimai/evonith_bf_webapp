@@ -15,7 +15,14 @@ import pandas as pd
 
 from utils.bmo.calculations import evaluate_blend
 from utils.bmo.feature_builder import build_feature_payload
-from utils.bmo.types import BlendEvaluation, OreInput
+from utils.bmo.types import (
+    BlendEvaluation,
+    DustInput,
+    FluxInput,
+    FuelAshInput,
+    OreInput,
+    SlagBalanceSettings,
+)
 
 if TYPE_CHECKING:
     from utils.bmo.model_service import FuelUnitCostModelService
@@ -29,6 +36,10 @@ def evaluate_blend_with_fuel_prediction(
     model_service: FuelUnitCostModelService,
     process_context: Mapping[str, Any] | None,
     history_df: pd.DataFrame | None,
+    fuel_ash_inputs: list[FuelAshInput] | None = None,
+    flux_inputs: list[FluxInput] | None = None,
+    dust_inputs: list[DustInput] | None = None,
+    slag_balance_settings: SlagBalanceSettings | None = None,
 ) -> BlendEvaluation:
     """
     Evaluate a blend and attach the model-predicted fuel unit cost.
@@ -44,6 +55,10 @@ def evaluate_blend_with_fuel_prediction(
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
          - process_context: Mapping[str, Any] | None - Latest process variables.
          - history_df: pd.DataFrame | None - Historical process data for lagged features.
+         - fuel_ash_inputs: list[FuelAshInput] | None - Fuel ash records used for slag.
+         - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
+         - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
+         - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
 
     Returns:
          - return BlendEvaluation - Blend metrics with fuel prediction diagnostics.
@@ -63,6 +78,10 @@ def evaluate_blend_with_fuel_prediction(
         quantities_mt=quantities,
         feo_in_slag_pct=feo_in_slag_pct,
         fuel_cost_per_thm_rs=float(prediction.value),
+        fuel_ash_inputs=fuel_ash_inputs,
+        flux_inputs=flux_inputs,
+        dust_inputs=dust_inputs,
+        slag_balance_settings=slag_balance_settings,
     )
     blend.diagnostics["model_prediction"] = prediction
     blend.diagnostics["feature_details"] = prediction.details
