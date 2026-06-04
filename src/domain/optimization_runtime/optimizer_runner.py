@@ -7,6 +7,7 @@ baseline comparison metrics for the Streamlit diagnostics panel.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -54,6 +55,9 @@ class OptimizerRunner:
         bounds: list[tuple[float, float]],
         objective_fn: Callable[[np.ndarray], ObjectiveResult],
         baseline_solution: dict[str, Any] | None = None,
+        progress_callback: (
+            Callable[[int, float, float | None, int, float], bool] | None
+        ) = None,
     ) -> OptimizationResult:
         """
         Execute SciPy differential evolution and summarize the best solution.
@@ -79,6 +83,9 @@ class OptimizerRunner:
             if baseline_solution and bool(baseline_solution.get("feasible", False))
             else None
         )
+        nfev_state = {"count": 0}
+        iteration_state = {"i": 0}
+        t0 = time.monotonic()
 
         def wrapped(x: np.ndarray) -> float:
             """
@@ -96,6 +103,7 @@ class OptimizerRunner:
             """
 
             nonlocal best_feasible, best_relaxed
+            nfev_state["count"] += 1
             x_arr = np.asarray(x, dtype=float)
             result = objective_fn(x_arr)
             record = {
@@ -118,6 +126,45 @@ class OptimizerRunner:
                     best_feasible = record
             return float(result.objective_value)
 
+        def _scipy_callback(xk: np.ndarray, convergence: float = 0.0) -> bool:
+            """
+            Forward DE generation events to the optional progress callback.
+
+            Args:
+                 - xk: np.ndarray - Best candidate vector at this generation.
+                 - convergence: float - SciPy convergence score in [0, 1].
+
+            Returns:
+                 - return bool - True to stop DE early, False to continue.
+            """
+
+            iteration_state["i"] += 1
+            best_obj = (
+                float(best_relaxed["objective"])
+                if best_relaxed and "objective" in best_relaxed
+                else float("inf")
+            )
+            best_feas = (
+                float(best_feasible["objective"])
+                if best_feasible and "objective" in best_feasible
+                else None
+            )
+            elapsed_s = time.monotonic() - t0
+            if progress_callback is None:
+                return False
+            try:
+                return bool(
+                    progress_callback(
+                        iteration_state["i"],
+                        best_obj,
+                        best_feas,
+                        nfev_state["count"],
+                        elapsed_s,
+                    )
+                )
+            except Exception:
+                return False
+
         de_result = differential_evolution(
             func=wrapped,
             bounds=bounds,
@@ -128,6 +175,7 @@ class OptimizerRunner:
             polish=bool(self.optimizer_cfg.get("polish", False)),
             seed=int(self.optimizer_cfg.get("seed", 42)),
             workers=1,
+            callback=_scipy_callback,
         )
 
         best_solution = (
@@ -157,8 +205,9 @@ class OptimizerRunner:
             "de_result": {
                 "success": bool(getattr(de_result, "success", False)),
                 "message": str(getattr(de_result, "message", "")),
-                "nfev": int(getattr(de_result, "nfev", 0)),
-                "nit": int(getattr(de_result, "nit", 0)),
+                "nfev": int(getattr(de_result, "nfev", nfev_state["count"])),
+                "nit": int(getattr(de_result, "nit", iteration_state["i"])),
+                "elapsed_s": float(time.monotonic() - t0),
             },
             "best_feasible_found": best_feasible is not None,
         }

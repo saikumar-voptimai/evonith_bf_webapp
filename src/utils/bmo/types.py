@@ -286,6 +286,8 @@ class SlagBalanceSettings:
     silicon_pct: float = 0.0
     sulphur_pct: float = 0.0
     other_pct: float = 0.0
+    mn_pct: float = 0.0
+    ti_pct: float = 0.0
     pi_loss_pct: float = 0.2
     fe_to_pig_iron_fraction: float = 0.999
     mn_recovery_pct: float = 60.0

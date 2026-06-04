@@ -180,10 +180,12 @@ bmo:
 
   slag_balance:
     enabled: true
-    carbon_pct: 0.0
-    silicon_pct: 0.0
-    sulphur_pct: 0.0
-    other_pct: 0.0
+    # PI chemistry fallbacks: used only when live HM_SLAG fetch fails.
+    # Live values from offline_feed.hot_metal_slag_analysis override these.
+    carbon_pct: 4.2
+    silicon_pct: 0.7
+    sulphur_pct: 0.03
+    other_pct: 0.1
     pi_loss_pct: 0.2
     fe_to_pig_iron_fraction: 0.999
     mn_recovery_pct: 60.0
@@ -192,7 +194,9 @@ bmo:
     si_to_sio2_factor: 2.14
     fe_to_feo_factor: 1.2857142857
     mn_to_mno_factor: 1.291
-    slag_correction_factor: 0.95
+    # With HM-driven PI chemistry the slag balance is self-consistent;
+    # leave correction at 1.0 unless empirical calibration is still needed.
+    slag_correction_factor: 1.0
 
   optimization:
     enabled: true

@@ -11,7 +11,9 @@ from ui.bmo.components import (
     render_flux_editor,
     render_fuel_ash_editor,
     render_header,
+    render_hot_metal_chemistry,
     render_ore_editor,
+    render_slag_balance_details,
     render_slag_balance_settings,
 )
 
@@ -28,6 +30,8 @@ __all__ = [
     "render_flux_editor",
     "render_header",
     "render_fuel_ash_editor",
+    "render_hot_metal_chemistry",
     "render_ore_editor",
+    "render_slag_balance_details",
     "render_slag_balance_settings",
 ]

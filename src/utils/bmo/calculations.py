@@ -614,6 +614,30 @@ def evaluate_blend(
     corrected_ore_slag_mt = ore_slag_mt * slag_source_correction_factor
     corrected_fuel_ash_slag_mt = fuel_ash_slag_mt * slag_source_correction_factor
     corrected_flux_slag_mt = flux_slag_mt * slag_source_correction_factor
+    hm_reduction_sio2_mt = 0.0
+    hm_reduction_mno_mt = 0.0
+    hm_reduction_tio2_mt = 0.0
+    hm_reduction_s_mt = 0.0
+    hm_reduction_alkali_mt = 0.0
+    tio2_unaccounted_mt = 0.0
+    raw_ore_components_total_mt = 0.0
+    raw_flux_components_total_mt = 0.0
+    raw_fuel_ash_components_total_mt = 0.0
+    if full_slag_balance is not None:
+        fb_diag = full_slag_balance.diagnostics
+        # Replace simplified source totals with post-HM-reduction attributions
+        # so each tile reflects the source's true contribution to final slag.
+        corrected_ore_slag_mt = float(fb_diag.get("ore_slag_in_final_mt", 0.0))
+        corrected_fuel_ash_slag_mt = float(
+            fb_diag.get("fuel_ash_slag_in_final_mt", 0.0)
+        )
+        corrected_flux_slag_mt = float(fb_diag.get("flux_slag_in_final_mt", 0.0))
+        hm_reduction_sio2_mt = float(fb_diag.get("hm_reduction_sio2_mt", 0.0))
+        hm_reduction_mno_mt = float(fb_diag.get("hm_reduction_mno_mt", 0.0))
+        hm_reduction_tio2_mt = float(fb_diag.get("hm_reduction_tio2_mt", 0.0))
+        hm_reduction_s_mt = float(fb_diag.get("hm_reduction_s_mt", 0.0))
+        hm_reduction_alkali_mt = float(fb_diag.get("hm_reduction_alkali_mt", 0.0))
+        tio2_unaccounted_mt = float(fb_diag.get("tio2_unaccounted_mt", 0.0))
     if total_dry_qty_mt > 0:
         slag_pct = (slag_mt / total_dry_qty_mt) * 100.0
     slag_rate_kg_per_thm = (
@@ -703,6 +727,12 @@ def evaluate_blend(
             "slag_balance_enabled": bool(
                 slag_balance_settings.enabled if slag_balance_settings else False
             ),
+            "hm_reduction_sio2_mt": float(hm_reduction_sio2_mt),
+            "hm_reduction_mno_mt": float(hm_reduction_mno_mt),
+            "hm_reduction_tio2_mt": float(hm_reduction_tio2_mt),
+            "hm_reduction_s_mt": float(hm_reduction_s_mt),
+            "hm_reduction_alkali_mt": float(hm_reduction_alkali_mt),
+            "tio2_unaccounted_mt": float(tio2_unaccounted_mt),
             "full_slag_balance": (
                 {
                     "total_slag_mt": float(full_slag_balance.total_slag_mt),

@@ -20,7 +20,11 @@ from domain.optimization_runtime import (
     build_runtime_config,
     normalize_feature_name,
 )
-from utils.bmo.feature_builder import build_bmo_v4_feature_frame
+from utils.bmo.feature_builder import (
+    PreBuiltFeatureContext,
+    build_bmo_v4_feature_frame,
+    build_dynamic_payload,
+)
 from utils.bmo.types import ModelPrediction
 
 
@@ -580,3 +584,149 @@ class FuelUnitCostModelService:
                 used_fallback=True,
                 details={"reason": f"Selected-feature inference failed: {exc}"},
             )
+
+    def build_prebuilt_context(
+        self,
+        *,
+        ores: "list[Any]",
+        process_context: dict[str, float] | None,
+        history_df: "pd.DataFrame | None",
+    ) -> PreBuiltFeatureContext | None:
+        """
+        Build a prebuilt feature context for repeated inference (e.g. DE inner loop).
+
+        The context resolves every static feature column once using process
+        context and history defaults so that subsequent predictions can mutate
+        only the small burden-dependent slots. The returned context is reused
+        with ``predict_with_prebuilt`` for every DE candidate.
+
+        Args:
+             - ores: list[OreInput] - Ores selected for the optimization run.
+             - process_context: dict[str, float] | None - Latest process variables.
+             - history_df: pd.DataFrame | None - Historical process data for lag features.
+
+        Returns:
+             - return PreBuiltFeatureContext | None - Cached context or None if not buildable.
+        """
+
+        from utils.bmo.feature_builder import build_prebuilt_feature_context
+
+        self._ensure_loaded()
+        bundle = self._bundle_info
+        if bundle is None or not bundle.expected_features:
+            return None
+
+        default_values = dict(bundle.defaults)
+        if self._selected_features:
+            default_values.update(self._scaler_mean_defaults())
+
+        try:
+            return build_prebuilt_feature_context(
+                ores=ores,
+                process_context=process_context,
+                history_df=history_df,
+                expected_features=list(bundle.expected_features),
+                default_values=default_values,
+                selected_features=self._selected_features,
+            )
+        except Exception:
+            return None
+
+    def predict_with_prebuilt(
+        self,
+        context: PreBuiltFeatureContext,
+        quantities_mt: dict[str, float],
+        history_df: "pd.DataFrame | None",
+    ) -> ModelPrediction:
+        """
+        Predict fuel cost using a prebuilt template and per-candidate dynamic payload.
+
+        The prebuilt template carries the resolved static feature row. This fast
+        path computes only the burden-dependent payload, overwrites the matching
+        template columns by index, then runs scaler.transform + selected-column
+        projection + model.predict. It avoids the per-call cost of resolving
+        150+ feature columns through history/lag/alias lookups.
+
+        Args:
+             - context: PreBuiltFeatureContext - Cached scaler-order template + index map.
+             - quantities_mt: dict[str, float] - Candidate wet ore quantities keyed by ore id.
+             - history_df: pd.DataFrame | None - History frame, used only by fallback path.
+
+        Returns:
+             - return ModelPrediction - Fuel cost prediction with diagnostics.
+        """
+
+        self._ensure_loaded()
+        bundle = self._bundle_info
+        if bundle is None or bundle.model is None:
+            payload_fallback = build_dynamic_payload(context, quantities_mt)
+            payload_fallback.update(context.static_payload)
+            return self.predict(payload_fallback, history_df)
+
+        dynamic_payload = build_dynamic_payload(context, quantities_mt)
+
+        x = context.template_x.copy()
+        for key, value in dynamic_payload.items():
+            try:
+                float_value = float(value)
+            except (TypeError, ValueError):
+                continue
+            for col_idx in context.dynamic_col_indexes.get(key, ()):
+                x[0, col_idx] = float_value
+
+        try:
+            # Wrap as a DataFrame with the scaler's training column names so
+            # sklearn does not warn about 'X has no valid feature names'.
+            x_df = pd.DataFrame(x, columns=context.expected_features)
+            if bundle.scaler is not None:
+                x_scaled = bundle.scaler.transform(x_df)
+            else:
+                x_scaled = x_df.values
+
+            if (
+                context.selected_indexes is not None
+                and context.selected_features
+            ):
+                model_input = pd.DataFrame(
+                    x_scaled[:, context.selected_indexes],
+                    columns=context.selected_features,
+                )
+            else:
+                model_input = pd.DataFrame(
+                    x_scaled, columns=context.expected_features
+                )
+
+            pred = bundle.model.predict(model_input)
+            value = float(np.asarray(pred).reshape(-1)[0])
+        except Exception as exc:
+            payload_fallback = dict(context.static_payload)
+            payload_fallback.update(dynamic_payload)
+            fallback = self._fallback_predict(payload_fallback)
+            return ModelPrediction(
+                value=float(fallback),
+                model_loaded=True,
+                scaler_loaded=bundle.scaler is not None,
+                used_fallback=True,
+                details={"reason": f"Prebuilt inference failed: {exc}"},
+            )
+
+        prediction_issue = self._prediction_issue(value)
+        if prediction_issue:
+            payload_fallback = dict(context.static_payload)
+            payload_fallback.update(dynamic_payload)
+            fallback = self._fallback_predict(payload_fallback)
+            return ModelPrediction(
+                value=float(fallback),
+                model_loaded=True,
+                scaler_loaded=bundle.scaler is not None,
+                used_fallback=True,
+                details={"reason": prediction_issue, "model_value": value},
+            )
+
+        return ModelPrediction(
+            value=value,
+            model_loaded=True,
+            scaler_loaded=bundle.scaler is not None,
+            used_fallback=False,
+            details={"path": "prebuilt", "dynamic_field_count": len(dynamic_payload)},
+        )

@@ -7,6 +7,7 @@ the differential-evolution runtime.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -41,6 +42,9 @@ def run_nonlinear_optimizer(
     flux_inputs: list[FluxInput] | None = None,
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
+    progress_callback: (
+        Callable[[int, float, float | None, int, float], bool] | None
+    ) = None,
 ) -> tuple[BlendEvaluation | None, list[str]]:
     """
     Run nonlinear total-cost BMO optimization with DE.
@@ -89,6 +93,12 @@ def run_nonlinear_optimizer(
 
     bounds = [(0.0, max(0.0, float(ore.stock_mt))) for ore in ores]
 
+    prebuilt_context = model_service.build_prebuilt_context(
+        ores=ores,
+        process_context=process_context,
+        history_df=history_df,
+    )
+
     evaluator = BmoObjectiveEvaluator(
         ores=ores,
         target_production_mt=float(target_production_mt),
@@ -102,6 +112,7 @@ def run_nonlinear_optimizer(
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
         penalty_cfg=de_cfg,
+        prebuilt_context=prebuilt_context,
     )
 
     def objective(raw_x: np.ndarray) -> ObjectiveResult:
@@ -146,6 +157,7 @@ def run_nonlinear_optimizer(
         bounds=bounds,
         objective_fn=objective,
         baseline_solution=baseline_solution,
+        progress_callback=progress_callback,
     )
 
     best_diag = dict(optimization_result.best_solution.get("diagnostics", {}))

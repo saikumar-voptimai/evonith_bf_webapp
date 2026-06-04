@@ -23,6 +23,18 @@ try:
 except Exception:  # pragma: no cover - environment dependent import fallback
     _fetch_offline_data = None
 
+try:
+    from furnace_data.neon_db.offline import (
+        fetch_offline_report as _fetch_offline_report,
+    )
+except Exception:  # pragma: no cover - environment dependent import fallback
+    _fetch_offline_report = None
+
+
+HM_PI_CHEM_COLUMNS = ("chem_pct_c", "chem_pct_si", "chem_pct_s")
+HM_OTHER_CHEM_COLUMNS = ("chem_pct_mn", "chem_pct_p", "chem_pct_ti", "chem_pct_cr")
+HM_ALL_CHEM_COLUMNS = HM_PI_CHEM_COLUMNS + HM_OTHER_CHEM_COLUMNS
+
 
 def _fetch_offline_data_safe(
     *, measurement: str, time_range: Any, database: str
@@ -370,6 +382,129 @@ class EvonithBmoContextProvider:
             )
 
         return chemistry_by_ore, warnings
+
+    def get_hm_slag_snapshot(
+        self, *, mode: str = "latest", window_days: int = 30
+    ) -> dict[str, Any]:
+        """
+        Build a hot-metal & slag analysis snapshot for the slag balance settings.
+
+        The full BF slag balance needs HM C/Si/S and the sum of minor HM elements
+        to subtract pig-iron inclusions (SiO2 reduction, S to PI, residual Fe/Mn
+        to slag). This snapshot mirrors ``get_chemistry_snapshot`` so the page can
+        offer the same latest/avg controls.
+
+        Args:
+             - mode: str - Snapshot mode, either "latest" non-zero or "avg" over window.
+             - window_days: int - Number of days of HM_SLAG data to query.
+
+        Returns:
+             - return dict[str, Any] - chem_pct_*, others_pct, observed_slag_rate_kg_per_thm,
+               n_rows_used, source, warnings.
+        """
+
+        warnings: list[str] = []
+        empty: dict[str, Any] = {"warnings": warnings, "source": None, "n_rows_used": 0}
+
+        if _fetch_offline_report is None:
+            warnings.append("HM_SLAG fetcher unavailable; install furnace_data.neon_db.")
+            return empty
+
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=max(1, int(window_days)))
+
+        try:
+            df = _fetch_offline_report("HM_SLAG", (start, end))
+        except Exception as exc:
+            warnings.append(f"HM_SLAG query failed: {exc}")
+            return empty
+
+        if df is None or df.empty:
+            warnings.append("HM_SLAG returned no rows for the window.")
+            return empty
+
+        df = df.sort_index()
+        snapshot: dict[str, Any] = {"warnings": warnings, "n_rows_used": 0}
+
+        if mode == "latest":
+            mask = pd.Series(True, index=df.index)
+            for col in ("chem_pct_si", "chem_pct_c"):
+                if col in df.columns:
+                    numeric = pd.to_numeric(df[col], errors="coerce")
+                    mask &= numeric.notna() & (numeric > 0)
+            valid = df[mask]
+            if valid.empty:
+                warnings.append("No HM_SLAG rows with non-zero Si/C in window.")
+                return empty
+            row = valid.iloc[-1]
+            for col in HM_ALL_CHEM_COLUMNS:
+                value = pd.to_numeric(row.get(col, 0.0), errors="coerce")
+                snapshot[col] = float(value) if pd.notna(value) else 0.0
+            snapshot["n_rows_used"] = 1
+            snapshot["source"] = "latest"
+        else:
+            for col in HM_ALL_CHEM_COLUMNS:
+                if col not in df.columns:
+                    snapshot[col] = 0.0
+                    continue
+                series = pd.to_numeric(df[col], errors="coerce")
+                series = series[series > 0]
+                snapshot[col] = float(series.mean()) if len(series) > 0 else 0.0
+            snapshot["n_rows_used"] = int(len(df))
+            snapshot["source"] = "avg"
+
+        snapshot["others_pct"] = float(
+            sum(snapshot.get(col, 0.0) for col in HM_OTHER_CHEM_COLUMNS)
+        )
+        snapshot["observed_slag_rate_kg_per_thm"] = self._fetch_observed_slag_rate(
+            start, end, warnings
+        )
+        return snapshot
+
+    def _fetch_observed_slag_rate(
+        self,
+        start: datetime,
+        end: datetime,
+        warnings: list[str],
+    ) -> float:
+        """
+        Read daily DPR to compute observed slag rate over the window.
+
+        DPR reports daily ``slag_generation_mt`` and ``total_hot_metal_mt``. The
+        plant slag rate is their sum ratio over the window times 1000 to convert
+        to kg/THM. Failures are non-blocking so the page still renders.
+
+        Args:
+             - start: datetime - Window start in UTC.
+             - end: datetime - Window end in UTC.
+             - warnings: list[str] - Warnings buffer to append diagnostic messages.
+
+        Returns:
+             - return float - Observed slag rate in kg/THM, or 0.0 when unavailable.
+        """
+
+        if _fetch_offline_report is None:
+            return 0.0
+        try:
+            dpr_df = _fetch_offline_report("DPR", (start, end))
+        except Exception as exc:
+            warnings.append(f"DPR query for observed slag rate failed: {exc}")
+            return 0.0
+        if dpr_df is None or dpr_df.empty:
+            return 0.0
+        slag_col = "slag_generation_mt"
+        hm_col = "total_hot_metal_mt"
+        if slag_col not in dpr_df.columns or hm_col not in dpr_df.columns:
+            return 0.0
+        slag_total = float(
+            pd.to_numeric(dpr_df[slag_col], errors="coerce").sum(skipna=True)
+        )
+        hm_total = float(
+            pd.to_numeric(dpr_df[hm_col], errors="coerce").sum(skipna=True)
+        )
+        if hm_total <= 0:
+            return 0.0
+        return slag_total / hm_total * 1000.0
 
     def get_history_frame(self) -> tuple[pd.DataFrame, list[str]]:
         """

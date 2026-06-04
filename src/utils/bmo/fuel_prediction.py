@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 
 from utils.bmo.calculations import evaluate_blend
-from utils.bmo.feature_builder import build_feature_payload
+from utils.bmo.feature_builder import PreBuiltFeatureContext, build_feature_payload
 from utils.bmo.types import (
     BlendEvaluation,
     DustInput,
@@ -40,6 +40,7 @@ def evaluate_blend_with_fuel_prediction(
     flux_inputs: list[FluxInput] | None = None,
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
+    prebuilt_context: PreBuiltFeatureContext | None = None,
 ) -> BlendEvaluation:
     """
     Evaluate a blend and attach the model-predicted fuel unit cost.
@@ -66,13 +67,18 @@ def evaluate_blend_with_fuel_prediction(
 
     quantities = {str(ore_id): float(qty) for ore_id, qty in quantities_mt.items()}
     ore_name_by_id = {ore.ore_id: ore.display_name for ore in ores}
-    feature_payload = build_feature_payload(
-        quantities_mt=quantities,
-        ore_display_name_by_id=ore_name_by_id,
-        process_context=process_context,
-        ores=ores,
-    )
-    prediction = model_service.predict(feature_payload, history_df)
+    if prebuilt_context is not None:
+        prediction = model_service.predict_with_prebuilt(
+            prebuilt_context, quantities, history_df
+        )
+    else:
+        feature_payload = build_feature_payload(
+            quantities_mt=quantities,
+            ore_display_name_by_id=ore_name_by_id,
+            process_context=process_context,
+            ores=ores,
+        )
+        prediction = model_service.predict(feature_payload, history_df)
     blend = evaluate_blend(
         ores=ores,
         quantities_mt=quantities,

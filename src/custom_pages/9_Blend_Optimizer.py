@@ -8,11 +8,14 @@ one Streamlit workflow for ore blend planning.
 from __future__ import annotations
 
 import inspect
+import logging
 from dataclasses import replace
 from typing import Any
 
 import pandas as pd
 import streamlit as st
+
+log = logging.getLogger(__name__)
 
 from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
@@ -30,7 +33,9 @@ from ui.bmo import (
     render_flux_editor,
     render_fuel_ash_editor,
     render_header,
+    render_hot_metal_chemistry,
     render_ore_editor,
+    render_slag_balance_details,
     render_slag_balance_settings,
 )
 from utils.bmo import (
@@ -378,29 +383,38 @@ def _dust_inputs_from_editor(editor_df: pd.DataFrame) -> list[DustInput]:
 
 def _slag_balance_settings_from_editor(
     settings_values: dict[str, Any],
+    hm_chem_values: dict[str, float],
+    hm_snapshot: dict[str, Any] | None = None,
 ) -> SlagBalanceSettings:
     """
     Convert edited slag-balance setting values into a typed settings object.
 
-    The page renderer returns settings as a small dictionary from Streamlit
-    controls. This helper normalizes those values into the dataclass consumed by
-    the full slag-balance calculator. Pig-iron chemistry percentages are held
-    at zero because BMO now uses the slag correction factor for plant
-    calibration instead of PI C/Si/S/Others assumptions.
+    PI chemistry (C/Si/S/Others) is sourced from the live HM analysis snapshot
+    so the full slag balance subtracts the actual SiO2 consumed by Si reduction
+    and the actual S reporting to pig iron. HM Mn% and Ti% are pulled directly
+    from the HM snapshot so Mn/Ti partitioning between hot metal and slag
+    reflects observed plant chemistry instead of a fixed 60% recovery factor.
+    Recovery, gas loss, alkali split, and conversion factors remain editable
+    via the advanced expander.
 
     Args:
          - settings_values: dict[str, Any] - Edited slag-balance setting values.
+         - hm_chem_values: dict[str, float] - Edited HM chemistry values from the page.
+         - hm_snapshot: dict[str, Any] | None - Raw HM snapshot for per-element fields.
 
     Returns:
          - return SlagBalanceSettings - Full slag-balance settings.
     """
 
+    snapshot = hm_snapshot or {}
     return SlagBalanceSettings(
         enabled=bool(settings_values.get("enabled", True)),
-        carbon_pct=0.0,
-        silicon_pct=0.0,
-        sulphur_pct=0.0,
-        other_pct=0.0,
+        carbon_pct=float(hm_chem_values.get("carbon_pct", 0.0)),
+        silicon_pct=float(hm_chem_values.get("silicon_pct", 0.0)),
+        sulphur_pct=float(hm_chem_values.get("sulphur_pct", 0.0)),
+        other_pct=float(hm_chem_values.get("other_pct", 0.0)),
+        mn_pct=float(snapshot.get("chem_pct_mn", 0.0) or 0.0),
+        ti_pct=float(snapshot.get("chem_pct_ti", 0.0) or 0.0),
         pi_loss_pct=float(settings_values.get("pi_loss_pct", 0.2)),
         fe_to_pig_iron_fraction=float(
             settings_values.get("fe_to_pig_iron_fraction", 0.999)
@@ -414,7 +428,7 @@ def _slag_balance_settings_from_editor(
         fe_to_feo_factor=float(settings_values.get("fe_to_feo_factor", 72.0 / 56.0)),
         mn_to_mno_factor=float(settings_values.get("mn_to_mno_factor", 1.291)),
         slag_correction_factor=float(
-            settings_values.get("slag_correction_factor", 0.95)
+            settings_values.get("slag_correction_factor", 1.0)
         ),
     )
 
@@ -434,7 +448,7 @@ runtime_cfg = build_runtime_config(
 )
 opt_cfg = runtime_cfg.get("optimizer", {})
 
-layout_col1, layout_col2 = st.columns(2)
+layout_col1, layout_col2, layout_col3, layout_col4 = st.columns(4)
 
 with layout_col1:
     chemistry_mode = st.selectbox(
@@ -451,14 +465,13 @@ with layout_col2:
         value=int(bmo_cfg.get("chemistry_window_days", 30)),
     )
 
-target_col1, target_col2 = st.columns(2)
-target_production_mt = target_col1.number_input(
+target_production_mt = layout_col3.number_input(
     "Target Hot Metal (MT)",
     min_value=0.0,
     value=float(target_cfg.get("target_production_mt", 2350.0)),
     step=5.0,
 )
-target_slag_qty_mt = target_col2.number_input(
+target_slag_qty_mt = layout_col4.number_input(
     "Max Slag (MT)",
     min_value=0.0,
     value=float(target_cfg.get("target_slag_qty_mt", 750.0)),
@@ -470,6 +483,12 @@ ores, ore_diagnostics = provider.build_ore_inputs(
     mode=chemistry_mode, window_days=chemistry_window_days
 )
 ore_diagnostics["warnings"] = list(ore_diagnostics.get("warnings", []))
+
+hm_snapshot = provider.get_hm_slag_snapshot(
+    mode=chemistry_mode, window_days=chemistry_window_days
+)
+ore_diagnostics["warnings"].extend(hm_snapshot.get("warnings", []))
+observed_slag_rate = float(hm_snapshot.get("observed_slag_rate_kg_per_thm", 0.0) or 0.0)
 
 default_selected_names = set(ui_cfg.get("default_selected_ores", []))
 default_selected_ids = [
@@ -496,6 +515,10 @@ else:
     edited_flux_df = flux_df
 flux_inputs = _flux_inputs_from_editor(edited_flux_df)
 
+hm_chem_values = render_hot_metal_chemistry(
+    hm_snapshot, bmo_cfg.get("slag_balance", {})
+)
+
 with st.expander("Advanced Slag Balance Inputs", expanded=False):
     slag_settings_values = render_slag_balance_settings(bmo_cfg.get("slag_balance", {}))
     dust_df = build_dust_editor_df(bmo_cfg.get("dust_inputs", []))
@@ -505,7 +528,9 @@ with st.expander("Advanced Slag Balance Inputs", expanded=False):
     else:
         edited_dust_df = dust_df
 dust_inputs = _dust_inputs_from_editor(edited_dust_df)
-slag_balance_settings = _slag_balance_settings_from_editor(slag_settings_values)
+slag_balance_settings = _slag_balance_settings_from_editor(
+    slag_settings_values, hm_chem_values, hm_snapshot
+)
 
 run_lp_clicked = False
 run_total_clicked = False
@@ -569,43 +594,91 @@ if run_lp_clicked or run_total_clicked:
         st.session_state["bmo_lp_errors"] = lp_errors
 
         if run_total_clicked:
-            with st.spinner("Running total cost optimizer..."):
-                if fuel_context is None:
-                    fuel_context = _load_fuel_prediction_context(provider)
-                    (
-                        model_service,
-                        process_context,
-                        history_df,
-                        bundle_status,
-                        fuel_warnings,
-                    ) = fuel_context
-                    ore_diagnostics["warnings"] = [
-                        *ore_diagnostics.get("warnings", []),
-                        *fuel_warnings,
-                    ]
-                    st.session_state["bmo_bundle_status"] = bundle_status
-                else:
-                    (
-                        model_service,
-                        process_context,
-                        history_df,
-                        bundle_status,
-                        _fuel_warnings,
-                    ) = fuel_context
-                de_result, de_errors = run_nonlinear_optimizer(
-                    selected_ores,
-                    target_production_mt=target_production_mt,
-                    target_slag_qty_mt=target_slag_qty_mt,
-                    feo_in_slag_pct=feo_in_slag_pct,
-                    model_service=model_service,
-                    process_context=process_context,
-                    history_df=history_df,
-                    de_cfg=opt_cfg,
-                    fuel_ash_inputs=fuel_ash_inputs,
-                    flux_inputs=flux_inputs,
-                    dust_inputs=dust_inputs,
-                    slag_balance_settings=slag_balance_settings,
+            de_status = st.status(
+                "Total Cost Optimizer (DE) running...", expanded=True
+            )
+            iteration_lines: list[str] = []
+
+            def _de_progress(
+                iteration: int,
+                best_obj: float,
+                best_feas: float | None,
+                nfev: int,
+                elapsed_s: float,
+            ) -> bool:
+                """
+                Stream DE iteration progress to the Streamlit status panel + log.
+
+                Args:
+                     - iteration: int - 1-based DE generation index.
+                     - best_obj: float - Best (penalized) objective value seen so far in Rs/THM.
+                     - best_feas: float | None - Best feasible objective seen so far, if any.
+                     - nfev: int - Cumulative function-evaluation count.
+                     - elapsed_s: float - Seconds elapsed since DE started.
+
+                Returns:
+                     - return bool - False to keep running (no user-cancel wired yet).
+                """
+
+                feas_txt = (
+                    f", best feasible {best_feas:,.1f}"
+                    if best_feas is not None
+                    else ""
                 )
+                line = (
+                    f"Iter {iteration:>2}  best {best_obj:,.1f} Rs/THM{feas_txt}"
+                    f"  (nfev={nfev}, {elapsed_s:.1f}s)"
+                )
+                iteration_lines.append(line)
+                de_status.write(line)
+                log.info("BMO DE %s", line)
+                return False
+
+            if fuel_context is None:
+                fuel_context = _load_fuel_prediction_context(provider)
+                (
+                    model_service,
+                    process_context,
+                    history_df,
+                    bundle_status,
+                    fuel_warnings,
+                ) = fuel_context
+                ore_diagnostics["warnings"] = [
+                    *ore_diagnostics.get("warnings", []),
+                    *fuel_warnings,
+                ]
+                st.session_state["bmo_bundle_status"] = bundle_status
+            else:
+                (
+                    model_service,
+                    process_context,
+                    history_df,
+                    bundle_status,
+                    _fuel_warnings,
+                ) = fuel_context
+            de_result, de_errors = run_nonlinear_optimizer(
+                selected_ores,
+                target_production_mt=target_production_mt,
+                target_slag_qty_mt=target_slag_qty_mt,
+                feo_in_slag_pct=feo_in_slag_pct,
+                model_service=model_service,
+                process_context=process_context,
+                history_df=history_df,
+                de_cfg=opt_cfg,
+                fuel_ash_inputs=fuel_ash_inputs,
+                flux_inputs=flux_inputs,
+                dust_inputs=dust_inputs,
+                slag_balance_settings=slag_balance_settings,
+                progress_callback=_de_progress,
+            )
+            de_status.update(
+                label=(
+                    f"DE finished - {len(iteration_lines)} iterations"
+                    if iteration_lines
+                    else "DE finished"
+                ),
+                state="complete",
+            )
             st.session_state["bmo_de_result"] = de_result
             st.session_state["bmo_de_errors"] = de_errors
         else:
@@ -628,15 +701,29 @@ if lp_result is not None or de_result is not None:
 
     with tab_lp:
         if lp_result is not None:
-            render_blend_metrics("LP Baseline Result", lp_result)
+            render_blend_metrics(
+                "LP Baseline Result",
+                lp_result,
+                observed_slag_rate_kg_per_thm=observed_slag_rate,
+            )
             render_blend_table(lp_result, selected_ores)
+            render_slag_balance_details(
+                lp_result, selected_ores, fuel_ash_inputs, flux_inputs
+            )
         else:
             st.info("Run LP baseline to see deterministic cost-minimized blend.")
 
     with tab_de:
         if de_result is not None:
-            render_blend_metrics("DE Total-Cost Result", de_result)
+            render_blend_metrics(
+                "DE Total-Cost Result",
+                de_result,
+                observed_slag_rate_kg_per_thm=observed_slag_rate,
+            )
             render_blend_table(de_result, selected_ores)
+            render_slag_balance_details(
+                de_result, selected_ores, fuel_ash_inputs, flux_inputs
+            )
             if not bundle_status.get("model_loaded"):
                 st.info(
                     "Model artifact is missing. Fuel term is currently coming from fallback "

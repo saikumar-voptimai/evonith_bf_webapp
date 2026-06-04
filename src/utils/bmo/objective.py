@@ -15,6 +15,7 @@ import pandas as pd
 
 from domain.optimization_runtime import ObjectiveResult
 from utils.bmo.constraints import check_blend_constraints
+from utils.bmo.feature_builder import PreBuiltFeatureContext
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.model_service import FuelUnitCostModelService
 from utils.bmo.types import (
@@ -67,6 +68,7 @@ class BmoObjectiveEvaluator:
         flux_inputs: list[FluxInput] | None = None,
         dust_inputs: list[DustInput] | None = None,
         slag_balance_settings: SlagBalanceSettings | None = None,
+        prebuilt_context: PreBuiltFeatureContext | None = None,
     ) -> None:
         """
         Store optimizer inputs and precompute array forms of bounds.
@@ -105,6 +107,7 @@ class BmoObjectiveEvaluator:
         self.dust_inputs = dust_inputs
         self.slag_balance_settings = slag_balance_settings
         self.penalty_cfg = penalty_cfg
+        self.prebuilt_context = prebuilt_context
         self.stocks = np.array([float(ore.stock_mt) for ore in ores], dtype=float)
         self.min_shares = np.array(
             [float(ore.min_share_pct) / 100.0 for ore in ores], dtype=float
@@ -145,6 +148,7 @@ class BmoObjectiveEvaluator:
             flux_inputs=self.flux_inputs,
             dust_inputs=self.dust_inputs,
             slag_balance_settings=self.slag_balance_settings,
+            prebuilt_context=self.prebuilt_context,
         )
 
         penalty_stock = float(self.penalty_cfg.get("penalty_stock", 2500.0))

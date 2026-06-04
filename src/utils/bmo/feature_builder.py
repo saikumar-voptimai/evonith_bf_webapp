@@ -8,7 +8,7 @@ fuel-cost model artifacts.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,6 +22,49 @@ from domain.optimization_runtime import (
 )
 from utils.bmo.calculations import compute_dry_weight_mt, compute_fe_contribution_mt
 from utils.bmo.types import OreInput
+
+
+@dataclass
+class PreBuiltFeatureContext:
+    """
+    Cache the static portion of the BMO model feature vector for DE inner loops.
+
+    The total-cost optimizer evaluates hundreds of candidate blends. The vast
+    majority of model feature columns (process context, history lags, fuel/flux
+    chemistry, defaults) do not vary across candidates and only the ~30 burden-
+    derived columns change. This dataclass holds the precomputed scaler-order
+    template vector plus a mapping from dynamic payload keys to the template
+    column indexes they overwrite so the inner loop can mutate-in-place rather
+    than re-resolve every column on every iteration.
+
+    Args:
+         - expected_features: list[str] - Full scaler-ordered feature column names.
+         - template_x: "np.ndarray" - 1xN baseline numpy array of feature values.
+         - dynamic_col_indexes: dict[str, tuple[int, ...]] - Payload key -> column indexes to update.
+         - dynamic_field_names: frozenset[str] - Set of payload keys that drive dynamic columns.
+         - selected_features: list[str] | None - Optional post-scaler selected feature names.
+         - selected_indexes: "np.ndarray | None" - Pre-resolved selected column indexes (if any).
+         - ores_snapshot: list[OreInput] - Ores used to compute candidate dynamic payloads.
+         - ore_display_name_by_id: dict[str, str] - Display names keyed by ore id.
+         - static_payload: dict[str, float] - Static (process-context) payload reused for fallbacks.
+         - default_values: dict[str, float] - Defaults used when building the template.
+         - history_present: bool - Whether history data was available at build time.
+
+    Returns:
+         - return PreBuiltFeatureContext - Cached state used by predict_with_prebuilt.
+    """
+
+    expected_features: list[str]
+    template_x: "Any"  # numpy ndarray (1xN). Typed as Any to avoid numpy import at module load
+    dynamic_col_indexes: dict[str, tuple[int, ...]]
+    dynamic_field_names: frozenset[str]
+    selected_features: list[str] | None
+    selected_indexes: "Any"  # numpy ndarray of selected col positions or None
+    ores_snapshot: list[OreInput]
+    ore_display_name_by_id: dict[str, str]
+    static_payload: dict[str, float]
+    default_values: dict[str, float]
+    history_present: bool
 
 
 def normalize_feature_name(name: str) -> str:
@@ -867,4 +910,237 @@ def build_bmo_v4_feature_frame(
         missing_features=missing_features,
         imputed_features=imputed_features,
         source_map=source_map,
+    )
+
+
+def build_dynamic_payload(
+    context: PreBuiltFeatureContext,
+    quantities_mt: Mapping[str, float],
+) -> dict[str, float]:
+    """
+    Build only the burden-dependent payload fields for one DE candidate.
+
+    The full payload dict produced by ``build_feature_payload`` contains many
+    fields driven by static process context. Inside the DE loop only the burden
+    quantities and weighted chemistry change. This helper produces exactly the
+    subset that the prebuilt feature template needs to overwrite, skipping the
+    static process-context block entirely.
+
+    Args:
+         - context: PreBuiltFeatureContext - Prebuilt context with ore snapshot/display names.
+         - quantities_mt: Mapping[str, float] - Candidate wet ore quantities keyed by ore id.
+
+    Returns:
+         - return dict[str, float] - Burden-dependent training-feature names mapped to values.
+    """
+
+    ores = context.ores_snapshot
+    ore_display_name_by_id = context.ore_display_name_by_id
+
+    payload: dict[str, float] = {}
+    total_qty = float(sum(float(v) for v in quantities_mt.values()))
+    sinter_qty_alias = 0.0
+    for ore_id, qty in quantities_mt.items():
+        qty_f = float(qty)
+        display = ore_display_name_by_id.get(ore_id, ore_id)
+        if "sinter" in display.lower():
+            sinter_qty_alias += qty_f
+        ore_slug = normalize_feature_name(display)
+        payload[f"{ore_slug}_qty_mt"] = qty_f
+        payload[f"{ore_slug}_share_pct"] = (
+            (qty_f / total_qty * 100.0) if total_qty > 0 else 0.0
+        )
+
+    sinter_share_pct = (sinter_qty_alias / total_qty * 100.0) if total_qty > 0 else 0.0
+    payload["sinter_qty_mt"] = sinter_qty_alias
+    payload["ore_qty_mt"] = max(0.0, total_qty - sinter_qty_alias)
+    payload["sinter_share_pct"] = sinter_share_pct
+    payload["ore_share_pct"] = max(0.0, 100.0 - sinter_share_pct)
+    payload["total_burden_qty_mt"] = total_qty
+
+    payload.update(_candidate_blend_features(quantities_mt, ores))
+    return payload
+
+
+def _resolve_dynamic_col_indexes(
+    expected_features: list[str], dynamic_field_names: Iterable[str]
+) -> dict[str, tuple[int, ...]]:
+    """
+    Map each dynamic payload key to the template column indexes it overwrites.
+
+    Burden payload keys can drive both their direct training column and the
+    physical-lag override columns (e.g. ``ORE_1_PCT`` also overwrites
+    ``ORE_1_PCT_lag1_(GasImpact)``). This resolver inspects every expected
+    feature once at setup so the inner loop can update template positions by
+    array index instead of repeating the alias and lag parsing.
+
+    Args:
+         - expected_features: list[str] - Full ordered scaler feature column names.
+         - dynamic_field_names: Iterable[str] - Payload keys produced by build_dynamic_payload.
+
+    Returns:
+         - return dict[str, tuple[int, ...]] - Payload key -> tuple of column indexes.
+    """
+
+    direct_idx: dict[str, int] = {}
+    norm_idx: dict[str, int] = {}
+    base_to_lag_idxs: dict[str, list[int]] = {}
+    for i, col in enumerate(expected_features):
+        direct_idx[col] = i
+        norm_idx.setdefault(normalize_feature_name(col), i)
+        parsed = parse_bmo_lag_feature_name(col)
+        if parsed is not None:
+            base_to_lag_idxs.setdefault(parsed.base_name, []).append(i)
+
+    aliases = _TRAINING_ALIASES
+    reverse_aliases = {v: k for k, v in aliases.items()}
+
+    result: dict[str, tuple[int, ...]] = {}
+    for key in dynamic_field_names:
+        idxs: list[int] = []
+        seen: set[int] = set()
+
+        candidates = [key]
+        if key in aliases:
+            candidates.append(aliases[key])
+        if key in reverse_aliases:
+            candidates.append(reverse_aliases[key])
+
+        for cand in candidates:
+            if cand in direct_idx and direct_idx[cand] not in seen:
+                idxs.append(direct_idx[cand])
+                seen.add(direct_idx[cand])
+            norm = normalize_feature_name(cand)
+            if norm in norm_idx and norm_idx[norm] not in seen:
+                idxs.append(norm_idx[norm])
+                seen.add(norm_idx[norm])
+            for lag_idx in base_to_lag_idxs.get(cand, ()):
+                if lag_idx not in seen:
+                    idxs.append(lag_idx)
+                    seen.add(lag_idx)
+
+        if idxs:
+            result[key] = tuple(idxs)
+    return result
+
+
+def build_prebuilt_feature_context(
+    *,
+    ores: list[OreInput],
+    process_context: Mapping[str, Any] | None,
+    history_df: "pd.DataFrame | None",
+    expected_features: list[str],
+    default_values: Mapping[str, float] | None = None,
+    selected_features: list[str] | None = None,
+) -> PreBuiltFeatureContext:
+    """
+    Prebuild the static portion of the BMO model feature vector for DE.
+
+    Resolves every expected feature once using the static process context and
+    history frame, captures the resulting numpy template, and pre-resolves which
+    template columns each dynamic payload key needs to overwrite. The returned
+    context is reused by ``FuelUnitCostModelService.predict_with_prebuilt`` so
+    every candidate evaluation reduces to a small numpy mutate + scaler +
+    XGBoost predict instead of re-resolving 150+ feature columns.
+
+    Args:
+         - ores: list[OreInput] - Ores selected for the optimization run.
+         - process_context: Mapping[str, Any] | None - Latest process variables.
+         - history_df: pd.DataFrame | None - Historical process data for lag features.
+         - expected_features: list[str] - Scaler-ordered raw feature names.
+         - default_values: Mapping[str, float] | None - Defaults for unresolved features.
+         - selected_features: list[str] | None - Post-scaler selected feature names.
+
+    Returns:
+         - return PreBuiltFeatureContext - Cached state for fast inner-loop inference.
+    """
+
+    import numpy as np  # local import keeps module-load cost low
+
+    ore_display_name_by_id = {ore.ore_id: ore.display_name for ore in ores}
+    zero_quantities = {ore.ore_id: 0.0 for ore in ores}
+    # Use unit sentinels so the probe surfaces every dynamic key (weighted-
+    # chemistry and per-material-type fields are gated on qty > 0).
+    probe_quantities = {ore.ore_id: 1.0 for ore in ores}
+
+    static_payload: dict[str, float] = {}
+    if process_context:
+        for key, value in process_context.items():
+            if value is None:
+                continue
+            try:
+                static_payload[str(key)] = float(value)
+            except (TypeError, ValueError):
+                continue
+            static_payload[normalize_feature_name(str(key))] = static_payload[str(key)]
+
+    # Use the natural default_candidate_lag_bases derived from the static
+    # payload so lag columns whose base names appear in process_context get
+    # overridden with the process_context value -- mirrors what the slow path
+    # does when the same key appears in feature_payload from process_context.
+    template_build = build_bmo_v4_feature_frame(
+        feature_payload=static_payload,
+        history_df=history_df,
+        expected_features=list(expected_features),
+        default_values=dict(default_values or {}),
+    )
+    template_x = np.asarray(template_build.vector_df.values, dtype=float)
+
+    probe_context = PreBuiltFeatureContext(
+        expected_features=list(expected_features),
+        template_x=template_x,
+        dynamic_col_indexes={},
+        dynamic_field_names=frozenset(),
+        selected_features=selected_features,
+        selected_indexes=None,
+        ores_snapshot=list(ores),
+        ore_display_name_by_id=dict(ore_display_name_by_id),
+        static_payload=dict(static_payload),
+        default_values=dict(default_values or {}),
+        history_present=history_df is not None and not history_df.empty,
+    )
+    probe_payload = build_dynamic_payload(probe_context, probe_quantities)
+    _ = zero_quantities  # retained for reference; not used post-probe
+
+    # CRITICAL: the slow-path build_feature_payload writes candidate-derived
+    # fields first then OVERWRITES with process_context. For any dynamic key
+    # that also exists in process_context, the process_context value wins.
+    # The template already carries those process_context values, so we must
+    # exclude such keys from dynamic_field_names to keep the fast path
+    # numerically identical to the slow path.
+    static_keys = set(static_payload.keys())
+    static_norm_keys = {normalize_feature_name(k) for k in static_keys}
+    dynamic_field_names = frozenset(
+        key
+        for key in probe_payload.keys()
+        if key not in static_keys
+        and normalize_feature_name(key) not in static_norm_keys
+    )
+
+    dynamic_col_indexes = _resolve_dynamic_col_indexes(
+        list(expected_features), dynamic_field_names
+    )
+
+    selected_indexes = None
+    if selected_features:
+        col_to_idx = {col: i for i, col in enumerate(expected_features)}
+        try:
+            selected_indexes = np.array(
+                [col_to_idx[col] for col in selected_features], dtype=int
+            )
+        except KeyError:
+            selected_indexes = None
+
+    return PreBuiltFeatureContext(
+        expected_features=list(expected_features),
+        template_x=template_x,
+        dynamic_col_indexes=dynamic_col_indexes,
+        dynamic_field_names=dynamic_field_names,
+        selected_features=list(selected_features) if selected_features else None,
+        selected_indexes=selected_indexes,
+        ores_snapshot=list(ores),
+        ore_display_name_by_id=dict(ore_display_name_by_id),
+        static_payload=dict(static_payload),
+        default_values=dict(default_values or {}),
+        history_present=history_df is not None and not history_df.empty,
     )
