@@ -9,7 +9,11 @@ import pandas as pd
 import pytest
 
 from domain.optimization_runtime import parse_lag_feature_name
-from utils.bmo.feature_builder import build_bmo_v4_feature_frame, build_feature_payload
+from utils.bmo.feature_builder import (
+    build_bmo_v4_feature_frame,
+    build_feature_payload,
+    max_bmo_lag_steps,
+)
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.model_service import FuelUnitCostModelService
 from utils.bmo.types import OreChemistry, OreInput
@@ -95,9 +99,57 @@ def test_candidate_blend_payload_maps_ore_slots_and_ratios() -> None:
     assert payload["ORE_12_PCT"] == pytest.approx(0.0)
     assert payload["SINTER_CLO_RATIO"] == pytest.approx(1.2)
     assert payload["PELLET_CLO_RATIO"] == pytest.approx(0.2)
-    assert payload["ORE_SIO2%"] == pytest.approx(6.4)
-    assert payload["ORE_TM%"] == pytest.approx(3.6)
+    assert payload["PELLET_PCT_SIO2"] == pytest.approx(3.0)
+    assert payload["LLOYDS_PELLET_PCT_SIO2"] == pytest.approx(3.0)
+    assert payload["ORE_SIO2%"] == pytest.approx(
+        ((20.0 * 0.94 * 4.0) + (30.0 * 0.98 * 8.0))
+        / ((20.0 * 0.94) + (30.0 * 0.98))
+    )
+    assert payload["ORE_TM%"] == pytest.approx(
+        ((20.0 * 0.94 * 6.0) + (30.0 * 0.98 * 2.0))
+        / ((20.0 * 0.94) + (30.0 * 0.98))
+    )
     assert payload["SINTER_SP_02_TM%"] == pytest.approx(8.0)
+
+
+def test_legacy_pellet_model_features_resolve_from_generic_payload() -> None:
+    result = build_bmo_v4_feature_frame(
+        feature_payload={"PELLET_PCT_CAO": 0.3, "PELLET_CLO_RATIO": 0.2},
+        history_df=None,
+        expected_features=[
+            "LLOYDS_PELLET_PCT_CAO",
+            "LLOYDS_PELLET_PCT_CAO_lag4_(MeltImpact)",
+            "PELLET_CLO_RATIO_lag1_(GasImpact)",
+        ],
+        default_values={},
+    )
+
+    assert result.vector_df["LLOYDS_PELLET_PCT_CAO"].iloc[0] == pytest.approx(0.3)
+    assert result.vector_df["LLOYDS_PELLET_PCT_CAO_lag4_(MeltImpact)"].iloc[
+        0
+    ] == pytest.approx(0.3)
+    assert result.vector_df["PELLET_CLO_RATIO_lag1_(GasImpact)"].iloc[
+        0
+    ] == pytest.approx(0.2)
+    assert result.imputed_features == []
+
+
+def test_candidate_blend_payload_uses_operator_hm_basis_for_thm_features() -> None:
+    ores = [
+        _ore("sinter", "SINTER", "sinter_sp_02", OreChemistry(55.0)),
+        _ore("ore3", "GEOMIN CLO", "ore_3", OreChemistry(61.0)),
+    ]
+    quantities = {"sinter": 60.0, "ore3": 40.0}
+
+    payload = build_feature_payload(
+        quantities_mt=quantities,
+        ore_display_name_by_id={ore.ore_id: ore.display_name for ore in ores},
+        ores=ores,
+        hot_metal_target_mt=80.0,
+    )
+
+    assert payload["SINTER_CALC_THM"] == pytest.approx(60.0 / 80.0)
+    assert payload["ORE_CALC_THM"] == pytest.approx(40.0 / 80.0)
 
 
 def test_bmo_v4_feature_frame_handles_dual_lags_and_candidate_overrides() -> None:
@@ -143,6 +195,24 @@ def test_bmo_v4_feature_frame_handles_dual_lags_and_candidate_overrides() -> Non
     assert row["trend_index"] == pytest.approx(4.0)
     assert row["MISSING_FEATURE"] == pytest.approx(7.0)
     assert "MISSING_FEATURE" in result.missing_features
+
+
+def test_topbar_does_not_alias_to_toppressurebar() -> None:
+    history_df = pd.DataFrame(
+        {"TOPPRESSUREBAR": [1.3]},
+        index=pd.date_range("2026-05-21", periods=1, freq="h"),
+    )
+
+    result = build_bmo_v4_feature_frame(
+        feature_payload={},
+        history_df=history_df,
+        expected_features=["TOPBAR"],
+        default_values={},
+    )
+
+    assert result.vector_df["TOPBAR"].iloc[0] == pytest.approx(0.0)
+    assert result.source_map["TOPBAR"] == "default"
+    assert "TOPBAR" in result.missing_features
 
 
 def test_selected_feature_model_service_scales_full_frame_then_slices(
@@ -238,4 +308,17 @@ def test_shared_lag_parser_accepts_bmo_dual_impact_suffix() -> None:
     assert parse_lag_feature_name("ORE_8_PCT_lag4_(MeltImpact)") == (
         "ORE_8_PCT",
         4,
+    )
+
+
+def test_bmo_max_lag_steps_uses_model_feature_names() -> None:
+    assert (
+        max_bmo_lag_steps(
+            [
+                "HOT BLAST TEMP.OC",
+                "STOCKRODLEVEL_lag1",
+                "ORE_8_PCT_lag4_(MeltImpact)",
+            ]
+        )
+        == 4
     )

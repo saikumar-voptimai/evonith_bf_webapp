@@ -24,6 +24,7 @@ from utils.bmo.feature_builder import (
     PreBuiltFeatureContext,
     build_bmo_v4_feature_frame,
     build_dynamic_payload,
+    max_bmo_lag_steps,
 )
 from utils.bmo.types import ModelPrediction
 
@@ -198,6 +199,21 @@ class FuelUnitCostModelService:
         status["selected_feature_count"] = len(self._selected_features or [])
         status["selected_features_loaded"] = bool(self._selected_features)
         return status
+
+    def get_inference_feature_names(self) -> list[str]:
+        """Return the feature names that drive the current fuel model path."""
+
+        self._ensure_loaded()
+        if self._selected_features:
+            return list(self._selected_features)
+        if self._bundle_info is None:
+            return []
+        return list(self._bundle_info.expected_features)
+
+    def get_max_lag_steps(self) -> int:
+        """Return the largest lag step required by the loaded fuel model."""
+
+        return max_bmo_lag_steps(self.get_inference_feature_names())
 
     def _pick_value(
         self, payload: dict[str, float], keys: list[str], default: float
@@ -591,6 +607,7 @@ class FuelUnitCostModelService:
         ores: "list[Any]",
         process_context: dict[str, float] | None,
         history_df: "pd.DataFrame | None",
+        hot_metal_target_mt: float | None = None,
     ) -> PreBuiltFeatureContext | None:
         """
         Build a prebuilt feature context for repeated inference (e.g. DE inner loop).
@@ -604,6 +621,7 @@ class FuelUnitCostModelService:
              - ores: list[OreInput] - Ores selected for the optimization run.
              - process_context: dict[str, float] | None - Latest process variables.
              - history_df: pd.DataFrame | None - Historical process data for lag features.
+             - hot_metal_target_mt: float | None - Operator HM basis for THM model fields.
 
         Returns:
              - return PreBuiltFeatureContext | None - Cached context or None if not buildable.
@@ -628,6 +646,7 @@ class FuelUnitCostModelService:
                 expected_features=list(bundle.expected_features),
                 default_values=default_values,
                 selected_features=self._selected_features,
+                hot_metal_target_mt=hot_metal_target_mt,
             )
         except Exception:
             return None

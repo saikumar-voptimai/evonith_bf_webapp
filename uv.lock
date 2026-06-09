@@ -976,7 +976,7 @@ wheels = [
 
 [[package]]
 name = "evonith-bf-webapp"
-version = "0.1.0"
+version = "0.1.1"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohappyeyeballs", marker = "python_full_version < '4'" },
@@ -1609,7 +1609,7 @@ wheels = [
 
 [[package]]
 name = "furnace-data"
-version = "0.1.6"
+version = "0.1.12"
 source = { directory = "furnace_data" }
 dependencies = [
     { name = "certifi" },

@@ -21,6 +21,7 @@ from utils.bmo.calculations import (
     compute_slag_forming_oxides_pct,
     evaluate_blend,
 )
+from utils.bmo.constraints import validate_selected_pellet_inputs
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.lp_solver import run_lp_baseline
 from utils.bmo.model_service import FuelUnitCostModelService
@@ -59,6 +60,7 @@ __all__ = [
     "compute_slag_contribution_mt",
     "compute_slag_forming_oxides_pct",
     "evaluate_blend",
+    "validate_selected_pellet_inputs",
     "evaluate_blend_with_fuel_prediction",
     "run_lp_baseline",
     "run_nonlinear_optimizer",

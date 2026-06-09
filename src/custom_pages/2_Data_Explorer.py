@@ -14,9 +14,9 @@ from dotenv import load_dotenv
 
 from config.config_loader import load_config
 from furnace_data.influx.online import fetch_online_df
-from furnace_data.neon_db.offline import (
-    NEON_OFFLINE_REPORT_MAP as OFFLINE_DATABASE_REPORT_MAP,
-    NEON_OFFLINE_TABLES as OFFLINE_DATABASE_TABLES,
+from furnace_data.offline import (
+    OFFLINE_REPORT_MAP as OFFLINE_DATABASE_REPORT_MAP,
+    OFFLINE_TABLES as OFFLINE_DATABASE_TABLES,
     fetch_offline_data as fetch_table_data,
     fetch_offline_report as fetch_database_report,
 )
@@ -457,7 +457,7 @@ else:
 UTC = pytz.UTC
 
 st.header("📄 Offline Data Viewer")
-st.caption("Source: Neon database.")
+st.caption("Source: offline database.")
 
 # ── Pre-compute options ──
 TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
@@ -531,7 +531,7 @@ with st.form("offline_data_form"):
             start_date = end_date = None
             st.info(f"Fetching: **{time_range_choice}**")
 
-    submitted = st.form_submit_button("Fetch Offline Data", use_container_width=False)
+    submitted = st.form_submit_button("Fetch Offline Data", width="content")
 
 # ── Fetch on submit ──
 if submitted:
@@ -582,7 +582,7 @@ if _result:
     _name = _result["name"]
     _label = OFFLINE_REPORT_LABEL_MAP.get(_name.upper(), offline_table_label(_name))
     st.caption(f"Showing **{len(_df):,}** rows × **{len(_df.columns)}** cols — {_label}")
-    st.dataframe(_df, use_container_width=True)
+    st.dataframe(_df, width="stretch")
     st.download_button(
         label="Download as CSV",
         data=_df.reset_index().to_csv(index=False).encode("utf-8"),
@@ -614,7 +614,7 @@ with left_col:
     st.header("📄 ML Dataset")
 
     st.caption(
-        "Source: Neon DB — joins charge quantities, weighted raw material chemistry, "
+        "Source: offline database - joins charge quantities, weighted raw material chemistry, "
         "HM & Slag (hourly-interpolated), and burden distribution into one hourly dataset."
     )
 
@@ -633,102 +633,38 @@ with left_col:
             end_date = st.date_input("End Date", _today_ml)
 
         cache_override = st.checkbox("Override Cache", value=True)
+        submitted = st.form_submit_button("Fetch Dataset")
 
-        st.caption(
-            "**Partial**: per-source resampling only — RM chemistry 8 h ffill, "
-            "HM & Slag 1 h interp, burden full ffill, charge masses hourly sum, "
-            "online params 1 h average.  No DataCleaner.\n\n"
-            "**ML Dataset**: partial + DataCleaner — drops rows with > 70% NaN, "
-            "drops high-NaN columns (unless listed in `skip_imputation_alias_keys`), "
-            "outlier rules, iterative + simple imputation."
-        )
-        btn_col_a, btn_col_b = st.columns(2)
-        with btn_col_a:
-            partial_submit = st.form_submit_button(
-                "Fetch Partial (no imputation)",
-                use_container_width=True,
-            )
-        with btn_col_b:
-            cleaned_submit = st.form_submit_button(
-                "Fetch ML Dataset (cleaned + imputed)",
-                use_container_width=True,
-            )
-
-    if partial_submit or cleaned_submit:
+    if submitted:
         if start_date > end_date:
             st.error("Start Date cannot be after End Date.")
         else:
-            mode_tag = "ML" if cleaned_submit else "PARTIAL"
-            with st.spinner(f"Fetching {mode_tag} dataset..."):
-                df_final = fetcher.get_dataset(
+            with st.spinner("Fetching ML Dataset..."):
+                df_final = fetcher.get_ml_dataset(
                     start_date=start_date,
                     end_date=end_date,
                     rm_choice=rm_choice_raw,
                     cache_override=cache_override,
                 )
-                if cleaned_submit and not df_final.empty:
-                    # Apply DataCleaner with overrides tuned for ad-hoc viewing.
-                    # The defaults are calibrated for the training dataset
-                    # (must show cruising-only operation); on an arbitrary
-                    # date range they wipe every off-cruise hour and report
-                    # all columns as "all-NaN" at final imputation.
-                    #
-                    #   row_min_non_na_fraction = 0.3  → drop rows with >70% NaN
-                    #   col_max_nan_fraction    = 0.95 → keep all but truly-empty cols
-                    #                                    so SINTER strength etc. can be
-                    #                                    imputed instead of dropped
-                    #   cruising_filters        = ()   → don't restrict to cruising rows
-                    #   tonnage_caps            = {}   → caps were sub-hour calibrated;
-                    #                                    the per-source resample uses
-                    #                                    hourly sums so they spuriously
-                    #                                    drop rows
-                    from dataclasses import replace as dc_replace
-                    from furnace_data.dataset.cleaning import (
-                        DataCleaner,
-                        build_default_config,
-                    )
-                    cleaning_cfg = dc_replace(
-                        build_default_config(),
-                        row_min_non_na_fraction=0.3,
-                        col_max_nan_fraction=0.95,
-                        cruising_filters=(),
-                        tonnage_caps={},
-                    )
-                    df_final = DataCleaner(cleaning_cfg).clean(df_final)
 
             if df_final.empty:
                 st.warning("No data found.")
             else:
-                st.success(f"Rows fetched ({mode_tag}): {len(df_final)}")
+                st.success(f"Rows fetched: {len(df_final)}")
                 st.dataframe(df_final, height=300)
 
                 st.download_button(
                     "Download CSV",
                     df_final.to_csv(index=True).encode("utf-8"),
-                    file_name=f"unified_ML_{mode_tag}_{start_date}_to_{end_date}.csv",
+                    file_name=f"unified_ML_{start_date}_to_{end_date}.csv",
                     mime="text/csv",
                 )
 
 # -------------- GENERATE & REFRESH ML DATASET --------------
-# Set to True to re-enable the extend / override buttons that write to Neon
-# (offline_feed.historical_static_ml_dataset).  Kept False while the user
-# wants Neon writes paused; flipping this back to True restores the original
-# behaviour without any other change.
-GENERATE_REFRESH_PANEL_ENABLED = False
 
 with right_col:
     st.header("📄 Generate & Refresh ML Dataset")
-
-    if not GENERATE_REFRESH_PANEL_ENABLED:
-        st.info(
-            "⏸️ **Temporarily disabled.** Write-to-Neon (Extend / Override) is "
-            "paused.  Use the **ML Dataset** section on the left to fetch "
-            "Partial or Cleaned data without persisting to the database.\n\n"
-            "To re-enable: set `GENERATE_REFRESH_PANEL_ENABLED = True` near the "
-            "top of this section in `2_Data_Explorer.py`."
-        )
-
-    st.caption("Extend Neon DB → rebuild cleaned local CSV → validate.")
+    st.caption("Extend offline database -> rebuild cleaned local CSV -> validate.")
 
     sm = StaticDatasetManager(fullpath)
     meta = sm.get_meta()
@@ -746,10 +682,7 @@ with right_col:
         f"**{_csv_rows}** rows × **{_csv_cols}** cols"
     )
 
-    # Skip the extend / override forms entirely when the panel is disabled —
-    # avoids rendering buttons that would call extend_and_persist.
-    if GENERATE_REFRESH_PANEL_ENABLED:
-      with st.container(border=True):
+    with st.container(border=True):
 
         _tab_ext, _tab_ovr = st.tabs(["Extend to Date", "Override from Date"])
 
@@ -758,7 +691,7 @@ with right_col:
             st.caption(
                 "Fetches data from the DB end date up to the chosen date "
                 "(Steps 2-5: charge/DPR, HM/Slag, burden, InfluxDB), "
-                "writes new rows to Neon, then rebuilds the cleaned local CSV."
+                "writes new rows to the offline database, then rebuilds the cleaned local CSV."
             )
             with st.form("extend_form"):
                 _ext_rm = st.radio(
@@ -768,7 +701,7 @@ with right_col:
                     "Generate to date", value=_today_gen, key="ext_end_date"
                 )
                 _ext_submit = st.form_submit_button(
-                    "Extend & Rebuild Dataset", use_container_width=True
+                    "Extend & Rebuild Dataset", width="stretch"
                 )
 
             if _ext_submit:
@@ -778,7 +711,7 @@ with right_col:
                         f"Choose a date after {db_end} or use Override."
                     )
                 else:
-                    with st.spinner("Fetching new data and writing to Neon…"):
+                    with st.spinner("Fetching new data and writing to offline database..."):
                         _raw = fetcher.extend_and_persist(
                             start_date=db_end or _today_gen,
                             end_date=_ext_end,
@@ -788,7 +721,7 @@ with right_col:
                     if _raw.empty:
                         st.warning("No new data was returned.")
                     else:
-                        st.info(f"Wrote {len(_raw)} raw rows to Neon DB.")
+                        st.info(f"Wrote {len(_raw)} raw rows to offline database.")
                         with st.spinner("Rebuilding cleaned static dataset…"):
                             _full_df = sm.update_static()
                             sm.save(_full_df)
@@ -827,7 +760,7 @@ with right_col:
                     icon="⚠️",
                 )
                 _ovr_submit = st.form_submit_button(
-                    "Override & Rebuild", use_container_width=True
+                    "Override & Rebuild", width="stretch"
                 )
 
             if _ovr_submit:
@@ -841,7 +774,7 @@ with right_col:
                 if _raw.empty:
                     st.warning("No data returned for the override range.")
                 else:
-                    st.info(f"Wrote {len(_raw)} raw rows to Neon DB.")
+                    st.info(f"Wrote {len(_raw)} raw rows to offline database.")
                     with st.spinner("Rebuilding cleaned static dataset…"):
                         _full_df = sm.update_static()
                         sm.save(_full_df)
@@ -857,9 +790,7 @@ with right_col:
                         st.session_state["ml_validation_report"] = validate_dataset(_full_df)
 
     # Download
-    _dl_df = st.session_state.get("static_ml_dataset_df")
-    if _dl_df is None:
-        _dl_df = df
+    _dl_df = st.session_state.get("static_ml_dataset_df") or df
     st.download_button(
         label="Download ML Dataset",
         data=_dl_df.to_csv(index=True).encode("utf-8"),
@@ -896,7 +827,7 @@ with right_col:
                     _mc_df.style.highlight_between(
                         subset=["Rows"], left=0, right=20, color="#ffd0d0"
                     ),
-                    use_container_width=True,
+                    width="stretch",
                     height=min(300, 35 * len(_mc_df) + 40),
                 )
 
@@ -904,7 +835,7 @@ with right_col:
             _kpi = _chk.get("kpi_stats")
             if _kpi is not None and not _kpi.empty:
                 st.markdown("**KPI statistics:**")
-                st.dataframe(_kpi.round(2), use_container_width=True)
+                st.dataframe(_kpi.round(2), width="stretch")
 
             # Warnings and errors
             if _vr["errors"]:

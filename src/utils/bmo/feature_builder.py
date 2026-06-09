@@ -65,6 +65,7 @@ class PreBuiltFeatureContext:
     static_payload: dict[str, float]
     default_values: dict[str, float]
     history_present: bool
+    hot_metal_target_mt: float | None = None
 
 
 def normalize_feature_name(name: str) -> str:
@@ -88,9 +89,14 @@ def normalize_feature_name(name: str) -> str:
 _BMO_LAG_PATTERN = re.compile(r"(.+)_lag(\d+)(?:_\(([^)]+)\))?$")
 
 
+# _TRAINING_ALIASES is the SINGLE source of truth for BMO fuel-cost inference.
+# A conceptually similar (but unrelated subsystem) mapping lives in
+# src/config/setting_ds_dv.yml::field_mapping and is consumed by the Data
+# Explorer page only. The two do NOT cross-reference each other: changes to
+# this dict must be made here and exercised via the BMO predict path;
+# changes to the yml mapping only affect Data Explorer column rendering.
 _TRAINING_ALIASES: dict[str, str] = {
     "ACTUALKG/THM.": "PCI_KG/THM",
-    "TOPBAR": "TOPPRESSUREBAR",
     "PCI_2_ASH%": "PCI_ASH%",
     "PCI_2_FC%": "PCI_FC%",
     "PCI_2_IM%": "PCI_IM%",
@@ -230,6 +236,17 @@ def parse_bmo_lag_feature_name(feature_name: str) -> ParsedLagFeature | None:
     )
 
 
+def max_bmo_lag_steps(feature_names: Iterable[str]) -> int:
+    """Return the largest lag step encoded in BMO feature names."""
+
+    max_lag = 0
+    for feature in feature_names:
+        parsed = parse_bmo_lag_feature_name(str(feature))
+        if parsed is not None:
+            max_lag = max(max_lag, parsed.lag_steps)
+    return max_lag
+
+
 def _is_sinter(ore: OreInput) -> bool:
     """
     Identify whether an ore input represents sinter material.
@@ -295,7 +312,7 @@ def _weighted_chemistry(
     ores: list[OreInput], quantities_mt: Mapping[str, float], attr: str
 ) -> float | None:
     """
-    Compute quantity-weighted chemistry for selected ore inputs.
+    Compute dry-quantity-weighted chemistry for selected ore inputs.
 
     Candidate blend chemistry is sent to the fuel-cost model in the training
     schema. This helper aggregates the selected ore chemistry using the same
@@ -314,13 +331,14 @@ def _weighted_chemistry(
     weighted = 0.0
     for ore in ores:
         qty = float(quantities_mt.get(ore.ore_id, 0.0) or 0.0)
-        if qty <= 0:
+        dry_qty = compute_dry_weight_mt(qty, ore.chemistry.moisture_pct)
+        if dry_qty <= 0:
             continue
         value = getattr(ore.chemistry, attr, None)
         if value is None:
             continue
-        total_qty += qty
-        weighted += qty * float(value or 0.0)
+        total_qty += dry_qty
+        weighted += dry_qty * float(value or 0.0)
     if total_qty <= 0:
         return None
     return weighted / total_qty
@@ -329,6 +347,7 @@ def _weighted_chemistry(
 def _candidate_blend_features(
     quantities_mt: Mapping[str, float],
     ores: list[OreInput],
+    hot_metal_target_mt: float | None = None,
 ) -> dict[str, float]:
     """
     Build training-schema burden features from a candidate BMO blend.
@@ -372,12 +391,16 @@ def _candidate_blend_features(
     payload["ORE_CALC_MT"] = ore_qty
     payload["SINTER_CALC_MT"] = sinter_qty
     payload["TOTAL_PELLET_CALC_MT"] = pellet_qty
-    payload["ORE_CALC_THM"] = (ore_qty / hot_metal_mt) if hot_metal_mt > 0 else 0.0
+    hm_basis_mt = float(hot_metal_target_mt or 0.0)
+    if hm_basis_mt <= 0.0:
+        hm_basis_mt = hot_metal_mt
+
+    payload["ORE_CALC_THM"] = (ore_qty / hm_basis_mt) if hm_basis_mt > 0 else 0.0
     payload["SINTER_CALC_THM"] = (
-        (sinter_qty / hot_metal_mt) if hot_metal_mt > 0 else 0.0
+        (sinter_qty / hm_basis_mt) if hm_basis_mt > 0 else 0.0
     )
     payload["TOTAL_PELLET_CALC_THM"] = (
-        (pellet_qty / hot_metal_mt) if hot_metal_mt > 0 else 0.0
+        (pellet_qty / hm_basis_mt) if hm_basis_mt > 0 else 0.0
     )
 
     for slot, qty in ore_quantities_by_slot.items():
@@ -403,9 +426,9 @@ def _candidate_blend_features(
         elif _is_pellet(ore):
             for attr, suffix in _CHEMISTRY_TO_TRAINING_SUFFIX.items():
                 pellet_suffix = suffix.replace("%", "")
-                payload[f"LLOYDS_PELLET_PCT_{pellet_suffix}"] = float(
-                    getattr(ore.chemistry, attr, 0.0) or 0.0
-                )
+                value = float(getattr(ore.chemistry, attr, 0.0) or 0.0)
+                payload[f"PELLET_PCT_{pellet_suffix}"] = value
+                payload[f"LLOYDS_PELLET_PCT_{pellet_suffix}"] = value
 
     return payload
 
@@ -415,6 +438,7 @@ def build_feature_payload(
     ore_display_name_by_id: Mapping[str, str],
     process_context: Mapping[str, Any] | None = None,
     ores: list[OreInput] | None = None,
+    hot_metal_target_mt: float | None = None,
 ) -> dict[str, float]:
     """
     Build a raw feature payload for BMO fuel-cost inference.
@@ -434,6 +458,24 @@ def build_feature_payload(
     """
 
     payload: dict[str, float] = {}
+
+    # Write process_context FIRST so operational variables (HOT BLAST TEMP,
+    # COKE_ASH%, PRODUCTIONTONNESPERHR, etc.) populate the payload. The
+    # candidate-derived burden features below then OVERWRITE any colliding
+    # keys (ORE_CALC_MT, ORE_1_PCT, ORE_FE(T)%, SINTER_SP_02_*, etc.). This
+    # ordering matters: process_context is the LATEST history row, so without
+    # this swap the model would see yesterday's blend regardless of which
+    # candidate the optimizer proposed -- fuel cost would be invariant to the
+    # blend and DE would never improve on the LP seed.
+    if process_context:
+        for key, value in process_context.items():
+            if value is None:
+                continue
+            try:
+                payload[str(key)] = float(value)
+            except (TypeError, ValueError):
+                continue
+            payload[normalize_feature_name(str(key))] = payload[str(key)]
 
     total_qty = float(sum(float(v) for v in quantities_mt.values()))
     sinter_qty = 0.0
@@ -458,17 +500,11 @@ def build_feature_payload(
     payload["total_burden_qty_mt"] = total_qty
 
     if ores:
-        payload.update(_candidate_blend_features(quantities_mt, ores))
-
-    if process_context:
-        for key, value in process_context.items():
-            if value is None:
-                continue
-            try:
-                payload[str(key)] = float(value)
-            except (TypeError, ValueError):
-                continue
-            payload[normalize_feature_name(str(key))] = payload[str(key)]
+        payload.update(
+            _candidate_blend_features(
+                quantities_mt, ores, hot_metal_target_mt=hot_metal_target_mt
+            )
+        )
 
     return payload
 
@@ -815,6 +851,7 @@ def default_candidate_lag_bases(feature_payload: Mapping[str, Any]) -> set[str]:
             or text in {"SINTER_CLO_RATIO", "PELLET_CLO_RATIO"}
             or text.startswith("ORE_")
             or text.startswith("SINTER_SP_02_")
+            or text.startswith("PELLET_")
             or text.startswith("LLOYDS_PELLET_")
         ):
             bases.add(text)
@@ -874,7 +911,11 @@ def build_bmo_v4_feature_frame(
 
         parsed = parse_bmo_lag_feature_name(feature)
         if value is None and parsed is not None:
-            if parsed.base_name in lag_override_bases:
+            alias_base = aliases.get(parsed.base_name)
+            if (
+                parsed.base_name in lag_override_bases
+                or alias_base in lag_override_bases
+            ):
                 value, source = _payload_lookup(
                     feature_payload, parsed.base_name, aliases
                 )
@@ -958,7 +999,13 @@ def build_dynamic_payload(
     payload["ore_share_pct"] = max(0.0, 100.0 - sinter_share_pct)
     payload["total_burden_qty_mt"] = total_qty
 
-    payload.update(_candidate_blend_features(quantities_mt, ores))
+    payload.update(
+        _candidate_blend_features(
+            quantities_mt,
+            ores,
+            hot_metal_target_mt=context.hot_metal_target_mt,
+        )
+    )
     return payload
 
 
@@ -1032,6 +1079,7 @@ def build_prebuilt_feature_context(
     expected_features: list[str],
     default_values: Mapping[str, float] | None = None,
     selected_features: list[str] | None = None,
+    hot_metal_target_mt: float | None = None,
 ) -> PreBuiltFeatureContext:
     """
     Prebuild the static portion of the BMO model feature vector for DE.
@@ -1098,24 +1146,17 @@ def build_prebuilt_feature_context(
         static_payload=dict(static_payload),
         default_values=dict(default_values or {}),
         history_present=history_df is not None and not history_df.empty,
+        hot_metal_target_mt=hot_metal_target_mt,
     )
     probe_payload = build_dynamic_payload(probe_context, probe_quantities)
     _ = zero_quantities  # retained for reference; not used post-probe
 
-    # CRITICAL: the slow-path build_feature_payload writes candidate-derived
-    # fields first then OVERWRITES with process_context. For any dynamic key
-    # that also exists in process_context, the process_context value wins.
-    # The template already carries those process_context values, so we must
-    # exclude such keys from dynamic_field_names to keep the fast path
-    # numerically identical to the slow path.
-    static_keys = set(static_payload.keys())
-    static_norm_keys = {normalize_feature_name(k) for k in static_keys}
-    dynamic_field_names = frozenset(
-        key
-        for key in probe_payload.keys()
-        if key not in static_keys
-        and normalize_feature_name(key) not in static_norm_keys
-    )
+    # In the slow-path build_feature_payload, candidate-derived burden fields
+    # are written AFTER process_context so they overwrite the historical
+    # values on collision (e.g. ORE_CALC_MT, ORE_1_PCT, ORE_FE(T)%). The
+    # prebuilt fast path mirrors this by writing every dynamic key it sees
+    # over the template; no exclusion based on process_context is needed.
+    dynamic_field_names = frozenset(probe_payload.keys())
 
     dynamic_col_indexes = _resolve_dynamic_col_indexes(
         list(expected_features), dynamic_field_names
@@ -1143,4 +1184,5 @@ def build_prebuilt_feature_context(
         static_payload=dict(static_payload),
         default_values=dict(default_values or {}),
         history_present=history_df is not None and not history_df.empty,
+        hot_metal_target_mt=hot_metal_target_mt,
     )

@@ -1,13 +1,13 @@
-"""Tests for the shared Neon offline fetcher.
+"""Tests for the shared PostgreSQL offline fetcher.
 
 Database I/O is mocked; these tests validate query selection, whitelisting, and
-logical report composition without connecting to Neon.
+logical report composition without connecting to PostgreSQL.
 """
 
 import pandas as pd
 import pytest
 
-from furnace_data.neon_db import offline as neon
+import furnace_data.offline as offline
 
 
 class FakeEngine:
@@ -18,8 +18,8 @@ class FakeEngine:
         self.disposed = True
 
 
-def test_neon_table_discovery_includes_migrated_reports():
-    listing = neon.list_neon_offline_tables()
+def test_offline_table_discovery_includes_migrated_reports():
+    listing = offline.list_offline_tables()
 
     assert "RM_COMPOSITION" in listing["report_map"]
     assert "BURDEN_DISTRIBUTION" in listing["report_map"]
@@ -50,10 +50,10 @@ def test_fetch_table_uses_database_url_and_sets_time_index(monkeypatch):
             }
         )
 
-    monkeypatch.setattr(neon, "build_relational_engine", fake_build_engine)
-    monkeypatch.setattr(neon.pd, "read_sql_query", fake_read_sql_query)
+    monkeypatch.setattr(offline, "build_relational_engine", fake_build_engine)
+    monkeypatch.setattr(offline.pd, "read_sql_query", fake_read_sql_query)
 
-    df = neon.fetch_offline_data(
+    df = offline.fetch_offline_data(
         table_name="charge_data",
         time_range=("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"),
         columns=["date_time", "ore_1_mt"],
@@ -73,15 +73,15 @@ def test_combined_rm_report_concats_source_tables(monkeypatch):
         idx = pd.DatetimeIndex([pd.Timestamp("2026-01-01T00:00:00Z")], name="time")
         return pd.DataFrame({"value": [table_name]}, index=idx)
 
-    monkeypatch.setattr(neon, "fetch_offline_data", fake_fetch_table)
+    monkeypatch.setattr(offline, "fetch_offline_data", fake_fetch_table)
 
-    df = neon.fetch_offline_report(
+    df = offline.fetch_offline_report(
         report_type="RM_COMPOSITION",
         time_range=("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"),
     )
 
-    assert set(df["source_table"]) == set(neon.NEON_OFFLINE_REPORT_MAP["RM_COMPOSITION"])
-    assert len(df) == len(neon.NEON_OFFLINE_REPORT_MAP["RM_COMPOSITION"])
+    assert set(df["source_table"]) == set(offline.OFFLINE_REPORT_MAP["RM_COMPOSITION"])
+    assert len(df) == len(offline.OFFLINE_REPORT_MAP["RM_COMPOSITION"])
 
 
 def test_report_with_mixed_time_and_master_tables_does_not_sort_mixed_index(monkeypatch):
@@ -91,20 +91,20 @@ def test_report_with_mixed_time_and_master_tables_does_not_sort_mixed_index(monk
         idx = pd.DatetimeIndex([pd.Timestamp("2026-01-01T00:00:00Z")], name="time")
         return pd.DataFrame({"value": [table_name]}, index=idx)
 
-    monkeypatch.setattr(neon, "fetch_offline_data", fake_fetch_table)
+    monkeypatch.setattr(offline, "fetch_offline_data", fake_fetch_table)
 
-    df = neon.fetch_offline_report(
+    df = offline.fetch_offline_report(
         report_type="RM_COMPOSITION",
         time_range=("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"),
     )
 
     assert "plant_master.materials" in set(df["source_table"])
-    assert len(df) == len(neon.NEON_OFFLINE_REPORT_MAP["RM_COMPOSITION"])
+    assert len(df) == len(offline.OFFLINE_REPORT_MAP["RM_COMPOSITION"])
 
 
 def test_burden_history_rejects_aggregation():
     with pytest.raises(ValueError, match="does not support SQL aggregation"):
-        neon.fetch_offline_data(
+        offline.fetch_offline_data(
             table_name="burden_distribution_history",
             time_range=("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"),
             query_type="average",
@@ -113,9 +113,9 @@ def test_burden_history_rejects_aggregation():
 
 def test_legacy_table_alias_resolves_to_schema_qualified_name():
     assert (
-        neon.resolve_neon_table_name("hot_metal_chemistry")
+        offline.resolve_offline_table_name("hot_metal_chemistry")
         == "offline_feed.hot_metal_slag_analysis"
     )
-    assert neon.resolve_neon_table_name("rm_hm") == (
+    assert offline.resolve_offline_table_name("rm_hm") == (
         "offline_feed.raw_material_strength_analysis"
     )

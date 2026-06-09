@@ -8,9 +8,11 @@ import shutil
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from config.config_loader import load_config
 from data.ml.static_csv import (
     fetch_static_dataset_from_database,
     get_static_dataset_path,
@@ -66,20 +68,26 @@ class StaticDatasetManager:
     ) -> pd.DataFrame:
         """Fetch, clean, and extend the static ML dataset with a local delta.
 
-        Loads the cleaned base from ``historical_static_ml_dataset`` (Neon),
+        Loads the cleaned base from ``historical_static_ml_dataset`` in the offline DB,
         then appends a post-cutoff delta (Steps 2-5) from the base end date
-        to today without writing back to the database.  Falls back to the
-        base alone if the delta fetch fails.
+        to today without writing back to the database.
         """
         _ = start_date  # legacy compat
 
         df_base = fetch_static_dataset_from_database()
         df_base = self._clean_dataset(df_base)
+        df_base = self._clip_to_current_hour(df_base)
+        cutoff_value = (
+            load_config("setting_ds_dv.yml").get("ml_dataset", {}).get("cutoff_date")
+        )
+        if cutoff_value:
+            cutoff = date.fromisoformat(str(cutoff_value))
+            df_base = df_base.loc[df_base.index.date <= cutoff]
         if df_base.empty:
             return df_base
 
         base_end = df_base.index.max().date()
-        today = date.today()
+        today = self._current_local_hour().date()
 
         if base_end >= today - timedelta(days=1):
             return df_base
@@ -89,32 +97,14 @@ class StaticDatasetManager:
         df_delta = self._fetch_and_clean_delta(delta_start, today, rm_mode)
 
         if df_delta.empty:
-            log.warning(
-                "Delta fetch returned no rows; returning base only (base ends %s, today %s).",
-                base_end, today,
+            raise RuntimeError(
+                "Delta fetch returned no rows "
+                f"(base ends {base_end}, today {today})."
             )
-            return df_base
 
-        combined = pd.concat([df_base, df_delta]).sort_index()
-
-        # After concat, rows from each side may have NaN for columns that only
-        # the other side carries (e.g. temperature averages in base but not delta,
-        # or new sensors in delta but not base).  Fill those NaN cells with the
-        # column median so that ML inference rows are not silently dropped by
-        # process_dataframe()'s dropna().
-        delta_start = df_delta.index.min()
-        delta_mask = combined.index >= delta_start
-        base_mask  = ~delta_mask
-
-        # 1. Columns added by the delta that are NaN in base rows
-        for col in combined.columns:
-            if base_mask.any() and combined.loc[base_mask, col].isna().all():
-                combined[col] = combined[col].fillna(combined[col].median())
-
-        # 2. Columns carried only by the base that are NaN in delta rows
-        for col in combined.columns:
-            if delta_mask.any() and combined.loc[delta_mask, col].isna().all():
-                combined[col] = combined[col].fillna(combined[col].median())
+        combined = self._clip_to_current_hour(
+            pd.concat([df_base, df_delta]).sort_index()
+        )
 
         log.info(
             "Combined base (%d rows, ends %s) + delta (%d rows, ends %s) = %d rows total.",
@@ -143,7 +133,7 @@ class StaticDatasetManager:
             from furnace_data.dataset.fetcher import DatasetFetcher
 
             fetcher = DatasetFetcher()
-            df_raw = fetcher.build_local_delta(start, end, rm_mode)
+            df_raw = fetcher.build_local_delta(start, end, rm_mode, raise_on_error=True)
             if df_raw.empty:
                 return df_raw
 
@@ -151,38 +141,39 @@ class StaticDatasetManager:
             # but coerce numeric-looking object columns (e.g. STEAMKGS/HR. from InfluxDB
             # with mixed types) rather than silently dropping them.
             object_cols = df_raw.select_dtypes(include="object").columns.tolist()
-            coerced, dropped = [], []
+            dropped = []
             for col in object_cols:
                 numeric = pd.to_numeric(df_raw[col], errors="coerce")
                 if numeric.notna().any():
                     df_raw[col] = numeric
-                    coerced.append(col)
                 else:
                     dropped.append(col)
             if dropped:
                 df_raw = df_raw.drop(columns=dropped)
 
-            # Resample outer-joined multi-granularity data to a regular hourly cadence
-            # and forward-fill.  RM chemistry lab values are valid until the next sample,
-            # so ffill(limit=24) propagates them across up to 24 hourly slots.
-            df_raw = df_raw.resample("1h").mean().ffill(limit=24)
+            # Resample outer-joined multi-granularity data to a regular hourly cadence.
+            # Material quantities are hourly totals; lab/process context is averaged and
+            # forward-filled because a lab sample remains valid until the next sample.
+            df_raw = self._resample_local_delta_hourly(df_raw)
 
             # Derive PCI_CALC_MT from online process params when the charge-system
             # column is absent or all-NaN (PCI is injected via lances, not charged
             # through hoppers so it never appears in charge_data).
-            # Formula: PCI rate (kg/tHM) × production (t/hr) ÷ 1000 = PCI mass (MT/hr).
+            # Formula: PCI rate (kg/tHM) x production (t/hr) / 1000 = PCI mass (MT/hr).
             pci_col = "PCI_CALC_MT"
-            if (
-                pci_col not in df_raw.columns or df_raw[pci_col].isna().all()
-            ) and "PCI_KG/THM" in df_raw.columns and "PRODUCTIONTONNESPERHR" in df_raw.columns:
-                df_raw[pci_col] = (
+            if "PCI_KG/THM" in df_raw.columns and "PRODUCTIONTONNESPERHR" in df_raw.columns:
+                derived_pci_mt = (
                     df_raw["PCI_KG/THM"] * df_raw["PRODUCTIONTONNESPERHR"] / 1000
                 )
+                if pci_col in df_raw.columns:
+                    df_raw[pci_col] = df_raw[pci_col].combine_first(derived_pci_mt)
+                else:
+                    df_raw[pci_col] = derived_pci_mt
 
             # Use a lower sparse-row threshold (0.2 vs default 0.5): post-cutoff joined
             # data is naturally sparser than the pre-merged historical dataset.
             # Disable tonnage_caps: these caps were designed for hourly sums in the
-            # historical InfluxDB data; the delta uses per-charge averages (3–6 MT coke
+            # historical InfluxDB data; the delta uses per-charge averages (3-6 MT coke
             # vs a cap of 55), so the caps are a no-op for valid data but cause false
             # drops when PCI outlier rules reset zero-filled values back to NaN.
             delta_config = dc_replace(
@@ -191,17 +182,18 @@ class StaticDatasetManager:
                 tonnage_caps={},
             )
             cleaned = DataCleaner(delta_config).clean(df_raw)
+            cleaned = self._repair_material_quantity_totals(cleaned)
 
             if cleaned.empty:
-                log.warning("Delta cleaning returned no rows even with lower threshold.")
-                return pd.DataFrame()
+                raise RuntimeError("Delta cleaning returned no rows even with lower threshold.")
             return cleaned
         except Exception:
             log.warning("Post-cutoff delta fetch/clean failed.", exc_info=True)
-            return pd.DataFrame()
+            raise
 
     def save(self, df: pd.DataFrame) -> Path:
         """Save a cleaned full dataset snapshot and rotate old versioned files."""
+        df = self._clip_to_current_hour(df)
         if df.empty:
             raise ValueError("Cannot save an empty static ML dataset.")
 
@@ -225,14 +217,71 @@ class StaticDatasetManager:
             return df
         cleaner = DataCleaner(build_default_config())
         cleaned = cleaner.clean(df)
+        cleaned = self._repair_material_quantity_totals(cleaned)
         if cleaned.empty:
             raise ValueError("Static ML dataset cleaning returned no rows.")
         return cleaned
 
+    @staticmethod
+    def _current_local_hour() -> pd.Timestamp:
+        local_tz = (
+            load_config("setting_ds_dv.yml")
+            .get("ml_dataset", {})
+            .get("local_tz", "Asia/Kolkata")
+        )
+        return pd.Timestamp.now(tz=ZoneInfo(local_tz)).floor("h").tz_localize(None)
+
+    @classmethod
+    def _clip_to_current_hour(cls, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty or not isinstance(df.index, pd.DatetimeIndex):
+            return df
+        return df.loc[df.index <= cls._current_local_hour()]
+
+    @staticmethod
+    def _resample_local_delta_hourly(df: pd.DataFrame) -> pd.DataFrame:
+        quantity_cols = [
+            col for col in df.columns
+            if StaticDatasetManager._is_hourly_quantity_column(col)
+        ]
+        context_cols = [col for col in df.columns if col not in quantity_cols]
+
+        frames: list[pd.DataFrame] = []
+        if context_cols:
+            frames.append(df[context_cols].resample("1h").mean().ffill(limit=24))
+        if quantity_cols:
+            frames.append(df[quantity_cols].resample("1h").sum(min_count=1))
+
+        if not frames:
+            return df.resample("1h").mean()
+        return pd.concat(frames, axis=1).sort_index()
+
+    @staticmethod
+    def _is_hourly_quantity_column(column: object) -> bool:
+        return isinstance(column, str) and column.endswith("_CALC_MT")
+
+    @staticmethod
+    def _repair_material_quantity_totals(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+        out = df.copy()
+        aggregate_specs = {
+            "ORE_CALC_MT": [f"ORE_{i}_CALC_MT" for i in range(1, 13)],
+            "FLUX_CALC_MT": [f"FLUX_{i}_CALC_MT" for i in range(1, 4)],
+        }
+        for aggregate, columns in aggregate_specs.items():
+            present = [column for column in columns if column in out.columns]
+            if present and aggregate in out.columns:
+                values = out[present].apply(pd.to_numeric, errors="coerce")
+                has_slot_data = values.notna().any(axis=1)
+                out.loc[has_slot_data, aggregate] = (
+                    values.loc[has_slot_data].fillna(0.0).sum(axis=1)
+                )
+        return out
+
     def get_db_end_date(self) -> date | None:
         """Return the latest ``date_time`` in ``historical_static_ml_dataset``."""
         try:
-            from furnace_data.neon_db.offline import get_offline_table_bounds
+            from furnace_data.offline import get_offline_table_bounds
             _, end, _ = get_offline_table_bounds("offline_feed.historical_static_ml_dataset")
             return end.date() if end else None
         except Exception:

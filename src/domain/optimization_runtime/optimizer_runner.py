@@ -55,6 +55,7 @@ class OptimizerRunner:
         bounds: list[tuple[float, float]],
         objective_fn: Callable[[np.ndarray], ObjectiveResult],
         baseline_solution: dict[str, Any] | None = None,
+        initial_population: np.ndarray | None = None,
         progress_callback: (
             Callable[[int, float, float | None, int, float], bool] | None
         ) = None,
@@ -70,6 +71,7 @@ class OptimizerRunner:
              - bounds: list[tuple[float, float]] - Per-variable lower and upper bounds.
              - objective_fn: Callable[[np.ndarray], ObjectiveResult] - Objective callback.
              - baseline_solution: dict[str, Any] | None - Optional LP baseline seed.
+             - initial_population: np.ndarray | None - Optional custom SciPy population.
 
         Returns:
              - return OptimizationResult - Best solution, comparison metrics, and diagnostics.
@@ -176,6 +178,7 @@ class OptimizerRunner:
             seed=int(self.optimizer_cfg.get("seed", 42)),
             workers=1,
             callback=_scipy_callback,
+            init=initial_population if initial_population is not None else "latinhypercube",
         )
 
         best_solution = (

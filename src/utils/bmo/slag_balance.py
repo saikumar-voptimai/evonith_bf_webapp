@@ -74,7 +74,11 @@ def _safe_pct(value: float | int | str | None) -> float:
          - return float - Percentage clamped between 0 and 100.
     """
 
-    return min(max(_safe_float(value), 0.0), 100.0)
+    # Upper bound clamps to 99.0 so a moisture entry of 100 (typo or stale
+    # input) cannot collapse dry weight to exactly zero in _dry_weight_mt
+    # below. 99.0 still yields a vanishingly small dry weight so a real
+    # all-water material is still surfaced as ~0 Fe / ~0 slag.
+    return min(max(_safe_float(value), 0.0), 99.0)
 
 
 def _dry_weight_mt(wet_weight_mt: float, moisture_pct: float) -> float:

@@ -7,6 +7,10 @@ so the UI reports constraint warnings consistently across optimization methods.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+import pandas as pd
+
 from utils.bmo.types import BlendEvaluation, OreInput
 
 
@@ -45,11 +49,11 @@ def check_blend_constraints(
 
     if blend.fe_production_mt < target_production_mt - fe_tolerance_mt:
         violations.append(
-            f"Hot metal below target: {blend.fe_production_mt:.2f} < {target_production_mt:.2f} MT."
+            f"Fe production below required target: {blend.fe_production_mt:.2f} < {target_production_mt:.2f} MT."
         )
     if blend.fe_production_mt > target_production_mt + fe_tolerance_mt:
         violations.append(
-            f"Hot metal above target: {blend.fe_production_mt:.2f} > {target_production_mt:.2f} MT."
+            f"Fe production above required target: {blend.fe_production_mt:.2f} > {target_production_mt:.2f} MT."
         )
 
     if blend.slag_mt > target_slag_qty_mt + slag_tolerance_mt:
@@ -123,3 +127,63 @@ def validate_ore_bounds(ores: list[OreInput]) -> list[str]:
         errors.append("At least one selected ore must have positive stock.")
 
     return errors
+
+
+def validate_selected_pellet_inputs(
+    ores: list[OreInput],
+    *,
+    max_chemistry_age_days: int = 30,
+    now: datetime | None = None,
+) -> list[str]:
+    """
+    Return blocking pre-run issues for selected pellet materials.
+
+    Pellet can materially change Fe, slag, and fuel-model inputs. If stock or
+    chemistry is not backed by fresh source data, the operator must explicitly
+    review the editor values before running BMO.
+    """
+
+    issues: list[str] = []
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+
+    for ore in ores:
+        material_key = str(ore.metadata.get("material_key", "")).lower()
+        if "pellet" not in material_key and "pellet" not in ore.display_name.lower():
+            continue
+
+        stock_source = str(ore.metadata.get("stock_source", ""))
+        if float(ore.stock_mt or 0.0) <= 0.0:
+            issues.append(f"{ore.display_name}: enter positive pellet stock before running.")
+        elif stock_source != "offline_db":
+            issues.append(
+                f"{ore.display_name}: stock is not from raw_material_stock; confirm the editor stock value."
+            )
+
+        chemistry_source = str(ore.metadata.get("chemistry_source", ""))
+        sample_timestamp = str(ore.metadata.get("chemistry_sample_timestamp", "") or "")
+        if chemistry_source == "fallback":
+            issues.append(
+                f"{ore.display_name}: chemistry is using fallback values; confirm or edit chemistry before running."
+            )
+            continue
+        if not sample_timestamp:
+            issues.append(
+                f"{ore.display_name}: chemistry timestamp is missing; confirm or edit chemistry before running."
+            )
+            continue
+
+        sample_time = pd.to_datetime(sample_timestamp, utc=True, errors="coerce")
+        if pd.isna(sample_time):
+            issues.append(
+                f"{ore.display_name}: chemistry timestamp is invalid; confirm or edit chemistry before running."
+            )
+            continue
+        age_days = (pd.Timestamp(current) - sample_time).total_seconds() / 86400.0
+        if age_days > float(max_chemistry_age_days):
+            issues.append(
+                f"{ore.display_name}: chemistry sample is {age_days:.0f} days old; confirm or edit chemistry before running."
+            )
+
+    return issues

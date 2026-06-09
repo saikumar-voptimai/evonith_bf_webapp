@@ -31,7 +31,7 @@ def render_artifacts_panel() -> None:
 
     if fig is not None:
         st.caption("Latest plot")
-        st.plotly_chart(fig, use_container_width=True, key="artifact_plot_pinned")
+        st.plotly_chart(fig, width="stretch", key="artifact_plot_pinned")
 
     if df is not None and not df.empty:
         row_count = df.shape[0]
@@ -42,7 +42,7 @@ def render_artifacts_panel() -> None:
             + (f" · {label}" if label else "")
         )
         st.dataframe(
-            df.head(100), use_container_width=True,
+            df.head(100), width="stretch",
             hide_index=True, key="artifact_df_pinned",
         )
         st.download_button(
@@ -51,5 +51,5 @@ def render_artifacts_panel() -> None:
             file_name=f"{label or 'data'}.csv",
             mime="text/csv",
             key="artifact_df_download",
-            use_container_width=True,
+            width="stretch",
         )

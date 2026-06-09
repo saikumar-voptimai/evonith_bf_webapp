@@ -1,4 +1,4 @@
-"""Repository classes for Neon-backed relational persistence."""
+"""Repository classes for PostgreSQL-backed relational persistence."""
 
 from __future__ import annotations
 

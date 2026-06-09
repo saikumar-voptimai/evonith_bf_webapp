@@ -42,6 +42,36 @@ def test_offline_app_paths_do_not_import_influx_offline_fetcher() -> None:
     assert offenders == []
 
 
+def test_old_influx_offline_module_is_removed() -> None:
+    assert not (ROOT / "furnace_data" / "furnace_data" / "influx" / "offline.py").exists()
+
+
+def test_bmo_and_static_dataset_paths_use_neutral_offline_api() -> None:
+    checked_roots = [
+        ROOT / "src" / "data" / "bmo",
+        ROOT / "src" / "data" / "ml",
+        ROOT / "src" / "custom_pages" / "9_Blend_Optimizer.py",
+        ROOT / "furnace_data" / "furnace_data" / "dataset",
+    ]
+    offenders = []
+    for root in checked_roots:
+        paths = [root] if root.is_file() else list(root.rglob("*.py"))
+        for path in paths:
+            text = _read(path)
+            if "furnace_data.influx.offline" in text:
+                offenders.append(path)
+    assert offenders == []
+
+
+def test_app_code_does_not_import_old_neon_package() -> None:
+    offenders = [
+        path
+        for path in _python_files()
+        if "furnace_data.neon_db" in _read(path)
+    ]
+    assert offenders == []
+
+
 def test_no_offline_influx_rollback_copy_remains() -> None:
     needles = [
         "InfluxDB rollback",

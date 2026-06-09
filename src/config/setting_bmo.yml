@@ -122,6 +122,7 @@ bmo:
     - flux_id: brazil
       display_name: Brazil
       enabled: false
+      hidden_by_default: true
       wet_qty_mt: 0.0
       moisture_pct: 0.0
       sio2_pct: 0.0
@@ -141,6 +142,7 @@ bmo:
     - flux_id: fluorspar
       display_name: Fluorspar
       enabled: false
+      hidden_by_default: true
       wet_qty_mt: 0.0
       moisture_pct: 0.0
       sio2_pct: 0.0
@@ -201,8 +203,8 @@ bmo:
   optimization:
     enabled: true
     strategy: best1bin
-    maxiter: 8
-    popsize: 6
+    maxiter: 30
+    popsize: 10
     tol: 0.02
     polish: false
     seed: 42
@@ -237,16 +239,18 @@ bmo:
 
   data_sources:
     static_dataset_path: src/assets/data/furnace_dataset.csv
-    chemistry_bucket: bf2_evonith_offline_utc
-    chemistry_measurement: rm_updated_data
-    stock_bucket: bf2_evonith_offline_utc
-    stock_measurement: rm_stock
+    stock_table: offline_feed.raw_material_stock
     stock_time_range: last 1 week
     stock_fallback_reference_qty_mt: 3800.0
     chemistry_time_range_days: 30
+    latest_usage_lookback_days: 365
+    pellet_auto_select_lookback_days: 30
+    pellet_chemistry_max_age_days: 30
+    static_refresh_max_age_minutes: 60
 
   ui:
     show_manual_compare: true
+    auto_select_active_pellet: true
     default_selected_ores:
       - SINTER (SP-02)
       - GEOMIN CLO
@@ -271,8 +275,8 @@ bmo:
       missing_feature_policy: default_warn
     optimizer:
       strategy: best1bin
-      maxiter: 6
-      popsize: 5
+      maxiter: 30
+      popsize: 10
       tol: 0.02
       polish: false
       seed: 42

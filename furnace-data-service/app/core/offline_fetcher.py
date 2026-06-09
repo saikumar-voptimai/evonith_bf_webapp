@@ -1,4 +1,4 @@
-"""Neon/PostgreSQL offline fetch wrapper for /data/offline endpoints."""
+"""PostgreSQL offline fetch wrapper for /data/offline endpoints."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from typing import Optional
 
 import pandas as pd
 
-from furnace_data.neon_db.offline import (
-    NEON_OFFLINE_REPORT_MAP,
+from furnace_data.offline import (
+    OFFLINE_REPORT_MAP,
     fetch_offline_data,
     fetch_offline_report,
-    resolve_neon_table_name,
+    resolve_offline_table_name,
 )
 
 log = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ def _resolve_time_range(
     return start_time, end_time
 
 
-def fetch_neon_offline(
+def fetch_database_offline(
     report_type: str,
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
@@ -61,7 +61,7 @@ def fetch_neon_offline(
     query_type: str = "ts",
     window: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Fetch offline data from Neon by logical report or explicit table."""
+    """Fetch offline data from PostgreSQL by logical report or explicit table."""
     start_time, end_time = _resolve_time_range(
         start_time=start_time,
         end_time=end_time,
@@ -70,13 +70,13 @@ def fetch_neon_offline(
 
     if table_name:
         try:
-            resolved_table = resolve_neon_table_name(table_name)
+            resolved_table = resolve_offline_table_name(table_name)
         except ValueError as exc:
             raise ValueError(
                 str(exc)
             ) from exc
         log.info(
-            "Fetching Neon offline table %s from %s to %s as %s",
+            "Fetching offline database table %s from %s to %s as %s",
             resolved_table,
             start_time,
             end_time,
@@ -89,14 +89,14 @@ def fetch_neon_offline(
             window=window,
         )
 
-    if report_type not in NEON_OFFLINE_REPORT_MAP:
+    if report_type not in OFFLINE_REPORT_MAP:
         raise ValueError(
-            f"Unknown Neon offline report '{report_type}'. "
-            f"Valid reports: {sorted(NEON_OFFLINE_REPORT_MAP)}"
+            f"Unknown offline database report '{report_type}'. "
+            f"Valid reports: {sorted(OFFLINE_REPORT_MAP)}"
         )
 
     log.info(
-        "Fetching Neon offline report %s from %s to %s as %s",
+        "Fetching offline database report %s from %s to %s as %s",
         report_type,
         start_time,
         end_time,

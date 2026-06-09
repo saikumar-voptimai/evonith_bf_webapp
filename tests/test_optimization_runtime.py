@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import joblib
@@ -18,6 +19,7 @@ from domain.optimization_runtime import (
 )
 from utils.bmo.calculations import evaluate_blend
 from utils.bmo.constraints import check_blend_constraints
+from utils.bmo.constraints import validate_selected_pellet_inputs
 from utils.bmo.lp_solver import run_lp_baseline
 from utils.bmo.model_service import FuelUnitCostModelService
 from utils.bmo.nonlinear_optimizer import run_nonlinear_optimizer
@@ -227,6 +229,31 @@ def test_blend_evaluation_uses_oxide_sum_for_slag_and_rate():
     assert blend.diagnostics["slag_contribution_mt_by_ore"]["ore_a"] == pytest.approx(
         10.8
     )
+
+
+def test_blend_evaluation_uses_operator_hm_basis_for_thm_metrics():
+    ore = OreInput(
+        ore_id="ore_a",
+        display_name="ORE A",
+        stock_mt=5000.0,
+        price_rs_per_mt=1000.0,
+        min_share_pct=0.0,
+        max_share_pct=100.0,
+        chemistry=OreChemistry(fe_t_pct=50.0, sio2_pct=10.0),
+    )
+
+    blend = evaluate_blend(
+        ores=[ore],
+        quantities_mt={"ore_a": 200.0},
+        feo_in_slag_pct=0.0,
+        hot_metal_target_mt=100.0,
+    )
+
+    assert blend.fe_production_mt == pytest.approx(100.0)
+    assert blend.ore_cost_total_rs == pytest.approx(200_000.0)
+    assert blend.ore_cost_per_thm_rs == pytest.approx(2_000.0)
+    assert blend.slag_rate_kg_per_thm == pytest.approx(200.0)
+    assert blend.diagnostics["slag_rate_denominator"] == "hot_metal_target_mt"
 
 
 def test_blend_evaluation_adds_fuel_ash_slag_contribution():
@@ -877,10 +904,11 @@ def test_bmo_objective_penalizes_production_above_target():
     over_result = evaluator.evaluate_quantities(np.array([120.0], dtype=float))
 
     assert exact_result.components["penalty_production_excess"] == pytest.approx(0.0)
-    assert over_result.components["penalty_production_excess"] == pytest.approx(10000.0)
+    assert over_result.components["penalty_production_excess"] == pytest.approx(9500.0)
     assert over_result.feasible is False
     assert any(
-        "Hot metal above target" in violation for violation in over_result.violations
+        "Fe production above required target" in violation
+        for violation in over_result.violations
     )
     assert over_result.objective_value > exact_result.objective_value
 
@@ -923,6 +951,60 @@ def test_blend_constraint_check_tolerates_small_fe_rounding_delta():
     )
 
 
+def test_selected_pellet_validation_blocks_fallback_and_stale_inputs():
+    pellet = OreInput(
+        ore_id="pellet_1",
+        display_name="LLOYDS PELLET",
+        stock_mt=250.0,
+        price_rs_per_mt=9650.0,
+        min_share_pct=0.0,
+        max_share_pct=10.0,
+        chemistry=OreChemistry(fe_t_pct=64.0),
+        metadata={
+            "material_key": "pellet_1",
+            "stock_source": "fallback",
+            "chemistry_source": "offline_db_latest",
+            "chemistry_sample_timestamp": "2026-01-01T00:00:00+00:00",
+        },
+    )
+
+    issues = validate_selected_pellet_inputs(
+        [pellet],
+        max_chemistry_age_days=30,
+        now=datetime(2026, 3, 1, tzinfo=timezone.utc),
+    )
+
+    assert any("stock is not from raw_material_stock" in issue for issue in issues)
+    assert any("chemistry sample is" in issue for issue in issues)
+
+
+def test_selected_pellet_validation_accepts_fresh_database_inputs():
+    pellet = OreInput(
+        ore_id="pellet_1",
+        display_name="LLOYDS PELLET",
+        stock_mt=250.0,
+        price_rs_per_mt=9650.0,
+        min_share_pct=0.0,
+        max_share_pct=10.0,
+        chemistry=OreChemistry(fe_t_pct=64.0),
+        metadata={
+            "material_key": "pellet_1",
+            "stock_source": "offline_db",
+            "chemistry_source": "offline_db_latest",
+            "chemistry_sample_timestamp": "2026-02-20T00:00:00+00:00",
+        },
+    )
+
+    assert (
+        validate_selected_pellet_inputs(
+            [pellet],
+            max_chemistry_age_days=30,
+            now=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        )
+        == []
+    )
+
+
 def test_blend_constraint_check_flags_hot_metal_above_target():
     ore = OreInput(
         ore_id="ore_a",
@@ -957,7 +1039,9 @@ def test_blend_constraint_check_flags_hot_metal_above_target():
         target_slag_qty_mt=750.0,
     )
 
-    assert any("Hot metal above target" in violation for violation in violations)
+    assert any(
+        "Fe production above required target" in violation for violation in violations
+    )
 
 
 def test_blend_constraint_check_uses_strict_slag_cap():
@@ -1052,6 +1136,9 @@ def test_nonlinear_optimizer_respects_stock_caps_and_keeps_feasible_baseline():
     assert blend.violations == []
     assert blend.quantities_mt["cheap_empty"] == pytest.approx(0.0)
     assert blend.fe_production_mt >= 58.0
+    runtime = blend.diagnostics["runtime"]["best_solution"]["diagnostics"]
+    assert "candidate_shares_pct" in runtime
+    assert sum(runtime["candidate_shares_pct"]) == pytest.approx(100.0)
 
 
 def test_nonlinear_optimizer_skips_de_when_lp_constraints_are_infeasible():

@@ -1,7 +1,7 @@
 """Nonlinear BMO optimizer orchestration.
 
-This module prepares quantity bounds, seeds DE with the LP baseline, evaluates
-candidate wet-quantity vectors, and returns the best total-cost blend found by
+This module prepares share bounds, seeds DE around the LP baseline, evaluates
+candidate wet-share vectors, and returns the best total-cost blend found by
 the differential-evolution runtime.
 """
 
@@ -27,6 +27,67 @@ from utils.bmo.types import (
     SlagBalanceSettings,
 )
 
+def _project_shares(
+    raw: np.ndarray, min_shares: np.ndarray, max_shares: np.ndarray
+) -> np.ndarray:
+    shares = np.clip(np.asarray(raw, dtype=float), min_shares, max_shares)
+    for _ in range(20):
+        diff = 1.0 - float(np.sum(shares))
+        if abs(diff) <= 1e-10:
+            break
+        if diff > 0:
+            capacity = np.clip(max_shares - shares, 0.0, None)
+        else:
+            capacity = np.clip(shares - min_shares, 0.0, None)
+        cap_sum = float(np.sum(capacity))
+        if cap_sum <= 1e-12:
+            break
+        shares += capacity / cap_sum * diff
+        shares = np.clip(shares, min_shares, max_shares)
+    return shares
+
+
+def _quantities_from_shares(
+    *,
+    shares: np.ndarray,
+    ores: list[OreInput],
+    target_fe_mt: float,
+) -> np.ndarray:
+    fe_per_wet_mt = np.array(
+        [
+            max(0.0, 1.0 - float(ore.chemistry.moisture_pct) / 100.0)
+            * max(0.0, float(ore.chemistry.fe_t_pct))
+            / 100.0
+            for ore in ores
+        ],
+        dtype=float,
+    )
+    fe_per_blend_mt = float(np.dot(shares, fe_per_wet_mt))
+    if fe_per_blend_mt <= 0.0:
+        return np.zeros(len(ores), dtype=float)
+    total_wet_mt = float(target_fe_mt) / fe_per_blend_mt
+    return shares * total_wet_mt
+
+
+def _build_initial_share_population(
+    *,
+    lp_shares: np.ndarray,
+    min_shares: np.ndarray,
+    max_shares: np.ndarray,
+    sample_count: int,
+    seed: int,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    population: list[np.ndarray] = [
+        _project_shares(lp_shares, min_shares, max_shares)
+    ]
+    scales = [0.01, 0.025, 0.05, 0.075, 0.10]
+    while len(population) < sample_count:
+        scale = scales[(len(population) - 1) % len(scales)]
+        noise = rng.normal(0.0, scale, size=lp_shares.shape)
+        population.append(_project_shares(lp_shares + noise, min_shares, max_shares))
+    return np.vstack(population)
+
 
 def run_nonlinear_optimizer(
     ores: list[OreInput],
@@ -42,6 +103,7 @@ def run_nonlinear_optimizer(
     flux_inputs: list[FluxInput] | None = None,
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
+    hot_metal_target_mt: float | None = None,
     progress_callback: (
         Callable[[int, float, float | None, int, float], bool] | None
     ) = None,
@@ -84,6 +146,7 @@ def run_nonlinear_optimizer(
         flux_inputs=flux_inputs,
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
+        hot_metal_target_mt=hot_metal_target_mt,
     )
     if lp_blend is None:
         return None, [
@@ -91,12 +154,19 @@ def run_nonlinear_optimizer(
             *lp_errors,
         ]
 
-    bounds = [(0.0, max(0.0, float(ore.stock_mt))) for ore in ores]
+    min_shares = np.array(
+        [float(ore.min_share_pct) / 100.0 for ore in ores], dtype=float
+    )
+    max_shares = np.array(
+        [float(ore.max_share_pct) / 100.0 for ore in ores], dtype=float
+    )
+    bounds = [(float(lo), float(hi)) for lo, hi in zip(min_shares, max_shares)]
 
     prebuilt_context = model_service.build_prebuilt_context(
         ores=ores,
         process_context=process_context,
         history_df=history_df,
+        hot_metal_target_mt=hot_metal_target_mt,
     )
 
     evaluator = BmoObjectiveEvaluator(
@@ -113,50 +183,74 @@ def run_nonlinear_optimizer(
         slag_balance_settings=slag_balance_settings,
         penalty_cfg=de_cfg,
         prebuilt_context=prebuilt_context,
+        hot_metal_target_mt=hot_metal_target_mt,
     )
 
     def objective(raw_x: np.ndarray) -> ObjectiveResult:
         """
-        Evaluate a DE candidate wet-quantity vector.
+        Evaluate a DE candidate wet-share vector.
 
         This nested adapter keeps candidate diagnostics attached to each SciPy
         evaluation. The outer runner can then recover the best blend and expose
         the quantities that produced it.
 
         Args:
-             - raw_x: np.ndarray - Candidate wet quantities from differential evolution.
+             - raw_x: np.ndarray - Candidate shares from differential evolution.
 
         Returns:
              - return ObjectiveResult - Penalized objective result for the quantities.
         """
 
-        result = evaluator.evaluate_quantities(raw_x)
+        shares = _project_shares(raw_x, min_shares, max_shares)
+        quantities = _quantities_from_shares(
+            shares=shares,
+            ores=ores,
+            target_fe_mt=float(target_production_mt),
+        )
+        result = evaluator.evaluate_quantities(quantities)
+        result.diagnostics["candidate_shares_pct"] = (shares * 100.0).tolist()
+        result.diagnostics["raw_candidate_shares_pct"] = (
+            np.asarray(raw_x, dtype=float) * 100.0
+        ).tolist()
         result.diagnostics["candidate_quantities_mt"] = np.asarray(
-            raw_x, dtype=float
+            quantities, dtype=float
         ).tolist()
         return result
 
     baseline_solution: dict[str, Any] | None = None
+    initial_population: np.ndarray | None = None
     if lp_blend.total_qty_mt > 0:
         lp_quantities = np.array(
             [float(lp_blend.quantities_mt.get(ore.ore_id, 0.0)) for ore in ores],
             dtype=float,
         )
-        baseline_result = objective(lp_quantities)
+        lp_shares = lp_quantities / float(np.sum(lp_quantities))
+        baseline_result = objective(lp_shares)
         baseline_solution = {
-            "x": lp_quantities.tolist(),
+            "x": lp_shares.tolist(),
             "objective": float(baseline_result.objective_value),
             "feasible": bool(baseline_result.feasible),
             "components": dict(baseline_result.components),
             "violations": list(baseline_result.violations),
             "diagnostics": dict(baseline_result.diagnostics),
         }
+        n_vars = len(ores)
+        min_samples = max(5, int(de_cfg.get("popsize", 10)) * n_vars)
+        sample_count = int(de_cfg.get("initial_population_samples", min_samples))
+        initial_population = _build_initial_share_population(
+            lp_shares=lp_shares,
+            min_shares=min_shares,
+            max_shares=max_shares,
+            sample_count=max(min_samples, sample_count),
+            seed=int(de_cfg.get("seed", 42)),
+        )
 
     runner = OptimizerRunner(de_cfg)
     optimization_result = runner.run_differential_evolution(
         bounds=bounds,
         objective_fn=objective,
         baseline_solution=baseline_solution,
+        initial_population=initial_population,
         progress_callback=progress_callback,
     )
 

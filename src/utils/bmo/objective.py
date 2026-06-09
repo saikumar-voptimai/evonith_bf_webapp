@@ -26,7 +26,6 @@ from utils.bmo.types import (
     SlagBalanceSettings,
 )
 
-
 class BmoObjectiveEvaluator:
     """
     Evaluate BMO candidate quantities as total-cost objective values.
@@ -69,6 +68,8 @@ class BmoObjectiveEvaluator:
         dust_inputs: list[DustInput] | None = None,
         slag_balance_settings: SlagBalanceSettings | None = None,
         prebuilt_context: PreBuiltFeatureContext | None = None,
+        hot_metal_target_mt: float | None = None,
+        fe_tolerance_mt: float = 0.5,
     ) -> None:
         """
         Store optimizer inputs and precompute array forms of bounds.
@@ -108,6 +109,8 @@ class BmoObjectiveEvaluator:
         self.slag_balance_settings = slag_balance_settings
         self.penalty_cfg = penalty_cfg
         self.prebuilt_context = prebuilt_context
+        self.hot_metal_target_mt = hot_metal_target_mt
+        self.fe_tolerance_mt = float(fe_tolerance_mt)
         self.stocks = np.array([float(ore.stock_mt) for ore in ores], dtype=float)
         self.min_shares = np.array(
             [float(ore.min_share_pct) / 100.0 for ore in ores], dtype=float
@@ -149,6 +152,7 @@ class BmoObjectiveEvaluator:
             dust_inputs=self.dust_inputs,
             slag_balance_settings=self.slag_balance_settings,
             prebuilt_context=self.prebuilt_context,
+            hot_metal_target_mt=self.hot_metal_target_mt,
         )
 
         penalty_stock = float(self.penalty_cfg.get("penalty_stock", 2500.0))
@@ -175,14 +179,22 @@ class BmoObjectiveEvaluator:
         share_penalty = share_violation * penalty_share
 
         fe_penalty = 0.0
-        if blend.fe_production_mt < self.target_production_mt:
+        fe_shortfall_mt = max(
+            0.0,
+            self.target_production_mt - self.fe_tolerance_mt - blend.fe_production_mt,
+        )
+        if fe_shortfall_mt > 0.0:
             fe_penalty += (
-                self.target_production_mt - blend.fe_production_mt
+                fe_shortfall_mt
             ) * penalty_fe
         production_excess_penalty = 0.0
-        if blend.fe_production_mt > self.target_production_mt:
+        fe_excess_mt = max(
+            0.0,
+            blend.fe_production_mt - self.target_production_mt - self.fe_tolerance_mt,
+        )
+        if fe_excess_mt > 0.0:
             production_excess_penalty += (
-                blend.fe_production_mt - self.target_production_mt
+                fe_excess_mt
             ) * penalty_production_excess
 
         slag_penalty = 0.0

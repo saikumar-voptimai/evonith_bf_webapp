@@ -41,19 +41,15 @@ def apply_bmo_styles() -> None:
 
 
 def _safe_dataframe(
-    df: pd.DataFrame, *, hide_index: bool = True, use_container_width: bool = True
+    df: pd.DataFrame, *, hide_index: bool = True, width: str = "stretch"
 ) -> None:
     """
     Render a Streamlit dataframe with version-compatible width parameters.
 
-    Streamlit renamed ``use_container_width`` to ``width`` in newer versions.
-    This wrapper inspects the available API so BMO tables render cleanly across
-    deployed and local Streamlit versions.
-
     Args:
          - df: pd.DataFrame - Data frame to render.
          - hide_index: bool - Whether to hide the dataframe index.
-         - use_container_width: bool - Whether the table should stretch to container width.
+         - width: str - Streamlit width value.
 
     Returns:
          - return None - Renders the dataframe in Streamlit.
@@ -64,9 +60,7 @@ def _safe_dataframe(
     if "hide_index" in sig.parameters:
         kwargs["hide_index"] = hide_index
     if "width" in sig.parameters:
-        kwargs["width"] = "stretch" if use_container_width else "content"
-    elif "use_container_width" in sig.parameters:
-        kwargs["use_container_width"] = use_container_width
+        kwargs["width"] = width
     st.dataframe(df, **kwargs)
 
 
@@ -145,6 +139,13 @@ def build_ore_editor_df(
                 "stock_mt": float(ore.stock_mt),
                 "price_rs_per_mt": float(ore.price_rs_per_mt),
                 "moisture_pct": float(ore.chemistry.moisture_pct),
+                "fe_t_pct": float(ore.chemistry.fe_t_pct),
+                "sio2_pct": float(ore.chemistry.sio2_pct),
+                "al2o3_pct": float(ore.chemistry.al2o3_pct),
+                "cao_pct": float(ore.chemistry.cao_pct),
+                "mgo_pct": float(ore.chemistry.mgo_pct),
+                "mno_pct": float(ore.chemistry.mno_pct),
+                "tio2_pct": float(ore.chemistry.tio2_pct),
                 "min_share_pct": float(ore.min_share_pct),
                 "max_share_pct": float(ore.max_share_pct),
             }
@@ -178,7 +179,7 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         _safe_dataframe(
             editor_df.drop(columns=["ore_id"], errors="ignore"),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         return editor_df
 
@@ -189,6 +190,13 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "stock_mt",
         "price_rs_per_mt",
         "moisture_pct",
+        "fe_t_pct",
+        "sio2_pct",
+        "al2o3_pct",
+        "cao_pct",
+        "mgo_pct",
+        "mno_pct",
+        "tio2_pct",
         "min_share_pct",
         "max_share_pct",
     )
@@ -207,6 +215,27 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "moisture_pct": st.column_config.NumberColumn(
                 "Moisture (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
+            "fe_t_pct": st.column_config.NumberColumn(
+                "Fe(T) (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "sio2_pct": st.column_config.NumberColumn(
+                "SiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "al2o3_pct": st.column_config.NumberColumn(
+                "Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "cao_pct": st.column_config.NumberColumn(
+                "CaO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "mgo_pct": st.column_config.NumberColumn(
+                "MgO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "mno_pct": st.column_config.NumberColumn(
+                "MnO (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "tio2_pct": st.column_config.NumberColumn(
+                "TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
             "min_share_pct": st.column_config.NumberColumn(
                 "Min Share (%)", min_value=0.0, max_value=100.0, step=0.5
             ),
@@ -219,8 +248,6 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         editor_kwargs["column_order"] = visible_columns
     if "width" in sig.parameters:
         editor_kwargs["width"] = "stretch"
-    elif "use_container_width" in sig.parameters:
-        editor_kwargs["use_container_width"] = True
     return editor_fn(editor_df, **editor_kwargs)
 
 
@@ -295,7 +322,7 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         _safe_dataframe(
             editor_df.drop(columns=["fuel_id"], errors="ignore"),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         return editor_df
 
@@ -368,8 +395,6 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         editor_kwargs["column_order"] = visible_columns
     if "width" in sig.parameters:
         editor_kwargs["width"] = "stretch"
-    elif "use_container_width" in sig.parameters:
-        editor_kwargs["use_container_width"] = True
     return editor_fn(editor_df, **editor_kwargs)
 
 
@@ -390,6 +415,8 @@ def build_flux_editor_df(flux_cfg: list[dict[str, Any]]) -> pd.DataFrame:
 
     rows = []
     for item in flux_cfg or []:
+        if bool(item.get("hidden_by_default", False)):
+            continue
         rows.append(
             {
                 "enabled": bool(item.get("enabled", True)),
@@ -445,7 +472,7 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         _safe_dataframe(
             editor_df.drop(columns=["flux_id"], errors="ignore"),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         return editor_df
 
@@ -530,8 +557,6 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         editor_kwargs["column_order"] = visible_columns
     if "width" in sig.parameters:
         editor_kwargs["width"] = "stretch"
-    elif "use_container_width" in sig.parameters:
-        editor_kwargs["use_container_width"] = True
     return editor_fn(editor_df, **editor_kwargs)
 
 
@@ -602,7 +627,7 @@ def render_dust_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         _safe_dataframe(
             editor_df.drop(columns=["dust_id"], errors="ignore"),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         return editor_df
 
@@ -683,8 +708,6 @@ def render_dust_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         editor_kwargs["column_order"] = visible_columns
     if "width" in sig.parameters:
         editor_kwargs["width"] = "stretch"
-    elif "use_container_width" in sig.parameters:
-        editor_kwargs["use_container_width"] = True
     return editor_fn(editor_df, **editor_kwargs)
 
 
@@ -865,6 +888,7 @@ def render_blend_metrics(
     title: str,
     blend: BlendEvaluation,
     observed_slag_rate_kg_per_thm: float | None = None,
+    is_lp_mode: bool = False,
 ) -> None:
     """
     Render summary metrics and constraint warnings for a blend result.
@@ -884,18 +908,81 @@ def render_blend_metrics(
     """
 
     st.markdown(f"#### {title}")
+
+    # Fuel-cost source: model vs deterministic fallback. The label and help text
+    # change so an operator can tell at a glance which one fed the objective.
+    model_prediction = blend.diagnostics.get("model_prediction")
+    fuel_used_fallback = bool(
+        getattr(model_prediction, "used_fallback", False)
+        if model_prediction is not None
+        else False
+    )
+    fuel_label = (
+        "Fuel Cost (Rs/THM, fallback)" if fuel_used_fallback else "Fuel Cost (Rs/THM)"
+    )
+    fuel_help = (
+        "Fallback formula in use - the XGBoost model was unavailable or "
+        "rejected the prediction. Treat the cost as a placeholder."
+        if fuel_used_fallback
+        else None
+    )
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Objective (Rs/THM)", f"{blend.objective_rs_per_thm:,.2f}")
-    c2.metric("Ore Cost (Rs/THM)", f"{blend.ore_cost_per_thm_rs:,.2f}")
-    c3.metric("Fuel Cost (Rs/THM)", f"{blend.fuel_cost_per_thm_rs:,.2f}")
-    c4.metric("Fe Production (MT)", f"{blend.fe_production_mt:,.2f}")
+    if is_lp_mode:
+        # LP only minimises ore cost; the fuel cost shown is a post-hoc model
+        # estimate on the LP-selected blend, not part of LP's objective.
+        c1.metric(
+            "Ore Cost (Rs/THM, LP-optimised)",
+            f"{blend.ore_cost_per_thm_rs:,.2f}",
+            help=(
+                "LP minimises ore cost only, subject to Fe target, slag cap, "
+                "share bounds, and stock bounds. Fuel cost is shown for "
+                "reference but is NOT part of LP's optimisation objective."
+            ),
+        )
+        fuel_label_lp = (
+            "Fuel Cost (Rs/THM, estimated, fallback)"
+            if fuel_used_fallback
+            else "Fuel Cost (Rs/THM, estimated)"
+        )
+        c2.metric(
+            fuel_label_lp,
+            f"{blend.fuel_cost_per_thm_rs:,.2f}",
+            help=(
+                "Post-hoc XGBoost estimate on the LP-selected blend; not part "
+                "of LP's optimisation objective."
+            ),
+        )
+        c3.metric(
+            "Total Cost (ore + fuel est, Rs/THM)",
+            f"{blend.objective_rs_per_thm:,.2f}",
+            help="Sum of LP-minimised ore cost and the post-hoc fuel-cost estimate.",
+        )
+        c4.metric("Fe Produced (MT)", f"{blend.fe_production_mt:,.2f}")
+    else:
+        # DE jointly minimises ore + fuel cost so the displayed total is the
+        # actual optimisation objective.
+        c1.metric(
+            "Total Cost (Rs/THM, DE-optimised)",
+            f"{blend.objective_rs_per_thm:,.2f}",
+            help="DE jointly minimises ore + fuel cost; total is the actual objective.",
+        )
+        c2.metric("Ore Cost (Rs/THM)", f"{blend.ore_cost_per_thm_rs:,.2f}")
+        c3.metric(fuel_label, f"{blend.fuel_cost_per_thm_rs:,.2f}", help=fuel_help)
+        c4.metric("Fe Produced (MT)", f"{blend.fe_production_mt:,.2f}")
 
     c5, c6, c7, c8 = st.columns(4)
     dry_qty = float(blend.diagnostics.get("total_dry_qty_mt", 0.0) or 0.0)
+    hm_basis_mt = float(blend.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0)
     c5.metric("Wet Qty (MT)", f"{blend.total_qty_mt:,.2f}")
     c6.metric("Dry Qty (MT)", f"{dry_qty:,.2f}")
     c7.metric("Final Fe (%)", f"{blend.fe_t_pct:,.3f}")
-    if observed_slag_rate_kg_per_thm and observed_slag_rate_kg_per_thm > 0:
+    # Slag rate is undefined when Fe production is zero; show "n/a" rather
+    # than 0.00 kg/THM which would mislead an operator into thinking the
+    # blend produced clean iron.
+    if hm_basis_mt <= 0:
+        c8.metric("Slag Rate (kg/THM)", "n/a")
+    elif observed_slag_rate_kg_per_thm and observed_slag_rate_kg_per_thm > 0:
         delta = blend.slag_rate_kg_per_thm - float(observed_slag_rate_kg_per_thm)
         c8.metric(
             "Slag Rate (kg/THM)",
@@ -905,6 +992,16 @@ def render_blend_metrics(
         )
     else:
         c8.metric("Slag Rate (kg/THM)", f"{blend.slag_rate_kg_per_thm:,.2f}")
+
+    if fuel_used_fallback:
+        reason = (
+            getattr(model_prediction, "details", {}) or {}
+        ).get("reason")
+        reason_text = f" Reason: {reason}." if reason else ""
+        st.caption(
+            "WARNING - Fuel cost above came from the deterministic fallback "
+            "formula, not the BMO XGBoost model." + reason_text
+        )
 
     full_balance_active = bool(blend.diagnostics.get("slag_balance_enabled", False))
     suffix = " (post-HM)" if full_balance_active else ""
@@ -995,12 +1092,13 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
                 "ore_cost_rs": qty * ore.price_rs_per_mt,
             }
         )
-    df = pd.DataFrame(rows).sort_values("quantity_mt", ascending=False)
+    df = pd.DataFrame(rows).sort_values("share_pct", ascending=False)
     if hasattr(st, "column_config"):
         sig = inspect.signature(st.dataframe)
         df_kwargs: dict[str, Any] = {
             "column_config": {
                 "ore_name": st.column_config.TextColumn("Ore"),
+                "share_pct": st.column_config.NumberColumn("Share (%)", format="%.2f"),
                 "quantity_mt": st.column_config.NumberColumn(
                     "Wet Qty (MT)", format="%.1f"
                 ),
@@ -1016,7 +1114,6 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
                 "slag_contribution_mt": st.column_config.NumberColumn(
                     "Slag (MT)", format="%.2f"
                 ),
-                "share_pct": st.column_config.NumberColumn("Share (%)", format="%.2f"),
                 "stock_mt": st.column_config.NumberColumn("Stock (MT)", format="%.1f"),
                 "price_rs_per_mt": st.column_config.NumberColumn(
                     "Price (Rs/MT)", format="%.1f"
@@ -1026,15 +1123,26 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
                 ),
             },
         }
+        if "column_order" in sig.parameters:
+            df_kwargs["column_order"] = (
+                "ore_name",
+                "share_pct",
+                "quantity_mt",
+                "dry_quantity_mt",
+                "moisture_pct",
+                "fe_contribution_mt",
+                "slag_contribution_mt",
+                "stock_mt",
+                "price_rs_per_mt",
+                "ore_cost_rs",
+            )
         if "hide_index" in sig.parameters:
             df_kwargs["hide_index"] = True
         if "width" in sig.parameters:
             df_kwargs["width"] = "stretch"
-        elif "use_container_width" in sig.parameters:
-            df_kwargs["use_container_width"] = True
         st.dataframe(df, **df_kwargs)
     else:
-        _safe_dataframe(df, hide_index=True, use_container_width=True)
+        _safe_dataframe(df, hide_index=True, width="stretch")
 
 def render_slag_balance_details(
     blend: BlendEvaluation,
@@ -1118,7 +1226,7 @@ def render_slag_balance_details(
         }
         rollup_rows.append(rollup_total)
         _safe_dataframe(
-            pd.DataFrame(rollup_rows), hide_index=True, use_container_width=True
+            pd.DataFrame(rollup_rows), hide_index=True, width="stretch"
         )
 
         # --- Section 2: Per-oxide balance ---
@@ -1194,7 +1302,7 @@ def render_slag_balance_details(
             }
         )
         _safe_dataframe(
-            pd.DataFrame(oxide_rows), hide_index=True, use_container_width=True
+            pd.DataFrame(oxide_rows), hide_index=True, width="stretch"
         )
 
         # --- Section 3: HM-removal worked breakdown ---
@@ -1261,7 +1369,7 @@ def render_slag_balance_details(
             },
         ]
         _safe_dataframe(
-            pd.DataFrame(worked_rows), hide_index=True, use_container_width=True
+            pd.DataFrame(worked_rows), hide_index=True, width="stretch"
         )
 
         # --- Section 4: Per-material slag contribution ---
@@ -1308,7 +1416,7 @@ def render_slag_balance_details(
                 }
             )
         _safe_dataframe(
-            pd.DataFrame(per_mat_rows), hide_index=True, use_container_width=True
+            pd.DataFrame(per_mat_rows), hide_index=True, width="stretch"
         )
 
         # --- Section 5: Per-material TiO2 contribution (for verification) ---
@@ -1376,7 +1484,7 @@ def render_slag_balance_details(
             }
         )
         _safe_dataframe(
-            pd.DataFrame(ti_rows), hide_index=True, use_container_width=True
+            pd.DataFrame(ti_rows), hide_index=True, width="stretch"
         )
         st.caption(
             "Compare TOTAL above with the 'TiO2 to HM Ti' tile plus 'TiO2 lost' caption "

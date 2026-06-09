@@ -86,7 +86,7 @@ def render_reports() -> None:
 
     generate_report = st.button(
         "Generate Report",
-        use_container_width=True,
+        width="stretch",
         key="generate_report",
     )
 

@@ -1,4 +1,4 @@
-"""SQLAlchemy 2.0 ORM models for Neon-backed furnace app tables."""
+"""SQLAlchemy 2.0 ORM models for PostgreSQL-backed furnace app tables."""
 
 from __future__ import annotations
 

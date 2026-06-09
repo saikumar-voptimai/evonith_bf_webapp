@@ -7,7 +7,6 @@ same total-cost fields.
 """
 
 from __future__ import annotations
-
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -41,6 +40,7 @@ def evaluate_blend_with_fuel_prediction(
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
     prebuilt_context: PreBuiltFeatureContext | None = None,
+    hot_metal_target_mt: float | None = None,
 ) -> BlendEvaluation:
     """
     Evaluate a blend and attach the model-predicted fuel unit cost.
@@ -60,6 +60,7 @@ def evaluate_blend_with_fuel_prediction(
          - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
          - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
+         - hot_metal_target_mt: float | None - Operator HM basis for cost/slag/model THM fields.
 
     Returns:
          - return BlendEvaluation - Blend metrics with fuel prediction diagnostics.
@@ -77,6 +78,7 @@ def evaluate_blend_with_fuel_prediction(
             ore_display_name_by_id=ore_name_by_id,
             process_context=process_context,
             ores=ores,
+            hot_metal_target_mt=hot_metal_target_mt,
         )
         prediction = model_service.predict(feature_payload, history_df)
     blend = evaluate_blend(
@@ -88,6 +90,7 @@ def evaluate_blend_with_fuel_prediction(
         flux_inputs=flux_inputs,
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
+        hot_metal_target_mt=hot_metal_target_mt,
     )
     blend.diagnostics["model_prediction"] = prediction
     blend.diagnostics["feature_details"] = prediction.details

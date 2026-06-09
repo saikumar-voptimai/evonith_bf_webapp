@@ -33,6 +33,7 @@ def _build_linear_slag_terms(
     flux_inputs: list[FluxInput] | None,
     dust_inputs: list[DustInput] | None,
     slag_balance_settings: SlagBalanceSettings | None,
+    hot_metal_target_mt: float | None,
 ) -> tuple[np.ndarray, float]:
     """
     Estimate linear final-slag terms for LP hard slag constraint.
@@ -65,6 +66,7 @@ def _build_linear_slag_terms(
         flux_inputs=flux_inputs,
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
+        hot_metal_target_mt=hot_metal_target_mt,
     )
     base_slag_mt = float(base_blend.slag_mt)
 
@@ -81,6 +83,7 @@ def _build_linear_slag_terms(
             flux_inputs=flux_inputs,
             dust_inputs=dust_inputs,
             slag_balance_settings=slag_balance_settings,
+            hot_metal_target_mt=hot_metal_target_mt,
         )
         coeffs.append(float(unit_blend.slag_mt) - base_slag_mt)
 
@@ -97,6 +100,7 @@ def run_lp_baseline(
     flux_inputs: list[FluxInput] | None = None,
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
+    hot_metal_target_mt: float | None = None,
 ) -> tuple[BlendEvaluation | None, list[str]]:
     """
     Run the deterministic LP baseline for selected BMO ores.
@@ -117,6 +121,7 @@ def run_lp_baseline(
          - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
          - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
+         - hot_metal_target_mt: float | None - Operator HM target used as THM denominator.
 
     Returns:
          - return tuple[BlendEvaluation | None, list[str]] - LP blend and errors.
@@ -153,6 +158,7 @@ def run_lp_baseline(
         flux_inputs=flux_inputs,
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
+        hot_metal_target_mt=hot_metal_target_mt,
     )
     a_ub_rows.append(slag_coeff)
     b_ub_values.append(float(target_slag_qty_mt) - slag_base_mt)
@@ -200,6 +206,7 @@ def run_lp_baseline(
         flux_inputs=flux_inputs,
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
+        hot_metal_target_mt=hot_metal_target_mt,
     )
     violations = check_blend_constraints(
         blend,

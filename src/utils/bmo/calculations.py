@@ -41,7 +41,9 @@ def _safe_pct(value: float) -> float:
         pct = float(value or 0.0)
     except (TypeError, ValueError):
         pct = 0.0
-    return min(max(pct, 0.0), 100.0)
+    # Mirrors slag_balance._safe_pct: cap at 99.0 so a moisture entry of 100
+    # cannot zero out dry-weight Fe calculations.
+    return min(max(pct, 0.0), 99.0)
 
 
 def compute_dry_fraction(moisture_pct: float) -> float:
@@ -483,6 +485,7 @@ def evaluate_blend(
     flux_inputs: list[FluxInput] | None = None,
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
+    hot_metal_target_mt: float | None = None,
 ) -> BlendEvaluation:
     """
     Evaluate one BMO blend using dry-weight Fe calculation.
@@ -508,6 +511,7 @@ def evaluate_blend(
          - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
          - dust_inputs: list[DustInput] | None - BF gas dust rows deducted from balance.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
+         - hot_metal_target_mt: float | None - Operator-entered HM basis for Rs/THM and kg/THM.
 
     Returns:
          - return BlendEvaluation - Blend cost, chemistry, production, and diagnostics.
@@ -533,6 +537,9 @@ def evaluate_blend(
         for ore in ores
     }
     fe_production_mt = float(sum(fe_contribution_mt_by_ore.values()))
+    hm_basis_mt = float(hot_metal_target_mt or 0.0)
+    if hm_basis_mt <= 0.0:
+        hm_basis_mt = fe_production_mt
 
     fe_t_pct = (
         (fe_production_mt / total_dry_qty_mt) * 100.0 if total_dry_qty_mt > 0 else 0.0
@@ -575,7 +582,7 @@ def evaluate_blend(
 
     ore_slag_mt = float(sum(slag_contribution_mt_by_ore.values()))
     fuel_ash_contribution_mt_by_fuel = compute_fuel_ash_slag_contributions_mt(
-        fuel_ash_inputs, hot_metal_mt=fe_production_mt
+        fuel_ash_inputs, hot_metal_mt=hm_basis_mt
     )
     fuel_ash_slag_mt = float(sum(fuel_ash_contribution_mt_by_fuel.values()))
     flux_contribution_mt_by_flux = compute_flux_slag_contributions_mt(flux_inputs)
@@ -587,7 +594,7 @@ def evaluate_blend(
         full_slag_balance = calculate_full_slag_balance(
             ores=ores,
             quantities_mt=quantities_mt,
-            hot_metal_mt=fe_production_mt,
+            hot_metal_mt=hm_basis_mt,
             settings=slag_balance_settings,
             fuel_ash_inputs=fuel_ash_inputs,
             flux_inputs=flux_inputs,
@@ -641,7 +648,7 @@ def evaluate_blend(
     if total_dry_qty_mt > 0:
         slag_pct = (slag_mt / total_dry_qty_mt) * 100.0
     slag_rate_kg_per_thm = (
-        (slag_mt / fe_production_mt) * 1000.0 if fe_production_mt > 0 else 0.0
+        (slag_mt / hm_basis_mt) * 1000.0 if hm_basis_mt > 0 else 0.0
     )
 
     ore_cost_total_rs = 0.0
@@ -649,8 +656,8 @@ def evaluate_blend(
         qty = float(quantities_mt.get(ore.ore_id, 0.0))
         ore_cost_total_rs += qty * float(ore.price_rs_per_mt)
 
-    if fe_production_mt > 0 and isfinite(fe_production_mt):
-        ore_cost_per_thm_rs = ore_cost_total_rs / fe_production_mt
+    if hm_basis_mt > 0 and isfinite(hm_basis_mt):
+        ore_cost_per_thm_rs = ore_cost_total_rs / hm_basis_mt
     else:
         ore_cost_per_thm_rs = float("inf")
 
@@ -755,7 +762,8 @@ def evaluate_blend(
                 else {}
             ),
             "slag_rate_kg_per_thm": float(slag_rate_kg_per_thm),
-            "slag_rate_denominator_mt": float(fe_production_mt),
-            "slag_rate_denominator": "fe_production_mt",
+            "slag_rate_denominator_mt": float(hm_basis_mt),
+            "slag_rate_denominator": "hot_metal_target_mt",
+            "hot_metal_target_mt": float(hm_basis_mt),
         },
     )
