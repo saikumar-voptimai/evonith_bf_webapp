@@ -9,6 +9,9 @@ pieces live under ``ui.furnacemind`` and persistence logic lives under
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 import streamlit as st
 
 from agents.embeddings.cloud_embedding import CloudEmbeddingClient
@@ -21,12 +24,28 @@ from agents.llm.llm_client import OpenRouterClient
 from agents.memory import fm_memory
 from agents.memory.conversation_history import ConversationHistoryStore
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
+from agents.memory.semantic_memory import SemanticMemoryService
 from agents.memory.vector_store import QdrantVectorStore
 from ui.furnacemind import chat_interface, feedback_flow
 from utils.furnacemind.feedback_service import FurnaceMindFeedbackService
 from utils.session import current_user_id
 from utils.settings import settings
 from utils.shift_windows import last_completed_shift
+
+
+@dataclass(frozen=True)
+class MemoryFlushResult:
+    """
+    Report the outcome of a memory-summary flush.
+
+    The page uses this to decide whether New Chat can safely reset the visible
+    conversation after persisting summary and semantic-memory data.
+    """
+
+    attempted: bool = False
+    summary_saved: bool = False
+    semantic_fact_ids: tuple[str, ...] = ()
+    error: str | None = None
 
 
 @st.cache_resource(show_spinner=False)
@@ -187,6 +206,343 @@ def _cached_feedback_llm() -> OpenRouterClient | None:
         return None
 
 
+@st.cache_resource(show_spinner=False)
+def _cached_semantic_memory_service() -> SemanticMemoryService:
+    """
+    Build or reuse the SQL-backed, Qdrant-indexed semantic memory service.
+
+    The service is failure-tolerant: when PostgreSQL, Qdrant, the extraction
+    LLM, or embedding credentials are unavailable it reports itself as
+    unavailable and FurnaceMind continues with the rolling conversation summary.
+
+    Args:
+         - None
+
+    Returns:
+         - return: SemanticMemoryService - Cached semantic memory adapter.
+    """
+    return SemanticMemoryService()
+
+
+def _flush_conversation_memory(
+    *,
+    chat_history: list[dict[str, Any]],
+    memory: dict[str, Any],
+    user_id: str | None,
+    conversation_id: str | None,
+    semantic_memory_service: SemanticMemoryService | None,
+    memory_summary_window: int,
+    memory_summary_token_limit: int,
+    trigger: str,
+    force: bool = False,
+    retry_saved_summary: bool = False,
+    memory_llm: Any | None = None,
+) -> MemoryFlushResult:
+    """
+    Generate, save, and semantic-index the next due conversation summary.
+
+    This is shared by the normal summary window and the explicit New Chat
+    finalization path. A forced call includes a short leftover tail so the last
+    messages in a conversation are not missed when the user starts a new chat.
+
+    Args:
+         - chat_history: list[dict[str, Any]] - Current Streamlit chat messages.
+         - memory: dict[str, Any] - Latest saved cumulative summary payload.
+         - user_id: str | None - Current FurnaceMind user id.
+         - conversation_id: str | None - Active conversation id.
+         - semantic_memory_service: SemanticMemoryService | None - Long-term memory service.
+         - memory_summary_window: int - Regular summary window size.
+         - memory_summary_token_limit: int - Requested summary token limit.
+         - trigger: str - Event that caused the flush, such as ``window`` or ``new_chat``.
+         - force: bool - Whether to summarize a partial trailing window.
+         - retry_saved_summary: bool - Whether to retry semantic extraction for saved memory.
+         - memory_llm: Any | None - Optional test override for the summary LLM.
+
+    Returns:
+         - return: MemoryFlushResult - Summary/fact persistence outcome.
+    """
+    if not user_id or not conversation_id:
+        return MemoryFlushResult()
+    if not fm_memory.should_generate_memory_summary(
+        chat_history,
+        window=memory_summary_window,
+        memory=memory,
+        force=force,
+    ):
+        if retry_saved_summary:
+            return _index_saved_summary_memory(
+                memory=memory,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                semantic_memory_service=semantic_memory_service,
+                memory_summary_window=memory_summary_window,
+                trigger=f"{trigger}_retry",
+            )
+        return MemoryFlushResult()
+
+    pending_start, pending_end = fm_memory.summary_source_message_ids(
+        chat_history,
+        window=memory_summary_window,
+        memory=memory,
+        force=force,
+    )
+    memory_llm = memory_llm or OpenRouterClient(
+        model_name=settings.llm.openrouter.memory_compression_model_name
+    )
+    updated_memory = fm_memory.generate_memory_summary(
+        memory,
+        chat_history=chat_history,
+        llm=memory_llm,
+        summary_system_prompt=prompts.memory_summary_system_prompt(
+            memory_summary_token_limit
+        ),
+        summary_token_limit=memory_summary_token_limit,
+        window=memory_summary_window,
+        force=force,
+    )
+
+    generated_end = str(updated_memory.get("source_message_id_end") or "").strip()
+    if pending_end and generated_end != pending_end:
+        return MemoryFlushResult(
+            attempted=True,
+            error="Conversation summary did not complete. Please retry New Chat.",
+        )
+
+    updated_summary = str(updated_memory.get("conversation_summary") or "").strip()
+    if not updated_summary:
+        return MemoryFlushResult(
+            attempted=True,
+            error="Conversation summary was empty. Please retry New Chat.",
+        )
+
+    source_message_id_start = str(
+        updated_memory.get("source_message_id_start") or pending_start or ""
+    ).strip()
+    source_message_id_end = str(
+        updated_memory.get("source_message_id_end") or pending_end or ""
+    ).strip()
+    summary_saved = fm_memory.save_fm_memory(
+        updated_memory,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        source_message_id_start=source_message_id_start or None,
+        source_message_id_end=source_message_id_end or None,
+    )
+    if not summary_saved:
+        return MemoryFlushResult(
+            attempted=True,
+            error="Conversation summary could not be saved. Please retry New Chat.",
+        )
+
+    fact_ids: list[str] = []
+    if semantic_memory_service is not None and updated_summary:
+        if not semantic_memory_service.storage_available:
+            error = (
+                semantic_memory_service.last_error
+                or "Semantic memory storage is unavailable."
+            )
+            return MemoryFlushResult(
+                attempted=True,
+                summary_saved=True,
+                error=f"Long-term memory could not start: {error}",
+            )
+        semantic_error_before = semantic_memory_service.last_error
+        fact_ids = semantic_memory_service.add_summary(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            summary=updated_summary,
+            source_message_id_start=source_message_id_start or None,
+            source_message_id_end=source_message_id_end or None,
+            summarized_message_count=updated_memory.get("summarized_message_count"),
+            metadata={
+                "summary_trigger": trigger,
+                "memory_summary_window": memory_summary_window,
+            },
+        )
+        semantic_error_after = semantic_memory_service.last_error
+        if not fact_ids and semantic_error_after != semantic_error_before:
+            return MemoryFlushResult(
+                attempted=True,
+                summary_saved=True,
+                error=f"Long-term memory failed: {semantic_error_after}",
+            )
+
+    return MemoryFlushResult(
+        attempted=True,
+        summary_saved=True,
+        semantic_fact_ids=tuple(fact_ids),
+    )
+
+
+def _index_saved_summary_memory(
+    *,
+    memory: dict[str, Any],
+    user_id: str,
+    conversation_id: str,
+    semantic_memory_service: SemanticMemoryService | None,
+    memory_summary_window: int,
+    trigger: str,
+) -> MemoryFlushResult:
+    """
+    Retry semantic extraction for an already-saved conversation summary.
+
+    This supports the New Chat retry path. If the final cumulative summary was
+    saved but semantic extraction or Qdrant indexing failed, the next New Chat
+    click can retry long-term memory from the saved summary instead of treating
+    the conversation as already complete.
+
+    Args:
+         - memory: dict[str, Any] - Latest saved cumulative summary payload.
+         - user_id: str - Current FurnaceMind user id.
+         - conversation_id: str - Active conversation id.
+         - semantic_memory_service: SemanticMemoryService | None - Long-term memory service.
+         - memory_summary_window: int - Regular summary window size.
+         - trigger: str - Event label stored in semantic-memory metadata.
+
+    Returns:
+         - return: MemoryFlushResult - Semantic retry outcome.
+    """
+    summary = str(memory.get("conversation_summary") or "").strip()
+    if not summary:
+        return MemoryFlushResult()
+    if semantic_memory_service is None:
+        return MemoryFlushResult(
+            attempted=True,
+            summary_saved=True,
+            error="Long-term memory service is unavailable.",
+        )
+    if not semantic_memory_service.storage_available:
+        error = (
+            semantic_memory_service.last_error
+            or "Semantic memory storage is unavailable."
+        )
+        return MemoryFlushResult(
+            attempted=True,
+            summary_saved=True,
+            error=f"Long-term memory could not start: {error}",
+        )
+
+    semantic_error_before = semantic_memory_service.last_error
+    fact_ids = semantic_memory_service.add_summary(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        summary=summary,
+        source_message_id_start=memory.get("source_message_id_start"),
+        source_message_id_end=memory.get("source_message_id_end"),
+        summarized_message_count=memory.get("summarized_message_count"),
+        metadata={
+            "summary_trigger": trigger,
+            "memory_summary_window": memory_summary_window,
+        },
+    )
+    semantic_error_after = semantic_memory_service.last_error
+    if not fact_ids and semantic_error_after != semantic_error_before:
+        return MemoryFlushResult(
+            attempted=True,
+            summary_saved=True,
+            error=f"Long-term memory failed: {semantic_error_after}",
+        )
+    return MemoryFlushResult(
+        attempted=True,
+        semantic_fact_ids=tuple(fact_ids),
+    )
+
+
+def _reset_chat_session() -> None:
+    """
+    Clear active FurnaceMind chat state so the next rerun starts fresh.
+
+    Persisted conversation rows remain in PostgreSQL. This only resets the
+    Streamlit session pointers and transient artifacts for the browser session.
+
+    Args:
+         - None
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
+    st.session_state["chat_history"] = []
+    st.session_state["fm_artifact_store"] = {}
+    for key in (
+        "fm_conversation_id",
+        "_fm_loaded_conversation_id",
+        "pending_skill_prompt",
+        "fm_fig",
+        "fm_df",
+        "fm_df_meta",
+    ):
+        st.session_state.pop(key, None)
+
+
+def _render_conversation_controls(
+    *,
+    context: SystemPromptContext,
+    semantic_memory_service: SemanticMemoryService | None,
+    user_id: str | None,
+    conversation_id: str | None,
+    memory_summary_window: int,
+    memory_summary_token_limit: int,
+) -> None:
+    """
+    Render controls that operate on the active FurnaceMind conversation.
+
+    New Chat is treated as an explicit conversation-finalization event. It
+    force-flushes any unsummarized tail before resetting the UI to a new
+    conversation id on the next Streamlit rerun.
+
+    Args:
+         - context: SystemPromptContext - Current prompt/memory context.
+         - semantic_memory_service: SemanticMemoryService | None - Long-term memory service.
+         - user_id: str | None - Current FurnaceMind user id.
+         - conversation_id: str | None - Active conversation id.
+         - memory_summary_window: int - Regular summary window size.
+         - memory_summary_token_limit: int - Requested summary token limit.
+
+    Returns:
+         - return: None - This function does not return a value.
+    """
+    notice = st.session_state.pop("fm_new_chat_notice", "")
+    if notice:
+        st.sidebar.success(notice)
+
+    if not st.sidebar.button(
+        "New Chat",
+        key="fm_new_chat",
+        use_container_width=True,
+    ):
+        return
+
+    with st.spinner("Saving conversation memory..."):
+        result = _flush_conversation_memory(
+            chat_history=st.session_state.get("chat_history") or [],
+            memory=context.memory,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            semantic_memory_service=semantic_memory_service,
+            memory_summary_window=memory_summary_window,
+            memory_summary_token_limit=memory_summary_token_limit,
+            trigger="new_chat",
+            force=True,
+            retry_saved_summary=bool(
+                st.session_state.get("fm_new_chat_retry_semantic")
+            ),
+        )
+
+    if result.error:
+        if result.summary_saved:
+            st.session_state["fm_new_chat_retry_semantic"] = True
+        st.sidebar.error(result.error)
+        return
+
+    st.session_state.pop("fm_new_chat_retry_semantic", None)
+    _reset_chat_session()
+    if result.summary_saved or result.semantic_fact_ids:
+        st.session_state["fm_new_chat_notice"] = "Conversation memory saved."
+    else:
+        st.session_state["fm_new_chat_notice"] = "New chat started."
+    st.rerun()
+
+
 def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     """
     Render the FurnaceMind AI Co-Operate chat page and handle one chat turn.
@@ -209,16 +565,12 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     history_store = _cached_history_store()
     feedback_service = _cached_feedback_service()
     feedback_llm = _cached_feedback_llm()
+    semantic_memory_service = _cached_semantic_memory_service()
     user_id = current_user_id()
     memory_summary_window = settings.memory_summary_message_window
     memory_summary_token_limit = settings.memory_summary_token_limit
 
     st.session_state["knowledge_store"] = knowledge_store
-
-    chat_interface.render_knowledge_sidebar(
-        knowledge_store=knowledge_store,
-        embedding_client=embedding_client,
-    )
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
@@ -257,6 +609,18 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     context.refresh_session_context(
         user_id=user_id,
         conversation_id=conversation_id,
+    )
+    _render_conversation_controls(
+        context=context,
+        semantic_memory_service=semantic_memory_service,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        memory_summary_window=memory_summary_window,
+        memory_summary_token_limit=memory_summary_token_limit,
+    )
+    chat_interface.render_knowledge_sidebar(
+        knowledge_store=knowledge_store,
+        embedding_client=embedding_client,
     )
 
     default_date, default_label = last_completed_shift()
@@ -302,6 +666,11 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         if feedback_service is not None and user_id
         else ""
     )
+    semantic_memory_context = (
+        semantic_memory_service.context_for_query(query=user_query, user_id=user_id)
+        if semantic_memory_service is not None and user_id
+        else ""
+    )
 
     user_message_id: str | None = None
     if history_store is not None and conversation_id and user_id:
@@ -335,6 +704,8 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     extra_context = prompts.TOOL_POLICY
     if feedback_lesson_context:
         extra_context = f"{extra_context}\n\n{feedback_lesson_context}"
+    if semantic_memory_context:
+        extra_context = f"{extra_context}\n\n{semantic_memory_context}"
     messages = [
         {
             "role": "system",
@@ -387,34 +758,14 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         }
     )
 
-    if fm_memory.should_generate_memory_summary(
-        st.session_state.chat_history,
-        window=memory_summary_window,
-    ):
-        memory_llm = OpenRouterClient(
-            model_name=settings.llm.openrouter.memory_compression_model_name
-        )
-        updated_memory = fm_memory.generate_memory_summary(
-            context.memory,
-            chat_history=st.session_state.chat_history,
-            llm=memory_llm,
-            summary_system_prompt=prompts.memory_summary_system_prompt(
-                memory_summary_token_limit
-            ),
-            summary_token_limit=memory_summary_token_limit,
-            window=memory_summary_window,
-        )
-        source_message_id_start, source_message_id_end = (
-            fm_memory.summary_source_message_ids(
-                st.session_state.chat_history,
-                window=memory_summary_window,
-            )
-        )
-        fm_memory.save_fm_memory(
-            updated_memory,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            source_message_id_start=source_message_id_start or user_message_id,
-            source_message_id_end=source_message_id_end or assistant_message_id,
-        )
+    _flush_conversation_memory(
+        chat_history=st.session_state.chat_history,
+        memory=context.memory,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        semantic_memory_service=semantic_memory_service,
+        memory_summary_window=memory_summary_window,
+        memory_summary_token_limit=memory_summary_token_limit,
+        trigger="window",
+    )
     st.rerun()

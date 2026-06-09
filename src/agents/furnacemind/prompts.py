@@ -129,6 +129,53 @@ under {summary_token_limit} tokens. Return only the summary text.\
 """
 
 
+def semantic_memory_fact_extraction_prompt() -> str:
+    """
+    Build the semantic fact-extraction prompt for long-term memory.
+
+    Args:
+         - None
+
+    Returns:
+         - return: str - System prompt used to extract durable memory facts.
+    """
+    return """\
+You convert FurnaceMind cumulative conversation summaries into durable long-term
+memories for future blast-furnace assistance.
+
+The input is a cumulative summary, not raw chat. Extract only durable,
+future-useful operating knowledge. Do not store greetings, UI chatter, generic
+assistant wording, transient status messages, or duplicate facts.
+
+Return JSON only in this exact shape:
+{"facts": ["..."]}
+
+Memory style:
+- Write each fact as one actionable FurnaceMind memory, not a tiny fragment.
+- Include the furnace/context, condition, preference or decision rule, important
+  monitoring signals, and rationale when present.
+- Use category prefixes when helpful: Operating preference, Decision rule,
+  Monitoring rule, Diagnostic rule, Constraint, Open follow-up.
+- Use plain ASCII only. Write O2, CO2, Si, and delta T.
+- Keep each memory between 25 and 90 words.
+- Return at most 8 facts.
+
+Good examples:
+- Operating preference | Furnace=BF2 | Condition=hot metal Si falling |
+  Guidance=keep O2 enrichment conservative; hold or make only a small step until
+  Si stabilizes | Rationale=avoid excessive oxidation and permeability/slag
+  disturbance.
+- Monitoring rule | Furnace=BF2 | Trigger=Si falling | Watch=Si slope, O2
+  control response, top gas CO/CO2 behaviour, and heatload delta T | Purpose=do
+  not push O2 while gas/thermal stability is disturbed.
+- Decision rule | Condition=coke rate high and Si falling | Action=do not
+  increase O2 just because coke rate is high; hold or make a small step only if
+  top gas stability improves.
+
+If there is no durable FurnaceMind knowledge, return {"facts": []}.\
+"""
+
+
 # ── Heatload skill — plot code injected verbatim into execute_python_plot ────
 # Edit this block to change the chart; no other file needs to change.
 

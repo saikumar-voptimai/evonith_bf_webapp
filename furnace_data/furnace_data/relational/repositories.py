@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pandas as pd
-from sqlalchemy import String, and_, cast, delete, func, or_, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -20,9 +20,9 @@ from .models import (
     FeedbackItem,
     Hopper,
     HopperRawMaterialHistory,
-    LongTermMemory,
     Material,
     MemoryDocument,
+    MemoryFact,
     MemorySummary,
     Skill,
     User,
@@ -41,6 +41,7 @@ _UNSET: Any = object()
 
 
 def _as_aware_utc(value: datetime) -> datetime:
+    """Return a timezone-aware UTC datetime for comparisons and inserts."""
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
@@ -50,6 +51,7 @@ class UserRepository:
     """User/auth repository operations."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
         self._session_factory = session_factory
 
     def seed_admin_user(self, *, password_hash: str) -> None:
@@ -66,9 +68,7 @@ class UserRepository:
             )
             session.add(user)
             session.flush()
-            session.add(
-                UserRoleAssignment(user_id=user.id, role=UserRole.ADMIN.value)
-            )
+            session.add(UserRoleAssignment(user_id=user.id, role=UserRole.ADMIN.value))
             session.commit()
 
     def add_user(self, username: str, password_hash: str, role: str) -> None:
@@ -103,7 +103,9 @@ class UserRepository:
         if not username:
             return None
         with self._session_factory() as session:
-            stmt = select(User.id).where(User.username == username, User.is_active.is_(True))
+            stmt = select(User.id).where(
+                User.username == username, User.is_active.is_(True)
+            )
             row = session.execute(stmt).first()
             return row[0] if row else None
 
@@ -112,9 +114,11 @@ class PlantMasterRepository:
     """Read-only plant master lookups used by app repositories and UI."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
         self._session_factory = session_factory
 
     def list_active_hoppers(self) -> list[dict[str, Any]]:
+        """Return active hopper display metadata ordered for UI use."""
         with self._session_factory() as session:
             stmt = (
                 select(Hopper)
@@ -131,6 +135,7 @@ class PlantMasterRepository:
             ]
 
     def list_active_materials(self) -> list[dict[str, Any]]:
+        """Return active raw-material metadata ordered by category and code."""
         with self._session_factory() as session:
             stmt = (
                 select(Material)
@@ -148,25 +153,30 @@ class PlantMasterRepository:
             ]
 
     def material_code_by_name(self) -> dict[str, str]:
+        """Return active material codes keyed by material name."""
         return {
             row["material_name"]: row["material_code"]
             for row in self.list_active_materials()
         }
 
     def material_name_by_code(self) -> dict[str, str]:
+        """Return active material names keyed by material code."""
         return {
             row["material_code"]: row["material_name"]
             for row in self.list_active_materials()
         }
 
+
 class HopperHistoryRepository:
     """Repository for wide hopper-material snapshot history."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
         self._session_factory = session_factory
 
     @staticmethod
     def _row_to_codes(row: HopperRawMaterialHistory | None) -> dict[str, str | None]:
+        """Convert a hopper history row into a hopper-code mapping."""
         if row is None:
             return {column: None for column in HOPPER_COLUMNS}
         return {column: getattr(row, column) for column in HOPPER_COLUMNS}
@@ -174,6 +184,7 @@ class HopperHistoryRepository:
     def _latest_row(
         self, session: Session, ts: datetime | None = None
     ) -> HopperRawMaterialHistory | None:
+        """Return the latest hopper snapshot at or before the timestamp."""
         stmt = select(HopperRawMaterialHistory)
         if ts is not None:
             stmt = stmt.where(HopperRawMaterialHistory.date_time <= _as_aware_utc(ts))
@@ -216,9 +227,7 @@ class HopperHistoryRepository:
         with self._session_factory() as session:
             return self._row_to_codes(self._latest_row(session))
 
-    def get_hopper_material_code_at(
-        self, hopper: str, ts: datetime
-    ) -> str | None:
+    def get_hopper_material_code_at(self, hopper: str, ts: datetime) -> str | None:
         """Return assigned material code for hopper at timestamp."""
         if hopper not in HOPPER_COLUMNS:
             raise ValueError(f"Invalid hopper: {hopper}")
@@ -241,9 +250,13 @@ class HopperHistoryRepository:
                     "date_time": row.date_time,
                     "source_type": row.source_type,
                     "ip_address": row.ip_address,
-                    "user_modified": str(row.user_modified) if row.user_modified else None,
+                    "user_modified": (
+                        str(row.user_modified) if row.user_modified else None
+                    ),
                 }
-                payload.update({column: getattr(row, column) for column in HOPPER_COLUMNS})
+                payload.update(
+                    {column: getattr(row, column) for column in HOPPER_COLUMNS}
+                )
                 out.append(payload)
             return out
 
@@ -272,21 +285,29 @@ class BurdenHistoryRepository:
     )
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
         self._session_factory = session_factory
 
     @staticmethod
     def burden_fields() -> list[str]:
+        """Return the wide burden snapshot fields tracked by the app."""
         return list(BURDEN_VALUE_COLUMNS)
 
-    def _latest_row(self, session: Session, ts: datetime | None = None) -> BurdenHistory | None:
+    def _latest_row(
+        self, session: Session, ts: datetime | None = None
+    ) -> BurdenHistory | None:
+        """Return the latest burden snapshot at or before the timestamp."""
         stmt = select(BurdenHistory)
         if ts is not None:
             stmt = stmt.where(BurdenHistory.date_time <= _as_aware_utc(ts))
-        stmt = stmt.order_by(BurdenHistory.date_time.desc(), BurdenHistory.id.desc()).limit(1)
+        stmt = stmt.order_by(
+            BurdenHistory.date_time.desc(), BurdenHistory.id.desc()
+        ).limit(1)
         return session.execute(stmt).scalar_one_or_none()
 
     @staticmethod
     def _row_to_values(row: BurdenHistory | None) -> dict[str, Any]:
+        """Convert a burden history row into a burden-value mapping."""
         if row is None:
             return {column: None for column in BURDEN_VALUE_COLUMNS}
         return {column: getattr(row, column) for column in BURDEN_VALUE_COLUMNS}
@@ -358,7 +379,9 @@ class BurdenHistoryRepository:
                     "date_time": row.date_time,
                     "source_type": row.source_type,
                     "ip_address": row.ip_address,
-                    "user_modified": str(row.user_modified) if row.user_modified else None,
+                    "user_modified": (
+                        str(row.user_modified) if row.user_modified else None
+                    ),
                 }
                 payload.update(self._row_to_values(row))
                 out.append(payload)
@@ -374,12 +397,18 @@ class BurdenHistoryRepository:
         if not record_ids:
             return
         with self._session_factory() as session:
-            session.execute(delete(BurdenHistory).where(BurdenHistory.id.in_(record_ids)))
+            session.execute(
+                delete(BurdenHistory).where(BurdenHistory.id.in_(record_ids))
+            )
             session.commit()
 
-    def fetch_distribution_frame(self, *, start_date: date, end_date: date) -> pd.DataFrame:
+    def fetch_distribution_frame(
+        self, *, start_date: date, end_date: date
+    ) -> pd.DataFrame:
         """Return latest burden snapshots overlapping the date window."""
-        window_start = datetime.combine(start_date, time.min).replace(tzinfo=timezone.utc)
+        window_start = datetime.combine(start_date, time.min).replace(
+            tzinfo=timezone.utc
+        )
         window_end = datetime.combine(end_date, time.max).replace(tzinfo=timezone.utc)
         with self._session_factory() as session:
             prior = self._latest_row(session, window_start)
@@ -866,8 +895,8 @@ class MemorySummaryRepository:
             return rows
 
 
-class LongTermMemoryRepository:
-    """Repository for durable FurnaceMind memories."""
+class MemoryFactRepository:
+    """Repository for the existing furnace_mind.memory_facts table."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         """
@@ -881,74 +910,131 @@ class LongTermMemoryRepository:
         """
         self._session_factory = session_factory
 
-    def create_memory(
+    def create_fact(
         self,
         *,
         user_id: str,
-        memory_text: str,
+        fact_text: str,
+        source_conversation_id: str | None = None,
         qdrant_collection: str | None = None,
         qdrant_point_id: str | None = None,
-        source_conversation_id: str | None = None,
-        source_user_message_id: str | None = None,
-        source_assistant_message_id: str | None = None,
-        token_estimate: int | None = None,
         metadata: dict | None = None,
-    ) -> LongTermMemory:
+    ) -> MemoryFact:
         """
-        Create and return one long-term memory.
+        Create and return one long-term memory fact.
 
         Args:
-             - user_id: str - User that owns the memory.
-             - memory_text: str - Durable memory text to store.
+             - user_id: str - User that owns the fact.
+             - fact_text: str - Durable memory fact text.
+             - source_conversation_id: str | None - Source conversation id.
              - qdrant_collection: str | None - Optional Qdrant collection name.
              - qdrant_point_id: str | None - Optional Qdrant point id.
-             - source_conversation_id: str | None - Source conversation id.
-             - source_user_message_id: str | None - Source user message id.
-             - source_assistant_message_id: str | None - Source assistant message id.
-             - token_estimate: int | None - Optional estimated token count.
-             - metadata: dict | None - Optional JSON metadata for the memory.
+             - metadata: dict | None - Optional JSON metadata for audit/recovery.
 
         Returns:
-             - return: LongTermMemory - Created memory ORM row.
+             - return: MemoryFact - Created fact ORM row.
         """
         now = utc_now()
-        memory = LongTermMemory(
-            memory_id=_new_id("ltm"),
+        fact = MemoryFact(
+            fact_id=_new_id("fact"),
             user_id=user_id,
-            memory_text=memory_text,
+            fact_text=fact_text,
+            source_conversation_id=source_conversation_id,
             qdrant_collection=qdrant_collection,
             qdrant_point_id=qdrant_point_id,
-            source_conversation_id=source_conversation_id,
-            source_user_message_id=source_user_message_id,
-            source_assistant_message_id=source_assistant_message_id,
-            token_estimate=token_estimate,
             metadata_json=metadata or {},
             created_at=now,
             updated_at=now,
         )
         with self._session_factory() as session:
-            session.add(memory)
+            session.add(fact)
             session.commit()
-            session.refresh(memory)
-            session.expunge(memory)
-            return memory
+            session.refresh(fact)
+            session.expunge(fact)
+            return fact
 
-    def list_memories(self, *, user_id: str, limit: int = 50) -> list[LongTermMemory]:
+    def fact_exists(self, *, user_id: str, fact_text: str) -> bool:
         """
-        List recent long-term memories for one user.
+        Check whether a fact with the same text already exists for the user.
 
         Args:
-             - user_id: str - User whose memories should be listed.
-             - limit: int - Maximum number of memories to return.
+             - user_id: str - User that owns the fact.
+             - fact_text: str - Durable memory fact text to de-duplicate.
 
         Returns:
-             - return: list[LongTermMemory] - Recent long-term memory rows.
+             - return: bool - True when a matching fact already exists.
+        """
+        normalized_text = " ".join(str(fact_text or "").split())
+        if not normalized_text:
+            return False
+
+        with self._session_factory() as session:
+            normalized_fact_text = func.btrim(
+                func.regexp_replace(
+                    func.lower(MemoryFact.fact_text),
+                    r"\s+",
+                    " ",
+                    "g",
+                )
+            )
+            stmt = (
+                select(MemoryFact.fact_id)
+                .where(
+                    MemoryFact.user_id == user_id,
+                    normalized_fact_text == normalized_text.lower(),
+                )
+                .limit(1)
+            )
+            return session.execute(stmt).first() is not None
+
+    def mark_fact_indexed(
+        self,
+        *,
+        fact_id: str,
+        qdrant_collection: str,
+        qdrant_point_id: str,
+    ) -> None:
+        """
+        Store the Qdrant index location for a memory fact.
+
+        Args:
+             - fact_id: str - PostgreSQL fact id to update.
+             - qdrant_collection: str - Qdrant collection that holds the vector.
+             - qdrant_point_id: str - Qdrant point id used for this fact.
+
+        Returns:
+             - return: None - The database row is updated in place.
         """
         with self._session_factory() as session:
             stmt = (
-                select(LongTermMemory)
-                .where(LongTermMemory.user_id == user_id)
-                .order_by(LongTermMemory.created_at.desc())
+                update(MemoryFact)
+                .where(MemoryFact.fact_id == fact_id)
+                .values(
+                    qdrant_collection=qdrant_collection,
+                    qdrant_point_id=qdrant_point_id,
+                    updated_at=utc_now(),
+                )
+            )
+            session.execute(stmt)
+            session.commit()
+
+    def list_unindexed_facts(self, *, limit: int = 100) -> list[MemoryFact]:
+        """
+        List SQL-saved facts that have not yet reached Qdrant.
+
+        Args:
+             - limit: int - Maximum number of rows to return.
+
+        Returns:
+             - return: list[MemoryFact] - Facts available for recovery indexing.
+        """
+        with self._session_factory() as session:
+            stmt = (
+                select(MemoryFact)
+                .where(
+                    MemoryFact.qdrant_point_id.is_(None),
+                )
+                .order_by(MemoryFact.created_at.asc())
                 .limit(limit)
             )
             rows = list(session.execute(stmt).scalars().all())
