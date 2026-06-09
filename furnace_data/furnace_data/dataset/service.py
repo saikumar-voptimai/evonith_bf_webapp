@@ -24,21 +24,21 @@ from furnace_data.relational import (
 )
 
 from furnace_data.config import load_config
-from furnace_data.neon_db.offline import fetch_offline_data as fetch_neon_offline_data
+from furnace_data.offline import fetch_offline_data as fetch_database_offline_data
 
 config = load_config("setting_ds_dv.yml")
 
-_NEON_RM_TABLES = {
+_OFFLINE_RM_TABLES = {
     "charge": "offline_feed.charge_data",
     "dpr": "offline_feed.dpr_data",
 }
-_NEON_RM_QUANTITY_VIEWS = {
+_OFFLINE_RM_QUANTITY_VIEWS = {
     "charge": "offline_feed.v_charge_material_quantities",
     "dpr": "offline_feed.v_dpr_material_quantities",
 }
-_NEON_STATIC_ML_TABLE = "offline_feed.historical_static_ml_dataset"
-_NEON_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
-_NEON_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
+_OFFLINE_STATIC_ML_TABLE = "offline_feed.historical_static_ml_dataset"
+_OFFLINE_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
+_OFFLINE_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
 
 
 @dataclass
@@ -97,7 +97,7 @@ class DatasetService:
         values = df[existing].apply(pd.to_numeric, errors="coerce")
         return values.sum(axis=1, min_count=1)
 
-    def _add_neon_ml_aliases(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _add_offline_ml_aliases(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add ML-compatible aggregate aliases for offline report table columns."""
         if df.empty:
             return df
@@ -106,22 +106,11 @@ class DatasetService:
         aliases = {
             "sinter_mt": [f"sinter_{i}_mt" for i in range(1, 5)],
             "pellet_mt": [f"pellet_{i}_mt" for i in range(1, 3)],
-            "ore_mt": [
-                "ore_1_mt",
-                "ore_2_mt",
-                "ore_3_mt",
-                "ore_4_mt",
-                "ore_5_mt",
-                "ore_6_mt",
-                "ore_7_mt",
-                "ore_8_mt",
-                "ore_9_mt",
-                "ore_10_mt",
-                "ore_11_mt",
-                "ore_12_mt",
-            ],
+            "ore_mt": [f"ore_{i}_mt" for i in range(1, 13)],
             "nutcoke_prime_mt": [f"nut_coke_{i}_mt" for i in range(1, 3)],
             "coke_mt": [f"coke_{i}_mt" for i in range(1, 3)],
+            "coke_on_mt": ["coke_1_mt"],
+            "coke_off_mt": ["coke_2_mt"],
             "flux_mt": [f"flux_{i}_mt" for i in range(1, 4)],
             "pci2_mt": ["pci_mt"],
         }
@@ -148,10 +137,15 @@ class DatasetService:
         chemistry: pd.DataFrame,
         *,
         material_codes: set[str],
-        column_map: dict[str, str],
+        column_map: dict[str, str | list[str]],
     ) -> pd.DataFrame:
         """Build weighted chemistry columns using latest sample before timestamp."""
-        if quantities.empty or chemistry.empty:
+        if (
+            quantities.empty
+            or chemistry.empty
+            or "material_code" not in quantities.columns
+            or "material_code" not in chemistry.columns
+        ):
             return pd.DataFrame()
 
         q = quantities[quantities["material_code"].isin(material_codes)].copy()
@@ -187,7 +181,7 @@ class DatasetService:
         merged = pd.concat(merged_parts, ignore_index=True)
         out = pd.DataFrame(index=pd.DatetimeIndex(sorted(q["time"].unique()), name="time"))
 
-        for source_col, target_col in column_map.items():
+        for source_col, target_cols in column_map.items():
             if source_col not in merged.columns:
                 continue
             values = pd.to_numeric(merged[source_col], errors="coerce")
@@ -198,7 +192,48 @@ class DatasetService:
                 merged.loc[valid, "time"]
             ).sum()
             weight = merged.loc[valid].groupby("time")["quantity"].sum()
-            out[target_col] = weighted_sum / weight.replace(0, pd.NA)
+            result = weighted_sum / weight.replace(0, pd.NA)
+            if isinstance(target_cols, str):
+                target_cols = [target_cols]
+            for target_col in target_cols:
+                out[target_col] = result
+
+        return out.dropna(how="all")
+
+    @staticmethod
+    def _latest_before_context(
+        times: pd.Series,
+        chemistry: pd.DataFrame,
+        *,
+        material_codes: set[str],
+        column_map: dict[str, str | list[str]],
+    ) -> pd.DataFrame:
+        """Build latest-before chemistry columns for non-charged context materials."""
+        if (
+            chemistry.empty
+            or not material_codes
+            or "material_code" not in chemistry.columns
+        ):
+            return pd.DataFrame()
+
+        t = pd.DataFrame({"time": pd.Series(times).dropna().drop_duplicates()})
+        c = chemistry[chemistry["material_code"].isin(material_codes)].copy()
+        if t.empty or c.empty:
+            return pd.DataFrame()
+
+        t = t.sort_values("time")
+        c = c.sort_values("time").drop_duplicates("time", keep="last")
+        merged = pd.merge_asof(t, c, on="time", direction="backward")
+        out = pd.DataFrame(index=pd.DatetimeIndex(t["time"], name="time"))
+
+        for source_col, target_cols in column_map.items():
+            if source_col not in merged.columns:
+                continue
+            values = pd.to_numeric(merged[source_col], errors="coerce")
+            if isinstance(target_cols, str):
+                target_cols = [target_cols]
+            for target_col in target_cols:
+                out[target_col] = values.to_numpy()
 
         return out.dropna(how="all")
 
@@ -214,15 +249,15 @@ class DatasetService:
             out["time"] = out["time"].dt.tz_convert(None)
         return out.sort_values("time")
 
-    def _fetch_neon_weighted_chemistry(
+    def _fetch_offline_weighted_chemistry(
         self,
         *,
         mode: str,
         start_dt: datetime,
         end_dt: datetime,
     ) -> pd.DataFrame:
-        quantity_table = _NEON_RM_QUANTITY_VIEWS[mode]
-        quantities = self._fetch_neon_table(quantity_table, start_dt, end_dt)
+        quantity_table = _OFFLINE_RM_QUANTITY_VIEWS[mode]
+        quantities = self._fetch_offline_table(quantity_table, start_dt, end_dt)
         if quantities.empty:
             return pd.DataFrame()
         quantities = self._table_with_time_column(quantities)
@@ -231,7 +266,7 @@ class DatasetService:
         outputs: list[pd.DataFrame] = []
 
         ore = self._table_with_time_column(
-            self._fetch_neon_table("offline_feed.ore_chemistry", chem_start, end_dt)
+            self._fetch_offline_table("offline_feed.ore_chemistry", chem_start, end_dt)
         )
         outputs.append(
             self._weighted_latest_before(
@@ -254,9 +289,30 @@ class DatasetService:
                 },
             )
         )
+        outputs.append(
+            self._weighted_latest_before(
+                quantities,
+                ore,
+                material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("pellet_")},
+                column_map={
+                    "fe_t": "pellet_fe2o3_pct",
+                    "sio2": "pellet_sio2_pct",
+                    "al2o3": "pellet_al2o3_pct",
+                    "mgo": "pellet_mgo_pct",
+                    "tio2": "pellet_tio2_pct",
+                    "na2o": "pellet_na2o_pct",
+                    "k2o": "pellet_k2o_pct",
+                    "tm": "pellet_tm_pct",
+                    "loi": "pellet_loi_pct",
+                    "mno": "pellet_mno_pct",
+                    "cao": "pellet_cao_pct",
+                    "p": "pellet_p_pct",
+                },
+            )
+        )
 
         sinter = self._table_with_time_column(
-            self._fetch_neon_table("offline_feed.sinter_chemistry", chem_start, end_dt)
+            self._fetch_offline_table("offline_feed.sinter_chemistry", chem_start, end_dt)
         )
         outputs.append(
             self._weighted_latest_before(
@@ -285,7 +341,7 @@ class DatasetService:
         )
 
         fuel = self._table_with_time_column(
-            self._fetch_neon_table("offline_feed.fuel_chemistry", chem_start, end_dt)
+            self._fetch_offline_table("offline_feed.fuel_chemistry", chem_start, end_dt)
         )
         outputs.extend(
             [
@@ -294,7 +350,7 @@ class DatasetService:
                     fuel,
                     material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("coke_")},
                     column_map={
-                        "moisture": "coke_moist_pct",
+                        "moisture": ["coke_moist_pct", "coke_im_pct"],
                         "ash": "coke_ash_pct",
                         "vm": "coke_vm_pct",
                         "fc": "coke_fc_pct",
@@ -305,16 +361,24 @@ class DatasetService:
                     fuel,
                     material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("nut_coke_")},
                     column_map={
-                        "moisture": "nutcoke_moist_pct",
+                        "moisture": ["nutcoke_moist_pct", "nutcoke_im_pct"],
                         "ash": "nutcoke_ash_pct",
                         "vm": "nutcoke_vm_pct",
                         "fc": "nutcoke_fc_pct",
                     },
                 ),
-                self._weighted_latest_before(
-                    quantities,
+                self._latest_before_context(
+                    quantities["time"],
                     fuel,
-                    material_codes={code for code in quantities["material_code"].dropna().unique() if str(code).startswith("pci_")},
+                    material_codes={
+                        code
+                        for code in (
+                            fuel["material_code"].dropna().unique()
+                            if "material_code" in fuel.columns
+                            else []
+                        )
+                        if str(code).startswith("pci_")
+                    },
                     column_map={
                         "tm": "pci2_tm_pct",
                         "moisture": "pci2_im_pct",
@@ -327,7 +391,7 @@ class DatasetService:
         )
 
         flux = self._table_with_time_column(
-            self._fetch_neon_table("offline_feed.flux_chemistry", chem_start, end_dt)
+            self._fetch_offline_table("offline_feed.flux_chemistry", chem_start, end_dt)
         )
         outputs.append(
             self._weighted_latest_before(
@@ -351,13 +415,13 @@ class DatasetService:
             return pd.DataFrame()
         return pd.concat(frames, axis=1).sort_index()
 
-    def _fetch_neon_table(
+    def _fetch_offline_table(
         self,
         table_name: str,
         start_dt: datetime,
         end_dt: datetime,
     ) -> pd.DataFrame:
-        df = fetch_neon_offline_data(
+        df = fetch_database_offline_data(
             table_name=table_name,
             time_range=(start_dt, end_dt),
         )
@@ -384,7 +448,7 @@ class DatasetService:
             Time-indexed :class:`pandas.DataFrame` with the historical dataset columns.
         """
         start_dt, end_dt = self._to_utc_window(start_date, end_date)
-        df = self._fetch_neon_table(_NEON_STATIC_ML_TABLE, start_dt, end_dt)
+        df = self._fetch_offline_table(_OFFLINE_STATIC_ML_TABLE, start_dt, end_dt)
         if df is None or df.empty:
             return pd.DataFrame()
         if allowed_columns:
@@ -413,13 +477,13 @@ class DatasetService:
         """
         start_dt, end_dt = self._to_utc_window(start_date, end_date)
 
-        table_name = _NEON_RM_TABLES.get(mode)
+        table_name = _OFFLINE_RM_TABLES.get(mode)
         if table_name is None:
             raise ValueError("mode must be 'charge' or 'dpr'")
 
-        df_rm = self._fetch_neon_table(table_name, start_dt, end_dt)
-        df_rm_hm = self._fetch_neon_table(_NEON_STRENGTH_TABLE, start_dt, end_dt)
-        df_chem = self._fetch_neon_weighted_chemistry(
+        df_rm = self._fetch_offline_table(table_name, start_dt, end_dt)
+        df_rm_hm = self._fetch_offline_table(_OFFLINE_STRENGTH_TABLE, start_dt, end_dt)
+        df_chem = self._fetch_offline_weighted_chemistry(
             mode=mode,
             start_dt=start_dt,
             end_dt=end_dt,
@@ -435,7 +499,7 @@ class DatasetService:
 
         df = pd.concat(frames, axis=1).sort_index()
         df = df.loc[:, ~df.columns.duplicated()]
-        df = self._add_neon_ml_aliases(df)
+        df = self._add_offline_ml_aliases(df)
         if allowed_columns:
             df = df[df.columns.intersection(allowed_columns.keys())]
         return df
@@ -474,8 +538,8 @@ class DatasetService:
         fetch_start_utc = fetch_start.tz_convert("UTC")
         fetch_end_utc = fetch_end.tz_convert("UTC")
 
-        df = fetch_neon_offline_data(
-            table_name=_NEON_HM_SLAG_TABLE,
+        df = fetch_database_offline_data(
+            table_name=_OFFLINE_HM_SLAG_TABLE,
             time_range=(fetch_start_utc, fetch_end_utc),
         )
 
@@ -614,7 +678,13 @@ class DatasetService:
 
     # ------------------- STEP 5: ONLINE PROCESS PARAMS (InfluxDB) -------------------
 
-    def fetch_online_process_params(self, start_date: date, end_date: date) -> pd.DataFrame:
+    def fetch_online_process_params(
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        raise_on_error: bool = False,
+    ) -> pd.DataFrame:
         """Step 5: hourly-averaged InfluxDB process params for post-cutoff ML dataset.
 
         Reads the ``ml_dataset.online_params`` mapping from the shared config
@@ -646,6 +716,8 @@ class DatasetService:
                 window_by="1 hour",
             )
         except Exception:
+            if raise_on_error:
+                raise
             return pd.DataFrame()
 
         if df is None or df.empty or "time" not in df.columns:
@@ -660,10 +732,94 @@ class DatasetService:
 
         return self._normalize_timezone(df[list(mapped.keys())].rename(columns=mapped))
 
+    def fetch_online_heatload_params(
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        raise_on_error: bool = False,
+    ) -> pd.DataFrame:
+        """Fetch hourly total heat load from the live heatload measurement."""
+        from furnace_data.influx.base import BaseDataFetcher
+
+        components = config.get("ml_dataset", {}).get("heatload_total_components", [])
+        components = [str(component) for component in components]
+        if not components:
+            return pd.DataFrame()
+
+        start_dt, end_dt = self._to_utc_window(start_date, end_date)
+        try:
+            df = BaseDataFetcher("heatload_delta_t").fetch_averaged_data(
+                recent_data_of="over selected range",
+                start_time=start_dt,
+                end_time=end_dt,
+                request_type="windowed-average",
+                window_by="1 hour",
+            )
+        except Exception:
+            if raise_on_error:
+                raise
+            return pd.DataFrame()
+
+        if df is None or df.empty or "time" not in df.columns:
+            return pd.DataFrame()
+
+        df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)
+        df = df.dropna(subset=["time"]).set_index("time")
+        present = [column for column in components if column in df.columns]
+        if not present:
+            return pd.DataFrame()
+
+        numeric = df[present].apply(pd.to_numeric, errors="coerce")
+        out = pd.DataFrame(index=df.index)
+        out["total_heat_load"] = numeric.sum(axis=1, min_count=1)
+        return self._normalize_timezone(out)
+
+    def fetch_online_misc_params(
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        raise_on_error: bool = False,
+    ) -> pd.DataFrame:
+        """Fetch hourly miscellaneous online params used by the ML dataset."""
+        from furnace_data.influx.base import BaseDataFetcher
+
+        influx_to_ml: dict = config.get("ml_dataset", {}).get("misc_params", {})
+        if not influx_to_ml:
+            return pd.DataFrame()
+
+        start_dt, end_dt = self._to_utc_window(start_date, end_date)
+        try:
+            df = BaseDataFetcher("miscellaneous").fetch_averaged_data(
+                recent_data_of="over selected range",
+                start_time=start_dt,
+                end_time=end_dt,
+                request_type="windowed-average",
+                window_by="1 hour",
+            )
+        except Exception:
+            if raise_on_error:
+                raise
+            return pd.DataFrame()
+
+        if df is None or df.empty or "time" not in df.columns:
+            return pd.DataFrame()
+
+        df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)
+        df = df.dropna(subset=["time"]).set_index("time")
+        mapped = {k: v for k, v in influx_to_ml.items() if k in df.columns}
+        if not mapped:
+            return pd.DataFrame()
+
+        return self._normalize_timezone(df[list(mapped.keys())].rename(columns=mapped))
+
     def fetch_online_temperature_params(
         self,
         start_date: date,
         end_date: date,
+        *,
+        raise_on_error: bool = False,
     ) -> pd.DataFrame:
         """Step 5b: hourly-averaged InfluxDB temperature profile for the delta.
 
@@ -688,6 +844,8 @@ class DatasetService:
                 window_by="1 hour",
             )
         except Exception:
+            if raise_on_error:
+                raise
             return pd.DataFrame()
 
         if df is None or df.empty or "time" not in df.columns:
@@ -700,7 +858,19 @@ class DatasetService:
         if not mapped:
             return pd.DataFrame()
 
-        return self._normalize_timezone(df[list(mapped.keys())].rename(columns=mapped))
+        out = df[list(mapped.keys())].rename(columns=mapped)
+        hearth_cols = [
+            "hearth_pad_a_c",
+            "hearth_pad_b_c",
+            "hearth_pad_c_c",
+            "hearth_pad_d_c",
+        ]
+        if all(col in out.columns for col in hearth_cols):
+            out["hearth_pad_avg_c"] = (
+                out[hearth_cols].apply(pd.to_numeric, errors="coerce").mean(axis=1)
+            )
+
+        return self._normalize_timezone(out)
 
     # ------------------- ALIASES -------------------
 

@@ -1,8 +1,7 @@
 ores:
   - id: sinter_sp_02
     display_name: SINTER (SP-02)
-    material_key: sinter_sp_02
-    stock_field: g1_total_mt
+    material_key: sinter_3
     price_rs_per_mt: 7789.0
     min_share_pct: 58.0
     max_share_pct: 70.0
@@ -22,7 +21,6 @@ ores:
   - id: geomin_clo
     display_name: GEOMIN CLO
     material_key: ore_3
-    stock_field: geomin_mt
     price_rs_per_mt: 3827.0
     min_share_pct: 0.0
     max_share_pct: 20.0
@@ -42,7 +40,6 @@ ores:
   - id: lloyds_clo
     display_name: LLOYDS CLO
     material_key: ore_2
-    stock_field: lloyds_mt
     price_rs_per_mt: 8051.0
     min_share_pct: 0.0
     max_share_pct: 30.0
@@ -62,7 +59,6 @@ ores:
   - id: nmdc_donimalai
     display_name: NMDC DONIMALAI
     material_key: ore_1
-    stock_field: nmdc_donimalai_mt
     price_rs_per_mt: 5684.0
     min_share_pct: 0.0
     max_share_pct: 15.0
@@ -82,7 +78,6 @@ ores:
   - id: gomti_clo
     display_name: GOMTI CLO
     material_key: ore_10
-    stock_field: gomti_mt
     price_rs_per_mt: 5349.0
     min_share_pct: 0.0
     max_share_pct: 30.0
@@ -102,7 +97,6 @@ ores:
   - id: jrs_ventures
     display_name: JRS VENTURES
     material_key: ore_4
-    stock_field: jrs_ventures_mt
     price_rs_per_mt: 6831.0
     min_share_pct: 0.0
     max_share_pct: 20.0
@@ -122,7 +116,6 @@ ores:
   - id: jayaswal_neco
     display_name: JAYASWAL NECO
     material_key: ore_9
-    stock_field: jayaswal_neco_mt
     price_rs_per_mt: 6650.0
     min_share_pct: 0.0
     max_share_pct: 20.0
@@ -142,7 +135,6 @@ ores:
   - id: titani_ferrous_clo
     display_name: TITANI FERROUS CLO
     material_key: ore_11
-    stock_field: titaniferrous_mt
     price_rs_per_mt: 4939.0
     min_share_pct: 0.0
     max_share_pct: 3.0
@@ -162,7 +154,6 @@ ores:
   - id: acore_ind_pvt_ltd
     display_name: ACORE IND.PVT LTD
     material_key: ore_8
-    stock_field: acore_mt
     price_rs_per_mt: 8473.0
     min_share_pct: 0.0
     max_share_pct: 3.0
@@ -182,7 +173,6 @@ ores:
   - id: nmdc_rom
     display_name: NMDC ROM
     material_key: ore_5
-    stock_field: nmdc_rom_mt
     price_rs_per_mt: 8739.0
     min_share_pct: 0.0
     max_share_pct: 30.0
@@ -202,7 +192,6 @@ ores:
   - id: lloyds_oversize_clo
     display_name: LLOYDS OVERSIZE CLO
     material_key: ore_6
-    stock_field: lloyds_fines_oversize_10mm_mt
     price_rs_per_mt: 6162.0
     min_share_pct: 0.0
     max_share_pct: 10.0
@@ -222,7 +211,6 @@ ores:
   - id: bacheli_fines_over_size
     display_name: BACHELI FINES OVER SIZE
     material_key: ore_7
-    stock_field: nmdc_bachelli_fines_oversize_10mm_mt
     price_rs_per_mt: 10000.0
     min_share_pct: 0.0
     max_share_pct: 10.0
@@ -239,10 +227,28 @@ ores:
       p_pct: 0.05
       na2o_pct: 0.0
       k2o_pct: 0.0
-  - id: lloyds_pellet_sarda
-    display_name: LLOYDS PELLET (SARDA)
-    material_key: lloyds_pellet
-    stock_field: lloyds_pellet_sarda_mt
+  - id: lloyds_pellet
+    display_name: LLOYDS PELLET
+    material_key: pellet_1
+    price_rs_per_mt: 9650.0
+    min_share_pct: 0.0
+    max_share_pct: 10.0
+    fallback_chemistry:
+      fe_t_pct: 64.0
+      moisture_pct: 0.0
+      feo_pct: 0.0
+      sio2_pct: 3.1
+      al2o3_pct: 1.8
+      cao_pct: 0.3
+      mgo_pct: 0.2
+      mno_pct: 0.1
+      tio2_pct: 0.04
+      p_pct: 0.04
+      na2o_pct: 0.0
+      k2o_pct: 0.
+  - id: sarda_pellet
+    display_name: SARDA PELLET
+    material_key: pellet_2
     price_rs_per_mt: 9650.0
     min_share_pct: 0.0
     max_share_pct: 10.0

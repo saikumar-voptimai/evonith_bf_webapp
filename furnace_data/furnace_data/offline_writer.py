@@ -1,6 +1,6 @@
 """Write helpers for the offline_feed.historical_static_ml_dataset table.
 
-Only two public functions — append rows and delete rows.  Nothing else.
+Only two public functions: append rows and delete rows. Nothing else.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def write_to_static_table(
         df_write = df_write[keep]
 
         if df_write.empty or not keep:
-            log.warning("No matching columns found in %s.%s — nothing written.", _SCHEMA, _TABLE)
+            log.warning("No matching columns found in %s.%s; nothing written.", _SCHEMA, _TABLE)
             return 0
 
         df_write.to_sql(

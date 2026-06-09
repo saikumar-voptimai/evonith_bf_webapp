@@ -1,5 +1,5 @@
 """
-/data/online and /data/offline routes — synchronous InfluxDB fetch endpoints.
+/data/online and /data/offline routes - synchronous fetch endpoints.
 
 These are lightweight, synchronous endpoints. No background tasks.
 For large time ranges the connection stays open until the fetch completes.
@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 
 from datetime import datetime, timedelta, timezone
 
-from app.core.neon_offline_fetcher import fetch_neon_offline
+from app.core.offline_fetcher import fetch_database_offline
 from app.core.online_fetcher import ONLINE_MEASUREMENTS, fetch_online, list_measurements
 from app.models.schemas import (
     DataFetchResponse,
@@ -25,9 +25,9 @@ from app.models.schemas import (
     ResponseFormat,
     RmLiveFetchRequest,
 )
-from furnace_data.neon_db.offline import (
-    NEON_OFFLINE_REPORT_MAP,
-    list_neon_offline_tables,
+from furnace_data.offline import (
+    OFFLINE_REPORT_MAP,
+    list_offline_tables,
 )
 
 log = logging.getLogger(__name__)
@@ -139,7 +139,7 @@ def fetch_online_data(req: OnlineFetchRequest):
 @router.post("/offline/fetch")
 def fetch_offline_endpoint(req: OfflineFetchRequest):
     """
-    Fetch offline report data from Neon DB.
+    Fetch offline report data from PostgreSQL.
 
     Provide either `preset` or `start_time` + `end_time`.
     """
@@ -153,7 +153,7 @@ def fetch_offline_endpoint(req: OfflineFetchRequest):
         table_name = req.table_name if req.table_name else None
         query_type = req.query_type.value
         window = req.window if query_type == "windowed-average" else None
-        df = fetch_neon_offline(
+        df = fetch_database_offline(
             report_type=req.report_type.value,
             start_time=req.start_time,
             end_time=req.end_time,
@@ -163,20 +163,20 @@ def fetch_offline_endpoint(req: OfflineFetchRequest):
             window=window,
         )
         if table_name is None:
-            mapped_tables = NEON_OFFLINE_REPORT_MAP.get(req.report_type.value, [])
+            mapped_tables = OFFLINE_REPORT_MAP.get(req.report_type.value, [])
             table_name = ",".join(mapped_tables) if mapped_tables else None
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         log.exception("Offline fetch failed")
-        raise HTTPException(status_code=502, detail=f"Neon DB error: {e}")
+        raise HTTPException(status_code=502, detail=f"Offline database error: {e}")
 
     if df.empty:
         raise HTTPException(status_code=204, detail="No data returned for the requested parameters.")
 
     meta = DataMeta(
         report_type=req.report_type.value,
-        source="neon_db",
+        source="offline_db",
         table_name=table_name,
         query_type=query_type,
         window=window,
@@ -192,14 +192,14 @@ def fetch_offline_endpoint(req: OfflineFetchRequest):
 
 @router.get("/offline/report-types")
 def get_report_types() -> Dict[str, str]:
-    """List available Neon offline report types and their mapped tables."""
-    return {k: ",".join(v) for k, v in NEON_OFFLINE_REPORT_MAP.items()}
+    """List available offline database report types and their mapped tables."""
+    return {k: ",".join(v) for k, v in OFFLINE_REPORT_MAP.items()}
 
 
-@router.get("/offline/neon-tables")
-def get_neon_tables() -> Dict[str, Any]:
-    """List available Neon offline reports, tables, and whitelisted columns."""
-    return list_neon_offline_tables()
+@router.get("/offline/tables")
+def get_offline_tables() -> Dict[str, Any]:
+    """List available offline database reports, tables, and whitelisted columns."""
+    return list_offline_tables()
 
 
 # ---------------------------------------------------------------------------
@@ -209,15 +209,15 @@ def get_neon_tables() -> Dict[str, Any]:
 @router.post("/rm/live")
 def fetch_rm_live(req: RmLiveFetchRequest):
     """
-    Fetch the latest Raw Material composition data from Neon DB.
+    Fetch the latest Raw Material composition data from the offline database.
 
-    Provide ``lookback_days`` (1–365) and ``cadence`` (``"8h"`` | ``"1h"`` | ``"1d"``).
+    Provide ``lookback_days`` (1-365) and ``cadence`` (``"8h"`` | ``"1h"`` | ``"1d"``).
     """
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(days=req.lookback_days)
 
     try:
-        df = fetch_neon_offline(
+        df = fetch_database_offline(
             report_type="RM_COMPOSITION",
             start_time=start_time,
             end_time=now,
@@ -226,14 +226,14 @@ def fetch_rm_live(req: RmLiveFetchRequest):
         )
     except Exception as e:
         log.exception("RM live fetch failed")
-        raise HTTPException(status_code=502, detail=f"Neon DB error: {e}")
+        raise HTTPException(status_code=502, detail=f"Offline database error: {e}")
 
     if df is None or df.empty:
         raise HTTPException(status_code=204, detail="No RM data returned for the requested window.")
 
     meta = DataMeta(
         report_type="RM_LIVE",
-        source="neon_db",
+        source="offline_db",
         start=str(df.index.min()),
         end=str(df.index.max()),
         rows=len(df),

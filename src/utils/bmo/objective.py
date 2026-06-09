@@ -15,10 +15,16 @@ import pandas as pd
 
 from domain.optimization_runtime import ObjectiveResult
 from utils.bmo.constraints import check_blend_constraints
+from utils.bmo.feature_builder import PreBuiltFeatureContext
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.model_service import FuelUnitCostModelService
-from utils.bmo.types import OreInput
-
+from utils.bmo.types import (
+    DustInput,
+    FluxInput,
+    FuelAshInput,
+    OreInput,
+    SlagBalanceSettings,
+)
 
 class BmoObjectiveEvaluator:
     """
@@ -30,14 +36,17 @@ class BmoObjectiveEvaluator:
 
     Args:
          - ores: list[OreInput] - Ores available to the optimizer.
-         - min_fe_production_mt: float - Minimum allowed Fe production in MT.
-         - max_fe_production_mt: float - Maximum allowed Fe production in MT.
+         - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
          - process_context: dict[str, float] | None - Latest process variables.
          - history_df: pd.DataFrame | None - Historical process data for lagged features.
          - penalty_cfg: dict[str, Any] - Penalty weights used for soft constraints.
+         - fuel_ash_inputs: list[FuelAshInput] | None - Fuel ash records used for slag.
+         - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
+         - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
+         - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
 
     Returns:
          - return BmoObjectiveEvaluator - Configured evaluator for quantity vectors.
@@ -47,14 +56,20 @@ class BmoObjectiveEvaluator:
         self,
         *,
         ores: list[OreInput],
-        min_fe_production_mt: float,
-        max_fe_production_mt: float,
+        target_production_mt: float,
         target_slag_qty_mt: float,
         feo_in_slag_pct: float,
         model_service: FuelUnitCostModelService,
         process_context: dict[str, float] | None,
         history_df: pd.DataFrame | None,
         penalty_cfg: dict[str, Any],
+        fuel_ash_inputs: list[FuelAshInput] | None = None,
+        flux_inputs: list[FluxInput] | None = None,
+        dust_inputs: list[DustInput] | None = None,
+        slag_balance_settings: SlagBalanceSettings | None = None,
+        prebuilt_context: PreBuiltFeatureContext | None = None,
+        hot_metal_target_mt: float | None = None,
+        fe_tolerance_mt: float = 0.5,
     ) -> None:
         """
         Store optimizer inputs and precompute array forms of bounds.
@@ -65,28 +80,37 @@ class BmoObjectiveEvaluator:
 
         Args:
              - ores: list[OreInput] - Ores available to the optimizer.
-             - min_fe_production_mt: float - Minimum allowed Fe production in MT.
-             - max_fe_production_mt: float - Maximum allowed Fe production in MT.
+             - target_production_mt: float - Target hot-metal production in MT.
              - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
              - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
              - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
              - process_context: dict[str, float] | None - Latest process variables.
              - history_df: pd.DataFrame | None - Historical process data for lagged features.
              - penalty_cfg: dict[str, Any] - Penalty weights used for soft constraints.
+             - fuel_ash_inputs: list[FuelAshInput] | None - Fuel ash records used for slag.
+             - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
+             - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
+             - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
 
         Returns:
              - return None - Initializes evaluator state.
         """
 
         self.ores = ores
-        self.min_fe_production_mt = float(min_fe_production_mt)
-        self.max_fe_production_mt = float(max_fe_production_mt)
+        self.target_production_mt = float(target_production_mt)
         self.target_slag_qty_mt = float(target_slag_qty_mt)
         self.feo_in_slag_pct = float(feo_in_slag_pct)
         self.model_service = model_service
         self.process_context = process_context or {}
         self.history_df = history_df
+        self.fuel_ash_inputs = fuel_ash_inputs
+        self.flux_inputs = flux_inputs
+        self.dust_inputs = dust_inputs
+        self.slag_balance_settings = slag_balance_settings
         self.penalty_cfg = penalty_cfg
+        self.prebuilt_context = prebuilt_context
+        self.hot_metal_target_mt = hot_metal_target_mt
+        self.fe_tolerance_mt = float(fe_tolerance_mt)
         self.stocks = np.array([float(ore.stock_mt) for ore in ores], dtype=float)
         self.min_shares = np.array(
             [float(ore.min_share_pct) / 100.0 for ore in ores], dtype=float
@@ -100,8 +124,11 @@ class BmoObjectiveEvaluator:
         Evaluate one candidate wet-quantity vector for DE optimization.
 
         The returned objective contains both the scalar value required by SciPy
-        and rich diagnostics for the Streamlit comparison view. Fe, slag, stock,
-        and share violations are penalized but also reported explicitly.
+        and rich diagnostics for the Streamlit comparison view. Production
+        shortfall, production excess, slag, stock, and share violations are
+        penalized but also reported explicitly. Penalizing production excess
+        keeps DE anchored to the operator's target hot metal without requiring
+        a separate maximum-production UI input.
 
         Args:
              - quantities_vector: np.ndarray - Candidate wet ore quantities in MT.
@@ -120,11 +147,20 @@ class BmoObjectiveEvaluator:
             model_service=self.model_service,
             process_context=self.process_context,
             history_df=self.history_df,
+            fuel_ash_inputs=self.fuel_ash_inputs,
+            flux_inputs=self.flux_inputs,
+            dust_inputs=self.dust_inputs,
+            slag_balance_settings=self.slag_balance_settings,
+            prebuilt_context=self.prebuilt_context,
+            hot_metal_target_mt=self.hot_metal_target_mt,
         )
 
         penalty_stock = float(self.penalty_cfg.get("penalty_stock", 2500.0))
         penalty_share = float(self.penalty_cfg.get("penalty_share", 2500.0))
         penalty_fe = float(self.penalty_cfg.get("penalty_fe", 3000.0))
+        penalty_production_excess = float(
+            self.penalty_cfg.get("penalty_production_excess", penalty_fe)
+        )
         penalty_slag = float(self.penalty_cfg.get("penalty_slag", 3000.0))
         penalty_large = float(self.penalty_cfg.get("penalty_large", 1_000_000.0))
 
@@ -143,14 +179,23 @@ class BmoObjectiveEvaluator:
         share_penalty = share_violation * penalty_share
 
         fe_penalty = 0.0
-        if blend.fe_production_mt < self.min_fe_production_mt:
+        fe_shortfall_mt = max(
+            0.0,
+            self.target_production_mt - self.fe_tolerance_mt - blend.fe_production_mt,
+        )
+        if fe_shortfall_mt > 0.0:
             fe_penalty += (
-                self.min_fe_production_mt - blend.fe_production_mt
+                fe_shortfall_mt
             ) * penalty_fe
-        if blend.fe_production_mt > self.max_fe_production_mt:
-            fe_penalty += (
-                blend.fe_production_mt - self.max_fe_production_mt
-            ) * penalty_fe
+        production_excess_penalty = 0.0
+        fe_excess_mt = max(
+            0.0,
+            blend.fe_production_mt - self.target_production_mt - self.fe_tolerance_mt,
+        )
+        if fe_excess_mt > 0.0:
+            production_excess_penalty += (
+                fe_excess_mt
+            ) * penalty_production_excess
 
         slag_penalty = 0.0
         if blend.slag_mt > self.target_slag_qty_mt:
@@ -163,15 +208,19 @@ class BmoObjectiveEvaluator:
             finite_penalty += penalty_large
 
         total_penalty = (
-            stock_penalty + share_penalty + fe_penalty + slag_penalty + finite_penalty
+            stock_penalty
+            + share_penalty
+            + fe_penalty
+            + production_excess_penalty
+            + slag_penalty
+            + finite_penalty
         )
         objective_value = float(blend.objective_rs_per_thm + total_penalty)
 
         violations = check_blend_constraints(
             blend,
             self.ores,
-            min_fe_production_mt=self.min_fe_production_mt,
-            max_fe_production_mt=self.max_fe_production_mt,
+            target_production_mt=self.target_production_mt,
             target_slag_qty_mt=self.target_slag_qty_mt,
         )
         feasible = len(violations) == 0
@@ -186,6 +235,7 @@ class BmoObjectiveEvaluator:
                 "penalty_stock": float(stock_penalty),
                 "penalty_share_bounds": float(share_penalty),
                 "penalty_fe": float(fe_penalty),
+                "penalty_production_excess": float(production_excess_penalty),
                 "penalty_slag": float(slag_penalty),
                 "penalty_non_finite": float(finite_penalty),
             },

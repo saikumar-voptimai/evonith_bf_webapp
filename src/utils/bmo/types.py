@@ -32,6 +32,8 @@ class OreChemistry:
          - mno_pct: float - MnO percentage on dry basis.
          - tio2_pct: float - TiO2 percentage on dry basis.
          - p_pct: float - Phosphorus percentage on dry basis.
+         - s_pct: float - Sulphur percentage on dry basis.
+         - zn_pct: float - Zinc percentage on dry basis.
          - na2o_pct: float - Na2O percentage on dry basis.
          - k2o_pct: float - K2O percentage on dry basis.
 
@@ -49,6 +51,8 @@ class OreChemistry:
     mno_pct: float = 0.0
     tio2_pct: float = 0.0
     p_pct: float = 0.0
+    s_pct: float = 0.0
+    zn_pct: float = 0.0
     na2o_pct: float = 0.0
     k2o_pct: float = 0.0
 
@@ -84,6 +88,253 @@ class OreInput:
     max_share_pct: float
     chemistry: OreChemistry
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class FuelAshInput:
+    """
+    Store fuel rate and ash chemistry values for slag contribution.
+
+    Fuel quantity is represented as kg/THM because coke, nut coke, and PCI are
+    usually tracked as furnace fuel rates. The ash chemistry fields describe
+    the oxide composition inside the ash fraction, not the whole wet fuel. The
+    workbook reports S and P as percentages in the dry fuel, so those two fields
+    are handled on dry-fuel basis instead of ash basis.
+
+    Args:
+         - fuel_id: str - Stable fuel identifier used in diagnostics.
+         - display_name: str - Human-readable fuel name shown in the UI.
+         - enabled: bool - Whether this fuel should contribute ash to slag.
+         - rate_kg_per_thm: float - Wet fuel rate in kg per THM.
+         - moisture_pct: float - Fuel moisture percentage.
+         - ash_pct: float - Ash percentage in the fuel.
+         - sio2_pct: float - SiO2 percentage inside the ash.
+         - al2o3_pct: float - Al2O3 percentage inside the ash.
+         - cao_pct: float - CaO percentage inside the ash.
+         - mgo_pct: float - MgO percentage inside the ash.
+         - fe2o3_pct: float - Fe2O3 percentage inside the ash for diagnostics.
+         - tio2_pct: float - TiO2 percentage inside the ash.
+         - na2o_pct: float - Na2O percentage inside the ash.
+         - k2o_pct: float - K2O percentage inside the ash.
+         - s_pct: float - Sulphur percentage on dry fuel basis.
+         - p_pct: float - Phosphorus percentage on dry fuel basis.
+
+    Returns:
+         - return FuelAshInput - Fuel ash record used by blend calculations.
+    """
+
+    fuel_id: str
+    display_name: str
+    enabled: bool = True
+    rate_kg_per_thm: float = 0.0
+    moisture_pct: float = 0.0
+    ash_pct: float = 0.0
+    sio2_pct: float = 0.0
+    al2o3_pct: float = 0.0
+    cao_pct: float = 0.0
+    mgo_pct: float = 0.0
+    fe2o3_pct: float = 0.0
+    tio2_pct: float = 0.0
+    na2o_pct: float = 0.0
+    k2o_pct: float = 0.0
+    s_pct: float = 0.0
+    p_pct: float = 0.0
+
+
+@dataclass
+class FluxInput:
+    """
+    Store fixed flux quantity and chemistry values for slag contribution.
+
+    Fluxes are not optimizer decision variables in the current BMO workflow.
+    Operators provide wet quantity and chemistry values, then the calculation
+    converts that quantity to dry weight and adds dry-basis flux oxides to the
+    total slag estimate.
+
+    Args:
+         - flux_id: str - Stable flux identifier used in diagnostics.
+         - display_name: str - Human-readable flux name shown in the UI.
+         - enabled: bool - Whether this flux should contribute to slag.
+         - wet_qty_mt: float - Wet flux quantity in MT.
+         - moisture_pct: float - Flux moisture or total moisture percentage.
+         - sio2_pct: float - SiO2 percentage on dry flux basis.
+         - al2o3_pct: float - Al2O3 percentage on dry flux basis.
+         - cao_pct: float - CaO percentage on dry flux basis.
+         - mgo_pct: float - MgO percentage on dry flux basis.
+         - fe2o3_pct: float - Fe2O3 percentage retained for diagnostics.
+         - mno_pct: float - MnO percentage on dry flux basis.
+         - tio2_pct: float - TiO2 percentage on dry flux basis.
+         - na2o_pct: float - Na2O percentage on dry flux basis.
+         - k2o_pct: float - K2O percentage on dry flux basis.
+         - caf2_pct: float - CaF2 percentage on dry flux basis.
+         - p_pct: float - Phosphorus percentage on dry flux basis.
+         - s_pct: float - Sulphur percentage on dry flux basis.
+         - zn_pct: float - Zinc percentage on dry flux basis.
+         - loi_pct: float - LOI percentage retained for diagnostics.
+
+    Returns:
+         - return FluxInput - Flux record used by blend calculations.
+    """
+
+    flux_id: str
+    display_name: str
+    enabled: bool = True
+    wet_qty_mt: float = 0.0
+    moisture_pct: float = 0.0
+    sio2_pct: float = 0.0
+    al2o3_pct: float = 0.0
+    cao_pct: float = 0.0
+    mgo_pct: float = 0.0
+    fe2o3_pct: float = 0.0
+    mno_pct: float = 0.0
+    tio2_pct: float = 0.0
+    na2o_pct: float = 0.0
+    k2o_pct: float = 0.0
+    caf2_pct: float = 0.0
+    p_pct: float = 0.0
+    s_pct: float = 0.0
+    zn_pct: float = 0.0
+    loi_pct: float = 0.0
+
+
+@dataclass
+class DustInput:
+    """
+    Store BF gas dust loss quantity and chemistry values.
+
+    Dust is deducted from the total BF component balance after ore, flux, and
+    fuel ash contributions are added. Values are stored as wet quantity plus
+    dry-basis component percentages so the same dry-weight conversion can be
+    applied before subtraction.
+
+    Args:
+         - dust_id: str - Stable dust identifier used in diagnostics.
+         - display_name: str - Human-readable dust name shown in the UI.
+         - enabled: bool - Whether this dust row should be deducted.
+         - wet_qty_mt: float - Wet dust quantity in MT.
+         - moisture_pct: float - Dust moisture percentage.
+         - sio2_pct: float - SiO2 percentage on dry dust basis.
+         - al2o3_pct: float - Al2O3 percentage on dry dust basis.
+         - cao_pct: float - CaO percentage on dry dust basis.
+         - mgo_pct: float - MgO percentage on dry dust basis.
+         - fe_pct: float - Fe percentage on dry dust basis.
+         - mn_pct: float - Mn percentage on dry dust basis.
+         - p_pct: float - Phosphorus percentage on dry dust basis.
+         - s_pct: float - Sulphur percentage on dry dust basis.
+         - ti_pct: float - Titanium percentage on dry dust basis.
+         - zn_pct: float - Zinc percentage on dry dust basis.
+         - na2o_pct: float - Na2O percentage on dry dust basis.
+         - k2o_pct: float - K2O percentage on dry dust basis.
+         - caf2_pct: float - CaF2 percentage on dry dust basis.
+
+    Returns:
+         - return DustInput - Dust loss record used by full slag balance.
+    """
+
+    dust_id: str
+    display_name: str
+    enabled: bool = True
+    wet_qty_mt: float = 0.0
+    moisture_pct: float = 0.0
+    sio2_pct: float = 0.0
+    al2o3_pct: float = 0.0
+    cao_pct: float = 0.0
+    mgo_pct: float = 0.0
+    fe_pct: float = 0.0
+    mn_pct: float = 0.0
+    p_pct: float = 0.0
+    s_pct: float = 0.0
+    ti_pct: float = 0.0
+    zn_pct: float = 0.0
+    na2o_pct: float = 0.0
+    k2o_pct: float = 0.0
+    caf2_pct: float = 0.0
+
+
+@dataclass
+class SlagBalanceSettings:
+    """
+    Store plant assumptions used by the full BF slag balance.
+
+    These values describe the split between pig iron, gas, and slag after ore,
+    flux, fuel ash, and dust component masses are calculated. The correction
+    factor lets BMO calibrate calculated slag to observed plant behavior
+    without exposing PI C/Si/S/Others in the operator UI.
+
+    Args:
+         - enabled: bool - Whether full slag balance should replace simplified slag.
+         - carbon_pct: float - Legacy carbon percentage assumed in pig iron.
+         - silicon_pct: float - Legacy silicon percentage assumed in pig iron.
+         - sulphur_pct: float - Legacy sulphur percentage assumed in pig iron.
+         - other_pct: float - Legacy other non-Fe pig iron percentage.
+         - pi_loss_pct: float - Pig iron loss percentage deducted from theoretical PI.
+         - fe_to_pig_iron_fraction: float - Fraction of net Fe reporting to pig iron.
+         - mn_recovery_pct: float - Mn and Ti recovery percentage to pig iron.
+         - sulphur_gas_loss_pct: float - Sulphur percentage reporting to gas.
+         - alkali_to_slag_fraction: float - Fraction of net alkali reporting to slag.
+         - si_to_sio2_factor: float - Conversion factor from Si to SiO2.
+         - fe_to_feo_factor: float - Conversion factor from remaining Fe to FeO.
+         - mn_to_mno_factor: float - Conversion factor from remaining Mn to MnO.
+         - slag_correction_factor: float - Empirical factor applied to final slag.
+
+    Returns:
+         - return SlagBalanceSettings - Full slag balance configuration.
+    """
+
+    enabled: bool = False
+    carbon_pct: float = 0.0
+    silicon_pct: float = 0.0
+    sulphur_pct: float = 0.0
+    other_pct: float = 0.0
+    mn_pct: float = 0.0
+    ti_pct: float = 0.0
+    pi_loss_pct: float = 0.2
+    fe_to_pig_iron_fraction: float = 0.999
+    mn_recovery_pct: float = 60.0
+    sulphur_gas_loss_pct: float = 10.0
+    alkali_to_slag_fraction: float = 0.8
+    si_to_sio2_factor: float = 2.14
+    fe_to_feo_factor: float = 72.0 / 56.0
+    mn_to_mno_factor: float = 1.291
+    slag_correction_factor: float = 1.0
+
+
+@dataclass
+class SlagBalanceResult:
+    """
+    Store full BF slag balance output and diagnostics.
+
+    The result keeps both the final slag MT and the intermediate component
+    maps so calculations can be audited against the workbook sequence.
+
+    Args:
+         - total_slag_mt: float - Final slag quantity from full BF balance.
+         - actual_pig_iron_mt: float - Actual pig iron quantity calculated by settings.
+         - theoretical_pig_iron_mt: float - Theoretical pig iron before PI loss.
+         - ore_components_mt: dict[str, float] - Component totals from ores.
+         - flux_components_mt: dict[str, float] - Component totals from fluxes.
+         - fuel_ash_components_mt: dict[str, float] - Component totals from fuel ash.
+         - dust_components_mt: dict[str, float] - Component totals deducted as dust.
+         - total_into_bf_mt: dict[str, float] - Ore + flux + fuel ash component totals.
+         - net_into_bf_mt: dict[str, float] - Component totals after dust deduction.
+         - slag_components_mt: dict[str, float] - Final slag component masses.
+         - diagnostics: dict[str, Any] - Additional trace values for review.
+
+    Returns:
+         - return SlagBalanceResult - Full slag balance result and trace data.
+    """
+
+    total_slag_mt: float
+    actual_pig_iron_mt: float
+    theoretical_pig_iron_mt: float
+    ore_components_mt: dict[str, float]
+    flux_components_mt: dict[str, float]
+    fuel_ash_components_mt: dict[str, float]
+    dust_components_mt: dict[str, float]
+    total_into_bf_mt: dict[str, float]
+    net_into_bf_mt: dict[str, float]
+    slag_components_mt: dict[str, float]
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

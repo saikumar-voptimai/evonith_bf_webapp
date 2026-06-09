@@ -4,9 +4,9 @@ Design
 ------
 ``confirmed_end = raw_end - offline_lag_days``
 
-Rows up to *confirmed_end* are frozen — offline data (RM composition, HM/Slag)
+Rows up to *confirmed_end* are frozen - offline data (RM composition, HM/Slag)
 is stable by then.  Rows from *confirmed_end* onward are re-fetched on every
-run to capture delayed manual-entry data (typically 2–3 days late).
+run to capture delayed manual-entry data (typically 2-3 days late).
 
 Provides
 --------
@@ -151,7 +151,7 @@ class StaticDatasetManager:
        bootstrap CSV on first run).
     2. Compute ``confirmed_end = raw_end - offline_lag_days``.
     3. Keep the frozen rows (index ≤ *confirmed_end*) unchanged.
-    4. Re-fetch *confirmed_end* → today to pick up delayed offline data.
+    4. Re-fetch *confirmed_end* -> today to pick up delayed offline data.
     5. Merge (new rows win on overlap), optionally clean with
        :class:`~furnace_data.dataset.cleaning.DataCleaner`.
     6. Call :meth:`save` to write a new versioned CSV and rotate old ones.
@@ -202,7 +202,7 @@ class StaticDatasetManager:
             apply_cleaning:  Whether to run :class:`DataCleaner` on the new slice.
 
         Returns:
-            The final merged :class:`pandas.DataFrame` (not yet saved — call
+            The final merged :class:`pandas.DataFrame` (not yet saved - call
             :meth:`save` separately if you want to persist it).
         """
         meta = _load_meta(self.static_dir)
@@ -226,10 +226,10 @@ class StaticDatasetManager:
                 existing, meta, today
             )
             if fetch_start is None:
-                log.info("Nothing to fetch — dataset is already up to date.")
+                log.info("Nothing to fetch - dataset is already up to date.")
                 return existing
 
-        log.info("Fetching %s → %s (rm=%s)", fetch_start, fetch_end, rm_mode)
+        log.info("Fetching %s -> %s (rm=%s)", fetch_start, fetch_end, rm_mode)
 
         new_df = self.fetcher.get_dataset(
             start_date=fetch_start,
@@ -332,7 +332,7 @@ class StaticDatasetManager:
             log.info("Bootstrapping from legacy CSV: %s", self.legacy_csv_path)
             return _read_csv(self.legacy_csv_path)
 
-        log.info("No existing dataset found — will do a full fetch.")
+        log.info("No existing dataset found - will do a full fetch.")
         return pd.DataFrame()
 
     def _compute_fetch_window(
@@ -361,7 +361,7 @@ class StaticDatasetManager:
         fetch_end = today
 
         log.info(
-            "Cache: raw_end=%s, confirmed_end=%s → re-fetch %s → %s",
+            "Cache: raw_end=%s, confirmed_end=%s -> re-fetch %s -> %s",
             raw_end,
             confirmed_end,
             fetch_start,

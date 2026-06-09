@@ -26,7 +26,7 @@ logging.basicConfig(
 app = FastAPI(
     title="Furnace Data Service",
     description="REST API for fetching and processing Blast Furnace datasets",
-    version="0.1.0",
+    version="0.1.1",
 )
 
 app.add_middleware(

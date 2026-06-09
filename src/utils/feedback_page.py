@@ -156,7 +156,7 @@ def render_ticket_images_gallery(images: Sequence[TicketImageView]) -> None:
             st.image(
                 str(full_path),
                 caption=image.original_filename,
-                use_container_width=True,
+                width="stretch",
             )
 
 
@@ -257,7 +257,7 @@ def render_management_panel(
         else:
             st.dataframe(
                 build_events_dataframe(events),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -351,7 +351,7 @@ def render_board(
         st.caption(f"{len(tickets)} ticket(s) - click a row to view details")
         selection = st.dataframe(
             table_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
@@ -471,6 +471,6 @@ def render_board(
             with st.expander("Event history", expanded=False, key=f"fb_events_{ticket.id}"):
                 st.dataframe(
                     build_events_dataframe(events),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )

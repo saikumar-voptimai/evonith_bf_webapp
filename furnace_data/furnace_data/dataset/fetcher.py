@@ -164,6 +164,8 @@ class DatasetFetcher:
         start: date,
         end: date,
         rm_mode: str,
+        *,
+        raise_online_errors: bool = False,
     ) -> pd.DataFrame:
         """Join Steps 2-5 into a raw DataFrame with ML column names (no rename)."""
         df_rm = self.service.fetch_step2(
@@ -178,10 +180,18 @@ class DatasetFetcher:
             keep_columns=KEEP_COLS,
         )
         df_dist = self.service.fetch_distribution_data(start, end)
-        fetch_online = getattr(self.service, "fetch_online_process_params", None)
-        fetch_temp = getattr(self.service, "fetch_online_temperature_params", None)
-        df_online = fetch_online(start, end) if fetch_online else pd.DataFrame()
-        df_temp = fetch_temp(start, end) if fetch_temp else pd.DataFrame()
+        df_online = self.service.fetch_online_process_params(
+            start, end, raise_on_error=raise_online_errors
+        )
+        df_temp = self.service.fetch_online_temperature_params(
+            start, end, raise_on_error=raise_online_errors
+        )
+        df_heatload = self.service.fetch_online_heatload_params(
+            start, end, raise_on_error=raise_online_errors
+        )
+        df_misc = self.service.fetch_online_misc_params(
+            start, end, raise_on_error=raise_online_errors
+        )
 
         df_dist = self._align_distribution(df_dist, df_rm, df_hm)
 
@@ -190,6 +200,10 @@ class DatasetFetcher:
             frames.append(df_online)
         if not df_temp.empty:
             frames.append(df_temp)
+        if not df_heatload.empty:
+            frames.append(df_heatload)
+        if not df_misc.empty:
+            frames.append(df_misc)
         return df_rm.join(frames, how="outer").sort_index()
 
     def _fetch_new_range(
@@ -224,7 +238,7 @@ class DatasetFetcher:
             Raw (pre-cleaning) joined DataFrame written to the DB, or an
             empty DataFrame if there is nothing new to generate.
         """
-        from furnace_data.neon_db.writer import (
+        from furnace_data.offline_writer import (
             delete_from_static_table,
             write_to_static_table,
         )
@@ -245,16 +259,16 @@ class DatasetFetcher:
             log.info("Nothing to generate: fetch_start %s > end_date %s.", fetch_start, end_date)
             return pd.DataFrame()
 
-        log.info("Building post-cutoff data %s → %s (mode=%s).", fetch_start, end_date, rm_mode)
+        log.info("Building post-cutoff data %s -> %s (mode=%s).", fetch_start, end_date, rm_mode)
         raw_df = self._build_post_cutoff_df(fetch_start, end_date, rm_mode)
 
         if raw_df.empty:
-            log.warning("Steps 2-5 returned no data for %s → %s.", fetch_start, end_date)
+            log.warning("Steps 2-5 returned no data for %s -> %s.", fetch_start, end_date)
             return raw_df
 
         rows_written = write_to_static_table(raw_df)
         log.info(
-            "Persisted %d rows to historical_static_ml_dataset (%s → %s).",
+            "Persisted %d rows to historical_static_ml_dataset (%s -> %s).",
             rows_written, fetch_start, end_date,
         )
         self.cache.reset()
@@ -337,110 +351,44 @@ class DatasetFetcher:
         else:
             df_full = self._fetch_full_range(start_date, end_date, rm_mode)
 
-        # Apply per-source resampling so each source group keeps its own
-        # sampling cadence (vs the previous one-size-fits-all 1h mean + 24h
-        # ffill).  See _per_source_resample for the per-group rules.
-        if not df_full.empty:
-            df_full = self._per_source_resample(df_full)
-
         self.cache.update(fetch_start, fetch_end, rm_mode, df_full)
 
         return self._slice_date_range(df_full, start_date, end_date)
-
-    # Backward-compatible alias for callers that still use the previous public name.
-    get_ml_dataset = get_dataset
-
-    def _per_source_resample(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Resample a multi-source joined frame using per-source cadence rules.
-
-        Groups columns by where they came from in the Steps 2-5 pipeline and
-        applies the appropriate aggregation:
-
-        - **Charge masses** (``*_CALC_MT``, ``*_MT``): hourly **sum** (each
-          hour is the total tonnage charged within that hour; no ffill).
-        - **RM / HM-Slag chemistry** (``rm_params`` + ``hm_slag_params`` minus
-          masses): hourly mean with ``ffill(limit=8)`` — lab samples come at
-          8-hour shift cadence, so a sample propagates across the shift.
-        - **Burden distribution** (``bd_params`` — rings / angles / weighted_*
-          / total_*): hourly mean with **unlimited ffill** — burden is set
-          daily and stays valid until the next charging pattern change.
-        - **Everything else** (online process params, temperatures, KPIs):
-          hourly mean, no ffill (these arrive hourly from Influx already).
-
-        Non-numeric columns (lab_sample_id, cast_no_ladle_spec, …) are
-        forward-filled within the 1h grid so the metadata travels with each
-        hourly slot.
-        """
-        if df.empty:
-            return df
-
-        # Identify column buckets from the cleaning config (lazy import to
-        # avoid a hard fetcher → cleaning dependency at module load time).
-        from furnace_data.dataset.cleaning import build_default_config
-
-        groups = build_default_config().columns
-        cols_set = set(df.columns)
-
-        mass_cols = [
-            c for c in df.columns
-            if c.endswith("_CALC_MT")
-            or (c.endswith("_MT") and "TEMP" not in c.upper())
-        ]
-        bd_cols = [c for c in groups.bd_params if c in cols_set]
-        # Chemistry = rm_params + hm_slag_params minus mass columns
-        chem_cols = [
-            c for c in tuple(groups.rm_params) + tuple(groups.hm_slag_params)
-            if c in cols_set and c not in mass_cols and c not in bd_cols
-        ]
-
-        handled = set(mass_cols) | set(chem_cols) | set(bd_cols)
-        numeric_cols = df.select_dtypes(include="number").columns
-        other_numeric = [c for c in numeric_cols if c not in handled]
-        non_numeric = [c for c in df.columns if c not in numeric_cols]
-
-        parts: list[pd.DataFrame] = []
-        if mass_cols:
-            parts.append(df[mass_cols].resample("1h").sum(min_count=1))
-        if chem_cols:
-            parts.append(df[chem_cols].resample("1h").mean().ffill(limit=8))
-        if bd_cols:
-            parts.append(df[bd_cols].resample("1h").mean().ffill())
-        if other_numeric:
-            parts.append(df[other_numeric].resample("1h").mean())
-        if non_numeric:
-            # Treat text/UUID metadata as 1h-aligned ffill so lab identifiers
-            # stay attached to each hourly slot.
-            parts.append(df[non_numeric].resample("1h").first().ffill())
-
-        if not parts:
-            return df
-        out = pd.concat(parts, axis=1).sort_index()
-        # Preserve original column order so callers don't see arbitrary shuffling
-        ordered = [c for c in df.columns if c in out.columns]
-        ordered.extend(c for c in out.columns if c not in ordered)
-        return out[ordered]
 
     def build_local_delta(
         self,
         start: date,
         end: date,
         rm_mode: str = "charge",
+        *,
+        raise_on_error: bool = False,
     ) -> pd.DataFrame:
         """Return renamed (not yet fully cleaned) post-cutoff data for local caching.
 
         Calls Steps 2-5 and applies the column rename, but does NOT run the full
-        DataCleaner pipeline and does NOT write to the Neon static table.
-        Returns an empty DataFrame on any failure so callers can fall back gracefully.
+        DataCleaner pipeline and does NOT write to the offline DB static table.
+        Returns an empty DataFrame on failure unless ``raise_on_error`` is true.
         """
         try:
-            raw = self._build_post_cutoff_df(start, end, rm_mode)
+            raw = self._build_post_cutoff_df(
+                start,
+                end,
+                rm_mode,
+                raise_online_errors=raise_on_error,
+            )
             if raw.empty:
                 return raw
             return self._clean_df(raw, keep_unmapped=True)
         except Exception:
             log.warning(
-                "build_local_delta failed for %s → %s (rm_mode=%s)",
+                "build_local_delta failed for %s -> %s (rm_mode=%s)",
                 start, end, rm_mode,
                 exc_info=True,
             )
+            if raise_on_error:
+                raise
             return pd.DataFrame()
+
+    # Keep the old name as an alias so any callers that used MlDatasetFetcher.get_ml_dataset()
+    # continue to work after renaming.
+    get_ml_dataset = get_dataset

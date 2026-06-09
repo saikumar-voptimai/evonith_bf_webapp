@@ -56,7 +56,7 @@ class TestShiftBuilder:
             report_type=report_type,
         )
 
-    def test_sums_neon_charge_data_consumption_columns(self) -> None:
+    def test_sums_offline_charge_data_consumption_columns(self) -> None:
         report = ShiftBuilder().build(
             self.raw_shift(
                 pd.DataFrame(

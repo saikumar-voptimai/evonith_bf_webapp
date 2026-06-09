@@ -56,8 +56,8 @@ class TestOfflineReportTypes:
             assert isinstance(v, str)
             assert len(v) > 0
 
-    def test_neon_tables_endpoint_lists_migrated_reports(self, client):
-        resp = client.get("/data/offline/neon-tables")
+    def test_offline_tables_endpoint_lists_migrated_reports(self, client):
+        resp = client.get("/data/offline/tables")
         assert resp.status_code == 200
         body = resp.json()
         assert "RM_COMPOSITION" in body["report_map"]
@@ -68,7 +68,7 @@ class TestOfflineReportTypes:
 
 
 # ---------------------------------------------------------------------------
-# POST /data/online/fetch — input validation
+# POST /data/online/fetch - input validation
 # ---------------------------------------------------------------------------
 
 class TestOnlineFetchValidation:
@@ -105,7 +105,7 @@ class TestOnlineFetchValidation:
 
 
 # ---------------------------------------------------------------------------
-# POST /data/online/fetch — successful fetch (mocked)
+# POST /data/online/fetch - successful fetch (mocked)
 # ---------------------------------------------------------------------------
 
 class TestOnlineFetchSuccess:
@@ -170,7 +170,7 @@ class TestOnlineFetchSuccess:
 
 
 # ---------------------------------------------------------------------------
-# POST /data/offline/fetch — validation + success
+# POST /data/offline/fetch - validation + success
 # ---------------------------------------------------------------------------
 
 class TestOfflineFetch:
@@ -189,7 +189,7 @@ class TestOfflineFetch:
         assert resp.status_code == 422
 
     def test_successful_fetch_json(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df):
+        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "HM_SLAG",
                 "preset": "last 3 days",
@@ -198,12 +198,12 @@ class TestOfflineFetch:
         assert resp.status_code == 200
         body = resp.json()
         assert body["meta"]["report_type"] == "HM_SLAG"
-        assert body["meta"]["source"] == "neon_db"
+        assert body["meta"]["source"] == "offline_db"
         assert body["meta"]["table_name"] == "offline_feed.hot_metal_slag_analysis"
         assert body["meta"]["rows"] == len(sample_hm_df)
 
     def test_successful_fetch_csv(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df):
+        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "HM_SLAG",
                 "preset": "last 3 days",
@@ -213,7 +213,7 @@ class TestOfflineFetch:
         assert "text/csv" in resp.headers["content-type"]
 
     def test_empty_result_returns_204(self, client):
-        with patch("app.routes.data.fetch_neon_offline", return_value=pd.DataFrame()):
+        with patch("app.routes.data.fetch_database_offline", return_value=pd.DataFrame()):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "DPR",
                 "preset": "last 1 day",
@@ -228,8 +228,8 @@ class TestOfflineFetch:
         })
         assert resp.status_code == 422
 
-    def test_neon_table_override_fetches_explicit_table(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df) as mocked:
+    def test_offline_table_override_fetches_explicit_table(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df) as mocked:
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "RM_COMPOSITION",
                 "table_name": "sinter_chemistry",
@@ -240,8 +240,8 @@ class TestOfflineFetch:
         assert resp.json()["meta"]["table_name"] == "sinter_chemistry"
         assert mocked.call_args.kwargs["table_name"] == "sinter_chemistry"
 
-    def test_neon_combined_rm_metadata_lists_all_tables(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df):
+    def test_offline_combined_rm_metadata_lists_all_tables(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "RM_COMPOSITION",
                 "preset": "last 3 days",
@@ -251,8 +251,8 @@ class TestOfflineFetch:
         assert "ore_chemistry" in table_name
         assert "plant_master.materials" in table_name
 
-    def test_neon_burden_and_hopper_reports(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df):
+    def test_offline_burden_and_hopper_reports(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df):
             burden = client.post("/data/offline/fetch", json={
                 "report_type": "BURDEN_DISTRIBUTION",
                 "preset": "last 3 days",
@@ -266,13 +266,13 @@ class TestOfflineFetch:
         assert burden.json()["meta"]["table_name"] == "ops_config.burden_history"
         assert hopper.json()["meta"]["table_name"] == "ops_config.hopper_raw_material_history"
 
-    def test_rm_live_uses_neon_helper(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_neon_offline", return_value=sample_hm_df) as mocked:
+    def test_rm_live_uses_offline_helper(self, client, sample_hm_df):
+        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df) as mocked:
             resp = client.post("/data/rm/live", json={
                 "lookback_days": 3,
                 "format": "json",
             })
         assert resp.status_code == 200
         assert resp.json()["meta"]["report_type"] == "RM_LIVE"
-        assert resp.json()["meta"]["source"] == "neon_db"
+        assert resp.json()["meta"]["source"] == "offline_db"
         mocked.assert_called_once()
