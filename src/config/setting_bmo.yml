@@ -224,9 +224,9 @@ bmo:
       nut_coke_rate_kg_per_thm: 20.0
       pci_rate_kg_per_thm: 170.0
     default_prices_rs_per_kg:
-      coke_price_rs_per_kg: 34.0
-      nut_coke_price_rs_per_kg: 32.0
-      pci_price_rs_per_kg: 22.0
+      coke_price_rs_per_kg: 28.0
+      nut_coke_price_rs_per_kg: 28.0
+      pci_price_rs_per_kg: 15.0
 
   model_bundle:
     strict_loading: false
