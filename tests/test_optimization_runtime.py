@@ -20,6 +20,7 @@ from domain.optimization_runtime import (
 from utils.bmo.calculations import evaluate_blend
 from utils.bmo.constraints import check_blend_constraints
 from utils.bmo.constraints import validate_selected_pellet_inputs
+import utils.bmo.lp_solver as lp_solver
 from utils.bmo.lp_solver import run_lp_baseline
 from utils.bmo.model_service import FuelUnitCostModelService
 from utils.bmo.nonlinear_optimizer import run_nonlinear_optimizer
@@ -720,6 +721,37 @@ def test_lp_baseline_uses_slag_as_hard_cost_constraint():
     assert blend.slag_mt <= 10.0 + 1e-6
     assert blend.quantities_mt["cheap_high_slag"] < 50.0
     assert blend.quantities_mt["costly_low_slag"] > 50.0
+
+
+def test_lp_baseline_does_not_return_exact_slag_violating_blend(monkeypatch):
+    ores = [
+        OreInput(
+            ore_id="cheap_high_slag",
+            display_name="CHEAP HIGH SLAG",
+            stock_mt=500.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0, sio2_pct=20.0),
+        )
+    ]
+
+    def underestimated_slag_terms(*args, **kwargs):
+        return np.zeros(len(ores), dtype=float), 0.0
+
+    monkeypatch.setattr(
+        lp_solver, "_build_linear_slag_terms", underestimated_slag_terms
+    )
+
+    blend, errors = run_lp_baseline(
+        ores,
+        target_production_mt=50.0,
+        target_slag_qty_mt=10.0,
+        feo_in_slag_pct=0.0,
+    )
+
+    assert blend is None
+    assert any("exact slag" in error for error in errors)
 
 
 def test_lp_baseline_treats_fuel_ash_slag_as_hard_constraint():

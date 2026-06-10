@@ -15,6 +15,7 @@ from utils.bmo.feature_builder import (
     max_bmo_lag_steps,
 )
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
+from utils.bmo.fuel_rates import estimate_fuel_rates_from_cost, get_recent_fuel_input_rates
 from utils.bmo.model_service import FuelUnitCostModelService
 from utils.bmo.types import OreChemistry, OreInput
 
@@ -295,13 +296,104 @@ def test_blend_fuel_prediction_helper_attaches_model_cost(tmp_path: Path) -> Non
         quantities_mt={"ore3": 100.0},
         feo_in_slag_pct=0.4,
         model_service=service,
-        process_context={"a": 2.0, "c": 3.0},
+        process_context={
+            "a": 6000.0,
+            "c": 6900.0,
+            "PCI_KG/THM": 150.0,
+            "NUTCOKE_CALC_THM": 65.0,
+        },
         history_df=pd.DataFrame(),
     )
 
-    assert blend.fuel_cost_per_thm_rs == pytest.approx(5.0)
-    assert blend.objective_rs_per_thm == pytest.approx(blend.ore_cost_per_thm_rs + 5.0)
+    assert blend.fuel_cost_per_thm_rs == pytest.approx(12_900.0)
+    assert blend.objective_rs_per_thm == pytest.approx(
+        blend.ore_cost_per_thm_rs + 12_900.0
+    )
     assert blend.diagnostics["model_prediction"].used_fallback is False
+    assert blend.diagnostics["fuel_rate_estimate"]["coke_rate_kg_thm"] == pytest.approx(
+        373.0
+    )
+
+
+def test_estimated_fuel_rates_use_predicted_cost_and_recent_rates() -> None:
+    rates = estimate_fuel_rates_from_cost(
+        fuel_cost_per_thm_rs=12_900.0,
+        process_context={"PCI_KG/THM": 150.0, "NUTCOKE_CALC_THM": 65.0},
+    )
+
+    assert rates is not None
+    assert rates.total_coke_rate_kg_thm == pytest.approx(438.0)
+    assert rates.coke_rate_kg_thm == pytest.approx(373.0)
+    assert rates.nut_coke_rate_kg_thm == pytest.approx(65.0)
+    assert rates.total_fuel_rate_kg_thm == pytest.approx(588.0)
+    assert rates.pci_rate_kg_thm == pytest.approx(150.0)
+
+
+def test_estimated_fuel_rates_use_requested_nut_coke_fallback_only() -> None:
+    rates = estimate_fuel_rates_from_cost(
+        fuel_cost_per_thm_rs=12_900.0,
+        process_context={"PCI_KG/THM": 150.0},
+    )
+
+    assert rates is not None
+    assert rates.nut_coke_rate_kg_thm == pytest.approx(70.0)
+    assert rates.nut_coke_source == "fallback"
+    assert rates.coke_rate_kg_thm == pytest.approx(368.0)
+
+
+def test_estimated_fuel_rates_use_last_nonzero_static_dataset_values() -> None:
+    history_df = pd.DataFrame(
+        {
+            "PCI_KG/THM": [148.0, 151.0, 0.0],
+            "NUTCOKE_CALC_THM": [62.0, 68.0, 0.0],
+        }
+    )
+
+    rates = estimate_fuel_rates_from_cost(
+        fuel_cost_per_thm_rs=12_900.0,
+        process_context={"PCI_KG/THM": 0.0, "NUTCOKE_CALC_THM": 0.0},
+        history_df=history_df,
+    )
+
+    assert rates is not None
+    assert rates.pci_rate_kg_thm == pytest.approx(151.0)
+    assert rates.nut_coke_rate_kg_thm == pytest.approx(68.0)
+    assert rates.pci_source == "history.PCI_KG/THM"
+    assert rates.nut_coke_source == "history.NUTCOKE_CALC_THM"
+
+
+def test_recent_fuel_input_rates_seed_fuel_ash_from_context_and_history() -> None:
+    history_df = pd.DataFrame(
+        {
+            "PCI_KG/THM": [148.0, 151.0, 0.0],
+            "NUTCOKE_CALC_THM": [62.0, 68.0, 0.0],
+            "COKE RATE KG/THM": [320.0, 322.0, 0.0],
+        }
+    )
+
+    rates = get_recent_fuel_input_rates(
+        process_context={
+            "COKE RATE KG/THM": 335.0,
+            "PCI_KG/THM": 0.0,
+            "NUTCOKE_CALC_THM": 0.0,
+        },
+        history_df=history_df,
+    )
+
+    assert rates["coke_rate_kg_thm"] == pytest.approx(335.0)
+    assert rates["coke_source"] == "process_context.COKE RATE KG/THM"
+    assert rates["pci_rate_kg_thm"] == pytest.approx(151.0)
+    assert rates["nut_coke_rate_kg_thm"] == pytest.approx(68.0)
+
+
+def test_estimated_fuel_rates_require_latest_pci_rate() -> None:
+    assert (
+        estimate_fuel_rates_from_cost(
+            fuel_cost_per_thm_rs=12_900.0,
+            process_context={"NUTCOKE_CALC_THM": 65.0},
+        )
+        is None
+    )
 
 
 def test_shared_lag_parser_accepts_bmo_dual_impact_suffix() -> None:

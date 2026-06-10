@@ -1015,6 +1015,31 @@ def render_blend_metrics(
     flux_slag_mt = float(blend.diagnostics.get("flux_slag_mt", 0.0) or 0.0)
     c12.metric(f"Flux Slag{suffix} (MT)", f"{flux_slag_mt:,.2f}")
 
+    fuel_rate_estimate = blend.diagnostics.get("fuel_rate_estimate")
+    st.markdown("##### Estimated Fuel Rates")
+    if isinstance(fuel_rate_estimate, dict):
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric(
+            "Coke Rate (kg/THM)",
+            f"{float(fuel_rate_estimate.get('coke_rate_kg_thm', 0.0)):,.1f}",
+        )
+        r2.metric(
+            "Nut Coke Rate (kg/THM)",
+            f"{float(fuel_rate_estimate.get('nut_coke_rate_kg_thm', 0.0)):,.1f}",
+            help=f"Source: {fuel_rate_estimate.get('nut_coke_source', 'unknown')}",
+        )
+        r3.metric(
+            "Total Fuel Rate (kg/THM)",
+            f"{float(fuel_rate_estimate.get('total_fuel_rate_kg_thm', 0.0)):,.1f}",
+        )
+        r4.metric(
+            "PCI (kg/THM)",
+            f"{float(fuel_rate_estimate.get('pci_rate_kg_thm', 0.0)):,.1f}",
+            help=f"Source: {fuel_rate_estimate.get('pci_source', 'unknown')}",
+        )
+    else:
+        st.caption("Fuel-rate estimate unavailable because latest PCI rate is missing.")
+
     if full_balance_active:
         st.markdown(
             "##### Removed by Hot Metal "

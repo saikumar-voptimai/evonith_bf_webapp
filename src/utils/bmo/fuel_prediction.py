@@ -14,6 +14,7 @@ import pandas as pd
 
 from utils.bmo.calculations import evaluate_blend
 from utils.bmo.feature_builder import PreBuiltFeatureContext, build_feature_payload
+from utils.bmo.fuel_rates import estimate_fuel_rates_from_cost
 from utils.bmo.types import (
     BlendEvaluation,
     DustInput,
@@ -94,4 +95,11 @@ def evaluate_blend_with_fuel_prediction(
     )
     blend.diagnostics["model_prediction"] = prediction
     blend.diagnostics["feature_details"] = prediction.details
+    fuel_rates = estimate_fuel_rates_from_cost(
+        fuel_cost_per_thm_rs=float(prediction.value),
+        process_context=process_context,
+        history_df=history_df,
+    )
+    if fuel_rates is not None:
+        blend.diagnostics["fuel_rate_estimate"] = fuel_rates.to_dict()
     return blend

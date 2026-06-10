@@ -11,6 +11,7 @@ import inspect
 import logging
 from dataclasses import replace
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -52,6 +53,7 @@ from utils.bmo import (
     validate_selected_pellet_inputs,
 )
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
+from utils.bmo.fuel_rates import get_recent_fuel_input_rates
 from utils.session import is_logged_in
 
 if not is_logged_in():
@@ -65,6 +67,11 @@ elif hasattr(st, "experimental_singleton"):
     _resource_cache = st.experimental_singleton
 else:
     _resource_cache = st.cache
+
+if hasattr(st, "cache_data"):
+    _data_cache = st.cache_data
+else:
+    _data_cache = st.cache
 
 
 def _get_bmo_config() -> dict[str, Any]:
@@ -155,6 +162,47 @@ def _static_dataset_status(bmo_cfg: dict[str, Any]) -> dict[str, Any]:
         "state": "stale" if stale else "fresh",
         "max_age_minutes": max_age_minutes,
     }
+
+
+def _static_dataset_cache_token(bmo_cfg: dict[str, Any]) -> tuple[str, int]:
+    manager = _static_dataset_manager(bmo_cfg)
+    path = manager.current_csv_path()
+    try:
+        mtime_ns = path.stat().st_mtime_ns
+    except OSError:
+        mtime_ns = 0
+    return str(path), int(mtime_ns)
+
+
+@_data_cache(show_spinner=False, ttl=600)
+def _recent_fuel_rates_from_static_csv(
+    static_path: str, mtime_ns: int
+) -> dict[str, float | str]:
+    path = Path(static_path)
+    if not path.exists() or mtime_ns <= 0:
+        return {}
+    header = pd.read_csv(path, nrows=0)
+    wanted = [
+        "PCI_KG/THM",
+        "ACTUALKG/THM.",
+        "ACTUALKG/THM",
+        "NUTCOKE_CALC_THM",
+        "NUTCOKE_CALC_KG_THM",
+        "NUTCOKE_CALC_MT",
+        "nutcoke_prime_mt",
+        "COKE RATE KG/THM",
+        "coke_rate_kg_per_thm",
+        "coke_rate_kg_thm",
+        "coke_rate",
+        "PRODUCTIONTONNESPERHR",
+        "PRODUCTIONTONNESPERHR.",
+        "production_tonnes_per_hr",
+    ]
+    columns = [column for column in wanted if column in set(header.columns)]
+    if not columns:
+        return {}
+    df = pd.read_csv(path, usecols=columns)
+    return get_recent_fuel_input_rates(process_context=None, history_df=df)
 
 
 def _refresh_static_dataset_if_needed(
@@ -248,6 +296,36 @@ def _form_submit_button(container: Any, label: str, **kwargs: Any) -> bool:
         key: value for key, value in kwargs.items() if key in sig.parameters
     }
     return bool(container.form_submit_button(label, **supported))
+
+
+def _clear_bmo_results() -> None:
+    for key in (
+        "bmo_lp_result",
+        "bmo_lp_errors",
+        "bmo_de_result",
+        "bmo_de_errors",
+    ):
+        st.session_state.pop(key, None)
+
+
+def _fuel_ash_cfg_with_recent_rates(
+    fuel_ash_cfg: list[dict[str, Any]],
+    fuel_rates: dict[str, float | str],
+) -> list[dict[str, Any]]:
+    rate_keys = {
+        "coke": "coke_rate_kg_thm",
+        "nut_coke": "nut_coke_rate_kg_thm",
+        "pci": "pci_rate_kg_thm",
+    }
+    rows: list[dict[str, Any]] = []
+    for item in fuel_ash_cfg or []:
+        row = dict(item)
+        rate_key = rate_keys.get(str(row.get("fuel_id", "")).strip())
+        rate = fuel_rates.get(rate_key or "")
+        if rate is not None:
+            row["rate_kg_per_thm"] = float(rate)
+        rows.append(row)
+    return rows
 
 
 def _render_share_pie(blend: Any, selected_ores: list[OreInput], title: str) -> None:
@@ -513,25 +591,40 @@ def _render_data_diagnostics(
     edited_ore_df: pd.DataFrame,
     expanded: bool,
 ) -> None:
-    model_service = _get_model_service()
-    history_df, history_warnings = provider.get_history_frame(
-        online_lag_hours=model_service.get_max_lag_steps()
-    )
-    process_context, process_warnings = provider.get_process_context(
-        history_df=history_df
-    )
-    provider.get_charge_mix_snapshot()
-    diagnostics = provider.get_data_diagnostics()
-    warnings = [
-        *ore_diagnostics.get("warnings", []),
-        *hm_snapshot.get("warnings", []),
-        *history_warnings,
-        *process_warnings,
-    ]
-
     with st.expander("Data Diagnostics", expanded=expanded):
+        if st.button("Load diagnostics", key="bmo_load_diagnostics"):
+            st.session_state["bmo_diagnostics_loaded"] = True
         if st.button("Refresh diagnostics", key="bmo_refresh_diagnostics"):
+            st.session_state["bmo_diagnostics_loaded"] = True
             rerun_fragment()
+        if not st.session_state.get("bmo_diagnostics_loaded", False):
+            st.caption(
+                "Diagnostics are loaded on demand because they read the static "
+                "dataset, online context, charge mix, and source traces."
+            )
+            warnings = [
+                *ore_diagnostics.get("warnings", []),
+                *hm_snapshot.get("warnings", []),
+            ]
+            if warnings:
+                st.warning("- " + "\n- ".join(str(w) for w in warnings[:8]))
+            return
+
+        model_service = _get_model_service()
+        history_df, history_warnings = provider.get_history_frame(
+            online_lag_hours=model_service.get_max_lag_steps()
+        )
+        process_context, process_warnings = provider.get_process_context(
+            history_df=history_df
+        )
+        provider.get_charge_mix_snapshot()
+        diagnostics = provider.get_data_diagnostics()
+        warnings = [
+            *ore_diagnostics.get("warnings", []),
+            *hm_snapshot.get("warnings", []),
+            *history_warnings,
+            *process_warnings,
+        ]
 
         source_rows = []
         stock = diagnostics.get("stock", {})
@@ -954,39 +1047,53 @@ runtime_cfg = build_runtime_config(
 )
 opt_cfg = runtime_cfg.get("optimizer", {})
 
-layout_col1, layout_col2, layout_col3, layout_col4 = st.columns(4)
-
-with layout_col1:
-    chemistry_mode = st.selectbox(
-        "Chemistry mode",
-        options=["latest", "avg"],
-        index=0 if str(bmo_cfg.get("chemistry_mode", "latest")) == "latest" else 1,
-    )
-
-with layout_col2:
-    if chemistry_mode == "avg":
-        chemistry_window_days = st.slider(
-            "Chemistry window (days)",
-            min_value=1,
-            max_value=180,
-            value=int(bmo_cfg.get("chemistry_window_days", 30)),
+with st.form("bmo_model_input_form", clear_on_submit=False):
+    st.markdown("### Model Inputs")
+    layout_col1, layout_col2, layout_col3, layout_col4 = st.columns(4)
+    with layout_col1:
+        chemistry_mode = st.selectbox(
+            "Chemistry mode",
+            options=["latest", "avg"],
+            index=0
+            if str(bmo_cfg.get("chemistry_mode", "latest")) == "latest"
+            else 1,
+            key="bmo_chemistry_mode",
         )
-    else:
-        chemistry_window_days = int(bmo_cfg.get("chemistry_window_days", 30))
-        st.caption("Latest uses the last charged instance for each material.")
-
-target_production_mt = layout_col3.number_input(
-    "Target HM / Pig Iron (MT)",
-    min_value=0.0,
-    value=float(target_cfg.get("target_production_mt", 2350.0)),
-    step=5.0,
-)
-target_slag_qty_mt = layout_col4.number_input(
-    "Max Slag (MT)",
-    min_value=0.0,
-    value=float(target_cfg.get("target_slag_qty_mt", 750.0)),
-    step=5.0,
-)
+    chemistry_window_days = layout_col2.slider(
+        "Chemistry window for avg (days)",
+        min_value=1,
+        max_value=180,
+        value=int(bmo_cfg.get("chemistry_window_days", 30)),
+        key="bmo_chemistry_window_days",
+        help="Used only when Chemistry mode is avg. Latest mode uses the last charged instance.",
+    )
+    target_production_mt = layout_col3.number_input(
+        "Target HM / Pig Iron (MT)",
+        min_value=0.0,
+        value=float(target_cfg.get("target_production_mt", 2350.0)),
+        step=5.0,
+        key="bmo_target_production_mt",
+    )
+    target_slag_qty_mt = layout_col4.number_input(
+        "Max Slag (MT)",
+        min_value=0.0,
+        value=float(target_cfg.get("target_slag_qty_mt", 750.0)),
+        step=5.0,
+        key="bmo_target_slag_qty_mt",
+    )
+    model_inputs_applied = _form_submit_button(
+        st,
+        "Apply Model Inputs",
+        type="primary",
+        width="stretch",
+    )
+if model_inputs_applied:
+    st.session_state.pop("bmo_applied_ore_editor_df", None)
+    _clear_bmo_results()
+    st.success("Model inputs applied.")
+elif chemistry_mode == "latest":
+    st.caption("Latest chemistry uses the last charged instance for each material.")
+feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
 
 
 ores, ore_diagnostics = provider.build_ore_inputs(
@@ -1025,37 +1132,94 @@ if bool(ui_cfg.get("auto_select_active_pellet", True)):
     default_selected_ids = sorted(set(default_selected_ids).union(active_pellet_ids))
 editor_df = build_ore_editor_df(ores, default_selected_ids=default_selected_ids)
 
+static_path, static_mtime_ns = _static_dataset_cache_token(bmo_cfg)
+recent_fuel_rates = _recent_fuel_rates_from_static_csv(static_path, static_mtime_ns)
+
 st.markdown("### Ore Selection, Stock, Pricing, Chemistry, and Share Bounds")
-edited_df = render_ore_editor(editor_df)
+stored_ore_df = st.session_state.get("bmo_applied_ore_editor_df")
+if (
+    isinstance(stored_ore_df, pd.DataFrame)
+    and "ore_id" in stored_ore_df.columns
+    and set(stored_ore_df["ore_id"].astype(str)) == set(editor_df["ore_id"].astype(str))
+):
+    ore_editor_source_df = stored_ore_df
+else:
+    ore_editor_source_df = editor_df
+
+with st.form("bmo_ore_input_form", clear_on_submit=False):
+    edited_ore_candidate_df = render_ore_editor(ore_editor_source_df)
+    ore_inputs_applied = _form_submit_button(
+        st,
+        "Apply Ore Inputs",
+        type="primary",
+        width="stretch",
+    )
+if ore_inputs_applied:
+    edited_df = edited_ore_candidate_df.copy()
+    st.session_state["bmo_applied_ore_editor_df"] = edited_df
+    _clear_bmo_results()
+    st.success("Ore inputs applied.")
+else:
+    edited_df = ore_editor_source_df
 
 with st.expander("Slag, Fuel, Flux, and HM Assumptions", expanded=False):
-    fuel_ash_df = build_fuel_ash_editor_df(bmo_cfg.get("fuel_ash_inputs", []))
-    if not fuel_ash_df.empty:
-        st.markdown("##### Fuel Ash Inputs")
-        edited_fuel_ash_df = render_fuel_ash_editor(fuel_ash_df)
-    else:
-        edited_fuel_ash_df = fuel_ash_df
-    fuel_ash_inputs = _fuel_ash_inputs_from_editor(edited_fuel_ash_df)
+    with st.form("bmo_assumption_input_form", clear_on_submit=False):
+        fuel_ash_cfg = _fuel_ash_cfg_with_recent_rates(
+            bmo_cfg.get("fuel_ash_inputs", []), recent_fuel_rates
+        )
+        fuel_ash_df = build_fuel_ash_editor_df(fuel_ash_cfg)
+        if not fuel_ash_df.empty:
+            st.markdown("##### Fuel Ash Inputs")
+            source_bits = []
+            for fuel_id, label in (
+                ("coke", "Coke"),
+                ("nut_coke", "Nut coke"),
+                ("pci", "PCI"),
+            ):
+                rate_key = f"{fuel_id}_rate_kg_thm"
+                source_key = f"{fuel_id}_source"
+                if rate_key in recent_fuel_rates:
+                    source_bits.append(
+                        f"{label}: {float(recent_fuel_rates[rate_key]):.1f} kg/THM "
+                        f"({recent_fuel_rates.get(source_key, 'unknown')})"
+                    )
+            if source_bits:
+                st.caption("Starting rates from latest non-zero context: " + "; ".join(source_bits))
+            edited_fuel_ash_df = render_fuel_ash_editor(fuel_ash_df)
+        else:
+            edited_fuel_ash_df = fuel_ash_df
+        fuel_ash_inputs = _fuel_ash_inputs_from_editor(edited_fuel_ash_df)
 
-    flux_inputs, flux_warnings = provider.get_flux_inputs(
-        mode=chemistry_mode, window_days=chemistry_window_days
-    )
-    ore_diagnostics["warnings"].extend(flux_warnings)
-    st.caption(
-        "Flux quantities and chemistry are loaded from charge data and flux chemistry records."
-    )
+        flux_inputs, flux_warnings = provider.get_flux_inputs(
+            mode=chemistry_mode, window_days=chemistry_window_days
+        )
+        ore_diagnostics["warnings"].extend(flux_warnings)
+        st.caption(
+            "Flux quantities and chemistry are loaded from charge data and flux chemistry records."
+        )
 
-    hm_chem_values = render_hot_metal_chemistry(
-        hm_snapshot, bmo_cfg.get("slag_balance", {})
-    )
+        hm_chem_values = render_hot_metal_chemistry(
+            hm_snapshot, bmo_cfg.get("slag_balance", {})
+        )
 
-    slag_settings_values = render_slag_balance_settings(bmo_cfg.get("slag_balance", {}))
-    dust_df = build_dust_editor_df(bmo_cfg.get("dust_inputs", []))
-    if not dust_df.empty:
-        st.markdown("##### BF Gas Dust")
-        edited_dust_df = render_dust_editor(dust_df)
-    else:
-        edited_dust_df = dust_df
+        slag_settings_values = render_slag_balance_settings(
+            bmo_cfg.get("slag_balance", {})
+        )
+        dust_df = build_dust_editor_df(bmo_cfg.get("dust_inputs", []))
+        if not dust_df.empty:
+            st.markdown("##### BF Gas Dust")
+            edited_dust_df = render_dust_editor(dust_df)
+        else:
+            edited_dust_df = dust_df
+        assumptions_applied = _form_submit_button(
+            st,
+            "Apply Assumptions",
+            type="primary",
+            width="stretch",
+        )
+if assumptions_applied:
+    _clear_bmo_results()
+    st.success("Assumptions applied.")
 dust_inputs = _dust_inputs_from_editor(edited_dust_df)
 slag_balance_settings = _slag_balance_settings_from_editor(
     slag_settings_values, hm_chem_values, hm_snapshot
@@ -1169,9 +1333,6 @@ if requested_lp or requested_total:
     elif len(selected_ores) < 2:
         st.error("Select at least two ores before running optimization.")
     else:
-        feo_in_slag_pct = float(
-            bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4)
-        )
         fuel_context = None
 
         with st.spinner("Running LP baseline..."):
