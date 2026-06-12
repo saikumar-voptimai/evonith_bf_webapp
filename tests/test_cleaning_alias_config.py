@@ -75,6 +75,34 @@ def test_cleaner_drops_only_non_protected_columns_above_nan_threshold() -> None:
     assert cleaned["SPARSE_ZERO"].eq(0).all()
 
 
+def test_cleaner_preserves_high_nan_imputation_skip_columns() -> None:
+    cfg = cleaning.CleaningConfig(
+        columns=cleaning.ColumnGroups(
+            rm_params=(),
+            hm_slag_params=(),
+            bd_params=(),
+            temp_params=(),
+            op_params=(),
+            prcs_params=(),
+            proxy_params=(),
+            extra_keep_columns=("SPARSE_IMPUTE",),
+        ),
+        row_min_non_na_fraction=0.0,
+        col_max_nan_fraction=0.70,
+        add_unit_cost_feature=False,
+        imputation_plan=cleaning.ImputationPlan(skip_columns=("SPARSE_IMPUTE",)),
+    )
+    df = pd.DataFrame(
+        {"SPARSE_IMPUTE": [1.0] + [None] * 9},
+        index=pd.date_range("2026-05-01", periods=10, freq="h"),
+    )
+
+    cleaned = cleaning.DataCleaner(cfg).clean(df)
+
+    assert "SPARSE_IMPUTE" in cleaned.columns
+    assert cleaned["SPARSE_IMPUTE"].notna().all()
+
+
 def test_cleaner_keeps_absent_configured_columns_absent(caplog) -> None:
     cfg = cleaning.CleaningConfig(
         columns=cleaning.ColumnGroups(

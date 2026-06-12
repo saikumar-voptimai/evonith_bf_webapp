@@ -160,8 +160,10 @@ _THM_SOURCE_ALIASES: dict[str, tuple[str, ...]] = {
     "FLUX_CALC_THM": ("FLUX_CALC_MT",),
     "NUTCOKE_CALC_THM": ("NUTCOKE_CALC_MT",),
     "ORE_CALC_THM": ("ORE_CALC_MT",),
+    "PCI_CALC_THM": ("PCI_CALC_MT", "PCI_2_CALC_MT"),
     "PCI_2_CALC_THM": ("PCI_2_CALC_MT", "PCI_CALC_MT"),
     "SINTER_CALC_THM": ("SINTER_CALC_MT",),
+    "TOTAL_CLO_THM": ("ORE_CALC_MT",),
     "TOTAL_PELLET_CALC_THM": ("TOTAL_PELLET_CALC_MT",),
 }
 
@@ -396,6 +398,7 @@ def _candidate_blend_features(
         hm_basis_mt = hot_metal_mt
 
     payload["ORE_CALC_THM"] = (ore_qty / hm_basis_mt) if hm_basis_mt > 0 else 0.0
+    payload["TOTAL_CLO_THM"] = payload["ORE_CALC_THM"]
     payload["SINTER_CALC_THM"] = (
         (sinter_qty / hm_basis_mt) if hm_basis_mt > 0 else 0.0
     )
@@ -845,6 +848,7 @@ def default_candidate_lag_bases(feature_payload: Mapping[str, Any]) -> set[str]:
                 "SINTER_CALC_MT",
                 "TOTAL_PELLET_CALC_MT",
                 "ORE_CALC_THM",
+                "TOTAL_CLO_THM",
                 "SINTER_CALC_THM",
                 "TOTAL_PELLET_CALC_THM",
             }

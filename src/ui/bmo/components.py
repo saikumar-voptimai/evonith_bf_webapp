@@ -994,9 +994,7 @@ def render_blend_metrics(
         c8.metric("Slag Rate (kg/THM)", f"{blend.slag_rate_kg_per_thm:,.2f}")
 
     if fuel_used_fallback:
-        reason = (
-            getattr(model_prediction, "details", {}) or {}
-        ).get("reason")
+        reason = (getattr(model_prediction, "details", {}) or {}).get("reason")
         reason_text = f" Reason: {reason}." if reason else ""
         st.caption(
             "WARNING - Fuel cost above came from the deterministic fallback "
@@ -1040,36 +1038,53 @@ def render_blend_metrics(
     else:
         st.caption("Fuel-rate estimate unavailable because latest PCI rate is missing.")
 
-    if full_balance_active:
-        st.markdown(
-            "##### Removed by Hot Metal "
-            "(already subtracted from the slag totals above)"
-        )
-        c13, c14, c15, c16 = st.columns(4)
-        sio2_red = float(blend.diagnostics.get("hm_reduction_sio2_mt", 0.0) or 0.0)
-        mno_red = float(blend.diagnostics.get("hm_reduction_mno_mt", 0.0) or 0.0)
-        tio2_red = float(blend.diagnostics.get("hm_reduction_tio2_mt", 0.0) or 0.0)
-        alkali_red = float(
-            blend.diagnostics.get("hm_reduction_alkali_mt", 0.0) or 0.0
-        )
-        c13.metric("SiO2 -> HM Si (MT)", f"{sio2_red:,.2f}")
-        c14.metric("MnO -> HM Mn (MT)", f"{mno_red:,.2f}")
-        c15.metric("TiO2 -> HM Ti (MT)", f"{tio2_red:,.2f}")
-        c16.metric("Alkali -> Gas (MT)", f"{alkali_red:,.2f}")
-        s_red = float(blend.diagnostics.get("hm_reduction_s_mt", 0.0) or 0.0)
-        tio2_unacc = float(
-            blend.diagnostics.get("tio2_unaccounted_mt", 0.0) or 0.0
-        )
-        st.caption(
-            f"S to HM + Gas: {s_red:,.2f} MT (minor). "
-            f"Additional TiO2 not in slag per spec (lost to dust/gas): "
-            f"{tio2_unacc:,.2f} MT. "
-            "Fe is reduced almost entirely into Hot Metal by design and is "
-            "not shown as a slag removal."
-        )
-
     if blend.violations:
         st.warning("Constraint violations:\n- " + "\n- ".join(blend.violations))
+
+
+def build_blend_table_df(
+    blend: BlendEvaluation, selected_ores: list[OreInput]
+) -> pd.DataFrame:
+    """
+    Build the result table data for a blend.
+
+    Args:
+         - blend: BlendEvaluation - Evaluated blend result to display.
+         - selected_ores: list[OreInput] - Ores included in the current run.
+
+    Returns:
+         - return pd.DataFrame - Per-ore result table sorted by share.
+    """
+
+    rows = []
+    dry_weight_by_ore = blend.diagnostics.get("dry_weight_mt_by_ore", {}) or {}
+    fe_contribution_by_ore = (
+        blend.diagnostics.get("fe_contribution_mt_by_ore", {}) or {}
+    )
+    slag_contribution_by_ore = (
+        blend.diagnostics.get("slag_contribution_mt_by_ore", {}) or {}
+    )
+    for ore in selected_ores:
+        qty = float(blend.quantities_mt.get(ore.ore_id, 0.0))
+        share = float(blend.shares_pct.get(ore.ore_id, 0.0))
+        fe_mt = float(fe_contribution_by_ore.get(ore.ore_id, 0.0))
+        slag_mt = float(slag_contribution_by_ore.get(ore.ore_id, 0.0))
+        rows.append(
+            {
+                "ore_name": ore.display_name,
+                "quantity_mt": qty,
+                "dry_quantity_mt": float(dry_weight_by_ore.get(ore.ore_id, 0.0)),
+                "moisture_pct": float(ore.chemistry.moisture_pct),
+                "fe_contribution_mt": fe_mt,
+                "slag_contribution_mt": slag_mt,
+                "slag_per_fe": slag_mt / fe_mt if fe_mt > 0 else 0.0,
+                "share_pct": share,
+                "stock_mt": ore.stock_mt,
+                "price_rs_per_mt": ore.price_rs_per_mt,
+                "ore_cost_rs": qty * ore.price_rs_per_mt,
+            }
+        )
+    return pd.DataFrame(rows).sort_values("share_pct", ascending=False)
 
 
 def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) -> None:
@@ -1088,36 +1103,7 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
          - return None - Writes the blend table to the Streamlit page.
     """
 
-    rows = []
-    dry_weight_by_ore = blend.diagnostics.get("dry_weight_mt_by_ore", {}) or {}
-    fe_contribution_by_ore = (
-        blend.diagnostics.get("fe_contribution_mt_by_ore", {}) or {}
-    )
-    slag_contribution_by_ore = (
-        blend.diagnostics.get("slag_contribution_mt_by_ore", {}) or {}
-    )
-    for ore in selected_ores:
-        qty = float(blend.quantities_mt.get(ore.ore_id, 0.0))
-        share = float(blend.shares_pct.get(ore.ore_id, 0.0))
-        rows.append(
-            {
-                "ore_name": ore.display_name,
-                "quantity_mt": qty,
-                "dry_quantity_mt": float(dry_weight_by_ore.get(ore.ore_id, 0.0)),
-                "moisture_pct": float(ore.chemistry.moisture_pct),
-                "fe_contribution_mt": float(
-                    fe_contribution_by_ore.get(ore.ore_id, 0.0)
-                ),
-                "slag_contribution_mt": float(
-                    slag_contribution_by_ore.get(ore.ore_id, 0.0)
-                ),
-                "share_pct": share,
-                "stock_mt": ore.stock_mt,
-                "price_rs_per_mt": ore.price_rs_per_mt,
-                "ore_cost_rs": qty * ore.price_rs_per_mt,
-            }
-        )
-    df = pd.DataFrame(rows).sort_values("share_pct", ascending=False)
+    df = build_blend_table_df(blend, selected_ores)
     if hasattr(st, "column_config"):
         sig = inspect.signature(st.dataframe)
         df_kwargs: dict[str, Any] = {
@@ -1139,6 +1125,7 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
                 "slag_contribution_mt": st.column_config.NumberColumn(
                     "Slag (MT)", format="%.2f"
                 ),
+                "slag_per_fe": st.column_config.NumberColumn("Slag %", format="%.3f"),
                 "stock_mt": st.column_config.NumberColumn("Stock (MT)", format="%.1f"),
                 "price_rs_per_mt": st.column_config.NumberColumn(
                     "Price (Rs/MT)", format="%.1f"
@@ -1157,6 +1144,7 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
                 "moisture_pct",
                 "fe_contribution_mt",
                 "slag_contribution_mt",
+                "slag_per_fe",
                 "stock_mt",
                 "price_rs_per_mt",
                 "ore_cost_rs",
@@ -1168,6 +1156,7 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
         st.dataframe(df, **df_kwargs)
     else:
         _safe_dataframe(df, hide_index=True, width="stretch")
+
 
 def render_slag_balance_details(
     blend: BlendEvaluation,
@@ -1250,9 +1239,7 @@ def render_slag_balance_details(
             "final_slag_mt": post_ore + post_fuel + post_flux,
         }
         rollup_rows.append(rollup_total)
-        _safe_dataframe(
-            pd.DataFrame(rollup_rows), hide_index=True, width="stretch"
-        )
+        _safe_dataframe(pd.DataFrame(rollup_rows), hide_index=True, width="stretch")
 
         # --- Section 2: Per-oxide balance ---
         st.markdown("##### Per-oxide balance (where each oxide goes)")
@@ -1295,7 +1282,9 @@ def render_slag_balance_details(
                 "from_fuel_ash_mt": float(fuel_components.get("mn", 0.0)) * mn_factor,
                 "from_flux_mt": float(flux_components.get("mn", 0.0)) * mn_factor,
                 "input_after_dust_mt": mn_input * mn_factor,
-                "removed_by_hm_mt": max(0.0, (mn_input - mno_slag / mn_factor) * mn_factor),
+                "removed_by_hm_mt": max(
+                    0.0, (mn_input - mno_slag / mn_factor) * mn_factor
+                ),
                 "in_final_slag_mt": mno_slag,
             }
         )
@@ -1326,16 +1315,16 @@ def render_slag_balance_details(
                 "in_final_slag_mt": s_slag,
             }
         )
-        _safe_dataframe(
-            pd.DataFrame(oxide_rows), hide_index=True, width="stretch"
-        )
+        _safe_dataframe(pd.DataFrame(oxide_rows), hide_index=True, width="stretch")
 
         # --- Section 3: HM-removal worked breakdown ---
         st.markdown("##### Hot-Metal removals — worked breakdown")
         actual_pi = float(full_balance.get("actual_pig_iron_mt", 0.0) or 0.0)
         hm_si = float(fb_diag.get("hm_mn_pct_used", 0.0)) * 0  # placeholder
         hm_si_pct = (
-            float(blend.diagnostics.get("hm_reduction_sio2_mt", 0.0)) / (actual_pi * 2.14) * 100
+            float(blend.diagnostics.get("hm_reduction_sio2_mt", 0.0))
+            / (actual_pi * 2.14)
+            * 100
             if actual_pi > 0
             else 0.0
         )
@@ -1393,9 +1382,7 @@ def render_slag_balance_details(
                 ),
             },
         ]
-        _safe_dataframe(
-            pd.DataFrame(worked_rows), hide_index=True, width="stretch"
-        )
+        _safe_dataframe(pd.DataFrame(worked_rows), hide_index=True, width="stretch")
 
         # --- Section 4: Per-material slag contribution ---
         st.markdown("##### Per-material slag contribution (simplified oxide sum)")
@@ -1440,9 +1427,7 @@ def render_slag_balance_details(
                     ),
                 }
             )
-        _safe_dataframe(
-            pd.DataFrame(per_mat_rows), hide_index=True, width="stretch"
-        )
+        _safe_dataframe(pd.DataFrame(per_mat_rows), hide_index=True, width="stretch")
 
         # --- Section 5: Per-material TiO2 contribution (for verification) ---
         st.markdown(
@@ -1508,9 +1493,7 @@ def render_slag_balance_details(
                 "tio2_input_mt": round(total_tio2, 2),
             }
         )
-        _safe_dataframe(
-            pd.DataFrame(ti_rows), hide_index=True, width="stretch"
-        )
+        _safe_dataframe(pd.DataFrame(ti_rows), hide_index=True, width="stretch")
         st.caption(
             "Compare TOTAL above with the 'TiO2 to HM Ti' tile plus 'TiO2 lost' caption "
             "on the metric panel. If the total looks wrong, check the source materials' "
