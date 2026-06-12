@@ -55,6 +55,7 @@ class OutlierRule:
 @dataclass(frozen=True)
 class ImputationPlan:
     iterative_base_columns: Tuple[str, ...] = ()
+    skip_columns: Tuple[str, ...] = ()
     include_temperature_columns: bool = True
     iterative_random_state: int = 0
     iterative_max_iter: int = 10
@@ -570,6 +571,14 @@ def build_default_config() -> CleaningConfig:
             iterative_base_columns=_aliases_for(
                 rename_dict,
                 imputation.get("iterative_base_alias_keys", []) or [],
+            ),
+            skip_columns=tuple(
+                list(
+                    _aliases_for(
+                        rename_dict, imputation.get("skip_alias_keys", []) or []
+                    )
+                )
+                + list(imputation.get("skip_columns", []) or [])
             ),
             include_temperature_columns=bool(
                 imputation.get("include_temperature_columns", True)

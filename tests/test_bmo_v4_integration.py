@@ -93,6 +93,7 @@ def test_candidate_blend_payload_maps_ore_slots_and_ratios() -> None:
     hot_metal_mt = (60.0 * 0.92 * 0.55) + (20.0 * 0.94 * 0.61)
     hot_metal_mt += (30.0 * 0.98 * 0.30) + (10.0 * 1.0 * 0.64)
     assert payload["ORE_CALC_THM"] == pytest.approx(50.0 / hot_metal_mt)
+    assert payload["TOTAL_CLO_THM"] == pytest.approx(50.0 / hot_metal_mt)
     assert payload["SINTER_CALC_THM"] == pytest.approx(60.0 / hot_metal_mt)
     assert payload["TOTAL_PELLET_CALC_THM"] == pytest.approx(10.0 / hot_metal_mt)
     assert payload["ORE_3_PCT"] == pytest.approx(40.0)
@@ -151,6 +152,39 @@ def test_candidate_blend_payload_uses_operator_hm_basis_for_thm_features() -> No
 
     assert payload["SINTER_CALC_THM"] == pytest.approx(60.0 / 80.0)
     assert payload["ORE_CALC_THM"] == pytest.approx(40.0 / 80.0)
+    assert payload["TOTAL_CLO_THM"] == pytest.approx(40.0 / 80.0)
+
+
+def test_new_model_thm_aliases_resolve_from_history_and_candidate_payload() -> None:
+    history_df = pd.DataFrame(
+        {
+            "PCI_CALC_MT": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "ORE_CALC_MT": [100.0, 110.0, 120.0, 130.0, 140.0],
+            "PRODUCTIONTONNESPERHR": [50.0, 50.0, 60.0, 65.0, 70.0],
+        },
+        index=pd.date_range("2026-05-21", periods=5, freq="h"),
+    )
+
+    result = build_bmo_v4_feature_frame(
+        feature_payload={"TOTAL_CLO_THM": 1.75},
+        history_df=history_df,
+        expected_features=[
+            "PCI_CALC_THM",
+            "PCI_CALC_THM_lag4",
+            "TOTAL_CLO_THM",
+            "TOTAL_CLO_THM_lag1_(GasImpact)",
+            "TOTAL_CLO_THM_lag4_(MeltImpact)",
+        ],
+        default_values={},
+    )
+
+    row = result.vector_df.iloc[0]
+    assert row["PCI_CALC_THM"] == pytest.approx(50.0 / 70.0)
+    assert row["PCI_CALC_THM_lag4"] == pytest.approx(10.0 / 50.0)
+    assert row["TOTAL_CLO_THM"] == pytest.approx(1.75)
+    assert row["TOTAL_CLO_THM_lag1_(GasImpact)"] == pytest.approx(1.75)
+    assert row["TOTAL_CLO_THM_lag4_(MeltImpact)"] == pytest.approx(1.75)
+    assert result.imputed_features == []
 
 
 def test_bmo_v4_feature_frame_handles_dual_lags_and_candidate_overrides() -> None:

@@ -22,6 +22,11 @@ log = logging.getLogger(__name__)
 
 from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
+from data.bmo.ore_editor_preferences import (
+    apply_ore_editor_preferences,
+    load_ore_editor_preferences,
+    save_ore_editor_preferences,
+)
 from data.ml.static_dataset_manager import StaticDatasetManager
 from domain.optimization_runtime import build_runtime_config
 from ui.streamlit_fragments import fragment, rerun_fragment
@@ -93,6 +98,24 @@ def _get_bmo_config() -> dict[str, Any]:
     return cfg.get("bmo", {})
 
 
+def _repo_path(path_str: str) -> Path:
+    path = Path(path_str)
+    if path.is_absolute():
+        return path
+    return Path(__file__).resolve().parents[2] / path
+
+
+def _ore_preferences_path(bmo_cfg: dict[str, Any]) -> Path:
+    ui_cfg = bmo_cfg.get("ui", {}) or {}
+    return _repo_path(
+        str(
+            ui_cfg.get(
+                "ore_editor_preferences_path", "src/config/bmo_operator_inputs.yml"
+            )
+        )
+    )
+
+
 @_resource_cache(show_spinner=False)
 def _get_context_provider() -> EvonithBmoContextProvider:
     """
@@ -148,9 +171,8 @@ def _static_dataset_status(bmo_cfg: dict[str, Any]) -> dict[str, Any]:
         if last_updated and last_updated.tzinfo
         else datetime.now()
     )
-    stale = (
-        last_updated is None
-        or now - last_updated >= timedelta(minutes=max_age_minutes)
+    stale = last_updated is None or now - last_updated >= timedelta(
+        minutes=max_age_minutes
     )
     return {
         "manager": manager,
@@ -266,19 +288,42 @@ def _render_static_dataset_bar(bmo_cfg: dict[str, Any]) -> bool:
         if state == "stale":
             st.caption("Static dataset is older than the BMO one-hour refresh gate.")
         elif state == "missing":
-            st.warning("Static ML dataset is missing; optimizer run will refresh first.")
+            st.warning(
+                "Static ML dataset is missing; optimizer run will refresh first."
+            )
     return force
 
 
 def _context_group(field: str) -> str:
     name = field.upper()
-    if any(token in name for token in ("WEIGHTED_COKE", "WEIGHTED_NON_COKE", "PORTIONS", "DISCHARGE_TIME")):
+    if any(
+        token in name
+        for token in (
+            "WEIGHTED_COKE",
+            "WEIGHTED_NON_COKE",
+            "PORTIONS",
+            "DISCHARGE_TIME",
+        )
+    ):
         return "burden_distribution"
     if name.startswith("CHEM_") or name.startswith("SLAG_") or name.startswith("HMT"):
         return "hm_slag"
     if "CALC_MT" in name or "CALC_THM" in name or name.endswith("_PCT"):
         return "charge_quantities"
-    if any(token in name for token in ("SIO2", "AL2O3", "FE_TOTAL", "FE(T)", "MGO", "CAO", "TIO2", "MNO", "BASICITY")):
+    if any(
+        token in name
+        for token in (
+            "SIO2",
+            "AL2O3",
+            "FE_TOTAL",
+            "FE(T)",
+            "MGO",
+            "CAO",
+            "TIO2",
+            "MNO",
+            "BASICITY",
+        )
+    ):
         return "rm_composition"
     return "process_params"
 
@@ -292,9 +337,7 @@ def _show_df(df: pd.DataFrame) -> None:
 
 def _form_submit_button(container: Any, label: str, **kwargs: Any) -> bool:
     sig = inspect.signature(container.form_submit_button)
-    supported = {
-        key: value for key, value in kwargs.items() if key in sig.parameters
-    }
+    supported = {key: value for key, value in kwargs.items() if key in sig.parameters}
     return bool(container.form_submit_button(label, **supported))
 
 
@@ -378,7 +421,11 @@ def _manual_quantities_for_target(
         fe_fraction = max(0.0, float(ore.chemistry.fe_t_pct) / 100.0)
         fe_per_blend_mt += shares.get(ore.ore_id, 0.0) * dry_fraction * fe_fraction
     if fe_per_blend_mt <= 0:
-        return {}, raw_quantities, ["Manual blend Fe% is unavailable; cannot scale to target HM."]
+        return (
+            {},
+            raw_quantities,
+            ["Manual blend Fe% is unavailable; cannot scale to target HM."],
+        )
 
     total_target_qty = float(target_fe_mt) / fe_per_blend_mt
     target_quantities = {
@@ -402,9 +449,7 @@ def _render_manual_blend_comparison(
     slag_balance_settings: SlagBalanceSettings,
 ) -> None:
     snapshot = provider.get_recent_manual_blend_snapshot(selected_ores)
-    rows_by_ore = {
-        str(row.get("ore_id")): row for row in snapshot.get("rows", [])
-    }
+    rows_by_ore = {str(row.get("ore_id")): row for row in snapshot.get("rows", [])}
     if not rows_by_ore:
         st.info("Recent manual blend is unavailable for the last completed shift.")
         return
@@ -649,13 +694,17 @@ def _render_data_diagnostics(
                     "area": "rm_chemistry",
                     "source": "offline chemistry tables",
                     "timestamp/window": f"{chemistry.get('start_time', '')} -> {chemistry.get('end_time', '')}",
-                    "rows": sum(int(row.get("returned_rows", 0) or 0) for row in chemistry.get("tables", [])),
+                    "rows": sum(
+                        int(row.get("returned_rows", 0) or 0)
+                        for row in chemistry.get("tables", [])
+                    ),
                     "note": f"{chemistry.get('fallback_count', 0)} fallback material(s), mode={chemistry.get('mode', '')}",
                 },
                 {
                     "area": "hm_slag",
                     "source": hm.get("source", ""),
-                    "timestamp/window": hm.get("sample_timestamp") or f"{hm.get('start_time', '')} -> {hm.get('end_time', '')}",
+                    "timestamp/window": hm.get("sample_timestamp")
+                    or f"{hm.get('start_time', '')} -> {hm.get('end_time', '')}",
                     "rows": hm.get("n_rows_used", 0),
                     "note": f"HM Fe basis={hm.get('hm_fe_pct_for_target', 0.0):.2f}%",
                 },
@@ -682,7 +731,9 @@ def _render_data_diagnostics(
                 },
                 {
                     "area": "flux_inputs",
-                    "source": flux.get("source", "offline_feed.charge_data+offline_feed.flux_chemistry"),
+                    "source": flux.get(
+                        "source", "offline_feed.charge_data+offline_feed.flux_chemistry"
+                    ),
                     "timestamp/window": flux.get("latest_timestamp", ""),
                     "rows": len(flux.get("rows", [])),
                     "note": f"mode={flux.get('mode', '')}",
@@ -1054,9 +1105,7 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
         chemistry_mode = st.selectbox(
             "Chemistry mode",
             options=["latest", "avg"],
-            index=0
-            if str(bmo_cfg.get("chemistry_mode", "latest")) == "latest"
-            else 1,
+            index=0 if str(bmo_cfg.get("chemistry_mode", "latest")) == "latest" else 1,
             key="bmo_chemistry_mode",
         )
     chemistry_window_days = layout_col2.slider(
@@ -1131,6 +1180,9 @@ if bool(ui_cfg.get("auto_select_active_pellet", True)):
     ore_diagnostics["warnings"].extend(pellet_usage_warnings)
     default_selected_ids = sorted(set(default_selected_ids).union(active_pellet_ids))
 editor_df = build_ore_editor_df(ores, default_selected_ids=default_selected_ids)
+editor_df = apply_ore_editor_preferences(
+    editor_df, load_ore_editor_preferences(_ore_preferences_path(bmo_cfg))
+)
 
 static_path, static_mtime_ns = _static_dataset_cache_token(bmo_cfg)
 recent_fuel_rates = _recent_fuel_rates_from_static_csv(static_path, static_mtime_ns)
@@ -1148,17 +1200,37 @@ else:
 
 with st.form("bmo_ore_input_form", clear_on_submit=False):
     edited_ore_candidate_df = render_ore_editor(ore_editor_source_df)
+    st.caption(
+        "Save keeps ore selection, prices, and share bounds for the next "
+        "session. Stock and chemistry continue to come from the latest source data."
+    )
+    ore_apply_col, ore_save_col = st.columns(2)
     ore_inputs_applied = _form_submit_button(
-        st,
+        ore_apply_col,
         "Apply Ore Inputs",
         type="primary",
         width="stretch",
     )
-if ore_inputs_applied:
+    ore_inputs_saved = _form_submit_button(
+        ore_save_col,
+        "Save Ore Inputs for Next Time",
+        type="secondary",
+        width="stretch",
+    )
+if ore_inputs_applied or ore_inputs_saved:
     edited_df = edited_ore_candidate_df.copy()
     st.session_state["bmo_applied_ore_editor_df"] = edited_df
     _clear_bmo_results()
-    st.success("Ore inputs applied.")
+    if ore_inputs_saved:
+        try:
+            saved_path = save_ore_editor_preferences(
+                _ore_preferences_path(bmo_cfg), edited_df
+            )
+            st.success(f"Ore inputs saved to {saved_path}.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not save ore inputs: {exc}")
+    else:
+        st.success("Ore inputs applied.")
 else:
     edited_df = ore_editor_source_df
 
@@ -1184,7 +1256,10 @@ with st.expander("Slag, Fuel, Flux, and HM Assumptions", expanded=False):
                         f"({recent_fuel_rates.get(source_key, 'unknown')})"
                     )
             if source_bits:
-                st.caption("Starting rates from latest non-zero context: " + "; ".join(source_bits))
+                st.caption(
+                    "Starting rates from latest non-zero context: "
+                    + "; ".join(source_bits)
+                )
             edited_fuel_ash_df = render_fuel_ash_editor(fuel_ash_df)
         else:
             edited_fuel_ash_df = fuel_ash_df
@@ -1228,9 +1303,7 @@ slag_balance_settings = _slag_balance_settings_from_editor(
 # Operator-visible warning: if dust is entered but the full slag balance
 # is disabled, the dust rows are silently ignored downstream. Surface
 # this so the operator knows their dust entry isn't being applied.
-_dust_entered_mt = sum(
-    float(d.wet_qty_mt or 0.0) for d in dust_inputs if d.enabled
-)
+_dust_entered_mt = sum(float(d.wet_qty_mt or 0.0) for d in dust_inputs if d.enabled)
 if _dust_entered_mt > 0 and not slag_balance_settings.enabled:
     st.warning(
         f"BF gas dust ({_dust_entered_mt:,.1f} MT) is entered but "
@@ -1318,11 +1391,11 @@ if run_lp_clicked or run_total_clicked:
         st.session_state["bmo_pending_run_after_refresh"] = (
             "both"
             if run_lp_clicked and run_total_clicked
-            else "lp"
-            if run_lp_clicked
-            else "total"
+            else "lp" if run_lp_clicked else "total"
         )
-        st.success("Static ML dataset refreshed. Re-running optimizer with the updated dataset.")
+        st.success(
+            "Static ML dataset refreshed. Re-running optimizer with the updated dataset."
+        )
         st.rerun()
 
 if requested_lp or requested_total:
@@ -1382,9 +1455,7 @@ if requested_lp or requested_total:
             st.session_state["bmo_lp_errors"] = lp_errors
 
         if requested_total:
-            de_status = st.status(
-                "Total Cost Optimizer (DE) running...", expanded=True
-            )
+            de_status = st.status("Total Cost Optimizer (DE) running...", expanded=True)
             iteration_lines: list[str] = []
 
             def _de_progress(
@@ -1409,9 +1480,7 @@ if requested_lp or requested_total:
                 """
 
                 feas_txt = (
-                    f", best feasible {best_feas:,.1f}"
-                    if best_feas is not None
-                    else ""
+                    f", best feasible {best_feas:,.1f}" if best_feas is not None else ""
                 )
                 line = (
                     f"Iter {iteration:>2}  best {best_obj:,.1f} Rs/THM{feas_txt}"
@@ -1554,8 +1623,8 @@ if lp_result is not None or de_result is not None:
             de_fuel = de_result.fuel_cost_per_thm_rs
             de_total = de_result.objective_rs_per_thm
 
-            fuel_savings = lp_fuel - de_fuel   # +ve = DE saved fuel
-            ore_premium = de_ore - lp_ore      # +ve = DE paid an ore premium
+            fuel_savings = lp_fuel - de_fuel  # +ve = DE saved fuel
+            ore_premium = de_ore - lp_ore  # +ve = DE paid an ore premium
             total_delta = de_total - lp_total  # should be <= 0 if DE found improvement
 
             ca, cb, cc = st.columns(3)
