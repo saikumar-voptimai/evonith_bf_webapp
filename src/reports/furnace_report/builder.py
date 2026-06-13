@@ -254,9 +254,26 @@ def _used_charge_materials(
             item = resolver.display_name(_material_candidates(charge_col))
             totals[item] = totals.get(item, 0.0) + mt
         if totals:
-            used[label] = "\n".join(
-                f"- {item} - {mt:.2f} mt" for item, mt in totals.items()
-            )
+            if key == "ore":
+                burden_total_mt = sum(
+                    float(value or 0.0)
+                    for value in (
+                        _charge_sum(charge_df, "sinter"),
+                        _charge_sum(charge_df, "ore"),
+                        _charge_sum(charge_df, "pellet"),
+                    )
+                )
+                used[label] = "\n".join(
+                    (
+                        f"- {item} - {mt:.2f} mt - "
+                        f"{mt / burden_total_mt * 100:.2f}% in burden"
+                    )
+                    for item, mt in totals.items()
+                )
+            else:
+                used[label] = "\n".join(
+                    f"- {item} - {mt:.2f} mt" for item, mt in totals.items()
+                )
 
     return used
 
