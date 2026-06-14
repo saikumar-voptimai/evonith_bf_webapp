@@ -723,6 +723,135 @@ def test_lp_baseline_uses_slag_as_hard_cost_constraint():
     assert blend.quantities_mt["costly_low_slag"] > 50.0
 
 
+def test_evaluate_blend_reports_plant_slag_basicities():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=500.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(
+                fe_t_pct=60.0,
+                sio2_pct=4.0,
+                al2o3_pct=2.0,
+                cao_pct=3.0,
+                mgo_pct=1.0,
+            ),
+        )
+    ]
+    fluxes = [
+        FluxInput(
+            flux_id="limestone",
+            display_name="Limestone",
+            wet_qty_mt=10.0,
+            moisture_pct=0.0,
+            cao_pct=50.0,
+            mgo_pct=10.0,
+        )
+    ]
+
+    blend = evaluate_blend(
+        ores,
+        {"ore_a": 100.0},
+        feo_in_slag_pct=0.0,
+        flux_inputs=fluxes,
+    )
+
+    assert blend.slag_basicity == pytest.approx(8.0 / 4.0)
+    assert blend.slag_t_basicity == pytest.approx(10.0 / 4.0)
+    assert blend.diagnostics["slag_basicity_numerator_mt"] == pytest.approx(8.0)
+    assert blend.diagnostics["slag_basicity_denominator_mt"] == pytest.approx(4.0)
+    assert blend.diagnostics["slag_t_basicity_numerator_mt"] == pytest.approx(10.0)
+    assert blend.diagnostics["slag_t_basicity_denominator_mt"] == pytest.approx(4.0)
+
+
+def test_blend_constraint_check_enforces_basicity_bounds():
+    ores = [
+        OreInput(
+            ore_id="acid_ore",
+            display_name="ACID ORE",
+            stock_mt=500.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(
+                fe_t_pct=60.0,
+                sio2_pct=8.0,
+                al2o3_pct=2.0,
+                cao_pct=1.0,
+                mgo_pct=1.0,
+            ),
+        )
+    ]
+    blend = evaluate_blend(
+        ores,
+        {"acid_ore": 100.0},
+        feo_in_slag_pct=0.0,
+    )
+
+    violations = check_blend_constraints(
+        blend,
+        ores,
+        target_production_mt=60.0,
+        target_slag_qty_mt=100.0,
+        target_slag_basicity_min=0.5,
+        target_slag_basicity_max=2.0,
+    )
+
+    assert any("Slag basicity below bound" in violation for violation in violations)
+
+    t_violations = check_blend_constraints(
+        blend,
+        ores,
+        target_production_mt=60.0,
+        target_slag_qty_mt=100.0,
+        target_slag_t_basicity_min=0.5,
+        target_slag_t_basicity_max=2.0,
+    )
+
+    assert any("Slag T Basicity below bound" in violation for violation in t_violations)
+
+
+def test_lp_baseline_applies_slag_basicity_min_as_hard_constraint():
+    ores = [
+        OreInput(
+            ore_id="cheap_acid",
+            display_name="CHEAP ACID ORE",
+            stock_mt=500.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0, sio2_pct=10.0),
+        ),
+        OreInput(
+            ore_id="costly_basic",
+            display_name="COSTLY BASIC ORE",
+            stock_mt=500.0,
+            price_rs_per_mt=2000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0, cao_pct=10.0),
+        ),
+    ]
+
+    blend, errors = run_lp_baseline(
+        ores,
+        target_production_mt=50.0,
+        target_slag_qty_mt=100.0,
+        feo_in_slag_pct=0.0,
+        target_slag_basicity_min=1.0,
+        target_slag_basicity_max=10.0,
+    )
+
+    assert errors == []
+    assert blend is not None
+    assert blend.feasible is True
+    assert blend.slag_basicity >= 1.0 - 1e-6
+    assert blend.quantities_mt["costly_basic"] >= blend.quantities_mt["cheap_acid"]
+
+
 def test_lp_baseline_does_not_return_exact_slag_violating_blend(monkeypatch):
     ores = [
         OreInput(
@@ -737,10 +866,11 @@ def test_lp_baseline_does_not_return_exact_slag_violating_blend(monkeypatch):
     ]
 
     def underestimated_slag_terms(*args, **kwargs):
-        return np.zeros(len(ores), dtype=float), 0.0
+        zeros = np.zeros(len(ores), dtype=float)
+        return zeros, 0.0, zeros, 0.0, zeros, 0.0, zeros, 0.0
 
     monkeypatch.setattr(
-        lp_solver, "_build_linear_slag_terms", underestimated_slag_terms
+        lp_solver, "_build_linear_slag_and_basicity_terms", underestimated_slag_terms
     )
 
     blend, errors = run_lp_baseline(
@@ -840,6 +970,117 @@ def test_lp_baseline_treats_fixed_flux_slag_as_hard_constraint():
     assert any("LP infeasible" in error for error in errors)
 
 
+def test_lp_baseline_explains_stock_and_share_infeasibility():
+    # Only the sinter has stock and it is capped below a full burden, while the
+    # other ores have zero stock. The opaque HiGHS infeasible should be enriched
+    # with the stock/share coverage and Fe-capacity reasons.
+    ores = [
+        OreInput(
+            ore_id="sinter",
+            display_name="SINTER (SP-02)",
+            stock_mt=2660.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=58.0,
+            max_share_pct=70.0,
+            chemistry=OreChemistry(fe_t_pct=55.0),
+        ),
+        OreInput(
+            ore_id="geomin",
+            display_name="GEOMIN CLO",
+            stock_mt=0.0,
+            price_rs_per_mt=1100.0,
+            min_share_pct=0.0,
+            max_share_pct=30.0,
+            chemistry=OreChemistry(fe_t_pct=61.0),
+        ),
+    ]
+
+    blend, errors = run_lp_baseline(
+        ores,
+        target_production_mt=2230.0,
+        target_slag_qty_mt=750.0,
+        feo_in_slag_pct=0.4,
+    )
+
+    assert blend is None
+    assert any("LP infeasible" in error for error in errors)
+    assert any("maximum shares sum to" in error for error in errors)
+    assert any("can supply at most" in error and "MT Fe" in error for error in errors)
+
+
+def test_lp_baseline_explains_min_share_on_zero_stock_ore():
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=60.0),
+        ),
+        OreInput(
+            ore_id="ore_b",
+            display_name="ORE B",
+            stock_mt=0.0,
+            price_rs_per_mt=1100.0,
+            min_share_pct=20.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=62.0),
+        ),
+    ]
+
+    blend, errors = run_lp_baseline(
+        ores,
+        target_production_mt=1000.0,
+        target_slag_qty_mt=5000.0,
+        feo_in_slag_pct=0.4,
+    )
+
+    assert blend is None
+    assert any(
+        "ORE B" in error and "minimum share" in error and "zero stock" in error
+        for error in errors
+    )
+
+
+def test_lp_baseline_attributes_infeasibility_to_basicity_bounds():
+    # Ample stock and wide shares, but a CaO/SiO2 floor no ore-only blend can
+    # reach (no flux supplies CaO). The explainer should name the basicity
+    # bounds and report the achievable basicity.
+    ores = [
+        OreInput(
+            ore_id="ore_a",
+            display_name="ORE A",
+            stock_mt=5000.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=60.0, sio2_pct=5.0, cao_pct=0.5),
+        ),
+        OreInput(
+            ore_id="ore_b",
+            display_name="ORE B",
+            stock_mt=5000.0,
+            price_rs_per_mt=1100.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=62.0, sio2_pct=4.0, cao_pct=0.4),
+        ),
+    ]
+
+    blend, errors = run_lp_baseline(
+        ores,
+        target_production_mt=2230.0,
+        target_slag_qty_mt=5000.0,
+        feo_in_slag_pct=0.4,
+        target_slag_basicity_min=1.0,
+    )
+
+    assert blend is None
+    assert any("basicity bounds are the binding limit" in error for error in errors)
+
+
 def test_bmo_objective_evaluator_runs_with_fallback_model():
     ores = [
         OreInput(
@@ -897,6 +1138,66 @@ def test_bmo_objective_evaluator_runs_with_fallback_model():
     assert np.isfinite(result.objective_value)
     assert "base_objective_rs_per_thm" in result.components
     assert "blend" in result.diagnostics
+
+
+def test_bmo_objective_penalizes_slag_basicity_violation():
+    ores = [
+        OreInput(
+            ore_id="acid_ore",
+            display_name="ACID ORE",
+            stock_mt=500.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(
+                fe_t_pct=50.0,
+                sio2_pct=10.0,
+                cao_pct=1.0,
+            ),
+        )
+    ]
+    model_service = FuelUnitCostModelService(
+        bundle_cfg={
+            "model_path": "src/assets/models/bmo_fuel/definitely_missing_model.joblib",
+            "scaler_path": "src/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
+        },
+        fallback_cfg={},
+    )
+    evaluator = BmoObjectiveEvaluator(
+        ores=ores,
+        target_production_mt=50.0,
+        target_slag_qty_mt=100.0,
+        target_slag_basicity_min=0.5,
+        target_slag_basicity_max=2.0,
+        feo_in_slag_pct=0.0,
+        model_service=model_service,
+        process_context={},
+        history_df=pd.DataFrame(),
+        penalty_cfg={"penalty_basicity": 1000.0},
+    )
+
+    result = evaluator.evaluate_quantities(np.array([100.0], dtype=float))
+
+    assert result.components["penalty_slag_basicity"] > 0.0
+    assert result.feasible is False
+    assert any("Slag basicity below bound" in item for item in result.violations)
+
+    t_evaluator = BmoObjectiveEvaluator(
+        ores=ores,
+        target_production_mt=50.0,
+        target_slag_qty_mt=100.0,
+        target_slag_t_basicity_min=0.5,
+        target_slag_t_basicity_max=2.0,
+        feo_in_slag_pct=0.0,
+        model_service=model_service,
+        process_context={},
+        history_df=pd.DataFrame(),
+        penalty_cfg={"penalty_basicity": 1000.0},
+    )
+    t_result = t_evaluator.evaluate_quantities(np.array([100.0], dtype=float))
+
+    assert t_result.components["penalty_slag_t_basicity"] > 0.0
+    assert any("Slag T Basicity below bound" in item for item in t_result.violations)
 
 
 def test_bmo_objective_penalizes_production_above_target():

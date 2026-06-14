@@ -7,6 +7,10 @@ bmo:
   target:
     target_production_mt: 2350.0
     target_slag_qty_mt: 750.0
+    target_slag_basicity_min: 0.0
+    target_slag_basicity_max: 10.0
+    target_slag_t_basicity_min: 0.0
+    target_slag_t_basicity_max: 10.0
 
   chemistry:
     feo_in_slag_pct: 0.4
@@ -215,6 +219,7 @@ bmo:
     penalty_fe: 3000.0
     penalty_production_excess: 3000.0
     penalty_slag: 3000.0
+    penalty_basicity: 50000.0
 
   fallback_fuel_model:
     target_sinter_share_pct: 60.0
@@ -225,7 +230,7 @@ bmo:
       pci_rate_kg_per_thm: 170.0
     default_prices_rs_per_kg:
       coke_price_rs_per_kg: 28.0
-      nut_coke_price_rs_per_kg: 28.0
+      nut_coke_price_rs_per_kg: 24.0
       pci_price_rs_per_kg: 15.0
 
   model_bundle:

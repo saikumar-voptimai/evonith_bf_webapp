@@ -1,4 +1,4 @@
-"""Persistence helpers for BMO ore editor defaults."""
+"""Persistence helpers for BMO operator defaults."""
 
 from __future__ import annotations
 
@@ -12,6 +12,13 @@ PERSISTED_NUMERIC_COLUMNS = (
     "price_rs_per_mt",
     "min_share_pct",
     "max_share_pct",
+)
+
+PERSISTED_MODEL_INPUT_COLUMNS = (
+    "target_slag_basicity_min",
+    "target_slag_basicity_max",
+    "target_slag_t_basicity_min",
+    "target_slag_t_basicity_max",
 )
 
 
@@ -48,6 +55,32 @@ def build_ore_editor_preferences(editor_df: pd.DataFrame) -> dict[str, Any]:
         rows[ore_id] = saved_row
 
     return {"ore_editor": {"selected_ore_ids": selected_ids, "rows": rows}}
+
+
+def build_model_input_preferences(values: dict[str, Any]) -> dict[str, Any]:
+    """Build a compact preference payload for BMO model inputs."""
+
+    saved: dict[str, float] = {}
+    for key in PERSISTED_MODEL_INPUT_COLUMNS:
+        value = _float_or_none(values.get(key))
+        if value is not None:
+            saved[key] = value
+    return {"model_inputs": saved}
+
+
+def apply_model_input_preferences(
+    defaults: dict[str, float], preferences: dict[str, Any]
+) -> dict[str, float]:
+    """Apply saved model input preferences over computed/default values."""
+
+    out = dict(defaults)
+    saved = preferences.get("model_inputs", {}) if preferences else {}
+    for key in PERSISTED_MODEL_INPUT_COLUMNS:
+        if key in saved:
+            value = _float_or_none(saved.get(key))
+            if value is not None:
+                out[key] = value
+    return out
 
 
 def apply_ore_editor_preferences(
@@ -93,7 +126,20 @@ def save_ore_editor_preferences(path: str | Path, editor_df: pd.DataFrame) -> Pa
 
     pref_path = Path(path)
     pref_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = build_ore_editor_preferences(editor_df)
+    payload = load_ore_editor_preferences(pref_path)
+    payload.update(build_ore_editor_preferences(editor_df))
+    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
+        yaml.safe_dump(payload, file, sort_keys=False)
+    return pref_path
+
+
+def save_model_input_preferences(path: str | Path, values: dict[str, Any]) -> Path:
+    """Persist BMO model input preferences and return the written path."""
+
+    pref_path = Path(path)
+    pref_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = load_ore_editor_preferences(pref_path)
+    payload.update(build_model_input_preferences(values))
     with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
         yaml.safe_dump(payload, file, sort_keys=False)
     return pref_path

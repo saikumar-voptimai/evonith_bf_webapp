@@ -7,10 +7,14 @@ import pandas as pd
 import pytest
 import yaml
 
+from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
+    apply_model_input_preferences,
     apply_ore_editor_preferences,
+    build_model_input_preferences,
     build_ore_editor_preferences,
     load_ore_editor_preferences,
+    save_model_input_preferences,
     save_ore_editor_preferences,
 )
 from ui.bmo.components import build_blend_table_df
@@ -202,6 +206,149 @@ def test_ore_editor_preferences_load_reads_yaml(monkeypatch) -> None:
 
     assert loaded["ore_editor"]["selected_ore_ids"] == ["ore_a"]
     assert loaded["ore_editor"]["rows"]["ore_a"]["price_rs_per_mt"] == 7250.0
+
+
+def test_model_input_preferences_persist_only_basicity_bounds() -> None:
+    prefs = build_model_input_preferences(
+        {
+            "target_production_mt": 2350.0,
+            "target_slag_qty_mt": 750.0,
+            "target_slag_basicity_min": 1.02,
+            "target_slag_basicity_max": 1.14,
+            "target_slag_t_basicity_min": 1.24,
+            "target_slag_t_basicity_max": 1.40,
+        }
+    )
+
+    assert prefs == {
+        "model_inputs": {
+            "target_slag_basicity_min": 1.02,
+            "target_slag_basicity_max": 1.14,
+            "target_slag_t_basicity_min": 1.24,
+            "target_slag_t_basicity_max": 1.40,
+        }
+    }
+
+
+def test_model_input_preferences_override_static_defaults() -> None:
+    defaults = {
+        "target_slag_basicity_min": 1.03,
+        "target_slag_basicity_max": 1.16,
+        "target_slag_t_basicity_min": 1.25,
+        "target_slag_t_basicity_max": 1.41,
+    }
+    prefs = {
+        "model_inputs": {
+            "target_slag_basicity_min": 1.05,
+            "target_slag_t_basicity_max": 1.38,
+        }
+    }
+
+    applied = apply_model_input_preferences(defaults, prefs)
+
+    assert applied["target_slag_basicity_min"] == 1.05
+    assert applied["target_slag_basicity_max"] == 1.16
+    assert applied["target_slag_t_basicity_min"] == 1.25
+    assert applied["target_slag_t_basicity_max"] == 1.38
+
+
+def test_model_input_save_preserves_ore_preferences(monkeypatch) -> None:
+    m = mock_open(
+        read_data=(
+            "ore_editor:\n"
+            "  selected_ore_ids:\n"
+            "    - ore_a\n"
+            "  rows:\n"
+            "    ore_a:\n"
+            "      price_rs_per_mt: 7000.0\n"
+        )
+    )
+    monkeypatch.setattr(Path, "exists", lambda _path: True)
+    monkeypatch.setattr("builtins.open", m)
+
+    save_model_input_preferences(
+        Path("bmo_operator_inputs.yml"),
+        {
+            "target_slag_basicity_min": 1.02,
+            "target_slag_basicity_max": 1.14,
+            "target_slag_t_basicity_min": 1.24,
+            "target_slag_t_basicity_max": 1.40,
+        },
+    )
+    written = "".join(call.args[0] for call in m().write.call_args_list)
+    loaded = yaml.safe_load(written)
+
+    assert loaded["ore_editor"]["rows"]["ore_a"]["price_rs_per_mt"] == 7000.0
+    assert loaded["model_inputs"]["target_slag_basicity_min"] == 1.02
+
+
+def test_ore_input_save_preserves_model_preferences(monkeypatch) -> None:
+    m = mock_open(
+        read_data=(
+            "model_inputs:\n"
+            "  target_slag_basicity_min: 1.02\n"
+            "  target_slag_basicity_max: 1.14\n"
+            "  target_slag_t_basicity_min: 1.24\n"
+            "  target_slag_t_basicity_max: 1.40\n"
+        )
+    )
+    monkeypatch.setattr(Path, "exists", lambda _path: True)
+    monkeypatch.setattr("builtins.open", m)
+
+    save_ore_editor_preferences(
+        Path("bmo_operator_inputs.yml"),
+        pd.DataFrame(
+            [
+                {
+                    "selected": True,
+                    "ore_id": "ore_b",
+                    "price_rs_per_mt": 7250.0,
+                    "min_share_pct": 5.0,
+                    "max_share_pct": 30.0,
+                }
+            ]
+        ),
+    )
+    written = "".join(call.args[0] for call in m().write.call_args_list)
+    loaded = yaml.safe_load(written)
+
+    assert loaded["model_inputs"]["target_slag_t_basicity_max"] == 1.40
+    assert loaded["ore_editor"]["selected_ore_ids"] == ["ore_b"]
+
+
+def test_static_dataset_basicity_defaults_are_direct_recent_p10_p90(
+    monkeypatch,
+) -> None:
+    header = pd.DataFrame(
+        columns=["time", "SLAG_PCT_CAO", "SLAG_PCT_MGO", "SLAG_PCT_SIO2"]
+    )
+    data = pd.DataFrame(
+        {
+            "time": pd.to_datetime(
+                ["2026-01-01 00:00", "2026-06-01 00:00", "2026-06-02 00:00"]
+            ),
+            "SLAG_PCT_CAO": [999.0, 30.0, 40.0],
+            "SLAG_PCT_MGO": [999.0, 6.0, 8.0],
+            "SLAG_PCT_SIO2": [999.0, 30.0, 32.0],
+        }
+    )
+
+    def fake_read_csv(_path, *args, **kwargs):
+        if kwargs.get("nrows") == 0:
+            return header
+        return data[list(kwargs["usecols"])]
+
+    monkeypatch.setattr(Path, "exists", lambda _path: True)
+    monkeypatch.setattr("data.bmo.basicity_defaults.pd.read_csv", fake_read_csv)
+
+    defaults = derive_basicity_bounds_from_static_dataset(
+        Path("furnace_dataset.csv"), window_days=30
+    )
+
+    assert defaults["target_slag_basicity_min"] == pytest.approx(1.025)
+    assert defaults["target_slag_basicity_max"] == pytest.approx(1.225)
+    assert defaults["target_slag_t_basicity_min"] == pytest.approx(1.23)
+    assert defaults["target_slag_t_basicity_max"] == pytest.approx(1.47)
 
 
 def test_blend_table_includes_slag_per_fe_ratio() -> None:

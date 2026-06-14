@@ -8,6 +8,7 @@ so the UI reports constraint warnings consistently across optimization methods.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from math import isfinite
 
 import pandas as pd
 
@@ -20,8 +21,13 @@ def check_blend_constraints(
     *,
     target_production_mt: float,
     target_slag_qty_mt: float,
+    target_slag_basicity_min: float | None = None,
+    target_slag_basicity_max: float | None = None,
+    target_slag_t_basicity_min: float | None = None,
+    target_slag_t_basicity_max: float | None = None,
     fe_tolerance_mt: float = 0.5,
     slag_tolerance_mt: float = 0.0,
+    basicity_tolerance: float = 1e-6,
 ) -> list[str]:
     """
     Check a completed blend against BMO physical and planning constraints.
@@ -37,9 +43,14 @@ def check_blend_constraints(
          - ores: list[OreInput] - Ore inputs used to produce the blend.
          - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
+         - target_slag_basicity_min: float | None - Minimum CaO / SiO2 basicity.
+         - target_slag_basicity_max: float | None - Maximum CaO / SiO2 basicity.
+         - target_slag_t_basicity_min: float | None - Minimum (CaO + MgO) / SiO2 basicity.
+         - target_slag_t_basicity_max: float | None - Maximum (CaO + MgO) / SiO2 basicity.
          - fe_tolerance_mt: float - Allowed Fe production tolerance in MT.
          - slag_tolerance_mt: float - Allowed slag tolerance in MT. The
            default is zero because BMO treats max slag as a strict cap.
+         - basicity_tolerance: float - Numeric tolerance for basicity bounds.
 
     Returns:
          - return list[str] - Human-readable constraint violation messages.
@@ -60,6 +71,65 @@ def check_blend_constraints(
         violations.append(
             f"Slag exceeds bound: {blend.slag_mt:.2f} > {target_slag_qty_mt:.2f} MT."
         )
+
+    def _check_basicity(
+        *,
+        label: str,
+        value: float,
+        denominator_key: str,
+        min_value: float | None,
+        max_value: float | None,
+    ) -> None:
+        if min_value is None and max_value is None:
+            return
+        denominator = float(
+            blend.diagnostics.get(denominator_key, 0.0) or 0.0
+        )
+        basicity = float(value or 0.0)
+        if denominator <= 0.0 or not isfinite(basicity):
+            violations.append(
+                f"{label} unavailable: SiO2 denominator is zero."
+            )
+        else:
+            if min_value is not None and basicity < min_value - basicity_tolerance:
+                violations.append(
+                    f"{label} below bound: {basicity:.3f} < {min_value:.3f}."
+                )
+            if max_value is not None and basicity > max_value + basicity_tolerance:
+                violations.append(
+                    f"{label} above bound: {basicity:.3f} > {max_value:.3f}."
+                )
+
+    _check_basicity(
+        label="Slag basicity",
+        value=float(getattr(blend, "slag_basicity", 0.0) or 0.0),
+        denominator_key="slag_basicity_denominator_mt",
+        min_value=(
+            float(target_slag_basicity_min)
+            if target_slag_basicity_min is not None
+            else None
+        ),
+        max_value=(
+            float(target_slag_basicity_max)
+            if target_slag_basicity_max is not None
+            else None
+        ),
+    )
+    _check_basicity(
+        label="Slag T Basicity",
+        value=float(getattr(blend, "slag_t_basicity", 0.0) or 0.0),
+        denominator_key="slag_t_basicity_denominator_mt",
+        min_value=(
+            float(target_slag_t_basicity_min)
+            if target_slag_t_basicity_min is not None
+            else None
+        ),
+        max_value=(
+            float(target_slag_t_basicity_max)
+            if target_slag_t_basicity_max is not None
+            else None
+        ),
+    )
 
     for ore in ores:
         qty = float(blend.quantities_mt.get(ore.ore_id, 0.0))

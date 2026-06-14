@@ -1,0 +1,65 @@
+ore_editor:
+  selected_ore_ids:
+  - sinter_sp_02
+  - geomin_clo
+  - lloyds_clo
+  - nmdc_donimalai
+  - gomti_clo
+  - lloyds_pellet
+  rows:
+    sinter_sp_02:
+      price_rs_per_mt: 7789.0
+      min_share_pct: 63.0
+      max_share_pct: 70.0
+    geomin_clo:
+      price_rs_per_mt: 3827.0
+      min_share_pct: 0.0
+      max_share_pct: 20.0
+    lloyds_clo:
+      price_rs_per_mt: 8051.0
+      min_share_pct: 0.0
+      max_share_pct: 30.0
+    nmdc_donimalai:
+      price_rs_per_mt: 5684.0
+      min_share_pct: 0.0
+      max_share_pct: 15.0
+    gomti_clo:
+      price_rs_per_mt: 5349.0
+      min_share_pct: 0.0
+      max_share_pct: 30.0
+    jrs_ventures:
+      price_rs_per_mt: 6831.0
+      min_share_pct: 0.0
+      max_share_pct: 20.0
+    jayaswal_neco:
+      price_rs_per_mt: 6650.0
+      min_share_pct: 0.0
+      max_share_pct: 20.0
+    titani_ferrous_clo:
+      price_rs_per_mt: 4939.0
+      min_share_pct: 0.0
+      max_share_pct: 3.0
+    acore_ind_pvt_ltd:
+      price_rs_per_mt: 8473.0
+      min_share_pct: 0.0
+      max_share_pct: 3.0
+    nmdc_rom:
+      price_rs_per_mt: 8739.0
+      min_share_pct: 0.0
+      max_share_pct: 30.0
+    lloyds_oversize_clo:
+      price_rs_per_mt: 6162.0
+      min_share_pct: 0.0
+      max_share_pct: 10.0
+    bacheli_fines_over_size:
+      price_rs_per_mt: 10000.0
+      min_share_pct: 0.0
+      max_share_pct: 10.0
+    lloyds_pellet:
+      price_rs_per_mt: 9650.0
+      min_share_pct: 0.0
+      max_share_pct: 10.0
+    sarda_pellet:
+      price_rs_per_mt: 9650.0
+      min_share_pct: 0.0
+      max_share_pct: 10.0
