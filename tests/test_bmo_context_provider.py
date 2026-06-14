@@ -307,6 +307,88 @@ def test_recent_manual_blend_snapshot_uses_last_completed_shift(
     assert rows.loc["ore1", "share_pct"] == 40.0
 
 
+def test_recent_manual_blend_snapshot_includes_pellet_in_share_denominator(
+    monkeypatch,
+) -> None:
+    def fake_fetch(**kwargs):
+        assert kwargs["table_name"] == "offline_feed.charge_data"
+        assert "pellet_1_mt" in kwargs["columns"]
+        return pd.DataFrame(
+            {
+                "date_time": pd.to_datetime(
+                    [
+                        "2026-06-05T07:00:00Z",
+                        "2026-06-05T10:00:00Z",
+                    ]
+                ),
+                "sinter_3_mt": [16.0, 999.0],
+                "ore_2_mt": [2.821, 999.0],
+                "ore_3_mt": [3.115, 999.0],
+                "pellet_1_mt": [3.703, 999.0],
+            }
+        ).set_index("date_time")
+
+    monkeypatch.setattr(context_module, "_fetch_offline_data", fake_fetch)
+
+    provider = EvonithBmoContextProvider(
+        setting_path="missing_setting_bmo.yml",
+        mapping_path="missing_bmo_ore_mapping.yml",
+    )
+    all_burden_ores = [
+        OreInput(
+            ore_id="sinter",
+            display_name="SINTER",
+            stock_mt=1000.0,
+            price_rs_per_mt=1.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=55.0),
+            metadata={"material_key": "sinter_3"},
+        ),
+        OreInput(
+            ore_id="ore2",
+            display_name="ORE 2",
+            stock_mt=1000.0,
+            price_rs_per_mt=1.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=62.0),
+            metadata={"material_key": "ore_2"},
+        ),
+        OreInput(
+            ore_id="ore3",
+            display_name="ORE 3",
+            stock_mt=1000.0,
+            price_rs_per_mt=1.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=61.0),
+            metadata={"material_key": "ore_3"},
+        ),
+        OreInput(
+            ore_id="pellet1",
+            display_name="PELLET 1",
+            stock_mt=1000.0,
+            price_rs_per_mt=1.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=64.0),
+            metadata={"material_key": "pellet_1"},
+        ),
+    ]
+
+    snapshot = provider.get_recent_manual_blend_snapshot(all_burden_ores)
+
+    rows = pd.DataFrame(snapshot["rows"]).set_index("ore_id")
+    total = 16.0 + 2.821 + 3.115 + 3.703
+    assert rows.loc["sinter", "quantity_mt"] == pytest.approx(16.0)
+    assert rows.loc["ore2", "quantity_mt"] == pytest.approx(2.821)
+    assert rows.loc["ore3", "quantity_mt"] == pytest.approx(3.115)
+    assert rows.loc["pellet1", "quantity_mt"] == pytest.approx(3.703)
+    assert rows.loc["sinter", "share_pct"] == pytest.approx(16.0 / total * 100.0)
+    assert rows.loc["sinter", "share_pct"] < 65.0
+
+
 def test_bmo_pellet_database_smoke_check_when_database_url_available() -> None:
     database_url = os.getenv("DATABASE_URL")
     if not database_url:

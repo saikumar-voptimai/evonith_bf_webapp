@@ -7,6 +7,7 @@ one Streamlit workflow for ore blend planning.
 
 from __future__ import annotations
 
+import copy
 import inspect
 import logging
 from dataclasses import replace
@@ -22,9 +23,12 @@ log = logging.getLogger(__name__)
 
 from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
+from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
+    apply_model_input_preferences,
     apply_ore_editor_preferences,
     load_ore_editor_preferences,
+    save_model_input_preferences,
     save_ore_editor_preferences,
 )
 from data.ml.static_dataset_manager import StaticDatasetManager
@@ -79,13 +83,21 @@ else:
     _data_cache = st.cache
 
 
+@_data_cache(show_spinner=False)
+def _load_bmo_config_cached(mtime_ns: int) -> dict[str, Any]:
+    cfg = load_config("setting_bmo.yml")
+    return cfg.get("bmo", {})
+
+
 def _get_bmo_config() -> dict[str, Any]:
     """
     Load the BMO settings block from Streamlit app configuration.
 
     The page keeps all optimizer, model, data-source, and UI defaults in the
     dedicated BMO settings file. Returning only the ``bmo`` block avoids leaking
-    unrelated application settings into the optimizer flow.
+    unrelated application settings into the optimizer flow. The parse is cached
+    on the settings file's modification time so unchanged config is not re-read
+    and re-parsed on every Streamlit rerun.
 
     Args:
          - None
@@ -94,8 +106,12 @@ def _get_bmo_config() -> dict[str, Any]:
          - return dict[str, Any] - BMO configuration dictionary.
     """
 
-    cfg = load_config("setting_bmo.yml")
-    return cfg.get("bmo", {})
+    config_path = Path(__file__).resolve().parents[1] / "config" / "setting_bmo.yml"
+    try:
+        mtime_ns = config_path.stat().st_mtime_ns
+    except OSError:
+        mtime_ns = 0
+    return _load_bmo_config_cached(int(mtime_ns))
 
 
 def _repo_path(path_str: str) -> Path:
@@ -227,6 +243,109 @@ def _recent_fuel_rates_from_static_csv(
     return get_recent_fuel_input_rates(process_context=None, history_df=df)
 
 
+@_data_cache(show_spinner=False, ttl=600)
+def _basicity_defaults_from_static_csv(
+    static_path: str, mtime_ns: int
+) -> dict[str, float]:
+    if mtime_ns <= 0:
+        return {}
+    return derive_basicity_bounds_from_static_dataset(static_path, window_days=30)
+
+
+# --- Cached offline-source reads -------------------------------------------
+# The provider methods below each issue offline Neon/Postgres queries on every
+# call. The page reruns top-to-bottom on every widget interaction, so without
+# caching every checkbox toggle or "Save" click re-fires all of these DB round
+# trips. The source data is manual-entry (hourly / per 8-hour shift), so it is
+# fetched once per session and reused until the operator clicks "Refresh source
+# data" (which bumps ``bmo_source_cache_version``).
+#
+# These results carry provider-built objects (OreInput, FluxInput, and
+# DB-derived diagnostics) that ``st.cache_data`` tries to pickle and can reject
+# (UnserializableReturnValueError). They are therefore memoized in per-session
+# ``st.session_state`` instead, keyed by ``(call, mode, window_days)`` under the
+# current ``cache_version``. Returns are deep-copied so the page's downstream
+# mutation of ``ore_diagnostics["warnings"]`` cannot accumulate into the cache.
+
+
+def _bmo_source_cache(cache_version: int) -> dict[Any, Any]:
+    """Return the per-session source-data cache for ``cache_version``.
+
+    Bumping ``cache_version`` (the Refresh button) discards the whole bucket so
+    every offline-source read is fetched fresh on the next rerun.
+    """
+
+    bucket = st.session_state.get("_bmo_source_cache")
+    if not isinstance(bucket, dict) or bucket.get("_version") != cache_version:
+        bucket = {"_version": cache_version}
+        st.session_state["_bmo_source_cache"] = bucket
+    return bucket
+
+
+def _session_cached_source(
+    cache_version: int, key: tuple[Any, ...], builder: Any
+) -> Any:
+    bucket = _bmo_source_cache(cache_version)
+    if key not in bucket:
+        bucket[key] = builder()
+    return copy.deepcopy(bucket[key])
+
+
+def _cached_build_ore_inputs(
+    provider: EvonithBmoContextProvider,
+    mode: str,
+    window_days: int,
+    cache_version: int,
+) -> tuple[list[OreInput], dict[str, Any]]:
+    return _session_cached_source(
+        cache_version,
+        ("ore_inputs", mode, window_days),
+        lambda: provider.build_ore_inputs(mode=mode, window_days=window_days),
+    )
+
+
+def _cached_hm_slag_snapshot(
+    provider: EvonithBmoContextProvider,
+    mode: str,
+    window_days: int,
+    cache_version: int,
+) -> dict[str, Any]:
+    return _session_cached_source(
+        cache_version,
+        ("hm_slag", mode, window_days),
+        lambda: provider.get_hm_slag_snapshot(mode=mode, window_days=window_days),
+    )
+
+
+def _cached_recent_active_pellet_ids(
+    provider: EvonithBmoContextProvider,
+    cache_version: int,
+) -> tuple[list[str], list[str]]:
+    return _session_cached_source(
+        cache_version,
+        ("pellet_ids",),
+        lambda: provider.get_recent_active_pellet_ids(),
+    )
+
+
+def _cached_flux_inputs(
+    provider: EvonithBmoContextProvider,
+    mode: str,
+    window_days: int,
+    cache_version: int,
+) -> tuple[list[FluxInput], list[str]]:
+    return _session_cached_source(
+        cache_version,
+        ("flux_inputs", mode, window_days),
+        lambda: provider.get_flux_inputs(mode=mode, window_days=window_days),
+    )
+
+
+@_data_cache(show_spinner=False)
+def _cached_operator_preferences(path: str, mtime_ns: int) -> dict[str, Any]:
+    return load_ore_editor_preferences(path)
+
+
 def _refresh_static_dataset_if_needed(
     bmo_cfg: dict[str, Any], *, force: bool = False
 ) -> dict[str, Any]:
@@ -291,6 +410,20 @@ def _render_static_dataset_bar(bmo_cfg: dict[str, Any]) -> bool:
             st.warning(
                 "Static ML dataset is missing; optimizer run will refresh first."
             )
+        st.divider()
+        src_col1, src_col2 = st.columns([1.0, 2.0])
+        if src_col1.button("Refresh source data", key="bmo_refresh_source_data"):
+            st.session_state["bmo_source_cache_version"] = (
+                int(st.session_state.get("bmo_source_cache_version", 0)) + 1
+            )
+            # Full app rerun (not fragment-only) so the top-level chemistry,
+            # stock, HM/slag, flux and pellet calls re-read with the new version.
+            st.rerun()
+        src_col2.caption(
+            "Offline chemistry, stock, HM/slag, flux and pellet-usage data are "
+            "cached from page open for responsiveness. Click to pull the latest "
+            "manual-entry records."
+        )
     return force
 
 
@@ -393,45 +526,47 @@ def _render_share_pie(blend: Any, selected_ores: list[OreInput], title: str) -> 
     st.plotly_chart(fig, width="stretch")
 
 
-def _manual_quantities_for_target(
-    snapshot: dict[str, Any],
-    selected_ores: list[OreInput],
+def _target_quantities_from_shares(
+    shares_pct: dict[str, float],
+    ores: list[OreInput],
     target_fe_mt: float,
-) -> tuple[dict[str, float], dict[str, float], list[str]]:
-    rows_by_ore = {str(row.get("ore_id")): row for row in snapshot.get("rows", [])}
-    raw_quantities = {
-        ore.ore_id: max(
-            0.0,
-            float(rows_by_ore.get(ore.ore_id, {}).get("quantity_mt", 0.0) or 0.0),
-        )
-        for ore in selected_ores
-    }
-    total_raw_qty = sum(raw_quantities.values())
-    if total_raw_qty <= 0:
-        return (
-            {},
-            raw_quantities,
-            ["Last completed shift has no selected-material charge."],
-        )
+) -> tuple[dict[str, float], float, list[str]]:
+    """
+    Scale operator-edited burden shares into wet quantities for the target HM.
 
-    shares = {ore_id: qty / total_raw_qty for ore_id, qty in raw_quantities.items()}
+    The manual-vs-optimizer comparison lets the operator type any share split.
+    Shares are normalized to 100%, the blend Fe per wet MT is derived from each
+    ore's dry Fe, and the total wet quantity is sized so dry Fe equals the same
+    target Fe used by the optimizer. This keeps the manual blend on the same Fe
+    basis as the LP/DE result so the cost and slag comparison is apples-to-apples.
+
+    Args:
+         - shares_pct: dict[str, float] - Operator share percentages keyed by ore id.
+         - ores: list[OreInput] - Candidate ores (chemistry supplies Fe and moisture).
+         - target_fe_mt: float - Required dry Fe production in MT.
+
+    Returns:
+         - return tuple[dict[str, float], float, list[str]] - Quantities by ore id,
+           the normalized share total before scaling, and any warnings.
+    """
+
+    total_share = sum(max(0.0, float(v)) for v in shares_pct.values())
+    if total_share <= 0:
+        return {}, 0.0, ["Manual shares sum to zero; enter at least one positive share."]
+    shares = {oid: max(0.0, float(v)) / total_share for oid, v in shares_pct.items()}
     fe_per_blend_mt = 0.0
-    for ore in selected_ores:
+    for ore in ores:
         dry_fraction = max(0.0, 1.0 - float(ore.chemistry.moisture_pct) / 100.0)
         fe_fraction = max(0.0, float(ore.chemistry.fe_t_pct) / 100.0)
         fe_per_blend_mt += shares.get(ore.ore_id, 0.0) * dry_fraction * fe_fraction
     if fe_per_blend_mt <= 0:
-        return (
-            {},
-            raw_quantities,
-            ["Manual blend Fe% is unavailable; cannot scale to target HM."],
-        )
-
-    total_target_qty = float(target_fe_mt) / fe_per_blend_mt
-    target_quantities = {
-        ore_id: share * total_target_qty for ore_id, share in shares.items()
-    }
-    return target_quantities, raw_quantities, []
+        return {}, total_share, ["Manual blend Fe% is unavailable; cannot scale to target HM."]
+    total_qty = float(target_fe_mt) / fe_per_blend_mt
+    return (
+        {oid: sh * total_qty for oid, sh in shares.items()},
+        total_share,
+        [],
+    )
 
 
 def _render_manual_blend_comparison(
@@ -447,42 +582,78 @@ def _render_manual_blend_comparison(
     flux_inputs: list[FluxInput],
     dust_inputs: list[DustInput],
     slag_balance_settings: SlagBalanceSettings,
+    manual_ores: list[OreInput] | None = None,
+    recent_fuel_rates: dict[str, Any] | None = None,
 ) -> None:
-    snapshot = provider.get_recent_manual_blend_snapshot(selected_ores)
+    manual_ores_by_id = {ore.ore_id: ore for ore in (manual_ores or selected_ores)}
+    manual_ores_by_id.update({ore.ore_id: ore for ore in selected_ores})
+    manual_ore_inputs = list(manual_ores_by_id.values())
+    snapshot = provider.get_recent_manual_blend_snapshot(manual_ore_inputs)
     rows_by_ore = {str(row.get("ore_id")): row for row in snapshot.get("rows", [])}
-    if not rows_by_ore:
-        st.info("Recent manual blend is unavailable for the last completed shift.")
-        return
 
-    rows = []
-    for ore in selected_ores:
-        manual = rows_by_ore.get(ore.ore_id, {})
-        suggested_share = float(blend.shares_pct.get(ore.ore_id, 0.0))
-        manual_share = float(manual.get("share_pct", 0.0) or 0.0)
-        rows.append(
-            {
-                "ore_name": ore.display_name,
-                "manual_share_pct": manual_share,
-                "suggested_share_pct": suggested_share,
-                "delta_share_pct": suggested_share - manual_share,
-                "manual_shift_qty_mt": float(manual.get("quantity_mt", 0.0) or 0.0),
-                "suggested_qty_mt": float(blend.quantities_mt.get(ore.ore_id, 0.0)),
-            }
-        )
-    comparison_df = pd.DataFrame(rows).sort_values(
-        "suggested_share_pct", ascending=False
+    # The comparison is driven by the ores in the optimizer result so the manual
+    # blend is edited on the same materials the optimizer chose.
+    compare_ores = selected_ores
+    price_by_id = {ore.ore_id: float(ore.price_rs_per_mt) for ore in manual_ore_inputs}
+
+    st.markdown(f"##### Manual blend vs {title}")
+    st.caption(
+        "Edit the manual Share (%) to try any burden split. Shares are normalised "
+        "to 100% and scaled to the same target Fe as the optimizer, so cost, slag, "
+        "and basicity are compared on the same basis."
     )
-    st.markdown(f"##### Last Shift Manual Blend vs {title}")
     start_time = snapshot.get("start_time")
     end_time = snapshot.get("end_time")
-    if start_time and end_time:
-        st.caption(f"Manual blend window: {start_time} to {end_time}")
-    for warning in snapshot.get("warnings", []):
-        st.warning(str(warning))
+    if rows_by_ore and start_time and end_time:
+        st.caption(f"Seeded from last shift manual blend ({start_time} to {end_time}).")
+    elif not rows_by_ore:
+        st.caption("No last-shift manual blend found; seeded from the optimizer shares.")
 
-    manual_quantities, _manual_shift_quantities, scale_warnings = (
-        _manual_quantities_for_target(snapshot, selected_ores, target_fe_mt)
+    # Seed each ore's manual share from the last shift (if available), otherwise
+    # from the optimizer blend so the editor starts from a sensible split.
+    seed_rows = []
+    for ore in compare_ores:
+        manual = rows_by_ore.get(ore.ore_id, {})
+        seed_share = float(manual.get("share_pct", 0.0) or 0.0)
+        if seed_share <= 0:
+            seed_share = float(blend.shares_pct.get(ore.ore_id, 0.0))
+        seed_rows.append(
+            {
+                "ore_id": ore.ore_id,
+                "ore_name": ore.display_name,
+                "manual_share_pct": seed_share,
+                "optimal_share_pct": float(blend.shares_pct.get(ore.ore_id, 0.0)),
+            }
+        )
+    seed_df = pd.DataFrame(seed_rows)
+
+    editor_kwargs: dict[str, Any] = {
+        "hide_index": True,
+        "width": "stretch",
+        "key": "bmo_manual_share_editor",
+        "column_config": {
+            "ore_id": None,
+            "ore_name": st.column_config.TextColumn("Ore", disabled=True),
+            "manual_share_pct": st.column_config.NumberColumn(
+                "Manual Share (%)", min_value=0.0, max_value=100.0, step=0.5
+            ),
+            "optimal_share_pct": st.column_config.NumberColumn(
+                f"{title} Share (%)", format="%.1f", disabled=True
+            ),
+        },
+        "column_order": ("ore_name", "manual_share_pct", "optimal_share_pct"),
+    }
+    edited_share_df = st.data_editor(seed_df, **editor_kwargs)
+
+    manual_shares_pct = {
+        str(row["ore_id"]): float(row["manual_share_pct"] or 0.0)
+        for _, row in edited_share_df.iterrows()
+    }
+    manual_quantities, normalized_total, scale_warnings = _target_quantities_from_shares(
+        manual_shares_pct, compare_ores, target_fe_mt
     )
+    if normalized_total > 0:
+        st.caption(f"Entered manual shares sum to {normalized_total:,.1f}% (normalised to 100%).")
     for warning in scale_warnings:
         st.warning(warning)
 
@@ -497,7 +668,7 @@ def _render_manual_blend_comparison(
                 fuel_warnings,
             ) = _load_fuel_prediction_context(provider)
             manual_blend = evaluate_blend_with_fuel_prediction(
-                ores=selected_ores,
+                ores=compare_ores,
                 quantities_mt=manual_quantities,
                 feo_in_slag_pct=feo_in_slag_pct,
                 model_service=model_service,
@@ -514,117 +685,205 @@ def _render_manual_blend_comparison(
         except Exception as exc:
             st.warning(f"Could not evaluate manual blend cost/slag: {exc}")
 
-    if manual_blend is not None:
-        savings_rs_per_thm = (
-            manual_blend.objective_rs_per_thm - blend.objective_rs_per_thm
-        )
-        run_savings_rs = savings_rs_per_thm * float(target_production_mt)
-        ore_savings_rs_per_thm = (
-            manual_blend.ore_cost_per_thm_rs - blend.ore_cost_per_thm_rs
-        )
-        fuel_savings_rs_per_thm = (
-            manual_blend.fuel_cost_per_thm_rs - blend.fuel_cost_per_thm_rs
-        )
-        slag_reduction_mt = manual_blend.slag_mt - blend.slag_mt
+    if manual_blend is None:
+        return
 
-        st.markdown("##### Cost and Slag Impact")
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric(
-            "Savings (Rs/THM)",
-            f"{savings_rs_per_thm:,.2f}",
-            delta=f"{savings_rs_per_thm:+,.2f}",
-        )
-        k2.metric(
-            "Savings for Target HM",
-            f"Rs {run_savings_rs:,.0f}",
-            delta=f"{run_savings_rs:+,.0f}",
-        )
-        k3.metric(
-            "Ore Cost Saving (Rs/THM)",
-            f"{ore_savings_rs_per_thm:,.2f}",
-            delta=f"{ore_savings_rs_per_thm:+,.2f}",
-        )
-        k4.metric(
-            "Fuel Cost Saving (Rs/THM)",
-            f"{fuel_savings_rs_per_thm:,.2f}",
-            delta=f"{fuel_savings_rs_per_thm:+,.2f}",
-        )
+    # Headline: total-cost gap of the optimizer vs the manual blend.
+    total_saving = manual_blend.objective_rs_per_thm - blend.objective_rs_per_thm
+    h1, h2, h3 = st.columns(3)
+    h1.metric("Manual Total Cost (Rs/THM)", f"{manual_blend.objective_rs_per_thm:,.2f}")
+    h2.metric(f"{title} Total Cost (Rs/THM)", f"{blend.objective_rs_per_thm:,.2f}")
+    h3.metric(
+        "Optimizer saving (Rs/THM)",
+        f"{total_saving:,.2f}",
+        delta=f"{total_saving:+,.2f}",
+        help="Manual total cost minus optimizer total cost; positive = optimizer is cheaper.",
+    )
 
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Manual Total Cost", f"{manual_blend.objective_rs_per_thm:,.2f}")
-        s2.metric(f"{title} Total Cost", f"{blend.objective_rs_per_thm:,.2f}")
-        s3.metric(
-            "Slag Reduction (MT)",
-            f"{slag_reduction_mt:+,.2f}",
-            delta=f"{slag_reduction_mt:+,.2f}",
-        )
-        s4.metric(
-            "Slag Rate Reduction (kg/THM)",
-            f"{manual_blend.slag_rate_kg_per_thm - blend.slag_rate_kg_per_thm:+,.2f}",
-        )
+    def _basicity_value(b: Any, key: str, attr: str) -> str:
+        denominator = float(b.diagnostics.get(key, 0.0) or 0.0)
+        if denominator <= 0:
+            return "n/a"
+        return f"{float(getattr(b, attr, 0.0) or 0.0):,.3f}"
 
-        report_df = pd.DataFrame(
-            [
-                {
-                    "blend": "Last shift manual, scaled to target",
-                    "total_cost_rs_per_thm": manual_blend.objective_rs_per_thm,
-                    "ore_cost_rs_per_thm": manual_blend.ore_cost_per_thm_rs,
-                    "fuel_cost_rs_per_thm": manual_blend.fuel_cost_per_thm_rs,
-                    "slag_mt": manual_blend.slag_mt,
-                    "slag_rate_kg_per_thm": manual_blend.slag_rate_kg_per_thm,
-                    "fe_production_mt": manual_blend.fe_production_mt,
-                    "wet_qty_mt": manual_blend.total_qty_mt,
-                    "final_fe_pct": manual_blend.fe_t_pct,
-                },
-                {
-                    "blend": title,
-                    "total_cost_rs_per_thm": blend.objective_rs_per_thm,
-                    "ore_cost_rs_per_thm": blend.ore_cost_per_thm_rs,
-                    "fuel_cost_rs_per_thm": blend.fuel_cost_per_thm_rs,
-                    "slag_mt": blend.slag_mt,
-                    "slag_rate_kg_per_thm": blend.slag_rate_kg_per_thm,
-                    "fe_production_mt": blend.fe_production_mt,
-                    "wet_qty_mt": blend.total_qty_mt,
-                    "final_fe_pct": blend.fe_t_pct,
-                },
-            ]
-        )
-        st.dataframe(report_df, hide_index=True, width="stretch")
-
-        pie_left, pie_right = st.columns(2)
-        with pie_left:
-            _render_share_pie(manual_blend, selected_ores, "Last Shift Manual Mix")
-        with pie_right:
-            _render_share_pie(blend, selected_ores, f"{title} Mix")
-
-    if manual_blend is not None:
-        comparison_df["manual_target_qty_mt"] = comparison_df["ore_name"].map(
+    comparison_table = pd.DataFrame(
+        [
             {
-                ore.display_name: float(manual_blend.quantities_mt.get(ore.ore_id, 0.0))
-                for ore in selected_ores
+                "Metric": "Ore Cost (Rs/THM)",
+                "Manual": f"{manual_blend.ore_cost_per_thm_rs:,.2f}",
+                f"{title}": f"{blend.ore_cost_per_thm_rs:,.2f}",
+            },
+            {
+                "Metric": "Fuel Cost (Rs/THM, est)",
+                "Manual": f"{manual_blend.fuel_cost_per_thm_rs:,.2f}",
+                f"{title}": f"{blend.fuel_cost_per_thm_rs:,.2f}",
+            },
+            {
+                "Metric": "Total Cost (Rs/THM)",
+                "Manual": f"{manual_blend.objective_rs_per_thm:,.2f}",
+                f"{title}": f"{blend.objective_rs_per_thm:,.2f}",
+            },
+            {
+                "Metric": "Slag (MT, est)",
+                "Manual": f"{manual_blend.slag_mt:,.1f}",
+                f"{title}": f"{blend.slag_mt:,.1f}",
+            },
+            {
+                "Metric": "Slag Basicity CaO/SiO2",
+                "Manual": _basicity_value(
+                    manual_blend, "slag_basicity_denominator_mt", "slag_basicity"
+                ),
+                f"{title}": _basicity_value(
+                    blend, "slag_basicity_denominator_mt", "slag_basicity"
+                ),
+            },
+            {
+                "Metric": "Slag T-Basicity",
+                "Manual": _basicity_value(
+                    manual_blend, "slag_t_basicity_denominator_mt", "slag_t_basicity"
+                ),
+                f"{title}": _basicity_value(
+                    blend, "slag_t_basicity_denominator_mt", "slag_t_basicity"
+                ),
+            },
+        ]
+    )
+    st.dataframe(comparison_table, hide_index=True, width="stretch")
+
+    # Fuel rates (kg/THM): plant-realised last shift vs each blend's estimate.
+    # Realised = latest non-zero plant values; the blend "est" coke rate is
+    # back-derived from the model's predicted fuel cost, so this row lets the
+    # operator sanity-check the model against what the furnace actually ran.
+    def _fmt_rate(value: Any) -> str:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return "n/a"
+        if pd.isna(number) or number <= 0:
+            return "n/a"
+        return f"{number:,.1f}"
+
+    realised = recent_fuel_rates or {}
+    realised_coke = realised.get("coke_rate_kg_thm")
+    realised_nut = realised.get("nut_coke_rate_kg_thm")
+    realised_pci = realised.get("pci_rate_kg_thm")
+    realised_parts = [
+        float(v)
+        for v in (realised_coke, realised_nut, realised_pci)
+        if isinstance(v, (int, float)) and float(v) > 0
+    ]
+    realised_total = sum(realised_parts) if realised_parts else None
+
+    manual_est = manual_blend.diagnostics.get("fuel_rate_estimate") or {}
+    optimal_est = blend.diagnostics.get("fuel_rate_estimate") or {}
+
+    fuel_rate_table = pd.DataFrame(
+        [
+            {
+                "Fuel rate (kg/THM)": "Coke",
+                "Realised (last shift)": _fmt_rate(realised_coke),
+                "Manual (est)": _fmt_rate(manual_est.get("coke_rate_kg_thm")),
+                f"{title} (est)": _fmt_rate(optimal_est.get("coke_rate_kg_thm")),
+            },
+            {
+                "Fuel rate (kg/THM)": "Nut Coke",
+                "Realised (last shift)": _fmt_rate(realised_nut),
+                "Manual (est)": _fmt_rate(manual_est.get("nut_coke_rate_kg_thm")),
+                f"{title} (est)": _fmt_rate(optimal_est.get("nut_coke_rate_kg_thm")),
+            },
+            {
+                "Fuel rate (kg/THM)": "PCI",
+                "Realised (last shift)": _fmt_rate(realised_pci),
+                "Manual (est)": _fmt_rate(manual_est.get("pci_rate_kg_thm")),
+                f"{title} (est)": _fmt_rate(optimal_est.get("pci_rate_kg_thm")),
+            },
+            {
+                "Fuel rate (kg/THM)": "Total Fuel",
+                "Realised (last shift)": _fmt_rate(realised_total),
+                "Manual (est)": _fmt_rate(manual_est.get("total_fuel_rate_kg_thm")),
+                f"{title} (est)": _fmt_rate(optimal_est.get("total_fuel_rate_kg_thm")),
+            },
+        ]
+    )
+    st.markdown("##### Fuel Rates")
+    st.dataframe(fuel_rate_table, hide_index=True, width="stretch")
+    realised_source = str(realised.get("coke_source") or realised.get("pci_source") or "")
+    if realised_source:
+        st.caption(
+            "Realised = latest non-zero plant fuel rates from the static dataset "
+            f"(source e.g. {realised_source}). Blend rates are model estimates."
+        )
+
+    # Realised fuel cost (Rs/THM) from plant fuel rates and unit fuel prices:
+    # PCI Rs 18/kg, Nut coke Rs 24/kg, Coke Rs 28/kg. Shown next to each blend's
+    # model-predicted fuel cost so the operator can gauge the model vs reality.
+    def _rate_value(value: Any) -> float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        return number if (number > 0 and not pd.isna(number)) else 0.0
+
+    realised_fuel_cost = (
+        18.0 * _rate_value(realised_pci)
+        + 24.0 * _rate_value(realised_nut)
+        + 28.0 * _rate_value(realised_coke)
+    )
+    st.markdown("##### Fuel Cost (Rs/THM)")
+    fc1, fc2, fc3 = st.columns(3)
+    fc1.metric(
+        "Realised (last shift)",
+        f"{realised_fuel_cost:,.2f}" if realised_fuel_cost > 0 else "n/a",
+        help="18 x PCI + 24 x Nut coke + 28 x Coke, using realised plant fuel rates.",
+    )
+    fc2.metric("Manual (predicted)", f"{manual_blend.fuel_cost_per_thm_rs:,.2f}")
+    fc3.metric(f"{title} (predicted)", f"{blend.fuel_cost_per_thm_rs:,.2f}")
+
+    pie_left, pie_right = st.columns(2)
+    with pie_left:
+        _render_share_pie(manual_blend, compare_ores, "Manual Mix")
+    with pie_right:
+        _render_share_pie(blend, selected_ores, f"{title} Mix")
+
+    # Slim per-ore detail: shares plus ore cost in lakhs for both blends.
+    detail_rows = []
+    for ore in compare_ores:
+        manual_qty = float(manual_blend.quantities_mt.get(ore.ore_id, 0.0))
+        optimal_qty = float(blend.quantities_mt.get(ore.ore_id, 0.0))
+        price = price_by_id.get(ore.ore_id, 0.0)
+        detail_rows.append(
+            {
+                "ore_name": ore.display_name,
+                "manual_share_pct": float(manual_blend.shares_pct.get(ore.ore_id, 0.0)),
+                "optimal_share_pct": float(blend.shares_pct.get(ore.ore_id, 0.0)),
+                "manual_ore_cost_lakhs": manual_qty * price / 1.0e5,
+                "optimal_ore_cost_lakhs": optimal_qty * price / 1.0e5,
             }
         )
-        comparison_df["suggested_ore_cost_rs"] = comparison_df.apply(
-            lambda row: float(row["suggested_qty_mt"])
-            * next(
-                float(ore.price_rs_per_mt)
-                for ore in selected_ores
-                if ore.display_name == row["ore_name"]
-            ),
-            axis=1,
-        )
-        comparison_df["manual_ore_cost_rs"] = comparison_df.apply(
-            lambda row: float(row["manual_target_qty_mt"])
-            * next(
-                float(ore.price_rs_per_mt)
-                for ore in selected_ores
-                if ore.display_name == row["ore_name"]
-            ),
-            axis=1,
-        )
-
+    detail_df = pd.DataFrame(detail_rows).sort_values(
+        "optimal_share_pct", ascending=False
+    )
     st.markdown("##### Blend Details")
-    st.dataframe(comparison_df, hide_index=True, width="stretch")
+    st.dataframe(
+        detail_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "ore_name": st.column_config.TextColumn("Ore"),
+            "manual_share_pct": st.column_config.NumberColumn(
+                "Manual Share (%)", format="%.1f"
+            ),
+            "optimal_share_pct": st.column_config.NumberColumn(
+                f"{title} Share (%)", format="%.1f"
+            ),
+            "manual_ore_cost_lakhs": st.column_config.NumberColumn(
+                "Manual Ore Cost (₹ Lakhs)", format="%.2f"
+            ),
+            "optimal_ore_cost_lakhs": st.column_config.NumberColumn(
+                f"{title} Ore Cost (₹ Lakhs)", format="%.2f"
+            ),
+        },
+    )
 
 
 @fragment
@@ -1090,6 +1349,10 @@ st.session_state["bmo_bundle_status"] = bundle_status
 render_header(bundle_status)
 force_static_refresh = _render_static_dataset_bar(bmo_cfg)
 pending_run_after_refresh = st.session_state.pop("bmo_pending_run_after_refresh", None)
+# Bumped by the "Refresh source data" button; keys the cached offline-source
+# reads so they are fetched once per session and reused until the operator asks
+# for fresh data.
+source_cache_version = int(st.session_state.get("bmo_source_cache_version", 0))
 
 ui_cfg = bmo_cfg.get("ui", {})
 target_cfg = bmo_cfg.get("target", {})
@@ -1097,6 +1360,32 @@ runtime_cfg = build_runtime_config(
     bmo_cfg, default_optimizer=bmo_cfg.get("optimization", {})
 )
 opt_cfg = runtime_cfg.get("optimizer", {})
+operator_preferences_path = _ore_preferences_path(bmo_cfg)
+try:
+    _pref_mtime_ns = Path(operator_preferences_path).stat().st_mtime_ns
+except OSError:
+    _pref_mtime_ns = 0
+operator_preferences = _cached_operator_preferences(
+    str(operator_preferences_path), int(_pref_mtime_ns)
+)
+static_path, static_mtime_ns = _static_dataset_cache_token(bmo_cfg)
+recent_fuel_rates = _recent_fuel_rates_from_static_csv(static_path, static_mtime_ns)
+basicity_defaults = {
+    "target_slag_basicity_min": float(target_cfg.get("target_slag_basicity_min", 0.0)),
+    "target_slag_basicity_max": float(target_cfg.get("target_slag_basicity_max", 10.0)),
+    "target_slag_t_basicity_min": float(
+        target_cfg.get("target_slag_t_basicity_min", 0.0)
+    ),
+    "target_slag_t_basicity_max": float(
+        target_cfg.get("target_slag_t_basicity_max", 10.0)
+    ),
+}
+basicity_defaults.update(
+    _basicity_defaults_from_static_csv(static_path, static_mtime_ns)
+)
+basicity_defaults = apply_model_input_preferences(
+    basicity_defaults, operator_preferences
+)
 
 with st.form("bmo_model_input_form", clear_on_submit=False):
     st.markdown("### Model Inputs")
@@ -1130,28 +1419,93 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
         step=5.0,
         key="bmo_target_slag_qty_mt",
     )
+    basicity_col1, basicity_col2, basicity_col3, basicity_col4 = st.columns(4)
+    target_slag_basicity_min = basicity_col1.number_input(
+        "Min Basicity CaO/SiO2",
+        min_value=0.0,
+        value=float(basicity_defaults["target_slag_basicity_min"]),
+        step=0.01,
+        format="%.3f",
+        key="bmo_target_slag_basicity_min",
+    )
+    target_slag_basicity_max = basicity_col2.number_input(
+        "Max Basicity CaO/SiO2",
+        min_value=0.0,
+        value=float(basicity_defaults["target_slag_basicity_max"]),
+        step=0.01,
+        format="%.3f",
+        key="bmo_target_slag_basicity_max",
+    )
+    target_slag_t_basicity_min = basicity_col3.number_input(
+        "Min T Basicity",
+        min_value=0.0,
+        value=float(basicity_defaults["target_slag_t_basicity_min"]),
+        step=0.01,
+        format="%.3f",
+        key="bmo_target_slag_t_basicity_min",
+        help="(CaO + MgO) / SiO2",
+    )
+    target_slag_t_basicity_max = basicity_col4.number_input(
+        "Max T Basicity",
+        min_value=0.0,
+        value=float(basicity_defaults["target_slag_t_basicity_max"]),
+        step=0.01,
+        format="%.3f",
+        key="bmo_target_slag_t_basicity_max",
+        help="(CaO + MgO) / SiO2",
+    )
+    model_apply_col, model_save_col = st.columns(2)
     model_inputs_applied = _form_submit_button(
-        st,
+        model_apply_col,
         "Apply Model Inputs",
         type="primary",
         width="stretch",
     )
-if model_inputs_applied:
+    model_inputs_saved = _form_submit_button(
+        model_save_col,
+        "Save Basicity Inputs for Next Time",
+        type="secondary",
+        width="stretch",
+    )
+if model_inputs_applied or model_inputs_saved:
     st.session_state.pop("bmo_applied_ore_editor_df", None)
     _clear_bmo_results()
-    st.success("Model inputs applied.")
+    if model_inputs_saved:
+        try:
+            saved_path = save_model_input_preferences(
+                operator_preferences_path,
+                {
+                    "target_slag_basicity_min": target_slag_basicity_min,
+                    "target_slag_basicity_max": target_slag_basicity_max,
+                    "target_slag_t_basicity_min": target_slag_t_basicity_min,
+                    "target_slag_t_basicity_max": target_slag_t_basicity_max,
+                },
+            )
+            st.success(f"Basicity inputs saved to {saved_path}.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not save basicity inputs: {exc}")
+    else:
+        st.success("Model inputs applied.")
 elif chemistry_mode == "latest":
     st.caption("Latest chemistry uses the last charged instance for each material.")
+basicity_bounds_valid = (
+    target_slag_basicity_min <= target_slag_basicity_max
+    and target_slag_t_basicity_min <= target_slag_t_basicity_max
+)
+if target_slag_basicity_min > target_slag_basicity_max:
+    st.error("Min Basicity CaO/SiO2 must be less than or equal to Max Basicity.")
+if target_slag_t_basicity_min > target_slag_t_basicity_max:
+    st.error("Min T Basicity must be less than or equal to Max T Basicity.")
 feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
 
 
-ores, ore_diagnostics = provider.build_ore_inputs(
-    mode=chemistry_mode, window_days=chemistry_window_days
+ores, ore_diagnostics = _cached_build_ore_inputs(
+    provider, chemistry_mode, chemistry_window_days, source_cache_version
 )
 ore_diagnostics["warnings"] = list(ore_diagnostics.get("warnings", []))
 
-hm_snapshot = provider.get_hm_slag_snapshot(
-    mode=chemistry_mode, window_days=chemistry_window_days
+hm_snapshot = _cached_hm_slag_snapshot(
+    provider, chemistry_mode, chemistry_window_days, source_cache_version
 )
 ore_diagnostics["warnings"].extend(hm_snapshot.get("warnings", []))
 observed_slag_rate = float(hm_snapshot.get("observed_slag_rate_kg_per_thm", 0.0) or 0.0)
@@ -1176,16 +1530,13 @@ default_selected_ids = [
     ore.ore_id for ore in ores if ore.display_name in default_selected_names
 ]
 if bool(ui_cfg.get("auto_select_active_pellet", True)):
-    active_pellet_ids, pellet_usage_warnings = provider.get_recent_active_pellet_ids()
+    active_pellet_ids, pellet_usage_warnings = _cached_recent_active_pellet_ids(
+        provider, source_cache_version
+    )
     ore_diagnostics["warnings"].extend(pellet_usage_warnings)
     default_selected_ids = sorted(set(default_selected_ids).union(active_pellet_ids))
 editor_df = build_ore_editor_df(ores, default_selected_ids=default_selected_ids)
-editor_df = apply_ore_editor_preferences(
-    editor_df, load_ore_editor_preferences(_ore_preferences_path(bmo_cfg))
-)
-
-static_path, static_mtime_ns = _static_dataset_cache_token(bmo_cfg)
-recent_fuel_rates = _recent_fuel_rates_from_static_csv(static_path, static_mtime_ns)
+editor_df = apply_ore_editor_preferences(editor_df, operator_preferences)
 
 st.markdown("### Ore Selection, Stock, Pricing, Chemistry, and Share Bounds")
 stored_ore_df = st.session_state.get("bmo_applied_ore_editor_df")
@@ -1224,7 +1575,7 @@ if ore_inputs_applied or ore_inputs_saved:
     if ore_inputs_saved:
         try:
             saved_path = save_ore_editor_preferences(
-                _ore_preferences_path(bmo_cfg), edited_df
+                operator_preferences_path, edited_df
             )
             st.success(f"Ore inputs saved to {saved_path}.")
         except Exception as exc:  # noqa: BLE001
@@ -1265,8 +1616,8 @@ with st.expander("Slag, Fuel, Flux, and HM Assumptions", expanded=False):
             edited_fuel_ash_df = fuel_ash_df
         fuel_ash_inputs = _fuel_ash_inputs_from_editor(edited_fuel_ash_df)
 
-        flux_inputs, flux_warnings = provider.get_flux_inputs(
-            mode=chemistry_mode, window_days=chemistry_window_days
+        flux_inputs, flux_warnings = _cached_flux_inputs(
+            provider, chemistry_mode, chemistry_window_days, source_cache_version
         )
         ore_diagnostics["warnings"].extend(flux_warnings)
         st.caption(
@@ -1399,7 +1750,9 @@ if run_lp_clicked or run_total_clicked:
         st.rerun()
 
 if requested_lp or requested_total:
-    if pellet_input_issues and not pellet_input_confirmed:
+    if not basicity_bounds_valid:
+        st.error("Correct the slag basicity bounds before running BMO.")
+    elif pellet_input_issues and not pellet_input_confirmed:
         st.error(
             "Confirm the selected pellet stock and chemistry values before running BMO."
         )
@@ -1414,6 +1767,10 @@ if requested_lp or requested_total:
                 target_production_mt=target_fe_mt,
                 target_slag_qty_mt=target_slag_qty_mt,
                 feo_in_slag_pct=feo_in_slag_pct,
+                target_slag_basicity_min=target_slag_basicity_min,
+                target_slag_basicity_max=target_slag_basicity_max,
+                target_slag_t_basicity_min=target_slag_t_basicity_min,
+                target_slag_t_basicity_max=target_slag_t_basicity_max,
                 fuel_ash_inputs=fuel_ash_inputs,
                 flux_inputs=flux_inputs,
                 dust_inputs=dust_inputs,
@@ -1518,6 +1875,10 @@ if requested_lp or requested_total:
                 target_production_mt=target_fe_mt,
                 target_slag_qty_mt=target_slag_qty_mt,
                 feo_in_slag_pct=feo_in_slag_pct,
+                target_slag_basicity_min=target_slag_basicity_min,
+                target_slag_basicity_max=target_slag_basicity_max,
+                target_slag_t_basicity_min=target_slag_t_basicity_min,
+                target_slag_t_basicity_max=target_slag_t_basicity_max,
                 model_service=model_service,
                 process_context=process_context,
                 history_df=history_df,
@@ -1608,6 +1969,8 @@ if lp_result is not None or de_result is not None:
                 flux_inputs=flux_inputs,
                 dust_inputs=dust_inputs,
                 slag_balance_settings=slag_balance_settings,
+                manual_ores=ores,
+                recent_fuel_rates=recent_fuel_rates,
             )
 
         if lp_result is not None and de_result is not None:

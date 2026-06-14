@@ -205,6 +205,26 @@ def compute_slag_contribution_mt(
     return max(0.0, dry_weight) * (slag_pct / 100.0)
 
 
+def compute_slag_basicity(numerator_mt: float, denominator_mt: float) -> float:
+    """
+    Calculate total slag basicity from oxide masses.
+
+    Basicity ratios use slag oxide masses. A zero SiO2 denominator
+    denominator means the value cannot be used as a reliable process constraint,
+    so the helper returns 0.0 and the constraint checker reports it as
+    unavailable when bounds are active.
+    """
+
+    try:
+        numerator = float(numerator_mt or 0.0)
+        denominator = float(denominator_mt or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if denominator <= 0.0:
+        return 0.0
+    return float(numerator / denominator)
+
+
 def compute_fuel_wet_weight_mt(rate_kg_per_thm: float, hot_metal_mt: float) -> float:
     """
     Convert a fuel rate into wet fuel quantity for a hot-metal quantity.
@@ -587,6 +607,28 @@ def evaluate_blend(
     fuel_ash_slag_mt = float(sum(fuel_ash_contribution_mt_by_fuel.values()))
     flux_contribution_mt_by_flux = compute_flux_slag_contributions_mt(flux_inputs)
     flux_slag_mt = float(sum(flux_contribution_mt_by_flux.values()))
+    basicity_cao_mt = total_dry_qty_mt * (_safe_pct(cao_pct) / 100.0)
+    basicity_mgo_mt = total_dry_qty_mt * (_safe_pct(mgo_pct) / 100.0)
+    basicity_sio2_mt = total_dry_qty_mt * (_safe_pct(sio2_pct) / 100.0)
+    for fuel in fuel_ash_inputs or []:
+        if not fuel.enabled:
+            continue
+        wet_fuel_mt = compute_fuel_wet_weight_mt(
+            fuel.rate_kg_per_thm, hot_metal_mt=hm_basis_mt
+        )
+        dry_fuel_mt = compute_dry_weight_mt(wet_fuel_mt, fuel.moisture_pct)
+        ash_mt = dry_fuel_mt * (_safe_pct(fuel.ash_pct) / 100.0)
+        basicity_cao_mt += ash_mt * (_safe_pct(fuel.cao_pct) / 100.0)
+        basicity_mgo_mt += ash_mt * (_safe_pct(fuel.mgo_pct) / 100.0)
+        basicity_sio2_mt += ash_mt * (_safe_pct(fuel.sio2_pct) / 100.0)
+    for flux in flux_inputs or []:
+        if not flux.enabled:
+            continue
+        dry_flux_mt = compute_dry_weight_mt(flux.wet_qty_mt, flux.moisture_pct)
+        basicity_cao_mt += dry_flux_mt * (_safe_pct(flux.cao_pct) / 100.0)
+        basicity_mgo_mt += dry_flux_mt * (_safe_pct(flux.mgo_pct) / 100.0)
+        basicity_sio2_mt += dry_flux_mt * (_safe_pct(flux.sio2_pct) / 100.0)
+    slag_basicity_source = "simplified_ore_fuel_flux"
     simplified_slag_mt = ore_slag_mt + fuel_ash_slag_mt + flux_slag_mt
     slag_mt = simplified_slag_mt
     full_slag_balance = None
@@ -601,6 +643,15 @@ def evaluate_blend(
             dust_inputs=dust_inputs,
         )
         slag_mt = full_slag_balance.total_slag_mt
+        slag_components = full_slag_balance.slag_components_mt
+        basicity_cao_mt = float(slag_components.get("cao", 0.0))
+        basicity_mgo_mt = float(slag_components.get("mgo", 0.0))
+        basicity_sio2_mt = float(slag_components.get("sio2", 0.0))
+        slag_basicity_source = "full_slag_balance"
+    slag_basicity = compute_slag_basicity(basicity_cao_mt, basicity_sio2_mt)
+    slag_t_basicity = compute_slag_basicity(
+        basicity_cao_mt + basicity_mgo_mt, basicity_sio2_mt
+    )
     slag_source_correction_factor = 1.0
     if full_slag_balance is not None:
         slag_source_correction_factor = float(
@@ -679,6 +730,8 @@ def evaluate_blend(
         feasible=True,
         violations=[],
         slag_rate_kg_per_thm=float(slag_rate_kg_per_thm),
+        slag_basicity=float(slag_basicity),
+        slag_t_basicity=float(slag_t_basicity),
         diagnostics={
             "formula": "dry_weight_fe_and_ore_fuel_ash_flux_slag",
             "total_dry_qty_mt": float(total_dry_qty_mt),
@@ -765,5 +818,15 @@ def evaluate_blend(
             "slag_rate_denominator_mt": float(hm_basis_mt),
             "slag_rate_denominator": "hot_metal_target_mt",
             "hot_metal_target_mt": float(hm_basis_mt),
+            "slag_basicity": float(slag_basicity),
+            "slag_t_basicity": float(slag_t_basicity),
+            "slag_basicity_numerator_mt": float(basicity_cao_mt),
+            "slag_basicity_denominator_mt": float(basicity_sio2_mt),
+            "slag_t_basicity_numerator_mt": float(basicity_cao_mt + basicity_mgo_mt),
+            "slag_t_basicity_denominator_mt": float(basicity_sio2_mt),
+            "slag_basicity_cao_mt": float(basicity_cao_mt),
+            "slag_basicity_mgo_mt": float(basicity_mgo_mt),
+            "slag_basicity_sio2_mt": float(basicity_sio2_mt),
+            "slag_basicity_source": slag_basicity_source,
         },
     )

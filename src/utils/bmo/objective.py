@@ -63,6 +63,10 @@ class BmoObjectiveEvaluator:
         process_context: dict[str, float] | None,
         history_df: pd.DataFrame | None,
         penalty_cfg: dict[str, Any],
+        target_slag_basicity_min: float | None = None,
+        target_slag_basicity_max: float | None = None,
+        target_slag_t_basicity_min: float | None = None,
+        target_slag_t_basicity_max: float | None = None,
         fuel_ash_inputs: list[FuelAshInput] | None = None,
         flux_inputs: list[FluxInput] | None = None,
         dust_inputs: list[DustInput] | None = None,
@@ -100,6 +104,26 @@ class BmoObjectiveEvaluator:
         self.target_production_mt = float(target_production_mt)
         self.target_slag_qty_mt = float(target_slag_qty_mt)
         self.feo_in_slag_pct = float(feo_in_slag_pct)
+        self.target_slag_basicity_min = (
+            float(target_slag_basicity_min)
+            if target_slag_basicity_min is not None
+            else None
+        )
+        self.target_slag_basicity_max = (
+            float(target_slag_basicity_max)
+            if target_slag_basicity_max is not None
+            else None
+        )
+        self.target_slag_t_basicity_min = (
+            float(target_slag_t_basicity_min)
+            if target_slag_t_basicity_min is not None
+            else None
+        )
+        self.target_slag_t_basicity_max = (
+            float(target_slag_t_basicity_max)
+            if target_slag_t_basicity_max is not None
+            else None
+        )
         self.model_service = model_service
         self.process_context = process_context or {}
         self.history_df = history_df
@@ -162,6 +186,9 @@ class BmoObjectiveEvaluator:
             self.penalty_cfg.get("penalty_production_excess", penalty_fe)
         )
         penalty_slag = float(self.penalty_cfg.get("penalty_slag", 3000.0))
+        penalty_basicity = float(
+            self.penalty_cfg.get("penalty_basicity", penalty_slag * 100.0)
+        )
         penalty_large = float(self.penalty_cfg.get("penalty_large", 1_000_000.0))
 
         stock_violation_mt = float(np.sum(np.clip(qty - self.stocks, 0.0, None)))
@@ -201,6 +228,42 @@ class BmoObjectiveEvaluator:
         if blend.slag_mt > self.target_slag_qty_mt:
             slag_penalty += (blend.slag_mt - self.target_slag_qty_mt) * penalty_slag
 
+        def _basicity_penalty(
+            *,
+            value: float,
+            denominator_key: str,
+            min_value: float | None,
+            max_value: float | None,
+        ) -> float:
+            penalty = 0.0
+            denominator = float(
+                blend.diagnostics.get(denominator_key, 0.0) or 0.0
+            )
+            if min_value is not None:
+                if denominator <= 0.0 or not math.isfinite(value):
+                    penalty += penalty_large
+                elif value < min_value:
+                    penalty += (min_value - value) * penalty_basicity
+            if max_value is not None:
+                if denominator <= 0.0 or not math.isfinite(value):
+                    penalty += penalty_large
+                elif value > max_value:
+                    penalty += (value - max_value) * penalty_basicity
+            return float(penalty)
+
+        basicity_penalty = _basicity_penalty(
+            value=float(getattr(blend, "slag_basicity", 0.0) or 0.0),
+            denominator_key="slag_basicity_denominator_mt",
+            min_value=self.target_slag_basicity_min,
+            max_value=self.target_slag_basicity_max,
+        )
+        t_basicity_penalty = _basicity_penalty(
+            value=float(getattr(blend, "slag_t_basicity", 0.0) or 0.0),
+            denominator_key="slag_t_basicity_denominator_mt",
+            min_value=self.target_slag_t_basicity_min,
+            max_value=self.target_slag_t_basicity_max,
+        )
+
         finite_penalty = 0.0
         if not math.isfinite(blend.objective_rs_per_thm):
             finite_penalty = penalty_large
@@ -213,6 +276,8 @@ class BmoObjectiveEvaluator:
             + fe_penalty
             + production_excess_penalty
             + slag_penalty
+            + basicity_penalty
+            + t_basicity_penalty
             + finite_penalty
         )
         objective_value = float(blend.objective_rs_per_thm + total_penalty)
@@ -222,6 +287,10 @@ class BmoObjectiveEvaluator:
             self.ores,
             target_production_mt=self.target_production_mt,
             target_slag_qty_mt=self.target_slag_qty_mt,
+            target_slag_basicity_min=self.target_slag_basicity_min,
+            target_slag_basicity_max=self.target_slag_basicity_max,
+            target_slag_t_basicity_min=self.target_slag_t_basicity_min,
+            target_slag_t_basicity_max=self.target_slag_t_basicity_max,
         )
         feasible = len(violations) == 0
 
@@ -237,6 +306,8 @@ class BmoObjectiveEvaluator:
                 "penalty_fe": float(fe_penalty),
                 "penalty_production_excess": float(production_excess_penalty),
                 "penalty_slag": float(slag_penalty),
+                "penalty_slag_basicity": float(basicity_penalty),
+                "penalty_slag_t_basicity": float(t_basicity_penalty),
                 "penalty_non_finite": float(finite_penalty),
             },
             feasible=feasible,

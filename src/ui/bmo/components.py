@@ -17,6 +17,28 @@ import streamlit as st
 from utils.bmo.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
 
 
+@st.cache_data(show_spinner=False)
+def _read_bmo_css(css_path: str, mtime_ns: int) -> str:
+    """Read and cache the BMO stylesheet text keyed on path + modification time.
+
+    The CSS file is static across reruns, so reading it from disk on every
+    Streamlit rerun is wasted I/O. Caching on ``(path, mtime_ns)`` re-reads only
+    when the file actually changes.
+
+    Args:
+         - css_path: Absolute path to the BMO stylesheet.
+         - mtime_ns: File modification time in nanoseconds (cache key).
+
+    Returns:
+         - return str - Stylesheet contents, or empty string when missing.
+    """
+
+    path = Path(css_path)
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
 def apply_bmo_styles() -> None:
     """
     Inject BMO-specific CSS into the Streamlit page.
@@ -33,11 +55,13 @@ def apply_bmo_styles() -> None:
     """
 
     css_path = Path(__file__).resolve().parents[2] / "assets" / "css" / "bmo_style.css"
-    if css_path.exists():
-        st.markdown(
-            f"<style>{css_path.read_text(encoding='utf-8')}</style>",
-            unsafe_allow_html=True,
-        )
+    try:
+        mtime_ns = css_path.stat().st_mtime_ns
+    except OSError:
+        return
+    css_text = _read_bmo_css(str(css_path), int(mtime_ns))
+    if css_text:
+        st.markdown(f"<style>{css_text}</style>", unsafe_allow_html=True)
 
 
 def _safe_dataframe(
@@ -927,71 +951,81 @@ def render_blend_metrics(
         else None
     )
 
+    # Row 1: costs + Fe produced. Ore cost first in both modes; only the
+    # emphasis/help differs (LP minimises ore cost; DE minimises ore + fuel).
     c1, c2, c3, c4 = st.columns(4)
     if is_lp_mode:
-        # LP only minimises ore cost; the fuel cost shown is a post-hoc model
-        # estimate on the LP-selected blend, not part of LP's objective.
         c1.metric(
             "Ore Cost (Rs/THM, LP-optimised)",
             f"{blend.ore_cost_per_thm_rs:,.2f}",
             help=(
                 "LP minimises ore cost only, subject to Fe target, slag cap, "
-                "share bounds, and stock bounds. Fuel cost is shown for "
-                "reference but is NOT part of LP's optimisation objective."
+                "share bounds, and stock bounds."
             ),
         )
-        fuel_label_lp = (
-            "Fuel Cost (Rs/THM, estimated, fallback)"
-            if fuel_used_fallback
-            else "Fuel Cost (Rs/THM, estimated)"
-        )
-        c2.metric(
-            fuel_label_lp,
-            f"{blend.fuel_cost_per_thm_rs:,.2f}",
-            help=(
-                "Post-hoc XGBoost estimate on the LP-selected blend; not part "
-                "of LP's optimisation objective."
-            ),
-        )
-        c3.metric(
-            "Total Cost (ore + fuel est, Rs/THM)",
-            f"{blend.objective_rs_per_thm:,.2f}",
-            help="Sum of LP-minimised ore cost and the post-hoc fuel-cost estimate.",
-        )
-        c4.metric("Fe Produced (MT)", f"{blend.fe_production_mt:,.2f}")
     else:
-        # DE jointly minimises ore + fuel cost so the displayed total is the
-        # actual optimisation objective.
         c1.metric(
-            "Total Cost (Rs/THM, DE-optimised)",
-            f"{blend.objective_rs_per_thm:,.2f}",
-            help="DE jointly minimises ore + fuel cost; total is the actual objective.",
+            "Ore Cost (Rs/THM)",
+            f"{blend.ore_cost_per_thm_rs:,.2f}",
+            help="DE jointly minimises ore + fuel cost.",
         )
-        c2.metric("Ore Cost (Rs/THM)", f"{blend.ore_cost_per_thm_rs:,.2f}")
-        c3.metric(fuel_label, f"{blend.fuel_cost_per_thm_rs:,.2f}", help=fuel_help)
-        c4.metric("Fe Produced (MT)", f"{blend.fe_production_mt:,.2f}")
+    fuel_label_est = (
+        "Fuel Cost (Rs/THM, estimated, fallback)"
+        if fuel_used_fallback
+        else "Fuel Cost (Rs/THM, estimated)"
+    )
+    c2.metric(
+        fuel_label_est,
+        f"{blend.fuel_cost_per_thm_rs:,.2f}",
+        help=(
+            "Post-hoc XGBoost estimate on the selected blend."
+            if is_lp_mode
+            else fuel_help
+        ),
+    )
+    total_label = (
+        "Total Cost (ore + fuel est, Rs/THM)"
+        if is_lp_mode
+        else "Total Cost (Rs/THM, DE-optimised)"
+    )
+    c3.metric(
+        total_label,
+        f"{blend.objective_rs_per_thm:,.2f}",
+        help=(
+            "Sum of LP-minimised ore cost and the post-hoc fuel-cost estimate."
+            if is_lp_mode
+            else "DE jointly minimises ore + fuel cost; total is the actual objective."
+        ),
+    )
+    c4.metric("Fe Produced (MT)", f"{blend.fe_production_mt:,.2f}")
 
+    # Row 2: dry quantity, final Fe%, slag rate, slag MT.
     c5, c6, c7, c8 = st.columns(4)
     dry_qty = float(blend.diagnostics.get("total_dry_qty_mt", 0.0) or 0.0)
     hm_basis_mt = float(blend.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0)
-    c5.metric("Wet Qty (MT)", f"{blend.total_qty_mt:,.2f}")
-    c6.metric("Dry Qty (MT)", f"{dry_qty:,.2f}")
-    c7.metric("Final Fe (%)", f"{blend.fe_t_pct:,.3f}")
+    c5.metric("Dry Qty (MT)", f"{dry_qty:,.2f}")
+    c6.metric("Final Fe (%)", f"{blend.fe_t_pct:,.2f}")
     # Slag rate is undefined when Fe production is zero; show "n/a" rather
     # than 0.00 kg/THM which would mislead an operator into thinking the
-    # blend produced clean iron.
+    # blend produced clean iron. The observed value is the plant's realised
+    # slag rate averaged over the chosen chemistry window (recent days).
     if hm_basis_mt <= 0:
-        c8.metric("Slag Rate (kg/THM)", "n/a")
+        c7.metric("Slag Rate (kg/THM)", "n/a")
     elif observed_slag_rate_kg_per_thm and observed_slag_rate_kg_per_thm > 0:
         delta = blend.slag_rate_kg_per_thm - float(observed_slag_rate_kg_per_thm)
-        c8.metric(
+        c7.metric(
             "Slag Rate (kg/THM)",
             f"{blend.slag_rate_kg_per_thm:,.2f}",
-            delta=f"{delta:+.1f} vs observed {observed_slag_rate_kg_per_thm:,.1f}",
+            delta=(
+                f"{delta:+.1f} vs observed {observed_slag_rate_kg_per_thm:,.1f} "
+                "(recent avg)"
+            ),
             delta_color="off",
+            help="Observed = plant DPR slag/HM averaged over the chemistry window.",
         )
     else:
-        c8.metric("Slag Rate (kg/THM)", f"{blend.slag_rate_kg_per_thm:,.2f}")
+        c7.metric("Slag Rate (kg/THM)", f"{blend.slag_rate_kg_per_thm:,.2f}")
+    c8.metric("Slag (MT)", f"{blend.slag_mt:,.2f}")
 
     if fuel_used_fallback:
         reason = (getattr(model_prediction, "details", {}) or {}).get("reason")
@@ -1001,17 +1035,17 @@ def render_blend_metrics(
             "formula, not the BMO XGBoost model." + reason_text
         )
 
-    full_balance_active = bool(blend.diagnostics.get("slag_balance_enabled", False))
-    suffix = " (post-HM)" if full_balance_active else ""
-
-    c9, c10, c11, c12 = st.columns(4)
-    c9.metric("Slag (MT)", f"{blend.slag_mt:,.2f}")
-    ore_slag_mt = float(blend.diagnostics.get("ore_slag_mt", 0.0) or 0.0)
-    c10.metric(f"Ore Slag{suffix} (MT)", f"{ore_slag_mt:,.2f}")
-    fuel_ash_slag_mt = float(blend.diagnostics.get("fuel_ash_slag_mt", 0.0) or 0.0)
-    c11.metric(f"Fuel Ash Slag{suffix} (MT)", f"{fuel_ash_slag_mt:,.2f}")
-    flux_slag_mt = float(blend.diagnostics.get("flux_slag_mt", 0.0) or 0.0)
-    c12.metric(f"Flux Slag{suffix} (MT)", f"{flux_slag_mt:,.2f}")
+    # Row 3: basicity pair.
+    b1, b2 = st.columns(2)
+    basicity_denominator_mt = float(
+        blend.diagnostics.get("slag_basicity_denominator_mt", 0.0) or 0.0
+    )
+    if basicity_denominator_mt > 0:
+        b1.metric("Slag Basicity CaO/SiO2", f"{blend.slag_basicity:,.3f}")
+        b2.metric("Slag T Basicity", f"{blend.slag_t_basicity:,.3f}")
+    else:
+        b1.metric("Slag Basicity CaO/SiO2", "n/a")
+        b2.metric("Slag T Basicity", "n/a")
 
     fuel_rate_estimate = blend.diagnostics.get("fuel_rate_estimate")
     st.markdown("##### Estimated Fuel Rates")
@@ -1082,6 +1116,7 @@ def build_blend_table_df(
                 "stock_mt": ore.stock_mt,
                 "price_rs_per_mt": ore.price_rs_per_mt,
                 "ore_cost_rs": qty * ore.price_rs_per_mt,
+                "ore_cost_lakhs": (qty * ore.price_rs_per_mt) / 1.0e5,
             }
         )
     return pd.DataFrame(rows).sort_values("share_pct", ascending=False)
@@ -1106,32 +1141,36 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
     df = build_blend_table_df(blend, selected_ores)
     if hasattr(st, "column_config"):
         sig = inspect.signature(st.dataframe)
+        # Share is shown as an inline progress bar so the burden split is
+        # readable at a glance; ore cost is in lakhs to keep the numbers short.
+        share_max = float(max(100.0, df["share_pct"].max())) if not df.empty else 100.0
+        try:
+            share_col = st.column_config.ProgressColumn(
+                "Share (%)", format="%.1f%%", min_value=0.0, max_value=share_max
+            )
+        except (AttributeError, TypeError):
+            share_col = st.column_config.NumberColumn("Share (%)", format="%.1f")
         df_kwargs: dict[str, Any] = {
             "column_config": {
                 "ore_name": st.column_config.TextColumn("Ore"),
-                "share_pct": st.column_config.NumberColumn("Share (%)", format="%.2f"),
+                "share_pct": share_col,
                 "quantity_mt": st.column_config.NumberColumn(
                     "Wet Qty (MT)", format="%.1f"
                 ),
                 "dry_quantity_mt": st.column_config.NumberColumn(
                     "Dry Qty (MT)", format="%.1f"
                 ),
-                "moisture_pct": st.column_config.NumberColumn(
-                    "Moisture (%)", format="%.2f"
-                ),
                 "fe_contribution_mt": st.column_config.NumberColumn(
-                    "Fe (MT)", format="%.2f"
+                    "Fe (MT)", format="%.1f"
                 ),
                 "slag_contribution_mt": st.column_config.NumberColumn(
-                    "Slag (MT)", format="%.2f"
+                    "Slag (MT)", format="%.1f"
                 ),
-                "slag_per_fe": st.column_config.NumberColumn("Slag %", format="%.3f"),
-                "stock_mt": st.column_config.NumberColumn("Stock (MT)", format="%.1f"),
                 "price_rs_per_mt": st.column_config.NumberColumn(
-                    "Price (Rs/MT)", format="%.1f"
+                    "Price (Rs/MT)", format="%.0f"
                 ),
-                "ore_cost_rs": st.column_config.NumberColumn(
-                    "Ore Cost (Rs)", format="%.0f"
+                "ore_cost_lakhs": st.column_config.NumberColumn(
+                    "Ore Cost (₹ Lakhs)", format="%.2f"
                 ),
             },
         }
@@ -1141,13 +1180,10 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
                 "share_pct",
                 "quantity_mt",
                 "dry_quantity_mt",
-                "moisture_pct",
                 "fe_contribution_mt",
                 "slag_contribution_mt",
-                "slag_per_fe",
-                "stock_mt",
                 "price_rs_per_mt",
-                "ore_cost_rs",
+                "ore_cost_lakhs",
             )
         if "hide_index" in sig.parameters:
             df_kwargs["hide_index"] = True

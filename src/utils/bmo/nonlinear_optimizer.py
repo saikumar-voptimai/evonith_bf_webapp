@@ -99,6 +99,10 @@ def run_nonlinear_optimizer(
     process_context: dict[str, float] | None,
     history_df: pd.DataFrame | None,
     de_cfg: dict[str, Any],
+    target_slag_basicity_min: float | None = None,
+    target_slag_basicity_max: float | None = None,
+    target_slag_t_basicity_min: float | None = None,
+    target_slag_t_basicity_max: float | None = None,
     fuel_ash_inputs: list[FuelAshInput] | None = None,
     flux_inputs: list[FluxInput] | None = None,
     dust_inputs: list[DustInput] | None = None,
@@ -120,6 +124,10 @@ def run_nonlinear_optimizer(
          - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
+         - target_slag_basicity_min: float | None - Minimum CaO / SiO2 basicity.
+         - target_slag_basicity_max: float | None - Maximum CaO / SiO2 basicity.
+         - target_slag_t_basicity_min: float | None - Minimum (CaO + MgO) / SiO2 basicity.
+         - target_slag_t_basicity_max: float | None - Maximum (CaO + MgO) / SiO2 basicity.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
          - process_context: dict[str, float] | None - Latest process variables.
          - history_df: pd.DataFrame | None - Historical process data for lagged features.
@@ -142,6 +150,10 @@ def run_nonlinear_optimizer(
         target_production_mt=target_production_mt,
         target_slag_qty_mt=target_slag_qty_mt,
         feo_in_slag_pct=feo_in_slag_pct,
+        target_slag_basicity_min=target_slag_basicity_min,
+        target_slag_basicity_max=target_slag_basicity_max,
+        target_slag_t_basicity_min=target_slag_t_basicity_min,
+        target_slag_t_basicity_max=target_slag_t_basicity_max,
         fuel_ash_inputs=fuel_ash_inputs,
         flux_inputs=flux_inputs,
         dust_inputs=dust_inputs,
@@ -174,6 +186,10 @@ def run_nonlinear_optimizer(
         target_production_mt=float(target_production_mt),
         target_slag_qty_mt=float(target_slag_qty_mt),
         feo_in_slag_pct=float(feo_in_slag_pct),
+        target_slag_basicity_min=target_slag_basicity_min,
+        target_slag_basicity_max=target_slag_basicity_max,
+        target_slag_t_basicity_min=target_slag_t_basicity_min,
+        target_slag_t_basicity_max=target_slag_t_basicity_max,
         model_service=model_service,
         process_context=process_context,
         history_df=history_df,
@@ -274,6 +290,10 @@ def run_nonlinear_optimizer(
         ores,
         target_production_mt=target_production_mt,
         target_slag_qty_mt=target_slag_qty_mt,
+        target_slag_basicity_min=target_slag_basicity_min,
+        target_slag_basicity_max=target_slag_basicity_max,
+        target_slag_t_basicity_min=target_slag_t_basicity_min,
+        target_slag_t_basicity_max=target_slag_t_basicity_max,
     )
     blend.feasible = len(violations) == 0
     blend.violations = violations
