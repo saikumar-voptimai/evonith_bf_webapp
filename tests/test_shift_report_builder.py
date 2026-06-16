@@ -30,6 +30,7 @@ class TestShiftBuilder:
         fuel_chemistry_df: pd.DataFrame | None = None,
         flux_chemistry_df: pd.DataFrame | None = None,
         material_fines_df: pd.DataFrame | None = None,
+        materials_df: pd.DataFrame | None = None,
         report_type: str = "Shift",
     ) -> ShiftRawData:
         return ShiftRawData(
@@ -53,6 +54,7 @@ class TestShiftBuilder:
             material_fines_df=(
                 material_fines_df if material_fines_df is not None else pd.DataFrame()
             ),
+            materials_df=materials_df if materials_df is not None else pd.DataFrame(),
             report_type=report_type,
         )
 
@@ -84,6 +86,38 @@ class TestShiftBuilder:
         assert report.ore_t == 38.0
         assert report.pellet_t == 10.0
         assert report.flux_t == 14.0
+
+    def test_ore_material_usage_includes_share_of_total_burden(self) -> None:
+        report = ShiftBuilder().build(
+            self.raw_shift(
+                pd.DataFrame(
+                    {
+                        "sinter_1_mt": [853.51],
+                        "ore_1_mt": [141.12],
+                        "ore_2_mt": [144.27],
+                        "pellet_1_mt": [194.70],
+                        "flux_1_mt": [10.0],
+                    }
+                ),
+                materials_df=pd.DataFrame(
+                    [
+                        {"material_code": "ore_1", "material_name": "lloyds_ore"},
+                        {
+                            "material_code": "ore_2",
+                            "material_name": "lloyds_oversize",
+                        },
+                        {"material_code": "flux_1", "material_name": "dolomite"},
+                    ]
+                ),
+            )
+        )
+
+        assert report.burden_ratio == "64.0: 21.4: 14.6"
+        assert report.used_materials["Ore"] == (
+            "- Lloyds CLO - 141.12 mt - 10.58% in burden\n"
+            "- Lloyds Metals Iron Fines Oversize (+10MM) - 144.27 mt - 10.82% in burden"
+        )
+        assert report.used_materials["Flux"] == "- Dolomite - 10.00 mt"
 
     def test_reports_zero_when_charge_columns_are_zero(self) -> None:
         report = ShiftBuilder().build(

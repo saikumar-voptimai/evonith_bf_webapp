@@ -46,6 +46,7 @@ OFFLINE_TABLE_LABEL_MAP: dict[str, str] = {
     "offline_feed.v_dpr_material_quantities": "DPR Material Quantities",
     "offline_feed.feed_material_columns": "Feed Material Column Map",
     "offline_feed.historical_static_ml_dataset": "Static ML Dataset",
+    "plant_master.material_property_mapping": "Material Property Mapping",
     "ops_config.burden_history": "Burden History",
     "ops_config.hopper_raw_material_history": "Hopper Raw Material History",
     "plant_master.materials": "Materials",

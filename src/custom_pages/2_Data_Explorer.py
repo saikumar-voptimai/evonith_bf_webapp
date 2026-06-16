@@ -88,6 +88,119 @@ MEASUREMENT_LABELS = {
     "temperature_profile": "Temperature Profile",
 }
 
+_RAW_MATERIAL_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
+_MATERIAL_PROPERTY_MAPPING_TABLE = "plant_master.material_property_mapping"
+_STRENGTH_VALUE_COLUMNS = ("property_1", "property_2", "property_3", "property_4")
+_STRENGTH_NAME_COLUMNS = (
+    "property_1_name",
+    "property_2_name",
+    "property_3_name",
+    "property_4_name",
+)
+
+
+def _has_strength_property_values(df: pd.DataFrame) -> bool:
+    if df.empty or "material_code" not in df.columns:
+        return False
+    if not any(col in df.columns for col in _STRENGTH_VALUE_COLUMNS):
+        return False
+    if "source_table" not in df.columns:
+        return True
+    return df["source_table"].astype("string").eq(_RAW_MATERIAL_STRENGTH_TABLE).any()
+
+
+def _material_property_map(mapping_df: pd.DataFrame) -> dict[str, dict[str, str]]:
+    required_columns = {"material_code", *_STRENGTH_NAME_COLUMNS}
+    if mapping_df.empty or not required_columns.issubset(mapping_df.columns):
+        return {}
+
+    property_map: dict[str, dict[str, str]] = {}
+    for _, row in mapping_df.dropna(subset=["material_code"]).iterrows():
+        material_code = str(row["material_code"]).strip()
+        if not material_code:
+            continue
+        property_map[material_code] = {
+            name_col: str(row[name_col]).strip()
+            for name_col in _STRENGTH_NAME_COLUMNS
+            if pd.notna(row[name_col]) and str(row[name_col]).strip()
+        }
+    return property_map
+
+
+def _strength_display_column(
+    label: str,
+    existing_columns: set[str],
+    created_columns: set[str],
+) -> str:
+    if label in existing_columns and label not in created_columns:
+        return f"{label} (strength)"
+    return label
+
+
+def _apply_strength_property_labels(
+    df: pd.DataFrame,
+    mapping_df: pd.DataFrame,
+) -> pd.DataFrame:
+    property_map = _material_property_map(mapping_df)
+    if not property_map or "material_code" not in df.columns:
+        return df
+
+    out = df.copy()
+    if "source_table" in out.columns:
+        strength_mask = out["source_table"].astype("string").eq(
+            _RAW_MATERIAL_STRENGTH_TABLE
+        )
+    else:
+        strength_mask = pd.Series(True, index=out.index)
+
+    if not strength_mask.any():
+        return out
+
+    material_codes = out.loc[strength_mask, "material_code"].astype("string").str.strip()
+    existing_columns = set(out.columns)
+    created_columns: set[str] = set()
+    raw_columns_to_drop: list[str] = []
+    strength_positions = np.flatnonzero(strength_mask.to_numpy())
+
+    for value_col, name_col in zip(_STRENGTH_VALUE_COLUMNS, _STRENGTH_NAME_COLUMNS):
+        if value_col not in out.columns:
+            continue
+
+        labels = material_codes.map(
+            lambda code: property_map.get(str(code), {}).get(name_col)
+        )
+        values_with_mapping = out.loc[strength_mask, value_col].notna().to_numpy()
+        mapped_labels = labels.to_numpy()
+        if (
+            values_with_mapping.any()
+            and pd.Series(mapped_labels[values_with_mapping]).notna().all()
+        ):
+            raw_columns_to_drop.append(value_col)
+
+        for label in labels.dropna().unique():
+            display_col = _strength_display_column(
+                str(label),
+                existing_columns,
+                created_columns,
+            )
+            if display_col not in out.columns:
+                out[display_col] = pd.NA
+            matching_positions = strength_positions[labels.eq(label).to_numpy()]
+            out.iloc[
+                matching_positions,
+                out.columns.get_loc(display_col),
+            ] = out.iloc[
+                matching_positions,
+                out.columns.get_loc(value_col),
+            ].to_numpy()
+            existing_columns.add(display_col)
+            created_columns.add(display_col)
+
+    if raw_columns_to_drop:
+        out = out.drop(columns=raw_columns_to_drop)
+
+    return out
+
 st.title("Visualisation tool")
 
 # --------------------------------------------------------------------------
@@ -561,6 +674,19 @@ if submitted:
                 )
                 output_name = selected_db_report.lower()
 
+            if _has_strength_property_values(df_offline):
+                try:
+                    property_mapping_df = fetch_table_data(
+                        table_name=_MATERIAL_PROPERTY_MAPPING_TABLE,
+                        time_range=time_range_to_fetch,
+                    )
+                    df_offline = _apply_strength_property_labels(
+                        df_offline,
+                        property_mapping_df,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    st.warning(f"Could not load material property labels: {exc}")
+
         if df_offline.empty:
             st.warning(f"No data found for **{output_name}**.")
             st.session_state.offline_viewer_result = None
@@ -600,11 +726,11 @@ local_tz = ZoneInfo(config["ml_dataset"]["local_tz"])
 
 # IMPORTANT: create once so cache survives reruns
 @st.cache_resource
-def get_fetcher():
+def get_fetcher(cache_version: str = "material_strength_v2"):
     return MlDatasetFetcher()
 
 
-fetcher = get_fetcher()
+fetcher = get_fetcher("material_strength_v2")
 
 # ---------------- UI LAYOUT ----------------
 left_col, right_col = st.columns(2)
@@ -790,7 +916,12 @@ with right_col:
                         st.session_state["ml_validation_report"] = validate_dataset(_full_df)
 
     # Download
-    _dl_df = st.session_state.get("static_ml_dataset_df") or df
+    _cached_static_df = st.session_state.get("static_ml_dataset_df")
+    _dl_df = (
+        _cached_static_df
+        if isinstance(_cached_static_df, pd.DataFrame) and not _cached_static_df.empty
+        else df
+    )
     st.download_button(
         label="Download ML Dataset",
         data=_dl_df.to_csv(index=True).encode("utf-8"),

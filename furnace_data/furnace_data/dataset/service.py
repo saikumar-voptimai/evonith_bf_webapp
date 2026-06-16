@@ -38,7 +38,49 @@ _OFFLINE_RM_QUANTITY_VIEWS = {
 }
 _OFFLINE_STATIC_ML_TABLE = "offline_feed.historical_static_ml_dataset"
 _OFFLINE_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
+_MATERIAL_PROPERTY_MAPPING_TABLE = "plant_master.material_property_mapping"
 _OFFLINE_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
+_STRENGTH_VALUE_COLUMNS = ("property_1", "property_2", "property_3", "property_4")
+_STRENGTH_NAME_COLUMNS = (
+    "property_1_name",
+    "property_2_name",
+    "property_3_name",
+    "property_4_name",
+)
+_SINTER_STRENGTH_PRIORITY = ("sinter_3", "sinter_1")
+_COKE_STRENGTH_MATERIAL = "coke_1"
+_DEFAULT_STRENGTH_PROPERTY_NAMES = {
+    "sinter_1": {
+        "property_1": "AI",
+        "property_2": "TI",
+        "property_3": "RDI",
+        "property_4": "RI",
+    },
+    "sinter_3": {
+        "property_1": "AI",
+        "property_2": "TI",
+        "property_3": "RDI",
+        "property_4": "RI",
+    },
+    "coke_1": {
+        "property_1": "M-40",
+        "property_2": "M-10",
+        "property_3": "CRI",
+        "property_4": "CSR",
+    },
+}
+_SINTER_STRENGTH_TARGETS = {
+    "AI": "sinter_cold_strength_ai",
+    "TI": "sinter_cold_strength_ti",
+    "RDI": "sinter_hot_strength_rdi",
+    "RI": "sinter_hot_strength_ri",
+}
+_COKE_STRENGTH_TARGETS = {
+    "M-40": "coke_m40",
+    "M-10": "coke_m10",
+    "CRI": "coke_cri",
+    "CSR": "coke_csr",
+}
 
 
 @dataclass
@@ -130,6 +172,130 @@ class DatasetService:
                 df[alias] = df[source_col]
 
         return df
+
+    @staticmethod
+    def _normalise_strength_property_name(value: object) -> str:
+        if pd.isna(value):
+            return ""
+        return str(value).strip().upper()
+
+    @classmethod
+    def _strength_property_names(
+        cls,
+        mapping_df: pd.DataFrame,
+    ) -> dict[str, dict[str, str]]:
+        property_names = {
+            material_code: dict(names)
+            for material_code, names in _DEFAULT_STRENGTH_PROPERTY_NAMES.items()
+        }
+        required = {"material_code", *_STRENGTH_NAME_COLUMNS}
+        if mapping_df.empty or not required.issubset(mapping_df.columns):
+            return property_names
+
+        for _, row in mapping_df.dropna(subset=["material_code"]).iterrows():
+            material_code = str(row["material_code"]).strip().lower()
+            if not material_code:
+                continue
+            names = property_names.setdefault(material_code, {})
+            for value_col, name_col in zip(
+                _STRENGTH_VALUE_COLUMNS,
+                _STRENGTH_NAME_COLUMNS,
+            ):
+                property_name = cls._normalise_strength_property_name(row[name_col])
+                if property_name:
+                    names[value_col] = property_name
+        return property_names
+
+    @staticmethod
+    def _dedupe_time_index(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty or df.index.is_unique:
+            return df
+        return df.groupby(level=0, sort=True).last()
+
+    def _fetch_strength_property_mapping(
+        self,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> pd.DataFrame:
+        try:
+            df = fetch_database_offline_data(
+                table_name=_MATERIAL_PROPERTY_MAPPING_TABLE,
+                time_range=(start_dt, end_dt),
+            )
+        except Exception:
+            return pd.DataFrame()
+        return df if df is not None else pd.DataFrame()
+
+    @staticmethod
+    def _merge_strength_series(
+        out: pd.DataFrame,
+        target_col: str,
+        values: pd.Series,
+        *,
+        fill_missing: bool,
+    ) -> None:
+        values = pd.to_numeric(values, errors="coerce")
+        if target_col not in out.columns:
+            out[target_col] = values
+            return
+        if fill_missing:
+            out[target_col] = out[target_col].combine_first(values)
+        else:
+            out[target_col] = values.combine_first(out[target_col])
+
+    def _build_material_strength_features(
+        self,
+        strength_df: pd.DataFrame,
+        mapping_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        if strength_df.empty:
+            return strength_df
+        if "material_code" not in strength_df.columns or not any(
+            col in strength_df.columns for col in _STRENGTH_VALUE_COLUMNS
+        ):
+            return self._dedupe_time_index(strength_df)
+
+        strength = strength_df.copy()
+        strength["material_code"] = (
+            strength["material_code"].astype("string").str.strip().str.lower()
+        )
+        index = strength.index.drop_duplicates().sort_values()
+        out = pd.DataFrame(index=index)
+        out.index.name = strength.index.name
+
+        property_names = self._strength_property_names(mapping_df)
+
+        def add_material(
+            material_code: str,
+            target_map: dict[str, str],
+            *,
+            fill_missing: bool,
+        ) -> None:
+            rows = strength[strength["material_code"].eq(material_code)]
+            if rows.empty:
+                return
+            rows = self._dedupe_time_index(rows)
+            names = property_names.get(material_code, {})
+            for value_col, property_name in names.items():
+                if value_col not in rows.columns:
+                    continue
+                target_col = target_map.get(
+                    self._normalise_strength_property_name(property_name)
+                )
+                if target_col is None:
+                    continue
+                self._merge_strength_series(
+                    out,
+                    target_col,
+                    rows[value_col],
+                    fill_missing=fill_missing,
+                )
+
+        for material_code in _SINTER_STRENGTH_PRIORITY:
+            add_material(material_code, _SINTER_STRENGTH_TARGETS, fill_missing=True)
+        add_material(_COKE_STRENGTH_MATERIAL, _COKE_STRENGTH_TARGETS, fill_missing=False)
+
+        return out.dropna(how="all")
 
     @staticmethod
     def _weighted_latest_before(
@@ -482,7 +648,25 @@ class DatasetService:
             raise ValueError("mode must be 'charge' or 'dpr'")
 
         df_rm = self._fetch_offline_table(table_name, start_dt, end_dt)
-        df_rm_hm = self._fetch_offline_table(_OFFLINE_STRENGTH_TABLE, start_dt, end_dt)
+        df_rm_hm_raw = self._fetch_offline_table(
+            _OFFLINE_STRENGTH_TABLE,
+            start_dt,
+            end_dt,
+        )
+        if df_rm_hm_raw.empty:
+            df_rm_hm = pd.DataFrame()
+        else:
+            uses_mapped_properties = "material_code" in df_rm_hm_raw.columns and any(
+                col in df_rm_hm_raw.columns for col in _STRENGTH_VALUE_COLUMNS
+            )
+            df_rm_hm = self._build_material_strength_features(
+                df_rm_hm_raw,
+                (
+                    self._fetch_strength_property_mapping(start_dt, end_dt)
+                    if uses_mapped_properties
+                    else pd.DataFrame()
+                ),
+            )
         df_chem = self._fetch_offline_weighted_chemistry(
             mode=mode,
             start_dt=start_dt,

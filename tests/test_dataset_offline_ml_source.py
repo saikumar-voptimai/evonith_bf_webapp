@@ -22,7 +22,12 @@ def test_dataset_fetcher_routes_interactive_ml_to_offline_db() -> None:
             self.calls.append(("rm", mode))
             idx = pd.DatetimeIndex(["2026-01-01"], name="time")
             return pd.DataFrame(
-                {"ore_1_mt": [10.0], "flux_1_mt": [2.0], "offline_only": [1.0]},
+                {
+                    "ore_1_mt": [10.0],
+                    "flux_1_mt": [2.0],
+                    "coke_m40": [77.0],
+                    "offline_only": [1.0],
+                },
                 index=idx,
             )
 
@@ -60,6 +65,7 @@ def test_dataset_fetcher_routes_interactive_ml_to_offline_db() -> None:
     assert service.calls == [("rm", "charge"), ("hm", None)]
     assert "ORE_1_CALC_MT" in df.columns
     assert "FLUX_1_CALC_MT" in df.columns
+    assert "COKE M-40" in df.columns
     assert "CHEM_PCT_SI" in df.columns
     assert "offline_only" in df.columns
 
@@ -499,6 +505,94 @@ def test_dataset_service_offline_rm_fetch_combines_charge_and_rm_hm(monkeypatch)
     assert float(df.iloc[0]["pci2_mt"]) == 2.0
     assert float(df.iloc[0]["sinter_hot_strength_ri"]) == 70.0
     assert float(df.iloc[0]["sinter_hot_strength_rdi"]) == 30.0
+
+
+def test_dataset_service_maps_new_material_strength_rows(monkeypatch) -> None:
+    calls = []
+
+    def fake_offline_fetch(table_name, time_range):
+        calls.append(table_name)
+        idx = pd.DatetimeIndex(
+            ["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"],
+            name="time",
+        )
+        if table_name == "offline_feed.charge_data":
+            return pd.DataFrame({"sinter_1_mt": [10.0, 11.0]}, index=idx)
+        if table_name == "offline_feed.raw_material_strength_analysis":
+            strength_idx = pd.DatetimeIndex(
+                [
+                    "2026-01-01T00:00:00Z",
+                    "2026-01-01T00:00:00Z",
+                    "2026-01-01T00:00:00Z",
+                    "2026-01-02T00:00:00Z",
+                    "2026-01-02T00:00:00Z",
+                ],
+                name="time",
+            )
+            return pd.DataFrame(
+                {
+                    "material_code": [
+                        "sinter_1",
+                        "sinter_3",
+                        "coke_1",
+                        "sinter_1",
+                        "coke_1",
+                    ],
+                    "property_1": [1.0, 3.0, 77.0, 11.0, 78.0],
+                    "property_2": [2.0, 4.0, 6.0, 12.0, 7.0],
+                    "property_3": [30.0, 32.0, 24.0, 31.0, 25.0],
+                    "property_4": [68.0, 70.0, 65.0, 69.0, 66.0],
+                },
+                index=strength_idx,
+            )
+        if table_name == "plant_master.material_property_mapping":
+            return pd.DataFrame(
+                {
+                    "material_code": ["sinter_1", "sinter_3", "coke_1"],
+                    "property_1_name": ["AI", "AI", "M-40"],
+                    "property_2_name": ["TI", "TI", "M-10"],
+                    "property_3_name": ["RDI", "RDI", "CRI"],
+                    "property_4_name": ["RI", "RI", "CSR"],
+                }
+            )
+        if table_name == "offline_feed.v_charge_material_quantities":
+            return pd.DataFrame()
+        if table_name in {
+            "offline_feed.ore_chemistry",
+            "offline_feed.sinter_chemistry",
+            "offline_feed.fuel_chemistry",
+            "offline_feed.flux_chemistry",
+        }:
+            return pd.DataFrame()
+        raise AssertionError(table_name)
+
+    monkeypatch.setattr(
+        "furnace_data.dataset.service.fetch_database_offline_data",
+        fake_offline_fetch,
+    )
+
+    df = DatasetService().fetch_rm_data(
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 2),
+        mode="charge",
+    )
+
+    assert calls[:3] == [
+        "offline_feed.charge_data",
+        "offline_feed.raw_material_strength_analysis",
+        "plant_master.material_property_mapping",
+    ]
+    assert df.index.is_unique
+    first = pd.Timestamp("2026-01-01 05:30:00")
+    second = pd.Timestamp("2026-01-02 05:30:00")
+    assert float(df.loc[first, "sinter_cold_strength_ai"]) == 3.0
+    assert float(df.loc[first, "sinter_hot_strength_ri"]) == 70.0
+    assert float(df.loc[second, "sinter_cold_strength_ai"]) == 11.0
+    assert float(df.loc[second, "sinter_hot_strength_ri"]) == 69.0
+    assert float(df.loc[first, "coke_m40"]) == 77.0
+    assert float(df.loc[first, "coke_m10"]) == 6.0
+    assert float(df.loc[first, "coke_cri"]) == 24.0
+    assert float(df.loc[first, "coke_csr"]) == 65.0
 
 
 def test_dataset_service_offline_weighted_chemistry_uses_latest_before(monkeypatch) -> None:

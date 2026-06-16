@@ -25,7 +25,7 @@ ml_dataset:
   rm_charge_measurement: "rm_charge_dataset"
   rm_dpr_measurement: "rm_dpr_data"
   local_tz: "Asia/Kolkata"
-  cutoff_date: "2025-12-06"
+  cutoff_date: "2026-06-16"
   static_dataset_path: "src/data/V14_df_filtered.csv"
   # InfluxDB process_params field name → ML dataset column name (rename_dict key)
   online_params:
@@ -885,6 +885,10 @@ rename_dict:
     "coke_mt": "COKE_CALC_MT"
     "coke_off_mt": "COKE_OFF_MT"
     "coke_on_mt": "COKE_ON_MT"
+    "coke_m40": "COKE M-40"
+    "coke_m10": "COKE M-10"
+    "coke_cri": "COKE CRI"
+    "coke_csr": "COKE CSR"
 
 
     "flux_tm_pct": "FLUX_TM%"
