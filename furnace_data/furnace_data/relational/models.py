@@ -7,6 +7,7 @@ from enum import Enum
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Float,
@@ -18,9 +19,6 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import JSON, Boolean, DateTime
-from sqlalchemy import Float, Index, Integer, String, Text, UniqueConstraint
-from sqlalchemy import Enum as SqlEnum
 
 
 def utc_now() -> datetime:
@@ -419,35 +417,23 @@ class MemorySummary(Base):
     )
 
 
-class LongTermMemory(Base):
-    """Durable user-specific memory fact extracted from chat."""
+class MemoryFact(Base):
+    """Durable user-specific memory fact stored before Qdrant indexing."""
 
-    __tablename__ = "long_term_memories"
-    __table_args__ = (
-        Index("ix_long_term_memories_user", "user_id"),
-        {"schema": "furnace_mind"},
-    )
+    __tablename__ = "memory_facts"
+    __table_args__ = {"schema": "furnace_mind"}
 
-    memory_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    fact_id: Mapped[str] = mapped_column(Text, primary_key=True)
     user_id: Mapped[UUID] = mapped_column(
         ForeignKey("identity.users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    memory_text: Mapped[str] = mapped_column(Text, nullable=False)
-    qdrant_collection: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    qdrant_point_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    source_conversation_id: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
-    source_user_message_id: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
-    source_assistant_message_id: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
-    token_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    fact_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_conversation_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qdrant_collection: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qdrant_point_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

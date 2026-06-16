@@ -130,6 +130,25 @@ class AppConfig:
     environment: str = "dev"
 
 
+@dataclass
+class SemanticMemoryConfig:
+    """SQL-backed, Qdrant-indexed long-term semantic memory settings.
+
+    Attributes:
+        enabled: Whether the semantic memory layer should be initialized.
+        collection_name: Qdrant collection used for long-term memories.
+        llm_model: OpenAI/OpenRouter-compatible model used for fact extraction.
+        max_memories: Maximum memories to retrieve per chat turn.
+        search_threshold: Optional minimum Qdrant vector score.
+    """
+
+    enabled: bool
+    collection_name: str
+    llm_model: str
+    max_memories: int
+    search_threshold: float | None
+
+
 # ==========================================================
 # 🔹 SETTINGS LOADER
 # ==========================================================
@@ -202,6 +221,7 @@ class Settings:
         self.memory_summary_token_limit = int(
             os.getenv("MEMORY_SUMMARY_TOKEN_LIMIT", 2000)
         )
+        self.semantic_memory = self._load_semantic_memory_config()
         self._validate()
 
     # ------------------------------------------------------
@@ -335,6 +355,35 @@ class Settings:
             collection_name=collection,
             embedding_dim=embedding_dim,
             timeout=timeout,
+        )
+
+    @staticmethod
+    def _load_semantic_memory_config() -> SemanticMemoryConfig:
+        """Build semantic-memory settings from environment variables."""
+        threshold_raw = os.getenv("SEMANTIC_MEMORY_SEARCH_THRESHOLD", "").strip()
+        threshold = float(threshold_raw) if threshold_raw else None
+
+        return SemanticMemoryConfig(
+            enabled=os.getenv("SEMANTIC_MEMORY_ENABLED", "true").strip().lower()
+            not in {"0", "false", "no", "off"},
+            collection_name=os.getenv(
+                "SEMANTIC_MEMORY_QDRANT_COLLECTION",
+                "furnacemind_long_term_memory",
+            ),
+            llm_model=os.getenv(
+                "SEMANTIC_MEMORY_LLM_MODEL",
+                os.getenv(
+                    "MEMORY_COMPRESSION_MODEL",
+                    os.getenv("OPENROUTER_MODEL", "gpt-4o-mini"),
+                ),
+            ),
+            max_memories=int(
+                os.getenv(
+                    "SEMANTIC_MEMORY_MAX_MEMORIES",
+                    5,
+                )
+            ),
+            search_threshold=threshold,
         )
 
     # ------------------------------------------------------
