@@ -12,6 +12,7 @@ report_map:
     - offline_feed.flux_chemistry
     - offline_feed.material_fines_analysis
     - offline_feed.raw_material_strength_analysis
+    - plant_master.material_property_mapping
     - plant_master.materials
   BURDEN_DISTRIBUTION:
     - ops_config.burden_history
@@ -35,6 +36,7 @@ table_aliases:
   feed_material_columns: offline_feed.feed_material_columns
   v_charge_material_quantities: offline_feed.v_charge_material_quantities
   v_dpr_material_quantities: offline_feed.v_dpr_material_quantities
+  material_property_mapping: plant_master.material_property_mapping
   raw_materials: plant_master.materials
   materials: plant_master.materials
   hoppers: plant_master.hoppers
@@ -68,6 +70,10 @@ non_averaged_columns:
   - source_column_name
   - feed_name
   - notes
+  - property_1_name
+  - property_2_name
+  - property_3_name
+  - property_4_name
   - hopper_code
   - display_name
 
@@ -288,16 +294,18 @@ tables:
     schema: offline_feed
     table: raw_material_strength_analysis
     time_column: date_time
-    supports_aggregation: true
+    supports_aggregation: false
     columns:
       - id
       - date_time
-      - ai
-      - ti
-      - rdi
-      - ri
+      - material_code
+      - property_1
+      - property_2
+      - property_3
+      - property_4
       - import_batch_id
       - created_at
+      - updated_at
 
   offline_feed.raw_material_stock:
     schema: offline_feed
@@ -393,6 +401,20 @@ tables:
       - created_at
       - updated_at
       - unit_code
+
+  plant_master.material_property_mapping:
+    schema: plant_master
+    table: material_property_mapping
+    time_column:
+    supports_aggregation: false
+    columns:
+      - material_code
+      - property_1_name
+      - property_2_name
+      - property_3_name
+      - property_4_name
+      - created_at
+      - updated_at
 
   plant_master.hoppers:
     schema: plant_master

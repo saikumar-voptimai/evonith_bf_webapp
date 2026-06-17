@@ -12,6 +12,7 @@ DatasetService   Dataclass with four fetch methods:
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -38,7 +39,24 @@ _NEON_RM_QUANTITY_VIEWS = {
 }
 _NEON_STATIC_ML_TABLE = "offline_feed.historical_static_ml_dataset"
 _NEON_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
+_NEON_STRENGTH_MAPPING_TABLE = "plant_master.material_property_mapping"
 _NEON_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
+
+_STRENGTH_ALIAS_BY_PROPERTY = {
+    "ai": "sinter_cold_strength_ai",
+    "ti": "sinter_cold_strength_ti",
+    "ri": "sinter_hot_strength_ri",
+    "rdi": "sinter_hot_strength_rdi",
+    "m_40": "coke_m40",
+    "m_10": "coke_m10",
+    "cri": "coke_cri",
+    "csr": "coke_csr",
+}
+_STRENGTH_PROPERTY_COLUMNS = ("property_1", "property_2", "property_3", "property_4")
+_STRENGTH_MATERIAL_PRIORITY = {
+    "sinter_3": 0,
+    "sinter_1": 1,
+}
 
 
 @dataclass
@@ -96,6 +114,12 @@ class DatasetService:
             return None
         values = df[existing].apply(pd.to_numeric, errors="coerce")
         return values.sum(axis=1, min_count=1)
+
+    @staticmethod
+    def _normalize_property_name(value: object) -> str:
+        if pd.isna(value):
+            return ""
+        return re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
 
     def _add_neon_ml_aliases(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add ML-compatible aggregate aliases for offline report table columns."""
@@ -365,6 +389,124 @@ class DatasetService:
             return pd.DataFrame()
         return self._normalize_timezone(df)
 
+    def _fetch_neon_strength_mapping(
+        self,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> pd.DataFrame:
+        df = fetch_neon_offline_data(
+            table_name=_NEON_STRENGTH_MAPPING_TABLE,
+            time_range=(start_dt, end_dt),
+        )
+        if df is None or df.empty:
+            return pd.DataFrame()
+        return df
+
+    def _build_neon_strength_aliases(
+        self,
+        strength: pd.DataFrame,
+        mapping: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        """Return ML-compatible sinter/coke strength columns."""
+        if strength.empty:
+            return pd.DataFrame()
+
+        legacy_sources = {
+            source_col: alias
+            for source_col, alias in _STRENGTH_ALIAS_BY_PROPERTY.items()
+            if source_col in strength.columns
+        }
+        if legacy_sources:
+            out = pd.DataFrame(index=strength.index)
+            for source_col, alias in legacy_sources.items():
+                out[alias] = pd.to_numeric(strength[source_col], errors="coerce")
+            if out.index.has_duplicates:
+                out = out.groupby(level=0).mean(numeric_only=True)
+            return out.dropna(how="all").sort_index()
+
+        property_cols = [
+            col for col in _STRENGTH_PROPERTY_COLUMNS if col in strength.columns
+        ]
+        if (
+            not property_cols
+            or mapping is None
+            or mapping.empty
+            or "material_code" not in strength.columns
+            or "material_code" not in mapping.columns
+        ):
+            return pd.DataFrame()
+
+        mapping = mapping.dropna(subset=["material_code"]).drop_duplicates(
+            subset=["material_code"],
+            keep="last",
+        )
+        property_name_by_material = mapping.set_index("material_code")
+        long_parts: list[pd.DataFrame] = []
+
+        for material_code, rows in strength.dropna(subset=["material_code"]).groupby(
+            "material_code",
+            sort=False,
+        ):
+            if material_code not in property_name_by_material.index:
+                continue
+            material_key = str(material_code).strip().lower()
+            priority = _STRENGTH_MATERIAL_PRIORITY.get(material_key, 100)
+            material_mapping = property_name_by_material.loc[material_code]
+            for property_col in property_cols:
+                property_name_col = f"{property_col}_name"
+                if property_name_col not in material_mapping.index:
+                    continue
+                property_key = self._normalize_property_name(
+                    material_mapping[property_name_col]
+                )
+                alias = _STRENGTH_ALIAS_BY_PROPERTY.get(property_key)
+                if alias is None:
+                    continue
+
+                values = pd.to_numeric(rows[property_col], errors="coerce")
+                part = pd.DataFrame(
+                    {
+                        "time": rows.index,
+                        "alias": alias,
+                        "priority": priority,
+                        "value": values.to_numpy(),
+                    }
+                ).dropna(subset=["value"])
+                if not part.empty:
+                    long_parts.append(part)
+
+        if not long_parts:
+            return pd.DataFrame()
+
+        long_df = (
+            pd.concat(long_parts, ignore_index=True)
+            .groupby(["time", "alias", "priority"], as_index=False)["value"]
+            .mean()
+            .sort_values(["time", "alias", "priority"])
+            .drop_duplicates(["time", "alias"], keep="first")
+        )
+        out = long_df.pivot_table(
+            index="time",
+            columns="alias",
+            values="value",
+            aggfunc="mean",
+        )
+        out.index.name = "time"
+        return out.sort_index().dropna(how="all")
+
+    def _fetch_neon_strength_aliases(
+        self,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> pd.DataFrame:
+        strength = self._fetch_neon_table(_NEON_STRENGTH_TABLE, start_dt, end_dt)
+        if strength.empty:
+            return pd.DataFrame()
+        if any(col in strength.columns for col in _STRENGTH_ALIAS_BY_PROPERTY):
+            return self._build_neon_strength_aliases(strength)
+        mapping = self._fetch_neon_strength_mapping(start_dt, end_dt)
+        return self._build_neon_strength_aliases(strength, mapping)
+
     # ------------------- STEP 1: HISTORICAL STATIC DATASET -------------------
 
     def fetch(
@@ -418,7 +560,7 @@ class DatasetService:
             raise ValueError("mode must be 'charge' or 'dpr'")
 
         df_rm = self._fetch_neon_table(table_name, start_dt, end_dt)
-        df_rm_hm = self._fetch_neon_table(_NEON_STRENGTH_TABLE, start_dt, end_dt)
+        df_rm_hm = self._fetch_neon_strength_aliases(start_dt, end_dt)
         df_chem = self._fetch_neon_weighted_chemistry(
             mode=mode,
             start_dt=start_dt,

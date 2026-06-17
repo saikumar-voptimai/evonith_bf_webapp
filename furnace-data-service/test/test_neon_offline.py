@@ -28,7 +28,17 @@ def test_neon_table_discovery_includes_migrated_reports():
     assert "ops_config.burden_history" in listing["tables"]
     assert "ops_config.hopper_raw_material_history" in listing["tables"]
     assert listing["aliases"]["rm_hm"] == "offline_feed.raw_material_strength_analysis"
+    assert (
+        listing["aliases"]["material_property_mapping"]
+        == "plant_master.material_property_mapping"
+    )
     assert "ore_6_mt" in listing["tables"]["offline_feed.charge_data"]["columns"]
+    assert "ai" not in listing["tables"]["offline_feed.raw_material_strength_analysis"]["columns"]
+    assert (
+        "property_1"
+        in listing["tables"]["offline_feed.raw_material_strength_analysis"]["columns"]
+    )
+    assert "plant_master.material_property_mapping" in listing["tables"]
 
 
 def test_fetch_table_uses_database_url_and_sets_time_index(monkeypatch):

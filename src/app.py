@@ -21,6 +21,31 @@ from utils.session import is_logged_in
 # Initialize logging once
 setup_logger()
 
+import sys
+from pathlib import Path
+
+def _prefer_local_furnace_data() -> None:
+    """Use the repo package during Streamlit reruns, not a stale wheel."""
+    repo_root = Path(__file__).resolve().parents[1]
+    local_package_root = repo_root / "furnace_data"
+    if not (local_package_root / "furnace_data").exists():
+        return
+
+    package_path = str(local_package_root)
+    if package_path in sys.path:
+        sys.path.remove(package_path)
+    sys.path.insert(0, package_path)
+
+    for module_name, module in list(sys.modules.items()):
+        if module_name != "furnace_data" and not module_name.startswith("furnace_data."):
+            continue
+        module_file = getattr(module, "__file__", "") or ""
+        if "site-packages" in module_file.lower():
+            sys.modules.pop(module_name, None)
+
+
+_prefer_local_furnace_data()
+
 
 # ------------------------------------------------------
 #  Authentication Gate
