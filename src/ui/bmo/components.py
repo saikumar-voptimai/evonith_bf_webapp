@@ -945,7 +945,7 @@ def render_blend_metrics(
         "Fuel Cost (Rs/THM, fallback)" if fuel_used_fallback else "Fuel Cost (Rs/THM)"
     )
     fuel_help = (
-        "Fallback formula in use - the XGBoost model was unavailable or "
+        "Fallback formula in use - the BMO fuel model was unavailable or "
         "rejected the prediction. Treat the cost as a placeholder."
         if fuel_used_fallback
         else None
@@ -978,7 +978,7 @@ def render_blend_metrics(
         fuel_label_est,
         f"{blend.fuel_cost_per_thm_rs:,.2f}",
         help=(
-            "Post-hoc XGBoost estimate on the selected blend."
+            "Post-hoc BMO fuel model estimate on the selected blend."
             if is_lp_mode
             else fuel_help
         ),
@@ -1027,13 +1027,24 @@ def render_blend_metrics(
         c7.metric("Slag Rate (kg/THM)", f"{blend.slag_rate_kg_per_thm:,.2f}")
     c8.metric("Slag (MT)", f"{blend.slag_mt:,.2f}")
 
+    prediction_details = (getattr(model_prediction, "details", {}) or {})
     if fuel_used_fallback:
-        reason = (getattr(model_prediction, "details", {}) or {}).get("reason")
+        reason = prediction_details.get("reason")
         reason_text = f" Reason: {reason}." if reason else ""
         st.caption(
             "WARNING - Fuel cost above came from the deterministic fallback "
-            "formula, not the BMO XGBoost model." + reason_text
+            "formula, not the BMO fuel model." + reason_text
         )
+    else:
+        std_value = prediction_details.get("prediction_std_rs_per_thm")
+        lower_95 = prediction_details.get("prediction_lower_95_rs_per_thm")
+        upper_95 = prediction_details.get("prediction_upper_95_rs_per_thm")
+        if std_value is not None and lower_95 is not None and upper_95 is not None:
+            st.caption(
+                "GP confidence: predicted fuel cost 95% interval "
+                f"{float(lower_95):,.0f} to {float(upper_95):,.0f} Rs/THM "
+                f"(σ {float(std_value):,.0f} Rs/THM)."
+            )
 
     # Row 3: basicity pair.
     b1, b2 = st.columns(2)

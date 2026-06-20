@@ -328,6 +328,81 @@ class FuelUnitCostModelService:
             )
         return None
 
+    def _model_predict_with_details(
+        self, model: Any, model_input: Any
+    ) -> tuple[float, dict[str, float | str]]:
+        """
+        Run model prediction and collect optional GP uncertainty details.
+
+        Legacy XGBoost artifacts expose only ``predict(X)``. GP-enabled artifacts
+        can additionally expose ``predict_with_uncertainty(X)`` or
+        ``predict(X, return_std=True)``. This helper supports both without
+        changing the BMO inference contract: callers still receive one fuel-cost
+        value, while uncertainty bands are attached to ``ModelPrediction.details``.
+
+        Args:
+             - model: Any - Loaded model artifact (XGBoost wrapper or GP model).
+             - model_input: Any - Scaled, feature-ordered model input.
+
+        Returns:
+             - return tuple[float, dict[str, float | str]] - Mean prediction and
+               optional uncertainty detail fields.
+        """
+
+        details: dict[str, float | str] = {}
+
+        if hasattr(model, "predict_with_uncertainty"):
+            try:
+                result = model.predict_with_uncertainty(model_input)
+                if isinstance(result, dict):
+                    mean = result.get(
+                        "mean", result.get("prediction", result.get("value"))
+                    )
+                    value = float(np.asarray(mean).reshape(-1)[0])
+                    std = result.get("std", result.get("sigma", None))
+                    if std is not None:
+                        std_value = float(np.asarray(std).reshape(-1)[0])
+                        if np.isfinite(std_value) and std_value >= 0:
+                            details["prediction_std_rs_per_thm"] = std_value
+                            details["prediction_interval_95_half_width_rs_per_thm"] = (
+                                1.96 * std_value
+                            )
+                    lower = result.get("lower_95", result.get("lower", None))
+                    upper = result.get("upper_95", result.get("upper", None))
+                    if lower is not None and upper is not None:
+                        details["prediction_lower_95_rs_per_thm"] = float(
+                            np.asarray(lower).reshape(-1)[0]
+                        )
+                        details["prediction_upper_95_rs_per_thm"] = float(
+                            np.asarray(upper).reshape(-1)[0]
+                        )
+                    details["uncertainty_source"] = type(model).__name__
+                    return value, details
+            except Exception as exc:  # noqa: BLE001
+                details["uncertainty_warning"] = (
+                    f"predict_with_uncertainty failed: {exc}"
+                )
+
+        try:
+            pred = model.predict(model_input, return_std=True)
+            if isinstance(pred, tuple) and len(pred) == 2:
+                value = float(np.asarray(pred[0]).reshape(-1)[0])
+                std_value = float(np.asarray(pred[1]).reshape(-1)[0])
+                if np.isfinite(std_value) and std_value >= 0:
+                    details["prediction_std_rs_per_thm"] = std_value
+                    details["prediction_interval_95_half_width_rs_per_thm"] = (
+                        1.96 * std_value
+                    )
+                    details["prediction_lower_95_rs_per_thm"] = value - 1.96 * std_value
+                    details["prediction_upper_95_rs_per_thm"] = value + 1.96 * std_value
+                    details["uncertainty_source"] = type(model).__name__
+                return value, details
+        except TypeError:
+            pass
+
+        pred = model.predict(model_input)
+        return float(np.asarray(pred).reshape(-1)[0]), details
+
     def predict(
         self, feature_payload: dict[str, float], history_df: pd.DataFrame | None
     ) -> ModelPrediction:
@@ -402,8 +477,9 @@ class FuelUnitCostModelService:
                 else:
                     x_in = x_df
 
-                pred = bundle.model.predict(x_in)
-                value = float(np.asarray(pred).reshape(-1)[0])
+                value, prediction_details = self._model_predict_with_details(
+                    bundle.model, x_in
+                )
                 prediction_issue = self._prediction_issue(value)
                 if prediction_issue:
                     fallback = self._fallback_predict(feature_payload)
@@ -418,6 +494,7 @@ class FuelUnitCostModelService:
                             "reason": prediction_issue,
                             "model_value": value,
                             "feature_sources": feature_build.source_map,
+                            **prediction_details,
                         },
                     )
                 return ModelPrediction(
@@ -427,7 +504,10 @@ class FuelUnitCostModelService:
                     used_fallback=False,
                     missing_features=feature_build.missing_features,
                     imputed_features=feature_build.imputed_features,
-                    details={"feature_sources": feature_build.source_map},
+                    details={
+                        "feature_sources": feature_build.source_map,
+                        **prediction_details,
+                    },
                 )
             except Exception as exc:
                 fallback = self._fallback_predict(feature_payload)
@@ -557,8 +637,9 @@ class FuelUnitCostModelService:
                 index=feature_build.vector_df.index,
             )
             model_input = scaled_df[selected_features]
-            pred = bundle.model.predict(model_input)
-            value = float(np.asarray(pred).reshape(-1)[0])
+            value, prediction_details = self._model_predict_with_details(
+                bundle.model, model_input
+            )
             prediction_issue = self._prediction_issue(value)
             if prediction_issue:
                 fallback = self._fallback_predict(feature_payload)
@@ -575,6 +656,7 @@ class FuelUnitCostModelService:
                         "feature_sources": feature_build.source_map,
                         "raw_feature_count": len(bundle.expected_features),
                         "selected_feature_count": len(selected_features),
+                        **prediction_details,
                     },
                 )
             return ModelPrediction(
@@ -589,6 +671,7 @@ class FuelUnitCostModelService:
                     "raw_feature_count": len(bundle.expected_features),
                     "selected_feature_count": len(selected_features),
                     "selected_features": selected_features,
+                    **prediction_details,
                 },
             )
         except Exception as exc:
@@ -715,8 +798,9 @@ class FuelUnitCostModelService:
                     x_scaled, columns=context.expected_features
                 )
 
-            pred = bundle.model.predict(model_input)
-            value = float(np.asarray(pred).reshape(-1)[0])
+            value, prediction_details = self._model_predict_with_details(
+                bundle.model, model_input
+            )
         except Exception as exc:
             payload_fallback = dict(context.static_payload)
             payload_fallback.update(dynamic_payload)
@@ -739,7 +823,11 @@ class FuelUnitCostModelService:
                 model_loaded=True,
                 scaler_loaded=bundle.scaler is not None,
                 used_fallback=True,
-                details={"reason": prediction_issue, "model_value": value},
+                details={
+                    "reason": prediction_issue,
+                    "model_value": value,
+                    **prediction_details,
+                },
             )
 
         return ModelPrediction(
@@ -747,5 +835,9 @@ class FuelUnitCostModelService:
             model_loaded=True,
             scaler_loaded=bundle.scaler is not None,
             used_fallback=False,
-            details={"path": "prebuilt", "dynamic_field_count": len(dynamic_payload)},
+            details={
+                "path": "prebuilt",
+                "dynamic_field_count": len(dynamic_payload),
+                **prediction_details,
+            },
         )

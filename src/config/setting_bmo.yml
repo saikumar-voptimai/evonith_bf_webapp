@@ -235,12 +235,12 @@ bmo:
 
   model_bundle:
     strict_loading: false
-    model_path: src/assets/models/bmo_fuel/bmo_xgb_model.json
-    scaler_path: src/assets/models/bmo_fuel/bmo_scaler.joblib
+    model_path: src/assets/models/bmo_fuel/bmo_gp_residual_model.joblib
+    scaler_path: src/assets/models/bmo_fuel/bmo_gp_scaler.joblib
     selected_feature_columns_path: src/assets/models/bmo_fuel/bmo_feature_columns.json
     feature_manifest_path: src/assets/models/bmo_fuel/feature_manifest.json
     lag_map_path: src/assets/models/bmo_fuel/lag_map.json
-    training_metrics_path: src/assets/models/bmo_fuel/training_metrics.json
+    training_metrics_path: src/assets/models/bmo_fuel/gp_training_metrics.json
 
   data_sources:
     static_dataset_path: src/assets/data/furnace_dataset.csv
@@ -269,12 +269,12 @@ bmo:
       refresh_enabled: false
       refresh_rm_choice: RM Charge
     model_bundle:
-      model_path: src/assets/models/bmo_fuel/bmo_xgb_model.json
-      scaler_path: src/assets/models/bmo_fuel/bmo_scaler.joblib
+      model_path: src/assets/models/bmo_fuel/bmo_gp_residual_model.joblib
+      scaler_path: src/assets/models/bmo_fuel/bmo_gp_scaler.joblib
       selected_feature_columns_path: src/assets/models/bmo_fuel/bmo_feature_columns.json
       feature_manifest_path: src/assets/models/bmo_fuel/feature_manifest.json
       lag_map_path: src/assets/models/bmo_fuel/lag_map.json
-      training_metrics_path: src/assets/models/bmo_fuel/training_metrics.json
+      training_metrics_path: src/assets/models/bmo_fuel/gp_training_metrics.json
       strict_loading: false
     feature_policy:
       missing_feature_policy: default_warn

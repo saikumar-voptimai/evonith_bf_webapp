@@ -42,7 +42,9 @@ uv add <package>           # Add dependency
 
 **Coke-to-PCI substitution ratio: 0.53** — 1 kg PCI replaces 0.53 kg coke.
 
-**Unit Cost formula** = 0.25 × (Coke Rate + 0.53 × PCI Rate) [Lakhs/tHM]
+**Unit Cost formula** = (Coke Rate × coke price) + (Nut Coke Rate × nut coke price) + (PCI Rate × PCI price) [Rs/tHM]
+
+Fuel prices are configurable in `src/config/setting_bmo.yml` under `default_prices_rs_per_kg` (current values: coke 28.0, nut coke 24.0, PCI 15.0 Rs/kg). Coke Rate = Total Fuel Rate − PCI Rate. This Rs/tHM cost is the BMO `unitcost_new` target predicted by the GP fuel model and the basis of the deterministic fallback. (The legacy `0.25 × (Coke Rate + 0.53 × PCI Rate)` Lakhs/tHM formula — still used for the derived `UNITCOST LAKHS/THM` column in the V-OptimAIse/Data Explorer pages — is deprecated.)
 
 ### Furnace Coordinate System
 
