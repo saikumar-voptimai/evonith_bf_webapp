@@ -39,6 +39,7 @@ class OfflineReportType(str, Enum):
     hm_slag = "HM_SLAG"
     charge = "CHARGE"
     rm_composition = "RM_COMPOSITION"
+    raw_material_strength = "RAW_MATERIAL_STRENGTH"
     dpr = "DPR"
 
 
@@ -142,4 +143,4 @@ class TaskStatusResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "0.1.0"
+    version: str = "0.1.1"

@@ -7,6 +7,10 @@ bmo:
   target:
     target_production_mt: 2350.0
     target_slag_qty_mt: 750.0
+    target_slag_basicity_min: 0.0
+    target_slag_basicity_max: 10.0
+    target_slag_t_basicity_min: 0.0
+    target_slag_t_basicity_max: 10.0
 
   chemistry:
     feo_in_slag_pct: 0.4
@@ -122,6 +126,7 @@ bmo:
     - flux_id: brazil
       display_name: Brazil
       enabled: false
+      hidden_by_default: true
       wet_qty_mt: 0.0
       moisture_pct: 0.0
       sio2_pct: 0.0
@@ -141,6 +146,7 @@ bmo:
     - flux_id: fluorspar
       display_name: Fluorspar
       enabled: false
+      hidden_by_default: true
       wet_qty_mt: 0.0
       moisture_pct: 0.0
       sio2_pct: 0.0
@@ -180,10 +186,12 @@ bmo:
 
   slag_balance:
     enabled: true
-    carbon_pct: 0.0
-    silicon_pct: 0.0
-    sulphur_pct: 0.0
-    other_pct: 0.0
+    # PI chemistry fallbacks: used only when live HM_SLAG fetch fails.
+    # Live values from offline_feed.hot_metal_slag_analysis override these.
+    carbon_pct: 4.2
+    silicon_pct: 0.7
+    sulphur_pct: 0.03
+    other_pct: 0.1
     pi_loss_pct: 0.2
     fe_to_pig_iron_fraction: 0.999
     mn_recovery_pct: 60.0
@@ -192,13 +200,15 @@ bmo:
     si_to_sio2_factor: 2.14
     fe_to_feo_factor: 1.2857142857
     mn_to_mno_factor: 1.291
-    slag_correction_factor: 0.95
+    # With HM-driven PI chemistry the slag balance is self-consistent;
+    # leave correction at 1.0 unless empirical calibration is still needed.
+    slag_correction_factor: 1.0
 
   optimization:
     enabled: true
     strategy: best1bin
-    maxiter: 8
-    popsize: 6
+    maxiter: 30
+    popsize: 10
     tol: 0.02
     polish: false
     seed: 42
@@ -209,6 +219,7 @@ bmo:
     penalty_fe: 3000.0
     penalty_production_excess: 3000.0
     penalty_slag: 3000.0
+    penalty_basicity: 50000.0
 
   fallback_fuel_model:
     target_sinter_share_pct: 60.0
@@ -218,9 +229,9 @@ bmo:
       nut_coke_rate_kg_per_thm: 20.0
       pci_rate_kg_per_thm: 170.0
     default_prices_rs_per_kg:
-      coke_price_rs_per_kg: 34.0
-      nut_coke_price_rs_per_kg: 32.0
-      pci_price_rs_per_kg: 22.0
+      coke_price_rs_per_kg: 28.0
+      nut_coke_price_rs_per_kg: 24.0
+      pci_price_rs_per_kg: 15.0
 
   model_bundle:
     strict_loading: false
@@ -233,16 +244,18 @@ bmo:
 
   data_sources:
     static_dataset_path: src/assets/data/furnace_dataset.csv
-    chemistry_bucket: bf2_evonith_offline_utc
-    chemistry_measurement: rm_updated_data
-    stock_bucket: bf2_evonith_offline_utc
-    stock_measurement: rm_stock
+    stock_table: offline_feed.raw_material_stock
     stock_time_range: last 1 week
     stock_fallback_reference_qty_mt: 3800.0
     chemistry_time_range_days: 30
+    latest_usage_lookback_days: 365
+    pellet_auto_select_lookback_days: 30
+    pellet_chemistry_max_age_days: 30
+    static_refresh_max_age_minutes: 60
 
   ui:
     show_manual_compare: true
+    auto_select_active_pellet: true
     default_selected_ores:
       - SINTER (SP-02)
       - GEOMIN CLO
@@ -267,8 +280,8 @@ bmo:
       missing_feature_policy: default_warn
     optimizer:
       strategy: best1bin
-      maxiter: 6
-      popsize: 5
+      maxiter: 30
+      popsize: 10
       tol: 0.02
       polish: false
       seed: 42

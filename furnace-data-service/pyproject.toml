@@ -1,6 +1,6 @@
 [project]
 name = "furnace-data-service"
-version = "0.1.0"
+version = "0.1.6"
 description = "REST API service for Blast Furnace data fetching and dataset pipeline"
 requires-python = ">=3.11"
 dependencies = [

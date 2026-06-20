@@ -22,7 +22,7 @@ import streamlit as st
 from data.ml.static_csv import load_static_dataset
 from furnace_data.config import load_config
 from furnace_data.influx.base import BaseDataFetcher
-from furnace_data.neon_db.offline import fetch_offline_report
+from furnace_data.offline import fetch_offline_report
 
 log = logging.getLogger("root")
 

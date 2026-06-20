@@ -90,7 +90,7 @@ def render_message(item: dict) -> None:
         figure = artifact_store.get(artifact_key)
         if figure is not None:
             st.plotly_chart(
-                figure, use_container_width=True, key=f"chat_{artifact_key}"
+                figure, width="stretch", key=f"chat_{artifact_key}"
             )
         else:
             st.caption("_Chart no longer in session._")
@@ -108,7 +108,7 @@ def render_message(item: dict) -> None:
             )
             st.dataframe(
                 dataframe.head(50),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 key=f"chat_{artifact_key}_df",
             )
@@ -212,7 +212,7 @@ def render_feedback_controls(item: dict, *, raw_user_message: str) -> None:
         submitted = st.button(
             "Save",
             key=f"fm_feedback_save_{message_id}",
-            use_container_width=True,
+            width="stretch",
         )
 
     if not submitted:
@@ -345,21 +345,21 @@ def render_quick_skills(
     st.caption("Quick skills")
     c1, c2, c3 = st.columns(3)
     with c1:
-        if st.button("Unit Cost", use_container_width=True, key="fm_skill_cost"):
+        if st.button("Unit Cost", width="stretch", key="fm_skill_cost"):
             _queue_skill(
                 engine.optimise_prompt(),
                 "Unit Cost - last 30 days vs best-shift targets",
                 "optimise",
             )
     with c2:
-        if st.button("Shift to Best", use_container_width=True, key="fm_skill_shift"):
+        if st.button("Shift to Best", width="stretch", key="fm_skill_shift"):
             _queue_skill(
                 engine.shift_to_best_prompt(str(shift_date), shift_label),
                 f"Shift to Best: {shift_date}, Shift {shift_label}",
                 "shift_to_best",
             )
     with c3:
-        if st.button("Heatloads", use_container_width=True, key="fm_skill_heatloads"):
+        if st.button("Heatloads", width="stretch", key="fm_skill_heatloads"):
             _queue_skill(
                 engine.heatload_prompt(),
                 "Heatloads - last 8h vs 2-month baseline",

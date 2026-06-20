@@ -115,7 +115,7 @@ if css_path.exists():
     with open(css_path) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-ip_flat_list = models_dict[model]["input_params_flat"]
+ip_flat_list = models_dict[optimisation_type]["input_params_flat"]
 cp_list = models_dict[optimisation_type]["control_params"]
 op_list = [
     config_vsense["Optimisation"][model]["output_param"]
@@ -220,9 +220,11 @@ with st.expander(
             with cols[i % 3]:
                 st.write(f"### {group_name}")
                 for param in params:
-                    if group_name == "Burden":
+                    if group_name == "Burden" and param in st.session_state.df_hist:
                         latest_row[param] = st.session_state.df_hist.iloc[-1][param]
-                    if "CHARGES/HRS." in param or "GEOMIN TYPE" in param:
+                    if param in latest_row and (
+                        "CHARGES/HRS." in param or "GEOMIN TYPE" in param
+                    ):
                         latest_row[param] = np.round(latest_row[param])
                     if param in latest_row:
                         default_val = float(latest_row[param])
@@ -237,7 +239,6 @@ with st.expander(
                         user_val if user_val != default_val else np.nan
                     )
 
-        raw_mtrl_input[param] = np.nan
         submit_ip = st.form_submit_button("Submit Input Params")
         if submit_ip:
             st.success("✅ Input parameters recorded.")

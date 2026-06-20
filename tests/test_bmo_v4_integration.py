@@ -9,8 +9,13 @@ import pandas as pd
 import pytest
 
 from domain.optimization_runtime import parse_lag_feature_name
-from utils.bmo.feature_builder import build_bmo_v4_feature_frame, build_feature_payload
+from utils.bmo.feature_builder import (
+    build_bmo_v4_feature_frame,
+    build_feature_payload,
+    max_bmo_lag_steps,
+)
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
+from utils.bmo.fuel_rates import estimate_fuel_rates_from_cost, get_recent_fuel_input_rates
 from utils.bmo.model_service import FuelUnitCostModelService
 from utils.bmo.types import OreChemistry, OreInput
 
@@ -88,6 +93,7 @@ def test_candidate_blend_payload_maps_ore_slots_and_ratios() -> None:
     hot_metal_mt = (60.0 * 0.92 * 0.55) + (20.0 * 0.94 * 0.61)
     hot_metal_mt += (30.0 * 0.98 * 0.30) + (10.0 * 1.0 * 0.64)
     assert payload["ORE_CALC_THM"] == pytest.approx(50.0 / hot_metal_mt)
+    assert payload["TOTAL_CLO_THM"] == pytest.approx(50.0 / hot_metal_mt)
     assert payload["SINTER_CALC_THM"] == pytest.approx(60.0 / hot_metal_mt)
     assert payload["TOTAL_PELLET_CALC_THM"] == pytest.approx(10.0 / hot_metal_mt)
     assert payload["ORE_3_PCT"] == pytest.approx(40.0)
@@ -95,9 +101,90 @@ def test_candidate_blend_payload_maps_ore_slots_and_ratios() -> None:
     assert payload["ORE_12_PCT"] == pytest.approx(0.0)
     assert payload["SINTER_CLO_RATIO"] == pytest.approx(1.2)
     assert payload["PELLET_CLO_RATIO"] == pytest.approx(0.2)
-    assert payload["ORE_SIO2%"] == pytest.approx(6.4)
-    assert payload["ORE_TM%"] == pytest.approx(3.6)
+    assert payload["PELLET_PCT_SIO2"] == pytest.approx(3.0)
+    assert payload["LLOYDS_PELLET_PCT_SIO2"] == pytest.approx(3.0)
+    assert payload["ORE_SIO2%"] == pytest.approx(
+        ((20.0 * 0.94 * 4.0) + (30.0 * 0.98 * 8.0))
+        / ((20.0 * 0.94) + (30.0 * 0.98))
+    )
+    assert payload["ORE_TM%"] == pytest.approx(
+        ((20.0 * 0.94 * 6.0) + (30.0 * 0.98 * 2.0))
+        / ((20.0 * 0.94) + (30.0 * 0.98))
+    )
     assert payload["SINTER_SP_02_TM%"] == pytest.approx(8.0)
+
+
+def test_legacy_pellet_model_features_resolve_from_generic_payload() -> None:
+    result = build_bmo_v4_feature_frame(
+        feature_payload={"PELLET_PCT_CAO": 0.3, "PELLET_CLO_RATIO": 0.2},
+        history_df=None,
+        expected_features=[
+            "LLOYDS_PELLET_PCT_CAO",
+            "LLOYDS_PELLET_PCT_CAO_lag4_(MeltImpact)",
+            "PELLET_CLO_RATIO_lag1_(GasImpact)",
+        ],
+        default_values={},
+    )
+
+    assert result.vector_df["LLOYDS_PELLET_PCT_CAO"].iloc[0] == pytest.approx(0.3)
+    assert result.vector_df["LLOYDS_PELLET_PCT_CAO_lag4_(MeltImpact)"].iloc[
+        0
+    ] == pytest.approx(0.3)
+    assert result.vector_df["PELLET_CLO_RATIO_lag1_(GasImpact)"].iloc[
+        0
+    ] == pytest.approx(0.2)
+    assert result.imputed_features == []
+
+
+def test_candidate_blend_payload_uses_operator_hm_basis_for_thm_features() -> None:
+    ores = [
+        _ore("sinter", "SINTER", "sinter_sp_02", OreChemistry(55.0)),
+        _ore("ore3", "GEOMIN CLO", "ore_3", OreChemistry(61.0)),
+    ]
+    quantities = {"sinter": 60.0, "ore3": 40.0}
+
+    payload = build_feature_payload(
+        quantities_mt=quantities,
+        ore_display_name_by_id={ore.ore_id: ore.display_name for ore in ores},
+        ores=ores,
+        hot_metal_target_mt=80.0,
+    )
+
+    assert payload["SINTER_CALC_THM"] == pytest.approx(60.0 / 80.0)
+    assert payload["ORE_CALC_THM"] == pytest.approx(40.0 / 80.0)
+    assert payload["TOTAL_CLO_THM"] == pytest.approx(40.0 / 80.0)
+
+
+def test_new_model_thm_aliases_resolve_from_history_and_candidate_payload() -> None:
+    history_df = pd.DataFrame(
+        {
+            "PCI_CALC_MT": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "ORE_CALC_MT": [100.0, 110.0, 120.0, 130.0, 140.0],
+            "PRODUCTIONTONNESPERHR": [50.0, 50.0, 60.0, 65.0, 70.0],
+        },
+        index=pd.date_range("2026-05-21", periods=5, freq="h"),
+    )
+
+    result = build_bmo_v4_feature_frame(
+        feature_payload={"TOTAL_CLO_THM": 1.75},
+        history_df=history_df,
+        expected_features=[
+            "PCI_CALC_THM",
+            "PCI_CALC_THM_lag4",
+            "TOTAL_CLO_THM",
+            "TOTAL_CLO_THM_lag1_(GasImpact)",
+            "TOTAL_CLO_THM_lag4_(MeltImpact)",
+        ],
+        default_values={},
+    )
+
+    row = result.vector_df.iloc[0]
+    assert row["PCI_CALC_THM"] == pytest.approx(50.0 / 70.0)
+    assert row["PCI_CALC_THM_lag4"] == pytest.approx(10.0 / 50.0)
+    assert row["TOTAL_CLO_THM"] == pytest.approx(1.75)
+    assert row["TOTAL_CLO_THM_lag1_(GasImpact)"] == pytest.approx(1.75)
+    assert row["TOTAL_CLO_THM_lag4_(MeltImpact)"] == pytest.approx(1.75)
+    assert result.imputed_features == []
 
 
 def test_bmo_v4_feature_frame_handles_dual_lags_and_candidate_overrides() -> None:
@@ -143,6 +230,24 @@ def test_bmo_v4_feature_frame_handles_dual_lags_and_candidate_overrides() -> Non
     assert row["trend_index"] == pytest.approx(4.0)
     assert row["MISSING_FEATURE"] == pytest.approx(7.0)
     assert "MISSING_FEATURE" in result.missing_features
+
+
+def test_topbar_does_not_alias_to_toppressurebar() -> None:
+    history_df = pd.DataFrame(
+        {"TOPPRESSUREBAR": [1.3]},
+        index=pd.date_range("2026-05-21", periods=1, freq="h"),
+    )
+
+    result = build_bmo_v4_feature_frame(
+        feature_payload={},
+        history_df=history_df,
+        expected_features=["TOPBAR"],
+        default_values={},
+    )
+
+    assert result.vector_df["TOPBAR"].iloc[0] == pytest.approx(0.0)
+    assert result.source_map["TOPBAR"] == "default"
+    assert "TOPBAR" in result.missing_features
 
 
 def test_selected_feature_model_service_scales_full_frame_then_slices(
@@ -225,17 +330,121 @@ def test_blend_fuel_prediction_helper_attaches_model_cost(tmp_path: Path) -> Non
         quantities_mt={"ore3": 100.0},
         feo_in_slag_pct=0.4,
         model_service=service,
-        process_context={"a": 2.0, "c": 3.0},
+        process_context={
+            "a": 6000.0,
+            "c": 6900.0,
+            "PCI_KG/THM": 150.0,
+            "NUTCOKE_CALC_THM": 65.0,
+        },
         history_df=pd.DataFrame(),
     )
 
-    assert blend.fuel_cost_per_thm_rs == pytest.approx(5.0)
-    assert blend.objective_rs_per_thm == pytest.approx(blend.ore_cost_per_thm_rs + 5.0)
+    assert blend.fuel_cost_per_thm_rs == pytest.approx(12_900.0)
+    assert blend.objective_rs_per_thm == pytest.approx(
+        blend.ore_cost_per_thm_rs + 12_900.0
+    )
     assert blend.diagnostics["model_prediction"].used_fallback is False
+    assert blend.diagnostics["fuel_rate_estimate"]["coke_rate_kg_thm"] == pytest.approx(
+        373.0
+    )
+
+
+def test_estimated_fuel_rates_use_predicted_cost_and_recent_rates() -> None:
+    rates = estimate_fuel_rates_from_cost(
+        fuel_cost_per_thm_rs=12_900.0,
+        process_context={"PCI_KG/THM": 150.0, "NUTCOKE_CALC_THM": 65.0},
+    )
+
+    assert rates is not None
+    assert rates.total_coke_rate_kg_thm == pytest.approx(438.0)
+    assert rates.coke_rate_kg_thm == pytest.approx(373.0)
+    assert rates.nut_coke_rate_kg_thm == pytest.approx(65.0)
+    assert rates.total_fuel_rate_kg_thm == pytest.approx(588.0)
+    assert rates.pci_rate_kg_thm == pytest.approx(150.0)
+
+
+def test_estimated_fuel_rates_use_requested_nut_coke_fallback_only() -> None:
+    rates = estimate_fuel_rates_from_cost(
+        fuel_cost_per_thm_rs=12_900.0,
+        process_context={"PCI_KG/THM": 150.0},
+    )
+
+    assert rates is not None
+    assert rates.nut_coke_rate_kg_thm == pytest.approx(70.0)
+    assert rates.nut_coke_source == "fallback"
+    assert rates.coke_rate_kg_thm == pytest.approx(368.0)
+
+
+def test_estimated_fuel_rates_use_last_nonzero_static_dataset_values() -> None:
+    history_df = pd.DataFrame(
+        {
+            "PCI_KG/THM": [148.0, 151.0, 0.0],
+            "NUTCOKE_CALC_THM": [62.0, 68.0, 0.0],
+        }
+    )
+
+    rates = estimate_fuel_rates_from_cost(
+        fuel_cost_per_thm_rs=12_900.0,
+        process_context={"PCI_KG/THM": 0.0, "NUTCOKE_CALC_THM": 0.0},
+        history_df=history_df,
+    )
+
+    assert rates is not None
+    assert rates.pci_rate_kg_thm == pytest.approx(151.0)
+    assert rates.nut_coke_rate_kg_thm == pytest.approx(68.0)
+    assert rates.pci_source == "history.PCI_KG/THM"
+    assert rates.nut_coke_source == "history.NUTCOKE_CALC_THM"
+
+
+def test_recent_fuel_input_rates_seed_fuel_ash_from_context_and_history() -> None:
+    history_df = pd.DataFrame(
+        {
+            "PCI_KG/THM": [148.0, 151.0, 0.0],
+            "NUTCOKE_CALC_THM": [62.0, 68.0, 0.0],
+            "COKE RATE KG/THM": [320.0, 322.0, 0.0],
+        }
+    )
+
+    rates = get_recent_fuel_input_rates(
+        process_context={
+            "COKE RATE KG/THM": 335.0,
+            "PCI_KG/THM": 0.0,
+            "NUTCOKE_CALC_THM": 0.0,
+        },
+        history_df=history_df,
+    )
+
+    assert rates["coke_rate_kg_thm"] == pytest.approx(335.0)
+    assert rates["coke_source"] == "process_context.COKE RATE KG/THM"
+    assert rates["pci_rate_kg_thm"] == pytest.approx(151.0)
+    assert rates["nut_coke_rate_kg_thm"] == pytest.approx(68.0)
+
+
+def test_estimated_fuel_rates_require_latest_pci_rate() -> None:
+    assert (
+        estimate_fuel_rates_from_cost(
+            fuel_cost_per_thm_rs=12_900.0,
+            process_context={"NUTCOKE_CALC_THM": 65.0},
+        )
+        is None
+    )
 
 
 def test_shared_lag_parser_accepts_bmo_dual_impact_suffix() -> None:
     assert parse_lag_feature_name("ORE_8_PCT_lag4_(MeltImpact)") == (
         "ORE_8_PCT",
         4,
+    )
+
+
+def test_bmo_max_lag_steps_uses_model_feature_names() -> None:
+    assert (
+        max_bmo_lag_steps(
+            [
+                "HOT BLAST TEMP.OC",
+                "STOCKRODLEVEL_lag1",
+                "ORE_8_PCT_lag4_(MeltImpact)",
+            ]
+        )
+        == 4
     )

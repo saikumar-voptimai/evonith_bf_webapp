@@ -72,10 +72,10 @@ It is the source of truth for tool routing and plotting behavior.
 
 ### 3. `fetch_offline_data`
 - Fetches offline/manual reports from offline bucket.
-- Supported report types: `HM_SLAG`, `CHARGE`, `RAW_MATERIAL_COMPOSITION`, `DPR`.
+- Supported report types: `HM_SLAG`, `CHARGE`, `RAW_MATERIAL_COMPOSITION`, `RAW_MATERIAL_STRENGTH`, `DPR`.
 - Default cadence:
   - `HM_SLAG` and `CHARGE` -> `1h`
-  - `RAW_MATERIAL_COMPOSITION` -> `8h`
+  - `RAW_MATERIAL_COMPOSITION` and `RAW_MATERIAL_STRENGTH` -> `8h`
   - `DPR` -> `1d`
 
 ### 4. `concat_datasets`

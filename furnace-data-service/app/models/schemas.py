@@ -36,6 +36,7 @@ class OfflineReportType(str, Enum):
     charge = "CHARGE"
     dpr = "DPR"
     rm_composition = "RM_COMPOSITION"
+    raw_material_strength = "RAW_MATERIAL_STRENGTH"
     burden_distribution = "BURDEN_DISTRIBUTION"
     hopper_management = "HOPPER_MANAGEMENT"
 
@@ -67,7 +68,7 @@ class OfflineFetchRequest(BaseModel):
     table_name: Optional[str] = Field(
         None,
         description=(
-            "Optional explicit Neon table override. Accepts schema-qualified "
+            "Optional explicit offline database table override. Accepts schema-qualified "
             "table names and legacy aliases such as 'rm_hm'."
         ),
     )
@@ -84,7 +85,7 @@ class OfflineFetchRequest(BaseModel):
     )
     window: Optional[str] = Field(
         "1 hour",
-        description="PostgreSQL interval for Neon windowed-average, e.g. '1 hour'.",
+        description="PostgreSQL interval for windowed-average, e.g. '1 hour'.",
     )
     format: ResponseFormat = ResponseFormat.json
 
@@ -149,7 +150,7 @@ class TaskStatusResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "0.1.0"
+    version: str = "0.1.1"
 
 
 # ---- Live RM data ----

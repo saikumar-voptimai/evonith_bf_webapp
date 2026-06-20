@@ -135,7 +135,9 @@ def run_optimiser(
     scaler = joblib.load(scaler_path)
     models_dict[optimisation_type]["LoadedScaler"] = scaler
 
-    local_feature_names = scaler.feature_names_in_.tolist()
+    scaler_feature_names = scaler.feature_names_in_.tolist()
+    scaler_index = {name: i for i, name in enumerate(scaler_feature_names)}
+    local_feature_names = scaler_feature_names.copy()
     if impute_lags:
         for feat in local_feature_names:
             if "_lag" in feat and feat.split("_lag")[0] in control_params:
@@ -151,14 +153,13 @@ def run_optimiser(
     offsets, scales = extract_scaler_params(scaler)
 
     if target_output in local_feature_names:
-        target_idx = local_feature_names.index(target_output)
-        target_value = local_feat_vec.iloc[-1][target_output]
-        local_feature_names.pop(local_feature_names.index(target_output))
-        local_feat_vec = local_feat_vec.drop(columns=[target_output])
+        target_idx = scaler_index[target_output]
+        local_feature_names.remove(target_output)
+        local_feat_vec = local_feat_vec.drop(columns=[target_output], errors="ignore")
     else:
         for feature in local_feature_names:
             if target_output in feature:
-                feature_idx = local_feature_names.index(feature)
+                feature_idx = scaler_index[feature]
                 target_idx = len(offsets)
                 offsets = np.append(offsets, offsets[feature_idx])
                 scales = np.append(scales, scales[feature_idx])
@@ -167,7 +168,21 @@ def run_optimiser(
             raise KeyError(
                 f"Target '{target_output}' not found in feature names for optimisation."
             )
-    scaler_index = {name: i for i, name in enumerate(local_feature_names)}
+
+    missing_features = [
+        feature for feature in local_feature_names if feature not in local_feat_vec.columns
+    ]
+    if missing_features:
+        logger.info(
+            "[optimiser] ignoring missing feature(s) with neutral scaled values: "
+            f"{missing_features}"
+        )
+        local_feat_vec = local_feat_vec.copy()
+        for feature in missing_features:
+            scaler_idx = scaler_index[feature]
+            local_feat_vec[feature] = offsets[scaler_idx]
+    local_feat_vec = local_feat_vec.loc[:, local_feature_names]
+
     feature_idx = np.array([scaler_index.get(f, -1) for f in local_feature_names])
 
     assert (
@@ -281,6 +296,9 @@ def run_optimiser(
         impact_feat_vec = df_impact_full.iloc[-1]
         impact_feature_names = impact_scaler.feature_names_in_.tolist()
         offsets_imp, scales_imp = extract_scaler_params(impact_scaler)
+        impact_scaler_index = {
+            name: i for i, name in enumerate(impact_scaler.feature_names_in_)
+        }
 
         # Drop the impact target for inference
         if impact_target in impact_feature_names:
@@ -304,16 +322,30 @@ def run_optimiser(
                     f"for model '{model_name}'."
                 )
 
+        missing_impact_features = [
+            feature
+            for feature in impact_feature_names
+            if feature not in row_prev_imp.index
+        ]
+        if missing_impact_features:
+            logger.info(
+                "[impact] ignoring missing feature(s) for model "
+                f"'{model_name}' with neutral scaled values: "
+                f"{missing_impact_features}"
+            )
+            for feature in missing_impact_features:
+                scaler_idx = impact_scaler_index[feature]
+                neutral_value = offsets_imp[scaler_idx]
+                row_prev_imp.loc[feature] = neutral_value
+                row_curr_imp.loc[feature] = neutral_value
+
         # Raw feature vectors
         raw_prev_imp = row_prev_imp[impact_feature_names].to_numpy(float)
         raw_curr_imp = row_curr_imp[impact_feature_names].to_numpy(float)
 
         # Scale using this model's scaler
-        impact_index_map = {
-            name: i for i, name in enumerate(impact_scaler.feature_names_in_)
-        }
         feature_idx_imp = np.array(
-            [impact_index_map.get(f, -1) for f in impact_feature_names], dtype=int
+            [impact_scaler_index.get(f, -1) for f in impact_feature_names], dtype=int
         )
 
         scaled_prev_imp = (raw_prev_imp - offsets_imp[feature_idx_imp]) / scales_imp[

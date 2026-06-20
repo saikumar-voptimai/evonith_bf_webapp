@@ -13,7 +13,7 @@ import streamlit as st
 from sqlalchemy import inspect
 
 from config.config_loader import load_config
-from furnace_data.neon_db.offline import fetch_offline_data
+from furnace_data.offline import fetch_offline_data
 from furnace_data.relational.engine import build_relational_engine
 
 log = logging.getLogger(__name__)

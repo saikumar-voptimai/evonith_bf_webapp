@@ -164,6 +164,8 @@ class DatasetFetcher:
         start: date,
         end: date,
         rm_mode: str,
+        *,
+        raise_online_errors: bool = False,
     ) -> pd.DataFrame:
         """Join Steps 2-5 into a raw DataFrame with ML column names (no rename)."""
         df_rm = self.service.fetch_step2(
@@ -178,8 +180,18 @@ class DatasetFetcher:
             keep_columns=KEEP_COLS,
         )
         df_dist = self.service.fetch_distribution_data(start, end)
-        df_online = self.service.fetch_online_process_params(start, end)
-        df_temp   = self.service.fetch_online_temperature_params(start, end)
+        df_online = self.service.fetch_online_process_params(
+            start, end, raise_on_error=raise_online_errors
+        )
+        df_temp = self.service.fetch_online_temperature_params(
+            start, end, raise_on_error=raise_online_errors
+        )
+        df_heatload = self.service.fetch_online_heatload_params(
+            start, end, raise_on_error=raise_online_errors
+        )
+        df_misc = self.service.fetch_online_misc_params(
+            start, end, raise_on_error=raise_online_errors
+        )
 
         df_dist = self._align_distribution(df_dist, df_rm, df_hm)
 
@@ -188,6 +200,10 @@ class DatasetFetcher:
             frames.append(df_online)
         if not df_temp.empty:
             frames.append(df_temp)
+        if not df_heatload.empty:
+            frames.append(df_heatload)
+        if not df_misc.empty:
+            frames.append(df_misc)
         return df_rm.join(frames, how="outer").sort_index()
 
     def _fetch_new_range(
@@ -222,7 +238,7 @@ class DatasetFetcher:
             Raw (pre-cleaning) joined DataFrame written to the DB, or an
             empty DataFrame if there is nothing new to generate.
         """
-        from furnace_data.neon_db.writer import (
+        from furnace_data.offline_writer import (
             delete_from_static_table,
             write_to_static_table,
         )
@@ -243,16 +259,16 @@ class DatasetFetcher:
             log.info("Nothing to generate: fetch_start %s > end_date %s.", fetch_start, end_date)
             return pd.DataFrame()
 
-        log.info("Building post-cutoff data %s → %s (mode=%s).", fetch_start, end_date, rm_mode)
+        log.info("Building post-cutoff data %s -> %s (mode=%s).", fetch_start, end_date, rm_mode)
         raw_df = self._build_post_cutoff_df(fetch_start, end_date, rm_mode)
 
         if raw_df.empty:
-            log.warning("Steps 2-5 returned no data for %s → %s.", fetch_start, end_date)
+            log.warning("Steps 2-5 returned no data for %s -> %s.", fetch_start, end_date)
             return raw_df
 
         rows_written = write_to_static_table(raw_df)
         log.info(
-            "Persisted %d rows to historical_static_ml_dataset (%s → %s).",
+            "Persisted %d rows to historical_static_ml_dataset (%s -> %s).",
             rows_written, fetch_start, end_date,
         )
         self.cache.reset()
@@ -344,24 +360,33 @@ class DatasetFetcher:
         start: date,
         end: date,
         rm_mode: str = "charge",
+        *,
+        raise_on_error: bool = False,
     ) -> pd.DataFrame:
         """Return renamed (not yet fully cleaned) post-cutoff data for local caching.
 
         Calls Steps 2-5 and applies the column rename, but does NOT run the full
-        DataCleaner pipeline and does NOT write to the Neon static table.
-        Returns an empty DataFrame on any failure so callers can fall back gracefully.
+        DataCleaner pipeline and does NOT write to the offline DB static table.
+        Returns an empty DataFrame on failure unless ``raise_on_error`` is true.
         """
         try:
-            raw = self._build_post_cutoff_df(start, end, rm_mode)
+            raw = self._build_post_cutoff_df(
+                start,
+                end,
+                rm_mode,
+                raise_online_errors=raise_on_error,
+            )
             if raw.empty:
                 return raw
             return self._clean_df(raw, keep_unmapped=True)
         except Exception:
             log.warning(
-                "build_local_delta failed for %s → %s (rm_mode=%s)",
+                "build_local_delta failed for %s -> %s (rm_mode=%s)",
                 start, end, rm_mode,
                 exc_info=True,
             )
+            if raise_on_error:
+                raise
             return pd.DataFrame()
 
     # Keep the old name as an alias so any callers that used MlDatasetFetcher.get_ml_dataset()

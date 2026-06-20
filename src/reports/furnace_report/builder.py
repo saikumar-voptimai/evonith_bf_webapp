@@ -198,10 +198,7 @@ def _sum_charge_columns(df: pd.DataFrame, cols: list[str]) -> Optional[float]:
 
 
 def _format_ratio_part(value: float) -> str:
-    if value == 0:
-        return "0"
-    text = f"{value:.2f}"
-    return text if abs(value) < 1 else text.rstrip("0").rstrip(".")
+    return f"{value:.1f}"
 
 
 def calculate_burden_ratio(
@@ -212,7 +209,7 @@ def calculate_burden_ratio(
     if all(value is None for value in (ore_t, sinter_t, pellet_t)):
         return None
 
-    numeric_values = [float(value or 0.0) for value in (ore_t, sinter_t, pellet_t)]
+    numeric_values = [float(value or 0.0) for value in (sinter_t, ore_t, pellet_t)]
     total = sum(numeric_values)
     if total <= 0:
         return None
@@ -257,9 +254,26 @@ def _used_charge_materials(
             item = resolver.display_name(_material_candidates(charge_col))
             totals[item] = totals.get(item, 0.0) + mt
         if totals:
-            used[label] = "\n".join(
-                f"- {item} - {mt:.2f} mt" for item, mt in totals.items()
-            )
+            if key == "ore":
+                burden_total_mt = sum(
+                    float(value or 0.0)
+                    for value in (
+                        _charge_sum(charge_df, "sinter"),
+                        _charge_sum(charge_df, "ore"),
+                        _charge_sum(charge_df, "pellet"),
+                    )
+                )
+                used[label] = "\n".join(
+                    (
+                        f"- {item} - {mt:.2f} mt - "
+                        f"{mt / burden_total_mt * 100:.2f}% in burden"
+                    )
+                    for item, mt in totals.items()
+                )
+            else:
+                used[label] = "\n".join(
+                    f"- {item} - {mt:.2f} mt" for item, mt in totals.items()
+                )
 
     return used
 

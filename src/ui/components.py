@@ -345,7 +345,7 @@ class ReportView:
                 data=image,
                 file_name=f"{_safe_filename(self.document.title)}_tables.png",
                 mime="image/png",
-                use_container_width=True,
+                width="stretch",
                 key=f"download_report_tables_png_{_safe_filename(self.document.title)}",
             )
 

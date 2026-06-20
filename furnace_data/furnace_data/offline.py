@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from furnace_data.relational.engine import build_relational_engine
 
-_SCHEMA_PATH = Path(__file__).with_name("neon_tables.yml")
+_SCHEMA_PATH = Path(__file__).with_name("offline_tables.yml")
 _SCHEMA = yaml.safe_load(_SCHEMA_PATH.read_text(encoding="utf-8")) or {}
 
 _TABLES: dict[str, dict] = _SCHEMA.get("tables", {})
@@ -24,17 +24,41 @@ _TIME_COLUMNS: dict[str, str | None] = {
     table: meta.get("time_column") for table, meta in _TABLES.items()
 }
 
-NEON_OFFLINE_TABLES: dict[str, set[str] | None] = {
+OFFLINE_TABLES: dict[str, set[str] | None] = {
     table: None if meta.get("allow_all_columns") else set(meta.get("columns", []))
     for table, meta in _TABLES.items()
 }
 
-NEON_OFFLINE_REPORT_MAP: dict[str, list[str]] = {
+OFFLINE_REPORT_MAP: dict[str, list[str]] = {
     report_type: list(tables)
     for report_type, tables in (_SCHEMA.get("report_map", {}) or {}).items()
 }
 
 _NON_AVERAGED_COLUMNS: set[str] = set(_SCHEMA.get("non_averaged_columns", []))
+
+_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
+_STRENGTH_MAPPING_TABLE = "plant_master.material_property_mapping"
+_STRENGTH_MATERIAL_TABLE = "plant_master.materials"
+_STRENGTH_CATEGORY_TABLE = "plant_master.material_categories"
+_STRENGTH_RAW_COLUMNS = {
+    "id",
+    "date_time",
+    "material_code",
+    "property_1",
+    "property_2",
+    "property_3",
+    "property_4",
+}
+_STRENGTH_MAPPING_COLUMNS = {
+    "property_1_name",
+    "property_2_name",
+    "property_3_name",
+    "property_4_name",
+}
+_STRENGTH_MATERIAL_COLUMNS = {
+    "material_name",
+    "unit_code",
+}
 
 TIMEDELTAS = {
     "last 1 minute": timedelta(minutes=1),
@@ -59,7 +83,7 @@ TIMEDELTAS = {
 }
 
 
-def resolve_neon_table_name(table_name: str) -> str:
+def resolve_offline_table_name(table_name: str) -> str:
     """Resolve a public/legacy table name to the canonical schema-qualified name."""
     if table_name in _TABLES:
         return table_name
@@ -72,10 +96,10 @@ def resolve_neon_table_name(table_name: str) -> str:
     )
 
 
-def list_neon_offline_tables() -> dict[str, object]:
+def list_offline_tables() -> dict[str, object]:
     """Return a JSON-serialisable snapshot of the offline table whitelist."""
     return {
-        "report_map": {k: list(v) for k, v in NEON_OFFLINE_REPORT_MAP.items()},
+        "report_map": {k: list(v) for k, v in OFFLINE_REPORT_MAP.items()},
         "aliases": dict(sorted(_TABLE_ALIASES.items())),
         "tables": {
             table: {
@@ -83,8 +107,8 @@ def list_neon_offline_tables() -> dict[str, object]:
                 "supports_aggregation": bool(meta.get("supports_aggregation", True)),
                 "columns": (
                     "*"
-                    if NEON_OFFLINE_TABLES[table] is None
-                    else sorted(NEON_OFFLINE_TABLES[table] or [])
+                    if OFFLINE_TABLES[table] is None
+                    else sorted(OFFLINE_TABLES[table] or [])
                 ),
             }
             for table, meta in _TABLES.items()
@@ -106,7 +130,7 @@ def _table_sql(table_name: str) -> str:
 
 
 def _normalise_columns(table_name: str, columns: Iterable[str] | None) -> list[str]:
-    allowed = NEON_OFFLINE_TABLES[table_name]
+    allowed = OFFLINE_TABLES[table_name]
     if allowed is None:
         return list(columns or ["*"])
 
@@ -126,6 +150,92 @@ def _numeric_average_columns(selected_columns: Iterable[str]) -> list[str]:
         for col in selected_columns
         if col != "*" and col not in _NON_AVERAGED_COLUMNS
     ]
+
+
+def _strength_select_expression(column: str) -> str:
+    if column in _STRENGTH_RAW_COLUMNS:
+        return f"r.{_quote_identifier(column)} AS {_quote_identifier(column)}"
+    if column in _STRENGTH_MAPPING_COLUMNS:
+        return f"m.{_quote_identifier(column)} AS {_quote_identifier(column)}"
+    if column in _STRENGTH_MATERIAL_COLUMNS:
+        return f"mat.{_quote_identifier(column)} AS {_quote_identifier(column)}"
+    if column == "material_category":
+        return f"cat.{_quote_identifier('category_name')} AS {_quote_identifier(column)}"
+    raise ValueError(f"Unknown column for {_STRENGTH_TABLE}: {column}")
+
+
+def _strength_from_sql() -> str:
+    return (
+        f"FROM {_table_sql(_STRENGTH_TABLE)} AS r "
+        f"LEFT JOIN {_table_sql(_STRENGTH_MAPPING_TABLE)} AS m "
+        f"ON m.{_quote_identifier('material_code')} = r.{_quote_identifier('material_code')}"
+        f" LEFT JOIN {_table_sql(_STRENGTH_MATERIAL_TABLE)} AS mat "
+        f"ON mat.{_quote_identifier('material_code')} = r.{_quote_identifier('material_code')}"
+        f" LEFT JOIN {_table_sql(_STRENGTH_CATEGORY_TABLE)} AS cat "
+        f"ON cat.{_quote_identifier('category_code')} = mat.{_quote_identifier('category_code')}"
+    )
+
+
+def _build_strength_query(
+    selected_columns: list[str],
+    query_type: str,
+    window: str | None,
+) -> tuple[str, dict[str, object]]:
+    time_col = _TIME_COLUMNS[_STRENGTH_TABLE]
+    if time_col is None:
+        raise ValueError(f"{_STRENGTH_TABLE} must define a time column.")
+
+    time_sql = _quote_identifier(time_col)
+
+    if query_type in {"ts", "raw"}:
+        cols = ", ".join(_strength_select_expression(col) for col in selected_columns)
+        return (
+            f"SELECT {cols} {_strength_from_sql()} "
+            f"WHERE r.{time_sql} >= :start_time AND r.{time_sql} <= :end_time "
+            f"ORDER BY r.{time_sql}",
+            {},
+        )
+
+    if not _TABLES[_STRENGTH_TABLE].get("supports_aggregation", True):
+        raise ValueError(f"{_STRENGTH_TABLE} does not support SQL aggregation fetches.")
+
+    avg_columns = _numeric_average_columns(selected_columns)
+    if not avg_columns:
+        raise ValueError(f"No numeric columns selected for averaging {_STRENGTH_TABLE}.")
+
+    mapped_columns = list(dict.fromkeys([time_col, *selected_columns]))
+    mapped_select_sql = ", ".join(
+        _strength_select_expression(col) for col in mapped_columns
+    )
+    mapped_sql = (
+        f"SELECT {mapped_select_sql} {_strength_from_sql()} "
+        f"WHERE r.{time_sql} >= :start_time AND r.{time_sql} <= :end_time"
+    )
+    avg_sql = ", ".join(
+        f"AVG({_quote_identifier(col)}) AS {_quote_identifier(col)}"
+        for col in avg_columns
+    )
+
+    if query_type in {"windowed-average", "hourly-average"}:
+        window = window or "1 hour"
+        return (
+            "SELECT date_bin(CAST(:window AS interval), "
+            f"{time_sql}, TIMESTAMPTZ '1970-01-01 00:00:00+00') AS {time_sql}, "
+            f"{avg_sql} FROM ({mapped_sql}) AS mapped "
+            "GROUP BY 1 ORDER BY 1",
+            {"window": window},
+        )
+
+    if query_type == "average":
+        return (
+            f"SELECT :start_time AS {time_sql}, {avg_sql} "
+            f"FROM ({mapped_sql}) AS mapped",
+            {},
+        )
+
+    raise ValueError(
+        "query_type must be 'ts', 'raw', 'average', or 'windowed-average'."
+    )
 
 
 def _resolve_range(time_range: Union[str, Tuple]) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -164,6 +274,9 @@ def _build_query(
         raise ValueError(
             "query_type must be 'ts', 'raw', 'average', or 'windowed-average'."
         )
+
+    if table_name == _STRENGTH_TABLE:
+        return _build_strength_query(selected_columns, query_type, window)
 
     if time_col is None:
         if query_type not in {"ts", "raw"}:
@@ -233,7 +346,7 @@ def fetch_offline_data(
     database_url: str | None = None,
 ) -> pd.DataFrame:
     """Fetch offline data from one whitelisted PostgreSQL table."""
-    table_name = resolve_neon_table_name(table_name)
+    table_name = resolve_offline_table_name(table_name)
 
     start_time, end_time = _resolve_range(time_range)
     selected_columns = _normalise_columns(table_name, columns)
@@ -267,7 +380,7 @@ def get_offline_table_bounds(
     database_url: str | None = None,
 ) -> tuple[pd.Timestamp | None, pd.Timestamp | None, int]:
     """Return min/max timestamps and row count for one whitelisted table."""
-    table_name = resolve_neon_table_name(table_name)
+    table_name = resolve_offline_table_name(table_name)
     time_col = _TIME_COLUMNS[table_name]
     if time_col is None:
         return None, None, 0
@@ -297,11 +410,11 @@ def get_offline_report_bounds(
     database_url: str | None = None,
 ) -> tuple[pd.Timestamp | None, pd.Timestamp | None, int]:
     """Return combined temporal bounds for a logical offline report."""
-    tables = NEON_OFFLINE_REPORT_MAP.get(report_type)
+    tables = OFFLINE_REPORT_MAP.get(report_type)
     if not tables:
         raise ValueError(
             f"Unknown offline report '{report_type}'. "
-            f"Valid: {sorted(NEON_OFFLINE_REPORT_MAP)}"
+            f"Valid: {sorted(OFFLINE_REPORT_MAP)}"
         )
 
     starts: list[pd.Timestamp] = []
@@ -330,11 +443,11 @@ def fetch_offline_report(
     database_url: str | None = None,
 ) -> pd.DataFrame:
     """Fetch a logical offline report from one or more whitelisted tables."""
-    tables = NEON_OFFLINE_REPORT_MAP.get(report_type)
+    tables = OFFLINE_REPORT_MAP.get(report_type)
     if not tables:
         raise ValueError(
             f"Unknown offline report '{report_type}'. "
-            f"Valid: {sorted(NEON_OFFLINE_REPORT_MAP)}"
+            f"Valid: {sorted(OFFLINE_REPORT_MAP)}"
         )
 
     frames: list[pd.DataFrame] = []
@@ -359,3 +472,16 @@ def fetch_offline_report(
     if isinstance(combined.index, pd.DatetimeIndex):
         return combined.sort_index()
     return combined
+
+
+__all__ = [
+    "OFFLINE_REPORT_MAP",
+    "OFFLINE_TABLES",
+    "TIMEDELTAS",
+    "fetch_offline_data",
+    "fetch_offline_report",
+    "get_offline_report_bounds",
+    "get_offline_table_bounds",
+    "list_offline_tables",
+    "resolve_offline_table_name",
+]

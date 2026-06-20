@@ -31,11 +31,11 @@ from pydantic import BaseModel, Field, ValidationError
 from config.config_loader import load_config
 from furnace_data.influx.online import fetch_online_df  # noqa: F401
 from furnace_data.influx.query import TIMEDELTAS  # noqa: F401
-from furnace_data.neon_db.offline import (
-    NEON_OFFLINE_TABLES,
-    fetch_offline_data as _fetch_neon_table_df,
-    fetch_offline_report as _fetch_neon_report_df,
-    resolve_neon_table_name,
+from furnace_data.offline import (
+    OFFLINE_TABLES,
+    fetch_offline_data as _fetch_offline_table_df,
+    fetch_offline_report as _fetch_offline_report_df,
+    resolve_offline_table_name,
 )
 
 from data.fetch_presets import (
@@ -47,7 +47,7 @@ from utils.shift_windows import shift_window_naive
 # CONFIG
 config = load_config("setting_ds_dv.yml")
 
-_NEON_REPORT_TYPE_ALIASES = {
+_OFFLINE_REPORT_TYPE_ALIASES = {
     "RAW_MATERIAL_COMPOSITION": "RM_COMPOSITION",
 }
 
@@ -155,10 +155,11 @@ class OfflineFetchArgs(BaseModel):
         "DPR",
         "RAW_MATERIAL_COMPOSITION",
         "RM_COMPOSITION",
+        "RAW_MATERIAL_STRENGTH",
         "BURDEN_DISTRIBUTION",
         "HOPPER_MANAGEMENT",
     ] = Field(
-        description="Which offline dataset to fetch. Use RM_COMPOSITION for raw material chemistry + strength data."
+        description="Which offline dataset to fetch. Use RAW_MATERIAL_STRENGTH for coke/sinter strength properties; use RM_COMPOSITION for the broader raw material chemistry report."
     )
     table_name: Optional[str] = Field(
         default=None,
@@ -177,7 +178,7 @@ class OfflineFetchArgs(BaseModel):
     )
     cadence: Optional[Literal["1h", "8h", "1d"]] = Field(
         default=None,
-        description="Resampling cadence. If omitted, defaults by report_type: HM_SLAG/CHARGE=1h, RAW_MATERIAL_COMPOSITION=8h, DPR=1d.",
+        description="Resampling cadence. If omitted, defaults by report_type: HM_SLAG/CHARGE=1h, RAW_MATERIAL_COMPOSITION=8h, RAW_MATERIAL_STRENGTH=8h, DPR=1d.",
     )
 
 
@@ -722,7 +723,7 @@ def fetch_offline_data(
 
     Defaults:
     - HM_SLAG, CHARGE: hourly (1h)
-    - RAW_MATERIAL_COMPOSITION: shiftwise (8h)
+    - RAW_MATERIAL_COMPOSITION / RAW_MATERIAL_STRENGTH: shiftwise (8h)
     - DPR: daily (1d)
     """
     params = {
@@ -736,13 +737,13 @@ def fetch_offline_data(
     try:
         args = OfflineFetchArgs.model_validate(params)
 
-        neon_report_type = _NEON_REPORT_TYPE_ALIASES.get(
+        offline_report_type = _OFFLINE_REPORT_TYPE_ALIASES.get(
             args.report_type, args.report_type
         )
         label = (
             "Bunker Report"
-            if neon_report_type == "RM_COMPOSITION"
-            else OFFLINE_REPORT_LABEL_MAP.get(neon_report_type, neon_report_type)
+            if offline_report_type == "RM_COMPOSITION"
+            else OFFLINE_REPORT_LABEL_MAP.get(offline_report_type, offline_report_type)
         )
         now = datetime.now(timezone.utc)
         end = _parse_iso8601_utc(args.end_time_utc) if args.end_time_utc else now
@@ -753,7 +754,7 @@ def fetch_offline_data(
             lb = max(1, min(lb, 365))
             start = end - timedelta(days=lb)
 
-        # Guard: reject future windows — InfluxDB has no data for dates that haven't occurred yet
+        # Guard: reject future windows; offline reports have no future rows.
         if start > now:
             return (
                 f"Fetch Error: start_time_utc {start.isoformat()} is in the future "
@@ -769,6 +770,7 @@ def fetch_offline_data(
             "CHARGE": "1h",
             "RAW_MATERIAL_COMPOSITION": "8h",
             "RM_COMPOSITION": "8h",
+            "RAW_MATERIAL_STRENGTH": "8h",
             "DPR": "1d",
             "BURDEN_DISTRIBUTION": "1d",
             "HOPPER_MANAGEMENT": "1d",
@@ -777,26 +779,31 @@ def fetch_offline_data(
 
         if args.table_name:
             try:
-                resolved_table = resolve_neon_table_name(args.table_name)
+                resolved_table = resolve_offline_table_name(args.table_name)
             except ValueError as exc:
                 raise ValueError(str(exc)) from exc
-            df = _fetch_neon_table_df(
+            df = _fetch_offline_table_df(
                 table_name=resolved_table,
                 time_range=(start, end),
             )
             source_detail = resolved_table
         else:
-            df = _fetch_neon_report_df(
-                report_type=neon_report_type,
+            df = _fetch_offline_report_df(
+                report_type=offline_report_type,
                 time_range=(start, end),
             )
-            source_detail = neon_report_type
+            source_detail = offline_report_type
 
         # Offline fetch returns UTC index (as per helper); convert + resample
         df = _to_ist_index(df)
         skip_resample = (
-            neon_report_type
-            in {"RM_COMPOSITION", "BURDEN_DISTRIBUTION", "HOPPER_MANAGEMENT"}
+            offline_report_type
+            in {
+                "RM_COMPOSITION",
+                "RAW_MATERIAL_STRENGTH",
+                "BURDEN_DISTRIBUTION",
+                "HOPPER_MANAGEMENT",
+            }
             or bool(args.table_name)
         )
         if (
@@ -972,6 +979,7 @@ def get_openai_tool_schemas() -> list[dict]:
                                 "CHARGE",
                                 "RAW_MATERIAL_COMPOSITION",
                                 "RM_COMPOSITION",
+                                "RAW_MATERIAL_STRENGTH",
                                 "DPR",
                                 "BURDEN_DISTRIBUTION",
                                 "HOPPER_MANAGEMENT",
@@ -979,7 +987,7 @@ def get_openai_tool_schemas() -> list[dict]:
                         },
                         "table_name": {
                             "type": "string",
-                            "enum": sorted(NEON_OFFLINE_TABLES.keys()),
+                            "enum": sorted(OFFLINE_TABLES.keys()),
                             "description": "Optional explicit table override.",
                         },
                         "start_time_utc": {

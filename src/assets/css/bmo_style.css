@@ -32,3 +32,48 @@
   font-weight: 600;
 }
 
+div[data-testid="stForm"] {
+  border: 1px solid #d5e4ef;
+  border-radius: 8px;
+  padding: 14px 16px 16px 16px;
+  background: #f7fbfe;
+}
+
+div[data-testid="stForm"] button {
+  min-height: 44px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+div[data-testid="stForm"] button[kind="primaryFormSubmit"],
+div[data-testid="stForm"] button[kind="primary"],
+div[data-testid="stForm"] button[data-testid*="baseButton-primary"] {
+  background: #19507a !important;
+  border-color: #19507a !important;
+  color: #ffffff !important;
+}
+
+div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
+div[data-testid="stForm"] button[kind="primary"]:hover,
+div[data-testid="stForm"] button[data-testid*="baseButton-primary"]:hover {
+  background: #123d5e !important;
+  border-color: #123d5e !important;
+  color: #ffffff !important;
+}
+
+div[data-testid="stForm"] button[kind="secondaryFormSubmit"],
+div[data-testid="stForm"] button[kind="secondary"],
+div[data-testid="stForm"] button[data-testid*="baseButton-secondary"] {
+  background: #ffffff !important;
+  border-color: #7eaac8 !important;
+  color: #0f2940 !important;
+}
+
+div[data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover,
+div[data-testid="stForm"] button[kind="secondary"]:hover,
+div[data-testid="stForm"] button[data-testid*="baseButton-secondary"]:hover {
+  background: #eaf4fb !important;
+  border-color: #19507a !important;
+  color: #0f2940 !important;
+}
+

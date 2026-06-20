@@ -13,6 +13,8 @@ report_map:
     - offline_feed.material_fines_analysis
     - offline_feed.raw_material_strength_analysis
     - plant_master.materials
+  RAW_MATERIAL_STRENGTH:
+    - offline_feed.raw_material_strength_analysis
   BURDEN_DISTRIBUTION:
     - ops_config.burden_history
   HOPPER_MANAGEMENT:
@@ -30,6 +32,7 @@ table_aliases:
   material_fines_analysis: offline_feed.material_fines_analysis
   rm_hm: offline_feed.raw_material_strength_analysis
   raw_material_strength_analysis: offline_feed.raw_material_strength_analysis
+  material_property_mapping: plant_master.material_property_mapping
   raw_material_stock: offline_feed.raw_material_stock
   historical_static_ml_dataset: offline_feed.historical_static_ml_dataset
   feed_material_columns: offline_feed.feed_material_columns
@@ -60,8 +63,14 @@ non_averaged_columns:
   - material_description
   - category_code
   - category_name
+  - material_category
   - unit_code
   - unit_name
+  - is_active
+  - property_1_name
+  - property_2_name
+  - property_3_name
+  - property_4_name
   - source_type
   - ip_address
   - user_modified
@@ -292,12 +301,38 @@ tables:
     columns:
       - id
       - date_time
-      - ai
-      - ti
-      - rdi
-      - ri
+      - material_code
+      - property_1
+      - property_2
+      - property_3
+      - property_4
+      - property_1_name
+      - property_2_name
+      - property_3_name
+      - property_4_name
+      - material_name
+      - category_code
+      - material_category
+      - material_description
+      - is_active
+      - unit_code
       - import_batch_id
       - created_at
+      - updated_at
+
+  plant_master.material_property_mapping:
+    schema: plant_master
+    table: material_property_mapping
+    time_column:
+    supports_aggregation: false
+    columns:
+      - material_code
+      - property_1_name
+      - property_2_name
+      - property_3_name
+      - property_4_name
+      - created_at
+      - updated_at
 
   offline_feed.raw_material_stock:
     schema: offline_feed

@@ -28,6 +28,7 @@ OFFLINE_REPORT_LABEL_MAP: dict[str, str] = {
     "DPR": "DPR",
     "RAW_MATERIAL_COMPOSITION": "Bunker Report",
     "RM_COMPOSITION": "Raw Material Composition",
+    "RAW_MATERIAL_STRENGTH": "Raw Material Strength",
     "BURDEN_DISTRIBUTION": "Burden Distribution",
     "HOPPER_MANAGEMENT": "Hopper Management",
 }
@@ -41,6 +42,7 @@ OFFLINE_TABLE_LABEL_MAP: dict[str, str] = {
     "offline_feed.fuel_chemistry": "Fuel Chemistry",
     "offline_feed.flux_chemistry": "Flux Chemistry",
     "offline_feed.raw_material_strength_analysis": "Raw Material Strength",
+    "plant_master.material_property_mapping": "Material Property Mapping",
     "offline_feed.raw_material_stock": "Raw Material Stock",
     "offline_feed.v_charge_material_quantities": "Charge Material Quantities",
     "offline_feed.v_dpr_material_quantities": "DPR Material Quantities",

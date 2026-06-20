@@ -286,6 +286,8 @@ class SlagBalanceSettings:
     silicon_pct: float = 0.0
     sulphur_pct: float = 0.0
     other_pct: float = 0.0
+    mn_pct: float = 0.0
+    ti_pct: float = 0.0
     pi_loss_pct: float = 0.2
     fe_to_pig_iron_fraction: float = 0.999
     mn_recovery_pct: float = 60.0
@@ -360,6 +362,8 @@ class BlendEvaluation:
          - feasible: bool - Whether the blend satisfies hard constraints.
          - violations: list[str] - Human-readable constraint violations.
          - slag_rate_kg_per_thm: float - Slag rate against the app's THM denominator.
+         - slag_basicity: float - Slag basicity, CaO / SiO2.
+         - slag_t_basicity: float - Total slag basicity, (CaO + MgO) / SiO2.
          - diagnostics: dict[str, Any] - Additional calculation and solver details.
 
     Returns:
@@ -381,6 +385,8 @@ class BlendEvaluation:
     feasible: bool
     violations: list[str]
     slag_rate_kg_per_thm: float = 0.0
+    slag_basicity: float = 0.0
+    slag_t_basicity: float = 0.0
     diagnostics: dict[str, Any] = field(default_factory=dict)
 
 

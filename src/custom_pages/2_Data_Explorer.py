@@ -14,9 +14,9 @@ from dotenv import load_dotenv
 
 from config.config_loader import load_config
 from furnace_data.influx.online import fetch_online_df
-from furnace_data.neon_db.offline import (
-    NEON_OFFLINE_REPORT_MAP as OFFLINE_DATABASE_REPORT_MAP,
-    NEON_OFFLINE_TABLES as OFFLINE_DATABASE_TABLES,
+from furnace_data.offline import (
+    OFFLINE_REPORT_MAP as OFFLINE_DATABASE_REPORT_MAP,
+    OFFLINE_TABLES as OFFLINE_DATABASE_TABLES,
     fetch_offline_data as fetch_table_data,
     fetch_offline_report as fetch_database_report,
 )
@@ -457,7 +457,7 @@ else:
 UTC = pytz.UTC
 
 st.header("📄 Offline Data Viewer")
-st.caption("Source: Neon database.")
+st.caption("Source: offline database.")
 
 # ── Pre-compute options ──
 TIME_OPTIONS_UI = list(TIME_OPTIONS.keys())[7:]
@@ -531,7 +531,7 @@ with st.form("offline_data_form"):
             start_date = end_date = None
             st.info(f"Fetching: **{time_range_choice}**")
 
-    submitted = st.form_submit_button("Fetch Offline Data", use_container_width=False)
+    submitted = st.form_submit_button("Fetch Offline Data", width="content")
 
 # ── Fetch on submit ──
 if submitted:
@@ -582,7 +582,7 @@ if _result:
     _name = _result["name"]
     _label = OFFLINE_REPORT_LABEL_MAP.get(_name.upper(), offline_table_label(_name))
     st.caption(f"Showing **{len(_df):,}** rows × **{len(_df.columns)}** cols — {_label}")
-    st.dataframe(_df, use_container_width=True)
+    st.dataframe(_df, width="stretch")
     st.download_button(
         label="Download as CSV",
         data=_df.reset_index().to_csv(index=False).encode("utf-8"),
@@ -614,7 +614,7 @@ with left_col:
     st.header("📄 ML Dataset")
 
     st.caption(
-        "Source: Neon DB — joins charge quantities, weighted raw material chemistry, "
+        "Source: offline database - joins charge quantities, weighted raw material chemistry, "
         "HM & Slag (hourly-interpolated), and burden distribution into one hourly dataset."
     )
 
@@ -664,7 +664,7 @@ with left_col:
 
 with right_col:
     st.header("📄 Generate & Refresh ML Dataset")
-    st.caption("Extend Neon DB → rebuild cleaned local CSV → validate.")
+    st.caption("Extend offline database -> rebuild cleaned local CSV -> validate.")
 
     sm = StaticDatasetManager(fullpath)
     meta = sm.get_meta()
@@ -691,7 +691,7 @@ with right_col:
             st.caption(
                 "Fetches data from the DB end date up to the chosen date "
                 "(Steps 2-5: charge/DPR, HM/Slag, burden, InfluxDB), "
-                "writes new rows to Neon, then rebuilds the cleaned local CSV."
+                "writes new rows to the offline database, then rebuilds the cleaned local CSV."
             )
             with st.form("extend_form"):
                 _ext_rm = st.radio(
@@ -701,7 +701,7 @@ with right_col:
                     "Generate to date", value=_today_gen, key="ext_end_date"
                 )
                 _ext_submit = st.form_submit_button(
-                    "Extend & Rebuild Dataset", use_container_width=True
+                    "Extend & Rebuild Dataset", width="stretch"
                 )
 
             if _ext_submit:
@@ -711,7 +711,7 @@ with right_col:
                         f"Choose a date after {db_end} or use Override."
                     )
                 else:
-                    with st.spinner("Fetching new data and writing to Neon…"):
+                    with st.spinner("Fetching new data and writing to offline database..."):
                         _raw = fetcher.extend_and_persist(
                             start_date=db_end or _today_gen,
                             end_date=_ext_end,
@@ -721,7 +721,7 @@ with right_col:
                     if _raw.empty:
                         st.warning("No new data was returned.")
                     else:
-                        st.info(f"Wrote {len(_raw)} raw rows to Neon DB.")
+                        st.info(f"Wrote {len(_raw)} raw rows to offline database.")
                         with st.spinner("Rebuilding cleaned static dataset…"):
                             _full_df = sm.update_static()
                             sm.save(_full_df)
@@ -760,7 +760,7 @@ with right_col:
                     icon="⚠️",
                 )
                 _ovr_submit = st.form_submit_button(
-                    "Override & Rebuild", use_container_width=True
+                    "Override & Rebuild", width="stretch"
                 )
 
             if _ovr_submit:
@@ -774,7 +774,7 @@ with right_col:
                 if _raw.empty:
                     st.warning("No data returned for the override range.")
                 else:
-                    st.info(f"Wrote {len(_raw)} raw rows to Neon DB.")
+                    st.info(f"Wrote {len(_raw)} raw rows to offline database.")
                     with st.spinner("Rebuilding cleaned static dataset…"):
                         _full_df = sm.update_static()
                         sm.save(_full_df)
@@ -827,7 +827,7 @@ with right_col:
                     _mc_df.style.highlight_between(
                         subset=["Rows"], left=0, right=20, color="#ffd0d0"
                     ),
-                    use_container_width=True,
+                    width="stretch",
                     height=min(300, 35 * len(_mc_df) + 40),
                 )
 
@@ -835,7 +835,7 @@ with right_col:
             _kpi = _chk.get("kpi_stats")
             if _kpi is not None and not _kpi.empty:
                 st.markdown("**KPI statistics:**")
-                st.dataframe(_kpi.round(2), use_container_width=True)
+                st.dataframe(_kpi.round(2), width="stretch")
 
             # Warnings and errors
             if _vr["errors"]:

@@ -74,7 +74,11 @@ def _safe_pct(value: float | int | str | None) -> float:
          - return float - Percentage clamped between 0 and 100.
     """
 
-    return min(max(_safe_float(value), 0.0), 100.0)
+    # Upper bound clamps to 99.0 so a moisture entry of 100 (typo or stale
+    # input) cannot collapse dry weight to exactly zero in _dry_weight_mt
+    # below. 99.0 still yields a vanishingly small dry weight so a real
+    # all-water material is still surfaced as ~0 Fe / ~0 slag.
+    return min(max(_safe_float(value), 0.0), 99.0)
 
 
 def _dry_weight_mt(wet_weight_mt: float, moisture_pct: float) -> float:
@@ -356,6 +360,70 @@ def build_dust_component_totals(
     return totals
 
 
+def _attribute_per_source_slag(
+    *,
+    ore_components: Mapping[str, float],
+    flux_components: Mapping[str, float],
+    fuel_ash_components: Mapping[str, float],
+    total_into_bf: Mapping[str, float],
+    net_into_bf: Mapping[str, float],
+    raw_slag_components: Mapping[str, float],
+) -> dict[str, float]:
+    """
+    Pro-rata attribute final slag MT to ore, flux, and fuel-ash sources.
+
+    Each input component (sio2, al2o3, cao, mgo, alkali, caf2, s) has a
+    retention ratio = raw final slag mass / net input mass after dust deduction.
+    Fe and Mn change form on the way out: their retention converts element mass
+    to FeO/MnO mass via the residual fraction and stoichiometric factor.
+    Ti/P/Zn report to pig iron and have zero slag retention. Dust is applied
+    pro-rata to each source by the (net/total) ratio per component so the per-
+    source contributions sum to the pre-correction total slag.
+
+    Args:
+         - ore_components: Mapping[str, float] - Ore-side component totals in MT.
+         - flux_components: Mapping[str, float] - Flux-side component totals in MT.
+         - fuel_ash_components: Mapping[str, float] - Fuel-ash-side component totals in MT.
+         - total_into_bf: Mapping[str, float] - Ore + flux + fuel ash totals before dust.
+         - net_into_bf: Mapping[str, float] - Totals after dust deduction.
+         - raw_slag_components: Mapping[str, float] - Final slag MT per component pre-correction.
+
+    Returns:
+         - return dict[str, float] - {ore, flux, fuel_ash} → raw slag MT contributions.
+    """
+
+    retention: dict[str, float] = {}
+    direct_keys = ("sio2", "al2o3", "cao", "mgo", "alkali", "caf2", "s")
+    for key in direct_keys:
+        net_val = _safe_float(net_into_bf.get(key, 0.0))
+        slag_val = _safe_float(raw_slag_components.get(key, 0.0))
+        retention[key] = (slag_val / net_val) if net_val > 0 else 0.0
+
+    net_fe = _safe_float(net_into_bf.get("fe", 0.0))
+    feo_slag = _safe_float(raw_slag_components.get("feo", 0.0))
+    retention["fe"] = (feo_slag / net_fe) if net_fe > 0 else 0.0
+
+    net_mn = _safe_float(net_into_bf.get("mn", 0.0))
+    mno_slag = _safe_float(raw_slag_components.get("mno", 0.0))
+    retention["mn"] = (mno_slag / net_mn) if net_mn > 0 else 0.0
+
+    def _source_total(source_components: Mapping[str, float]) -> float:
+        total = 0.0
+        for component, mass in source_components.items():
+            gross = _safe_float(total_into_bf.get(component, 0.0))
+            net_share = (
+                _safe_float(net_into_bf.get(component, 0.0)) / gross if gross > 0 else 1.0
+            )
+            total += _safe_float(mass) * net_share * retention.get(component, 0.0)
+        return total
+
+    return {
+        "ore": _source_total(ore_components),
+        "flux": _source_total(flux_components),
+        "fuel_ash": _source_total(fuel_ash_components),
+    }
+
+
 def calculate_full_slag_balance(
     *,
     ores: list[OreInput],
@@ -415,16 +483,50 @@ def calculate_full_slag_balance(
     fe_remaining_mt = max(0.0, net_into_bf["fe"] - fe_pi_mt)
 
     recovery_fraction = _safe_pct(settings.mn_recovery_pct) / 100.0
-    mn_pi_mt = net_into_bf["mn"] * recovery_fraction
+    # Pass 1 estimate: use recovery factors for Mn/Ti so we have an initial PI
+    # mass; pass 2 below refines Mn/Ti partitioning using actual HM percentages
+    # so the slag balance reflects observed plant chemistry instead of a fixed
+    # 60% recovery.
+    mn_pi_initial_mt = net_into_bf["mn"] * recovery_fraction
+    ti_pi_initial_mt = net_into_bf["ti"] * recovery_fraction
+    metallic_mass_initial_mt = (
+        fe_pi_mt
+        + mn_pi_initial_mt
+        + ti_pi_initial_mt
+        + net_into_bf["p"]
+        + net_into_bf["zn"]
+    )
+    theoretical_pi_initial_mt = (
+        metallic_mass_initial_mt * 100.0 / pig_iron_metal_pct
+    )
+    pi_loss_pct = min(_safe_pct(settings.pi_loss_pct), 99.0)
+    actual_pi_initial_mt = theoretical_pi_initial_mt * (
+        (100.0 - pi_loss_pct) / 100.0
+    )
+
+    hm_mn_pct = _safe_pct(getattr(settings, "mn_pct", 0.0))
+    hm_ti_pct = _safe_pct(getattr(settings, "ti_pct", 0.0))
+    if hm_mn_pct > 0:
+        mn_pi_mt = min(
+            net_into_bf["mn"],
+            actual_pi_initial_mt * hm_mn_pct / 100.0,
+        )
+    else:
+        mn_pi_mt = mn_pi_initial_mt
+    if hm_ti_pct > 0:
+        ti_pi_mt = min(
+            net_into_bf["ti"],
+            actual_pi_initial_mt * hm_ti_pct / 100.0,
+        )
+    else:
+        ti_pi_mt = ti_pi_initial_mt
     mn_remaining_mt = max(0.0, net_into_bf["mn"] - mn_pi_mt)
-    ti_pi_mt = net_into_bf["ti"] * recovery_fraction
     ti_remaining_mt = max(0.0, net_into_bf["ti"] - ti_pi_mt)
 
     metallic_mass_mt = (
         fe_pi_mt + mn_pi_mt + ti_pi_mt + net_into_bf["p"] + net_into_bf["zn"]
     )
     theoretical_pi_mt = metallic_mass_mt * 100.0 / pig_iron_metal_pct
-    pi_loss_pct = min(_safe_pct(settings.pi_loss_pct), 99.0)
     actual_pi_mt = theoretical_pi_mt * ((100.0 - pi_loss_pct) / 100.0)
 
     sio2_consumed_mt = (
@@ -466,6 +568,32 @@ def calculate_full_slag_balance(
     }
     total_slag_mt = float(raw_total_slag_mt * slag_correction_factor)
 
+    raw_source_slag = _attribute_per_source_slag(
+        ore_components=ore_components,
+        flux_components=flux_components,
+        fuel_ash_components=fuel_ash_components,
+        total_into_bf=total_into_bf,
+        net_into_bf=net_into_bf,
+        raw_slag_components=raw_slag_components,
+    )
+    ore_slag_in_final_mt = raw_source_slag["ore"] * slag_correction_factor
+    flux_slag_in_final_mt = raw_source_slag["flux"] * slag_correction_factor
+    fuel_ash_slag_in_final_mt = raw_source_slag["fuel_ash"] * slag_correction_factor
+
+    mn_to_mno_factor = max(0.0, _safe_float(settings.mn_to_mno_factor))
+    ti_to_tio2_factor = 1.0 / TI_FROM_TIO2_FACTOR  # element Ti -> TiO2 mass
+    hm_reduction_sio2_mt = float(sio2_consumed_mt)
+    hm_reduction_mno_mt = float(mn_pi_mt * mn_to_mno_factor)
+    # Only the Ti that actually went to HM is counted here. The remaining Ti
+    # (not added to slag per spec) is exposed as a separate diagnostic so the
+    # imbalance is transparent.
+    hm_reduction_tio2_mt = float(ti_pi_mt * ti_to_tio2_factor)
+    tio2_unaccounted_mt = float(ti_remaining_mt * ti_to_tio2_factor)
+    hm_reduction_s_mt = float(sulphur_pi_mt + sulphur_gas_mt)
+    hm_reduction_alkali_mt = float(
+        max(0.0, _safe_float(net_into_bf.get("alkali", 0.0))) * (1.0 - alkali_fraction)
+    )
+
     return SlagBalanceResult(
         total_slag_mt=total_slag_mt,
         actual_pig_iron_mt=float(actual_pi_mt),
@@ -503,6 +631,17 @@ def calculate_full_slag_balance(
             "sulphur_to_pig_iron_mt": float(sulphur_pi_mt),
             "sulphur_to_gas_mt": float(sulphur_gas_mt),
             "alkali_to_slag_fraction": float(alkali_fraction),
+            "ore_slag_in_final_mt": float(ore_slag_in_final_mt),
+            "flux_slag_in_final_mt": float(flux_slag_in_final_mt),
+            "fuel_ash_slag_in_final_mt": float(fuel_ash_slag_in_final_mt),
+            "hm_reduction_sio2_mt": hm_reduction_sio2_mt,
+            "hm_reduction_mno_mt": hm_reduction_mno_mt,
+            "hm_reduction_tio2_mt": hm_reduction_tio2_mt,
+            "hm_reduction_s_mt": hm_reduction_s_mt,
+            "hm_reduction_alkali_mt": hm_reduction_alkali_mt,
+            "tio2_unaccounted_mt": tio2_unaccounted_mt,
+            "hm_mn_pct_used": float(hm_mn_pct),
+            "hm_ti_pct_used": float(hm_ti_pct),
             "calculation_sequence": "dry_weight_component_balance_full_bf_slag",
         },
     )

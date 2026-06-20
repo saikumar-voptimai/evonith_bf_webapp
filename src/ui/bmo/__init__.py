@@ -3,6 +3,7 @@ from ui.bmo.components import (
     build_dust_editor_df,
     build_flux_editor_df,
     build_fuel_ash_editor_df,
+    build_blend_table_df,
     build_ore_editor_df,
     render_blend_metrics,
     render_blend_table,
@@ -11,7 +12,9 @@ from ui.bmo.components import (
     render_flux_editor,
     render_fuel_ash_editor,
     render_header,
+    render_hot_metal_chemistry,
     render_ore_editor,
+    render_slag_balance_details,
     render_slag_balance_settings,
 )
 
@@ -20,6 +23,7 @@ __all__ = [
     "build_dust_editor_df",
     "build_flux_editor_df",
     "build_fuel_ash_editor_df",
+    "build_blend_table_df",
     "build_ore_editor_df",
     "render_blend_metrics",
     "render_blend_table",
@@ -28,6 +32,8 @@ __all__ = [
     "render_flux_editor",
     "render_header",
     "render_fuel_ash_editor",
+    "render_hot_metal_chemistry",
     "render_ore_editor",
+    "render_slag_balance_details",
     "render_slag_balance_settings",
 ]

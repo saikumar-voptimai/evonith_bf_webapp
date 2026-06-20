@@ -10,9 +10,11 @@ logs/*
 *.log
 .claude
 current_furnace_data.csv
+src/assets/data/furnace_dataset_*.csv
 *.isorted
 /storage/
 .pytest_cache/
+.pytest_tmp/
 pytest-cache-files-*/
 nul
 .neon
