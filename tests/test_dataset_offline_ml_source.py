@@ -453,8 +453,24 @@ def test_dataset_service_offline_rm_fetch_combines_charge_and_rm_hm(monkeypatch)
                 index=idx,
             )
         if table_name == "offline_feed.raw_material_strength_analysis":
-            idx = pd.DatetimeIndex(["2026-01-01T00:00:00Z"], name="time")
-            return pd.DataFrame({"ri": [70.0], "rdi": [30.0]}, index=idx)
+            idx = pd.DatetimeIndex(
+                ["2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"],
+                name="time",
+            )
+            return pd.DataFrame(
+                {
+                    "material_code": ["coke_1", "sinter_3"],
+                    "property_1": [77.0, 5.0],
+                    "property_2": [6.0, 79.0],
+                    "property_3": [24.0, 30.0],
+                    "property_4": [64.0, 70.0],
+                    "property_1_name": ["M-40", "AI"],
+                    "property_2_name": ["M-10", "TI"],
+                    "property_3_name": ["CRI", "RDI"],
+                    "property_4_name": ["CSR", "RI"],
+                },
+                index=idx,
+            )
         if table_name == "offline_feed.v_charge_material_quantities":
             idx = pd.DatetimeIndex(["2026-01-01T00:00:00Z"], name="time")
             return pd.DataFrame(
@@ -497,6 +513,9 @@ def test_dataset_service_offline_rm_fetch_combines_charge_and_rm_hm(monkeypatch)
     ]
     assert float(df.iloc[0]["sinter_mt"]) == 15.0
     assert float(df.iloc[0]["pci2_mt"]) == 2.0
+    assert len(df) == 1
+    assert float(df.iloc[0]["sinter_cold_strength_ai"]) == 5.0
+    assert float(df.iloc[0]["sinter_cold_strength_ti"]) == 79.0
     assert float(df.iloc[0]["sinter_hot_strength_ri"]) == 70.0
     assert float(df.iloc[0]["sinter_hot_strength_rdi"]) == 30.0
 

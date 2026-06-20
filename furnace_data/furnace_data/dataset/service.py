@@ -39,6 +39,7 @@ _OFFLINE_RM_QUANTITY_VIEWS = {
 _OFFLINE_STATIC_ML_TABLE = "offline_feed.historical_static_ml_dataset"
 _OFFLINE_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
 _OFFLINE_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
+_STRENGTH_COMPAT_COLUMNS = ("ai", "ti", "ri", "rdi")
 
 
 @dataclass
@@ -96,6 +97,40 @@ class DatasetService:
             return None
         values = df[existing].apply(pd.to_numeric, errors="coerce")
         return values.sum(axis=1, min_count=1)
+
+    @staticmethod
+    def _collapse_strength_frame(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+
+        out = pd.DataFrame(index=df.index)
+        for idx in range(1, 5):
+            name_col = f"property_{idx}_name"
+            value_col = f"property_{idx}"
+            if name_col not in df.columns or value_col not in df.columns:
+                continue
+
+            names = df[name_col].astype("string").str.strip().str.lower()
+            values = pd.to_numeric(df[value_col], errors="coerce")
+            for target_col in _STRENGTH_COMPAT_COLUMNS:
+                if target_col not in out.columns:
+                    out[target_col] = pd.NA
+                matched = names == target_col
+                out.loc[matched, target_col] = values[matched].to_numpy()
+
+        for target_col in _STRENGTH_COMPAT_COLUMNS:
+            if target_col in df.columns:
+                values = pd.to_numeric(df[target_col], errors="coerce")
+                if target_col not in out.columns:
+                    out[target_col] = values
+                else:
+                    out[target_col] = out[target_col].combine_first(values)
+
+        if out.empty:
+            return pd.DataFrame()
+        if isinstance(out.index, pd.DatetimeIndex):
+            out = out.groupby(level=0).first()
+        return out.dropna(how="all")
 
     def _add_offline_ml_aliases(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add ML-compatible aggregate aliases for offline report table columns."""
@@ -482,7 +517,9 @@ class DatasetService:
             raise ValueError("mode must be 'charge' or 'dpr'")
 
         df_rm = self._fetch_offline_table(table_name, start_dt, end_dt)
-        df_rm_hm = self._fetch_offline_table(_OFFLINE_STRENGTH_TABLE, start_dt, end_dt)
+        df_rm_hm = self._collapse_strength_frame(
+            self._fetch_offline_table(_OFFLINE_STRENGTH_TABLE, start_dt, end_dt)
+        )
         df_chem = self._fetch_offline_weighted_chemistry(
             mode=mode,
             start_dt=start_dt,

@@ -36,6 +36,30 @@ OFFLINE_REPORT_MAP: dict[str, list[str]] = {
 
 _NON_AVERAGED_COLUMNS: set[str] = set(_SCHEMA.get("non_averaged_columns", []))
 
+_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
+_STRENGTH_MAPPING_TABLE = "plant_master.material_property_mapping"
+_STRENGTH_MATERIAL_TABLE = "plant_master.materials"
+_STRENGTH_CATEGORY_TABLE = "plant_master.material_categories"
+_STRENGTH_RAW_COLUMNS = {
+    "id",
+    "date_time",
+    "material_code",
+    "property_1",
+    "property_2",
+    "property_3",
+    "property_4",
+}
+_STRENGTH_MAPPING_COLUMNS = {
+    "property_1_name",
+    "property_2_name",
+    "property_3_name",
+    "property_4_name",
+}
+_STRENGTH_MATERIAL_COLUMNS = {
+    "material_name",
+    "unit_code",
+}
+
 TIMEDELTAS = {
     "last 1 minute": timedelta(minutes=1),
     "last 5 minutes": timedelta(minutes=5),
@@ -128,6 +152,92 @@ def _numeric_average_columns(selected_columns: Iterable[str]) -> list[str]:
     ]
 
 
+def _strength_select_expression(column: str) -> str:
+    if column in _STRENGTH_RAW_COLUMNS:
+        return f"r.{_quote_identifier(column)} AS {_quote_identifier(column)}"
+    if column in _STRENGTH_MAPPING_COLUMNS:
+        return f"m.{_quote_identifier(column)} AS {_quote_identifier(column)}"
+    if column in _STRENGTH_MATERIAL_COLUMNS:
+        return f"mat.{_quote_identifier(column)} AS {_quote_identifier(column)}"
+    if column == "material_category":
+        return f"cat.{_quote_identifier('category_name')} AS {_quote_identifier(column)}"
+    raise ValueError(f"Unknown column for {_STRENGTH_TABLE}: {column}")
+
+
+def _strength_from_sql() -> str:
+    return (
+        f"FROM {_table_sql(_STRENGTH_TABLE)} AS r "
+        f"LEFT JOIN {_table_sql(_STRENGTH_MAPPING_TABLE)} AS m "
+        f"ON m.{_quote_identifier('material_code')} = r.{_quote_identifier('material_code')}"
+        f" LEFT JOIN {_table_sql(_STRENGTH_MATERIAL_TABLE)} AS mat "
+        f"ON mat.{_quote_identifier('material_code')} = r.{_quote_identifier('material_code')}"
+        f" LEFT JOIN {_table_sql(_STRENGTH_CATEGORY_TABLE)} AS cat "
+        f"ON cat.{_quote_identifier('category_code')} = mat.{_quote_identifier('category_code')}"
+    )
+
+
+def _build_strength_query(
+    selected_columns: list[str],
+    query_type: str,
+    window: str | None,
+) -> tuple[str, dict[str, object]]:
+    time_col = _TIME_COLUMNS[_STRENGTH_TABLE]
+    if time_col is None:
+        raise ValueError(f"{_STRENGTH_TABLE} must define a time column.")
+
+    time_sql = _quote_identifier(time_col)
+
+    if query_type in {"ts", "raw"}:
+        cols = ", ".join(_strength_select_expression(col) for col in selected_columns)
+        return (
+            f"SELECT {cols} {_strength_from_sql()} "
+            f"WHERE r.{time_sql} >= :start_time AND r.{time_sql} <= :end_time "
+            f"ORDER BY r.{time_sql}",
+            {},
+        )
+
+    if not _TABLES[_STRENGTH_TABLE].get("supports_aggregation", True):
+        raise ValueError(f"{_STRENGTH_TABLE} does not support SQL aggregation fetches.")
+
+    avg_columns = _numeric_average_columns(selected_columns)
+    if not avg_columns:
+        raise ValueError(f"No numeric columns selected for averaging {_STRENGTH_TABLE}.")
+
+    mapped_columns = list(dict.fromkeys([time_col, *selected_columns]))
+    mapped_select_sql = ", ".join(
+        _strength_select_expression(col) for col in mapped_columns
+    )
+    mapped_sql = (
+        f"SELECT {mapped_select_sql} {_strength_from_sql()} "
+        f"WHERE r.{time_sql} >= :start_time AND r.{time_sql} <= :end_time"
+    )
+    avg_sql = ", ".join(
+        f"AVG({_quote_identifier(col)}) AS {_quote_identifier(col)}"
+        for col in avg_columns
+    )
+
+    if query_type in {"windowed-average", "hourly-average"}:
+        window = window or "1 hour"
+        return (
+            "SELECT date_bin(CAST(:window AS interval), "
+            f"{time_sql}, TIMESTAMPTZ '1970-01-01 00:00:00+00') AS {time_sql}, "
+            f"{avg_sql} FROM ({mapped_sql}) AS mapped "
+            "GROUP BY 1 ORDER BY 1",
+            {"window": window},
+        )
+
+    if query_type == "average":
+        return (
+            f"SELECT :start_time AS {time_sql}, {avg_sql} "
+            f"FROM ({mapped_sql}) AS mapped",
+            {},
+        )
+
+    raise ValueError(
+        "query_type must be 'ts', 'raw', 'average', or 'windowed-average'."
+    )
+
+
 def _resolve_range(time_range: Union[str, Tuple]) -> tuple[pd.Timestamp, pd.Timestamp]:
     now = pd.Timestamp(datetime.now(timezone.utc))
     if isinstance(time_range, str) and time_range.strip().lower() == "full":
@@ -164,6 +274,9 @@ def _build_query(
         raise ValueError(
             "query_type must be 'ts', 'raw', 'average', or 'windowed-average'."
         )
+
+    if table_name == _STRENGTH_TABLE:
+        return _build_strength_query(selected_columns, query_type, window)
 
     if time_col is None:
         if query_type not in {"ts", "raw"}:

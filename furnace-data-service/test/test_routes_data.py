@@ -47,7 +47,7 @@ class TestOfflineReportTypes:
         resp = client.get("/data/offline/report-types")
         assert resp.status_code == 200
         body = resp.json()
-        for key in ("HM_SLAG", "CHARGE", "RM_COMPOSITION", "DPR"):
+        for key in ("HM_SLAG", "CHARGE", "RM_COMPOSITION", "RAW_MATERIAL_STRENGTH", "DPR"):
             assert key in body
 
     def test_values_are_measurement_strings(self, client):
@@ -61,6 +61,7 @@ class TestOfflineReportTypes:
         assert resp.status_code == 200
         body = resp.json()
         assert "RM_COMPOSITION" in body["report_map"]
+        assert "RAW_MATERIAL_STRENGTH" in body["report_map"]
         assert "BURDEN_DISTRIBUTION" in body["report_map"]
         assert "HOPPER_MANAGEMENT" in body["report_map"]
         assert "offline_feed.charge_data" in body["tables"]

@@ -48,7 +48,7 @@ DATA SOURCE ROUTING (follow this order):
    - Max lookback: 90 days. Default avg: >1 day => 1h, else 15 min.
 3. fetch_offline_data — for HM/Slag chemistry, charge data, raw material lab reports, DPR.
    - These are NOT in the ML dataset. Always fetch separately; merge or concat as needed.
-   - Types: HM_SLAG, CHARGE, RAW_MATERIAL_COMPOSITION (Bunker), DPR.
+   - Types: HM_SLAG, CHARGE, RAW_MATERIAL_COMPOSITION (Bunker), RAW_MATERIAL_STRENGTH, DPR.
 4. concat_datasets — stitch static + online portions after a dual-fetch.
 5. merge_furnace_data — align offline onto online/static timestamps (column-wise join).
 
@@ -57,7 +57,7 @@ COLUMN NAMING:
 - Online data columns follow the format "{Measurement Label} - {Field Label}", e.g. 'Heatload Delta T - Heat load Row 6', 'Process Params - fuel_rate', 'Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp A'. NOT raw InfluxDB field names.
 - After concat, plot whichever column is non-null per time region.
 
-OFFLINE CADENCE DEFAULTS: HM_SLAG/CHARGE => 1h, RAW_MATERIAL_COMPOSITION => 8h, DPR => 1d.
+OFFLINE CADENCE DEFAULTS: HM_SLAG/CHARGE => 1h, RAW_MATERIAL_COMPOSITION/RAW_MATERIAL_STRENGTH => 8h, DPR => 1d.
 
 UI LAYOUT — read before deciding what to plot or fetch:
 - This is a Streamlit web app. The operator sees ONE plot slot and ONE data table slot on screen at a time.

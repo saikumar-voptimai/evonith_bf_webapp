@@ -155,10 +155,11 @@ class OfflineFetchArgs(BaseModel):
         "DPR",
         "RAW_MATERIAL_COMPOSITION",
         "RM_COMPOSITION",
+        "RAW_MATERIAL_STRENGTH",
         "BURDEN_DISTRIBUTION",
         "HOPPER_MANAGEMENT",
     ] = Field(
-        description="Which offline dataset to fetch. Use RM_COMPOSITION for raw material chemistry + strength data."
+        description="Which offline dataset to fetch. Use RAW_MATERIAL_STRENGTH for coke/sinter strength properties; use RM_COMPOSITION for the broader raw material chemistry report."
     )
     table_name: Optional[str] = Field(
         default=None,
@@ -177,7 +178,7 @@ class OfflineFetchArgs(BaseModel):
     )
     cadence: Optional[Literal["1h", "8h", "1d"]] = Field(
         default=None,
-        description="Resampling cadence. If omitted, defaults by report_type: HM_SLAG/CHARGE=1h, RAW_MATERIAL_COMPOSITION=8h, DPR=1d.",
+        description="Resampling cadence. If omitted, defaults by report_type: HM_SLAG/CHARGE=1h, RAW_MATERIAL_COMPOSITION=8h, RAW_MATERIAL_STRENGTH=8h, DPR=1d.",
     )
 
 
@@ -722,7 +723,7 @@ def fetch_offline_data(
 
     Defaults:
     - HM_SLAG, CHARGE: hourly (1h)
-    - RAW_MATERIAL_COMPOSITION: shiftwise (8h)
+    - RAW_MATERIAL_COMPOSITION / RAW_MATERIAL_STRENGTH: shiftwise (8h)
     - DPR: daily (1d)
     """
     params = {
@@ -769,6 +770,7 @@ def fetch_offline_data(
             "CHARGE": "1h",
             "RAW_MATERIAL_COMPOSITION": "8h",
             "RM_COMPOSITION": "8h",
+            "RAW_MATERIAL_STRENGTH": "8h",
             "DPR": "1d",
             "BURDEN_DISTRIBUTION": "1d",
             "HOPPER_MANAGEMENT": "1d",
@@ -796,7 +798,12 @@ def fetch_offline_data(
         df = _to_ist_index(df)
         skip_resample = (
             offline_report_type
-            in {"RM_COMPOSITION", "BURDEN_DISTRIBUTION", "HOPPER_MANAGEMENT"}
+            in {
+                "RM_COMPOSITION",
+                "RAW_MATERIAL_STRENGTH",
+                "BURDEN_DISTRIBUTION",
+                "HOPPER_MANAGEMENT",
+            }
             or bool(args.table_name)
         )
         if (
@@ -972,6 +979,7 @@ def get_openai_tool_schemas() -> list[dict]:
                                 "CHARGE",
                                 "RAW_MATERIAL_COMPOSITION",
                                 "RM_COMPOSITION",
+                                "RAW_MATERIAL_STRENGTH",
                                 "DPR",
                                 "BURDEN_DISTRIBUTION",
                                 "HOPPER_MANAGEMENT",
