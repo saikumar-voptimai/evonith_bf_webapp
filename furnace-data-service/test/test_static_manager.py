@@ -218,12 +218,12 @@ class TestUpdateStatic:
 
     def test_empty_cache_fetches_from_default_start(self, tmp_path, sample_ml_df):
         mgr = self._make_manager(tmp_path)
-        mgr.fetcher.get_ml_dataset.return_value = sample_ml_df
+        mgr.fetcher.get_dataset.return_value = sample_ml_df
 
         result = mgr.update_static(rm_choice="RM Charge", apply_cleaning=False)
 
-        mgr.fetcher.get_ml_dataset.assert_called_once()
-        call_kwargs = mgr.fetcher.get_ml_dataset.call_args
+        mgr.fetcher.get_dataset.assert_called_once()
+        call_kwargs = mgr.fetcher.get_dataset.call_args
         assert call_kwargs.kwargs["start_date"] == StaticDatasetManager._DEFAULT_START
         assert not result.empty
 
@@ -242,7 +242,7 @@ class TestUpdateStatic:
         _save_meta(tmp_path, meta)
 
         mgr = self._make_manager(tmp_path)
-        mgr.fetcher.get_ml_dataset.return_value = sample_ml_df
+        mgr.fetcher.get_dataset.return_value = sample_ml_df
 
         result = mgr.update_static(
             rm_choice="RM Charge",
@@ -251,7 +251,7 @@ class TestUpdateStatic:
         )
 
         # Frozen part: rows before Oct 1 (Sep rows only)
-        call_kwargs = mgr.fetcher.get_ml_dataset.call_args
+        call_kwargs = mgr.fetcher.get_dataset.call_args
         assert call_kwargs.kwargs["start_date"] == date(2025, 10, 1)
         assert not result.empty
 
@@ -270,7 +270,7 @@ class TestUpdateStatic:
         mgr = self._make_manager(tmp_path)
         result = mgr.update_static(rm_choice="RM Charge", apply_cleaning=False)
 
-        mgr.fetcher.get_ml_dataset.assert_not_called()
+        mgr.fetcher.get_dataset.assert_not_called()
         assert not result.empty
 
     def test_legacy_bootstrap(self, tmp_path, sample_ml_df):
@@ -278,9 +278,9 @@ class TestUpdateStatic:
         sample_ml_df.to_csv(legacy_path)
 
         mgr = self._make_manager(tmp_path, legacy=legacy_path)
-        mgr.fetcher.get_ml_dataset.return_value = pd.DataFrame()  # nothing new
+        mgr.fetcher.get_dataset.return_value = pd.DataFrame()  # nothing new
 
         # Should not crash; legacy data loaded as base
         result = mgr.update_static(rm_choice="RM Charge", apply_cleaning=False)
-        # get_ml_dataset was called (to fetch from confirmed_end onward)
-        mgr.fetcher.get_ml_dataset.assert_called_once()
+        # get_dataset was called (to fetch from confirmed_end onward)
+        mgr.fetcher.get_dataset.assert_called_once()

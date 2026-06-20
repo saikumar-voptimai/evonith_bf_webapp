@@ -11,8 +11,8 @@ from sqlalchemy import text
 
 from config.config_loader import load_config
 from furnace_data.influx.online import fetch_online_df
-from furnace_data.neon_db.offline import fetch_offline_data as _fetch_neon_table
-from furnace_data.neon_db.offline import fetch_offline_report as _fetch_neon_offline
+from furnace_data.offline import fetch_offline_data as _fetch_offline_table
+from furnace_data.offline import fetch_offline_report as _fetch_offline_report
 from furnace_data.relational.engine import build_relational_engine
 from reports.base import ReportFetcher
 from reports.furnace_report.data import (
@@ -54,7 +54,7 @@ def _safe_table(
     table_name: str, start_utc: datetime, end_utc: datetime
 ) -> pd.DataFrame:
     try:
-        return _safe(_fetch_neon_table(table_name, time_range=(start_utc, end_utc)))
+        return _safe(_fetch_offline_table(table_name, time_range=(start_utc, end_utc)))
     except Exception:
         logger.warning(
             "Failed to fetch furnace report table %s",
@@ -96,7 +96,7 @@ def _safe_material_fines_table(start_utc: datetime, end_utc: datetime) -> pd.Dat
 @lru_cache(maxsize=1)
 def _cached_materials_table() -> pd.DataFrame:
     return _safe(
-        _fetch_neon_table(
+        _fetch_offline_table(
             "materials",
             time_range="full",
             columns=("material_code", "material_name", "is_active"),
@@ -179,14 +179,14 @@ class ShiftFetcher(ReportFetcher[ShiftRawData]):
         )
 
         hm_slag_df = _safe(
-            _fetch_neon_offline(
+            _fetch_offline_report(
                 report_type="HM_SLAG",
                 time_range=(start_utc, end_utc),
             )
         )
 
         charge_df = _safe(
-            _fetch_neon_offline(
+            _fetch_offline_report(
                 report_type="CHARGE",
                 time_range=(start_utc, end_utc),
             )

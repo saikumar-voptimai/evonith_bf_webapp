@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     influx_online_token: str = ""
     influx_offline_token: str = ""
 
-    # PostgreSQL (Neon)
+    # PostgreSQL
     database_url: str = ""
 
     # Server

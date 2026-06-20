@@ -1,6 +1,6 @@
 [project]
 name = "furnace_data"
-version = "0.1.6"
+version = "0.1.12"
 description = "Shared data-access core for the Evonith BF2 platform (InfluxDB, PostgreSQL, static CSV)"
 requires-python = ">=3.9"
 dependencies = [
@@ -23,3 +23,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["furnace_data"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"furnace_data/offline_tables.yml" = "furnace_data/offline_tables.yml"

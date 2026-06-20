@@ -30,6 +30,10 @@ def _v(val: Optional[float]) -> str:
     return f"{val:.2f}" if val is not None else "-"
 
 
+def _v1(val: Optional[float]) -> str:
+    return f"{val:.1f}" if val is not None else "-"
+
+
 def _r(val: Optional[float]) -> str:
     return f"{val:.0f}" if val is not None else "-"
 
@@ -234,7 +238,7 @@ def _parameter_rows(r: ShiftReportData) -> list[list[str]]:
             ["RAFT", "degC", ra, ras],
             ["Burden Moisture Input", "kg/thm", _r(r.burden_moisture_input), "-"],
             ["Fines Input", "kg/thm", _r(r.fines_input), "-"],
-            ["IBRM", "-", _v(r.ibrm), "-"],
+            ["IBRM", "-", _v1(r.ibrm), "-"],
         ]
     )
 
@@ -243,7 +247,7 @@ def _parameter_rows(r: ShiftReportData) -> list[list[str]]:
         ["Production rate", "t/hr", _v(r.production_rate), "-"],
         ["Theoretical Production", "tons", _v(r.theoretical_production), "-"],
         ["Total Charges", "no's", _vi(r.total_charges), "-"],
-        ["Burden Ratio", "Ore:Sinter:Pellet", r.burden_ratio or "-", "-"],
+        ["Burden Ratio", "Sinter:Ore:Pellet", r.burden_ratio or "-", "-"],
         ["**Process Parameters**", "", "", ""],
         *process_rows,
         ["**Quality**", "", "", ""],

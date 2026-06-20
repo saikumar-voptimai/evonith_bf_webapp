@@ -10,7 +10,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 REFRESH_THRESHOLD_HOURS: int = 6
-OFFLINE_LAG_DAYS: int = 2       # offline Neon data has a ~24-48 h ingestion lag
+OFFLINE_LAG_DAYS: int = 2       # offline DB data has a ~24-48 h ingestion lag
 
 _lock = threading.Lock()
 _refreshing: bool = False

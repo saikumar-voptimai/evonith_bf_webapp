@@ -9,8 +9,9 @@ Evaluated lazily at each call so that ``cwd`` is resolved at call time,
 not at module import time (which breaks non-editable installs where the
 package lives in site-packages and cwd may not yet be the app directory).
 
-The API service (furnace-data-service) sets ``FURNACE_CONFIG_DIR`` in its
-``.env`` to point at ``furnace-data-service/config/``.
+The API service (furnace-data-service) sets ``FURNACE_CONFIG_DIR`` at startup
+to point at the monorepo's shared ``src/config/`` directory unless explicitly
+overridden by the environment.
 
 Usage::
 

@@ -55,6 +55,7 @@ class OutlierRule:
 @dataclass(frozen=True)
 class ImputationPlan:
     iterative_base_columns: Tuple[str, ...] = ()
+    skip_columns: Tuple[str, ...] = ()
     include_temperature_columns: bool = True
     iterative_random_state: int = 0
     iterative_max_iter: int = 10
@@ -294,14 +295,23 @@ class DataCleaner:
 
     def _drop_high_nan_columns(self, df):
         thresh = self.config.col_max_nan_fraction
+        skip = set(self.config.imputation_plan.skip_columns)
         nan_frac = df.isna().mean()
-        drop_cols = nan_frac[nan_frac > thresh].index.tolist()
+        candidates = nan_frac[nan_frac > thresh].index.tolist()
+        protected = skip | set(self.config.zero_fill_columns)
+        drop_cols = [col for col in candidates if col not in protected]
+        spared = [col for col in candidates if col in protected]
         if drop_cols:
             self.logger.warning(
                 "Dropping %d high-NaN columns (>%d%% missing): %s",
                 len(drop_cols), int(thresh * 100), drop_cols,
             )
             df = df.drop(columns=drop_cols)
+        if spared:
+            self.logger.info(
+                "Preserved %d high-NaN columns via sparse/zero-fill config: %s",
+                len(spared), spared,
+            )
         return df
 
     def _apply_row_filters(self, df):
@@ -362,7 +372,7 @@ class DataCleaner:
             if col not in df.columns:
                 continue
             s = pd.to_numeric(df[col], errors="coerce")
-            df = df[s < cap]
+            df = df[s.isna() | (s < cap)]
         return df
 
     def _final_imputation(self, df):
@@ -561,6 +571,14 @@ def build_default_config() -> CleaningConfig:
             iterative_base_columns=_aliases_for(
                 rename_dict,
                 imputation.get("iterative_base_alias_keys", []) or [],
+            ),
+            skip_columns=tuple(
+                list(
+                    _aliases_for(
+                        rename_dict, imputation.get("skip_alias_keys", []) or []
+                    )
+                )
+                + list(imputation.get("skip_columns", []) or [])
             ),
             include_temperature_columns=bool(
                 imputation.get("include_temperature_columns", True)

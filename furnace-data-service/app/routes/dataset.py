@@ -40,7 +40,7 @@ def _run_fetch(task: TaskState, req: FetchDatasetRequest):
     task.progress = "Fetching ML dataset..."
     rm_label = "RM Charge" if req.rm_choice.value == "charge" else "RM DPR"
 
-    df = _fetcher.get_ml_dataset(
+    df = _fetcher.get_dataset(
         start_date=req.start_date,
         end_date=req.end_date,
         rm_choice=rm_label,

@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from furnace_data.relational.engine import build_relational_engine
 
-_SCHEMA_PATH = Path(__file__).with_name("neon_tables.yml")
+_SCHEMA_PATH = Path(__file__).with_name("offline_tables.yml")
 _SCHEMA = yaml.safe_load(_SCHEMA_PATH.read_text(encoding="utf-8")) or {}
 
 _TABLES: dict[str, dict] = _SCHEMA.get("tables", {})
@@ -24,12 +24,12 @@ _TIME_COLUMNS: dict[str, str | None] = {
     table: meta.get("time_column") for table, meta in _TABLES.items()
 }
 
-NEON_OFFLINE_TABLES: dict[str, set[str] | None] = {
+OFFLINE_TABLES: dict[str, set[str] | None] = {
     table: None if meta.get("allow_all_columns") else set(meta.get("columns", []))
     for table, meta in _TABLES.items()
 }
 
-NEON_OFFLINE_REPORT_MAP: dict[str, list[str]] = {
+OFFLINE_REPORT_MAP: dict[str, list[str]] = {
     report_type: list(tables)
     for report_type, tables in (_SCHEMA.get("report_map", {}) or {}).items()
 }
@@ -59,7 +59,7 @@ TIMEDELTAS = {
 }
 
 
-def resolve_neon_table_name(table_name: str) -> str:
+def resolve_offline_table_name(table_name: str) -> str:
     """Resolve a public/legacy table name to the canonical schema-qualified name."""
     if table_name in _TABLES:
         return table_name
@@ -72,10 +72,10 @@ def resolve_neon_table_name(table_name: str) -> str:
     )
 
 
-def list_neon_offline_tables() -> dict[str, object]:
+def list_offline_tables() -> dict[str, object]:
     """Return a JSON-serialisable snapshot of the offline table whitelist."""
     return {
-        "report_map": {k: list(v) for k, v in NEON_OFFLINE_REPORT_MAP.items()},
+        "report_map": {k: list(v) for k, v in OFFLINE_REPORT_MAP.items()},
         "aliases": dict(sorted(_TABLE_ALIASES.items())),
         "tables": {
             table: {
@@ -83,8 +83,8 @@ def list_neon_offline_tables() -> dict[str, object]:
                 "supports_aggregation": bool(meta.get("supports_aggregation", True)),
                 "columns": (
                     "*"
-                    if NEON_OFFLINE_TABLES[table] is None
-                    else sorted(NEON_OFFLINE_TABLES[table] or [])
+                    if OFFLINE_TABLES[table] is None
+                    else sorted(OFFLINE_TABLES[table] or [])
                 ),
             }
             for table, meta in _TABLES.items()
@@ -106,7 +106,7 @@ def _table_sql(table_name: str) -> str:
 
 
 def _normalise_columns(table_name: str, columns: Iterable[str] | None) -> list[str]:
-    allowed = NEON_OFFLINE_TABLES[table_name]
+    allowed = OFFLINE_TABLES[table_name]
     if allowed is None:
         return list(columns or ["*"])
 
@@ -233,7 +233,7 @@ def fetch_offline_data(
     database_url: str | None = None,
 ) -> pd.DataFrame:
     """Fetch offline data from one whitelisted PostgreSQL table."""
-    table_name = resolve_neon_table_name(table_name)
+    table_name = resolve_offline_table_name(table_name)
 
     start_time, end_time = _resolve_range(time_range)
     selected_columns = _normalise_columns(table_name, columns)
@@ -267,7 +267,7 @@ def get_offline_table_bounds(
     database_url: str | None = None,
 ) -> tuple[pd.Timestamp | None, pd.Timestamp | None, int]:
     """Return min/max timestamps and row count for one whitelisted table."""
-    table_name = resolve_neon_table_name(table_name)
+    table_name = resolve_offline_table_name(table_name)
     time_col = _TIME_COLUMNS[table_name]
     if time_col is None:
         return None, None, 0
@@ -297,11 +297,11 @@ def get_offline_report_bounds(
     database_url: str | None = None,
 ) -> tuple[pd.Timestamp | None, pd.Timestamp | None, int]:
     """Return combined temporal bounds for a logical offline report."""
-    tables = NEON_OFFLINE_REPORT_MAP.get(report_type)
+    tables = OFFLINE_REPORT_MAP.get(report_type)
     if not tables:
         raise ValueError(
             f"Unknown offline report '{report_type}'. "
-            f"Valid: {sorted(NEON_OFFLINE_REPORT_MAP)}"
+            f"Valid: {sorted(OFFLINE_REPORT_MAP)}"
         )
 
     starts: list[pd.Timestamp] = []
@@ -330,11 +330,11 @@ def fetch_offline_report(
     database_url: str | None = None,
 ) -> pd.DataFrame:
     """Fetch a logical offline report from one or more whitelisted tables."""
-    tables = NEON_OFFLINE_REPORT_MAP.get(report_type)
+    tables = OFFLINE_REPORT_MAP.get(report_type)
     if not tables:
         raise ValueError(
             f"Unknown offline report '{report_type}'. "
-            f"Valid: {sorted(NEON_OFFLINE_REPORT_MAP)}"
+            f"Valid: {sorted(OFFLINE_REPORT_MAP)}"
         )
 
     frames: list[pd.DataFrame] = []
@@ -359,3 +359,16 @@ def fetch_offline_report(
     if isinstance(combined.index, pd.DatetimeIndex):
         return combined.sort_index()
     return combined
+
+
+__all__ = [
+    "OFFLINE_REPORT_MAP",
+    "OFFLINE_TABLES",
+    "TIMEDELTAS",
+    "fetch_offline_data",
+    "fetch_offline_report",
+    "get_offline_report_bounds",
+    "get_offline_table_bounds",
+    "list_offline_tables",
+    "resolve_offline_table_name",
+]

@@ -96,7 +96,7 @@ def _render_form(ticket_service: TicketService) -> None:
                     st.image(
                         uploaded_file,
                         caption=uploaded_file.name,
-                        use_container_width=True,
+                        width="stretch",
                     )
 
         submitted = st.form_submit_button("Submit Ticket", type="primary")

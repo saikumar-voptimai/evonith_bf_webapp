@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from datetime import date, timedelta
 
 import pandas as pd
+import pytest
 
 import data.ml.static_dataset_manager as manager_module
 from data.ml import static_csv
@@ -119,6 +121,35 @@ def test_static_dataset_manager_saves_rotating_full_copy(monkeypatch, tmp_path) 
     assert meta["csv_file"] == versioned[-1].name
 
 
+def test_static_dataset_manager_clips_future_hours_before_save(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    csv_path = tmp_path / "furnace_dataset.csv"
+    manager = StaticDatasetManager(csv_path)
+    monkeypatch.setattr(static_csv.load_static_dataset, "clear", lambda: None)
+    monkeypatch.setattr(
+        StaticDatasetManager,
+        "_current_local_hour",
+        staticmethod(lambda: pd.Timestamp("2026-05-05 04:00:00")),
+    )
+
+    df = pd.DataFrame(
+        {"TOPBAR": [0.30, 0.31]},
+        index=pd.DatetimeIndex(
+            ["2026-05-05 04:00:00", "2026-05-05 05:00:00"],
+            name="time",
+        ),
+    )
+
+    saved_path = manager.save(df)
+    saved = pd.read_csv(saved_path, index_col=0, parse_dates=True)
+    meta = json.loads((tmp_path / "cache_meta.json").read_text(encoding="utf-8"))
+
+    assert saved.index.max() == pd.Timestamp("2026-05-05 04:00:00")
+    assert meta["rows"] == 1
+
+
 def test_static_dataset_manager_cleans_before_save(monkeypatch, tmp_path) -> None:
     csv_path = tmp_path / "furnace_dataset.csv"
     manager = StaticDatasetManager(csv_path)
@@ -149,3 +180,231 @@ def test_static_dataset_manager_cleans_before_save(monkeypatch, tmp_path) -> Non
     assert list(cleaned.columns) == ["cleaned_feature"]
     assert "cleaned_feature" in saved.columns
     assert "raw" not in saved.columns
+
+
+def test_static_dataset_manager_ignores_db_rows_after_cutoff(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    manager = StaticDatasetManager(tmp_path / "furnace_dataset.csv")
+    cutoff = date(2026, 5, 3)
+    calls: list[tuple[date, date, str]] = []
+
+    base = pd.DataFrame(
+        {"TOPBAR": [0.30, 9.99]},
+        index=pd.DatetimeIndex(
+            [pd.Timestamp(cutoff), pd.Timestamp(cutoff + timedelta(days=1))],
+            name="time",
+        ),
+    )
+    delta = pd.DataFrame(
+        {"TOPBAR": [0.31]},
+        index=pd.DatetimeIndex([pd.Timestamp(cutoff + timedelta(days=1))], name="time"),
+    )
+
+    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: base)
+    monkeypatch.setattr(StaticDatasetManager, "_clean_dataset", lambda self, df: df)
+    monkeypatch.setattr(
+        manager_module,
+        "load_config",
+        lambda _: {
+            "ml_dataset": {
+                "local_tz": "Asia/Kolkata",
+                "cutoff_date": cutoff.isoformat(),
+            }
+        },
+    )
+    monkeypatch.setattr(
+        StaticDatasetManager,
+        "_current_local_hour",
+        staticmethod(lambda: pd.Timestamp(cutoff + timedelta(days=2))),
+    )
+
+    def fake_delta(start: date, end: date, rm_mode: str) -> pd.DataFrame:
+        calls.append((start, end, rm_mode))
+        return delta
+
+    monkeypatch.setattr(manager, "_fetch_and_clean_delta", fake_delta)
+
+    combined = manager.update_static()
+
+    assert calls == [(cutoff + timedelta(days=1), cutoff + timedelta(days=2), "charge")]
+    assert combined.loc[pd.Timestamp(cutoff), "TOPBAR"] == 0.30
+    assert combined.loc[pd.Timestamp(cutoff + timedelta(days=1)), "TOPBAR"] == 0.31
+
+
+def test_static_dataset_delta_resample_sums_material_quantities_hourly() -> None:
+    raw = pd.DataFrame(
+        {
+            "ORE_1_CALC_MT": [4.0, 6.0, 5.0],
+            "FLUX_1_CALC_MT": [1.0, 2.0, 3.0],
+            "ORE_SIO2%": [3.0, 5.0, 7.0],
+        },
+        index=pd.DatetimeIndex(
+            [
+                "2026-05-05 00:05:00",
+                "2026-05-05 00:45:00",
+                "2026-05-05 01:10:00",
+            ],
+            name="time",
+        ),
+    )
+
+    hourly = StaticDatasetManager._resample_local_delta_hourly(raw)
+
+    assert hourly.loc[pd.Timestamp("2026-05-05 00:00:00"), "ORE_1_CALC_MT"] == 10.0
+    assert hourly.loc[pd.Timestamp("2026-05-05 00:00:00"), "FLUX_1_CALC_MT"] == 3.0
+    assert hourly.loc[pd.Timestamp("2026-05-05 00:00:00"), "ORE_SIO2%"] == 4.0
+    assert hourly.loc[pd.Timestamp("2026-05-05 01:00:00"), "ORE_1_CALC_MT"] == 5.0
+
+
+def test_static_dataset_delta_fills_missing_pci_quantity_rowwise(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    manager = StaticDatasetManager(tmp_path / "furnace_dataset.csv")
+    raw = pd.DataFrame(
+        {
+            "PCI_CALC_MT": [1.0, None],
+            "PCI_KG/THM": [100.0, 200.0],
+            "PRODUCTIONTONNESPERHR": [10.0, 10.0],
+        },
+        index=pd.DatetimeIndex(
+            ["2026-05-05 00:00:00", "2026-05-05 01:00:00"],
+            name="time",
+        ),
+    )
+
+    class FakeFetcher:
+        def build_local_delta(self, *args, **kwargs):
+            return raw
+
+    class IdentityCleaner:
+        def __init__(self, config):
+            self.config = config
+
+        def clean(self, df):
+            return df
+
+    monkeypatch.setattr(
+        "furnace_data.dataset.fetcher.DatasetFetcher",
+        lambda: FakeFetcher(),
+    )
+    monkeypatch.setattr(manager_module, "build_default_config", lambda: object())
+    monkeypatch.setattr(manager_module, "DataCleaner", IdentityCleaner)
+
+    cleaned = manager._fetch_and_clean_delta(
+        date(2026, 5, 5),
+        date(2026, 5, 5),
+        "charge",
+    )
+
+    assert cleaned.loc[pd.Timestamp("2026-05-05 00:00:00"), "PCI_CALC_MT"] == 1.0
+    assert cleaned.loc[pd.Timestamp("2026-05-05 01:00:00"), "PCI_CALC_MT"] == 2.0
+
+
+def test_static_dataset_manager_does_not_backfill_new_quantity_columns(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    csv_path = tmp_path / "furnace_dataset.csv"
+    manager = StaticDatasetManager(csv_path)
+    base_day = date.today() - timedelta(days=2)
+    delta_day = base_day + timedelta(days=1)
+
+    base = pd.DataFrame(
+        {"ORE_CALC_MT": [40.0], "ORE_SIO2%": [3.0]},
+        index=pd.DatetimeIndex([pd.Timestamp(base_day)], name="time"),
+    )
+    delta = pd.DataFrame(
+        {"ORE_CALC_MT": [45.0], "ORE_1_CALC_MT": [12.0], "ORE_SIO2%": [4.0]},
+        index=pd.DatetimeIndex([pd.Timestamp(delta_day)], name="time"),
+    )
+
+    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: base)
+    monkeypatch.setattr(StaticDatasetManager, "_clean_dataset", lambda self, df: df)
+    monkeypatch.setattr(manager, "_fetch_and_clean_delta", lambda *args, **kwargs: delta)
+
+    combined = manager.update_static()
+
+    assert pd.isna(combined.loc[pd.Timestamp(base_day), "ORE_1_CALC_MT"])
+    assert combined.loc[pd.Timestamp(delta_day), "ORE_1_CALC_MT"] == 12.0
+
+
+def test_static_dataset_manager_repairs_material_quantity_totals() -> None:
+    df = pd.DataFrame(
+        {
+            "ORE_CALC_MT": [53.772],
+            **{f"ORE_{i}_CALC_MT": [0.0] for i in range(1, 13)},
+            "FLUX_CALC_MT": [8.0],
+            "FLUX_1_CALC_MT": [1.0],
+            "FLUX_2_CALC_MT": [2.0],
+            "FLUX_3_CALC_MT": [3.0],
+        }
+    )
+
+    repaired = StaticDatasetManager._repair_material_quantity_totals(df)
+
+    assert repaired.loc[0, "ORE_CALC_MT"] == 0.0
+    assert repaired.loc[0, "FLUX_CALC_MT"] == 6.0
+
+
+def test_static_dataset_manager_raises_when_required_delta_is_empty(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    manager = StaticDatasetManager(tmp_path / "furnace_dataset.csv")
+    base_day = date(2026, 5, 3)
+
+    base = pd.DataFrame(
+        {"TOPBAR": [0.30]},
+        index=pd.DatetimeIndex([pd.Timestamp(base_day)], name="time"),
+    )
+
+    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: base)
+    monkeypatch.setattr(StaticDatasetManager, "_clean_dataset", lambda self, df: df)
+    monkeypatch.setattr(
+        StaticDatasetManager,
+        "_current_local_hour",
+        staticmethod(lambda: pd.Timestamp("2026-05-05 00:00:00")),
+    )
+    monkeypatch.setattr(
+        manager,
+        "_fetch_and_clean_delta",
+        lambda *args, **kwargs: pd.DataFrame(),
+    )
+
+    with pytest.raises(RuntimeError, match="Delta fetch returned no rows"):
+        manager.update_static()
+
+
+def test_static_dataset_manager_does_not_median_fill_base_only_columns(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    manager = StaticDatasetManager(tmp_path / "furnace_dataset.csv")
+    base_day = date(2026, 5, 3)
+    delta_day = date(2026, 5, 4)
+
+    base = pd.DataFrame(
+        {"TOPBAR": [0.30], "ORE_SIO2%": [3.0]},
+        index=pd.DatetimeIndex([pd.Timestamp(base_day)], name="time"),
+    )
+    delta = pd.DataFrame(
+        {"ORE_SIO2%": [4.0]},
+        index=pd.DatetimeIndex([pd.Timestamp(delta_day)], name="time"),
+    )
+
+    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: base)
+    monkeypatch.setattr(StaticDatasetManager, "_clean_dataset", lambda self, df: df)
+    monkeypatch.setattr(
+        StaticDatasetManager,
+        "_current_local_hour",
+        staticmethod(lambda: pd.Timestamp("2026-05-05 00:00:00")),
+    )
+    monkeypatch.setattr(manager, "_fetch_and_clean_delta", lambda *args, **kwargs: delta)
+
+    combined = manager.update_static()
+
+    assert combined.loc[pd.Timestamp(base_day), "TOPBAR"] == 0.30
+    assert pd.isna(combined.loc[pd.Timestamp(delta_day), "TOPBAR"])

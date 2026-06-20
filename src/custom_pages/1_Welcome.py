@@ -248,7 +248,7 @@ def _tile(col, page_path: str, icon: str, title: str, desc: str, color: str):
             </p>
         </div>
         """)
-        st.page_link(page_path, label=f"Open {title}  →", use_container_width=True)
+        st.page_link(page_path, label=f"Open {title}  →", width="stretch")
 
 
 for i in range(0, len(_TILES), 3):
@@ -282,16 +282,16 @@ if (
             "Administration</p>")
     _a1, _a2, _a3 = st.columns(3)
     with _a1:
-        if st.button("🛠  Hopper Mapping", use_container_width=True):
+        if st.button("🛠  Hopper Mapping", width="stretch"):
             st.session_state["admin_tool_selection"] = "hopper"
             st.rerun()
     if has_permission("burden:write"):
         with _a2:
-            if st.button("📊  Burden Distribution", use_container_width=True):
+            if st.button("📊  Burden Distribution", width="stretch"):
                 st.session_state["admin_tool_selection"] = "burden"
                 st.rerun()
         with _a3:
-            if st.button("📝  User Management", use_container_width=True):
+            if st.button("📝  User Management", width="stretch"):
                 st.session_state["admin_tool_selection"] = "register"
                 st.rerun()
 

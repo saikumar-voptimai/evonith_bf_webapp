@@ -58,7 +58,7 @@ class DataframesProcessor:
         Return the most recent raw material row from the static ML dataset.
 
         The static ML dataset is already a wide flat frame with ML column names,
-        so no Neon query or rename is needed here.
+        so no offline database query or rename is needed here.
         Returns:
             pd.Series: Latest row from the static ML dataset.
         """
