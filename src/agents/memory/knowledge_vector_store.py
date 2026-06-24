@@ -1,18 +1,37 @@
 """Qdrant vector store for Knowledge Hub documents.
 
-Uses cloud (Voyage/OpenAI) multimodal embeddings (1024-dim, cosine similarity)
-against the ``knowledge_docs_voyage_1024`` Qdrant collection.
+Uses Voyage multimodal embeddings (1024-dim, cosine similarity)
+against the ``furnacemind_knowledge`` Qdrant collection.
 """
 
 # memory/knowledge_vector_store.py
 
 import uuid
-from typing import Dict, List
+from typing import Dict, Iterable, List
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PayloadSchemaType,
+    PointIdsList,
+    PointStruct,
+    VectorParams,
+)
 
 from utils.settings import settings
+
+_INDEXED_PAYLOAD_FIELDS = ("user_id", "document_id")
+
+
+def _embed_text(embedding_client, text: str, *, input_type: str) -> list[float]:
+    """Embed text with retrieval mode when the client supports it."""
+    try:
+        return embedding_client.embed_text(text, input_type=input_type)
+    except TypeError:
+        return embedding_client.embed_text(text)
 
 
 class KnowledgeVectorStore:
@@ -75,6 +94,7 @@ class KnowledgeVectorStore:
                     distance=Distance.COSINE,
                 ),
             )
+            self._ensure_payload_indexes()
             return
 
         info = self.client.get_collection(self.collection_name)
@@ -92,6 +112,20 @@ class KnowledgeVectorStore:
                 f"expected {self.embedding_dim}, got {vectors.size}"
             )
 
+        self._ensure_payload_indexes(getattr(info, "payload_schema", None) or {})
+
+    def _ensure_payload_indexes(self, payload_schema: dict | None = None) -> None:
+        """Ensure Qdrant can filter MRAG points by ownership and document id."""
+        existing = payload_schema or {}
+        for field_name in _INDEXED_PAYLOAD_FIELDS:
+            if field_name in existing:
+                continue
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=field_name,
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+
     def add_document(self, content: str, metadata: Dict) -> None:
         """Embed *content* and upsert the document into Qdrant.
 
@@ -107,7 +141,7 @@ class KnowledgeVectorStore:
             ValueError: If the generated embedding dimension does not match
                 the expected dimension for this collection.
         """
-        embedding = self.embedding.embed_text(content)
+        embedding = _embed_text(self.embedding, content, input_type="document")
 
         if len(embedding) != self.embedding_dim:
             raise ValueError(
@@ -126,24 +160,97 @@ class KnowledgeVectorStore:
             wait=True,
         )
 
-    def search(self, query: str, top_k: int = 5) -> List[Dict]:
+    def delete_points(self, point_ids: Iterable[str]) -> int:
+        """Delete Qdrant points for a removed knowledge document."""
+        ids = [str(point_id) for point_id in point_ids if str(point_id).strip()]
+        if not ids:
+            return 0
+        self._ensure_collection()
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=PointIdsList(points=ids),
+            wait=True,
+        )
+        return len(ids)
+
+    def delete_document(
+        self,
+        *,
+        document_id: str,
+        user_id: str | None = None,
+    ) -> None:
+        """Delete Qdrant points by MRAG document id when point ids are unavailable."""
+        conditions = [
+            FieldCondition(
+                key="document_id",
+                match=MatchValue(value=document_id),
+            )
+        ]
+        if user_id:
+            conditions.append(
+                FieldCondition(
+                    key="user_id",
+                    match=MatchValue(value=user_id),
+                )
+            )
+        self._ensure_collection()
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=Filter(must=conditions),
+            wait=True,
+        )
+
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        user_id: str | None = None,
+        active_document_ids: Iterable[str] | None = None,
+    ) -> List[Dict]:
         """Semantic search over the knowledge document collection.
 
         Args:
             query: Natural-language search query.
             top_k: Maximum number of results to return.
+            user_id: Optional owner filter for user-scoped retrieval.
+            active_document_ids: Optional active SQL document ids to post-filter
+                Qdrant matches.
 
         Returns:
             List of ``{"score": float, "payload": dict}`` dicts sorted by
             descending cosine similarity score.
         """
-        query_embedding = self.embedding.embed_text(query)
+        self._ensure_collection()
+        query_embedding = _embed_text(self.embedding, query, input_type="query")
+        query_filter = None
+        if user_id:
+            query_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="user_id",
+                        match=MatchValue(value=user_id),
+                    ),
+                ]
+            )
+
+        active_ids = set(active_document_ids or [])
+        limit = top_k * 5 if active_ids else top_k
 
         results = self.client.query_points(
             collection_name=self.collection_name,
             query=query_embedding,
-            limit=top_k,
+            query_filter=query_filter,
+            limit=limit,
             with_payload=True,
         )
 
-        return [{"score": p.score, "payload": p.payload} for p in results.points]
+        matches = []
+        for point in results.points:
+            payload = point.payload or {}
+            if active_ids and payload.get("document_id") not in active_ids:
+                continue
+            matches.append({"score": point.score, "payload": payload})
+            if len(matches) >= top_k:
+                break
+        return matches

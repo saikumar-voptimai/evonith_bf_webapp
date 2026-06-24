@@ -107,6 +107,7 @@ class ConversationHistoryStore:
                     "type": "text",
                     "message_id": row.message_id,
                     "conversation_id": row.conversation_id,
+                    "metadata": metadata,
                 }
             )
         return history
@@ -118,6 +119,7 @@ class ConversationHistoryStore:
         user_id: str,
         content: str,
         display: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """
         Persist one user message and return its id.
@@ -127,17 +129,19 @@ class ConversationHistoryStore:
              - user_id: str - User that owns the conversation.
              - content: str - Raw user message content.
              - display: str | None - Optional display text shown in the UI.
+             - metadata: dict[str, Any] | None - Optional message metadata.
 
         Returns:
              - return: str - Created message id.
         """
+        metadata_payload = {**(metadata or {}), "display": display or content}
         message = self._messages.add_message(
             conversation_id=conversation_id,
             user_id=user_id,
             role="user",
             content=content,
             token_count=estimate_text_tokens(content),
-            metadata={"display": display or content},
+            metadata=metadata_payload,
         )
         self._conversations.touch_conversation(conversation_id=conversation_id)
         return message.message_id

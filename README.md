@@ -208,11 +208,11 @@ evonith_webapp/
 │   │
 │   ├── embeddings/             Embedding clients
 │   │   ├── sentence_embedding.py  SentenceEmbedding (local, 384-dim)
-│   │   └── cloud_embedding.py  CloudEmbeddingClient (OpenAI/Voyage, 1024-dim)
+│   │   └── cloud_embedding.py  CloudEmbeddingClient (Voyage multimodal, 1024-dim)
 │   │
 │   ├── multimodal/             Document ingestion
-│   │   ├── ingestion.py        process_file() — routes to parser, chunks, embeds
-│   │   └── parsers.py          PDF, DOCX, PPTX, XLS/XLSX, TXT parsers
+│   │   ├── ingestion.py        process_file() — builds DocumentPart records + indexes MRAG
+│   │   └── parsers.py          PDF, DOCX, PPTX, XLS/XLSX, TXT/image extractors
 │   │
 │   ├── domain/                 Business domain services
 │   │   └── auth_service.py     AuthService — PostgreSQL user auth + session cookies
@@ -512,7 +512,7 @@ Two collections:
 | Collection | Embeddings | Dim | Content |
 |---|---|---|---|
 | `furnace_shift_summaries` (env: `SHIFT_QDRANT_COLLECTION`) | Local sentence-transformers | 384 | Shift/day/week/biweek report summaries |
-| `knowledge_docs_voyage_1024` (env: `KNOWLEDGE_QDRANT_COLLECTION`) | Cloud (OpenAI/Voyage) | 1024 | Uploaded operator documents |
+| `furnacemind_knowledge` (env: `KNOWLEDGE_QDRANT_COLLECTION`) | Voyage multimodal | 1024 | Uploaded operator documents |
 
 ---
 
@@ -608,13 +608,13 @@ Two clients behind `get_llm_client(prefer)`:
 | Client | Model | Dim | Use |
 |---|---|---|---|
 | `SentenceEmbedding` | `all-MiniLM-L6-v2` (local) | 384 | Shift summary search |
-| `CloudEmbeddingClient` | OpenAI `text-embedding-3-large` or Voyage | 1024 | Knowledge doc search |
+| `CloudEmbeddingClient` | Voyage `voyage-multimodal-3.5` | 1024 | Knowledge doc and image search |
 
 ### `multimodal/`
 
-`process_file(file, knowledge_store, embedding_client)` — routes uploaded files to parsers, chunks text, embeds with `CloudEmbeddingClient`, and upserts into Qdrant.
+`process_file(file, knowledge_store, embedding_client)` — normalizes uploads into `DocumentPart` records, embeds text/table/image/page parts with `CloudEmbeddingClient`, upserts deterministic Qdrant points, and records document metadata in PostgreSQL when a user-scoped repository is available.
 
-Supported formats: PDF (PyMuPDF), DOCX, PPTX, XLS/XLSX, TXT.
+Supported formats: PDF (text + rendered page images), DOCX, PPTX (text + embedded images), XLS/XLSX, CSV, TXT/Markdown, and image files.
 
 ### `plotters/`
 
@@ -687,14 +687,16 @@ OPENROUTER_API_KEY=sk-or-...
 
 # Embeddings
 LOCAL_EMBEDDING_MODEL=all-MiniLM-L6-v2
-CLOUD_EMBEDDING_MODEL=text-embedding-3-large
-CLOUD_EMBEDDING_API_KEY=sk-...   # OpenAI or Voyage key
+CLOUD_EMBEDDING_PROVIDER=voyage
+CLOUD_EMBEDDING_MODEL=voyage-multimodal-3.5
+CLOUD_EMBEDDING_API_KEY=<voyage-api-key>   # or VOYAGE_API_KEY
+CLOUD_EMBEDDING_DIM=1024
 
 # Qdrant
 QDRANT_ENDPOINT=https://...      # or QDRANT_URL
 QDRANT_API_KEY=...
 SHIFT_QDRANT_COLLECTION=furnace_shift_summaries
-KNOWLEDGE_QDRANT_COLLECTION=knowledge_docs_voyage_1024
+KNOWLEDGE_QDRANT_COLLECTION=furnacemind_knowledge
 
 # PostgreSQL
 DATABASE_URL=postgresql+psycopg2://user:pass@host/db

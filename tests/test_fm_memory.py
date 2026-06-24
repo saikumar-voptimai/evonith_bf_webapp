@@ -178,3 +178,52 @@ def test_missed_boundary_can_catch_up_with_first_unsummarized_window() -> None:
     assert "message 1" in llm.calls[0]["user_prompt"]
     assert "message 8" in llm.calls[0]["user_prompt"]
     assert "message 9" not in llm.calls[0]["user_prompt"]
+
+
+def test_document_backed_turns_are_skipped_by_memory_summary() -> None:
+    """Verify MRAG document answers do not become persistent chat memory."""
+    chat_history = _messages(2)
+    chat_history.extend(
+        [
+            {
+                "role": "user",
+                "content": "What is the total cost at 58% sinter?",
+                "display": "What is the total cost at 58% sinter?",
+                "type": "text",
+                "message_id": "msg-doc-1",
+                "conversation_id": "conv-1",
+                "metadata": {
+                    "exclude_from_memory": True,
+                    "knowledge_document_ids": ["doc-bmo"],
+                },
+            },
+            {
+                "role": "assistant",
+                "content": "The document says 58% sinter costs 25093/THM.",
+                "display": "The document says 58% sinter costs 25093/THM.",
+                "type": "text",
+                "message_id": "msg-doc-2",
+                "conversation_id": "conv-1",
+                "metadata": {
+                    "exclude_from_memory": True,
+                    "knowledge_document_ids": ["doc-bmo"],
+                },
+            },
+        ]
+    )
+    llm = FakeSummaryLLM()
+
+    result = fm_memory.generate_memory_summary(
+        {},
+        chat_history=chat_history,
+        llm=llm,
+        summary_system_prompt="system",
+        summary_token_limit=2000,
+        window=2,
+    )
+
+    assert result["source_message_id_start"] == "msg-1"
+    assert result["source_message_id_end"] == "msg-2"
+    assert "message 1" in llm.calls[0]["user_prompt"]
+    assert "message 2" in llm.calls[0]["user_prompt"]
+    assert "58% sinter" not in llm.calls[0]["user_prompt"]

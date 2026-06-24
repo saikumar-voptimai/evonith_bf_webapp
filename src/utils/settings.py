@@ -202,7 +202,7 @@ class Settings:
         self.qdrant_knowledge = self._load_qdrant_config(
             collection_env="KNOWLEDGE_QDRANT_COLLECTION",
             dim_env="KNOWLEDGE_QDRANT_EMBED_DIM",
-            default_collection="knowledge_docs_voyage_1024",
+            default_collection="furnacemind_knowledge",
             default_dim=1024,
             # do NOT fall back to QDRANT_COLLECTION by default here,
             # because that usually points to shift summaries and causes mixups.
