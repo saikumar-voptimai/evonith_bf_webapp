@@ -345,6 +345,10 @@ data_tags:
     - "BF2_BFBD Furnace Body 9105mm Temp J"
     - "BF2_BFBD Furnace Body 9105mm Temp K"
     - "BF2_BFBD Furnace Body 9105mm Temp L"
+    - "BF02 Proper_SKIN FLOW TEMPERATURE_A"
+    - "BF02 Proper_SKIN FLOW TEMPERATURE_B"
+    - "BF02 Proper_SKIN FLOW TEMPERATURE_C"
+    - "BF02 Proper_SKIN FLOW TEMPERATURE_D"
 
 
   heatload_variables:
@@ -401,6 +405,9 @@ data_tags:
     - "BF2_PROC Top Temp 3"
     - "BF2_PROC Top Temp 4"
     - "BF2_PROC Top Temp Average"
+    - "BF2 BF Prop/Casting Open"
+    - "BF2 BF Prop/Casting Close"
+    - "BF2 Slag Start"
 
 data_mapping: # Using InfluxDB Measurement or Table names as keys
   temperature_profile:
@@ -514,6 +521,11 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
     BF2_BFBD Furnace Body 9105mm Temp J: temp_9105_j
     BF2_BFBD Furnace Body 9105mm Temp K: temp_9105_k
     BF2_BFBD Furnace Body 9105mm Temp L: temp_9105_l
+    BF02 Proper_SKIN FLOW TEMPERATURE_A: skin_flow_temp_a
+    BF02 Proper_SKIN FLOW TEMPERATURE_B: skin_flow_temp_b
+    BF02 Proper_SKIN FLOW TEMPERATURE_C: skin_flow_temp_c
+    BF02 Proper_SKIN FLOW TEMPERATURE_D: skin_flow_temp_d
+
 
 
   process_params:
@@ -560,6 +572,9 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
     TE_40532B Runner Temp CR side near to Taphole: runner_temp_cr_taphole
     TE_40532C Runner Temp PCI side near to skimmer: runner_temp_pci_skimmer
     TE_40532D Runner Temp CR side near to skimmer: runner_temp_cr_skimmer
+    BF2 BF Prop/Casting Open: tap_hole_open
+    BF2 BF Prop/Casting Close: tap_hole_close
+    BF2 Slag Start: slag_start
 
   heatload_delta_t:
     Heat load Row 6: heat_load_row_6  

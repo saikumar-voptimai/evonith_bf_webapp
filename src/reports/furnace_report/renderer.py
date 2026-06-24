@@ -99,7 +99,7 @@ def as_document(
             ["Parameter", "Q1", "Q2", "Q3", "Q4", "Std.Dev"],
             [
                 ["Uptake Temp (degC)", *_temp_cells(r.uptake)],
-                ["Skin flow", "-", "-", "-", "-", "-"],
+                ["Skin flow (degC)", *_temp_cells(r.skin_flow)],
                 ["Lower stack (degC)", *_temp_cells(r.lower_stack)],
                 ["Belly (degC)", *_temp_cells(r.belly)],
                 ["Bosh (degC)", *_temp_cells(r.bosh)],

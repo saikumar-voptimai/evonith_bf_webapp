@@ -41,6 +41,9 @@ _ONLINE: dict[str, str] = {
     "nutcoke_rate": "Process Params - BF2_NUT COKE RATE PER THM",
     "pci_rate": "Process Params - BF2_COAL RATE PER THM",
     "runner_temp": "Process Params - TE_40532A Runner Temp PCI side near to Taphole",
+    "tap_hole_open": "Process Params - BF2 BF Prop/Casting Open",
+    "tap_hole_close": "Process Params - BF2 BF Prop/Casting Close",
+    "slag_start": "Process Params - BF2 Slag Start",
     # Differential pressure
     "furnace_top_dp": "Process Params - BF2_BODY_TOP DP",
     "furnace_bottom_dp": "Process Params - BF2_BODY_BOTTOM DP",
@@ -66,6 +69,10 @@ _ONLINE: dict[str, str] = {
     "bosh_q2": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp B",
     "bosh_q3": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp C",
     "bosh_q4": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp D",
+    "skin_flow_temp_a": "Temperature Profile - BF02 Proper_SKIN FLOW TEMPERATURE_A",
+    "skin_flow_temp_b": "Temperature Profile - BF02 Proper_SKIN FLOW TEMPERATURE_B",
+    "skin_flow_temp_c": "Temperature Profile - BF02 Proper_SKIN FLOW TEMPERATURE_C",
+    "skin_flow_temp_d": "Temperature Profile - BF02 Proper_SKIN FLOW TEMPERATURE_D",
 }
 
 _HM: dict[str, str] = {
@@ -608,6 +615,7 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             etaco=_ps(df, "etaco"),
             raft=_ps(df, "raft"),
             uptake=_temp_row(df, "uptake_q1", "uptake_q2", "uptake_q3", "uptake_q4"),
+            skin_flow=_temp_row(df, "skin_flow_temp_a", "skin_flow_temp_b", "skin_flow_temp_c", "skin_flow_temp_d"),
             lower_stack=_temp_row(df, "ls_q1", "ls_q2", "ls_q3", "ls_q4"),
             belly=_temp_row(df, "belly_q1", "belly_q2", "belly_q3", "belly_q4"),
             bosh=_temp_row(df, "bosh_q1", "bosh_q2", "bosh_q3", "bosh_q4"),

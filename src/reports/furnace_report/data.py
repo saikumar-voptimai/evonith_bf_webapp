@@ -165,6 +165,7 @@ class ShiftReportData:
 
     # Temperatures
     uptake: TempRow
+    skin_flow: TempRow
     lower_stack: TempRow
     belly: TempRow
     bosh: TempRow
