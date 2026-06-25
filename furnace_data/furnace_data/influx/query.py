@@ -56,6 +56,11 @@ def mapping_for_measurement(measurement: str) -> dict[str, str]:
     return _config.get("data_mapping", {}).get(measurement, {})
 
 
+def measurement_label(measurement: str) -> str:
+    """Return a user-facing measurement label derived from the config key."""
+    return measurement.replace("_", " ").title()
+
+
 def human_labels(measurement: str) -> list[str]:
     """Return human-readable labels derived from data_mapping keys."""
     return list(mapping_for_measurement(measurement).keys())
@@ -64,6 +69,73 @@ def human_labels(measurement: str) -> list[str]:
 def influx_fields(measurement: str) -> list[str]:
     """Return de-duplicated Influx fields derived from data_mapping values."""
     return list(dict.fromkeys(mapping_for_measurement(measurement).values()))
+
+
+def field_labels(measurement: str) -> dict[str, str]:
+    """Return the Influx-field to human-label mapping for a measurement."""
+    return {
+        str(influx_field): str(human_label)
+        for human_label, influx_field in mapping_for_measurement(measurement).items()
+    }
+
+
+def field_label(measurement: str, field: str) -> str:
+    """Return the configured user-facing label for an Influx field."""
+    return field_labels(measurement).get(field, field)
+
+
+def measurements_for_field(field: str) -> list[str]:
+    """Return measurements containing an Influx field in data_mapping."""
+    matches: list[str] = []
+    for measurement, mapping in (_config.get("data_mapping") or {}).items():
+        if field in {str(value) for value in (mapping or {}).values()}:
+            matches.append(str(measurement))
+    return list(dict.fromkeys(matches))
+
+
+def measurement_for_field(field: str) -> str | None:
+    """Return the first measurement containing an Influx field, if configured."""
+    matches = measurements_for_field(field)
+    return matches[0] if matches else None
+
+
+def display_column_name(
+    measurement: str,
+    field: str,
+    *,
+    measurement_labels: dict[str, str] | None = None,
+    field_label_overrides: dict[str, str] | None = None,
+) -> str:
+    """Return the legacy display-prefixed DataFrame column name for a field."""
+    measurement_labels = measurement_labels or {}
+    field_label_overrides = field_label_overrides or {}
+    return (
+        f"{measurement_labels.get(measurement, measurement_label(measurement))} - "
+        f"{field_label_overrides.get(field, field_label(measurement, field))}"
+    )
+
+
+def online_column_aliases(
+    field: str,
+    *,
+    measurement: str | None = None,
+    measurement_labels: dict[str, str] | None = None,
+    field_label_overrides: dict[str, str] | None = None,
+) -> tuple[str, ...]:
+    """Return canonical and legacy online DataFrame column names for a field."""
+    aliases = [field]
+    measurements = [measurement] if measurement else measurements_for_field(field)
+    for item in measurements:
+        aliases.append(
+            display_column_name(
+                item,
+                field,
+                measurement_labels=measurement_labels,
+                field_label_overrides=field_label_overrides,
+            )
+        )
+        aliases.append(f"{measurement_label(item)} - {field}")
+    return tuple(dict.fromkeys(aliases))
 
 
 # ---------------------------------------------------------------------------

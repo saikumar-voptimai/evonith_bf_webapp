@@ -46,9 +46,7 @@ def test_builder_scales_production_by_report_window_duration() -> None:
             shift_label=timeframe.shift_label,
             shift_start_ist=timeframe.start_ist,
             shift_end_ist=timeframe.end_ist,
-            online_df=pd.DataFrame(
-                {"Process Params - BF2_PRODUCTION TONNES PER HR": [100.0]}
-            ),
+            online_df=pd.DataFrame({"production_per_hour": [100.0]}),
             hm_slag_df=pd.DataFrame(),
             charge_df=pd.DataFrame(),
             report_type=timeframe.report_type,
@@ -68,9 +66,7 @@ def test_day_report_ibrm_uses_day_theoretical_production() -> None:
             shift_label=timeframe.shift_label,
             shift_start_ist=timeframe.start_ist,
             shift_end_ist=timeframe.end_ist,
-            online_df=pd.DataFrame(
-                {"Process Params - BF2_PRODUCTION TONNES PER HR": [100.0]}
-            ),
+            online_df=pd.DataFrame({"production_per_hour": [100.0]}),
             hm_slag_df=pd.DataFrame(),
             charge_df=pd.DataFrame(
                 {"ore_1_mt": [20.0], "pellet_1_mt": [10.0], "sinter_1_mt": [40.0]}

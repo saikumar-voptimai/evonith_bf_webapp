@@ -32,6 +32,7 @@ def fetch_recent_online(
         selected_measurements=list(MEASUREMENT_LABELS.keys()),
         time_range=tr,
         window_by=window_by,
+        column_naming="field",
     )
 
 

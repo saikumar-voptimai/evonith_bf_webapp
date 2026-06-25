@@ -54,7 +54,7 @@ DATA SOURCE ROUTING (follow this order):
 
 COLUMN NAMING:
 - ML static dataset uses ML names: 'ACT. FUEL RATEKG/THM.', 'CHEM_PCT_SI', 'FURNACETOPGASANALYSISCO2ETACO'.
-- Online data columns follow the format "{Measurement Label} - {Field Label}", e.g. 'Heatload Delta T - Heat load Row 6', 'Process Params - fuel_rate', 'Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp A'. NOT raw InfluxDB field names.
+- Online data columns use canonical InfluxDB field names from `setting_ds_dv.yml`, e.g. `heat_load_row_6`, `fuel_rate`, `temp_18660_a`.
 - After concat, plot whichever column is non-null per time region.
 
 OFFLINE CADENCE DEFAULTS: HM_SLAG/CHARGE => 1h, RAW_MATERIAL_COMPOSITION/RAW_MATERIAL_STRENGTH => 8h, DPR => 1d.

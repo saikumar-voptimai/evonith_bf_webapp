@@ -675,6 +675,7 @@ def fetch_online_data(
                 window_by=window_final,
                 start_time_override=start_dt,
                 end_time_override=end_dt,
+                column_naming="field",
             )
             time_range_label = f"{args.start_time_utc} → {args.end_time_utc or 'now'}"
         else:
@@ -690,6 +691,7 @@ def fetch_online_data(
                 selected_measurements=selected_measurements,
                 time_range=normalized_time_range,
                 window_by=window_final,
+                column_naming="field",
             )
             time_range_label = normalized_time_range
 

@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from config.config_loader import load_config
 from furnace_data.influx.online import fetch_online_df
+from furnace_data.influx.query import online_column_aliases
 from furnace_data.offline import fetch_offline_data as _fetch_offline_table
 from furnace_data.offline import fetch_offline_report as _fetch_offline_report
 from furnace_data.relational.engine import build_relational_engine
@@ -25,7 +26,7 @@ from reports.furnace_report.timeframe import get_report_timeframe
 
 _SHIFT_REPORT_CONFIG = load_config("shift_report.yml") or {}
 _ONLINE_GROUPS = tuple(str(group) for group in _SHIFT_REPORT_CONFIG["online_groups"])
-_TOTAL_O2_FLOW_COLUMN = "Process Params - BF2_TOTAL OXYGEN FLOW"
+_TOTAL_O2_FLOW_FIELD = "total_oxygen"
 _ONLINE_WINDOW_BY_REPORT_TYPE = {
     "Shift": "15 minutes",
     "Day": "1 hour",
@@ -133,15 +134,22 @@ def _safe_total_o2_flow_max(timeframe: ReportTimeframe) -> float | None:
                 window_by=None,
                 start_time_override=start_ist.astimezone(timezone.utc),
                 end_time_override=end_ist.astimezone(timezone.utc),
+                column_naming="field",
             )
         )
     except Exception:
         logger.warning("Failed to fetch total oxygen flow window", exc_info=True)
         return None
 
-    if df.empty or _TOTAL_O2_FLOW_COLUMN not in df.columns:
+    if df.empty:
         return None
-    values = pd.to_numeric(df[_TOTAL_O2_FLOW_COLUMN], errors="coerce").dropna()
+    total_o2_col = next(
+        (col for col in online_column_aliases(_TOTAL_O2_FLOW_FIELD) if col in df.columns),
+        None,
+    )
+    if total_o2_col is None:
+        return None
+    values = pd.to_numeric(df[total_o2_col], errors="coerce").dropna()
     return round(float(values.max()), 2) if len(values) else None
 
 
@@ -175,6 +183,7 @@ class ShiftFetcher(ReportFetcher[ShiftRawData]):
                 ),
                 start_time_override=start_utc,
                 end_time_override=end_utc,
+                column_naming="field",
             )
         )
 
