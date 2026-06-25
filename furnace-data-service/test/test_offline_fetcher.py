@@ -22,6 +22,9 @@ def test_offline_table_discovery_includes_migrated_reports():
     listing = offline.list_offline_tables()
 
     assert "RM_COMPOSITION" in listing["report_map"]
+    assert listing["report_map"]["RAW_MATERIAL_STRENGTH"] == [
+        "offline_feed.raw_material_strength_analysis"
+    ]
     assert "BURDEN_DISTRIBUTION" in listing["report_map"]
     assert "HOPPER_MANAGEMENT" in listing["report_map"]
     assert "offline_feed.ore_chemistry" in listing["report_map"]["RM_COMPOSITION"]
@@ -29,6 +32,16 @@ def test_offline_table_discovery_includes_migrated_reports():
     assert "ops_config.hopper_raw_material_history" in listing["tables"]
     assert listing["aliases"]["rm_hm"] == "offline_feed.raw_material_strength_analysis"
     assert "ore_6_mt" in listing["tables"]["offline_feed.charge_data"]["columns"]
+    strength_columns = listing["tables"]["offline_feed.raw_material_strength_analysis"]["columns"]
+    assert "property_1" in strength_columns
+    assert "property_1_name" in strength_columns
+    assert "material_code" in strength_columns
+    assert "material_name" in strength_columns
+    assert "ai" not in strength_columns
+    assert "rdi" not in strength_columns
+    assert "ri" not in strength_columns
+    assert "ti" not in strength_columns
+    assert "plant_master.material_property_mapping" in listing["tables"]
 
 
 def test_fetch_table_uses_database_url_and_sets_time_index(monkeypatch):
@@ -66,6 +79,57 @@ def test_fetch_table_uses_database_url_and_sets_time_index(monkeypatch):
     assert fake_engine.disposed is True
     assert df.index.name == "time"
     assert str(df.index.tz) == "UTC"
+
+
+def test_strength_fetch_maps_properties_without_selecting_legacy_columns(monkeypatch):
+    calls = {}
+    fake_engine = FakeEngine()
+
+    def fake_build_engine(database_url=None):
+        calls["database_url"] = database_url
+        return fake_engine
+
+    def fake_read_sql_query(query, engine, params):
+        calls["query"] = str(query)
+        calls["params"] = params
+        return pd.DataFrame(
+            {
+                "date_time": ["2026-01-01T00:00:00Z"],
+                "material_code": ["sinter_3"],
+                "property_1": [5.2],
+                "property_2": [79.0],
+                "property_3": [32.0],
+                "property_4": [68.0],
+                "property_1_name": ["AI"],
+                "material_name": ["sinter_sp02_online"],
+                "material_category": ["SINTER"],
+            }
+        )
+
+    monkeypatch.setattr(offline, "build_relational_engine", fake_build_engine)
+    monkeypatch.setattr(offline.pd, "read_sql_query", fake_read_sql_query)
+
+    df = offline.fetch_offline_data(
+        table_name="rm_hm",
+        time_range=("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"),
+        database_url="postgresql://unit-test",
+    )
+
+    query = calls["query"]
+    assert '"offline_feed"."raw_material_strength_analysis" AS r' in query
+    assert '"plant_master"."material_property_mapping" AS m' in query
+    assert '"plant_master"."materials" AS mat' in query
+    assert '"plant_master"."material_categories" AS cat' in query
+    assert '"property_1_name"' in query
+    assert 'r."ai"' not in query
+    assert 'r."rdi"' not in query
+    assert 'r."ri"' not in query
+    assert 'r."ti"' not in query
+    assert "ai" not in df.columns
+    assert "rdi" not in df.columns
+    assert "ri" not in df.columns
+    assert "ti" not in df.columns
+    assert df.iloc[0]["material_category"] == "SINTER"
 
 
 def test_combined_rm_report_concats_source_tables(monkeypatch):

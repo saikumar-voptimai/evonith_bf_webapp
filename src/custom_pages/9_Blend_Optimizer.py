@@ -1699,6 +1699,33 @@ _render_data_diagnostics(
     expanded=bool(visible_data_warnings),
 )
 
+fuel_ash_df = build_fuel_ash_editor_df(bmo_cfg.get("fuel_ash_inputs", []))
+if not fuel_ash_df.empty:
+    st.markdown("### Fuel Ash Inputs")
+    edited_fuel_ash_df = render_fuel_ash_editor(fuel_ash_df)
+else:
+    edited_fuel_ash_df = fuel_ash_df
+fuel_ash_inputs = _fuel_ash_inputs_from_editor(edited_fuel_ash_df)
+
+flux_df = build_flux_editor_df(bmo_cfg.get("flux_inputs", []))
+if not flux_df.empty:
+    st.markdown("### Flux Inputs")
+    edited_flux_df = render_flux_editor(flux_df)
+else:
+    edited_flux_df = flux_df
+flux_inputs = _flux_inputs_from_editor(edited_flux_df)
+
+with st.expander("Advanced Slag Balance Inputs", expanded=False):
+    slag_settings_values = render_slag_balance_settings(bmo_cfg.get("slag_balance", {}))
+    dust_df = build_dust_editor_df(bmo_cfg.get("dust_inputs", []))
+    if not dust_df.empty:
+        st.markdown("##### BF Gas Dust")
+        edited_dust_df = render_dust_editor(dust_df)
+    else:
+        edited_dust_df = dust_df
+dust_inputs = _dust_inputs_from_editor(edited_dust_df)
+slag_balance_settings = _slag_balance_settings_from_editor(slag_settings_values)
+
 run_lp_clicked = False
 run_total_clicked = False
 with st.form("bmo_run_form", clear_on_submit=False):

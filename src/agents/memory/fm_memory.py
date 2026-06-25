@@ -120,6 +120,10 @@ def _is_text_chat_message(item: dict[str, Any]) -> bool:
     """
     if item.get("type") in {"plotly", "dataframe"}:
         return False
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    if metadata.get("exclude_from_memory") or metadata.get("knowledge_document_ids"):
+        return False
+
     role = item.get("role")
     content = item.get("content")
     return (
@@ -703,7 +707,7 @@ def build_persistent_context(memory: dict[str, Any]) -> str:
 
     parts: list[str] = []
 
-    summary = (memory.get("conversation_summary") or "").strip()
+    summary = str(memory.get("conversation_summary") or "").strip()
     if summary:
         parts.append("PERSISTENT CONVERSATION SUMMARY (compressed):\n" + summary)
 

@@ -1536,6 +1536,70 @@ def render_slag_balance_details(
             "TiO2 % in the Ore Editor / Fuel Ash Inputs / Flux Inputs tables above."
         )
 
+    fuel_ash_by_fuel = (
+        blend.diagnostics.get("fuel_ash_contribution_mt_by_fuel", {}) or {}
+    )
+    flux_by_flux = blend.diagnostics.get("flux_contribution_mt_by_flux", {}) or {}
+    full_balance = blend.diagnostics.get("full_slag_balance", {}) or {}
+    slag_components = full_balance.get("slag_components_mt", {}) or {}
+    has_fuel_details = any(
+        float(value or 0.0) > 0.0 for value in fuel_ash_by_fuel.values()
+    )
+    has_flux_details = any(float(value or 0.0) > 0.0 for value in flux_by_flux.values())
+
+    if has_fuel_details or has_flux_details or slag_components:
+        with st.expander("Slag Balance Details", expanded=False):
+            if has_fuel_details:
+                fuel_rows = [
+                    {
+                        "fuel": str(fuel_id).replace("_", " ").title(),
+                        "slag_contribution_mt": float(value or 0.0),
+                    }
+                    for fuel_id, value in fuel_ash_by_fuel.items()
+                ]
+                st.markdown("##### Fuel Ash Slag Contribution")
+                _safe_dataframe(
+                    pd.DataFrame(fuel_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            if has_flux_details:
+                flux_dry_weights = (
+                    blend.diagnostics.get("flux_dry_weight_mt_by_flux", {}) or {}
+                )
+                flux_rows = [
+                    {
+                        "flux": str(flux_id).replace("_", " ").title(),
+                        "dry_quantity_mt": float(
+                            flux_dry_weights.get(flux_id, 0.0) or 0.0
+                        ),
+                        "slag_contribution_mt": float(value or 0.0),
+                    }
+                    for flux_id, value in flux_by_flux.items()
+                ]
+                st.markdown("##### Flux Slag Contribution")
+                _safe_dataframe(
+                    pd.DataFrame(flux_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            if slag_components:
+                st.markdown("##### Full Slag Balance Components")
+                component_rows = [
+                    {
+                        "component": str(component).upper(),
+                        "quantity_mt": float(value or 0.0),
+                    }
+                    for component, value in slag_components.items()
+                ]
+                _safe_dataframe(
+                    pd.DataFrame(component_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
 
 def render_diagnostics(
     blend: BlendEvaluation | None, diagnostics: dict[str, Any]

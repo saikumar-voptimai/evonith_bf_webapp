@@ -36,6 +36,7 @@ class OfflineReportType(str, Enum):
     charge = "CHARGE"
     dpr = "DPR"
     rm_composition = "RM_COMPOSITION"
+    raw_material_strength = "RAW_MATERIAL_STRENGTH"
     burden_distribution = "BURDEN_DISTRIBUTION"
     hopper_management = "HOPPER_MANAGEMENT"
 

@@ -239,6 +239,7 @@ target-version = ["py310"]
 [tool.isort]
 profile = "black"
 
+
 [dependency-groups]
 dev = [
     "black>=25.11.0",

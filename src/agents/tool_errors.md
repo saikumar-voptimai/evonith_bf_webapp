@@ -946,3 +946,99 @@ LINE 1: ... "sinter_2_mt", "sinter_3_mt", "sinter_4_mt" FROM "charge_da...
 [parameters: {'start_time': datetime.datetime(2026, 5, 2, 0, 0, tzinfo=datetime.timezone.utc), 'end_time': datetime.datetime(2026, 5, 5, 0, 0, tzinfo=datetime.timezone.utc)}]
 (Background on this error at: https://sqlalche.me/e/20/f405)
 ```
+
+
+## 2026-06-20T06:27:06.914772+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import pandas as pd\nimport plotly.graph_objects as go\n\n# Calculate CSR and CIR\ndf['TOTAL_FUEL_RATE'] = df['COKE RATE KG/THM'] + df['PCI_KG/THM']\ndf['CSR'] = (df['COKE RATE KG/THM'] / df['TOTAL_FUEL_RATE']) * 100\ndf['CIR'] = (df['PCI_KG/THM'] / df['TOTAL_FUEL_RATE']) * 100\n\n# Resample to daily for clearer trend\ndf_daily = df.resample('1d').mean()\n\nfig = go.Figure()\nfig.add_trace(go.Scatter(x=df_daily.index, y=df_daily['CSR'], name='CSR (%)', line=dict(color='#2E86AB', width=2)))\nfig.add_trace(go.Scatter(x=df_daily.index, y=df_daily['CIR'], name='CIR (%)', line=dict(color='#E94F37', width=2)))\n\nfig.update_layout(\n    title='Coke Substitution Rate (CSR) & Coke Injection Rate (CIR) - April-May 2026',\n    xaxis_title='Date',\n    yaxis_title='Rate (%)',\n    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),\n    margin=dict(l=40, r=40, t=60, b=40),\n    height=400\n)\n\nfig.show()"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```
+
+
+## 2026-06-20T06:28:29.807935+00:00
+**Tool:** concat_datasets
+
+**Params:** `{"dataset_ids": ["ml_static_20260620T062818Z_2", "online_20250620T062828Z_3"]}`
+
+**Error:**
+
+```
+Unknown dataset_id: 'online_20250620T062828Z_3'. Fetch it first.
+```
+
+
+## 2026-06-20T06:28:33.236168+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import pandas as pd\nimport plotly.graph_objects as go\n\n# Check available columns first\nprint(\"Available columns containing COKE/PCI:\")\nfor col in df.columns:\n    if 'COKE' in col.upper() or 'COAL' in col.upper() or 'PCI' in col.upper() or 'FUEL' in col.upper():\n        print(col)"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```
+
+
+## 2026-06-20T06:28:39.810677+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import pandas as pd\nimport plotly.graph_objects as go\n\n# Use online columns (available for full date range)\ncoke_rate = df['Process Params - BF2_COKE RATE PER THM']\ncoal_rate = df['Process Params - BF2_COAL RATE PER THM']\nfuel_rate = df['Process Params - BF2_FUEL RATE PER THM']\n\n# Calculate CSR and CIR\ncsr = (coke_rate / fuel_rate) * 100\ncir = (coal_rate / fuel_rate) * 100\n\n# Resample to daily for cleaner trend\ncsr_daily = csr.resample('1d').mean()\ncir_daily = cir.resample('1d').mean()\n\nfig = go.Figure()\nfig.add_trace(go.Scatter(x=csr_daily.index, y=csr_daily, name='CSR (%)', line=dict(color='#2E86AB', width=2)))\nfig.add_trace(go.Scatter(x=cir_daily.index, y=cir_daily, name='CIR (%)', line=dict(color='#E94F37', width=2)))\n\nfig.update_layout(\n    title='CSR & CIR - June 2026',\n    xaxis_title='Date',\n    yaxis_title='Rate (%)',\n    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),\n    margin=dict(l=40, r=40, t=60, b=40),\n    height=400\n)\n\nfig.show()"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```
+
+
+## 2026-06-20T06:28:43.906735+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import pandas as pd\nimport plotly.graph_objects as go\n\n# Use online columns (available for full date range)\ncoke_rate = df['Process Params - BF2_COKE RATE PER THM']\ncoal_rate = df['Process Params - BF2_COAL RATE PER THM']\nfuel_rate = df['Process Params - BF2_FUEL RATE PER THM']\n\n# Calculate CSR and CIR\ncsr = (coke_rate / fuel_rate) * 100\ncir = (coal_rate / fuel_rate) * 100\n\n# Resample to daily for cleaner trend\ncsr_daily = csr.resample('1d').mean()\ncir_daily = cir.resample('1d').mean()\n\nfig = go.Figure()\nfig.add_trace(go.Scatter(x=csr_daily.index, y=csr_daily, name='CSR (%)', line=dict(color='#2E86AB', width=2)))\nfig.add_trace(go.Scatter(x=cir_daily.index, y=cir_daily, name='CIR (%)', line=dict(color='#E94F37', width=2)))\n\nfig.update_layout(\n    title='CSR & CIR - June 2026',\n    xaxis_title='Date',\n    yaxis_title='Rate (%)',\n    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),\n    margin=dict(l=40, r=40, t=60, b=40),\n    height=400\n)\n\nfig.show()"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```
+
+
+## 2026-06-20T06:54:40.252854+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import pandas as pd\n\n# Check unique material codes and categories in June data\ndf = pd.read_json('''{\"columns\":[\"Offline[Bunker Report] - material_code\",\"Offline[Bunker Report] - material_name\",\"Offline[Bunker Report] - category_code\",\"Offline[Bunker Report] - ri\",\"Offline[Bunker Report] - rdi\",\"Offline[Bunker Report] - ti\"],\"records\":[[\"ore_2\",\"Iron Ore\",\"raw_material.ore\",1.0,null,null],[\"ore_1\",\"Iron Ore\",\"raw_material.ore\",1.0,null,null],[\"sinter_1\",\"Sinter\",\"raw_material.sinter\",null,32.0,null],[\"sinter_2\",\"Sinter\",\"raw_material.sinter\",null,30.0,null],[\"coke_1\",\"Coke\",\"raw_material.coke\",null,null,null],[\"coke_2\",\"Coke\",\"raw_material.coke\",null,null,null]]}''')\n\nprint(\"Columns:\", df.columns.tolist())\nprint(df)"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```
+
+
+## 2026-06-20T06:55:00.090578+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "# Show all non-null columns for a sample coke and sinter row\ncoke_sample = coke_df.iloc[0]\nsinter_sample = sinter_df.iloc[0]\n\nprint(\"=== COKE sample (row 7) - Non-null values ===\")\nfor col in coke_sample.index:\n    val = coke_sample[col]\n    if pd.notna(val):\n        print(f\"{col}: {val}\")\n\nprint(\"\\n=== SINTER sample (row 0) - Non-null values ===\")\nfor col in sinter_sample.index:\n    val = sinter_sample[col]\n    if pd.notna(val):\n        print(f\"{col}: {val}\")"}`
+
+**Error:**
+
+```
+name 'coke_df' is not defined
+```
+
+
+## 2026-06-20T07:09:49.538601+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "# Print all property columns for coke\ncoke_df = df[df['Offline[Raw Material Strength] - category_code'] == 'FUEL'].copy()\ncoke_df = coke_df[coke_df.index >= '2026-06-01']\n\nprint(\"Date | CRI | CSR | M-10\")\nfor idx, row in coke_df.iterrows():\n    date = idx.strftime('%Y-%m-%d')\n    cri = row['Offline[Raw Material Strength] - property_2']\n    csr = row['Offline[Raw Material Strength] - property_4']\n    m10 = row['Offline[Raw Material Strength] - property_3']\n    print(f\"{date} | {cri} | {csr} | {m10}\")"}`
+
+**Error:**
+
+```
+'__import__'
+```

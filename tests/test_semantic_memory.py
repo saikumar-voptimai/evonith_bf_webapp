@@ -337,3 +337,55 @@ def test_parse_facts_response_handles_json_and_deduplicates() -> None:
     )
 
     assert facts == ["Keep O2 conservative."]
+
+
+def test_semantic_memory_deletes_document_related_vectors_before_sql() -> None:
+    """Verify document revocation removes memory vectors before SQL facts."""
+    events: list[str] = []
+    fact = SimpleNamespace(fact_id="fact-1", qdrant_point_id="point-1")
+
+    class CleanupRepository:
+        """Repository fake for document-related memory cleanup."""
+
+        def __init__(self) -> None:
+            self.lookup_calls: list[dict] = []
+            self.delete_calls: list[list[str]] = []
+
+        def list_document_related_facts(self, **kwargs):
+            self.lookup_calls.append(kwargs)
+            return [fact]
+
+        def delete_facts(self, fact_ids: list[str]) -> int:
+            events.append("sql-delete")
+            self.delete_calls.append(fact_ids)
+            return len(fact_ids)
+
+    class CleanupVectorStore:
+        """Vector-store fake that records deleted point ids."""
+
+        collection_name = "test_furnacemind_memory"
+
+        def __init__(self) -> None:
+            self.delete_calls: list[list[str]] = []
+
+        def delete_points(self, point_ids: list[str]) -> int:
+            events.append("qdrant-delete")
+            self.delete_calls.append(point_ids)
+            return len(point_ids)
+
+    repository = CleanupRepository()
+    vector_store = CleanupVectorStore()
+    service = _service(repository=repository, vector_store=vector_store)
+
+    deleted = service.delete_document_related_memories(
+        user_id="user-1",
+        sql_document_id="doc-row-1",
+        mrag_document_id="doc-bmo",
+        filename="BMO_Analysis.pptx",
+    )
+
+    assert deleted == 1
+    assert events == ["qdrant-delete", "sql-delete"]
+    assert vector_store.delete_calls == [["point-1"]]
+    assert repository.delete_calls == [["fact-1"]]
+    assert repository.lookup_calls[0]["mrag_document_id"] == "doc-bmo"
