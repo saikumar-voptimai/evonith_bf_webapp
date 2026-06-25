@@ -17,7 +17,7 @@ from furnace_data.config import load_config
 _config = load_config("setting_ds_dv.yml")
 
 # ---------------------------------------------------------------------------
-# Public constants
+# Public constants / mapping helpers
 # ---------------------------------------------------------------------------
 
 TIMEDELTAS: dict[str, timedelta] = {
@@ -51,9 +51,25 @@ WINDOWING: dict[str, str] = {
 }
 
 
+def mapping_for_measurement(measurement: str) -> dict[str, str]:
+    """Return the human-label to Influx-field mapping for a measurement."""
+    return _config.get("data_mapping", {}).get(measurement, {})
+
+
+def human_labels(measurement: str) -> list[str]:
+    """Return human-readable labels derived from data_mapping keys."""
+    return list(mapping_for_measurement(measurement).keys())
+
+
+def influx_fields(measurement: str) -> list[str]:
+    """Return de-duplicated Influx fields derived from data_mapping values."""
+    return list(dict.fromkeys(mapping_for_measurement(measurement).values()))
+
+
 # ---------------------------------------------------------------------------
 # Query builder
 # ---------------------------------------------------------------------------
+
 
 def query_builder(
     measurement: str,
@@ -94,9 +110,7 @@ def query_builder(
     start_iso = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     end_iso = stop.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
-    var_map = _config["data_mapping"].get(measurement, {})
-    # var_map is {human_label: influx_field} → invert to get field names
-    fields = list({v: k for k, v in var_map.items()}.keys())
+    fields = influx_fields(measurement)
 
     if type == "ts":
         return (
