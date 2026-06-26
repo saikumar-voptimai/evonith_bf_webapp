@@ -65,7 +65,11 @@ def apply_bmo_styles() -> None:
 
 
 def _safe_dataframe(
-    df: pd.DataFrame, *, hide_index: bool = True, width: str = "stretch"
+    df: pd.DataFrame,
+    *,
+    hide_index: bool = True,
+    width: str | int | None = "stretch",
+    use_container_width: bool | None = None,
 ) -> None:
     """
     Render a Streamlit dataframe with version-compatible width parameters.
@@ -73,18 +77,33 @@ def _safe_dataframe(
     Args:
          - df: pd.DataFrame - Data frame to render.
          - hide_index: bool - Whether to hide the dataframe index.
-         - width: str - Streamlit width value.
+         - width: str | int | None - Streamlit width value.
+         - use_container_width: bool | None - Legacy Streamlit full-width flag.
 
     Returns:
          - return None - Renders the dataframe in Streamlit.
     """
 
-    sig = inspect.signature(st.dataframe)
+    params = inspect.signature(st.dataframe).parameters
     kwargs: dict[str, Any] = {}
-    if "hide_index" in sig.parameters:
+    if "hide_index" in params:
         kwargs["hide_index"] = hide_index
-    if "width" in sig.parameters:
-        kwargs["width"] = width
+
+    if "width" in params:
+        resolved_width = (
+            "stretch"
+            if use_container_width is True
+            else "content"
+            if use_container_width is False and width == "stretch"
+            else width
+        )
+        if resolved_width is not None:
+            kwargs["width"] = resolved_width
+    elif "use_container_width" in params:
+        kwargs["use_container_width"] = (
+            use_container_width if use_container_width is not None else width == "stretch"
+        )
+
     st.dataframe(df, **kwargs)
 
 

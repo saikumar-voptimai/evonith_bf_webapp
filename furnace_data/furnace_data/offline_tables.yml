@@ -311,14 +311,8 @@ tables:
       - property_3_name
       - property_4_name
       - material_name
-      - category_code
       - material_category
-      - material_description
-      - is_active
       - unit_code
-      - import_batch_id
-      - created_at
-      - updated_at
 
   plant_master.material_property_mapping:
     schema: plant_master
