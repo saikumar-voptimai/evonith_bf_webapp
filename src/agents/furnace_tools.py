@@ -14,8 +14,10 @@ Exposes nine tool functions dispatched by
 9. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
 """
 
+import base64
 import io
 import json
+import mimetypes
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -29,19 +31,20 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field, ValidationError
 
 from config.config_loader import load_config
-from furnace_data.influx.online import fetch_online_df  # noqa: F401
-from furnace_data.influx.query import TIMEDELTAS  # noqa: F401
-from furnace_data.offline import (
-    OFFLINE_TABLES,
-    fetch_offline_data as _fetch_offline_table_df,
-    fetch_offline_report as _fetch_offline_report_df,
-    resolve_offline_table_name,
-)
-
 from data.fetch_presets import (
     OFFLINE_REPORT_LABEL_MAP,
 )
 from data.ml.static_csv import load_static_dataset
+from furnace_data.influx.online import fetch_online_df  # noqa: F401
+from furnace_data.influx.query import TIMEDELTAS  # noqa: F401
+from furnace_data.offline import (
+    OFFLINE_TABLES,
+)
+from furnace_data.offline import fetch_offline_data as _fetch_offline_table_df
+from furnace_data.offline import fetch_offline_report as _fetch_offline_report_df
+from furnace_data.offline import (
+    resolve_offline_table_name,
+)
 from utils.shift_windows import shift_window_naive
 
 # CONFIG
@@ -53,7 +56,10 @@ _OFFLINE_REPORT_TYPE_ALIASES = {
 
 
 _TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
-
+_KNOWLEDGE_IMAGE_RESULT_LIMIT = 3
+_KNOWLEDGE_IMAGE_MAX_BYTES = 4_000_000
+_KNOWLEDGE_RERANK_CANDIDATES = 16
+_KNOWLEDGE_RETURN_LIMIT = 8
 
 # Absolute path: src/agents/furnace_tools.py -> parents[1] = src/ -> assets/data/
 # IST offset (tz-naive static ML dataset index matches this)
@@ -95,7 +101,6 @@ def _parse_iso8601_utc(s: str) -> datetime:
     if isinstance(dt, pd.Timestamp):
         return dt.to_pydatetime()
     raise ValueError(f"Invalid datetime: {s}")
-
 
 
 def _resolve_online_window(*, lookback: timedelta, window: Optional[str]) -> str:
@@ -494,8 +499,7 @@ def concat_datasets(*, dataset_ids: list[str]) -> str:
             for f in frames
         )
         has_tz_naive = any(
-            isinstance(f.index, pd.DatetimeIndex) and f.index.tz is None
-            for f in frames
+            isinstance(f.index, pd.DatetimeIndex) and f.index.tz is None for f in frames
         )
         if has_tz_aware and has_tz_naive:
             normalized_frames: list[pd.DataFrame] = []
@@ -654,9 +658,7 @@ def fetch_online_data(
             start_dt = _parse_iso8601_utc(args.start_time_utc)
             _now = datetime.now(timezone.utc)
             end_dt = (
-                _parse_iso8601_utc(args.end_time_utc)
-                if args.end_time_utc
-                else _now
+                _parse_iso8601_utc(args.end_time_utc) if args.end_time_utc else _now
             )
             # Guard: reject future windows
             if start_dt > _now:
@@ -680,12 +682,16 @@ def fetch_online_data(
             time_range_label = f"{args.start_time_utc} → {args.end_time_utc or 'now'}"
         else:
             # Relative lookback path — normalise the string to a TIMEDELTAS key
-            normalized_time_range = _normalize_time_range(args.lookback or "last 8 hours")
+            normalized_time_range = _normalize_time_range(
+                args.lookback or "last 8 hours"
+            )
 
             lookback_td = TIMEDELTAS.get(normalized_time_range)
             if not isinstance(lookback_td, timedelta):
                 lookback_td = timedelta(hours=8)
-            window_final = _resolve_online_window(lookback=lookback_td, window=args.window)
+            window_final = _resolve_online_window(
+                lookback=lookback_td, window=args.window
+            )
 
             df = fetch_online_df(
                 selected_measurements=selected_measurements,
@@ -798,16 +804,12 @@ def fetch_offline_data(
 
         # Offline fetch returns UTC index (as per helper); convert + resample
         df = _to_ist_index(df)
-        skip_resample = (
-            offline_report_type
-            in {
-                "RM_COMPOSITION",
-                "RAW_MATERIAL_STRENGTH",
-                "BURDEN_DISTRIBUTION",
-                "HOPPER_MANAGEMENT",
-            }
-            or bool(args.table_name)
-        )
+        skip_resample = offline_report_type in {
+            "RM_COMPOSITION",
+            "RAW_MATERIAL_STRENGTH",
+            "BURDEN_DISTRIBUTION",
+            "HOPPER_MANAGEMENT",
+        } or bool(args.table_name)
         if (
             not skip_resample
             and df is not None
@@ -1057,7 +1059,7 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "search_knowledge_docs",
-                "description": "Search uploaded knowledge documents (SOPs, manuals, specs).",
+                "description": "Search uploaded multimodal knowledge documents (SOPs, manuals, specs, images, slides, tables, scanned pages).",
                 "parameters": {
                     "type": "object",
                     "properties": {"query": {"type": "string"}},
@@ -1197,6 +1199,323 @@ def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
     return f"Unknown tool: {name}"
 
 
+def _knowledge_location(payload: dict[str, Any]) -> str:
+    """Build the source label shown in MRAG retrieval output.
+
+    Args:
+        payload: Qdrant payload for one retrieved knowledge part.
+
+    Returns:
+        A compact human-readable location such as
+        ``"BMO_Analysis.pptx, slide 16, slide_image"``. The label is used in
+        tool output, visual-evidence prompts, and retrieval traces so users can
+        connect an answer back to the uploaded document.
+    """
+    bits = [str(payload.get("source") or "unknown")]
+    if payload.get("page_number") is not None:
+        bits.append(f"page {payload['page_number']}")
+    if payload.get("slide_number") is not None:
+        bits.append(f"slide {payload['slide_number']}")
+    if payload.get("sheet_name"):
+        bits.append(f"sheet {payload['sheet_name']}")
+    if payload.get("modality"):
+        bits.append(str(payload["modality"]))
+    return ", ".join(bits)
+
+
+def _store_knowledge_image_results(results: list[dict[str, Any]]) -> None:
+    """Queue retrieved image chunks for the next multimodal LLM call.
+
+    ``search_knowledge_docs`` returns text evidence through the tool-call
+    transcript, but image bytes cannot be embedded directly in that text result.
+    This helper stores the best visual hits in Streamlit session state so the
+    agent loop can later append them through
+    ``consume_pending_mrag_image_message()`` as ``image_url`` inputs.
+
+    Args:
+        results: Reranked Qdrant search results. Each result may include a
+            payload with an ``image_path`` pointing to a locally stored rendered
+            page, slide, or uploaded image.
+
+    Returns:
+        None. Updates or removes ``st.session_state["fm_mrag_image_results"]``.
+    """
+    attachments: list[dict[str, Any]] = []
+    for result in results:
+        payload = result.get("payload") or {}
+        image_path = str(payload.get("image_path") or "").strip()
+        if not image_path:
+            continue
+        attachments.append(
+            {
+                "image_path": image_path,
+                "label": _knowledge_location(payload),
+                "score": result.get("score"),
+            }
+        )
+        if len(attachments) >= _KNOWLEDGE_IMAGE_RESULT_LIMIT:
+            break
+
+    if attachments:
+        st.session_state["fm_mrag_image_results"] = attachments
+    else:
+        st.session_state.pop("fm_mrag_image_results", None)
+
+
+def _store_knowledge_document_refs(results: list[dict[str, Any]]) -> None:
+    """Store document refs used by the latest MRAG retrieval.
+
+    The chat page uses these refs to mark the current turn as document-backed.
+    That provenance prevents uploaded-document facts from being compressed into
+    durable long-term memory and lets document removal revoke related context.
+    """
+    refs: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for result in results:
+        payload = result.get("payload") or {}
+        document_id = str(payload.get("document_id") or "").strip()
+        filename = str(payload.get("source") or "").strip()
+        if not document_id and not filename:
+            continue
+        key = (document_id, filename)
+        if key in seen:
+            continue
+        seen.add(key)
+        ref: dict[str, str] = {}
+        if document_id:
+            ref["document_id"] = document_id
+        if filename:
+            ref["filename"] = filename
+        refs.append(ref)
+
+    if refs:
+        st.session_state["fm_last_knowledge_document_refs"] = refs
+    else:
+        st.session_state.pop("fm_last_knowledge_document_refs", None)
+
+
+def _active_knowledge_document_ids(*, user_id: str | None) -> set[str] | None:
+    """Read active SQL document ids used to filter Qdrant retrieval.
+
+    The SQL document table is the source of truth for whether a user has kept a
+    knowledge file active. Qdrant still stores the vectors, but this filter stops
+    deactivated documents from participating in answer generation.
+
+    Args:
+        user_id: Current FurnaceMind user id. When missing, the caller cannot
+            perform user-scoped SQL filtering.
+
+    Returns:
+        A set of active MRAG document ids. An empty set means the user has no
+        active documents. ``None`` means the repository or user context is not
+        available, so the caller should continue without this SQL filter.
+    """
+    repository = st.session_state.get("knowledge_document_repository")
+    if repository is None or not user_id:
+        return None
+
+    try:
+        documents = repository.list_documents(user_id=user_id, active_only=True)
+    except Exception:
+        return None
+
+    active_ids: set[str] = set()
+    for document in documents:
+        metadata = getattr(document, "metadata_json", None)
+        if not isinstance(metadata, dict):
+            continue
+        document_id = str(metadata.get("document_id") or "").strip()
+        if document_id:
+            active_ids.add(document_id)
+    return active_ids
+
+
+def _knowledge_tokens(text: str) -> set[str]:
+    """Tokenize text for the local MRAG reranker.
+
+    Args:
+        text: User query or candidate payload text.
+
+    Returns:
+        Lowercase alphanumeric/underscore tokens with length at least three.
+        The tokenizer is intentionally simple and does not remove stop words;
+        vector search remains the primary retrieval signal.
+    """
+    return set(re.findall(r"[a-zA-Z0-9_]{3,}", text.lower()))
+
+
+def _rerank_knowledge_results(
+    query: str,
+    results: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Rerank Qdrant candidates with a small lexical boost.
+
+    Qdrant's vector score stays dominant. The local score adds overlap with the
+    query tokens, a small exact-query bonus, and an image-modality bonus when the
+    user appears to ask for visual evidence. This improves ordering while keeping
+    semantic retrieval as the main signal.
+
+    Args:
+        query: Original user question or focused retrieval query.
+        results: Raw Qdrant result dictionaries to rerank.
+        limit: Maximum number of results returned to the LLM.
+
+    Returns:
+        The top reranked results, each with ``rerank_score`` added.
+    """
+    query_tokens = _knowledge_tokens(query)
+    if not query_tokens:
+        return results[:limit]
+
+    query_text = query.lower().strip()
+    reranked: list[dict[str, Any]] = []
+    for index, result in enumerate(results):
+        payload = result.get("payload") or {}
+        searchable = " ".join(
+            str(payload.get(key) or "")
+            for key in (
+                "content",
+                "source",
+                "file_type",
+                "modality",
+                "sheet_name",
+            )
+        )
+        doc_tokens = _knowledge_tokens(searchable)
+        overlap = len(query_tokens & doc_tokens) / max(len(query_tokens), 1)
+        vector_score = result.get("score")
+        if not isinstance(vector_score, (int, float)):
+            vector_score = 0.0
+        exact_bonus = 0.05 if query_text and query_text in searchable.lower() else 0.0
+        modality_bonus = (
+            0.03 if payload.get("image_path") and "image" in query_tokens else 0.0
+        )
+        rerank_score = (0.82 * float(vector_score)) + (0.18 * overlap)
+        rerank_score += exact_bonus + modality_bonus
+        copy = {**result, "rerank_score": rerank_score, "_source_rank": index}
+        reranked.append(copy)
+
+    reranked.sort(
+        key=lambda item: (
+            item.get("rerank_score", 0.0),
+            item.get("score") if isinstance(item.get("score"), (int, float)) else 0.0,
+            -item.get("_source_rank", 0),
+        ),
+        reverse=True,
+    )
+    for item in reranked:
+        item.pop("_source_rank", None)
+    return reranked[:limit]
+
+
+def _log_knowledge_retrieval_trace(
+    *,
+    query: str,
+    user_id: str | None,
+    active_document_ids: set[str] | None,
+    knowledge_store: Any,
+    results: list[dict[str, Any]],
+) -> None:
+    """Persist a best-effort audit record for an MRAG retrieval.
+
+    Retrieval traces are diagnostic. A trace write failure is stored in session
+    state for the UI or developer to inspect, but it must never block the chat
+    response.
+
+    Args:
+        query: Query sent to the knowledge store.
+        user_id: Current FurnaceMind user id, if available.
+        active_document_ids: SQL-active document ids used for filtering, or
+            ``None`` when no SQL filter was available.
+        knowledge_store: Store object used for the vector search. Its collection
+            name is copied into the trace.
+        results: Final reranked results returned by ``search_knowledge_docs``.
+
+    Returns:
+        None.
+    """
+    repository = st.session_state.get("knowledge_retrieval_trace_repository")
+    if repository is None:
+        return
+
+    try:
+        repository.create_trace(
+            user_id=user_id,
+            conversation_id=st.session_state.get("fm_conversation_id"),
+            query=query,
+            qdrant_collection=getattr(knowledge_store, "collection_name", None),
+            results=results,
+            active_document_ids=(
+                sorted(active_document_ids) if active_document_ids is not None else None
+            ),
+            metadata={
+                "tool": "search_knowledge_docs",
+                "candidate_limit": _KNOWLEDGE_RERANK_CANDIDATES,
+                "returned_limit": len(results),
+            },
+        )
+        st.session_state.pop("fm_last_knowledge_trace_error", None)
+    except Exception as exc:
+        st.session_state["fm_last_knowledge_trace_error"] = str(exc)
+
+
+def consume_pending_mrag_image_message() -> dict[str, Any] | None:
+    """Build the visual-evidence message consumed after knowledge search.
+
+    ``search_knowledge_docs`` queues local image paths in session state. This
+    function removes that queue, reads usable image files, base64-encodes them,
+    and returns a model message compatible with OpenAI/OpenRouter multimodal
+    chat inputs. Missing files and oversized images are skipped.
+
+    Returns:
+        A user message containing source labels and ``image_url`` parts, or
+        ``None`` when no queued image can be attached.
+    """
+    attachments = st.session_state.pop("fm_mrag_image_results", []) or []
+    if not attachments:
+        return None
+
+    content: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": (
+                "Retrieved visual evidence from the FurnaceMind MRAG knowledge "
+                "store. Use these images only as source context for the user's "
+                "question."
+            ),
+        }
+    ]
+    attached_count = 0
+    for attachment in attachments[:_KNOWLEDGE_IMAGE_RESULT_LIMIT]:
+        path = Path(str(attachment.get("image_path") or ""))
+        if not path.exists() or not path.is_file():
+            continue
+        if path.stat().st_size > _KNOWLEDGE_IMAGE_MAX_BYTES:
+            continue
+
+        mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        content.append(
+            {
+                "type": "text",
+                "text": f"Visual source: {attachment.get('label') or path.name}",
+            }
+        )
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime_type};base64,{encoded}"},
+            }
+        )
+        attached_count += 1
+
+    if attached_count == 0:
+        return None
+    return {"role": "user", "content": content}
+
+
 def _append_tool_error(*, tool_name: str, params: Dict[str, Any], error: str) -> None:
     """Append tool failure details to tool_errors.md (best-effort, never raises)."""
     try:
@@ -1332,9 +1651,11 @@ def _safe_exec(
 
     # Route print() to the buffer when one is provided so callers can capture output.
     if stdout_buf is not None:
+
         def _buffered_print(*args, **kwargs):  # noqa: ANN202
             kwargs.setdefault("file", stdout_buf)
             print(*args, **kwargs)  # noqa: T201
+
         captured_print = _buffered_print
     else:
         captured_print = print
@@ -1479,24 +1800,73 @@ def search_shift_history(query: str) -> str:
 
 @tool
 def search_knowledge_docs(query: str) -> str:
-    """
-    Search uploaded knowledge documents (SOPs, manuals, specs, policies).
-    Use for questions about procedures, specifications, or reference material.
+    """Search active uploaded MRAG documents for the current chat question.
+
+    This is the LLM tool for uploaded PDFs, PPTX files, DOCX files, tables,
+    images, SOPs, manuals, specifications, and scanned pages. It performs
+    user-scoped vector search, active-document filtering, local reranking,
+    retrieval trace logging, and visual-evidence queuing. Text evidence is
+    returned directly as tool output; image evidence is queued for the next
+    multimodal model call.
+
+    Args:
+        query: User question or focused retrieval query generated by the LLM.
+
+    Returns:
+        Formatted evidence chunks with source labels and scores, or a clear
+        empty-state message when no active or relevant knowledge is available.
     """
     knowledge_store = st.session_state.get("knowledge_store")
     if knowledge_store is None:
         return "Knowledge store not initialized."
 
-    results = knowledge_store.search(query, top_k=5)
+    st.session_state.pop("fm_mrag_image_results", None)
+    st.session_state.pop("fm_last_knowledge_document_refs", None)
+    user_id = st.session_state.get("fm_user_id")
+    active_document_ids = _active_knowledge_document_ids(user_id=user_id)
+    if active_document_ids == set():
+        return "No active knowledge documents found for this user."
+
+    candidate_results = knowledge_store.search(
+        query,
+        top_k=_KNOWLEDGE_RERANK_CANDIDATES,
+        user_id=user_id,
+        active_document_ids=active_document_ids,
+    )
+    results = _rerank_knowledge_results(
+        query, candidate_results, limit=_KNOWLEDGE_RETURN_LIMIT
+    )
+    _log_knowledge_retrieval_trace(
+        query=query,
+        user_id=user_id,
+        active_document_ids=active_document_ids,
+        knowledge_store=knowledge_store,
+        results=results,
+    )
 
     if not results:
         return "No knowledge documents found for this query."
 
+    _store_knowledge_image_results(results)
+    _store_knowledge_document_refs(results)
+
     parts = []
     for i, r in enumerate(results, 1):
         payload = r.get("payload", {})
-        content = payload.get("content", "No content.")
-        source = payload.get("source", "unknown")
-        parts.append(f"[{i}] Source: {source}\n{content}")
+        content = str(payload.get("content") or "").strip()
+        location = _knowledge_location(payload)
+        score = r.get("score")
+        score_text = f" | score={score:.3f}" if isinstance(score, (int, float)) else ""
+        rerank_score = r.get("rerank_score")
+        if isinstance(rerank_score, (int, float)):
+            score_text = f"{score_text} | rerank={rerank_score:.3f}"
+        if payload.get("image_path"):
+            visual_note = (
+                "Visual attachment retrieved and provided to the model for inspection."
+            )
+            content = "\n".join(part for part in (content, visual_note) if part)
+        if not content:
+            content = "No text extracted for this result."
+        parts.append(f"[{i}] {location}{score_text}\n{content}")
 
     return "\n\n".join(parts)

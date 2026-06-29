@@ -14,8 +14,8 @@ from typing import Any
 
 import streamlit as st
 
+import agents.furnace_tools as furnace_tools
 from agents.embeddings.cloud_embedding import CloudEmbeddingClient
-from agents.furnace_tools import get_openai_tool_schemas
 from agents.furnacemind import prompts
 from agents.furnacemind.agent import run_agent_loop
 from agents.furnacemind.context import SystemPromptContext
@@ -26,6 +26,7 @@ from agents.memory.conversation_history import ConversationHistoryStore
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 from agents.memory.semantic_memory import SemanticMemoryService
 from agents.memory.vector_store import QdrantVectorStore
+from furnace_data import relational
 from ui.furnacemind import chat_interface, feedback_flow
 from utils.furnacemind.feedback_service import FurnaceMindFeedbackService
 from utils.session import current_user_id
@@ -160,6 +161,126 @@ def _cached_history_store() -> ConversationHistoryStore | None:
         return ConversationHistoryStore()
     except Exception:
         return None
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_document_repository() -> Any | None:
+    """
+    Build the PostgreSQL metadata repository for uploaded MRAG documents.
+
+    The upload flow remains usable when PostgreSQL is unavailable; in that case
+    Qdrant indexing still runs and document metadata persistence is skipped.
+    """
+    try:
+        engine = relational.build_relational_engine()
+        session_factory = relational.build_relational_session_factory(engine)
+        return relational.MemoryDocumentRepository(session_factory)
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_chunk_repository() -> Any | None:
+    """
+    Build the PostgreSQL chunk metadata repository for MRAG document parts.
+
+    The repository reflects the live ``memory_chunks`` table, so it can be
+    enabled without adding a strict ORM model for every deployed schema variant.
+    """
+    try:
+        engine = relational.build_relational_engine()
+        session_factory = relational.build_relational_session_factory(engine)
+        return relational.MemoryChunkRepository(session_factory)
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_retrieval_trace_repository() -> Any | None:
+    """
+    Build the PostgreSQL repository for MRAG retrieval traces when available.
+
+    Trace persistence is best-effort; the chat page continues normally if the
+    table is absent or the database is unavailable.
+    """
+    try:
+        engine = relational.build_relational_engine()
+        session_factory = relational.build_relational_session_factory(engine)
+        return relational.RetrievalTraceRepository(session_factory)
+    except Exception:
+        return None
+
+
+_NO_ACTIVE_KNOWLEDGE_MESSAGE = "No active knowledge documents found for this user."
+_NO_MATCHING_KNOWLEDGE_MESSAGE = "No knowledge documents found for this query."
+_EMPTY_KNOWLEDGE_CONTEXT_PREFIXES = ("Knowledge store not initialized.",)
+_NO_ACTIVE_KNOWLEDGE_CONTEXT = (
+    "UPLOADED KNOWLEDGE STATUS:\n"
+    "There are no active uploaded knowledge documents for this user. Do not "
+    "answer uploaded-document facts from semantic memory, feedback lessons, "
+    "recent chat history, or old document citations. If the user asks about an "
+    "uploaded file or a fact that only came from a removed document, say that no "
+    "active uploaded knowledge document is available and ask them to upload or "
+    "activate the document again."
+)
+_NO_MATCHING_KNOWLEDGE_CONTEXT = (
+    "UPLOADED KNOWLEDGE STATUS:\n"
+    "Automatic uploaded-document search found no matching active-document "
+    "evidence for this query. Do not answer uploaded-document facts from "
+    "semantic memory, feedback lessons, recent chat history, or old document "
+    "citations. Call search_knowledge_docs with a more focused query if needed; "
+    "otherwise say the active documents did not contain the requested fact."
+)
+
+
+def _auto_retrieve_knowledge_context(query: str) -> tuple[str, dict[str, Any] | None]:
+    """Retrieve uploaded MRAG evidence before the agent loop starts.
+
+    The normal ``search_knowledge_docs`` tool remains available for follow-up
+    searches, but this pre-retrieval step gives every user turn a first pass over
+    active uploaded knowledge. It uses the same tool implementation as the LLM
+    would use, so active-document SQL filtering, Qdrant retrieval, reranking,
+    trace logging, and visual-evidence queuing stay consistent.
+
+    Args:
+        query: Current user message used as the retrieval query.
+
+    Returns:
+        A tuple of ``(text_context, visual_message)``. ``text_context`` is a
+        prompt-ready evidence block for the system prompt. ``visual_message`` is
+        an OpenAI/OpenRouter-compatible image message, or ``None`` when no visual
+        evidence was retrieved.
+    """
+    stripped_query = str(query or "").strip()
+    if not stripped_query:
+        return "", None
+
+    try:
+        result = str(
+            furnace_tools.search_knowledge_docs.invoke({"query": stripped_query}) or ""
+        ).strip()
+        visual_message = furnace_tools.consume_pending_mrag_image_message()
+    except Exception as exc:
+        st.session_state["fm_last_knowledge_auto_error"] = str(exc)
+        st.session_state.pop("fm_mrag_image_results", None)
+        return "", None
+
+    if not result or result.startswith(_EMPTY_KNOWLEDGE_CONTEXT_PREFIXES):
+        return "", None
+    if result.startswith(_NO_ACTIVE_KNOWLEDGE_MESSAGE):
+        return _NO_ACTIVE_KNOWLEDGE_CONTEXT, None
+    if result.startswith(_NO_MATCHING_KNOWLEDGE_MESSAGE):
+        return _NO_MATCHING_KNOWLEDGE_CONTEXT, None
+
+    st.session_state.pop("fm_last_knowledge_auto_error", None)
+    context = (
+        "RELEVANT UPLOADED KNOWLEDGE (auto-retrieved for this user message):\n"
+        "Use this evidence before answering. Cite the source labels for document "
+        "facts. If this block does not contain the needed fact, call "
+        "search_knowledge_docs with a more focused query.\n\n"
+        f"{result}"
+    )
+    return context, visual_message
 
 
 @st.cache_resource(show_spinner=False)
@@ -563,6 +684,9 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     context = _cached_context()
     engine = _cached_skill_engine()
     history_store = _cached_history_store()
+    document_repository = _cached_document_repository()
+    chunk_repository = _cached_chunk_repository()
+    retrieval_trace_repository = _cached_retrieval_trace_repository()
     feedback_service = _cached_feedback_service()
     feedback_llm = _cached_feedback_llm()
     semantic_memory_service = _cached_semantic_memory_service()
@@ -571,6 +695,21 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     memory_summary_token_limit = settings.memory_summary_token_limit
 
     st.session_state["knowledge_store"] = knowledge_store
+    st.session_state["fm_user_id"] = user_id
+    if document_repository is not None:
+        st.session_state["knowledge_document_repository"] = document_repository
+    else:
+        st.session_state.pop("knowledge_document_repository", None)
+    if chunk_repository is not None:
+        st.session_state["knowledge_chunk_repository"] = chunk_repository
+    else:
+        st.session_state.pop("knowledge_chunk_repository", None)
+    if retrieval_trace_repository is not None:
+        st.session_state["knowledge_retrieval_trace_repository"] = (
+            retrieval_trace_repository
+        )
+    else:
+        st.session_state.pop("knowledge_retrieval_trace_repository", None)
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
@@ -578,7 +717,13 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
     if not user_id:
         history_store = None
+        document_repository = None
+        chunk_repository = None
+        retrieval_trace_repository = None
         feedback_service = None
+        st.session_state.pop("knowledge_document_repository", None)
+        st.session_state.pop("knowledge_chunk_repository", None)
+        st.session_state.pop("knowledge_retrieval_trace_repository", None)
         st.sidebar.caption("FurnaceMind user id unavailable for SQL persistence.")
 
     conversation_id: str | None = st.session_state.get("fm_conversation_id")
@@ -599,6 +744,9 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             st.sidebar.caption(f"Chat history database unavailable: {exc}")
     else:
         st.sidebar.caption("Chat history database unavailable.")
+
+    if user_id and document_repository is None:
+        st.sidebar.caption("Knowledge document metadata database unavailable.")
 
     feedback_flow.process_pending_explicit_feedback(
         feedback_service=feedback_service,
@@ -621,6 +769,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     chat_interface.render_knowledge_sidebar(
         knowledge_store=knowledge_store,
         embedding_client=embedding_client,
+        user_id=user_id,
+        document_repository=document_repository,
+        chunk_repository=chunk_repository,
+        semantic_memory_service=semantic_memory_service,
     )
 
     default_date, default_label = last_completed_shift()
@@ -631,7 +783,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     chat_submission = st.chat_input(
         "Ask FurnaceMind or attach a document...",
         accept_file="multiple",
-        file_type="document",
+        file_type=chat_interface.KNOWLEDGE_FILE_TYPES,
         key="furnacemind_chat_input",
     )
 
@@ -649,6 +801,9 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             chat_submission,
             knowledge_store=knowledge_store,
             embedding_client=embedding_client,
+            user_id=user_id,
+            document_repository=document_repository,
+            chunk_repository=chunk_repository,
         )
 
     if not user_query:
@@ -671,7 +826,36 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         if semantic_memory_service is not None and user_id
         else ""
     )
-
+    knowledge_context, knowledge_visual_message = _auto_retrieve_knowledge_context(
+        user_query
+    )
+    knowledge_refs = [
+        ref
+        for ref in (st.session_state.get("fm_last_knowledge_document_refs") or [])
+        if isinstance(ref, dict)
+    ]
+    knowledge_document_ids = sorted(
+        {
+            str(ref.get("document_id") or "").strip()
+            for ref in knowledge_refs
+            if str(ref.get("document_id") or "").strip()
+        }
+    )
+    knowledge_filenames = sorted(
+        {
+            str(ref.get("filename") or "").strip()
+            for ref in knowledge_refs
+            if str(ref.get("filename") or "").strip()
+        }
+    )
+    knowledge_message_metadata: dict[str, Any] = {}
+    if knowledge_document_ids or knowledge_filenames:
+        knowledge_message_metadata = {
+            "exclude_from_memory": True,
+            "knowledge_document_ids": knowledge_document_ids,
+            "knowledge_filenames": knowledge_filenames,
+            "knowledge_source": "furnacemind_knowledge",
+        }
     user_message_id: str | None = None
     if history_store is not None and conversation_id and user_id:
         try:
@@ -680,6 +864,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
                 user_id=user_id,
                 content=user_query,
                 display=user_display or user_query,
+                metadata=knowledge_message_metadata or None,
             )
         except Exception as exc:
             st.sidebar.caption(f"Could not save user message: {exc}")
@@ -692,6 +877,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             "type": "text",
             "message_id": user_message_id,
             "conversation_id": conversation_id,
+            "metadata": knowledge_message_metadata,
         }
     )
     with st.chat_message("user"):
@@ -700,12 +886,14 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     llm = OpenRouterClient()
     if st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
-    tools = get_openai_tool_schemas()
+    tools = furnace_tools.get_openai_tool_schemas()
     extra_context = prompts.TOOL_POLICY
     if feedback_lesson_context:
         extra_context = f"{extra_context}\n\n{feedback_lesson_context}"
     if semantic_memory_context:
         extra_context = f"{extra_context}\n\n{semantic_memory_context}"
+    if knowledge_context:
+        extra_context = f"{extra_context}\n\n{knowledge_context}"
     messages = [
         {
             "role": "system",
@@ -718,6 +906,8 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             max_messages=memory_summary_window,
         ),
     ]
+    if knowledge_visual_message is not None:
+        messages.append(knowledge_visual_message)
     history_len_before = len(st.session_state.chat_history)
 
     with st.chat_message("assistant"):
@@ -734,6 +924,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
     chat_interface.inject_artifacts(history_len_before)
 
+    assistant_metadata = {"source": "furnacemind", **knowledge_message_metadata}
     assistant_message_id: str | None = None
     if history_store is not None and conversation_id and user_id:
         try:
@@ -742,7 +933,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
                 user_id=user_id,
                 content=final_response,
                 model=getattr(llm, "model", None),
-                metadata={"source": "furnacemind"},
+                metadata=assistant_metadata,
             )
         except Exception as exc:
             st.sidebar.caption(f"Could not save assistant message: {exc}")
@@ -755,6 +946,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             "type": "text",
             "message_id": assistant_message_id,
             "conversation_id": conversation_id,
+            "metadata": assistant_metadata,
         }
     )
 

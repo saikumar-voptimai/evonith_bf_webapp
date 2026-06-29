@@ -40,10 +40,12 @@ from .repositories import (
     ConversationRepository,
     FeedbackItemRepository,
     HopperHistoryRepository,
+    MemoryChunkRepository,
     MemoryDocumentRepository,
     MemoryFactRepository,
     MemorySummaryRepository,
     PlantMasterRepository,
+    RetrievalTraceRepository,
     SkillRepository,
     UserRepository,
 )
@@ -80,8 +82,10 @@ __all__ = [
     "MemoryFactRepository",
     "MemoryDocument",
     "MemoryDocumentRepository",
+    "MemoryChunkRepository",
     "MemorySummary",
     "MemorySummaryRepository",
+    "RetrievalTraceRepository",
     "Skill",
     "SkillRepository",
 ]

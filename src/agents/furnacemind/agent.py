@@ -13,7 +13,10 @@ from __future__ import annotations
 import json
 import re
 
-from agents.furnace_tools import execute_openai_tool_call
+from agents.furnace_tools import (
+    consume_pending_mrag_image_message,
+    execute_openai_tool_call,
+)
 from agents.llm.llm_client import OpenRouterClient
 
 # ── Status labels shown in the UI while a tool is running ───────────────────
@@ -93,6 +96,7 @@ def run_agent_loop(
                 }
             )
 
+            pending_visual_message: dict | None = None
             for tc in tool_calls:
                 label = _TOOL_LABELS.get(
                     tc.function.name, f"Running {tc.function.name}…"
@@ -112,6 +116,10 @@ def run_agent_loop(
                         "content": result,
                     }
                 )
+                if tc.function.name == "search_knowledge_docs":
+                    pending_visual_message = consume_pending_mrag_image_message()
+            if pending_visual_message is not None:
+                messages.append(pending_visual_message)
             continue  # next iteration
 
         # No tool_calls → this is the final text response.

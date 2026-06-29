@@ -19,6 +19,7 @@ from qdrant_client.models import (
     Filter,
     MatchValue,
     PayloadSchemaType,
+    PointIdsList,
     PointStruct,
     VectorParams,
 )
@@ -257,6 +258,18 @@ class SemanticMemoryVectorStore:
             wait=True,
         )
         return point_id
+
+    def delete_points(self, point_ids: list[str]) -> int:
+        """Delete semantic-memory Qdrant points by id."""
+        ids = [str(point_id) for point_id in point_ids if str(point_id).strip()]
+        if not ids:
+            return 0
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=PointIdsList(points=ids),
+            wait=True,
+        )
+        return len(ids)
 
     def search_memories(
         self,
@@ -669,6 +682,63 @@ class SemanticMemoryService:
                     exc,
                 )
         return indexed
+
+    def delete_document_related_memories(
+        self,
+        *,
+        user_id: str,
+        sql_document_id: str,
+        mrag_document_id: str = "",
+        filename: str = "",
+    ) -> int:
+        """Remove semantic memories derived from a deleted knowledge document.
+
+        Memory facts are looked up in PostgreSQL first. Their Qdrant vectors are
+        deleted before the SQL rows are removed, so a Qdrant failure does not
+        leave untracked runtime memories behind.
+        """
+        if not self.config.enabled or self._repository is None or not user_id:
+            return 0
+        if not hasattr(self._repository, "list_document_related_facts"):
+            return 0
+
+        try:
+            facts = self._repository.list_document_related_facts(
+                user_id=user_id,
+                sql_document_id=sql_document_id,
+                mrag_document_id=mrag_document_id,
+                filename=filename,
+            )
+        except Exception as exc:
+            self._last_error = str(exc)
+            logger.warning("Semantic memory document lookup failed: %s", exc)
+            raise
+
+        if not facts:
+            return 0
+
+        point_ids = [
+            str(getattr(fact, "qdrant_point_id", "") or "").strip()
+            for fact in facts
+            if str(getattr(fact, "qdrant_point_id", "") or "").strip()
+        ]
+        if point_ids and self._vector_store is not None:
+            try:
+                self._vector_store.delete_points(point_ids)
+            except Exception as exc:
+                self._last_error = str(exc)
+                logger.warning("Semantic memory Qdrant delete failed: %s", exc)
+                raise
+
+        fact_ids = [str(getattr(fact, "fact_id", "") or "") for fact in facts]
+        try:
+            if hasattr(self._repository, "delete_facts"):
+                return self._repository.delete_facts(fact_ids)
+        except Exception as exc:
+            self._last_error = str(exc)
+            logger.warning("Semantic memory SQL delete failed: %s", exc)
+            raise
+        return 0
 
 
 def _extract_memory_facts(*, summary: str, llm: Any) -> list[str]:

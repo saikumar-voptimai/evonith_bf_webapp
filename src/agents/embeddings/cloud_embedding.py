@@ -39,28 +39,33 @@ class CloudEmbeddingClient:
     # ---------------------------------------
     # 🔹 Text Embedding
     # ---------------------------------------
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str, *, input_type: str | None = None) -> List[float]:
         """Embed a single text string.
 
         Args:
             text: Input text to embed.
+            input_type: Optional Voyage retrieval mode (``"query"`` or
+                ``"document"``).
 
         Returns:
             A float list of length ``self.dimension``.
         """
         inputs = [[text]]
 
-        result = self.client.multimodal_embed(
-            inputs,
-            model=self.model,
-        )
+        kwargs = {"model": self.model}
+        if input_type is not None:
+            kwargs["input_type"] = input_type
+
+        result = self.client.multimodal_embed(inputs, **kwargs)
 
         return result.embeddings[0]
 
     # ---------------------------------------
     # 🔹 Image Embedding
     # ---------------------------------------
-    def embed_image(self, image_bytes: bytes) -> List[float]:
+    def embed_image(
+        self, image_bytes: bytes, *, input_type: str | None = None
+    ) -> List[float]:
         """Embed a single image from raw bytes.
 
         The bytes are decoded with ``PIL.Image`` before being sent to the
@@ -68,6 +73,8 @@ class CloudEmbeddingClient:
 
         Args:
             image_bytes: Raw bytes of any PIL-supported image format.
+            input_type: Optional Voyage retrieval mode (``"query"`` or
+                ``"document"``).
 
         Returns:
             A float list of length ``self.dimension``.
@@ -76,9 +83,10 @@ class CloudEmbeddingClient:
 
         inputs = [[image]]
 
-        result = self.client.multimodal_embed(
-            inputs,
-            model=self.model,
-        )
+        kwargs = {"model": self.model}
+        if input_type is not None:
+            kwargs["input_type"] = input_type
+
+        result = self.client.multimodal_embed(inputs, **kwargs)
 
         return result.embeddings[0]

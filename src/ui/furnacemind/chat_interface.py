@@ -15,7 +15,62 @@ if TYPE_CHECKING:
 _ARTIFACT_TYPES = {"plotly", "dataframe"}
 _CHAT_HISTORY_LIMIT = 14
 _CHAT_HISTORY_HEIGHT = 560
-_KNOWLEDGE_FILE_TYPE = "document"
+KNOWLEDGE_FILE_TYPES = [
+    "pdf",
+    "txt",
+    "md",
+    "markdown",
+    "png",
+    "jpg",
+    "jpeg",
+    "webp",
+    "pptx",
+    "xlsx",
+    "xls",
+    "csv",
+    "docx",
+]
+
+
+def _message_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    """Return normalized metadata for a chat-history item."""
+    metadata = item.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _message_knowledge_document_ids(item: dict[str, Any]) -> set[str]:
+    """Return MRAG document ids attached to a chat-history item."""
+    metadata = _message_metadata(item)
+    raw_ids = metadata.get("knowledge_document_ids") or []
+    if isinstance(raw_ids, str):
+        raw_ids = [raw_ids]
+    if not isinstance(raw_ids, (list, tuple, set)):
+        return set()
+    return {
+        str(document_id).strip() for document_id in raw_ids if str(document_id).strip()
+    }
+
+
+def _is_revoked_knowledge_message(item: dict[str, Any]) -> bool:
+    """Return True when a message depends on a removed knowledge document."""
+    revoked_ids = st.session_state.get("fm_revoked_knowledge_document_ids") or set()
+    if not isinstance(revoked_ids, (set, list, tuple)):
+        return False
+    return bool(_message_knowledge_document_ids(item) & set(revoked_ids))
+
+
+def _remember_revoked_knowledge_document(document_id: str) -> None:
+    """Remember a removed MRAG document id for this Streamlit session."""
+    normalized = str(document_id or "").strip()
+    if not normalized:
+        return
+    revoked_ids = st.session_state.setdefault(
+        "fm_revoked_knowledge_document_ids", set()
+    )
+    if not isinstance(revoked_ids, set):
+        revoked_ids = set(revoked_ids or [])
+        st.session_state["fm_revoked_knowledge_document_ids"] = revoked_ids
+    revoked_ids.add(normalized)
 
 
 def chat_history_to_messages(
@@ -33,6 +88,8 @@ def chat_history_to_messages(
     messages: list[dict] = []
     for item in (st.session_state.get("chat_history") or [])[-max_messages:]:
         if item.get("type") in _ARTIFACT_TYPES:
+            continue
+        if _is_revoked_knowledge_message(item):
             continue
         role = item.get("role")
         content = item.get("content")
@@ -89,9 +146,7 @@ def render_message(item: dict) -> None:
         artifact_key = item.get("artifact_key", "")
         figure = artifact_store.get(artifact_key)
         if figure is not None:
-            st.plotly_chart(
-                figure, width="stretch", key=f"chat_{artifact_key}"
-            )
+            st.plotly_chart(figure, width="stretch", key=f"chat_{artifact_key}")
         else:
             st.caption("_Chart no longer in session._")
         return
@@ -278,31 +333,303 @@ def inject_artifacts(history_len_before: int) -> None:
             )
 
 
-def render_knowledge_sidebar(*, knowledge_store: Any, embedding_client: Any) -> None:
-    """
-    Render optional knowledge upload controls.
+def render_knowledge_sidebar(
+    *,
+    knowledge_store: Any,
+    embedding_client: Any,
+    user_id: str | None = None,
+    document_repository: Any | None = None,
+    chunk_repository: Any | None = None,
+    semantic_memory_service: Any | None = None,
+) -> None:
+    """Render the FurnaceMind MRAG document-library controls in the sidebar.
+
+    The sidebar lets a user upload one or more supported knowledge files, wait
+    until they are ready, then explicitly trigger chunking and indexing with the
+    ``Chunk & Index`` button. Successful indexing stores vectors in Qdrant and,
+    when repositories are available, stores document/chunk metadata in SQL so the
+    same files can be listed, inspected, filtered, and removed later.
 
     Args:
-         - knowledge_store: Any - Vector store used to index uploaded files.
-         - embedding_client: Any - Embedding client used for uploaded files.
+        knowledge_store: Vector store used to write and delete MRAG embeddings.
+        embedding_client: Embedding client used by ``process_file`` to create
+            multimodal vectors for uploaded file parts.
+        user_id: Current FurnaceMind user id. Required for user-owned SQL
+            metadata and active-document filtering.
+        document_repository: SQL repository for knowledge document rows. When it
+            is missing, upload still works but the library list is hidden.
+        chunk_repository: SQL repository for knowledge chunk rows. Passed through
+            to ingestion so chunk metadata can be persisted with the document.
+        semantic_memory_service: Optional long-term memory service used to delete
+            document-derived memory facts when a document is removed.
 
     Returns:
-         - return: None - This function does not return a value.
+        None. The function writes Streamlit UI elements and uses session state for
+        transient upload/remove messages and file-uploader reset behavior.
     """
     with st.sidebar.expander(
-        "Knowledge (optional)", expanded=False, key="fm_knowledge"
+        "Multimodal Knowledge", expanded=False, key="fm_knowledge"
     ):
+        st.caption("PDF, images, PPTX, Excel, CSV, DOCX, TXT, and Markdown")
+        upload_message = st.session_state.pop("fm_knowledge_upload_result", None)
+        remove_message = st.session_state.pop("fm_knowledge_remove_result", None)
+        memory_warning = st.session_state.pop(
+            "fm_knowledge_memory_cleanup_warning", None
+        )
+        if upload_message:
+            st.success(upload_message)
+        if remove_message:
+            st.success(remove_message)
+        if memory_warning:
+            st.warning(memory_warning)
+
+        uploader_nonce = st.session_state.setdefault("fm_knowledge_uploader_nonce", 0)
         uploaded_files = st.file_uploader(
-            "Upload Knowledge Files",
-            type=_KNOWLEDGE_FILE_TYPE,
+            "Upload MRAG files",
+            type=KNOWLEDGE_FILE_TYPES,
             accept_multiple_files=True,
-            key="knowledge_uploader",
+            key=f"knowledge_uploader_{uploader_nonce}",
+            help="Indexes text, tables, pages, slides, and images into the FurnaceMind MRAG library.",
         )
         upload_status = st.empty()
-        if uploaded_files:
-            for uploaded in uploaded_files:
-                process_file(uploaded, knowledge_store, embedding_client)
-            upload_status.success("Documents indexed successfully.")
+        selected_files = list(uploaded_files or [])
+        if selected_files:
+            file_count = len(selected_files)
+            st.caption(f"{file_count} file(s) ready to chunk and index.")
+        else:
+            st.caption("Upload files first, then chunk when you are ready.")
+        should_index = st.button(
+            "Chunk & Index",
+            key="fm_chunk_index_knowledge",
+            type="primary",
+            use_container_width=True,
+            disabled=not selected_files,
+        )
+        if should_index and selected_files:
+            indexed_files = 0
+            indexed_parts = 0
+            skipped_files: list[str] = []
+            with st.spinner("Chunking and indexing knowledge files..."):
+                for uploaded in selected_files:
+                    parts = process_file(
+                        uploaded,
+                        knowledge_store,
+                        embedding_client,
+                        user_id=user_id,
+                        document_repository=document_repository,
+                        chunk_repository=chunk_repository,
+                    )
+                    if parts:
+                        indexed_files += 1
+                        indexed_parts += len(parts)
+                    else:
+                        skipped_files.append(getattr(uploaded, "name", "file"))
+            if indexed_files:
+                st.session_state["fm_knowledge_upload_result"] = (
+                    f"Indexed {indexed_files} file(s), {indexed_parts} searchable part(s)."
+                )
+                st.session_state["fm_knowledge_uploader_nonce"] = uploader_nonce + 1
+                st.rerun()
+            if skipped_files:
+                upload_status.warning(
+                    f"Skipped unsupported or empty files: {', '.join(skipped_files)}"
+                )
+        _render_knowledge_documents(
+            knowledge_store=knowledge_store,
+            user_id=user_id,
+            document_repository=document_repository,
+            semantic_memory_service=semantic_memory_service,
+        )
+
+
+def _document_metadata(document: Any) -> dict[str, Any]:
+    """Return metadata from a knowledge document row as a dictionary.
+
+    SQL repository objects may expose ``metadata_json`` as a dict, ``None``, or a
+    backend-specific value. This helper normalizes that shape before the sidebar
+    reads MRAG fields such as ``document_id``, ``chunk_count``, ``modalities``,
+    and ``qdrant_point_ids``.
+
+    Args:
+        document: Knowledge document object returned by the SQL repository.
+
+    Returns:
+        The document metadata dictionary, or an empty dict when metadata is not
+        available in the expected shape.
+    """
+    metadata = getattr(document, "metadata_json", None)
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _document_point_ids(document: Any) -> list[str]:
+    """Extract Qdrant point ids recorded for one indexed document.
+
+    Newer document objects may expose point ids through a ``qdrant_point_ids``
+    property or method. Older rows may keep the same ids inside ``metadata_json``.
+    The remove flow uses these ids to delete exactly the embeddings created for
+    the selected document.
+
+    Args:
+        document: Knowledge document object selected in the MRAG library UI.
+
+    Returns:
+        Clean string point ids. Invalid, blank, or missing ids are ignored.
+    """
+    point_ids = getattr(document, "qdrant_point_ids", None)
+    if callable(point_ids):
+        point_ids = point_ids()
+    if not isinstance(point_ids, list):
+        point_ids = _document_metadata(document).get("qdrant_point_ids")
+    if not isinstance(point_ids, list):
+        return []
+    return [str(point_id) for point_id in point_ids if str(point_id).strip()]
+
+
+def _remove_knowledge_document(
+    *,
+    document: Any,
+    knowledge_store: Any,
+    document_repository: Any,
+    user_id: str | None,
+    semantic_memory_service: Any | None = None,
+) -> tuple[int, int]:
+    """Remove one MRAG document and revoke document-derived memories.
+
+    The Qdrant knowledge embeddings are deleted first, then the SQL document row
+    is deactivated. Semantic-memory cleanup is best-effort: if it fails, the
+    document still stays removed, and the sidebar shows a separate warning.
+
+    Returns:
+        ``(deleted_embedding_points, deleted_memory_facts)``.
+    """
+    metadata = _document_metadata(document)
+    mrag_document_id = str(metadata.get("document_id") or "").strip()
+    point_ids = _document_point_ids(document)
+    deleted_points = 0
+    if point_ids:
+        deleted_points = knowledge_store.delete_points(point_ids)
+    else:
+        if not mrag_document_id:
+            raise ValueError("No Qdrant point ids found for this document.")
+        knowledge_store.delete_document(document_id=mrag_document_id, user_id=user_id)
+
+    document_repository.deactivate_document(document.document_id)
+    _remember_revoked_knowledge_document(mrag_document_id)
+    st.session_state.pop("fm_last_knowledge_document_refs", None)
+    st.session_state.pop("fm_mrag_image_results", None)
+
+    deleted_memories = 0
+    if semantic_memory_service is not None and user_id:
+        try:
+            deleted_memories = int(
+                semantic_memory_service.delete_document_related_memories(
+                    user_id=user_id,
+                    sql_document_id=str(document.document_id),
+                    mrag_document_id=mrag_document_id,
+                    filename=str(getattr(document, "filename", "") or ""),
+                )
+                or 0
+            )
+        except Exception as exc:
+            st.session_state["fm_knowledge_memory_cleanup_warning"] = (
+                f"Document removed, but related memory cleanup failed: {exc}"
+            )
+    return deleted_points, deleted_memories
+
+
+def _render_knowledge_documents(
+    *,
+    knowledge_store: Any,
+    user_id: str | None,
+    document_repository: Any | None,
+    semantic_memory_service: Any | None = None,
+) -> None:
+    """Render active MRAG documents and their inspect/remove controls.
+
+    The document repository is treated as the source of truth for what the user
+    can currently retrieve from. Active documents are shown in a compact selector,
+    with metadata details for debugging and a removal button that clears Qdrant
+    embeddings before deactivating the SQL row.
+
+    Args:
+        knowledge_store: Vector store used when the selected document is removed.
+        user_id: Current FurnaceMind user id. Without it, no user-scoped library
+            can be listed.
+        document_repository: SQL repository used to fetch active documents and
+            deactivate the selected document on removal.
+
+    Returns:
+        None. The function renders Streamlit controls and stores success messages
+        in session state before rerunning the page.
+    """
+    if not user_id or document_repository is None:
+        return
+
+    try:
+        documents = document_repository.list_documents(
+            user_id=user_id, active_only=True
+        )
+    except Exception as exc:
+        st.caption(f"Knowledge library unavailable: {exc}")
+        return
+
+    if not documents:
+        st.caption("No active multimodal knowledge documents.")
+        return
+
+    st.caption("MRAG library")
+    documents = documents[:20]
+    document_by_id = {document.document_id: document for document in documents}
+    selected_document_id = st.selectbox(
+        "Indexed documents",
+        options=list(document_by_id.keys()),
+        format_func=lambda document_id: document_by_id[document_id].filename,
+        key="fm_selected_knowledge_document",
+        label_visibility="collapsed",
+    )
+    document = document_by_id[selected_document_id]
+    metadata = _document_metadata(document)
+    point_ids = _document_point_ids(document)
+    chunk_count = metadata.get("chunk_count", 0)
+    modalities = ", ".join(metadata.get("modalities") or [])
+    details = f"{chunk_count} chunks"
+    if modalities:
+        details = f"{details} | {modalities}"
+
+    st.markdown(f"**{document.filename}**")
+    st.caption(details)
+    with st.expander("Document details", expanded=False):
+        st.caption(f"SQL document: {document.document_id}")
+        if metadata.get("document_id"):
+            st.caption(f"MRAG document: {metadata['document_id']}")
+        st.caption(f"Qdrant: {getattr(document, 'qdrant_collection', '') or 'unknown'}")
+        st.caption(f"Embeddings: {len(point_ids)} point(s)")
+
+    if st.button(
+        "Remove Selected Document",
+        key="fm_remove_selected_knowledge_document",
+        help="Delete this document's Qdrant embeddings and remove it from active knowledge.",
+        use_container_width=True,
+    ):
+        try:
+            deleted_points, deleted_memories = _remove_knowledge_document(
+                document=document,
+                knowledge_store=knowledge_store,
+                document_repository=document_repository,
+                user_id=user_id,
+                semantic_memory_service=semantic_memory_service,
+            )
+            message = (
+                f"Removed {document.filename} and {deleted_points} embedding point(s)."
+            )
+            if deleted_memories:
+                message = (
+                    f"{message} Deleted {deleted_memories} related memory fact(s)."
+                )
+            st.session_state["fm_knowledge_remove_result"] = message
+            st.rerun()
+        except Exception as exc:
+            st.warning(f"Could not remove document: {exc}")
 
 
 def _queue_skill(prompt: str, display: str, skill_id: str) -> None:
@@ -372,17 +699,34 @@ def extract_submission(
     *,
     knowledge_store: Any,
     embedding_client: Any,
+    user_id: str | None = None,
+    document_repository: Any | None = None,
+    chunk_repository: Any | None = None,
 ) -> tuple[str | None, str | None]:
-    """
-    Extract user query and display text from the Streamlit chat input.
+    """Normalize Streamlit chat input into the query used by FurnaceMind.
+
+    Streamlit can return chat input as a simple string, an object with ``text``
+    and ``files`` attributes, or a dictionary with the same fields. This helper
+    extracts the typed text, indexes any attached files through the MRAG ingestion
+    path, and returns both the model query and the user-facing display text.
 
     Args:
-         - chat_submission: object - Streamlit chat input payload.
-         - knowledge_store: Any - Vector store used to index attached files.
-         - embedding_client: Any - Embedding client used for attached files.
+        chat_submission: Raw value returned from ``st.chat_input``.
+        knowledge_store: Vector store used to index files attached directly to
+            the chat input.
+        embedding_client: Embedding client used by ``process_file`` for attached
+            files.
+        user_id: Current FurnaceMind user id for SQL document/chunk ownership.
+        document_repository: Optional SQL document repository passed to
+            ingestion when attachments are indexed.
+        chunk_repository: Optional SQL chunk repository passed to ingestion when
+            attachments are indexed.
 
     Returns:
-         - return: tuple[str | None, str | None] - Query and display text.
+        ``(query, display_text)`` when the user submitted text or files.
+        ``(None, None)`` when there is no usable submission. If the submission
+        contains files but no text, the returned query/display text is an
+        attachment summary such as ``"Attached files: report.pdf"``.
     """
     if not chat_submission:
         return None, None
@@ -399,7 +743,14 @@ def extract_submission(
 
     if files and knowledge_store and embedding_client:
         for uploaded in files:
-            process_file(uploaded, knowledge_store, embedding_client)
+            process_file(
+                uploaded,
+                knowledge_store,
+                embedding_client,
+                user_id=user_id,
+                document_repository=document_repository,
+                chunk_repository=chunk_repository,
+            )
 
     if typed_query and str(typed_query).strip():
         text = str(typed_query).strip()
