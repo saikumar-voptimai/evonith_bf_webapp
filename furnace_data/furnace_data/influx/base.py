@@ -21,16 +21,17 @@ import pytz
 
 from influxdb_client_3 import InfluxDBClient3, flight_client_options
 
-from furnace_data.config import load_config
-from furnace_data.influx.query import TIMEDELTAS, query_builder
+from furnace_data.influx.query import (
+    TIMEDELTAS,
+    mapping_for_measurement,
+    query_builder,
+)
 
 log = logging.getLogger(__name__)
 
 # Load TLS certificate once at module import.
 with open(certifi.where(), "r") as _fh:
     _TLS_CERT = _fh.read()
-
-_config = load_config("setting_ds_dv.yml")
 
 
 class BaseDataFetcher:
@@ -41,8 +42,7 @@ class BaseDataFetcher:
     explicit ranges.
 
     Args:
-        variable_tag: Key in ``data_mapping`` / ``data_tags`` config sections
-            (e.g. ``"process_params"``).
+        variable_tag: Key in ``data_mapping`` (e.g. ``"process_params"``).
         debug:        If ``True``, ``fetch_averaged_data`` returns dummy data
             instead of hitting InfluxDB.  Intended for local UI development.
         source:       ``"live"`` or ``"historical"``.  Subclasses may use this
@@ -67,11 +67,9 @@ class BaseDataFetcher:
         self.source = source.strip().lower()
         self.timezone = pytz.timezone("Asia/Kolkata")
         self.variable_tag = variable_tag
-        self.variables: List[str] = _config.get("data_tags", {}).get(variable_tag, [])
         self.measurement_type = variable_tag
-        self.var_map: Dict[str, str] = _config.get("data_mapping", {}).get(
-            self.measurement_type, {}
-        )
+        self.var_map: Dict[str, str] = mapping_for_measurement(self.measurement_type)
+        self.variables: List[str] = list(self.var_map.keys())
         self.database = database
         self.host = host
         self.org = org

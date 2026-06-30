@@ -167,6 +167,7 @@ class ShiftReportData:
     uptake: TempRow
     lower_stack: TempRow
     belly: TempRow
+    skin_flow: TempRow
     bosh: TempRow
 
     # Hearth Pad

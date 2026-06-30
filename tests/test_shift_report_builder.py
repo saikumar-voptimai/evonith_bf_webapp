@@ -15,9 +15,9 @@ class TestShiftBuilder:
     SHIFT_DATE = date(2026, 5, 8)
     SHIFT_LABEL = "A"
     SHIFT_START, SHIFT_END = shift_window(SHIFT_DATE, SHIFT_LABEL)
-    PRODUCTION_COLUMN = "Process Params - BF2_PRODUCTION TONNES PER HR"
-    CHARGES_PER_HOUR_COLUMN = "Process Params - BF2_CHARGES PER HR"
-    TOTAL_O2_FLOW_COLUMN = "Process Params - BF2_TOTAL OXYGEN FLOW"
+    PRODUCTION_COLUMN = "production_per_hour"
+    CHARGES_PER_HOUR_COLUMN = "charges_per_hour"
+    TOTAL_O2_FLOW_COLUMN = "total_oxygen"
 
     @classmethod
     def raw_shift(
@@ -101,6 +101,18 @@ class TestShiftBuilder:
         )
 
         assert report.total_charges == 3
+
+    def test_online_metrics_accept_legacy_display_prefixed_columns(self) -> None:
+        report = ShiftBuilder().build(
+            self.raw_shift(
+                pd.DataFrame(),
+                online_df=pd.DataFrame(
+                    {"Process Params - BF2_PRODUCTION TONNES PER HR": [100.0]}
+                ),
+            )
+        )
+
+        assert report.production_rate == 100.0
 
     def test_total_o2_flow_is_day_only_and_uses_timeframe_max(self) -> None:
         online_df = pd.DataFrame({self.TOTAL_O2_FLOW_COLUMN: [999.0]})
