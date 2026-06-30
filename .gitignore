@@ -19,3 +19,4 @@ pytest-cache-files-*/
 nul
 .neon
 neonctl
+src/storage/furnacemind/mrag_images/
