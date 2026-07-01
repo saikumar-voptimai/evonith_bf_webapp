@@ -8,7 +8,7 @@ from earlier turns in the same conversation.
 Static context loaded by this module:
   1. ``CLAUDE.md`` for blast furnace domain knowledge.
   2. ``TOOLS*.md`` for tool routing and usage rules.
-  3. ``SKILLS*.md`` for selected and semantically relevant quick skills.
+  3. ``SKILLS*.md`` only for the selected quick skill.
 """
 
 from __future__ import annotations
@@ -96,19 +96,13 @@ class SystemPromptContext:
 
     # ── Public ──────────────────────────────────────────────────────────────
 
-    def build(
-        self,
-        extra: str = "",
-        skill_id: str | None = None,
-        skill_context: str | None = None,
-    ) -> str:
+    def build(self, extra: str = "", skill_id: str | None = None) -> str:
         """
         Assemble the complete system prompt for the next FurnaceMind model call.
 
         Args:
              - extra: str - Additional instructions appended at the end.
-             - skill_id: str | None - Active quick-skill key for fallback context.
-             - skill_context: str | None - Selected and semantically relevant skill context for this turn.
+             - skill_id: str | None - Active quick-skill key for skill context.
 
         Returns:
              - return: str - System prompt containing persona, context, memory, and policy.
@@ -118,16 +112,9 @@ class SystemPromptContext:
             parts.append(
                 "STATIC CONTEXT (read this before answering):\n" + self._static
             )
-        skill_ctx = (
-            skill_context.strip()
-            if skill_context is not None
-            else self._load_skills(skill_id)
-        )
+        skill_ctx = self._load_skills(skill_id)
         if skill_ctx:
-            parts.append(
-                "SKILL CONTEXT (selected and semantically relevant skill data):\n"
-                + skill_ctx
-            )
+            parts.append("SKILL CONTEXT (active skill reference data):\n" + skill_ctx)
         if self._persistent:
             parts.append(self._persistent)
         if self._errors:
