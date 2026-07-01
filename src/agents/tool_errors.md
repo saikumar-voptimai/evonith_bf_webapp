@@ -1042,3 +1042,51 @@ name 'coke_df' is not defined
 ```
 '__import__'
 ```
+
+
+## 2026-06-27T06:21:57.025223+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "RAW_MATERIAL_COMPOSITION", "table_name": null, "start_time_utc": null, "end_time_utc": null, "lookback_days": 2, "cadence": null}`
+
+**Error:**
+
+```
+Unknown column for offline_feed.raw_material_strength_analysis: category_code
+```
+
+
+## 2026-06-27T06:22:02.742013+00:00
+**Tool:** fetch_offline_data
+
+**Params:** `{"report_type": "RAW_MATERIAL_COMPOSITION", "table_name": null, "start_time_utc": null, "end_time_utc": null, "lookback_days": 10, "cadence": null}`
+
+**Error:**
+
+```
+Unknown column for offline_feed.raw_material_strength_analysis: category_code
+```
+
+
+## 2026-06-27T06:22:10.625577+00:00
+**Tool:** merge_furnace_data
+
+**Params:** `{"online_dataset_id": "online_20260627T062156Z_1", "offline_dataset_ids": [], "fill_method": "ffill"}`
+
+**Error:**
+
+```
+No non-empty offline datasets provided
+```
+
+
+## 2026-06-27T06:22:18.262463+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import plotly.express as px\n\n# Use the fuel rate column from the online data\ncol_name = 'Process Params - BF2_FUEL RATE PER THM'\n\nfig = px.line(df, x=df.index, y=col_name, \n              title='Fuel Rate Trend (Last 4 Hours)',\n              labels={col_name: 'Fuel Rate (kg/THM)', 'time (IST)': 'Time'})\n\nfig.update_layout(xaxis_title='Time (IST)', yaxis_title='Fuel Rate (kg/THM)')\n"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```

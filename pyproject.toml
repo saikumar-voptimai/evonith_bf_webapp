@@ -228,6 +228,7 @@ dependencies = [
     "pillow>=11.1.0",
     "voyageai>=0.3.2",
     "furnace_data",
+    "langgraph>=0.5.4",
 ]
 
 [tool.uv.sources]
