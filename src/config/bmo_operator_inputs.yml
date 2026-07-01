@@ -5,7 +5,6 @@ ore_editor:
   - lloyds_clo
   - nmdc_donimalai
   - gomti_clo
-  - lloyds_pellet
   rows:
     sinter_sp_02:
       price_rs_per_mt: 7789.0

@@ -7,6 +7,7 @@ by LP baseline and nonlinear total-cost optimization.
 
 from __future__ import annotations
 
+import time
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -144,6 +145,8 @@ class EvonithBmoContextProvider:
         self._last_pellet_usage_diagnostics: dict[str, Any] = {}
         self._last_charge_mix_diagnostics: dict[str, Any] = {}
         self._last_manual_blend_diagnostics: dict[str, Any] = {}
+        self._last_coke_strength_diagnostics: dict[str, Any] = {}
+        self._coke_strength_cache: tuple[float, dict[str, float]] | None = None
 
     def _stock_fallback_mt(self, ore_cfg: dict[str, Any]) -> float:
         """
@@ -1511,6 +1514,111 @@ class EvonithBmoContextProvider:
             }
             return pd.DataFrame(), warnings
 
+    # Coke strength property names (from material_property_mapping) -> model
+    # feature names expected by the fuel-cost and Si models.
+    _COKE_STRENGTH_FEATURE_MAP = {
+        "csr": "COKE_CSR",
+        "cri": "COKE_CRI",
+        "m-40": "COKE_M-40",
+        "m40": "COKE_M-40",
+        "m-10": "COKE_M-10",
+        "m10": "COKE_M-10",
+    }
+
+    # Coke strength is daily lab data; memoize the DB read for this long (seconds).
+    _COKE_STRENGTH_TTL_S = 1800
+
+    def _fetch_latest_coke_strength(self) -> dict[str, float]:
+        """
+        Return the latest coke strength features, memoized on the provider.
+
+        ``get_process_context`` can run several times per Streamlit rerun (fuel
+        context, data diagnostics, DE reuse). Coke strength is daily lab data, so
+        the underlying DB read is cached on the provider instance for a short TTL
+        to avoid repeated Neon round trips within a session.
+
+        Returns:
+             - return dict[str, float] - Cached ``COKE_*`` strength feature values.
+        """
+
+        now_ts = time.monotonic()
+        cached = self._coke_strength_cache
+        if cached is not None and (now_ts - cached[0]) < self._COKE_STRENGTH_TTL_S:
+            return dict(cached[1])
+        values = self._compute_latest_coke_strength()
+        self._coke_strength_cache = (now_ts, dict(values))
+        return values
+
+    def _compute_latest_coke_strength(self) -> dict[str, float]:
+        """
+        Fetch the latest coke strength properties as model feature values.
+
+        Coke strength (CSR/CRI/M-40/M-10) is stored in
+        ``offline_feed.raw_material_strength_analysis`` as generic
+        ``property_1..4`` columns whose meaning is named per material in
+        ``plant_master.material_property_mapping`` (coke_1 -> M-40, M-10, CRI,
+        CSR). The offline fetcher joins the mapping so each row carries the
+        property names; this method maps the latest coke row to the ``COKE_*``
+        feature names the fuel-cost and Si models expect.
+
+        Returns:
+             - return dict[str, float] - ``COKE_CSR``/``COKE_CRI``/``COKE_M-40``/
+               ``COKE_M-10`` feature values, empty when unavailable.
+        """
+
+        cfg = self.settings.get("data_sources", {})
+        days = max(int(cfg.get("chemistry_time_range_days", 30)), 90)
+        end_time = datetime.now(timezone.utc)
+        time_range = (end_time - timedelta(days=days), end_time)
+        out: dict[str, float] = {}
+        try:
+            df = _fetch_offline_data(
+                table_name="raw_material_strength_analysis",
+                time_range=time_range,
+                query_type="raw",
+                columns=[
+                    "material_code",
+                    "property_1", "property_2", "property_3", "property_4",
+                    "property_1_name", "property_2_name",
+                    "property_3_name", "property_4_name",
+                ],
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnostics, never break inference
+            self._last_coke_strength_diagnostics = {"source": "error", "error": str(exc), "values": {}}
+            return out
+
+        if df is None or df.empty or "material_code" not in df.columns:
+            self._last_coke_strength_diagnostics = {"source": "empty", "values": {}}
+            return out
+
+        coke = df[df["material_code"].astype(str).str.lower().str.startswith("coke")]
+        if coke.empty:
+            self._last_coke_strength_diagnostics = {"source": "no_coke_rows", "values": {}}
+            return out
+
+        latest = coke.sort_index().iloc[-1]
+        for idx in range(1, 5):
+            name = latest.get(f"property_{idx}_name")
+            value = latest.get(f"property_{idx}")
+            if name is None or pd.isna(name) or pd.isna(value):
+                continue
+            feature = self._COKE_STRENGTH_FEATURE_MAP.get(str(name).strip().lower())
+            if feature is None:
+                continue
+            try:
+                out[feature] = float(value)
+            except (TypeError, ValueError):
+                continue
+
+        self._last_coke_strength_diagnostics = {
+            "source": "raw_material_strength_analysis",
+            "latest_timestamp": self._iso(coke.index.max())
+            if isinstance(coke.index, pd.DatetimeIndex) else "",
+            "material_code": str(latest.get("material_code")),
+            "values": dict(out),
+        }
+        return out
+
     def get_process_context(
         self,
         history_df: pd.DataFrame | None = None,
@@ -1532,15 +1640,18 @@ class EvonithBmoContextProvider:
         warnings: list[str] = []
         if history_df is None:
             history_df, warnings = self.get_history_frame()
+        # Coke strength (CSR/CRI/M-40/M-10) is not part of the history frame; it is
+        # slow-moving lab data fetched separately and merged in as model features.
+        coke_strength = self._fetch_latest_coke_strength()
         if history_df.empty:
             self._last_process_diagnostics = {
                 "source": "static_csv",
                 "latest_timestamp": "",
-                "field_count": 0,
-                "values": {},
+                "field_count": len(coke_strength),
+                "values": dict(coke_strength),
                 "warnings": list(warnings),
             }
-            return {}, warnings
+            return dict(coke_strength), warnings
         history_df = self._repair_material_quantity_totals(history_df)
         latest = history_df.iloc[-1]
         process_context: dict[str, float] = {}
@@ -1551,6 +1662,9 @@ class EvonithBmoContextProvider:
                 process_context[str(key)] = float(value)
             except (TypeError, ValueError):
                 continue
+        # History values win where present; coke strength fills the COKE_* features.
+        for feature, value in coke_strength.items():
+            process_context.setdefault(feature, value)
         self._last_process_diagnostics = {
             "source": "static_csv+online_influx"
             if self._last_online_context_diagnostics.get("rows", 0)
