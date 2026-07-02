@@ -664,7 +664,7 @@ def _render_conversation_controls(
     if not st.sidebar.button(
         "New Chat",
         key="fm_new_chat",
-        use_container_width=True,
+        width="stretch",
     ):
         return
 

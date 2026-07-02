@@ -235,12 +235,20 @@ bmo:
 
   model_bundle:
     strict_loading: false
-    model_path: src/assets/models/bmo_fuel/bmo_xgb_model.json
-    scaler_path: src/assets/models/bmo_fuel/bmo_scaler.joblib
-    selected_feature_columns_path: src/assets/models/bmo_fuel/bmo_feature_columns.json
+    model_path: src/assets/models/unitcost_fuel_model.json
+    scaler_path: src/assets/models/unitcost_fuel_scaler.joblib
+    selected_feature_columns_path: src/assets/models/unitcost_fuel_feature_columns.json
     feature_manifest_path: src/assets/models/bmo_fuel/feature_manifest.json
     lag_map_path: src/assets/models/bmo_fuel/lag_map.json
     training_metrics_path: src/assets/models/bmo_fuel/training_metrics.json
+
+  # Hot-metal Silicon (Si) prediction model. Display-only: predicted for the
+  # baseline and DE blends, NOT an optimization objective or constraint.
+  si_model_bundle:
+    strict_loading: false
+    model_path: src/assets/models/hm_si_model.json
+    scaler_path: src/assets/models/hm_si_scaler.joblib
+    selected_feature_columns_path: src/assets/models/hm_si_feature_columns.json
 
   data_sources:
     static_dataset_path: src/assets/data/furnace_dataset.csv
@@ -269,9 +277,9 @@ bmo:
       refresh_enabled: false
       refresh_rm_choice: RM Charge
     model_bundle:
-      model_path: src/assets/models/bmo_fuel/bmo_xgb_model.json
-      scaler_path: src/assets/models/bmo_fuel/bmo_scaler.joblib
-      selected_feature_columns_path: src/assets/models/bmo_fuel/bmo_feature_columns.json
+      model_path: src/assets/models/unitcost_fuel_model.json
+      scaler_path: src/assets/models/unitcost_fuel_scaler.joblib
+      selected_feature_columns_path: src/assets/models/unitcost_fuel_feature_columns.json
       feature_manifest_path: src/assets/models/bmo_fuel/feature_manifest.json
       lag_map_path: src/assets/models/bmo_fuel/lag_map.json
       training_metrics_path: src/assets/models/bmo_fuel/training_metrics.json

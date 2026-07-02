@@ -8,11 +8,11 @@ one Streamlit workflow for ore blend planning.
 from __future__ import annotations
 
 import copy
-import inspect
 import logging
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
@@ -37,12 +37,14 @@ from ui.streamlit_fragments import fragment, rerun_fragment
 from ui.bmo import (
     apply_bmo_styles,
     build_dust_editor_df,
+    build_flux_editor_df,
     build_fuel_ash_editor_df,
     build_ore_editor_df,
     render_blend_metrics,
     render_blend_table,
     render_diagnostics,
     render_dust_editor,
+    render_flux_editor,
     render_fuel_ash_editor,
     render_header,
     render_hot_metal_chemistry,
@@ -61,7 +63,15 @@ from utils.bmo import (
     run_nonlinear_optimizer,
     validate_selected_pellet_inputs,
 )
+from ui.bmo.editor_inputs import (
+    dust_inputs_from_editor,
+    float_from_row,
+    flux_inputs_from_editor,
+    fuel_ash_inputs_from_editor,
+    slag_balance_settings_from_editor,
+)
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
+from utils.bmo.si_prediction import SiPredictionService
 from utils.bmo.fuel_rates import get_recent_fuel_input_rates
 from utils.session import is_logged_in
 
@@ -70,17 +80,8 @@ if not is_logged_in():
     st.stop()
 
 
-if hasattr(st, "cache_resource"):
-    _resource_cache = st.cache_resource
-elif hasattr(st, "experimental_singleton"):
-    _resource_cache = st.experimental_singleton
-else:
-    _resource_cache = st.cache
-
-if hasattr(st, "cache_data"):
-    _data_cache = st.cache_data
-else:
-    _data_cache = st.cache
+_resource_cache = st.cache_resource
+_data_cache = st.cache_data
 
 
 @_data_cache(show_spinner=False)
@@ -328,19 +329,6 @@ def _cached_recent_active_pellet_ids(
     )
 
 
-def _cached_flux_inputs(
-    provider: EvonithBmoContextProvider,
-    mode: str,
-    window_days: int,
-    cache_version: int,
-) -> tuple[list[FluxInput], list[str]]:
-    return _session_cached_source(
-        cache_version,
-        ("flux_inputs", mode, window_days),
-        lambda: provider.get_flux_inputs(mode=mode, window_days=window_days),
-    )
-
-
 @_data_cache(show_spinner=False)
 def _cached_operator_preferences(path: str, mtime_ns: int) -> dict[str, Any]:
     return load_ore_editor_preferences(path)
@@ -469,9 +457,7 @@ def _show_df(df: pd.DataFrame) -> None:
 
 
 def _form_submit_button(container: Any, label: str, **kwargs: Any) -> bool:
-    sig = inspect.signature(container.form_submit_button)
-    supported = {key: value for key, value in kwargs.items() if key in sig.parameters}
-    return bool(container.form_submit_button(label, **supported))
+    return bool(container.form_submit_button(label, **kwargs))
 
 
 def _clear_bmo_results() -> None:
@@ -569,12 +555,11 @@ def _target_quantities_from_shares(
     )
 
 
-def _render_manual_blend_comparison(
+def _render_blend_comparison(
     provider: EvonithBmoContextProvider,
-    blend: Any,
-    selected_ores: list[OreInput],
-    title: str,
     *,
+    optimizer_candidates: list[tuple[str, Any, float | None]],
+    selected_ores: list[OreInput],
     target_fe_mt: float,
     target_production_mt: float,
     feo_in_slag_pct: float,
@@ -583,68 +568,88 @@ def _render_manual_blend_comparison(
     dust_inputs: list[DustInput],
     slag_balance_settings: SlagBalanceSettings,
     manual_ores: list[OreInput] | None = None,
-    recent_fuel_rates: dict[str, Any] | None = None,
 ) -> None:
+    """Operator-focused comparison of the manual blend vs the optimizer blends.
+
+    Presents two tables on the same target-Fe basis so the operator can decide at
+    a glance:
+
+      * **Inputs** - the suggested blend mix (ore share %) for each option, so the
+        LP and DE mixes are read side by side against the editable manual blend.
+      * **Outputs** - the outcomes that drive the decision: total / ore / fuel
+        cost, fuel rate, hot-metal Si, slag basicity / T-basicity, and slag rate.
+
+    Args:
+         - provider: EvonithBmoContextProvider - Source for the last-shift manual blend + fuel context.
+         - optimizer_candidates: list[tuple[str, BlendEvaluation, float | None]] -
+           (label, blend, predicted Si) per optimizer result (LP, DE), in display order.
+         - selected_ores: list[OreInput] - Ores the optimizer chose between.
+         - target_fe_mt: float - Fe target the manual blend is scaled to.
+         - target_production_mt: float - HM basis for cost / slag / model fields.
+         - feo_in_slag_pct: float - FeO assumed to report into slag.
+         - fuel_ash_inputs / flux_inputs / dust_inputs / slag_balance_settings - Slag-balance inputs.
+         - manual_ores: list[OreInput] | None - Materials available for the manual blend.
+
+    Returns:
+         - return None - Renders the comparison tables to Streamlit.
+    """
+
+    if not optimizer_candidates:
+        return
+    # Prefer the last candidate (DE over LP) to seed the manual editor.
+    primary_blend = optimizer_candidates[-1][1]
+
     manual_ores_by_id = {ore.ore_id: ore for ore in (manual_ores or selected_ores)}
     manual_ores_by_id.update({ore.ore_id: ore for ore in selected_ores})
-    manual_ore_inputs = list(manual_ores_by_id.values())
-    snapshot = provider.get_recent_manual_blend_snapshot(manual_ore_inputs)
+    snapshot = provider.get_recent_manual_blend_snapshot(list(manual_ores_by_id.values()))
     rows_by_ore = {str(row.get("ore_id")): row for row in snapshot.get("rows", [])}
-
-    # The comparison is driven by the ores in the optimizer result so the manual
-    # blend is edited on the same materials the optimizer chose.
     compare_ores = selected_ores
-    price_by_id = {ore.ore_id: float(ore.price_rs_per_mt) for ore in manual_ore_inputs}
 
-    st.markdown(f"##### Manual blend vs {title}")
+    st.markdown("##### Manual blend vs optimizer")
     st.caption(
-        "Edit the manual Share (%) to try any burden split. Shares are normalised "
-        "to 100% and scaled to the same target Fe as the optimizer, so cost, slag, "
-        "and basicity are compared on the same basis."
+        "Edit the manual Share (%) to try any burden split. Shares are normalised to "
+        "100% and scaled to the same target Fe as the optimizer, so every option is "
+        "compared on the same basis."
     )
-    start_time = snapshot.get("start_time")
-    end_time = snapshot.get("end_time")
+    start_time, end_time = snapshot.get("start_time"), snapshot.get("end_time")
     if rows_by_ore and start_time and end_time:
-        st.caption(f"Seeded from last shift manual blend ({start_time} to {end_time}).")
+        st.caption(f"Manual blend seeded from last shift ({start_time} to {end_time}).")
     elif not rows_by_ore:
         st.caption("No last-shift manual blend found; seeded from the optimizer shares.")
 
-    # Seed each ore's manual share from the last shift (if available), otherwise
-    # from the optimizer blend so the editor starts from a sensible split.
     seed_rows = []
     for ore in compare_ores:
-        manual = rows_by_ore.get(ore.ore_id, {})
-        seed_share = float(manual.get("share_pct", 0.0) or 0.0)
+        seed_share = float(rows_by_ore.get(ore.ore_id, {}).get("share_pct", 0.0) or 0.0)
         if seed_share <= 0:
-            seed_share = float(blend.shares_pct.get(ore.ore_id, 0.0))
+            seed_share = float(primary_blend.shares_pct.get(ore.ore_id, 0.0))
         seed_rows.append(
-            {
-                "ore_id": ore.ore_id,
-                "ore_name": ore.display_name,
-                "manual_share_pct": seed_share,
-                "optimal_share_pct": float(blend.shares_pct.get(ore.ore_id, 0.0)),
-            }
+            {"ore_id": ore.ore_id, "ore_name": ore.display_name, "manual_share_pct": seed_share}
         )
-    seed_df = pd.DataFrame(seed_rows)
-
-    editor_kwargs: dict[str, Any] = {
-        "hide_index": True,
-        "width": "stretch",
-        "key": "bmo_manual_share_editor",
-        "column_config": {
+    # Seed the editor with shares already normalised to 100%. The blend is
+    # normalised before evaluation, so the "Suggested blend mix" table shows
+    # normalised shares; seeding raw last-shift shares (which sum to <100% when
+    # some materials aren't selected) would show a different % for the same ore
+    # in the editor vs the mix table.
+    _seed_total = sum(row["manual_share_pct"] for row in seed_rows)
+    if _seed_total > 0:
+        for row in seed_rows:
+            row["manual_share_pct"] = round(
+                row["manual_share_pct"] / _seed_total * 100.0, 1
+            )
+    edited_share_df = st.data_editor(
+        pd.DataFrame(seed_rows),
+        hide_index=True,
+        width="stretch",
+        key="bmo_manual_share_editor",
+        column_order=("ore_name", "manual_share_pct"),
+        column_config={
             "ore_id": None,
             "ore_name": st.column_config.TextColumn("Ore", disabled=True),
             "manual_share_pct": st.column_config.NumberColumn(
                 "Manual Share (%)", min_value=0.0, max_value=100.0, step=0.5
             ),
-            "optimal_share_pct": st.column_config.NumberColumn(
-                f"{title} Share (%)", format="%.1f", disabled=True
-            ),
         },
-        "column_order": ("ore_name", "manual_share_pct", "optimal_share_pct"),
-    }
-    edited_share_df = st.data_editor(seed_df, **editor_kwargs)
-
+    )
     manual_shares_pct = {
         str(row["ore_id"]): float(row["manual_share_pct"] or 0.0)
         for _, row in edited_share_df.iterrows()
@@ -653,11 +658,14 @@ def _render_manual_blend_comparison(
         manual_shares_pct, compare_ores, target_fe_mt
     )
     if normalized_total > 0:
-        st.caption(f"Entered manual shares sum to {normalized_total:,.1f}% (normalised to 100%).")
+        st.caption(
+            f"Entered manual shares sum to {normalized_total:,.1f}% (normalised to 100%)."
+        )
     for warning in scale_warnings:
         st.warning(warning)
 
     manual_blend = None
+    manual_si: float | None = None
     if manual_quantities:
         try:
             (
@@ -680,210 +688,129 @@ def _render_manual_blend_comparison(
                 slag_balance_settings=slag_balance_settings,
                 hot_metal_target_mt=target_production_mt,
             )
+            manual_si = _predict_blend_si(
+                ores=compare_ores,
+                quantities_mt=manual_quantities,
+                process_context=process_context,
+                history_df=history_df,
+                hot_metal_target_mt=target_production_mt,
+            )
             for warning in fuel_warnings:
                 st.warning(str(warning))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             st.warning(f"Could not evaluate manual blend cost/slag: {exc}")
 
-    if manual_blend is None:
+    # Display order: Manual first (operator's reference), then LP / DE.
+    options: list[tuple[str, Any, float | None]] = []
+    if manual_blend is not None:
+        options.append(("Manual", manual_blend, manual_si))
+    options.extend(optimizer_candidates)
+    if len(options) < 2:
         return
+    labels = [label for label, _, _ in options]
 
-    # Headline: total-cost gap of the optimizer vs the manual blend.
-    total_saving = manual_blend.objective_rs_per_thm - blend.objective_rs_per_thm
-    h1, h2, h3 = st.columns(3)
-    h1.metric("Manual Total Cost (Rs/THM)", f"{manual_blend.objective_rs_per_thm:,.2f}")
-    h2.metric(f"{title} Total Cost (Rs/THM)", f"{blend.objective_rs_per_thm:,.2f}")
-    h3.metric(
-        "Optimizer saving (Rs/THM)",
-        f"{total_saving:,.2f}",
-        delta=f"{total_saving:+,.2f}",
-        help="Manual total cost minus optimizer total cost; positive = optimizer is cheaper.",
-    )
-
-    def _basicity_value(b: Any, key: str, attr: str) -> str:
-        denominator = float(b.diagnostics.get(key, 0.0) or 0.0)
-        if denominator <= 0:
-            return "n/a"
-        return f"{float(getattr(b, attr, 0.0) or 0.0):,.3f}"
-
-    comparison_table = pd.DataFrame(
-        [
-            {
-                "Metric": "Ore Cost (Rs/THM)",
-                "Manual": f"{manual_blend.ore_cost_per_thm_rs:,.2f}",
-                f"{title}": f"{blend.ore_cost_per_thm_rs:,.2f}",
-            },
-            {
-                "Metric": "Fuel Cost (Rs/THM, est)",
-                "Manual": f"{manual_blend.fuel_cost_per_thm_rs:,.2f}",
-                f"{title}": f"{blend.fuel_cost_per_thm_rs:,.2f}",
-            },
-            {
-                "Metric": "Total Cost (Rs/THM)",
-                "Manual": f"{manual_blend.objective_rs_per_thm:,.2f}",
-                f"{title}": f"{blend.objective_rs_per_thm:,.2f}",
-            },
-            {
-                "Metric": "Slag (MT, est)",
-                "Manual": f"{manual_blend.slag_mt:,.1f}",
-                f"{title}": f"{blend.slag_mt:,.1f}",
-            },
-            {
-                "Metric": "Slag Basicity CaO/SiO2",
-                "Manual": _basicity_value(
-                    manual_blend, "slag_basicity_denominator_mt", "slag_basicity"
-                ),
-                f"{title}": _basicity_value(
-                    blend, "slag_basicity_denominator_mt", "slag_basicity"
-                ),
-            },
-            {
-                "Metric": "Slag T-Basicity",
-                "Manual": _basicity_value(
-                    manual_blend, "slag_t_basicity_denominator_mt", "slag_t_basicity"
-                ),
-                f"{title}": _basicity_value(
-                    blend, "slag_t_basicity_denominator_mt", "slag_t_basicity"
-                ),
-            },
-        ]
-    )
-    st.dataframe(comparison_table, hide_index=True, width="stretch")
-
-    # Fuel rates (kg/THM): plant-realised last shift vs each blend's estimate.
-    # Realised = latest non-zero plant values; the blend "est" coke rate is
-    # back-derived from the model's predicted fuel cost, so this row lets the
-    # operator sanity-check the model against what the furnace actually ran.
-    def _fmt_rate(value: Any) -> str:
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            return "n/a"
-        if pd.isna(number) or number <= 0:
-            return "n/a"
-        return f"{number:,.1f}"
-
-    realised = recent_fuel_rates or {}
-    realised_coke = realised.get("coke_rate_kg_thm")
-    realised_nut = realised.get("nut_coke_rate_kg_thm")
-    realised_pci = realised.get("pci_rate_kg_thm")
-    realised_parts = [
-        float(v)
-        for v in (realised_coke, realised_nut, realised_pci)
-        if isinstance(v, (int, float)) and float(v) > 0
-    ]
-    realised_total = sum(realised_parts) if realised_parts else None
-
-    manual_est = manual_blend.diagnostics.get("fuel_rate_estimate") or {}
-    optimal_est = blend.diagnostics.get("fuel_rate_estimate") or {}
-
-    fuel_rate_table = pd.DataFrame(
-        [
-            {
-                "Fuel rate (kg/THM)": "Coke",
-                "Realised (last shift)": _fmt_rate(realised_coke),
-                "Manual (est)": _fmt_rate(manual_est.get("coke_rate_kg_thm")),
-                f"{title} (est)": _fmt_rate(optimal_est.get("coke_rate_kg_thm")),
-            },
-            {
-                "Fuel rate (kg/THM)": "Nut Coke",
-                "Realised (last shift)": _fmt_rate(realised_nut),
-                "Manual (est)": _fmt_rate(manual_est.get("nut_coke_rate_kg_thm")),
-                f"{title} (est)": _fmt_rate(optimal_est.get("nut_coke_rate_kg_thm")),
-            },
-            {
-                "Fuel rate (kg/THM)": "PCI",
-                "Realised (last shift)": _fmt_rate(realised_pci),
-                "Manual (est)": _fmt_rate(manual_est.get("pci_rate_kg_thm")),
-                f"{title} (est)": _fmt_rate(optimal_est.get("pci_rate_kg_thm")),
-            },
-            {
-                "Fuel rate (kg/THM)": "Total Fuel",
-                "Realised (last shift)": _fmt_rate(realised_total),
-                "Manual (est)": _fmt_rate(manual_est.get("total_fuel_rate_kg_thm")),
-                f"{title} (est)": _fmt_rate(optimal_est.get("total_fuel_rate_kg_thm")),
-            },
-        ]
-    )
-    st.markdown("##### Fuel Rates")
-    st.dataframe(fuel_rate_table, hide_index=True, width="stretch")
-    realised_source = str(realised.get("coke_source") or realised.get("pci_source") or "")
-    if realised_source:
-        st.caption(
-            "Realised = latest non-zero plant fuel rates from the static dataset "
-            f"(source e.g. {realised_source}). Blend rates are model estimates."
-        )
-
-    # Realised fuel cost (Rs/THM) from plant fuel rates and unit fuel prices:
-    # PCI Rs 18/kg, Nut coke Rs 24/kg, Coke Rs 28/kg. Shown next to each blend's
-    # model-predicted fuel cost so the operator can gauge the model vs reality.
-    def _rate_value(value: Any) -> float:
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            return 0.0
-        return number if (number > 0 and not pd.isna(number)) else 0.0
-
-    realised_fuel_cost = (
-        18.0 * _rate_value(realised_pci)
-        + 24.0 * _rate_value(realised_nut)
-        + 28.0 * _rate_value(realised_coke)
-    )
-    st.markdown("##### Fuel Cost (Rs/THM)")
-    fc1, fc2, fc3 = st.columns(3)
-    fc1.metric(
-        "Realised (last shift)",
-        f"{realised_fuel_cost:,.2f}" if realised_fuel_cost > 0 else "n/a",
-        help="18 x PCI + 24 x Nut coke + 28 x Coke, using realised plant fuel rates.",
-    )
-    fc2.metric("Manual (predicted)", f"{manual_blend.fuel_cost_per_thm_rs:,.2f}")
-    fc3.metric(f"{title} (predicted)", f"{blend.fuel_cost_per_thm_rs:,.2f}")
-
-    pie_left, pie_right = st.columns(2)
-    with pie_left:
-        _render_share_pie(manual_blend, compare_ores, "Manual Mix")
-    with pie_right:
-        _render_share_pie(blend, selected_ores, f"{title} Mix")
-
-    # Slim per-ore detail: shares plus ore cost in lakhs for both blends.
-    detail_rows = []
+    # ---- Inputs: suggested blend mix (Share %), LP and DE side by side ----
+    st.markdown("###### Suggested blend mix (Share %)")
+    mix_rows = []
     for ore in compare_ores:
-        manual_qty = float(manual_blend.quantities_mt.get(ore.ore_id, 0.0))
-        optimal_qty = float(blend.quantities_mt.get(ore.ore_id, 0.0))
-        price = price_by_id.get(ore.ore_id, 0.0)
-        detail_rows.append(
-            {
-                "ore_name": ore.display_name,
-                "manual_share_pct": float(manual_blend.shares_pct.get(ore.ore_id, 0.0)),
-                "optimal_share_pct": float(blend.shares_pct.get(ore.ore_id, 0.0)),
-                "manual_ore_cost_lakhs": manual_qty * price / 1.0e5,
-                "optimal_ore_cost_lakhs": optimal_qty * price / 1.0e5,
-            }
-        )
-    detail_df = pd.DataFrame(detail_rows).sort_values(
-        "optimal_share_pct", ascending=False
-    )
-    st.markdown("##### Blend Details")
+        row: dict[str, Any] = {"Ore": ore.display_name}
+        for label, blend, _ in options:
+            row[label] = float(blend.shares_pct.get(ore.ore_id, 0.0))
+        mix_rows.append(row)
     st.dataframe(
-        detail_df,
+        pd.DataFrame(mix_rows),
         hide_index=True,
         width="stretch",
         column_config={
-            "ore_name": st.column_config.TextColumn("Ore"),
-            "manual_share_pct": st.column_config.NumberColumn(
-                "Manual Share (%)", format="%.1f"
-            ),
-            "optimal_share_pct": st.column_config.NumberColumn(
-                f"{title} Share (%)", format="%.1f"
-            ),
-            "manual_ore_cost_lakhs": st.column_config.NumberColumn(
-                "Manual Ore Cost (₹ Lakhs)", format="%.2f"
-            ),
-            "optimal_ore_cost_lakhs": st.column_config.NumberColumn(
-                f"{title} Ore Cost (₹ Lakhs)", format="%.2f"
+            label: st.column_config.NumberColumn(label, format="%.1f") for label in labels
+        },
+    )
+
+    # ---- Outputs: the KPIs an operator decides on ----
+    def _basicity(blend: Any, denom_key: str, attr: str) -> float | None:
+        if float(blend.diagnostics.get(denom_key, 0.0) or 0.0) <= 0:
+            return None
+        return float(getattr(blend, attr, 0.0) or 0.0)
+
+    def _fuel_rate_total(blend: Any) -> float | None:
+        value = (blend.diagnostics.get("fuel_rate_estimate") or {}).get(
+            "total_fuel_rate_kg_thm"
+        )
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    # (row label, accessor(blend, si) -> value | None, format string)
+    metric_specs = [
+        ("Total Cost (Rs/THM)", lambda b, si: b.objective_rs_per_thm, "{:,.0f}"),
+        ("Ore Cost (Rs/THM)", lambda b, si: b.ore_cost_per_thm_rs, "{:,.0f}"),
+        # 1-decimal so small but real blend-to-blend differences aren't hidden by
+        # rounding (the fuel model is only weakly blend-sensitive -- see the help
+        # note on the outcomes table).
+        ("Fuel Cost (Rs/THM)", lambda b, si: b.fuel_cost_per_thm_rs, "{:,.1f}"),
+        ("Fuel Rate (kg/THM)", lambda b, si: _fuel_rate_total(b), "{:,.1f}"),
+        ("Hot-Metal Si (%)", lambda b, si: si, "{:,.3f}"),
+        (
+            "Slag Basicity (CaO/SiO2)",
+            lambda b, si: _basicity(b, "slag_basicity_denominator_mt", "slag_basicity"),
+            "{:,.3f}",
+        ),
+        (
+            "Slag T-Basicity",
+            lambda b, si: _basicity(b, "slag_t_basicity_denominator_mt", "slag_t_basicity"),
+            "{:,.3f}",
+        ),
+        ("Slag Rate (kg/THM)", lambda b, si: b.slag_rate_kg_per_thm, "{:,.0f}"),
+    ]
+    out_rows = []
+    for row_label, accessor, fmt in metric_specs:
+        row = {"Outcome": row_label}
+        for label, blend, si in options:
+            value = accessor(blend, si)
+            row[label] = fmt.format(value) if isinstance(value, (int, float)) else "n/a"
+        out_rows.append(row)
+    st.markdown("###### Key outcomes")
+    st.dataframe(
+        pd.DataFrame(out_rows),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Outcome": st.column_config.Column(
+                "Outcome",
+                help=(
+                    "Fuel Cost and Fuel Rate are model estimates. The current fuel "
+                    "model is largely insensitive to the ore blend, so those two "
+                    "rows can look nearly identical across blends even when the mix "
+                    "differs. Ore cost, Si, basicity and slag rate are the "
+                    "blend-driven outcomes."
+                ),
             ),
         },
     )
+
+    # Headline: cheapest option by total cost + optimizer saving vs the manual blend.
+    cheapest_label = min(options, key=lambda option: option[1].objective_rs_per_thm)[0]
+    cols = st.columns(len(options))
+    for col, (label, blend, _) in zip(cols, options):
+        col.metric(
+            f"{label} (Rs/THM)",
+            f"{blend.objective_rs_per_thm:,.0f}",
+            delta="cheapest" if label == cheapest_label else None,
+            delta_color="normal" if label == cheapest_label else "off",
+        )
+    if manual_blend is not None:
+        best_optimizer = min(
+            (blend for _, blend, _ in optimizer_candidates),
+            key=lambda blend: blend.objective_rs_per_thm,
+        )
+        saving = manual_blend.objective_rs_per_thm - best_optimizer.objective_rs_per_thm
+        st.caption(
+            f"Best optimizer blend is {saving:+,.0f} Rs/THM vs the manual blend "
+            "(positive = optimizer is cheaper)."
+        )
+
+
 
 
 @fragment
@@ -1077,6 +1004,77 @@ def _get_model_service() -> FuelUnitCostModelService:
     )
 
 
+@_resource_cache(show_spinner=False)
+def _get_si_service() -> SiPredictionService:
+    """
+    Create or return the cached hot-metal Si prediction service.
+
+    Si is predicted for the baseline and DE blends as a display-only signal and
+    is never used as an optimization objective or constraint. Caching keeps the
+    Si model artifacts warm across reruns.
+
+    Returns:
+         - return SiPredictionService - Cached Si prediction service.
+    """
+
+    bmo_cfg = _get_bmo_config()
+    return SiPredictionService(bundle_cfg=bmo_cfg.get("si_model_bundle", {}))
+
+
+def _render_si_metric(si_value: float | None) -> None:
+    """Render the display-only predicted hot-metal Si for a blend."""
+
+    if si_value is None:
+        return
+    st.metric("Predicted Hot-Metal Si", f"{si_value:.3f} %")
+    st.caption(
+        "Advisory only - standalone Si model; not an optimization objective or "
+        "constraint and does not affect the blend decision."
+    )
+
+
+def _latest_si_from_history(history_df: pd.DataFrame | None) -> float | None:
+    """Return the most recent measured hot-metal Si from the history frame, if any."""
+
+    if history_df is None or history_df.empty:
+        return None
+    for col in ("CHEM_PCT_SI", "chem_pct_si"):
+        if col in history_df.columns:
+            series = pd.to_numeric(history_df[col], errors="coerce").dropna()
+            if not series.empty:
+                return float(series.iloc[-1])
+    return None
+
+
+def _predict_blend_si(
+    *,
+    ores: list[OreInput],
+    quantities_mt: Mapping[str, float],
+    process_context: Mapping[str, Any] | None,
+    history_df: pd.DataFrame | None,
+    hot_metal_target_mt: float | None,
+) -> float | None:
+    """
+    Predict display-only hot-metal Si for one solved blend.
+
+    Failures never interrupt the optimizer flow; a None result simply hides the
+    Si metric for that blend.
+    """
+
+    try:
+        si_service = _get_si_service()
+        return si_service.predict_blend_si(
+            ores=ores,
+            quantities_mt=quantities_mt,
+            process_context=process_context,
+            prev_si=_latest_si_from_history(history_df),
+            hot_metal_target_mt=hot_metal_target_mt,
+        )
+    except Exception as exc:  # noqa: BLE001 - Si is advisory; never break the run
+        log.warning("Si prediction failed: %s", exc)
+        return None
+
+
 def _load_fuel_prediction_context(
     provider: EvonithBmoContextProvider,
 ) -> tuple[
@@ -1144,16 +1142,16 @@ def _selected_ores_from_editor(
         base = by_id[ore_id]
         edited_chemistry = replace(
             base.chemistry,
-            moisture_pct=_float_from_row(
+            moisture_pct=float_from_row(
                 row, "moisture_pct", base.chemistry.moisture_pct
             ),
-            fe_t_pct=_float_from_row(row, "fe_t_pct", base.chemistry.fe_t_pct),
-            sio2_pct=_float_from_row(row, "sio2_pct", base.chemistry.sio2_pct),
-            al2o3_pct=_float_from_row(row, "al2o3_pct", base.chemistry.al2o3_pct),
-            cao_pct=_float_from_row(row, "cao_pct", base.chemistry.cao_pct),
-            mgo_pct=_float_from_row(row, "mgo_pct", base.chemistry.mgo_pct),
-            mno_pct=_float_from_row(row, "mno_pct", base.chemistry.mno_pct),
-            tio2_pct=_float_from_row(row, "tio2_pct", base.chemistry.tio2_pct),
+            fe_t_pct=float_from_row(row, "fe_t_pct", base.chemistry.fe_t_pct),
+            sio2_pct=float_from_row(row, "sio2_pct", base.chemistry.sio2_pct),
+            al2o3_pct=float_from_row(row, "al2o3_pct", base.chemistry.al2o3_pct),
+            cao_pct=float_from_row(row, "cao_pct", base.chemistry.cao_pct),
+            mgo_pct=float_from_row(row, "mgo_pct", base.chemistry.mgo_pct),
+            mno_pct=float_from_row(row, "mno_pct", base.chemistry.mno_pct),
+            tio2_pct=float_from_row(row, "tio2_pct", base.chemistry.tio2_pct),
         )
         selected_ores.append(
             replace(
@@ -1167,177 +1165,6 @@ def _selected_ores_from_editor(
         )
     return selected_ores
 
-
-def _float_from_row(row: pd.Series, key: str, default: float = 0.0) -> float:
-    """
-    Read one numeric value from a Streamlit editor row.
-
-    Data editor cells can return blank, NaN, or typed numeric values depending
-    on Streamlit version and user edits. This helper normalizes those cases so
-    fuel ash inputs always receive stable floats.
-
-    Args:
-         - row: pd.Series - Edited dataframe row.
-         - key: str - Column name to read.
-         - default: float - Value to use when the cell is blank or invalid.
-
-    Returns:
-         - return float - Parsed numeric value.
-    """
-
-    value = row.get(key, default)
-    if pd.isna(value):
-        return float(default)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return float(default)
-
-
-def _fuel_ash_inputs_from_editor(editor_df: pd.DataFrame) -> list[FuelAshInput]:
-    """
-    Convert edited fuel ash rows into typed fuel ash inputs.
-
-    The UI table stores fuel rates and ash chemistry as dataframe columns. This
-    helper converts those rows into dataclass records consumed by LP, DE, and
-    final blend evaluation.
-
-    Args:
-         - editor_df: pd.DataFrame - Edited fuel ash table.
-
-    Returns:
-         - return list[FuelAshInput] - Fuel ash inputs for slag calculations.
-    """
-
-    fuel_ash_inputs: list[FuelAshInput] = []
-    if editor_df.empty:
-        return fuel_ash_inputs
-
-    for _, row in editor_df.iterrows():
-        fuel_id = str(row.get("fuel_id", "")).strip()
-        if not fuel_id:
-            continue
-        fuel_ash_inputs.append(
-            FuelAshInput(
-                fuel_id=fuel_id,
-                display_name=str(row.get("fuel_name", fuel_id)),
-                enabled=bool(row.get("enabled", True)),
-                rate_kg_per_thm=_float_from_row(row, "rate_kg_per_thm"),
-                moisture_pct=_float_from_row(row, "moisture_pct"),
-                ash_pct=_float_from_row(row, "ash_pct"),
-                sio2_pct=_float_from_row(row, "sio2_pct"),
-                al2o3_pct=_float_from_row(row, "al2o3_pct"),
-                cao_pct=_float_from_row(row, "cao_pct"),
-                mgo_pct=_float_from_row(row, "mgo_pct"),
-                fe2o3_pct=_float_from_row(row, "fe2o3_pct"),
-                tio2_pct=_float_from_row(row, "tio2_pct"),
-                na2o_pct=_float_from_row(row, "na2o_pct"),
-                k2o_pct=_float_from_row(row, "k2o_pct"),
-                s_pct=_float_from_row(row, "s_pct"),
-                p_pct=_float_from_row(row, "p_pct"),
-            )
-        )
-    return fuel_ash_inputs
-
-
-def _dust_inputs_from_editor(editor_df: pd.DataFrame) -> list[DustInput]:
-    """
-    Convert edited BF gas dust rows into typed dust inputs.
-
-    Dust rows are used only by the full slag-balance calculation. This helper
-    converts the editable dust table into dataclass records so component losses
-    can be deducted from total BF input.
-
-    Args:
-         - editor_df: pd.DataFrame - Edited BF gas dust table.
-
-    Returns:
-         - return list[DustInput] - Dust inputs for full slag balance.
-    """
-
-    dust_inputs: list[DustInput] = []
-    if editor_df.empty:
-        return dust_inputs
-
-    for _, row in editor_df.iterrows():
-        dust_id = str(row.get("dust_id", "")).strip()
-        if not dust_id:
-            continue
-        dust_inputs.append(
-            DustInput(
-                dust_id=dust_id,
-                display_name=str(row.get("dust_name", dust_id)),
-                enabled=bool(row.get("enabled", True)),
-                wet_qty_mt=_float_from_row(row, "wet_qty_mt"),
-                moisture_pct=_float_from_row(row, "moisture_pct"),
-                sio2_pct=_float_from_row(row, "sio2_pct"),
-                al2o3_pct=_float_from_row(row, "al2o3_pct"),
-                cao_pct=_float_from_row(row, "cao_pct"),
-                mgo_pct=_float_from_row(row, "mgo_pct"),
-                fe_pct=_float_from_row(row, "fe_pct"),
-                mn_pct=_float_from_row(row, "mn_pct"),
-                p_pct=_float_from_row(row, "p_pct"),
-                s_pct=_float_from_row(row, "s_pct"),
-                ti_pct=_float_from_row(row, "ti_pct"),
-                zn_pct=_float_from_row(row, "zn_pct"),
-                na2o_pct=_float_from_row(row, "na2o_pct"),
-                k2o_pct=_float_from_row(row, "k2o_pct"),
-                caf2_pct=_float_from_row(row, "caf2_pct"),
-            )
-        )
-    return dust_inputs
-
-
-def _slag_balance_settings_from_editor(
-    settings_values: dict[str, Any],
-    hm_chem_values: dict[str, float],
-    hm_snapshot: dict[str, Any] | None = None,
-) -> SlagBalanceSettings:
-    """
-    Convert edited slag-balance setting values into a typed settings object.
-
-    PI chemistry (C/Si/S/Others) is sourced from the live HM analysis snapshot
-    so the full slag balance subtracts the actual SiO2 consumed by Si reduction
-    and the actual S reporting to pig iron. HM Mn% and Ti% are pulled directly
-    from the HM snapshot so Mn/Ti partitioning between hot metal and slag
-    reflects observed plant chemistry instead of a fixed 60% recovery factor.
-    Recovery, gas loss, alkali split, and conversion factors remain editable
-    via the advanced expander.
-
-    Args:
-         - settings_values: dict[str, Any] - Edited slag-balance setting values.
-         - hm_chem_values: dict[str, float] - Edited HM chemistry values from the page.
-         - hm_snapshot: dict[str, Any] | None - Raw HM snapshot for per-element fields.
-
-    Returns:
-         - return SlagBalanceSettings - Full slag-balance settings.
-    """
-
-    snapshot = hm_snapshot or {}
-    return SlagBalanceSettings(
-        enabled=bool(settings_values.get("enabled", True)),
-        carbon_pct=float(hm_chem_values.get("carbon_pct", 0.0)),
-        silicon_pct=float(hm_chem_values.get("silicon_pct", 0.0)),
-        sulphur_pct=float(hm_chem_values.get("sulphur_pct", 0.0)),
-        other_pct=float(hm_chem_values.get("other_pct", 0.0)),
-        mn_pct=float(snapshot.get("chem_pct_mn", 0.0) or 0.0),
-        ti_pct=float(snapshot.get("chem_pct_ti", 0.0) or 0.0),
-        pi_loss_pct=float(settings_values.get("pi_loss_pct", 0.2)),
-        fe_to_pig_iron_fraction=float(
-            settings_values.get("fe_to_pig_iron_fraction", 0.999)
-        ),
-        mn_recovery_pct=float(settings_values.get("mn_recovery_pct", 60.0)),
-        sulphur_gas_loss_pct=float(settings_values.get("sulphur_gas_loss_pct", 10.0)),
-        alkali_to_slag_fraction=float(
-            settings_values.get("alkali_to_slag_fraction", 0.8)
-        ),
-        si_to_sio2_factor=float(settings_values.get("si_to_sio2_factor", 2.14)),
-        fe_to_feo_factor=float(settings_values.get("fe_to_feo_factor", 72.0 / 56.0)),
-        mn_to_mno_factor=float(settings_values.get("mn_to_mno_factor", 1.291)),
-        slag_correction_factor=float(
-            settings_values.get("slag_correction_factor", 1.0)
-        ),
-    )
 
 
 apply_bmo_styles()
@@ -1585,58 +1412,11 @@ if ore_inputs_applied or ore_inputs_saved:
 else:
     edited_df = ore_editor_source_df
 
-with st.expander("Slag, Fuel, Flux, and HM Assumptions", expanded=False):
+with st.expander("Hot Metal Chemistry Assumptions", expanded=False):
     with st.form("bmo_assumption_input_form", clear_on_submit=False):
-        fuel_ash_cfg = _fuel_ash_cfg_with_recent_rates(
-            bmo_cfg.get("fuel_ash_inputs", []), recent_fuel_rates
-        )
-        fuel_ash_df = build_fuel_ash_editor_df(fuel_ash_cfg)
-        if not fuel_ash_df.empty:
-            st.markdown("##### Fuel Ash Inputs")
-            source_bits = []
-            for fuel_id, label in (
-                ("coke", "Coke"),
-                ("nut_coke", "Nut coke"),
-                ("pci", "PCI"),
-            ):
-                rate_key = f"{fuel_id}_rate_kg_thm"
-                source_key = f"{fuel_id}_source"
-                if rate_key in recent_fuel_rates:
-                    source_bits.append(
-                        f"{label}: {float(recent_fuel_rates[rate_key]):.1f} kg/THM "
-                        f"({recent_fuel_rates.get(source_key, 'unknown')})"
-                    )
-            if source_bits:
-                st.caption(
-                    "Starting rates from latest non-zero context: "
-                    + "; ".join(source_bits)
-                )
-            edited_fuel_ash_df = render_fuel_ash_editor(fuel_ash_df)
-        else:
-            edited_fuel_ash_df = fuel_ash_df
-        fuel_ash_inputs = _fuel_ash_inputs_from_editor(edited_fuel_ash_df)
-
-        flux_inputs, flux_warnings = _cached_flux_inputs(
-            provider, chemistry_mode, chemistry_window_days, source_cache_version
-        )
-        ore_diagnostics["warnings"].extend(flux_warnings)
-        st.caption(
-            "Flux quantities and chemistry are loaded from charge data and flux chemistry records."
-        )
-
         hm_chem_values = render_hot_metal_chemistry(
             hm_snapshot, bmo_cfg.get("slag_balance", {})
         )
-
-        slag_settings_values = render_slag_balance_settings(
-            bmo_cfg.get("slag_balance", {})
-        )
-        dust_df = build_dust_editor_df(bmo_cfg.get("dust_inputs", []))
-        if not dust_df.empty:
-            st.markdown("##### BF Gas Dust")
-            edited_dust_df = render_dust_editor(dust_df)
-        else:
-            edited_dust_df = dust_df
         assumptions_applied = _form_submit_button(
             st,
             "Apply Assumptions",
@@ -1646,21 +1426,6 @@ with st.expander("Slag, Fuel, Flux, and HM Assumptions", expanded=False):
 if assumptions_applied:
     _clear_bmo_results()
     st.success("Assumptions applied.")
-dust_inputs = _dust_inputs_from_editor(edited_dust_df)
-slag_balance_settings = _slag_balance_settings_from_editor(
-    slag_settings_values, hm_chem_values, hm_snapshot
-)
-
-# Operator-visible warning: if dust is entered but the full slag balance
-# is disabled, the dust rows are silently ignored downstream. Surface
-# this so the operator knows their dust entry isn't being applied.
-_dust_entered_mt = sum(float(d.wet_qty_mt or 0.0) for d in dust_inputs if d.enabled)
-if _dust_entered_mt > 0 and not slag_balance_settings.enabled:
-    st.warning(
-        f"BF gas dust ({_dust_entered_mt:,.1f} MT) is entered but "
-        "'Use full slag balance' is unchecked - dust will NOT be deducted "
-        "from the slag balance."
-    )
 
 selected_ores = _selected_ores_from_editor(edited_df, ores)
 pellet_input_issues = validate_selected_pellet_inputs(
@@ -1698,6 +1463,50 @@ _render_data_diagnostics(
     edited_ore_df=edited_df,
     expanded=bool(visible_data_warnings),
 )
+
+fuel_ash_df = build_fuel_ash_editor_df(
+    _fuel_ash_cfg_with_recent_rates(
+        bmo_cfg.get("fuel_ash_inputs", []), recent_fuel_rates
+    )
+)
+if not fuel_ash_df.empty:
+    st.markdown("### Fuel Ash Inputs")
+    edited_fuel_ash_df = render_fuel_ash_editor(fuel_ash_df)
+else:
+    edited_fuel_ash_df = fuel_ash_df
+fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
+
+flux_df = build_flux_editor_df(bmo_cfg.get("flux_inputs", []))
+if not flux_df.empty:
+    st.markdown("### Flux Inputs")
+    edited_flux_df = render_flux_editor(flux_df)
+else:
+    edited_flux_df = flux_df
+flux_inputs = flux_inputs_from_editor(edited_flux_df)
+
+with st.expander("Advanced Slag Balance Inputs", expanded=False):
+    slag_settings_values = render_slag_balance_settings(bmo_cfg.get("slag_balance", {}))
+    dust_df = build_dust_editor_df(bmo_cfg.get("dust_inputs", []))
+    if not dust_df.empty:
+        st.markdown("##### BF Gas Dust")
+        edited_dust_df = render_dust_editor(dust_df)
+    else:
+        edited_dust_df = dust_df
+dust_inputs = dust_inputs_from_editor(edited_dust_df)
+slag_balance_settings = slag_balance_settings_from_editor(
+    slag_settings_values, hm_chem_values, hm_snapshot
+)
+
+# Operator-visible warning: if dust is entered but the full slag balance
+# is disabled, the dust rows are silently ignored downstream. Surface
+# this so the operator knows their dust entry isn't being applied.
+_dust_entered_mt = sum(float(d.wet_qty_mt or 0.0) for d in dust_inputs if d.enabled)
+if _dust_entered_mt > 0 and not slag_balance_settings.enabled:
+    st.warning(
+        f"BF gas dust ({_dust_entered_mt:,.1f} MT) is entered but "
+        "'Use full slag balance' is unchecked - dust will NOT be deducted "
+        "from the slag balance."
+    )
 
 run_lp_clicked = False
 run_total_clicked = False
@@ -1807,9 +1616,20 @@ if requested_lp or requested_total:
                 )
                 lp_result.feasible = lp_physical_result.feasible
                 lp_result.violations = lp_physical_result.violations
-        if requested_lp:
-            st.session_state["bmo_lp_result"] = lp_result
-            st.session_state["bmo_lp_errors"] = lp_errors
+                # Display-only Si prediction for the baseline blend (not optimized).
+                st.session_state["bmo_lp_si"] = _predict_blend_si(
+                    ores=selected_ores,
+                    quantities_mt=lp_physical_result.quantities_mt,
+                    process_context=process_context,
+                    history_df=history_df,
+                    hot_metal_target_mt=target_production_mt,
+                )
+        # LP always runs in this rerun and shares DE's fuel-prediction context, so
+        # always persist it. This keeps the LP tab and the LP-vs-DE comparison on
+        # the SAME live snapshot DE used, avoiding a stale LP (from an earlier,
+        # separate click) being shown next to a fresh DE.
+        st.session_state["bmo_lp_result"] = lp_result
+        st.session_state["bmo_lp_errors"] = lp_errors
 
         if requested_total:
             de_status = st.status("Total Cost Optimizer (DE) running...", expanded=True)
@@ -1898,8 +1718,36 @@ if requested_lp or requested_total:
                 ),
                 state="complete",
             )
+            # Guardrail: DE jointly minimises ore + fuel and is seeded from the LP
+            # baseline, so its total cost can never legitimately exceed LP's. If it
+            # does (DE hit its iteration/time budget, or returned infeasible), report
+            # the cheaper LP solution as the DE result so the operator never sees a
+            # "worse optimum" than the baseline. LP here is from the same rerun /
+            # context as DE, so the comparison is apples-to-apples.
+            if lp_result is not None and lp_result.feasible and (
+                de_result is None
+                or not de_result.feasible
+                or de_result.objective_rs_per_thm
+                > lp_result.objective_rs_per_thm + 1e-6
+            ):
+                de_result = copy.deepcopy(lp_result)
+                de_result.diagnostics = dict(de_result.diagnostics)
+                de_result.diagnostics["de_fell_back_to_lp"] = True
+                de_si = st.session_state.get("bmo_lp_si")
+            elif de_result is not None:
+                # Display-only Si prediction for the DE blend (Si is not optimized).
+                de_si = _predict_blend_si(
+                    ores=selected_ores,
+                    quantities_mt=de_result.quantities_mt,
+                    process_context=process_context,
+                    history_df=history_df,
+                    hot_metal_target_mt=target_production_mt,
+                )
+            else:
+                de_si = None
             st.session_state["bmo_de_result"] = de_result
             st.session_state["bmo_de_errors"] = de_errors
+            st.session_state["bmo_de_si"] = de_si
 
 
 lp_result = st.session_state.get("bmo_lp_result")
@@ -1923,6 +1771,7 @@ if lp_result is not None or de_result is not None:
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 is_lp_mode=True,
             )
+            _render_si_metric(st.session_state.get("bmo_lp_si"))
             render_blend_table(lp_result, selected_ores)
             _render_share_pie(lp_result, selected_ores, "LP Share (%)")
             render_slag_balance_details(
@@ -1933,11 +1782,18 @@ if lp_result is not None or de_result is not None:
 
     with tab_de:
         if de_result is not None:
+            if de_result.diagnostics.get("de_fell_back_to_lp"):
+                st.info(
+                    "The total-cost optimizer did not improve on the LP baseline "
+                    "(it can hit its iteration/time budget). Showing the LP "
+                    "baseline blend as the best available solution."
+                )
             render_blend_metrics(
                 "DE Total-Cost Result",
                 de_result,
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
             )
+            _render_si_metric(st.session_state.get("bmo_de_si"))
             render_blend_table(de_result, selected_ores)
             _render_share_pie(de_result, selected_ores, "DE Share (%)")
             render_slag_balance_details(
@@ -1952,16 +1808,23 @@ if lp_result is not None or de_result is not None:
             st.info("Run total-cost optimizer to see ore + fuel optimized blend.")
 
     with tab_cmp:
-        comparison_result = de_result or lp_result
-        if comparison_result is not None:
-            comparison_title = (
-                "DE Total-Cost Blend" if de_result is not None else "LP Baseline Blend"
+        # Operator-focused comparison: the manual blend against each optimizer
+        # blend (LP + DE) shown side by side -- inputs (blend mix) and outputs
+        # (cost, fuel rate, Si, basicity, slag rate) on the same target-Fe basis.
+        optimizer_candidates: list[tuple[str, Any, float | None]] = []
+        if lp_result is not None:
+            optimizer_candidates.append(
+                ("LP Baseline", lp_result, st.session_state.get("bmo_lp_si"))
             )
-            _render_manual_blend_comparison(
+        if de_result is not None:
+            optimizer_candidates.append(
+                ("DE Total-Cost", de_result, st.session_state.get("bmo_de_si"))
+            )
+        if optimizer_candidates:
+            _render_blend_comparison(
                 provider,
-                comparison_result,
-                selected_ores,
-                comparison_title,
+                optimizer_candidates=optimizer_candidates,
+                selected_ores=selected_ores,
                 target_fe_mt=target_fe_mt,
                 target_production_mt=target_production_mt,
                 feo_in_slag_pct=feo_in_slag_pct,
@@ -1970,98 +1833,8 @@ if lp_result is not None or de_result is not None:
                 dust_inputs=dust_inputs,
                 slag_balance_settings=slag_balance_settings,
                 manual_ores=ores,
-                recent_fuel_rates=recent_fuel_rates,
             )
-
-        if lp_result is not None and de_result is not None:
-            # LP and DE solve DIFFERENT problems: LP minimises ore cost only,
-            # DE jointly minimises ore + fuel. The headline summary makes
-            # that asymmetry explicit so an operator can read what each
-            # method optimised + see DE's fuel-cost value-add over LP.
-            st.markdown("##### LP vs DE comparison")
-            lp_ore = lp_result.ore_cost_per_thm_rs
-            lp_fuel = lp_result.fuel_cost_per_thm_rs
-            lp_total = lp_result.objective_rs_per_thm
-            de_ore = de_result.ore_cost_per_thm_rs
-            de_fuel = de_result.fuel_cost_per_thm_rs
-            de_total = de_result.objective_rs_per_thm
-
-            fuel_savings = lp_fuel - de_fuel  # +ve = DE saved fuel
-            ore_premium = de_ore - lp_ore  # +ve = DE paid an ore premium
-            total_delta = de_total - lp_total  # should be <= 0 if DE found improvement
-
-            ca, cb, cc = st.columns(3)
-            ca.metric(
-                "LP ore-cost optimum (Rs/THM)",
-                f"{lp_ore:,.2f}",
-                help=(
-                    "Lowest ore cost found by the linear programme. Fuel "
-                    "cost shown on the LP tab is a post-hoc estimate, not "
-                    "part of LP's objective."
-                ),
-            )
-            cb.metric(
-                "DE total-cost optimum (Rs/THM)",
-                f"{de_total:,.2f}",
-                delta=f"ore {de_ore:,.0f} + fuel {de_fuel:,.0f}",
-                delta_color="off",
-                help=(
-                    "DE jointly minimises ore + fuel cost; the total above "
-                    "is the actual optimisation objective."
-                ),
-            )
-            cc.metric(
-                "DE fuel savings vs LP (Rs/THM)",
-                f"{fuel_savings:+,.2f}",
-                delta=f"ore premium {ore_premium:+,.2f}",
-                delta_color="off",
-                help=(
-                    "Positive = DE traded a higher ore cost for lower fuel "
-                    "cost. Negative = DE could not improve on LP's fuel."
-                ),
-            )
-
-            if total_delta > 0.5:
-                st.warning(
-                    f"DE total cost ({de_total:,.2f}) is higher than LP total "
-                    f"({lp_total:,.2f}) by {total_delta:,.2f} Rs/THM. This "
-                    "usually means DE hit the iteration/time budget before "
-                    "improving on the LP seed -- increase maxiter or popsize "
-                    "in setting_bmo.yml."
-                )
-
-            comparison_df = pd.DataFrame(
-                [
-                    {
-                        "method": "LP baseline",
-                        "objective_rs_per_thm": lp_result.objective_rs_per_thm,
-                        "ore_cost_rs_per_thm": lp_result.ore_cost_per_thm_rs,
-                        "fuel_cost_rs_per_thm": lp_result.fuel_cost_per_thm_rs,
-                        "fe_production_mt": lp_result.fe_production_mt,
-                        "slag_mt": lp_result.slag_mt,
-                        "slag_rate_kg_per_thm": lp_result.slag_rate_kg_per_thm,
-                        "feasible": lp_result.feasible,
-                    },
-                    {
-                        "method": "DE total cost",
-                        "objective_rs_per_thm": de_result.objective_rs_per_thm,
-                        "ore_cost_rs_per_thm": de_result.ore_cost_per_thm_rs,
-                        "fuel_cost_rs_per_thm": de_result.fuel_cost_per_thm_rs,
-                        "fe_production_mt": de_result.fe_production_mt,
-                        "slag_mt": de_result.slag_mt,
-                        "slag_rate_kg_per_thm": de_result.slag_rate_kg_per_thm,
-                        "feasible": de_result.feasible,
-                    },
-                ]
-            )
-            df_kwargs: dict[str, Any] = {}
-            dataframe_sig = inspect.signature(st.dataframe)
-            if "hide_index" in dataframe_sig.parameters:
-                df_kwargs["hide_index"] = True
-            if "width" in dataframe_sig.parameters:
-                df_kwargs["width"] = "stretch"
-            st.dataframe(comparison_df, **df_kwargs)
-        elif comparison_result is None:
+        else:
             st.info(
                 "Run LP or DE to compare the suggested blend with the last manual shift."
             )
