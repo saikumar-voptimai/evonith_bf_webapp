@@ -1,4 +1,4 @@
-"""Streamlit page renderer for the FurnaceMind AI Co-Operate experience.
+﻿"""Streamlit page renderer for the FurnaceMind AI Co-Operate experience.
 
 This module wires together the FurnaceMind chat UI, PostgreSQL conversation
 persistence, rolling memory summaries, skill shortcuts, vector stores, and the
@@ -19,6 +19,8 @@ from agents.embeddings.cloud_embedding import CloudEmbeddingClient
 from agents.furnacemind import prompts
 from agents.furnacemind.agent import run_agent_loop
 from agents.furnacemind.context import SystemPromptContext
+from agents.furnacemind.skill_registry import SkillRegistry
+from agents.furnacemind.skill_vector_store import SkillVectorStore
 from agents.furnacemind.skills import SkillEngine
 from agents.llm.llm_client import OpenRouterClient
 from agents.memory import fm_memory
@@ -140,6 +142,39 @@ def _cached_skill_engine() -> SkillEngine:
          - return: SkillEngine - Singleton FurnaceMind skill engine.
     """
     return SkillEngine()
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_skill_vector_store() -> SkillVectorStore | None:
+    """
+    Build the Qdrant-backed semantic index for FurnaceMind skills.
+
+    The app can still run without this store: selected skills are injected from
+    SQL directly, and the registry can fall back to runtime embedding if Qdrant
+    is unavailable. When available, this store is used for persisted skill
+    retrieval and sidebar create/edit indexing.
+    """
+    try:
+        return SkillVectorStore(_cached_embedding_client())
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_skill_repository() -> Any | None:
+    """
+    Build the PostgreSQL repository for database-driven quick skills.
+
+    Skill configuration is optional at runtime. When PostgreSQL is unavailable or
+    the skills table is empty, ``SkillRegistry`` falls back to the built-in skill
+    definitions so the existing FurnaceMind buttons continue to work.
+    """
+    try:
+        engine = relational.build_relational_engine()
+        session_factory = relational.build_relational_session_factory(engine)
+        return relational.SkillRepository(session_factory)
+    except Exception:
+        return None
 
 
 @st.cache_resource(show_spinner=False)
@@ -683,6 +718,13 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     knowledge_store = _cached_knowledge_store()
     context = _cached_context()
     engine = _cached_skill_engine()
+    skill_repository = _cached_skill_repository()
+    skill_vector_store = _cached_skill_vector_store()
+    skill_registry = SkillRegistry(
+        engine=engine,
+        repository=skill_repository,
+        vector_store=skill_vector_store,
+    )
     history_store = _cached_history_store()
     document_repository = _cached_document_repository()
     chunk_repository = _cached_chunk_repository()
@@ -747,6 +789,14 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
     if user_id and document_repository is None:
         st.sidebar.caption("Knowledge document metadata database unavailable.")
+    if skill_repository is None:
+        st.sidebar.caption(
+            "Skill registry database unavailable; using built-in quick skills."
+        )
+    if skill_vector_store is None:
+        st.sidebar.caption(
+            "Skill vector index unavailable; selected skills still work."
+        )
 
     feedback_flow.process_pending_explicit_feedback(
         feedback_service=feedback_service,
@@ -766,6 +816,11 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         memory_summary_window=memory_summary_window,
         memory_summary_token_limit=memory_summary_token_limit,
     )
+    chat_interface.render_skill_sidebar(
+        skill_repository=skill_repository,
+        skill_vector_store=skill_vector_store,
+        user_id=user_id,
+    )
     chat_interface.render_knowledge_sidebar(
         knowledge_store=knowledge_store,
         embedding_client=embedding_client,
@@ -779,7 +834,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
     chat_interface.render_chat_history()
 
-    chat_interface.render_quick_skills(engine, default_date, default_label)
+    chat_interface.render_quick_skills(skill_registry, default_date, default_label)
     chat_submission = st.chat_input(
         "Ask FurnaceMind or attach a document...",
         accept_file="multiple",
@@ -790,12 +845,13 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     user_query: str | None = None
     user_display: str | None = None
     active_skill_id: str | None = None
-
+    active_skill_context: str | None = None
     if "pending_skill_prompt" in st.session_state:
         pending = st.session_state.pop("pending_skill_prompt")
         user_query = pending.get("prompt")
         user_display = pending.get("display")
         active_skill_id = pending.get("skill_id")
+        active_skill_context = pending.get("skill_context")
     else:
         user_query, user_display = chat_interface.extract_submission(
             chat_submission,
@@ -809,6 +865,27 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if not user_query:
         return
 
+    recent_skill_messages = chat_interface.chat_history_to_messages(max_messages=3)
+    turn_skill_context = skill_registry.turn_skill_context(
+        query=user_query,
+        recent_messages=recent_skill_messages,
+        selected_skill_id=active_skill_id,
+        selected_skill_context=active_skill_context,
+        embedding_client=embedding_client,
+    )
+    if turn_skill_context:
+        active_skill_context = turn_skill_context
+
+    skill_context_skill_ids = list(skill_registry.last_context_skill_ids)
+    skill_context_skill_slugs = list(skill_registry.last_context_skill_slugs)
+    skill_message_metadata: dict[str, Any] = {}
+    if skill_context_skill_ids or skill_context_skill_slugs:
+        skill_message_metadata = {
+            "exclude_from_memory": True,
+            "skill_context_skill_ids": skill_context_skill_ids,
+            "skill_context_skill_slugs": skill_context_skill_slugs,
+            "skill_context_source": "furnacemind_skills",
+        }
     feedback_flow.detect_and_save_chat_feedback(
         feedback_service=feedback_service,
         feedback_llm=feedback_llm,
@@ -856,6 +933,10 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             "knowledge_filenames": knowledge_filenames,
             "knowledge_source": "furnacemind_knowledge",
         }
+    turn_message_metadata = {
+        **knowledge_message_metadata,
+        **skill_message_metadata,
+    }
     user_message_id: str | None = None
     if history_store is not None and conversation_id and user_id:
         try:
@@ -864,7 +945,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
                 user_id=user_id,
                 content=user_query,
                 display=user_display or user_query,
-                metadata=knowledge_message_metadata or None,
+                metadata=turn_message_metadata or None,
             )
         except Exception as exc:
             st.sidebar.caption(f"Could not save user message: {exc}")
@@ -877,7 +958,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             "type": "text",
             "message_id": user_message_id,
             "conversation_id": conversation_id,
-            "metadata": knowledge_message_metadata,
+            "metadata": turn_message_metadata,
         }
     )
     with st.chat_message("user"):
@@ -900,6 +981,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             "content": context.build(
                 extra=extra_context,
                 skill_id=active_skill_id,
+                skill_context=active_skill_context,
             ),
         },
         *chat_interface.chat_history_to_messages(
@@ -924,7 +1006,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
 
     chat_interface.inject_artifacts(history_len_before)
 
-    assistant_metadata = {"source": "furnacemind", **knowledge_message_metadata}
+    assistant_metadata = {"source": "furnacemind", **turn_message_metadata}
     assistant_message_id: str | None = None
     if history_store is not None and conversation_id and user_id:
         try:

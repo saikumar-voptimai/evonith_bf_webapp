@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, time, timezone
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -24,7 +26,6 @@ from .models import (
     MemoryDocument,
     MemoryFact,
     MemorySummary,
-    Skill,
     User,
     UserRole,
     UserRoleAssignment,
@@ -1357,8 +1358,14 @@ class MemoryFactRepository:
             return int(result.rowcount or 0)
 
 
-class SkillRepository:
-    """Repository for built-in and uploaded FurnaceMind skills."""
+class SkillRepository(_ReflectedTableRepository):
+    """Repository for built-in and uploaded FurnaceMind skills.
+
+    The production ``furnace_mind.skills`` table can be older than the ORM model
+    during feature rollout. This repository reflects the live table and reads or
+    writes only the columns that actually exist, matching the deployed skills
+    table during rollout.
+    """
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         """
@@ -1370,28 +1377,118 @@ class SkillRepository:
         Returns:
              - return: None - This function does not return a value.
         """
-        self._session_factory = session_factory
+        super().__init__(session_factory, table_name="skills")
+
+    @staticmethod
+    def _metadata_column_name(table: Table) -> str | None:
+        """Return the JSON metadata column name used by the live skills table."""
+        columns = set(table.c.keys())
+        if "metadata" in columns:
+            return "metadata"
+        if "metadata_json" in columns:
+            return "metadata_json"
+        return None
+
+    @staticmethod
+    def _metadata_value(value: Any) -> dict[str, Any]:
+        """Normalize a JSON/JSONB metadata value from PostgreSQL."""
+        if isinstance(value, dict):
+            return value
+        if not isinstance(value, str) or not value.strip():
+            return {}
+        try:
+            loaded = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return loaded if isinstance(loaded, dict) else {}
+
+    @classmethod
+    def _skill_from_mapping(cls, values: dict[str, Any]) -> Any:
+        """Return an attribute-style skill object with defaults for old schemas."""
+        metadata = cls._metadata_value(
+            values.get("metadata_json")
+            if "metadata_json" in values
+            else values.get("metadata")
+        )
+        is_active = values.get("is_active")
+        return SimpleNamespace(
+            skill_id=str(values.get("skill_id") or ""),
+            name=str(values.get("name") or "Skill"),
+            symbol=str(values.get("symbol") or metadata.get("symbol") or ""),
+            description=values.get("description"),
+            instruction=str(values.get("instruction") or ""),
+            source_type=str(values.get("source_type") or "uploaded"),
+            qdrant_collection=values.get("qdrant_collection"),
+            is_active=True if is_active is None else bool(is_active),
+            created_by=values.get("created_by"),
+            metadata_json=metadata,
+            created_at=values.get("created_at"),
+            updated_at=values.get("updated_at"),
+        )
+
+    @classmethod
+    def _skill_from_row(cls, row: Any) -> Any:
+        """Convert a SQLAlchemy row mapping into the runtime skill shape."""
+        return cls._skill_from_mapping(dict(row))
+
+    def _get_skill_in_session(
+        self, session: Session, table: Table, skill_id: str
+    ) -> Any | None:
+        """Return one skill from a reflected table within an existing session."""
+        if "skill_id" not in table.c:
+            return None
+        row = (
+            session.execute(select(table).where(table.c.skill_id == skill_id))
+            .mappings()
+            .first()
+        )
+        return self._skill_from_row(row) if row is not None else None
+
+    @staticmethod
+    def _set_if_present(
+        payload: dict[str, Any], columns: set[str], key: str, value: Any
+    ) -> None:
+        """Add a write value only when the reflected table accepts the column."""
+        if key in columns and value is not _UNSET:
+            payload[key] = value
+
+    @staticmethod
+    def _ordered_skill_statement(table: Table) -> Any:
+        """Build a deterministic SELECT for whichever ordering columns exist."""
+        stmt = select(table)
+        order_columns = [
+            table.c[column]
+            for column in ("created_at", "name", "skill_id")
+            if column in table.c
+        ]
+        if order_columns:
+            stmt = stmt.order_by(*order_columns)
+        return stmt
 
     def create_skill(
         self,
         *,
         name: str,
         instruction: str,
-        icon: str | None = None,
+        symbol: str | None = None,
         description: str | None = None,
         source_type: str = "uploaded",
         qdrant_collection: str | None = None,
         is_active: bool = True,
         created_by: str | None = None,
         metadata: dict | None = None,
-    ) -> Skill:
+    ) -> Any:
         """
         Create and return a skill definition.
+
+        Only columns present in the live ``skills`` table are written, using the
+        exported schema: identity, text fields, source metadata, active state, and
+        timestamps.
 
         Args:
              - name: str - Skill display name.
              - instruction: str - Prompt instruction used when the skill is selected.
-             - icon: str | None - Optional icon label for the skill.
+             - symbol: str | None - Optional unique short symbol for the skill.
              - description: str | None - Optional skill description.
              - source_type: str - Skill source, such as built_in or uploaded.
              - qdrant_collection: str | None - Optional Qdrant collection name.
@@ -1400,31 +1497,41 @@ class SkillRepository:
              - metadata: dict | None - Optional JSON metadata for the skill.
 
         Returns:
-             - return: Skill - Created skill ORM row.
+             - return: Any - Created skill row exposed as attribute-style data.
         """
-        now = utc_now()
-        skill = Skill(
-            skill_id=_new_id("skill"),
-            name=name,
-            icon=icon,
-            description=description,
-            instruction=instruction,
-            source_type=source_type,
-            qdrant_collection=qdrant_collection,
-            is_active=is_active,
-            created_by=created_by,
-            metadata_json=metadata or {},
-            created_at=now,
-            updated_at=now,
-        )
+        skill_id = _new_id("skill")
         with self._session_factory() as session:
-            session.add(skill)
-            session.commit()
-            session.refresh(skill)
-            session.expunge(skill)
-            return skill
+            table = self._reflect_table(session)
+            columns = set(table.c.keys())
+            if "skill_id" not in columns:
+                raise RuntimeError("furnace_mind.skills must include a skill_id column")
 
-    def list_skills(self, *, active_only: bool = False) -> list[Skill]:
+            now = utc_now()
+            payload: dict[str, Any] = {}
+            self._set_if_present(payload, columns, "skill_id", skill_id)
+            self._set_if_present(payload, columns, "name", name)
+            self._set_if_present(payload, columns, "symbol", symbol)
+            self._set_if_present(payload, columns, "description", description)
+            self._set_if_present(payload, columns, "instruction", instruction)
+            self._set_if_present(payload, columns, "source_type", source_type)
+            self._set_if_present(
+                payload, columns, "qdrant_collection", qdrant_collection
+            )
+            self._set_if_present(payload, columns, "is_active", is_active)
+            self._set_if_present(payload, columns, "created_by", created_by)
+            metadata_column = self._metadata_column_name(table)
+            if metadata_column:
+                payload[metadata_column] = metadata or {}
+            self._set_if_present(payload, columns, "created_at", now)
+            self._set_if_present(payload, columns, "updated_at", now)
+
+            session.execute(table.insert().values(**payload))
+            session.commit()
+            return self._get_skill_in_session(
+                session, table, skill_id
+            ) or self._skill_from_mapping(payload)
+
+    def list_skills(self, *, active_only: bool = False) -> list[Any]:
         """
         List skills, optionally filtering to active skills.
 
@@ -1432,60 +1539,79 @@ class SkillRepository:
              - active_only: bool - Whether to return only active skills.
 
         Returns:
-             - return: list[Skill] - Skill rows.
+             - return: list[Any] - Skill rows exposed as attribute-style data.
         """
         with self._session_factory() as session:
-            stmt = select(Skill).order_by(Skill.created_at.asc())
-            if active_only:
-                stmt = stmt.where(Skill.is_active.is_(True))
-            rows = list(session.execute(stmt).scalars().all())
-            for row in rows:
-                session.expunge(row)
-            return rows
+            table = self._reflect_table(session)
+            stmt = self._ordered_skill_statement(table)
+            if active_only and "is_active" in table.c:
+                stmt = stmt.where(table.c.is_active.is_(True))
+            rows = session.execute(stmt).mappings().all()
+            return [self._skill_from_row(row) for row in rows]
 
     def update_skill(
         self,
         *,
         skill_id: str,
         name: str = _UNSET,
-        icon: str | None = _UNSET,
+        symbol: str | None = _UNSET,
         description: str | None = _UNSET,
         instruction: str = _UNSET,
+        qdrant_collection: str | None = _UNSET,
         is_active: bool = _UNSET,
-    ) -> Skill | None:
+        metadata: dict | None = _UNSET,
+    ) -> Any | None:
         """
         Update a skill definition and return the row.
+
+        Missing optional columns are skipped so UI edits remain compatible with
+        older database schemas.
 
         Args:
              - skill_id: str - Skill id to update.
              - name: str - New skill display name.
-             - icon: str | None - New optional icon label.
+             - symbol: str | None - New unique short symbol.
              - description: str | None - New skill description.
              - instruction: str - New prompt instruction.
+             - qdrant_collection: str | None - Qdrant collection holding skill vectors.
              - is_active: bool - New active state.
+             - metadata: dict | None - New optional JSON metadata.
 
         Returns:
-             - return: Skill | None - Updated skill row when found, otherwise None.
+             - return: Any | None - Updated skill row when found, otherwise None.
         """
         with self._session_factory() as session:
-            skill = session.get(Skill, skill_id)
-            if skill is None:
+            table = self._reflect_table(session)
+            columns = set(table.c.keys())
+            if "skill_id" not in columns:
                 return None
-            if name is not _UNSET:
-                skill.name = name
-            if icon is not _UNSET:
-                skill.icon = icon
-            if description is not _UNSET:
-                skill.description = description
-            if instruction is not _UNSET:
-                skill.instruction = instruction
-            if is_active is not _UNSET:
-                skill.is_active = is_active
-            skill.updated_at = utc_now()
+
+            payload: dict[str, Any] = {}
+            self._set_if_present(payload, columns, "name", name)
+            self._set_if_present(payload, columns, "symbol", symbol)
+            self._set_if_present(payload, columns, "description", description)
+            self._set_if_present(payload, columns, "instruction", instruction)
+            self._set_if_present(
+                payload, columns, "qdrant_collection", qdrant_collection
+            )
+            self._set_if_present(payload, columns, "is_active", is_active)
+            metadata_column = self._metadata_column_name(table)
+            if metadata_column and metadata is not _UNSET:
+                payload[metadata_column] = metadata or {}
+            if "updated_at" in columns:
+                payload["updated_at"] = utc_now()
+
+            if not payload:
+                return self._get_skill_in_session(session, table, skill_id)
+
+            result = session.execute(
+                update(table).where(table.c.skill_id == skill_id).values(**payload)
+            )
+            if int(result.rowcount or 0) <= 0:
+                session.rollback()
+                return None
             session.commit()
-            session.refresh(skill)
-            session.expunge(skill)
-            return skill
+            return self._get_skill_in_session(session, table, skill_id)
 
 
 class FeedbackItemRepository:

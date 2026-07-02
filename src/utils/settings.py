@@ -165,6 +165,7 @@ class Settings:
 
     * ``qdrant_shift`` — 384-dim local embeddings, shift summary store.
     * ``qdrant_knowledge`` — 1024-dim cloud embeddings, Knowledge Hub.
+    * ``qdrant_skills`` — 1024-dim cloud embeddings, skill retrieval index.
 
     The ``qdrant`` attribute is an alias for ``qdrant_shift`` for backward
     compatibility with existing call-sites.
@@ -173,6 +174,7 @@ class Settings:
         llm:               :class:`LLMSettings` for the active LLM provider.
         qdrant_shift:      :class:`QdrantConfig` for the shift summary collection.
         qdrant_knowledge:  :class:`QdrantConfig` for the knowledge document collection.
+        qdrant_skills:     :class:`QdrantConfig` for the FurnaceMind skill index.
         qdrant:            Alias for ``qdrant_shift`` (backward compatibility).
         app:               :class:`AppConfig` general runtime settings.
         memory_summary_message_window: Number of chat messages per memory summary.
@@ -208,6 +210,16 @@ class Settings:
             # because that usually points to shift summaries and causes mixups.
             fallback_collection_env=None,
             fallback_dim_env=None,
+        )
+
+        self.qdrant_skills = self._load_qdrant_config(
+            collection_env="SKILL_QDRANT_COLLECTION",
+            dim_env="SKILL_QDRANT_EMBED_DIM",
+            default_collection="furnacemind_skills",
+            default_dim=1024,
+            # Skills use the same cloud embedding family as MRAG knowledge.
+            fallback_collection_env=None,
+            fallback_dim_env="KNOWLEDGE_QDRANT_EMBED_DIM",
         )
 
         # Backward-compatible alias: existing code that uses settings.qdrant
