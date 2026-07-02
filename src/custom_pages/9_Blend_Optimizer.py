@@ -625,6 +625,17 @@ def _render_blend_comparison(
         seed_rows.append(
             {"ore_id": ore.ore_id, "ore_name": ore.display_name, "manual_share_pct": seed_share}
         )
+    # Seed the editor with shares already normalised to 100%. The blend is
+    # normalised before evaluation, so the "Suggested blend mix" table shows
+    # normalised shares; seeding raw last-shift shares (which sum to <100% when
+    # some materials aren't selected) would show a different % for the same ore
+    # in the editor vs the mix table.
+    _seed_total = sum(row["manual_share_pct"] for row in seed_rows)
+    if _seed_total > 0:
+        for row in seed_rows:
+            row["manual_share_pct"] = round(
+                row["manual_share_pct"] / _seed_total * 100.0, 1
+            )
     edited_share_df = st.data_editor(
         pd.DataFrame(seed_rows),
         hide_index=True,
@@ -734,8 +745,11 @@ def _render_blend_comparison(
     metric_specs = [
         ("Total Cost (Rs/THM)", lambda b, si: b.objective_rs_per_thm, "{:,.0f}"),
         ("Ore Cost (Rs/THM)", lambda b, si: b.ore_cost_per_thm_rs, "{:,.0f}"),
-        ("Fuel Cost (Rs/THM)", lambda b, si: b.fuel_cost_per_thm_rs, "{:,.0f}"),
-        ("Fuel Rate (kg/THM)", lambda b, si: _fuel_rate_total(b), "{:,.0f}"),
+        # 1-decimal so small but real blend-to-blend differences aren't hidden by
+        # rounding (the fuel model is only weakly blend-sensitive -- see the help
+        # note on the outcomes table).
+        ("Fuel Cost (Rs/THM)", lambda b, si: b.fuel_cost_per_thm_rs, "{:,.1f}"),
+        ("Fuel Rate (kg/THM)", lambda b, si: _fuel_rate_total(b), "{:,.1f}"),
         ("Hot-Metal Si (%)", lambda b, si: si, "{:,.3f}"),
         (
             "Slag Basicity (CaO/SiO2)",
@@ -757,7 +771,23 @@ def _render_blend_comparison(
             row[label] = fmt.format(value) if isinstance(value, (int, float)) else "n/a"
         out_rows.append(row)
     st.markdown("###### Key outcomes")
-    st.dataframe(pd.DataFrame(out_rows), hide_index=True, width="stretch")
+    st.dataframe(
+        pd.DataFrame(out_rows),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Outcome": st.column_config.Column(
+                "Outcome",
+                help=(
+                    "Fuel Cost and Fuel Rate are model estimates. The current fuel "
+                    "model is largely insensitive to the ore blend, so those two "
+                    "rows can look nearly identical across blends even when the mix "
+                    "differs. Ore cost, Si, basicity and slag rate are the "
+                    "blend-driven outcomes."
+                ),
+            ),
+        },
+    )
 
     # Headline: cheapest option by total cost + optimizer saving vs the manual blend.
     cheapest_label = min(options, key=lambda option: option[1].objective_rs_per_thm)[0]
