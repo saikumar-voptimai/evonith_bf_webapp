@@ -194,7 +194,7 @@ Manual-entry data at lower temporal resolution:
 | Collection | Embeddings | Dim | Purpose |
 |---|---|---|---|
 | `furnace_shift_summaries` (env: `SHIFT_QDRANT_COLLECTION`) | Local sentence-transformers | 384 | Shift/day/week reports |
-| `knowledge_docs_voyage_1024` (env: `KNOWLEDGE_QDRANT_COLLECTION`) | Cloud (OpenAI/Voyage) | 1024 | Uploaded operator docs |
+| `furnacemind_knowledge` (env: `KNOWLEDGE_QDRANT_COLLECTION`) | Voyage multimodal | 1024 | Uploaded operator docs |
 
 ### Shift Summary Schema (`src/agents/memory/schemas.py`)
 

@@ -154,16 +154,17 @@ def _live_kpis() -> tuple[dict, str]:
             selected_measurements=["process_params"],
             time_range="last 1 hour",
             window_by="15 minutes",
+            column_naming="field",
         )
         if df is None or df.empty:
             return {}, "No data returned for the last hour."
         def m(col):
             return round(float(df[col].dropna().mean()), 1) if col in df.columns else None
         values = {
-            "prod":  m("Process Params - BF2_PRODUCTION TONNES PER HR"),
-            "fuel":  m("Process Params - BF2_FUEL RATE PER THM"),
-            "etaco": m("Process Params - BF2_BODY_ETACO"),
-            "wind":  m("Process Params - BF2_PROC Hot Blast Volume"),
+            "prod":  m("production_per_hour"),
+            "fuel":  m("fuel_rate"),
+            "etaco": m("body_etaco"),
+            "wind":  m("hot_blast_vol_nm3h"),
         }
         return values, ""
     except Exception as e:

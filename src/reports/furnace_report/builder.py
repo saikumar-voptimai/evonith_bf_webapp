@@ -8,6 +8,7 @@ from typing import Any, Literal, Optional
 import pandas as pd
 
 from config.config_loader import load_config
+from furnace_data.influx.query import online_column_aliases
 from reports.base import ReportBuilder
 from reports.furnace_report.data import (
     ParamStats,
@@ -20,53 +21,8 @@ from reports.furnace_report.materials import (
     material_code_candidates,
 )
 
-# Column name registry.
-# Keys are short internal names; values are the exact DataFrame column names
-# produced by fetch_online_df() and fetch_offline_data().
-
-_ONLINE: dict[str, str] = {
-    # process_params
-    "prod_rate": "Process Params - BF2_PRODUCTION TONNES PER HR",
-    "charges_hr": "Process Params - BF2_CHARGES PER HR",
-    "hb_vol": "Process Params - BF2_PROC Hot Blast Volume",
-    "hb_temp": "Process Params - BF2_PROC Hot Blast Temp",
-    "hb_press": "Process Params - BF2_PROC Hot Blast Pressure",
-    "perm": "Process Params - BF2_BODY_PERMEABILITY",
-    "etaco": "Process Params - BF2_BODY_ETACO",
-    "raft": "Process Params - BF2_BODY_RAFT",
-    "o2_flow": "Process Params - BF2_OXYGEN FLOW",
-    "total_o2_flow": "Process Params - BF2_TOTAL OXYGEN FLOW",
-    "o2_enr": "Process Params - BF2_OXYGEN ENRICHMENT PCT",
-    "coke_rate": "Process Params - BF2_COKE RATE PER THM",
-    "nutcoke_rate": "Process Params - BF2_NUT COKE RATE PER THM",
-    "pci_rate": "Process Params - BF2_COAL RATE PER THM",
-    "runner_temp": "Process Params - TE_40532A Runner Temp PCI side near to Taphole",
-    # Differential pressure
-    "furnace_top_dp": "Process Params - BF2_BODY_TOP DP",
-    "furnace_bottom_dp": "Process Params - BF2_BODY_BOTTOM DP",
-    "furnace_total_dp": "Process Params - BF2_BODY_TOTAL DP",
-    # temperature_profile
-    "hearth_4_3_a": "Temperature Profile - BF2_BFBD Furnace Body 4373mm Temp A",
-    "hearth_5_4_c": "Temperature Profile - BF2_BFBD Furnace Body 5411mm Temp C",
-    "hearth_5_7_c": "Temperature Profile - BF2_BFBD Furnace Body 5757mm Temp C",
-    "hearth_6_1_b": "Temperature Profile - BF2_BFBD Furnace Body 6103mm Temp B",
-    "ls_q1": "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp A",
-    "ls_q2": "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp B",
-    "ls_q3": "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp C",
-    "ls_q4": "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp D",
-    "belly_q1": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp A",
-    "belly_q2": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp B",
-    "belly_q3": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp C",
-    "belly_q4": "Temperature Profile - BF2_BFBD Furnace Body 15162mm Temp D",
-    "uptake_q1": "Process Params - BF2_PROC Top Temp 1",
-    "uptake_q2": "Process Params - BF2_PROC Top Temp 2",
-    "uptake_q3": "Process Params - BF2_PROC Top Temp 3",
-    "uptake_q4": "Process Params - BF2_PROC Top Temp 4",
-    "bosh_q1": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp A",
-    "bosh_q2": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp B",
-    "bosh_q3": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp C",
-    "bosh_q4": "Temperature Profile - BF2_BFBD Furnace Body 12975mm Temp D",
-}
+# Online report metrics use canonical InfluxDB field ids from setting_ds_dv.yml.
+# _series() also accepts legacy display-prefixed columns during migration.
 
 _HM: dict[str, str] = {
     "si": "chem_pct_si",
@@ -129,10 +85,12 @@ _THRESH = dict(_SHIFT_REPORT_CONFIG.get("status_thresholds") or {})
 
 
 def _series(df: pd.DataFrame, key: str) -> pd.Series:
-    col = _ONLINE.get(key, key)
-    if df.empty or col not in df.columns:
+    if df.empty:
         return pd.Series(dtype="float64")
-    return pd.to_numeric(df[col], errors="coerce").dropna()
+    for col in online_column_aliases(key):
+        if col in df.columns:
+            return pd.to_numeric(df[col], errors="coerce").dropna()
+    return pd.Series(dtype="float64")
 
 
 def _mean(df: pd.DataFrame, key: str) -> Optional[float]:
@@ -519,7 +477,7 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
 
         # One row in offline_feed.charge_data represents one charge in the shift.
         total_charges = int(ch.shape[0]) if not ch.empty else 0
-        prod_rate = _mean(df, "prod_rate")
+        prod_rate = _mean(df, "production_per_hour")
         theoretical_production = (
             round(prod_rate * raw.duration_hours, 2) if prod_rate else None
         )
@@ -547,12 +505,12 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
         hm_temp = _hm_mean(hm, "hmt_gt_1480c")
 
         coke_rate_val = _mean(df, "coke_rate")
-        nut_coke_rate_val = _mean(df, "nutcoke_rate")
-        pci_rate_val = _mean(df, "pci_rate")
+        nut_coke_rate_val = _mean(df, "nut_coke_rate")
+        pci_rate_val = _mean(df, "coal_rate_actual_value")
         fuel_rate_val = _sum_required(coke_rate_val, nut_coke_rate_val, pci_rate_val)
-        raft_val = _mean(df, "raft")
-        perm_val = _mean(df, "perm")
-        etaco_val = _mean(df, "etaco")
+        raft_val = _mean(df, "body_raft")
+        perm_val = _mean(df, "body_perm")
+        etaco_val = _mean(df, "body_etaco")
         burden_moisture_input = _burden_moisture_input(
             ch,
             production_t=theoretical_production,
@@ -595,26 +553,37 @@ class ShiftBuilder(ReportBuilder[ShiftRawData, ShiftReportData]):
             hm_temp=hm_temp,
             slag_basicity=slag_basicity,
             total_taps=int(hm.dropna(how="all").shape[0]) if not hm.empty else None,
-            blast_volume=_ps(df, "hb_vol"),
-            blast_temp=_ps(df, "hb_temp"),
-            blast_pressure=_ps(df, "hb_press"),
-            furnace_top_dp=_ps(df, "furnace_top_dp"),
-            furnace_bottom_dp=_ps(df, "furnace_bottom_dp"),
-            furnace_total_dp=_ps(df, "furnace_total_dp"),
-            o2_flow=_ps(df, "o2_flow"),
+            blast_volume=_ps(df, "hot_blast_vol_nm3h"),
+            blast_temp=_ps(df, "hot_blast_temp"),
+            blast_pressure=_ps(df, "hot_blast_press"),
+            furnace_top_dp=_ps(df, "body_dp_top"),
+            furnace_bottom_dp=_ps(df, "body_dp_bottom"),
+            furnace_total_dp=_ps(df, "body_dp_total"),
+            o2_flow=_ps(df, "oxygen_flow"),
             total_o2_flow=raw.total_o2_flow_max if raw.report_type == "Day" else None,
-            o2_enrichment=_ps(df, "o2_enr"),
-            permeability=_ps(df, "perm"),
-            etaco=_ps(df, "etaco"),
-            raft=_ps(df, "raft"),
-            uptake=_temp_row(df, "uptake_q1", "uptake_q2", "uptake_q3", "uptake_q4"),
-            lower_stack=_temp_row(df, "ls_q1", "ls_q2", "ls_q3", "ls_q4"),
-            belly=_temp_row(df, "belly_q1", "belly_q2", "belly_q3", "belly_q4"),
-            bosh=_temp_row(df, "bosh_q1", "bosh_q2", "bosh_q3", "bosh_q4"),
-            hearth_4_3_a=_mean(df, "hearth_4_3_a"),
-            hearth_5_4_c=_mean(df, "hearth_5_4_c"),
-            hearth_5_7_c=_mean(df, "hearth_5_7_c"),
-            hearth_6_1_b=_mean(df, "hearth_6_1_b"),
+            o2_enrichment=_ps(df, "oxygen_enrichment_pct"),
+            permeability=_ps(df, "body_perm"),
+            etaco=_ps(df, "body_etaco"),
+            raft=_ps(df, "body_raft"),
+            uptake=_temp_row(
+                df, "top_temp_1", "top_temp_2", "top_temp_3", "top_temp_4"
+            ),
+            skin_flow=_temp_row(
+                df, "skin_flow_temp_a", "skin_flow_temp_b", "skin_flow_temp_c", "skin_flow_temp_d"
+            ),
+            lower_stack=_temp_row(
+                df, "temp_18660_a", "temp_18660_b", "temp_18660_c", "temp_18660_d"
+            ),
+            belly=_temp_row(
+                df, "temp_15162_a", "temp_15162_b", "temp_15162_c", "temp_15162_d"
+            ),
+            bosh=_temp_row(
+                df, "temp_12975_a", "temp_12975_b", "temp_12975_c", "temp_12975_d"
+            ),
+            hearth_4_3_a=_mean(df, "temp_4373_a"),
+            hearth_5_4_c=_mean(df, "temp_5411_c"),
+            hearth_5_7_c=_mean(df, "temp_5757_c"),
+            hearth_6_1_b=_mean(df, "temp_6103_b"),
             burden_moisture_input=burden_moisture_input,
             fines_input=fines_input,
             burden_ratio=burden_ratio,

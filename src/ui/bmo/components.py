@@ -7,7 +7,6 @@ while handling Streamlit API differences across installed versions.
 
 from __future__ import annotations
 
-import inspect
 from pathlib import Path
 from typing import Any
 
@@ -20,9 +19,7 @@ from utils.bmo.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
 @st.cache_data(show_spinner=False)
 def _read_bmo_css(css_path: str, mtime_ns: int) -> str:
     """Read and cache the BMO stylesheet text keyed on path + modification time.
-
-    The CSS file is static across reruns, so reading it from disk on every
-    Streamlit rerun is wasted I/O. Caching on ``(path, mtime_ns)`` re-reads only
+    Caching on ``(path, mtime_ns)`` re-reads only
     when the file actually changes.
 
     Args:
@@ -68,7 +65,7 @@ def _safe_dataframe(
     df: pd.DataFrame, *, hide_index: bool = True, width: str = "stretch"
 ) -> None:
     """
-    Render a Streamlit dataframe with version-compatible width parameters.
+    Render a Streamlit dataframe.
 
     Args:
          - df: pd.DataFrame - Data frame to render.
@@ -79,13 +76,7 @@ def _safe_dataframe(
          - return None - Renders the dataframe in Streamlit.
     """
 
-    sig = inspect.signature(st.dataframe)
-    kwargs: dict[str, Any] = {}
-    if "hide_index" in sig.parameters:
-        kwargs["hide_index"] = hide_index
-    if "width" in sig.parameters:
-        kwargs["width"] = width
-    st.dataframe(df, **kwargs)
+    st.dataframe(df, hide_index=hide_index, width=width)
 
 
 def render_header(bundle_status: dict[str, Any]) -> None:
@@ -140,10 +131,6 @@ def build_ore_editor_df(
     """
     Build the editable ore selection table from typed ore inputs.
 
-    The table includes moisture because BMO final Fe% is dry-weight weighted.
-    Users can override moisture for a run without changing the underlying YAML
-    mapping or live chemistry source.
-
     Args:
          - ores: list[OreInput] - Available BMO ores.
          - default_selected_ids: list[str] - Ore ids selected by default.
@@ -162,6 +149,8 @@ def build_ore_editor_df(
                 "ore_name": ore.display_name,
                 "stock_mt": float(ore.stock_mt),
                 "price_rs_per_mt": float(ore.price_rs_per_mt),
+                "min_share_pct": float(ore.min_share_pct),
+                "max_share_pct": float(ore.max_share_pct),
                 "moisture_pct": float(ore.chemistry.moisture_pct),
                 "fe_t_pct": float(ore.chemistry.fe_t_pct),
                 "sio2_pct": float(ore.chemistry.sio2_pct),
@@ -170,8 +159,6 @@ def build_ore_editor_df(
                 "mgo_pct": float(ore.chemistry.mgo_pct),
                 "mno_pct": float(ore.chemistry.mno_pct),
                 "tio2_pct": float(ore.chemistry.tio2_pct),
-                "min_share_pct": float(ore.min_share_pct),
-                "max_share_pct": float(ore.max_share_pct),
             }
         )
     return pd.DataFrame(rows)
@@ -192,22 +179,6 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
          - return pd.DataFrame - Edited ore table, or original table as fallback.
     """
 
-    editor_fn = getattr(st, "data_editor", None) or getattr(
-        st, "experimental_data_editor", None
-    )
-    if editor_fn is None:
-        st.info(
-            "Editable table is not available in this Streamlit version. "
-            "Using default ore mapping values for this run."
-        )
-        _safe_dataframe(
-            editor_df.drop(columns=["ore_id"], errors="ignore"),
-            hide_index=True,
-            width="stretch",
-        )
-        return editor_df
-
-    sig = inspect.signature(editor_fn)
     visible_columns = (
         "selected",
         "ore_name",
@@ -268,11 +239,9 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             ),
         },
     }
-    if "column_order" in sig.parameters:
-        editor_kwargs["column_order"] = visible_columns
-    if "width" in sig.parameters:
-        editor_kwargs["width"] = "stretch"
-    return editor_fn(editor_df, **editor_kwargs)
+    editor_kwargs["column_order"] = visible_columns
+    editor_kwargs["width"] = "stretch"
+    return st.data_editor(editor_df, **editor_kwargs)
 
 
 def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame:
@@ -335,22 +304,6 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     if editor_df.empty:
         return editor_df
 
-    editor_fn = getattr(st, "data_editor", None) or getattr(
-        st, "experimental_data_editor", None
-    )
-    if editor_fn is None:
-        st.info(
-            "Editable fuel ash table is not available in this Streamlit version. "
-            "Using configured fuel ash defaults for this run."
-        )
-        _safe_dataframe(
-            editor_df.drop(columns=["fuel_id"], errors="ignore"),
-            hide_index=True,
-            width="stretch",
-        )
-        return editor_df
-
-    sig = inspect.signature(editor_fn)
     visible_columns = (
         "enabled",
         "fuel_name",
@@ -415,11 +368,9 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             ),
         },
     }
-    if "column_order" in sig.parameters:
-        editor_kwargs["column_order"] = visible_columns
-    if "width" in sig.parameters:
-        editor_kwargs["width"] = "stretch"
-    return editor_fn(editor_df, **editor_kwargs)
+    editor_kwargs["column_order"] = visible_columns
+    editor_kwargs["width"] = "stretch"
+    return st.data_editor(editor_df, **editor_kwargs)
 
 
 def build_flux_editor_df(flux_cfg: list[dict[str, Any]]) -> pd.DataFrame:
@@ -485,22 +436,6 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     if editor_df.empty:
         return editor_df
 
-    editor_fn = getattr(st, "data_editor", None) or getattr(
-        st, "experimental_data_editor", None
-    )
-    if editor_fn is None:
-        st.info(
-            "Editable flux table is not available in this Streamlit version. "
-            "Using configured flux defaults for this run."
-        )
-        _safe_dataframe(
-            editor_df.drop(columns=["flux_id"], errors="ignore"),
-            hide_index=True,
-            width="stretch",
-        )
-        return editor_df
-
-    sig = inspect.signature(editor_fn)
     visible_columns = (
         "enabled",
         "flux_name",
@@ -577,11 +512,9 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             ),
         },
     }
-    if "column_order" in sig.parameters:
-        editor_kwargs["column_order"] = visible_columns
-    if "width" in sig.parameters:
-        editor_kwargs["width"] = "stretch"
-    return editor_fn(editor_df, **editor_kwargs)
+    editor_kwargs["column_order"] = visible_columns
+    editor_kwargs["width"] = "stretch"
+    return st.data_editor(editor_df, **editor_kwargs)
 
 
 def build_dust_editor_df(dust_cfg: list[dict[str, Any]]) -> pd.DataFrame:
@@ -644,18 +577,6 @@ def render_dust_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     if editor_df.empty:
         return editor_df
 
-    editor_fn = getattr(st, "data_editor", None) or getattr(
-        st, "experimental_data_editor", None
-    )
-    if editor_fn is None:
-        _safe_dataframe(
-            editor_df.drop(columns=["dust_id"], errors="ignore"),
-            hide_index=True,
-            width="stretch",
-        )
-        return editor_df
-
-    sig = inspect.signature(editor_fn)
     visible_columns = (
         "enabled",
         "dust_name",
@@ -728,11 +649,9 @@ def render_dust_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             ),
         },
     }
-    if "column_order" in sig.parameters:
-        editor_kwargs["column_order"] = visible_columns
-    if "width" in sig.parameters:
-        editor_kwargs["width"] = "stretch"
-    return editor_fn(editor_df, **editor_kwargs)
+    editor_kwargs["column_order"] = visible_columns
+    editor_kwargs["width"] = "stretch"
+    return st.data_editor(editor_df, **editor_kwargs)
 
 
 def render_hot_metal_chemistry(
@@ -755,7 +674,7 @@ def render_hot_metal_chemistry(
          - return dict[str, float] - Edited carbon_pct, silicon_pct, sulphur_pct, other_pct.
     """
 
-    st.markdown("### Hot Metal Chemistry (drives SiO2 reduction & PI balance)")
+    st.markdown("### Hot Metal Chemistry")
     source = hm_snapshot.get("source") if hm_snapshot else None
     n_rows = int(hm_snapshot.get("n_rows_used", 0) or 0) if hm_snapshot else 0
     if source:
@@ -1139,59 +1058,49 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
     """
 
     df = build_blend_table_df(blend, selected_ores)
-    if hasattr(st, "column_config"):
-        sig = inspect.signature(st.dataframe)
-        # Share is shown as an inline progress bar so the burden split is
-        # readable at a glance; ore cost is in lakhs to keep the numbers short.
-        share_max = float(max(100.0, df["share_pct"].max())) if not df.empty else 100.0
-        try:
-            share_col = st.column_config.ProgressColumn(
-                "Share (%)", format="%.1f%%", min_value=0.0, max_value=share_max
-            )
-        except (AttributeError, TypeError):
-            share_col = st.column_config.NumberColumn("Share (%)", format="%.1f")
-        df_kwargs: dict[str, Any] = {
-            "column_config": {
-                "ore_name": st.column_config.TextColumn("Ore"),
-                "share_pct": share_col,
-                "quantity_mt": st.column_config.NumberColumn(
-                    "Wet Qty (MT)", format="%.1f"
-                ),
-                "dry_quantity_mt": st.column_config.NumberColumn(
-                    "Dry Qty (MT)", format="%.1f"
-                ),
-                "fe_contribution_mt": st.column_config.NumberColumn(
-                    "Fe (MT)", format="%.1f"
-                ),
-                "slag_contribution_mt": st.column_config.NumberColumn(
-                    "Slag (MT)", format="%.1f"
-                ),
-                "price_rs_per_mt": st.column_config.NumberColumn(
-                    "Price (Rs/MT)", format="%.0f"
-                ),
-                "ore_cost_lakhs": st.column_config.NumberColumn(
-                    "Ore Cost (₹ Lakhs)", format="%.2f"
-                ),
-            },
-        }
-        if "column_order" in sig.parameters:
-            df_kwargs["column_order"] = (
-                "ore_name",
-                "share_pct",
-                "quantity_mt",
-                "dry_quantity_mt",
-                "fe_contribution_mt",
-                "slag_contribution_mt",
-                "price_rs_per_mt",
-                "ore_cost_lakhs",
-            )
-        if "hide_index" in sig.parameters:
-            df_kwargs["hide_index"] = True
-        if "width" in sig.parameters:
-            df_kwargs["width"] = "stretch"
-        st.dataframe(df, **df_kwargs)
-    else:
-        _safe_dataframe(df, hide_index=True, width="stretch")
+    # Share is shown as an inline progress bar so the burden split is
+    # readable at a glance; ore cost is in lakhs to keep the numbers short.
+    share_max = float(max(100.0, df["share_pct"].max())) if not df.empty else 100.0
+    share_col = st.column_config.ProgressColumn(
+        "Share (%)", format="%.1f%%", min_value=0.0, max_value=share_max
+    )
+    st.dataframe(
+        df,
+        hide_index=True,
+        width="stretch",
+        column_order=(
+            "ore_name",
+            "share_pct",
+            "quantity_mt",
+            "dry_quantity_mt",
+            "fe_contribution_mt",
+            "slag_contribution_mt",
+            "price_rs_per_mt",
+            "ore_cost_lakhs",
+        ),
+        column_config={
+            "ore_name": st.column_config.TextColumn("Ore"),
+            "share_pct": share_col,
+            "quantity_mt": st.column_config.NumberColumn(
+                "Wet Qty (MT)", format="%.1f"
+            ),
+            "dry_quantity_mt": st.column_config.NumberColumn(
+                "Dry Qty (MT)", format="%.1f"
+            ),
+            "fe_contribution_mt": st.column_config.NumberColumn(
+                "Fe (MT)", format="%.1f"
+            ),
+            "slag_contribution_mt": st.column_config.NumberColumn(
+                "Slag (MT)", format="%.1f"
+            ),
+            "price_rs_per_mt": st.column_config.NumberColumn(
+                "Price (Rs/MT)", format="%.0f"
+            ),
+            "ore_cost_lakhs": st.column_config.NumberColumn(
+                "Ore Cost (₹ Lakhs)", format="%.2f"
+            ),
+        },
+    )
 
 
 def render_slag_balance_details(
@@ -1561,7 +1470,7 @@ def render_slag_balance_details(
                 _safe_dataframe(
                     pd.DataFrame(fuel_rows),
                     hide_index=True,
-                    use_container_width=True,
+                    width='stretch',
                 )
 
             if has_flux_details:
@@ -1582,7 +1491,7 @@ def render_slag_balance_details(
                 _safe_dataframe(
                     pd.DataFrame(flux_rows),
                     hide_index=True,
-                    use_container_width=True,
+                    width='stretch',
                 )
 
             if slag_components:
@@ -1597,7 +1506,7 @@ def render_slag_balance_details(
                 _safe_dataframe(
                     pd.DataFrame(component_rows),
                     hide_index=True,
-                    use_container_width=True,
+                    width='stretch',
                 )
 
 

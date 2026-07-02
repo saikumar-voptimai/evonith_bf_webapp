@@ -368,11 +368,7 @@ class MemoryDocument(Base):
     )
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     file_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     qdrant_collection: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    qdrant_point_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    token_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -385,6 +381,13 @@ class MemoryDocument(Base):
         nullable=False,
         default=utc_now,
     )
+
+    @property
+    def qdrant_point_ids(self) -> list:
+        """Return Qdrant chunk point ids stored in metadata JSON."""
+        metadata = self.metadata_json if isinstance(self.metadata_json, dict) else {}
+        point_ids = metadata.get("qdrant_point_ids")
+        return point_ids if isinstance(point_ids, list) else []
 
 
 class MemorySummary(Base):
@@ -457,7 +460,7 @@ class Skill(Base):
 
     skill_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
-    icon: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    symbol: Mapped[str | None] = mapped_column(String(16), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     instruction: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[str] = mapped_column(

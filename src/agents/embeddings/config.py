@@ -37,7 +37,7 @@ class CloudEmbeddingConfig:
 
     Attributes:
         provider:   Service name — ``"openai"``, ``"voyage"``, or ``"openrouter"``.
-        model_name: Model identifier (e.g. ``text-embedding-3-large``).
+        model_name: Model identifier (e.g. ``voyage-multimodal-3.5``).
         api_key:    API key for the embedding service.
         dimension:  Output embedding dimension (default 1024).
     """
@@ -63,8 +63,8 @@ def load_local_embedding_config() -> LocalEmbeddingConfig:
 def load_cloud_embedding_config() -> CloudEmbeddingConfig:
     """Build :class:`CloudEmbeddingConfig` from environment variables."""
     return CloudEmbeddingConfig(
-        provider=os.getenv("CLOUD_EMBEDDING_PROVIDER", "openai"),
-        model_name=os.getenv("CLOUD_EMBEDDING_MODEL", "text-embedding-3-large"),
-        api_key=os.getenv("CLOUD_EMBEDDING_API_KEY"),
+        provider=os.getenv("CLOUD_EMBEDDING_PROVIDER", "voyage"),
+        model_name=os.getenv("CLOUD_EMBEDDING_MODEL", "voyage-multimodal-3.5"),
+        api_key=os.getenv("CLOUD_EMBEDDING_API_KEY") or os.getenv("VOYAGE_API_KEY"),
         dimension=int(os.getenv("CLOUD_EMBEDDING_DIM", 1024)),
     )

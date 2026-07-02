@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from furnace_data.influx.query import online_column_aliases
+
 
 @dataclass
 class ChannelingConfig:
@@ -73,42 +75,42 @@ class ChannelingConfig:
     # --- Column mapping (exact names after stripping whitespace) ---
     uptake_pressure_cols: List[str] = field(
         default_factory=lambda: [
-            "Process Params - BF2_PROC Top Pressure 1",
-            "Process Params - BF2_PROC Top Pressure 2",
-            "Process Params - BF2_PROC Top Pressure 3",
-            "Process Params - BF2_PROC Top Pressure 4",
+            "top_press_1",
+            "top_press_2",
+            "top_press_3",
+            "top_press_4",
         ]
     )
     uptake_temp_cols: List[str] = field(
         default_factory=lambda: [
-            "Process Params - BF2_PROC Top Temp 1",
-            "Process Params - BF2_PROC Top Temp 2",
-            "Process Params - BF2_PROC Top Temp 3",
-            "Process Params - BF2_PROC Top Temp 4",
+            "top_temp_1",
+            "top_temp_2",
+            "top_temp_3",
+            "top_temp_4",
         ]
     )
 
     # 4 quadrants A-D at Stack level
     skin_18660_cols: List[str] = field(
         default_factory=lambda: [
-            "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp A",
-            "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp B",
-            "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp C",
-            "Temperature Profile - BF2_BFBD Furnace Body 18660mm Temp D",
+            "temp_18660_a",
+            "temp_18660_b",
+            "temp_18660_c",
+            "temp_18660_d",
         ]
     )
 
-    hbp_col: str = "Process Params - BF2_PROC Hot Blast Pressure"
-    topdp_col: str = "Process Params - BF2_BODY_TOP DP"
-    bottomdp_col: str = "Process Params - BF2_BODY_BOTTOM DP"
-    eta_co_col: str = "Process Params - BF2_BODY_ETACO"
+    hbp_col: str = "hot_blast_press"
+    topdp_col: str = "body_dp_top"
+    bottomdp_col: str = "body_dp_bottom"
+    eta_co_col: str = "body_etaco"
 
     heatload_cols: List[str] = field(
         default_factory=lambda: [
-            "Heatload Delta T - Heat load Row6-10 Q1(Stave 1-8)",
-            "Heatload Delta T - Heat load Row6-10 Q2(Stave 9-16)",
-            "Heatload Delta T - Heat load Row6-10 Q3(Stave 17-24)",
-            "Heatload Delta T - Heat load Row6-10 Q4(Stave 25-32)",
+            "heat_load_row6_10_q1",
+            "heat_load_row6_10_q2",
+            "heat_load_row6_10_q3",
+            "heat_load_row6_10_q4",
         ]
     )
 
@@ -174,6 +176,39 @@ class Channeling:
         df = df.copy()
         df.columns = [str(c).strip() for c in df.columns]
         return df
+
+    def _canonicalize_online_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        configured_fields = [
+            *self.cfg.uptake_pressure_cols,
+            *self.cfg.uptake_temp_cols,
+            *self.cfg.skin_18660_cols,
+            self.cfg.hbp_col,
+            self.cfg.topdp_col,
+            self.cfg.bottomdp_col,
+            self.cfg.eta_co_col,
+            *self.cfg.heatload_cols,
+        ]
+        aliases = {
+            alias.strip(): field
+            for field in configured_fields
+            for alias in online_column_aliases(field)
+        }
+        canonical_present = {str(col) for col in df.columns}.intersection(
+            configured_fields
+        )
+        rename = {
+            str(col): aliases[str(col)]
+            for col in df.columns
+            if (
+                str(col) in aliases
+                and str(col) != aliases[str(col)]
+                and aliases[str(col)] not in canonical_present
+            )
+        }
+        if not rename:
+            return df
+        out = df.rename(columns=rename)
+        return out.loc[:, ~out.columns.duplicated()]
 
     def _spread(self, vals: np.ndarray) -> float:
         """
@@ -524,6 +559,7 @@ class Channeling:
         """
         df = self._ensure_datetime_index(df, time_col=time_col)
         df = self._strip_column_whitespace(df)
+        df = self._canonicalize_online_columns(df)
         df = df.sort_index()
 
         win = pd.Timedelta(self.cfg.window)

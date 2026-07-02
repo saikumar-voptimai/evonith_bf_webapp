@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, time, timezone
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
 import pandas as pd
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import MetaData, Table, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -24,7 +26,6 @@ from .models import (
     MemoryDocument,
     MemoryFact,
     MemorySummary,
-    Skill,
     User,
     UserRole,
     UserRoleAssignment,
@@ -38,6 +39,68 @@ def _new_id(prefix: str) -> str:
 
 
 _UNSET: Any = object()
+
+
+def _json_string_values(value: Any) -> list[str]:
+    """Flatten JSON-compatible metadata into searchable string values."""
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        values: list[str] = []
+        for item in value.values():
+            values.extend(_json_string_values(item))
+        return values
+    if isinstance(value, (list, tuple, set)):
+        values: list[str] = []
+        for item in value:
+            values.extend(_json_string_values(item))
+        return values
+    return [str(value)]
+
+
+def _metadata_document_ids(metadata: dict[str, Any]) -> set[str]:
+    """Return document ids carried by memory metadata, if present."""
+    ids: set[str] = set()
+    for key in (
+        "document_id",
+        "document_ids",
+        "knowledge_document_id",
+        "knowledge_document_ids",
+        "mrag_document_id",
+        "source_document_id",
+    ):
+        value = metadata.get(key)
+        if isinstance(value, (list, tuple, set)):
+            ids.update(str(item).strip() for item in value if str(item).strip())
+        elif value is not None and str(value).strip():
+            ids.add(str(value).strip())
+    return ids
+
+
+def _memory_fact_matches_document(
+    *,
+    fact_text: str,
+    metadata: dict[str, Any],
+    sql_document_id: str,
+    mrag_document_id: str,
+    filename: str,
+) -> bool:
+    """Return True when a memory fact carries direct document provenance."""
+    fact_text = str(fact_text or "")
+    metadata_text = " ".join(_json_string_values(metadata))
+    combined = f"{fact_text} {metadata_text}".lower()
+    metadata_ids = _metadata_document_ids(metadata)
+
+    direct_ids = {sql_document_id, mrag_document_id} - {""}
+    if direct_ids & metadata_ids:
+        return True
+
+    filename_stem = filename.rsplit(".", 1)[0] if filename else ""
+    for identifier in (sql_document_id, mrag_document_id, filename, filename_stem):
+        normalized = str(identifier or "").strip().lower()
+        if len(normalized) >= 3 and normalized in combined:
+            return True
+    return False
 
 
 def _as_aware_utc(value: datetime) -> datetime:
@@ -717,11 +780,8 @@ class MemoryDocumentRepository:
         user_id: str,
         filename: str,
         file_type: str | None = None,
-        file_path: str | None = None,
-        summary: str | None = None,
         qdrant_collection: str | None = None,
         qdrant_point_ids: list | None = None,
-        token_estimate: int | None = None,
         metadata: dict | None = None,
     ) -> MemoryDocument:
         """
@@ -731,28 +791,23 @@ class MemoryDocumentRepository:
              - user_id: str - User that owns the document.
              - filename: str - Original uploaded file name.
              - file_type: str | None - Optional file type or extension.
-             - file_path: str | None - Optional local file path.
-             - summary: str | None - Optional document summary.
              - qdrant_collection: str | None - Optional Qdrant collection name.
              - qdrant_point_ids: list | None - Optional Qdrant point ids for chunks.
-             - token_estimate: int | None - Optional estimated token count.
              - metadata: dict | None - Optional JSON metadata for the document.
 
         Returns:
              - return: MemoryDocument - Created document ORM row.
         """
         now = utc_now()
+        metadata_payload = {**(metadata or {})}
+        metadata_payload["qdrant_point_ids"] = qdrant_point_ids or []
         document = MemoryDocument(
             document_id=_new_id("doc"),
             user_id=user_id,
             filename=filename,
             file_type=file_type,
-            file_path=file_path,
-            summary=summary,
             qdrant_collection=qdrant_collection,
-            qdrant_point_ids=qdrant_point_ids or [],
-            token_estimate=token_estimate,
-            metadata_json=metadata or {},
+            metadata_json=metadata_payload,
             created_at=now,
             updated_at=now,
         )
@@ -806,6 +861,216 @@ class MemoryDocumentRepository:
                 .values(is_active=False, updated_at=utc_now())
             )
             session.commit()
+
+
+class _ReflectedTableRepository:
+    """Small helper for optional live tables that are not mapped as ORM models."""
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        table_name: str,
+        schema: str = "furnace_mind",
+    ) -> None:
+        self._session_factory = session_factory
+        self._table_name = table_name
+        self._schema = schema
+        self._table: Table | None = None
+
+    def _reflect_table(self, session: Session) -> Table:
+        """Reflect the target table, retrying without schema for test databases."""
+        if self._table is not None:
+            return self._table
+
+        bind = session.get_bind()
+        metadata = MetaData()
+        try:
+            self._table = Table(
+                self._table_name,
+                metadata,
+                schema=self._schema,
+                autoload_with=bind,
+            )
+        except Exception:
+            metadata = MetaData()
+            self._table = Table(
+                self._table_name,
+                metadata,
+                autoload_with=bind,
+            )
+        return self._table
+
+    @staticmethod
+    def _project_row(table: Table, values: dict[str, Any]) -> dict[str, Any]:
+        """Return only non-null values accepted by the reflected table."""
+        columns = set(table.c.keys())
+        return {
+            key: value
+            for key, value in values.items()
+            if key in columns and value is not None
+        }
+
+
+class MemoryChunkRepository(_ReflectedTableRepository):
+    """Best-effort repository for the optional ``memory_chunks`` table."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        super().__init__(session_factory, table_name="memory_chunks")
+
+    def create_chunks(
+        self,
+        *,
+        document: Any,
+        parts: list[Any],
+        qdrant_collection: str | None,
+    ) -> int:
+        """
+        Persist searchable MRAG chunk metadata when the live table is available.
+
+        The live database owns the exact table shape, so this method reflects the
+        table and inserts only matching columns. Existing rows for the SQL
+        document are skipped to avoid duplicate chunk inserts on Streamlit reruns.
+        """
+        sql_document_id = str(getattr(document, "document_id", "") or "").strip()
+        if not sql_document_id or not parts:
+            return 0
+
+        with self._session_factory() as session:
+            table = self._reflect_table(session)
+            columns = set(table.c.keys())
+            if "document_id" in columns:
+                existing_count = session.execute(
+                    select(func.count())
+                    .select_from(table)
+                    .where(table.c.document_id == sql_document_id)
+                ).scalar_one()
+                if existing_count:
+                    return 0
+
+            now = utc_now()
+            rows: list[dict[str, Any]] = []
+            for part in parts:
+                metadata = {
+                    **(getattr(part, "metadata", None) or {}),
+                    "mrag_document_id": getattr(part, "document_id", None),
+                    "source": getattr(part, "source", None),
+                    "file_type": getattr(part, "file_type", None),
+                    "logical_chunk_id": getattr(part, "chunk_id", None),
+                    "image_path": getattr(part, "image_path", None),
+                }
+                row = self._project_row(
+                    table,
+                    {
+                        "chunk_id": getattr(part, "point_id", None),
+                        "document_id": sql_document_id,
+                        "user_id": getattr(part, "user_id", None),
+                        "qdrant_point_id": getattr(part, "point_id", None),
+                        "qdrant_collection": qdrant_collection,
+                        "collection_name": qdrant_collection,
+                        "source": getattr(part, "source", None),
+                        "filename": getattr(part, "source", None),
+                        "file_type": getattr(part, "file_type", None),
+                        "modality": getattr(part, "modality", None),
+                        "chunk_index": getattr(part, "chunk_index", None),
+                        "content": getattr(part, "content", None),
+                        "chunk_text": getattr(part, "content", None),
+                        "text": getattr(part, "content", None),
+                        "image_path": getattr(part, "image_path", None),
+                        "page_number": getattr(part, "page_number", None),
+                        "slide_number": getattr(part, "slide_number", None),
+                        "sheet_name": getattr(part, "sheet_name", None),
+                        "metadata": metadata,
+                        "metadata_json": metadata,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                )
+                if row:
+                    rows.append(row)
+
+            if not rows:
+                return 0
+
+            session.execute(table.insert(), rows)
+            session.commit()
+            return len(rows)
+
+
+class RetrievalTraceRepository(_ReflectedTableRepository):
+    """Best-effort repository for the optional ``retrieval_traces`` table."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        super().__init__(session_factory, table_name="retrieval_traces")
+
+    def create_trace(
+        self,
+        *,
+        user_id: str | None,
+        conversation_id: str | None,
+        query: str,
+        qdrant_collection: str | None,
+        results: list[dict[str, Any]],
+        active_document_ids: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        """Persist one MRAG retrieval trace when the reflected table supports it."""
+        trace_id = _new_id("trace")
+        now = utc_now()
+        result_summaries = []
+        for result in results:
+            payload = result.get("payload") or {}
+            result_summaries.append(
+                {
+                    "score": result.get("score"),
+                    "rerank_score": result.get("rerank_score"),
+                    "document_id": payload.get("document_id"),
+                    "chunk_id": payload.get("chunk_id"),
+                    "source": payload.get("source"),
+                    "modality": payload.get("modality"),
+                    "page_number": payload.get("page_number"),
+                    "slide_number": payload.get("slide_number"),
+                    "sheet_name": payload.get("sheet_name"),
+                    "content_preview": str(payload.get("content") or "")[:1000],
+                }
+            )
+
+        metadata_payload = {
+            "source": "furnacemind_knowledge",
+            "active_document_ids": active_document_ids or [],
+            "results": result_summaries,
+            **(metadata or {}),
+        }
+
+        with self._session_factory() as session:
+            table = self._reflect_table(session)
+            row = self._project_row(
+                table,
+                {
+                    "trace_id": trace_id,
+                    "retrieval_trace_id": trace_id,
+                    "user_id": user_id,
+                    "conversation_id": conversation_id,
+                    "query": query,
+                    "query_text": query,
+                    "tool_name": "search_knowledge_docs",
+                    "qdrant_collection": qdrant_collection,
+                    "collection_name": qdrant_collection,
+                    "top_k": len(results),
+                    "result_count": len(results),
+                    "results": result_summaries,
+                    "retrieved_results": result_summaries,
+                    "metadata": metadata_payload,
+                    "metadata_json": metadata_payload,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+            if not row:
+                return False
+            session.execute(table.insert().values(**row))
+            session.commit()
+            return True
 
 
 class MemorySummaryRepository:
@@ -1042,9 +1307,65 @@ class MemoryFactRepository:
                 session.expunge(row)
             return rows
 
+    def list_document_related_facts(
+        self,
+        *,
+        user_id: str,
+        sql_document_id: str,
+        mrag_document_id: str = "",
+        filename: str = "",
+    ) -> list[MemoryFact]:
+        """
+        Return long-term memory facts with direct document provenance.
 
-class SkillRepository:
-    """Repository for built-in and uploaded FurnaceMind skills."""
+        The match uses explicit ids in ``memory_facts.metadata`` first, then
+        direct mentions of the SQL document id, MRAG document id, filename, or
+        filename stem. Cleanup intentionally avoids text-similarity matching so unrelated memories are not deleted.
+        """
+        if not user_id or not sql_document_id:
+            return []
+
+        with self._session_factory() as session:
+            stmt = select(MemoryFact).where(MemoryFact.user_id == user_id)
+            rows = list(session.execute(stmt).scalars().all())
+            matches: list[MemoryFact] = []
+            for row in rows:
+                metadata = (
+                    row.metadata_json if isinstance(row.metadata_json, dict) else {}
+                )
+                if not _memory_fact_matches_document(
+                    fact_text=row.fact_text,
+                    metadata=metadata,
+                    sql_document_id=sql_document_id,
+                    mrag_document_id=mrag_document_id,
+                    filename=filename,
+                ):
+                    continue
+                session.expunge(row)
+                matches.append(row)
+            return matches
+
+    def delete_facts(self, fact_ids: list[str]) -> int:
+        """Delete memory facts by id after their Qdrant points are removed."""
+        ids = [str(fact_id) for fact_id in fact_ids if str(fact_id).strip()]
+        if not ids:
+            return 0
+        with self._session_factory() as session:
+            result = session.execute(
+                delete(MemoryFact).where(MemoryFact.fact_id.in_(ids))
+            )
+            session.commit()
+            return int(result.rowcount or 0)
+
+
+class SkillRepository(_ReflectedTableRepository):
+    """Repository for built-in and uploaded FurnaceMind skills.
+
+    The production ``furnace_mind.skills`` table can be older than the ORM model
+    during feature rollout. This repository reflects the live table and reads or
+    writes only the columns that actually exist, matching the deployed skills
+    table during rollout.
+    """
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         """
@@ -1056,28 +1377,118 @@ class SkillRepository:
         Returns:
              - return: None - This function does not return a value.
         """
-        self._session_factory = session_factory
+        super().__init__(session_factory, table_name="skills")
+
+    @staticmethod
+    def _metadata_column_name(table: Table) -> str | None:
+        """Return the JSON metadata column name used by the live skills table."""
+        columns = set(table.c.keys())
+        if "metadata" in columns:
+            return "metadata"
+        if "metadata_json" in columns:
+            return "metadata_json"
+        return None
+
+    @staticmethod
+    def _metadata_value(value: Any) -> dict[str, Any]:
+        """Normalize a JSON/JSONB metadata value from PostgreSQL."""
+        if isinstance(value, dict):
+            return value
+        if not isinstance(value, str) or not value.strip():
+            return {}
+        try:
+            loaded = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return loaded if isinstance(loaded, dict) else {}
+
+    @classmethod
+    def _skill_from_mapping(cls, values: dict[str, Any]) -> Any:
+        """Return an attribute-style skill object with defaults for old schemas."""
+        metadata = cls._metadata_value(
+            values.get("metadata_json")
+            if "metadata_json" in values
+            else values.get("metadata")
+        )
+        is_active = values.get("is_active")
+        return SimpleNamespace(
+            skill_id=str(values.get("skill_id") or ""),
+            name=str(values.get("name") or "Skill"),
+            symbol=str(values.get("symbol") or metadata.get("symbol") or ""),
+            description=values.get("description"),
+            instruction=str(values.get("instruction") or ""),
+            source_type=str(values.get("source_type") or "uploaded"),
+            qdrant_collection=values.get("qdrant_collection"),
+            is_active=True if is_active is None else bool(is_active),
+            created_by=values.get("created_by"),
+            metadata_json=metadata,
+            created_at=values.get("created_at"),
+            updated_at=values.get("updated_at"),
+        )
+
+    @classmethod
+    def _skill_from_row(cls, row: Any) -> Any:
+        """Convert a SQLAlchemy row mapping into the runtime skill shape."""
+        return cls._skill_from_mapping(dict(row))
+
+    def _get_skill_in_session(
+        self, session: Session, table: Table, skill_id: str
+    ) -> Any | None:
+        """Return one skill from a reflected table within an existing session."""
+        if "skill_id" not in table.c:
+            return None
+        row = (
+            session.execute(select(table).where(table.c.skill_id == skill_id))
+            .mappings()
+            .first()
+        )
+        return self._skill_from_row(row) if row is not None else None
+
+    @staticmethod
+    def _set_if_present(
+        payload: dict[str, Any], columns: set[str], key: str, value: Any
+    ) -> None:
+        """Add a write value only when the reflected table accepts the column."""
+        if key in columns and value is not _UNSET:
+            payload[key] = value
+
+    @staticmethod
+    def _ordered_skill_statement(table: Table) -> Any:
+        """Build a deterministic SELECT for whichever ordering columns exist."""
+        stmt = select(table)
+        order_columns = [
+            table.c[column]
+            for column in ("created_at", "name", "skill_id")
+            if column in table.c
+        ]
+        if order_columns:
+            stmt = stmt.order_by(*order_columns)
+        return stmt
 
     def create_skill(
         self,
         *,
         name: str,
         instruction: str,
-        icon: str | None = None,
+        symbol: str | None = None,
         description: str | None = None,
         source_type: str = "uploaded",
         qdrant_collection: str | None = None,
         is_active: bool = True,
         created_by: str | None = None,
         metadata: dict | None = None,
-    ) -> Skill:
+    ) -> Any:
         """
         Create and return a skill definition.
+
+        Only columns present in the live ``skills`` table are written, using the
+        exported schema: identity, text fields, source metadata, active state, and
+        timestamps.
 
         Args:
              - name: str - Skill display name.
              - instruction: str - Prompt instruction used when the skill is selected.
-             - icon: str | None - Optional icon label for the skill.
+             - symbol: str | None - Optional unique short symbol for the skill.
              - description: str | None - Optional skill description.
              - source_type: str - Skill source, such as built_in or uploaded.
              - qdrant_collection: str | None - Optional Qdrant collection name.
@@ -1086,31 +1497,41 @@ class SkillRepository:
              - metadata: dict | None - Optional JSON metadata for the skill.
 
         Returns:
-             - return: Skill - Created skill ORM row.
+             - return: Any - Created skill row exposed as attribute-style data.
         """
-        now = utc_now()
-        skill = Skill(
-            skill_id=_new_id("skill"),
-            name=name,
-            icon=icon,
-            description=description,
-            instruction=instruction,
-            source_type=source_type,
-            qdrant_collection=qdrant_collection,
-            is_active=is_active,
-            created_by=created_by,
-            metadata_json=metadata or {},
-            created_at=now,
-            updated_at=now,
-        )
+        skill_id = _new_id("skill")
         with self._session_factory() as session:
-            session.add(skill)
-            session.commit()
-            session.refresh(skill)
-            session.expunge(skill)
-            return skill
+            table = self._reflect_table(session)
+            columns = set(table.c.keys())
+            if "skill_id" not in columns:
+                raise RuntimeError("furnace_mind.skills must include a skill_id column")
 
-    def list_skills(self, *, active_only: bool = False) -> list[Skill]:
+            now = utc_now()
+            payload: dict[str, Any] = {}
+            self._set_if_present(payload, columns, "skill_id", skill_id)
+            self._set_if_present(payload, columns, "name", name)
+            self._set_if_present(payload, columns, "symbol", symbol)
+            self._set_if_present(payload, columns, "description", description)
+            self._set_if_present(payload, columns, "instruction", instruction)
+            self._set_if_present(payload, columns, "source_type", source_type)
+            self._set_if_present(
+                payload, columns, "qdrant_collection", qdrant_collection
+            )
+            self._set_if_present(payload, columns, "is_active", is_active)
+            self._set_if_present(payload, columns, "created_by", created_by)
+            metadata_column = self._metadata_column_name(table)
+            if metadata_column:
+                payload[metadata_column] = metadata or {}
+            self._set_if_present(payload, columns, "created_at", now)
+            self._set_if_present(payload, columns, "updated_at", now)
+
+            session.execute(table.insert().values(**payload))
+            session.commit()
+            return self._get_skill_in_session(
+                session, table, skill_id
+            ) or self._skill_from_mapping(payload)
+
+    def list_skills(self, *, active_only: bool = False) -> list[Any]:
         """
         List skills, optionally filtering to active skills.
 
@@ -1118,60 +1539,79 @@ class SkillRepository:
              - active_only: bool - Whether to return only active skills.
 
         Returns:
-             - return: list[Skill] - Skill rows.
+             - return: list[Any] - Skill rows exposed as attribute-style data.
         """
         with self._session_factory() as session:
-            stmt = select(Skill).order_by(Skill.created_at.asc())
-            if active_only:
-                stmt = stmt.where(Skill.is_active.is_(True))
-            rows = list(session.execute(stmt).scalars().all())
-            for row in rows:
-                session.expunge(row)
-            return rows
+            table = self._reflect_table(session)
+            stmt = self._ordered_skill_statement(table)
+            if active_only and "is_active" in table.c:
+                stmt = stmt.where(table.c.is_active.is_(True))
+            rows = session.execute(stmt).mappings().all()
+            return [self._skill_from_row(row) for row in rows]
 
     def update_skill(
         self,
         *,
         skill_id: str,
         name: str = _UNSET,
-        icon: str | None = _UNSET,
+        symbol: str | None = _UNSET,
         description: str | None = _UNSET,
         instruction: str = _UNSET,
+        qdrant_collection: str | None = _UNSET,
         is_active: bool = _UNSET,
-    ) -> Skill | None:
+        metadata: dict | None = _UNSET,
+    ) -> Any | None:
         """
         Update a skill definition and return the row.
+
+        Missing optional columns are skipped so UI edits remain compatible with
+        older database schemas.
 
         Args:
              - skill_id: str - Skill id to update.
              - name: str - New skill display name.
-             - icon: str | None - New optional icon label.
+             - symbol: str | None - New unique short symbol.
              - description: str | None - New skill description.
              - instruction: str - New prompt instruction.
+             - qdrant_collection: str | None - Qdrant collection holding skill vectors.
              - is_active: bool - New active state.
+             - metadata: dict | None - New optional JSON metadata.
 
         Returns:
-             - return: Skill | None - Updated skill row when found, otherwise None.
+             - return: Any | None - Updated skill row when found, otherwise None.
         """
         with self._session_factory() as session:
-            skill = session.get(Skill, skill_id)
-            if skill is None:
+            table = self._reflect_table(session)
+            columns = set(table.c.keys())
+            if "skill_id" not in columns:
                 return None
-            if name is not _UNSET:
-                skill.name = name
-            if icon is not _UNSET:
-                skill.icon = icon
-            if description is not _UNSET:
-                skill.description = description
-            if instruction is not _UNSET:
-                skill.instruction = instruction
-            if is_active is not _UNSET:
-                skill.is_active = is_active
-            skill.updated_at = utc_now()
+
+            payload: dict[str, Any] = {}
+            self._set_if_present(payload, columns, "name", name)
+            self._set_if_present(payload, columns, "symbol", symbol)
+            self._set_if_present(payload, columns, "description", description)
+            self._set_if_present(payload, columns, "instruction", instruction)
+            self._set_if_present(
+                payload, columns, "qdrant_collection", qdrant_collection
+            )
+            self._set_if_present(payload, columns, "is_active", is_active)
+            metadata_column = self._metadata_column_name(table)
+            if metadata_column and metadata is not _UNSET:
+                payload[metadata_column] = metadata or {}
+            if "updated_at" in columns:
+                payload["updated_at"] = utc_now()
+
+            if not payload:
+                return self._get_skill_in_session(session, table, skill_id)
+
+            result = session.execute(
+                update(table).where(table.c.skill_id == skill_id).values(**payload)
+            )
+            if int(result.rowcount or 0) <= 0:
+                session.rollback()
+                return None
             session.commit()
-            session.refresh(skill)
-            session.expunge(skill)
-            return skill
+            return self._get_skill_in_session(session, table, skill_id)
 
 
 class FeedbackItemRepository:
