@@ -56,6 +56,20 @@ def test_custom_request_id_is_sent_and_backend_request_id_is_captured():
     assert client.last_response_request_id == "backend-request-id"
 
 
+def test_post_helper_forwards_custom_headers():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == "Bearer token"
+        return _json_response(request, {"ok": True})
+
+    client = ApiClient(transport=httpx.MockTransport(handler))
+
+    assert client.post(
+        "/auth/logout",
+        json={},
+        headers={"Authorization": "Bearer token"},
+    ) == {"ok": True}
+
+
 def test_structured_backend_error_is_parsed():
     def handler(request: httpx.Request) -> httpx.Response:
         return _json_response(

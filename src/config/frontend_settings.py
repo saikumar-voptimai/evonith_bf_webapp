@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 DEFAULT_BACKEND_API_BASE_URL = "http://localhost:8080/api/v1"
 
 PAGE_API_FLAG_ENV_VARS: dict[str, str] = {
+    "auth": "USE_BACKEND_API_AUTH",
+    "admin": "USE_BACKEND_API_ADMIN",
     "data_explorer": "USE_BACKEND_API_DATA_EXPLORER",
     "datasets": "USE_BACKEND_API_DATASETS",
     "feedback": "USE_BACKEND_API_FEEDBACK",

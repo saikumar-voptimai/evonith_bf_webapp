@@ -111,7 +111,14 @@ def is_supervisor() -> bool:
     return is_logged_in() and st.session_state.get("role") == "supervisor"
 
 
-def login_user(username: str, role: str, user_id: str | None = None) -> None:
+def login_user(
+    username: str,
+    role: str,
+    user_id: str | None = None,
+    *,
+    access_token: str | None = None,
+    token_expires_at: str | None = None,
+) -> None:
     """
     Store the authenticated user, database UUID, and permissions in session.
 
@@ -119,6 +126,8 @@ def login_user(username: str, role: str, user_id: str | None = None) -> None:
          - username: str - Login username used by UI display and legacy pages.
          - role: str - Authenticated role name.
          - user_id: str | None - Optional ``identity.users.id`` UUID string.
+         - access_token: str | None - Optional backend API bearer token.
+         - token_expires_at: str | None - Optional token expiry timestamp.
 
     Returns:
          - return: None - This function does not return a value.
@@ -130,14 +139,38 @@ def login_user(username: str, role: str, user_id: str | None = None) -> None:
     else:
         st.session_state.pop("auth_user_id", None)
     st.session_state["role"] = role
+    if access_token:
+        st.session_state["auth_access_token"] = access_token
+        st.session_state["auth_backend_mode"] = True
+    else:
+        st.session_state.pop("auth_access_token", None)
+        st.session_state.pop("auth_backend_mode", None)
+    if token_expires_at:
+        st.session_state["auth_token_expires_at"] = str(token_expires_at)
+    else:
+        st.session_state.pop("auth_token_expires_at", None)
     _set_permissions(role)
 
 
 def logout_user() -> None:
     """Clear authenticated session state and rerun the app."""
+    access_token = str(st.session_state.get("auth_access_token") or "").strip()
+    if access_token:
+        try:
+            from config.frontend_settings import is_backend_api_enabled
+            from services.auth_api import logout
+
+            if is_backend_api_enabled("auth"):
+                logout(access_token)
+        except Exception:
+            pass
+
     for key in (
         "auth_user",
         "auth_user_id",
+        "auth_access_token",
+        "auth_token_expires_at",
+        "auth_backend_mode",
         "role",
         "permissions",
         "admin_tool_selection",

@@ -7,8 +7,11 @@ and session state initialisation via :func:`~utils.session.login_user`.
 # # ui/login_page.py
 import streamlit as st
 
+from config.frontend_settings import is_backend_api_enabled
 from data.db import UserDataService
 from domain.auth_service import AuthService
+from services.api_errors import BackendApiHTTPError, FrontendApiError
+from services.auth_api import login as backend_login
 from utils.session import login_user
 
 
@@ -26,8 +29,16 @@ class LoginPage:
 
     def __init__(self) -> None:
         """Initialise the login page with a fresh database connection."""
-        self.db = UserDataService()
-        self.auth_service = AuthService(self.db)
+        self.db = None
+        self.auth_service = None
+        self.use_backend_api_auth = is_backend_api_enabled("auth")
+
+    def _direct_auth_service(self) -> AuthService:
+        """Create direct-mode auth objects lazily."""
+        if self.db is None or self.auth_service is None:
+            self.db = UserDataService()
+            self.auth_service = AuthService(self.db)
+        return self.auth_service
 
     # ---------------------------------------------------
     #  UI Layout
@@ -98,7 +109,11 @@ class LoginPage:
             st.warning("Please enter both username and password.")
             return
 
-        result = self.auth_service.authenticate(username, password)
+        if self.use_backend_api_auth:
+            self.handle_backend_login(username, password)
+            return
+
+        result = self._direct_auth_service().authenticate(username, password)
 
         if result:
             login_user(result[0], result[1], user_id=self.db.get_user_id(result[0]))
@@ -106,6 +121,31 @@ class LoginPage:
             st.rerun()
         else:
             st.error("❌ Invalid username or password.")
+
+    def handle_backend_login(self, username: str, password: str) -> None:
+        """Authenticate through the backend auth API when enabled."""
+        try:
+            result = backend_login(username.strip(), password)
+        except BackendApiHTTPError as exc:
+            if exc.status_code in {401, 403}:
+                st.error("Invalid username or password.")
+                return
+            st.error(f"Backend login failed: {exc}")
+            return
+        except FrontendApiError as exc:
+            st.error(f"Backend login unavailable: {exc}")
+            return
+
+        user = result.get("user") or {}
+        login_user(
+            str(user.get("username") or username),
+            str(user.get("role") or "user"),
+            user_id=user.get("id"),
+            access_token=result.get("access_token"),
+            token_expires_at=result.get("expires_at"),
+        )
+        st.success(f"Welcome, {user.get('username') or username}!")
+        st.rerun()
 
     # ----------------------------------------------------
     #  Entry Point

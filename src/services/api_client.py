@@ -205,38 +205,62 @@ class ApiClient:
             details=details,
         )
 
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        return self.request("GET", path, params=params)
+    def get(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
+        return self.request("GET", path, params=params, headers=headers)
 
     def post(
         self,
         path: str,
         json: dict[str, Any] | list[Any] | None = None,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
-        return self.request("POST", path, json=json, params=params)
+        return self.request("POST", path, json=json, params=params, headers=headers)
 
     def put(
         self,
         path: str,
         json: dict[str, Any] | list[Any] | None = None,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
-        return self.request("PUT", path, json=json, params=params)
+        return self.request("PUT", path, json=json, params=params, headers=headers)
 
     def patch(
         self,
         path: str,
         json: dict[str, Any] | list[Any] | None = None,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
-        return self.request("PATCH", path, json=json, params=params)
+        return self.request("PATCH", path, json=json, params=params, headers=headers)
 
-    def delete(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        return self.request("DELETE", path, params=params)
+    def delete(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
+        return self.request("DELETE", path, params=params, headers=headers)
 
-    def download(self, path: str, params: dict[str, Any] | None = None) -> bytes:
-        return self.request("GET", path, params=params, expect_json=False)
+    def download(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> bytes:
+        return self.request(
+            "GET",
+            path,
+            params=params,
+            headers=headers,
+            expect_json=False,
+        )
 
     def health(self) -> dict[str, Any]:
         return self.get(self.health_path)

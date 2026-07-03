@@ -7,8 +7,12 @@ to add new users with role assignment from an admin interface.
 # register_page.py
 import streamlit as st
 
+from config.frontend_settings import is_backend_api_enabled
 from data.db import UserDataService
 from domain.auth_service import AuthService
+from services.admin_api import create_user as backend_create_user
+from services.admin_api import list_users as backend_list_users
+from services.api_errors import FrontendApiError
 
 
 class RegisterPage:
@@ -24,8 +28,16 @@ class RegisterPage:
 
     def __init__(self) -> None:
         """Initialise the database connection and authentication service."""
-        self.db = UserDataService()
-        self.auth_service = AuthService(self.db)
+        self.db = None
+        self.auth_service = None
+        self.use_backend_api_admin = is_backend_api_enabled("admin")
+
+    def _direct_auth_service(self) -> AuthService:
+        """Create direct-mode user management objects lazily."""
+        if self.db is None or self.auth_service is None:
+            self.db = UserDataService()
+            self.auth_service = AuthService(self.db)
+        return self.auth_service
 
     # ------------------------------
     # Helpers
@@ -61,8 +73,23 @@ class RegisterPage:
             return
 
         try:
-            # Register new user
-            self.auth_service.register(username.strip(), password.strip(), role)
+            if self.use_backend_api_admin:
+                access_token = str(st.session_state.get("auth_access_token") or "")
+                backend_create_user(
+                    access_token,
+                    {
+                        "username": username.strip(),
+                        "password": password.strip(),
+                        "role": role,
+                    },
+                )
+            else:
+                # Register new user
+                self._direct_auth_service().register(
+                    username.strip(),
+                    password.strip(),
+                    role,
+                )
 
             # Store success state for message
             st.session_state["registration_success"] = True
@@ -75,8 +102,34 @@ class RegisterPage:
 
         except ValueError:
             st.error("❌ Username already exists.")
+        except FrontendApiError as e:
+            st.error(f"Backend user registration failed: {e}")
         except Exception as e:
             st.error(f"⚠️ Error during registration: {e}")
+
+    def render_backend_user_list(self) -> None:
+        """Render backend-managed users when admin API mode is enabled."""
+        if not self.use_backend_api_admin:
+            return
+        access_token = str(st.session_state.get("auth_access_token") or "")
+        if not access_token:
+            st.info("Backend admin mode requires a backend login token.")
+            return
+        try:
+            users = backend_list_users(access_token, limit=100)
+        except FrontendApiError as exc:
+            st.warning(f"Could not load backend users: {exc}")
+            return
+        rows = [
+            {
+                "username": item.get("username"),
+                "role": item.get("role"),
+                "active": item.get("is_active"),
+            }
+            for item in users.get("items", [])
+        ]
+        if rows:
+            st.dataframe(rows, use_container_width=True, hide_index=True)
 
     # -------------------------------
     # UI
@@ -90,6 +143,7 @@ class RegisterPage:
 
         # Show success message and prevent form re-render
         self.show_success_message()
+        self.render_backend_user_list()
 
         # Streamlit form (clears inputs automatically)
         with st.form(key="register_form", clear_on_submit=True):

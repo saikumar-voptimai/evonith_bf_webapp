@@ -33,10 +33,18 @@ def test_session_auth_does_not_import_cookie_component() -> None:
 def test_login_stores_role_and_derived_permissions(monkeypatch) -> None:
     session, streamlit_stub = _load_session_module(monkeypatch)
 
-    session.login_user("shift_supervisor", "supervisor")
+    session.login_user(
+        "shift_supervisor",
+        "supervisor",
+        access_token="token",
+        token_expires_at="2026-07-03T12:00:00Z",
+    )
 
     assert streamlit_stub.session_state["auth_user"] == "shift_supervisor"
     assert streamlit_stub.session_state["role"] == "supervisor"
+    assert streamlit_stub.session_state["auth_access_token"] == "token"
+    assert streamlit_stub.session_state["auth_backend_mode"] is True
+    assert streamlit_stub.session_state["auth_token_expires_at"] == "2026-07-03T12:00:00Z"
     assert "hopper:write" in streamlit_stub.session_state["permissions"]
     assert "users:write" not in streamlit_stub.session_state["permissions"]
     assert session.is_logged_in()
@@ -51,5 +59,6 @@ def test_logout_clears_auth_state(monkeypatch) -> None:
         session.logout_user()
 
     assert "auth_user" not in streamlit_stub.session_state
+    assert "auth_access_token" not in streamlit_stub.session_state
     assert "role" not in streamlit_stub.session_state
     assert "permissions" not in streamlit_stub.session_state

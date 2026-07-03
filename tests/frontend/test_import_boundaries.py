@@ -10,6 +10,8 @@ def test_frontend_api_modules_do_not_import_backend_internals():
     files = [
         REPO_ROOT / "src" / "services" / "api_client.py",
         REPO_ROOT / "src" / "services" / "backend_status.py",
+        REPO_ROOT / "src" / "services" / "auth_api.py",
+        REPO_ROOT / "src" / "services" / "admin_api.py",
         REPO_ROOT / "src" / "services" / "data_api.py",
         REPO_ROOT / "src" / "services" / "dataset_api.py",
         REPO_ROOT / "src" / "config" / "frontend_settings.py",

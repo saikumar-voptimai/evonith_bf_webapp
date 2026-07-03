@@ -69,6 +69,7 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
     log.info("Evonith backend API starting")
     log.info("API prefix: %s", settings.api_prefix)
     log.info("Runtime directory: %s", get_runtime_dir())
+    log.info("Backend auth enabled: %s", settings.auth_enabled)
     log.info("CORS origins: %s", ", ".join(settings.cors_origins))
     log.info("Legacy routes enabled: %s", settings.enable_legacy_routes)
     return app
