@@ -1042,3 +1042,42 @@ name 'coke_df' is not defined
 ```
 '__import__'
 ```
+
+
+## 2026-07-01T12:06:55.694426+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import plotly.graph_objects as go\nfrom plotly.subplots import make_subplots\n\n# Define columns for plotting\nrows = ['heat_load_row_6', 'heat_load_row_7', 'heat_load_row_8', 'heat_load_row_9', 'heat_load_row_10']\nquads = ['heat_load_row6_10_q1', 'heat_load_row6_10_q2', 'heat_load_row6_10_q3', 'heat_load_row6_10_q4']\ntemps_18660 = ['temp_18660_a', 'temp_18660_b', 'temp_18660_c', 'temp_18660_d']\n\nfig = make_subplots(rows=3, cols=1, \n                    subplot_titles=(\"Row Heatloads (GJ)\", \"Quadrant Avg Heatloads (GJ)\", \"18660mm Temp Profile (°C)\"),\n                    vertical_spacing=0.1)\n\n# 1. Row Heatloads\nfor col in rows:\n    fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col.replace('_', ' ').title()), row=1, col=1)\n\n# 2. Quadrant Heatloads\nfor col in quads:\n    fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col.replace('_', ' ').title()), row=2, col=1)\n\n# 3. 18660mm Temps\nfor col in temps_18660:\n    fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col.replace('_', ' ').title()), row=3, col=1)\n\nfig.update_layout(height=900, title_text=\"Recent Heatload & Temperature Behavior (8h)\", showlegend=True)\nfig.update_xaxes(title_text=\"Time\")\nfig.update_yaxes(title_text=\"Value\")\n"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```
+
+
+## 2026-07-02T12:34:35.960283+00:00
+**Tool:** fetch_online_data
+
+**Params:** `{"lookback": "8h", "window": null, "measurement_groups": ["<|\"|heatload_delta_t<|\"|"], "start_time_utc": null, "end_time_utc": null}`
+
+**Error:**
+
+```
+1 validation error for OnlineFetchArgs
+measurement_groups.0
+  Input should be 'process_params', 'cooling_water', 'heatload_delta_t', 'delta_t', 'temperature_profile' or 'miscellaneous' [type=literal_error, input_value='<|"|heatload_delta_t<|"|', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.10/v/literal_error
+```
+
+
+## 2026-07-02T12:34:54.660843+00:00
+**Tool:** execute_python_plot
+
+**Params:** `{"code": "import plotly.graph_objects as go\nfrom plotly.subplots import make_subplots\n\n# Define columns for the plot\nrows = ['heat_load_row_6', 'heat_load_row_7', 'heat_load_row_8', 'heat_load_row_9', 'heat_load_row_10']\nquads = ['heat_load_row6_10_q1', 'heat_load_row6_10_q2', 'heat_load_row6_10_q3', 'heat_load_row6_10_q4']\n\nfig = make_subplots(rows=2, cols=1, \n                    subplot_titles=(\"Row-wise Heatloads\", \"Quadrant Average Heatloads (Rows 6-10)\"),\n                    vertical_spacing=0.15)\n\n# 1. Row Heatloads\nfor col in rows:\n    fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col.replace('_', ' ').title()), row=1, col=1)\n\n# 2. Quadrant Heatloads\nfor col in quads:\n    fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col.replace('_', ' ').title()), row=2, col=1)\n\nfig.update_layout(height=700, title_text=\"Heatload Behavior (Last 8 Hours)\", showlegend=True)\nfig.update_xaxes(title_text=\"Time\")\nfig.update_yaxes(title_text=\"Value\")\n"}`
+
+**Error:**
+
+```
+Disallowed token in code: \bimport\b
+```

@@ -1,4 +1,4 @@
-﻿"""Streamlit chat UI helpers for FurnaceMind.
+"""Streamlit chat UI helpers for FurnaceMind.
 
 This module owns the chat-facing controls: rendering messages, capturing
 feedback, indexing/removing MRAG knowledge documents, and managing the
@@ -376,21 +376,44 @@ def render_feedback_controls(item: dict, *, raw_user_message: str) -> None:
     st.rerun()
 
 
-def inject_artifacts(history_len_before: int) -> None:
-    """
-    Append inline artifact messages for plot/dataframe produced this turn.
+def _artifact_belongs_to_turn(
+    *,
+    turn_key: str,
+    artifact_turn_id: str | None,
+) -> bool:
+    """Return True when an artifact should render for the current answer."""
+    if artifact_turn_id is None:
+        return True
+    return str(st.session_state.get(turn_key) or "") == artifact_turn_id
+
+
+def inject_artifacts(
+    history_len_before: int,
+    *,
+    artifact_turn_id: str | None = None,
+) -> None:
+    """Append plot/dataframe artifacts produced by the current agent turn.
 
     Args:
-         - history_len_before: int - Chat history length before agent execution.
+        history_len_before: Chat history length before agent execution. Used to
+            build stable artifact keys for the assistant turn.
+        artifact_turn_id: Agent-turn id created by the page before the model/tool
+            loop starts. When provided, only artifacts tagged with this same id
+            are rendered, preventing old charts or dataframes from being attached
+            to unrelated later answers.
 
     Returns:
-         - return: None - This function does not return a value.
+        None. Updates ``chat_history`` and ``fm_artifact_store`` in Streamlit
+        session state.
     """
     artifact_store: dict = st.session_state.setdefault("fm_artifact_store", {})
     history: list = st.session_state.chat_history
 
     new_figure = st.session_state.get("fm_fig")
-    if new_figure is not None:
+    if new_figure is not None and _artifact_belongs_to_turn(
+        turn_key="fm_fig_turn_id",
+        artifact_turn_id=artifact_turn_id,
+    ):
         key = f"fm_fig_{history_len_before}"
         if not any(item.get("artifact_key") == key for item in history):
             artifact_store[key] = new_figure
@@ -404,7 +427,14 @@ def inject_artifacts(history_len_before: int) -> None:
             )
 
     new_dataframe = st.session_state.get("fm_df")
-    if new_dataframe is not None and not new_dataframe.empty:
+    if (
+        new_dataframe is not None
+        and not new_dataframe.empty
+        and _artifact_belongs_to_turn(
+            turn_key="fm_df_turn_id",
+            artifact_turn_id=artifact_turn_id,
+        )
+    ):
         key = f"fm_df_{history_len_before}"
         if not any(item.get("artifact_key") == key for item in history):
             artifact_store[key] = new_dataframe

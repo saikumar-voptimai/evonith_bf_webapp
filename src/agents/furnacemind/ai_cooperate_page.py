@@ -1,4 +1,4 @@
-﻿"""Streamlit page renderer for the FurnaceMind AI Co-Operate experience.
+"""Streamlit page renderer for the FurnaceMind AI Co-Operate experience.
 
 This module wires together the FurnaceMind chat UI, PostgreSQL conversation
 persistence, rolling memory summaries, skill shortcuts, vector stores, and the
@@ -9,6 +9,7 @@ pieces live under ``ui.furnacemind`` and persistence logic lives under
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -624,8 +625,11 @@ def _reset_chat_session() -> None:
         "_fm_loaded_conversation_id",
         "pending_skill_prompt",
         "fm_fig",
+        "fm_fig_turn_id",
         "fm_df",
+        "fm_df_turn_id",
         "fm_df_meta",
+        "fm_current_artifact_turn_id",
     ):
         st.session_state.pop(key, None)
 
@@ -991,20 +995,28 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if knowledge_visual_message is not None:
         messages.append(knowledge_visual_message)
     history_len_before = len(st.session_state.chat_history)
+    artifact_turn_id = uuid.uuid4().hex
+    st.session_state["fm_current_artifact_turn_id"] = artifact_turn_id
 
-    with st.chat_message("assistant"):
-        status_box = st.empty()
-        response_box = st.empty()
-        status_box.status("Thinking...", expanded=False)
-        final_response = run_agent_loop(
-            llm=llm,
-            messages=messages,
-            tools=tools,
-            status_box=status_box,
-            response_box=response_box,
-        )
+    try:
+        with st.chat_message("assistant"):
+            status_box = st.empty()
+            response_box = st.empty()
+            status_box.status("Thinking...", expanded=False)
+            final_response = run_agent_loop(
+                llm=llm,
+                messages=messages,
+                tools=tools,
+                status_box=status_box,
+                response_box=response_box,
+            )
+    finally:
+        st.session_state.pop("fm_current_artifact_turn_id", None)
 
-    chat_interface.inject_artifacts(history_len_before)
+    chat_interface.inject_artifacts(
+        history_len_before,
+        artifact_turn_id=artifact_turn_id,
+    )
 
     assistant_metadata = {"source": "furnacemind", **turn_message_metadata}
     assistant_message_id: str | None = None

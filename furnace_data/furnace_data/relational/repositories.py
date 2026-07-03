@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import date, datetime, time, timezone
 from types import SimpleNamespace
@@ -818,6 +819,143 @@ class MemoryDocumentRepository:
             session.expunge(document)
             return document
 
+    def store_document_file(
+        self,
+        *,
+        document_id: str,
+        user_id: str,
+        filename: str,
+        file_type: str | None,
+        content_type: str | None,
+        file_bytes: bytes,
+    ) -> None:
+        """Store the original uploaded document on its metadata row.
+
+        Args:
+             - document_id: str - SQL document row id from ``memory_documents``.
+             - user_id: str - Owner of the document; retained for interface clarity.
+             - filename: str - Original uploaded file name.
+             - file_type: str | None - File extension/type used by ingestion.
+             - content_type: str | None - Browser-provided MIME type when known.
+             - file_bytes: bytes - Exact uploaded file bytes.
+
+        Returns:
+             - return: None - The existing document row is updated in PostgreSQL.
+        """
+        if not document_id or not user_id or file_bytes is None:
+            return
+        payload = {
+            "document_id": str(document_id),
+            "filename": str(filename or "upload"),
+            "file_type": file_type,
+            "content_type": content_type,
+            "file_size": len(file_bytes),
+            "sha256": hashlib.sha256(file_bytes).hexdigest(),
+            "file_bytes": bytes(file_bytes),
+        }
+        with self._session_factory() as session:
+            session.execute(
+                update(MemoryDocument)
+                .where(MemoryDocument.document_id == payload["document_id"])
+                .values(
+                    filename=payload["filename"],
+                    file_type=payload["file_type"],
+                    content_type=payload["content_type"],
+                    file_size=payload["file_size"],
+                    sha256=payload["sha256"],
+                    file_bytes=payload["file_bytes"],
+                    updated_at=utc_now(),
+                )
+            )
+            session.commit()
+
+    def get_document_file(self, *, document_id: str) -> SimpleNamespace | None:
+        """Return original upload bytes stored on ``memory_documents``.
+
+        Args:
+             - document_id: str - SQL document row id.
+
+        Returns:
+             - return: SimpleNamespace | None - File metadata and bytes, or
+               ``None`` when the row/columns are unavailable.
+        """
+        if not document_id:
+            return None
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        select(
+                            MemoryDocument.document_id,
+                            MemoryDocument.user_id,
+                            MemoryDocument.filename,
+                            MemoryDocument.file_type,
+                            MemoryDocument.content_type,
+                            MemoryDocument.file_size,
+                            MemoryDocument.sha256,
+                            MemoryDocument.file_bytes,
+                        ).where(MemoryDocument.document_id == str(document_id))
+                    )
+                    .mappings()
+                    .first()
+                )
+        except Exception:
+            return None
+        if row is None:
+            return None
+        values = dict(row)
+        raw_bytes = values.get("file_bytes")
+        if isinstance(raw_bytes, memoryview):
+            values["file_bytes"] = raw_bytes.tobytes()
+        elif raw_bytes is not None:
+            values["file_bytes"] = bytes(raw_bytes)
+        return SimpleNamespace(**values)
+
+    def get_document_file_by_mrag_id(
+        self,
+        *,
+        user_id: str | None,
+        mrag_document_id: str,
+    ) -> SimpleNamespace | None:
+        """Return stored upload bytes for the active SQL row backing an MRAG id.
+
+        Qdrant payloads carry the stable content-hash MRAG ``document_id``. The
+        SQL row has its own ``document_id`` primary key, so this method bridges
+        the two through ``memory_documents.metadata['document_id']`` before
+        loading bytes from the same row.
+        """
+        if not user_id or not mrag_document_id:
+            return None
+        for document in self.list_documents(user_id=user_id, active_only=True):
+            metadata = getattr(document, "metadata_json", None)
+            if not isinstance(metadata, dict):
+                continue
+            if str(metadata.get("document_id") or "") != str(mrag_document_id):
+                continue
+            return self.get_document_file(document_id=str(document.document_id))
+        return None
+
+    def delete_document_file(self, *, document_id: str) -> None:
+        """Clear original upload bytes from a deactivated document row."""
+        if not document_id:
+            return
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    update(MemoryDocument)
+                    .where(MemoryDocument.document_id == str(document_id))
+                    .values(
+                        content_type=None,
+                        file_size=None,
+                        sha256=None,
+                        file_bytes=None,
+                        updated_at=utc_now(),
+                    )
+                )
+                session.commit()
+        except Exception:
+            return
+
     def list_documents(
         self,
         *,
@@ -861,6 +999,7 @@ class MemoryDocumentRepository:
                 .values(is_active=False, updated_at=utc_now())
             )
             session.commit()
+        self.delete_document_file(document_id=document_id)
 
 
 class _ReflectedTableRepository:
