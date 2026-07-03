@@ -15,14 +15,20 @@ OFFLINE_LAG_DAYS: int = 2       # offline DB data has a ~24-48 h ingestion lag
 _lock = threading.Lock()
 _refreshing: bool = False
 _dataset_version: int = 0
+_api_refresh_job_id: str | None = None
 
 
 def maybe_refresh(config: dict, rm_choice: str = "Full") -> bool:
     """Refresh the local full-dataset cache in the background when stale."""
-    global _refreshing
+    global _refreshing, _api_refresh_job_id
 
     if _refreshing:
         return True
+
+    try:
+        from config.frontend_settings import is_backend_api_enabled
+    except Exception:
+        is_backend_api_enabled = None
 
     from data.ml.static_csv import get_static_dataset_path
     from data.ml.static_dataset_manager import StaticDatasetManager
@@ -32,6 +38,25 @@ def maybe_refresh(config: dict, rm_choice: str = "Full") -> bool:
 
     if not _is_stale(meta):
         return False
+
+    if is_backend_api_enabled and is_backend_api_enabled("datasets"):
+        if _api_refresh_job_id:
+            return True
+        try:
+            from services.dataset_api import refresh_dataset
+
+            job = refresh_dataset(
+                {
+                    "dataset_id": "static_ml_dataset",
+                    "options": {"rm_choice": "RM Charge" if rm_choice == "Full" else rm_choice},
+                }
+            )
+            _api_refresh_job_id = job.get("job_id")
+            log.info("Queued backend static dataset refresh job: %s", _api_refresh_job_id)
+            return True
+        except Exception as exc:
+            log.error("Backend static dataset refresh request failed: %s", exc, exc_info=True)
+            return False
 
     if not _lock.acquire(blocking=False):
         return _refreshing

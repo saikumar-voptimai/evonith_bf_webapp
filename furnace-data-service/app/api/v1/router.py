@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import datasets, health
-from app.routes import data
+from app.api.v1.routes import data, datasets, health
 
 router = APIRouter()
 router.include_router(health.router)

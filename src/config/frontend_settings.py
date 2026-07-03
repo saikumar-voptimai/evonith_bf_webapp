@@ -62,6 +62,11 @@ class FrontendSettings:
     show_backend_status_badge: bool = True
     backend_api_health_path: str = "/health"
     backend_api_readiness_path: str = "/readiness"
+    data_api_max_preview_rows: int = 500
+    data_api_max_json_rows: int = 5000
+    data_api_export_format: str = "csv"
+    data_api_job_ttl_hours: int = 24
+    data_api_artifact_ttl_hours: int = 24
     page_api_flags: dict[str, bool] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -84,6 +89,11 @@ def load_frontend_settings() -> FrontendSettings:
         show_backend_status_badge=_env_bool("SHOW_BACKEND_STATUS_BADGE", True),
         backend_api_health_path=_env("BACKEND_API_HEALTH_PATH", "/health"),
         backend_api_readiness_path=_env("BACKEND_API_READINESS_PATH", "/readiness"),
+        data_api_max_preview_rows=max(1, _env_int("DATA_API_MAX_PREVIEW_ROWS", 500)),
+        data_api_max_json_rows=max(1, _env_int("DATA_API_MAX_JSON_ROWS", 5000)),
+        data_api_export_format=_env("DATA_API_EXPORT_FORMAT", "csv").lower(),
+        data_api_job_ttl_hours=max(1, _env_int("DATA_API_JOB_TTL_HOURS", 24)),
+        data_api_artifact_ttl_hours=max(1, _env_int("DATA_API_ARTIFACT_TTL_HOURS", 24)),
         page_api_flags=page_flags,
     )
 

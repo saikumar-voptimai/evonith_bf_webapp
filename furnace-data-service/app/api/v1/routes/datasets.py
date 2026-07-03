@@ -1,15 +1,71 @@
-"""API v1 dataset routes that delegate to legacy dataset handlers."""
+"""API v1 dataset routes."""
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import FileResponse
 
+from app.api.v1.schemas.common import ApiResponse
+from app.api.v1.schemas.datasets import DatasetRefreshRequest
+from app.core.errors import ApiError
+from app.core.responses import get_request_id
 from app.models.schemas import FetchDatasetRequest, TaskCreatedResponse, TaskStatusResponse, UpdateStaticRequest
 from app.routes import dataset as legacy_dataset
+from app.services import dataset_service
+from app.services.artifact_service import get_artifact_metadata, get_artifact_path
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+
+
+def _wrap(request: Request, data) -> ApiResponse:
+    return ApiResponse(request_id=get_request_id(request), data=data)
+
+
+@router.get("", response_model=ApiResponse)
+def list_datasets(request: Request):
+    return _wrap(request, [dataset.model_dump() for dataset in dataset_service.list_datasets()])
+
+
+@router.get("/{dataset_id}/preview", response_model=ApiResponse)
+def preview_dataset(request: Request, dataset_id: str, limit: int = 500):
+    preview = dataset_service.preview_dataset(dataset_id, limit=limit)
+    return _wrap(request, preview.model_dump())
+
+
+@router.post("/refresh", response_model=ApiResponse)
+def refresh_dataset(request: Request, refresh_request: DatasetRefreshRequest):
+    job = dataset_service.refresh_dataset(refresh_request, request_id=get_request_id(request))
+    return _wrap(request, job.model_dump())
+
+
+@router.get("/jobs/{job_id}", response_model=ApiResponse)
+def get_dataset_job(request: Request, job_id: str):
+    job = dataset_service.get_job(job_id)
+    return _wrap(request, job.model_dump())
+
+
+@router.get("/jobs/{job_id}/download")
+def download_dataset_job(job_id: str):
+    job = dataset_service.get_job(job_id)
+    if not job.artifact_id:
+        raise ApiError("DATASET_ARTIFACT_NOT_FOUND", "Dataset job has no artifact", status_code=404)
+    return download_dataset_artifact(job.artifact_id)
+
+
+@router.get("/artifacts/{artifact_id}/download")
+def download_dataset_artifact(artifact_id: str):
+    try:
+        metadata = get_artifact_metadata(artifact_id)
+        path = get_artifact_path(artifact_id)
+    except ValueError as exc:
+        raise ApiError("DATASET_ARTIFACT_NOT_FOUND", "Invalid artifact id", status_code=400) from exc
+    except FileNotFoundError as exc:
+        raise ApiError("DATASET_ARTIFACT_NOT_FOUND", "Dataset artifact not found", status_code=404) from exc
+    if not path.exists():
+        raise ApiError("DATASET_ARTIFACT_NOT_FOUND", "Dataset artifact file not found", status_code=404)
+    return FileResponse(path=path, media_type=metadata.content_type, filename=metadata.filename)
 
 
 @router.post("/fetch", response_model=TaskCreatedResponse)

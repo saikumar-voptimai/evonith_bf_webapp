@@ -19,6 +19,245 @@
         "title": "ApiMeta",
         "type": "object"
       },
+      "ApiResponse": {
+        "properties": {
+          "data": {
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "data"
+        ],
+        "title": "ApiResponse",
+        "type": "object"
+      },
+      "DataExportRequest": {
+        "properties": {
+          "format": {
+            "default": "csv",
+            "title": "Format",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/DataQueryRequest"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "DataExportRequest",
+        "type": "object"
+      },
+      "DataQueryRequest": {
+        "properties": {
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filters"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 500,
+            "title": "Limit"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "offset": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "title": "Offset"
+          },
+          "report_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Type"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "table_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Name"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "Asia/Kolkata",
+            "title": "Timezone"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "DataQueryRequest",
+        "type": "object"
+      },
+      "DatasetRefreshRequest": {
+        "properties": {
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "static_ml_dataset",
+            "title": "Dataset Id"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          }
+        },
+        "title": "DatasetRefreshRequest",
+        "type": "object"
+      },
       "FetchDatasetRequest": {
         "properties": {
           "apply_cleaning": {
@@ -681,20 +920,20 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/api/v1/data/offline/fetch": {
-      "post": {
-        "description": "Fetch offline report data from PostgreSQL.\n\nProvide either `preset` or `start_time` + `end_time`.",
-        "operationId": "fetch_offline_endpoint_api_v1_data_offline_fetch_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OfflineFetchRequest"
-              }
+    "/api/v1/data/artifacts/{artifact_id}/download": {
+      "get": {
+        "operationId": "download_artifact_api_v1_data_artifacts__artifact_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
             }
-          },
-          "required": true
-        },
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -715,7 +954,48 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Fetch Offline Endpoint",
+        "summary": "Download Artifact",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/api/v1/data/export": {
+      "post": {
+        "operationId": "export_data_api_v1_data_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Data",
         "tags": [
           "data"
         ]
@@ -723,25 +1003,20 @@
     },
     "/api/v1/data/offline/report-types": {
       "get": {
-        "description": "List available offline database report types and their mapped tables.",
-        "operationId": "get_report_types_api_v1_data_offline_report_types_get",
+        "operationId": "offline_report_types_api_v1_data_offline_report_types_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Get Report Types Api V1 Data Offline Report Types Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ApiResponse"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Get Report Types",
+        "summary": "Offline Report Types",
         "tags": [
           "data"
         ]
@@ -749,36 +1024,33 @@
     },
     "/api/v1/data/offline/tables": {
       "get": {
-        "description": "List available offline database reports, tables, and whitelisted columns.",
-        "operationId": "get_offline_tables_api_v1_data_offline_tables_get",
+        "operationId": "offline_tables_api_v1_data_offline_tables_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Get Offline Tables Api V1 Data Offline Tables Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ApiResponse"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Get Offline Tables",
+        "summary": "Offline Tables",
         "tags": [
           "data"
         ]
       }
     },
-    "/api/v1/data/online/fetch": {
+    "/api/v1/data/preview": {
       "post": {
-        "description": "Fetch one or more online measurements from InfluxDB.\n\nProvide either `preset` (e.g. \"last 8 hours\") or `start_time` + `end_time`.\nMultiple measurements are outer-joined on the time index.",
-        "operationId": "fetch_online_data_api_v1_data_online_fetch_post",
+        "operationId": "preview_data_api_v1_data_preview_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/OnlineFetchRequest"
+                "$ref": "#/components/schemas/DataQueryRequest"
               }
             }
           },
@@ -788,7 +1060,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -804,49 +1078,68 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Fetch Online Data",
+        "summary": "Preview Data",
         "tags": [
           "data"
         ]
       }
     },
-    "/api/v1/data/online/measurements": {
+    "/api/v1/data/sources": {
       "get": {
-        "description": "List all available online measurements and their field names.",
-        "operationId": "get_measurements_api_v1_data_online_measurements_get",
+        "operationId": "list_sources_api_v1_data_sources_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Get Measurements Api V1 Data Online Measurements Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ApiResponse"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Get Measurements",
+        "summary": "List Sources",
         "tags": [
           "data"
         ]
       }
     },
-    "/api/v1/data/rm/live": {
-      "post": {
-        "description": "Fetch the latest Raw Material composition data from the offline database.\n\nProvide ``lookback_days`` (1-365) and ``cadence`` (``\"8h\"`` | ``\"1h\"`` | ``\"1d\"``).",
-        "operationId": "fetch_rm_live_api_v1_data_rm_live_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RmLiveFetchRequest"
+    "/api/v1/datasets": {
+      "get": {
+        "operationId": "list_datasets_api_v1_datasets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
               }
-            }
-          },
-          "required": true
+            },
+            "description": "Successful Response"
+          }
         },
+        "summary": "List Datasets",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/artifacts/{artifact_id}/download": {
+      "get": {
+        "operationId": "download_dataset_artifact_api_v1_datasets_artifacts__artifact_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -867,9 +1160,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Fetch Rm Live",
+        "summary": "Download Dataset Artifact",
         "tags": [
-          "data"
+          "datasets"
         ]
       }
     },
@@ -976,6 +1269,129 @@
         ]
       }
     },
+    "/api/v1/datasets/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_dataset_job_api_v1_datasets_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Dataset Job",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/jobs/{job_id}/download": {
+      "get": {
+        "operationId": "download_dataset_job_api_v1_datasets_jobs__job_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Dataset Job",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/refresh": {
+      "post": {
+        "operationId": "refresh_dataset_api_v1_datasets_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Dataset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
     "/api/v1/datasets/static": {
       "get": {
         "operationId": "download_static_api_v1_datasets_static_get",
@@ -1073,6 +1489,58 @@
           }
         },
         "summary": "Update Static",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/{dataset_id}/preview": {
+      "get": {
+        "operationId": "preview_dataset_api_v1_datasets__dataset_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Dataset",
         "tags": [
           "datasets"
         ]

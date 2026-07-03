@@ -13,6 +13,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from config.config_loader import load_config
+from config.frontend_settings import is_backend_api_enabled
 from furnace_data.influx.online import fetch_online_df
 from furnace_data.offline import (
     OFFLINE_REPORT_MAP as OFFLINE_DATABASE_REPORT_MAP,
@@ -24,6 +25,9 @@ from furnace_data.dataset.fetcher import DatasetFetcher as MlDatasetFetcher
 from data.fetch_presets import OFFLINE_REPORT_LABEL_MAP, offline_table_label
 from data.ml.static_csv import get_static_dataset_path, load_static_dataset
 from data.ml.static_dataset_manager import StaticDatasetManager
+from services.api_errors import FrontendApiError
+from services.data_api import preview_data as preview_data_api
+from services.dataset_api import refresh_dataset as refresh_dataset_api
 from utils.dataset_refresher import maybe_refresh
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
@@ -89,6 +93,9 @@ MEASUREMENT_LABELS = {
 }
 
 st.title("Visualisation tool")
+_USE_DATA_EXPLORER_API = is_backend_api_enabled("data_explorer")
+_USE_DATASETS_API = is_backend_api_enabled("datasets")
+st.caption(f"Data mode: **{'Backend API' if _USE_DATA_EXPLORER_API else 'Direct'}**")
 
 # --------------------------------------------------------------------------
 st.subheader("Distribution plots")
@@ -427,12 +434,38 @@ with st.form(key="measurement_form"):
             st.warning("Please select at least one measurement.")
             st.stop()
 
-        sm.online_df = fetch_online_df(
-            sorted(sm.selected_measurements),
-            sm.time_range,
-            request_type="windowed-average",
-            window_by=sm.window_by,
-        )
+        if _USE_DATA_EXPLORER_API:
+            try:
+                api_preview = preview_data_api(
+                    {
+                        "source": "online",
+                        "mode": "windowed-average",
+                        "filters": {
+                            "measurements": sorted(sm.selected_measurements),
+                            "preset": sm.time_range,
+                            "window": FREQUENCY_TO_TIMEDTA.get(sm.window_by) or sm.window_by,
+                        },
+                        "limit": 500,
+                    }
+                )
+                sm.online_df = pd.DataFrame(api_preview.get("rows", []))
+                if "time" in sm.online_df.columns:
+                    sm.online_df["time"] = pd.to_datetime(sm.online_df["time"], errors="coerce")
+                    sm.online_df = sm.online_df.set_index("time")
+                if api_preview.get("truncated"):
+                    st.warning("Backend API preview was capped. Use export/download for larger data.")
+            except FrontendApiError as exc:
+                sm.online_df = None
+                st.error(f"Backend API fetch failed: {exc.message}")
+                if exc.request_id:
+                    st.caption(f"Request ID: {exc.request_id}")
+        else:
+            sm.online_df = fetch_online_df(
+                sorted(sm.selected_measurements),
+                sm.time_range,
+                request_type="windowed-average",
+                window_by=sm.window_by,
+            )
 
 # Display and allow download after the form (survives reruns)
 if (
@@ -548,7 +581,35 @@ if submitted:
 
     if time_range_to_fetch is not None:
         with st.spinner("Fetching from database…"):
-            if selected_db_table:
+            if _USE_DATA_EXPLORER_API:
+                query = {
+                    "source": "offline",
+                    "mode": "ts",
+                    "report_type": selected_db_report,
+                    "table_name": selected_db_table,
+                    "limit": 500,
+                }
+                if time_range_choice == "Use Start/End Dates":
+                    query["start_time"] = time_range_to_fetch[0].isoformat()
+                    query["end_time"] = time_range_to_fetch[1].isoformat()
+                else:
+                    query["filters"] = {"preset": time_range_choice}
+                try:
+                    api_preview = preview_data_api(query)
+                    df_offline = pd.DataFrame(api_preview.get("rows", []))
+                    if "time" in df_offline.columns:
+                        df_offline["time"] = pd.to_datetime(df_offline["time"], errors="coerce")
+                        df_offline = df_offline.set_index("time")
+                    output_name = selected_db_table or selected_db_report.lower()
+                    if api_preview.get("truncated"):
+                        st.warning("Backend API preview was capped. Use export/download for larger data.")
+                except FrontendApiError as exc:
+                    st.error(f"Backend API fetch failed: {exc.message}")
+                    if exc.request_id:
+                        st.caption(f"Request ID: {exc.request_id}")
+                    df_offline = pd.DataFrame()
+                    output_name = selected_db_table or selected_db_report.lower()
+            elif selected_db_table:
                 df_offline = fetch_table_data(
                     table_name=selected_db_table,
                     time_range=time_range_to_fetch,
@@ -710,6 +771,22 @@ with right_col:
                         f"No new data: DB already has data up to {db_end}. "
                         f"Choose a date after {db_end} or use Override."
                     )
+                elif _USE_DATASETS_API:
+                    try:
+                        job = refresh_dataset_api(
+                            {
+                                "dataset_id": "static_ml_dataset",
+                                "end_time": datetime.combine(_ext_end, time.max).isoformat(),
+                                "options": {"rm_choice": _ext_rm},
+                            }
+                        )
+                        st.success(f"Backend dataset refresh queued: {job.get('job_id')}")
+                        if job.get("download_url"):
+                            st.caption(f"Download: {job['download_url']}")
+                    except FrontendApiError as exc:
+                        st.error(f"Backend dataset refresh failed: {exc.message}")
+                        if exc.request_id:
+                            st.caption(f"Request ID: {exc.request_id}")
                 else:
                     with st.spinner("Fetching new data and writing to offline database..."):
                         _raw = fetcher.extend_and_persist(
@@ -763,7 +840,26 @@ with right_col:
                     "Override & Rebuild", width="stretch"
                 )
 
-            if _ovr_submit:
+            if _ovr_submit and _USE_DATASETS_API:
+                try:
+                    job = refresh_dataset_api(
+                        {
+                            "dataset_id": "static_ml_dataset",
+                            "start_time": datetime.combine(_ovr_from, time.min).isoformat(),
+                            "end_time": datetime.combine(_ovr_end, time.max).isoformat(),
+                            "force": True,
+                            "options": {"rm_choice": _ovr_rm},
+                        }
+                    )
+                    st.success(f"Backend dataset refresh queued: {job.get('job_id')}")
+                    if job.get("download_url"):
+                        st.caption(f"Download: {job['download_url']}")
+                except FrontendApiError as exc:
+                    st.error(f"Backend dataset refresh failed: {exc.message}")
+                    if exc.request_id:
+                        st.caption(f"Request ID: {exc.request_id}")
+
+            if _ovr_submit and not _USE_DATASETS_API:
                 with st.spinner(f"Deleting rows from {_ovr_from} and re-generating…"):
                     _raw = fetcher.extend_and_persist(
                         start_date=_ovr_from,
