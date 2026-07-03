@@ -23,7 +23,9 @@ from datetime import date, timezone
 from pathlib import Path
 from typing import Any
 
-_COPILOT_DATA_DIR = Path(__file__).resolve().parents[2] / "storage" / "furnacemind"
+from furnace_data.runtime_paths import get_repo_root, runtime_path
+
+_COPILOT_DATA_DIR = get_repo_root() / "src" / "storage" / "furnacemind"
 _SLUG_RE = re.compile(r"[^a-z0-9_]+")
 _SKILL_SEARCH_CONTEXT_CHARS = 6_000
 _RETRIEVED_SKILL_CONTEXT_CHARS = 8_000
@@ -212,7 +214,15 @@ def _read_context_file(filename: str, *, max_chars: int = 14_000) -> str:
     prevents a large uploaded skill file from flooding the agent prompt.
     """
     try:
-        path = _COPILOT_DATA_DIR / Path(filename).name
+        safe_name = Path(filename).name
+        runtime_path_candidate = runtime_path(
+            "uploads", "furnacemind", "skills", safe_name
+        )
+        path = (
+            runtime_path_candidate
+            if runtime_path_candidate.exists()
+            else _COPILOT_DATA_DIR / safe_name
+        )
         if not path.exists():
             return ""
         text = path.read_text(encoding="utf-8", errors="ignore").strip()

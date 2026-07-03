@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import joblib
@@ -11,6 +10,7 @@ from config.config_loader import load_config
 from utils.recommendations.data import DataframesProcessor
 from utils.recommendations.llm import call_llm
 from utils.recommendations.optimiser import run_optimiser
+from utils.recommendations.bounds import load_control_bounds, save_control_bounds
 from utils.recommendations.prompts import prompt_recommendation_system
 
 config = load_config()
@@ -103,13 +103,7 @@ if st.session_state["df_full"] is None:
 target_output = config_vsense["Optimisation"][optimisation_type]["output_param"]
 
 st.subheader("Control Parameters")
-bounds_file = Path("src/assets/data/control_bounds.json")
-bounds_file.parent.mkdir(parents=True, exist_ok=True)
-
-persisted_bounds = {}
-if bounds_file.exists():
-    with open(bounds_file, "r") as f:
-        persisted_bounds = json.load(f)
+persisted_bounds = load_control_bounds()
 
 if css_path.exists():
     with open(css_path) as f:
@@ -202,8 +196,7 @@ with st.form(f"Control Params Form"):
         st.session_state['control_params'] = include_control
         merged_bounds = persisted_bounds.copy()
         merged_bounds.update(include_control)
-        with open(bounds_file, "w") as f:
-            json.dump(merged_bounds, f, indent=4)
+        save_control_bounds(merged_bounds)
         st.success("✅ Bounds saved successfully!")
 
 # User-specified input variables:

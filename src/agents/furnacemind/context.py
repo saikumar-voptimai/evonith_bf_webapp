@@ -17,6 +17,7 @@ from pathlib import Path
 
 from agents.furnacemind.prompts import AI_COOPERATE_SYSTEM
 from agents.memory.fm_memory import build_persistent_context, load_fm_memory
+from furnace_data.runtime_paths import runtime_path
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -267,7 +268,13 @@ class SystemPromptContext:
              - return: str - Recent tool-error text, or an empty string.
         """
         try:
-            path = Path(__file__).resolve().parents[2] / "agents" / "tool_errors.md"
+            path = runtime_path("logs", "tool_errors.md")
+            if not path.exists():
+                path = (
+                    Path(__file__).resolve().parents[2]
+                    / "agents"
+                    / "tool_errors.md"
+                )
             if not path.exists():
                 return ""
             return path.read_text(encoding="utf-8")[-2_500:].strip()

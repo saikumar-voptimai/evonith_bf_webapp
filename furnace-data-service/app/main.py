@@ -17,11 +17,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes import data, dataset, health
+from furnace_data.runtime_paths import ensure_runtime_dirs, get_runtime_dir
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+ensure_runtime_dirs()
+logging.getLogger(__name__).info("Evonith runtime directory: %s", get_runtime_dir())
 
 app = FastAPI(
     title="Furnace Data Service",

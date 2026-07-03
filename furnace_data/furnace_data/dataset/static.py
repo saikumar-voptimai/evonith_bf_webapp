@@ -299,12 +299,15 @@ class StaticDatasetManager:
         return _load_meta(self.static_dir)
 
     def current_csv_path(self) -> Optional[Path]:
-        """Return the path of the active CSV file, or ``None`` if it doesn't exist."""
+        """Return the active CSV path, with legacy bootstrap fallback."""
         meta = _load_meta(self.static_dir)
-        if not meta or not meta.csv_file:
-            return None
-        p = self.static_dir / meta.csv_file
-        return p if p.exists() else None
+        if meta and meta.csv_file:
+            p = self.static_dir / meta.csv_file
+            if p.exists():
+                return p
+        if self.legacy_csv_path and self.legacy_csv_path.exists():
+            return self.legacy_csv_path
+        return None
 
     # ------------------------------------------------------------------
     # Internals

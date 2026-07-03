@@ -1,7 +1,14 @@
 """Application settings loaded from environment variables."""
 
 from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+from furnace_data.runtime_paths import get_dataset_results_dir, get_dataset_static_dir
+
+_SERVICE_ROOT = Path(__file__).resolve().parents[1]
+_LEGACY_STATIC_DIR = _SERVICE_ROOT / "data" / "static"
+_LEGACY_STATIC_CSV = _LEGACY_STATIC_DIR / "ml_dataset.csv"
 
 
 class Settings(BaseSettings):
@@ -17,11 +24,12 @@ class Settings(BaseSettings):
     port: int = 8080
 
     # Paths
-    results_dir: Path = Path(__file__).resolve().parents[1] / "data" / "results"
-    static_dir: Path = Path(__file__).resolve().parents[1] / "data" / "static"
+    results_dir: Path = get_dataset_results_dir()
+    static_dir: Path = get_dataset_static_dir()
 
     # Optional: path to a pre-existing legacy CSV to bootstrap the static cache
-    legacy_csv_path: str = ""
+    legacy_csv_path: str = str(_LEGACY_STATIC_CSV) if _LEGACY_STATIC_CSV.exists() else ""
+    legacy_static_dir: Path = _LEGACY_STATIC_DIR
 
     # Task cleanup: keep only this many completed result CSVs
     max_result_files: int = 3

@@ -8,6 +8,7 @@ with Qdrant instead.
 """
 
 import os
+from pathlib import Path
 from time import time
 
 import dotenv
@@ -26,6 +27,8 @@ from langchain_community.document_loaders.text import TextLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import AzureOpenAIEmbeddings, OpenAIEmbeddings
+
+from furnace_data.runtime_paths import runtime_path
 
 dotenv.load_dotenv()
 
@@ -54,8 +57,12 @@ def load_doc_to_db():
         for doc_file in st.session_state.rag_docs:
             if doc_file.name not in st.session_state.rag_sources:
                 if len(st.session_state.rag_sources) < DB_DOCS_LIMIT:
-                    os.makedirs("source_files", exist_ok=True)
-                    file_path = f"./source_files/{doc_file.name}"
+                    file_path = runtime_path(
+                        "temp",
+                        "source_files",
+                        Path(doc_file.name).name,
+                        create_parent=True,
+                    )
                     with open(file_path, "wb") as file:
                         file.write(doc_file.read())
 

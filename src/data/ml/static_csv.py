@@ -15,6 +15,7 @@ from sqlalchemy import inspect
 from config.config_loader import load_config
 from furnace_data.offline import fetch_offline_data
 from furnace_data.relational.engine import build_relational_engine
+from furnace_data.runtime_paths import get_dataset_static_dir, get_repo_root
 
 log = logging.getLogger(__name__)
 
@@ -27,14 +28,32 @@ _RAW_BURDEN_COLUMN_RE = re.compile(
 
 
 def get_static_dataset_path(data_rel_path: str | None = None) -> Path:
-    """Resolve the legacy static dataset path inside the webapp repo.
+    """Resolve the generated static dataset cache path under runtime.
 
-    The current app can refresh this file from the static ML database table.
-    This helper remains
-    for older call sites that still pass a path-shaped argument around.
+    The configured source CSV remains a read-only fallback when the runtime cache
+    is empty.
     """
+    return get_dataset_static_dir() / _legacy_static_dataset_path(data_rel_path).name
+
+
+def _legacy_static_dataset_path(data_rel_path: str | None = None) -> Path:
+    """Resolve the configured source/legacy static dataset CSV path."""
     rel_path = data_rel_path or load_config("setting_ds_dv.yml")["DATA"]
-    return (Path(__file__).resolve().parents[3] / rel_path).resolve()
+    path = Path(rel_path)
+    if path.is_absolute():
+        return path.resolve()
+    return (get_repo_root() / path).resolve()
+
+
+def _fallback_static_dataset_path(csv_path: Path) -> Path | None:
+    """Return a source CSV fallback for the default runtime dataset path."""
+    legacy_path = _legacy_static_dataset_path()
+    if (
+        csv_path.name == legacy_path.name
+        and csv_path.parent.resolve() == get_dataset_static_dir()
+    ):
+        return legacy_path
+    return None
 
 
 def _normalise_index(df: pd.DataFrame, *, assume_naive_utc: bool) -> pd.DataFrame:
@@ -152,20 +171,26 @@ def load_static_dataset(
     local rotating cache is preferred when present. If no local copy exists,
     the full static ML table is fetched from the configured database.
     """
+    fallback_path: Path | None = None
     if path is None:
         csv_path = get_static_dataset_path()
+        fallback_path = _legacy_static_dataset_path()
     else:
         csv_path = Path(path)
         if not csv_path.is_absolute():
-            csv_path = (Path(__file__).resolve().parents[3] / csv_path).resolve()
+            csv_path = (get_repo_root() / csv_path).resolve()
+        fallback_path = _fallback_static_dataset_path(csv_path)
 
     if not csv_path.exists():
-        from data.ml.static_dataset_manager import StaticDatasetManager
+        if fallback_path and fallback_path.exists():
+            csv_path = fallback_path
+        else:
+            from data.ml.static_dataset_manager import StaticDatasetManager
 
-        manager = StaticDatasetManager(csv_path)
-        df = manager.update_static()
-        manager.save(df)
-        return df.sort_index() if sort_index else df
+            manager = StaticDatasetManager(csv_path)
+            df = manager.update_static()
+            manager.save(df)
+            return df.sort_index() if sort_index else df
 
     df = pd.read_csv(
         csv_path,

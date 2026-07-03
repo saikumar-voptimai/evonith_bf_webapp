@@ -8,10 +8,16 @@ from typing import Any
 import pandas as pd
 import yaml
 
+from furnace_data.runtime_paths import get_repo_root
+
 PERSISTED_NUMERIC_COLUMNS = (
     "price_rs_per_mt",
     "min_share_pct",
     "max_share_pct",
+)
+
+_LEGACY_OPERATOR_INPUTS_PATH = (
+    get_repo_root() / "src" / "config" / "bmo_operator_inputs.yml"
 )
 
 PERSISTED_MODEL_INPUT_COLUMNS = (
@@ -114,6 +120,8 @@ def load_ore_editor_preferences(path: str | Path) -> dict[str, Any]:
     """Load saved BMO ore editor preferences, returning empty prefs if absent."""
 
     pref_path = Path(path)
+    if not pref_path.exists() and pref_path.name == _LEGACY_OPERATOR_INPUTS_PATH.name:
+        pref_path = _LEGACY_OPERATOR_INPUTS_PATH
     if not pref_path.exists():
         return {}
     with open(pref_path, "r", encoding="utf-8") as file:

@@ -15,6 +15,7 @@ import pandas as pd
 from config.config_loader import load_config
 from data.ml.static_csv import (
     fetch_static_dataset_from_database,
+    _fallback_static_dataset_path,
     get_static_dataset_path,
     load_static_dataset,
 )
@@ -308,6 +309,9 @@ class StaticDatasetManager:
         latest = self._latest_versioned_file()
         if latest is not None:
             return latest
+        fallback = _fallback_static_dataset_path(self.static_path)
+        if fallback and fallback.exists():
+            return fallback
         return self.static_path
 
     def _versioned_filename(self) -> str:

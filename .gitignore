@@ -6,8 +6,13 @@ __pycache__/
 *.pyd
 *__pycache__
 .vscode/
+runtime/*
+!runtime/.gitkeep
 logs/*
 *.log
+*.db
+*.sqlite
+*.sqlite3
 .claude
 current_furnace_data.csv
 src/assets/data/furnace_dataset_*.csv
@@ -19,4 +24,6 @@ pytest-cache-files-*/
 nul
 .neon
 neonctl
-src/storage/furnacemind/mrag_images/
+src/storage/**
+furnace-data-service/data/results/**
+furnace-data-service/data/static/**

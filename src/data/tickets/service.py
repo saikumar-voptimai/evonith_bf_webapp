@@ -5,10 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 import logging
+import re
 from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy.engine import Engine
+
+from furnace_data.runtime_paths import get_feedback_upload_dir, get_repo_root
 
 from .engine import build_tickets_engine, build_tickets_session_factory
 from .models import (
@@ -28,8 +31,8 @@ ALLOWED_DELETE_ROLES = frozenset({"admin", "supervisor"})
 ALLOWED_IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "webp"})
 MAX_ATTACHMENTS_PER_TICKET = 5
 MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_TICKET_IMAGES_DIR = PROJECT_ROOT / "src" / "storage" / "feedback" / "images"
+PROJECT_ROOT = get_repo_root()
+_SAFE_UPLOAD_STEM_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 @dataclass(frozen=True)
@@ -328,6 +331,19 @@ class TicketService:
         """Return lower-case extension without leading dot."""
         return Path(filename).suffix.lower().lstrip(".")
 
+    @staticmethod
+    def _sanitize_upload_filename(filename: str) -> str:
+        """Return a safe basename for an uploaded image filename."""
+        name = Path(str(filename or "")).name.strip()
+        suffix = Path(name).suffix.lower().lstrip(".")
+        stem = Path(name).stem if name else "upload"
+        safe_stem = _SAFE_UPLOAD_STEM_RE.sub("_", stem).strip("._") or "upload"
+        if suffix:
+            safe_suffix = re.sub(r"[^a-z0-9]+", "", suffix)
+            if safe_suffix:
+                return f"{safe_stem}.{safe_suffix}"
+        return safe_stem
+
     def _validate_attachments(
         self,
         attachments: list[TicketImageUpload],
@@ -340,7 +356,7 @@ class TicketService:
 
         validated: list[TicketImageUpload] = []
         for attachment in attachments:
-            filename = attachment.filename.strip()
+            filename = self._sanitize_upload_filename(attachment.filename)
             if not filename:
                 raise ValueError("Attachment filename is required.")
 
@@ -371,7 +387,7 @@ class TicketService:
         attachments: list[TicketImageUpload],
     ) -> list[TicketImageView]:
         """Write screenshot files and persist image metadata rows."""
-        image_dir = DEFAULT_TICKET_IMAGES_DIR
+        image_dir = get_feedback_upload_dir()
         image_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

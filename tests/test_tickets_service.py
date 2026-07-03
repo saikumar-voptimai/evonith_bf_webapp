@@ -171,6 +171,7 @@ def test_create_ticket_with_attachments_persists_images(
     local_temp = _make_local_test_dir()
     try:
         monkeypatch.chdir(local_temp)
+        monkeypatch.setenv("EVONITH_RUNTIME_DIR", str(local_temp / "runtime"))
         service = TicketService(db_url="sqlite:///:memory:")
 
         created = service.create_ticket(
@@ -250,6 +251,7 @@ def test_delete_ticket_cleans_up_images_and_enforces_role(
     local_temp = _make_local_test_dir()
     try:
         monkeypatch.chdir(local_temp)
+        monkeypatch.setenv("EVONITH_RUNTIME_DIR", str(local_temp / "runtime"))
         service = TicketService(db_url="sqlite:///:memory:")
 
         created = service.create_ticket(

@@ -10,11 +10,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-# TODO: move defaults to global app config when persistence config is unified.
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_TICKETS_DB_PATH = PROJECT_ROOT / "src" / "storage" / "feedback" / "tickets.db"
-DEFAULT_TICKETS_DB_URL = f"sqlite:///{DEFAULT_TICKETS_DB_PATH.as_posix()}"
-LEGACY_TICKETS_DB_PATH = PROJECT_ROOT / "storage" / "feedback" / "tickets.db"
+from furnace_data.runtime_paths import get_feedback_db_path, get_repo_root
+
+PROJECT_ROOT = get_repo_root()
+LEGACY_TICKETS_DB_PATHS = (
+    PROJECT_ROOT / "src" / "storage" / "feedback" / "tickets.db",
+    PROJECT_ROOT / "storage" / "feedback" / "tickets.db",
+)
+
+
+def default_tickets_db_url() -> str:
+    """Return the default runtime-backed SQLite ticket database URL."""
+    return f"sqlite:///{get_feedback_db_path().as_posix()}"
 
 
 def resolve_tickets_db_url(db_url: str | None = None) -> str:
@@ -28,7 +35,7 @@ def resolve_tickets_db_url(db_url: str | None = None) -> str:
     """
     if db_url:
         return db_url
-    return os.getenv("TICKETS_DB_URL", DEFAULT_TICKETS_DB_URL)
+    return os.getenv("TICKETS_DB_URL", default_tickets_db_url())
 
 
 def _sqlite_url_to_path(db_url: str) -> Path | None:
@@ -60,15 +67,18 @@ def _maybe_copy_legacy_sqlite_db(*, db_url: str, explicit_db_url: str | None) ->
         return
     if os.getenv("TICKETS_DB_URL"):
         return
-    if db_url != DEFAULT_TICKETS_DB_URL:
+    if db_url != default_tickets_db_url():
         return
 
     target_path = _sqlite_url_to_path(db_url)
     if target_path is None:
         return
 
-    legacy_path = LEGACY_TICKETS_DB_PATH
-    if target_path.exists() or not legacy_path.exists():
+    if target_path.exists():
+        return
+
+    legacy_path = next((path for path in LEGACY_TICKETS_DB_PATHS if path.exists()), None)
+    if legacy_path is None:
         return
 
     target_path.parent.mkdir(parents=True, exist_ok=True)

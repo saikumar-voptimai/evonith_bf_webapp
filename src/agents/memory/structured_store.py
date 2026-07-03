@@ -5,11 +5,21 @@ atomic writes (write to ``.tmp`` then rename) to prevent data corruption.
 """
 
 import json
+import shutil
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from furnace_data.runtime_paths import get_cache_dir, get_repo_root
+
 from agents.memory.schemas import ShiftSummary
+
+_SUMMARY_FILENAMES = (
+    "shift_summaries.json",
+    "daily_summaries.json",
+    "weekly_summaries.json",
+    "biweekly_summaries.json",
+)
 
 
 class StructuredStore:
@@ -18,20 +28,26 @@ class StructuredStore:
     Stores shift summaries + aggregated daily/weekly/bi-weekly summaries.
     """
 
-    def __init__(self, base_dir: str = "src/storage") -> None:
+    def __init__(self, base_dir: str | Path | None = None) -> None:
         """Initialise the store and ensure all JSON backing files exist.
 
         Args:
-            base_dir: Directory path where the four JSON files will be created.
-                      The directory is created if it does not exist.
+            base_dir: Optional directory path where the four JSON files will be
+                      created.  The default uses ``runtime/cache``.
         """
-        self.base_path = Path(base_dir)
+        uses_default_storage = (
+            base_dir is None or str(base_dir).replace("\\", "/") == "src/storage"
+        )
+        self.base_path = get_cache_dir() if uses_default_storage else Path(base_dir)
         self.base_path.mkdir(parents=True, exist_ok=True)
 
-        self.shift_file = self.base_path / "shift_summaries.json"
-        self.daily_file = self.base_path / "daily_summaries.json"
-        self.weekly_file = self.base_path / "weekly_summaries.json"
-        self.biweekly_file = self.base_path / "biweekly_summaries.json"
+        if uses_default_storage:
+            self._copy_legacy_files_if_needed()
+
+        self.shift_file = self.base_path / _SUMMARY_FILENAMES[0]
+        self.daily_file = self.base_path / _SUMMARY_FILENAMES[1]
+        self.weekly_file = self.base_path / _SUMMARY_FILENAMES[2]
+        self.biweekly_file = self.base_path / _SUMMARY_FILENAMES[3]
 
         for f in [
             self.shift_file,
@@ -41,6 +57,16 @@ class StructuredStore:
         ]:
             if not f.exists():
                 self._write_file(f, [])
+
+    def _copy_legacy_files_if_needed(self) -> None:
+        """Copy legacy summary JSON files into runtime cache when absent."""
+        legacy_base = get_repo_root() / "src" / "storage"
+        for filename in _SUMMARY_FILENAMES:
+            source = legacy_base / filename
+            target = self.base_path / filename
+            if source.exists() and not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
 
     # Shift write operations
     def save_shift_summary(self, summary: ShiftSummary) -> None:

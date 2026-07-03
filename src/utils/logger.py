@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+from furnace_data.runtime_paths import get_logs_dir
+
 
 class WindowsSafeRotatingFileHandler(logging.handlers.RotatingFileHandler):
     """RotatingFileHandler that retries rotate() on Windows PermissionError.
@@ -43,11 +45,14 @@ def setup_logger(config_path: str = "src/config/logger_setting.yml"):
         raise FileNotFoundError(
             f"Logging configuration file not found at {config_file_path}"
         )
-    # Ensure the logs directory exists
-    os.makedirs("logs", exist_ok=True)
-
     with open(config_file_path, "r") as file:
         config = yaml.safe_load(file)
+        logs_dir = get_logs_dir()
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        for handler in (config.get("handlers") or {}).values():
+            filename = handler.get("filename") if isinstance(handler, dict) else None
+            if filename:
+                handler["filename"] = str(logs_dir / Path(filename).name)
         logging.config.dictConfig(config)
 
     logger = logging.getLogger("root")

@@ -30,9 +30,10 @@ from qdrant_client.models import (
     VectorParams,
 )
 
+from furnace_data.runtime_paths import get_repo_root, runtime_path
 from utils.settings import settings
 
-_SKILL_STORAGE_DIR = Path(__file__).resolve().parents[2] / "storage" / "furnacemind"
+_SKILL_STORAGE_DIR = get_repo_root() / "src" / "storage" / "furnacemind"
 _POINT_NAMESPACE = uuid.UUID("2c2cb7b3-6eca-4ef7-8c63-06d0da7117aa")
 _INDEXED_PAYLOAD_FIELDS = ("source", "skill_id", "slug", "chunk_type")
 _PROFILE_CONTEXT_CHARS = 4000
@@ -149,7 +150,15 @@ def _read_context_file(filename: str) -> str:
     skips unreadable context files.
     """
     try:
-        path = _SKILL_STORAGE_DIR / Path(filename).name
+        safe_name = Path(filename).name
+        runtime_candidate = runtime_path(
+            "uploads", "furnacemind", "skills", safe_name
+        )
+        path = (
+            runtime_candidate
+            if runtime_candidate.exists()
+            else _SKILL_STORAGE_DIR / safe_name
+        )
         if not path.exists() or not path.is_file():
             return ""
         return path.read_text(encoding="utf-8", errors="ignore").strip()

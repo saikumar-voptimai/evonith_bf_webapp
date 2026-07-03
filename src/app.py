@@ -9,17 +9,25 @@ Run via ``python run_streamlit.py`` (never invoke ``streamlit run`` directly
 to avoid Windows DLL ordering issues with PyTorch).
 """
 
+import logging
+
 import streamlit as st
 
 # Must be first Streamlit call
 st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
 
 from config.page_registry import get_navigation_pages
+from furnace_data.runtime_paths import ensure_runtime_dirs, get_runtime_dir
 from utils.logger import setup_logger
 from utils.session import is_logged_in
 
+ensure_runtime_dirs()
+
 # Initialize logging once
 setup_logger()
+if not st.session_state.get("_evonith_runtime_dir_logged"):
+    logging.getLogger(__name__).info("Evonith runtime directory: %s", get_runtime_dir())
+    st.session_state["_evonith_runtime_dir_logged"] = True
 
 
 # ------------------------------------------------------

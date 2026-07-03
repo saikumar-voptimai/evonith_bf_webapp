@@ -6,14 +6,13 @@ that are used by all contour plotters.  Masks that exclude points outside
 the furnace profile are cached as pickle files to avoid recomputation.
 """
 
-import os
 import pickle
 from pathlib import Path
 
 import numpy as np
-import yaml
 
 from config.config_loader import load_config
+from furnace_data.runtime_paths import get_cache_dir, get_repo_root
 
 config = load_config()
 
@@ -80,8 +79,9 @@ class Furnace:
             self.radius_grid, self.theta_grid, indexing="ij"
         )
 
-        # Mask path
-        self.mask_path = config["paths"]["geometry"]
+        # Generated masks live in runtime; checked-in masks remain read fallbacks.
+        self.mask_path = get_cache_dir() / "geometries"
+        self.legacy_mask_path = get_repo_root() / config["paths"]["geometry"]
 
     def get_heights(self):
         """
@@ -126,6 +126,10 @@ class Furnace:
         if fullpath.exists():
             with open(fullpath, "rb") as f:
                 return pickle.load(f)
+        legacy_fullpath = Path(self.legacy_mask_path) / mask_file
+        if legacy_fullpath.exists():
+            with open(legacy_fullpath, "rb") as f:
+                return pickle.load(f)
 
         if grid_type == "cartesian":
             if self.X is None or self.Y is None:
@@ -145,6 +149,7 @@ class Furnace:
             raise ValueError("Invalid grid_type. Must be 'cartesian' or 'polar'.")
 
         # Save mask to file for reuse
+        fullpath.parent.mkdir(parents=True, exist_ok=True)
         with open(fullpath, "wb") as f:
             pickle.dump(mask, f)
 

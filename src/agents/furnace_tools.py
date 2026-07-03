@@ -35,6 +35,7 @@ from data.fetch_presets import (
     OFFLINE_REPORT_LABEL_MAP,
 )
 from data.ml.static_csv import load_static_dataset
+from furnace_data.runtime_paths import runtime_path
 from furnace_data.influx.online import fetch_online_df  # noqa: F401
 from furnace_data.influx.query import TIMEDELTAS  # noqa: F401
 from furnace_data.offline import (
@@ -54,8 +55,6 @@ _OFFLINE_REPORT_TYPE_ALIASES = {
     "RAW_MATERIAL_COMPOSITION": "RM_COMPOSITION",
 }
 
-
-_TOOL_ERRORS_PATH = Path(__file__).resolve().parent / "tool_errors.md"
 _KNOWLEDGE_IMAGE_RESULT_LIMIT = 3
 _KNOWLEDGE_IMAGE_MAX_BYTES = 4_000_000
 _KNOWLEDGE_RERANK_CANDIDATES = 16
@@ -1519,7 +1518,7 @@ def consume_pending_mrag_image_message() -> dict[str, Any] | None:
 def _append_tool_error(*, tool_name: str, params: Dict[str, Any], error: str) -> None:
     """Append tool failure details to tool_errors.md (best-effort, never raises)."""
     try:
-        _TOOL_ERRORS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tool_errors_path = runtime_path("logs", "tool_errors.md", create_parent=True)
         ts = datetime.now(timezone.utc).isoformat()
         entry = (
             f"\n\n## {ts}\n"
@@ -1527,12 +1526,13 @@ def _append_tool_error(*, tool_name: str, params: Dict[str, Any], error: str) ->
             f"**Params:** `{json.dumps(params, ensure_ascii=False)}`\n\n"
             f"**Error:**\n\n```\n{error}\n```\n"
         )
-        if _TOOL_ERRORS_PATH.exists():
-            _TOOL_ERRORS_PATH.write_text(
-                _TOOL_ERRORS_PATH.read_text(encoding="utf-8") + entry, encoding="utf-8"
+        if tool_errors_path.exists():
+            tool_errors_path.write_text(
+                tool_errors_path.read_text(encoding="utf-8") + entry,
+                encoding="utf-8",
             )
         else:
-            _TOOL_ERRORS_PATH.write_text(
+            tool_errors_path.write_text(
                 "# FurnaceMind Tool Errors & Learnings\n\n"
                 "This file is auto-updated when tool execution fails during AI Co-Operate sessions.\n\n---\n"
                 + entry,

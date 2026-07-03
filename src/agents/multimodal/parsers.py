@@ -16,6 +16,8 @@ from typing import Any
 
 import pandas as pd
 
+from furnace_data.runtime_paths import get_temp_dir
+
 
 def _read_bytes(file_or_bytes: Any) -> bytes:
     """Return bytes from a Streamlit upload, file-like object, or bytes value."""
@@ -130,7 +132,9 @@ def render_pptx_slides(file_or_bytes: Any) -> list[dict]:
         return []
 
     file_bytes = _read_bytes(file_or_bytes)
-    with tempfile.TemporaryDirectory(prefix="fm_pptx_render_") as tmp:
+    temp_root = get_temp_dir()
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="fm_pptx_render_", dir=temp_root) as tmp:
         tmp_path = Path(tmp)
         input_path = tmp_path / "upload.pptx"
         output_dir = tmp_path / "out"

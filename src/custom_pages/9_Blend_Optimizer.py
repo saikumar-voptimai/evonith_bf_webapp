@@ -33,6 +33,7 @@ from data.bmo.ore_editor_preferences import (
 )
 from data.ml.static_dataset_manager import StaticDatasetManager
 from domain.optimization_runtime import build_runtime_config
+from furnace_data.runtime_paths import runtime_path
 from ui.streamlit_fragments import fragment, rerun_fragment
 from ui.bmo import (
     apply_bmo_styles,
@@ -124,13 +125,12 @@ def _repo_path(path_str: str) -> Path:
 
 def _ore_preferences_path(bmo_cfg: dict[str, Any]) -> Path:
     ui_cfg = bmo_cfg.get("ui", {}) or {}
-    return _repo_path(
-        str(
-            ui_cfg.get(
-                "ore_editor_preferences_path", "src/config/bmo_operator_inputs.yml"
-            )
-        )
+    configured_path = str(
+        ui_cfg.get("ore_editor_preferences_path", "src/config/bmo_operator_inputs.yml")
     )
+    if configured_path.replace("\\", "/") == "src/config/bmo_operator_inputs.yml":
+        return runtime_path("cache", "bmo_operator_inputs.yml")
+    return _repo_path(configured_path)
 
 
 @_resource_cache(show_spinner=False)

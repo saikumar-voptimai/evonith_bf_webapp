@@ -42,6 +42,7 @@ from typing import Any
 from PIL import Image
 from qdrant_client.models import PointStruct
 
+from furnace_data.runtime_paths import runtime_path
 from agents.multimodal.parsers import (
     extract_csv_text,
     extract_docx_text,
@@ -53,7 +54,6 @@ from agents.multimodal.parsers import (
 )
 from utils.logger import get_logger
 
-_IMAGE_DIR = Path("src/storage/furnacemind/mrag_images")
 _POINT_NAMESPACE = uuid.NAMESPACE_URL
 logger = get_logger(__name__)
 
@@ -244,8 +244,13 @@ def _save_image_bytes(
         String path stored in Qdrant payload. Retrieval later reads this path and
         sends the image to the multimodal LLM as visual evidence.
     """
-    _IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _IMAGE_DIR / f"{_safe_name(document_id)}_{_safe_name(chunk_id)}.{suffix}"
+    path = runtime_path(
+        "uploads",
+        "furnacemind",
+        "mrag_images",
+        f"{_safe_name(document_id)}_{_safe_name(chunk_id)}.{suffix}",
+        create_parent=True,
+    )
     path.write_bytes(image_bytes)
     return str(path)
 

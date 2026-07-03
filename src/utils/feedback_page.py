@@ -9,6 +9,7 @@ from typing import Any, Sequence
 import pandas as pd
 import streamlit as st
 
+from furnace_data.runtime_paths import get_repo_root
 from data.tickets import (
     TicketCriticality,
     TicketDeleteRequest,
@@ -23,7 +24,7 @@ from data.tickets import (
 )
 from utils.session import is_admin, is_supervisor
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = get_repo_root()
 
 
 def load_feedback_css(page_file: Path) -> None:

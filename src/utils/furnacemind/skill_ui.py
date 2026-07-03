@@ -12,9 +12,25 @@ import re
 from pathlib import Path
 from typing import Any
 
+from furnace_data.runtime_paths import get_repo_root, runtime_path
+
 _SKILL_SLUG_RE = re.compile(r"[^a-z0-9_]+")
 _SKILL_FILE_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
-_SKILL_STORAGE_DIR = Path(__file__).resolve().parents[2] / "storage" / "furnacemind"
+_LEGACY_SKILL_STORAGE_DIR = get_repo_root() / "src" / "storage" / "furnacemind"
+
+
+def _runtime_skill_storage_dir() -> Path:
+    """Return the runtime directory for uploaded skill markdown."""
+    return runtime_path("uploads", "furnacemind", "skills")
+
+
+def _skill_context_path(filename: Any) -> Path:
+    """Return runtime skill context path, falling back to source storage."""
+    safe_name = Path(str(filename or "")).name
+    runtime_candidate = _runtime_skill_storage_dir() / safe_name
+    if runtime_candidate.exists():
+        return runtime_candidate
+    return _LEGACY_SKILL_STORAGE_DIR / safe_name
 
 
 def skill_metadata(skill: Any) -> dict[str, Any]:
@@ -150,12 +166,12 @@ def store_skill_markdown(uploaded_file: Any, *, slug: str) -> str:
     """Persist the uploaded markdown context file for a custom skill.
 
     The database stores only the safe filename in metadata; the actual file lives
-    under ``src/storage/furnacemind`` so the skill registry can later inject it as
-    prompt context. Empty uploads are rejected before the row is created.
+    under runtime uploads so the skill registry can later inject it as prompt
+    context. Empty uploads are rejected before the row is created.
     """
     filename = safe_skill_file_name(slug, getattr(uploaded_file, "name", "skill.md"))
-    _SKILL_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _SKILL_STORAGE_DIR / filename
+    path = _runtime_skill_storage_dir() / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
     content = uploaded_file.getvalue()
     if not content:
         raise ValueError("Skill markdown file is empty.")
@@ -214,7 +230,7 @@ def read_skill_context_preview(filename: Any, *, max_chars: int = 1_800) -> str:
     the sidebar remains responsive.
     """
     try:
-        path = _SKILL_STORAGE_DIR / Path(str(filename or "")).name
+        path = _skill_context_path(filename)
         if not path.exists() or not path.is_file():
             return ""
         text = path.read_text(encoding="utf-8", errors="ignore").strip()
