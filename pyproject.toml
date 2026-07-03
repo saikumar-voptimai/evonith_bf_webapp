@@ -244,4 +244,5 @@ profile = "black"
 dev = [
     "black>=25.11.0",
     "isort>=6.1.0",
+    "pytest>=9.1.1",
 ]

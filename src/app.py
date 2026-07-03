@@ -18,6 +18,7 @@ st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
 
 from config.page_registry import get_navigation_pages
 from furnace_data.runtime_paths import ensure_runtime_dirs, get_runtime_dir
+from ui.backend_status_badge import render_backend_status_badge
 from utils.logger import setup_logger
 from utils.session import is_logged_in
 
@@ -50,6 +51,8 @@ if not is_logged_in():
     # Run login page
     LoginPage().run()
     st.stop()
+
+render_backend_status_badge()
 
 # ------------------------------------------------------
 # PAGE REGISTRATION
