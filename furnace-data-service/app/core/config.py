@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,7 +16,20 @@ class BackendSettings(BaseSettings):
 
     api_prefix: str = Field("/api/v1", validation_alias="EVONITH_API_PREFIX")
     backend_env: str = Field("local", validation_alias="EVONITH_BACKEND_ENV")
-    backend_log_level: str = Field("INFO", validation_alias="EVONITH_BACKEND_LOG_LEVEL")
+    backend_log_level: str = Field(
+        "INFO",
+        validation_alias=AliasChoices("EVONITH_LOG_LEVEL", "EVONITH_BACKEND_LOG_LEVEL"),
+    )
+    log_format: str = Field("json", validation_alias="EVONITH_LOG_FORMAT")
+    access_log_enabled: bool = Field(True, validation_alias="EVONITH_ACCESS_LOG_ENABLED")
+    access_log_include_query_params: bool = Field(
+        False,
+        validation_alias="EVONITH_ACCESS_LOG_INCLUDE_QUERY_PARAMS",
+    )
+    log_redaction_enabled: bool = Field(True, validation_alias="EVONITH_LOG_REDACTION_ENABLED")
+    log_file_enabled: bool = Field(False, validation_alias="EVONITH_LOG_FILE_ENABLED")
+    log_max_file_mb: int = Field(50, validation_alias="EVONITH_LOG_MAX_FILE_MB")
+    log_backup_count: int = Field(5, validation_alias="EVONITH_LOG_BACKUP_COUNT")
     cors_origins: list[str] = Field(
         default_factory=lambda: list(_DEFAULT_CORS_ORIGINS),
         validation_alias="BACKEND_CORS_ORIGINS",
@@ -479,6 +492,79 @@ class BackendSettings(BaseSettings):
         True,
         validation_alias="EVONITH_FURNACEMIND_POLLING_FALLBACK_ENABLED",
     )
+    audit_log_enabled: bool = Field(True, validation_alias="EVONITH_AUDIT_LOG_ENABLED")
+    audit_storage_backend: str = Field(
+        "sqlite",
+        validation_alias="EVONITH_AUDIT_STORAGE_BACKEND",
+    )
+    audit_database_url: str = Field("", validation_alias="EVONITH_AUDIT_DATABASE_URL")
+    audit_retention_days: int = Field(
+        90,
+        validation_alias="EVONITH_AUDIT_RETENTION_DAYS",
+    )
+    audit_admin_read_enabled: bool = Field(
+        True,
+        validation_alias="EVONITH_AUDIT_ADMIN_READ_ENABLED",
+    )
+    status_public_health: bool = Field(
+        True,
+        validation_alias="EVONITH_STATUS_PUBLIC_HEALTH",
+    )
+    status_require_auth_for_details: bool = Field(
+        True,
+        validation_alias="EVONITH_STATUS_REQUIRE_AUTH_FOR_DETAILS",
+    )
+    dependency_check_timeout_seconds: int = Field(
+        3,
+        validation_alias="EVONITH_DEPENDENCY_CHECK_TIMEOUT_SECONDS",
+    )
+    dependency_check_cache_seconds: int = Field(
+        30,
+        validation_alias="EVONITH_DEPENDENCY_CHECK_CACHE_SECONDS",
+    )
+    runtime_min_free_mb: int = Field(1024, validation_alias="EVONITH_RUNTIME_MIN_FREE_MB")
+    runtime_warn_free_mb: int = Field(4096, validation_alias="EVONITH_RUNTIME_WARN_FREE_MB")
+    metrics_enabled: bool = Field(True, validation_alias="EVONITH_METRICS_ENABLED")
+    metrics_require_auth: bool = Field(True, validation_alias="EVONITH_METRICS_REQUIRE_AUTH")
+    metrics_format: str = Field("json", validation_alias="EVONITH_METRICS_FORMAT")
+    metrics_reset_enabled: bool = Field(False, validation_alias="EVONITH_METRICS_RESET_ENABLED")
+    unified_jobs_enabled: bool = Field(
+        True,
+        validation_alias="EVONITH_UNIFIED_JOBS_ENABLED",
+    )
+    cleanup_enabled: bool = Field(True, validation_alias="EVONITH_CLEANUP_ENABLED")
+    cleanup_dry_run_default: bool = Field(
+        True,
+        validation_alias="EVONITH_CLEANUP_DRY_RUN_DEFAULT",
+    )
+    cleanup_require_admin: bool = Field(
+        True,
+        validation_alias="EVONITH_CLEANUP_REQUIRE_ADMIN",
+    )
+    cleanup_max_delete_per_run: int = Field(
+        500,
+        validation_alias="EVONITH_CLEANUP_MAX_DELETE_PER_RUN",
+    )
+    cleanup_include_logs: bool = Field(
+        False,
+        validation_alias="EVONITH_CLEANUP_INCLUDE_LOGS",
+    )
+    cleanup_include_uploads: bool = Field(
+        False,
+        validation_alias="EVONITH_CLEANUP_INCLUDE_UPLOADS",
+    )
+    cleanup_job_ttl_hours: int = Field(
+        24,
+        validation_alias="EVONITH_CLEANUP_JOB_TTL_HOURS",
+    )
+    cleanup_artifact_ttl_hours: int = Field(
+        24,
+        validation_alias="EVONITH_CLEANUP_ARTIFACT_TTL_HOURS",
+    )
+    cleanup_temp_ttl_hours: int = Field(
+        6,
+        validation_alias="EVONITH_CLEANUP_TEMP_TTL_HOURS",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -513,6 +599,8 @@ class BackendSettings(BaseSettings):
     @field_validator(
         "auth_access_token_expire_minutes",
         "auth_min_password_length",
+        "log_max_file_mb",
+        "log_backup_count",
         "feedback_max_attachment_mb",
         "feedback_max_attachments_per_ticket",
         "compute_max_preview_rows",
@@ -555,6 +643,15 @@ class BackendSettings(BaseSettings):
         "furnacemind_artifact_ttl_hours",
         "furnacemind_event_retention_hours",
         "furnacemind_max_events_per_run",
+        "audit_retention_days",
+        "dependency_check_timeout_seconds",
+        "dependency_check_cache_seconds",
+        "runtime_min_free_mb",
+        "runtime_warn_free_mb",
+        "cleanup_max_delete_per_run",
+        "cleanup_job_ttl_hours",
+        "cleanup_artifact_ttl_hours",
+        "cleanup_temp_ttl_hours",
     )
     @classmethod
     def require_positive_int(cls, value: int) -> int:
@@ -563,11 +660,14 @@ class BackendSettings(BaseSettings):
     @field_validator(
         "feedback_storage_backend",
         "compute_export_format",
+        "log_format",
         "copilot_provider",
         "furnacemind_storage_backend",
         "furnacemind_provider",
         "furnacemind_vector_backend",
         "furnacemind_embedding_provider",
+        "audit_storage_backend",
+        "metrics_format",
     )
     @classmethod
     def normalize_lower_string(cls, value: str) -> str:
@@ -581,6 +681,7 @@ class BackendSettings(BaseSettings):
         "copilot_model",
         "copilot_api_key_env",
         "furnacemind_database_url",
+        "audit_database_url",
         "furnacemind_model",
         "furnacemind_api_key_env",
         "furnacemind_qdrant_url",

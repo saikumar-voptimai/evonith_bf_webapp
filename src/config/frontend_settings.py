@@ -19,6 +19,7 @@ PAGE_API_FLAG_ENV_VARS: dict[str, str] = {
     "blend_optimizer": "USE_BACKEND_API_BLEND_OPTIMIZER",
     "copilot": "USE_BACKEND_API_COPILOT",
     "furnacemind": "USE_BACKEND_API_FURNACEMIND",
+    "ops": "USE_BACKEND_API_OPS",
 }
 
 
@@ -62,6 +63,7 @@ class FrontendSettings:
     backend_api_max_retries: int = 1
     backend_api_verify_ssl: bool = True
     show_backend_status_badge: bool = True
+    show_advanced_backend_status: bool = False
     backend_api_health_path: str = "/health"
     backend_api_readiness_path: str = "/readiness"
     data_api_max_preview_rows: int = 500
@@ -89,6 +91,7 @@ def load_frontend_settings() -> FrontendSettings:
         backend_api_max_retries=max(0, _env_int("BACKEND_API_MAX_RETRIES", 1)),
         backend_api_verify_ssl=_env_bool("BACKEND_API_VERIFY_SSL", True),
         show_backend_status_badge=_env_bool("SHOW_BACKEND_STATUS_BADGE", True),
+        show_advanced_backend_status=_env_bool("SHOW_ADVANCED_BACKEND_STATUS", False),
         backend_api_health_path=_env("BACKEND_API_HEALTH_PATH", "/health"),
         backend_api_readiness_path=_env("BACKEND_API_READINESS_PATH", "/readiness"),
         data_api_max_preview_rows=max(1, _env_int("DATA_API_MAX_PREVIEW_ROWS", 500)),

@@ -27,9 +27,11 @@ def test_settings_can_be_overridden(monkeypatch):
     monkeypatch.setenv("BACKEND_API_MAX_RETRIES", "2")
     monkeypatch.setenv("BACKEND_API_VERIFY_SSL", "false")
     monkeypatch.setenv("SHOW_BACKEND_STATUS_BADGE", "false")
+    monkeypatch.setenv("SHOW_ADVANCED_BACKEND_STATUS", "true")
     monkeypatch.setenv("USE_BACKEND_API_AUTH", "true")
     monkeypatch.setenv("USE_BACKEND_API_ADMIN", "true")
     monkeypatch.setenv("USE_BACKEND_API_DATA_EXPLORER", "true")
+    monkeypatch.setenv("USE_BACKEND_API_OPS", "true")
 
     settings = load_frontend_settings()
 
@@ -40,9 +42,12 @@ def test_settings_can_be_overridden(monkeypatch):
     assert settings.backend_api_max_retries == 2
     assert settings.backend_api_verify_ssl is False
     assert settings.show_backend_status_badge is False
+    assert settings.show_advanced_backend_status is True
     assert settings.page_api_flags["auth"] is True
     assert settings.page_api_flags["admin"] is True
     assert settings.page_api_flags["data_explorer"] is True
+    assert settings.page_api_flags["ops"] is True
     assert is_backend_api_enabled("auth") is True
     assert is_backend_api_enabled("admin") is True
     assert is_backend_api_enabled("data_explorer") is True
+    assert is_backend_api_enabled("ops") is True

@@ -87,8 +87,9 @@ def test_no_offline_influx_rollback_copy_remains() -> None:
     assert offenders == []
 
 
-def test_sqlite_usage_is_limited_to_ticketing() -> None:
+def test_sqlite_usage_is_limited_to_ticketing_and_runtime_audit() -> None:
     allowed = {
+        "furnace-data-service/app/repositories/audit_repository.py",
         "furnace-data-service/app/repositories/feedback_repository.py",
         "furnace-data-service/app/repositories/furnacemind_conversation_repository.py",
         "furnace-data-service/app/repositories/furnacemind_document_repository.py",

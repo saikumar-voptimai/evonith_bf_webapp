@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.responses import api_error_response, get_request_id
+from app.services.redaction_service import redact_dict, redact_text
 
 log = logging.getLogger(__name__)
 
@@ -34,12 +35,13 @@ class ApiError(Exception):
 
 async def api_error_handler(request: Request, exc: ApiError):
     request_id = get_request_id(request)
+    request.state.error_code = exc.code
     return api_error_response(
         request_id=request_id,
         code=exc.code,
-        message=exc.message,
+        message=redact_text(exc.message),
         status_code=exc.status_code,
-        details=exc.details,
+        details=redact_dict(exc.details),
     )
 
 
@@ -49,33 +51,36 @@ async def http_exception_handler(request: Request, exc: HTTPException | Starlett
 
     request_id = get_request_id(request)
     code = "NOT_FOUND" if exc.status_code == 404 else "HTTP_ERROR"
+    request.state.error_code = code
     detail = exc.detail
     message = detail if isinstance(detail, str) else "HTTP error"
     details = detail if isinstance(detail, dict) else {"detail": detail} if detail else {}
     return api_error_response(
         request_id=request_id,
         code=code,
-        message=message,
+        message=redact_text(message),
         status_code=exc.status_code,
-        details=details,
-        legacy_detail=detail,
+        details=redact_dict(details),
+        legacy_detail=redact_dict(detail) if isinstance(detail, dict) else redact_text(str(detail)) if detail else detail,
     )
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     request_id = get_request_id(request)
+    request.state.error_code = "VALIDATION_ERROR"
     return api_error_response(
         request_id=request_id,
         code="VALIDATION_ERROR",
         message="Request validation failed",
         status_code=422,
-        details={"errors": exc.errors()},
-        legacy_detail=exc.errors(),
+        details=redact_dict({"errors": exc.errors()}),
+        legacy_detail=redact_dict({"errors": exc.errors()})["errors"],
     )
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception):
     request_id = get_request_id(request)
+    request.state.error_code = "INTERNAL_SERVER_ERROR"
     log.exception("Unhandled backend error request_id=%s", request_id)
     return api_error_response(
         request_id=request_id,

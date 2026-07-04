@@ -14,8 +14,12 @@ from app.api.v1.routes import (
     feedback,
     furnacemind,
     health,
+    jobs,
     material_balance,
+    metrics,
+    ops,
     recommendations,
+    status,
 )
 
 router = APIRouter()
@@ -30,3 +34,7 @@ router.include_router(recommendations.router)
 router.include_router(blend_optimizer.router)
 router.include_router(copilot.router)
 router.include_router(furnacemind.router)
+router.include_router(status.router)
+router.include_router(metrics.router)
+router.include_router(jobs.router)
+router.include_router(ops.router)

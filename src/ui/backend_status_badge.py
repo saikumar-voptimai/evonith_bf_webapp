@@ -50,3 +50,19 @@ def render_backend_status_badge() -> None:
                 st.caption(f"Latency: {status.latency_ms:.0f} ms")
             if status.request_id:
                 st.caption(f"Request ID: {status.request_id}")
+            if settings.show_advanced_backend_status and settings.page_api_flags.get("ops"):
+                try:
+                    from services.status_api import get_status
+                except ModuleNotFoundError:  # pragma: no cover - repo-root import compatibility
+                    from src.services.status_api import get_status
+
+                token = str(st.session_state.get("auth_access_token") or "").strip() or None
+                try:
+                    advanced = get_status(access_token=token)
+                    runtime = advanced.get("runtime", {})
+                    st.caption(f"Runtime: {runtime.get('status', 'unknown')}")
+                    dependencies = advanced.get("dependencies")
+                    if dependencies:
+                        st.caption(f"Dependencies: {dependencies.get('status', 'unknown')}")
+                except Exception as exc:
+                    st.caption(f"Advanced status unavailable: {exc}")

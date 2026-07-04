@@ -87,7 +87,7 @@ def runtime_status(request: Request):
     except OSError:
         disk = {}
 
-    expose_path = settings.backend_env.lower() in {"local", "dev", "development", "test"}
+    expose_path = False
     directories = {
         name: str(path.relative_to(runtime_dir)) if path != runtime_dir else "."
         for name, path in paths.items()

@@ -22,18 +22,22 @@ from app.api.v1.router import router as api_v1_router
 from app.core.config import BackendSettings, load_backend_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
-from app.core.middleware import RequestIdMiddleware
+from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware
 from app.routes import data as legacy_data
 from app.routes import dataset as legacy_dataset
 from app.routes import health as legacy_health
 from app.services.blend_optimizer_service import BlendOptimizerService
+from app.services.audit_service import AuditService
 from app.services.copilot_service import CopilotService
+from app.services.dependency_status_service import DependencyStatusService
 from app.services.feedback_service import FeedbackService
 from app.services.furnacemind_service import FurnaceMindService
 from app.services.material_balance_service import MaterialBalanceService
+from app.services.metrics_service import MetricsService
 from app.services.model_registry_service import ModelRegistryService
 from app.services.recommendation_service import RecommendationService
-from furnace_data.runtime_paths import ensure_runtime_dirs, get_runtime_dir
+from app.services.unified_job_service import UnifiedJobService
+from furnace_data.runtime_paths import ensure_runtime_dirs
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +58,15 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
         version=settings.openapi_version,
     )
     app.state.backend_settings = settings
+    app.state.metrics_service = MetricsService()
+    app.state.dependency_status_service = DependencyStatusService(settings)
+    app.state.unified_job_service = UnifiedJobService()
+    try:
+        audit_service = AuditService(settings=settings)
+        audit_service.ensure_storage()
+        app.state.audit_service = audit_service
+    except Exception as exc:
+        log.warning("Audit storage could not be initialized: %s", exc)
     try:
         feedback_service = FeedbackService(settings=settings)
         feedback_service.ensure_storage()
@@ -84,6 +97,7 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
         expose_headers=["X-Request-ID"],
     )
+    app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIdMiddleware)
 
     register_exception_handlers(app)
@@ -96,7 +110,7 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
 
     log.info("Evonith backend API starting")
     log.info("API prefix: %s", settings.api_prefix)
-    log.info("Runtime directory: %s", get_runtime_dir())
+    log.info("Runtime directory: [RUNTIME_DIR]")
     log.info("Backend auth enabled: %s", settings.auth_enabled)
     log.info("CORS origins: %s", ", ".join(settings.cors_origins))
     log.info("Legacy routes enabled: %s", settings.enable_legacy_routes)

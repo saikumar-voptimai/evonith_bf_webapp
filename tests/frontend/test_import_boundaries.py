@@ -20,6 +20,8 @@ def test_frontend_api_modules_do_not_import_backend_internals():
         REPO_ROOT / "src" / "services" / "blend_optimizer_api.py",
         REPO_ROOT / "src" / "services" / "copilot_api.py",
         REPO_ROOT / "src" / "services" / "furnacemind_api.py",
+        REPO_ROOT / "src" / "services" / "status_api.py",
+        REPO_ROOT / "src" / "services" / "ops_api.py",
         REPO_ROOT / "src" / "config" / "frontend_settings.py",
     ]
     forbidden = (

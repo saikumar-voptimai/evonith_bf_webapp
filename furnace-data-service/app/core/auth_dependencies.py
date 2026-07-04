@@ -52,7 +52,9 @@ def get_current_user(
     if not token:
         raise ApiError("AUTH_REQUIRED", "Authentication is required.", status_code=401)
 
-    return get_auth_service(request).current_user_from_token(token)
+    user = get_auth_service(request).current_user_from_token(token)
+    request.state.current_user = user
+    return user
 
 
 def get_optional_current_user(
@@ -65,7 +67,9 @@ def get_optional_current_user(
     token = credentials.credentials.strip()
     if not token:
         return None
-    return get_auth_service(request).current_user_from_token(token)
+    user = get_auth_service(request).current_user_from_token(token)
+    request.state.current_user = user
+    return user
 
 
 def require_authenticated_user(
