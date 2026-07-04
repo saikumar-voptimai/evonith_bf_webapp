@@ -8,6 +8,7 @@ from typing import Any
 
 from app.core.config import BackendSettings, load_backend_settings
 from app.core.errors import ApiError
+from app.services.optional_dependency_service import require_optional_module
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ class CopilotLLMService:
             raise ApiError("COPILOT_LLM_PROVIDER_UNAVAILABLE", "Configured Copilot LLM provider is unavailable.", status_code=503)
 
         try:
-            from openai import OpenAI
+            OpenAI = require_optional_module("openai", "backend-ai").OpenAI
 
             client = OpenAI(api_key=os.getenv(self.settings.copilot_api_key_env))
             completion = client.chat.completions.create(

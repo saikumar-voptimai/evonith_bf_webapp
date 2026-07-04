@@ -58,6 +58,15 @@ def runtime_details(
     return _wrap(request, RuntimeStatusService(_settings(request)).status())
 
 
+@router.get("/config", response_model=ApiResponse)
+def status_config(
+    request: Request,
+    current_user: dict[str, Any] = Depends(require_admin_user),
+):
+    _ = current_user
+    return _wrap(request, _settings(request).safe_runtime_profile_summary())
+
+
 @router.get("/dependencies", response_model=ApiResponse)
 def dependency_status(
     request: Request,
@@ -69,4 +78,3 @@ def dependency_status(
         service = DependencyStatusService(_settings(request))
         request.app.state.dependency_status_service = service
     return _wrap(request, service.status())
-

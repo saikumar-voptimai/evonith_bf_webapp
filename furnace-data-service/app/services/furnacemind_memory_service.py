@@ -8,6 +8,7 @@ from typing import Any
 from app.core.config import BackendSettings, load_backend_settings
 from app.core.errors import ApiError
 from app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
+from app.services.optional_dependency_service import require_optional_module
 
 
 @dataclass(frozen=True)
@@ -142,14 +143,7 @@ class FurnaceMindMemoryService:
     def _lazy_qdrant_client(self) -> Any:
         if self._qdrant_client is not None:
             return self._qdrant_client
-        try:
-            from qdrant_client import QdrantClient
-        except Exception as exc:
-            raise ApiError(
-                "FURNACEMIND_VECTOR_BACKEND_UNAVAILABLE",
-                "Qdrant client is not available.",
-                status_code=503,
-            ) from exc
+        QdrantClient = require_optional_module("qdrant_client", "backend-vector").QdrantClient
         self._qdrant_client = QdrantClient(
             url=self.settings.furnacemind_qdrant_url,
             api_key=None,

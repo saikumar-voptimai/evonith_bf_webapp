@@ -53,4 +53,13 @@ absolute paths, and database URLs must not be exposed in error responses.
 - `AUDIT_UNAVAILABLE`: Audit storage could not be read or written.
 - `CLEANUP_DISABLED`: Runtime cleanup is disabled.
 - `METRICS_DISABLED`: Metrics endpoint is disabled.
-
+- `DEPENDENCY_OPTIONAL_NOT_INSTALLED`: Install the documented optional profile
+  for the requested feature.
+- `DEPENDENCY_IMPORT_FAILED`: Check the runtime image and optional dependency
+  profile for import errors.
+- `FEATURE_NOT_AVAILABLE`: Enable the feature flag and install the required
+  optional dependency profile.
+- `RUNTIME_PROFILE_UNSUPPORTED`: Use a documented runtime profile such as
+  `local` or `edge`.
+- `EDGE_FEATURE_DISABLED`: The feature is intentionally disabled for the active
+  edge profile.

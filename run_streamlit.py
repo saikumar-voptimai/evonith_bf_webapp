@@ -11,5 +11,5 @@ except Exception:
     # fallback for some Streamlit versions
     from streamlit.web.cli import main  # type: ignore
 
-sys.argv = ["streamlit", "run", r".\src\app.py"]
+sys.argv = ["streamlit", "run", r".\apps\frontend_streamlit\app.py"]
 raise SystemExit(main())

@@ -6467,6 +6467,32 @@
         ]
       }
     },
+    "/api/v1/status/config": {
+      "get": {
+        "operationId": "status_config_api_v1_status_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Status Config",
+        "tags": [
+          "status"
+        ]
+      }
+    },
     "/api/v1/status/dependencies": {
       "get": {
         "operationId": "dependency_status_api_v1_status_dependencies_get",

@@ -18,7 +18,7 @@ for path in (str(SERVICE_ROOT), str(REPO_ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from app.services.admin_service import AdminService
+from apps.backend_api.app.services.admin_service import AdminService
 
 
 def _env(name: str) -> str:

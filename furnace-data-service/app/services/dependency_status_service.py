@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from app.core.config import BackendSettings, load_backend_settings
+from app.services.optional_dependency_service import get_optional_dependency_status
 from app.services.runtime_status_service import RuntimeStatusService
 
 
@@ -50,6 +51,29 @@ class DependencyStatusService:
             "status": "degraded" if required_failed or optional_degraded else "ok",
             "timeout_seconds": self.settings.dependency_check_timeout_seconds,
             "cache_seconds": self.settings.dependency_check_cache_seconds,
+            "runtime_profile": self.settings.runtime_profile,
+            "edge_mode": self.settings.edge_mode,
+            "profile": self.settings.safe_runtime_profile_summary(),
+            "dependency_groups": [
+                "backend-base",
+                "backend-data",
+                "backend-ml",
+                "backend-ai",
+                "backend-vector",
+                "backend-documents",
+                "frontend",
+                "dev",
+                "edge",
+            ],
+            "optional_dependencies": get_optional_dependency_status(),
+            "backend_base_import": {
+                "status": "ok",
+                "message": "Backend app import is covered by scripts/check_backend_minimal_startup.py.",
+            },
+            "frontend_api_imports": {
+                "status": "not_checked",
+                "message": "Frontend API import safety is covered by scripts/check_frontend_api_imports.py.",
+            },
             "dependencies": dependencies,
         }
         self._cached = payload
@@ -97,6 +121,13 @@ class DependencyStatusService:
         }
 
     def _qdrant(self) -> dict[str, Any]:
+        if not self.settings.enable_optional_vector:
+            return {
+                "name": "qdrant",
+                "required": False,
+                "status": "disabled",
+                "message": "Optional vector features are disabled.",
+            }
         if not self.settings.furnacemind_memory_enabled:
             return {"name": "qdrant", "required": False, "status": "disabled", "message": "FurnaceMind memory is disabled."}
         configured = bool(self.settings.furnacemind_qdrant_url)
@@ -118,4 +149,3 @@ class DependencyStatusService:
             "status": "configured" if configured else "unconfigured",
             "message": f"{feature} LLM provider configured." if configured else f"{feature} LLM provider is not fully configured.",
         }
-

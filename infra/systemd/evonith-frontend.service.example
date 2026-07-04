@@ -1,0 +1,18 @@
+[Unit]
+Description=Evonith BF Streamlit frontend
+After=network-online.target evonith-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=evonith
+Group=evonith
+WorkingDirectory=/opt/evonith-bf
+EnvironmentFile=/etc/evonith-bf/frontend.env
+ExecStart=/opt/evonith-bf/scripts/edge_start_frontend.sh
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

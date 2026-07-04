@@ -1,0 +1,18 @@
+[Unit]
+Description=Evonith BF backend API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=evonith
+Group=evonith
+WorkingDirectory=/opt/evonith-bf
+EnvironmentFile=/etc/evonith-bf/backend.env
+ExecStart=/opt/evonith-bf/scripts/edge_start_backend.sh
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

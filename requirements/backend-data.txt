@@ -1,0 +1,5 @@
+-r backend-base.txt
+influxdb3-python>=0.8.0
+psycopg2-binary>=2.9.0
+pyarrow>=18.1.0
+openpyxl>=3.1.5

@@ -729,6 +729,10 @@ uv sync
 # Run the app (always use this — imports torch first for Windows DLL fix)
 python run_streamlit.py
 
+# Canonical Phase 12 startup paths
+uvicorn apps.backend_api.app.main:app --host 0.0.0.0 --port 8080
+streamlit run apps/frontend_streamlit/app.py
+
 # Run tests
 pytest tests/
 
@@ -736,7 +740,9 @@ pytest tests/
 uv add <package>
 ```
 
-**Do not invoke `streamlit run` directly.** `run_streamlit.py` pre-imports `torch` before Streamlit starts to prevent Windows DLL load-order errors.
+On Windows development machines, prefer `python run_streamlit.py`; it pre-imports
+`torch` before Streamlit starts to prevent DLL load-order errors. The canonical
+Phase 12 Streamlit app path remains `apps/frontend_streamlit/app.py`.
 
 All pages execute with `src/` as the Python working directory. Use:
 ```python

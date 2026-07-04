@@ -82,7 +82,11 @@ class ErrorRegistryService:
             ("AUDIT_UNAVAILABLE", "audit", 503, "error", "Audit storage is unavailable.", "Check audit SQLite/runtime status."),
             ("CLEANUP_DISABLED", "cleanup", 409, "warning", "Runtime cleanup is disabled.", "Enable EVONITH_CLEANUP_ENABLED for cleanup."),
             ("METRICS_DISABLED", "metrics", 404, "warning", "Metrics are disabled.", "Enable EVONITH_METRICS_ENABLED for metrics."),
+            ("DEPENDENCY_OPTIONAL_NOT_INSTALLED", "dependency", 503, "warning", "Optional dependency is not installed.", "Install the documented dependency profile for this feature."),
+            ("DEPENDENCY_IMPORT_FAILED", "dependency", 503, "warning", "Optional dependency import failed.", "Check the dependency profile and runtime image."),
+            ("FEATURE_NOT_AVAILABLE", "dependency", 409, "warning", "Feature is not available in the active profile.", "Enable the feature flag and install the required dependency profile."),
+            ("RUNTIME_PROFILE_UNSUPPORTED", "dependency", 409, "warning", "Runtime profile is unsupported.", "Use local, edge, or a documented deployment profile."),
+            ("EDGE_FEATURE_DISABLED", "dependency", 409, "warning", "Feature is disabled in edge mode.", "Enable explicitly only when the edge device has capacity."),
         ]:
             codes[code] = ErrorCodeInfo(code, category, status, severity, message, remediation)
         return codes
-

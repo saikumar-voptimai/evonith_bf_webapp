@@ -25,6 +25,11 @@ def get_runtime_status(access_token: str, client: ApiClient | None = None) -> di
     return unwrap_api_response(api.get("/status/runtime/details", headers=_auth_headers(access_token)))
 
 
+def get_status_config(access_token: str, client: ApiClient | None = None) -> dict[str, Any]:
+    api = client or get_api_client()
+    return unwrap_api_response(api.get("/status/config", headers=_auth_headers(access_token)))
+
+
 def get_dependency_status(access_token: str, client: ApiClient | None = None) -> dict[str, Any]:
     api = client or get_api_client()
     return unwrap_api_response(api.get("/status/dependencies", headers=_auth_headers(access_token)))
@@ -33,4 +38,3 @@ def get_dependency_status(access_token: str, client: ApiClient | None = None) ->
 def get_metrics(access_token: str, client: ApiClient | None = None) -> dict[str, Any]:
     api = client or get_api_client()
     return unwrap_api_response(api.get("/metrics", headers=_auth_headers(access_token)))
-

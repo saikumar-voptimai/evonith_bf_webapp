@@ -11,6 +11,7 @@ from typing import Any
 
 from app.core.config import BackendSettings, load_backend_settings
 from app.core.errors import ApiError
+from app.services.optional_dependency_service import require_optional_module
 from furnace_data.runtime_paths import get_repo_root
 
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
@@ -126,7 +127,7 @@ class ModelRegistryService:
             if path.suffix.lower() == ".json":
                 model = json.loads(path.read_text(encoding="utf-8"))
             else:
-                import joblib
+                joblib = require_optional_module("joblib", "backend-ml")
 
                 model = joblib.load(path)
         except ModuleNotFoundError as exc:
@@ -158,7 +159,7 @@ class ModelRegistryService:
                 status_code=422,
             )
         try:
-            import pandas as pd
+            pd = require_optional_module("pandas", "backend-base")
 
             frame = pd.DataFrame(rows)
             predictions = model.predict(frame)

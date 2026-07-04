@@ -64,5 +64,9 @@ def render_backend_status_badge() -> None:
                     dependencies = advanced.get("dependencies")
                     if dependencies:
                         st.caption(f"Dependencies: {dependencies.get('status', 'unknown')}")
+                        profile = dependencies.get("profile") or {}
+                        runtime_profile = profile.get("runtime_profile")
+                        if runtime_profile:
+                            st.caption(f"Profile: {runtime_profile}")
                 except Exception as exc:
                     st.caption(f"Advanced status unavailable: {exc}")

@@ -1,0 +1,11 @@
+-r backend-base.txt
+-r backend-data.txt
+-r backend-ml.txt
+-r backend-ai.txt
+-r backend-vector.txt
+-r backend-documents.txt
+-r frontend.txt
+pytest>=9.1.1
+pytest-cov>=5.0.0
+black>=25.11.0
+isort>=6.1.0

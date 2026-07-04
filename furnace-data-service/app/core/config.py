@@ -16,6 +16,27 @@ class BackendSettings(BaseSettings):
 
     api_prefix: str = Field("/api/v1", validation_alias="EVONITH_API_PREFIX")
     backend_env: str = Field("local", validation_alias="EVONITH_BACKEND_ENV")
+    runtime_profile: str = Field("local", validation_alias="EVONITH_RUNTIME_PROFILE")
+    edge_mode: bool = Field(False, validation_alias="EVONITH_EDGE_MODE")
+    edge_device_type: str = Field("", validation_alias="EVONITH_EDGE_DEVICE_TYPE")
+    backend_profile: str = Field("backend-base", validation_alias="EVONITH_BACKEND_PROFILE")
+    frontend_profile: str = Field("frontend", validation_alias="EVONITH_FRONTEND_PROFILE")
+    uvicorn_workers: int = Field(1, validation_alias="EVONITH_UVICORN_WORKERS")
+    uvicorn_host: str = Field("0.0.0.0", validation_alias="EVONITH_UVICORN_HOST")
+    uvicorn_port: int = Field(8080, validation_alias="EVONITH_UVICORN_PORT")
+    frontend_host: str = Field("0.0.0.0", validation_alias="EVONITH_FRONTEND_HOST")
+    frontend_port: int = Field(8501, validation_alias="EVONITH_FRONTEND_PORT")
+    enable_optional_ai: bool = Field(False, validation_alias="EVONITH_ENABLE_OPTIONAL_AI")
+    enable_optional_ml: bool = Field(True, validation_alias="EVONITH_ENABLE_OPTIONAL_ML")
+    enable_optional_vector: bool = Field(False, validation_alias="EVONITH_ENABLE_OPTIONAL_VECTOR")
+    enable_optional_documents: bool = Field(
+        True,
+        validation_alias="EVONITH_ENABLE_OPTIONAL_DOCUMENTS",
+    )
+    enable_optional_local_llm: bool = Field(
+        False,
+        validation_alias="EVONITH_ENABLE_OPTIONAL_LOCAL_LLM",
+    )
     backend_log_level: str = Field(
         "INFO",
         validation_alias=AliasChoices("EVONITH_LOG_LEVEL", "EVONITH_BACKEND_LOG_LEVEL"),
@@ -599,6 +620,9 @@ class BackendSettings(BaseSettings):
     @field_validator(
         "auth_access_token_expire_minutes",
         "auth_min_password_length",
+        "uvicorn_workers",
+        "uvicorn_port",
+        "frontend_port",
         "log_max_file_mb",
         "log_backup_count",
         "feedback_max_attachment_mb",
@@ -661,6 +685,9 @@ class BackendSettings(BaseSettings):
         "feedback_storage_backend",
         "compute_export_format",
         "log_format",
+        "runtime_profile",
+        "backend_profile",
+        "frontend_profile",
         "copilot_provider",
         "furnacemind_storage_backend",
         "furnacemind_provider",
@@ -676,6 +703,9 @@ class BackendSettings(BaseSettings):
     @field_validator(
         "feedback_default_status",
         "feedback_ticket_id_prefix",
+        "edge_device_type",
+        "uvicorn_host",
+        "frontend_host",
         "model_dir",
         "material_balance_config_source",
         "copilot_model",
@@ -724,6 +754,30 @@ class BackendSettings(BaseSettings):
         if isinstance(value, (list, tuple, set)):
             return [str(origin).strip() for origin in value if str(origin).strip()]
         return list(_DEFAULT_CORS_ORIGINS)
+
+    def safe_runtime_profile_summary(self) -> dict[str, Any]:
+        """Return public-safe runtime profile metadata for status endpoints."""
+        return {
+            "runtime_profile": self.runtime_profile,
+            "edge_mode": self.edge_mode,
+            "edge_device_type": self.edge_device_type,
+            "backend_profile": self.backend_profile,
+            "frontend_profile": self.frontend_profile,
+            "service": {
+                "uvicorn_workers": self.uvicorn_workers,
+                "uvicorn_host": self.uvicorn_host,
+                "uvicorn_port": self.uvicorn_port,
+                "frontend_host": self.frontend_host,
+                "frontend_port": self.frontend_port,
+            },
+            "optional_features": {
+                "ai": self.enable_optional_ai,
+                "ml": self.enable_optional_ml,
+                "vector": self.enable_optional_vector,
+                "documents": self.enable_optional_documents,
+                "local_llm": self.enable_optional_local_llm,
+            },
+        }
 
 
 def load_backend_settings() -> BackendSettings:
