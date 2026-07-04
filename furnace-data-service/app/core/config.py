@@ -211,6 +211,80 @@ class BackendSettings(BaseSettings):
         True,
         validation_alias="EVONITH_BLEND_OPTIMIZER_ENABLE_MODEL_PREDICTIONS",
     )
+    copilot_require_auth: bool = Field(
+        True,
+        validation_alias="EVONITH_COPILOT_REQUIRE_AUTH",
+    )
+    copilot_llm_enabled: bool = Field(
+        False,
+        validation_alias="EVONITH_COPILOT_LLM_ENABLED",
+    )
+    copilot_provider: str = Field("", validation_alias="EVONITH_COPILOT_PROVIDER")
+    copilot_model: str = Field("", validation_alias="EVONITH_COPILOT_MODEL")
+    copilot_api_key_env: str = Field(
+        "OPENAI_API_KEY",
+        validation_alias="EVONITH_COPILOT_API_KEY_ENV",
+    )
+    copilot_timeout_seconds: int = Field(
+        60,
+        validation_alias="EVONITH_COPILOT_TIMEOUT_SECONDS",
+    )
+    copilot_max_seconds: int = Field(
+        120,
+        validation_alias="EVONITH_COPILOT_MAX_SECONDS",
+    )
+    copilot_max_context_rows: int = Field(
+        1000,
+        validation_alias="EVONITH_COPILOT_MAX_CONTEXT_ROWS",
+    )
+    copilot_max_json_rows: int = Field(
+        5000,
+        validation_alias="EVONITH_COPILOT_MAX_JSON_ROWS",
+    )
+    copilot_max_prompt_chars: int = Field(
+        20000,
+        validation_alias="EVONITH_COPILOT_MAX_PROMPT_CHARS",
+    )
+    copilot_max_output_chars: int = Field(
+        8000,
+        validation_alias="EVONITH_COPILOT_MAX_OUTPUT_CHARS",
+    )
+    copilot_job_threshold_rows: int = Field(
+        1000,
+        validation_alias="EVONITH_COPILOT_JOB_THRESHOLD_ROWS",
+    )
+    copilot_job_ttl_hours: int = Field(
+        24,
+        validation_alias="EVONITH_COPILOT_JOB_TTL_HOURS",
+    )
+    copilot_artifact_ttl_hours: int = Field(
+        24,
+        validation_alias="EVONITH_COPILOT_ARTIFACT_TTL_HOURS",
+    )
+    copilot_enable_data_redaction: bool = Field(
+        True,
+        validation_alias="EVONITH_COPILOT_ENABLE_DATA_REDACTION",
+    )
+    copilot_allow_raw_data_to_llm: bool = Field(
+        False,
+        validation_alias="EVONITH_COPILOT_ALLOW_RAW_DATA_TO_LLM",
+    )
+    copilot_enable_provider_calls: bool = Field(
+        False,
+        validation_alias="EVONITH_COPILOT_ENABLE_PROVIDER_CALLS",
+    )
+    copilot_enable_code_execution: bool = Field(
+        False,
+        validation_alias="EVONITH_COPILOT_ENABLE_CODE_EXECUTION",
+    )
+    copilot_enable_plots: bool = Field(
+        True,
+        validation_alias="EVONITH_COPILOT_ENABLE_PLOTS",
+    )
+    copilot_log_prompt_preview: bool = Field(
+        False,
+        validation_alias="EVONITH_COPILOT_LOG_PROMPT_PREVIEW",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -261,12 +335,21 @@ class BackendSettings(BaseSettings):
         "blend_optimizer_max_candidates",
         "blend_optimizer_max_iterations",
         "blend_optimizer_timeout_seconds",
+        "copilot_timeout_seconds",
+        "copilot_max_seconds",
+        "copilot_max_context_rows",
+        "copilot_max_json_rows",
+        "copilot_max_prompt_chars",
+        "copilot_max_output_chars",
+        "copilot_job_threshold_rows",
+        "copilot_job_ttl_hours",
+        "copilot_artifact_ttl_hours",
     )
     @classmethod
     def require_positive_int(cls, value: int) -> int:
         return max(1, int(value))
 
-    @field_validator("feedback_storage_backend", "compute_export_format")
+    @field_validator("feedback_storage_backend", "compute_export_format", "copilot_provider")
     @classmethod
     def normalize_lower_string(cls, value: str) -> str:
         return str(value or "").strip().lower()
@@ -276,6 +359,8 @@ class BackendSettings(BaseSettings):
         "feedback_ticket_id_prefix",
         "model_dir",
         "material_balance_config_source",
+        "copilot_model",
+        "copilot_api_key_env",
     )
     @classmethod
     def normalize_feedback_string(cls, value: str) -> str:

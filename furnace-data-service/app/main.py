@@ -27,6 +27,7 @@ from app.routes import data as legacy_data
 from app.routes import dataset as legacy_dataset
 from app.routes import health as legacy_health
 from app.services.blend_optimizer_service import BlendOptimizerService
+from app.services.copilot_service import CopilotService
 from app.services.feedback_service import FeedbackService
 from app.services.material_balance_service import MaterialBalanceService
 from app.services.model_registry_service import ModelRegistryService
@@ -67,6 +68,7 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
             settings=settings,
             model_registry=model_registry_service,
         )
+        app.state.copilot_service = CopilotService(settings=settings)
     except Exception as exc:
         log.warning("Compute services could not be initialized: %s", exc)
 

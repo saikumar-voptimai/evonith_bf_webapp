@@ -59,6 +59,18 @@ def test_phase7_compute_flags_select_api_mode(monkeypatch):
     assert is_backend_api_enabled("blend_optimizer") is True
 
 
+def test_phase8_copilot_flag_defaults_to_direct_mode(monkeypatch):
+    monkeypatch.delenv("USE_BACKEND_API_COPILOT", raising=False)
+
+    assert is_backend_api_enabled("copilot") is False
+
+
+def test_phase8_copilot_flag_selects_api_mode(monkeypatch):
+    monkeypatch.setenv("USE_BACKEND_API_COPILOT", "true")
+
+    assert is_backend_api_enabled("copilot") is True
+
+
 def test_data_api_limits_load_from_env(monkeypatch):
     monkeypatch.setenv("DATA_API_MAX_PREVIEW_ROWS", "25")
     monkeypatch.setenv("DATA_API_MAX_JSON_ROWS", "100")

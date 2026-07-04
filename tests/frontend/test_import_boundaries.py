@@ -18,6 +18,7 @@ def test_frontend_api_modules_do_not_import_backend_internals():
         REPO_ROOT / "src" / "services" / "material_balance_api.py",
         REPO_ROOT / "src" / "services" / "recommendations_api.py",
         REPO_ROOT / "src" / "services" / "blend_optimizer_api.py",
+        REPO_ROOT / "src" / "services" / "copilot_api.py",
         REPO_ROOT / "src" / "config" / "frontend_settings.py",
     ]
     forbidden = (
@@ -31,6 +32,13 @@ def test_frontend_api_modules_do_not_import_backend_internals():
     for path in files:
         text = path.read_text(encoding="utf-8")
         assert not any(pattern in text for pattern in forbidden)
+    copilot_text = (REPO_ROOT / "src" / "services" / "copilot_api.py").read_text(
+        encoding="utf-8"
+    ).lower()
+    assert not any(
+        pattern in copilot_text
+        for pattern in ("qdrant", "furnacemind", "openai")
+    )
 
 
 def test_backend_app_does_not_import_streamlit():

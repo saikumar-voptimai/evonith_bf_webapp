@@ -10,12 +10,155 @@ To update findings after a new regression run, edit the .md files there — no P
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+
+import streamlit as st
+
+from config.frontend_settings import is_backend_api_enabled
+from services.api_errors import FrontendApiError
+from services.copilot_api import (
+    analyze_anomaly,
+    analyze_copilot,
+    get_copilot_artifact_download_url,
+    get_copilot_config,
+    get_recent_data,
+)
+
+
+def _api_token() -> str | None:
+    token = st.session_state.get("auth_access_token")
+    return str(token) if token else None
+
+
+def _show_api_error(title: str, exc: FrontendApiError) -> None:
+    request_id = f" Request ID: `{exc.request_id}`" if exc.request_id else ""
+    code = f" `{exc.error_code}`" if getattr(exc, "error_code", None) else ""
+    st.error(f"{title}{code}: {exc.message}.{request_id}")
+
+
+def _render_api_copilot_page() -> None:
+    st.title("AI Copilot")
+    st.caption("AI Copilot mode: Backend API")
+    token = _api_token()
+
+    try:
+        config = get_copilot_config(token=token)
+    except FrontendApiError as exc:
+        if getattr(exc, "error_code", None) == "AUTH_REQUIRED":
+            st.warning("Login is required to use backend AI Copilot mode.")
+        else:
+            _show_api_error("Could not load Copilot configuration", exc)
+        return
+
+    with st.sidebar:
+        st.header("Configuration")
+        st.caption(f"LLM: {'enabled' if config.get('llm_enabled') else 'disabled'}")
+        allow_llm = st.toggle("Request LLM analysis", value=False, key="copilot_api_allow_llm")
+        if not config.get("llm_enabled"):
+            st.caption("Backend LLM calls are disabled; deterministic analysis will be used.")
+
+    default_rows = [
+        {"timestamp": "2026-07-04T06:00:00Z", "top_temperature": 825.0, "pressure_drop": 1.8},
+        {"timestamp": "2026-07-04T07:00:00Z", "top_temperature": 845.0, "pressure_drop": 2.2},
+    ]
+    question = st.text_area(
+        "Question",
+        value="Summarise the current furnace stability and anomaly risks.",
+        key="copilot_api_question",
+    )
+    source = st.selectbox("Data source", ["input_data", "online", "static_dataset"], index=0)
+    rows_text = st.text_area(
+        "Input rows JSON",
+        value=json.dumps(default_rows, indent=2),
+        height=160,
+        key="copilot_api_rows",
+    )
+
+    def _payload() -> dict:
+        rows = []
+        if source == "input_data":
+            try:
+                parsed = json.loads(rows_text)
+                rows = parsed if isinstance(parsed, list) else [parsed]
+            except json.JSONDecodeError:
+                st.error("Input rows must be valid JSON.")
+                return {}
+        return {
+            "source": source,
+            "input_data": rows if source == "input_data" else None,
+            "question": question,
+            "include_recent_data": True,
+            "include_anomaly": True,
+            "allow_llm": allow_llm,
+            "options": {"rows": rows} if source == "input_data" else {},
+        }
+
+    tab_data, tab_anomaly, tab_analysis = st.tabs(["Recent Data", "Anomaly", "Analysis"])
+
+    with tab_data:
+        if st.button("Fetch Recent Data", key="copilot_api_fetch"):
+            payload = _payload()
+            if payload:
+                try:
+                    data = get_recent_data(
+                        {"source": source, "filters": {"rows": payload.get("input_data") or []}},
+                        token=token,
+                    )
+                    st.dataframe(data.get("rows", []), width="stretch")
+                    for item in data.get("warnings", []):
+                        st.warning(item.get("message", item))
+                except FrontendApiError as exc:
+                    _show_api_error("Recent data failed", exc)
+
+    with tab_anomaly:
+        if st.button("Analyze Anomaly", key="copilot_api_anomaly"):
+            payload = _payload()
+            if payload:
+                try:
+                    result = analyze_anomaly(
+                        {
+                            "source": source,
+                            "input_data": payload.get("input_data"),
+                            "options": {"rows": payload.get("input_data") or []},
+                        },
+                        token=token,
+                    )
+                    st.metric("Severity", result.get("severity") or "unknown")
+                    st.dataframe(result.get("signals", []), width="stretch")
+                    for item in result.get("warnings", []):
+                        st.warning(item.get("message", item))
+                except FrontendApiError as exc:
+                    _show_api_error("Anomaly analysis failed", exc)
+
+    with tab_analysis:
+        if st.button("Run Analysis", key="copilot_api_analysis"):
+            payload = _payload()
+            if payload:
+                try:
+                    result = analyze_copilot(payload, token=token)
+                    st.markdown(result.get("answer") or "")
+                    for item in result.get("warnings", []):
+                        st.warning(item.get("message", item))
+                    if result.get("evidence"):
+                        st.dataframe(result["evidence"], width="stretch")
+                    for artifact in result.get("artifacts", []):
+                        artifact_id = artifact.get("artifact_id")
+                        st.link_button(
+                            f"Download {artifact.get('filename', 'artifact')}",
+                            get_copilot_artifact_download_url(artifact_id) if artifact_id else "#",
+                        )
+                except FrontendApiError as exc:
+                    _show_api_error("Copilot analysis failed", exc)
+
+
+if is_backend_api_enabled("copilot"):
+    _render_api_copilot_page()
+    st.stop()
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import streamlit as st
 
 from utils.anomaly_propensity import Channeling
 from utils.copilot.data import fetch_recent_online

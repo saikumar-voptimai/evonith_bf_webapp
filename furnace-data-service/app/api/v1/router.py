@@ -8,6 +8,7 @@ from app.api.v1.routes import (
     admin,
     auth,
     blend_optimizer,
+    copilot,
     data,
     datasets,
     feedback,
@@ -26,3 +27,4 @@ router.include_router(datasets.router)
 router.include_router(material_balance.router)
 router.include_router(recommendations.router)
 router.include_router(blend_optimizer.router)
+router.include_router(copilot.router)
