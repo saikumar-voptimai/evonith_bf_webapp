@@ -2,6 +2,7 @@
 set -euo pipefail
 
 export EVONITH_RUNTIME_DIR="${EVONITH_RUNTIME_DIR:-/var/lib/evonith-bf}"
+export EVONITH_DEPLOYMENT_PROFILE="${EVONITH_DEPLOYMENT_PROFILE:-edge}"
 export EVONITH_RUNTIME_PROFILE="${EVONITH_RUNTIME_PROFILE:-edge}"
 export EVONITH_EDGE_MODE="${EVONITH_EDGE_MODE:-true}"
 export EVONITH_FRONTEND_PROFILE="${EVONITH_FRONTEND_PROFILE:-frontend}"
@@ -23,6 +24,16 @@ if [ ! -w "${EVONITH_RUNTIME_DIR}" ]; then
 fi
 
 echo "Starting Evonith frontend profile=${EVONITH_FRONTEND_PROFILE} host=${EVONITH_FRONTEND_HOST} port=${EVONITH_FRONTEND_PORT} backend=${BACKEND_API_BASE_URL}"
-exec streamlit run apps/frontend_streamlit/app.py \
+cd "$(dirname "$0")/.."
+cmd=(streamlit run apps/frontend_streamlit/app.py \
   --server.address "${EVONITH_FRONTEND_HOST}" \
-  --server.port "${EVONITH_FRONTEND_PORT}"
+  --server.port "${EVONITH_FRONTEND_PORT}")
+
+if [ "${DRY_RUN:-0}" = "1" ]; then
+  printf 'DRY_RUN frontend command:'
+  printf ' %q' "${cmd[@]}"
+  printf '\n'
+  exit 0
+fi
+
+exec "${cmd[@]}"

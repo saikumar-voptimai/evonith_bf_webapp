@@ -1,0 +1,21 @@
+# Optional Caddy reverse proxy example for Evonith BF.
+# Replace <your-domain-or-ip>; Caddy can manage TLS when a real domain is used.
+
+<your-domain-or-ip> {
+    request_body {
+        max_size 25MB
+    }
+
+    handle_path /api/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:8501 {
+            transport http {
+                read_timeout 300s
+                write_timeout 300s
+            }
+        }
+    }
+}

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 export EVONITH_RUNTIME_DIR="${EVONITH_RUNTIME_DIR:-/var/lib/evonith-bf}"
+export EVONITH_DEPLOYMENT_PROFILE="${EVONITH_DEPLOYMENT_PROFILE:-edge}"
 export EVONITH_RUNTIME_PROFILE="${EVONITH_RUNTIME_PROFILE:-edge}"
 export EVONITH_EDGE_MODE="${EVONITH_EDGE_MODE:-true}"
 export EVONITH_BACKEND_PROFILE="${EVONITH_BACKEND_PROFILE:-backend-base}"
@@ -24,7 +25,16 @@ fi
 
 echo "Starting Evonith backend profile=${EVONITH_BACKEND_PROFILE} host=${EVONITH_UVICORN_HOST} port=${EVONITH_UVICORN_PORT} workers=${EVONITH_UVICORN_WORKERS}"
 cd "$(dirname "$0")/.."
-exec uvicorn apps.backend_api.app.main:app \
+cmd=(uvicorn apps.backend_api.app.main:app \
   --host "${EVONITH_UVICORN_HOST}" \
   --port "${EVONITH_UVICORN_PORT}" \
-  --workers "${EVONITH_UVICORN_WORKERS}"
+  --workers "${EVONITH_UVICORN_WORKERS}")
+
+if [ "${DRY_RUN:-0}" = "1" ]; then
+  printf 'DRY_RUN backend command:'
+  printf ' %q' "${cmd[@]}"
+  printf '\n'
+  exit 0
+fi
+
+exec "${cmd[@]}"

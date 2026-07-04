@@ -13,6 +13,7 @@ ExecStart=/opt/evonith-bf/scripts/edge_start_backend.sh
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

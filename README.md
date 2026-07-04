@@ -744,6 +744,10 @@ On Windows development machines, prefer `python run_streamlit.py`; it pre-import
 `torch` before Streamlit starts to prevent DLL load-order errors. The canonical
 Phase 12 Streamlit app path remains `apps/frontend_streamlit/app.py`.
 
+Phase 13 production, edge-device, local staging, cutover, rollback, and
+backup/restore guidance lives under `docs/deployment/`, starting with
+`docs/deployment/production-deployment-guide.md`.
+
 All pages execute with `src/` as the Python working directory. Use:
 ```python
 from agents.furnacemind.agent import run_agent_loop   # correct
