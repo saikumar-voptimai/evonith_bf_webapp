@@ -1,9 +1,70 @@
 from pathlib import Path
 
+import streamlit as st
+
+from config.frontend_settings import is_backend_api_enabled
+from services.api_errors import FrontendApiError
+from services.recommendations_api import run_recommendations
+
+
+def _api_token() -> str | None:
+    token = str(st.session_state.get("auth_access_token") or "").strip()
+    return token or None
+
+
+def _render_api_mode() -> None:
+    st.markdown(
+        """
+        <h1 style="text-align: center; font-family: 'Times New Roman', Times, serif; ">
+            V-Sense - Blast Parameter Optimisation
+        </h1>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Recommendations mode: Backend API")
+    signal_text = st.text_area(
+        "Signals",
+        placeholder="Example:\nPCI_KG/THM=8\nCOKE RATE KG/THM=-5",
+        height=140,
+    )
+    max_items = st.number_input("Max recommendations", min_value=1, max_value=50, value=10)
+    if st.button("Run Recommendations", type="primary"):
+        signals: dict[str, float] = {}
+        for line in signal_text.splitlines():
+            if "=" not in line:
+                continue
+            key, raw_value = line.split("=", 1)
+            try:
+                signals[key.strip()] = float(raw_value.strip())
+            except ValueError:
+                continue
+        try:
+            result = run_recommendations(
+                {
+                    "source": "input_data",
+                    "input_data": {"signals": signals},
+                    "max_items": int(max_items),
+                },
+                token=_api_token(),
+            )
+        except FrontendApiError as exc:
+            request_id = f" Request ID: {exc.request_id}." if exc.request_id else ""
+            st.error(f"Backend recommendations failed: {exc.message}.{request_id}")
+            return
+        for item in result.get("items") or []:
+            st.subheader(item.get("title") or "Recommendation")
+            st.write(item.get("description") or "")
+            if item.get("actions"):
+                st.write(item["actions"])
+
+
+if is_backend_api_enabled("recommendations"):
+    _render_api_mode()
+    st.stop()
+
 import joblib
 import numpy as np
 import pandas as pd
-import streamlit as st
 import yaml
 
 from config.config_loader import load_config

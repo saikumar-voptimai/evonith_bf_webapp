@@ -21,6 +21,53 @@ import streamlit as st
 
 log = logging.getLogger(__name__)
 
+from config.frontend_settings import is_backend_api_enabled
+from services.api_errors import FrontendApiError
+from services.blend_optimizer_api import get_blend_optimizer_context, optimize_blend
+
+
+def _api_token() -> str | None:
+    token = str(st.session_state.get("auth_access_token") or "").strip()
+    return token or None
+
+
+def _render_api_mode() -> None:
+    st.title("Blend Mix Optimizer")
+    st.caption("Blend Optimizer mode: Backend API")
+    try:
+        context = get_blend_optimizer_context(token=_api_token())
+    except FrontendApiError as exc:
+        request_id = f" Request ID: {exc.request_id}." if exc.request_id else ""
+        st.error(f"Backend Blend Optimizer context failed: {exc.message}.{request_id}")
+        return
+    materials = context.get("materials") or []
+    st.dataframe(materials, width="stretch")
+    target_total = st.number_input("Target total quantity (MT)", min_value=1.0, value=100.0)
+    max_candidates = st.number_input("Max candidates", min_value=1, max_value=100, value=5)
+    if st.button("Optimize Blend", type="primary"):
+        try:
+            result = optimize_blend(
+                {
+                    "materials": materials,
+                    "constraints": {"target_total_qty_mt": float(target_total)},
+                    "options": {"max_candidates": int(max_candidates)},
+                },
+                token=_api_token(),
+            )
+        except FrontendApiError as exc:
+            request_id = f" Request ID: {exc.request_id}." if exc.request_id else ""
+            st.error(f"Backend optimization failed: {exc.message}.{request_id}")
+            return
+        best = result.get("best_candidate") or {}
+        st.metric("Best objective cost", (best.get("metrics") or {}).get("objective_cost"))
+        table = (result.get("tables") or {}).get("candidates") or {}
+        st.dataframe(table.get("rows") or [], width="stretch")
+
+
+if is_backend_api_enabled("blend_optimizer"):
+    _render_api_mode()
+    st.stop()
+
 from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset

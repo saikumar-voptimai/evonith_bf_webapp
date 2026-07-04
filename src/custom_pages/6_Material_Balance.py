@@ -20,11 +20,59 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from config.frontend_settings import is_backend_api_enabled
+from services.api_errors import FrontendApiError
+from services.material_balance_api import run_material_balance
 from utils.session import is_logged_in
 
 # ── Auth gate ─────────────────────────────────────────────────────────
 if not is_logged_in():
     st.warning("Please log in to access this page.")
+    st.stop()
+
+
+def _api_token() -> str | None:
+    token = str(st.session_state.get("auth_access_token") or "").strip()
+    return token or None
+
+
+def _render_api_mode() -> None:
+    st.title("Material Balance - BF2")
+    st.caption("Material Balance mode: Backend API")
+    yesterday = date.today() - timedelta(days=1)
+    selected_day = st.date_input("Date (IST)", value=yesterday, max_value=yesterday)
+    dust_catcher_t = st.number_input(
+        "Dust Catcher (t/day)",
+        min_value=0.0,
+        max_value=500.0,
+        value=0.0,
+        step=1.0,
+    )
+    export = st.checkbox("Create CSV artifact", value=False)
+    if st.button("Run Material Balance", type="primary"):
+        try:
+            result = run_material_balance(
+                {
+                    "source": "static_dataset",
+                    "date": selected_day.isoformat(),
+                    "options": {"dust_catcher_t": float(dust_catcher_t)},
+                    "export": export,
+                },
+                token=_api_token(),
+            )
+        except FrontendApiError as exc:
+            request_id = f" Request ID: {exc.request_id}." if exc.request_id else ""
+            st.error(f"Backend Material Balance failed: {exc.message}.{request_id}")
+            return
+        st.metric("Overall closure", result.get("kpis", {}).get("overall_closure_pct"))
+        table = (result.get("tables") or {}).get("closure") or {}
+        st.dataframe(table.get("rows") or [], width="stretch")
+        for artifact in result.get("artifacts") or []:
+            st.link_button("Download CSV", artifact.get("download_url") or "")
+
+
+if is_backend_api_enabled("material_balance"):
+    _render_api_mode()
     st.stop()
 
 # ── Lazy imports (only after auth passes) ─────────────────────────────

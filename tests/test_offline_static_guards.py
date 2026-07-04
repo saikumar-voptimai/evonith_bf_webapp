@@ -88,13 +88,17 @@ def test_no_offline_influx_rollback_copy_remains() -> None:
 
 
 def test_sqlite_usage_is_limited_to_ticketing() -> None:
+    allowed = {
+        "furnace-data-service/app/repositories/feedback_repository.py",
+        "furnace-data-service/app/services/feedback_migration_service.py",
+    }
     offenders = []
     for path in _python_files():
         text = _read(path).lower()
         if "sqlite://" not in text and "sqlite3" not in text:
             continue
         relative = path.relative_to(ROOT).as_posix()
-        if relative.startswith("src/data/tickets/"):
+        if relative.startswith("src/data/tickets/") or relative in allowed:
             continue
         offenders.append(path)
     assert offenders == []

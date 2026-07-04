@@ -55,6 +55,19 @@ def get_current_user(
     return get_auth_service(request).current_user_from_token(token)
 
 
+def get_optional_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> dict[str, Any] | None:
+    """Return current user when a bearer token is present, otherwise None."""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        return None
+    token = credentials.credentials.strip()
+    if not token:
+        return None
+    return get_auth_service(request).current_user_from_token(token)
+
+
 def require_authenticated_user(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:

@@ -14,6 +14,10 @@ def test_frontend_api_modules_do_not_import_backend_internals():
         REPO_ROOT / "src" / "services" / "admin_api.py",
         REPO_ROOT / "src" / "services" / "data_api.py",
         REPO_ROOT / "src" / "services" / "dataset_api.py",
+        REPO_ROOT / "src" / "services" / "feedback_api.py",
+        REPO_ROOT / "src" / "services" / "material_balance_api.py",
+        REPO_ROOT / "src" / "services" / "recommendations_api.py",
+        REPO_ROOT / "src" / "services" / "blend_optimizer_api.py",
         REPO_ROOT / "src" / "config" / "frontend_settings.py",
     ]
     forbidden = (

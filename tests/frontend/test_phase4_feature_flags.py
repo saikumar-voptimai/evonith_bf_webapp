@@ -27,6 +27,38 @@ def test_datasets_flag_selects_api_mode(monkeypatch):
     assert is_backend_api_enabled("datasets") is True
 
 
+def test_feedback_flag_defaults_to_direct_mode(monkeypatch):
+    monkeypatch.delenv("USE_BACKEND_API_FEEDBACK", raising=False)
+
+    assert is_backend_api_enabled("feedback") is False
+
+
+def test_feedback_flag_selects_api_mode(monkeypatch):
+    monkeypatch.setenv("USE_BACKEND_API_FEEDBACK", "true")
+
+    assert is_backend_api_enabled("feedback") is True
+
+
+def test_phase7_compute_flags_default_to_direct_mode(monkeypatch):
+    monkeypatch.delenv("USE_BACKEND_API_MATERIAL_BALANCE", raising=False)
+    monkeypatch.delenv("USE_BACKEND_API_RECOMMENDATIONS", raising=False)
+    monkeypatch.delenv("USE_BACKEND_API_BLEND_OPTIMIZER", raising=False)
+
+    assert is_backend_api_enabled("material_balance") is False
+    assert is_backend_api_enabled("recommendations") is False
+    assert is_backend_api_enabled("blend_optimizer") is False
+
+
+def test_phase7_compute_flags_select_api_mode(monkeypatch):
+    monkeypatch.setenv("USE_BACKEND_API_MATERIAL_BALANCE", "true")
+    monkeypatch.setenv("USE_BACKEND_API_RECOMMENDATIONS", "true")
+    monkeypatch.setenv("USE_BACKEND_API_BLEND_OPTIMIZER", "true")
+
+    assert is_backend_api_enabled("material_balance") is True
+    assert is_backend_api_enabled("recommendations") is True
+    assert is_backend_api_enabled("blend_optimizer") is True
+
+
 def test_data_api_limits_load_from_env(monkeypatch):
     monkeypatch.setenv("DATA_API_MAX_PREVIEW_ROWS", "25")
     monkeypatch.setenv("DATA_API_MAX_JSON_ROWS", "100")

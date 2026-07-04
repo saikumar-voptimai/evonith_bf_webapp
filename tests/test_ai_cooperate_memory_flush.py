@@ -24,7 +24,12 @@ def _cache_resource(*args, **kwargs):
     return decorator
 
 
-_install_module("streamlit", cache_resource=_cache_resource, session_state={})
+_install_module(
+    "streamlit",
+    cache_data=_cache_resource,
+    cache_resource=_cache_resource,
+    session_state={},
+)
 _install_module(
     "agents.embeddings.cloud_embedding",
     CloudEmbeddingClient=type("CloudEmbeddingClient", (), {}),
@@ -59,6 +64,11 @@ _install_module("utils.session", current_user_id=lambda: "user-1")
 _install_module("utils.shift_windows", last_completed_shift=lambda: (None, ""))
 
 from agents.furnacemind import ai_cooperate_page
+
+sys.modules.pop("utils.shift_windows", None)
+sys.modules.pop("streamlit", None)
+sys.modules.pop("ui.furnacemind.chat_interface", None)
+sys.modules.pop("ui.furnacemind.feedback_flow", None)
 
 
 class FakeSummaryLLM:

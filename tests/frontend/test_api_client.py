@@ -178,6 +178,49 @@ def test_post_is_not_retried_by_default():
     assert attempts["count"] == 1
 
 
+def test_download_returns_bytes_without_json_decode():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"file-bytes",
+            headers={"X-Request-ID": "download-id"},
+            request=request,
+        )
+
+    client = ApiClient(transport=httpx.MockTransport(handler))
+
+    assert client.download("/feedback/attachments/a/download") == b"file-bytes"
+    assert client.last_response_request_id == "download-id"
+
+
+def test_upload_sends_multipart_file_without_retries():
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["url"] = str(request.url)
+        seen["content_type"] = request.headers["Content-Type"]
+        body = request.read()
+        assert b"example.txt" in body
+        assert b"hello" in body
+        return _json_response(request, {"request_id": "id", "data": {"ok": True}, "meta": {}})
+
+    client = ApiClient(
+        base_url="http://backend.local/api/v1",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert client.upload(
+        "/feedback/tickets/fb_1/attachments",
+        filename="example.txt",
+        content=b"hello",
+        content_type="text/plain",
+    )["data"] == {"ok": True}
+    assert seen["method"] == "POST"
+    assert seen["url"] == "http://backend.local/api/v1/feedback/tickets/fb_1/attachments"
+    assert seen["content_type"].startswith("multipart/form-data")
+
+
 def test_wrapped_response_detection_and_unwrap():
     wrapped = {"request_id": "id", "data": {"status": "ok"}, "meta": {"api_version": "v1"}}
     plain = {"status": "ok"}

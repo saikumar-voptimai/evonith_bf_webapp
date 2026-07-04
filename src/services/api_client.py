@@ -262,6 +262,46 @@ class ApiClient:
             expect_json=False,
         )
 
+    def upload(
+        self,
+        path: str,
+        *,
+        filename: str,
+        content: bytes,
+        content_type: str,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
+        """Upload one file using multipart/form-data without unsafe retries."""
+        request_id = (headers or {}).get("X-Request-ID") or str(uuid.uuid4())
+        request_headers = {"X-Request-ID": request_id}
+        if headers:
+            request_headers.update(headers)
+        self.last_request_id = request_id
+        self.last_response_request_id = None
+
+        try:
+            with self._client() as client:
+                response = client.post(
+                    self._path(path),
+                    files={"file": (filename, content, content_type)},
+                    headers=request_headers,
+                )
+            self.last_response_request_id = (
+                response.headers.get("X-Request-ID") or self.last_request_id
+            )
+            return self._handle_response(response, expect_json=True)
+        except httpx.TimeoutException as exc:
+            raise BackendApiTimeoutError(
+                "Backend API request timed out",
+                request_id=self.last_response_request_id or self.last_request_id,
+            ) from exc
+        except httpx.TransportError as exc:
+            raise BackendUnavailableError(
+                "Backend API is unavailable",
+                request_id=self.last_response_request_id or self.last_request_id,
+                details={"error": str(exc)},
+            ) from exc
+
     def health(self) -> dict[str, Any]:
         return self.get(self.health_path)
 

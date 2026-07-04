@@ -26,6 +26,11 @@ from app.core.middleware import RequestIdMiddleware
 from app.routes import data as legacy_data
 from app.routes import dataset as legacy_dataset
 from app.routes import health as legacy_health
+from app.services.blend_optimizer_service import BlendOptimizerService
+from app.services.feedback_service import FeedbackService
+from app.services.material_balance_service import MaterialBalanceService
+from app.services.model_registry_service import ModelRegistryService
+from app.services.recommendation_service import RecommendationService
 from furnace_data.runtime_paths import ensure_runtime_dirs, get_runtime_dir
 
 log = logging.getLogger(__name__)
@@ -47,6 +52,23 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
         version=settings.openapi_version,
     )
     app.state.backend_settings = settings
+    try:
+        feedback_service = FeedbackService(settings=settings)
+        feedback_service.ensure_storage()
+        app.state.feedback_service = feedback_service
+    except Exception as exc:
+        log.warning("Feedback storage could not be initialized: %s", exc)
+    try:
+        model_registry_service = ModelRegistryService(settings=settings)
+        app.state.model_registry_service = model_registry_service
+        app.state.material_balance_service = MaterialBalanceService(settings=settings)
+        app.state.recommendation_service = RecommendationService(settings=settings)
+        app.state.blend_optimizer_service = BlendOptimizerService(
+            settings=settings,
+            model_registry=model_registry_service,
+        )
+    except Exception as exc:
+        log.warning("Compute services could not be initialized: %s", exc)
 
     app.add_middleware(
         CORSMiddleware,
