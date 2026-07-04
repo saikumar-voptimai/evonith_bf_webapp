@@ -665,10 +665,11 @@ class DatasetService:
         snapshots.index = pd.DatetimeIndex(pd.to_datetime(snapshots.index))
         if snapshots.index.tz is not None:
             # Convert to local IST first, then strip tz so the timestamps are
-            # IST-naive and align with the daily_index anchors below.
+            # IST-naive daily anchors that align with the daily_index below.
             # tz_convert(None) alone would silently shift to UTC-naive (off by
-            # 5h30m), causing burden rows to never forward-fill correctly.
+            # 5h30m), causing burden rows to forward-fill from the prior day.
             snapshots.index = snapshots.index.tz_convert(ZoneInfo(self.local_tz)).tz_localize(None)
+        snapshots.index = snapshots.index.normalize()
 
         daily_index = pd.date_range(start=start_date, end=end_date, freq="D")
         snapshots = snapshots[~snapshots.index.duplicated(keep="last")]

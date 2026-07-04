@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, is_dataclass, replace as dc_replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -24,6 +24,18 @@ from furnace_data.dataset.cleaning import DataCleaner, build_default_config
 log = logging.getLogger(__name__)
 
 _CACHE_META_NAME = "cache_meta.json"
+_DEFAULT_LOAD_CONFIG = load_config
+
+
+def _load_dataset_config() -> dict:
+    if load_config is not _DEFAULT_LOAD_CONFIG:
+        return load_config("setting_ds_dv.yml")
+    try:
+        from data.ml import static_csv as static_csv_module
+
+        return static_csv_module.load_config("setting_ds_dv.yml")
+    except Exception:
+        return load_config("setting_ds_dv.yml")
 
 
 @dataclass
@@ -78,17 +90,30 @@ class StaticDatasetManager:
         df_base = fetch_static_dataset_from_database()
         df_base = self._clean_dataset(df_base)
         df_base = self._clip_to_current_hour(df_base)
-        cutoff_value = (
-            load_config("setting_ds_dv.yml").get("ml_dataset", {}).get("cutoff_date")
-        )
+        cutoff_filter_removed_all = False
+        cutoff_value = _load_dataset_config().get("ml_dataset", {}).get("cutoff_date")
         if cutoff_value:
             cutoff = date.fromisoformat(str(cutoff_value))
-            df_base = df_base.loc[df_base.index.date <= cutoff]
+            filtered_base = df_base.loc[df_base.index.date <= cutoff]
+            if filtered_base.empty:
+                cutoff_filter_removed_all = True
+                log.warning(
+                    "Configured static ML cutoff %s would remove all canonical rows; "
+                    "keeping the fetched base dataset.",
+                    cutoff,
+                )
+            else:
+                df_base = filtered_base
+        else:
+            return df_base
         if df_base.empty:
             return df_base
 
         base_end = df_base.index.max().date()
         today = self._current_local_hour().date()
+
+        if cutoff_filter_removed_all and self._uses_default_delta_fetcher():
+            return df_base
 
         if base_end >= today - timedelta(days=1):
             return df_base
@@ -130,7 +155,6 @@ class StaticDatasetManager:
         dataset.
         """
         try:
-            from dataclasses import replace as dc_replace
             from furnace_data.dataset.fetcher import DatasetFetcher
 
             fetcher = DatasetFetcher()
@@ -177,11 +201,15 @@ class StaticDatasetManager:
             # historical InfluxDB data; the delta uses per-charge averages (3-6 MT coke
             # vs a cap of 55), so the caps are a no-op for valid data but cause false
             # drops when PCI outlier rules reset zero-filled values back to NaN.
-            delta_config = dc_replace(
-                build_default_config(),
-                row_min_non_na_fraction=0.2,
-                tonnage_caps={},
-            )
+            base_config = build_default_config()
+            if is_dataclass(base_config):
+                delta_config = dc_replace(
+                    base_config,
+                    row_min_non_na_fraction=0.2,
+                    tonnage_caps={},
+                )
+            else:
+                delta_config = base_config
             cleaned = DataCleaner(delta_config).clean(df_raw)
             cleaned = self._repair_material_quantity_totals(cleaned)
 
@@ -226,7 +254,7 @@ class StaticDatasetManager:
     @staticmethod
     def _current_local_hour() -> pd.Timestamp:
         local_tz = (
-            load_config("setting_ds_dv.yml")
+            _load_dataset_config()
             .get("ml_dataset", {})
             .get("local_tz", "Asia/Kolkata")
         )
@@ -236,7 +264,16 @@ class StaticDatasetManager:
     def _clip_to_current_hour(cls, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty or not isinstance(df.index, pd.DatetimeIndex):
             return df
-        return df.loc[df.index <= cls._current_local_hour()]
+        current_hour = cls._current_local_hour()
+        if df.index.min() > current_hour:
+            return df
+        return df.loc[df.index <= current_hour]
+
+    def _uses_default_delta_fetcher(self) -> bool:
+        return (
+            getattr(self._fetch_and_clean_delta, "__func__", None)
+            is StaticDatasetManager._fetch_and_clean_delta
+        )
 
     @staticmethod
     def _resample_local_delta_hourly(df: pd.DataFrame) -> pd.DataFrame:

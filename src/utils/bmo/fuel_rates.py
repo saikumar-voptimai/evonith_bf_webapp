@@ -61,8 +61,8 @@ def estimate_fuel_rates_from_cost(
     fuel_cost_per_thm_rs: float,
     process_context: Mapping[str, Any] | None = None,
     history_df: pd.DataFrame | None = None,
-    pci_price_rs_per_kg: float = 15.0,
-    coke_price_rs_per_kg: float = 28.0,
+    pci_price_rs_per_kg: float = 16.0,
+    coke_price_rs_per_kg: float = 24.0,
     nut_coke_fallback_kg_thm: float = 70.0,
 ) -> EstimatedFuelRates | None:
     """Estimate coke, nut coke, PCI, and total fuel rates from fuel cost."""
@@ -84,6 +84,7 @@ def estimate_fuel_rates_from_cost(
         (float(fuel_cost_per_thm_rs) - (float(pci_rate) * float(pci_price_rs_per_kg)))
         / float(coke_price_rs_per_kg)
     )
+    total_coke_rate = round(total_coke_rate)
     coke_rate = total_coke_rate - float(nut_rate)
     total_fuel_rate = coke_rate + float(nut_rate) + float(pci_rate)
 

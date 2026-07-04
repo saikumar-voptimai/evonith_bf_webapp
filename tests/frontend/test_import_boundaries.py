@@ -19,6 +19,7 @@ def test_frontend_api_modules_do_not_import_backend_internals():
         REPO_ROOT / "src" / "services" / "recommendations_api.py",
         REPO_ROOT / "src" / "services" / "blend_optimizer_api.py",
         REPO_ROOT / "src" / "services" / "copilot_api.py",
+        REPO_ROOT / "src" / "services" / "furnacemind_api.py",
         REPO_ROOT / "src" / "config" / "frontend_settings.py",
     ]
     forbidden = (
@@ -38,6 +39,13 @@ def test_frontend_api_modules_do_not_import_backend_internals():
     assert not any(
         pattern in copilot_text
         for pattern in ("qdrant", "furnacemind", "openai")
+    )
+    furnacemind_text = (
+        REPO_ROOT / "src" / "services" / "furnacemind_api.py"
+    ).read_text(encoding="utf-8").lower()
+    assert not any(
+        pattern in furnacemind_text
+        for pattern in ("qdrant", "openai", "psycopg", "sqlite")
     )
 
 

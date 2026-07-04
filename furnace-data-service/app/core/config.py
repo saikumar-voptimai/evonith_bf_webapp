@@ -285,6 +285,200 @@ class BackendSettings(BaseSettings):
         False,
         validation_alias="EVONITH_COPILOT_LOG_PROMPT_PREVIEW",
     )
+    furnacemind_require_auth: bool = Field(
+        True,
+        validation_alias="EVONITH_FURNACEMIND_REQUIRE_AUTH",
+    )
+    furnacemind_storage_backend: str = Field(
+        "sqlite",
+        validation_alias="EVONITH_FURNACEMIND_STORAGE_BACKEND",
+    )
+    furnacemind_database_url: str = Field(
+        "",
+        validation_alias="EVONITH_FURNACEMIND_DATABASE_URL",
+    )
+    furnacemind_llm_enabled: bool = Field(
+        False,
+        validation_alias="EVONITH_FURNACEMIND_LLM_ENABLED",
+    )
+    furnacemind_provider: str = Field("", validation_alias="EVONITH_FURNACEMIND_PROVIDER")
+    furnacemind_model: str = Field("", validation_alias="EVONITH_FURNACEMIND_MODEL")
+    furnacemind_api_key_env: str = Field(
+        "OPENAI_API_KEY",
+        validation_alias="EVONITH_FURNACEMIND_API_KEY_ENV",
+    )
+    furnacemind_enable_provider_calls: bool = Field(
+        False,
+        validation_alias="EVONITH_FURNACEMIND_ENABLE_PROVIDER_CALLS",
+    )
+    furnacemind_timeout_seconds: int = Field(
+        120,
+        validation_alias="EVONITH_FURNACEMIND_TIMEOUT_SECONDS",
+    )
+    furnacemind_max_message_chars: int = Field(
+        8000,
+        validation_alias="EVONITH_FURNACEMIND_MAX_MESSAGE_CHARS",
+    )
+    furnacemind_max_response_chars: int = Field(
+        12000,
+        validation_alias="EVONITH_FURNACEMIND_MAX_RESPONSE_CHARS",
+    )
+    furnacemind_max_prompt_chars: int = Field(
+        30000,
+        validation_alias="EVONITH_FURNACEMIND_MAX_PROMPT_CHARS",
+    )
+    furnacemind_max_history_messages: int = Field(
+        20,
+        validation_alias="EVONITH_FURNACEMIND_MAX_HISTORY_MESSAGES",
+    )
+    furnacemind_max_context_docs: int = Field(
+        5,
+        validation_alias="EVONITH_FURNACEMIND_MAX_CONTEXT_DOCS",
+    )
+    furnacemind_max_context_chars: int = Field(
+        20000,
+        validation_alias="EVONITH_FURNACEMIND_MAX_CONTEXT_CHARS",
+    )
+    furnacemind_enable_data_redaction: bool = Field(
+        True,
+        validation_alias="EVONITH_FURNACEMIND_ENABLE_DATA_REDACTION",
+    )
+    furnacemind_allow_raw_docs_to_llm: bool = Field(
+        False,
+        validation_alias="EVONITH_FURNACEMIND_ALLOW_RAW_DOCS_TO_LLM",
+    )
+    furnacemind_log_prompt_preview: bool = Field(
+        False,
+        validation_alias="EVONITH_FURNACEMIND_LOG_PROMPT_PREVIEW",
+    )
+    furnacemind_documents_enabled: bool = Field(
+        True,
+        validation_alias="EVONITH_FURNACEMIND_DOCUMENTS_ENABLED",
+    )
+    furnacemind_max_document_mb: int = Field(
+        20,
+        validation_alias="EVONITH_FURNACEMIND_MAX_DOCUMENT_MB",
+    )
+    furnacemind_allowed_document_types: list[str] = Field(
+        default_factory=lambda: [
+            "application/pdf",
+            "text/plain",
+            "text/markdown",
+            "text/csv",
+            "application/json",
+        ],
+        validation_alias="EVONITH_FURNACEMIND_ALLOWED_DOCUMENT_TYPES",
+    )
+    furnacemind_allowed_document_extensions: list[str] = Field(
+        default_factory=lambda: [".pdf", ".txt", ".md", ".csv", ".json"],
+        validation_alias="EVONITH_FURNACEMIND_ALLOWED_DOCUMENT_EXTENSIONS",
+    )
+    furnacemind_max_extracted_chars: int = Field(
+        200000,
+        validation_alias="EVONITH_FURNACEMIND_MAX_EXTRACTED_CHARS",
+    )
+    furnacemind_document_ttl_days: int = Field(
+        0,
+        validation_alias="EVONITH_FURNACEMIND_DOCUMENT_TTL_DAYS",
+    )
+    furnacemind_memory_enabled: bool = Field(
+        False,
+        validation_alias="EVONITH_FURNACEMIND_MEMORY_ENABLED",
+    )
+    furnacemind_vector_backend: str = Field(
+        "qdrant",
+        validation_alias="EVONITH_FURNACEMIND_VECTOR_BACKEND",
+    )
+    furnacemind_qdrant_url: str = Field(
+        "",
+        validation_alias="EVONITH_FURNACEMIND_QDRANT_URL",
+    )
+    furnacemind_qdrant_api_key_env: str = Field(
+        "QDRANT_API_KEY",
+        validation_alias="EVONITH_FURNACEMIND_QDRANT_API_KEY_ENV",
+    )
+    furnacemind_qdrant_collection: str = Field(
+        "evonith_furnacemind",
+        validation_alias="EVONITH_FURNACEMIND_QDRANT_COLLECTION",
+    )
+    furnacemind_embeddings_enabled: bool = Field(
+        False,
+        validation_alias="EVONITH_FURNACEMIND_EMBEDDINGS_ENABLED",
+    )
+    furnacemind_embedding_provider: str = Field(
+        "",
+        validation_alias="EVONITH_FURNACEMIND_EMBEDDING_PROVIDER",
+    )
+    furnacemind_embedding_model: str = Field(
+        "",
+        validation_alias="EVONITH_FURNACEMIND_EMBEDDING_MODEL",
+    )
+    furnacemind_embedding_api_key_env: str = Field(
+        "OPENAI_API_KEY",
+        validation_alias="EVONITH_FURNACEMIND_EMBEDDING_API_KEY_ENV",
+    )
+    furnacemind_vector_top_k: int = Field(
+        5,
+        validation_alias="EVONITH_FURNACEMIND_VECTOR_TOP_K",
+    )
+    furnacemind_vector_timeout_seconds: int = Field(
+        10,
+        validation_alias="EVONITH_FURNACEMIND_VECTOR_TIMEOUT_SECONDS",
+    )
+    furnacemind_tools_enabled: bool = Field(
+        False,
+        validation_alias="EVONITH_FURNACEMIND_TOOLS_ENABLED",
+    )
+    furnacemind_allowed_tools: list[str] = Field(
+        default_factory=lambda: [
+            "data_summary",
+            "anomaly_summary",
+            "material_balance_summary",
+            "recommendations_summary",
+            "blend_optimizer_summary",
+        ],
+        validation_alias="EVONITH_FURNACEMIND_ALLOWED_TOOLS",
+    )
+    furnacemind_tool_timeout_seconds: int = Field(
+        30,
+        validation_alias="EVONITH_FURNACEMIND_TOOL_TIMEOUT_SECONDS",
+    )
+    furnacemind_max_tool_calls_per_run: int = Field(
+        5,
+        validation_alias="EVONITH_FURNACEMIND_MAX_TOOL_CALLS_PER_RUN",
+    )
+    furnacemind_enable_code_execution: bool = Field(
+        False,
+        validation_alias="EVONITH_FURNACEMIND_ENABLE_CODE_EXECUTION",
+    )
+    furnacemind_enable_shell_execution: bool = Field(
+        False,
+        validation_alias="EVONITH_FURNACEMIND_ENABLE_SHELL_EXECUTION",
+    )
+    furnacemind_run_ttl_hours: int = Field(
+        24,
+        validation_alias="EVONITH_FURNACEMIND_RUN_TTL_HOURS",
+    )
+    furnacemind_artifact_ttl_hours: int = Field(
+        24,
+        validation_alias="EVONITH_FURNACEMIND_ARTIFACT_TTL_HOURS",
+    )
+    furnacemind_event_retention_hours: int = Field(
+        24,
+        validation_alias="EVONITH_FURNACEMIND_EVENT_RETENTION_HOURS",
+    )
+    furnacemind_max_events_per_run: int = Field(
+        500,
+        validation_alias="EVONITH_FURNACEMIND_MAX_EVENTS_PER_RUN",
+    )
+    furnacemind_streaming_enabled: bool = Field(
+        True,
+        validation_alias="EVONITH_FURNACEMIND_STREAMING_ENABLED",
+    )
+    furnacemind_polling_fallback_enabled: bool = Field(
+        True,
+        validation_alias="EVONITH_FURNACEMIND_POLLING_FALLBACK_ENABLED",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -344,12 +538,37 @@ class BackendSettings(BaseSettings):
         "copilot_job_threshold_rows",
         "copilot_job_ttl_hours",
         "copilot_artifact_ttl_hours",
+        "furnacemind_timeout_seconds",
+        "furnacemind_max_message_chars",
+        "furnacemind_max_response_chars",
+        "furnacemind_max_prompt_chars",
+        "furnacemind_max_history_messages",
+        "furnacemind_max_context_docs",
+        "furnacemind_max_context_chars",
+        "furnacemind_max_document_mb",
+        "furnacemind_max_extracted_chars",
+        "furnacemind_vector_top_k",
+        "furnacemind_vector_timeout_seconds",
+        "furnacemind_tool_timeout_seconds",
+        "furnacemind_max_tool_calls_per_run",
+        "furnacemind_run_ttl_hours",
+        "furnacemind_artifact_ttl_hours",
+        "furnacemind_event_retention_hours",
+        "furnacemind_max_events_per_run",
     )
     @classmethod
     def require_positive_int(cls, value: int) -> int:
         return max(1, int(value))
 
-    @field_validator("feedback_storage_backend", "compute_export_format", "copilot_provider")
+    @field_validator(
+        "feedback_storage_backend",
+        "compute_export_format",
+        "copilot_provider",
+        "furnacemind_storage_backend",
+        "furnacemind_provider",
+        "furnacemind_vector_backend",
+        "furnacemind_embedding_provider",
+    )
     @classmethod
     def normalize_lower_string(cls, value: str) -> str:
         return str(value or "").strip().lower()
@@ -361,6 +580,14 @@ class BackendSettings(BaseSettings):
         "material_balance_config_source",
         "copilot_model",
         "copilot_api_key_env",
+        "furnacemind_database_url",
+        "furnacemind_model",
+        "furnacemind_api_key_env",
+        "furnacemind_qdrant_url",
+        "furnacemind_qdrant_api_key_env",
+        "furnacemind_qdrant_collection",
+        "furnacemind_embedding_model",
+        "furnacemind_embedding_api_key_env",
     )
     @classmethod
     def normalize_feedback_string(cls, value: str) -> str:
@@ -371,6 +598,9 @@ class BackendSettings(BaseSettings):
         "feedback_allowed_attachment_extensions",
         "feedback_allowed_statuses",
         "feedback_allowed_priorities",
+        "furnacemind_allowed_document_types",
+        "furnacemind_allowed_document_extensions",
+        "furnacemind_allowed_tools",
         mode="before",
     )
     @classmethod

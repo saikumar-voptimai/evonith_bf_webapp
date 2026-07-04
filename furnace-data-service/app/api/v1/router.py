@@ -12,6 +12,7 @@ from app.api.v1.routes import (
     data,
     datasets,
     feedback,
+    furnacemind,
     health,
     material_balance,
     recommendations,
@@ -28,3 +29,4 @@ router.include_router(material_balance.router)
 router.include_router(recommendations.router)
 router.include_router(blend_optimizer.router)
 router.include_router(copilot.router)
+router.include_router(furnacemind.router)
