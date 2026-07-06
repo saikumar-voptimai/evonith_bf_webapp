@@ -1,4 +1,4 @@
-"""Phase 12 compatibility shim for the old backend entrypoint.
+"""temporary Phase 12/cleanup compatibility shim for the old backend entrypoint.
 
 Use ``apps.backend_api.app.main:app`` for new startup commands.  This module
 keeps ``uvicorn app.main:app`` working from ``furnace-data-service``.

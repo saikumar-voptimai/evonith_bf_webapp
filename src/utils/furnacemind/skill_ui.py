@@ -1,4 +1,4 @@
-﻿"""Reusable helpers for FurnaceMind skill sidebar and button display.
+"""Reusable helpers for FurnaceMind skill sidebar and button display.
 
 The Streamlit chat interface owns widget rendering and session state. This
 module keeps the pure skill formatting, metadata, filename, and context-preview
@@ -12,10 +12,12 @@ import re
 from pathlib import Path
 from typing import Any
 
+from furnace_data.assets import package_furnacemind_assets_dir
 from furnace_data.runtime_paths import get_repo_root, runtime_path
 
 _SKILL_SLUG_RE = re.compile(r"[^a-z0-9_]+")
 _SKILL_FILE_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
+_FURNACEMIND_SOURCE_DIR = package_furnacemind_assets_dir()
 _LEGACY_SKILL_STORAGE_DIR = get_repo_root() / "src" / "storage" / "furnacemind"
 
 
@@ -30,6 +32,9 @@ def _skill_context_path(filename: Any) -> Path:
     runtime_candidate = _runtime_skill_storage_dir() / safe_name
     if runtime_candidate.exists():
         return runtime_candidate
+    package_candidate = _FURNACEMIND_SOURCE_DIR / safe_name
+    if package_candidate.exists():
+        return package_candidate
     return _LEGACY_SKILL_STORAGE_DIR / safe_name
 
 

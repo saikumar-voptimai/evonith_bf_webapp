@@ -16,6 +16,7 @@ from typing import Any
 import joblib
 
 from domain.optimization_runtime.types import ModelBundleInfo
+from furnace_data.assets import resolve_model_asset_path
 
 
 def _parse_version_parts(version: Any) -> tuple[int, int, int] | None:
@@ -151,20 +152,7 @@ def _resolve_repo_path(path_str: str) -> Path:
          - return Path - Existing resolved path when found, otherwise first candidate.
     """
 
-    p = Path(str(path_str or "")).expanduser()
-    if p.is_absolute():
-        return p
-
-    repo_root = Path(__file__).resolve().parents[3]
-    candidates = [
-        repo_root / p,
-        repo_root / "src" / p,
-        Path.cwd() / p,
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
+    return resolve_model_asset_path(path_str)
 
 
 class ModelBundleService:

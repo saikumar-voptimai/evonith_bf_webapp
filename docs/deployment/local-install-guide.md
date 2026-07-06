@@ -7,7 +7,7 @@ uv sync --group dev
 uv run pytest tests -q
 ```
 
-This preserves the current full local workflow and direct-mode Streamlit pages.
+This installs the full local workflow, including backend, frontend, optional feature, and test dependencies.
 
 ## Backend Base
 
@@ -17,19 +17,22 @@ EVONITH_RUNTIME_DIR=./runtime EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me 
   uv run python scripts/check_backend_minimal_startup.py
 ```
 
-Run the backend:
+Canonical backend command:
 
 ```bash
-EVONITH_RUNTIME_DIR=./runtime EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
-  uv run uvicorn apps.backend_api.app.main:app --host 0.0.0.0 --port 8080 --workers 1
+EVONITH_RUNTIME_DIR=./runtime \
+EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
+uv run uvicorn apps.backend_api.app.main:app --host 0.0.0.0 --port 8080
 ```
 
-Compatibility command during Phase 12:
+
+Temporary backend compatibility command:
 
 ```bash
 cd furnace-data-service
-EVONITH_RUNTIME_DIR=../runtime EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
-  uv run uvicorn app.main:app --host 0.0.0.0 --port 8080 --workers 1
+EVONITH_RUNTIME_DIR=../runtime \
+EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
 ## Backend With Data And Compute
@@ -55,17 +58,17 @@ variables outside git. These profiles are not required for backend startup.
 
 ```bash
 uv pip install -r requirements/frontend.txt
-BACKEND_API_BASE_URL=http://localhost:8080/api/v1 streamlit run apps/frontend_streamlit/app.py
+BACKEND_API_BASE_URL=http://localhost:8080/api/v1 uv run streamlit run apps/frontend_streamlit/app.py
 ```
 
 The frontend profile is for Streamlit, UI libraries, and API adapters. It does
 not require backend internals, database clients, vector clients, LLM providers,
 or model loaders.
 
-Compatibility command during Phase 12:
+Temporary frontend compatibility command for rollback checks:
 
 ```bash
-BACKEND_API_BASE_URL=http://localhost:8080/api/v1 streamlit run src/app.py
+BACKEND_API_BASE_URL=http://localhost:8080/api/v1 uv run streamlit run src/app.py
 ```
 
 ## Verification

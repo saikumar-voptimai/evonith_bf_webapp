@@ -1,10 +1,11 @@
 #!/usr/bin/env python
-"""Validate the Phase 12 repository structure and compatibility shims."""
+"""Validate canonical structure and generated-artifact cleanup."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import subprocess
 import sys
 
 
@@ -13,13 +14,29 @@ REQUIRED_PATHS = [
     "apps/backend_api/__init__.py",
     "apps/backend_api/app/__init__.py",
     "apps/backend_api/app/main.py",
+    "apps/backend_api/app/api",
+    "apps/backend_api/app/core",
+    "apps/backend_api/app/services",
+    "apps/backend_api/app/repositories",
+    "apps/backend_api/app/tasks",
     "apps/frontend_streamlit/__init__.py",
     "apps/frontend_streamlit/app.py",
+    "apps/frontend_streamlit/assets",
+    "apps/frontend_streamlit/config",
+    "apps/frontend_streamlit/custom_pages",
     "apps/frontend_streamlit/services/status_api.py",
-    "apps/frontend_streamlit/custom_pages/1_Welcome.py",
+    "apps/frontend_streamlit/ui",
+    "packages/furnace-data/pyproject.toml",
+    "packages/furnace-data/furnace_data/__init__.py",
+    "packages/furnace-data/furnace_data/runtime_paths.py",
+    "packages/furnace-data/furnace_data/assets/__init__.py",
+    "packages/furnace-data/furnace_data/assets/models",
+    "packages/furnace-data/furnace_data/assets/copilot_analysis",
+    "packages/furnace-data/furnace_data/assets/furnacemind",
     "furnace-data-service/app/main.py",
     "src/app.py",
-    "furnace_data/furnace_data/runtime_paths.py",
+    "furnace_data/__init__.py",
+    "furnace_data/runtime_paths.py",
     "scripts/export_backend_openapi.py",
     "scripts/check_import_boundaries.py",
     "scripts/check_dependency_profiles.py",
@@ -27,36 +44,73 @@ REQUIRED_PATHS = [
     "scripts/check_frontend_api_imports.py",
     "scripts/edge_start_backend.sh",
     "scripts/edge_start_frontend.sh",
-    "docs/migration/phase-12-repository-restructure.md",
-    "docs/migration/phase-12-test-execution-report.md",
-    "docs/testing/phase-12-testing-guide.md",
+    "docs/migration/post-phase-13-structure-cleanup-plan.md",
+    "docs/operations/model-assets.md",
+    "tests",
+    "tests/README.md",
+    "tests/backend",
+    "tests/dependency",
+    "tests/deployment",
+    "tests/fixtures",
+    "tests/frontend",
+    "tests/integration",
+    "tests/structure",
+    "runtime",
     "runtime/.gitkeep",
 ]
 
+SOURCE_ROOTS = [
+    "apps",
+    "packages",
+    "src",
+    "furnace-data-service",
+    "scripts",
+]
 
-SOURCE_RUNTIME_GLOBS = [
-    "apps/**/*.db",
-    "apps/**/*.sqlite",
-    "apps/**/*.sqlite3",
-    "apps/**/*.log",
-    "src/**/*.db",
-    "src/**/*.sqlite",
-    "src/**/*.sqlite3",
-    "src/**/*.log",
-    "furnace-data-service/app/**/*.db",
-    "furnace-data-service/app/**/*.sqlite",
-    "furnace-data-service/app/**/*.sqlite3",
-    "furnace-data-service/app/**/*.log",
-    "furnace-data-service/data/results/**/*",
+GENERATED_SUFFIXES = {
+    ".csv",
+    ".db",
+    ".log",
+    ".sqlite",
+    ".sqlite3",
+}
+
+OBSOLETE_PATHS = [
+    "ale" + "mbic",
+    "ale" + "mbic.ini",
+    "bad-test.exe",
+    "phase6-test.txt",
+    "phase9_test_doc.txt",
+    "gw_config.json",
+    "main.py",
+    "run_time.txt",
+    "static",
+    "scripts/diagnose_fetch_pipeline.py",
+    "scripts/diagnose_fetch_pipeline.report.md",
+    "scripts/validate_slag_balance.py",
+    "scripts/slag_validation_results.csv",
+    "furnace-data-service/data/results",
+    "furnace-data-service/data/static",
+    "src/storage/feedback",
+    "src/storage/shift_summaries.json",
+    "src/storage/daily_summaries.json",
+    "src/storage/weekly_summaries.json",
+    "src/storage/biweekly_summaries.json",
 ]
 
 
 def _read(root: Path, relative_path: str) -> str:
-    return (root / relative_path).read_text(encoding="utf-8", errors="ignore")
+    path = root / relative_path
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8", errors="ignore")
 
 
 def _missing_paths(root: Path) -> list[str]:
-    return [relative for relative in REQUIRED_PATHS if not (root / relative).exists()]
+    required_paths = list(REQUIRED_PATHS)
+    if (root / "infra").exists():
+        required_paths.append("infra")
+    return [relative for relative in required_paths if not (root / relative).exists()]
 
 
 def _content_failures(root: Path) -> list[str]:
@@ -65,6 +119,8 @@ def _content_failures(root: Path) -> list[str]:
     backend_shim = _read(root, "furnace-data-service/app/main.py")
     if "from apps.backend_api.app.main import app, create_app" not in backend_shim:
         failures.append("furnace-data-service/app/main.py must re-export apps.backend_api.app.main")
+    if "temporary Phase 12/cleanup compatibility shim" not in backend_shim:
+        failures.append("furnace-data-service/app/main.py must be marked as a temporary compatibility shim")
 
     frontend_shim = _read(root, "src/app.py")
     if "apps" not in frontend_shim or "frontend_streamlit" not in frontend_shim:
@@ -83,35 +139,156 @@ def _content_failures(root: Path) -> list[str]:
         failures.append("scripts/edge_start_frontend.sh must start apps/frontend_streamlit/app.py")
 
     gitignore = _read(root, ".gitignore")
-    for expected in ("runtime/*", "!runtime/.gitkeep", "*.db", "*.sqlite", "*.sqlite3", "*.log"):
+    for expected in (
+        "runtime/*",
+        "!runtime/.gitkeep",
+        "*.db",
+        "*.sqlite",
+        "*.sqlite3",
+        "*.log",
+        "__pycache__/",
+        "*.pyc",
+        "scripts/*.csv",
+        "scripts/*.report.md",
+        "src/storage/**",
+        "furnace-data-service/data/results/**",
+        "furnace-data-service/data/static/**",
+    ):
         if expected not in gitignore:
             failures.append(f".gitignore missing {expected}")
 
     pyproject = _read(root, "pyproject.toml")
-    if "furnace_data" not in pyproject:
-        failures.append("pyproject.toml must keep furnace_data editable/shared package metadata")
+    if 'furnace_data = { path = "./packages/furnace-data", editable = true }' not in pyproject:
+        failures.append("pyproject.toml must point furnace_data to ./packages/furnace-data")
+    if 'testpaths = ["tests"]' not in pyproject:
+        failures.append("pyproject.toml must point pytest discovery at canonical tests/")
+
+    service_pyproject = _read(root, "furnace-data-service/pyproject.toml")
+    if 'testpaths = ["../tests/backend"]' not in service_pyproject:
+        failures.append("furnace-data-service/pyproject.toml must point pytest discovery at ../tests/backend")
+
+    shared_package = _read(root, "packages/furnace-data/pyproject.toml")
+    if 'name = "furnace_data"' not in shared_package:
+        failures.append("packages/furnace-data/pyproject.toml must define the furnace_data package")
+    if '"furnace_data/assets" = "furnace_data/assets"' not in shared_package:
+        failures.append("packages/furnace-data/pyproject.toml must include shared package assets")
+
+    for relative in ("pyproject.toml", "requirements.txt", "uv.lock"):
+        text = _read(root, relative).lower()
+        if "ale" + "mbic" in text:
+            failures.append(f"{relative} must not include legacy migration tooling")
+
+    for old_root in ("furnace-data-service/test", "furnace-data-service/tests"):
+        old_path = root / old_root
+        if not old_path.exists():
+            continue
+        active_tests = sorted(path.name for path in old_path.glob("test_*.py"))
+        if active_tests:
+            failures.append(f"{old_root} must not contain active tests: {active_tests}")
+        readme = old_path / "README.md"
+        if not readme.exists() or "deprecated" not in readme.read_text(encoding="utf-8", errors="ignore").lower():
+            failures.append(f"{old_root} must contain a README.md explaining deprecation")
 
     return failures
 
 
-def _runtime_files_in_source(root: Path) -> list[str]:
+def _obsolete_path_failures(root: Path) -> list[str]:
+    return [
+        f"Obsolete generated/clutter path must be removed: {relative}"
+        for relative in OBSOLETE_PATHS
+        if (root / relative).exists()
+    ]
+
+
+def _tracked_bytecode_findings(root: Path) -> list[str]:
+    if not (root / ".git").exists():
+        return []
+    result = subprocess.run(
+        ["git", "ls-files"],
+        cwd=root,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return []
     findings: list[str] = []
-    for pattern in SOURCE_RUNTIME_GLOBS:
-        for path in root.glob(pattern):
-            if path.is_file() and ".gitkeep" not in path.name:
+    for line in result.stdout.splitlines():
+        normalized = line.replace("\\", "/")
+        if "/__pycache__/" in normalized or normalized.endswith(".pyc"):
+            findings.append(normalized)
+    return sorted(findings)
+
+
+def _generated_artifact_findings(root: Path) -> list[str]:
+    findings: list[str] = []
+    for relative_root in SOURCE_ROOTS:
+        source_root = root / relative_root
+        if not source_root.exists():
+            continue
+        for path in source_root.rglob("*"):
+            if path.is_dir() and path.name.lower() == "uploads":
                 findings.append(str(path.relative_to(root)))
+            elif path.is_file() and path.suffix.lower() in GENERATED_SUFFIXES:
+                findings.append(str(path.relative_to(root)))
+    findings.extend(_tracked_bytecode_findings(root))
     return sorted(set(findings))
+
+
+def _runtime_ignore_failures(root: Path) -> list[str]:
+    failures: list[str] = []
+    gitignore_lines = {
+        line.strip()
+        for line in _read(root, ".gitignore").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    if "runtime/*" not in gitignore_lines:
+        failures.append(".gitignore missing runtime/*")
+    if "!runtime/.gitkeep" not in gitignore_lines:
+        failures.append(".gitignore missing !runtime/.gitkeep")
+
+    if (root / ".git").exists():
+        ignored_runtime_file = subprocess.run(
+            ["git", "check-ignore", "-q", "runtime/generated-probe.db"],
+            cwd=root,
+            check=False,
+        )
+        if ignored_runtime_file.returncode != 0:
+            failures.append("runtime/generated-probe.db should be ignored by git")
+
+        ignored_gitkeep = subprocess.run(
+            ["git", "check-ignore", "-q", "runtime/.gitkeep"],
+            cwd=root,
+            check=False,
+        )
+        if ignored_gitkeep.returncode == 0:
+            failures.append("runtime/.gitkeep must not be ignored by git")
+
+    return failures
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument(
+        "--generated-only",
+        action="store_true",
+        help="Only run generated-artifact checks for fixture tests.",
+    )
     args = parser.parse_args(argv)
     root = args.root.resolve()
 
-    failures = [f"Missing required path: {path}" for path in _missing_paths(root)]
-    failures.extend(_content_failures(root))
-    runtime_findings = _runtime_files_in_source(root)
+    failures: list[str] = []
+    if not args.generated_only:
+        failures.extend(f"Missing required path: {path}" for path in _missing_paths(root))
+        failures.extend(_content_failures(root))
+        failures.extend(_obsolete_path_failures(root))
+        failures.extend(_runtime_ignore_failures(root))
+
+    failures.extend(
+        f"Generated/runtime artifact found under source folder: {path}"
+        for path in _generated_artifact_findings(root)
+    )
 
     if failures:
         print("FAIL repository-structure checks")
@@ -120,13 +297,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print("PASS repository-structure checks")
-    print("canonical_backend=apps/backend_api/app/main.py")
-    print("canonical_frontend=apps/frontend_streamlit/app.py")
-    if runtime_findings:
-        print(
-            "WARNING legacy runtime-like files still exist under ignored source paths: "
-            + ", ".join(runtime_findings)
-        )
+    print("canonical_backend=apps/backend_api/app")
+    print("canonical_frontend=apps/frontend_streamlit")
+    print("canonical_shared_package=packages/furnace-data/furnace_data")
     return 0
 
 

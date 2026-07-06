@@ -7,26 +7,31 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_frontend_api_modules_do_not_import_backend_internals():
+    service_names = [
+        "api_client.py",
+        "backend_status.py",
+        "auth_api.py",
+        "admin_api.py",
+        "data_api.py",
+        "dataset_api.py",
+        "feedback_api.py",
+        "material_balance_api.py",
+        "recommendations_api.py",
+        "blend_optimizer_api.py",
+        "copilot_api.py",
+        "furnacemind_api.py",
+        "status_api.py",
+        "ops_api.py",
+    ]
     files = [
-        REPO_ROOT / "src" / "services" / "api_client.py",
-        REPO_ROOT / "src" / "services" / "backend_status.py",
-        REPO_ROOT / "src" / "services" / "auth_api.py",
-        REPO_ROOT / "src" / "services" / "admin_api.py",
-        REPO_ROOT / "src" / "services" / "data_api.py",
-        REPO_ROOT / "src" / "services" / "dataset_api.py",
-        REPO_ROOT / "src" / "services" / "feedback_api.py",
-        REPO_ROOT / "src" / "services" / "material_balance_api.py",
-        REPO_ROOT / "src" / "services" / "recommendations_api.py",
-        REPO_ROOT / "src" / "services" / "blend_optimizer_api.py",
-        REPO_ROOT / "src" / "services" / "copilot_api.py",
-        REPO_ROOT / "src" / "services" / "furnacemind_api.py",
-        REPO_ROOT / "src" / "services" / "status_api.py",
-        REPO_ROOT / "src" / "services" / "ops_api.py",
+        *(REPO_ROOT / "apps" / "frontend_streamlit" / "services" / name for name in service_names),
+        *(REPO_ROOT / "src" / "services" / name for name in service_names),
+        REPO_ROOT / "apps" / "frontend_streamlit" / "config" / "frontend_settings.py",
         REPO_ROOT / "src" / "config" / "frontend_settings.py",
     ]
     forbidden = (
-        "from app",
-        "import app",
+        "from app.",
+        "import app.",
         "furnace-data-service",
         "from furnace-data-service",
         "influxdb",
@@ -35,15 +40,15 @@ def test_frontend_api_modules_do_not_import_backend_internals():
     for path in files:
         text = path.read_text(encoding="utf-8")
         assert not any(pattern in text for pattern in forbidden)
-    copilot_text = (REPO_ROOT / "src" / "services" / "copilot_api.py").read_text(
-        encoding="utf-8"
-    ).lower()
+    copilot_text = (
+        REPO_ROOT / "apps" / "frontend_streamlit" / "services" / "copilot_api.py"
+    ).read_text(encoding="utf-8").lower()
     assert not any(
         pattern in copilot_text
         for pattern in ("qdrant", "furnacemind", "openai")
     )
     furnacemind_text = (
-        REPO_ROOT / "src" / "services" / "furnacemind_api.py"
+        REPO_ROOT / "apps" / "frontend_streamlit" / "services" / "furnacemind_api.py"
     ).read_text(encoding="utf-8").lower()
     assert not any(
         pattern in furnacemind_text

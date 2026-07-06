@@ -19,7 +19,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 Frontend compatibility:
 
 ```bash
-streamlit run src/app.py
+uv run streamlit run src/app.py
 ```
 
 ## Data Safety
@@ -33,4 +33,3 @@ dry-run review.
 python scripts/validate_deployment.py --profile local --offline
 python scripts/check_repository_structure.py
 ```
-

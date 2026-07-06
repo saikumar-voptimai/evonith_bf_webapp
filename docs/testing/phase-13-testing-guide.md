@@ -2,10 +2,7 @@
 
 ## Purpose
 
-This guide verifies production deployment readiness, edge-device deployment
-assets, runtime bootstrap, deployment validation, smoke tests, API cutover
-validation, backup/restore, rollback readiness, release readiness, and
-regression safety for Phases 1-12.
+This guide verifies production deployment readiness, edge-device deployment assets, runtime bootstrap, deployment validation, smoke tests, API cutover validation, backup/restore, rollback readiness, release readiness, and regression safety for the canonical repository layout.
 
 ## Prerequisites
 
@@ -17,6 +14,7 @@ regression safety for Phases 1-12.
 - No production secrets required.
 - Backend canonical path: `apps.backend_api.app.main:app`.
 - Frontend canonical path: `apps/frontend_streamlit/app.py`.
+- Shared package canonical path: `packages/furnace-data/furnace_data`.
 - Full/dev dependencies for the full test suite.
 - Docker/systemd/reverse proxy tools only if manually testing those optional paths.
 
@@ -74,7 +72,7 @@ export EVONITH_ALLOW_DIRECT_MODE_FALLBACK=true
 ## Automated Test Commands
 
 ```bash
-uv run pytest furnace-data-service/tests -q
+uv run pytest tests/backend -q
 uv run pytest tests/frontend -q
 uv run pytest tests/integration -q
 uv run pytest tests/dependency -q
@@ -83,23 +81,23 @@ uv run pytest tests/deployment -q
 uv run pytest tests -q
 
 uv run python scripts/export_backend_openapi.py
-python scripts/check_repository_structure.py
-python scripts/check_import_boundaries.py
-python scripts/check_dependency_profiles.py
+uv run python scripts/check_repository_structure.py
+uv run python scripts/check_import_boundaries.py
+uv run python scripts/check_dependency_profiles.py
 uv run python scripts/check_backend_minimal_startup.py
-python scripts/check_frontend_api_imports.py
-python scripts/bootstrap_runtime.py --dry-run
-python scripts/validate_deployment.py --profile local --offline
-python scripts/validate_api_cutover.py --allow-partial --json
-python scripts/backup_runtime.py --dry-run
-python scripts/verify_release_readiness.py --allow-dirty --skip-tests
+uv run python scripts/check_frontend_api_imports.py
+uv run python scripts/bootstrap_runtime.py --dry-run
+uv run python scripts/validate_deployment.py --profile local --offline
+uv run python scripts/validate_api_cutover.py --allow-partial --json
+uv run python scripts/backup_runtime.py --dry-run
+uv run python scripts/verify_release_readiness.py --allow-dirty --skip-tests
 ```
 
 ## Manual Backend Verification
 
 1. Bootstrap runtime: `python scripts/bootstrap_runtime.py --create`.
 2. Start backend:
-   `EVONITH_RUNTIME_DIR=./runtime EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me uvicorn apps.backend_api.app.main:app --host 0.0.0.0 --port 8080`.
+   `EVONITH_RUNTIME_DIR=./runtime EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me uv run uvicorn apps.backend_api.app.main:app --host 0.0.0.0 --port 8080`.
 3. Run smoke test:
    `python scripts/smoke_test_deployment.py --backend-url http://localhost:8080/api/v1 --skip-auth`.
 4. Verify `/api/v1/health`, `/api/v1/readiness`, `/api/v1/status`, and representative endpoints from all phases.
@@ -110,14 +108,14 @@ python scripts/verify_release_readiness.py --allow-dirty --skip-tests
 
 1. Start backend.
 2. Start frontend:
-   `BACKEND_API_BASE_URL=http://localhost:8080/api/v1 streamlit run apps/frontend_streamlit/app.py`.
+   `BACKEND_API_BASE_URL=http://localhost:8080/api/v1 uv run streamlit run apps/frontend_streamlit/app.py`.
 3. Verify app loads.
 4. Verify backend status badge.
 5. Enable API cutover flags.
 6. Verify pages use API mode.
 7. Stop backend and verify frontend shows clean backend unavailable behavior.
 8. Switch `USE_BACKEND_API=false` and verify direct-mode fallback remains available.
-9. Start frontend compatibility command: `streamlit run src/app.py`.
+9. Start the temporary frontend compatibility command for rollback only: `uv run streamlit run src/app.py`.
 
 ## API Cutover Verification
 
@@ -131,7 +129,7 @@ python scripts/verify_release_readiness.py --allow-dirty --skip-tests
 ## Backup and Restore Verification
 
 1. Create sample files under a test runtime directory.
-2. Run `python scripts/backup_runtime.py --dry-run`.
+2. Run `uv run python scripts/backup_runtime.py --dry-run`.
 3. Run real test backup:
    `python scripts/backup_runtime.py --output ./runtime/backups/test-backup.tar.gz`.
 4. Verify manifest exists in archive.
@@ -152,21 +150,46 @@ python scripts/verify_release_readiness.py --allow-dirty --skip-tests
 7. Confirm no runtime data is deleted.
 8. Review rollback guide.
 
-## Phase 12 Repository-Structure Regression Verification
+## Repository-Structure Regression Verification
 
-Because Phase 13 deployment depends on Phase 12 canonical structure, verify:
+Because deployment depends on the canonical structure, verify:
 
 1. `apps/backend_api/app/main.py` imports.
 2. `apps/frontend_streamlit/app.py` exists.
-3. Old backend shim imports.
-4. Old frontend shim exists.
-5. OpenAPI old/new paths match.
-6. `check_repository_structure.py` passes.
-7. `check_import_boundaries.py` passes.
-8. `check_dependency_profiles.py` passes.
-9. `check_backend_minimal_startup.py` passes.
-10. `check_frontend_api_imports.py` passes.
-11. Edge scripts point to canonical paths.
+3. `apps/frontend_streamlit/custom_pages` contains canonical page files.
+4. `src/app.py` and `src/custom_pages` compatibility shims exist.
+5. Old backend shim imports.
+6. OpenAPI old/new paths match.
+7. `check_repository_structure.py` passes.
+8. `check_import_boundaries.py` passes.
+9. `check_dependency_profiles.py` passes.
+10. `check_backend_minimal_startup.py` passes.
+11. `check_frontend_api_imports.py` passes.
+12. Edge scripts point to canonical paths.
+13. `apps/frontend_streamlit/services` contains canonical frontend API
+    adapters, while `src/services` wrappers still import.
+14. `apps/frontend_streamlit/config` contains frontend Python config helpers,
+    while shared YAML config remains available through compatibility wrappers.
+15. `apps/frontend_streamlit/ui` contains frontend UI helpers, while `src/ui`
+    wrappers still import.
+16. `apps/frontend_streamlit/assets` contains frontend-owned CSS, logo/hero
+    images, and templates, with no backend model files.
+17. `packages/furnace-data/furnace_data` contains the canonical shared package,
+    while root `furnace_data` compatibility imports still work.
+18. `packages/furnace-data/furnace_data/assets/models` contains active model
+    assets, old model archive folders are absent from source, and generated
+    dataset/cache files live under `runtime`.
+
+Frontend support relocation checks:
+
+```bash
+uv run python scripts/check_frontend_api_imports.py
+uv run python scripts/check_import_boundaries.py
+uv run pytest tests/structure/test_frontend_services_structure.py -q
+uv run pytest tests/structure/test_frontend_entrypoints.py -q
+uv run pytest tests/structure/test_shared_package_structure.py -q
+uv run pytest tests/structure/test_assets_and_models_structure.py -q
+```
 
 ## Regression Verification
 
@@ -181,7 +204,7 @@ Because Phase 13 deployment depends on Phase 12 canonical structure, verify:
 - Phase 9 FurnaceMind tests pass.
 - Phase 10 operational tests pass.
 - Phase 11 dependency/runtime tests pass.
-- Phase 12 repository-structure tests pass.
+- Repository-structure tests pass.
 - Full test suite passes.
 
 ## Expected Outcomes
@@ -195,7 +218,7 @@ Because Phase 13 deployment depends on Phase 12 canonical structure, verify:
 - Edge scripts use canonical paths and conservative resource defaults.
 - Systemd/reverse proxy examples contain no secrets.
 - Rollback guide supports direct-mode fallback.
-- Phase 12 canonical and compatibility paths still work.
+- Canonical and temporary compatibility paths still work.
 - No direct-mode fallback is removed.
 - No API contract is changed.
 

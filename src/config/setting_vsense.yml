@@ -7,8 +7,8 @@ OPTIM_STEPS: 30
 Optimisation:
   Eta CO:
     output_param: FURNACETOPGASANALYSISCO2ETACO
-    model: src/assets/models/etaco_model.pkl
-    scaling: src/assets/models/etaco_scaler.pkl
+    model: packages/furnace-data/furnace_data/assets/models/etaco_model.pkl
+    scaling: packages/furnace-data/furnace_data/assets/models/etaco_scaler.pkl
     maxmin: -1.0
     control_params:
     - HOT BLAST PRESSUREBAR
@@ -125,8 +125,8 @@ Optimisation:
       - FURNACE TOP GAS ANALYSISH2%
   Production Rate:
     output_param: PRODUCTIONTONNESPERHR
-    model: src/assets/models/productionrate_model.pkl
-    scaling: src/assets/models/productionrate_scaler.pkl
+    model: packages/furnace-data/furnace_data/assets/models/productionrate_model.pkl
+    scaling: packages/furnace-data/furnace_data/assets/models/productionrate_scaler.pkl
     maxmin: -1.0
     control_params:
     - HOT BLAST PRESSUREBAR
@@ -320,9 +320,9 @@ Optimisation:
       - STOCKRODLEVEL
       - FURNACE TOP GAS ANALYSISH2%
     maxmin: 1.0
-    model: src/assets/models/unitcost_opt_dec.pkl
+    model: packages/furnace-data/furnace_data/assets/models/unitcost_opt_dec.pkl
     output_param: UNITCOST LAKHS/THM
-    scaling: src/assets/models/unitcost_scaler_dec.pkl
+    scaling: packages/furnace-data/furnace_data/assets/models/unitcost_scaler_dec.pkl
 TIMESTEPS: 3
 field_mapping:
   Sinter_SP_02_Basicity: SINTER_BASICITY

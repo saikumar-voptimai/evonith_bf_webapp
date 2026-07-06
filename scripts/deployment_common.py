@@ -243,19 +243,23 @@ def run_python_script(script: str, *args: str, timeout: int = 120) -> subprocess
 def required_docs() -> list[Path]:
     root = repo_root()
     return [
-        root / "docs" / "migration" / "phase-13-production-deployment-cutover.md",
-        root / "docs" / "migration" / "phase-13-test-execution-report.md",
+        root / "docs" / "README.md",
+        root / "docs" / "migration" / "post-phase-13-structure-cleanup-plan.md",
         root / "docs" / "testing" / "phase-13-testing-guide.md",
+        root / "docs" / "archive" / "migration-history" / "migration" / "phase-13-production-deployment-cutover.md",
+        root / "docs" / "archive" / "migration-history" / "migration" / "phase-13-test-execution-report.md",
         root / "docs" / "deployment" / "production-deployment-guide.md",
         root / "docs" / "deployment" / "edge-device-deployment-guide.md",
+        root / "docs" / "deployment" / "edge-runtime-guide.md",
+        root / "docs" / "deployment" / "local-install-guide.md",
         root / "docs" / "deployment" / "local-staging-deployment-guide.md",
+        root / "docs" / "deployment" / "dependency-profiles.md",
         root / "docs" / "deployment" / "cutover-guide.md",
         root / "docs" / "deployment" / "rollback-guide.md",
         root / "docs" / "deployment" / "backup-restore-guide.md",
         root / "docs" / "deployment" / "release-checklist.md",
         root / "docs" / "deployment" / "environment-variables-production.md",
     ]
-
 
 def is_within(parent: Path, child: Path) -> bool:
     try:

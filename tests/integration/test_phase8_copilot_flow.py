@@ -21,13 +21,13 @@ loaded_path = str(getattr(loaded_app, "__file__", "")) if loaded_app else ""
 if loaded_path.endswith("src\\app.py") or loaded_path.endswith("src/app.py"):
     del sys.modules["app"]
 
-from app.core.config import BackendSettings
-from app.main import create_app
-from app.repositories.user_repository import UserRecord
-from app.services.admin_service import AdminService
-from app.services.auth_service import AuthService
-from app.services.password_service import PasswordService
-from app.services.token_service import TokenService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.main import create_app
+from apps.backend_api.app.repositories.user_repository import UserRecord
+from apps.backend_api.app.services.admin_service import AdminService
+from apps.backend_api.app.services.auth_service import AuthService
+from apps.backend_api.app.services.password_service import PasswordService
+from apps.backend_api.app.services.token_service import TokenService
 
 
 class MemoryUserRepository:

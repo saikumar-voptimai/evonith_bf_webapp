@@ -10,7 +10,7 @@
 - [ ] `python scripts/validate_api_cutover.py --strict` passes for cutover.
 - [ ] `python scripts/backup_runtime.py --dry-run` passes.
 - [ ] OpenAPI export passes.
-- [ ] Phase 12 repository structure check passes.
+- [ ] Canonical repository structure check passes.
 - [ ] Full tests pass.
 
 ## Release Gate
@@ -28,4 +28,3 @@ Run without `--skip-tests` in CI or a full validation environment.
 - [ ] Frontend status badge shows backend status.
 - [ ] Smoke test passes.
 - [ ] Backup archive is created and stored safely.
-

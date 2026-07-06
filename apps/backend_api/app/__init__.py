@@ -21,9 +21,7 @@ _loaded_path = str(getattr(_loaded_app, "__file__", "")) if _loaded_app else ""
 if _loaded_path.endswith("src\\app.py") or _loaded_path.endswith("src/app.py"):
     del sys.modules["app"]
 
-for _path in (str(_LEGACY_SERVICE_ROOT), str(_REPO_ROOT)):
-    if _path not in sys.path:
-        sys.path.insert(0, _path)
+sys.modules["app"] = sys.modules[__name__]
 
 if _LEGACY_APP_ROOT.exists():
     _legacy_app_path = str(_LEGACY_APP_ROOT)

@@ -1,4 +1,4 @@
-﻿"""Database-backed quick-skill registry for FurnaceMind.
+"""Database-backed quick-skill registry for FurnaceMind.
 
 This module is the bridge between the ``furnace_mind.skills`` SQL table and the
 quick-skill buttons shown in the FurnaceMind chat UI. A database row controls the
@@ -23,9 +23,11 @@ from datetime import date, timezone
 from pathlib import Path
 from typing import Any
 
+from furnace_data.assets import package_furnacemind_assets_dir
 from furnace_data.runtime_paths import get_repo_root, runtime_path
 
-_COPILOT_DATA_DIR = get_repo_root() / "src" / "storage" / "furnacemind"
+_FURNACEMIND_SOURCE_DIR = package_furnacemind_assets_dir()
+_LEGACY_COPILOT_DATA_DIR = get_repo_root() / "src" / "storage" / "furnacemind"
 _SLUG_RE = re.compile(r"[^a-z0-9_]+")
 _SKILL_SEARCH_CONTEXT_CHARS = 6_000
 _RETRIEVED_SKILL_CONTEXT_CHARS = 8_000
@@ -187,7 +189,8 @@ def _context_files(value: Any) -> tuple[str, ...]:
 
     Skill metadata may contain one filename or a list of filenames. Only basename
     ``.md`` files are accepted, so a database value cannot traverse directories or
-    point the registry at arbitrary files outside ``src/storage/furnacemind``.
+    point the registry at arbitrary files outside approved FurnaceMind asset
+    locations.
     Duplicate filenames are removed while preserving the configured order.
     """
     if isinstance(value, str):
@@ -203,6 +206,15 @@ def _context_files(value: Any) -> tuple[str, ...]:
         if filename and filename.lower().endswith(".md"):
             filenames.append(filename)
     return tuple(dict.fromkeys(filenames))
+
+
+def _source_context_path(filename: str) -> Path:
+    """Return packaged built-in skill context, falling back to legacy storage."""
+    safe_name = Path(str(filename or "")).name
+    candidate = _FURNACEMIND_SOURCE_DIR / safe_name
+    if candidate.exists():
+        return candidate
+    return _LEGACY_COPILOT_DATA_DIR / safe_name
 
 
 def _read_context_file(filename: str, *, max_chars: int = 14_000) -> str:
@@ -221,7 +233,7 @@ def _read_context_file(filename: str, *, max_chars: int = 14_000) -> str:
         path = (
             runtime_path_candidate
             if runtime_path_candidate.exists()
-            else _COPILOT_DATA_DIR / safe_name
+            else _source_context_path(safe_name)
         )
         if not path.exists():
             return ""

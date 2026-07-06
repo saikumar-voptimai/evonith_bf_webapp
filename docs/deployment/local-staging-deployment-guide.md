@@ -10,6 +10,9 @@ uvicorn apps.backend_api.app.main:app --host 0.0.0.0 --port 8080
 BACKEND_API_BASE_URL=http://localhost:8080/api/v1 streamlit run apps/frontend_streamlit/app.py
 ```
 
+The canonical Streamlit entrypoint is `apps/frontend_streamlit/app.py`, and the
+canonical page files live under `apps/frontend_streamlit/custom_pages`.
+
 ## Staging
 
 Staging should mirror production paths and API-mode flags while using staging
@@ -33,8 +36,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 Frontend:
 
 ```bash
-streamlit run src/app.py
+uv run streamlit run src/app.py
 ```
 
 These remain temporary compatibility commands during Phase 13.
-

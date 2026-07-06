@@ -29,3 +29,9 @@ def run_legacy_page(relative_path: str) -> None:
     ensure_frontend_legacy_paths()
     runpy.run_path(str(legacy_src_path(relative_path)), run_name="__main__")
 
+
+def run_canonical_page(relative_path: str) -> None:
+    """Execute a canonical Streamlit page from a legacy page wrapper."""
+    ensure_frontend_legacy_paths()
+    runpy.run_path(str(APP_ROOT / relative_path), run_name="__main__")
+

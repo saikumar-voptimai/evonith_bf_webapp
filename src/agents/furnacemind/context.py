@@ -17,12 +17,14 @@ from pathlib import Path
 
 from agents.furnacemind.prompts import AI_COOPERATE_SYSTEM
 from agents.memory.fm_memory import build_persistent_context, load_fm_memory
+from furnace_data.assets import package_furnacemind_assets_dir
 from furnace_data.runtime_paths import runtime_path
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-_COPILOT_DATA_DIR = Path(__file__).resolve().parents[2] / "storage" / "furnacemind"
+_FURNACEMIND_SOURCE_DIR = package_furnacemind_assets_dir()
+_LEGACY_COPILOT_DATA_DIR = Path(__file__).resolve().parents[2] / "storage" / "furnacemind"
 _REPO_ROOT = Path(__file__).resolve().parents[4]  # …/evonith_webapp
 
 # Which SKILLS*.md files to inject per active skill. None = free chat (no skill docs).
@@ -33,6 +35,20 @@ _SKILL_FILES: dict[str | None, list[str]] = {
     "shift_report": ["SKILLS_SHIFTREPORT.md"],
     None: [],
 }
+
+
+def _source_context_dir() -> Path:
+    """Return packaged FurnaceMind source assets, falling back to legacy storage."""
+    return _FURNACEMIND_SOURCE_DIR if _FURNACEMIND_SOURCE_DIR.exists() else _LEGACY_COPILOT_DATA_DIR
+
+
+def _source_context_path(filename: str) -> Path:
+    """Return a safe source prompt path for one FurnaceMind support file."""
+    safe_name = Path(str(filename or "")).name
+    candidate = _FURNACEMIND_SOURCE_DIR / safe_name
+    if candidate.exists():
+        return candidate
+    return _LEGACY_COPILOT_DATA_DIR / safe_name
 
 
 def _read_file(path: Path, *, max_chars: int) -> str:
@@ -215,7 +231,7 @@ class SystemPromptContext:
             logger.info("Loaded CLAUDE.md (%d chars)", len(claude_md))
             parts.append("CLAUDE.md (blast furnace domain context):\n" + claude_md)
 
-        for p in sorted(_COPILOT_DATA_DIR.glob("TOOLS*.md"), key=lambda f: f.name):
+        for p in sorted(_source_context_dir().glob("TOOLS*.md"), key=lambda f: f.name):
             txt = _read_file(p, max_chars=12_000)
             if txt:
                 logger.info("Loaded %s (%d chars)", p.name, len(txt))
@@ -241,7 +257,7 @@ class SystemPromptContext:
         filenames = _SKILL_FILES.get(skill_id, [])
         parts: list[str] = []
         for name in filenames:
-            txt = _read_file(_COPILOT_DATA_DIR / name, max_chars=14_000)
+            txt = _read_file(_source_context_path(name), max_chars=14_000)
             if txt:
                 logger.info(
                     "Loaded skill file %s (%d chars) for skill=%s",

@@ -1,4 +1,4 @@
-influxdb:
+﻿influxdb:
   host: "https://eu-central-1-1.aws.cloud2.influxdata.com"
   org: "Blast Furnace, Evonith"
   database: "bf2_evonith_raw" # Bucket name
@@ -8,7 +8,7 @@ website_vars:
   api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
   email_missing_vars: "True"
 
-DATA: "src/assets/data/furnace_dataset.csv"
+DATA: "runtime/datasets/static/furnace_dataset.csv"
 
 influx_offline:
   database: bf2_evonith_offline_utc
@@ -27,7 +27,7 @@ ml_dataset:
   local_tz: "Asia/Kolkata"
   cutoff_date: "2025-12-06"
   static_dataset_path: "src/data/V14_df_filtered.csv"
-  # InfluxDB process_params field name → ML dataset column name (rename_dict key)
+  # InfluxDB process_params field name â†’ ML dataset column name (rename_dict key)
   online_params:
     fuel_rate: fuel_rate
     coke_rate: coke_rate
@@ -56,7 +56,7 @@ ml_dataset:
     co_pct: furnace_top_gas_analysis_co_pct
     co2_pct: furnace_top_gas_analysis_co2_pct
     h2_pct: furnace_top_gas_analysis_h2_pct
-  # InfluxDB temperature_profile field → rename_dict intermediate key
+  # InfluxDB temperature_profile field â†’ rename_dict intermediate key
   temperature_params:
     temp_4373_a: hearth_pad_a_c
     temp_5411_b: hearth_pad_b_c
@@ -1131,7 +1131,7 @@ cleaning:
     - alias_key: pellet_mt
       min_value: 0
       max_value: 100
-    # Ore composition — zeros are invalid (lab data not yet entered); replace with NaN for imputation
+    # Ore composition â€” zeros are invalid (lab data not yet entered); replace with NaN for imputation
     - alias_key: ore_fe_total_pct
       min_value: 0
       inclusive: false

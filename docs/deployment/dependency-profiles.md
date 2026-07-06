@@ -1,15 +1,25 @@
 # Dependency Profiles
 
-Phase 11 defines install profiles without removing the legacy full development
-environment. Phase 12 keeps those profiles while moving canonical startup to
-`apps.backend_api.app.main:app` and `apps/frontend_streamlit/app.py`.
+Phase 11 defined install profiles. After the canonical backend, frontend,
+shared-package, and test moves, those profiles are now the source of truth for
+installing backend, frontend, optional, development, and edge dependencies.
 
 ## Package Management
 
 The repository uses `uv` with `pyproject.toml` and `uv.lock`. The root
-`pyproject.toml` still contains the legacy full/dev dependency set for backward
-compatibility, and Phase 11 adds named dependency groups plus requirements
-profile files for smaller installs.
+`[project.dependencies]` list is intentionally slim and contains only the
+editable shared package dependency. Heavy optional stacks are isolated in named
+dependency groups and are not installed by backend-base or default project
+metadata.
+
+The shared `furnace_data` package is editable from `./packages/furnace-data`.
+The root `furnace_data` directory remains a temporary compatibility shim for
+repo-root imports.
+
+`requirements.txt` is retained as a full local development convenience pointer
+to `requirements/dev.txt`. Production, edge, backend-only, and frontend-only
+installs should use the explicit profile files in `requirements/` or the
+matching `uv` groups.
 
 Preferred local metadata checks:
 
@@ -29,7 +39,7 @@ uv run python scripts/check_import_boundaries.py
 | `backend-vector` | Optional vector/memory support | qdrant-client, sentence-transformers, torch, voyageai | Enabled features remain off unless configured |
 | `backend-documents` | Optional document extraction | PyMuPDF, python-docx, python-pptx, pypdf | OCR stack |
 | `frontend` | Streamlit UI and API adapters | Streamlit, plotting/UI libraries, HTTP clients | Backend server internals, DB/vector/LLM/model packages |
-| `dev` | Full local development/testing | Test and formatting tools plus profile files | Production secrets |
+| `dev` | Full local development/testing | Test/formatting tools plus backend, frontend, and optional feature groups through group includes | Production secrets; not intended for production images |
 | `edge` | Conservative edge backend profile | backend-base plus selected data/ML packages | AI/vector/local LLM and Streamlit |
 
 ## Install Examples
@@ -37,13 +47,14 @@ uv run python scripts/check_import_boundaries.py
 Use `uv` dependency groups for metadata-aware installs:
 
 ```bash
-uv sync --group backend-base
-uv sync --group frontend
+uv sync --no-dev --group backend-base
+uv sync --no-dev --group frontend
 uv sync --group dev
+uv sync --no-dev --group edge
 ```
 
-For a smaller profile install without relying on the legacy root dependency
-list, use requirements profiles:
+For a smaller profile install without using the full-dev root aggregate, use
+requirements profiles:
 
 ```bash
 uv pip install -r requirements/backend-base.txt
@@ -71,8 +82,12 @@ configuration must still be set.
 
 ## Known Limitations
 
-- The root `dependencies` list remains a legacy full/dev install surface after
-  Phase 12. Later packaging phases can slim wheel metadata further.
-- `furnace_data` still carries shared data/domain dependencies for compatibility.
-- A true production image should install only the selected requirements profile
-  or use a later packaging phase to slim wheel metadata further.
+- `requirements.txt` is a full-dev convenience aggregate. It intentionally pulls
+  in optional AI/vector/document/frontend packages through `requirements/dev.txt`.
+- The default root project dependencies are deliberately slim and should stay
+  free of Streamlit, provider SDKs, vector stores, document parsers, and model
+  runtimes.
+- `furnace_data` still carries shared data/domain dependencies, but its
+  canonical source tree is `packages/furnace-data/furnace_data`.
+- A production image should install only the selected requirements profile or
+  `uv` group, for example `backend-base`, `frontend`, or `edge`.

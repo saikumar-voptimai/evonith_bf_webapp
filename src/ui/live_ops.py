@@ -1,6 +1,3 @@
-"""Deprecated — Live Operations and Furnace Intelligence tabs were removed.
+"""temporary Phase 12/cleanup compatibility shim for src.ui.live_ops."""
 
-The underlying core classes (InfluenceAttribution, RecurringAnomalyTracker,
-ShiftAnalyzer, FurnaceStabilityIndex) were deleted with src/core/.
-This module is intentionally empty.  Do not import from it.
-"""
+from apps.frontend_streamlit.ui.live_ops import *  # noqa: F401,F403

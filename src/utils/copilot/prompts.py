@@ -1,6 +1,6 @@
 """Prompt builders for AI Copilot.
 
-All static analysis text lives in ``src/assets/data/copilot_analysis/``.
+All static analysis text lives in packaged furnace_data assets.
 The functions here read those files at call time so the page always serves
 the latest version without a restart.
 
@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from furnace_data.assets import package_copilot_analysis_dir
 from utils.copilot.data import df_packet
 
-_ANALYSIS_DIR = (
-    Path(__file__).resolve().parents[2] / "assets" / "data" / "copilot_analysis"
-)
+_ANALYSIS_DIR = package_copilot_analysis_dir()
+_LEGACY_ANALYSIS_DIR = Path(__file__).resolve().parents[2] / "assets" / "data" / "copilot_analysis"
 
 # ── System prompts (short persona strings, stable — no need to externalise) ──
 
@@ -36,10 +36,12 @@ BURDEN_SYSTEM = "You are a precise, senior blast furnace burden advisor. Be conc
 def _read_analysis_file(name: str) -> str:
     """Read a file from the copilot_analysis directory; return empty string on failure."""
     path = _ANALYSIS_DIR / name
+    if not path.exists():
+        path = _LEGACY_ANALYSIS_DIR / name
     try:
         return path.read_text(encoding="utf-8").strip()
     except Exception:
-        return f"_(Analysis file `{name}` not found — update `src/assets/data/copilot_analysis/`)_"
+        return f"_(Analysis file `{name}` not found - update packaged Copilot assets.)_"
 
 
 def load_burden_findings() -> str:

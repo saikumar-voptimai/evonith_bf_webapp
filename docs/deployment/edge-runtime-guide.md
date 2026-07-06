@@ -1,7 +1,6 @@
 # Edge Runtime Guide
 
-Phase 12 keeps the Phase 11 Raspberry Pi / NVIDIA Jetson style deployment
-defaults and points startup to the canonical backend/frontend app locations.
+Edge deployments use conservative Raspberry Pi / NVIDIA Jetson style defaults and the canonical backend/frontend app locations.
 
 ## Environment
 
@@ -46,6 +45,23 @@ Both scripts:
 - print only safe startup metadata
 - use host/port/worker environment variables
 - start `apps.backend_api.app.main:app` and `apps/frontend_streamlit/app.py`
+
+Manual canonical backend command:
+
+```bash
+EVONITH_RUNTIME_DIR=./runtime \
+EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
+uv run uvicorn apps.backend_api.app.main:app --host 0.0.0.0 --port 8080
+```
+
+The old service-local backend command remains a temporary compatibility path:
+
+```bash
+cd furnace-data-service
+EVONITH_RUNTIME_DIR=../runtime \
+EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
+```
 
 ## Systemd Examples
 

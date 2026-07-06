@@ -20,6 +20,7 @@ from domain.optimization_runtime import (
     build_runtime_config,
     normalize_feature_name,
 )
+from furnace_data.assets import resolve_model_asset_path
 from utils.bmo.feature_builder import (
     PreBuiltFeatureContext,
     build_bmo_v4_feature_frame,
@@ -44,16 +45,7 @@ def _resolve_repo_path(path_str: str) -> Path:
          - return Path - Existing resolved path when found, otherwise first candidate.
     """
 
-    p = Path(str(path_str or "")).expanduser()
-    if p.is_absolute():
-        return p
-
-    repo_root = Path(__file__).resolve().parents[3]
-    candidates = [repo_root / p, repo_root / "src" / p, Path.cwd() / p]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
+    return resolve_model_asset_path(path_str)
 
 
 class FuelUnitCostModelService:

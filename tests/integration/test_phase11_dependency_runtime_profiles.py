@@ -16,13 +16,13 @@ for path in (str(SERVICE_ROOT), str(REPO_ROOT), str(INTEGRATION_ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from app.core.config import BackendSettings
-from app.main import create_app
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.main import create_app
 from test_phase10_ops_flow import MemoryUserRepository
-from app.services.admin_service import AdminService
-from app.services.auth_service import AuthService
-from app.services.password_service import PasswordService
-from app.services.token_service import TokenService
+from apps.backend_api.app.services.admin_service import AdminService
+from apps.backend_api.app.services.auth_service import AuthService
+from apps.backend_api.app.services.password_service import PasswordService
+from apps.backend_api.app.services.token_service import TokenService
 
 
 def _run_script(name: str) -> subprocess.CompletedProcess[str]:

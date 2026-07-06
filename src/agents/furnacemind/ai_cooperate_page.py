@@ -1,4 +1,4 @@
-﻿"""Streamlit page renderer for the FurnaceMind AI Co-Operate experience.
+"""Streamlit page renderer for the FurnaceMind AI Co-Operate experience.
 
 This module wires together the FurnaceMind chat UI, PostgreSQL conversation
 persistence, rolling memory summaries, skill shortcuts, vector stores, and the

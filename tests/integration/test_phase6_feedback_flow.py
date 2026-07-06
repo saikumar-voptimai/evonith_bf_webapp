@@ -19,8 +19,8 @@ loaded_path = str(getattr(loaded_app, "__file__", "")) if loaded_app else ""
 if loaded_path.endswith("src\\app.py") or loaded_path.endswith("src/app.py"):
     del sys.modules["app"]
 
-from app.core.config import BackendSettings
-from app.main import create_app
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.main import create_app
 
 
 def test_phase6_feedback_create_upload_download_flow(monkeypatch, tmp_path):

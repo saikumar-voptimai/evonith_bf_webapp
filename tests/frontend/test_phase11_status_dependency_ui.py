@@ -49,8 +49,8 @@ def test_advanced_dependency_details_are_hidden_by_default(monkeypatch):
 def test_frontend_api_adapters_do_not_load_backend_or_heavy_modules():
     repo_root = Path(__file__).resolve().parents[2]
     forbidden = {
-        "from app",
-        "import app",
+        "from app.",
+        "import app.",
         "furnace_data",
         "qdrant_client",
         "openai",
@@ -61,6 +61,11 @@ def test_frontend_api_adapters_do_not_load_backend_or_heavy_modules():
         "sentence_transformers",
     }
 
-    for path in (repo_root / "src" / "services").glob("*_api.py"):
-        text = path.read_text(encoding="utf-8").lower()
-        assert not any(pattern in text for pattern in forbidden)
+    service_dirs = [
+        repo_root / "apps" / "frontend_streamlit" / "services",
+        repo_root / "src" / "services",
+    ]
+    for service_dir in service_dirs:
+        for path in service_dir.glob("*_api.py"):
+            text = path.read_text(encoding="utf-8").lower()
+            assert not any(pattern in text for pattern in forbidden)

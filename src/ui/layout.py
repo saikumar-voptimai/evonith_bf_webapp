@@ -1,4 +1,3 @@
-"""Deprecated — page layout helpers have been inlined into each page.
+"""temporary Phase 12/cleanup compatibility shim for src.ui.layout."""
 
-This module is intentionally empty.  Do not import from it.
-"""
+from apps.frontend_streamlit.ui.layout import *  # noqa: F401,F403

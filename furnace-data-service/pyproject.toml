@@ -38,11 +38,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
-testpaths = ["test"]
+testpaths = ["../tests/backend"]
 addopts = "-v --tb=short"
 
 [tool.pylint.main]
-ignore-paths = ["test", "data", "config"]
+ignore-paths = ["../tests/backend", "data", "config"]
 
 [tool.pylint.messages_control]
 disable = [

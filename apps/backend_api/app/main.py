@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+import sys
 
 from dotenv import load_dotenv
 
@@ -118,4 +119,7 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
 
 
 app = create_app()
+
+sys.modules.setdefault("apps.backend_api.app.main", sys.modules[__name__])
+sys.modules.setdefault("app.main", sys.modules[__name__])
 
