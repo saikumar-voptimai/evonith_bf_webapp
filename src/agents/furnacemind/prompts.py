@@ -4,7 +4,7 @@ All *text* that goes to the LLM lives here: system persona, tool-routing
 policy, and the heatload skill's embedded plot code + report template.
 
 Numerical calibration data (best-shift midpoints, coefficients, adverse
-thresholds) belongs in ``storage/furnacemind/skill_params.yml`` — not here.
+thresholds) belongs in ``packages/furnace-data/furnace_data/assets/furnacemind/skill_params.yml`` — not here.
 """
 
 # ── System persona ───────────────────────────────────────────────────────────

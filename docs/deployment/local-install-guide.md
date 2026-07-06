@@ -65,7 +65,7 @@ The frontend profile is for Streamlit, UI libraries, and API adapters. It does
 not require backend internals, database clients, vector clients, LLM providers,
 or model loaders.
 
-Temporary frontend compatibility command for rollback checks:
+Temporary frontend compatibility command for rollback checks. This uses the shim-only old `src/app.py` entrypoint:
 
 ```bash
 BACKEND_API_BASE_URL=http://localhost:8080/api/v1 uv run streamlit run src/app.py

@@ -75,6 +75,25 @@ GENERATED_SUFFIXES = {
     ".sqlite3",
 }
 
+
+LEGACY_SHIM_MAX_BYTES = 1200
+LEGACY_WRAPPER_MAX_BYTES = 700
+
+LEGACY_BACKEND_ALLOWED_FILES = {
+    "__init__.py",
+    "main.py",
+}
+
+ROOT_FURNACE_DATA_ALLOWED_FILES = {
+    "__init__.py",
+    "runtime_paths.py",
+}
+
+SRC_CONFIG_WRAPPER_FILES = {
+    "config_loader.py",
+    "frontend_settings.py",
+    "page_registry.py",
+}
 OBSOLETE_PATHS = [
     "ale" + "mbic",
     "ale" + "mbic.ini",
@@ -112,6 +131,217 @@ def _missing_paths(root: Path) -> list[str]:
         required_paths.append("infra")
     return [relative for relative in required_paths if not (root / relative).exists()]
 
+
+def _legacy_file_listing(root: Path, relative_root: str) -> list[Path]:
+    legacy_root = root / relative_root
+    if not legacy_root.exists():
+        return []
+    return sorted(
+        path
+        for path in legacy_root.rglob("*")
+        if path.is_file() and not _is_generated_cache_path(path)
+    )
+
+
+def _legacy_dir_listing(root: Path, relative_root: str) -> list[Path]:
+    legacy_root = root / relative_root
+    if not legacy_root.exists():
+        return []
+    return sorted(
+        path
+        for path in legacy_root.rglob("*")
+        if path.is_dir() and "__pycache__" not in path.parts
+    )
+
+
+def _is_generated_cache_path(path: Path) -> bool:
+    return "__pycache__" in path.parts or path.suffix.lower() == ".pyc"
+
+
+def _legacy_backend_shim_failures(root: Path) -> list[str]:
+    relative_root = "furnace-data-service/app"
+    legacy_root = root / relative_root
+    if not legacy_root.exists():
+        return []
+
+    failures: list[str] = []
+    for directory in _legacy_dir_listing(root, relative_root):
+        failures.append(
+            f"{relative_root} must not contain duplicate backend subdirectories: "
+            f"{directory.relative_to(legacy_root).as_posix()}"
+        )
+
+    for path in _legacy_file_listing(root, relative_root):
+        rel = path.relative_to(legacy_root).as_posix()
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if _is_generated_cache_path(path):
+            failures.append(f"{relative_root} must not contain generated cache file: {rel}")
+            continue
+        if rel not in LEGACY_BACKEND_ALLOWED_FILES:
+            failures.append(f"{relative_root} contains non-shim backend file: {rel}")
+            continue
+        if path.stat().st_size > LEGACY_SHIM_MAX_BYTES:
+            failures.append(f"{relative_root}/{rel} exceeds shim size threshold")
+        if "temporary Phase 12/cleanup compatibility shim" not in text:
+            failures.append(f"{relative_root}/{rel} must be marked as a temporary compatibility shim")
+        if rel == "main.py" and "from apps.backend_api.app.main import app, create_app" not in text:
+            failures.append(f"{relative_root}/main.py must re-export the canonical backend app")
+        if any(marker in text for marker in ("FastAPI(", "APIRouter(", "include_router", "class ")):
+            failures.append(f"{relative_root}/{rel} appears to contain backend business logic")
+    return failures
+
+
+def _root_furnace_data_shim_failures(root: Path) -> list[str]:
+    relative_root = "furnace_data"
+    legacy_root = root / relative_root
+    if not legacy_root.exists():
+        return []
+
+    failures: list[str] = []
+    for directory in _legacy_dir_listing(root, relative_root):
+        failures.append(
+            f"{relative_root} must not contain duplicate package subdirectories: "
+            f"{directory.relative_to(legacy_root).as_posix()}"
+        )
+
+    for path in _legacy_file_listing(root, relative_root):
+        rel = path.relative_to(legacy_root).as_posix()
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if _is_generated_cache_path(path):
+            failures.append(f"{relative_root} must not contain generated cache file: {rel}")
+            continue
+        if rel not in ROOT_FURNACE_DATA_ALLOWED_FILES:
+            failures.append(f"{relative_root} contains non-shim shared-package file: {rel}")
+            continue
+        if path.stat().st_size > LEGACY_SHIM_MAX_BYTES:
+            failures.append(f"{relative_root}/{rel} exceeds shim size threshold")
+        if "temporary Phase 12/cleanup compatibility shim" not in text:
+            failures.append(f"{relative_root}/{rel} must be marked as a temporary compatibility shim")
+    return failures
+
+
+def _src_services_wrapper_failures(root: Path) -> list[str]:
+    relative_root = "src/services"
+    services_root = root / relative_root
+    if not services_root.exists():
+        return []
+
+    failures: list[str] = []
+    for path in _legacy_file_listing(root, relative_root):
+        rel = path.relative_to(services_root).as_posix()
+        if _is_generated_cache_path(path):
+            failures.append(f"{relative_root} must not contain generated cache file: {rel}")
+            continue
+        if path.suffix != ".py":
+            failures.append(f"{relative_root} contains unexpected non-Python file: {rel}")
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if rel == "__init__.py":
+            continue
+        if path.stat().st_size > LEGACY_WRAPPER_MAX_BYTES:
+            failures.append(f"{relative_root}/{rel} exceeds wrapper size threshold")
+        if "temporary Phase 12/cleanup compatibility shim" not in text:
+            failures.append(f"{relative_root}/{rel} must be marked as a temporary compatibility shim")
+        if "from apps.frontend_streamlit.services." not in text:
+            failures.append(f"{relative_root}/{rel} must re-export the canonical frontend service")
+    return failures
+
+
+def _src_custom_page_wrapper_failures(root: Path) -> list[str]:
+    relative_root = "src/custom_pages"
+    pages_root = root / relative_root
+    if not pages_root.exists():
+        return []
+
+    failures: list[str] = []
+    for directory in _legacy_dir_listing(root, relative_root):
+        failures.append(
+            f"{relative_root} must not contain duplicate page subdirectories: "
+            f"{directory.relative_to(pages_root).as_posix()}"
+        )
+    for path in _legacy_file_listing(root, relative_root):
+        rel = path.relative_to(pages_root).as_posix()
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if _is_generated_cache_path(path):
+            failures.append(f"{relative_root} must not contain generated cache file: {rel}")
+            continue
+        if path.suffix != ".py":
+            failures.append(f"{relative_root} contains unexpected non-Python file: {rel}")
+            continue
+        if path.stat().st_size > LEGACY_WRAPPER_MAX_BYTES:
+            failures.append(f"{relative_root}/{rel} exceeds wrapper size threshold")
+        if "temporary Phase 12/cleanup compatibility shim" not in text:
+            failures.append(f"{relative_root}/{rel} must be marked as a temporary compatibility shim")
+        if "run_canonical_page(" not in text:
+            failures.append(f"{relative_root}/{rel} must delegate to the canonical page")
+    return failures
+
+
+def _src_config_wrapper_failures(root: Path) -> list[str]:
+    relative_root = "src/config"
+    config_root = root / relative_root
+    if not config_root.exists():
+        return []
+
+    failures: list[str] = []
+    for path in _legacy_file_listing(root, relative_root):
+        rel = path.relative_to(config_root).as_posix()
+        if _is_generated_cache_path(path):
+            failures.append(f"{relative_root} must not contain generated cache file: {rel}")
+            continue
+        if path.suffix != ".py" or rel == "__init__.py":
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if rel not in SRC_CONFIG_WRAPPER_FILES:
+            failures.append(f"{relative_root} contains unexpected Python business module: {rel}")
+            continue
+        if path.stat().st_size > LEGACY_WRAPPER_MAX_BYTES:
+            failures.append(f"{relative_root}/{rel} exceeds wrapper size threshold")
+        if "temporary Phase 12/cleanup compatibility shim" not in text:
+            failures.append(f"{relative_root}/{rel} must be marked as a temporary compatibility shim")
+        if "from apps.frontend_streamlit.config." not in text:
+            failures.append(f"{relative_root}/{rel} must re-export the canonical frontend config helper")
+    return failures
+
+
+def _src_ui_wrapper_failures(root: Path) -> list[str]:
+    relative_root = "src/ui"
+    ui_root = root / relative_root
+    if not ui_root.exists():
+        return []
+
+    failures: list[str] = []
+    for path in _legacy_file_listing(root, relative_root):
+        rel = path.relative_to(ui_root).as_posix()
+        if _is_generated_cache_path(path):
+            failures.append(f"{relative_root} must not contain generated cache file: {rel}")
+            continue
+        if path.suffix != ".py":
+            failures.append(f"{relative_root} contains unexpected non-Python file: {rel}")
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if rel.endswith("__init__.py"):
+            if path.stat().st_size > LEGACY_WRAPPER_MAX_BYTES:
+                failures.append(f"{relative_root}/{rel} exceeds wrapper size threshold")
+            continue
+        if path.stat().st_size > LEGACY_WRAPPER_MAX_BYTES:
+            failures.append(f"{relative_root}/{rel} exceeds wrapper size threshold")
+        if "temporary Phase 12/cleanup compatibility shim" not in text:
+            failures.append(f"{relative_root}/{rel} must be marked as a temporary compatibility shim")
+        if "from apps.frontend_streamlit.ui." not in text:
+            failures.append(f"{relative_root}/{rel} must re-export the canonical frontend UI helper")
+    return failures
+
+
+def _legacy_shim_failures(root: Path) -> list[str]:
+    failures: list[str] = []
+    failures.extend(_legacy_backend_shim_failures(root))
+    failures.extend(_root_furnace_data_shim_failures(root))
+    failures.extend(_src_services_wrapper_failures(root))
+    failures.extend(_src_custom_page_wrapper_failures(root))
+    failures.extend(_src_config_wrapper_failures(root))
+    failures.extend(_src_ui_wrapper_failures(root))
+    return failures
 
 def _content_failures(root: Path) -> list[str]:
     failures: list[str] = []
@@ -284,6 +514,7 @@ def main(argv: list[str] | None = None) -> int:
         failures.extend(_content_failures(root))
         failures.extend(_obsolete_path_failures(root))
         failures.extend(_runtime_ignore_failures(root))
+        failures.extend(_legacy_shim_failures(root))
 
     failures.extend(
         f"Generated/runtime artifact found under source folder: {path}"

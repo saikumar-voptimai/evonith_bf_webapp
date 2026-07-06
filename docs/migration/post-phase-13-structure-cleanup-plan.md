@@ -398,15 +398,15 @@ Shared package relocation validation results:
   `apps.backend_api.app.main`.
 - `furnace-data-service/run.py` starts `apps.backend_api.app.main:app` while
   preserving service-local startup behavior.
-- `apps/backend_api/app/__init__.py` adds `furnace-data-service` and the repo
-  root to `sys.path`, then appends `furnace-data-service/app` to the canonical
-  backend package path.
+- `apps/backend_api/app/__init__.py` registers the canonical package as the
+  temporary top-level `app` module so remaining backend `app.*` imports resolve
+  without copying code back into `furnace-data-service/app`.
 - `apps/backend_api/app/routes/{health,data,dataset}.py` are legacy
   unversioned route modules and remain enabled by default through
   `EVONITH_ENABLE_LEGACY_ROUTES=true`.
 - `apps/backend_api/app/api/v1/routes/datasets.py` still delegates some
-  compatibility endpoints to `app.routes.dataset`; old `app.routes.*` imports
-  resolve through the `furnace-data-service/app` shim.
+  compatibility endpoints to `app.routes.dataset`; those imports resolve
+  through the canonical `app` alias.
 - Service-local test roots now contain deprecated README placeholders only; migrated
   tests live under `tests/backend/service_api` and
   `tests/backend/legacy_service`.
@@ -819,6 +819,54 @@ Prompt 10 validation results:
 | `python scripts/verify_release_readiness.py --allow-dirty --skip-tests` | Passed | Working tree dirty was allowed; required docs, secret scan, structure/import/dependency/deployment checks passed. |
 | `pytest tests -q` | Failed in bare shell | `pytest` is not on this PowerShell PATH. Managed env passed. |
 | `uv run pytest tests -q` | Passed | 578 passed, 2 skipped, 11 warnings. |
+
+## Prompt 11 Legacy Shim Reduction
+
+Rollback checkpoint before this cleanup: `7c6dda2 chore: checkpoint before legacy shim reduction`.
+
+Prompt 11 reduced only legacy paths that were proven duplicated by canonical locations:
+
+| Legacy Path | Decision | Reason | Status |
+|---|---|---|---|
+| `furnace-data-service/app` | Reduced to shim-only package | Backend implementation lives in `apps/backend_api/app`; old service entrypoint must still import. | Kept `__init__.py` and `main.py`; removed duplicate empty legacy subdirectories and generated caches. |
+| Root `furnace_data` | Reduced to import shim only | Canonical shared package lives in `packages/furnace-data/furnace_data`; root imports remain compatibility surface. | Kept `__init__.py` and `runtime_paths.py`; removed stale duplicate root package metadata. |
+| `src/app.py` | Kept as Streamlit compatibility shim | `streamlit run src/app.py` remains a documented temporary rollback command. | No page business logic should be added here. |
+| `src/services` | Kept as re-export wrappers | Old frontend adapter imports are still tested and supported temporarily. | Wrappers re-export `apps.frontend_streamlit.services.*`. |
+| `src/custom_pages` | Kept as page delegation wrappers | Old page imports and rollback checks still need the paths. | Wrappers call canonical page files under `apps/frontend_streamlit/custom_pages`. |
+| `src/config` and `src/ui` | Kept as compatibility wrappers plus shared config surface | Some direct-mode/frontend code still imports these paths. | Review shared YAML ownership before any later reduction. |
+| `src/data`, `src/domain`, `src/utils`, `src/agents`, `src/reports`, `src/plotters`, `src/geometries` | Kept temporarily | These contain active direct-mode fallback and domain logic, not proven duplicate code. | Do not delete without a dedicated direct-mode retirement plan. |
+
+Structure enforcement was strengthened so legacy backend and root shared-package paths may contain only small compatibility shims, and old frontend wrapper locations may contain only wrapper/delegation files. Generated `__pycache__` and `.pyc` files remain ignored and should not be committed.
+
+Uncertain leftovers for manual review:
+
+- Shared YAML under `src/config` still has mixed frontend/direct-mode ownership.
+- Direct-mode source modules under `src/data`, `src/domain`, `src/utils`, `src/agents`, `src/reports`, `src/plotters`, and `src/geometries` are still active and intentionally retained.
+- Legacy backend route modules under `apps/backend_api/app/routes` remain supported by compatibility requirements.
+- `run_streamlit.py` remains a frontend launcher compatibility helper.
+
+Prompt 11 validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `python scripts/check_repository_structure.py` | Passed | Canonical backend, frontend, shared package, runtime, generated-artifact, and shim-reduction checks passed. |
+| `python scripts/check_import_boundaries.py` | Passed | Backend/frontend import boundaries remain clean. |
+| `python scripts/check_dependency_profiles.py` | Passed | Required dependency groups and backend-base exclusions remain valid. |
+| `python scripts/check_backend_minimal_startup.py` | Failed in bare shell | Bare `python` environment does not have FastAPI installed (`No module named 'fastapi'`). Managed env passed. |
+| `uv run python scripts/check_backend_minimal_startup.py` | Passed | `/api/v1/health` returned 200; backend title `Evonith BF Backend API`. |
+| `python scripts/check_frontend_api_imports.py` | Passed | Canonical frontend adapters and old wrappers import cleanly. |
+| `python scripts/export_backend_openapi.py` | Failed in bare shell | Bare `python` environment does not have FastAPI installed (`No module named 'fastapi'`). Managed env passed. |
+| `uv run python scripts/export_backend_openapi.py` | Passed | Exported `docs/api/openapi-v1.json`. |
+| `pytest tests/structure -q` | Failed in bare shell | `pytest` is not on this PowerShell PATH. Managed env passed. |
+| `uv run pytest tests/structure -q` | Passed | 89 passed, 1 warning. |
+| `pytest tests/frontend -q` | Failed in bare shell | `pytest` is not on this PowerShell PATH. Managed env passed. |
+| `uv run pytest tests/frontend -q` | Passed | 78 passed. |
+| `pytest tests/backend -q` | Failed in bare shell | `pytest` is not on this PowerShell PATH. Managed env passed. |
+| `uv run pytest tests/backend -q` | Passed | 387 passed, 1 skipped, 8 warnings. |
+| `pytest tests/integration -q` | Failed in bare shell | `pytest` is not on this PowerShell PATH. Managed env passed. |
+| `uv run pytest tests/integration -q` | Passed | 7 passed, 4 warnings. |
+| `pytest tests -q` | Failed in bare shell | `pytest` is not on this PowerShell PATH. Managed env passed. |
+| `uv run pytest tests -q` | Passed | 588 passed, 2 skipped, 11 warnings. |
 
 ## Suggested Move Gates
 

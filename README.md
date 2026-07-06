@@ -123,4 +123,4 @@ Generated files, uploads, SQLite databases, caches, logs, and exported artifacts
 
 ## Compatibility Cleanup Note
 
-Direct-mode fallback, legacy routes, `src` wrappers, `furnace-data-service` backend shims, and root `furnace_data` import shims are temporary compatibility surfaces. Keep them until a separate deprecation phase explicitly removes them with regression coverage.
+Direct-mode fallback, legacy routes, `src` wrappers, `furnace-data-service` backend shims, and root `furnace_data` import shims are temporary compatibility surfaces. Prompt 11 reduced `furnace-data-service/app` to shim-only files and root `furnace_data` to import shims, but active direct-mode modules under `src/data`, `src/domain`, `src/utils`, `src/agents`, `src/reports`, `src/plotters`, and `src/geometries` remain intentionally retained. Remove them only in a later deprecation phase with regression coverage.

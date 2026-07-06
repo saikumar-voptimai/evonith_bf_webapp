@@ -9,11 +9,11 @@
 
 ## Compatibility Startup
 
-Backend compatibility:
+Backend compatibility through the temporary shim-only old app path:
 
 ```bash
 cd furnace-data-service
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
 Frontend compatibility:
@@ -30,6 +30,6 @@ dry-run review.
 ## Validation
 
 ```bash
-python scripts/validate_deployment.py --profile local --offline
-python scripts/check_repository_structure.py
+uv run python scripts/validate_deployment.py --profile local --offline
+uv run python scripts/check_repository_structure.py
 ```

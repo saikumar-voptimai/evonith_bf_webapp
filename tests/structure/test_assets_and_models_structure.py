@@ -117,6 +117,14 @@ def test_furnacemind_assets_are_loaded_from_canonical_source_runtime_location():
     assert context._FURNACEMIND_SOURCE_DIR == source_dir
     assert context._source_context_path("SKILLS_BESTSHIFT.md") == source_dir / "SKILLS_BESTSHIFT.md"
 
+    sys.modules.pop("agents.furnacemind.skills", None)
+    skills = importlib.import_module("agents.furnacemind.skills")
+
+    assert skills._PARAMS_PATH == source_dir / "skill_params.yml"
+    assert skills._PARAMS_PATH.exists()
+    assert skills._LEGACY_PARAMS_PATH == REPO_ROOT / "src" / "storage" / "furnacemind" / "skill_params.yml"
+    assert skills._PARAMS["tier1"]
+
 
 def test_copilot_and_model_assets_use_canonical_source_locations():
     assert package_model_dir() == CANONICAL_MODELS

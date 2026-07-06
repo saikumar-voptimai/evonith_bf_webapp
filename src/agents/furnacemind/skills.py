@@ -1,7 +1,7 @@
 """SkillEngine — pre-computes analysis and builds operator prompts.
 
-All calibration numbers live in ``storage/furnacemind/skill_params.yml``.
-To recalibrate after a new regression run: edit that YAML file only.
+All calibration numbers live in the packaged FurnaceMind source assets.
+To recalibrate after a new regression run: edit ``packages/furnace-data/furnace_data/assets/furnacemind/skill_params.yml`` only.
 No Python changes required.
 
 Usage::
@@ -25,15 +25,23 @@ import yaml
 
 from agents.furnacemind.prompts import HEATLOAD_PLOT_CODE, HEATLOAD_REPORT_TEMPLATE
 from agents.furnace_tools import fetch_ml_data, load_static_shift_data
+from furnace_data.assets import package_furnacemind_assets_dir
 
-_PARAMS_PATH = (
+_LEGACY_PARAMS_PATH = (
     Path(__file__).resolve().parents[2] / "storage" / "furnacemind" / "skill_params.yml"
 )
+_PARAMS_PATH = package_furnacemind_assets_dir() / "skill_params.yml"
 
 
 def _load_params() -> dict:
-    with _PARAMS_PATH.open(encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+    for path in (_PARAMS_PATH, _LEGACY_PARAMS_PATH):
+        if path.exists():
+            with path.open(encoding="utf-8") as fh:
+                return yaml.safe_load(fh)
+    raise FileNotFoundError(
+        "FurnaceMind skill parameters not found in packaged assets or legacy path: "
+        f"{_PARAMS_PATH}; {_LEGACY_PARAMS_PATH}"
+    )
 
 
 # Load once at module import — YAML is ~2 KB, negligible cost.

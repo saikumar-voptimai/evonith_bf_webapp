@@ -157,8 +157,8 @@ Because deployment depends on the canonical structure, verify:
 1. `apps/backend_api/app/main.py` imports.
 2. `apps/frontend_streamlit/app.py` exists.
 3. `apps/frontend_streamlit/custom_pages` contains canonical page files.
-4. `src/app.py` and `src/custom_pages` compatibility shims exist.
-5. Old backend shim imports.
+4. `src/app.py` and `src/custom_pages` compatibility shims exist and contain no page business logic.
+5. Old backend shim-only entrypoint imports.
 6. OpenAPI old/new paths match.
 7. `check_repository_structure.py` passes.
 8. `check_import_boundaries.py` passes.
@@ -175,7 +175,7 @@ Because deployment depends on the canonical structure, verify:
 16. `apps/frontend_streamlit/assets` contains frontend-owned CSS, logo/hero
     images, and templates, with no backend model files.
 17. `packages/furnace-data/furnace_data` contains the canonical shared package,
-    while root `furnace_data` compatibility imports still work.
+    while root `furnace_data` compatibility imports still work and root metadata is not duplicated.
 18. `packages/furnace-data/furnace_data/assets/models` contains active model
     assets, old model archive folders are absent from source, and generated
     dataset/cache files live under `runtime`.
@@ -189,6 +189,7 @@ uv run pytest tests/structure/test_frontend_services_structure.py -q
 uv run pytest tests/structure/test_frontend_entrypoints.py -q
 uv run pytest tests/structure/test_shared_package_structure.py -q
 uv run pytest tests/structure/test_assets_and_models_structure.py -q
+uv run pytest tests/structure/test_legacy_shim_reduction.py -q
 ```
 
 ## Regression Verification
