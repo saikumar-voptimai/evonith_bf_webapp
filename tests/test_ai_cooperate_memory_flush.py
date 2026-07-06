@@ -38,7 +38,9 @@ _install_module(
 _install_module("agents.furnacemind.skills", SkillEngine=type("SkillEngine", (), {}))
 _install_module(
     "agents.llm.llm_client",
-    OpenRouterClient=type("OpenRouterClient", (), {"__init__": lambda self, **kwargs: None}),
+    OpenRouterClient=type(
+        "OpenRouterClient", (), {"__init__": lambda self, **kwargs: None}
+    ),
 )
 _install_module(
     "agents.memory.conversation_history",
@@ -48,7 +50,9 @@ _install_module(
     "agents.memory.knowledge_vector_store",
     KnowledgeVectorStore=type("KnowledgeVectorStore", (), {}),
 )
-_install_module("agents.memory.vector_store", QdrantVectorStore=type("QdrantVectorStore", (), {}))
+_install_module(
+    "agents.memory.vector_store", QdrantVectorStore=type("QdrantVectorStore", (), {})
+)
 _install_module("ui.furnacemind.chat_interface")
 _install_module("ui.furnacemind.feedback_flow")
 _install_module(
@@ -58,7 +62,7 @@ _install_module(
 _install_module("utils.session", current_user_id=lambda: "user-1")
 _install_module("utils.shift_windows", last_completed_shift=lambda: (None, ""))
 
-from agents.furnacemind import ai_cooperate_page
+from agents.furnacemind import ai_cooperate_page  # noqa: E402
 
 
 class FakeSummaryLLM:

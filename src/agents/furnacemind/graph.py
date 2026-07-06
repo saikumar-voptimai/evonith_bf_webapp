@@ -16,6 +16,9 @@ The graph is responsible for only the agent loop:
 4. Continue until the model returns a final answer or the iteration limit is
    reached.
 
+Tool-routing policy stays in ``agents.furnacemind.prompts`` so this graph remains
+an orchestration layer instead of accumulating domain-specific routing rules.
+
 Tool failures are returned to the model as normal tool messages. That lets the
 assistant explain the problem or choose a fallback instead of letting a Streamlit
 page exception break the user session.

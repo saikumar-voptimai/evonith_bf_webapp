@@ -76,7 +76,7 @@ class _FakeLLM:
         *,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
-        tool_choice: str = "auto",
+        tool_choice: str | dict[str, Any] = "auto",
     ) -> _Completion:
         """Return a fake tool call first, then final assistant text."""
         self.calls += 1
@@ -196,3 +196,47 @@ def test_furnacemind_graph_recovers_after_tool_error(monkeypatch):
             "content": "Tool `fetch_online_data` failed: RuntimeError: database unavailable",
         }
     ]
+
+
+class _ToolChoiceRecordingLLM:
+    """Fake LLM that records graph-level tool choice behavior."""
+
+    def __init__(self, *, final_text: str = "Prompt-driven final answer.") -> None:
+        self.tool_choices: list[str | dict[str, Any]] = []
+        self.final_text = final_text
+
+    def chat_completions(
+        self,
+        *,
+        messages: list[dict[str, Any]],  # noqa: ARG002
+        tools: list[dict[str, Any]],  # noqa: ARG002
+        tool_choice: str | dict[str, Any] = "auto",
+    ) -> _Completion:
+        """Record the tool choice and return a final assistant response."""
+        self.tool_choices.append(tool_choice)
+        return _Completion(_Message(content=self.final_text))
+
+
+def test_graph_leaves_tool_routing_to_prompt_policy():
+    """The graph should not force domain-specific tool choices itself."""
+    llm = _ToolChoiceRecordingLLM()
+    messages = [
+        {
+            "role": "user",
+            "content": "Describe the chart in the uploaded BMO Analysis PPT.",
+        }
+    ]
+    tools = [
+        {"type": "function", "function": {"name": "search_knowledge_docs"}},
+        {"type": "function", "function": {"name": "execute_python_plot"}},
+    ]
+
+    response = fm_graph.run_furnacemind_graph_loop(
+        llm=llm,
+        messages=messages,
+        tools=tools,
+        status_box=_StatusBox(),
+    )
+
+    assert response == "Prompt-driven final answer."
+    assert llm.tool_choices == ["auto"]
