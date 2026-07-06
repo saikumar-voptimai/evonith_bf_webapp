@@ -8,12 +8,14 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -371,6 +373,14 @@ class MemoryDocument(Base):
     qdrant_collection: Mapped[str | None] = mapped_column(String(128), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    content_type: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    file_size: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, deferred=True
+    )
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, deferred=True)
+    file_bytes: Mapped[bytes | None] = mapped_column(
+        LargeBinary, nullable=True, deferred=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

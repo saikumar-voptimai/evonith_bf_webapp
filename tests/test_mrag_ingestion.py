@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import sys
 from io import BytesIO
-from pathlib import Path
 from types import SimpleNamespace
 
 os.environ.setdefault("OPENROUTER_API_KEY", "test-openrouter-key")
@@ -62,10 +61,14 @@ class FakeDocumentRepository:
 
     def __init__(self) -> None:
         self.create_calls: list[dict] = []
+        self.store_calls: list[dict] = []
 
     def create_document(self, **kwargs) -> object:
         self.create_calls.append(kwargs)
         return SimpleNamespace(document_id="doc-row-1")
+
+    def store_document_file(self, **kwargs) -> None:
+        self.store_calls.append(kwargs)
 
 
 class FakeChunkRepository:
@@ -118,6 +121,15 @@ def test_process_file_persists_qdrant_points_and_sql_metadata() -> None:
     assert create_call["metadata"]["user_id"] == "user-1"
     assert create_call["metadata"]["chunk_count"] == len(parts)
     assert create_call["metadata"]["modalities"] == ["text"]
+    assert create_call["metadata"]["visual_chunk_count"] == 0
+
+    assert len(repository.store_calls) == 1
+    store_call = repository.store_calls[0]
+    assert store_call["document_id"] == "doc-row-1"
+    assert store_call["user_id"] == "user-1"
+    assert store_call["filename"] == "operator_notes.txt"
+    assert store_call["file_type"] == "txt"
+    assert store_call["file_bytes"] == upload.getvalue()
 
     assert len(chunk_repository.create_calls) == 1
     chunk_call = chunk_repository.create_calls[0]
@@ -161,11 +173,15 @@ def test_process_file_embeds_uploaded_images_with_multimodal_client() -> None:
     )
     embedding = RecordingEmbedding()
 
+    repository = FakeDocumentRepository()
+    upload = NamedUpload(image_buffer.getvalue(), "stove_diagram.png")
+
     parts = process_file(
-        NamedUpload(image_buffer.getvalue(), "stove_diagram.png"),
+        upload,
         store,
         embedding,
         user_id="user-1",
+        document_repository=repository,
     )
 
     assert len(parts) == 1
@@ -177,8 +193,10 @@ def test_process_file_embeds_uploaded_images_with_multimodal_client() -> None:
     payload = point.payload
     assert point.vector == [0.7, 0.8, 0.9]
     assert payload["modality"] == "image"
-    assert payload["image_path"]
-    assert Path(payload["image_path"]).exists()
+    assert payload["has_visual"] is True
+    assert "image_path" not in payload
+    assert parts[0].image_bytes == upload.getvalue()
+    assert repository.store_calls[0]["file_bytes"] == upload.getvalue()
 
 
 def test_memory_document_reads_point_ids_from_metadata() -> None:
