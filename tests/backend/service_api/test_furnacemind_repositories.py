@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.repositories.furnacemind_conversation_repository import FurnaceMindConversationRepository
-from app.repositories.furnacemind_document_repository import FurnaceMindDocumentRepository
-from app.repositories.furnacemind_run_repository import FurnaceMindRunRepository
+from apps.backend_api.app.repositories.furnacemind_conversation_repository import FurnaceMindConversationRepository
+from apps.backend_api.app.repositories.furnacemind_document_repository import FurnaceMindDocumentRepository
+from apps.backend_api.app.repositories.furnacemind_run_repository import FurnaceMindRunRepository
 
 
 def _url(path: Path) -> str:

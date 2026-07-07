@@ -18,12 +18,12 @@ def _load_session_module(monkeypatch):
         rerun=lambda: (_ for _ in ()).throw(_RerunRaised()),
     )
     monkeypatch.setitem(sys.modules, "streamlit", streamlit_stub)
-    sys.modules.pop("utils.session", None)
-    return importlib.import_module("utils.session"), streamlit_stub
+    sys.modules.pop("apps.frontend_streamlit.utils.session", None)
+    return importlib.import_module("apps.frontend_streamlit.utils.session"), streamlit_stub
 
 
 def test_session_auth_does_not_import_cookie_component() -> None:
-    source = Path("src/utils/session.py").read_text(encoding="utf-8")
+    source = (Path("apps") / "frontend_streamlit" / "utils" / "session.py").read_text(encoding="utf-8")
 
     assert "streamlit_cookies_manager" not in source
     assert "EncryptedCookieManager" not in source

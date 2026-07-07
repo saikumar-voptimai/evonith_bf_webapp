@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.core.config import BackendSettings
-from app.core.errors import ApiError
-from app.services.copilot_service import CopilotService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.copilot_service import CopilotService
 
 
 def _payload(**overrides):

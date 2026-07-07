@@ -20,7 +20,7 @@ import pytest
 class TestCacheInfo:
     def test_no_cache_returns_no_cache_status(self, client, tmp_path):
         # Point static_dir at an empty tmp dir with no cache_meta.json
-        with patch("app.routes.dataset.settings") as mock_settings:
+        with patch("apps.backend_api.app.routes.dataset.settings") as mock_settings:
             mock_settings.static_dir = tmp_path
             mock_settings.offline_lag_days = 3
             mock_settings.static_max_versions = 3
@@ -46,7 +46,7 @@ class TestCacheInfo:
         )
         _save_meta(tmp_path, meta)
 
-        with patch("app.routes.dataset.settings") as mock_settings:
+        with patch("apps.backend_api.app.routes.dataset.settings") as mock_settings:
             mock_settings.static_dir = tmp_path
             mock_settings.offline_lag_days = 3
             mock_settings.static_max_versions = 3
@@ -69,7 +69,7 @@ class TestCacheInfo:
 
 class TestStaticDownload:
     def test_no_file_returns_404(self, client, tmp_path):
-        with patch("app.routes.dataset.settings") as mock_settings:
+        with patch("apps.backend_api.app.routes.dataset.settings") as mock_settings:
             mock_settings.static_dir = tmp_path
             mock_settings.offline_lag_days = 3
             mock_settings.static_max_versions = 3
@@ -85,7 +85,7 @@ class TestStaticDownload:
         meta = CacheMeta(csv_file=csv_name, rows=len(sample_ml_df))
         _save_meta(tmp_path, meta)
 
-        with patch("app.routes.dataset.settings") as mock_settings:
+        with patch("apps.backend_api.app.routes.dataset.settings") as mock_settings:
             mock_settings.static_dir = tmp_path
             mock_settings.offline_lag_days = 3
             mock_settings.static_max_versions = 3
@@ -111,7 +111,7 @@ class TestFetchDataset:
         assert "start_date" in resp.json()["detail"].lower()
 
     def test_valid_request_returns_task_id(self, client):
-        with patch("app.routes.dataset.task_manager.run_in_background"):
+        with patch("apps.backend_api.app.routes.dataset.task_manager.run_in_background"):
             resp = client.post("/dataset/fetch", json={
                 "start_date": "2026-01-01",
                 "end_date": "2026-01-07",
@@ -141,7 +141,7 @@ class TestTaskStatus:
         assert resp.status_code == 404
 
     def test_known_task_returns_status(self, client):
-        with patch("app.routes.dataset.task_manager.run_in_background"):
+        with patch("apps.backend_api.app.routes.dataset.task_manager.run_in_background"):
             create_resp = client.post("/dataset/fetch", json={
                 "start_date": "2026-01-01",
                 "end_date": "2026-01-03",
@@ -166,7 +166,7 @@ class TestDownload:
         assert resp.status_code == 404
 
     def test_pending_task_returns_409(self, client):
-        with patch("app.routes.dataset.task_manager.run_in_background"):
+        with patch("apps.backend_api.app.routes.dataset.task_manager.run_in_background"):
             create_resp = client.post("/dataset/fetch", json={
                 "start_date": "2026-01-01",
                 "end_date": "2026-01-03",

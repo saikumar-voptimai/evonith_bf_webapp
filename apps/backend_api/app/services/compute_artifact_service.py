@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
 from furnace_data.runtime_paths import runtime_path
 
 _SAFE_ID = re.compile(r"^[a-f0-9]{32}$")

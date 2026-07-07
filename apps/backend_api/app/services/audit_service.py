@@ -9,9 +9,9 @@ from typing import Any
 
 from starlette.requests import Request
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.repositories.audit_repository import AuditEventRecord, AuditRepository
-from app.services.redaction_service import redact_dict
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.repositories.audit_repository import AuditEventRecord, AuditRepository
+from apps.backend_api.app.services.redaction_service import redact_dict
 
 log = logging.getLogger(__name__)
 

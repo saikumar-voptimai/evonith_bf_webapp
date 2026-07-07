@@ -8,7 +8,7 @@ import re
 
 import streamlit as st
 
-from reports.rendering import (
+from apps.frontend_streamlit.reports.rendering import (
     ReportDocument,
     ReportNote,
     ReportSection,
@@ -16,7 +16,7 @@ from reports.rendering import (
     document_from_markdown,
     markdown_table,
 )
-from utils.shift_windows import LOCAL_TIMEZONE, LOCAL_TIMEZONE_NAME
+from apps.frontend_streamlit.utils.shift_windows import LOCAL_TIMEZONE, LOCAL_TIMEZONE_NAME
 
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _SHIFT_REPORT_TITLE_RE = re.compile(

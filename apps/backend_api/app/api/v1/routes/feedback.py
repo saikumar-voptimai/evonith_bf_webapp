@@ -7,15 +7,15 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse
 
-from app.api.v1.schemas.common import ApiMeta, ApiResponse
-from app.api.v1.schemas.feedback import (
+from apps.backend_api.app.api.v1.schemas.common import ApiMeta, ApiResponse
+from apps.backend_api.app.api.v1.schemas.feedback import (
     FeedbackCommentCreateRequest,
     FeedbackTicketCreateRequest,
     FeedbackTicketUpdateRequest,
 )
-from app.core.auth_dependencies import get_optional_current_user
-from app.core.responses import get_request_id
-from app.services.feedback_service import FeedbackService
+from apps.backend_api.app.core.auth_dependencies import get_optional_current_user
+from apps.backend_api.app.core.responses import get_request_id
+from apps.backend_api.app.services.feedback_service import FeedbackService
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 

@@ -8,8 +8,8 @@ import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
-from app.core.config import BackendSettings
-from app.services.redaction_service import redact_text, safe_log_extra
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.services.redaction_service import redact_text, safe_log_extra
 from furnace_data.runtime_paths import runtime_path
 
 

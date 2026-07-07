@@ -8,18 +8,18 @@ from typing import Any
 
 import pandas as pd
 
-from app.api.v1.schemas.data import (
+from apps.backend_api.app.api.v1.schemas.data import (
     DataExportRequest,
     DataExportResponse,
     DataPreviewResponse,
     DataQueryRequest,
     DataSourceInfo,
 )
-from app.core.errors import ApiError
-from app.core.offline_fetcher import fetch_database_offline
-from app.core.online_fetcher import ONLINE_MEASUREMENTS, fetch_online, list_measurements
-from app.services.artifact_service import create_csv_artifact
-from app.services.serialization import dataframe_to_preview
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.core.offline_fetcher import fetch_database_offline
+from apps.backend_api.app.core.online_fetcher import ONLINE_MEASUREMENTS, fetch_online, list_measurements
+from apps.backend_api.app.services.artifact_service import create_csv_artifact
+from apps.backend_api.app.services.serialization import dataframe_to_preview
 from furnace_data.offline import OFFLINE_REPORT_MAP, list_offline_tables as _list_offline_tables
 
 
@@ -135,7 +135,7 @@ def _fetch_offline_dataframe(query: DataQueryRequest) -> pd.DataFrame:
 
 
 def _fetch_static_dataset_dataframe() -> pd.DataFrame:
-    from app.services.dataset_service import load_static_dataset_dataframe
+    from apps.backend_api.app.services.dataset_service import load_static_dataset_dataframe
 
     return load_static_dataset_dataframe()
 

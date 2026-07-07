@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from services import admin_api, auth_api
+from apps.frontend_streamlit.services import admin_api, auth_api
 
 
 class FakeClient:

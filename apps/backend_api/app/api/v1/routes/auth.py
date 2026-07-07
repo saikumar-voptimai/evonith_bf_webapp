@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from app.api.v1.schemas.auth import ChangePasswordRequest, LoginRequest
-from app.api.v1.schemas.common import ApiMeta, ApiResponse
-from app.core.auth_dependencies import get_auth_service, require_authenticated_user
-from app.core.responses import get_request_id
-from app.services.auth_service import AuthService
+from apps.backend_api.app.api.v1.schemas.auth import ChangePasswordRequest, LoginRequest
+from apps.backend_api.app.api.v1.schemas.common import ApiMeta, ApiResponse
+from apps.backend_api.app.core.auth_dependencies import get_auth_service, require_authenticated_user
+from apps.backend_api.app.core.responses import get_request_id
+from apps.backend_api.app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

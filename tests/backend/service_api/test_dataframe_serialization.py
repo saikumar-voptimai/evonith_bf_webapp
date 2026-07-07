@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from app.services.serialization import dataframe_to_preview
+from apps.backend_api.app.services.serialization import dataframe_to_preview
 
 
 def test_dataframe_serialization_handles_timestamp_nan_and_numpy_values():

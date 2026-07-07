@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from services.api_errors import BackendUnavailableError
-from services.data_api import export_data, get_artifact_download_url, list_data_sources, preview_data
+from apps.frontend_streamlit.services.api_errors import BackendUnavailableError
+from apps.frontend_streamlit.services.data_api import export_data, get_artifact_download_url, list_data_sources, preview_data
 
 
 class FakeClient:

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.services.copilot_safety_service import CopilotSafetyService, warning
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.services.copilot_safety_service import CopilotSafetyService, warning
 
 
 class CopilotContextService:

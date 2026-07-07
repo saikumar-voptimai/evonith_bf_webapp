@@ -1,6 +1,6 @@
 import pytest
 
-from src.data.material_mapping import (
+from apps.frontend_streamlit.data.material_mapping import (
     MaterialMapEntry,
     MaterialNameMapper,
     normalize_client_material_name,

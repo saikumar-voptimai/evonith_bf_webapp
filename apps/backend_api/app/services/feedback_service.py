@@ -7,15 +7,15 @@ import json
 import logging
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.repositories.feedback_repository import (
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.repositories.feedback_repository import (
     FeedbackAttachmentRecord,
     FeedbackCommentRecord,
     FeedbackRepository,
     FeedbackTicketRecord,
 )
-from app.services.feedback_attachment_service import (
+from apps.backend_api.app.services.feedback_attachment_service import (
     FeedbackAttachmentService,
     ParsedUpload,
 )

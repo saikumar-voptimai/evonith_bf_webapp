@@ -115,7 +115,6 @@ uv run python scripts/verify_release_readiness.py --allow-dirty --skip-tests
 6. Verify pages use API mode.
 7. Stop backend and verify frontend shows clean backend unavailable behavior.
 8. Switch `USE_BACKEND_API=false` and verify direct-mode fallback remains available.
-9. Start the temporary frontend compatibility command for rollback only: `uv run streamlit run src/app.py`.
 
 ## API Cutover Verification
 
@@ -157,7 +156,7 @@ Because deployment depends on the canonical structure, verify:
 1. `apps/backend_api/app/main.py` imports.
 2. `apps/frontend_streamlit/app.py` exists.
 3. `apps/frontend_streamlit/custom_pages` contains canonical page files.
-4. `src/app.py` and `src/custom_pages` compatibility shims exist and contain no page business logic.
+4. Removed legacy frontend entrypoints and page wrappers are absent.
 5. Old backend shim-only entrypoint imports.
 6. OpenAPI old/new paths match.
 7. `check_repository_structure.py` passes.
@@ -167,15 +166,15 @@ Because deployment depends on the canonical structure, verify:
 11. `check_frontend_api_imports.py` passes.
 12. Edge scripts point to canonical paths.
 13. `apps/frontend_streamlit/services` contains canonical frontend API
-    adapters, while `src/services` wrappers still import.
+    adapters, with no legacy wrapper imports.
 14. `apps/frontend_streamlit/config` contains frontend Python config helpers,
     while shared YAML config remains available through compatibility wrappers.
-15. `apps/frontend_streamlit/ui` contains frontend UI helpers, while `src/ui`
-    wrappers still import.
+15. `apps/frontend_streamlit/ui` contains frontend UI helpers, and no legacy UI
+    wrappers remain active.
 16. `apps/frontend_streamlit/assets` contains frontend-owned CSS, logo/hero
     images, and templates, with no backend model files.
 17. `packages/furnace-data/furnace_data` contains the canonical shared package,
-    while root `furnace_data` compatibility imports still work and root metadata is not duplicated.
+    and `import furnace_data` resolves from the canonical package metadata.
 18. `packages/furnace-data/furnace_data/assets/models` contains active model
     assets, old model archive folders are absent from source, and generated
     dataset/cache files live under `runtime`.

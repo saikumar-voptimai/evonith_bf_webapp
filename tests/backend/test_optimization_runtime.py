@@ -12,21 +12,21 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from domain.optimization_runtime import (
+from furnace_data.optimization_runtime import (
     FeatureVectorBuilder,
     ModelBundleInfo,
     ModelBundleService,
 )
-from utils.bmo.calculations import evaluate_blend
-from utils.bmo.constraints import check_blend_constraints
-from utils.bmo.constraints import validate_selected_pellet_inputs
-import utils.bmo.lp_solver as lp_solver
-from utils.bmo.lp_solver import run_lp_baseline
-from utils.bmo.model_service import FuelUnitCostModelService
-from utils.bmo.nonlinear_optimizer import run_nonlinear_optimizer
-from utils.bmo.objective import BmoObjectiveEvaluator
-from utils.bmo.slag_balance import calculate_full_slag_balance
-from utils.bmo.types import (
+from furnace_data.bmo.utils.calculations import evaluate_blend
+from furnace_data.bmo.utils.constraints import check_blend_constraints
+from furnace_data.bmo.utils.constraints import validate_selected_pellet_inputs
+import furnace_data.bmo.utils.lp_solver as lp_solver
+from furnace_data.bmo.utils.lp_solver import run_lp_baseline
+from furnace_data.bmo.utils.model_service import FuelUnitCostModelService
+from furnace_data.bmo.utils.nonlinear_optimizer import run_nonlinear_optimizer
+from furnace_data.bmo.utils.objective import BmoObjectiveEvaluator
+from furnace_data.bmo.utils.slag_balance import calculate_full_slag_balance
+from furnace_data.bmo.utils.types import (
     BlendEvaluation,
     DustInput,
     FluxInput,
@@ -1108,10 +1108,10 @@ def test_bmo_objective_evaluator_runs_with_fallback_model():
     ]
     model_service = FuelUnitCostModelService(
         bundle_cfg={
-            "model_path": "src/assets/models/bmo_fuel/definitely_missing_model.joblib",
-            "scaler_path": "src/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
-            "feature_manifest_path": "src/assets/models/bmo_fuel/feature_manifest.json",
-            "lag_map_path": "src/assets/models/bmo_fuel/lag_map.json",
+            "model_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_model.joblib",
+            "scaler_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
+            "feature_manifest_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/feature_manifest.json",
+            "lag_map_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/lag_map.json",
         },
         fallback_cfg={},
     )
@@ -1158,8 +1158,8 @@ def test_bmo_objective_penalizes_slag_basicity_violation():
     ]
     model_service = FuelUnitCostModelService(
         bundle_cfg={
-            "model_path": "src/assets/models/bmo_fuel/definitely_missing_model.joblib",
-            "scaler_path": "src/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
+            "model_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_model.joblib",
+            "scaler_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
         },
         fallback_cfg={},
     )
@@ -1214,8 +1214,8 @@ def test_bmo_objective_penalizes_production_above_target():
     ]
     model_service = FuelUnitCostModelService(
         bundle_cfg={
-            "model_path": "src/assets/models/bmo_fuel/definitely_missing_model.joblib",
-            "scaler_path": "src/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
+            "model_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_model.joblib",
+            "scaler_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
         },
         fallback_cfg={},
     )
@@ -1446,8 +1446,8 @@ def test_nonlinear_optimizer_respects_stock_caps_and_keeps_feasible_baseline():
     ]
     model_service = FuelUnitCostModelService(
         bundle_cfg={
-            "model_path": "src/assets/models/bmo_fuel/definitely_missing_model.joblib",
-            "scaler_path": "src/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
+            "model_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_model.joblib",
+            "scaler_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
         },
         fallback_cfg={},
     )
@@ -1497,8 +1497,8 @@ def test_nonlinear_optimizer_skips_de_when_lp_constraints_are_infeasible():
     ]
     model_service = FuelUnitCostModelService(
         bundle_cfg={
-            "model_path": "src/assets/models/bmo_fuel/definitely_missing_model.joblib",
-            "scaler_path": "src/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
+            "model_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_model.joblib",
+            "scaler_path": "packages/furnace-data/furnace_data/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
         },
         fallback_cfg={},
     )

@@ -2066,7 +2066,7 @@
         "title": "ValidationError",
         "type": "object"
       },
-      "app__api__v1__schemas__health__HealthResponse": {
+      "apps__backend_api__app__api__v1__schemas__health__HealthResponse": {
         "properties": {
           "data": {
             "$ref": "#/components/schemas/HealthData"
@@ -2086,7 +2086,7 @@
         "title": "HealthResponse",
         "type": "object"
       },
-      "app__models__schemas__HealthResponse": {
+      "apps__backend_api__app__models__schemas__HealthResponse": {
         "properties": {
           "status": {
             "default": "ok",
@@ -5483,7 +5483,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__api__v1__schemas__health__HealthResponse"
+                  "$ref": "#/components/schemas/apps__backend_api__app__api__v1__schemas__health__HealthResponse"
                 }
               }
             },
@@ -6977,7 +6977,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__models__schemas__HealthResponse"
+                  "$ref": "#/components/schemas/apps__backend_api__app__models__schemas__HealthResponse"
                 }
               }
             },

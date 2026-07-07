@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.core.config import BackendSettings
-from app.core.errors import ApiError
-from app.services.copilot_anomaly_service import CopilotAnomalyService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.copilot_anomaly_service import CopilotAnomalyService
 
 
 def test_copilot_anomaly_returns_stable_signals():

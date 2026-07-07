@@ -63,7 +63,7 @@ _install_module(
 _install_module("utils.session", current_user_id=lambda: "user-1")
 _install_module("utils.shift_windows", last_completed_shift=lambda: (None, ""))
 
-from agents.furnacemind import ai_cooperate_page
+from apps.frontend_streamlit.agents.furnacemind import ai_cooperate_page
 
 sys.modules.pop("utils.shift_windows", None)
 sys.modules.pop("streamlit", None)

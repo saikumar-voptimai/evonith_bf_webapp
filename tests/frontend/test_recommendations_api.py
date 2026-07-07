@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from services import recommendations_api
+from apps.frontend_streamlit.services import recommendations_api
 
 
 class FakeClient:

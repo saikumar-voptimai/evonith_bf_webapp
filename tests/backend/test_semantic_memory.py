@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from agents.memory.semantic_memory import (
+from apps.frontend_streamlit.agents.memory.semantic_memory import (
     SemanticMemoryRecord,
     SemanticMemoryService,
     SemanticMemoryVectorStore,
     _parse_facts_response,
 )
-from utils.settings import SemanticMemoryConfig
+from apps.frontend_streamlit.utils.settings import SemanticMemoryConfig
 
 
 def _config(*, enabled: bool = True) -> SemanticMemoryConfig:

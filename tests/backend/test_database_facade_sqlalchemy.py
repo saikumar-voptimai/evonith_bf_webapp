@@ -7,9 +7,9 @@ from uuid import UUID
 
 import pytest
 
-import src.data.db as db_module
-from src.data.db import BurdenConfigService, HopperConfigService, UserDataService
-from src.data.material_mapping import MaterialMapEntry, MaterialNameMapper
+import apps.frontend_streamlit.data.db as db_module
+from apps.frontend_streamlit.data.db import BurdenConfigService, HopperConfigService, UserDataService
+from apps.frontend_streamlit.data.material_mapping import MaterialMapEntry, MaterialNameMapper
 
 
 class _FakeEngine:

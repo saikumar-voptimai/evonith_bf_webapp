@@ -6,17 +6,17 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.config import settings
+from apps.backend_api.app.config import settings
 from furnace_data.dataset.cleaning import DataCleaner, build_default_config
 from furnace_data.dataset.fetcher import DatasetFetcher as MlDatasetFetcher
 from furnace_data.dataset.static import StaticDatasetManager
-from app.models.schemas import (
+from apps.backend_api.app.models.schemas import (
     FetchDatasetRequest,
     TaskCreatedResponse,
     TaskStatusResponse,
     UpdateStaticRequest,
 )
-from app.tasks.task_manager import TaskState, task_manager
+from apps.backend_api.app.tasks.task_manager import TaskState, task_manager
 
 log = logging.getLogger(__name__)
 

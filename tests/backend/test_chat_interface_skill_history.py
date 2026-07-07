@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import streamlit as st
+import types
 
-from ui.furnacemind import chat_interface
+from apps.frontend_streamlit.ui.furnacemind import chat_interface
 
 
-def test_chat_history_to_messages_skips_inactive_skill_metadata() -> None:
+def test_chat_history_to_messages_skips_inactive_skill_metadata(monkeypatch) -> None:
     """Old skill-backed answers should not feed prompts after deactivation."""
-    st.session_state.clear()
-    st.session_state["fm_inactive_skill_keys"] = {"skill_cast", "cast_house_sop"}
-    st.session_state["fm_inactive_skill_context_files"] = {
+    session_state = {}
+    monkeypatch.setattr(chat_interface, "st", types.SimpleNamespace(session_state=session_state))
+
+    session_state["fm_inactive_skill_keys"] = {"skill_cast", "cast_house_sop"}
+    session_state["fm_inactive_skill_context_files"] = {
         "cast_house_sop_furnacemind.md"
     }
-    st.session_state["chat_history"] = [
+    session_state["chat_history"] = [
         {
             "role": "user",
             "type": "text",
@@ -48,4 +50,3 @@ def test_chat_history_to_messages_skips_inactive_skill_metadata() -> None:
         {"role": "user", "content": "normal question"},
         {"role": "assistant", "content": "normal answer"},
     ]
-    st.session_state.clear()

@@ -15,8 +15,8 @@ from typing import TYPE_CHECKING, Any
 
 import streamlit as st
 
-from agents.multimodal.ingestion import process_file
-from utils.furnacemind.skill_ui import (
+from apps.frontend_streamlit.agents.multimodal.ingestion import process_file
+from apps.frontend_streamlit.utils.furnacemind.skill_ui import (
     build_skill_context_preview,
     display_source_type,
     format_skill_option,
@@ -35,8 +35,8 @@ from utils.furnacemind.skill_ui import (
 )
 
 if TYPE_CHECKING:
-    from agents.furnacemind.skill_registry import SkillDefinition, SkillRegistry
-    from agents.furnacemind.skills import SkillEngine
+    from apps.frontend_streamlit.agents.furnacemind.skill_registry import SkillDefinition, SkillRegistry
+    from apps.frontend_streamlit.agents.furnacemind.skills import SkillEngine
 
 _ARTIFACT_TYPES = {"plotly", "dataframe"}
 _CHAT_HISTORY_LIMIT = 14

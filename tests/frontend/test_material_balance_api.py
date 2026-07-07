@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from services import material_balance_api
+from apps.frontend_streamlit.services import material_balance_api
 
 
 class FakeClient:

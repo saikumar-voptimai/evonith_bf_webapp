@@ -258,12 +258,10 @@ def main(argv: list[str] | None = None) -> int:
     for required_path in (
         root / "apps" / "backend_api" / "app" / "main.py",
         root / "apps" / "frontend_streamlit" / "app.py",
-        root / "furnace-data-service" / "app" / "main.py",
-        root / "src" / "app.py",
         root / "packages" / "furnace-data" / "pyproject.toml",
     ):
         if not required_path.exists():
-            failures.append(f"Missing canonical/compatibility path: {required_path}")
+            failures.append(f"Missing canonical path: {required_path}")
 
     print("Defined dependency groups:")
     for name in sorted(groups):

@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.config import BackendSettings
-from app.core.errors import ApiError
-from app.services.feedback_migration_service import FeedbackMigrationService
-from app.services.feedback_service import FeedbackService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.feedback_migration_service import FeedbackMigrationService
+from apps.backend_api.app.services.feedback_service import FeedbackService
 
 
 def _feedback_client(app_factory, monkeypatch, tmp_path) -> TestClient:

@@ -2,53 +2,17 @@
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
 from datetime import date, datetime, timezone
 import logging
-import sys
 from typing import Any
 
 import pandas as pd
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.services.compute_artifact_service import ComputeArtifactService
-from furnace_data.runtime_paths import get_repo_root
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.compute_artifact_service import ComputeArtifactService
 
 log = logging.getLogger(__name__)
-
-
-def _ensure_src_package(package_name: str) -> None:
-    loaded = sys.modules.get(package_name)
-    if loaded is not None and getattr(loaded, "__path__", None) is not None:
-        return
-    try:
-        if importlib.util.find_spec(package_name) is not None:
-            return
-    except (ImportError, ValueError):
-        pass
-
-    src_path = get_repo_root() / "src"
-    package_dir = src_path / package_name
-    init_path = package_dir / "__init__.py"
-    if not init_path.exists():
-        raise ImportError(f"Source package not found: {package_name}")
-
-    spec = importlib.util.spec_from_file_location(
-        package_name,
-        init_path,
-        submodule_search_locations=[str(package_dir)],
-    )
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Source package could not be loaded: {package_name}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[package_name] = module
-    spec.loader.exec_module(module)
-
-
-def _ensure_src_path() -> None:
-    _ensure_src_package("utils")
 
 
 def _warning(code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -87,8 +51,7 @@ class MaterialBalanceService:
         mappings: dict[str, Any] = {}
         version = None
         try:
-            _ensure_src_package("utils")
-            from utils.material_balance.dpr_mapping import load_full_config
+            from furnace_data.material_balance.dpr_mapping import load_full_config
 
             cfg = load_full_config()
             mappings = {
@@ -201,8 +164,7 @@ class MaterialBalanceService:
 
     def _run_static_dataset(self, payload: dict[str, Any], *, route_prefix: str) -> dict[str, Any]:
         try:
-            _ensure_src_package("utils")
-            from utils.material_balance.compute import run_full_balance
+            from furnace_data.material_balance.compute import run_full_balance
         except Exception as exc:
             raise ApiError(
                 "MATERIAL_BALANCE_INTERNAL_ERROR",

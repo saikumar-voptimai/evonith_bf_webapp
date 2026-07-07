@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.services.compute_artifact_service import ComputeArtifactService
-from app.services.material_balance_service import _ensure_src_package, _warning, table_data
-from app.services.model_registry_service import ModelRegistryService
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.compute_artifact_service import ComputeArtifactService
+from apps.backend_api.app.services.material_balance_service import _warning, table_data
+from apps.backend_api.app.services.model_registry_service import ModelRegistryService
 
 
 class BlendOptimizerService:
@@ -49,8 +49,7 @@ class BlendOptimizerService:
             },
         ]
         try:
-            _ensure_src_package("data")
-            from data.bmo import EvonithBmoContextProvider
+            from furnace_data.bmo.data import EvonithBmoContextProvider
 
             provider = EvonithBmoContextProvider()
             ore_inputs, provider_warnings = provider.build_ore_inputs()

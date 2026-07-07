@@ -8,10 +8,10 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 
-from app.api.v1.schemas.health import HealthResponse, ReadinessResponse, RuntimeStatusResponse
-from app.core.config import BackendSettings
-from app.core.errors import ApiError
-from app.core.responses import get_request_id
+from apps.backend_api.app.api.v1.schemas.health import HealthResponse, ReadinessResponse, RuntimeStatusResponse
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.core.responses import get_request_id
 from furnace_data.runtime_paths import ensure_runtime_dirs, get_runtime_dir
 
 router = APIRouter(tags=["health"])

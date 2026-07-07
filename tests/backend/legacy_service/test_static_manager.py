@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tests for StaticDatasetManager â€” the lag-aware cache logic.
 
 No InfluxDB or PostgreSQL calls. MlDatasetFetcher is fully mocked.

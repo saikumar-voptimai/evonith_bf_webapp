@@ -7,20 +7,9 @@
 3. Restart the frontend service.
 4. Verify direct-mode pages still load.
 
-## Compatibility Startup
+## Canonical Startup
 
-Backend compatibility through the temporary shim-only old app path:
-
-```bash
-cd furnace-data-service
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
-```
-
-Frontend compatibility:
-
-```bash
-uv run streamlit run src/app.py
-```
+Use uv run streamlit run apps/frontend_streamlit/app.py for frontend rollback validation.
 
 ## Data Safety
 
@@ -33,3 +22,8 @@ dry-run review.
 uv run python scripts/validate_deployment.py --profile local --offline
 uv run python scripts/check_repository_structure.py
 ```
+
+
+
+
+

@@ -13,8 +13,8 @@ os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 # collection. These MRAG tests need the real vector-store module.
 sys.modules.pop("agents.memory.knowledge_vector_store", None)
 
-from agents.memory.knowledge_vector_store import KnowledgeVectorStore  # noqa: E402
-from agents.multimodal.ingestion import process_file  # noqa: E402
+from apps.frontend_streamlit.agents.memory.knowledge_vector_store import KnowledgeVectorStore  # noqa: E402
+from apps.frontend_streamlit.agents.multimodal.ingestion import process_file  # noqa: E402
 from furnace_data.relational.models import MemoryDocument  # noqa: E402
 
 

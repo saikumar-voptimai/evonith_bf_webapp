@@ -6,14 +6,14 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
-from app.core.config import BackendSettings
-from app.repositories.audit_repository import AuditRepository
-from app.services.audit_service import AuditService
-from app.services.error_registry_service import ErrorRegistryService
-from app.services.metrics_service import MetricsService
-from app.services.redaction_service import REDACTED, redact_dict, redact_headers, redact_text
-from app.services.runtime_cleanup_service import RuntimeCleanupService
-from app.services.runtime_status_service import RuntimeStatusService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.repositories.audit_repository import AuditRepository
+from apps.backend_api.app.services.audit_service import AuditService
+from apps.backend_api.app.services.error_registry_service import ErrorRegistryService
+from apps.backend_api.app.services.metrics_service import MetricsService
+from apps.backend_api.app.services.redaction_service import REDACTED, redact_dict, redact_headers, redact_text
+from apps.backend_api.app.services.runtime_cleanup_service import RuntimeCleanupService
+from apps.backend_api.app.services.runtime_status_service import RuntimeStatusService
 from furnace_data.runtime_paths import runtime_path
 
 

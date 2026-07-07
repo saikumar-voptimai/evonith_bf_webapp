@@ -8,8 +8,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from app.core.config import BackendSettings
-from app.services.copilot_data_service import CopilotDataService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.services.copilot_data_service import CopilotDataService
 
 
 def test_copilot_recent_data_from_mock_rows_is_json_safe():

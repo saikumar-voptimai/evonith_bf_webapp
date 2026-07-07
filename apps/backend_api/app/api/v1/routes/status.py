@@ -6,12 +6,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
-from app.api.v1.schemas.common import ApiResponse
-from app.core.auth_dependencies import get_optional_current_user, require_admin_user
-from app.core.config import BackendSettings
-from app.core.responses import get_request_id
-from app.services.dependency_status_service import DependencyStatusService
-from app.services.runtime_status_service import RuntimeStatusService
+from apps.backend_api.app.api.v1.schemas.common import ApiResponse
+from apps.backend_api.app.core.auth_dependencies import get_optional_current_user, require_admin_user
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.core.responses import get_request_id
+from apps.backend_api.app.services.dependency_status_service import DependencyStatusService
+from apps.backend_api.app.services.runtime_status_service import RuntimeStatusService
 
 router = APIRouter(prefix="/status", tags=["status"])
 

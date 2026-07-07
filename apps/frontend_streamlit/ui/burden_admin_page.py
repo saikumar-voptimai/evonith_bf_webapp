@@ -10,7 +10,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from data.db import BurdenConfigService
+from apps.frontend_streamlit.data.db import BurdenConfigService
 
 
 class BurdenAdminPage:

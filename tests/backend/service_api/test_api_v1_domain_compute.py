@@ -7,8 +7,8 @@ from pathlib import Path
 import joblib
 from fastapi.testclient import TestClient
 
-from app.core.config import BackendSettings
-from app.services.model_registry_service import ModelRegistryService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.services.model_registry_service import ModelRegistryService
 
 
 class DoublerModel:

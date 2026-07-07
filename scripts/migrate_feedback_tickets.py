@@ -8,18 +8,14 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SERVICE_ROOT = REPO_ROOT / "furnace-data-service"
+PACKAGE_ROOT = REPO_ROOT / "packages" / "furnace-data"
 
-for path in (str(SERVICE_ROOT), str(REPO_ROOT)):
+for source_path in (REPO_ROOT, PACKAGE_ROOT):
+    path = str(source_path)
     if path not in sys.path:
         sys.path.insert(0, path)
 
-loaded_app = sys.modules.get("app")
-loaded_path = str(getattr(loaded_app, "__file__", "")) if loaded_app else ""
-if loaded_path.endswith("src\\app.py") or loaded_path.endswith("src/app.py"):
-    del sys.modules["app"]
-
-from app.services.feedback_migration_service import FeedbackMigrationService
+from apps.backend_api.app.services.feedback_migration_service import FeedbackMigrationService
 from furnace_data.runtime_paths import get_runtime_dir
 
 
@@ -76,3 +72,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

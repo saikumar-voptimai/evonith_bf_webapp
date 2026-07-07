@@ -24,19 +24,5 @@ python scripts/validate_api_cutover.py --strict
 python scripts/smoke_test_deployment.py --backend-url http://localhost:8080/api/v1 --skip-auth
 ```
 
-## Compatibility Commands
 
-Backend:
 
-```bash
-cd furnace-data-service
-uvicorn app.main:app --host 0.0.0.0 --port 8080
-```
-
-Frontend:
-
-```bash
-uv run streamlit run src/app.py
-```
-
-These remain temporary compatibility commands during Phase 13.

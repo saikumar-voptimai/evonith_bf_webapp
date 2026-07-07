@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import bcrypt
 
-from app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
 
 try:  # Optional; bcrypt is the installed Phase 5 dependency.
     from argon2 import PasswordHasher

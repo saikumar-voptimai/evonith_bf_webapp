@@ -111,7 +111,7 @@ class TestOnlineFetchValidation:
 
 class TestOnlineFetchSuccess:
     def test_json_response_shape(self, client, sample_process_df):
-        with patch("app.routes.data.fetch_online", return_value=sample_process_df):
+        with patch("apps.backend_api.app.routes.data.fetch_online", return_value=sample_process_df):
             resp = client.post("/data/online/fetch", json={
                 "measurements": ["process_params"],
                 "preset": "last 1 hour",
@@ -129,7 +129,7 @@ class TestOnlineFetchSuccess:
         assert len(body["data"]) == len(sample_process_df)
 
     def test_csv_response_content_type(self, client, sample_process_df):
-        with patch("app.routes.data.fetch_online", return_value=sample_process_df):
+        with patch("apps.backend_api.app.routes.data.fetch_online", return_value=sample_process_df):
             resp = client.post("/data/online/fetch", json={
                 "measurements": ["process_params"],
                 "preset": "last 1 hour",
@@ -140,7 +140,7 @@ class TestOnlineFetchSuccess:
         assert "hot_blast_vol_nm3h" in resp.text
 
     def test_multiple_measurements_in_meta(self, client, sample_process_df):
-        with patch("app.routes.data.fetch_online", return_value=sample_process_df):
+        with patch("apps.backend_api.app.routes.data.fetch_online", return_value=sample_process_df):
             resp = client.post("/data/online/fetch", json={
                 "measurements": ["process_params", "heatload_delta_t"],
                 "preset": "last 1 hour",
@@ -152,7 +152,7 @@ class TestOnlineFetchSuccess:
         assert "heatload_delta_t" in meta["measurements"]
 
     def test_empty_dataframe_returns_204(self, client):
-        with patch("app.routes.data.fetch_online", return_value=pd.DataFrame()):
+        with patch("apps.backend_api.app.routes.data.fetch_online", return_value=pd.DataFrame()):
             resp = client.post("/data/online/fetch", json={
                 "measurements": ["process_params"],
                 "preset": "last 1 hour",
@@ -160,7 +160,7 @@ class TestOnlineFetchSuccess:
         assert resp.status_code == 204
 
     def test_start_end_without_preset(self, client, sample_process_df):
-        with patch("app.routes.data.fetch_online", return_value=sample_process_df):
+        with patch("apps.backend_api.app.routes.data.fetch_online", return_value=sample_process_df):
             resp = client.post("/data/online/fetch", json={
                 "measurements": ["process_params"],
                 "start_time": "2026-01-01T00:00:00",
@@ -190,7 +190,7 @@ class TestOfflineFetch:
         assert resp.status_code == 422
 
     def test_successful_fetch_json(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df):
+        with patch("apps.backend_api.app.routes.data.fetch_database_offline", return_value=sample_hm_df):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "HM_SLAG",
                 "preset": "last 3 days",
@@ -204,7 +204,7 @@ class TestOfflineFetch:
         assert body["meta"]["rows"] == len(sample_hm_df)
 
     def test_successful_fetch_csv(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df):
+        with patch("apps.backend_api.app.routes.data.fetch_database_offline", return_value=sample_hm_df):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "HM_SLAG",
                 "preset": "last 3 days",
@@ -214,7 +214,7 @@ class TestOfflineFetch:
         assert "text/csv" in resp.headers["content-type"]
 
     def test_empty_result_returns_204(self, client):
-        with patch("app.routes.data.fetch_database_offline", return_value=pd.DataFrame()):
+        with patch("apps.backend_api.app.routes.data.fetch_database_offline", return_value=pd.DataFrame()):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "DPR",
                 "preset": "last 1 day",
@@ -230,7 +230,7 @@ class TestOfflineFetch:
         assert resp.status_code == 422
 
     def test_offline_table_override_fetches_explicit_table(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df) as mocked:
+        with patch("apps.backend_api.app.routes.data.fetch_database_offline", return_value=sample_hm_df) as mocked:
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "RM_COMPOSITION",
                 "table_name": "sinter_chemistry",
@@ -242,7 +242,7 @@ class TestOfflineFetch:
         assert mocked.call_args.kwargs["table_name"] == "sinter_chemistry"
 
     def test_offline_combined_rm_metadata_lists_all_tables(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df):
+        with patch("apps.backend_api.app.routes.data.fetch_database_offline", return_value=sample_hm_df):
             resp = client.post("/data/offline/fetch", json={
                 "report_type": "RM_COMPOSITION",
                 "preset": "last 3 days",
@@ -253,7 +253,7 @@ class TestOfflineFetch:
         assert "plant_master.materials" in table_name
 
     def test_offline_burden_and_hopper_reports(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df):
+        with patch("apps.backend_api.app.routes.data.fetch_database_offline", return_value=sample_hm_df):
             burden = client.post("/data/offline/fetch", json={
                 "report_type": "BURDEN_DISTRIBUTION",
                 "preset": "last 3 days",
@@ -268,7 +268,7 @@ class TestOfflineFetch:
         assert hopper.json()["meta"]["table_name"] == "ops_config.hopper_raw_material_history"
 
     def test_rm_live_uses_offline_helper(self, client, sample_hm_df):
-        with patch("app.routes.data.fetch_database_offline", return_value=sample_hm_df) as mocked:
+        with patch("apps.backend_api.app.routes.data.fetch_database_offline", return_value=sample_hm_df) as mocked:
             resp = client.post("/data/rm/live", json={
                 "lookback_days": 3,
                 "format": "json",

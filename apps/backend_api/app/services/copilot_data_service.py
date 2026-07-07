@@ -7,11 +7,11 @@ from typing import Any
 
 import pandas as pd
 
-from app.api.v1.schemas.data import DataQueryRequest
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.services.copilot_safety_service import CopilotSafetyService, warning
-from app.services.serialization import dataframe_to_preview
+from apps.backend_api.app.api.v1.schemas.data import DataQueryRequest
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.copilot_safety_service import CopilotSafetyService, warning
+from apps.backend_api.app.services.serialization import dataframe_to_preview
 
 
 class CopilotDataService:
@@ -55,7 +55,7 @@ class CopilotDataService:
                 rows = (payload.get("filters") or {}).get("rows", [])
                 df = self.dataframe_from_input(rows)
             else:
-                from app.services import data_service
+                from apps.backend_api.app.services import data_service
 
                 query = DataQueryRequest(
                     source=source,

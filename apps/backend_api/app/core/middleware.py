@@ -10,7 +10,7 @@ from typing import Any
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-from app.services.redaction_service import redact_dict
+from apps.backend_api.app.services.redaction_service import redact_dict
 
 access_log = logging.getLogger("evonith.access")
 

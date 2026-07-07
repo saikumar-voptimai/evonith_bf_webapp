@@ -6,14 +6,16 @@ from datetime import date, timedelta
 import pandas as pd
 import pytest
 
-import data.ml.static_dataset_manager as manager_module
-from data.ml import static_csv
-from data.ml.static_dataset_manager import StaticDatasetManager
+import apps.frontend_streamlit.data.ml.static_dataset_manager as manager_module
+import furnace_data.dataset.static_csv as package_static_csv
+import furnace_data.dataset.static_dataset_manager as package_manager_module
+from apps.frontend_streamlit.data.ml import static_csv
+from apps.frontend_streamlit.data.ml.static_dataset_manager import StaticDatasetManager
 
 
 def _config(_: str) -> dict:
     return {
-        "DATA": "src/assets/data/furnace_dataset.csv",
+        "DATA": "runtime/datasets/static/furnace_dataset.csv",
         "ml_dataset": {"local_tz": "Asia/Kolkata"},
         "rename_dict": {
             "pellet_sio2_pct": "PELLET_PCT_SIO2",
@@ -75,6 +77,7 @@ def test_load_static_dataset_fetches_canonical_table_when_no_copy(
 
     monkeypatch.setattr(static_csv, "load_config", _config)
     monkeypatch.setattr(static_csv, "fetch_offline_data", fake_fetch)
+    monkeypatch.setattr(package_static_csv, "fetch_offline_data", fake_fetch)
     monkeypatch.setattr(
         static_csv,
         "_available_static_dataset_columns",
@@ -85,8 +88,20 @@ def test_load_static_dataset_fetches_canonical_table_when_no_copy(
             "coke__p01_rings",
         },
     )
+    monkeypatch.setattr(
+        package_static_csv,
+        "_available_static_dataset_columns",
+        lambda: {
+            "pellet_sio2_pct",
+            "weighted_coke_angle",
+            "coke__p01_angles",
+            "coke__p01_rings",
+        },
+    )
     monkeypatch.setattr(manager_module, "build_default_config", lambda: object())
     monkeypatch.setattr(manager_module, "DataCleaner", IdentityCleaner)
+    monkeypatch.setattr(package_manager_module, "build_default_config", lambda: object())
+    monkeypatch.setattr(package_manager_module, "DataCleaner", IdentityCleaner)
     static_csv.load_static_dataset.clear()
 
     csv_path = tmp_path / "missing.csv"
@@ -169,6 +184,16 @@ def test_static_dataset_manager_cleans_before_save(monkeypatch, tmp_path) -> Non
             return out
 
     monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: raw_df)
+    monkeypatch.setattr(
+        package_static_csv,
+        "_available_static_dataset_columns",
+        lambda: {
+            "pellet_sio2_pct",
+            "weighted_coke_angle",
+            "coke__p01_angles",
+            "coke__p01_rings",
+        },
+    )
     monkeypatch.setattr(manager_module, "build_default_config", lambda: object())
     monkeypatch.setattr(manager_module, "DataCleaner", FakeCleaner)
     monkeypatch.setattr(static_csv.load_static_dataset, "clear", lambda: None)
@@ -289,6 +314,16 @@ def test_static_dataset_delta_fills_missing_pci_quantity_rowwise(
     monkeypatch.setattr(
         "furnace_data.dataset.fetcher.DatasetFetcher",
         lambda: FakeFetcher(),
+    )
+    monkeypatch.setattr(
+        package_static_csv,
+        "_available_static_dataset_columns",
+        lambda: {
+            "pellet_sio2_pct",
+            "weighted_coke_angle",
+            "coke__p01_angles",
+            "coke__p01_rings",
+        },
     )
     monkeypatch.setattr(manager_module, "build_default_config", lambda: object())
     monkeypatch.setattr(manager_module, "DataCleaner", IdentityCleaner)

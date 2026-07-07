@@ -1,7 +1,7 @@
 """Shared data-access core for the Evonith BF2 platform.
 
 Provides a single entry point for InfluxDB, PostgreSQL, and static-CSV access
-used by the webapp and the furnace-data-service API.
+used by the webapp and canonical backend API.
 
 Sub-packages
 ------------

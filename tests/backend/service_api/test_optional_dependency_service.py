@@ -6,8 +6,8 @@ import importlib.machinery
 
 import pytest
 
-from app.core.errors import ApiError
-from app.services import optional_dependency_service as service
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services import optional_dependency_service as service
 
 
 def test_optional_dependency_service_available_missing_and_errors():

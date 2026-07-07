@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import sys
 
-from app.core.config import BackendSettings
-from app.services.dependency_status_service import DependencyStatusService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.services.dependency_status_service import DependencyStatusService
 
 
 def test_dependency_status_includes_profiles_and_optional_dependencies(monkeypatch):

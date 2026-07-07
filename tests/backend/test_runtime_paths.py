@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import inspect
+import ast
 
 from furnace_data import runtime_paths
 
@@ -77,4 +77,13 @@ def test_dataset_results_path_is_under_runtime_datasets(monkeypatch, tmp_path) -
 
 
 def test_runtime_paths_does_not_import_streamlit() -> None:
-    assert "streamlit" not in inspect.getsource(runtime_paths)
+    tree = ast.parse(runtime_paths.__loader__.get_source(runtime_paths.__name__))
+    imported_roots = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_roots.update(alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported_roots.add(str(node.module or "").split(".", 1)[0])
+
+    assert "streamlit" not in imported_roots
+

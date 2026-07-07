@@ -20,10 +20,10 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from config.frontend_settings import is_backend_api_enabled
-from services.api_errors import FrontendApiError
-from services.material_balance_api import run_material_balance
-from utils.session import is_logged_in
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
+from apps.frontend_streamlit.services.material_balance_api import run_material_balance
+from apps.frontend_streamlit.utils.session import is_logged_in
 
 # ── Auth gate ─────────────────────────────────────────────────────────
 if not is_logged_in():
@@ -76,12 +76,12 @@ if is_backend_api_enabled("material_balance"):
     st.stop()
 
 # ── Lazy imports (only after auth passes) ─────────────────────────────
-from utils.material_balance.compute import run_full_balance
-from utils.material_balance.data_sources import (
+from furnace_data.material_balance.compute import run_full_balance
+from furnace_data.material_balance.data_sources import (
     clear_day_caches,
     get_csv_date_range,
 )
-from utils.material_balance.dpr_mapping import (
+from furnace_data.material_balance.dpr_mapping import (
     ASH_ANALYSIS_FIELDS,
     ASH_MATERIAL_CONFIG_KEYS,
     CANONICAL_MASS_FIELDS,
@@ -92,7 +92,7 @@ from utils.material_balance.dpr_mapping import (
     save_ash_analyses,
     save_dpr_mapping,
 )
-from plotters.material_balance_plots import (
+from apps.frontend_streamlit.plotters.material_balance_plots import (
     build_furnace_diagram,
     build_per_element_bars,
     style_closure_table,

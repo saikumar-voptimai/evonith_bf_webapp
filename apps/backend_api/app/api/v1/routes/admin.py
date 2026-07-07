@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.api.v1.schemas.admin import (
+from apps.backend_api.app.api.v1.schemas.admin import (
     PasswordResetRequest,
     UserCreateRequest,
     UserUpdateRequest,
 )
-from app.api.v1.schemas.common import ApiMeta, ApiResponse
-from app.core.auth_dependencies import get_admin_service, require_admin_user
-from app.core.responses import get_request_id
-from app.services.admin_service import AdminService
+from apps.backend_api.app.api.v1.schemas.common import ApiMeta, ApiResponse
+from apps.backend_api.app.core.auth_dependencies import get_admin_service, require_admin_user
+from apps.backend_api.app.core.responses import get_request_id
+from apps.backend_api.app.services.admin_service import AdminService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 

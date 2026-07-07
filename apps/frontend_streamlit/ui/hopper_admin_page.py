@@ -10,7 +10,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from data.db import HopperConfigService
+from apps.frontend_streamlit.data.db import HopperConfigService
 
 
 class HopperAdminPage:

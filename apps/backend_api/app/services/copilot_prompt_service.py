@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.services.copilot_safety_service import CopilotSafetyService
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.services.copilot_safety_service import CopilotSafetyService
 
 _SYSTEM = (
     "You are Evonith BF AI Copilot. Give concise, operationally safe blast "

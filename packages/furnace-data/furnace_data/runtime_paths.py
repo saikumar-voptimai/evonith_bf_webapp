@@ -29,14 +29,17 @@ _RUNTIME_SUBDIRS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 
 def get_repo_root() -> Path:
-    """Return the repository root containing the application sources."""
+    """Return the repository root containing the canonical application sources."""
     current = Path(__file__).resolve()
+    canonical_markers = (
+        Path("apps") / "backend_api" / "app",
+        Path("apps") / "frontend_streamlit",
+        Path("packages") / "furnace-data" / "furnace_data",
+    )
     for candidate in current.parents:
-        if (
-            (candidate / ".git").exists()
-            or (candidate / "src").exists()
-            and (candidate / "furnace-data-service").exists()
-        ):
+        if (candidate / ".git").exists() and (candidate / "pyproject.toml").exists():
+            return candidate
+        if all((candidate / marker).exists() for marker in canonical_markers):
             return candidate
     return current.parents[2]
 

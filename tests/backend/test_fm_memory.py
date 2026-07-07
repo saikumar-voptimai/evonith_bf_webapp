@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agents.memory import fm_memory
+from apps.frontend_streamlit.agents.memory import fm_memory
 
 
 class FakeSummaryLLM:

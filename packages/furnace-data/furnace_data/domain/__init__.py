@@ -5,7 +5,7 @@ blast-furnace-specific aggregation logic (quadrant weighting, elevation
 grouping) that is independent of any UI framework.
 
 Visualisation-specific reshaping (contour matrix building, colour maps) remains
-in ``src/plotters/`` in the webapp.
+in ``apps/frontend_streamlit/plotters/`` in the webapp.
 
 Public API
 ----------

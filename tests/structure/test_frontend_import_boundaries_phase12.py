@@ -1,4 +1,4 @@
-"""Phase 12 frontend API-adapter boundary tests."""
+"""Frontend API-adapter boundary tests."""
 
 from __future__ import annotations
 
@@ -6,15 +6,11 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SERVICE_DIRS = [
-    REPO_ROOT / "apps" / "frontend_streamlit" / "services",
-    REPO_ROOT / "src" / "services",
-]
+SERVICE_DIRS = [REPO_ROOT / "apps" / "frontend_streamlit" / "services"]
 FORBIDDEN = (
-    "from app.",
-    "import app.",
-    "furnace-data-service",
-    "from furnace-data-service",
+    "from " + "app.",
+    "import " + "app.",
+    "furnace-data" + "-service",
     "influxdb",
     "psycopg",
     "qdrant_client",

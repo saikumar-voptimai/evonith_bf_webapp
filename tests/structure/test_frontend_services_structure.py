@@ -1,4 +1,4 @@
-"""Structure checks for canonical frontend services, config, UI, and shims."""
+"""Structure checks for canonical frontend services, config, and UI."""
 
 from __future__ import annotations
 
@@ -61,21 +61,17 @@ def _assert_no_forbidden_imports(
     roots: set[str],
     prefixes: set[str] | None = None,
 ) -> None:
-    service_dirs = [
-        REPO_ROOT / "apps" / "frontend_streamlit" / "services",
-        REPO_ROOT / "src" / "services",
-    ]
+    service_dir = REPO_ROOT / "apps" / "frontend_streamlit" / "services"
     prefixes = prefixes or set()
     failures: list[str] = []
-    for service_dir in service_dirs:
-        for module_name in SERVICE_MODULES:
-            path = service_dir / f"{module_name}.py"
-            for module in _imports(path):
-                root = module.split(".", 1)[0]
-                if root in roots:
-                    failures.append(f"{path.relative_to(REPO_ROOT)} imports {module}")
-                if any(module == prefix or module.startswith(f"{prefix}.") for prefix in prefixes):
-                    failures.append(f"{path.relative_to(REPO_ROOT)} imports {module}")
+    for module_name in SERVICE_MODULES:
+        path = service_dir / f"{module_name}.py"
+        for module in _imports(path):
+            root = module.split(".", 1)[0]
+            if root in roots:
+                failures.append(f"{path.relative_to(REPO_ROOT)} imports {module}")
+            if any(module == prefix or module.startswith(f"{prefix}.") for prefix in prefixes):
+                failures.append(f"{path.relative_to(REPO_ROOT)} imports {module}")
     assert failures == []
 
 
@@ -91,21 +87,9 @@ def test_canonical_frontend_services_import():
         assert module is not None
 
 
-def test_old_src_services_wrappers_import():
-    for module_name in SERVICE_MODULES:
-        module = importlib.import_module(f"src.services.{module_name}")
-        assert module is not None
-
-
 def test_canonical_config_imports():
     for module_name in CONFIG_MODULES:
         module = importlib.import_module(f"apps.frontend_streamlit.config.{module_name}")
-        assert module is not None
-
-
-def test_old_src_config_wrappers_import():
-    for module_name in CONFIG_MODULES:
-        module = importlib.import_module(f"src.config.{module_name}")
         assert module is not None
 
 
@@ -113,13 +97,6 @@ def test_canonical_ui_imports():
     _discard_incomplete_utils_session_stub()
     for module_name in UI_MODULES:
         module = importlib.import_module(f"apps.frontend_streamlit.ui.{module_name}")
-        assert module is not None
-
-
-def test_old_src_ui_wrappers_import():
-    _discard_incomplete_utils_session_stub()
-    for module_name in UI_MODULES:
-        module = importlib.import_module(f"src.ui.{module_name}")
         assert module is not None
 
 

@@ -13,9 +13,9 @@ from uuid import uuid4
 
 from starlette.requests import Request
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.repositories.feedback_repository import (
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.repositories.feedback_repository import (
     FeedbackAttachmentRecord,
     FeedbackRepository,
 )

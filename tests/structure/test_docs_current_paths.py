@@ -13,30 +13,9 @@ ACTIVE_DOC_ROOTS = [
     REPO_ROOT / "CLAUDE.md",
     REPO_ROOT / ".devcontainer" / "devcontainer.json",
 ]
-COMPATIBILITY_CONTEXT = {
-    "archive",
-    "compatibility",
-    "compatible",
-    "deprecated",
-    "fallback",
-    "legacy",
-    "migration",
-    "rollback",
-    "shim",
-    "temporary",
-}
-SRC_STORAGE_CONTEXT = {
-    "archive",
-    "cleanup",
-    "compatibility",
-    "fallback",
-    "legacy",
-    "migration",
-    "moved",
-    "old",
-    "removed",
-    "source",
-}
+LEGACY_NAME = "s" + "rc"
+LEGACY_RUNTIME_PATH = LEGACY_NAME + "/" + "storage"
+LEGACY_FRONTEND_COMMAND = "streamlit run " + LEGACY_NAME + "/" + "app.py"
 LEGACY_MIGRATION_CONTEXT = {
     "absence",
     "absent",
@@ -114,36 +93,23 @@ def test_active_docs_do_not_describe_legacy_migration_system_as_active() -> None
     assert _format(findings) == []
 
 
-def test_active_docs_do_not_describe_src_storage_as_runtime_path() -> None:
-    findings = [
-        match
-        for match in _find_lines(r"src/storage")
-        if match[0].relative_to(REPO_ROOT).as_posix()
-        != "docs/migration/post-phase-13-structure-cleanup-plan.md"
-        and not any(token in match[3] for token in SRC_STORAGE_CONTEXT)
-    ]
-
-    assert _format(findings) == []
+def test_active_docs_do_not_describe_removed_runtime_path() -> None:
+    assert _format(_find_lines(re.escape(LEGACY_RUNTIME_PATH))) == []
 
 
-def test_old_frontend_command_only_appears_in_compatibility_context() -> None:
-    findings = [
-        match
-        for match in _find_lines(r"streamlit run src/app\.py")
-        if not any(token in match[3] for token in COMPATIBILITY_CONTEXT)
-    ]
-
-    assert _format(findings) == []
+def test_active_docs_do_not_use_removed_frontend_command() -> None:
+    assert _format(_find_lines(re.escape(LEGACY_FRONTEND_COMMAND))) == []
 
 
-def test_primary_docs_do_not_use_legacy_frontend_command() -> None:
-    for relative in ("README.md", "docs/deployment/local-install-guide.md", "docs/deployment/local-staging-deployment-guide.md"):
+def test_primary_docs_use_canonical_frontend_command() -> None:
+    for relative in (
+        "README.md",
+        "docs/deployment/local-install-guide.md",
+        "docs/deployment/local-staging-deployment-guide.md",
+    ):
         text = _read(REPO_ROOT / relative)
-        canonical = text.find("apps/frontend_streamlit/app.py")
-        legacy = text.find("streamlit run src/app.py")
-        assert canonical != -1, relative
-        if legacy != -1:
-            assert canonical < legacy, relative
+        assert "apps/frontend_streamlit/app.py" in text, relative
+        assert LEGACY_FRONTEND_COMMAND not in text, relative
 
 
 def test_active_docs_do_not_contain_obvious_real_secret_values() -> None:

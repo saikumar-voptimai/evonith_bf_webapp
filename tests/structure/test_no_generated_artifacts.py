@@ -12,7 +12,6 @@ SOURCE_ROOTS = [
     REPO_ROOT / "apps",
     REPO_ROOT / "packages",
     REPO_ROOT / "src",
-    REPO_ROOT / "furnace-data-service",
     REPO_ROOT / "scripts",
 ]
 GENERATED_DB_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
@@ -130,3 +129,4 @@ def test_repository_structure_check_fails_on_fixture_with_generated_artifact(tmp
     assert result.returncode == 1
     assert "Generated/runtime artifact found under source folder" in result.stdout
     assert "apps" in result.stdout and "probe.db" in result.stdout
+

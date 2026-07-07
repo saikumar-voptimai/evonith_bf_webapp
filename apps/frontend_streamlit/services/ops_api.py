@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 try:
-    from services.api_client import ApiClient, get_api_client, unwrap_api_response
+    from apps.frontend_streamlit.services.api_client import ApiClient, get_api_client, unwrap_api_response
 except ModuleNotFoundError:  # pragma: no cover - repo-root import compatibility
-    from src.services.api_client import ApiClient, get_api_client, unwrap_api_response
+    from apps.frontend_streamlit.services.api_client import ApiClient, get_api_client, unwrap_api_response
 
 
 def _auth_headers(access_token: str | None) -> dict[str, str]:

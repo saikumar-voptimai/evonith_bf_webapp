@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.api.v1.schemas.compute_common import ComputeArtifact, ComputeWarning, TableData
+from apps.backend_api.app.api.v1.schemas.compute_common import ComputeArtifact, ComputeWarning, TableData
 
 
 class RecommendationRequest(BaseModel):

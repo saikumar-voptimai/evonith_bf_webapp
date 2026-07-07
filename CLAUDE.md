@@ -12,7 +12,7 @@ Evonith BF is an industrial Blast Furnace web application with three canonical P
 
 The backend exposes the FastAPI app at `apps.backend_api.app.main:app` and keeps `/api/v1` routes stable. The frontend entrypoint is `apps/frontend_streamlit/app.py`. Runtime-generated state belongs under `EVONITH_RUNTIME_DIR`, normally `./runtime` for local development.
 
-Compatibility shims still exist for old imports and rollback. Treat `src/app.py`, `src/services/*`, `src/config/*`, `src/ui/*`, `src/custom_pages/*`, `furnace-data-service/app/*`, and root `furnace_data/*` as temporary compatibility surfaces unless a task explicitly targets shim cleanup.
+The legacy frontend source folder, backend sidecar, and root shared-package shim have been removed. Use `apps/backend_api/app` for backend work, `apps/frontend_streamlit` for frontend work, and `packages/furnace-data/furnace_data` for shared-package source.
 
 ## Current Commands
 
@@ -49,18 +49,6 @@ uv run python scripts/check_backend_minimal_startup.py
 uv run python scripts/check_frontend_api_imports.py
 ```
 
-Temporary compatibility commands may be used only for rollback checks:
-
-```bash
-uv run streamlit run src/app.py
-```
-
-```bash
-cd furnace-data-service
-EVONITH_RUNTIME_DIR=../runtime \
-EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
-```
 
 ## Dependency Boundaries
 
@@ -78,8 +66,10 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
 
 ## Domain Notes
 
-BF2 key KPIs include fuel rate, coke rate, PCI rate, ETA CO, production rate, RAFT, permeability, total pressure drop, heat load, and temperature spread. Shifts are fixed IST windows: A 06:00-14:00, B 14:00-22:00, and C 22:00-06:00. The shared package and `src` direct-mode modules contain the current data mapping and domain logic.
+BF2 key KPIs include fuel rate, coke rate, PCI rate, ETA CO, production rate, RAFT, permeability, total pressure drop, heat load, and temperature spread. Shifts are fixed IST windows: A 06:00-14:00, B 14:00-22:00, and C 22:00-06:00. The shared package and canonical frontend modules contain the current data mapping and domain logic.
 
 ## Documentation Map
 
 Use `docs/README.md` as the active documentation index. Historical phase-by-phase notes are archived under `docs/archive/migration-history/` and should not be treated as current operational instructions.
+
+

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from services.api_errors import BackendUnavailableError
-from services.dataset_api import (
+from apps.frontend_streamlit.services.api_errors import BackendUnavailableError
+from apps.frontend_streamlit.services.dataset_api import (
     get_dataset_job,
     get_dataset_job_download_url,
     list_datasets,

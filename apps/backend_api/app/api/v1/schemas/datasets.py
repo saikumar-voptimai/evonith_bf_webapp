@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.api.v1.schemas.data import DataColumnInfo
+from apps.backend_api.app.api.v1.schemas.data import DataColumnInfo
 
 
 class DatasetInfo(BaseModel):

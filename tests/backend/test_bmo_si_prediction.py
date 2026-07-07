@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from utils.bmo.si_prediction import SiPredictionService, _base_feature_name
-from utils.bmo.types import OreChemistry, OreInput
+from furnace_data.bmo.utils.si_prediction import SiPredictionService, _base_feature_name
+from furnace_data.bmo.utils.types import OreChemistry, OreInput
 
 
 class TestBaseFeatureName:

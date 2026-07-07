@@ -29,12 +29,15 @@ def test_check_import_boundaries_script_passes_current_tree():
 
 
 def test_check_import_boundaries_script_detects_fake_violations(tmp_path):
-    backend = tmp_path / "furnace-data-service" / "app"
-    frontend = tmp_path / "src" / "services"
+    backend = tmp_path / "apps" / "backend_api" / "app"
+    frontend = tmp_path / "apps" / "frontend_streamlit" / "services"
     backend.mkdir(parents=True)
     frontend.mkdir(parents=True)
     (backend / "bad.py").write_text("import streamlit\n", encoding="utf-8")
-    (frontend / "bad_api.py").write_text("from app.main import app\n", encoding="utf-8")
+    (frontend / "bad_api.py").write_text("from " + "app.main import app\n", encoding="utf-8")
+    shim = tmp_path / "src" / "app.py"
+    shim.parent.mkdir(parents=True)
+    shim.write_text("from apps.frontend_streamlit.app import *\n", encoding="utf-8")
 
     result = _run("scripts/check_import_boundaries.py", "--root", str(tmp_path))
 
@@ -99,9 +102,9 @@ def os_environ_without_pytest_noise() -> dict[str, str]:
 
 
 def test_frontend_api_import_script_detects_fake_backend_import(tmp_path):
-    services = tmp_path / "src" / "services"
+    services = tmp_path / "apps" / "frontend_streamlit" / "services"
     services.mkdir(parents=True)
-    (services / "auth_api.py").write_text("from app.main import app\n", encoding="utf-8")
+    (services / "auth_api.py").write_text("from " + "app.main import app\n", encoding="utf-8")
 
     result = _run("scripts/check_frontend_api_imports.py", "--root", str(tmp_path))
 

@@ -5,10 +5,10 @@ from math import isclose
 
 import pandas as pd
 
-from reports.furnace_report.builder import ShiftBuilder
-from reports.furnace_report.data import ShiftRawData
-from reports.furnace_report.renderer import as_markdown
-from utils.shift_windows import shift_window
+from apps.frontend_streamlit.reports.furnace_report.builder import ShiftBuilder
+from apps.frontend_streamlit.reports.furnace_report.data import ShiftRawData
+from apps.frontend_streamlit.reports.furnace_report.renderer import as_markdown
+from apps.frontend_streamlit.utils.shift_windows import shift_window
 
 
 class TestShiftBuilder:

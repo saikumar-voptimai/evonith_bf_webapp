@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.api.v1.schemas.common import ApiMeta
+from apps.backend_api.app.api.v1.schemas.common import ApiMeta
 
 
 class HealthData(BaseModel):

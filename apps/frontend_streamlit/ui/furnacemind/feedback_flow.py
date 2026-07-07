@@ -12,7 +12,7 @@ from typing import Any
 
 import streamlit as st
 
-from utils.furnacemind.feedback_service import (
+from apps.frontend_streamlit.utils.furnacemind.feedback_service import (
     FurnaceMindFeedbackService,
     latest_assistant_exchange,
 )

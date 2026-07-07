@@ -15,9 +15,8 @@ os.environ.setdefault("INFLUX_OFFLINE_TOKEN", "test_offline_token")
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SERVICE_ROOT = REPO_ROOT / "furnace-data-service"
-if str(SERVICE_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVICE_ROOT))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import pandas as pd
 import pytest
@@ -82,16 +81,7 @@ def client():
     os.environ.setdefault("RESULTS_DIR", "/tmp/furnace_api_test_results")
     os.environ.setdefault("STATIC_DIR", "/tmp/furnace_api_test_static")
 
-    service_root_text = str(SERVICE_ROOT)
-    if service_root_text in sys.path:
-        sys.path.remove(service_root_text)
-    sys.path.insert(0, service_root_text)
 
-    loaded_app = sys.modules.get("app")
-    loaded_path = str(getattr(loaded_app, "__file__", "")) if loaded_app else ""
-    if loaded_path.endswith("src\\app.py") or loaded_path.endswith("src/app.py"):
-        del sys.modules["app"]
-
-    from app.main import app
+    from apps.backend_api.app.main import app
     with TestClient(app) as c:
         yield c

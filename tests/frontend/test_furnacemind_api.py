@@ -6,8 +6,8 @@ import io
 
 import pytest
 
-from services.api_errors import BackendUnavailableError
-from services import furnacemind_api
+from apps.frontend_streamlit.services.api_errors import BackendUnavailableError
+from apps.frontend_streamlit.services import furnacemind_api
 
 
 class FakeClient:

@@ -1,4 +1,4 @@
-# Edge Runtime Guide
+﻿# Edge Runtime Guide
 
 Edge deployments use conservative Raspberry Pi / NVIDIA Jetson style defaults and the canonical backend/frontend app locations.
 
@@ -54,14 +54,6 @@ EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
 uv run uvicorn apps.backend_api.app.main:app --host 0.0.0.0 --port 8080
 ```
 
-The old service-local backend command remains a temporary compatibility path:
-
-```bash
-cd furnace-data-service
-EVONITH_RUNTIME_DIR=../runtime \
-EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
-```
 
 ## Systemd Examples
 
@@ -82,3 +74,4 @@ These files are examples only and are not installed or enabled automatically.
 Optional AI/vector/local LLM features are disabled by default. Missing optional
 packages appear as unavailable in `/api/v1/status/dependencies` rather than
 breaking backend startup.
+

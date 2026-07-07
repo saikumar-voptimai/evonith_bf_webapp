@@ -10,20 +10,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from apps.frontend_streamlit._legacy import APP_ROOT, ensure_frontend_legacy_paths
-
-ensure_frontend_legacy_paths()
-
 import streamlit as st
+
+from apps.frontend_streamlit.config.page_registry import get_navigation_pages
+from apps.frontend_streamlit.ui.backend_status_badge import render_backend_status_badge
+from apps.frontend_streamlit.utils.logger import setup_logger
+from apps.frontend_streamlit.utils.session import is_logged_in
+from furnace_data.runtime_paths import ensure_runtime_dirs, get_runtime_dir
+
+APP_ROOT = Path(__file__).resolve().parent
 
 # Must be first Streamlit call.
 st.set_page_config(page_title="Manufacturing Dashboard", layout="wide")
-
-from config.page_registry import get_navigation_pages
-from furnace_data.runtime_paths import ensure_runtime_dirs, get_runtime_dir
-from ui.backend_status_badge import render_backend_status_badge
-from utils.logger import setup_logger
-from utils.session import is_logged_in
 
 
 def _page_path(relative_path: str) -> str:
@@ -46,7 +44,7 @@ if not st.session_state.get("_evonith_runtime_dir_logged"):
 # Authentication Gate
 # ------------------------------------------------------
 if not is_logged_in():
-    from ui.login_page import LoginPage  # lazy import avoids partial-module cache on rerun
+    from apps.frontend_streamlit.ui.login_page import LoginPage  # lazy import avoids partial-module cache on rerun
 
     # Hide sidebar completely during login.
     st.markdown(
@@ -76,4 +74,3 @@ pg = st.navigation(pages)
 
 # Run active page.
 pg.run()
-

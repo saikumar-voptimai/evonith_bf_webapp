@@ -2,9 +2,10 @@ from pathlib import Path
 
 import streamlit as st
 
-from config.frontend_settings import is_backend_api_enabled
-from services.api_errors import FrontendApiError
-from services.recommendations_api import run_recommendations
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
+from apps.frontend_streamlit.services.recommendations_api import run_recommendations
+from furnace_data.config import get_config_path
 
 
 def _api_token() -> str | None:
@@ -67,16 +68,16 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from config.config_loader import load_config
-from utils.recommendations.data import DataframesProcessor
-from utils.recommendations.llm import call_llm
-from utils.recommendations.optimiser import run_optimiser
-from utils.recommendations.bounds import load_control_bounds, save_control_bounds
-from utils.recommendations.prompts import prompt_recommendation_system
+from apps.frontend_streamlit.config.config_loader import load_config
+from apps.frontend_streamlit.utils.recommendations.data import DataframesProcessor
+from apps.frontend_streamlit.utils.recommendations.llm import call_llm
+from apps.frontend_streamlit.utils.recommendations.optimiser import run_optimiser
+from apps.frontend_streamlit.utils.recommendations.bounds import load_control_bounds, save_control_bounds
+from apps.frontend_streamlit.utils.recommendations.prompts import prompt_recommendation_system
 
 config = load_config()
 config_vsense = load_config("setting_vsense.yml")
-CONFIG_PATH = Path("src/config/setting_vsense.yml")
+CONFIG_PATH = get_config_path("setting_vsense.yml")
 
 # Load external CSS file
 css_path = (
@@ -84,7 +85,7 @@ css_path = (
 )
 
 # ── dataset auto-refresh ───────────────────────────────────────────────────
-from utils.dataset_refresher import get_version as _ds_get_version, maybe_refresh as _ds_maybe_refresh  # noqa: E402
+from apps.frontend_streamlit.utils.dataset_refresher import get_version as _ds_get_version, maybe_refresh as _ds_maybe_refresh  # noqa: E402
 
 if _ds_maybe_refresh(config):
     st.sidebar.caption("⏳ Refreshing dataset in background…")

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.repositories.furnacemind_conversation_repository import FurnaceMindConversationRepository
-from app.repositories.furnacemind_document_repository import FurnaceMindDocumentRepository
-from app.services.furnacemind_memory_service import FurnaceMindMemoryService
-from app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.repositories.furnacemind_conversation_repository import FurnaceMindConversationRepository
+from apps.backend_api.app.repositories.furnacemind_document_repository import FurnaceMindDocumentRepository
+from apps.backend_api.app.services.furnacemind_memory_service import FurnaceMindMemoryService
+from apps.backend_api.app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
 
 
 class FurnaceMindRetrievalService:

@@ -66,7 +66,6 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     service_dirs = [
         root / "apps" / "frontend_streamlit" / "services",
-        root / "src" / "services",
     ]
     failures: list[str] = []
 
@@ -77,21 +76,17 @@ def main(argv: list[str] | None = None) -> int:
                 for module in _scan_imports(path):
                     if module in FORBIDDEN_IMPORT_ROOTS:
                         failures.append(f"{path}: imports forbidden module {module}")
-                if "furnace-data-service" in path.read_text(encoding="utf-8", errors="ignore"):
-                    failures.append(f"{path}: references furnace-data-service path")
 
     if root == Path(__file__).resolve().parents[1]:
+        package_root = root / "packages" / "furnace-data"
         sys.path.insert(0, str(root))
-        sys.path.insert(0, str(root / "src"))
+        sys.path.insert(0, str(package_root))
         for adapter in ADAPTERS:
             try:
                 importlib.import_module(f"apps.frontend_streamlit.services.{adapter}")
             except Exception as exc:
                 failures.append(f"apps.frontend_streamlit.services.{adapter}: import failed: {exc}")
-            try:
-                importlib.import_module(f"services.{adapter}")
-            except Exception as exc:
-                failures.append(f"services.{adapter}: import failed: {exc}")
+
         loaded_forbidden = sorted(module for module in FORBIDDEN_IMPORT_ROOTS if module in sys.modules)
         if loaded_forbidden:
             failures.append(f"Forbidden modules loaded by frontend API adapters: {', '.join(loaded_forbidden)}")
@@ -107,3 +102,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

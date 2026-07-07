@@ -1,8 +1,7 @@
-"""Backend entrypoint and compatibility tests."""
+"""Canonical backend entrypoint tests."""
 
 from __future__ import annotations
 
-import importlib
 import os
 import subprocess
 import sys
@@ -13,7 +12,7 @@ from fastapi.testclient import TestClient
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SERVICE_ROOT = REPO_ROOT / "furnace-data-service"
+CANONICAL_BACKEND_APP = REPO_ROOT / "apps" / "backend_api" / "app"
 
 
 def test_canonical_backend_entrypoint_imports(monkeypatch, tmp_path):
@@ -44,39 +43,11 @@ def test_canonical_backend_health_endpoint(monkeypatch, tmp_path):
     assert response.status_code == 200
 
 
-def test_legacy_backend_entrypoint_reexports_canonical(monkeypatch, tmp_path):
-    monkeypatch.setenv("EVONITH_RUNTIME_DIR", str(tmp_path / "runtime"))
-    if str(SERVICE_ROOT) not in sys.path:
-        sys.path[:0] = [str(SERVICE_ROOT)]
-
-    canonical = importlib.import_module("apps.backend_api.app.main")
-    legacy = importlib.import_module("app.main")
-
-    assert legacy.app is canonical.app
-    assert legacy.create_app is canonical.create_app
-
-
-def test_legacy_backend_openapi_paths_match_canonical(monkeypatch, tmp_path):
-    monkeypatch.setenv("EVONITH_RUNTIME_DIR", str(tmp_path / "runtime"))
-    if str(SERVICE_ROOT) not in sys.path:
-        sys.path[:0] = [str(SERVICE_ROOT)]
-
-    canonical = importlib.import_module("apps.backend_api.app.main")
-    legacy = importlib.import_module("app.main")
-
-    assert set(legacy.app.openapi()["paths"]) == set(canonical.app.openapi()["paths"])
-
-
-def test_backend_canonical_and_compatibility_paths_do_not_import_streamlit():
-    backend_paths = [
-        REPO_ROOT / "apps" / "backend_api" / "app",
-        REPO_ROOT / "furnace-data-service" / "app",
-    ]
-    for backend_path in backend_paths:
-        for path in backend_path.rglob("*.py"):
-            text = path.read_text(encoding="utf-8", errors="ignore").lower()
-            assert "import streamlit" not in text
-            assert "from streamlit" not in text
+def test_canonical_backend_path_does_not_import_streamlit():
+    for path in CANONICAL_BACKEND_APP.rglob("*.py"):
+        text = path.read_text(encoding="utf-8", errors="ignore").lower()
+        assert "import streamlit" not in text
+        assert "from streamlit" not in text
 
 
 def test_backend_import_does_not_require_optional_runtime_dependencies(tmp_path):

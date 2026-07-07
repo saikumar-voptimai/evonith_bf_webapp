@@ -4,10 +4,10 @@ from datetime import date
 
 import pandas as pd
 
-from reports.furnace_report.builder import ShiftBuilder
-from reports.furnace_report.data import ShiftRawData
-from reports.furnace_report.fetcher import _total_o2_flow_window
-from reports.furnace_report.timeframe import get_report_timeframe
+from apps.frontend_streamlit.reports.furnace_report.builder import ShiftBuilder
+from apps.frontend_streamlit.reports.furnace_report.data import ShiftRawData
+from apps.frontend_streamlit.reports.furnace_report.fetcher import _total_o2_flow_window
+from apps.frontend_streamlit.reports.furnace_report.timeframe import get_report_timeframe
 
 
 def test_shift_timeframe_preserves_configured_shift_window() -> None:

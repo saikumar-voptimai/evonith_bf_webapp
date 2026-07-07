@@ -7,12 +7,12 @@ and session state initialisation via :func:`~utils.session.login_user`.
 # # ui/login_page.py
 import streamlit as st
 
-from config.frontend_settings import is_backend_api_enabled
-from data.db import UserDataService
-from domain.auth_service import AuthService
-from services.api_errors import BackendApiHTTPError, FrontendApiError
-from services.auth_api import login as backend_login
-from utils.session import login_user
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
+from apps.frontend_streamlit.data.db import UserDataService
+from apps.frontend_streamlit.domain.auth_service import AuthService
+from apps.frontend_streamlit.services.api_errors import BackendApiHTTPError, FrontendApiError
+from apps.frontend_streamlit.services.auth_api import login as backend_login
+from apps.frontend_streamlit.utils.session import login_user
 
 
 class LoginPage:

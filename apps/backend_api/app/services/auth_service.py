@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.core.rbac import permissions_for_role
-from app.repositories.user_repository import UserRecord, UserRepository
-from app.services.password_service import (
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.core.rbac import permissions_for_role
+from apps.backend_api.app.repositories.user_repository import UserRecord, UserRepository
+from apps.backend_api.app.services.password_service import (
     PasswordConfigurationError,
     PasswordService,
     PasswordValidationError,
 )
-from app.services.token_service import TokenError, TokenService
+from apps.backend_api.app.services.token_service import TokenError, TokenService
 
 
 class AuthService:

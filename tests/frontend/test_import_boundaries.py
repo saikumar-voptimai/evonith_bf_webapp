@@ -25,15 +25,12 @@ def test_frontend_api_modules_do_not_import_backend_internals():
     ]
     files = [
         *(REPO_ROOT / "apps" / "frontend_streamlit" / "services" / name for name in service_names),
-        *(REPO_ROOT / "src" / "services" / name for name in service_names),
         REPO_ROOT / "apps" / "frontend_streamlit" / "config" / "frontend_settings.py",
-        REPO_ROOT / "src" / "config" / "frontend_settings.py",
     ]
     forbidden = (
-        "from app.",
-        "import app.",
-        "furnace-data-service",
-        "from furnace-data-service",
+        "from " + "app.",
+        "import " + "app.",
+        "furnace-data" + "-service",
         "influxdb",
         "psycopg",
     )
@@ -57,7 +54,8 @@ def test_frontend_api_modules_do_not_import_backend_internals():
 
 
 def test_backend_app_does_not_import_streamlit():
-    for path in (REPO_ROOT / "furnace-data-service" / "app").rglob("*.py"):
+    for path in (REPO_ROOT / "apps" / "backend_api" / "app").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         assert "import streamlit" not in text
         assert "from streamlit" not in text
+

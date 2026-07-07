@@ -5,12 +5,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
 
-from app.api.v1.schemas.common import ApiMeta, ApiResponse
-from app.api.v1.schemas.data import DataExportRequest, DataQueryRequest
-from app.core.errors import ApiError
-from app.core.responses import get_request_id
-from app.services import data_service
-from app.services.artifact_service import get_artifact_metadata, get_artifact_path
+from apps.backend_api.app.api.v1.schemas.common import ApiMeta, ApiResponse
+from apps.backend_api.app.api.v1.schemas.data import DataExportRequest, DataQueryRequest
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.core.responses import get_request_id
+from apps.backend_api.app.services import data_service
+from apps.backend_api.app.services.artifact_service import get_artifact_metadata, get_artifact_path
 
 router = APIRouter(prefix="/data", tags=["data"])
 

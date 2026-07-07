@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import sys
 
-from app.core.config import BackendSettings
-from app.core.errors import ApiError
-from app.services.copilot_llm_service import CopilotLLMService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.copilot_llm_service import CopilotLLMService
 
 
 def test_copilot_llm_disabled_returns_structured_error():

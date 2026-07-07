@@ -1,11 +1,6 @@
 """Unified BaseDataFetcher for InfluxDB v3 (flight protocol).
 
-This is the single authoritative implementation, merging:
-- ``src/data/fetchers/base_data_fetcher.py``  (webapp, richer — wins)
-- ``ml_dataset_core/influx_client.py``         (API core, subset)
-
-Both callers now import from here.  The webapp ``src/data/fetchers/`` shim
-re-exports this class so existing import paths are not broken immediately.
+This is the single authoritative implementation used by the canonical app and backend.
 """
 
 from __future__ import annotations
@@ -93,7 +88,7 @@ class BaseDataFetcher:
             recent_data_of: One of the preset keys in :data:`TIMEDELTAS`
                 (e.g. ``"last 8 hours"``), ``"over selected range"`` (requires
                 *start_time* and *end_time*), or ``"live"`` (raises
-                :class:`NotImplementedError` — subclass override needed).
+                :class:`NotImplementedError` â€” subclass override needed).
             start_time:  UTC-aware start time (required for ``"over selected range"``).
             end_time:    UTC-aware end time (required for ``"over selected range"``).
             request_type: InfluxQL query type; see :func:`~furnace_data.influx.query.query_builder`.

@@ -8,8 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
 from furnace_data.runtime_paths import get_runtime_dir
 
 _SENSITIVE_KEY_RE = re.compile(

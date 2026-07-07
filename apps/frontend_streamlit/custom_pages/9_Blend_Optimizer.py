@@ -21,9 +21,9 @@ import streamlit as st
 
 log = logging.getLogger(__name__)
 
-from config.frontend_settings import is_backend_api_enabled
-from services.api_errors import FrontendApiError
-from services.blend_optimizer_api import get_blend_optimizer_context, optimize_blend
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
+from apps.frontend_streamlit.services.blend_optimizer_api import get_blend_optimizer_context, optimize_blend
 
 
 def _api_token() -> str | None:
@@ -68,21 +68,22 @@ if is_backend_api_enabled("blend_optimizer"):
     _render_api_mode()
     st.stop()
 
-from config.config_loader import load_config
-from data.bmo import EvonithBmoContextProvider
-from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
-from data.bmo.ore_editor_preferences import (
+from apps.frontend_streamlit.config.config_loader import load_config
+from furnace_data.bmo.data import EvonithBmoContextProvider
+from furnace_data.bmo.data.basicity_defaults import derive_basicity_bounds_from_static_dataset
+from furnace_data.bmo.data.ore_editor_preferences import (
     apply_model_input_preferences,
     apply_ore_editor_preferences,
     load_ore_editor_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
 )
-from data.ml.static_dataset_manager import StaticDatasetManager
-from domain.optimization_runtime import build_runtime_config
+from furnace_data.dataset.static_dataset_manager import StaticDatasetManager
+from furnace_data.optimization_runtime import build_runtime_config
+from furnace_data.config import get_config_path
 from furnace_data.runtime_paths import runtime_path
-from ui.streamlit_fragments import fragment, rerun_fragment
-from ui.bmo import (
+from apps.frontend_streamlit.ui.streamlit_fragments import fragment, rerun_fragment
+from apps.frontend_streamlit.ui.bmo import (
     apply_bmo_styles,
     build_dust_editor_df,
     build_flux_editor_df,
@@ -100,7 +101,7 @@ from ui.bmo import (
     render_slag_balance_details,
     render_slag_balance_settings,
 )
-from utils.bmo import (
+from furnace_data.bmo.utils import (
     DustInput,
     FluxInput,
     FuelAshInput,
@@ -111,17 +112,17 @@ from utils.bmo import (
     run_nonlinear_optimizer,
     validate_selected_pellet_inputs,
 )
-from ui.bmo.editor_inputs import (
+from apps.frontend_streamlit.ui.bmo.editor_inputs import (
     dust_inputs_from_editor,
     float_from_row,
     flux_inputs_from_editor,
     fuel_ash_inputs_from_editor,
     slag_balance_settings_from_editor,
 )
-from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
-from utils.bmo.si_prediction import SiPredictionService
-from utils.bmo.fuel_rates import get_recent_fuel_input_rates
-from utils.session import is_logged_in
+from furnace_data.bmo.utils.fuel_prediction import evaluate_blend_with_fuel_prediction
+from furnace_data.bmo.utils.si_prediction import SiPredictionService
+from furnace_data.bmo.utils.fuel_rates import get_recent_fuel_input_rates
+from apps.frontend_streamlit.utils.session import is_logged_in
 
 if not is_logged_in():
     st.warning("Please log in to access this page.")
@@ -155,7 +156,7 @@ def _get_bmo_config() -> dict[str, Any]:
          - return dict[str, Any] - BMO configuration dictionary.
     """
 
-    config_path = Path(__file__).resolve().parents[1] / "config" / "setting_bmo.yml"
+    config_path = get_config_path("setting_bmo.yml")
     try:
         mtime_ns = config_path.stat().st_mtime_ns
     except OSError:
@@ -173,9 +174,9 @@ def _repo_path(path_str: str) -> Path:
 def _ore_preferences_path(bmo_cfg: dict[str, Any]) -> Path:
     ui_cfg = bmo_cfg.get("ui", {}) or {}
     configured_path = str(
-        ui_cfg.get("ore_editor_preferences_path", "src/config/bmo_operator_inputs.yml")
+        ui_cfg.get("ore_editor_preferences_path", "bmo_operator_inputs.yml")
     )
-    if configured_path.replace("\\", "/") == "src/config/bmo_operator_inputs.yml":
+    if Path(configured_path).name == "bmo_operator_inputs.yml":
         return runtime_path("cache", "bmo_operator_inputs.yml")
     return _repo_path(configured_path)
 
@@ -196,10 +197,7 @@ def _get_context_provider() -> EvonithBmoContextProvider:
          - return EvonithBmoContextProvider - Cached stock, chemistry, and history provider.
     """
 
-    return EvonithBmoContextProvider(
-        setting_path="src/config/setting_bmo.yml",
-        mapping_path="src/config/bmo_ore_mapping.yml",
-    )
+    return EvonithBmoContextProvider()
 
 
 def _static_dataset_manager(bmo_cfg: dict[str, Any]) -> StaticDatasetManager:

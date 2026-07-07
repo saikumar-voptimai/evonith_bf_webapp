@@ -3,8 +3,8 @@ from io import BytesIO
 
 from PIL import Image
 
-from reports.rendering import ReportDocument, ReportSection
-from ui.components import (
+from apps.frontend_streamlit.reports.rendering import ReportDocument, ReportSection
+from apps.frontend_streamlit.ui.components import (
     ReportTableImageRenderer,
     _extract_report_tables,
     _report_tables_png,

@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
 from furnace_data.runtime_paths import get_runtime_dir, runtime_path
 
 _EXPECTED_DIRS = (

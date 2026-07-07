@@ -1,7 +1,7 @@
-"""Copy legacy runtime artifacts into EVONITH_RUNTIME_DIR.
+"""Copy supported legacy runtime artifacts into EVONITH_RUNTIME_DIR.
 
-The script is intentionally non-destructive: it never deletes source files and
-skips existing targets unless ``--overwrite`` is supplied.
+Source-folder runtime artifacts were removed during repository cleanup. This
+script remains non-destructive and can host future non-source migration mappings.
 """
 
 from __future__ import annotations
@@ -13,17 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "furnace_data"))
-
-from furnace_data.runtime_paths import (  # noqa: E402
-    get_cache_dir,
-    get_dataset_results_dir,
-    get_dataset_static_dir,
-    get_feedback_db_path,
-    get_feedback_upload_dir,
-    get_logs_dir,
-    runtime_path,
-)
+PACKAGE_ROOT = REPO_ROOT / "packages" / "furnace-data"
+for path in (str(PACKAGE_ROOT), str(REPO_ROOT)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 
 @dataclass(frozen=True)
@@ -33,36 +26,8 @@ class CopyMapping:
     kind: str
 
 
-def _file(source: str, target: Path) -> CopyMapping:
-    return CopyMapping(REPO_ROOT / source, target, "file")
-
-
-def _dir(source: str, target: Path) -> CopyMapping:
-    return CopyMapping(REPO_ROOT / source, target, "dir")
-
-
 def _mappings() -> list[CopyMapping]:
-    cache_dir = get_cache_dir()
-    return [
-        _file("src/storage/feedback/tickets.db", get_feedback_db_path()),
-        _dir("src/storage/feedback/images", get_feedback_upload_dir()),
-        _dir("furnace-data-service/data/results", get_dataset_results_dir()),
-        _dir("furnace-data-service/data/static", get_dataset_static_dir()),
-        _file("src/storage/shift_summaries.json", cache_dir / "shift_summaries.json"),
-        _file("src/storage/daily_summaries.json", cache_dir / "daily_summaries.json"),
-        _file("src/storage/weekly_summaries.json", cache_dir / "weekly_summaries.json"),
-        _file(
-            "src/storage/biweekly_summaries.json",
-            cache_dir / "biweekly_summaries.json",
-        ),
-        _file("src/assets/data/control_bounds.json", cache_dir / "control_bounds.json"),
-        _file("src/config/bmo_operator_inputs.yml", cache_dir / "bmo_operator_inputs.yml"),
-        _dir(
-            "src/storage/furnacemind/mrag_images",
-            runtime_path("uploads", "furnacemind", "mrag_images"),
-        ),
-        _file("src/agents/tool_errors.md", get_logs_dir() / "tool_errors.md"),
-    ]
+    return []
 
 
 def _iter_files(mapping: CopyMapping) -> list[tuple[Path, Path]]:
@@ -102,17 +67,12 @@ def copy_runtime_files(*, dry_run: bool, overwrite: bool) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="Print actions only.")
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Replace targets that already exist.",
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Print planned copies without writing files.")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing runtime files.")
     args = parser.parse_args()
-
-    count = copy_runtime_files(dry_run=args.dry_run, overwrite=args.overwrite)
+    copied = copy_runtime_files(dry_run=args.dry_run, overwrite=args.overwrite)
     verb = "would copy" if args.dry_run else "copied"
-    print(f"{count} file(s) {verb}.")
+    print(f"{verb} {copied} file(s)")
 
 
 if __name__ == "__main__":

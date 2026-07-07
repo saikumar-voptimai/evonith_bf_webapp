@@ -6,12 +6,12 @@ from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
-from app.core.errors import ApiError
-from app.core.rbac import ALL_PERMISSIONS, roles_payload
-from app.repositories.admin_repository import AdminRepository
-from app.repositories.user_repository import UserRecord
-from app.services.auth_service import AuthService
-from app.services.password_service import (
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.core.rbac import ALL_PERMISSIONS, roles_payload
+from apps.backend_api.app.repositories.admin_repository import AdminRepository
+from apps.backend_api.app.repositories.user_repository import UserRecord
+from apps.backend_api.app.services.auth_service import AuthService
+from apps.backend_api.app.services.password_service import (
     PasswordConfigurationError,
     PasswordService,
     PasswordValidationError,

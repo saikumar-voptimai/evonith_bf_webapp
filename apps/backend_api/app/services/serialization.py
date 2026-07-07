@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.api.v1.schemas.data import DataColumnInfo
+from apps.backend_api.app.api.v1.schemas.data import DataColumnInfo
 
 
 def _json_safe(value: Any) -> Any:

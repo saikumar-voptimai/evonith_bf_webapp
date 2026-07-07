@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from services import blend_optimizer_api
+from apps.frontend_streamlit.services import blend_optimizer_api
 
 
 class FakeClient:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.repositories.user_repository import UserRepository
+from apps.backend_api.app.repositories.user_repository import UserRepository
 
 
 class AdminRepository(UserRepository):

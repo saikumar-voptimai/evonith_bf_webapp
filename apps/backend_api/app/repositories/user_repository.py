@@ -11,7 +11,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.rbac import normalize_role
+from apps.backend_api.app.core.rbac import normalize_role
 from furnace_data.relational import (
     User,
     UserRoleAssignment,

@@ -4,9 +4,9 @@ from datetime import date
 
 import streamlit as st
 
-from reports.rendering import ReportDocument
-from reports.furnace_report.timeframe import REPORT_TYPES, get_report_timeframe
-from ui.components import show_report_document
+from apps.frontend_streamlit.reports.rendering import ReportDocument
+from apps.frontend_streamlit.reports.furnace_report.timeframe import REPORT_TYPES, get_report_timeframe
+from apps.frontend_streamlit.ui.components import show_report_document
 
 _LAST_REPORT_KEY = "furnacemind_last_report"
 
@@ -36,8 +36,8 @@ def _run_live_report(
     status_box,
 ) -> ReportDocument:
     """Fetch live report data and return the structured document."""
-    from agents.llm.llm_client import OpenRouterClient
-    from reports.furnace_report import ShiftReportService
+    from apps.frontend_streamlit.agents.llm.llm_client import OpenRouterClient
+    from apps.frontend_streamlit.reports.furnace_report import ShiftReportService
 
     status_box.status(f"Fetching {report_type.lower()} data...", expanded=False)
     _, document = ShiftReportService(llm_client=OpenRouterClient()).generate_document(

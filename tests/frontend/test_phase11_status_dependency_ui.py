@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from config.frontend_settings import load_frontend_settings
-from services import status_api
+from apps.frontend_streamlit.config.frontend_settings import load_frontend_settings
+from apps.frontend_streamlit.services import status_api
 
 
 class FakeClient:
@@ -49,8 +49,8 @@ def test_advanced_dependency_details_are_hidden_by_default(monkeypatch):
 def test_frontend_api_adapters_do_not_load_backend_or_heavy_modules():
     repo_root = Path(__file__).resolve().parents[2]
     forbidden = {
-        "from app.",
-        "import app.",
+        "from " + "app.",
+        "import " + "app.",
         "furnace_data",
         "qdrant_client",
         "openai",
@@ -69,3 +69,4 @@ def test_frontend_api_adapters_do_not_load_backend_or_heavy_modules():
         for path in service_dir.glob("*_api.py"):
             text = path.read_text(encoding="utf-8").lower()
             assert not any(pattern in text for pattern in forbidden)
+

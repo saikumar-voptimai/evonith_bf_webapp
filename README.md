@@ -1,6 +1,6 @@
 # Evonith BF Webapp
 
-Evonith BF is a Blast Furnace intelligence web application with a FastAPI backend, a Streamlit frontend, and a shared furnace data/domain package. The repository has been restructured into canonical app and package paths while keeping temporary compatibility shims for rollback and direct-mode fallback.
+Evonith BF is a Blast Furnace intelligence web application with a FastAPI backend, a Streamlit frontend, and a shared furnace data/domain package. The repository has been restructured into canonical app and package paths.
 
 ## Current Architecture
 
@@ -49,18 +49,6 @@ BACKEND_API_BASE_URL=http://localhost:8080/api/v1 \
 uv run streamlit run apps/frontend_streamlit/app.py
 ```
 
-Temporary compatibility commands remain available for rollback only:
-
-```bash
-uv run streamlit run src/app.py
-```
-
-```bash
-cd furnace-data-service
-EVONITH_RUNTIME_DIR=../runtime \
-EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
-```
 
 ## Dependency Profiles
 
@@ -123,4 +111,6 @@ Generated files, uploads, SQLite databases, caches, logs, and exported artifacts
 
 ## Compatibility Cleanup Note
 
-Direct-mode fallback, legacy routes, `src` wrappers, `furnace-data-service` backend shims, and root `furnace_data` import shims are temporary compatibility surfaces. Prompt 11 reduced `furnace-data-service/app` to shim-only files and root `furnace_data` to import shims, but active direct-mode modules under `src/data`, `src/domain`, `src/utils`, `src/agents`, `src/reports`, `src/plotters`, and `src/geometries` remain intentionally retained. Remove them only in a later deprecation phase with regression coverage.
+Direct-mode fallback and legacy API routes remain covered through canonical app and package modules. The legacy frontend source folder, backend sidecar, and root shared-package shim have been removed.
+
+

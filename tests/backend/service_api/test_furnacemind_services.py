@@ -1,4 +1,4 @@
-﻿"""Tests for FurnaceMind service components."""
+"""Tests for FurnaceMind service components."""
 
 from __future__ import annotations
 
@@ -6,21 +6,21 @@ import sys
 
 import pytest
 
-from app.core.config import BackendSettings
-from app.core.errors import ApiError
-from app.repositories.furnacemind_conversation_repository import FurnaceMindConversationRepository
-from app.repositories.furnacemind_document_repository import FurnaceMindDocumentRepository
-from app.repositories.furnacemind_run_repository import FurnaceMindRunRepository
-from app.services.furnacemind_document_service import FurnaceMindDocumentService, ParsedDocumentUpload
-from app.services.furnacemind_event_service import FurnaceMindEventService
-from app.services.furnacemind_llm_service import FurnaceMindLLMService
-from app.services.furnacemind_memory_service import FurnaceMindMemoryService
-from app.services.furnacemind_prompt_service import FurnaceMindPromptService
-from app.services.furnacemind_retrieval_service import FurnaceMindRetrievalService
-from app.services.furnacemind_safety_service import FurnaceMindSafetyService
-from app.services.furnacemind_service import FurnaceMindService
-from app.services.furnacemind_tool_executor import FurnaceMindToolExecutor
-from app.services.furnacemind_tool_registry import FurnaceMindToolRegistry
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.repositories.furnacemind_conversation_repository import FurnaceMindConversationRepository
+from apps.backend_api.app.repositories.furnacemind_document_repository import FurnaceMindDocumentRepository
+from apps.backend_api.app.repositories.furnacemind_run_repository import FurnaceMindRunRepository
+from apps.backend_api.app.services.furnacemind_document_service import FurnaceMindDocumentService, ParsedDocumentUpload
+from apps.backend_api.app.services.furnacemind_event_service import FurnaceMindEventService
+from apps.backend_api.app.services.furnacemind_llm_service import FurnaceMindLLMService
+from apps.backend_api.app.services.furnacemind_memory_service import FurnaceMindMemoryService
+from apps.backend_api.app.services.furnacemind_prompt_service import FurnaceMindPromptService
+from apps.backend_api.app.services.furnacemind_retrieval_service import FurnaceMindRetrievalService
+from apps.backend_api.app.services.furnacemind_safety_service import FurnaceMindSafetyService
+from apps.backend_api.app.services.furnacemind_service import FurnaceMindService
+from apps.backend_api.app.services.furnacemind_tool_executor import FurnaceMindToolExecutor
+from apps.backend_api.app.services.furnacemind_tool_registry import FurnaceMindToolRegistry
 
 
 def _settings(tmp_path, **overrides):

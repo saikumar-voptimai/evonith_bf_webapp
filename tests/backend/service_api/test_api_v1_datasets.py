@@ -14,7 +14,7 @@ def test_list_datasets_returns_wrapped_response(client):
 
 
 def test_preview_dataset_returns_capped_rows(monkeypatch, client):
-    from app.services import dataset_service
+    from apps.backend_api.app.services import dataset_service
 
     monkeypatch.setenv("DATA_API_MAX_PREVIEW_ROWS", "2")
     monkeypatch.setattr(
@@ -39,7 +39,7 @@ def test_missing_dataset_returns_structured_error(client):
 
 
 def test_refresh_dataset_returns_job_id(monkeypatch, client):
-    from app.services import dataset_service
+    from apps.backend_api.app.services import dataset_service
 
     monkeypatch.setattr(dataset_service.job_service, "run_background", lambda job, fn: None)
 
@@ -52,7 +52,7 @@ def test_refresh_dataset_returns_job_id(monkeypatch, client):
 
 
 def test_get_dataset_job_status(monkeypatch, client):
-    from app.services import dataset_service
+    from apps.backend_api.app.services import dataset_service
 
     job = dataset_service.job_service.create_job("Queued")
     dataset_service.job_service.update_job(job.job_id, status="failed", error_code="DATASET_JOB_FAILED")

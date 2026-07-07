@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
-from agents.furnacemind.skill_registry import SkillRegistry
+from apps.frontend_streamlit.agents.furnacemind.skill_registry import SkillRegistry
 
 
 class FakeEngine:

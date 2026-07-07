@@ -12,8 +12,8 @@ import seaborn as sns
 import streamlit as st
 from dotenv import load_dotenv
 
-from config.config_loader import load_config
-from config.frontend_settings import is_backend_api_enabled
+from apps.frontend_streamlit.config.config_loader import load_config
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
 from furnace_data.influx.online import fetch_online_df
 from furnace_data.offline import (
     OFFLINE_REPORT_MAP as OFFLINE_DATABASE_REPORT_MAP,
@@ -22,13 +22,13 @@ from furnace_data.offline import (
     fetch_offline_report as fetch_database_report,
 )
 from furnace_data.dataset.fetcher import DatasetFetcher as MlDatasetFetcher
-from data.fetch_presets import OFFLINE_REPORT_LABEL_MAP, offline_table_label
-from data.ml.static_csv import get_static_dataset_path, load_static_dataset
-from data.ml.static_dataset_manager import StaticDatasetManager
-from services.api_errors import FrontendApiError
-from services.data_api import preview_data as preview_data_api
-from services.dataset_api import refresh_dataset as refresh_dataset_api
-from utils.dataset_refresher import maybe_refresh
+from apps.frontend_streamlit.data.fetch_presets import OFFLINE_REPORT_LABEL_MAP, offline_table_label
+from furnace_data.dataset.static_csv import get_static_dataset_path, load_static_dataset
+from furnace_data.dataset.static_dataset_manager import StaticDatasetManager
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
+from apps.frontend_streamlit.services.data_api import preview_data as preview_data_api
+from apps.frontend_streamlit.services.dataset_api import refresh_dataset as refresh_dataset_api
+from apps.frontend_streamlit.utils.dataset_refresher import maybe_refresh
 
 config = load_config("setting_ds_dv.yml")  # Load the configuration file
 config_vsense = load_config("setting_vsense.yml")
@@ -802,7 +802,7 @@ with right_col:
                         with st.spinner("Rebuilding cleaned static dataset…"):
                             _full_df = sm.update_static()
                             sm.save(_full_df)
-                            from data.ml.static_csv import update_cutoff_date
+                            from furnace_data.dataset.static_csv import update_cutoff_date
                             update_cutoff_date(_ext_end)
                         st.session_state["static_ml_dataset_df"] = _full_df
                         st.success(
@@ -874,7 +874,7 @@ with right_col:
                     with st.spinner("Rebuilding cleaned static dataset…"):
                         _full_df = sm.update_static()
                         sm.save(_full_df)
-                        from data.ml.static_csv import update_cutoff_date
+                        from furnace_data.dataset.static_csv import update_cutoff_date
                         update_cutoff_date(_ovr_end)
                     st.session_state["static_ml_dataset_df"] = _full_df
                     st.success(

@@ -5,7 +5,7 @@ Individual helpers are also available for targeted injection.
 
 Usage::
 
-    from ui.styles import apply_styles
+    from apps.frontend_streamlit.ui.styles import apply_styles
     apply_styles()
 """
 

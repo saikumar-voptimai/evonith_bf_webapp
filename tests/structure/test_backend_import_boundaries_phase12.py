@@ -11,7 +11,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_DIRS = [
     REPO_ROOT / "apps" / "backend_api" / "app",
-    REPO_ROOT / "furnace-data-service" / "app",
 ]
 
 
@@ -47,3 +46,4 @@ def test_canonical_backend_import_does_not_load_streamlit(monkeypatch, tmp_path)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip().splitlines()[-1] == "False"
+

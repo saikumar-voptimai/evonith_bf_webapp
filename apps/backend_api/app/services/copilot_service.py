@@ -6,16 +6,16 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.services.compute_artifact_service import ComputeArtifactService
-from app.services.compute_job_service import compute_job_service
-from app.services.copilot_anomaly_service import CopilotAnomalyService
-from app.services.copilot_context_service import CopilotContextService
-from app.services.copilot_data_service import CopilotDataService
-from app.services.copilot_llm_service import CopilotLLMService
-from app.services.copilot_prompt_service import CopilotPromptService
-from app.services.copilot_safety_service import CopilotSafetyService, warning
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.compute_artifact_service import ComputeArtifactService
+from apps.backend_api.app.services.compute_job_service import compute_job_service
+from apps.backend_api.app.services.copilot_anomaly_service import CopilotAnomalyService
+from apps.backend_api.app.services.copilot_context_service import CopilotContextService
+from apps.backend_api.app.services.copilot_data_service import CopilotDataService
+from apps.backend_api.app.services.copilot_llm_service import CopilotLLMService
+from apps.backend_api.app.services.copilot_prompt_service import CopilotPromptService
+from apps.backend_api.app.services.copilot_safety_service import CopilotSafetyService, warning
 
 log = logging.getLogger(__name__)
 

@@ -10,9 +10,8 @@ from fastapi.testclient import TestClient
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SERVICE_ROOT = REPO_ROOT / "furnace-data-service"
 INTEGRATION_ROOT = REPO_ROOT / "tests" / "integration"
-for path in (str(SERVICE_ROOT), str(REPO_ROOT), str(INTEGRATION_ROOT)):
+for path in (str(REPO_ROOT), str(INTEGRATION_ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
 

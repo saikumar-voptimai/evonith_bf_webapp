@@ -15,9 +15,7 @@ directory by default. Deployments that keep models outside the repo can set:
 EVONITH_MODEL_DIR=/path/to/active/models
 ```
 
-When `EVONITH_MODEL_DIR` is set, old-style compatibility paths such as
-`src/assets/models/unitcost_fuel_model.json` resolve against that configured
-model directory first.
+When `EVONITH_MODEL_DIR` is set, model artifact paths resolve against that configured model directory.
 
 ## Active Bundles
 
@@ -31,12 +29,7 @@ model directory first.
 
 ## Archives
 
-Old archive folders are not production source:
-
-- `src/assets/models/old_26_14/`
-- `src/assets/models/old_bmo_12062026/`
-
-Keep historical archives in an external artifact store, release archive, or
+Old archive model folders are not production source.`r`n`r`nKeep historical archives in an external artifact store, release archive, or
 backup location with date/version metadata. Restore only the specific required
 files into the active canonical model directory or `EVONITH_MODEL_DIR`.
 

@@ -6,8 +6,8 @@ from pydantic_settings import BaseSettings
 
 from furnace_data.runtime_paths import get_dataset_results_dir, get_dataset_static_dir
 
-_SERVICE_ROOT = Path(__file__).resolve().parents[1]
-_LEGACY_STATIC_DIR = _SERVICE_ROOT / "data" / "static"
+_BACKEND_APP_ROOT = Path(__file__).resolve().parents[1]
+_LEGACY_STATIC_DIR = _BACKEND_APP_ROOT / "data" / "static"
 _LEGACY_STATIC_CSV = _LEGACY_STATIC_DIR / "ml_dataset.csv"
 
 

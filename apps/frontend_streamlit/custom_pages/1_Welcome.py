@@ -1,4 +1,4 @@
-# src/custom_pages/1_Welcome.py
+# apps/frontend_streamlit/custom_pages/1_Welcome.py
 import base64
 from pathlib import Path
 
@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from utils.session import has_permission, logout_user
+from apps.frontend_streamlit.utils.session import has_permission, logout_user
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 if "auth_user" not in st.session_state:
@@ -62,19 +62,19 @@ def _back_btn():
 
 if selection == "hopper" and has_permission("hopper:write"):
     _back_btn()
-    from ui.hopper_admin_page import hopper_admin_page
+    from apps.frontend_streamlit.ui.hopper_admin_page import hopper_admin_page
     hopper_admin_page(st.session_state.get("auth_user"))
     st.stop()
 
 if selection == "burden" and has_permission("burden:write"):
     _back_btn()
-    from ui.burden_admin_page import burden_admin_page
+    from apps.frontend_streamlit.ui.burden_admin_page import burden_admin_page
     burden_admin_page(st.session_state.get("auth_user"))
     st.stop()
 
 if selection == "register" and has_permission("users:write"):
     _back_btn()
-    from ui.user_management import register_page
+    from apps.frontend_streamlit.ui.user_management import register_page
     register_page()
     st.stop()
 

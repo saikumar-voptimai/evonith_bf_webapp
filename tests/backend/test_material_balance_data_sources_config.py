@@ -16,7 +16,7 @@ def _install_streamlit_stub(monkeypatch) -> None:
 def test_material_balance_data_sources_use_mapping_config(monkeypatch) -> None:
     _install_streamlit_stub(monkeypatch)
 
-    from utils.material_balance import data_sources
+    from furnace_data.material_balance import data_sources
 
     assert not hasattr(data_sources, "CSV_TO_SCHEMA")
     assert not hasattr(data_sources, "MASS_CSV_COLS")
@@ -31,7 +31,7 @@ def test_material_balance_data_sources_use_mapping_config(monkeypatch) -> None:
 def test_material_balance_data_sources_do_not_reintroduce_alias_map(monkeypatch) -> None:
     _install_streamlit_stub(monkeypatch)
 
-    from utils.material_balance import data_sources
+    from furnace_data.material_balance import data_sources
 
     source = Path(data_sources.__file__).read_text(encoding="utf-8")
     assert "COKE_CALC_MT" not in source
@@ -40,7 +40,7 @@ def test_material_balance_data_sources_do_not_reintroduce_alias_map(monkeypatch)
 
 
 def test_gas_phase_uses_mapping_names() -> None:
-    from utils.material_balance.gas_phase import compute_blast_elements
+    from furnace_data.material_balance.gas_phase import compute_blast_elements
 
     elements, debug = compute_blast_elements(
         {

@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.core.config import BackendSettings
-from app.services.password_service import PasswordService, PasswordValidationError
-from app.services.token_service import TokenConfigurationError, TokenError, TokenService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.services.password_service import PasswordService, PasswordValidationError
+from apps.backend_api.app.services.token_service import TokenConfigurationError, TokenError, TokenService
 
 
 def _settings(**overrides) -> BackendSettings:

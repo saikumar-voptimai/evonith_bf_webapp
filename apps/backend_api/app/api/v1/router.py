@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import (
+from apps.backend_api.app.api.v1.routes import (
     admin,
     auth,
     blend_optimizer,

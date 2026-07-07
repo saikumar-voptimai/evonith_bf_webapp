@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.errors import ApiError
-from app.services.compute_job_service import compute_job_service
-from app.services.job_service import job_service
-from app.services.redaction_service import redact_value
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.compute_job_service import compute_job_service
+from apps.backend_api.app.services.job_service import job_service
+from apps.backend_api.app.services.redaction_service import redact_value
 
 
 class UnifiedJobService:

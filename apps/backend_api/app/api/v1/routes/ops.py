@@ -6,13 +6,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.api.v1.schemas.common import ApiResponse
-from app.api.v1.schemas.ops import CleanupRequest
-from app.core.auth_dependencies import require_admin_user
-from app.core.responses import get_request_id
-from app.services.audit_service import AuditService
-from app.services.error_registry_service import ErrorRegistryService
-from app.services.runtime_cleanup_service import RuntimeCleanupService
+from apps.backend_api.app.api.v1.schemas.common import ApiResponse
+from apps.backend_api.app.api.v1.schemas.ops import CleanupRequest
+from apps.backend_api.app.core.auth_dependencies import require_admin_user
+from apps.backend_api.app.core.responses import get_request_id
+from apps.backend_api.app.services.audit_service import AuditService
+from apps.backend_api.app.services.error_registry_service import ErrorRegistryService
+from apps.backend_api.app.services.runtime_cleanup_service import RuntimeCleanupService
 
 router = APIRouter(prefix="/ops", tags=["ops"])
 
@@ -90,7 +90,7 @@ def list_audit_events(
 ):
     _ = current_user
     if not request.app.state.backend_settings.audit_admin_read_enabled:
-        from app.core.errors import ApiError
+        from apps.backend_api.app.core.errors import ApiError
 
         raise ApiError("AUDIT_READ_DISABLED", "Audit reads are disabled.", 403)
     return _wrap(

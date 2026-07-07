@@ -14,13 +14,13 @@ from uuid import uuid4
 
 from starlette.requests import Request
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.repositories.furnacemind_document_repository import (
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.repositories.furnacemind_document_repository import (
     DocumentRecord,
     FurnaceMindDocumentRepository,
 )
-from app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
+from apps.backend_api.app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
 from furnace_data.runtime_paths import runtime_path
 
 log = logging.getLogger(__name__)

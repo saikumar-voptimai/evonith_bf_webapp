@@ -6,9 +6,9 @@ import os
 import time
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.services.optional_dependency_service import get_optional_dependency_status
-from app.services.runtime_status_service import RuntimeStatusService
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.services.optional_dependency_service import get_optional_dependency_status
+from apps.backend_api.app.services.runtime_status_service import RuntimeStatusService
 
 
 class DependencyStatusService:

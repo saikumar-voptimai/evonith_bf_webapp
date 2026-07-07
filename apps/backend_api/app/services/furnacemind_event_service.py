@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.repositories.furnacemind_run_repository import FurnaceMindRunRepository, RunEventRecord
-from app.services.furnacemind_safety_service import FurnaceMindSafetyService
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.repositories.furnacemind_run_repository import FurnaceMindRunRepository, RunEventRecord
+from apps.backend_api.app.services.furnacemind_safety_service import FurnaceMindSafetyService
 
 
 class FurnaceMindEventService:

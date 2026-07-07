@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import httpx
 
-from services.api_client import ApiClient
-from services.backend_status import check_backend_health, get_backend_status_summary
+from apps.frontend_streamlit.services.api_client import ApiClient
+from apps.frontend_streamlit.services.backend_status import check_backend_health, get_backend_status_summary
 
 
 def test_backend_status_returns_unavailable_instead_of_crashing():

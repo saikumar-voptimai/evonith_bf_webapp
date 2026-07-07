@@ -1,6 +1,6 @@
 """Tests for frontend API settings and feature flags."""
 
-from config.frontend_settings import DEFAULT_BACKEND_API_BASE_URL, is_backend_api_enabled, load_frontend_settings
+from apps.frontend_streamlit.config.frontend_settings import DEFAULT_BACKEND_API_BASE_URL, is_backend_api_enabled, load_frontend_settings
 
 
 def test_default_backend_api_base_url(monkeypatch):

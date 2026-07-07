@@ -6,11 +6,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.api.v1.schemas.common import ApiResponse
-from app.core.auth_dependencies import require_admin_user
-from app.core.errors import ApiError
-from app.core.responses import get_request_id
-from app.services.unified_job_service import UnifiedJobService
+from apps.backend_api.app.api.v1.schemas.common import ApiResponse
+from apps.backend_api.app.core.auth_dependencies import require_admin_user
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.core.responses import get_request_id
+from apps.backend_api.app.services.unified_job_service import UnifiedJobService
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 

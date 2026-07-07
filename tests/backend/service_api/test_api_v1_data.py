@@ -16,7 +16,7 @@ def test_data_sources_returns_wrapped_response(client):
 
 
 def test_data_preview_caps_rows(monkeypatch, client):
-    from app.services import data_service
+    from apps.backend_api.app.services import data_service
 
     monkeypatch.setenv("DATA_API_MAX_PREVIEW_ROWS", "3")
     monkeypatch.setattr(data_service, "fetch_dataframe", lambda query: pd.DataFrame({"a": range(10)}))
@@ -31,7 +31,7 @@ def test_data_preview_caps_rows(monkeypatch, client):
 
 
 def test_data_preview_empty_dataset(monkeypatch, client):
-    from app.services import data_service
+    from apps.backend_api.app.services import data_service
 
     monkeypatch.setattr(data_service, "fetch_dataframe", lambda query: pd.DataFrame())
 
@@ -67,7 +67,7 @@ def test_invalid_date_range_returns_structured_error(client):
 
 
 def test_data_export_creates_and_downloads_artifact(monkeypatch, client):
-    from app.services import data_service
+    from apps.backend_api.app.services import data_service
 
     monkeypatch.setattr(data_service, "fetch_dataframe", lambda query: pd.DataFrame({"a": [1, 2]}))
 

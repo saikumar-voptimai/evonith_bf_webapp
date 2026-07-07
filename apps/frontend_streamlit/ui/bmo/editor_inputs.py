@@ -13,7 +13,7 @@ from typing import Any
 
 import pandas as pd
 
-from utils.bmo.types import (
+from furnace_data.bmo.utils.types import (
     DustInput,
     FluxInput,
     FuelAshInput,

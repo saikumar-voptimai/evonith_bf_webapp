@@ -7,10 +7,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
-from app.services.furnacemind_tool_registry import FurnaceMindToolRegistry
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
+from apps.backend_api.app.services.furnacemind_tool_registry import FurnaceMindToolRegistry
 
 
 class FurnaceMindToolExecutor:

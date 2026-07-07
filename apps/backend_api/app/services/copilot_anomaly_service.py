@@ -7,11 +7,11 @@ from typing import Any
 
 import pandas as pd
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.services.copilot_data_service import CopilotDataService
-from app.services.copilot_safety_service import warning
-from app.services.material_balance_service import _ensure_src_package, table_data
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.copilot_data_service import CopilotDataService
+from apps.backend_api.app.services.copilot_safety_service import warning
+from apps.backend_api.app.services.material_balance_service import table_data
 
 
 def severity_from_score(score: float | None) -> str | None:
@@ -148,8 +148,7 @@ class CopilotAnomalyService:
 
     def _channeling_signal(self, df: pd.DataFrame) -> dict[str, Any] | None:
         try:
-            _ensure_src_package("utils")
-            from utils.anomaly_propensity import Channeling
+            from furnace_data.anomaly import Channeling
 
             indexed = df.copy()
             if not isinstance(indexed.index, pd.DatetimeIndex):

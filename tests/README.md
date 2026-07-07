@@ -1,4 +1,4 @@
-# Test Layout
+﻿# Test Layout
 
 The canonical test suite lives under `tests/`.
 
@@ -24,5 +24,6 @@ uv run pytest tests/integration -q
 
 Compatibility shim tests remain active. Backend shim coverage is grouped with
 `tests/backend` and `tests/structure` so old `app.*` and
-`furnace-data-service/app/main.py` imports stay protected while canonical code
+canonical backend imports stay protected while canonical code
 lives under `apps/backend_api/app`.
+

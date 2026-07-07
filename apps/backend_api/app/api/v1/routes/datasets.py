@@ -7,14 +7,14 @@ from typing import Any, Dict
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
 
-from app.api.v1.schemas.common import ApiResponse
-from app.api.v1.schemas.datasets import DatasetRefreshRequest
-from app.core.errors import ApiError
-from app.core.responses import get_request_id
-from app.models.schemas import FetchDatasetRequest, TaskCreatedResponse, TaskStatusResponse, UpdateStaticRequest
-from app.routes import dataset as legacy_dataset
-from app.services import dataset_service
-from app.services.artifact_service import get_artifact_metadata, get_artifact_path
+from apps.backend_api.app.api.v1.schemas.common import ApiResponse
+from apps.backend_api.app.api.v1.schemas.datasets import DatasetRefreshRequest
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.core.responses import get_request_id
+from apps.backend_api.app.models.schemas import FetchDatasetRequest, TaskCreatedResponse, TaskStatusResponse, UpdateStaticRequest
+from apps.backend_api.app.routes import dataset as legacy_dataset
+from apps.backend_api.app.services import dataset_service
+from apps.backend_api.app.services.artifact_service import get_artifact_metadata, get_artifact_path
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 

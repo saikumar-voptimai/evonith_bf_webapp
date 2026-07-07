@@ -1,6 +1,6 @@
 """Tests for the Phase 4 in-process job registry."""
 
-from app.services.job_service import JobService
+from apps.backend_api.app.services.job_service import JobService
 
 
 def test_job_service_create_and_update_job():

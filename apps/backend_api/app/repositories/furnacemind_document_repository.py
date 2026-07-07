@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from uuid import uuid4
 
-from app.repositories.furnacemind_conversation_repository import (
+from apps.backend_api.app.repositories.furnacemind_conversation_repository import (
     default_furnacemind_db_url,
     sqlite_url_to_path,
 )

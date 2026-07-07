@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from app.services.artifact_service import create_csv_artifact, get_artifact_path
+from apps.backend_api.app.services.artifact_service import create_csv_artifact, get_artifact_path
 
 
 def test_create_csv_artifact_uses_runtime_dir(monkeypatch, tmp_path):

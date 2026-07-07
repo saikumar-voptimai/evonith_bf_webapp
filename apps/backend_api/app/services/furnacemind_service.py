@@ -7,25 +7,25 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.repositories.furnacemind_conversation_repository import (
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.repositories.furnacemind_conversation_repository import (
     ConversationRecord,
     FurnaceMindConversationRepository,
     MessageRecord,
 )
-from app.repositories.furnacemind_document_repository import FurnaceMindDocumentRepository
-from app.repositories.furnacemind_run_repository import FurnaceMindRunRepository, RunRecord
-from app.services.compute_artifact_service import ComputeArtifactService
-from app.services.furnacemind_document_service import FurnaceMindDocumentService
-from app.services.furnacemind_event_service import FurnaceMindEventService
-from app.services.furnacemind_llm_service import FurnaceMindLLMService
-from app.services.furnacemind_memory_service import FurnaceMindMemoryService
-from app.services.furnacemind_prompt_service import FurnaceMindPromptService
-from app.services.furnacemind_retrieval_service import FurnaceMindRetrievalService
-from app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
-from app.services.furnacemind_tool_executor import FurnaceMindToolExecutor
-from app.services.furnacemind_tool_registry import FurnaceMindToolRegistry
+from apps.backend_api.app.repositories.furnacemind_document_repository import FurnaceMindDocumentRepository
+from apps.backend_api.app.repositories.furnacemind_run_repository import FurnaceMindRunRepository, RunRecord
+from apps.backend_api.app.services.compute_artifact_service import ComputeArtifactService
+from apps.backend_api.app.services.furnacemind_document_service import FurnaceMindDocumentService
+from apps.backend_api.app.services.furnacemind_event_service import FurnaceMindEventService
+from apps.backend_api.app.services.furnacemind_llm_service import FurnaceMindLLMService
+from apps.backend_api.app.services.furnacemind_memory_service import FurnaceMindMemoryService
+from apps.backend_api.app.services.furnacemind_prompt_service import FurnaceMindPromptService
+from apps.backend_api.app.services.furnacemind_retrieval_service import FurnaceMindRetrievalService
+from apps.backend_api.app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
+from apps.backend_api.app.services.furnacemind_tool_executor import FurnaceMindToolExecutor
+from apps.backend_api.app.services.furnacemind_tool_registry import FurnaceMindToolRegistry
 
 log = logging.getLogger(__name__)
 

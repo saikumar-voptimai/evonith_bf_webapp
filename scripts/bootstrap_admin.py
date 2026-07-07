@@ -12,11 +12,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SERVICE_ROOT = REPO_ROOT / "furnace-data-service"
 
-for path in (str(SERVICE_ROOT), str(REPO_ROOT)):
-    if path not in sys.path:
-        sys.path.insert(0, path)
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from apps.backend_api.app.services.admin_service import AdminService
 

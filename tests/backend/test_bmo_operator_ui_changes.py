@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 import yaml
 
-from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
-from data.bmo.ore_editor_preferences import (
+from furnace_data.bmo.data.basicity_defaults import derive_basicity_bounds_from_static_dataset
+from furnace_data.bmo.data.ore_editor_preferences import (
     apply_model_input_preferences,
     apply_ore_editor_preferences,
     build_model_input_preferences,
@@ -17,9 +17,9 @@ from data.bmo.ore_editor_preferences import (
     save_model_input_preferences,
     save_ore_editor_preferences,
 )
-from ui.bmo.components import build_blend_table_df
-from ui.bmo import components
-from utils.bmo.types import BlendEvaluation, OreChemistry, OreInput
+from apps.frontend_streamlit.ui.bmo.components import build_blend_table_df
+from apps.frontend_streamlit.ui.bmo import components
+from furnace_data.bmo.utils.types import BlendEvaluation, OreChemistry, OreInput
 
 
 def _ore(
@@ -339,7 +339,7 @@ def test_static_dataset_basicity_defaults_are_direct_recent_p10_p90(
         return data[list(kwargs["usecols"])]
 
     monkeypatch.setattr(Path, "exists", lambda _path: True)
-    monkeypatch.setattr("data.bmo.basicity_defaults.pd.read_csv", fake_read_csv)
+    monkeypatch.setattr("furnace_data.bmo.data.basicity_defaults.pd.read_csv", fake_read_csv)
 
     defaults = derive_basicity_bounds_from_static_dataset(
         Path("furnace_dataset.csv"), window_days=30

@@ -1,6 +1,6 @@
 """Tests for Phase 4 API migration feature flags."""
 
-from config.frontend_settings import is_backend_api_enabled, load_frontend_settings
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled, load_frontend_settings
 
 
 def test_data_explorer_flag_defaults_to_direct_mode(monkeypatch):

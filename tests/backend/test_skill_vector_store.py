@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from agents.furnacemind.skill_vector_store import SkillVectorStore
+from apps.frontend_streamlit.agents.furnacemind.skill_vector_store import SkillVectorStore
 
 
 class FakeEmbeddingClient:

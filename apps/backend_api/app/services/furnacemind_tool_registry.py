@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
 
 
 class DataSummaryInput(BaseModel):

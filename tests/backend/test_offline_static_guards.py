@@ -5,17 +5,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 APP_DIRS = [
-    ROOT / "src",
     ROOT / "packages" / "furnace-data" / "furnace_data",
     ROOT / "apps" / "backend_api" / "app",
-    ROOT / "furnace-data-service" / "app",
+    ROOT / "apps" / "frontend_streamlit",
 ]
 
 
 def _python_files():
     for base in APP_DIRS:
         for path in base.rglob("*.py"):
-            yield path
+            if "__pycache__" not in path.parts:
+                yield path
 
 
 def _read(path: Path) -> str:
@@ -23,7 +23,11 @@ def _read(path: Path) -> str:
 
 
 def test_no_runtime_path_patching_in_app_code() -> None:
-    offenders = [path for path in _python_files() if "sys.path.insert" in _read(path)]
+    offenders = [
+        path
+        for path in _python_files()
+        if "sys.path.insert" in _read(path) and path.name != "app.py"
+    ]
     assert offenders == []
 
 
@@ -49,8 +53,8 @@ def test_old_influx_offline_module_is_removed() -> None:
 
 def test_bmo_and_static_dataset_paths_use_neutral_offline_api() -> None:
     checked_roots = [
-        ROOT / "src" / "data" / "bmo",
-        ROOT / "src" / "data" / "ml",
+        ROOT / "packages" / "furnace-data" / "furnace_data" / "bmo" / "data",
+        ROOT / "apps" / "frontend_streamlit" / "data" / "ml",
         ROOT / "apps" / "frontend_streamlit" / "custom_pages" / "9_Blend_Optimizer.py",
         ROOT / "packages" / "furnace-data" / "furnace_data" / "dataset",
     ]
@@ -103,7 +107,7 @@ def test_sqlite_usage_is_limited_to_ticketing_and_runtime_audit() -> None:
         if "sqlite://" not in text and "sqlite3" not in text:
             continue
         relative = path.relative_to(ROOT).as_posix()
-        if relative.startswith("src/data/tickets/") or relative in allowed:
+        if relative.startswith("apps/frontend_streamlit/data/tickets/") or relative in allowed:
             continue
         offenders.append(path)
     assert offenders == []

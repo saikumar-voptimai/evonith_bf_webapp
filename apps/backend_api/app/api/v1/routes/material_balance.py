@@ -7,15 +7,15 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse
 
-from app.api.v1.schemas.common import ApiMeta, ApiResponse
-from app.api.v1.schemas.material_balance import MaterialBalanceRunRequest
-from app.core.auth_dependencies import get_optional_current_user
-from app.core.config import BackendSettings
-from app.core.errors import ApiError
-from app.core.responses import get_request_id
-from app.services.compute_artifact_service import ComputeArtifactService
-from app.services.compute_job_service import compute_job_service
-from app.services.material_balance_service import MaterialBalanceService
+from apps.backend_api.app.api.v1.schemas.common import ApiMeta, ApiResponse
+from apps.backend_api.app.api.v1.schemas.material_balance import MaterialBalanceRunRequest
+from apps.backend_api.app.core.auth_dependencies import get_optional_current_user
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.core.responses import get_request_id
+from apps.backend_api.app.services.compute_artifact_service import ComputeArtifactService
+from apps.backend_api.app.services.compute_job_service import compute_job_service
+from apps.backend_api.app.services.material_balance_service import MaterialBalanceService
 
 router = APIRouter(prefix="/material-balance", tags=["material-balance"])
 

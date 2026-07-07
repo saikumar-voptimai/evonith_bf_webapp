@@ -18,9 +18,9 @@ CANONICAL_TEST_DIRS = [
     "deployment",
     "fixtures",
 ]
-OLD_TEST_ROOTS = [
-    REPO_ROOT / "furnace-data-service" / "test",
-    REPO_ROOT / "furnace-data-service" / "tests",
+REMOVED_TEST_ROOTS = [
+    REPO_ROOT / ("furnace-data" + "-service") / "test",
+    REPO_ROOT / ("furnace-data" + "-service") / "tests",
 ]
 
 
@@ -38,29 +38,15 @@ def test_no_root_level_test_modules_remain() -> None:
     assert root_tests == []
 
 
-def test_old_service_test_roots_are_inactive_or_deprecated() -> None:
-    for old_root in OLD_TEST_ROOTS:
-        if not old_root.exists():
-            continue
-
-        active_tests = sorted(path.name for path in old_root.glob("test_*.py"))
-        assert active_tests == []
-
-        readme = old_root / "README.md"
-        assert readme.is_file()
-        text = readme.read_text(encoding="utf-8").lower()
-        assert "deprecated" in text
-        assert "tests/backend" in text
+def test_removed_service_test_roots_are_absent() -> None:
+    for old_root in REMOVED_TEST_ROOTS:
+        assert not old_root.exists()
 
 
 def test_pytest_config_points_to_canonical_tests() -> None:
     root_config = _pyproject(REPO_ROOT / "pyproject.toml")
-    service_config = _pyproject(REPO_ROOT / "furnace-data-service" / "pyproject.toml")
 
     assert root_config["tool"]["pytest"]["ini_options"]["testpaths"] == ["tests"]
-    assert service_config["tool"]["pytest"]["ini_options"]["testpaths"] == [
-        "../tests/backend"
-    ]
 
 
 def test_full_suite_discovers_from_root() -> None:

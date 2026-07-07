@@ -9,19 +9,19 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from config.frontend_settings import is_backend_api_enabled
-from config.page_registry import get_feedback_page_options
-from data.tickets import TicketCreateRequest, TicketCriticality, TicketService, TicketStatus
-from services import feedback_api
-from services.api_errors import FrontendApiError
-from utils.feedback_page import (
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
+from apps.frontend_streamlit.config.page_registry import get_feedback_page_options
+from apps.frontend_streamlit.data.tickets import TicketCreateRequest, TicketCriticality, TicketService, TicketStatus
+from apps.frontend_streamlit.services import feedback_api
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
+from apps.frontend_streamlit.utils.feedback_page import (
     build_attachment_payloads,
     load_feedback_css,
     render_board,
     render_management_panel,
     render_overview_kpis,
 )
-from utils.session import is_admin, is_supervisor
+from apps.frontend_streamlit.utils.session import is_admin, is_supervisor
 
 MAX_UPLOAD_FILES = 5
 MAX_UPLOAD_SIZE_MB = 5

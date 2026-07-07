@@ -8,16 +8,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from domain.optimization_runtime import parse_lag_feature_name
-from utils.bmo.feature_builder import (
+from furnace_data.optimization_runtime import parse_lag_feature_name
+from furnace_data.bmo.utils.feature_builder import (
     build_bmo_v4_feature_frame,
     build_feature_payload,
     max_bmo_lag_steps,
 )
-from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
-from utils.bmo.fuel_rates import estimate_fuel_rates_from_cost, get_recent_fuel_input_rates
-from utils.bmo.model_service import FuelUnitCostModelService
-from utils.bmo.types import OreChemistry, OreInput
+from furnace_data.bmo.utils.fuel_prediction import evaluate_blend_with_fuel_prediction
+from furnace_data.bmo.utils.fuel_rates import estimate_fuel_rates_from_cost, get_recent_fuel_input_rates
+from furnace_data.bmo.utils.model_service import FuelUnitCostModelService
+from furnace_data.bmo.utils.types import OreChemistry, OreInput
 
 
 class IdentityScaler:

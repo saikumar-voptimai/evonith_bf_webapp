@@ -7,13 +7,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 try:
-    from config.frontend_settings import load_frontend_settings
-    from services.api_client import ApiClient, unwrap_api_response
-    from services.api_errors import FrontendApiError
+    from apps.frontend_streamlit.config.frontend_settings import load_frontend_settings
+    from apps.frontend_streamlit.services.api_client import ApiClient, unwrap_api_response
+    from apps.frontend_streamlit.services.api_errors import FrontendApiError
 except ModuleNotFoundError:  # pragma: no cover - repo-root import compatibility
-    from src.config.frontend_settings import load_frontend_settings
-    from src.services.api_client import ApiClient, unwrap_api_response
-    from src.services.api_errors import FrontendApiError
+    from apps.frontend_streamlit.config.frontend_settings import load_frontend_settings
+    from apps.frontend_streamlit.services.api_client import ApiClient, unwrap_api_response
+    from apps.frontend_streamlit.services.api_errors import FrontendApiError
 
 
 @dataclass(frozen=True)

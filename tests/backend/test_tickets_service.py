@@ -9,8 +9,8 @@ from uuid import uuid4
 
 import pytest
 
-from src.data.tickets.models import TicketStatus
-from src.data.tickets.service import (
+from apps.frontend_streamlit.data.tickets.models import TicketStatus
+from apps.frontend_streamlit.data.tickets.service import (
     TicketCreateRequest,
     TicketDeleteRequest,
     TicketImageUpload,

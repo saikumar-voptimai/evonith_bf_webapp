@@ -11,15 +11,10 @@ from fastapi.testclient import TestClient
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SERVICE_ROOT = REPO_ROOT / "furnace-data-service"
-for path in (str(SERVICE_ROOT), str(REPO_ROOT)):
+for path in (str(REPO_ROOT),):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-loaded_app = sys.modules.get("app")
-loaded_path = str(getattr(loaded_app, "__file__", "")) if loaded_app else ""
-if loaded_path.endswith("src\\app.py") or loaded_path.endswith("src/app.py"):
-    del sys.modules["app"]
 
 from apps.backend_api.app.core.config import BackendSettings
 from apps.backend_api.app.main import create_app

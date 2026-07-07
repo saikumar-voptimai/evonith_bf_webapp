@@ -9,7 +9,7 @@ from functools import lru_cache
 from types import ModuleType
 from typing import Any
 
-from app.core.errors import ApiError
+from apps.backend_api.app.core.errors import ApiError
 
 
 FEATURE_GROUP_MODULES: dict[str, tuple[str, ...]] = {

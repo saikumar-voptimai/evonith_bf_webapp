@@ -8,10 +8,10 @@ from typing import Any
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.errors import ApiError
-from app.services.admin_service import AdminService
-from app.services.auth_service import AuthService
-from app.services.password_service import PasswordService
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.admin_service import AdminService
+from apps.backend_api.app.services.auth_service import AuthService
+from apps.backend_api.app.services.password_service import PasswordService
 
 _bearer = HTTPBearer(auto_error=False)
 

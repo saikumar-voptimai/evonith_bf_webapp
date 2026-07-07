@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
 
 _DEV_SECRET = secrets.token_urlsafe(32)
 _PRODUCTION_ENVS = {"prod", "production", "edge"}

@@ -8,18 +8,18 @@ from typing import Any
 
 import pandas as pd
 
-from app.api.v1.schemas.datasets import (
+from apps.backend_api.app.api.v1.schemas.datasets import (
     DatasetInfo,
     DatasetJobResponse,
     DatasetJobStatus,
     DatasetPreviewResponse,
     DatasetRefreshRequest,
 )
-from app.config import settings
-from app.core.errors import ApiError
-from app.services.artifact_service import create_csv_artifact
-from app.services.job_service import JobState, job_service
-from app.services.serialization import dataframe_to_preview
+from apps.backend_api.app.config import settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.artifact_service import create_csv_artifact
+from apps.backend_api.app.services.job_service import JobState, job_service
+from apps.backend_api.app.services.serialization import dataframe_to_preview
 from furnace_data.dataset.static import StaticDatasetManager
 
 

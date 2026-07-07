@@ -9,8 +9,8 @@ from typing import Any
 import httpx
 
 try:
-    from config.frontend_settings import load_frontend_settings
-    from services.api_errors import (
+    from apps.frontend_streamlit.config.frontend_settings import load_frontend_settings
+    from apps.frontend_streamlit.services.api_errors import (
         BackendApiDecodeError,
         BackendApiHTTPError,
         BackendApiTimeoutError,
@@ -18,8 +18,8 @@ try:
         BackendUnavailableError,
     )
 except ModuleNotFoundError:  # pragma: no cover - repo-root import compatibility
-    from src.config.frontend_settings import load_frontend_settings
-    from src.services.api_errors import (
+    from apps.frontend_streamlit.config.frontend_settings import load_frontend_settings
+    from apps.frontend_streamlit.services.api_errors import (
         BackendApiDecodeError,
         BackendApiHTTPError,
         BackendApiTimeoutError,

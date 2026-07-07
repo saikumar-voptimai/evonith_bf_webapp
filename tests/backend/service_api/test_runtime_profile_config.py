@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.core.config import BackendSettings
+from apps.backend_api.app.core.config import BackendSettings
 
 
 def test_runtime_profile_defaults_are_safe():

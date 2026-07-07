@@ -47,7 +47,11 @@ def main(argv: list[str] | None = None) -> int:
     if simulated:
         sys.modules[simulated] = types.ModuleType(simulated)
 
-    sys.path.insert(0, str(root))
+    package_root = root / "packages" / "furnace-data"
+    for source_path in (root, package_root):
+        source = str(source_path)
+        if source not in sys.path:
+            sys.path.insert(0, source)
     try:
         from apps.backend_api.app.main import app
         from fastapi.testclient import TestClient
@@ -79,3 +83,5 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+

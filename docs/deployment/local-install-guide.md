@@ -26,14 +26,6 @@ uv run uvicorn apps.backend_api.app.main:app --host 0.0.0.0 --port 8080
 ```
 
 
-Temporary backend compatibility command:
-
-```bash
-cd furnace-data-service
-EVONITH_RUNTIME_DIR=../runtime \
-EVONITH_AUTH_SECRET_KEY=dev-only-secret-change-me \
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
-```
 
 ## Backend With Data And Compute
 
@@ -65,11 +57,6 @@ The frontend profile is for Streamlit, UI libraries, and API adapters. It does
 not require backend internals, database clients, vector clients, LLM providers,
 or model loaders.
 
-Temporary frontend compatibility command for rollback checks. This uses the shim-only old `src/app.py` entrypoint:
-
-```bash
-BACKEND_API_BASE_URL=http://localhost:8080/api/v1 uv run streamlit run src/app.py
-```
 
 ## Verification
 
@@ -81,3 +68,4 @@ uv run python scripts/check_frontend_api_imports.py
 uv run python scripts/check_repository_structure.py
 uv run python scripts/export_backend_openapi.py
 ```
+

@@ -13,7 +13,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from utils.bmo.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
+from furnace_data.bmo.utils.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
 
 
 @st.cache_data(show_spinner=False)

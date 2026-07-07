@@ -4,7 +4,7 @@ Three tabs:
   1. Anomalies       — live InfluxDB snapshot + channeling propensity + LLM anomaly summary
   2. Unit Cost & Burden Distribution — static analysis findings from BURDEN_UNITCOST.md
 
-Analysis findings are maintained in ``src/assets/data/copilot_analysis/``.
+Analysis findings are maintained in ``packages/furnace-data/furnace_data/assets/copilot_analysis/``.
 To update findings after a new regression run, edit the .md files there — no Python changes needed.
 """
 
@@ -15,9 +15,9 @@ from datetime import datetime, timezone
 
 import streamlit as st
 
-from config.frontend_settings import is_backend_api_enabled
-from services.api_errors import FrontendApiError
-from services.copilot_api import (
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
+from apps.frontend_streamlit.services.copilot_api import (
     analyze_anomaly,
     analyze_copilot,
     get_copilot_artifact_download_url,
@@ -160,10 +160,10 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from utils.anomaly_propensity import Channeling
-from utils.copilot.data import fetch_recent_online
-from agents.llm.llm_client import OPENAI_MODEL, call_llm
-from utils.copilot.prompts import (
+from furnace_data.anomaly import Channeling
+from apps.frontend_streamlit.utils.copilot.data import fetch_recent_online
+from apps.frontend_streamlit.agents.llm.llm_client import OPENAI_MODEL, call_llm
+from apps.frontend_streamlit.utils.copilot.prompts import (
     ANOMALY_SYSTEM,
     BURDEN_SYSTEM,
     build_anomaly_prompt,
@@ -440,7 +440,7 @@ with anomaly_tab:
 with burden_tab:
     st.subheader("Unit Cost & Burden Distribution Analysis")
     st.caption(
-        "Findings are loaded from `src/assets/data/copilot_analysis/BURDEN_UNITCOST.md`. "
+        "Findings are loaded from `packages/furnace-data/furnace_data/assets/copilot_analysis/BURDEN_UNITCOST.md`. "
         "Edit that file to update after a new regression run — no code change needed."
     )
 
@@ -461,8 +461,8 @@ with burden_tab:
 with st.expander("⚙️ Setup notes", key="copilot_setup_notes"):
     st.markdown(f"""
 - **OpenAI Responses API** with `code_interpreter` enabled. Set `OPENAI_API_KEY` and (optionally) `OPENAI_MODEL` (current: `{OPENAI_MODEL}`).
-- **Analysis files**: edit `src/assets/data/copilot_analysis/BURDEN_UNITCOST.md` to update burden findings after a new regression run.
-- **Sensor descriptions**: edit `src/assets/data/copilot_analysis/ANOMALY_SENSOR_DESC.md` if sensor layout changes.
+- **Analysis files**: edit `packages/furnace-data/furnace_data/assets/copilot_analysis/BURDEN_UNITCOST.md` to update burden findings after a new regression run.
+- **Sensor descriptions**: edit `packages/furnace-data/furnace_data/assets/copilot_analysis/ANOMALY_SENSOR_DESC.md` if sensor layout changes.
 - **InfluxDB**: set `INFLUX_URL`, `INFLUX_ORG`, `INFLUX_TOKEN`. Bucket is `bf2_evonith_raw`.
     """)
 

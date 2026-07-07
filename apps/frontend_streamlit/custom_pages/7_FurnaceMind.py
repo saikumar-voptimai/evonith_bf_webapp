@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import streamlit as st
 
-from config.frontend_settings import is_backend_api_enabled
-from services.api_errors import FrontendApiError
-from services.furnacemind_api import (
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
+from apps.frontend_streamlit.services.furnacemind_api import (
     create_conversation,
     download_artifact_url,
     get_furnacemind_config,
@@ -182,12 +182,12 @@ def main() -> None:
         _render_api_mode()
         return
 
-    from agents.furnacemind.ai_cooperate_page import render_ai_cooperate
-    from config.config_loader import load_config
-    from ui.furnacemind_sections import select_nav_tab
-    from ui.furnacemind.reports import render_reports
-    from ui.styles import apply_styles
-    from utils.dataset_refresher import (
+    from apps.frontend_streamlit.agents.furnacemind.ai_cooperate_page import render_ai_cooperate
+    from apps.frontend_streamlit.config.config_loader import load_config
+    from apps.frontend_streamlit.ui.furnacemind_sections import select_nav_tab
+    from apps.frontend_streamlit.ui.furnacemind.reports import render_reports
+    from apps.frontend_streamlit.ui.styles import apply_styles
+    from apps.frontend_streamlit.utils.dataset_refresher import (
         get_version as _ds_get_version,
         maybe_refresh as _ds_maybe_refresh,
     )

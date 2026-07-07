@@ -1,10 +1,10 @@
 """InfluxDB fetcher for the 110-sensor furnace wall temperature profile.
 
 Fetches the ``temperature_profile`` measurement and aggregates readings by
-elevation and circumferential quadrant (A–N per level).
+elevation and circumferential quadrant (Aâ€“N per level).
 
 Visualisation-specific reshaping (contour matrices, colour maps) lives in
-``src/plotters/`` — not here.
+``apps/frontend_streamlit/plotters/`` - not here.
 """
 
 from __future__ import annotations
@@ -54,12 +54,12 @@ class TemperatureDataFetcher(BaseDataFetcher):
         """Fetch and aggregate temperature data by elevation and quadrant.
 
         For ``source == "historical"`` the raw DataFrame is fetched via the
-        parent class and then grouped into 4 circumferential quadrants (Q1–Q4)
+        parent class and then grouped into 4 circumferential quadrants (Q1â€“Q4)
         using angular interpolation weights.
 
         Returns:
-            For historical mode: a ``dict`` keyed by ``"Q1"``–``"Q4"`` (each a
-            DataFrame of elevation → weighted temperature) plus ``"time"``.
+            For historical mode: a ``dict`` keyed by ``"Q1"``â€“``"Q4"`` (each a
+            DataFrame of elevation â†’ weighted temperature) plus ``"time"``.
 
             For dummy/debug mode: ``{variable_name: float}`` dict.
         """
@@ -144,7 +144,7 @@ class TemperatureDataFetcher(BaseDataFetcher):
 
                 levelwise_dict[level] = df_new
 
-            # Sort by elevation (bottom → top)
+            # Sort by elevation (bottom â†’ top)
             levelwise_dict = {
                 str(k): v
                 for k, v in sorted(

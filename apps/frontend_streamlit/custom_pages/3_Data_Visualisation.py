@@ -5,15 +5,15 @@ import pytz
 import streamlit as st
 
 from furnace_data.domain.heatload import AverageHeatLoadDataFetcher
-from data.fetchers.circular_temperature_contour_data_fetcher import (
+from apps.frontend_streamlit.data.fetchers.circular_temperature_contour_data_fetcher import (
     CircumferentialTemperatureDataFetcher,
 )
-from data.fetchers.longitudinal_temperature_contour_data_fetcher import (
+from apps.frontend_streamlit.data.fetchers.longitudinal_temperature_contour_data_fetcher import (
     LongitudinalTemperatureDataFetcher,
 )
-from data.fetchers.ts_heatload_data_fetcher import TimeSeriesHeatLoadDataFetcher
-from plotters.circumferential_contour import CircumferentialPlotter
-from plotters.longitudinal_temp_contour import LongitudinalTemperaturePlotter
+from apps.frontend_streamlit.data.fetchers.ts_heatload_data_fetcher import TimeSeriesHeatLoadDataFetcher
+from apps.frontend_streamlit.plotters.circumferential_contour import CircumferentialPlotter
+from apps.frontend_streamlit.plotters.longitudinal_temp_contour import LongitudinalTemperaturePlotter
 
 # ── Cached figure helpers — re-render only when data or params change ─────────
 

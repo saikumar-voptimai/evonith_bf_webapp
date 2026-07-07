@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.core.config import BackendSettings
-from app.services.copilot_context_service import CopilotContextService
-from app.services.copilot_prompt_service import CopilotPromptService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.services.copilot_context_service import CopilotContextService
+from apps.backend_api.app.services.copilot_prompt_service import CopilotPromptService
 
 
 def test_copilot_context_excludes_raw_rows_by_default_and_redacts():

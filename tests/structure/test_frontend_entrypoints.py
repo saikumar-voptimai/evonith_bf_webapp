@@ -1,4 +1,4 @@
-"""Frontend entrypoint, page registry, and compatibility wrapper tests."""
+"""Frontend entrypoint and page registry tests."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from apps.frontend_streamlit._legacy import APP_ROOT
 from apps.frontend_streamlit.config.frontend_settings import load_frontend_settings
 from apps.frontend_streamlit.config.page_registry import get_navigation_pages
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+APP_ROOT = REPO_ROOT / "apps" / "frontend_streamlit"
 EXPECTED_PAGES = [
     "1_Welcome.py",
     "2_Data_Explorer.py",
@@ -27,33 +27,23 @@ EXPECTED_PAGES = [
 
 
 def test_canonical_frontend_entrypoint_exists():
-    app_path = REPO_ROOT / "apps" / "frontend_streamlit" / "app.py"
+    app_path = APP_ROOT / "app.py"
 
     assert app_path.exists()
     assert "st.set_page_config" in app_path.read_text(encoding="utf-8")
 
 
-def test_src_app_compatibility_shim_exists():
-    shim_path = REPO_ROOT / "src" / "app.py"
-    text = shim_path.read_text(encoding="utf-8")
-
-    assert shim_path.exists()
-    assert "apps" in text
-    assert "frontend_streamlit" in text
-    assert "runpy.run_path" in text
-    assert "st.set_page_config" not in text
+def test_legacy_frontend_entrypoint_is_absent():
+    assert not (REPO_ROOT / "src").exists()
 
 
-def test_canonical_app_and_old_app_shim_syntax_check():
-    for path in [
-        REPO_ROOT / "apps" / "frontend_streamlit" / "app.py",
-        REPO_ROOT / "src" / "app.py",
-    ]:
-        compile(path.read_text(encoding="utf-8"), str(path), "exec")
+def test_canonical_app_syntax_check():
+    app_path = APP_ROOT / "app.py"
+    compile(app_path.read_text(encoding="utf-8"), str(app_path), "exec")
 
 
-def test_canonical_app_bootstraps_repo_root_when_run_as_script(tmp_path):
-    app_path = REPO_ROOT / "apps" / "frontend_streamlit" / "app.py"
+def test_canonical_app_runs_with_repo_root_on_python_path(tmp_path):
+    app_path = APP_ROOT / "app.py"
     code = f"""
 import os
 import runpy
@@ -64,7 +54,7 @@ from pathlib import Path
 repo = Path({str(REPO_ROOT)!r})
 app_path = Path({str(app_path)!r})
 os.environ["EVONITH_RUNTIME_DIR"] = {str(tmp_path)!r}
-sys.path = [str(app_path.parent)] + [
+sys.path = [str(repo), str(app_path.parent)] + [
     path for path in sys.path if path not in ("", str(repo), str(repo.resolve()))
 ]
 
@@ -91,7 +81,7 @@ streamlit.stop = lambda: (_ for _ in ()).throw(SystemExit(0))
 sys.modules["streamlit"] = streamlit
 
 runpy.run_path(str(app_path), run_name="__main__")
-print("canonical app bootstrap ok")
+print("canonical app package context ok")
 """
     result = subprocess.run(
         [sys.executable, "-B", "-c", code],
@@ -102,33 +92,19 @@ print("canonical app bootstrap ok")
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "canonical app bootstrap ok" in result.stdout
+    assert "canonical app package context ok" in result.stdout
 
-def test_frontend_services_import_from_new_and_old_paths():
+
+def test_frontend_services_import_from_canonical_paths():
     canonical = importlib.import_module("apps.frontend_streamlit.services.status_api")
-    legacy = importlib.import_module("src.services.status_api")
 
     assert callable(canonical.get_status)
-    assert callable(legacy.get_status)
 
 
 def test_canonical_custom_pages_directory_contains_expected_pages():
-    canonical_pages = sorted(
-        path.name for path in (REPO_ROOT / "apps" / "frontend_streamlit" / "custom_pages").glob("*.py")
-    )
+    canonical_pages = sorted(path.name for path in (APP_ROOT / "custom_pages").glob("*.py"))
 
     assert canonical_pages == EXPECTED_PAGES
-
-
-def test_old_src_custom_pages_wrappers_exist():
-    legacy_pages = sorted(path.name for path in (REPO_ROOT / "src" / "custom_pages").glob("*.py"))
-
-    assert legacy_pages == EXPECTED_PAGES
-    for page in EXPECTED_PAGES:
-        text = (REPO_ROOT / "src" / "custom_pages" / page).read_text(encoding="utf-8")
-        assert "run_canonical_page" in text
-        assert f"custom_pages/{page}" in text
-        assert "streamlit as st" not in text
 
 
 def test_page_registry_points_to_canonical_pages():
@@ -148,7 +124,7 @@ def test_page_registry_points_to_canonical_pages():
     for relative_path in page_paths:
         resolved = APP_ROOT / relative_path
         assert resolved.exists()
-        assert resolved.is_relative_to(REPO_ROOT / "apps" / "frontend_streamlit" / "custom_pages")
+        assert resolved.is_relative_to(APP_ROOT / "custom_pages")
 
 
 def test_feature_flags_still_parse(monkeypatch):
@@ -167,8 +143,6 @@ def test_backend_status_badge_imports():
     assert callable(module.render_backend_status_badge)
 
 
-def test_direct_mode_page_modules_remain_discoverable():
+def test_page_modules_remain_discoverable():
     for page in EXPECTED_PAGES:
-        assert (REPO_ROOT / "src" / "custom_pages" / page).exists()
-        assert (REPO_ROOT / "apps" / "frontend_streamlit" / "custom_pages" / page).exists()
-
+        assert (APP_ROOT / "custom_pages" / page).exists()

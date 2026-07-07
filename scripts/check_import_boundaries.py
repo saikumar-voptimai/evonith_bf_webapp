@@ -12,7 +12,6 @@ import sys
 
 BACKEND_FORBIDDEN_ROOTS = {
     "streamlit",
-    "src",
     "custom_pages",
 }
 
@@ -81,10 +80,7 @@ def _python_files(root: Path) -> list[Path]:
 
 
 def _backend_app_dirs(root: Path) -> list[Path]:
-    return [
-        root / "apps" / "backend_api" / "app",
-        root / "furnace-data-service" / "app",
-    ]
+    return [root / "apps" / "backend_api" / "app"]
 
 
 def check_backend(root: Path) -> list[Finding]:
@@ -106,21 +102,9 @@ def check_backend(root: Path) -> list[Finding]:
     return findings
 
 
-def check_backend_shim(root: Path) -> list[Finding]:
-    shim = root / "furnace-data-service" / "app" / "main.py"
-    if not shim.exists():
-        return [Finding(shim, 0, "Legacy backend compatibility shim is missing.")]
-    text = shim.read_text(encoding="utf-8", errors="ignore")
-    required = "from apps.backend_api.app.main import app, create_app"
-    if required not in text:
-        return [Finding(shim, 0, "Legacy backend main.py does not re-export canonical app.")]
-    return []
-
-
 def _frontend_service_dirs(root: Path) -> list[Path]:
     return [
         root / "apps" / "frontend_streamlit" / "services",
-        root / "src" / "services",
     ]
 
 
@@ -135,22 +119,16 @@ def check_frontend_services(root: Path) -> list[Finding]:
             except SyntaxError as exc:
                 findings.append(Finding(path, exc.lineno or 0, f"Could not parse Python file: {exc.msg}"))
                 continue
-            text = path.read_text(encoding="utf-8", errors="ignore")
-            if "furnace-data-service" in text:
-                findings.append(Finding(path, 0, "Frontend API adapter references furnace-data-service path."))
             for module, line, _ in imports:
                 if module in FRONTEND_API_FORBIDDEN_ROOTS:
                     findings.append(Finding(path, line, f"Frontend API adapter imports backend/heavy module: {module}"))
     return findings
 
 
-def check_frontend_shim(root: Path) -> list[Finding]:
-    shim = root / "src" / "app.py"
-    if not shim.exists():
-        return [Finding(shim, 0, "Legacy Streamlit compatibility shim is missing.")]
-    text = shim.read_text(encoding="utf-8", errors="ignore")
-    if "apps" not in text or "frontend_streamlit" not in text:
-        return [Finding(shim, 0, "Legacy Streamlit app.py does not delegate to canonical app.")]
+def check_removed_frontend_folder(root: Path) -> list[Finding]:
+    legacy = root / ("s" + "rc")
+    if legacy.exists():
+        return [Finding(legacy, 0, "Removed legacy frontend folder still exists.")]
     return []
 
 
@@ -160,12 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = args.root.resolve()
 
-    findings = (
-        check_backend(root)
-        + check_backend_shim(root)
-        + check_frontend_services(root)
-        + check_frontend_shim(root)
-    )
+    findings = check_backend(root) + check_frontend_services(root) + check_removed_frontend_folder(root)
     if findings:
         print("FAIL import-boundary checks")
         for finding in findings:

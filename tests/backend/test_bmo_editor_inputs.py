@@ -13,7 +13,7 @@ import math
 import pandas as pd
 import pytest
 
-from ui.bmo.editor_inputs import (
+from apps.frontend_streamlit.ui.bmo.editor_inputs import (
     dust_inputs_from_editor,
     float_from_row,
     flux_inputs_from_editor,

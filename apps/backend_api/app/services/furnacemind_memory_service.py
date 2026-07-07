@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import ApiError
-from app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
-from app.services.optional_dependency_service import require_optional_module
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
+from apps.backend_api.app.services.optional_dependency_service import require_optional_module
 
 
 @dataclass(frozen=True)

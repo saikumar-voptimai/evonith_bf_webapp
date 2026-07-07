@@ -5,39 +5,38 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-import sys
 
-from dotenv import load_dotenv
+from apps.backend_api.app.core.env import load_backend_env
+from furnace_data.config import get_config_dir
 
-# Load .env and source config defaults before modules read os.environ.
+# Load .env and config defaults before modules read os.environ.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_SERVICE_ROOT = _REPO_ROOT / "furnace-data-service"
 
-load_dotenv(_SERVICE_ROOT / ".env")
-os.environ.setdefault("FURNACE_CONFIG_DIR", str(_REPO_ROOT / "src" / "config"))
+load_backend_env(_REPO_ROOT)
+os.environ.setdefault("FURNACE_CONFIG_DIR", str(get_config_dir()))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1.router import router as api_v1_router
-from app.core.config import BackendSettings, load_backend_settings
-from app.core.errors import register_exception_handlers
-from app.core.logging import configure_logging
-from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware
-from app.routes import data as legacy_data
-from app.routes import dataset as legacy_dataset
-from app.routes import health as legacy_health
-from app.services.audit_service import AuditService
-from app.services.blend_optimizer_service import BlendOptimizerService
-from app.services.copilot_service import CopilotService
-from app.services.dependency_status_service import DependencyStatusService
-from app.services.feedback_service import FeedbackService
-from app.services.furnacemind_service import FurnaceMindService
-from app.services.material_balance_service import MaterialBalanceService
-from app.services.metrics_service import MetricsService
-from app.services.model_registry_service import ModelRegistryService
-from app.services.recommendation_service import RecommendationService
-from app.services.unified_job_service import UnifiedJobService
+from apps.backend_api.app.api.v1.router import router as api_v1_router
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.core.errors import register_exception_handlers
+from apps.backend_api.app.core.logging import configure_logging
+from apps.backend_api.app.core.middleware import AccessLogMiddleware, RequestIdMiddleware
+from apps.backend_api.app.routes import data as legacy_data
+from apps.backend_api.app.routes import dataset as legacy_dataset
+from apps.backend_api.app.routes import health as legacy_health
+from apps.backend_api.app.services.audit_service import AuditService
+from apps.backend_api.app.services.blend_optimizer_service import BlendOptimizerService
+from apps.backend_api.app.services.copilot_service import CopilotService
+from apps.backend_api.app.services.dependency_status_service import DependencyStatusService
+from apps.backend_api.app.services.feedback_service import FeedbackService
+from apps.backend_api.app.services.furnacemind_service import FurnaceMindService
+from apps.backend_api.app.services.material_balance_service import MaterialBalanceService
+from apps.backend_api.app.services.metrics_service import MetricsService
+from apps.backend_api.app.services.model_registry_service import ModelRegistryService
+from apps.backend_api.app.services.recommendation_service import RecommendationService
+from apps.backend_api.app.services.unified_job_service import UnifiedJobService
 from furnace_data.runtime_paths import ensure_runtime_dirs
 
 log = logging.getLogger(__name__)
@@ -119,7 +118,3 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
 
 
 app = create_app()
-
-sys.modules.setdefault("apps.backend_api.app.main", sys.modules[__name__])
-sys.modules.setdefault("app.main", sys.modules[__name__])
-

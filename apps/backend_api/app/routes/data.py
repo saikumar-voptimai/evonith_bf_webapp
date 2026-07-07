@@ -15,9 +15,9 @@ from fastapi.responses import StreamingResponse
 
 from datetime import datetime, timedelta, timezone
 
-from app.core.offline_fetcher import fetch_database_offline
-from app.core.online_fetcher import ONLINE_MEASUREMENTS, fetch_online, list_measurements
-from app.models.schemas import (
+from apps.backend_api.app.core.offline_fetcher import fetch_database_offline
+from apps.backend_api.app.core.online_fetcher import ONLINE_MEASUREMENTS, fetch_online, list_measurements
+from apps.backend_api.app.models.schemas import (
     DataFetchResponse,
     DataMeta,
     OfflineFetchRequest,

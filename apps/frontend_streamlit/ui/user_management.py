@@ -7,12 +7,12 @@ to add new users with role assignment from an admin interface.
 # register_page.py
 import streamlit as st
 
-from config.frontend_settings import is_backend_api_enabled
-from data.db import UserDataService
-from domain.auth_service import AuthService
-from services.admin_api import create_user as backend_create_user
-from services.admin_api import list_users as backend_list_users
-from services.api_errors import FrontendApiError
+from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
+from apps.frontend_streamlit.data.db import UserDataService
+from apps.frontend_streamlit.domain.auth_service import AuthService
+from apps.frontend_streamlit.services.admin_api import create_user as backend_create_user
+from apps.frontend_streamlit.services.admin_api import list_users as backend_list_users
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
 
 
 class RegisterPage:

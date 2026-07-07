@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.core.config import BackendSettings
-from app.core.errors import ApiError
-from app.services.copilot_safety_service import CopilotSafetyService
+from apps.backend_api.app.core.config import BackendSettings
+from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.copilot_safety_service import CopilotSafetyService
 
 
 def test_copilot_safety_redacts_sensitive_fields_without_mutating_original():

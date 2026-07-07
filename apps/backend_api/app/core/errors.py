@@ -10,8 +10,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.responses import api_error_response, get_request_id
-from app.services.redaction_service import redact_dict, redact_text
+from apps.backend_api.app.core.responses import api_error_response, get_request_id
+from apps.backend_api.app.services.redaction_service import redact_dict, redact_text
 
 log = logging.getLogger(__name__)
 

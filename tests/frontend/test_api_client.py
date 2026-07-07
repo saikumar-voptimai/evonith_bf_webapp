@@ -5,8 +5,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from services.api_client import ApiClient, is_wrapped_api_response, unwrap_api_response
-from services.api_errors import (
+from apps.frontend_streamlit.services.api_client import ApiClient, is_wrapped_api_response, unwrap_api_response
+from apps.frontend_streamlit.services.api_errors import (
     BackendApiDecodeError,
     BackendApiHTTPError,
     BackendApiTimeoutError,

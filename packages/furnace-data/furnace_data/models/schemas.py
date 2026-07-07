@@ -1,6 +1,6 @@
 """Shared Pydantic request/response models for the furnace data platform.
 
-Used by both the furnace-data-service API routes and any caller that wants
+Used by both the canonical backend API routes and any caller that wants
 typed request/response objects (e.g., typed HTTP clients in the webapp).
 """
 

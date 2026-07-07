@@ -16,8 +16,8 @@ from typing import Callable, Optional
 import httpx
 import pandas as pd
 
-from app.config import settings
-from app.models.schemas import TaskStatus
+from apps.backend_api.app.config import settings
+from apps.backend_api.app.models.schemas import TaskStatus
 
 log = logging.getLogger(__name__)
 

@@ -1,13 +1,13 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 
 import pandas as pd
 import pytest
 
-from data.bmo import context_provider as context_module
-from data.bmo.context_provider import EvonithBmoContextProvider
-from utils.bmo.types import OreChemistry, OreInput
+from furnace_data.bmo.data import context_provider as context_module
+from furnace_data.bmo.data.context_provider import EvonithBmoContextProvider
+from furnace_data.bmo.utils.types import OreChemistry, OreInput
 
 
 def _write_bmo_files(tmp_path):
@@ -780,3 +780,5 @@ def test_flux_inputs_use_charge_quantities_and_flux_chemistry(
     )
     assert diagnostics["rows"][0]["rows_used"] == 1
     assert diagnostics["rows"][0]["sample_timestamp"] == "2026-05-01T00:00:00+00:00"
+
+

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from services import feedback_api
+from apps.frontend_streamlit.services import feedback_api
 
 
 class FakeClient:

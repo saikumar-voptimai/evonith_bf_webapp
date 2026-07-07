@@ -23,8 +23,6 @@ testpaths = ["tests"]
 [tool.evonith.apps]
 backend = "apps.backend_api.app.main:app"
 frontend = "apps/frontend_streamlit/app.py"
-legacy_backend = "furnace-data-service/app/main.py"
-legacy_frontend = "src/app.py"
 shared_package = "furnace_data"
 
 

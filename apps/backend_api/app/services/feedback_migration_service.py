@@ -10,9 +10,9 @@ import shutil
 import sqlite3
 from typing import Any
 
-from app.core.config import BackendSettings, load_backend_settings
-from app.repositories.feedback_repository import FeedbackRepository, _sqlite_url_to_path
-from app.services.feedback_attachment_service import FeedbackAttachmentService
+from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
+from apps.backend_api.app.repositories.feedback_repository import FeedbackRepository, _sqlite_url_to_path
+from apps.backend_api.app.services.feedback_attachment_service import FeedbackAttachmentService
 from furnace_data.runtime_paths import get_feedback_db_path, get_feedback_upload_dir, get_repo_root
 
 
@@ -33,7 +33,6 @@ def _legacy_db_candidates() -> list[Path]:
     root = get_repo_root()
     candidates = [
         get_feedback_db_path(),
-        root / "src" / "storage" / "feedback" / "tickets.db",
         root / "storage" / "feedback" / "tickets.db",
     ]
     seen: set[Path] = set()
