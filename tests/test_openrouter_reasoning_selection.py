@@ -58,6 +58,19 @@ class _FakeCompletions:
         return self.completion
 
 
+class _FailingCompletions:
+    """Capture completion calls and raise one configured error."""
+
+    def __init__(self, exc: Exception) -> None:
+        self.exc = exc
+        self.calls: list[dict[str, Any]] = []
+
+    def create(self, **kwargs: Any) -> _Completion:
+        """Record request arguments, then raise the configured exception."""
+        self.calls.append(kwargs)
+        raise self.exc
+
+
 def _patch_openrouter_settings(monkeypatch, fake_completions: _FakeCompletions) -> None:
     """Install deterministic OpenRouter config and SDK fake for one test."""
     monkeypatch.setattr(
@@ -78,13 +91,11 @@ def _patch_openrouter_settings(monkeypatch, fake_completions: _FakeCompletions) 
                     level="Low",
                     model_name="low/model",
                     reasoning_effort="low",
-                    fallback_model_names=("fallback/one", "fallback/two"),
                 ),
                 "Medium": OpenRouterReasoningProfile(
                     level="Medium",
                     model_name="medium/model",
                     reasoning_effort="medium",
-                    fallback_model_names=("fallback/medium",),
                 ),
                 "High": OpenRouterReasoningProfile(
                     level="High",
@@ -108,25 +119,19 @@ def test_reasoning_level_normalization_defaults_to_medium() -> None:
     assert normalize_openrouter_reasoning_level("slow") == "High"
 
 
-def test_default_reasoning_profiles_use_requested_model_order(monkeypatch) -> None:
-    """Built-in profiles should use the ticket's primary/fallback model order."""
+def test_default_reasoning_profiles_use_requested_models(monkeypatch) -> None:
+    """Built-in profiles should use one configured model per reasoning level."""
     for env_name in (
-        "OPENROUTER_FALLBACK_MODELS",
         "OPENROUTER_LOW_MODEL",
         "OPENROUTER_LOW_REASONING_EFFORT",
-        "OPENROUTER_LOW_FALLBACK_MODELS",
         "OPENROUTER_FAST_MODEL",
         "OPENROUTER_FAST_REASONING_EFFORT",
-        "OPENROUTER_FAST_FALLBACK_MODELS",
         "OPENROUTER_MEDIUM_MODEL",
         "OPENROUTER_MEDIUM_REASONING_EFFORT",
-        "OPENROUTER_MEDIUM_FALLBACK_MODELS",
         "OPENROUTER_HIGH_MODEL",
         "OPENROUTER_HIGH_REASONING_EFFORT",
-        "OPENROUTER_HIGH_FALLBACK_MODELS",
         "OPENROUTER_SLOW_MODEL",
         "OPENROUTER_SLOW_REASONING_EFFORT",
-        "OPENROUTER_SLOW_FALLBACK_MODELS",
     ):
         monkeypatch.delenv(env_name, raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
@@ -136,43 +141,25 @@ def test_default_reasoning_profiles_use_requested_model_order(monkeypatch) -> No
 
     assert profiles["Low"].model_name == "google/gemma-4-26b-a4b-it"
     assert profiles["Low"].reasoning_effort is None
-    assert profiles["Low"].fallback_model_names == (
-        "bytedance-seed/seed-2.0-mini",
-        "google/gemma-4-31b-it",
-    )
     assert profiles["Medium"].model_name == "openai/gpt-5.4-nano"
     assert profiles["Medium"].reasoning_effort is None
-    assert profiles["Medium"].fallback_model_names == (
-        "qwen/qwen3-vl-235b-a22b-instruct",
-        "stepfun/step-3.7-flash",
-    )
     assert profiles["High"].model_name == "google/gemini-3.1-flash-lite-preview"
     assert profiles["High"].reasoning_effort is None
-    assert profiles["High"].fallback_model_names == (
-        "minimax/minimax-m3",
-        "qwen/qwen3.7-plus",
-    )
 
 
 def test_default_profiles_do_not_send_reasoning_parameter(monkeypatch) -> None:
-    """Default model chains should not force reasoning effort onto every model."""
+    """Default model profiles should not force reasoning effort onto every model."""
     for env_name in (
-        "OPENROUTER_FALLBACK_MODELS",
         "OPENROUTER_LOW_MODEL",
         "OPENROUTER_LOW_REASONING_EFFORT",
-        "OPENROUTER_LOW_FALLBACK_MODELS",
         "OPENROUTER_FAST_MODEL",
         "OPENROUTER_FAST_REASONING_EFFORT",
-        "OPENROUTER_FAST_FALLBACK_MODELS",
         "OPENROUTER_MEDIUM_MODEL",
         "OPENROUTER_MEDIUM_REASONING_EFFORT",
-        "OPENROUTER_MEDIUM_FALLBACK_MODELS",
         "OPENROUTER_HIGH_MODEL",
         "OPENROUTER_HIGH_REASONING_EFFORT",
-        "OPENROUTER_HIGH_FALLBACK_MODELS",
         "OPENROUTER_SLOW_MODEL",
         "OPENROUTER_SLOW_REASONING_EFFORT",
-        "OPENROUTER_SLOW_FALLBACK_MODELS",
     ):
         monkeypatch.delenv(env_name, raising=False)
     monkeypatch.setattr(
@@ -195,15 +182,15 @@ def test_default_profiles_do_not_send_reasoning_parameter(monkeypatch) -> None:
 
     request = client.client.chat.completions.calls[0]
     assert request["model"] == "google/gemma-4-26b-a4b-it"
-    assert request["extra_body"] == {
-        "models": ["bytedance-seed/seed-2.0-mini", "google/gemma-4-31b-it"]
-    }
+    assert "extra_body" not in request
     assert client.usage_metadata()["reasoning_effort"] is None
 
 
-def test_openrouter_client_sends_reasoning_profile_and_fallbacks(monkeypatch) -> None:
-    """Explicit profile effort should be sent with fallback routing."""
-    fake_completions = _FakeCompletions(_Completion(model="fallback/one"))
+def test_openrouter_client_sends_reasoning_profile_without_fallbacks(
+    monkeypatch,
+) -> None:
+    """Explicit profile effort should be sent without fallback routing."""
+    fake_completions = _FakeCompletions(_Completion(model="low/model"))
     _patch_openrouter_settings(monkeypatch, fake_completions)
 
     client = llm_client.OpenRouterClient(reasoning_level="Low")
@@ -214,15 +201,54 @@ def test_openrouter_client_sends_reasoning_profile_and_fallbacks(monkeypatch) ->
     assert request["max_completion_tokens"] == 321
     assert request["extra_body"] == {
         "reasoning": {"effort": "low", "exclude": True},
-        "models": ["fallback/one", "fallback/two"],
     }
     assert client.usage_metadata() == {
         "reasoning_level": "Low",
         "reasoning_effort": "low",
         "primary_model": "low/model",
-        "actual_model": "fallback/one",
-        "fallback_models": ["fallback/one", "fallback/two"],
-        "fallback_used": True,
+        "actual_model": "low/model",
+        "model_status": "completed",
+        "model_error": None,
+    }
+
+
+def test_openrouter_client_does_not_retry_busy_model_with_max_tokens(monkeypatch) -> None:
+    """Busy model errors should fail once instead of retrying the same request."""
+    fake_completions = _FailingCompletions(RuntimeError("provider busy"))
+    _patch_openrouter_settings(monkeypatch, fake_completions)
+
+    client = llm_client.OpenRouterClient(reasoning_level="Medium")
+
+    try:
+        client.chat_completions(messages=[{"role": "user", "content": "hello"}])
+    except RuntimeError as exc:
+        assert str(exc) == "provider busy"
+    else:  # pragma: no cover - defensive assertion for fake client behavior
+        raise AssertionError("busy model error should propagate")
+
+    assert len(fake_completions.calls) == 1
+    assert "max_completion_tokens" in fake_completions.calls[0]
+    assert "max_tokens" not in fake_completions.calls[0]
+
+
+def test_openrouter_client_records_busy_model_message(monkeypatch) -> None:
+    """Unavailable selected models should produce a clear retry suggestion."""
+    fake_completions = _FakeCompletions(_Completion(model="medium/model"))
+    _patch_openrouter_settings(monkeypatch, fake_completions)
+
+    client = llm_client.OpenRouterClient(reasoning_level="Medium")
+    client.record_failure(RuntimeError("provider busy"))
+
+    assert client.unavailable_message() == (
+        "Medium effort level models are busy. Please try another mode."
+    )
+    assert client.usage_metadata() == {
+        "reasoning_level": "Medium",
+        "reasoning_effort": "medium",
+        "primary_model": "medium/model",
+        "actual_model": None,
+        "model_status": "failed",
+        "model_error": "RuntimeError: provider busy",
     }
 
 

@@ -33,10 +33,9 @@ class OpenRouterClient:
     """OpenRouter chat client with optional reasoning-profile routing.
 
     Normal FurnaceMind chat turns resolve a user-facing reasoning level
-    (``Low``, ``Medium``, or ``High``) into a configured primary model,
-    optional OpenRouter reasoning effort, and ordered fallback models. Background jobs
-    can still pass ``model_name`` to force a specific model and bypass the
-    user-facing routing profiles.
+    (``Low``, ``Medium``, or ``High``) into one configured model and optional
+    OpenRouter reasoning effort. Background jobs can still pass ``model_name``
+    to force a specific model and bypass the user-facing routing profiles.
     """
 
     _logger = logging.getLogger(__name__)
@@ -52,7 +51,7 @@ class OpenRouterClient:
         Args:
             model_name: Optional model override for specialized LLM tasks such
                 as memory compression. Overrides do not receive UI reasoning
-                effort or fallback routing.
+                effort routing.
             reasoning_level: Optional user-selected reasoning level. Missing or
                 invalid values resolve to the configured Medium profile.
 
@@ -71,7 +70,6 @@ class OpenRouterClient:
         if model_name:
             self.reasoning_level: str | None = None
             self.reasoning_effort: str | None = None
-            self.fallback_models: tuple[str, ...] = ()
             self.model = model_name.strip()
         else:
             self.reasoning_level = normalize_openrouter_reasoning_level(
@@ -87,14 +85,11 @@ class OpenRouterClient:
                 if profile and profile.reasoning_effort
                 else None
             )
-            self.fallback_models = (
-                tuple(profile.fallback_model_names) if profile else ()
-            )
 
         self.primary_model = self.model
         self.max_tokens = cfg.max_tokens
         self.last_actual_model: str | None = None
-        self.last_fallback_used = False
+        self.last_error: str | None = None
 
         self.extra_headers = {
             "HTTP-Referer": settings.app.environment,
@@ -102,11 +97,11 @@ class OpenRouterClient:
         }
 
     def _extra_body(self) -> dict[str, Any]:
-        """Build OpenRouter-only request options for reasoning and fallback models.
+        """Build OpenRouter-only request options for reasoning effort.
 
         The OpenAI-compatible SDK accepts these fields through ``extra_body``.
         Reasoning effort is included only when the selected profile configures
-        it, and fallback models are sent as an ordered OpenRouter model chain.
+        it.
         """
         extra_body: dict[str, Any] = {}
         if self.reasoning_effort:
@@ -114,8 +109,6 @@ class OpenRouterClient:
                 "effort": self.reasoning_effort,
                 "exclude": True,
             }
-        if self.fallback_models:
-            extra_body["models"] = list(self.fallback_models)
         return extra_body
 
     def _base_kwargs(
@@ -142,16 +135,28 @@ class OpenRouterClient:
             kwargs["extra_body"] = extra_body
         return kwargs
 
+    @staticmethod
+    def _should_retry_with_max_tokens(exc: Exception) -> bool:
+        """Return True only for max-completion-token compatibility failures.
+
+        OpenRouter can surface provider-specific parameter errors for older
+        OpenAI-compatible models. Those should retry the same model with
+        ``max_tokens``; availability, rate-limit, and provider-busy errors
+        should fail immediately so the UI can ask the operator to try another
+        reasoning mode.
+        """
+        return "max_completion_tokens" in f"{type(exc).__name__}: {exc}".lower()
+
     def _record_completion(self, completion: Any) -> Any:
         """Record which model actually answered an OpenRouter request.
 
-        OpenRouter can transparently route to fallback models. This method stores
-        the returned model id, marks whether fallback routing happened, and emits
-        a structured log entry for audit/debugging.
+        This method stores the returned model id and emits a structured log entry
+        for audit/debugging, including the selected reasoning level and primary
+        model configured for the turn.
         """
         actual_model = str(getattr(completion, "model", None) or self.primary_model)
         self.last_actual_model = actual_model
-        self.last_fallback_used = actual_model != self.primary_model
+        self.last_error = None
         self._logger.info(
             "openrouter_completion",
             extra={
@@ -159,26 +164,54 @@ class OpenRouterClient:
                 "reasoning_effort": self.reasoning_effort,
                 "primary_model": self.primary_model,
                 "actual_model": actual_model,
-                "fallback_models": list(self.fallback_models),
-                "fallback_used": self.last_fallback_used,
             },
         )
         return completion
+
+    def record_failure(self, exc: Exception) -> None:
+        """Record a failed OpenRouter request for chat metadata and logs.
+
+        FurnaceMind no longer asks OpenRouter to try fallback models for a
+        selected reasoning level. When the configured model is unavailable, the
+        UI can call this method before showing a user-facing retry suggestion.
+        """
+        self.last_actual_model = None
+        self.last_error = f"{type(exc).__name__}: {exc}"
+        self._logger.warning(
+            "openrouter_completion_failed",
+            extra={
+                "reasoning_level": self.reasoning_level,
+                "reasoning_effort": self.reasoning_effort,
+                "primary_model": self.primary_model,
+                "model_error": self.last_error,
+            },
+        )
+
+    def unavailable_message(self) -> str:
+        """Return the operator-facing message for an unavailable model profile."""
+        if self.reasoning_level:
+            return (
+                f"{self.reasoning_level} effort level models are busy. "
+                "Please try another mode."
+            )
+        return "The selected model is busy. Please try another mode."
 
     def usage_metadata(self) -> dict[str, Any]:
         """Return SQL-friendly metadata for the completed chat turn.
 
         Callers persist this beside the assistant message so a conversation row
-        records the selected reasoning level, primary model, fallback chain, and
-        actual model used by OpenRouter.
+        records the selected reasoning level, primary model, actual model used
+        by OpenRouter, and whether the model call completed or failed.
         """
         return {
             "reasoning_level": self.reasoning_level,
             "reasoning_effort": self.reasoning_effort,
             "primary_model": self.primary_model,
-            "actual_model": self.last_actual_model or self.primary_model,
-            "fallback_models": list(self.fallback_models),
-            "fallback_used": self.last_fallback_used,
+            "actual_model": None
+            if self.last_error
+            else self.last_actual_model or self.primary_model,
+            "model_status": "failed" if self.last_error else "completed",
+            "model_error": self.last_error,
         }
 
     def generate(
@@ -189,10 +222,9 @@ class OpenRouterClient:
     ) -> str:
         """Generate a response from the LLM given system and user prompts.
 
-        Tries ``max_completion_tokens`` first and falls back to ``max_tokens``
-        for older OpenAI-compatible models. OpenRouter fallback routing is
-        included for normal FurnaceMind chat clients; reasoning is sent only
-        when explicitly configured for the selected profile.
+        Tries ``max_completion_tokens`` first and retries the same model with
+        ``max_tokens`` for older OpenAI-compatible models. Reasoning is sent
+        only when explicitly configured for the selected profile.
         """
         messages = [
             {"role": "system", "content": system_prompt},
@@ -204,8 +236,10 @@ class OpenRouterClient:
                 **kwargs,
                 max_completion_tokens=self.max_tokens,
             )
-        except Exception:
-            # fallback for older models that only accept max_tokens
+        except Exception as exc:
+            if not self._should_retry_with_max_tokens(exc):
+                raise
+            # Compatibility retry for older models that only accept max_tokens.
             completion = self.client.chat.completions.create(
                 **kwargs,
                 max_tokens=self.max_tokens,
@@ -224,8 +258,8 @@ class OpenRouterClient:
         """Call OpenRouter Chat Completions with optional tool-calling.
 
         Returns the raw OpenAI-compatible completion object. The client records
-        the actual model returned by OpenRouter so callers can persist whether
-        the primary model or a fallback answered the turn.
+        the actual model returned by OpenRouter so callers can persist which
+        configured model answered the turn.
         """
 
         kwargs = self._base_kwargs(messages=messages, stop=stop)
@@ -234,13 +268,16 @@ class OpenRouterClient:
             if tool_choice is not None:
                 kwargs["tool_choice"] = tool_choice
 
-        # Prefer max_completion_tokens (newer OpenAI-compatible APIs). Fallback to max_tokens.
+        # Prefer max_completion_tokens (newer OpenAI-compatible APIs). Retry the
+        # same model with max_tokens for older providers.
         try:
             completion = self.client.chat.completions.create(
                 **kwargs,
                 max_completion_tokens=self.max_tokens,
             )
-        except Exception:
+        except Exception as exc:
+            if not self._should_retry_with_max_tokens(exc):
+                raise
             completion = self.client.chat.completions.create(
                 **kwargs,
                 max_tokens=self.max_tokens,

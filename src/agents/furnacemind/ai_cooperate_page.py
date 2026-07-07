@@ -585,7 +585,7 @@ def _render_reasoning_selector() -> str:
         options,
         index=options.index(current_level),
         key="fm_reasoning_level",
-        help="Low uses the faster/lower-cost model chain, Medium balances quality and latency, High uses the deeper-quality model chain.",
+        help="Low uses the faster/lower-cost model, Medium balances quality and latency, High uses the deeper-quality model.",
     )
     return normalize_openrouter_reasoning_level(selected)
 
@@ -927,13 +927,19 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             status_box = st.empty()
             response_box = st.empty()
             status_box.status("Thinking...", expanded=False)
-            final_response = run_agent_loop(
-                llm=llm,
-                messages=messages,
-                tools=tools,
-                status_box=status_box,
-                response_box=response_box,
-            )
+            try:
+                final_response = run_agent_loop(
+                    llm=llm,
+                    messages=messages,
+                    tools=tools,
+                    status_box=status_box,
+                    response_box=response_box,
+                )
+            except Exception as exc:
+                llm.record_failure(exc)
+                final_response = llm.unavailable_message()
+                status_box.empty()
+                response_box.markdown(final_response)
     finally:
         st.session_state.pop("fm_current_artifact_turn_id", None)
 
