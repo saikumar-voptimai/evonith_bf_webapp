@@ -28,6 +28,64 @@ load_dotenv()
 # ==========================================================
 
 
+REASONING_LEVELS = ("Low", "Medium", "High")
+DEFAULT_OPENROUTER_REASONING_MODEL = {
+    "Low": "google/gemma-4-26b-a4b-it",
+    "Medium": "openai/gpt-5.4-nano",
+    "High": "google/gemini-3.1-flash-lite-preview",
+}
+_REASONING_LEVEL_ALIASES = {
+    "low": "Low",
+    "fast": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "slow": "High",
+}
+
+
+def normalize_openrouter_reasoning_level(value: str | None) -> str:
+    """Return a supported OpenRouter reasoning profile name.
+
+    User-facing controls and persisted sessions should only use ``Low``,
+    ``Medium``, or ``High``. Missing or invalid values fall back to
+    ``Medium``, which is the balanced profile required by the ticket.
+    """
+    normalized = str(value or "").strip().lower()
+    return _REASONING_LEVEL_ALIASES.get(normalized, "Medium")
+
+
+
+def _env_first(*names: str) -> str | None:
+    """Return the first configured environment variable from ``names``.
+
+    New profile names use ``LOW`` and ``HIGH``. The old ``FAST`` and ``SLOW``
+    variables are still accepted so existing deployments keep working until
+    their environment files are renamed.
+    """
+    for name in names:
+        value = os.getenv(name)
+        if value is not None:
+            return value
+    return None
+
+
+@dataclass(frozen=True)
+class OpenRouterReasoningProfile:
+    """Model routing profile for one FurnaceMind reasoning level.
+
+    Attributes:
+        level: User-facing reasoning level label: ``Low``, ``Medium``, or
+            ``High``.
+        model_name: OpenRouter model used for this level.
+        reasoning_effort: Optional OpenRouter reasoning effort. Empty values
+            disable the reasoning request parameter.
+    """
+
+    level: str
+    model_name: str
+    reasoning_effort: str | None = None
+
+
 @dataclass
 class OpenRouterLLMConfig:
     """Connection and model settings for the OpenRouter LLM gateway.
@@ -37,6 +95,8 @@ class OpenRouterLLMConfig:
         base_url:   OpenRouter API base URL.
         model_name: Fully-qualified model identifier (e.g. ``openai/gpt-4o-mini``).
         memory_compression_model_name: Model used for memory summary compression.
+        reasoning_profiles: Per-level model and reasoning-effort routing config.
+        default_reasoning_level: Profile used for missing/invalid user choices.
         max_tokens: Maximum completion tokens to request.
     """
 
@@ -44,6 +104,10 @@ class OpenRouterLLMConfig:
     base_url: str = "https://openrouter.ai/api/v1"
     model_name: str = "openai/gpt-4o-mini"
     memory_compression_model_name: str = "openai/gpt-4o-mini"
+    reasoning_profiles: dict[str, OpenRouterReasoningProfile] = field(
+        default_factory=dict
+    )
+    default_reasoning_level: str = "Medium"
     max_tokens: int = 800
 
 
@@ -264,6 +328,58 @@ class Settings:
             or openrouter_model
         )
 
+        low_model = DEFAULT_OPENROUTER_REASONING_MODEL["Low"]
+        medium_model = DEFAULT_OPENROUTER_REASONING_MODEL["Medium"]
+        high_model = DEFAULT_OPENROUTER_REASONING_MODEL["High"]
+        reasoning_profiles = {
+            "Low": OpenRouterReasoningProfile(
+                level="Low",
+                model_name=(
+                    _env_first("OPENROUTER_LOW_MODEL", "OPENROUTER_FAST_MODEL")
+                    or low_model
+                ).strip()
+                or low_model,
+                reasoning_effort=(
+                    _env_first(
+                        "OPENROUTER_LOW_REASONING_EFFORT",
+                        "OPENROUTER_FAST_REASONING_EFFORT",
+                    )
+                    or ""
+                ).strip()
+                or None,
+            ),
+            "Medium": OpenRouterReasoningProfile(
+                level="Medium",
+                model_name=(
+                    os.getenv("OPENROUTER_MEDIUM_MODEL", medium_model).strip()
+                    or medium_model
+                ),
+                reasoning_effort=os.getenv(
+                    "OPENROUTER_MEDIUM_REASONING_EFFORT", ""
+                ).strip()
+                or None,
+            ),
+            "High": OpenRouterReasoningProfile(
+                level="High",
+                model_name=(
+                    _env_first("OPENROUTER_HIGH_MODEL", "OPENROUTER_SLOW_MODEL")
+                    or high_model
+                ).strip()
+                or high_model,
+                reasoning_effort=(
+                    _env_first(
+                        "OPENROUTER_HIGH_REASONING_EFFORT",
+                        "OPENROUTER_SLOW_REASONING_EFFORT",
+                    )
+                    or ""
+                ).strip()
+                or None,
+            ),
+        }
+        default_reasoning_level = normalize_openrouter_reasoning_level(
+            os.getenv("OPENROUTER_DEFAULT_REASONING_LEVEL", "Medium")
+        )
+
         openai_api_key = os.getenv("OPENAI_API_KEY")
         openai_base_url = os.getenv("OPENAI_BASE_URL")
         openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -278,6 +394,8 @@ class Settings:
                 base_url=openrouter_base_url,
                 model_name=openrouter_model,
                 memory_compression_model_name=memory_compression_model,
+                reasoning_profiles=reasoning_profiles,
+                default_reasoning_level=default_reasoning_level,
                 max_tokens=max_tokens,
             ),
             openai=OpenAILLMConfig(

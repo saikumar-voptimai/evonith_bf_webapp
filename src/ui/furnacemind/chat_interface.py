@@ -1210,7 +1210,7 @@ def _remove_knowledge_document(
     else:
         if not mrag_document_id:
             raise ValueError("No Qdrant point ids found for this document.")
-        knowledge_store.delete_document(document_id=mrag_document_id, user_id=user_id)
+        knowledge_store.delete_document(document_id=mrag_document_id, user_id=None)
 
     document_repository.deactivate_document(document.document_id)
     _remember_revoked_knowledge_document(mrag_document_id)
@@ -1245,15 +1245,15 @@ def _render_knowledge_documents(
 ) -> None:
     """Render active MRAG documents and their inspect/remove controls.
 
-    The document repository is treated as the source of truth for what the user
-    can currently retrieve from. Active documents are shown in a compact selector,
-    with metadata details for debugging and a removal button that clears Qdrant
-    embeddings before deactivating the SQL row.
+    The document repository is treated as the source of truth for the shared
+    FurnaceMind knowledge library. Active documents are shown in a compact
+    selector, with metadata details for debugging and a removal button that
+    clears Qdrant embeddings before deactivating the SQL row.
 
     Args:
         knowledge_store: Vector store used when the selected document is removed.
-        user_id: Current FurnaceMind user id. Without it, no user-scoped library
-            can be listed.
+        user_id: Current FurnaceMind user id, used only for best-effort cleanup
+            of that user's document-derived semantic memories.
         document_repository: SQL repository used to fetch active documents and
             deactivate the selected document on removal.
 
@@ -1261,19 +1261,17 @@ def _render_knowledge_documents(
         None. The function renders Streamlit controls and stores success messages
         in session state before rerunning the page.
     """
-    if not user_id or document_repository is None:
+    if document_repository is None:
         return
 
     try:
-        documents = document_repository.list_documents(
-            user_id=user_id, active_only=True
-        )
+        documents = document_repository.list_documents(user_id=None, active_only=True)
     except Exception as exc:
         st.caption(f"Knowledge library unavailable: {exc}")
         return
 
     if not documents:
-        st.caption("No active multimodal knowledge documents.")
+        st.caption("No active shared multimodal knowledge documents.")
         return
 
     st.caption("MRAG library")

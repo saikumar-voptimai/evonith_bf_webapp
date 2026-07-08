@@ -1,6 +1,6 @@
 """Tool functions for the FurnaceMind AI Co-Operate agent.
 
-Exposes nine tool functions dispatched by
+Exposes ten tool functions dispatched by
 :func:`execute_openai_tool_call`:
 
 1. ``fetch_online_data`` — fetch InfluxDB telemetry for any measurement group.
@@ -11,7 +11,8 @@ Exposes nine tool functions dispatched by
 6. ``load_static_shift_data`` — load 8-hour shift data from the static ML dataset.
 7. ``search_shift_history`` — semantic vector search over Qdrant shift summaries.
 8. ``search_knowledge_docs`` — semantic search over uploaded operator documents.
-9. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
+9. ``render_heatload_plot`` — deterministic plot for recent heatload telemetry.
+10. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
 """
 
 import base64
@@ -1224,8 +1225,20 @@ def get_openai_tool_schemas() -> list[dict]:
         {
             "type": "function",
             "function": {
+                "name": "render_heatload_plot",
+                "description": "Render the standard FurnaceMind heatload chart from the active dataframe. Use after fetching heatload_delta_t/temperature_profile data for heatload trend questions instead of writing custom Plotly code.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "execute_python_plot",
-                "description": "Execute restricted Python to create a Plotly figure 'fig' using df (loaded from active session dataframe fm_df).",
+                "description": "Execute restricted Python to create a Plotly figure named 'fig' using preloaded df, pd, px, go, make_subplots, and np. Do not include import statements or fig.show(). Multi-series plots receive FurnaceMind default styling with distinct colors.",
                 "parameters": {
                     "type": "object",
                     "properties": {"code": {"type": "string"}},
@@ -1352,6 +1365,8 @@ def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
         return search_shift_history.invoke(arguments)
     if name == "search_knowledge_docs":
         return search_knowledge_docs.invoke(arguments)
+    if name == "render_heatload_plot":
+        return render_heatload_plot.invoke(arguments)
     if name == "execute_python_plot":
         if not arguments.get("code"):
             return "Error: execute_python_plot requires a non-empty 'code' argument containing valid Python that creates a Plotly figure named 'fig'."
@@ -1431,7 +1446,7 @@ def _stored_document_file_for_payload(payload: dict[str, Any]) -> Any | None:
         return None
     try:
         return repository.get_document_file_by_mrag_id(
-            user_id=st.session_state.get("fm_user_id"),
+            user_id=None,
             mrag_document_id=mrag_document_id,
         )
     except Exception as exc:
@@ -1726,28 +1741,30 @@ def _store_knowledge_document_refs(results: list[dict[str, Any]]) -> None:
         st.session_state.pop("fm_last_knowledge_document_refs", None)
 
 
-def _active_knowledge_document_ids(*, user_id: str | None) -> set[str] | None:
-    """Read active SQL document ids used to filter Qdrant retrieval.
+def _active_knowledge_document_ids(*, user_id: str | None = None) -> set[str] | None:
+    """Read active shared SQL document ids used to filter Qdrant retrieval.
 
-    The SQL document table is the source of truth for whether a user has kept a
-    knowledge file active. Qdrant still stores the vectors, but this filter stops
-    deactivated documents from participating in answer generation.
+    The SQL document table is the source of truth for active uploaded knowledge.
+    Knowledge is intentionally shared across FurnaceMind users, while the row's
+    ``user_id`` remains uploader/audit metadata. Qdrant still stores the chunk
+    vectors, but this SQL-derived filter prevents deactivated documents from
+    participating in answer generation.
 
     Args:
-        user_id: Current FurnaceMind user id. When missing, the caller cannot
-            perform user-scoped SQL filtering.
+        user_id: Ignored for normal retrieval. Kept for backward-compatible
+            callers that still pass the current FurnaceMind user id.
 
     Returns:
-        A set of active MRAG document ids. An empty set means the user has no
-        active documents. ``None`` means the repository or user context is not
-        available, so the caller should continue without this SQL filter.
+        A set of active MRAG document ids. An empty set means there are no active
+        shared documents. ``None`` means the SQL repository is unavailable, so
+        the caller should continue without this active-document filter.
     """
     repository = st.session_state.get("knowledge_document_repository")
-    if repository is None or not user_id:
+    if repository is None:
         return None
 
     try:
-        documents = repository.list_documents(user_id=user_id, active_only=True)
+        documents = repository.list_documents(user_id=None, active_only=True)
     except Exception:
         return None
 
@@ -2055,6 +2072,81 @@ def _normalize_time_range(user_time_range: str) -> str:
     return "last 8 hours"
 
 
+_DEFAULT_PLOT_COLORWAY = (
+    "#2563eb",
+    "#f97316",
+    "#16a34a",
+    "#dc2626",
+    "#7c3aed",
+    "#0891b2",
+    "#db2777",
+    "#65a30d",
+    "#9333ea",
+    "#0f766e",
+)
+
+
+def apply_default_plot_style(fig: Any) -> Any:
+    """Apply FurnaceMind defaults to model-generated Plotly figures.
+
+    The model only has to create a valid ``fig`` object. This helper handles the
+    visual baseline after execution so operational plots stay readable even when
+    generated code omits colors or assigns the same color to every trace. If the
+    plot already has distinct explicit colors, those choices are preserved.
+    """
+    if fig is None or not hasattr(fig, "update_layout"):
+        return fig
+
+    try:
+        fig.update_layout(
+            template="plotly_white",
+            colorway=list(_DEFAULT_PLOT_COLORWAY),
+            hovermode="x unified",
+            margin={"l": 56, "r": 32, "t": 64, "b": 56},
+            legend={
+                "orientation": "h",
+                "yanchor": "bottom",
+                "y": 1.02,
+                "xanchor": "center",
+                "x": 0.5,
+            },
+        )
+
+        traces = list(getattr(fig, "data", []) or [])
+        explicit_colors = []
+        for trace in traces:
+            line = getattr(trace, "line", None)
+            marker = getattr(trace, "marker", None)
+            line_color = getattr(line, "color", None) if line is not None else None
+            marker_color = (
+                getattr(marker, "color", None) if marker is not None else None
+            )
+            color = line_color or marker_color
+            if color:
+                explicit_colors.append(str(color))
+
+        should_assign_colors = len(traces) > 1 and (
+            not explicit_colors or len(set(explicit_colors)) == 1
+        )
+        if should_assign_colors:
+            for index, trace in enumerate(traces):
+                color = _DEFAULT_PLOT_COLORWAY[index % len(_DEFAULT_PLOT_COLORWAY)]
+                if not hasattr(trace, "update"):
+                    continue
+                try:
+                    trace.update(line={"color": color})
+                except Exception:
+                    pass
+                try:
+                    trace.update(marker={"color": color})
+                except Exception:
+                    pass
+    except Exception:
+        return fig
+
+    return fig
+
+
 def _safe_exec(
     code: str,
     local_vars: Dict[str, Any],
@@ -2132,6 +2224,122 @@ def _safe_exec(
     exec(code, local_vars)  # noqa: S102
 
 
+def _plot_columns(df: pd.DataFrame, candidates: tuple[str, ...]) -> list[str]:
+    """Return requested telemetry columns that are present in ``df``.
+
+    Plot tools declare the expected column names up front, but deployments can
+    expose slightly different subsets. This keeps the chart renderer tolerant of
+    missing optional signals without inventing replacement columns.
+    """
+    return [column for column in candidates if column in df.columns]
+
+
+def _heatload_trace_name(column: str) -> str:
+    """Convert telemetry column names into compact heatload trace labels.
+
+    The source dataframe uses machine-oriented names such as
+    ``heat_load_row_6``. The chart legend should use short operator-facing
+    labels such as ``Row 6`` or ``Q1``.
+    """
+    if column.startswith("heat_load_row6_10_q"):
+        return "Q" + column.rsplit("q", 1)[-1]
+    if column.startswith("heat_load_row_"):
+        return "Row " + column.rsplit("_", 1)[-1]
+    if column.startswith("temp_18660_"):
+        return "18660 " + column.rsplit("_", 1)[-1].upper()
+    return column.replace("_", " ").title()
+
+
+@tool
+def render_heatload_plot() -> str:
+    """Render the standard heatload trend chart from the active dataframe.
+
+    Use this after ``fetch_online_data`` has loaded recent heatload and
+    temperature-profile telemetry into ``st.session_state["fm_df"]``. The chart
+    is built in trusted application code instead of model-generated Python, so
+    common heatload questions get a stable multi-panel plot without depending on
+    the plotting sandbox accepting arbitrary subplot code.
+    """
+    df = st.session_state.get("fm_df")
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return "No active dataframe is available. Fetch heatload data first."
+
+    from plotly.subplots import make_subplots  # noqa: PLC0415
+
+    row_cols = _plot_columns(
+        df,
+        (
+            "heat_load_row_6",
+            "heat_load_row_7",
+            "heat_load_row_8",
+            "heat_load_row_9",
+            "heat_load_row_10",
+        ),
+    )
+    quad_cols = _plot_columns(
+        df,
+        (
+            "heat_load_row6_10_q1",
+            "heat_load_row6_10_q2",
+            "heat_load_row6_10_q3",
+            "heat_load_row6_10_q4",
+        ),
+    )
+    temp_cols = _plot_columns(
+        df,
+        (
+            "temp_18660_a",
+            "temp_18660_b",
+            "temp_18660_c",
+            "temp_18660_d",
+        ),
+    )
+    panels: list[tuple[str, list[str], str]] = []
+    if row_cols:
+        panels.append(("Heat load by row (R6-R10)", row_cols, "Heat load"))
+    if quad_cols:
+        panels.append(("Heat load by quadrant (Row6-10 Q1-Q4)", quad_cols, "Load"))
+    if temp_cols:
+        panels.append(("18660mm temperature profile", temp_cols, "Temperature"))
+    if not panels:
+        return "No heatload or 18660mm temperature columns were found in the active dataframe."
+
+    fig = make_subplots(
+        rows=len(panels),
+        cols=1,
+        shared_xaxes=True,
+        subplot_titles=[panel[0] for panel in panels],
+        vertical_spacing=0.12,
+    )
+    for row_number, (_title, columns, y_title) in enumerate(panels, start=1):
+        for column in columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df[column],
+                    mode="lines",
+                    name=_heatload_trace_name(column),
+                ),
+                row=row_number,
+                col=1,
+            )
+        fig.update_yaxes(title_text=y_title, row=row_number, col=1)
+
+    fig.update_xaxes(title_text="Time (IST)", row=len(panels), col=1)
+    fig.update_layout(
+        height=max(420, 280 * len(panels)),
+        title_text="Heatloads - last 8 hours (IST)",
+        showlegend=True,
+    )
+    st.session_state.fm_fig = apply_default_plot_style(fig)
+    _tag_artifact_turn("fm_fig_turn_id")
+    return (
+        "Successfully generated standard heatload plot with "
+        f"{len(row_cols)} row traces, {len(quad_cols)} quadrant traces, "
+        f"and {len(temp_cols)} temperature traces."
+    )
+
+
 @tool
 def execute_python_plot(code: str) -> str:
     """
@@ -2178,14 +2386,14 @@ def execute_python_plot(code: str) -> str:
             "_stdout_buf": stdout_buf,
         }
 
-        # Execute the LLM-generated code (restricted), routing print() to buffer
+        # Execute the LLM-generated code (restricted), routing print() to buffer.
         _safe_exec(code, local_vars, stdout_buf=stdout_buf)
 
         captured_output = stdout_buf.getvalue().strip()
 
         if "fig" in local_vars:
             # Save the figure object to session state for the UI to pick up
-            st.session_state.fm_fig = local_vars["fig"]
+            st.session_state.fm_fig = apply_default_plot_style(local_vars["fig"])
             st.session_state.last_plot_code = code
             _tag_artifact_turn("fm_fig_turn_id")
             return "Successfully generated Plotly figure."
@@ -2243,7 +2451,7 @@ def search_knowledge_docs(query: str) -> str:
 
     This is the LLM tool for uploaded PDFs, PPTX files, DOCX files, tables,
     images, SOPs, manuals, specifications, and scanned pages. It performs
-    user-scoped vector search, active-document filtering, local reranking,
+    shared vector search, active-document filtering, local reranking,
     retrieval trace logging, and visual-evidence queuing. Text evidence is
     returned directly as tool output; image evidence is queued for the next
     multimodal model call.
@@ -2264,12 +2472,12 @@ def search_knowledge_docs(query: str) -> str:
     user_id = st.session_state.get("fm_user_id")
     active_document_ids = _active_knowledge_document_ids(user_id=user_id)
     if active_document_ids == set():
-        return "No active knowledge documents found for this user."
+        return "No active shared knowledge documents found."
 
     candidate_results = knowledge_store.search(
         query,
         top_k=_KNOWLEDGE_RERANK_CANDIDATES,
-        user_id=user_id,
+        user_id=None,
         active_document_ids=active_document_ids,
     )
     results = _rerank_knowledge_results(

@@ -914,7 +914,7 @@ class MemoryDocumentRepository:
     def get_document_file_by_mrag_id(
         self,
         *,
-        user_id: str | None,
+        user_id: str | None = None,
         mrag_document_id: str,
     ) -> SimpleNamespace | None:
         """Return stored upload bytes for the active SQL row backing an MRAG id.
@@ -922,9 +922,11 @@ class MemoryDocumentRepository:
         Qdrant payloads carry the stable content-hash MRAG ``document_id``. The
         SQL row has its own ``document_id`` primary key, so this method bridges
         the two through ``memory_documents.metadata['document_id']`` before
-        loading bytes from the same row.
+        loading bytes from the same row. ``user_id`` is optional because uploaded
+        knowledge is a shared FurnaceMind library; when provided, it narrows the
+        lookup to documents uploaded by that user.
         """
-        if not user_id or not mrag_document_id:
+        if not mrag_document_id:
             return None
         for document in self.list_documents(user_id=user_id, active_only=True):
             metadata = getattr(document, "metadata_json", None)
@@ -959,21 +961,27 @@ class MemoryDocumentRepository:
     def list_documents(
         self,
         *,
-        user_id: str,
+        user_id: str | None = None,
         active_only: bool = True,
     ) -> list[MemoryDocument]:
-        """
-        List uploaded documents for one user.
+        """List uploaded knowledge documents from SQL.
+
+        Uploaded knowledge is shared across FurnaceMind users, so callers can
+        omit ``user_id`` to read the global active library. Passing ``user_id``
+        keeps the older uploader-scoped behavior for audit or user-specific
+        maintenance screens.
 
         Args:
-             - user_id: str - User whose documents should be listed.
-             - active_only: bool - Whether to return only active documents.
+             - user_id: Optional uploader id used to narrow the result set.
+             - active_only: Whether to return only active documents.
 
         Returns:
-             - return: list[MemoryDocument] - Uploaded document rows.
+             - return: Uploaded document rows detached from the session.
         """
         with self._session_factory() as session:
-            stmt = select(MemoryDocument).where(MemoryDocument.user_id == user_id)
+            stmt = select(MemoryDocument)
+            if user_id:
+                stmt = stmt.where(MemoryDocument.user_id == user_id)
             if active_only:
                 stmt = stmt.where(MemoryDocument.is_active.is_(True))
             stmt = stmt.order_by(MemoryDocument.created_at.desc())

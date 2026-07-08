@@ -16,12 +16,13 @@ Use :func:`get_llm_client` to obtain the default client.
 from __future__ import annotations
 
 import io as _io
+import logging
 import os as _os
 from typing import Any, List, Literal, Optional
 
 from openai import OpenAI
 
-from utils.settings import settings
+from utils.settings import normalize_openrouter_reasoning_level, settings
 
 Provider = Literal["openrouter", "openai"]
 ApiMode = Literal["responses", "chat_completions"]
@@ -29,25 +30,33 @@ ApiMode = Literal["responses", "chat_completions"]
 
 # OPENROUTER CLIENT
 class OpenRouterClient:
-    """
-    Wrapper around OpenRouter's OpenAI-compatible API.
-    Text generation only.
+    """OpenRouter chat client with optional reasoning-profile routing.
+
+    Normal FurnaceMind chat turns resolve a user-facing reasoning level
+    (``Low``, ``Medium``, or ``High``) into one configured model and optional
+    OpenRouter reasoning effort. Background jobs can still pass ``model_name``
+    to force a specific model and bypass the user-facing routing profiles.
     """
 
-    def __init__(self, *, model_name: str | None = None) -> None:
-        """
-        Initialize an OpenRouter chat client from application settings.
+    _logger = logging.getLogger(__name__)
 
-        FurnaceMind uses the configured default model for normal chat turns, but
-        some background tasks such as memory compression can pass a model
-        override. The same OpenRouter credentials and base URL are still reused
-        so specialized LLM work does not need a separate client class.
+    def __init__(
+        self,
+        *,
+        model_name: str | None = None,
+        reasoning_level: str | None = None,
+    ) -> None:
+        """Initialize an OpenRouter chat client from application settings.
 
         Args:
-             - model_name: str | None - Optional model override for specialized LLM tasks.
+            model_name: Optional model override for specialized LLM tasks such
+                as memory compression. Overrides do not receive UI reasoning
+                effort routing.
+            reasoning_level: Optional user-selected reasoning level. Missing or
+                invalid values resolve to the configured Medium profile.
 
         Raises:
-             - ValueError - Raised when ``OPENROUTER_API_KEY`` is not configured.
+            ValueError: If ``OPENROUTER_API_KEY`` is not configured.
         """
         cfg = settings.llm.openrouter
         if not cfg.api_key:
@@ -58,12 +67,151 @@ class OpenRouterClient:
             base_url=cfg.base_url,
         )
 
-        self.model = (model_name or cfg.model_name).strip()
+        if model_name:
+            self.reasoning_level: str | None = None
+            self.reasoning_effort: str | None = None
+            self.model = model_name.strip()
+        else:
+            self.reasoning_level = normalize_openrouter_reasoning_level(
+                reasoning_level or cfg.default_reasoning_level
+            )
+            profile = cfg.reasoning_profiles.get(self.reasoning_level)
+            if profile is None:
+                self.reasoning_level = "Medium"
+                profile = cfg.reasoning_profiles.get("Medium")
+            self.model = (profile.model_name if profile else cfg.model_name).strip()
+            self.reasoning_effort = (
+                str(profile.reasoning_effort).strip()
+                if profile and profile.reasoning_effort
+                else None
+            )
+
+        self.primary_model = self.model
         self.max_tokens = cfg.max_tokens
+        self.last_actual_model: str | None = None
+        self.last_error: str | None = None
 
         self.extra_headers = {
             "HTTP-Referer": settings.app.environment,
             "X-Title": "FurnaceMind",
+        }
+
+    def _extra_body(self) -> dict[str, Any]:
+        """Build OpenRouter-only request options for reasoning effort.
+
+        The OpenAI-compatible SDK accepts these fields through ``extra_body``.
+        Reasoning effort is included only when the selected profile configures
+        it.
+        """
+        extra_body: dict[str, Any] = {}
+        if self.reasoning_effort:
+            extra_body["reasoning"] = {
+                "effort": self.reasoning_effort,
+                "exclude": True,
+            }
+        return extra_body
+
+    def _base_kwargs(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        stop: Optional[List[str]] = None,
+    ) -> dict[str, Any]:
+        """Return shared Chat Completions request arguments.
+
+        Both plain text generation and tool-calling use the same model,
+        messages, stop tokens, OpenRouter headers, and optional routing options.
+        Keeping this in one place prevents profile handling from drifting across
+        the two call paths.
+        """
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "stop": stop,
+            "extra_headers": self.extra_headers,
+        }
+        extra_body = self._extra_body()
+        if extra_body:
+            kwargs["extra_body"] = extra_body
+        return kwargs
+
+    @staticmethod
+    def _should_retry_with_max_tokens(exc: Exception) -> bool:
+        """Return True only for max-completion-token compatibility failures.
+
+        OpenRouter can surface provider-specific parameter errors for older
+        OpenAI-compatible models. Those should retry the same model with
+        ``max_tokens``; availability, rate-limit, and provider-busy errors
+        should fail immediately so the UI can ask the operator to try another
+        reasoning mode.
+        """
+        return "max_completion_tokens" in f"{type(exc).__name__}: {exc}".lower()
+
+    def _record_completion(self, completion: Any) -> Any:
+        """Record which model actually answered an OpenRouter request.
+
+        This method stores the returned model id and emits a structured log entry
+        for audit/debugging, including the selected reasoning level and primary
+        model configured for the turn.
+        """
+        actual_model = str(getattr(completion, "model", None) or self.primary_model)
+        self.last_actual_model = actual_model
+        self.last_error = None
+        self._logger.info(
+            "openrouter_completion",
+            extra={
+                "reasoning_level": self.reasoning_level,
+                "reasoning_effort": self.reasoning_effort,
+                "primary_model": self.primary_model,
+                "actual_model": actual_model,
+            },
+        )
+        return completion
+
+    def record_failure(self, exc: Exception) -> None:
+        """Record a failed OpenRouter request for chat metadata and logs.
+
+        FurnaceMind no longer asks OpenRouter to try fallback models for a
+        selected reasoning level. When the configured model is unavailable, the
+        UI can call this method before showing a user-facing retry suggestion.
+        """
+        self.last_actual_model = None
+        self.last_error = f"{type(exc).__name__}: {exc}"
+        self._logger.warning(
+            "openrouter_completion_failed",
+            extra={
+                "reasoning_level": self.reasoning_level,
+                "reasoning_effort": self.reasoning_effort,
+                "primary_model": self.primary_model,
+                "model_error": self.last_error,
+            },
+        )
+
+    def unavailable_message(self) -> str:
+        """Return the operator-facing message for an unavailable model profile."""
+        if self.reasoning_level:
+            return (
+                f"{self.reasoning_level} effort level models are busy. "
+                "Please try another mode."
+            )
+        return "The selected model is busy. Please try another mode."
+
+    def usage_metadata(self) -> dict[str, Any]:
+        """Return SQL-friendly metadata for the completed chat turn.
+
+        Callers persist this beside the assistant message so a conversation row
+        records the selected reasoning level, primary model, actual model used
+        by OpenRouter, and whether the model call completed or failed.
+        """
+        return {
+            "reasoning_level": self.reasoning_level,
+            "reasoning_effort": self.reasoning_effort,
+            "primary_model": self.primary_model,
+            "actual_model": None
+            if self.last_error
+            else self.last_actual_model or self.primary_model,
+            "model_status": "failed" if self.last_error else "completed",
+            "model_error": self.last_error,
         }
 
     def generate(
@@ -74,42 +222,30 @@ class OpenRouterClient:
     ) -> str:
         """Generate a response from the LLM given system and user prompts.
 
-        Tries ``max_completion_tokens`` first (newer OpenAI-compatible API)
-        and falls back to ``max_tokens`` for older model compatibility.
-
-        Args:
-            system_prompt: Instruction/persona prompt for the assistant.
-            user_prompt:   User message to respond to.
-            stop:          Optional list of stop sequences.
-
-        Returns:
-            The assistant’s response text stripped of leading/trailing whitespace.
+        Tries ``max_completion_tokens`` first and retries the same model with
+        ``max_tokens`` for older OpenAI-compatible models. Reasoning is sent
+        only when explicitly configured for the selected profile.
         """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        kwargs = self._base_kwargs(messages=messages, stop=stop)
         try:
             completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+                **kwargs,
                 max_completion_tokens=self.max_tokens,
-                stop=stop,
-                extra_headers=self.extra_headers,
             )
-            return completion.choices[0].message.content or ""
-        except Exception:
-            # fallback for older models that only accept max_tokens
+        except Exception as exc:
+            if not self._should_retry_with_max_tokens(exc):
+                raise
+            # Compatibility retry for older models that only accept max_tokens.
             completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+                **kwargs,
                 max_tokens=self.max_tokens,
-                stop=stop,
-                extra_headers=self.extra_headers,
             )
-            return completion.choices[0].message.content or ""
+        self._record_completion(completion)
+        return completion.choices[0].message.content or ""
 
     def chat_completions(
         self,
@@ -119,40 +255,34 @@ class OpenRouterClient:
         tool_choice: Optional[Any] = "auto",
         stop: Optional[List[str]] = None,
     ) -> Any:
-        """Low-level Chat Completions call with optional tool-calling.
-        Returns the raw response message object, which may contain tool_calls.
-        Args:
-        - messages: List of message dicts (role/content) for the conversation.
-        - tools: Optional list of tool definitions (if using tool-calling).
-        - tool_choice: Optional tool choice strategy (e.g. "auto", "none", or
-        specific tool name).
-        - stop: Optional list of stop tokens for generation.
-        Returns:
-        - The raw message object from the Chat Completion response, which may include tool_calls if tools were provided and chosen.
+        """Call OpenRouter Chat Completions with optional tool-calling.
+
+        Returns the raw OpenAI-compatible completion object. The client records
+        the actual model returned by OpenRouter so callers can persist which
+        configured model answered the turn.
         """
 
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "messages": messages,
-            "stop": stop,
-            "extra_headers": self.extra_headers,
-        }
+        kwargs = self._base_kwargs(messages=messages, stop=stop)
         if tools:
             kwargs["tools"] = tools
             if tool_choice is not None:
                 kwargs["tool_choice"] = tool_choice
 
-        # Prefer max_completion_tokens (newer OpenAI-compatible APIs). Fallback to max_tokens.
+        # Prefer max_completion_tokens (newer OpenAI-compatible APIs). Retry the
+        # same model with max_tokens for older providers.
         try:
-            return self.client.chat.completions.create(
+            completion = self.client.chat.completions.create(
                 **kwargs,
                 max_completion_tokens=self.max_tokens,
             )
-        except Exception:
-            return self.client.chat.completions.create(
+        except Exception as exc:
+            if not self._should_retry_with_max_tokens(exc):
+                raise
+            completion = self.client.chat.completions.create(
                 **kwargs,
                 max_tokens=self.max_tokens,
             )
+        return self._record_completion(completion)
 
 
 # OPENAI CLIENT

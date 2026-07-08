@@ -323,3 +323,57 @@ def test_knowledge_store_deletes_qdrant_points() -> None:
     assert delete_call["collection_name"] == "furnacemind_knowledge"
     assert delete_call["points_selector"].points == ["point-1", "point-2"]
     assert delete_call["wait"] is True
+
+
+def test_knowledge_search_can_use_shared_active_documents_without_user_filter() -> None:
+    """Verify shared MRAG search can filter active docs without a user filter."""
+
+    class FakeSearchEmbedding:
+        dimension = 3
+
+        def embed_text(
+            self, text: str, *, input_type: str | None = None
+        ) -> list[float]:
+            assert text == "BMO Analysis"
+            assert input_type == "query"
+            return [0.1, 0.2, 0.3]
+
+    class FakeQdrantClient:
+        def __init__(self) -> None:
+            self.query_kwargs = None
+
+        def query_points(self, **kwargs):
+            self.query_kwargs = kwargs
+            points = [
+                SimpleNamespace(
+                    score=0.95,
+                    payload={"document_id": "doc-active", "content": "shared"},
+                ),
+                SimpleNamespace(
+                    score=0.92,
+                    payload={"document_id": "doc-inactive", "content": "inactive"},
+                ),
+            ]
+            return SimpleNamespace(points=points)
+
+    client = FakeQdrantClient()
+    store = KnowledgeVectorStore.__new__(KnowledgeVectorStore)
+    store.embedding = FakeSearchEmbedding()
+    store.client = client
+    store.collection_name = "furnacemind_knowledge"
+    store._ensure_collection = lambda: None
+
+    matches = store.search(
+        "BMO Analysis",
+        top_k=5,
+        user_id=None,
+        active_document_ids={"doc-active"},
+    )
+
+    assert matches == [
+        {
+            "score": 0.95,
+            "payload": {"document_id": "doc-active", "content": "shared"},
+        }
+    ]
+    assert client.query_kwargs["query_filter"] is None
