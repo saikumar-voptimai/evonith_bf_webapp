@@ -182,8 +182,6 @@ def _read_upload_bytes(file) -> bytes:
     return data
 
 
-
-
 def _document_id(file_bytes: bytes) -> str:
     """Create the stable MRAG document id for an upload.
 
@@ -324,6 +322,7 @@ def _text_parts(
     slide_number: int | None = None,
     sheet_name: str | None = None,
     user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> tuple[list[DocumentPart], int]:
     """Convert extracted text into ordered ``DocumentPart`` objects.
 
@@ -339,15 +338,18 @@ def _text_parts(
         slide_number: Source PPTX slide number, if any.
         sheet_name: Source Excel sheet name, if any.
         user_id: Optional owner id for user-scoped retrieval.
+        metadata: Shared payload metadata copied to every text chunk.
 
     Returns:
         Tuple of ``(parts, next_chunk_index)``. ``parts`` may be empty when the
         text is blank.
     """
+    base_metadata = {**(metadata or {})}
     parts: list[DocumentPart] = []
     chunk_index = chunk_index_start
     for text_index, chunk in enumerate(chunk_text(text), start=1):
         chunk_id = f"{modality}_{chunk_index:04d}"
+        metadata_payload = {**base_metadata, "text_chunk_index": text_index}
         parts.append(
             DocumentPart(
                 document_id=document_id,
@@ -361,7 +363,7 @@ def _text_parts(
                 page_number=page_number,
                 slide_number=slide_number,
                 sheet_name=sheet_name,
-                metadata={"text_chunk_index": text_index},
+                metadata=metadata_payload,
             )
         )
         chunk_index += 1
@@ -435,6 +437,7 @@ def build_document_parts(
     file_bytes: bytes,
     *,
     user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> list[DocumentPart]:
     """Parse an upload and normalize it into MRAG parts.
 
@@ -445,6 +448,8 @@ def build_document_parts(
         filename: Original uploaded filename. The extension selects the parser.
         file_bytes: Raw uploaded file bytes.
         user_id: Optional owner id copied into every generated part.
+        metadata: Optional shared payload metadata copied into every part, used
+            by external knowledge ingestion for URL/title/source attribution.
 
     Returns:
         Ordered list of ``DocumentPart`` objects. The list may contain both text
@@ -464,6 +469,7 @@ def build_document_parts(
     document_id = _document_id(file_bytes)
     parts: list[DocumentPart] = []
     chunk_index = 0
+    base_metadata = {**(metadata or {})}
 
     if file_type in {"png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"}:
         parts.append(
@@ -480,6 +486,7 @@ def build_document_parts(
                     "visual evidence, OCR, diagrams, labels, and layout."
                 ),
                 suffix=_image_suffix(file_bytes, file_type if file_type else "png"),
+                metadata=base_metadata,
             )
         )
         return parts
@@ -497,6 +504,7 @@ def build_document_parts(
                 chunk_index_start=chunk_index,
                 page_number=page_number,
                 user_id=user_id,
+                metadata=base_metadata,
             )
             parts.extend(text_parts)
             image_bytes = page.get("image_bytes")
@@ -516,6 +524,7 @@ def build_document_parts(
                             "page image for scanned text, visual tables, charts, "
                             "diagrams, labels, and layout."
                         ),
+                        metadata=base_metadata,
                     )
                 )
                 chunk_index += 1
@@ -530,6 +539,7 @@ def build_document_parts(
             text=extract_docx_text(file_bytes),
             chunk_index_start=chunk_index,
             user_id=user_id,
+            metadata=base_metadata,
         )
         return text_parts
 
@@ -550,6 +560,7 @@ def build_document_parts(
                 chunk_index_start=chunk_index,
                 slide_number=slide_number,
                 user_id=user_id,
+                metadata=base_metadata,
             )
             parts.extend(text_parts)
             rendered_image = rendered_slide_images.get(slide_number)
@@ -570,7 +581,7 @@ def build_document_parts(
                             "tables, diagrams, and other visual evidence."
                         ),
                         suffix="png",
-                        metadata={"render_source": "libreoffice"},
+                        metadata={**base_metadata, "render_source": "libreoffice"},
                     )
                 )
                 chunk_index += 1
@@ -592,7 +603,10 @@ def build_document_parts(
                             "Use this image for visual evidence from the presentation."
                         ),
                         suffix=_image_suffix(image_blob),
-                        metadata={"slide_image_index": slide_image_index},
+                        metadata={
+                            **base_metadata,
+                            "slide_image_index": slide_image_index,
+                        },
                     )
                 )
                 chunk_index += 1
@@ -609,6 +623,7 @@ def build_document_parts(
                 chunk_index_start=chunk_index,
                 sheet_name=str(sheet.get("sheet_name") or ""),
                 user_id=user_id,
+                metadata=base_metadata,
             )
             parts.extend(text_parts)
         return parts
@@ -622,6 +637,7 @@ def build_document_parts(
             text=extract_csv_text(file_bytes),
             chunk_index_start=chunk_index,
             user_id=user_id,
+            metadata=base_metadata,
         )
         return text_parts
 
@@ -634,6 +650,7 @@ def build_document_parts(
             text=extract_text_file(file_bytes),
             chunk_index_start=chunk_index,
             user_id=user_id,
+            metadata=base_metadata,
         )
         return text_parts
 
@@ -685,7 +702,8 @@ def _document_metadata(parts: list[DocumentPart]) -> dict[str, Any]:
         count. This supports the sidebar document library and delete cleanup
         without storing local filesystem paths.
     """
-    return {
+    first_metadata = parts[0].metadata if isinstance(parts[0].metadata, dict) else {}
+    payload = {
         "source": "furnacemind_knowledge",
         "document_id": parts[0].document_id,
         "user_id": parts[0].user_id or "",
@@ -703,6 +721,18 @@ def _document_metadata(parts: list[DocumentPart]) -> dict[str, Any]:
             [part for part in parts if part.image_bytes is not None or part.image_path]
         ),
     }
+    for key in (
+        "source_type",
+        "source_url",
+        "title",
+        "web_title",
+        "provider",
+        "fetched_at",
+        "sha256",
+    ):
+        if first_metadata.get(key) not in (None, ""):
+            payload[key] = first_metadata[key]
+    return payload
 
 
 def _persist_document_metadata(
@@ -826,6 +856,7 @@ def process_file(
     user_id: str | None = None,
     document_repository: Any | None = None,
     chunk_repository: Any | None = None,
+    source_metadata: dict[str, Any] | None = None,
 ) -> list[DocumentPart]:
     """Index one uploaded file into the multimodal knowledge collection.
 
@@ -844,6 +875,8 @@ def process_file(
         user_id: Optional owner id copied to Qdrant payloads and SQL metadata.
         document_repository: Optional SQL repository for document-level metadata.
         chunk_repository: Optional SQL repository for chunk-level metadata.
+        source_metadata: Optional metadata copied into Qdrant payloads and SQL
+            document metadata, used for externally scraped knowledge sources.
 
     Returns:
         List of ``DocumentPart`` objects that were embedded and upserted. Empty
@@ -858,7 +891,12 @@ def process_file(
     filename = getattr(file, "name", "upload")
     content_type = getattr(file, "type", None)
     file_bytes = _read_upload_bytes(file)
-    parts = build_document_parts(filename, file_bytes, user_id=user_id)
+    parts = build_document_parts(
+        filename,
+        file_bytes,
+        user_id=user_id,
+        metadata=source_metadata,
+    )
     if not parts:
         return []
 

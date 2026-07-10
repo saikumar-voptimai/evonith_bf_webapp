@@ -1,18 +1,19 @@
 """Tool functions for the FurnaceMind AI Co-Operate agent.
 
-Exposes ten tool functions dispatched by
-:func:`execute_openai_tool_call`:
+Exposes twelve tool functions dispatched by :func:`execute_openai_tool_call`:
 
-1. ``fetch_online_data`` — fetch InfluxDB telemetry for any measurement group.
-2. ``fetch_offline_data`` — fetch shift/daily report data from the offline database.
-3. ``merge_furnace_data`` — align and merge online + offline datasets on timestamps.
-4. ``fetch_ml_data`` — load a date-range slice from the static pre-merged ML dataset.
-5. ``concat_datasets`` — concatenate multiple datasets vertically (temporal union).
-6. ``load_static_shift_data`` — load 8-hour shift data from the static ML dataset.
-7. ``search_shift_history`` — semantic vector search over Qdrant shift summaries.
-8. ``search_knowledge_docs`` — semantic search over uploaded operator documents.
-9. ``render_heatload_plot`` — deterministic plot for recent heatload telemetry.
-10. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
+1. ``fetch_online_data`` - fetch InfluxDB telemetry for any measurement group.
+2. ``fetch_offline_data`` - fetch shift/daily report data from the offline database.
+3. ``merge_furnace_data`` - align and merge online + offline datasets on timestamps.
+4. ``fetch_ml_data`` - load a date-range slice from the static pre-merged ML dataset.
+5. ``concat_datasets`` - concatenate multiple datasets vertically.
+6. ``load_static_shift_data`` - load 8-hour shift data from the static ML dataset.
+7. ``search_shift_history`` - semantic vector search over shift summaries.
+8. ``search_knowledge_docs`` - semantic search over uploaded operator documents.
+9. ``web_search`` - external web search for current/public information.
+10. ``web_scrape_ingest`` - scrape an approved URL into shared MRAG knowledge.
+11. ``render_heatload_plot`` - deterministic plot for recent heatload telemetry.
+12. ``execute_python_plot`` - sandboxed execution of agent-generated Plotly code.
 """
 
 import base64
@@ -31,6 +32,8 @@ import streamlit as st
 from langchain.tools import tool
 from pydantic import BaseModel, Field, ValidationError
 
+from agents.furnacemind.web_ingestion import ingest_external_knowledge_url
+from agents.furnacemind.web_search import search_web
 from config.config_loader import load_config
 from data.fetch_presets import (
     OFFLINE_REPORT_LABEL_MAP,
@@ -46,6 +49,7 @@ from furnace_data.offline import fetch_offline_report as _fetch_offline_report_d
 from furnace_data.offline import (
     resolve_offline_table_name,
 )
+from utils.settings import settings
 from utils.shift_windows import shift_window_naive
 
 # CONFIG
@@ -314,6 +318,42 @@ class ConcatArgs(BaseModel):
     )
 
 
+class WebSearchArgs(BaseModel):
+    """Validated arguments for external web search.
+
+    Web search is reserved for public/current information that is not available
+    from FurnaceMind telemetry, uploaded knowledge documents, memories, or
+    internal report tools.
+    """
+
+    query: str = Field(
+        min_length=2,
+        max_length=500,
+        description="Focused public web search query.",
+    )
+    limit: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=10,
+        description="Optional maximum number of search results to return.",
+    )
+
+
+class WebScrapeIngestArgs(BaseModel):
+    """Validated arguments for approved external knowledge ingestion.
+
+    Scrape ingestion is intentionally separate from chat-time web search. It
+    should be used only when a user/admin explicitly asks FurnaceMind to add a
+    specific public URL into the shared knowledge base.
+    """
+
+    url: str = Field(
+        min_length=8,
+        max_length=2048,
+        description="Approved absolute http/https URL to scrape and index into shared FurnaceMind knowledge.",
+    )
+
+
 def _current_artifact_turn_id() -> str | None:
     """Return the active chat-turn id used for artifact ownership.
 
@@ -508,6 +548,121 @@ def _ml_column_summary(df: pd.DataFrame) -> str:
                 f"  {grp} ({len(cols)}): {', '.join(cols[:6])}"
                 + (" …" if len(cols) > 6 else "")
             )
+    return "\n".join(lines)
+
+
+def _is_web_search_enabled() -> bool:
+    """Return whether this FurnaceMind browser session allows live web search."""
+    return bool(st.session_state.get("fm_web_search_enabled", False))
+
+
+def web_search(*, query: str, limit: int | None = None) -> str:
+    """Search the public web for current or external reference information.
+
+    Args:
+        query: Focused search query generated from the user request.
+        limit: Optional number of results to return, clamped by configuration.
+
+    Returns:
+        Tool-formatted search results with source URLs, an empty-result note, or
+        a graceful unavailable message when the provider is not configured or is
+        temporarily unreachable.
+    """
+    params = {"query": query, "limit": limit}
+    try:
+        args = WebSearchArgs.model_validate(params)
+        if not _is_web_search_enabled():
+            return (
+                "web_search disabled: Web search is turned off for this session. "
+                "Turn on Web search in the FurnaceMind sidebar to fetch "
+                "current external sources."
+            )
+        return search_web(args.query, limit=args.limit)
+    except ValidationError as exc:
+        _append_tool_error(tool_name="web_search", params=params, error=str(exc))
+        return f"web_search Error: {exc}"
+
+
+def web_scrape_ingest(*, url: str) -> str:
+    """Scrape an approved URL and index it as shared MRAG knowledge.
+
+    This tool is for admin/background ingestion flows, not normal web Q&A. It
+    reuses the same knowledge store, embedding client, and SQL repositories used
+    by uploaded knowledge documents so scraped technical references are retrieved
+    through ``search_knowledge_docs`` later.
+
+    Args:
+        url: Approved absolute public URL to ingest.
+
+    Returns:
+        A structured status string describing the indexed document, or a clear
+        unavailable/no-content/error message that does not crash the chat.
+    """
+    params = {"url": url}
+    try:
+        args = WebScrapeIngestArgs.model_validate(params)
+    except ValidationError as exc:
+        _append_tool_error(tool_name="web_scrape_ingest", params=params, error=str(exc))
+        return f"web_scrape_ingest Error: {exc}"
+
+    if not re.match(r"^https?://", args.url.strip(), flags=re.IGNORECASE):
+        message = "URL must be an absolute http/https URL."
+        _append_tool_error(tool_name="web_scrape_ingest", params=params, error=message)
+        return f"web_scrape_ingest Error: {message}"
+    if not settings.web_scrape.ingest_enabled:
+        return (
+            "web_scrape_ingest disabled: set WEB_SCRAPE_INGEST_ENABLED=true "
+            "to allow approved URLs to be stored in shared knowledge."
+        )
+
+    knowledge_store = st.session_state.get("knowledge_store")
+    embedding_client = st.session_state.get("knowledge_embedding_client")
+    user_id = st.session_state.get("fm_user_id")
+    document_repository = st.session_state.get("knowledge_document_repository")
+    chunk_repository = st.session_state.get("knowledge_chunk_repository")
+
+    if knowledge_store is None:
+        return "web_scrape_ingest unavailable: Knowledge store is not initialized."
+    if embedding_client is None:
+        return "web_scrape_ingest unavailable: Knowledge embedding client is not initialized."
+
+    try:
+        result = ingest_external_knowledge_url(
+            args.url,
+            knowledge_store=knowledge_store,
+            embedding_client=embedding_client,
+            user_id=user_id,
+            document_repository=document_repository,
+            chunk_repository=chunk_repository,
+        )
+    except Exception as exc:
+        _append_tool_error(
+            tool_name="web_scrape_ingest",
+            params=params,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return f"web_scrape_ingest Error: {type(exc).__name__}: {exc}"
+
+    if result.status in {"indexed", "already_indexed"}:
+        lines = [
+            f"Status: {result.status}",
+            f"URL: {result.url}",
+            f"Filename: {result.filename or 'unknown'}",
+            f"Document ID: {result.document_id or 'unknown'}",
+            f"SQL document ID: {result.sql_document_id or 'not persisted'}",
+            f"Chunks indexed: {result.chunk_count}",
+            f"Qdrant collection: {result.qdrant_collection or 'unknown'}",
+            "Next: use search_knowledge_docs to retrieve this source in future answers.",
+        ]
+        return "\n".join(lines)
+
+    lines = [
+        f"Status: {result.status}",
+        f"URL: {result.url}",
+        f"Reason: {result.error or 'No indexable content returned.'}",
+    ]
+    if result.filename:
+        lines.append(f"Filename: {result.filename}")
     return "\n".join(lines)
 
 
@@ -1213,11 +1368,53 @@ def get_openai_tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "search_knowledge_docs",
-                "description": "Search uploaded multimodal knowledge documents (SOPs, manuals, specs, images, slides, tables, scanned pages).",
+                "description": "Search shared FurnaceMind MRAG knowledge, including uploaded multimodal documents and already-ingested web sources (SOPs, manuals, specs, images, slides, tables, scanned pages, indexed URLs).",
                 "parameters": {
                     "type": "object",
                     "properties": {"query": {"type": "string"}},
                     "required": ["query"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the public web for current, external, or source-attributed information that is not available in FurnaceMind telemetry, uploaded documents, memory, or internal reports.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Focused public web search query.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10,
+                            "description": "Optional maximum number of search results to return.",
+                        },
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "web_scrape_ingest",
+                "description": "Scrape one approved public URL and index it into shared FurnaceMind MRAG knowledge. Use only when the user/admin explicitly asks to ingest, index, or add a specific URL as shared knowledge; do not use for normal web Q&A.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "Approved absolute http/https URL to scrape and store as shared knowledge.",
+                        },
+                    },
+                    "required": ["url"],
                     "additionalProperties": False,
                 },
             },
@@ -1365,6 +1562,10 @@ def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
         return search_shift_history.invoke(arguments)
     if name == "search_knowledge_docs":
         return search_knowledge_docs.invoke(arguments)
+    if name == "web_search":
+        return web_search(**arguments)
+    if name == "web_scrape_ingest":
+        return web_scrape_ingest(**arguments)
     if name == "render_heatload_plot":
         return render_heatload_plot.invoke(arguments)
     if name == "execute_python_plot":
