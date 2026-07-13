@@ -24,6 +24,7 @@ src/assets/data/control_bounds.json
 .pytest_tmp/
 pytest-cache-files-*/
 nul
+*.zip
 .neon
 neonctl
 src/storage/**
