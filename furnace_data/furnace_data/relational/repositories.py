@@ -979,6 +979,9 @@ class MemoryDocumentRepository:
              - return: Uploaded document rows detached from the session.
         """
         with self._session_factory() as session:
+            # These small columns are deferred on the model, but callers inspect
+            # them after the rows are detached below. Load them while the session
+            # is active to avoid a detached-instance lazy-load error.
             stmt = select(MemoryDocument).options(
                 undefer(MemoryDocument.content_type),
                 undefer(MemoryDocument.file_size),

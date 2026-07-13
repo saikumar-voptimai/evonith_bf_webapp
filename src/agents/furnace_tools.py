@@ -19,6 +19,7 @@ Exposes twelve tool functions dispatched by :func:`execute_openai_tool_call`:
 import base64
 import io
 import json
+import logging
 import mimetypes
 import re
 from datetime import datetime, timedelta, timezone
@@ -52,6 +53,8 @@ from furnace_data.offline import (
 from utils.settings import settings
 from utils.shift_windows import shift_window_naive
 
+logger = logging.getLogger(__name__)
+
 # CONFIG
 config = load_config("setting_ds_dv.yml")
 
@@ -65,6 +68,7 @@ _KNOWLEDGE_IMAGE_RESULT_LIMIT = 3
 _KNOWLEDGE_IMAGE_MAX_BYTES = 4_000_000
 _KNOWLEDGE_RERANK_CANDIDATES = 16
 _KNOWLEDGE_RETURN_LIMIT = 8
+_WEB_SEARCH_SESSION_COUNT_KEY = "fm_web_search_request_count"
 
 
 def _ensure_dataset_store() -> Dict[str, Any]:
@@ -556,6 +560,63 @@ def _is_web_search_enabled() -> bool:
     return bool(st.session_state.get("fm_web_search_enabled", False))
 
 
+def web_search_session_usage() -> tuple[int, int]:
+    """Return logical web-search requests used and allowed in this session.
+
+    The counter is stored in Streamlit session state, so reruns preserve it but
+    a new browser session starts with a fresh allowance. Provider-level retries
+    remain an implementation detail and do not consume additional logical
+    interactions from this user-facing limit.
+    """
+    configured_limit = getattr(
+        settings.web_search,
+        "max_requests_per_session",
+        5,
+    )
+    try:
+        limit = max(1, int(configured_limit))
+    except (TypeError, ValueError):
+        limit = 5
+    try:
+        used = max(0, int(st.session_state.get(_WEB_SEARCH_SESSION_COUNT_KEY, 0)))
+    except (TypeError, ValueError):
+        used = 0
+    return used, limit
+
+
+def _reserve_web_search_request() -> tuple[bool, int, int]:
+    """Reserve one session search before making an external provider request."""
+    used, limit = web_search_session_usage()
+    if used >= limit:
+        logger.warning(
+            "web_search_session_limit_reached",
+            extra={
+                "provider": settings.web_search.provider,
+                "requests_used": used,
+                "request_limit": limit,
+            },
+        )
+        return False, used, limit
+    used += 1
+    st.session_state[_WEB_SEARCH_SESSION_COUNT_KEY] = used
+    return True, used, limit
+
+
+def _web_search_limit_message(*, used: int, limit: int) -> str:
+    """Render a structured tool response when the session quota is exhausted."""
+    return "\n".join(
+        [
+            "WEB_SEARCH_RESULTS",
+            f"Provider: {settings.web_search.provider}",
+            "Status: session_limit_reached",
+            f"Session requests used: {used}/{limit}",
+            "Missing-data notes:",
+            "- This browser session has reached its configured web-search limit.",
+            "- Continue with internal sources or start a new browser session.",
+        ]
+    )
+
+
 def web_search(*, query: str, limit: int | None = None) -> str:
     """Search the public web for current or external reference information.
 
@@ -577,6 +638,9 @@ def web_search(*, query: str, limit: int | None = None) -> str:
                 "Turn on Web search in the FurnaceMind sidebar to fetch "
                 "current external sources."
             )
+        allowed, used, session_limit = _reserve_web_search_request()
+        if not allowed:
+            return _web_search_limit_message(used=used, limit=session_limit)
         return search_web(args.query, limit=args.limit)
     except ValidationError as exc:
         _append_tool_error(tool_name="web_search", params=params, error=str(exc))

@@ -4,6 +4,7 @@ import sys
 import types
 
 import httpx
+import pytest
 
 
 def _install_plotly_stubs() -> None:
@@ -42,17 +43,37 @@ _install_plotly_stubs()
 _install_langchain_tool_stub()
 
 from agents import furnace_tools  # noqa: E402
-from agents.furnacemind.web_search import BraveSearchProvider  # noqa: E402
-from utils.settings import WebSearchConfig  # noqa: E402
+from agents.furnacemind import web_search as web_search_module  # noqa: E402
+from agents.furnacemind.web_search import (  # noqa: E402
+    BraveSearchAdapter,
+    DuckDuckGoSearchAdapter,
+    ExaSearchAdapter,
+    FirecrawlSearchAdapter,
+    ParallelSearchAdapter,
+    SearXNGSearchAdapter,
+    SerperSearchAdapter,
+    TavilySearchAdapter,
+    WebSearchResponse,
+    WhoogleSearchAdapter,
+    YaCySearchAdapter,
+    build_web_search_provider,
+    register_web_search_provider,
+)
+from utils.settings import Settings, WebSearchConfig  # noqa: E402
 
 
 class _FakeResponse:
-    """Small response double for Brave provider unit tests."""
+    """Small response double for JSON and HTML provider unit tests."""
 
     def __init__(
-        self, payload: dict | None = None, *, status_error: Exception | None = None
+        self,
+        payload: dict | None = None,
+        *,
+        text: str = "",
+        status_error: Exception | None = None,
     ):
         self.payload = payload or {}
+        self.text = text
         self.status_error = status_error
 
     def raise_for_status(self) -> None:
@@ -80,12 +101,31 @@ class _FakeClient:
 
     def get(self, url: str, *, headers: dict, params: dict) -> _FakeResponse:
         """Record request details and return or raise the next configured item."""
+        return self._send(
+            method="GET",
+            url=url,
+            headers=headers,
+            params=params,
+        )
+
+    def post(self, url: str, *, headers: dict, json: dict) -> _FakeResponse:
+        """Record a JSON POST and return or raise the next configured item."""
+        return self._send(
+            method="POST",
+            url=url,
+            headers=headers,
+            json=json,
+        )
+
+    def _send(self, *, method: str, url: str, headers: dict, **data) -> _FakeResponse:
+        """Record common request details and replay one response or exception."""
         self.factory.calls.append(
             {
+                "method": method,
                 "url": url,
                 "headers": headers,
-                "params": params,
                 "timeout": self.timeout,
+                **data,
             }
         )
         item = self.factory.items.pop(0)
@@ -114,6 +154,7 @@ def _config(**overrides) -> WebSearchConfig:  # noqa: ANN003
         "max_results": 5,
         "timeout_seconds": 3.0,
         "max_retries": 0,
+        "max_requests_per_session": 5,
     }
     values.update(overrides)
     return WebSearchConfig(**values)
@@ -138,7 +179,7 @@ def test_brave_provider_returns_standard_results() -> None:
             )
         ]
     )
-    provider = BraveSearchProvider(_config(), client_factory=factory)
+    provider = BraveSearchAdapter(_config(), client_factory=factory)
 
     response = provider.search(query="latest blast furnace guidance", limit=3)
 
@@ -146,6 +187,7 @@ def test_brave_provider_returns_standard_results() -> None:
     assert response.results[0].title == "Blast furnace reference"
     assert response.results[0].url == "https://example.com/bf"
     assert response.results[0].snippet == "Current public reference summary."
+    assert factory.calls[0]["method"] == "GET"
     assert factory.calls[0]["headers"]["X-Subscription-Token"] == "test-token"
     assert factory.calls[0]["params"] == {
         "q": "latest blast furnace guidance",
@@ -157,7 +199,7 @@ def test_brave_provider_returns_standard_results() -> None:
 def test_brave_provider_empty_results_render_no_result_status() -> None:
     """Empty provider results should be explicit instead of raising."""
     factory = _FakeClientFactory([_FakeResponse({"web": {"results": []}})])
-    provider = BraveSearchProvider(_config(), client_factory=factory)
+    provider = BraveSearchAdapter(_config(), client_factory=factory)
 
     response = provider.search(query="no matching result")
 
@@ -168,7 +210,7 @@ def test_brave_provider_empty_results_render_no_result_status() -> None:
 
 def test_brave_provider_missing_api_key_is_graceful() -> None:
     """A missing API key should make the optional tool unavailable, not crash."""
-    provider = BraveSearchProvider(_config(api_key=None))
+    provider = BraveSearchAdapter(_config(api_key=None))
 
     response = provider.search(query="current public info")
 
@@ -179,8 +221,6 @@ def test_brave_provider_missing_api_key_is_graceful() -> None:
 
 def test_brave_provider_retries_timeout_and_returns_error(monkeypatch) -> None:
     """Timeouts should retry within the configured budget and then degrade."""
-    from agents.furnacemind import web_search as web_search_module
-
     monkeypatch.setattr(web_search_module.time, "sleep", lambda _: None)
     factory = _FakeClientFactory(
         [
@@ -188,7 +228,7 @@ def test_brave_provider_retries_timeout_and_returns_error(monkeypatch) -> None:
             httpx.TimeoutException("still slow"),
         ]
     )
-    provider = BraveSearchProvider(
+    provider = BraveSearchAdapter(
         _config(max_retries=1),
         client_factory=factory,
     )
@@ -198,6 +238,306 @@ def test_brave_provider_retries_timeout_and_returns_error(monkeypatch) -> None:
     assert len(factory.calls) == 2
     assert response.results == []
     assert "timed out" in response.error
+
+
+@pytest.mark.parametrize(
+    ("adapter_class", "provider", "payload", "method", "expected_snippet"),
+    [
+        (
+            TavilySearchAdapter,
+            "tavily",
+            {
+                "results": [
+                    {
+                        "title": "Tavily result",
+                        "url": "https://example.com/tavily",
+                        "content": "Tavily summary",
+                    }
+                ]
+            },
+            "POST",
+            "Tavily summary",
+        ),
+        (
+            ExaSearchAdapter,
+            "exa",
+            {
+                "results": [
+                    {
+                        "title": "Exa result",
+                        "url": "https://example.com/exa",
+                        "highlights": ["Exa", "highlight"],
+                    }
+                ]
+            },
+            "POST",
+            "Exa highlight",
+        ),
+        (
+            ParallelSearchAdapter,
+            "parallel",
+            {
+                "results": [
+                    {
+                        "title": "Parallel result",
+                        "url": "https://example.com/parallel",
+                        "excerpts": ["Parallel excerpt"],
+                    }
+                ]
+            },
+            "POST",
+            "Parallel excerpt",
+        ),
+        (
+            FirecrawlSearchAdapter,
+            "firecrawl",
+            {
+                "data": {
+                    "web": [
+                        {
+                            "title": "Firecrawl result",
+                            "url": "https://example.com/firecrawl",
+                            "description": "Firecrawl summary",
+                        }
+                    ]
+                }
+            },
+            "POST",
+            "Firecrawl summary",
+        ),
+        (
+            SerperSearchAdapter,
+            "serper",
+            {
+                "organic": [
+                    {
+                        "title": "Serper result",
+                        "link": "https://example.com/serper",
+                        "snippet": "Serper summary",
+                    }
+                ]
+            },
+            "POST",
+            "Serper summary",
+        ),
+        (
+            SearXNGSearchAdapter,
+            "searxng",
+            {
+                "results": [
+                    {
+                        "title": "SearXNG result",
+                        "url": "https://example.com/searxng",
+                        "content": "SearXNG summary",
+                    }
+                ]
+            },
+            "GET",
+            "SearXNG summary",
+        ),
+        (
+            WhoogleSearchAdapter,
+            "whoogle",
+            {
+                "results": [
+                    {
+                        "text": "Whoogle result",
+                        "href": "https://example.com/whoogle",
+                        "description": "Whoogle summary",
+                    }
+                ]
+            },
+            "GET",
+            "Whoogle summary",
+        ),
+        (
+            YaCySearchAdapter,
+            "yacy",
+            {
+                "channels": [
+                    {
+                        "items": [
+                            {
+                                "title": "YaCy result",
+                                "link": "https://example.com/yacy",
+                                "description": "YaCy summary",
+                            }
+                        ]
+                    }
+                ]
+            },
+            "GET",
+            "YaCy summary",
+        ),
+    ],
+)
+def test_json_provider_adapters_normalize_results(
+    adapter_class,
+    provider: str,
+    payload: dict,
+    method: str,
+    expected_snippet: str,
+) -> None:
+    """Every JSON provider should expose the same normalized result contract."""
+    factory = _FakeClientFactory([_FakeResponse(payload)])
+    adapter = adapter_class(
+        _config(provider=provider, endpoint="https://search.example.test"),
+        client_factory=factory,
+    )
+
+    response = adapter.search(query="current furnace reference", limit=2)
+
+    assert response.error is None
+    assert response.provider == provider
+    assert len(response.results) == 1
+    assert response.results[0].url.startswith("https://example.com/")
+    assert response.results[0].snippet == expected_snippet
+    assert factory.calls[0]["method"] == method
+
+
+def test_duckduckgo_adapter_parses_html_and_resolves_redirect() -> None:
+    """DuckDuckGo HTML results should become normal source-citable results."""
+    html = """
+    <div class="result">
+      <a class="result__a"
+         href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fddg">
+        DuckDuckGo result
+      </a>
+      <a class="result__snippet">DuckDuckGo summary</a>
+    </div>
+    """
+    factory = _FakeClientFactory([_FakeResponse(text=html)])
+    adapter = DuckDuckGoSearchAdapter(
+        _config(
+            provider="duckduckgo",
+            api_key=None,
+            endpoint="https://html.duckduckgo.com/html/",
+        ),
+        client_factory=factory,
+    )
+
+    response = adapter.search(query="blast furnace reference")
+
+    assert response.error is None
+    assert response.results[0].title == "DuckDuckGo result"
+    assert response.results[0].url == "https://example.com/ddg"
+    assert response.results[0].snippet == "DuckDuckGo summary"
+
+
+def test_self_hosted_provider_requires_endpoint_not_api_key() -> None:
+    """Self-hosted adapters should explain missing endpoints without requiring keys."""
+    adapter = SearXNGSearchAdapter(
+        _config(provider="searxng", api_key=None, endpoint="")
+    )
+
+    response = adapter.search(query="blast furnace reference")
+
+    assert response.results == []
+    assert "SEARXNG_SEARCH_ENDPOINT" in response.error
+    assert "API key" not in response.error
+
+
+@pytest.mark.parametrize(
+    ("alias", "expected_provider"),
+    [
+        ("serpent", "serper"),
+        ("ddg", "duckduckgo"),
+        ("searx", "searxng"),
+        ("whoogle-search", "whoogle"),
+    ],
+)
+def test_provider_aliases_build_canonical_adapters(
+    alias: str, expected_provider: str
+) -> None:
+    """Common alternate names should resolve to canonical provider adapters."""
+    provider = build_web_search_provider(
+        _config(provider=alias, endpoint="https://search.example.test")
+    )
+
+    assert provider.provider_name == expected_provider
+
+
+def test_provider_registry_accepts_an_alternate_adapter(monkeypatch) -> None:
+    """A new provider should plug in without changing FurnaceMind tool code."""
+
+    class ExampleSearchAdapter:
+        provider_name = "example"
+
+        def __init__(self, config: WebSearchConfig) -> None:
+            self.config = config
+
+        def configuration_error(self) -> str | None:
+            return None
+
+        def search(
+            self,
+            *,
+            query: str,
+            limit: int | None = None,
+        ) -> WebSearchResponse:
+            return WebSearchResponse(
+                query=query,
+                provider=self.provider_name,
+                results=[],
+            )
+
+    monkeypatch.setattr(
+        web_search_module,
+        "_WEB_SEARCH_PROVIDER_FACTORIES",
+        dict(web_search_module._WEB_SEARCH_PROVIDER_FACTORIES),
+    )
+    register_web_search_provider("Example", ExampleSearchAdapter)
+
+    provider = build_web_search_provider(_config(provider="example"))
+    response = provider.search(query="current furnace reference")
+
+    assert provider.provider_name == "example"
+    assert response.provider == "example"
+
+
+def test_alternate_provider_uses_generic_environment_settings(monkeypatch) -> None:
+    """Non-Brave providers must not inherit Brave endpoint or credentials."""
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "example")
+    monkeypatch.setenv("WEB_SEARCH_ENDPOINT", "https://example.test/search")
+    monkeypatch.setenv("WEB_SEARCH_API_KEY", "example-token")
+    monkeypatch.setenv("BRAVE_SEARCH_ENDPOINT", "https://brave.test/search")
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "brave-token")
+
+    config = Settings._load_web_search_config()
+
+    assert config.provider == "example"
+    assert config.endpoint == "https://example.test/search"
+    assert config.api_key == "example-token"
+
+
+def test_tavily_provider_uses_specific_environment_settings(monkeypatch) -> None:
+    """Provider-specific values should override generic search configuration."""
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("WEB_SEARCH_ENDPOINT", "https://generic.test/search")
+    monkeypatch.setenv("WEB_SEARCH_API_KEY", "generic-token")
+    monkeypatch.setenv("TAVILY_SEARCH_ENDPOINT", "https://tavily.test/search")
+    monkeypatch.setenv("TAVILY_API_KEY", "tavily-token")
+
+    config = Settings._load_web_search_config()
+
+    assert config.provider == "tavily"
+    assert config.endpoint == "https://tavily.test/search"
+    assert config.api_key == "tavily-token"
+
+
+def test_serpent_environment_alias_selects_serper(monkeypatch) -> None:
+    """The requested 'serpent' spelling should configure the Serper adapter."""
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "serpent")
+    monkeypatch.setenv("SERPER_API_KEY", "serper-token")
+    monkeypatch.delenv("WEB_SEARCH_ENDPOINT", raising=False)
+    monkeypatch.delenv("SERPER_SEARCH_ENDPOINT", raising=False)
+    monkeypatch.delenv("SERPER_ENDPOINT", raising=False)
+
+    config = Settings._load_web_search_config()
+
+    assert config.provider == "serper"
+    assert config.endpoint == "https://google.serper.dev/search"
+    assert config.api_key == "serper-token"
 
 
 def test_web_search_tool_schema_and_dispatch(monkeypatch) -> None:
@@ -224,6 +564,7 @@ def test_web_search_tool_schema_and_dispatch(monkeypatch) -> None:
 
     assert "web_search" in tool_names
     assert result == "searched latest coke CSR reference limit=2"
+    assert furnace_tools.st.session_state["fm_web_search_request_count"] == 1
 
 
 def test_web_search_tool_respects_sidebar_toggle(monkeypatch) -> None:
@@ -252,6 +593,36 @@ def test_web_search_tool_validation_returns_error(monkeypatch) -> None:
     result = furnace_tools.web_search(query="")
 
     assert result.startswith("web_search Error:")
+
+
+def test_web_search_tool_stops_at_session_limit(monkeypatch) -> None:
+    """Exhausted session quota should avoid another provider API call."""
+    state = {
+        "fm_web_search_enabled": True,
+        "fm_web_search_request_count": 2,
+    }
+    monkeypatch.setattr(furnace_tools.st, "session_state", state, raising=False)
+    monkeypatch.setattr(
+        furnace_tools.settings,
+        "web_search",
+        types.SimpleNamespace(
+            provider="example",
+            max_requests_per_session=2,
+        ),
+    )
+    monkeypatch.setattr(
+        furnace_tools,
+        "search_web",
+        lambda *_, **__: (_ for _ in ()).throw(
+            AssertionError("provider should not be called")
+        ),
+    )
+
+    result = furnace_tools.web_search(query="latest furnace news")
+
+    assert "Status: session_limit_reached" in result
+    assert "Session requests used: 2/2" in result
+    assert state["fm_web_search_request_count"] == 2
 
 
 def test_web_scrape_ingest_tool_schema_and_dispatch(monkeypatch) -> None:

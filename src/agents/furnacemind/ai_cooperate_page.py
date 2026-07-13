@@ -23,6 +23,7 @@ from agents.furnacemind.context import SystemPromptContext
 from agents.furnacemind.skill_registry import SkillRegistry
 from agents.furnacemind.skill_vector_store import SkillVectorStore
 from agents.furnacemind.skills import SkillEngine
+from agents.furnacemind.web_search import web_search_configuration_error
 from agents.llm.llm_client import OpenRouterClient
 from agents.memory import fm_memory
 from agents.memory.conversation_history import ConversationHistoryStore
@@ -601,7 +602,8 @@ def _render_web_search_toggle() -> bool:
         ``True`` when live web search is enabled for the current Streamlit
         session; otherwise ``False``.
     """
-    web_search_available = bool(settings.web_search.api_key)
+    unavailable_reason = web_search_configuration_error()
+    web_search_available = unavailable_reason is None
     if not web_search_available:
         st.session_state["fm_web_search_enabled"] = False
 
@@ -615,13 +617,14 @@ def _render_web_search_toggle() -> bool:
         ),
     )
     if not web_search_available:
-        st.sidebar.caption("Web search unavailable: Brave API key is not configured.")
-    elif enabled:
-        st.sidebar.caption("Web search on: current external questions can use Brave.")
+        st.sidebar.caption(unavailable_reason or "Web search is unavailable.")
     else:
-        st.sidebar.caption(
-            "Web search off: answers use internal tools and stored knowledge."
-        )
+        used, limit = furnace_tools.web_search_session_usage()
+        remaining = max(0, limit - used)
+        if remaining:
+            st.sidebar.caption(f"{remaining} of {limit} searches remaining")
+        else:
+            st.sidebar.caption("Session search limit reached")
     return bool(enabled)
 
 
