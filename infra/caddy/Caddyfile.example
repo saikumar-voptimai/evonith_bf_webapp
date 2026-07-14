@@ -6,7 +6,8 @@
         max_size 25MB
     }
 
-    handle_path /api/* {
+    # Keep the /api prefix: FastAPI routes are mounted at /api/v1.
+    handle /api/* {
         reverse_proxy 127.0.0.1:8080
     }
 

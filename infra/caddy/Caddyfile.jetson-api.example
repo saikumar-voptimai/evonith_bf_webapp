@@ -1,0 +1,23 @@
+# API-only reverse proxy for a Jetson backend with Streamlit hosted elsewhere.
+# Replace api.example.com with a DNS name pointing to the Jetson public IP.
+
+api.example.com {
+    encode zstd gzip
+
+    request_body {
+        max_size 25MB
+    }
+
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8080 {
+            transport http {
+                read_timeout 300s
+                write_timeout 300s
+            }
+        }
+    }
+
+    handle {
+        respond "Not found" 404
+    }
+}

@@ -200,6 +200,9 @@ class BackendSettings(BaseSettings):
         validation_alias="EVONITH_COMPUTE_EXPORT_FORMAT",
     )
     model_dir: str = Field("", validation_alias="EVONITH_MODEL_DIR")
+    ml_device: str = Field("auto", validation_alias="EVONITH_ML_DEVICE")
+    xgboost_device: str = Field("auto", validation_alias="EVONITH_XGBOOST_DEVICE")
+    cuda_required: bool = Field(False, validation_alias="EVONITH_CUDA_REQUIRED")
     model_lazy_load: bool = Field(True, validation_alias="EVONITH_MODEL_LAZY_LOAD")
     model_cache_max_items: int = Field(
         2,
@@ -695,10 +698,22 @@ class BackendSettings(BaseSettings):
         "furnacemind_embedding_provider",
         "audit_storage_backend",
         "metrics_format",
+        "ml_device",
+        "xgboost_device",
     )
     @classmethod
     def normalize_lower_string(cls, value: str) -> str:
         return str(value or "").strip().lower()
+
+    @field_validator("ml_device", "xgboost_device")
+    @classmethod
+    def validate_accelerator_device(cls, value: str) -> str:
+        device = str(value or "auto").strip().lower()
+        if device in {"auto", "cpu", "cuda"}:
+            return device
+        if device.startswith("cuda:") and device[5:].isdigit():
+            return device
+        raise ValueError("accelerator device must be auto, cpu, cuda, or cuda:<index>")
 
     @field_validator(
         "feedback_default_status",
@@ -776,6 +791,11 @@ class BackendSettings(BaseSettings):
                 "vector": self.enable_optional_vector,
                 "documents": self.enable_optional_documents,
                 "local_llm": self.enable_optional_local_llm,
+            },
+            "acceleration": {
+                "ml_device": self.ml_device,
+                "xgboost_device": self.xgboost_device,
+                "cuda_required": self.cuda_required,
             },
         }
 

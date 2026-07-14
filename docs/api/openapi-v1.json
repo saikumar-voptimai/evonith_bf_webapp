@@ -95,6 +95,7 @@
             "title": "Name"
           },
           "properties": {
+            "additionalProperties": true,
             "title": "Properties",
             "type": "object"
           }
@@ -113,6 +114,7 @@
             "type": "boolean"
           },
           "constraints": {
+            "additionalProperties": true,
             "title": "Constraints",
             "type": "object"
           },
@@ -139,6 +141,7 @@
             "type": "string"
           },
           "options": {
+            "additionalProperties": true,
             "title": "Options",
             "type": "object"
           }
@@ -154,10 +157,12 @@
           "features": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
                 "items": {
+                  "additionalProperties": true,
                   "type": "object"
                 },
                 "type": "array"
@@ -251,6 +256,7 @@
       "ConversationCreateRequest": {
         "properties": {
           "metadata": {
+            "additionalProperties": true,
             "title": "Metadata",
             "type": "object"
           },
@@ -285,6 +291,7 @@
           "metadata": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -361,10 +368,12 @@
           "input_data": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
                 "items": {
+                  "additionalProperties": true,
                   "type": "object"
                 },
                 "type": "array"
@@ -376,6 +385,7 @@
             "title": "Input Data"
           },
           "options": {
+            "additionalProperties": true,
             "title": "Options",
             "type": "object"
           },
@@ -449,10 +459,12 @@
           "input_data": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
                 "items": {
+                  "additionalProperties": true,
                   "type": "object"
                 },
                 "type": "array"
@@ -464,6 +476,7 @@
             "title": "Input Data"
           },
           "options": {
+            "additionalProperties": true,
             "title": "Options",
             "type": "object"
           },
@@ -528,6 +541,7 @@
             "title": "End Time"
           },
           "filters": {
+            "additionalProperties": true,
             "title": "Filters",
             "type": "object"
           },
@@ -623,6 +637,7 @@
           "filters": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -759,6 +774,7 @@
           "options": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -830,6 +846,7 @@
             "type": "string"
           },
           "metadata": {
+            "additionalProperties": true,
             "title": "Metadata",
             "type": "object"
           },
@@ -916,6 +933,7 @@
           "metadata": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1137,6 +1155,7 @@
           "input_data": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1146,6 +1165,7 @@
             "title": "Input Data"
           },
           "options": {
+            "additionalProperties": true,
             "title": "Options",
             "type": "object"
           },
@@ -1206,6 +1226,7 @@
             "type": "array"
           },
           "options": {
+            "additionalProperties": true,
             "title": "Options",
             "type": "object"
           },
@@ -1536,6 +1557,7 @@
             "type": "boolean"
           },
           "constraints": {
+            "additionalProperties": true,
             "title": "Constraints",
             "type": "object"
           },
@@ -1559,6 +1581,7 @@
           "input_data": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1579,6 +1602,7 @@
             "title": "Max Items"
           },
           "options": {
+            "additionalProperties": true,
             "title": "Options",
             "type": "object"
           },
@@ -1679,6 +1703,7 @@
             "type": "string"
           },
           "options": {
+            "additionalProperties": true,
             "title": "Options",
             "type": "object"
           },
@@ -1716,6 +1741,7 @@
             "type": "object"
           },
           "disk": {
+            "additionalProperties": true,
             "title": "Disk",
             "type": "object"
           },
@@ -2035,6 +2061,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -3504,6 +3537,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Cache Info Api V1 Datasets Cache Info Get",
                   "type": "object"
                 }
@@ -6467,6 +6501,32 @@
         ]
       }
     },
+    "/api/v1/status/accelerator": {
+      "get": {
+        "operationId": "accelerator_status_api_v1_status_accelerator_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accelerator Status",
+        "tags": [
+          "status"
+        ]
+      }
+    },
     "/api/v1/status/config": {
       "get": {
         "operationId": "status_config_api_v1_status_config_get",
@@ -6641,6 +6701,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Get Offline Tables Data Offline Tables Get",
                   "type": "object"
                 }
@@ -6704,6 +6765,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Get Measurements Data Online Measurements Get",
                   "type": "object"
                 }
@@ -6767,6 +6829,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Cache Info Dataset Cache Info Get",
                   "type": "object"
                 }

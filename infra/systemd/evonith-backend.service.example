@@ -2,6 +2,8 @@
 Description=Evonith BF backend API
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -12,8 +14,13 @@ EnvironmentFile=/etc/evonith-bf/backend.env
 ExecStart=/opt/evonith-bf/scripts/edge_start_backend.sh
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
 NoNewPrivileges=true
 PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/evonith-bf
 
 [Install]
 WantedBy=multi-user.target

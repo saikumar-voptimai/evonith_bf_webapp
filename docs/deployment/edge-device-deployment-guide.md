@@ -6,6 +6,9 @@ Phase 13 targets Raspberry Pi / NVIDIA Jetson class devices with about 8 GB RAM
 and a 256 GB SSD. Edge defaults are conservative and keep optional AI/vector/LLM
 features disabled unless explicitly configured.
 
+For a Jetson backend consumed by a separately hosted Streamlit frontend, follow
+the complete [Jetson and hosted Streamlit guide](jetson-streamlit-deployment-guide.md).
+
 ## Environment
 
 Start from `infra/env/edge.env.example` and place the real file outside git.
