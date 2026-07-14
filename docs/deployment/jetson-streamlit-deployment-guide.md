@@ -1,5 +1,10 @@
 # Jetson Orin Nano Backend With Hosted Streamlit
 
+> For the live `/opt/evonith-bf` installation, private port 1432, Nginx,
+> public-IP testing, logs, updates, backups, and incident handling, use the
+> [Jetson backend operations runbook](../operations/jetson-backend-runbook.md).
+> This deployment guide retains the preferred future domain-and-TLS topology.
+
 ## Recommended topology
 
 Run only the FastAPI backend on the Jetson. Keep Uvicorn private on

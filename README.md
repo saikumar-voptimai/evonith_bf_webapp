@@ -96,6 +96,7 @@ Key active guides:
 - [Production deployment](docs/deployment/production-deployment-guide.md)
 - [Edge device deployment](docs/deployment/edge-device-deployment-guide.md)
 - [Jetson backend with hosted Streamlit](docs/deployment/jetson-streamlit-deployment-guide.md)
+- [Jetson backend operations runbook](docs/operations/jetson-backend-runbook.md)
 - [Local install](docs/deployment/local-install-guide.md)
 - [Local and staging deployment](docs/deployment/local-staging-deployment-guide.md)
 - [Dependency profiles](docs/deployment/dependency-profiles.md)
@@ -113,4 +114,3 @@ Generated files, uploads, SQLite databases, caches, logs, and exported artifacts
 ## Compatibility Cleanup Note
 
 Direct-mode fallback and legacy API routes remain covered through canonical app and package modules. The legacy frontend source folder, backend sidecar, and root shared-package shim have been removed.
-

@@ -25,6 +25,7 @@ This directory is split into active operating docs and archived migration histor
 
 ## Operations
 
+- [Jetson backend operations runbook](operations/jetson-backend-runbook.md)
 - [Runtime cleanup](operations/runtime-cleanup.md)
 - [Model assets](operations/model-assets.md)
 - [Logging and audit](operations/logging-and-audit.md)
