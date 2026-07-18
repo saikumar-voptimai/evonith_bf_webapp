@@ -1315,14 +1315,11 @@ if model_inputs_applied or model_inputs_saved:
         st.success("Model inputs applied.")
 elif chemistry_mode == "latest":
     st.caption("Latest chemistry uses the last charged instance for each material.")
-basicity_bounds_valid = (
-    target_slag_basicity_min <= target_slag_basicity_max
-    and target_slag_t_basicity_min <= target_slag_t_basicity_max
-)
-if target_slag_basicity_min > target_slag_basicity_max:
-    st.error("Min Basicity CaO/SiO2 must be less than or equal to Max Basicity.")
-if target_slag_t_basicity_min > target_slag_t_basicity_max:
-    st.error("Min T Basicity must be less than or equal to Max T Basicity.")
+# Basicity inputs stay editable/savable, but are advisory until re-enabled.
+enforced_slag_basicity_min = None
+enforced_slag_basicity_max = None
+enforced_slag_t_basicity_min = None
+enforced_slag_t_basicity_max = None
 feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
 
 
@@ -1559,9 +1556,7 @@ if run_lp_clicked or run_total_clicked:
         st.rerun()
 
 if requested_lp or requested_total:
-    if not basicity_bounds_valid:
-        st.error("Correct the slag basicity bounds before running BMO.")
-    elif pellet_input_issues and not pellet_input_confirmed:
+    if pellet_input_issues and not pellet_input_confirmed:
         st.error(
             "Confirm the selected pellet stock and chemistry values before running BMO."
         )
@@ -1576,10 +1571,10 @@ if requested_lp or requested_total:
                 target_production_mt=target_fe_mt,
                 target_slag_qty_mt=target_slag_qty_mt,
                 feo_in_slag_pct=feo_in_slag_pct,
-                target_slag_basicity_min=target_slag_basicity_min,
-                target_slag_basicity_max=target_slag_basicity_max,
-                target_slag_t_basicity_min=target_slag_t_basicity_min,
-                target_slag_t_basicity_max=target_slag_t_basicity_max,
+                target_slag_basicity_min=enforced_slag_basicity_min,
+                target_slag_basicity_max=enforced_slag_basicity_max,
+                target_slag_t_basicity_min=enforced_slag_t_basicity_min,
+                target_slag_t_basicity_max=enforced_slag_t_basicity_max,
                 fuel_ash_inputs=fuel_ash_inputs,
                 flux_inputs=flux_inputs,
                 dust_inputs=dust_inputs,
@@ -1695,10 +1690,10 @@ if requested_lp or requested_total:
                 target_production_mt=target_fe_mt,
                 target_slag_qty_mt=target_slag_qty_mt,
                 feo_in_slag_pct=feo_in_slag_pct,
-                target_slag_basicity_min=target_slag_basicity_min,
-                target_slag_basicity_max=target_slag_basicity_max,
-                target_slag_t_basicity_min=target_slag_t_basicity_min,
-                target_slag_t_basicity_max=target_slag_t_basicity_max,
+                target_slag_basicity_min=enforced_slag_basicity_min,
+                target_slag_basicity_max=enforced_slag_basicity_max,
+                target_slag_t_basicity_min=enforced_slag_t_basicity_min,
+                target_slag_t_basicity_max=enforced_slag_t_basicity_max,
                 model_service=model_service,
                 process_context=process_context,
                 history_df=history_df,
