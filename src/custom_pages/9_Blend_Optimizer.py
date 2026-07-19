@@ -17,6 +17,7 @@ from typing import Any
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 log = logging.getLogger(__name__)
@@ -25,9 +26,11 @@ from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
+    apply_flux_preferences,
     apply_model_input_preferences,
     apply_ore_editor_preferences,
     load_ore_editor_preferences,
+    save_flux_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
 )
@@ -242,6 +245,50 @@ def _recent_fuel_rates_from_static_csv(
         return {}
     df = pd.read_csv(path, usecols=columns)
     return get_recent_fuel_input_rates(process_context=None, history_df=df)
+
+
+@_data_cache(show_spinner=False, ttl=600)
+def _recent_fuel_rates_live() -> dict[str, float | str]:
+    """Live coke / nut coke / PCI rates from InfluxDB, averaged over the last hour.
+
+    The plant's ``process_params`` tags are the authoritative current rates
+    (the static dataset lags and has to derive nut coke from charged MT, which
+    was measured ~22 kg/THM above the live ``nut_coke_rate`` tag). PCI swings
+    widely between 15-minute windows, so a 1-hour average is used for all three.
+    Returns an empty dict on any fetch failure so callers fall back to the
+    static-CSV rates.
+    """
+
+    field_to_rate_key = {
+        "coke_rate": "coke_rate_kg_thm",
+        "nut_coke_rate": "nut_coke_rate_kg_thm",
+        "coal_rate_actual_value": "pci_rate_kg_thm",
+    }
+    try:
+        from furnace_data.influx.online import fetch_online_df
+
+        df = fetch_online_df(
+            selected_measurements=["process_params"],
+            time_range="last 1 hour",
+            window_by="15 minutes",
+            column_naming="field",
+        )
+    except Exception as exc:  # noqa: BLE001 - network/auth issues fall back to static
+        log.warning("BMO live fuel-rate fetch failed; using static CSV: %s", exc)
+        return {}
+
+    rates: dict[str, float | str] = {}
+    for field, rate_key in field_to_rate_key.items():
+        if field not in df.columns:
+            continue
+        values = pd.to_numeric(df[field], errors="coerce").dropna()
+        values = values[values > 0]
+        if values.empty:
+            continue
+        rates[rate_key] = float(values.mean())
+        prefix = rate_key.removesuffix("_rate_kg_thm")
+        rates[f"{prefix}_source"] = f"influx_1h_avg.{field}"
+    return rates
 
 
 @_data_cache(show_spinner=False, ttl=600)
@@ -466,6 +513,7 @@ def _clear_bmo_results() -> None:
         "bmo_lp_errors",
         "bmo_de_result",
         "bmo_de_errors",
+        "bmo_de_candidates",
     ):
         st.session_state.pop(key, None)
 
@@ -687,6 +735,11 @@ def _render_blend_comparison(
                 dust_inputs=dust_inputs,
                 slag_balance_settings=slag_balance_settings,
                 hot_metal_target_mt=target_production_mt,
+                # Manual blend = current operation: show the realised fuel cost
+                # from the actual current rates (Fuel Ash table, seeded from the
+                # latest static-dataset row) at current prices. Optimized blends
+                # instead convert the ML-predicted cost (default "model_cost").
+                fuel_rate_basis="inputs",
             )
             manual_si = _predict_blend_si(
                 ores=compare_ores,
@@ -741,14 +794,31 @@ def _render_blend_comparison(
         except (TypeError, ValueError):
             return None
 
+    # Fuel + total costs are shown re-priced at the operator's current fuel
+    # prices when available (display-only; the optimizer used baseline prices).
+    def _display_fuel(blend: Any) -> float:
+        adjusted = blend.diagnostics.get("adjusted_fuel_cost_per_thm_rs")
+        return float(adjusted) if adjusted is not None else float(blend.fuel_cost_per_thm_rs)
+
+    def _flux_cost(blend: Any) -> float:
+        return float(blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0)
+
+    def _display_total(blend: Any) -> float:
+        # Total = ore + (re-priced) fuel + optimizer-added flux, so the cheapest
+        # option and the saving vs manual account for the flux spend too.
+        adjusted = blend.diagnostics.get("adjusted_objective_rs_per_thm")
+        base = float(adjusted) if adjusted is not None else float(blend.objective_rs_per_thm)
+        return base + _flux_cost(blend)
+
     # (row label, accessor(blend, si) -> value | None, format string)
     metric_specs = [
-        ("Total Cost (Rs/THM)", lambda b, si: b.objective_rs_per_thm, "{:,.0f}"),
+        ("Total Cost (Rs/THM)", lambda b, si: _display_total(b), "{:,.0f}"),
         ("Ore Cost (Rs/THM)", lambda b, si: b.ore_cost_per_thm_rs, "{:,.0f}"),
         # 1-decimal so small but real blend-to-blend differences aren't hidden by
         # rounding (the fuel model is only weakly blend-sensitive -- see the help
         # note on the outcomes table).
-        ("Fuel Cost (Rs/THM)", lambda b, si: b.fuel_cost_per_thm_rs, "{:,.1f}"),
+        ("Fuel Cost (Rs/THM)", lambda b, si: _display_fuel(b), "{:,.1f}"),
+        ("Flux Cost (Rs/THM)", lambda b, si: _flux_cost(b), "{:,.1f}"),
         ("Fuel Rate (kg/THM)", lambda b, si: _fuel_rate_total(b), "{:,.1f}"),
         ("Hot-Metal Si (%)", lambda b, si: si, "{:,.3f}"),
         (
@@ -779,32 +849,34 @@ def _render_blend_comparison(
             "Outcome": st.column_config.Column(
                 "Outcome",
                 help=(
-                    "Fuel Cost and Fuel Rate are model estimates. The current fuel "
-                    "model is largely insensitive to the ore blend, so those two "
-                    "rows can look nearly identical across blends even when the mix "
-                    "differs. Ore cost, Si, basicity and slag rate are the "
-                    "blend-driven outcomes."
+                    "Manual Fuel Cost is the realised cost: actual current "
+                    "coke/nut-coke/PCI rates at current prices. LP/DE Fuel Cost "
+                    "converts the ML-predicted fuel cost for that blend to "
+                    "current prices; the optimizer itself still minimises the "
+                    "model's baseline-price objective. Fuel Rate is the physical "
+                    "rate basis behind each display."
                 ),
             ),
         },
     )
 
-    # Headline: cheapest option by total cost + optimizer saving vs the manual blend.
-    cheapest_label = min(options, key=lambda option: option[1].objective_rs_per_thm)[0]
+    # Headline: cheapest option by total cost + optimizer saving vs the manual
+    # blend, both at the operator's current fuel prices (display-only).
+    cheapest_label = min(options, key=lambda option: _display_total(option[1]))[0]
     cols = st.columns(len(options))
     for col, (label, blend, _) in zip(cols, options):
         col.metric(
             f"{label} (Rs/THM)",
-            f"{blend.objective_rs_per_thm:,.0f}",
+            f"{_display_total(blend):,.0f}",
             delta="cheapest" if label == cheapest_label else None,
             delta_color="normal" if label == cheapest_label else "off",
         )
     if manual_blend is not None:
         best_optimizer = min(
             (blend for _, blend, _ in optimizer_candidates),
-            key=lambda blend: blend.objective_rs_per_thm,
+            key=_display_total,
         )
-        saving = manual_blend.objective_rs_per_thm - best_optimizer.objective_rs_per_thm
+        saving = _display_total(manual_blend) - _display_total(best_optimizer)
         st.caption(
             f"Best optimizer blend is {saving:+,.0f} Rs/THM vs the manual blend "
             "(positive = optimizer is cheaper)."
@@ -1033,6 +1105,197 @@ def _render_si_metric(si_value: float | None) -> None:
     )
 
 
+def _render_lp_flux_additions(blend: Any) -> None:
+    """Show the flux quantities the optimizer added to hold slag basicity in bounds."""
+
+    flux_qty = (getattr(blend, "diagnostics", None) or {}).get("lp_flux_quantities_mt") or {}
+    added = {str(k): float(v) for k, v in flux_qty.items() if float(v) > 1e-6}
+    if not added:
+        return
+    st.markdown("###### Flux to add (basicity control)")
+    cols = st.columns(len(added))
+    for col, (flux_id, qty) in zip(cols, added.items()):
+        col.metric(f"{flux_id.title()} (MT)", f"{qty:,.1f}")
+    st.caption(
+        "Chosen by the optimizer to keep slag basicity within the target bounds "
+        "(dolomite raises basicity, quartz lowers it)."
+    )
+
+
+def _render_de_exploration(
+    candidates: list[dict[str, Any]] | None,
+    selected_ores: list[OreInput] | None = None,
+) -> None:
+    """Render the DE search cloud as a 2D basicity/slag scatter + top-100 table.
+
+    Each dot is one blend the optimizer evaluated: X = slag basicity,
+    Y = slag quantity (MT), colour = total cost (ore + fuel + flux), running
+    green (cheap) to red (expensive) on a black background. The table below
+    lists the 100 cheapest distinct candidates as alternative solutions,
+    including the full blend combination (ore shares + flux additions).
+
+    Args:
+         - candidates: list[dict[str, Any]] | None - Per-evaluation records with
+           ``total_cost_rs_per_thm``, ``slag_basicity``, ``slag_mt``, ``feasible``,
+           and optionally ``shares_pct`` / ``flux_mt`` blend-combination dicts.
+         - selected_ores: list[OreInput] | None - Ores of this run, used to map
+           ore ids to display names for the table columns.
+
+    Returns:
+         - return None - Renders directly to the Streamlit page.
+    """
+
+    rows = [c for c in (candidates or []) if isinstance(c, dict)]
+    if not rows:
+        return
+
+    df = pd.DataFrame(rows)
+    required = ("total_cost_rs_per_thm", "slag_basicity", "slag_mt")
+    if any(col not in df.columns for col in required):
+        return
+    for col in required:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.dropna(subset=list(required))
+    if df.empty:
+        return
+
+    st.markdown("###### Optimizer search space")
+    st.caption(
+        f"{len(df):,} candidate blends evaluated. Each dot is one blend the "
+        "optimizer tried — colour is total cost (ore + fuel + flux): green is "
+        "cheaper, red is costlier. X = slag basicity, Y = slag (MT)."
+    )
+
+    cost = df["total_cost_rs_per_thm"]
+    fig = go.Figure(
+        data=[
+            go.Scatter(
+                x=df["slag_basicity"],
+                y=df["slag_mt"],
+                mode="markers",
+                marker=dict(
+                    size=7,
+                    color=cost,
+                    colorscale=[
+                        [0.0, "#00e676"],
+                        [0.5, "#ffd600"],
+                        [1.0, "#ff1744"],
+                    ],
+                    opacity=0.85,
+                    line=dict(width=0),
+                    colorbar=dict(
+                        title=dict(
+                            text="Total Cost (Rs/THM)", font=dict(color="white")
+                        ),
+                        tickfont=dict(color="white"),
+                        outlinecolor="#333333",
+                    ),
+                ),
+                customdata=cost,
+                hovertemplate=(
+                    "Basicity %{x:.3f}<br>Slag %{y:,.0f} MT<br>"
+                    "Cost %{customdata:,.0f} Rs/THM<extra></extra>"
+                ),
+            )
+        ]
+    )
+    fig.update_layout(
+        paper_bgcolor="black",
+        plot_bgcolor="black",
+        font=dict(color="white"),
+        height=460,
+        margin=dict(l=10, r=10, t=10, b=10),
+        xaxis=dict(
+            title="Slag Basicity (CaO/SiO2)",
+            color="white",
+            gridcolor="#333333",
+            zerolinecolor="#333333",
+        ),
+        yaxis=dict(
+            title="Slag (MT)",
+            color="white",
+            gridcolor="#333333",
+            zerolinecolor="#333333",
+        ),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Top 100 cheapest distinct candidates as alternative solutions.
+    ranked = (
+        df.assign(
+            _b=df["slag_basicity"].round(3),
+            _s=df["slag_mt"].round(1),
+            _c=df["total_cost_rs_per_thm"].round(0),
+        )
+        .drop_duplicates(subset=["_b", "_s", "_c"])
+        .sort_values("total_cost_rs_per_thm")
+        .head(100)
+        .reset_index(drop=True)
+    )
+    feasible_vals = (
+        ranked["feasible"].astype(bool).tolist()
+        if "feasible" in ranked.columns
+        else [True] * len(ranked)
+    )
+    table = pd.DataFrame(
+        {
+            "Rank": list(range(1, len(ranked) + 1)),
+            "Total Cost (Rs/THM)": ranked["total_cost_rs_per_thm"].round(0).tolist(),
+            "Slag Basicity": ranked["slag_basicity"].round(3).tolist(),
+            "Slag (MT)": ranked["slag_mt"].round(1).tolist(),
+        }
+    )
+
+    # Blend combination columns: one share column per ore, one MT column per
+    # flux the optimizer controls. Older session records may lack these dicts.
+    ore_names = {
+        ore.ore_id: ore.display_name for ore in (selected_ores or [])
+    }
+    if "shares_pct" in ranked.columns:
+        share_dicts = [
+            d if isinstance(d, dict) else {} for d in ranked["shares_pct"]
+        ]
+        ore_ids: list[str] = []
+        for d in share_dicts:
+            for ore_id in d:
+                if ore_id not in ore_ids:
+                    ore_ids.append(ore_id)
+        for ore_id in ore_ids:
+            label = f"{ore_names.get(ore_id, ore_id.upper())} (%)"
+            table[label] = [
+                round(float(d.get(ore_id, 0.0)), 1) for d in share_dicts
+            ]
+    if "flux_mt" in ranked.columns:
+        flux_dicts = [
+            d if isinstance(d, dict) else {} for d in ranked["flux_mt"]
+        ]
+        flux_ids: list[str] = []
+        for d in flux_dicts:
+            for flux_id in d:
+                if flux_id not in flux_ids:
+                    flux_ids.append(flux_id)
+        for flux_id in flux_ids:
+            table[f"{flux_id.title()} (MT)"] = [
+                round(float(d.get(flux_id, 0.0)), 1) for d in flux_dicts
+            ]
+
+    table["Feasible"] = feasible_vals
+    st.markdown("###### Top 100 alternative solutions (cheapest first)")
+    if "shares_pct" in ranked.columns:
+        st.caption(
+            "Each row is a full blend: ore shares (%) and optimizer-added flux "
+            "(MT) alongside its cost, basicity, and slag outcome."
+        )
+    else:
+        st.info(
+            "Blend-combination columns are unavailable for this run — re-run "
+            "the Total Cost optimizer to record ore shares and flux additions "
+            "per candidate. (After a code update, restart the app so the "
+            "optimizer module reloads.)"
+        )
+    st.dataframe(table, use_container_width=True, hide_index=True)
+
+
 def _latest_si_from_history(history_df: pd.DataFrame | None) -> float | None:
     """Return the most recent measured hot-metal Si from the history frame, if any."""
 
@@ -1196,16 +1459,15 @@ operator_preferences = _cached_operator_preferences(
     str(operator_preferences_path), int(_pref_mtime_ns)
 )
 static_path, static_mtime_ns = _static_dataset_cache_token(bmo_cfg)
-recent_fuel_rates = _recent_fuel_rates_from_static_csv(static_path, static_mtime_ns)
+# Live 1-hour-average plant tags win over static-CSV values (which lag and
+# derive nut coke from charged MT); static remains the offline fallback.
+recent_fuel_rates = {
+    **_recent_fuel_rates_from_static_csv(static_path, static_mtime_ns),
+    **_recent_fuel_rates_live(),
+}
 basicity_defaults = {
     "target_slag_basicity_min": float(target_cfg.get("target_slag_basicity_min", 0.0)),
     "target_slag_basicity_max": float(target_cfg.get("target_slag_basicity_max", 10.0)),
-    "target_slag_t_basicity_min": float(
-        target_cfg.get("target_slag_t_basicity_min", 0.0)
-    ),
-    "target_slag_t_basicity_max": float(
-        target_cfg.get("target_slag_t_basicity_max", 10.0)
-    ),
 }
 basicity_defaults.update(
     _basicity_defaults_from_static_csv(static_path, static_mtime_ns)
@@ -1246,7 +1508,7 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
         step=5.0,
         key="bmo_target_slag_qty_mt",
     )
-    basicity_col1, basicity_col2, basicity_col3, basicity_col4 = st.columns(4)
+    basicity_col1, basicity_col2 = st.columns(2)
     target_slag_basicity_min = basicity_col1.number_input(
         "Min Basicity CaO/SiO2",
         min_value=0.0,
@@ -1263,24 +1525,8 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
         format="%.3f",
         key="bmo_target_slag_basicity_max",
     )
-    target_slag_t_basicity_min = basicity_col3.number_input(
-        "Min T Basicity",
-        min_value=0.0,
-        value=float(basicity_defaults["target_slag_t_basicity_min"]),
-        step=0.01,
-        format="%.3f",
-        key="bmo_target_slag_t_basicity_min",
-        help="(CaO + MgO) / SiO2",
-    )
-    target_slag_t_basicity_max = basicity_col4.number_input(
-        "Max T Basicity",
-        min_value=0.0,
-        value=float(basicity_defaults["target_slag_t_basicity_max"]),
-        step=0.01,
-        format="%.3f",
-        key="bmo_target_slag_t_basicity_max",
-        help="(CaO + MgO) / SiO2",
-    )
+    target_slag_t_basicity_min = None
+    target_slag_t_basicity_max = None
     model_apply_col, model_save_col = st.columns(2)
     model_inputs_applied = _form_submit_button(
         model_apply_col,
@@ -1304,8 +1550,6 @@ if model_inputs_applied or model_inputs_saved:
                 {
                     "target_slag_basicity_min": target_slag_basicity_min,
                     "target_slag_basicity_max": target_slag_basicity_max,
-                    "target_slag_t_basicity_min": target_slag_t_basicity_min,
-                    "target_slag_t_basicity_max": target_slag_t_basicity_max,
                 },
             )
             st.success(f"Basicity inputs saved to {saved_path}.")
@@ -1317,12 +1561,9 @@ elif chemistry_mode == "latest":
     st.caption("Latest chemistry uses the last charged instance for each material.")
 basicity_bounds_valid = (
     target_slag_basicity_min <= target_slag_basicity_max
-    and target_slag_t_basicity_min <= target_slag_t_basicity_max
 )
 if target_slag_basicity_min > target_slag_basicity_max:
     st.error("Min Basicity CaO/SiO2 must be less than or equal to Max Basicity.")
-if target_slag_t_basicity_min > target_slag_t_basicity_max:
-    st.error("Min T Basicity must be less than or equal to Max T Basicity.")
 feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
 
 
@@ -1376,12 +1617,39 @@ if (
 else:
     ore_editor_source_df = editor_df
 
+# Flux editor lives inside the ore-input form so its price/stock are applied and
+# saved together with the ore inputs. Seed from config + saved preferences, or
+# from the session-applied edits.
+flux_base_df = apply_flux_preferences(
+    build_flux_editor_df(bmo_cfg.get("flux_inputs", [])), operator_preferences
+)
+stored_flux_df = st.session_state.get("bmo_applied_flux_editor_df")
+if (
+    isinstance(stored_flux_df, pd.DataFrame)
+    and not flux_base_df.empty
+    and "flux_id" in stored_flux_df.columns
+    and set(stored_flux_df["flux_id"].astype(str)) == set(flux_base_df["flux_id"].astype(str))
+):
+    flux_editor_source_df = stored_flux_df
+else:
+    flux_editor_source_df = flux_base_df
+
 with st.form("bmo_ore_input_form", clear_on_submit=False):
     edited_ore_candidate_df = render_ore_editor(ore_editor_source_df)
     st.caption(
-        "Save keeps ore selection, prices, and share bounds for the next "
-        "session. Stock and chemistry continue to come from the latest source data."
+        "Save keeps ore selection, prices, share bounds, and flux price/stock for "
+        "the next session. Stock and chemistry continue to come from the latest "
+        "source data."
     )
+    if not flux_editor_source_df.empty:
+        st.markdown("#### Flux Inputs")
+        st.caption(
+            "Optimisable fluxes (dolomite/quartz) are added by the optimizer to hold "
+            "slag basicity within bounds; set their price and available stock here."
+        )
+        edited_flux_candidate_df = render_flux_editor(flux_editor_source_df)
+    else:
+        edited_flux_candidate_df = flux_editor_source_df
     ore_apply_col, ore_save_col = st.columns(2)
     ore_inputs_applied = _form_submit_button(
         ore_apply_col,
@@ -1398,19 +1666,28 @@ with st.form("bmo_ore_input_form", clear_on_submit=False):
 if ore_inputs_applied or ore_inputs_saved:
     edited_df = edited_ore_candidate_df.copy()
     st.session_state["bmo_applied_ore_editor_df"] = edited_df
+    edited_flux_df = (
+        edited_flux_candidate_df.copy()
+        if isinstance(edited_flux_candidate_df, pd.DataFrame)
+        else flux_editor_source_df
+    )
+    st.session_state["bmo_applied_flux_editor_df"] = edited_flux_df
     _clear_bmo_results()
     if ore_inputs_saved:
         try:
             saved_path = save_ore_editor_preferences(
                 operator_preferences_path, edited_df
             )
-            st.success(f"Ore inputs saved to {saved_path}.")
+            save_flux_preferences(operator_preferences_path, edited_flux_df)
+            st.success(f"Ore and flux inputs saved to {saved_path}.")
         except Exception as exc:  # noqa: BLE001
             st.error(f"Could not save ore inputs: {exc}")
     else:
         st.success("Ore inputs applied.")
 else:
     edited_df = ore_editor_source_df
+    edited_flux_df = flux_editor_source_df
+flux_inputs = flux_inputs_from_editor(edited_flux_df)
 
 with st.expander("Hot Metal Chemistry Assumptions", expanded=False):
     with st.form("bmo_assumption_input_form", clear_on_submit=False):
@@ -1475,14 +1752,6 @@ if not fuel_ash_df.empty:
 else:
     edited_fuel_ash_df = fuel_ash_df
 fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
-
-flux_df = build_flux_editor_df(bmo_cfg.get("flux_inputs", []))
-if not flux_df.empty:
-    st.markdown("### Flux Inputs")
-    edited_flux_df = render_flux_editor(flux_df)
-else:
-    edited_flux_df = flux_df
-flux_inputs = flux_inputs_from_editor(edited_flux_df)
 
 with st.expander("Advanced Slag Balance Inputs", expanded=False):
     slag_settings_values = render_slag_balance_settings(bmo_cfg.get("slag_balance", {}))
@@ -1578,8 +1847,8 @@ if requested_lp or requested_total:
                 feo_in_slag_pct=feo_in_slag_pct,
                 target_slag_basicity_min=target_slag_basicity_min,
                 target_slag_basicity_max=target_slag_basicity_max,
-                target_slag_t_basicity_min=target_slag_t_basicity_min,
-                target_slag_t_basicity_max=target_slag_t_basicity_max,
+                target_slag_t_basicity_min=None,
+                target_slag_t_basicity_max=None,
                 fuel_ash_inputs=fuel_ash_inputs,
                 flux_inputs=flux_inputs,
                 dust_inputs=dust_inputs,
@@ -1632,8 +1901,22 @@ if requested_lp or requested_total:
         st.session_state["bmo_lp_errors"] = lp_errors
 
         if requested_total:
-            de_status = st.status("Total Cost Optimizer (DE) running...", expanded=True)
+            de_status = st.status(
+                "Total Cost Optimizer (DE) running…", expanded=True
+            )
+            # Live "thinking" line, refreshed every generation so the operator
+            # watches the solver churn through thousands of candidate blends.
+            de_thinking_ph = de_status.empty()
+            # Milestone snapshot (every 5 generations + final) — a single
+            # placeholder that is overwritten in place, not an appended log.
+            de_milestone_ph = de_status.empty()
             iteration_lines: list[str] = []
+            de_progress_state: dict[str, float] = {
+                "iteration": 0,
+                "nfev": 0,
+                "best_obj": float("inf"),
+                "elapsed_s": 0.0,
+            }
 
             def _de_progress(
                 iteration: int,
@@ -1643,7 +1926,12 @@ if requested_lp or requested_total:
                 elapsed_s: float,
             ) -> bool:
                 """
-                Stream DE iteration progress to the Streamlit status panel + log.
+                Stream DE progress to the Streamlit status panel + log.
+
+                A live line updates every generation (emphasising the running
+                function-evaluation count to convey how many blends are tried),
+                while a fuller snapshot is written every 5 generations. The final
+                generation is written after the run so the last one always shows.
 
                 Args:
                      - iteration: int - 1-based DE generation index.
@@ -1656,16 +1944,30 @@ if requested_lp or requested_total:
                      - return bool - False to keep running (no user-cancel wired yet).
                 """
 
-                feas_txt = (
-                    f", best feasible {best_feas:,.1f}" if best_feas is not None else ""
+                de_progress_state.update(
+                    iteration=iteration,
+                    nfev=nfev,
+                    best_obj=best_obj,
+                    elapsed_s=elapsed_s,
                 )
-                line = (
-                    f"Iter {iteration:>2}  best {best_obj:,.1f} Rs/THM{feas_txt}"
-                    f"  (nfev={nfev}, {elapsed_s:.1f}s)"
+                de_thinking_ph.markdown(
+                    f"🧠 **Exploring blends…** &nbsp; `{nfev:,}` candidate blends "
+                    f"evaluated &nbsp;·&nbsp; best **{best_obj:,.0f}** Rs/THM "
+                    f"&nbsp;·&nbsp; {elapsed_s:.1f}s"
                 )
-                iteration_lines.append(line)
-                de_status.write(line)
-                log.info("BMO DE %s", line)
+                if iteration % 5 == 0:
+                    feas_txt = (
+                        f" · feasible {best_feas:,.0f}" if best_feas is not None else ""
+                    )
+                    line = (
+                        f"Gen {iteration:>3} · {nfev:,} evals · "
+                        f"best {best_obj:,.0f} Rs/THM{feas_txt} · {elapsed_s:.1f}s"
+                    )
+                    iteration_lines.append(line)
+                    de_milestone_ph.write(line)
+                log.info(
+                    "BMO DE gen=%s nfev=%s best=%.1f", iteration, nfev, best_obj
+                )
                 return False
 
             if fuel_context is None:
@@ -1697,8 +1999,8 @@ if requested_lp or requested_total:
                 feo_in_slag_pct=feo_in_slag_pct,
                 target_slag_basicity_min=target_slag_basicity_min,
                 target_slag_basicity_max=target_slag_basicity_max,
-                target_slag_t_basicity_min=target_slag_t_basicity_min,
-                target_slag_t_basicity_max=target_slag_t_basicity_max,
+                target_slag_t_basicity_min=None,
+                target_slag_t_basicity_max=None,
                 model_service=model_service,
                 process_context=process_context,
                 history_df=history_df,
@@ -1710,10 +2012,31 @@ if requested_lp or requested_total:
                 hot_metal_target_mt=target_production_mt,
                 progress_callback=_de_progress,
             )
+            # Persist the full candidate cloud now, before the guardrail below may
+            # replace de_result with an LP deepcopy (which has no de_candidates).
+            if de_result is not None:
+                st.session_state["bmo_de_candidates"] = list(
+                    de_result.diagnostics.get("de_candidates", []) or []
+                )
+            # Always show the final generation (the "last one"), overwriting the
+            # milestone placeholder so the panel keeps a single summary line.
+            final_iter = int(de_progress_state["iteration"])
+            final_nfev = int(de_progress_state["nfev"])
+            if final_iter:
+                de_thinking_ph.markdown(
+                    f"✅ **Search complete** &nbsp; `{final_nfev:,}` candidate "
+                    f"blends evaluated across {final_iter} generations"
+                )
+                de_milestone_ph.write(
+                    f"Gen {final_iter:>3} · {final_nfev:,} evals · "
+                    f"best {de_progress_state['best_obj']:,.0f} Rs/THM · "
+                    f"{de_progress_state['elapsed_s']:.1f}s (final)"
+                )
             de_status.update(
                 label=(
-                    f"DE finished - {len(iteration_lines)} iterations"
-                    if iteration_lines
+                    f"DE finished — {final_iter} generations · "
+                    f"{final_nfev:,} blend evaluations"
+                    if final_iter
                     else "DE finished"
                 ),
                 state="complete",
@@ -1724,11 +2047,19 @@ if requested_lp or requested_total:
             # the cheaper LP solution as the DE result so the operator never sees a
             # "worse optimum" than the baseline. LP here is from the same rerun /
             # context as DE, so the comparison is apples-to-apples.
+            # Compare ore + fuel + flux at baseline prices (the basis DE optimises
+            # on) so a DE blend that saved ore cost by over-dosing expensive flux
+            # cannot look cheaper than LP.
+            def _baseline_total_with_flux(blend: Any) -> float:
+                return float(blend.objective_rs_per_thm) + float(
+                    blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0
+                )
+
             if lp_result is not None and lp_result.feasible and (
                 de_result is None
                 or not de_result.feasible
-                or de_result.objective_rs_per_thm
-                > lp_result.objective_rs_per_thm + 1e-6
+                or _baseline_total_with_flux(de_result)
+                > _baseline_total_with_flux(lp_result) + 1e-6
             ):
                 de_result = copy.deepcopy(lp_result)
                 de_result.diagnostics = dict(de_result.diagnostics)
@@ -1772,6 +2103,7 @@ if lp_result is not None or de_result is not None:
                 is_lp_mode=True,
             )
             _render_si_metric(st.session_state.get("bmo_lp_si"))
+            _render_lp_flux_additions(lp_result)
             render_blend_table(lp_result, selected_ores)
             _render_share_pie(lp_result, selected_ores, "LP Share (%)")
             render_slag_balance_details(
@@ -1794,8 +2126,12 @@ if lp_result is not None or de_result is not None:
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
             )
             _render_si_metric(st.session_state.get("bmo_de_si"))
+            _render_lp_flux_additions(de_result)
             render_blend_table(de_result, selected_ores)
             _render_share_pie(de_result, selected_ores, "DE Share (%)")
+            _render_de_exploration(
+                st.session_state.get("bmo_de_candidates"), selected_ores
+            )
             render_slag_balance_details(
                 de_result, selected_ores, fuel_ash_inputs, flux_inputs
             )

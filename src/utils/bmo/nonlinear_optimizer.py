@@ -7,6 +7,7 @@ the differential-evolution runtime.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from typing import Any
 
@@ -126,8 +127,8 @@ def run_nonlinear_optimizer(
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
          - target_slag_basicity_min: float | None - Minimum CaO / SiO2 basicity.
          - target_slag_basicity_max: float | None - Maximum CaO / SiO2 basicity.
-         - target_slag_t_basicity_min: float | None - Minimum (CaO + MgO) / SiO2 basicity.
-         - target_slag_t_basicity_max: float | None - Maximum (CaO + MgO) / SiO2 basicity.
+         - target_slag_t_basicity_min/max: float | None - Legacy display-only inputs,
+           ignored by DE optimization.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
          - process_context: dict[str, float] | None - Latest process variables.
          - history_df: pd.DataFrame | None - Historical process data for lagged features.
@@ -152,8 +153,8 @@ def run_nonlinear_optimizer(
         feo_in_slag_pct=feo_in_slag_pct,
         target_slag_basicity_min=target_slag_basicity_min,
         target_slag_basicity_max=target_slag_basicity_max,
-        target_slag_t_basicity_min=target_slag_t_basicity_min,
-        target_slag_t_basicity_max=target_slag_t_basicity_max,
+        target_slag_t_basicity_min=None,
+        target_slag_t_basicity_max=None,
         fuel_ash_inputs=fuel_ash_inputs,
         flux_inputs=flux_inputs,
         dust_inputs=dust_inputs,
@@ -172,7 +173,19 @@ def run_nonlinear_optimizer(
     max_shares = np.array(
         [float(ore.max_share_pct) / 100.0 for ore in ores], dtype=float
     )
-    bounds = [(float(lo), float(hi)) for lo, hi in zip(min_shares, max_shares)]
+    # Optimisable fluxes (dolomite/quartz) are extra DE variables (absolute MT,
+    # 0..stock) so DE can add flux to satisfy basicity, just like the LP.
+    n_ore = len(ores)
+    variable_fluxes = [
+        flux
+        for flux in (flux_inputs or [])
+        if flux.optimizable and flux.enabled and float(flux.stock_mt) > 0.0
+    ]
+    n_flux = len(variable_fluxes)
+    flux_bounds = [(0.0, max(0.0, float(flux.stock_mt))) for flux in variable_fluxes]
+    bounds = [
+        (float(lo), float(hi)) for lo, hi in zip(min_shares, max_shares)
+    ] + flux_bounds
 
     prebuilt_context = model_service.build_prebuilt_context(
         ores=ores,
@@ -188,8 +201,8 @@ def run_nonlinear_optimizer(
         feo_in_slag_pct=float(feo_in_slag_pct),
         target_slag_basicity_min=target_slag_basicity_min,
         target_slag_basicity_max=target_slag_basicity_max,
-        target_slag_t_basicity_min=target_slag_t_basicity_min,
-        target_slag_t_basicity_max=target_slag_t_basicity_max,
+        target_slag_t_basicity_min=None,
+        target_slag_t_basicity_max=None,
         model_service=model_service,
         process_context=process_context,
         history_df=history_df,
@@ -201,6 +214,11 @@ def run_nonlinear_optimizer(
         prebuilt_context=prebuilt_context,
         hot_metal_target_mt=hot_metal_target_mt,
     )
+
+    # Every DE function evaluation is recorded here as a compact
+    # (basicity, slag, total cost, feasible) row so the page can render the
+    # cost-vs-basicity-vs-slag exploration scatter and the top-alternatives table.
+    de_candidates: list[dict[str, float]] = []
 
     def objective(raw_x: np.ndarray) -> ObjectiveResult:
         """
@@ -217,20 +235,52 @@ def run_nonlinear_optimizer(
              - return ObjectiveResult - Penalized objective result for the quantities.
         """
 
-        shares = _project_shares(raw_x, min_shares, max_shares)
+        raw = np.asarray(raw_x, dtype=float)
+        ore_x = raw[:n_ore]
+        flux_x = raw[n_ore:n_ore + n_flux]
+        shares = _project_shares(ore_x, min_shares, max_shares)
         quantities = _quantities_from_shares(
             shares=shares,
             ores=ores,
             target_fe_mt=float(target_production_mt),
         )
-        result = evaluator.evaluate_quantities(quantities)
+        result = evaluator.evaluate_quantities(quantities, flux_quantities=flux_x)
         result.diagnostics["candidate_shares_pct"] = (shares * 100.0).tolist()
-        result.diagnostics["raw_candidate_shares_pct"] = (
-            np.asarray(raw_x, dtype=float) * 100.0
-        ).tolist()
+        result.diagnostics["raw_candidate_shares_pct"] = (ore_x * 100.0).tolist()
         result.diagnostics["candidate_quantities_mt"] = np.asarray(
             quantities, dtype=float
         ).tolist()
+        result.diagnostics["candidate_flux_quantities_mt"] = flux_x.tolist()
+
+        candidate_blend = result.diagnostics.get("blend")
+        if candidate_blend is not None:
+            flux_cost = float(
+                candidate_blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0
+            )
+            total_cost = float(candidate_blend.objective_rs_per_thm) + flux_cost
+            if math.isfinite(total_cost):
+                de_candidates.append(
+                    {
+                        "total_cost_rs_per_thm": total_cost,
+                        "slag_basicity": float(
+                            getattr(candidate_blend, "slag_basicity", 0.0) or 0.0
+                        ),
+                        "slag_mt": float(
+                            getattr(candidate_blend, "slag_mt", 0.0) or 0.0
+                        ),
+                        "feasible": bool(result.feasible),
+                        # The blend combination behind this candidate, so the UI
+                        # can list full alternative solutions, not just metrics.
+                        "shares_pct": {
+                            ore.ore_id: float(shares[idx] * 100.0)
+                            for idx, ore in enumerate(ores)
+                        },
+                        "flux_mt": {
+                            flux.flux_id: float(flux_x[j])
+                            for j, flux in enumerate(variable_fluxes)
+                        },
+                    }
+                )
         return result
 
     baseline_solution: dict[str, Any] | None = None
@@ -241,25 +291,44 @@ def run_nonlinear_optimizer(
             dtype=float,
         )
         lp_shares = lp_quantities / float(np.sum(lp_quantities))
-        baseline_result = objective(lp_shares)
+        # Seed DE from the LP solution, including the flux quantities the LP chose.
+        lp_flux_map = lp_blend.diagnostics.get("lp_flux_quantities_mt", {}) or {}
+        lp_flux_vec = np.array(
+            [float(lp_flux_map.get(flux.flux_id, 0.0)) for flux in variable_fluxes],
+            dtype=float,
+        )
+        baseline_x = np.concatenate([lp_shares, lp_flux_vec])
+        baseline_result = objective(baseline_x)
         baseline_solution = {
-            "x": lp_shares.tolist(),
+            "x": baseline_x.tolist(),
             "objective": float(baseline_result.objective_value),
             "feasible": bool(baseline_result.feasible),
             "components": dict(baseline_result.components),
             "violations": list(baseline_result.violations),
             "diagnostics": dict(baseline_result.diagnostics),
         }
-        n_vars = len(ores)
+        n_vars = n_ore + n_flux
         min_samples = max(5, int(de_cfg.get("popsize", 10)) * n_vars)
         sample_count = int(de_cfg.get("initial_population_samples", min_samples))
-        initial_population = _build_initial_share_population(
+        ore_population = _build_initial_share_population(
             lp_shares=lp_shares,
             min_shares=min_shares,
             max_shares=max_shares,
             sample_count=max(min_samples, sample_count),
             seed=int(de_cfg.get("seed", 42)),
         )
+        if n_flux > 0:
+            rng = np.random.default_rng(int(de_cfg.get("seed", 42)) + 1)
+            flux_lo = np.array([lo for lo, _ in flux_bounds], dtype=float)
+            flux_hi = np.array([hi for _, hi in flux_bounds], dtype=float)
+            flux_rows = [lp_flux_vec]
+            spread = np.maximum(flux_hi * 0.15, 1.0)
+            while len(flux_rows) < ore_population.shape[0]:
+                noise = rng.normal(0.0, 1.0, size=lp_flux_vec.shape) * spread
+                flux_rows.append(np.clip(lp_flux_vec + noise, flux_lo, flux_hi))
+            initial_population = np.hstack([ore_population, np.vstack(flux_rows)])
+        else:
+            initial_population = ore_population
 
     runner = OptimizerRunner(de_cfg)
     optimization_result = runner.run_differential_evolution(
@@ -292,8 +361,8 @@ def run_nonlinear_optimizer(
         target_slag_qty_mt=target_slag_qty_mt,
         target_slag_basicity_min=target_slag_basicity_min,
         target_slag_basicity_max=target_slag_basicity_max,
-        target_slag_t_basicity_min=target_slag_t_basicity_min,
-        target_slag_t_basicity_max=target_slag_t_basicity_max,
+        target_slag_t_basicity_min=None,
+        target_slag_t_basicity_max=None,
     )
     blend.feasible = len(violations) == 0
     blend.violations = violations
@@ -304,4 +373,5 @@ def run_nonlinear_optimizer(
         "best_solution": optimization_result.best_solution,
         "compare_metrics": optimization_result.compare_metrics,
     }
+    blend.diagnostics["de_candidates"] = de_candidates
     return blend, []

@@ -20,6 +20,7 @@ bmo:
       display_name: Coke
       enabled: true
       rate_kg_per_thm: 340.0
+      price_rs_per_mt: 28000.0
       moisture_pct: 0.37
       ash_pct: 11.46
       sio2_pct: 55.07
@@ -36,6 +37,7 @@ bmo:
       display_name: Nut Coke
       enabled: true
       rate_kg_per_thm: 20.0
+      price_rs_per_mt: 24000.0
       moisture_pct: 0.44
       ash_pct: 11.67
       sio2_pct: 55.12
@@ -52,6 +54,7 @@ bmo:
       display_name: PCI
       enabled: true
       rate_kg_per_thm: 170.0
+      price_rs_per_mt: 18000.0
       moisture_pct: 1.16
       ash_pct: 9.20
       sio2_pct: 49.49
@@ -70,6 +73,9 @@ bmo:
       display_name: Quartz
       enabled: true
       wet_qty_mt: 0.0
+      optimizable: true
+      price_rs_per_mt: 2000.0
+      stock_mt: 500.0
       moisture_pct: 0.1
       sio2_pct: 96.5
       al2o3_pct: 0.4
@@ -89,6 +95,9 @@ bmo:
       display_name: Limestone
       enabled: true
       wet_qty_mt: 0.0
+      optimizable: true
+      price_rs_per_mt: 1800.0
+      stock_mt: 500.0
       moisture_pct: 0.2
       sio2_pct: 4.0
       al2o3_pct: 1.2
@@ -108,6 +117,9 @@ bmo:
       display_name: Dolomite
       enabled: true
       wet_qty_mt: 0.0
+      optimizable: true
+      price_rs_per_mt: 3000.0
+      stock_mt: 500.0
       moisture_pct: 0.2
       sio2_pct: 1.7
       al2o3_pct: 0.24
@@ -231,7 +243,7 @@ bmo:
     default_prices_rs_per_kg:
       coke_price_rs_per_kg: 28.0
       nut_coke_price_rs_per_kg: 24.0
-      pci_price_rs_per_kg: 15.0
+      pci_price_rs_per_kg: 18.0
 
   model_bundle:
     strict_loading: false

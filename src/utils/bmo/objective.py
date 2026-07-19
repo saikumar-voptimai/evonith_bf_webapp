@@ -8,6 +8,7 @@ rich objective diagnostics to the shared optimization runtime.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -114,21 +115,28 @@ class BmoObjectiveEvaluator:
             if target_slag_basicity_max is not None
             else None
         )
-        self.target_slag_t_basicity_min = (
-            float(target_slag_t_basicity_min)
-            if target_slag_t_basicity_min is not None
-            else None
-        )
-        self.target_slag_t_basicity_max = (
-            float(target_slag_t_basicity_max)
-            if target_slag_t_basicity_max is not None
-            else None
-        )
+        # T-basicity is a display KPI only. Keep the constructor parameters for
+        # compatibility with older callers, but do not penalize or validate it.
+        self.target_slag_t_basicity_min = None
+        self.target_slag_t_basicity_max = None
         self.model_service = model_service
         self.process_context = process_context or {}
         self.history_df = history_df
         self.fuel_ash_inputs = fuel_ash_inputs
         self.flux_inputs = flux_inputs
+        # Optimisable fluxes (dolomite/quartz) become DE decision variables so the
+        # solver can add flux to satisfy basicity; the rest are fixed additions.
+        _all_fluxes = list(flux_inputs or [])
+        self.variable_fluxes = [
+            flux
+            for flux in _all_fluxes
+            if flux.optimizable and flux.enabled and float(flux.stock_mt) > 0.0
+        ]
+        _variable_flux_ids = {flux.flux_id for flux in self.variable_fluxes}
+        self.fixed_fluxes = [
+            flux for flux in _all_fluxes if flux.flux_id not in _variable_flux_ids
+        ]
+        self.n_flux = len(self.variable_fluxes)
         self.dust_inputs = dust_inputs
         self.slag_balance_settings = slag_balance_settings
         self.penalty_cfg = penalty_cfg
@@ -143,7 +151,11 @@ class BmoObjectiveEvaluator:
             [float(ore.max_share_pct) / 100.0 for ore in ores], dtype=float
         )
 
-    def evaluate_quantities(self, quantities_vector: np.ndarray) -> ObjectiveResult:
+    def evaluate_quantities(
+        self,
+        quantities_vector: np.ndarray,
+        flux_quantities: np.ndarray | None = None,
+    ) -> ObjectiveResult:
         """
         Evaluate one candidate wet-quantity vector for DE optimization.
 
@@ -156,6 +168,8 @@ class BmoObjectiveEvaluator:
 
         Args:
              - quantities_vector: np.ndarray - Candidate wet ore quantities in MT.
+             - flux_quantities: np.ndarray | None - Candidate quantities (MT) for the
+               optimisable fluxes (dolomite/quartz), in ``self.variable_fluxes`` order.
 
         Returns:
              - return ObjectiveResult - Penalized objective, components, and diagnostics.
@@ -163,6 +177,18 @@ class BmoObjectiveEvaluator:
 
         qty = np.asarray(quantities_vector, dtype=float)
         quantities = {ore.ore_id: float(qty[idx]) for idx, ore in enumerate(self.ores)}
+
+        flux_qty = (
+            np.asarray(flux_quantities, dtype=float)
+            if flux_quantities is not None
+            else np.zeros(self.n_flux, dtype=float)
+        )
+        # Rebuild the flux list with candidate quantities for optimisable fluxes so
+        # the blend (and its basicity) reflects the flux the DE candidate adds.
+        candidate_flux_inputs = list(self.fixed_fluxes) + [
+            replace(flux, wet_qty_mt=float(flux_qty[j]))
+            for j, flux in enumerate(self.variable_fluxes)
+        ]
 
         blend = evaluate_blend_with_fuel_prediction(
             ores=self.ores,
@@ -172,12 +198,28 @@ class BmoObjectiveEvaluator:
             process_context=self.process_context,
             history_df=self.history_df,
             fuel_ash_inputs=self.fuel_ash_inputs,
-            flux_inputs=self.flux_inputs,
+            flux_inputs=candidate_flux_inputs,
             dust_inputs=self.dust_inputs,
             slag_balance_settings=self.slag_balance_settings,
             prebuilt_context=self.prebuilt_context,
             hot_metal_target_mt=self.hot_metal_target_mt,
         )
+        # Flux cost per THM keeps DE from over-dosing flux (it costs money, like ore).
+        thm_basis = float(self.hot_metal_target_mt or blend.fe_production_mt or 0.0)
+        flux_cost_total_rs = float(
+            sum(
+                float(flux_qty[j]) * float(self.variable_fluxes[j].price_rs_per_mt)
+                for j in range(self.n_flux)
+            )
+        )
+        flux_cost_per_thm = flux_cost_total_rs / thm_basis if thm_basis > 0.0 else 0.0
+        blend.diagnostics["lp_flux_quantities_mt"] = {
+            flux.flux_id: float(flux_qty[j])
+            for j, flux in enumerate(self.variable_fluxes)
+        }
+        # Persist flux cost on the blend so the displayed total cost includes the
+        # flux the optimizer bought (it is a real spend, like ore).
+        blend.diagnostics["flux_cost_per_thm_rs"] = float(flux_cost_per_thm)
 
         penalty_stock = float(self.penalty_cfg.get("penalty_stock", 2500.0))
         penalty_share = float(self.penalty_cfg.get("penalty_share", 2500.0))
@@ -257,12 +299,7 @@ class BmoObjectiveEvaluator:
             min_value=self.target_slag_basicity_min,
             max_value=self.target_slag_basicity_max,
         )
-        t_basicity_penalty = _basicity_penalty(
-            value=float(getattr(blend, "slag_t_basicity", 0.0) or 0.0),
-            denominator_key="slag_t_basicity_denominator_mt",
-            min_value=self.target_slag_t_basicity_min,
-            max_value=self.target_slag_t_basicity_max,
-        )
+        t_basicity_penalty = 0.0
 
         finite_penalty = 0.0
         if not math.isfinite(blend.objective_rs_per_thm):
@@ -280,7 +317,9 @@ class BmoObjectiveEvaluator:
             + t_basicity_penalty
             + finite_penalty
         )
-        objective_value = float(blend.objective_rs_per_thm + total_penalty)
+        objective_value = float(
+            blend.objective_rs_per_thm + flux_cost_per_thm + total_penalty
+        )
 
         violations = check_blend_constraints(
             blend,
@@ -289,8 +328,8 @@ class BmoObjectiveEvaluator:
             target_slag_qty_mt=self.target_slag_qty_mt,
             target_slag_basicity_min=self.target_slag_basicity_min,
             target_slag_basicity_max=self.target_slag_basicity_max,
-            target_slag_t_basicity_min=self.target_slag_t_basicity_min,
-            target_slag_t_basicity_max=self.target_slag_t_basicity_max,
+            target_slag_t_basicity_min=None,
+            target_slag_t_basicity_max=None,
         )
         feasible = len(violations) == 0
 
@@ -299,6 +338,7 @@ class BmoObjectiveEvaluator:
             components={
                 "ore_cost_per_thm_rs": float(blend.ore_cost_per_thm_rs),
                 "fuel_cost_per_thm_rs": float(blend.fuel_cost_per_thm_rs),
+                "flux_cost_per_thm_rs": float(flux_cost_per_thm),
                 "base_objective_rs_per_thm": float(blend.objective_rs_per_thm),
                 "penalty_total": float(total_penalty),
                 "penalty_stock": float(stock_penalty),
