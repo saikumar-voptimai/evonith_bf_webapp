@@ -17,8 +17,13 @@ PERSISTED_NUMERIC_COLUMNS = (
 PERSISTED_MODEL_INPUT_COLUMNS = (
     "target_slag_basicity_min",
     "target_slag_basicity_max",
-    "target_slag_t_basicity_min",
-    "target_slag_t_basicity_max",
+)
+
+# Flux price/stock are operator inputs (like ore price/bounds), so they persist
+# across sessions. Chemistry and the optimizable flag stay driven by config.
+PERSISTED_FLUX_COLUMNS = (
+    "price_rs_per_mt",
+    "stock_mt",
 )
 
 
@@ -110,6 +115,51 @@ def apply_ore_editor_preferences(
     return out
 
 
+def build_flux_preferences(flux_df: pd.DataFrame) -> dict[str, Any]:
+    """Build a compact preference payload of flux price/stock keyed by flux id."""
+
+    if flux_df.empty or "flux_id" not in flux_df.columns:
+        return {"flux_editor": {"rows": {}}}
+
+    rows: dict[str, dict[str, float]] = {}
+    for _, row in flux_df.iterrows():
+        flux_id = str(row.get("flux_id", "")).strip()
+        if not flux_id:
+            continue
+        saved_row: dict[str, float] = {}
+        for column in PERSISTED_FLUX_COLUMNS:
+            if column not in row:
+                continue
+            value = _float_or_none(row.get(column))
+            if value is not None:
+                saved_row[column] = value
+        rows[flux_id] = saved_row
+    return {"flux_editor": {"rows": rows}}
+
+
+def apply_flux_preferences(
+    flux_df: pd.DataFrame, preferences: dict[str, Any]
+) -> pd.DataFrame:
+    """Apply saved flux price/stock over a freshly built flux editor frame."""
+
+    if flux_df.empty or "flux_id" not in flux_df.columns:
+        return flux_df
+
+    saved_rows = (preferences.get("flux_editor", {}) if preferences else {}).get(
+        "rows", {}
+    ) or {}
+    out = flux_df.copy()
+    for index, row in out.iterrows():
+        flux_id = str(row.get("flux_id", "")).strip()
+        saved = saved_rows.get(flux_id, {}) or {}
+        for column in PERSISTED_FLUX_COLUMNS:
+            if column in out.columns and column in saved:
+                value = _float_or_none(saved[column])
+                if value is not None:
+                    out.at[index, column] = value
+    return out
+
+
 def load_ore_editor_preferences(path: str | Path) -> dict[str, Any]:
     """Load saved BMO ore editor preferences, returning empty prefs if absent."""
 
@@ -128,6 +178,18 @@ def save_ore_editor_preferences(path: str | Path, editor_df: pd.DataFrame) -> Pa
     pref_path.parent.mkdir(parents=True, exist_ok=True)
     payload = load_ore_editor_preferences(pref_path)
     payload.update(build_ore_editor_preferences(editor_df))
+    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
+        yaml.safe_dump(payload, file, sort_keys=False)
+    return pref_path
+
+
+def save_flux_preferences(path: str | Path, flux_df: pd.DataFrame) -> Path:
+    """Persist flux price/stock preferences and return the written path."""
+
+    pref_path = Path(path)
+    pref_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = load_ore_editor_preferences(pref_path)
+    payload.update(build_flux_preferences(flux_df))
     with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
         yaml.safe_dump(payload, file, sort_keys=False)
     return pref_path

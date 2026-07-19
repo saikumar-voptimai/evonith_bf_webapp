@@ -14,7 +14,11 @@ import pandas as pd
 
 from utils.bmo.calculations import evaluate_blend
 from utils.bmo.feature_builder import PreBuiltFeatureContext, build_feature_payload
-from utils.bmo.fuel_rates import estimate_fuel_rates_from_cost
+from utils.bmo.fuel_rates import (
+    ASSUMED_FUEL_PRICES_RS_PER_KG,
+    estimate_fuel_rates_from_cost,
+    estimate_fuel_rates_from_inputs,
+)
 from utils.bmo.types import (
     BlendEvaluation,
     DustInput,
@@ -26,6 +30,30 @@ from utils.bmo.types import (
 
 if TYPE_CHECKING:
     from utils.bmo.model_service import FuelUnitCostModelService
+
+# Fuel-ash ``fuel_id`` -> re-price key used by ASSUMED_FUEL_PRICES_RS_PER_KG.
+_FUEL_ID_TO_PRICE_KEY = {"coke": "coke", "nut_coke": "nut_coke", "pci": "pci"}
+
+
+def _current_fuel_prices_rs_per_kg(
+    fuel_ash_inputs: list[FuelAshInput] | None,
+) -> dict[str, float]:
+    """Operator's current fuel prices (Rs/kg), falling back to assumed prices.
+
+    Reads ``price_rs_per_mt`` from the coke / nut coke / PCI rows of the fuel-ash
+    editor and converts to Rs/kg. Any missing or non-positive price keeps the
+    assumed (model-baseline) price so that component is unchanged.
+    """
+
+    prices = dict(ASSUMED_FUEL_PRICES_RS_PER_KG)
+    for fuel in fuel_ash_inputs or []:
+        key = _FUEL_ID_TO_PRICE_KEY.get(str(fuel.fuel_id).strip().lower())
+        if key is None:
+            continue
+        price_per_mt = float(getattr(fuel, "price_rs_per_mt", 0.0) or 0.0)
+        if price_per_mt > 0.0:
+            prices[key] = price_per_mt / 1000.0
+    return prices
 
 
 def evaluate_blend_with_fuel_prediction(
@@ -42,6 +70,7 @@ def evaluate_blend_with_fuel_prediction(
     slag_balance_settings: SlagBalanceSettings | None = None,
     prebuilt_context: PreBuiltFeatureContext | None = None,
     hot_metal_target_mt: float | None = None,
+    fuel_rate_basis: str = "model_cost",
 ) -> BlendEvaluation:
     """
     Evaluate a blend and attach the model-predicted fuel unit cost.
@@ -62,6 +91,14 @@ def evaluate_blend_with_fuel_prediction(
          - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
          - hot_metal_target_mt: float | None - Operator HM basis for cost/slag/model THM fields.
+         - fuel_rate_basis: str - Where the displayed (re-priced) fuel rates come
+           from. ``"model_cost"`` (optimized blends): decompose the ML-predicted
+           fuel cost back into physical rates at the model's baseline prices,
+           then re-price at the operator's current prices — blend-sensitive.
+           ``"inputs"`` (manual blend): use the actual current coke / nut coke /
+           PCI rates from the Fuel Ash table (seeded from the latest static
+           dataset row), re-priced at current prices — the realised fuel cost.
+           Either basis falls back to the other when its data is unavailable.
 
     Returns:
          - return BlendEvaluation - Blend metrics with fuel prediction diagnostics.
@@ -95,11 +132,47 @@ def evaluate_blend_with_fuel_prediction(
     )
     blend.diagnostics["model_prediction"] = prediction
     blend.diagnostics["feature_details"] = prediction.details
-    fuel_rates = estimate_fuel_rates_from_cost(
-        fuel_cost_per_thm_rs=float(prediction.value),
-        process_context=process_context,
-        history_df=history_df,
-    )
+    # Rate basis differs by blend kind (see docstring): manual blends show the
+    # realised cost from actual current rates; optimized blends convert the
+    # ML-predicted cost so the display stays blend-sensitive.
+    if fuel_rate_basis == "inputs":
+        fuel_rates = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
+        fuel_rate_source = "fuel_ash_inputs"
+        if fuel_rates is None:
+            fuel_rates = estimate_fuel_rates_from_cost(
+                fuel_cost_per_thm_rs=float(prediction.value),
+                process_context=process_context,
+                history_df=history_df,
+            )
+            fuel_rate_source = "model_cost_residual"
+    else:
+        fuel_rates = estimate_fuel_rates_from_cost(
+            fuel_cost_per_thm_rs=float(prediction.value),
+            process_context=process_context,
+            history_df=history_df,
+        )
+        fuel_rate_source = "model_cost_residual"
+        if fuel_rates is None:
+            fuel_rates = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
+            fuel_rate_source = "fuel_ash_inputs"
     if fuel_rates is not None:
         blend.diagnostics["fuel_rate_estimate"] = fuel_rates.to_dict()
+        blend.diagnostics["fuel_rate_estimate_source"] = fuel_rate_source
+        # Re-price physical fuel rates at the operator's current prices. Prefer
+        # the Fuel Ash editor rates; only reverse-solve from model cost when
+        # those run inputs are unavailable. Stored in diagnostics only (display
+        # use); the optimizer keeps minimising on the model's baseline-price
+        # ``objective_rs_per_thm``.
+        current_prices = _current_fuel_prices_rs_per_kg(fuel_ash_inputs)
+        adjusted_fuel_cost = (
+            fuel_rates.coke_rate_kg_thm * current_prices["coke"]
+            + fuel_rates.nut_coke_rate_kg_thm * current_prices["nut_coke"]
+            + fuel_rates.pci_rate_kg_thm * current_prices["pci"]
+        )
+        ore_cost = float(blend.objective_rs_per_thm) - float(blend.fuel_cost_per_thm_rs)
+        blend.diagnostics["adjusted_fuel_cost_per_thm_rs"] = float(adjusted_fuel_cost)
+        blend.diagnostics["adjusted_objective_rs_per_thm"] = float(
+            ore_cost + adjusted_fuel_cost
+        )
+        blend.diagnostics["current_fuel_prices_rs_per_kg"] = current_prices
     return blend

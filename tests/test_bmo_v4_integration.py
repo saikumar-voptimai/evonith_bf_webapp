@@ -344,8 +344,9 @@ def test_blend_fuel_prediction_helper_attaches_model_cost(tmp_path: Path) -> Non
         blend.ore_cost_per_thm_rs + 12_900.0
     )
     assert blend.diagnostics["model_prediction"].used_fallback is False
+    # coke_rate = (12900 - nut*24 - pci*18) / 28 = (12900 - 65*24 - 150*18) / 28.
     assert blend.diagnostics["fuel_rate_estimate"]["coke_rate_kg_thm"] == pytest.approx(
-        373.0
+        308.5714, abs=1e-3
     )
 
 
@@ -356,10 +357,11 @@ def test_estimated_fuel_rates_use_predicted_cost_and_recent_rates() -> None:
     )
 
     assert rates is not None
-    assert rates.total_coke_rate_kg_thm == pytest.approx(438.0)
-    assert rates.coke_rate_kg_thm == pytest.approx(373.0)
+    # cost = coke*28 + nut*24 + pci*18; coke = (12900 - 65*24 - 150*18)/28.
+    assert rates.coke_rate_kg_thm == pytest.approx(308.5714, abs=1e-3)
+    assert rates.total_coke_rate_kg_thm == pytest.approx(373.5714, abs=1e-3)
     assert rates.nut_coke_rate_kg_thm == pytest.approx(65.0)
-    assert rates.total_fuel_rate_kg_thm == pytest.approx(588.0)
+    assert rates.total_fuel_rate_kg_thm == pytest.approx(523.5714, abs=1e-3)
     assert rates.pci_rate_kg_thm == pytest.approx(150.0)
 
 
@@ -372,7 +374,8 @@ def test_estimated_fuel_rates_use_requested_nut_coke_fallback_only() -> None:
     assert rates is not None
     assert rates.nut_coke_rate_kg_thm == pytest.approx(70.0)
     assert rates.nut_coke_source == "fallback"
-    assert rates.coke_rate_kg_thm == pytest.approx(368.0)
+    # coke = (12900 - 70*24 - 150*18)/28 = 8520/28.
+    assert rates.coke_rate_kg_thm == pytest.approx(304.2857, abs=1e-3)
 
 
 def test_estimated_fuel_rates_use_last_nonzero_static_dataset_values() -> None:

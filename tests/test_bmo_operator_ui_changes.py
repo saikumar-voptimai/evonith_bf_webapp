@@ -9,11 +9,14 @@ import yaml
 
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
+    apply_flux_preferences,
     apply_model_input_preferences,
     apply_ore_editor_preferences,
+    build_flux_preferences,
     build_model_input_preferences,
     build_ore_editor_preferences,
     load_ore_editor_preferences,
+    save_flux_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
 )
@@ -224,8 +227,6 @@ def test_model_input_preferences_persist_only_basicity_bounds() -> None:
         "model_inputs": {
             "target_slag_basicity_min": 1.02,
             "target_slag_basicity_max": 1.14,
-            "target_slag_t_basicity_min": 1.24,
-            "target_slag_t_basicity_max": 1.40,
         }
     }
 
@@ -249,7 +250,7 @@ def test_model_input_preferences_override_static_defaults() -> None:
     assert applied["target_slag_basicity_min"] == 1.05
     assert applied["target_slag_basicity_max"] == 1.16
     assert applied["target_slag_t_basicity_min"] == 1.25
-    assert applied["target_slag_t_basicity_max"] == 1.38
+    assert applied["target_slag_t_basicity_max"] == 1.41
 
 
 def test_model_input_save_preserves_ore_preferences(monkeypatch) -> None:
@@ -280,6 +281,8 @@ def test_model_input_save_preserves_ore_preferences(monkeypatch) -> None:
 
     assert loaded["ore_editor"]["rows"]["ore_a"]["price_rs_per_mt"] == 7000.0
     assert loaded["model_inputs"]["target_slag_basicity_min"] == 1.02
+    assert "target_slag_t_basicity_min" not in loaded["model_inputs"]
+    assert "target_slag_t_basicity_max" not in loaded["model_inputs"]
 
 
 def test_ore_input_save_preserves_model_preferences(monkeypatch) -> None:
@@ -405,3 +408,84 @@ def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
     assert "MnO -> HM Mn" not in rendered
     assert "TiO2 -> HM Ti" not in rendered
     assert "Alkali -> Gas" not in rendered
+
+
+def _flux_df():
+    return pd.DataFrame(
+        [
+            {
+                "flux_id": "dolomite",
+                "flux_name": "Dolomite",
+                "optimizable": True,
+                "price_rs_per_mt": 3100.0,
+                "stock_mt": 450.0,
+                "cao_pct": 30.2,
+                "sio2_pct": 1.7,
+            },
+            {
+                "flux_id": "quartz",
+                "flux_name": "Quartz",
+                "optimizable": True,
+                "price_rs_per_mt": 2100.0,
+                "stock_mt": 600.0,
+                "cao_pct": 0.0,
+                "sio2_pct": 96.5,
+            },
+        ]
+    )
+
+
+def test_flux_preferences_persist_only_price_and_stock() -> None:
+    prefs = build_flux_preferences(_flux_df())
+    rows = prefs["flux_editor"]["rows"]
+    assert rows["dolomite"] == {"price_rs_per_mt": 3100.0, "stock_mt": 450.0}
+    # Chemistry / optimizable flag are config-driven, not persisted.
+    assert "cao_pct" not in rows["dolomite"]
+    assert "optimizable" not in rows["dolomite"]
+
+
+def test_flux_preferences_apply_overlays_price_stock_only() -> None:
+    # Fresh config frame with default price/stock and chemistry.
+    fresh = pd.DataFrame(
+        [
+            {
+                "flux_id": "dolomite",
+                "flux_name": "Dolomite",
+                "optimizable": True,
+                "price_rs_per_mt": 3000.0,
+                "stock_mt": 500.0,
+                "cao_pct": 30.2,
+                "sio2_pct": 1.7,
+            }
+        ]
+    )
+    prefs = {"flux_editor": {"rows": {"dolomite": {"price_rs_per_mt": 3100.0, "stock_mt": 450.0}}}}
+    applied = apply_flux_preferences(fresh, prefs)
+    row = applied.iloc[0]
+    assert row["price_rs_per_mt"] == 3100.0
+    assert row["stock_mt"] == 450.0
+    assert row["cao_pct"] == 30.2  # chemistry untouched
+
+
+def test_flux_save_preserves_ore_preferences(tmp_path) -> None:
+    path = tmp_path / "prefs.yml"
+    save_ore_editor_preferences(
+        path,
+        pd.DataFrame(
+            [
+                {
+                    "ore_id": "ore_a",
+                    "selected": True,
+                    "price_rs_per_mt": 111.0,
+                    "min_share_pct": 5.0,
+                    "max_share_pct": 40.0,
+                }
+            ]
+        ),
+    )
+    save_flux_preferences(path, _flux_df())
+    loaded = load_ore_editor_preferences(path)
+    # Both sections coexist.
+    assert loaded["ore_editor"]["rows"]["ore_a"]["price_rs_per_mt"] == 111.0
+    assert loaded["flux_editor"]["rows"]["quartz"]["price_rs_per_mt"] == 2100.0
+    assert loaded["flux_editor"]["rows"]["quartz"]["stock_mt"] == 600.0

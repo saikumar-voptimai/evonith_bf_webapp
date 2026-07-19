@@ -852,6 +852,42 @@ def test_lp_baseline_applies_slag_basicity_min_as_hard_constraint():
     assert blend.quantities_mt["costly_basic"] >= blend.quantities_mt["cheap_acid"]
 
 
+def test_lp_baseline_ignores_t_basicity_bounds():
+    ores = [
+        OreInput(
+            ore_id="balanced_ore",
+            display_name="BALANCED ORE",
+            stock_mt=500.0,
+            price_rs_per_mt=1000.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(
+                fe_t_pct=50.0,
+                sio2_pct=4.0,
+                cao_pct=4.0,
+                mgo_pct=0.0,
+            ),
+        )
+    ]
+
+    blend, errors = run_lp_baseline(
+        ores,
+        target_production_mt=50.0,
+        target_slag_qty_mt=100.0,
+        feo_in_slag_pct=0.0,
+        target_slag_basicity_min=0.5,
+        target_slag_basicity_max=1.5,
+        target_slag_t_basicity_min=2.0,
+        target_slag_t_basicity_max=3.0,
+    )
+
+    assert errors == []
+    assert blend is not None
+    assert blend.feasible is True
+    assert blend.slag_basicity == pytest.approx(1.0)
+    assert blend.slag_t_basicity < 2.0
+
+
 def test_lp_baseline_does_not_return_exact_slag_violating_blend(monkeypatch):
     ores = [
         OreInput(
@@ -1196,8 +1232,9 @@ def test_bmo_objective_penalizes_slag_basicity_violation():
     )
     t_result = t_evaluator.evaluate_quantities(np.array([100.0], dtype=float))
 
-    assert t_result.components["penalty_slag_t_basicity"] > 0.0
-    assert any("Slag T Basicity below bound" in item for item in t_result.violations)
+    assert t_result.components["penalty_slag_t_basicity"] == pytest.approx(0.0)
+    assert t_result.feasible is True
+    assert not any("Slag T Basicity" in item for item in t_result.violations)
 
 
 def test_bmo_objective_penalizes_production_above_target():
