@@ -72,6 +72,7 @@ def fuel_ash_inputs_from_editor(editor_df: pd.DataFrame) -> list[FuelAshInput]:
                 display_name=str(row.get("fuel_name", fuel_id)),
                 enabled=bool(row.get("enabled", True)),
                 rate_kg_per_thm=float_from_row(row, "rate_kg_per_thm"),
+                price_rs_per_mt=float_from_row(row, "price_rs_per_mt"),
                 moisture_pct=float_from_row(row, "moisture_pct"),
                 ash_pct=float_from_row(row, "ash_pct"),
                 sio2_pct=float_from_row(row, "sio2_pct"),
@@ -176,6 +177,9 @@ def flux_inputs_from_editor(editor_df: pd.DataFrame) -> list[FluxInput]:
                 s_pct=float_from_row(row, "s_pct"),
                 zn_pct=float_from_row(row, "zn_pct"),
                 loi_pct=float_from_row(row, "loi_pct"),
+                price_rs_per_mt=float_from_row(row, "price_rs_per_mt"),
+                stock_mt=float_from_row(row, "stock_mt"),
+                optimizable=bool(row.get("optimizable", False)),
             )
         )
     return flux_inputs

@@ -1,4 +1,4 @@
-﻿"""Streamlit page renderer for the FurnaceMind AI Co-Operate experience.
+"""Streamlit page renderer for the FurnaceMind AI Co-Operate experience.
 
 This module wires together the FurnaceMind chat UI, PostgreSQL conversation
 persistence, rolling memory summaries, skill shortcuts, vector stores, and the
@@ -9,6 +9,7 @@ pieces live under ``ui.furnacemind`` and persistence logic lives under
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,7 +33,11 @@ from furnace_data import relational
 from ui.furnacemind import chat_interface, feedback_flow
 from utils.furnacemind.feedback_service import FurnaceMindFeedbackService
 from utils.session import current_user_id
-from utils.settings import settings
+from utils.settings import (
+    REASONING_LEVELS,
+    normalize_openrouter_reasoning_level,
+    settings,
+)
 from utils.shift_windows import last_completed_shift
 
 
@@ -244,78 +249,6 @@ def _cached_retrieval_trace_repository() -> Any | None:
         return relational.RetrievalTraceRepository(session_factory)
     except Exception:
         return None
-
-
-_NO_ACTIVE_KNOWLEDGE_MESSAGE = "No active knowledge documents found for this user."
-_NO_MATCHING_KNOWLEDGE_MESSAGE = "No knowledge documents found for this query."
-_EMPTY_KNOWLEDGE_CONTEXT_PREFIXES = ("Knowledge store not initialized.",)
-_NO_ACTIVE_KNOWLEDGE_CONTEXT = (
-    "UPLOADED KNOWLEDGE STATUS:\n"
-    "There are no active uploaded knowledge documents for this user. Do not "
-    "answer uploaded-document facts from semantic memory, feedback lessons, "
-    "recent chat history, or old document citations. If the user asks about an "
-    "uploaded file or a fact that only came from a removed document, say that no "
-    "active uploaded knowledge document is available and ask them to upload or "
-    "activate the document again."
-)
-_NO_MATCHING_KNOWLEDGE_CONTEXT = (
-    "UPLOADED KNOWLEDGE STATUS:\n"
-    "Automatic uploaded-document search found no matching active-document "
-    "evidence for this query. Do not answer uploaded-document facts from "
-    "semantic memory, feedback lessons, recent chat history, or old document "
-    "citations. Call search_knowledge_docs with a more focused query if needed; "
-    "otherwise say the active documents did not contain the requested fact."
-)
-
-
-def _auto_retrieve_knowledge_context(query: str) -> tuple[str, dict[str, Any] | None]:
-    """Retrieve uploaded MRAG evidence before the agent loop starts.
-
-    The normal ``search_knowledge_docs`` tool remains available for follow-up
-    searches, but this pre-retrieval step gives every user turn a first pass over
-    active uploaded knowledge. It uses the same tool implementation as the LLM
-    would use, so active-document SQL filtering, Qdrant retrieval, reranking,
-    trace logging, and visual-evidence queuing stay consistent.
-
-    Args:
-        query: Current user message used as the retrieval query.
-
-    Returns:
-        A tuple of ``(text_context, visual_message)``. ``text_context`` is a
-        prompt-ready evidence block for the system prompt. ``visual_message`` is
-        an OpenAI/OpenRouter-compatible image message, or ``None`` when no visual
-        evidence was retrieved.
-    """
-    stripped_query = str(query or "").strip()
-    if not stripped_query:
-        return "", None
-
-    try:
-        result = str(
-            furnace_tools.search_knowledge_docs.invoke({"query": stripped_query}) or ""
-        ).strip()
-        visual_message = furnace_tools.consume_pending_mrag_image_message()
-    except Exception as exc:
-        st.session_state["fm_last_knowledge_auto_error"] = str(exc)
-        st.session_state.pop("fm_mrag_image_results", None)
-        return "", None
-
-    if not result or result.startswith(_EMPTY_KNOWLEDGE_CONTEXT_PREFIXES):
-        return "", None
-    if result.startswith(_NO_ACTIVE_KNOWLEDGE_MESSAGE):
-        return _NO_ACTIVE_KNOWLEDGE_CONTEXT, None
-    if result.startswith(_NO_MATCHING_KNOWLEDGE_MESSAGE):
-        return _NO_MATCHING_KNOWLEDGE_CONTEXT, None
-
-    st.session_state.pop("fm_last_knowledge_auto_error", None)
-    context = (
-        "RELEVANT UPLOADED KNOWLEDGE (auto-retrieved for this user message):\n"
-        "Use this evidence before answering. Cite the source labels for document "
-        "facts. If this block does not contain the needed fact, call "
-        "search_knowledge_docs with a more focused query.\n\n"
-        f"{result}"
-    )
-    return context, visual_message
 
 
 @st.cache_resource(show_spinner=False)
@@ -624,10 +557,37 @@ def _reset_chat_session() -> None:
         "_fm_loaded_conversation_id",
         "pending_skill_prompt",
         "fm_fig",
+        "fm_fig_turn_id",
         "fm_df",
+        "fm_df_turn_id",
         "fm_df_meta",
+        "fm_current_artifact_turn_id",
     ):
         st.session_state.pop(key, None)
+
+
+def _render_reasoning_selector() -> str:
+    """Render the user-facing LLM reasoning selector.
+
+    Returns:
+        Normalized reasoning level: ``Low``, ``Medium``, or ``High``. Missing
+        or invalid values are corrected to the configured Medium profile so the
+        downstream LLM client and SQL conversation metadata stay consistent.
+    """
+    current_level = normalize_openrouter_reasoning_level(
+        st.session_state.get("fm_reasoning_level")
+        or settings.llm.openrouter.default_reasoning_level
+    )
+    st.session_state["fm_reasoning_level"] = current_level
+    options = list(REASONING_LEVELS)
+    selected = st.sidebar.selectbox(
+        "Reasoning",
+        options,
+        index=options.index(current_level),
+        key="fm_reasoning_level",
+        help="Low uses the faster/lower-cost model, Medium balances quality and latency, High uses the deeper-quality model.",
+    )
+    return normalize_openrouter_reasoning_level(selected)
 
 
 def _render_conversation_controls(
@@ -756,6 +716,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     st.session_state.setdefault("fm_artifact_store", {})
+    selected_reasoning_level = _render_reasoning_selector()
 
     if not user_id:
         history_store = None
@@ -774,6 +735,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             conversation_id = history_store.ensure_conversation(
                 user_id=user_id,
                 conversation_id=conversation_id,
+                model_mode=selected_reasoning_level,
             )
             st.session_state["fm_conversation_id"] = conversation_id
             if st.session_state.get("_fm_loaded_conversation_id") != conversation_id:
@@ -903,38 +865,8 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         if semantic_memory_service is not None and user_id
         else ""
     )
-    knowledge_context, knowledge_visual_message = _auto_retrieve_knowledge_context(
-        user_query
-    )
-    knowledge_refs = [
-        ref
-        for ref in (st.session_state.get("fm_last_knowledge_document_refs") or [])
-        if isinstance(ref, dict)
-    ]
-    knowledge_document_ids = sorted(
-        {
-            str(ref.get("document_id") or "").strip()
-            for ref in knowledge_refs
-            if str(ref.get("document_id") or "").strip()
-        }
-    )
-    knowledge_filenames = sorted(
-        {
-            str(ref.get("filename") or "").strip()
-            for ref in knowledge_refs
-            if str(ref.get("filename") or "").strip()
-        }
-    )
-    knowledge_message_metadata: dict[str, Any] = {}
-    if knowledge_document_ids or knowledge_filenames:
-        knowledge_message_metadata = {
-            "exclude_from_memory": True,
-            "knowledge_document_ids": knowledge_document_ids,
-            "knowledge_filenames": knowledge_filenames,
-            "knowledge_source": "furnacemind_knowledge",
-        }
     turn_message_metadata = {
-        **knowledge_message_metadata,
+        "reasoning_level": selected_reasoning_level,
         **skill_message_metadata,
     }
     user_message_id: str | None = None
@@ -964,7 +896,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     with st.chat_message("user"):
         st.markdown(user_display or user_query)
 
-    llm = OpenRouterClient()
+    llm = OpenRouterClient(reasoning_level=selected_reasoning_level)
     if st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
     tools = furnace_tools.get_openai_tool_schemas()
@@ -973,8 +905,6 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         extra_context = f"{extra_context}\n\n{feedback_lesson_context}"
     if semantic_memory_context:
         extra_context = f"{extra_context}\n\n{semantic_memory_context}"
-    if knowledge_context:
-        extra_context = f"{extra_context}\n\n{knowledge_context}"
     messages = [
         {
             "role": "system",
@@ -988,25 +918,41 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
             max_messages=memory_summary_window,
         ),
     ]
-    if knowledge_visual_message is not None:
-        messages.append(knowledge_visual_message)
     history_len_before = len(st.session_state.chat_history)
+    artifact_turn_id = uuid.uuid4().hex
+    st.session_state["fm_current_artifact_turn_id"] = artifact_turn_id
 
-    with st.chat_message("assistant"):
-        status_box = st.empty()
-        response_box = st.empty()
-        status_box.status("Thinking...", expanded=False)
-        final_response = run_agent_loop(
-            llm=llm,
-            messages=messages,
-            tools=tools,
-            status_box=status_box,
-            response_box=response_box,
-        )
+    try:
+        with st.chat_message("assistant"):
+            status_box = st.empty()
+            response_box = st.empty()
+            status_box.status("Thinking...", expanded=False)
+            try:
+                final_response = run_agent_loop(
+                    llm=llm,
+                    messages=messages,
+                    tools=tools,
+                    status_box=status_box,
+                    response_box=response_box,
+                )
+            except Exception as exc:
+                llm.record_failure(exc)
+                final_response = llm.unavailable_message()
+                status_box.empty()
+                response_box.markdown(final_response)
+    finally:
+        st.session_state.pop("fm_current_artifact_turn_id", None)
 
-    chat_interface.inject_artifacts(history_len_before)
+    chat_interface.inject_artifacts(
+        history_len_before,
+        artifact_turn_id=artifact_turn_id,
+    )
 
-    assistant_metadata = {"source": "furnacemind", **turn_message_metadata}
+    assistant_metadata = {
+        "source": "furnacemind",
+        **turn_message_metadata,
+        **llm.usage_metadata(),
+    }
     assistant_message_id: str | None = None
     if history_store is not None and conversation_id and user_id:
         try:
@@ -1014,7 +960,8 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
                 conversation_id=conversation_id,
                 user_id=user_id,
                 content=final_response,
-                model=getattr(llm, "model", None),
+                model=assistant_metadata.get("actual_model")
+                or getattr(llm, "model", None),
                 metadata=assistant_metadata,
             )
         except Exception as exc:

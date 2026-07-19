@@ -106,6 +106,7 @@ class FuelAshInput:
          - display_name: str - Human-readable fuel name shown in the UI.
          - enabled: bool - Whether this fuel should contribute ash to slag.
          - rate_kg_per_thm: float - Wet fuel rate in kg per THM.
+         - price_rs_per_mt: float - Operator's current fuel price in Rs per MT (Rs/tonne).
          - moisture_pct: float - Fuel moisture percentage.
          - ash_pct: float - Ash percentage in the fuel.
          - sio2_pct: float - SiO2 percentage inside the ash.
@@ -127,6 +128,7 @@ class FuelAshInput:
     display_name: str
     enabled: bool = True
     rate_kg_per_thm: float = 0.0
+    price_rs_per_mt: float = 0.0
     moisture_pct: float = 0.0
     ash_pct: float = 0.0
     sio2_pct: float = 0.0
@@ -171,6 +173,10 @@ class FluxInput:
          - s_pct: float - Sulphur percentage on dry flux basis.
          - zn_pct: float - Zinc percentage on dry flux basis.
          - loi_pct: float - LOI percentage retained for diagnostics.
+         - price_rs_per_mt: float - Flux price, used when the LP optimises flux quantity.
+         - stock_mt: float - Available flux stock; upper bound when the LP optimises flux.
+         - optimizable: bool - If True, the LP decides this flux's quantity (0..stock)
+           to satisfy the slag basicity bounds; otherwise it is a fixed addition.
 
     Returns:
          - return FluxInput - Flux record used by blend calculations.
@@ -195,6 +201,9 @@ class FluxInput:
     s_pct: float = 0.0
     zn_pct: float = 0.0
     loi_pct: float = 0.0
+    price_rs_per_mt: float = 0.0
+    stock_mt: float = 0.0
+    optimizable: bool = False
 
 
 @dataclass

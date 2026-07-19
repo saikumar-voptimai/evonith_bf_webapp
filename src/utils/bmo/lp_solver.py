@@ -8,6 +8,8 @@ instead of showing a low-cost blend that violates the target slag cap.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 from scipy.optimize import linprog
 
@@ -96,6 +98,7 @@ def _build_linear_slag_and_basicity_terms(
     dust_inputs: list[DustInput] | None,
     slag_balance_settings: SlagBalanceSettings | None,
     hot_metal_target_mt: float | None,
+    variable_fluxes: list[FluxInput] | None = None,
 ) -> tuple[np.ndarray, float, np.ndarray, float, np.ndarray, float, np.ndarray, float]:
     """
     Estimate linear final-slag and basicity terms for LP hard constraints.
@@ -173,6 +176,36 @@ def _build_linear_slag_and_basicity_terms(
             - base_t_basicity_numerator_mt
         )
 
+    # Marginal contribution of each optimisable flux (per 1 wet MT), appended as
+    # extra decision-variable columns. Dolomite raises CaO (basicity numerator)
+    # and MgO (T-basicity); quartz raises SiO2 (denominator, lowering basicity).
+    base_flux_inputs = list(flux_inputs or [])
+    for flux in variable_fluxes or []:
+        unit_flux_blend = evaluate_blend(
+            ores=ores,
+            quantities_mt=zero_quantities,
+            feo_in_slag_pct=feo_in_slag_pct,
+            fuel_cost_per_thm_rs=0.0,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=base_flux_inputs + [replace(flux, wet_qty_mt=1.0, enabled=True)],
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            hot_metal_target_mt=hot_metal_target_mt,
+        )
+        slag_coeffs.append(float(unit_flux_blend.slag_mt) - base_slag_mt)
+        basicity_numerator_coeffs.append(
+            float(unit_flux_blend.diagnostics.get("slag_basicity_numerator_mt", 0.0) or 0.0)
+            - base_basicity_numerator_mt
+        )
+        basicity_denominator_coeffs.append(
+            float(unit_flux_blend.diagnostics.get("slag_basicity_denominator_mt", 0.0) or 0.0)
+            - base_basicity_denominator_mt
+        )
+        t_basicity_numerator_coeffs.append(
+            float(unit_flux_blend.diagnostics.get("slag_t_basicity_numerator_mt", 0.0) or 0.0)
+            - base_t_basicity_numerator_mt
+        )
+
     return (
         np.array(slag_coeffs, dtype=float),
         base_slag_mt,
@@ -215,8 +248,9 @@ def _explain_lp_infeasibility(
          - target_production_mt: float - Required dry Fe production in MT.
          - target_slag_qty_mt: float - Operator slag cap in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
-         - target_slag_basicity_min/max: float | None - CaO/SiO2 bounds.
-         - target_slag_t_basicity_min/max: float | None - (CaO+MgO)/SiO2 bounds.
+          - target_slag_basicity_min/max: float | None - CaO/SiO2 bounds.
+          - target_slag_t_basicity_min/max: float | None - Legacy display-only inputs,
+            ignored by LP feasibility.
          - fuel_ash_inputs / flux_inputs / dust_inputs - Fixed slag contributors.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
          - hot_metal_target_mt: float | None - HM basis for fuel/slag rates.
@@ -242,10 +276,9 @@ def _explain_lp_infeasibility(
         for bound in (
             target_slag_basicity_min,
             target_slag_basicity_max,
-            target_slag_t_basicity_min,
-            target_slag_t_basicity_max,
         )
     )
+    big_slag_cap_mt = max(float(target_slag_qty_mt) * 10.0, 1.0e6)
 
     if has_basicity:
         without_basicity, _ = run_lp_baseline(
@@ -256,16 +289,53 @@ def _explain_lp_infeasibility(
             **common,
         )
         if without_basicity is not None:
+            with_basicity_without_slag_cap, _ = run_lp_baseline(
+                ores,
+                target_production_mt=target_production_mt,
+                target_slag_qty_mt=big_slag_cap_mt,
+                target_slag_basicity_min=target_slag_basicity_min,
+                target_slag_basicity_max=target_slag_basicity_max,
+                target_slag_t_basicity_min=None,
+                target_slag_t_basicity_max=None,
+                _explain=False,
+                **common,
+            )
+            if with_basicity_without_slag_cap is not None:
+                flux_qty = (
+                    with_basicity_without_slag_cap.diagnostics.get(
+                        "lp_flux_quantities_mt", {}
+                    )
+                    or {}
+                )
+                added_flux = {
+                    str(flux_id): float(qty)
+                    for flux_id, qty in flux_qty.items()
+                    if float(qty or 0.0) > 1e-6
+                }
+                flux_text = ""
+                if added_flux:
+                    flux_text = " LP would add " + ", ".join(
+                        f"{flux_id} {qty:,.0f} MT"
+                        for flux_id, qty in added_flux.items()
+                    ) + "."
+                reasons.append(
+                    "The blend can meet the slag basicity limits only if the "
+                    "Max Slag cap is lifted. With LP-added flux it reaches "
+                    f"CaO/SiO2 ~ {with_basicity_without_slag_cap.slag_basicity:.2f} "
+                    f"but slag rises to about {with_basicity_without_slag_cap.slag_mt:,.0f} MT "
+                    f"versus the {float(target_slag_qty_mt):,.0f} MT cap."
+                    f"{flux_text} Raise Max Slag, relax the basicity bounds, or "
+                    "reduce slag from the burden before adding CaO flux."
+                )
+                return reasons
             reasons.append(
                 "The blend is feasible once the slag basicity limits are removed, "
                 "so the basicity bounds are the binding limit. This burden reaches "
-                f"CaO/SiO2 ~ {without_basicity.slag_basicity:.2f} and T-basicity ~ "
-                f"{without_basicity.slag_t_basicity:.2f}. Widen the basicity bounds "
+                f"CaO/SiO2 ~ {without_basicity.slag_basicity:.2f}. Widen the basicity bounds "
                 "or adjust flux (CaO source) to match."
             )
             return reasons
 
-    big_slag_cap_mt = max(float(target_slag_qty_mt) * 10.0, 1.0e6)
     without_slag_cap, _ = run_lp_baseline(
         ores,
         target_production_mt=target_production_mt,
@@ -318,8 +388,10 @@ def run_lp_baseline(
          - target_slag_qty_mt: float - Maximum slag quantity checked after solve.
          - target_slag_basicity_min: float | None - Minimum allowed CaO / SiO2 basicity.
          - target_slag_basicity_max: float | None - Maximum allowed CaO / SiO2 basicity.
-         - target_slag_t_basicity_min: float | None - Minimum allowed (CaO + MgO) / SiO2 basicity.
-         - target_slag_t_basicity_max: float | None - Maximum allowed (CaO + MgO) / SiO2 basicity.
+         - target_slag_t_basicity_min: float | None - Legacy display-only input,
+           ignored by LP optimization.
+         - target_slag_t_basicity_max: float | None - Legacy display-only input,
+           ignored by LP optimization.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
          - fuel_ash_inputs: list[FuelAshInput] | None - Fuel ash records used for slag.
          - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
@@ -338,27 +410,40 @@ def run_lp_baseline(
         and float(target_slag_basicity_min) > float(target_slag_basicity_max)
     ):
         pre_errors.append("Min slag basicity cannot be greater than max slag basicity.")
-    if (
-        target_slag_t_basicity_min is not None
-        and target_slag_t_basicity_max is not None
-        and float(target_slag_t_basicity_min) > float(target_slag_t_basicity_max)
-    ):
-        pre_errors.append(
-            "Min slag T basicity cannot be greater than max slag T basicity."
-        )
     if pre_errors:
         return None, pre_errors
 
     n = len(ores)
-    c = np.array([float(ore.price_rs_per_mt) for ore in ores], dtype=float)
+    # Optimisable fluxes (e.g. dolomite, quartz) become extra LP decision
+    # variables so the solver can add just enough flux to hold slag basicity
+    # within bounds; all other fluxes are fixed additions folded into the base.
+    all_fluxes = list(flux_inputs or [])
+    variable_fluxes = [
+        flux
+        for flux in all_fluxes
+        if flux.optimizable and flux.enabled and float(flux.stock_mt) > 0.0
+    ]
+    variable_flux_ids = {flux.flux_id for flux in variable_fluxes}
+    fixed_fluxes = [flux for flux in all_fluxes if flux.flux_id not in variable_flux_ids]
+    n_flux = len(variable_fluxes)
 
-    fe_coeff = np.array(
+    ore_prices = [float(ore.price_rs_per_mt) for ore in ores]
+    flux_prices = [float(flux.price_rs_per_mt) for flux in variable_fluxes]
+    c = np.array(ore_prices + flux_prices, dtype=float)
+
+    fe_coeff = np.concatenate(
         [
-            compute_dry_fraction(ore.chemistry.moisture_pct)
-            * (float(ore.chemistry.fe_t_pct) / 100.0)
-            for ore in ores
-        ],
-        dtype=float,
+            np.array(
+                [
+                    compute_dry_fraction(ore.chemistry.moisture_pct)
+                    * (float(ore.chemistry.fe_t_pct) / 100.0)
+                    for ore in ores
+                ],
+                dtype=float,
+            ),
+            # Flux iron reports to slag, not hot metal, so flux adds no Fe here.
+            np.zeros(n_flux, dtype=float),
+        ]
     )
     a_ub_rows = [
         -fe_coeff,  # Fe >= target
@@ -376,16 +461,17 @@ def run_lp_baseline(
         basicity_numerator_base_mt,
         basicity_denominator_coeff,
         basicity_denominator_base_mt,
-        t_basicity_numerator_coeff,
-        t_basicity_numerator_base_mt,
+        _t_basicity_numerator_coeff,
+        _t_basicity_numerator_base_mt,
     ) = _build_linear_slag_and_basicity_terms(
         ores,
         feo_in_slag_pct=feo_in_slag_pct,
         fuel_ash_inputs=fuel_ash_inputs,
-        flux_inputs=flux_inputs,
+        flux_inputs=fixed_fluxes,
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
         hot_metal_target_mt=hot_metal_target_mt,
+        variable_fluxes=variable_fluxes,
     )
     slag_row_idx = len(a_ub_rows)
     a_ub_rows.append(slag_coeff)
@@ -418,25 +504,22 @@ def run_lp_baseline(
         min_value=target_slag_basicity_min,
         max_value=target_slag_basicity_max,
     )
-    _add_basicity_bounds(
-        numerator_coeff=t_basicity_numerator_coeff,
-        numerator_base_mt=t_basicity_numerator_base_mt,
-        denominator_coeff=basicity_denominator_coeff,
-        denominator_base_mt=basicity_denominator_base_mt,
-        min_value=target_slag_t_basicity_min,
-        max_value=target_slag_t_basicity_max,
-    )
-
     for idx, ore in enumerate(ores):
         min_share = float(ore.min_share_pct) / 100.0
         max_share = float(ore.max_share_pct) / 100.0
 
-        min_share_row = np.full(n, min_share, dtype=float)
+        # Share bounds apply to ore columns only; fluxes are separate additions
+        # (padded with zeros) that don't participate in the ore-share split.
+        min_share_row = np.concatenate(
+            [np.full(n, min_share, dtype=float), np.zeros(n_flux, dtype=float)]
+        )
         min_share_row[idx] -= 1.0
         a_ub_rows.append(min_share_row)
         b_ub_values.append(0.0)
 
-        max_share_row = np.full(n, -max_share, dtype=float)
+        max_share_row = np.concatenate(
+            [np.full(n, -max_share, dtype=float), np.zeros(n_flux, dtype=float)]
+        )
         max_share_row[idx] += 1.0
         a_ub_rows.append(max_share_row)
         b_ub_values.append(0.0)
@@ -447,6 +530,8 @@ def run_lp_baseline(
     bounds: list[tuple[float, float]] = []
     for ore in ores:
         bounds.append((0.0, max(0.0, float(ore.stock_mt))))
+    for flux in variable_fluxes:
+        bounds.append((0.0, max(0.0, float(flux.stock_mt))))
 
     slag_tightening_mt = 0.0
     last_slag_mt: float | None = None
@@ -479,8 +564,8 @@ def run_lp_baseline(
                         feo_in_slag_pct=feo_in_slag_pct,
                         target_slag_basicity_min=target_slag_basicity_min,
                         target_slag_basicity_max=target_slag_basicity_max,
-                        target_slag_t_basicity_min=target_slag_t_basicity_min,
-                        target_slag_t_basicity_max=target_slag_t_basicity_max,
+                        target_slag_t_basicity_min=None,
+                        target_slag_t_basicity_max=None,
                         fuel_ash_inputs=fuel_ash_inputs,
                         flux_inputs=flux_inputs,
                         dust_inputs=dust_inputs,
@@ -493,16 +578,39 @@ def run_lp_baseline(
         quantities = {
             ore.ore_id: float(result.x[idx]) for idx, ore in enumerate(ores)
         }
+        # Rebuild the flux list with the LP-decided quantities for optimisable
+        # fluxes so the final evaluation reflects the flux the LP actually added.
+        solved_flux_quantities = {
+            flux.flux_id: float(result.x[n + j])
+            for j, flux in enumerate(variable_fluxes)
+        }
+        solved_flux_inputs = list(fixed_fluxes) + [
+            replace(flux, wet_qty_mt=float(result.x[n + j]))
+            for j, flux in enumerate(variable_fluxes)
+        ]
         blend = evaluate_blend(
             ores=ores,
             quantities_mt=quantities,
             feo_in_slag_pct=feo_in_slag_pct,
             fuel_cost_per_thm_rs=0.0,
             fuel_ash_inputs=fuel_ash_inputs,
-            flux_inputs=flux_inputs,
+            flux_inputs=solved_flux_inputs,
             dust_inputs=dust_inputs,
             slag_balance_settings=slag_balance_settings,
             hot_metal_target_mt=hot_metal_target_mt,
+        )
+        blend.diagnostics["lp_flux_quantities_mt"] = solved_flux_quantities
+        # Cost of the flux the LP bought (per THM), on the same HM basis the blend
+        # uses, so the displayed total cost includes optimizer-added flux.
+        flux_cost_total_rs = sum(
+            float(result.x[n + j]) * float(flux.price_rs_per_mt)
+            for j, flux in enumerate(variable_fluxes)
+        )
+        flux_thm_basis = float(
+            hot_metal_target_mt or blend.fe_production_mt or 0.0
+        )
+        blend.diagnostics["flux_cost_per_thm_rs"] = (
+            float(flux_cost_total_rs / flux_thm_basis) if flux_thm_basis > 0.0 else 0.0
         )
         violations = check_blend_constraints(
             blend,
@@ -511,8 +619,8 @@ def run_lp_baseline(
             target_slag_qty_mt=target_slag_qty_mt,
             target_slag_basicity_min=target_slag_basicity_min,
             target_slag_basicity_max=target_slag_basicity_max,
-            target_slag_t_basicity_min=target_slag_t_basicity_min,
-            target_slag_t_basicity_max=target_slag_t_basicity_max,
+            target_slag_t_basicity_min=None,
+            target_slag_t_basicity_max=None,
             slag_tolerance_mt=LP_EXACT_SLAG_TOLERANCE_MT,
         )
         if not violations:

@@ -27,7 +27,7 @@ def check_blend_constraints(
     target_slag_t_basicity_max: float | None = None,
     fe_tolerance_mt: float = 0.5,
     slag_tolerance_mt: float = 0.0,
-    basicity_tolerance: float = 1e-6,
+    basicity_tolerance: float = 1e-3,
 ) -> list[str]:
     """
     Check a completed blend against BMO physical and planning constraints.
@@ -51,6 +51,12 @@ def check_blend_constraints(
          - slag_tolerance_mt: float - Allowed slag tolerance in MT. The
            default is zero because BMO treats max slag as a strict cap.
          - basicity_tolerance: float - Numeric tolerance for basicity bounds.
+           The LP minimises cost, so it drives basicity onto the min (or max)
+           bound exactly; the linearised LP basicity then differs from the exact
+           re-evaluated basicity by a small drift. A physically meaningful 1e-3
+           tolerance (~0.1% on a ~0.94 basicity, far finer than real slag control)
+           absorbs that drift so a value equal to the bound at display precision
+           is not flagged as "0.940 < 0.940".
 
     Returns:
          - return list[str] - Human-readable constraint violation messages.

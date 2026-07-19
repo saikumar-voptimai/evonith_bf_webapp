@@ -23,7 +23,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import yaml
 
-from agents.furnacemind.prompts import HEATLOAD_PLOT_CODE, HEATLOAD_REPORT_TEMPLATE
+from agents.furnacemind.prompts import HEATLOAD_REPORT_TEMPLATE
 from agents.furnace_tools import fetch_ml_data, load_static_shift_data
 
 _PARAMS_PATH = (
@@ -149,8 +149,7 @@ class SkillEngine:
             "Do not output any code or planning. Call the two tools below, then write the report.\n\n"
             "STEP 1 — Call: fetch_online_data(lookback_hours=8, "
             'measurement_groups=["heatload_delta_t","temperature_profile","process_params"])\n\n'
-            "STEP 2 — Call: execute_python_plot with this exact code (copy verbatim):\n"
-            f"{HEATLOAD_PLOT_CODE}\n\n"
+            "STEP 2 - Call: render_heatload_plot() to create the standard heatload chart.\n\n"
             "STEP 3 — After both tool calls, write this report (fill in actual numbers from the data):\n"
             f"{HEATLOAD_REPORT_TEMPLATE}\n"
         )

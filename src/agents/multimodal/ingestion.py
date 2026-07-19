@@ -32,11 +32,9 @@ chunks when LibreOffice/``soffice`` is available on the host.
 from __future__ import annotations
 
 import hashlib
-import re
 import uuid
 from dataclasses import dataclass, field
 from io import BytesIO
-from pathlib import Path
 from typing import Any
 
 from PIL import Image
@@ -53,7 +51,6 @@ from agents.multimodal.parsers import (
 )
 from utils.logger import get_logger
 
-_IMAGE_DIR = Path("src/storage/furnacemind/mrag_images")
 _POINT_NAMESPACE = uuid.NAMESPACE_URL
 logger = get_logger(__name__)
 
@@ -63,10 +60,9 @@ class DocumentPart:
     """Normalized unit of knowledge that becomes one Qdrant point.
 
     ``DocumentPart`` is the common representation for every modality produced by
-    ingestion. Text-bearing parts keep extracted text in ``content`` and leave
-    ``image_path`` empty. Visual parts keep the original/rendered image on disk,
-    store that path in ``image_path``, and may include a short textual caption or
-    optional OCR text in ``content``.
+    ingestion. Text-bearing parts keep extracted text in ``content``. Visual
+    parts keep their bytes in memory long enough to create image embeddings, and
+    may include a short textual caption or optional OCR text in ``content``.
 
     Attributes:
         document_id: Stable content hash id shared by all parts from one upload.
@@ -78,8 +74,13 @@ class DocumentPart:
         chunk_index: Zero-based ordering across every part in the document.
         user_id: Optional owner id used for Qdrant filtering.
         content: Text/caption stored in payload and used for summaries.
-        image_path: Local path to the visual source. When present, the part is
-            embedded with ``embed_image``.
+        image_bytes: Visual bytes used to create multimodal embeddings. These
+            bytes are intentionally not written into the codebase; the original
+            uploaded document is stored in PostgreSQL and the visual bytes can be
+            reconstructed from that document when evidence needs to be attached.
+        image_path: Legacy local path to the visual source. Kept for backward
+            compatibility with older Qdrant payloads; new ingestion does not
+            populate it.
         page_number: Source PDF page number when applicable.
         slide_number: Source PPTX slide number when applicable.
         sheet_name: Source Excel sheet name when applicable.
@@ -94,6 +95,7 @@ class DocumentPart:
     chunk_index: int
     user_id: str | None = None
     content: str = ""
+    image_bytes: bytes | None = field(default=None, repr=False, compare=False)
     image_path: str | None = None
     page_number: int | None = None
     slide_number: int | None = None
@@ -122,8 +124,8 @@ class DocumentPart:
         The payload carries both retrieval metadata and answer-citation metadata.
         ``user_id`` and ``document_id`` support scoped search and deletion.
         ``source``, ``page_number``, ``slide_number``, and ``sheet_name`` let the
-        LLM cite exact locations. ``image_path`` lets the agent attach retrieved
-        visual evidence to a vision-capable model after vector search.
+        LLM cite exact locations. ``has_visual`` tells retrieval that the source
+        document can be reconstructed as visual evidence from PostgreSQL.
 
         Returns:
             Dictionary suitable for ``PointStruct.payload``.
@@ -139,6 +141,8 @@ class DocumentPart:
             "content": self.content,
             **self.metadata,
         }
+        if self.image_bytes is not None or self.image_path:
+            payload["has_visual"] = True
         if self.user_id:
             payload["user_id"] = self.user_id
         optional = {
@@ -178,18 +182,6 @@ def _read_upload_bytes(file) -> bytes:
     return data
 
 
-def _safe_name(name: str) -> str:
-    """Sanitize a value for use in generated local filenames.
-
-    Args:
-        name: Arbitrary filename/id fragment.
-
-    Returns:
-        ASCII-safe fragment containing letters, numbers, underscores, dots, and
-        hyphens. Returns ``"upload"`` if nothing usable remains.
-    """
-    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("._")
-    return cleaned or "upload"
 
 
 def _document_id(file_bytes: bytes) -> str:
@@ -207,7 +199,7 @@ def _document_id(file_bytes: bytes) -> str:
 
 
 def _image_suffix(image_bytes: bytes, fallback: str = "png") -> str:
-    """Infer the best file extension for saved image bytes.
+    """Infer the best file extension for visual chunk bytes.
 
     Args:
         image_bytes: Raw image bytes.
@@ -223,31 +215,6 @@ def _image_suffix(image_bytes: bytes, fallback: str = "png") -> str:
         return "jpg" if fmt == "jpeg" else fmt
     except Exception:
         return fallback
-
-
-def _save_image_bytes(
-    *,
-    document_id: str,
-    chunk_id: str,
-    image_bytes: bytes,
-    suffix: str = "png",
-) -> str:
-    """Save visual chunk bytes under the MRAG image storage directory.
-
-    Args:
-        document_id: Stable upload id used in the generated filename.
-        chunk_id: Chunk id used in the generated filename.
-        image_bytes: Raw image bytes to write.
-        suffix: File extension without a leading dot.
-
-    Returns:
-        String path stored in Qdrant payload. Retrieval later reads this path and
-        sends the image to the multimodal LLM as visual evidence.
-    """
-    _IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _IMAGE_DIR / f"{_safe_name(document_id)}_{_safe_name(chunk_id)}.{suffix}"
-    path.write_bytes(image_bytes)
-    return str(path)
 
 
 def _optional_ocr_text(image_bytes: bytes) -> str:
@@ -416,7 +383,7 @@ def _image_part(
     suffix: str = "png",
     metadata: dict[str, Any] | None = None,
 ) -> DocumentPart:
-    """Create an image-backed ``DocumentPart`` and save the visual bytes.
+    """Create an image-backed ``DocumentPart`` without writing local files.
 
     Args:
         document_id: Stable id shared by all parts from the upload.
@@ -430,21 +397,18 @@ def _image_part(
         user_id: Optional owner id for user-scoped retrieval.
         page_number: Source PDF page number, if any.
         slide_number: Source PPTX slide number, if any.
-        suffix: File extension for the saved image.
+        suffix: Original/rendered image extension stored as metadata for MIME
+            reconstruction. No file is written for this suffix.
         metadata: Optional parser-specific payload additions.
 
     Returns:
-        A ``DocumentPart`` with ``image_path`` populated. Because ``image_path``
-        is present, ``_embedding_for_part`` will embed it with ``embed_image``.
+        A ``DocumentPart`` with ``image_bytes`` populated. Because
+        ``image_bytes`` is present, ``_embedding_for_part`` will embed it with
+        ``embed_image``.
     """
     chunk_id = f"{modality}_{chunk_index:04d}"
-    image_path = _save_image_bytes(
-        document_id=document_id,
-        chunk_id=chunk_id,
-        image_bytes=image_bytes,
-        suffix=suffix,
-    )
     metadata_payload = {**(metadata or {})}
+    metadata_payload["image_format"] = suffix
     ocr_text = _optional_ocr_text(image_bytes)
     if ocr_text:
         metadata_payload["ocr_engine"] = "pytesseract"
@@ -459,7 +423,7 @@ def _image_part(
         chunk_index=chunk_index,
         user_id=user_id,
         content=content,
-        image_path=image_path,
+        image_bytes=image_bytes,
         page_number=page_number,
         slide_number=slide_number,
         metadata=metadata_payload,
@@ -610,7 +574,9 @@ def build_document_parts(
                     )
                 )
                 chunk_index += 1
-            for image_blob in slide.get("image_blobs") or []:
+            for slide_image_index, image_blob in enumerate(
+                slide.get("image_blobs") or []
+            ):
                 parts.append(
                     _image_part(
                         document_id=document_id,
@@ -626,6 +592,7 @@ def build_document_parts(
                             "Use this image for visual evidence from the presentation."
                         ),
                         suffix=_image_suffix(image_blob),
+                        metadata={"slide_image_index": slide_image_index},
                     )
                 )
                 chunk_index += 1
@@ -684,11 +651,20 @@ def _embedding_for_part(part: DocumentPart, embedding_client) -> list[float]:
         Dense vector for Qdrant.
 
     Behavior:
-        If ``part.image_path`` is set, the saved image bytes are read and passed
-        to ``embed_image(..., input_type="document")``. Otherwise ``part.content``
-        is passed to ``embed_text(..., input_type="document")``.
+        If ``part.image_bytes`` is set, those bytes are passed to
+        ``embed_image(..., input_type="document")``. Legacy ``image_path`` values
+        are still supported for old tests or payloads. Otherwise
+        ``part.content`` is passed to ``embed_text(..., input_type="document")``.
     """
+    if part.image_bytes is not None:
+        return _embed_image(
+            embedding_client,
+            part.image_bytes,
+            input_type="document",
+        )
     if part.image_path:
+        from pathlib import Path
+
         return _embed_image(
             embedding_client,
             Path(part.image_path).read_bytes(),
@@ -705,8 +681,9 @@ def _document_metadata(parts: list[DocumentPart]) -> dict[str, Any]:
 
     Returns:
         Metadata containing the stable document id, user id, chunk count,
-        modalities, file type, source page/slide/sheet lists, and saved image
-        paths. This supports the sidebar document library and delete cleanup.
+        modalities, file type, source page/slide/sheet lists, and visual chunk
+        count. This supports the sidebar document library and delete cleanup
+        without storing local filesystem paths.
     """
     return {
         "source": "furnacemind_knowledge",
@@ -722,9 +699,9 @@ def _document_metadata(parts: list[DocumentPart]) -> dict[str, Any]:
             {part.slide_number for part in parts if part.slide_number is not None}
         ),
         "sheets": sorted({part.sheet_name for part in parts if part.sheet_name}),
-        "image_paths": [
-            part.image_path for part in parts if part.image_path is not None
-        ],
+        "visual_chunk_count": len(
+            [part for part in parts if part.image_bytes is not None or part.image_path]
+        ),
     }
 
 
@@ -733,6 +710,8 @@ def _persist_document_metadata(
     document_repository: Any | None,
     user_id: str | None,
     filename: str,
+    file_bytes: bytes,
+    content_type: str | None,
     knowledge_store,
     parts: list[DocumentPart],
 ) -> Any | None:
@@ -740,10 +719,12 @@ def _persist_document_metadata(
 
     Args:
         document_repository: Repository with ``list_documents`` and
-            ``create_document`` methods, or ``None`` when SQL persistence is not
-            available.
+            ``create_document`` methods, and optionally ``store_document_file``;
+            or ``None`` when SQL persistence is not available.
         user_id: Current user id. Without this, no SQL document row is written.
         filename: Original uploaded filename.
+        file_bytes: Raw uploaded file bytes to store in PostgreSQL.
+        content_type: Browser-provided MIME type, when available.
         knowledge_store: Qdrant store providing ``collection_name``.
         parts: Parts successfully prepared for indexing.
 
@@ -756,6 +737,7 @@ def _persist_document_metadata(
 
     try:
         metadata = _document_metadata(parts)
+        document = None
         if hasattr(document_repository, "list_documents"):
             existing_documents = document_repository.list_documents(user_id=user_id)
             for document in existing_documents:
@@ -770,15 +752,33 @@ def _persist_document_metadata(
                     == knowledge_store.collection_name
                 )
                 if same_document and same_collection:
-                    return document
-        return document_repository.create_document(
-            user_id=user_id,
-            filename=filename,
-            file_type=parts[0].file_type,
-            qdrant_collection=knowledge_store.collection_name,
-            qdrant_point_ids=[part.point_id for part in parts],
-            metadata=metadata,
-        )
+                    break
+            else:
+                document = None
+        if document is None:
+            document = document_repository.create_document(
+                user_id=user_id,
+                filename=filename,
+                file_type=parts[0].file_type,
+                qdrant_collection=knowledge_store.collection_name,
+                qdrant_point_ids=[part.point_id for part in parts],
+                metadata=metadata,
+            )
+        if hasattr(document_repository, "store_document_file"):
+            try:
+                document_repository.store_document_file(
+                    document_id=getattr(document, "document_id"),
+                    user_id=user_id,
+                    filename=filename,
+                    file_type=parts[0].file_type,
+                    content_type=content_type,
+                    file_bytes=file_bytes,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "MRAG raw document save failed for %s: %s", filename, exc
+                )
+        return document
     except Exception as exc:
         logger.warning("MRAG document metadata save failed for %s: %s", filename, exc)
         return None
@@ -856,6 +856,7 @@ def process_file(
         metadata failures are caught and logged separately.
     """
     filename = getattr(file, "name", "upload")
+    content_type = getattr(file, "type", None)
     file_bytes = _read_upload_bytes(file)
     parts = build_document_parts(filename, file_bytes, user_id=user_id)
     if not parts:
@@ -889,6 +890,8 @@ def process_file(
         document_repository=document_repository,
         user_id=user_id,
         filename=filename,
+        file_bytes=file_bytes,
+        content_type=content_type,
         knowledge_store=knowledge_store,
         parts=parts,
     )

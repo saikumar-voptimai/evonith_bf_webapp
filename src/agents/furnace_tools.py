@@ -1,6 +1,6 @@
 """Tool functions for the FurnaceMind AI Co-Operate agent.
 
-Exposes nine tool functions dispatched by
+Exposes ten tool functions dispatched by
 :func:`execute_openai_tool_call`:
 
 1. ``fetch_online_data`` — fetch InfluxDB telemetry for any measurement group.
@@ -11,7 +11,8 @@ Exposes nine tool functions dispatched by
 6. ``load_static_shift_data`` — load 8-hour shift data from the static ML dataset.
 7. ``search_shift_history`` — semantic vector search over Qdrant shift summaries.
 8. ``search_knowledge_docs`` — semantic search over uploaded operator documents.
-9. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
+9. ``render_heatload_plot`` — deterministic plot for recent heatload telemetry.
+10. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
 """
 
 import base64
@@ -61,12 +62,14 @@ _KNOWLEDGE_IMAGE_MAX_BYTES = 4_000_000
 _KNOWLEDGE_RERANK_CANDIDATES = 16
 _KNOWLEDGE_RETURN_LIMIT = 8
 
-# Absolute path: src/agents/furnace_tools.py -> parents[1] = src/ -> assets/data/
-# IST offset (tz-naive static ML dataset index matches this)
-_IST_OFFSET = timedelta(hours=5, minutes=30)
-
 
 def _ensure_dataset_store() -> Dict[str, Any]:
+    """Return the Streamlit session-state store for temporary datasets.
+
+    FurnaceMind tools pass data between model/tool calls by storing fetched or
+    merged DataFrames in ``st.session_state["fm_datasets"]``. This helper lazily
+    creates that dictionary and protects against stale non-dictionary values.
+    """
     if "fm_datasets" not in st.session_state or not isinstance(
         st.session_state.get("fm_datasets"), dict
     ):
@@ -75,6 +78,16 @@ def _ensure_dataset_store() -> Dict[str, Any]:
 
 
 def _new_dataset_id(prefix: str) -> str:
+    """Create a unique id for a dataset produced during the current session.
+
+    Args:
+        prefix: Short source label such as ``online``, ``offline``, ``merged``,
+            or ``static_shift``.
+
+    Returns:
+        Stable session-local id containing the prefix, UTC timestamp, and a
+        monotonically increasing Streamlit session counter.
+    """
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     counter = st.session_state.get("fm_dataset_counter", 0) + 1
     st.session_state["fm_dataset_counter"] = counter
@@ -82,6 +95,12 @@ def _new_dataset_id(prefix: str) -> str:
 
 
 def _to_ist_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize a DataFrame datetime index to Asia/Kolkata time.
+
+    Online and offline sources may return UTC-aware, UTC-naive, or already-local
+    timestamps. The UI and shift logic expect an IST index named ``time (IST)``.
+    Non-datetime and empty frames are returned unchanged.
+    """
     if df is None or df.empty:
         return df
     if not isinstance(df.index, pd.DatetimeIndex):
@@ -97,6 +116,17 @@ def _to_ist_index(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _parse_iso8601_utc(s: str) -> datetime:
+    """Parse a user/tool ISO timestamp into a UTC-aware ``datetime``.
+
+    Args:
+        s: ISO-8601 timestamp accepted by pandas, usually ending with ``Z``.
+
+    Returns:
+        Python ``datetime`` normalized to UTC.
+
+    Raises:
+        ValueError: If pandas cannot produce a timestamp for the input.
+    """
     dt = pd.to_datetime(s, utc=True)
     if isinstance(dt, pd.Timestamp):
         return dt.to_pydatetime()
@@ -104,6 +134,16 @@ def _parse_iso8601_utc(s: str) -> datetime:
 
 
 def _resolve_online_window(*, lookback: timedelta, window: Optional[str]) -> str:
+    """Choose the aggregation window for online telemetry fetches.
+
+    Args:
+        lookback: Resolved time span requested by the model/user.
+        window: Optional explicit aggregation window from the tool arguments.
+
+    Returns:
+        The explicit window when provided; otherwise ``1 hour`` for ranges above
+        one day and ``15 minutes`` for shorter ranges.
+    """
     if isinstance(window, str) and window.strip():
         return window.strip()
     # Policy from user:
@@ -113,6 +153,13 @@ def _resolve_online_window(*, lookback: timedelta, window: Optional[str]) -> str
 
 
 class OnlineFetchArgs(BaseModel):
+    """Validated arguments for fetching online Influx telemetry.
+
+    The model may request either a relative lookback window or exact UTC start
+    and end timestamps. Measurement groups are constrained to known online
+    telemetry groups so generated tool calls remain safe and predictable.
+    """
+
     lookback: Optional[str] = Field(
         default=None,
         description=(
@@ -150,10 +197,22 @@ class OnlineFetchArgs(BaseModel):
 
 
 class OfflineReportType(str):
-    """Canonical offline report types for tool-calling."""
+    """Canonical offline report type labels accepted by tool-calling.
+
+    The class is intentionally lightweight because the actual validation is
+    handled by ``OfflineFetchArgs.report_type``. Keeping these labels in one
+    place documents the offline data families exposed to the LLM.
+    """
 
 
 class OfflineFetchArgs(BaseModel):
+    """Validated arguments for loading offline report tables.
+
+    Offline data can be fetched by canonical report type, optional explicit
+    table name, time window, lookback period, and resampling cadence. The schema
+    keeps generated LLM tool calls inside the supported report families.
+    """
+
     report_type: Literal[
         "HM_SLAG",
         "CHARGE",
@@ -188,6 +247,12 @@ class OfflineFetchArgs(BaseModel):
 
 
 class MergeArgs(BaseModel):
+    """Validated arguments for merging online and offline datasets.
+
+    The merge tool aligns one online dataset with one or more offline datasets
+    so downstream analysis or plotting can operate on a single DataFrame.
+    """
+
     online_dataset_id: str = Field(
         description="Dataset id returned by fetch_online_data."
     )
@@ -200,6 +265,12 @@ class MergeArgs(BaseModel):
 
 
 class StaticShiftArgs(BaseModel):
+    """Validated arguments for loading one static 8-hour shift slice.
+
+    This schema is used when the model needs a known historical shift from the
+    pre-merged static dataset instead of live online/offline fetches.
+    """
+
     shift_date: str = Field(description="ISO date string YYYY-MM-DD")
     shift_label: Literal["A", "B", "C"] = Field(
         description="Shift: A (06:00-14:00), B (14:00-22:00), C (22:00-06:00 next day) IST"
@@ -207,6 +278,13 @@ class StaticShiftArgs(BaseModel):
 
 
 class MLDataArgs(BaseModel):
+    """Validated arguments for reading the static pre-merged ML dataset.
+
+    The static dataset is indexed in IST and can be sliced by time, optionally
+    resampled, and optionally reduced to columns matching user-provided keyword
+    filters.
+    """
+
     start_time: str = Field(
         description="Start of range. ISO-8601 or YYYY-MM-DD. Treated as IST (matches static dataset index). E.g. '2026-03-01' or '2026-03-01T06:00:00'."
     )
@@ -225,19 +303,78 @@ class MLDataArgs(BaseModel):
 
 
 class ConcatArgs(BaseModel):
+    """Validated arguments for vertically concatenating temporary datasets.
+
+    The concat tool lets the agent combine multiple compatible time slices into
+    one session DataFrame before plotting or comparing trends.
+    """
+
     dataset_ids: List[str] = Field(
         description="Dataset IDs to concatenate vertically (temporal union). Sorted by index; duplicate timestamps keep the last entry (prefer recent data)."
     )
 
 
+def _current_artifact_turn_id() -> str | None:
+    """Return the active chat-turn id used for artifact ownership.
+
+    The chat page sets ``fm_current_artifact_turn_id`` before one agent run.
+    Dataset and plot tools copy that id onto UI artifacts so the renderer can
+    show only charts/tables created by the current turn and hide stale outputs
+    from previous questions.
+
+    Returns:
+        Clean turn id from Streamlit session state, or ``None`` when no agent
+        turn is active.
+    """
+    value = st.session_state.get("fm_current_artifact_turn_id")
+    clean = str(value or "").strip()
+    return clean or None
+
+
+def _tag_artifact_turn(key: str) -> None:
+    """Attach current-turn ownership to a Streamlit artifact key.
+
+    Args:
+        key: Session-state key that stores the owner id for a UI artifact, such
+            as ``fm_df_turn_id`` or ``fm_fig_turn_id``.
+
+    Behavior:
+        If a turn id exists, the key is updated with that id. If no turn is
+        active, the key is removed so old artifacts are not treated as current.
+    """
+    turn_id = _current_artifact_turn_id()
+    if turn_id:
+        st.session_state[key] = turn_id
+    else:
+        st.session_state.pop(key, None)
+
+
 def _save_dataset(*, dataset_id: str, df: pd.DataFrame, meta: Dict[str, Any]) -> None:
+    """Persist a tool-produced DataFrame for later tools and UI rendering.
+
+    Args:
+        dataset_id: Session-local id returned to the model.
+        df: DataFrame produced by a fetch, merge, concat, or static-shift tool.
+        meta: Human-readable metadata describing source, time window, and shape.
+
+    Side effects:
+        Updates the dataset store, marks the active DataFrame for plotting, and
+        tags the DataFrame with the current chat turn id.
+    """
     store = _ensure_dataset_store()
     store[dataset_id] = {"df": df, "meta": meta}
     st.session_state.fm_df = df
     st.session_state.fm_df_meta = meta
+    _tag_artifact_turn("fm_df_turn_id")
 
 
 def _summarize_df(df: pd.DataFrame, *, dataset_id: str, title: str) -> str:
+    """Build a compact text summary returned after a dataset tool runs.
+
+    The summary gives the model enough context to decide whether it needs a
+    follow-up tool call, a plot, or a final natural-language answer without
+    sending the full dataset through the chat transcript.
+    """
     if df is None or df.empty:
         return f"{title}: No data found."
     preview = df.head(2).to_string() if len(df) else "<empty>"
@@ -250,12 +387,20 @@ def _summarize_df(df: pd.DataFrame, *, dataset_id: str, title: str) -> str:
 
 
 def _now_ist_naive() -> pd.Timestamp:
-    """Current time as IST tz-naive Timestamp (matches the static dataset index)."""
+    """Return current time as an IST tz-naive timestamp.
+
+    The static ML dataset uses tz-naive IST timestamps, so this helper avoids
+    mixing timezone-aware values with that index during range selection.
+    """
     return pd.Timestamp.utcnow().tz_localize(None) + pd.Timedelta(hours=5, minutes=30)
 
 
 def _parse_ist_naive(s: str) -> pd.Timestamp:
-    """Parse an ISO-8601 or YYYY-MM-DD string into a tz-naive IST Timestamp."""
+    """Parse a date/time string into the static dataset's IST-naive format.
+
+    Timezone-aware inputs are converted to Asia/Kolkata and then made naive so
+    they can be compared directly with the static ML dataset index.
+    """
     ts = pd.to_datetime(s)
     if ts.tzinfo is not None:
         ts = ts.tz_convert("Asia/Kolkata").tz_localize(None)
@@ -278,7 +423,11 @@ def _load_ml_dataset() -> tuple[pd.DataFrame, pd.Timestamp, pd.Timestamp]:
 
 
 def _ml_column_summary(df: pd.DataFrame) -> str:
-    """Return a compact grouped column summary for the ML dataset."""
+    """Return a compact grouped column summary for the ML dataset.
+
+    The text is included in tool responses when column discovery is useful, so
+    the model can choose relevant fields without receiving every row of data.
+    """
     groups: dict[str, list[str]] = {
         "KPIs": [],
         "Process params": [],
@@ -913,7 +1062,12 @@ def merge_furnace_data(
 
 
 def get_openai_tool_schemas() -> list[dict]:
-    """Return OpenAI/OpenRouter tool schemas for LLM function-calling."""
+    """Return OpenAI/OpenRouter tool schemas for FurnaceMind function-calling.
+
+    The schema list is the contract between the LLM and the local dispatcher.
+    Keep names, descriptions, required arguments, and enum values aligned with
+    the concrete tool functions below.
+    """
     return [
         {
             "type": "function",
@@ -1071,8 +1225,20 @@ def get_openai_tool_schemas() -> list[dict]:
         {
             "type": "function",
             "function": {
+                "name": "render_heatload_plot",
+                "description": "Render the standard FurnaceMind heatload chart from the active dataframe. Use after fetching heatload_delta_t/temperature_profile data for heatload trend questions instead of writing custom Plotly code.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "execute_python_plot",
-                "description": "Execute restricted Python to create a Plotly figure 'fig' using df (loaded from active session dataframe fm_df).",
+                "description": "Execute restricted Python to create a Plotly figure named 'fig' using preloaded df, pd, px, go, make_subplots, and np. Do not include import statements or fig.show(). Multi-series plots receive FurnaceMind default styling with distinct colors.",
                 "parameters": {
                     "type": "object",
                     "properties": {"code": {"type": "string"}},
@@ -1175,7 +1341,16 @@ def get_openai_tool_schemas() -> list[dict]:
 
 
 def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
-    """Dispatcher used by the OpenRouter tool-calling loop."""
+    """Dispatch one validated OpenAI/OpenRouter tool call to local code.
+
+    Args:
+        name: Function name selected by the model.
+        arguments: JSON-decoded arguments emitted by the model.
+
+    Returns:
+        String result from the matching tool, or a clear error string for
+        unknown tools and malformed plotting requests.
+    """
     if name == "fetch_ml_data":
         return fetch_ml_data(**arguments)
     if name == "concat_datasets":
@@ -1190,6 +1365,8 @@ def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
         return search_shift_history.invoke(arguments)
     if name == "search_knowledge_docs":
         return search_knowledge_docs.invoke(arguments)
+    if name == "render_heatload_plot":
+        return render_heatload_plot.invoke(arguments)
     if name == "execute_python_plot":
         if not arguments.get("code"):
             return "Error: execute_python_plot requires a non-empty 'code' argument containing valid Python that creates a Plotly figure named 'fig'."
@@ -1223,32 +1400,302 @@ def _knowledge_location(payload: dict[str, Any]) -> str:
     return ", ".join(bits)
 
 
-def _store_knowledge_image_results(results: list[dict[str, Any]]) -> None:
-    """Queue retrieved image chunks for the next multimodal LLM call.
+_VISUAL_KNOWLEDGE_MODALITIES = {"image", "page_image", "slide_image", "slide_render"}
+_IMAGE_FILE_TYPES = {"png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"}
 
-    ``search_knowledge_docs`` returns text evidence through the tool-call
-    transcript, but image bytes cannot be embedded directly in that text result.
-    This helper stores the best visual hits in Streamlit session state so the
-    agent loop can later append them through
-    ``consume_pending_mrag_image_message()`` as ``image_url`` inputs.
+
+def _knowledge_payload_has_visual(payload: dict[str, Any]) -> bool:
+    """Return whether a retrieved knowledge payload can produce an image input.
+
+    The current MRAG flow stores original uploaded files in PostgreSQL and
+    stores chunk payloads in Qdrant. New payloads advertise visual evidence via
+    ``has_visual``, visual modalities, or image file types. Older chunks may
+    still carry ``image_path`` from the previous disk-backed implementation, so
+    that field remains supported during rollout.
+    """
+    modality = str(payload.get("modality") or "").strip().lower()
+    file_type = str(payload.get("file_type") or payload.get("type") or "").lower()
+    return bool(
+        payload.get("image_path")
+        or payload.get("has_visual")
+        or modality in _VISUAL_KNOWLEDGE_MODALITIES
+        or file_type in _IMAGE_FILE_TYPES
+    )
+
+
+def _stored_document_file_for_payload(payload: dict[str, Any]) -> Any | None:
+    """Load the PostgreSQL-stored original file for a Qdrant payload.
+
+    Qdrant payloads carry the stable MRAG ``document_id`` derived from the file
+    hash. The SQL table has its own primary key, so the repository bridges the
+    two ids through ``memory_documents.metadata`` and returns a row with
+    ``file_bytes`` loaded.
 
     Args:
-        results: Reranked Qdrant search results. Each result may include a
-            payload with an ``image_path`` pointing to a locally stored rendered
-            page, slide, or uploaded image.
+        payload: Qdrant payload for one retrieved knowledge chunk.
 
     Returns:
-        None. Updates or removes ``st.session_state["fm_mrag_image_results"]``.
+        Repository file record with original upload bytes, or ``None`` when the
+        repository/user/document mapping is unavailable.
+    """
+    repository = st.session_state.get("knowledge_document_repository")
+    if repository is None or not hasattr(repository, "get_document_file_by_mrag_id"):
+        return None
+    mrag_document_id = str(payload.get("document_id") or "").strip()
+    if not mrag_document_id:
+        return None
+    try:
+        return repository.get_document_file_by_mrag_id(
+            user_id=None,
+            mrag_document_id=mrag_document_id,
+        )
+    except Exception as exc:
+        st.session_state["fm_last_knowledge_visual_error"] = str(exc)
+        return None
+
+
+def _image_mime_type(
+    image_bytes: bytes,
+    *,
+    fallback_name: str = "visual.png",
+    fallback_type: str | None = None,
+) -> str:
+    """Infer a MIME type for image bytes sent to the vision model.
+
+    The resolver first trusts filename/type hints from the payload or SQL row.
+    If those are missing, it opens the bytes with PIL and falls back to PNG when
+    the format cannot be identified.
+    """
+    guessed = mimetypes.guess_type(fallback_name)[0]
+    if guessed:
+        return guessed
+    if fallback_type and fallback_type in _IMAGE_FILE_TYPES:
+        normalized = "jpeg" if fallback_type in {"jpg", "jpeg"} else fallback_type
+        return f"image/{normalized}"
+    try:
+        from PIL import Image
+
+        image = Image.open(io.BytesIO(image_bytes))
+        fmt = (image.format or "png").lower()
+        fmt = "jpeg" if fmt in {"jpg", "jpeg"} else fmt
+        return f"image/{fmt}"
+    except Exception:
+        return "image/png"
+
+
+def _render_pdf_page_visual(file_bytes: bytes, page_number: int | None) -> bytes | None:
+    """Render one PDF page from stored upload bytes for visual evidence.
+
+    This is used for ``page_image`` chunks after removing persistent rendered
+    page images from the codebase. The original PDF is read from PostgreSQL and
+    the requested page is rendered on demand.
+
+    Returns:
+        PNG bytes for the requested page, or ``None`` when rendering fails or
+        the page number is missing.
+    """
+    if page_number is None:
+        return None
+    try:
+        from agents.multimodal.parsers import extract_pdf_pages
+
+        for page in extract_pdf_pages(file_bytes, render_pages=True):
+            if int(page.get("page_number") or 0) == int(page_number):
+                image_bytes = page.get("image_bytes")
+                return bytes(image_bytes) if image_bytes else None
+    except Exception as exc:
+        st.session_state["fm_last_knowledge_visual_error"] = str(exc)
+    return None
+
+
+def _render_pptx_slide_visual(
+    file_bytes: bytes, slide_number: int | None
+) -> bytes | None:
+    """Render one PPTX slide from stored upload bytes for visual evidence.
+
+    The previous implementation could attach a saved slide image path. The new
+    implementation keeps the original PPTX in PostgreSQL and recreates the slide
+    image only when a retrieved ``slide_render`` chunk is needed by the model.
+
+    Returns:
+        PNG bytes for the requested slide, or ``None`` when rendering is not
+        available or the slide cannot be found.
+    """
+    if slide_number is None:
+        return None
+    try:
+        from agents.multimodal.parsers import render_pptx_slides
+
+        for slide in render_pptx_slides(file_bytes):
+            if int(slide.get("slide_number") or 0) == int(slide_number):
+                image_bytes = slide.get("image_bytes")
+                return bytes(image_bytes) if image_bytes else None
+    except Exception as exc:
+        st.session_state["fm_last_knowledge_visual_error"] = str(exc)
+    return None
+
+
+def _extract_pptx_embedded_visual(
+    file_bytes: bytes,
+    *,
+    slide_number: int | None,
+    image_index: int | None,
+) -> bytes | None:
+    """Extract one embedded PPTX image from stored upload bytes.
+
+    This resolves ``slide_image`` chunks. Instead of rendering the whole slide,
+    it opens the original PPTX stored in PostgreSQL and returns the specific
+    embedded image referenced by ``slide_number`` and ``slide_image_index``.
+    """
+    if slide_number is None:
+        return None
+    try:
+        from agents.multimodal.parsers import extract_pptx_slides
+
+        for slide in extract_pptx_slides(file_bytes):
+            if int(slide.get("slide_number") or 0) != int(slide_number):
+                continue
+            image_blobs = list(slide.get("image_blobs") or [])
+            if not image_blobs:
+                return None
+            index = int(image_index or 0)
+            if index < 0 or index >= len(image_blobs):
+                return None
+            return bytes(image_blobs[index])
+    except Exception as exc:
+        st.session_state["fm_last_knowledge_visual_error"] = str(exc)
+    return None
+
+
+def _visual_bytes_from_stored_document(
+    payload: dict[str, Any],
+    stored_document: Any,
+) -> tuple[bytes, str] | None:
+    """Reconstruct visual bytes for a retrieved MRAG chunk from PostgreSQL.
+
+    The resolver routes by payload modality: image uploads return original file
+    bytes, PDF page-image chunks render the requested page, PPTX slide-render
+    chunks render the requested slide, and PPTX slide-image chunks extract the
+    referenced embedded image.
+
+    Returns:
+        ``(image_bytes, mime_type)`` when the visual can be reconstructed, else
+        ``None``.
+    """
+    file_bytes = getattr(stored_document, "file_bytes", None)
+    if not file_bytes:
+        return None
+    file_bytes = bytes(file_bytes)
+    filename = str(
+        payload.get("source") or getattr(stored_document, "filename", "visual.png")
+    )
+    file_type = str(
+        payload.get("file_type")
+        or payload.get("type")
+        or getattr(stored_document, "file_type", "")
+    ).lower()
+    modality = str(payload.get("modality") or "").lower()
+
+    if modality == "image" or file_type in _IMAGE_FILE_TYPES:
+        return file_bytes, _image_mime_type(
+            file_bytes, fallback_name=filename, fallback_type=file_type
+        )
+    if modality == "page_image" and file_type == "pdf":
+        image_bytes = _render_pdf_page_visual(file_bytes, payload.get("page_number"))
+        return (image_bytes, "image/png") if image_bytes else None
+    if modality == "slide_render" and file_type == "pptx":
+        image_bytes = _render_pptx_slide_visual(file_bytes, payload.get("slide_number"))
+        return (image_bytes, "image/png") if image_bytes else None
+    if modality == "slide_image" and file_type == "pptx":
+        image_bytes = _extract_pptx_embedded_visual(
+            file_bytes,
+            slide_number=payload.get("slide_number"),
+            image_index=payload.get("slide_image_index"),
+        )
+        if image_bytes:
+            return image_bytes, _image_mime_type(
+                image_bytes,
+                fallback_name=filename,
+                fallback_type=str(payload.get("image_format") or ""),
+            )
+    return None
+
+
+def _visual_bytes_from_legacy_path(image_path: str) -> tuple[bytes, str] | None:
+    """Read visual evidence from old path-backed payloads.
+
+    This compatibility path supports chunks indexed before original files were
+    stored in PostgreSQL. New uploads should not rely on this path, but keeping
+    it avoids breaking older Qdrant payloads during rollout.
+    """
+    path = Path(str(image_path or ""))
+    if not path.exists() or not path.is_file():
+        return None
+    if path.stat().st_size > _KNOWLEDGE_IMAGE_MAX_BYTES:
+        return None
+    mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+    return path.read_bytes(), mime_type
+
+
+def _resolve_visual_attachment(
+    attachment: dict[str, Any],
+) -> tuple[bytes, str, str] | None:
+    """Resolve a queued MRAG visual attachment for model input.
+
+    The function supports both storage modes: legacy ``image_path`` payloads and
+    the new PostgreSQL-backed original-file flow. It also enforces the maximum
+    image size before the bytes are base64-encoded for the next multimodal LLM
+    call.
+
+    Returns:
+        ``(image_bytes, mime_type, source_label)`` when a usable visual exists,
+        otherwise ``None``.
+    """
+    payload = attachment.get("payload") or {}
+    label = str(attachment.get("label") or _knowledge_location(payload) or "visual")
+    image_path = str(payload.get("image_path") or attachment.get("image_path") or "")
+    if image_path:
+        legacy = _visual_bytes_from_legacy_path(image_path)
+        if legacy:
+            return legacy[0], legacy[1], label
+
+    stored_document = _stored_document_file_for_payload(payload)
+    if stored_document is None:
+        return None
+    resolved = _visual_bytes_from_stored_document(payload, stored_document)
+    if not resolved:
+        return None
+    image_bytes, mime_type = resolved
+    if len(image_bytes) > _KNOWLEDGE_IMAGE_MAX_BYTES:
+        return None
+    return image_bytes, mime_type, label
+
+
+def _store_knowledge_image_results(results: list[dict[str, Any]]) -> None:
+    """Queue retrieved visual chunks for the next multimodal LLM call.
+
+    Qdrant stores vector payloads, not image bytes. New MRAG payloads carry
+    enough location metadata to reconstruct visual evidence from the original
+    uploaded document stored in PostgreSQL. Older payloads with ``image_path``
+    are still supported during rollout.
+
+    Args:
+        results: Reranked knowledge-search results. Only payloads that can
+            provide visual evidence are retained, up to
+            ``_KNOWLEDGE_IMAGE_RESULT_LIMIT``.
+
+    Side effects:
+        Writes ``fm_mrag_image_results`` in Streamlit session state for
+        ``consume_pending_mrag_image_message`` to consume after the tool call.
     """
     attachments: list[dict[str, Any]] = []
     for result in results:
         payload = result.get("payload") or {}
-        image_path = str(payload.get("image_path") or "").strip()
-        if not image_path:
+        if not _knowledge_payload_has_visual(payload):
             continue
         attachments.append(
             {
-                "image_path": image_path,
+                "payload": payload,
                 "label": _knowledge_location(payload),
                 "score": result.get("score"),
             }
@@ -1294,28 +1741,30 @@ def _store_knowledge_document_refs(results: list[dict[str, Any]]) -> None:
         st.session_state.pop("fm_last_knowledge_document_refs", None)
 
 
-def _active_knowledge_document_ids(*, user_id: str | None) -> set[str] | None:
-    """Read active SQL document ids used to filter Qdrant retrieval.
+def _active_knowledge_document_ids(*, user_id: str | None = None) -> set[str] | None:
+    """Read active shared SQL document ids used to filter Qdrant retrieval.
 
-    The SQL document table is the source of truth for whether a user has kept a
-    knowledge file active. Qdrant still stores the vectors, but this filter stops
-    deactivated documents from participating in answer generation.
+    The SQL document table is the source of truth for active uploaded knowledge.
+    Knowledge is intentionally shared across FurnaceMind users, while the row's
+    ``user_id`` remains uploader/audit metadata. Qdrant still stores the chunk
+    vectors, but this SQL-derived filter prevents deactivated documents from
+    participating in answer generation.
 
     Args:
-        user_id: Current FurnaceMind user id. When missing, the caller cannot
-            perform user-scoped SQL filtering.
+        user_id: Ignored for normal retrieval. Kept for backward-compatible
+            callers that still pass the current FurnaceMind user id.
 
     Returns:
-        A set of active MRAG document ids. An empty set means the user has no
-        active documents. ``None`` means the repository or user context is not
-        available, so the caller should continue without this SQL filter.
+        A set of active MRAG document ids. An empty set means there are no active
+        shared documents. ``None`` means the SQL repository is unavailable, so
+        the caller should continue without this active-document filter.
     """
     repository = st.session_state.get("knowledge_document_repository")
-    if repository is None or not user_id:
+    if repository is None:
         return None
 
     try:
-        documents = repository.list_documents(user_id=user_id, active_only=True)
+        documents = repository.list_documents(user_id=None, active_only=True)
     except Exception:
         return None
 
@@ -1390,7 +1839,9 @@ def _rerank_knowledge_results(
             vector_score = 0.0
         exact_bonus = 0.05 if query_text and query_text in searchable.lower() else 0.0
         modality_bonus = (
-            0.03 if payload.get("image_path") and "image" in query_tokens else 0.0
+            0.03
+            if _knowledge_payload_has_visual(payload) and "image" in query_tokens
+            else 0.0
         )
         rerank_score = (0.82 * float(vector_score)) + (0.18 * overlap)
         rerank_score += exact_bonus + modality_bonus
@@ -1464,10 +1915,11 @@ def _log_knowledge_retrieval_trace(
 def consume_pending_mrag_image_message() -> dict[str, Any] | None:
     """Build the visual-evidence message consumed after knowledge search.
 
-    ``search_knowledge_docs`` queues local image paths in session state. This
-    function removes that queue, reads usable image files, base64-encodes them,
-    and returns a model message compatible with OpenAI/OpenRouter multimodal
-    chat inputs. Missing files and oversized images are skipped.
+    ``search_knowledge_docs`` queues visual payload references in session state.
+    This function removes that queue, resolves each visual from the original
+    PostgreSQL-stored upload or a legacy local path, base64-encodes it, and
+    returns a model message compatible with OpenAI/OpenRouter multimodal chat
+    inputs. Missing files and oversized images are skipped.
 
     Returns:
         A user message containing source labels and ``image_url`` parts, or
@@ -1489,18 +1941,15 @@ def consume_pending_mrag_image_message() -> dict[str, Any] | None:
     ]
     attached_count = 0
     for attachment in attachments[:_KNOWLEDGE_IMAGE_RESULT_LIMIT]:
-        path = Path(str(attachment.get("image_path") or ""))
-        if not path.exists() or not path.is_file():
+        resolved = _resolve_visual_attachment(attachment)
+        if not resolved:
             continue
-        if path.stat().st_size > _KNOWLEDGE_IMAGE_MAX_BYTES:
-            continue
-
-        mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
-        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        image_bytes, mime_type, label = resolved
+        encoded = base64.b64encode(image_bytes).decode("ascii")
         content.append(
             {
                 "type": "text",
-                "text": f"Visual source: {attachment.get('label') or path.name}",
+                "text": f"Visual source: {label}",
             }
         )
         content.append(
@@ -1517,7 +1966,13 @@ def consume_pending_mrag_image_message() -> dict[str, Any] | None:
 
 
 def _append_tool_error(*, tool_name: str, params: Dict[str, Any], error: str) -> None:
-    """Append tool failure details to tool_errors.md (best-effort, never raises)."""
+    """Append tool failure details to ``tool_errors.md`` without raising.
+
+    Tool execution errors should be visible to developers for later diagnosis,
+    but they must not crash the Streamlit chat session. This helper records the
+    tool name, sanitized parameters, timestamp, and error text on a best-effort
+    basis and silently returns if logging itself fails.
+    """
     try:
         _TOOL_ERRORS_PATH.parent.mkdir(parents=True, exist_ok=True)
         ts = datetime.now(timezone.utc).isoformat()
@@ -1617,6 +2072,81 @@ def _normalize_time_range(user_time_range: str) -> str:
     return "last 8 hours"
 
 
+_DEFAULT_PLOT_COLORWAY = (
+    "#2563eb",
+    "#f97316",
+    "#16a34a",
+    "#dc2626",
+    "#7c3aed",
+    "#0891b2",
+    "#db2777",
+    "#65a30d",
+    "#9333ea",
+    "#0f766e",
+)
+
+
+def apply_default_plot_style(fig: Any) -> Any:
+    """Apply FurnaceMind defaults to model-generated Plotly figures.
+
+    The model only has to create a valid ``fig`` object. This helper handles the
+    visual baseline after execution so operational plots stay readable even when
+    generated code omits colors or assigns the same color to every trace. If the
+    plot already has distinct explicit colors, those choices are preserved.
+    """
+    if fig is None or not hasattr(fig, "update_layout"):
+        return fig
+
+    try:
+        fig.update_layout(
+            template="plotly_white",
+            colorway=list(_DEFAULT_PLOT_COLORWAY),
+            hovermode="x unified",
+            margin={"l": 56, "r": 32, "t": 64, "b": 56},
+            legend={
+                "orientation": "h",
+                "yanchor": "bottom",
+                "y": 1.02,
+                "xanchor": "center",
+                "x": 0.5,
+            },
+        )
+
+        traces = list(getattr(fig, "data", []) or [])
+        explicit_colors = []
+        for trace in traces:
+            line = getattr(trace, "line", None)
+            marker = getattr(trace, "marker", None)
+            line_color = getattr(line, "color", None) if line is not None else None
+            marker_color = (
+                getattr(marker, "color", None) if marker is not None else None
+            )
+            color = line_color or marker_color
+            if color:
+                explicit_colors.append(str(color))
+
+        should_assign_colors = len(traces) > 1 and (
+            not explicit_colors or len(set(explicit_colors)) == 1
+        )
+        if should_assign_colors:
+            for index, trace in enumerate(traces):
+                color = _DEFAULT_PLOT_COLORWAY[index % len(_DEFAULT_PLOT_COLORWAY)]
+                if not hasattr(trace, "update"):
+                    continue
+                try:
+                    trace.update(line={"color": color})
+                except Exception:
+                    pass
+                try:
+                    trace.update(marker={"color": color})
+                except Exception:
+                    pass
+    except Exception:
+        return fig
+
+    return fig
+
+
 def _safe_exec(
     code: str,
     local_vars: Dict[str, Any],
@@ -1694,6 +2224,122 @@ def _safe_exec(
     exec(code, local_vars)  # noqa: S102
 
 
+def _plot_columns(df: pd.DataFrame, candidates: tuple[str, ...]) -> list[str]:
+    """Return requested telemetry columns that are present in ``df``.
+
+    Plot tools declare the expected column names up front, but deployments can
+    expose slightly different subsets. This keeps the chart renderer tolerant of
+    missing optional signals without inventing replacement columns.
+    """
+    return [column for column in candidates if column in df.columns]
+
+
+def _heatload_trace_name(column: str) -> str:
+    """Convert telemetry column names into compact heatload trace labels.
+
+    The source dataframe uses machine-oriented names such as
+    ``heat_load_row_6``. The chart legend should use short operator-facing
+    labels such as ``Row 6`` or ``Q1``.
+    """
+    if column.startswith("heat_load_row6_10_q"):
+        return "Q" + column.rsplit("q", 1)[-1]
+    if column.startswith("heat_load_row_"):
+        return "Row " + column.rsplit("_", 1)[-1]
+    if column.startswith("temp_18660_"):
+        return "18660 " + column.rsplit("_", 1)[-1].upper()
+    return column.replace("_", " ").title()
+
+
+@tool
+def render_heatload_plot() -> str:
+    """Render the standard heatload trend chart from the active dataframe.
+
+    Use this after ``fetch_online_data`` has loaded recent heatload and
+    temperature-profile telemetry into ``st.session_state["fm_df"]``. The chart
+    is built in trusted application code instead of model-generated Python, so
+    common heatload questions get a stable multi-panel plot without depending on
+    the plotting sandbox accepting arbitrary subplot code.
+    """
+    df = st.session_state.get("fm_df")
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return "No active dataframe is available. Fetch heatload data first."
+
+    from plotly.subplots import make_subplots  # noqa: PLC0415
+
+    row_cols = _plot_columns(
+        df,
+        (
+            "heat_load_row_6",
+            "heat_load_row_7",
+            "heat_load_row_8",
+            "heat_load_row_9",
+            "heat_load_row_10",
+        ),
+    )
+    quad_cols = _plot_columns(
+        df,
+        (
+            "heat_load_row6_10_q1",
+            "heat_load_row6_10_q2",
+            "heat_load_row6_10_q3",
+            "heat_load_row6_10_q4",
+        ),
+    )
+    temp_cols = _plot_columns(
+        df,
+        (
+            "temp_18660_a",
+            "temp_18660_b",
+            "temp_18660_c",
+            "temp_18660_d",
+        ),
+    )
+    panels: list[tuple[str, list[str], str]] = []
+    if row_cols:
+        panels.append(("Heat load by row (R6-R10)", row_cols, "Heat load"))
+    if quad_cols:
+        panels.append(("Heat load by quadrant (Row6-10 Q1-Q4)", quad_cols, "Load"))
+    if temp_cols:
+        panels.append(("18660mm temperature profile", temp_cols, "Temperature"))
+    if not panels:
+        return "No heatload or 18660mm temperature columns were found in the active dataframe."
+
+    fig = make_subplots(
+        rows=len(panels),
+        cols=1,
+        shared_xaxes=True,
+        subplot_titles=[panel[0] for panel in panels],
+        vertical_spacing=0.12,
+    )
+    for row_number, (_title, columns, y_title) in enumerate(panels, start=1):
+        for column in columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df[column],
+                    mode="lines",
+                    name=_heatload_trace_name(column),
+                ),
+                row=row_number,
+                col=1,
+            )
+        fig.update_yaxes(title_text=y_title, row=row_number, col=1)
+
+    fig.update_xaxes(title_text="Time (IST)", row=len(panels), col=1)
+    fig.update_layout(
+        height=max(420, 280 * len(panels)),
+        title_text="Heatloads - last 8 hours (IST)",
+        showlegend=True,
+    )
+    st.session_state.fm_fig = apply_default_plot_style(fig)
+    _tag_artifact_turn("fm_fig_turn_id")
+    return (
+        "Successfully generated standard heatload plot with "
+        f"{len(row_cols)} row traces, {len(quad_cols)} quadrant traces, "
+        f"and {len(temp_cols)} temperature traces."
+    )
+
+
 @tool
 def execute_python_plot(code: str) -> str:
     """
@@ -1740,15 +2386,16 @@ def execute_python_plot(code: str) -> str:
             "_stdout_buf": stdout_buf,
         }
 
-        # Execute the LLM-generated code (restricted), routing print() to buffer
+        # Execute the LLM-generated code (restricted), routing print() to buffer.
         _safe_exec(code, local_vars, stdout_buf=stdout_buf)
 
         captured_output = stdout_buf.getvalue().strip()
 
         if "fig" in local_vars:
             # Save the figure object to session state for the UI to pick up
-            st.session_state.fm_fig = local_vars["fig"]
+            st.session_state.fm_fig = apply_default_plot_style(local_vars["fig"])
             st.session_state.last_plot_code = code
+            _tag_artifact_turn("fm_fig_turn_id")
             return "Successfully generated Plotly figure."
         elif captured_output:
             # Diagnostic code (e.g. print(df.columns)) — return output so the LLM
@@ -1804,7 +2451,7 @@ def search_knowledge_docs(query: str) -> str:
 
     This is the LLM tool for uploaded PDFs, PPTX files, DOCX files, tables,
     images, SOPs, manuals, specifications, and scanned pages. It performs
-    user-scoped vector search, active-document filtering, local reranking,
+    shared vector search, active-document filtering, local reranking,
     retrieval trace logging, and visual-evidence queuing. Text evidence is
     returned directly as tool output; image evidence is queued for the next
     multimodal model call.
@@ -1825,12 +2472,12 @@ def search_knowledge_docs(query: str) -> str:
     user_id = st.session_state.get("fm_user_id")
     active_document_ids = _active_knowledge_document_ids(user_id=user_id)
     if active_document_ids == set():
-        return "No active knowledge documents found for this user."
+        return "No active shared knowledge documents found."
 
     candidate_results = knowledge_store.search(
         query,
         top_k=_KNOWLEDGE_RERANK_CANDIDATES,
-        user_id=user_id,
+        user_id=None,
         active_document_ids=active_document_ids,
     )
     results = _rerank_knowledge_results(
@@ -1860,7 +2507,7 @@ def search_knowledge_docs(query: str) -> str:
         rerank_score = r.get("rerank_score")
         if isinstance(rerank_score, (int, float)):
             score_text = f"{score_text} | rerank={rerank_score:.3f}"
-        if payload.get("image_path"):
+        if _knowledge_payload_has_visual(payload):
             visual_note = (
                 "Visual attachment retrieved and provided to the model for inspection."
             )

@@ -268,6 +268,7 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
                 "fuel_id": str(item.get("fuel_id", "")),
                 "fuel_name": str(item.get("display_name", item.get("fuel_id", ""))),
                 "rate_kg_per_thm": float(item.get("rate_kg_per_thm", 0.0) or 0.0),
+                "price_rs_per_mt": float(item.get("price_rs_per_mt", 0.0) or 0.0),
                 "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
                 "ash_pct": float(item.get("ash_pct", 0.0) or 0.0),
                 "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
@@ -308,6 +309,7 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "enabled",
         "fuel_name",
         "rate_kg_per_thm",
+        "price_rs_per_mt",
         "moisture_pct",
         "ash_pct",
         "sio2_pct",
@@ -329,6 +331,10 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "fuel_name": st.column_config.TextColumn("Fuel", disabled=True),
             "rate_kg_per_thm": st.column_config.NumberColumn(
                 "Rate (kg/THM)", min_value=0.0, step=1.0
+            ),
+            "price_rs_per_mt": st.column_config.NumberColumn(
+                "Price (Rs/MT)", min_value=0.0, step=100.0,
+                help="Current fuel price; the displayed unit fuel cost is re-priced to this.",
             ),
             "moisture_pct": st.column_config.NumberColumn(
                 "Moisture (%)", min_value=0.0, max_value=100.0, step=0.1
@@ -397,7 +403,10 @@ def build_flux_editor_df(flux_cfg: list[dict[str, Any]]) -> pd.DataFrame:
                 "enabled": bool(item.get("enabled", True)),
                 "flux_id": str(item.get("flux_id", "")),
                 "flux_name": str(item.get("display_name", item.get("flux_id", ""))),
+                "optimizable": bool(item.get("optimizable", False)),
                 "wet_qty_mt": float(item.get("wet_qty_mt", 0.0) or 0.0),
+                "price_rs_per_mt": float(item.get("price_rs_per_mt", 0.0) or 0.0),
+                "stock_mt": float(item.get("stock_mt", 0.0) or 0.0),
                 "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
                 "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
                 "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
@@ -439,7 +448,9 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     visible_columns = (
         "enabled",
         "flux_name",
-        "wet_qty_mt",
+        "optimizable",
+        "price_rs_per_mt",
+        "stock_mt",
         "moisture_pct",
         "sio2_pct",
         "al2o3_pct",
@@ -462,8 +473,19 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "enabled": st.column_config.CheckboxColumn("Use", default=True),
             "flux_id": st.column_config.TextColumn("Flux ID", disabled=True),
             "flux_name": st.column_config.TextColumn("Flux", disabled=True),
-            "wet_qty_mt": st.column_config.NumberColumn(
-                "Wet Qty (MT)", min_value=0.0, step=1.0
+            "optimizable": st.column_config.CheckboxColumn(
+                "LP auto",
+                disabled=True,
+                help=(
+                    "When ticked, the optimizer decides this flux's quantity "
+                    "(0..stock) to hold slag basicity within bounds."
+                ),
+            ),
+            "price_rs_per_mt": st.column_config.NumberColumn(
+                "Price (Rs/MT)", min_value=0.0, step=50.0
+            ),
+            "stock_mt": st.column_config.NumberColumn(
+                "Stock (MT)", min_value=0.0, step=10.0
             ),
             "moisture_pct": st.column_config.NumberColumn(
                 "Moisture/TM (%)", min_value=0.0, max_value=100.0, step=0.1
@@ -872,7 +894,7 @@ def render_blend_metrics(
 
     # Row 1: costs + Fe produced. Ore cost first in both modes; only the
     # emphasis/help differs (LP minimises ore cost; DE minimises ore + fuel).
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c_flux, c3, c4 = st.columns(5)
     if is_lp_mode:
         c1.metric(
             "Ore Cost (Rs/THM, LP-optimised)",
@@ -888,32 +910,66 @@ def render_blend_metrics(
             f"{blend.ore_cost_per_thm_rs:,.2f}",
             help="DE jointly minimises ore + fuel cost.",
         )
+    # Fuel + total cost are shown at the operator's current fuel prices from the
+    # Fuel Ash editor. The optimizer still uses the model's baseline-price cost;
+    # display re-pricing falls back to a model-cost residual only when the editor
+    # rates are unavailable.
+    adjusted_fuel = blend.diagnostics.get("adjusted_fuel_cost_per_thm_rs")
+    adjusted_total = blend.diagnostics.get("adjusted_objective_rs_per_thm")
+    fuel_cost_display = (
+        float(adjusted_fuel) if adjusted_fuel is not None
+        else blend.fuel_cost_per_thm_rs
+    )
+    # Flux the optimizer bought (dolomite/quartz/limestone) is a real spend, so it
+    # belongs in the total cost alongside ore + fuel.
+    flux_cost_display = float(blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0)
+    base_total = (
+        float(adjusted_total) if adjusted_total is not None
+        else blend.objective_rs_per_thm
+    )
+    total_display = base_total + flux_cost_display
+    reprice_help = (
+        " The model-predicted fuel cost for this blend, converted to the "
+        "current fuel prices; the model's baseline-price value is "
+        f"Rs {blend.fuel_cost_per_thm_rs:,.0f}/THM."
+        if adjusted_fuel is not None
+        else ""
+    )
     fuel_label_est = (
-        "Fuel Cost (Rs/THM, estimated, fallback)"
+        "Fuel Cost (Rs/THM, est., current price, fallback)"
         if fuel_used_fallback
-        else "Fuel Cost (Rs/THM, estimated)"
+        else "Fuel Cost (Rs/THM, est., current price)"
+    )
+    fuel_help_base = (
+        "Post-hoc XGBoost estimate on the selected blend." if is_lp_mode else fuel_help
     )
     c2.metric(
         fuel_label_est,
-        f"{blend.fuel_cost_per_thm_rs:,.2f}",
+        f"{fuel_cost_display:,.2f}",
+        help=((fuel_help_base or "") + reprice_help) or None,
+    )
+    c_flux.metric(
+        "Flux Cost (Rs/THM)",
+        f"{flux_cost_display:,.2f}",
         help=(
-            "Post-hoc XGBoost estimate on the selected blend."
-            if is_lp_mode
-            else fuel_help
+            "Cost of the flux (dolomite/quartz/limestone) the optimizer added to "
+            "hold slag basicity within bounds. Included in Total Cost."
         ),
     )
     total_label = (
-        "Total Cost (ore + fuel est, Rs/THM)"
+        "Total Cost (ore + fuel + flux, Rs/THM)"
         if is_lp_mode
-        else "Total Cost (Rs/THM, DE-optimised)"
+        else "Total Cost (Rs/THM, current price)"
     )
     c3.metric(
         total_label,
-        f"{blend.objective_rs_per_thm:,.2f}",
+        f"{total_display:,.2f}",
         help=(
-            "Sum of LP-minimised ore cost and the post-hoc fuel-cost estimate."
+            "Ore cost plus the current-price fuel-cost estimate plus optimizer-"
+            "added flux cost."
             if is_lp_mode
-            else "DE jointly minimises ore + fuel cost; total is the actual objective."
+            else "DE minimises ore + fuel at baseline prices; display adds "
+            "optimizer flux cost and re-prices fuel at current prices."
         ),
     )
     c4.metric("Fe Produced (MT)", f"{blend.fe_production_mt:,.2f}")
@@ -1445,69 +1501,64 @@ def render_slag_balance_details(
             "TiO2 % in the Ore Editor / Fuel Ash Inputs / Flux Inputs tables above."
         )
 
-    fuel_ash_by_fuel = (
-        blend.diagnostics.get("fuel_ash_contribution_mt_by_fuel", {}) or {}
-    )
-    flux_by_flux = blend.diagnostics.get("flux_contribution_mt_by_flux", {}) or {}
-    full_balance = blend.diagnostics.get("full_slag_balance", {}) or {}
-    slag_components = full_balance.get("slag_components_mt", {}) or {}
-    has_fuel_details = any(
-        float(value or 0.0) > 0.0 for value in fuel_ash_by_fuel.values()
-    )
-    has_flux_details = any(float(value or 0.0) > 0.0 for value in flux_by_flux.values())
+        # --- Section 5: Per-source contribution summary (merged here so the
+        # page shows a single "Slag Balance Details" expander) ---
+        fuel_ash_by_fuel = (
+            blend.diagnostics.get("fuel_ash_contribution_mt_by_fuel", {}) or {}
+        )
+        flux_by_flux = (
+            blend.diagnostics.get("flux_contribution_mt_by_flux", {}) or {}
+        )
+        if any(float(value or 0.0) > 0.0 for value in fuel_ash_by_fuel.values()):
+            fuel_rows = [
+                {
+                    "fuel": str(fuel_id).replace("_", " ").title(),
+                    "slag_contribution_mt": float(value or 0.0),
+                }
+                for fuel_id, value in fuel_ash_by_fuel.items()
+            ]
+            st.markdown("##### Fuel Ash Slag Contribution")
+            _safe_dataframe(
+                pd.DataFrame(fuel_rows),
+                hide_index=True,
+                width='stretch',
+            )
 
-    if has_fuel_details or has_flux_details or slag_components:
-        with st.expander("Slag Balance Details", expanded=False):
-            if has_fuel_details:
-                fuel_rows = [
-                    {
-                        "fuel": str(fuel_id).replace("_", " ").title(),
-                        "slag_contribution_mt": float(value or 0.0),
-                    }
-                    for fuel_id, value in fuel_ash_by_fuel.items()
-                ]
-                st.markdown("##### Fuel Ash Slag Contribution")
-                _safe_dataframe(
-                    pd.DataFrame(fuel_rows),
-                    hide_index=True,
-                    width='stretch',
-                )
+        if any(float(value or 0.0) > 0.0 for value in flux_by_flux.values()):
+            flux_dry_weights = (
+                blend.diagnostics.get("flux_dry_weight_mt_by_flux", {}) or {}
+            )
+            flux_rows = [
+                {
+                    "flux": str(flux_id).replace("_", " ").title(),
+                    "dry_quantity_mt": float(
+                        flux_dry_weights.get(flux_id, 0.0) or 0.0
+                    ),
+                    "slag_contribution_mt": float(value or 0.0),
+                }
+                for flux_id, value in flux_by_flux.items()
+            ]
+            st.markdown("##### Flux Slag Contribution")
+            _safe_dataframe(
+                pd.DataFrame(flux_rows),
+                hide_index=True,
+                width='stretch',
+            )
 
-            if has_flux_details:
-                flux_dry_weights = (
-                    blend.diagnostics.get("flux_dry_weight_mt_by_flux", {}) or {}
-                )
-                flux_rows = [
-                    {
-                        "flux": str(flux_id).replace("_", " ").title(),
-                        "dry_quantity_mt": float(
-                            flux_dry_weights.get(flux_id, 0.0) or 0.0
-                        ),
-                        "slag_contribution_mt": float(value or 0.0),
-                    }
-                    for flux_id, value in flux_by_flux.items()
-                ]
-                st.markdown("##### Flux Slag Contribution")
-                _safe_dataframe(
-                    pd.DataFrame(flux_rows),
-                    hide_index=True,
-                    width='stretch',
-                )
-
-            if slag_components:
-                st.markdown("##### Full Slag Balance Components")
-                component_rows = [
-                    {
-                        "component": str(component).upper(),
-                        "quantity_mt": float(value or 0.0),
-                    }
-                    for component, value in slag_components.items()
-                ]
-                _safe_dataframe(
-                    pd.DataFrame(component_rows),
-                    hide_index=True,
-                    width='stretch',
-                )
+        if slag_components:
+            st.markdown("##### Full Slag Balance Components")
+            component_rows = [
+                {
+                    "component": str(component).upper(),
+                    "quantity_mt": float(value or 0.0),
+                }
+                for component, value in slag_components.items()
+            ]
+            _safe_dataframe(
+                pd.DataFrame(component_rows),
+                hide_index=True,
+                width='stretch',
+            )
 
 
 def render_diagnostics(
