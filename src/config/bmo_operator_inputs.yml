@@ -74,5 +74,5 @@ flux_editor:
       price_rs_per_mt: 6000.0
       stock_mt: 2000.0
 model_inputs:
-  target_slag_basicity_min: 0.9
-  target_slag_basicity_max: 1.132
+  target_slag_basicity_min: 1.05
+  target_slag_basicity_max: 1.15
