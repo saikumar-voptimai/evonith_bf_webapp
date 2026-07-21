@@ -73,6 +73,7 @@ from ui.bmo.editor_inputs import (
     fuel_ash_inputs_from_editor,
     slag_balance_settings_from_editor,
 )
+from utils.bmo.constraints import check_blend_constraints
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.si_prediction import SiPredictionService
 from utils.bmo.fuel_rates import get_recent_fuel_input_rates
@@ -1870,6 +1871,25 @@ if requested_lp or requested_total:
                     *fuel_warnings,
                 ]
                 st.session_state["bmo_bundle_status"] = bundle_status
+                # The LP may have added optimizable flux (e.g. dolomite) to hold
+                # slag basicity within bounds. Carry those solved quantities into
+                # this display re-evaluation -- otherwise it silently falls back
+                # to the raw editor flux rows (wet_qty_mt=0 for LP-auto fluxes),
+                # dropping the flux the LP actually added and understating the
+                # displayed basicity/slag versus what the LP solved for.
+                lp_solved_flux_mt = {
+                    str(flux_id): float(qty)
+                    for flux_id, qty in (
+                        lp_physical_result.diagnostics.get("lp_flux_quantities_mt", {})
+                        or {}
+                    ).items()
+                }
+                flux_inputs_for_display = [
+                    replace(flux, wet_qty_mt=lp_solved_flux_mt[flux.flux_id])
+                    if flux.flux_id in lp_solved_flux_mt
+                    else flux
+                    for flux in flux_inputs
+                ]
                 lp_result = evaluate_blend_with_fuel_prediction(
                     ores=selected_ores,
                     quantities_mt=lp_physical_result.quantities_mt,
@@ -1878,13 +1898,29 @@ if requested_lp or requested_total:
                     process_context=process_context,
                     history_df=history_df,
                     fuel_ash_inputs=fuel_ash_inputs,
-                    flux_inputs=flux_inputs,
+                    flux_inputs=flux_inputs_for_display,
                     dust_inputs=dust_inputs,
                     slag_balance_settings=slag_balance_settings,
                     hot_metal_target_mt=target_production_mt,
                 )
-                lp_result.feasible = lp_physical_result.feasible
-                lp_result.violations = lp_physical_result.violations
+                lp_result.diagnostics["lp_flux_quantities_mt"] = lp_solved_flux_mt
+                lp_result.diagnostics["flux_cost_per_thm_rs"] = float(
+                    lp_physical_result.diagnostics.get("flux_cost_per_thm_rs", 0.0)
+                    or 0.0
+                )
+                # Re-check feasibility against the blend actually being displayed,
+                # rather than copying the pre-recompute blend's flags -- so a
+                # re-pricing/re-evaluation drift can never silently show an
+                # out-of-bounds result as feasible with no warning.
+                lp_result.violations = check_blend_constraints(
+                    lp_result,
+                    selected_ores,
+                    target_production_mt=target_fe_mt,
+                    target_slag_qty_mt=target_slag_qty_mt,
+                    target_slag_basicity_min=target_slag_basicity_min,
+                    target_slag_basicity_max=target_slag_basicity_max,
+                )
+                lp_result.feasible = len(lp_result.violations) == 0
                 # Display-only Si prediction for the baseline blend (not optimized).
                 st.session_state["bmo_lp_si"] = _predict_blend_si(
                     ores=selected_ores,
