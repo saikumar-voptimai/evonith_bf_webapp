@@ -8,16 +8,16 @@
 ## Recommended topology
 
 Run only the FastAPI backend on the Jetson. Keep Uvicorn private on
-`127.0.0.1:8080` and publish only HTTPS port `443` through Caddy. Configure the
+`127.0.0.1:1432` and publish only HTTPS port `443` through Caddy. Configure the
 hosted Streamlit process to call `https://api.example.com/api/v1`.
 
 ```text
 Streamlit host -> HTTPS :443 -> router/NAT -> Caddy on Jetson
-                                             -> 127.0.0.1:8080 FastAPI
+                                             -> 127.0.0.1:1432 FastAPI
                                              -> /var/lib/evonith-bf
 ```
 
-Do not expose Uvicorn port `8080` directly to the internet. A raw public IP over
+Do not expose Uvicorn port `1432` directly to the internet. A raw public IP over
 plain HTTP exposes login tokens and application data. Use a DNS hostname and a
 valid TLS certificate. If inbound port forwarding is unavailable because of
 CGNAT, use an authenticated tunnel or VPN instead of opening additional ports.
@@ -54,11 +54,11 @@ you actually use. Do not copy an x86 CUDA virtual environment to the Jetson.
 
 ## 2. Configure the backend
 
-Create `/etc/evonith-bf/backend.env` from `infra/env/edge.env.example`, owned by
+Create `/etc/evonith-bf/backend.env` from the Jetson device template, owned by
 root and readable by the service group:
 
 ```bash
-sudo install -o root -g evonith -m 0640 infra/env/edge.env.example \
+sudo install -o root -g evonith -m 0640 infra/env/edge.jetson.env.example \
   /etc/evonith-bf/backend.env
 sudo openssl rand -hex 32
 sudo editor /etc/evonith-bf/backend.env
@@ -71,9 +71,9 @@ EVONITH_BACKEND_ENV=production
 EVONITH_RUNTIME_PROFILE=edge
 EVONITH_RUNTIME_DIR=/var/lib/evonith-bf
 EVONITH_EDGE_MODE=true
-EVONITH_EDGE_DEVICE_TYPE=jetson-orin-nano
+EVONITH_EDGE_DEVICE_TYPE=jetson
 EVONITH_UVICORN_HOST=127.0.0.1
-EVONITH_UVICORN_PORT=8080
+EVONITH_UVICORN_PORT=1432
 EVONITH_UVICORN_WORKERS=1
 EVONITH_UVICORN_BIN=/opt/evonith-bf/.venv/bin/uvicorn
 EVONITH_AUTH_SECRET_KEY=<set-a-strong-random-secret>
@@ -126,8 +126,8 @@ sudo install -o root -g root -m 0644 \
 sudo systemctl daemon-reload
 sudo systemctl enable --now evonith-backend
 sudo systemctl status evonith-backend
-curl --fail http://127.0.0.1:8080/api/v1/health
-curl --fail http://127.0.0.1:8080/api/v1/readiness
+curl --fail http://127.0.0.1:1432/api/v1/health
+curl --fail http://127.0.0.1:1432/api/v1/readiness
 ```
 
 The example unit assumes the repository is `/opt/evonith-bf` and runtime data is
@@ -138,7 +138,7 @@ your paths differ.
 
 Create a DNS `A` record such as `api.example.com` pointing to the public IP.
 Give the Jetson a stable LAN address, and forward router TCP ports `80` and `443`
-to the Jetson. Do not forward `8080` or `8501`.
+to the Jetson. Do not forward `1432`, `8080`, or `8501`.
 
 Install Caddy, then copy and edit the API-only configuration:
 

@@ -1,0 +1,5 @@
+# Install as /etc/sudoers.d/evonith-edge-deploy with mode 0440.
+# Add the GitHub runner account to the evonith-deploy group.
+# This intentionally grants only backend status/restart operations.
+
+%evonith-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart evonith-backend, /usr/bin/systemctl is-active --quiet evonith-backend

@@ -40,7 +40,7 @@ uv run python scripts/check_import_boundaries.py
 | `backend-documents` | Optional document extraction | PyMuPDF, python-docx, python-pptx, pypdf | OCR stack |
 | `frontend` | Streamlit UI and API adapters | Streamlit, plotting/UI libraries, HTTP clients | Backend server internals, DB/vector/LLM/model packages |
 | `dev` | Full local development/testing | Test/formatting tools plus backend, frontend, and optional feature groups through group includes | Production secrets; not intended for production images |
-| `edge` | Conservative edge backend profile | backend-base plus selected data/ML packages | AI/vector/local LLM and Streamlit |
+| `edge` | Shared Jetson/Pi backend profile | backend-base plus selected data/ML packages | AI/vector/local LLM and Streamlit; Pi selects CPU in its environment |
 
 ## Install Examples
 

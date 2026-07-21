@@ -37,7 +37,7 @@ the router.
 | Purpose | Location |
 |---|---|
 | Production source | `/opt/evonith-bf` |
-| Deployment branch | `dev-v01` |
+| Deployment branch | `release` for CI/CD; older manual installs may remain on `dev-v01` until cutover |
 | Python environment | `/opt/evonith-bf/.venv` |
 | FastAPI application | `/opt/evonith-bf/apps/backend_api/app` |
 | Shared data package | `/opt/evonith-bf/packages/furnace-data` |
@@ -293,6 +293,11 @@ the CUDA device is present and accessible, and the overall status is `ok`.
 Use this procedure for every update. Do not edit production Python files
 directly.
 
+When GitHub Actions deployment is enabled, use the automated procedure in the
+[edge CI/CD guide](../deployment/edge-cicd-guide.md). The manual steps below are
+the maintenance fallback. A successful automated deployment may intentionally
+leave the production checkout in detached-HEAD state at the tested commit.
+
 ### 9.1 Record the current release
 
 ```bash
@@ -332,8 +337,8 @@ not sufficient protection against device failure.
 ```bash
 cd /opt/evonith-bf
 git fetch origin
-git switch dev-v01
-git pull --ff-only origin dev-v01
+git switch release
+git pull --ff-only origin release
 uv sync --python /usr/bin/python3 --no-dev --group edge --locked
 ```
 
@@ -367,7 +372,7 @@ deployment branch:
 
 ```bash
 cd /opt/evonith-bf
-git switch dev-v01
+git switch release
 ```
 
 Code rollback does not restore runtime data. Use the restore procedure only

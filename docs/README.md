@@ -15,6 +15,8 @@ This directory is split into active operating docs and archived migration histor
 - [Local and staging deployment guide](deployment/local-staging-deployment-guide.md)
 - [Edge device deployment guide](deployment/edge-device-deployment-guide.md)
 - [Jetson backend with hosted Streamlit](deployment/jetson-streamlit-deployment-guide.md)
+- [Raspberry Pi backend deployment](deployment/raspberry-pi-backend-deployment-guide.md)
+- [Jetson and Raspberry Pi CI/CD](deployment/edge-cicd-guide.md)
 - [Edge runtime guide](deployment/edge-runtime-guide.md)
 - [Dependency profiles](deployment/dependency-profiles.md)
 - [Environment variables](deployment/environment-variables-production.md)

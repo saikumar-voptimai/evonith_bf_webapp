@@ -250,6 +250,8 @@ def required_docs() -> list[Path]:
         root / "docs" / "archive" / "migration-history" / "migration" / "phase-13-test-execution-report.md",
         root / "docs" / "deployment" / "production-deployment-guide.md",
         root / "docs" / "deployment" / "edge-device-deployment-guide.md",
+        root / "docs" / "deployment" / "raspberry-pi-backend-deployment-guide.md",
+        root / "docs" / "deployment" / "edge-cicd-guide.md",
         root / "docs" / "deployment" / "edge-runtime-guide.md",
         root / "docs" / "deployment" / "local-install-guide.md",
         root / "docs" / "deployment" / "local-staging-deployment-guide.md",

@@ -1,4 +1,4 @@
-"""CUDA and model-runtime capability checks for Jetson deployments."""
+"""Optional accelerator checks with safe CPU fallback on portable edge hosts."""
 
 from __future__ import annotations
 

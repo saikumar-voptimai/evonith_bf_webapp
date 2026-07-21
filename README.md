@@ -96,6 +96,8 @@ Key active guides:
 - [Production deployment](docs/deployment/production-deployment-guide.md)
 - [Edge device deployment](docs/deployment/edge-device-deployment-guide.md)
 - [Jetson backend with hosted Streamlit](docs/deployment/jetson-streamlit-deployment-guide.md)
+- [Raspberry Pi backend deployment](docs/deployment/raspberry-pi-backend-deployment-guide.md)
+- [Jetson and Raspberry Pi CI/CD](docs/deployment/edge-cicd-guide.md)
 - [Jetson backend operations runbook](docs/operations/jetson-backend-runbook.md)
 - [Local install](docs/deployment/local-install-guide.md)
 - [Local and staging deployment](docs/deployment/local-staging-deployment-guide.md)
