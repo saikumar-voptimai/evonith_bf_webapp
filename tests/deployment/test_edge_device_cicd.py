@@ -137,8 +137,8 @@ def test_device_templates_and_workflow_are_safe() -> None:
     assert "PI_SSH_PRIVATE_KEY" in workflow
     assert "PI_KNOWN_HOSTS" in workflow
     assert "/home/voptimaise/Desktop/Evonith/evonith_bf_webapp" in workflow
-    assert "http://127.0.0.1:8080/api/v1/health" in workflow
-    assert "http://127.0.0.1:8080/api/v1/readiness" in workflow
+    assert "http://127.0.0.1:80/api/v1/health" in workflow
+    assert "http://127.0.0.1:80/api/v1/readiness" in workflow
     assert "StrictHostKeyChecking=yes" in workflow
     assert "      - production" in workflow
     assert workflow.count("--branch production") == 1
