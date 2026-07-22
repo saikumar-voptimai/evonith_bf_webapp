@@ -3,7 +3,7 @@ name: Release Deploy
 on:
   push:
     branches:
-      - release
+      - production
 
 permissions:
   contents: read
