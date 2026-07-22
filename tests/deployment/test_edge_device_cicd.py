@@ -114,7 +114,8 @@ def test_device_templates_and_workflow_are_safe() -> None:
     raspberry_pi = (
         REPO_ROOT / "infra" / "env" / "edge.raspberry-pi.env.example"
     ).read_text()
-    workflow = (REPO_ROOT / ".github" / "workflows" / "edge-ci-cd.yml").read_text()
+    workflows_dir = REPO_ROOT / ".github" / "workflows"
+    workflow = (workflows_dir / "release-deploy.yml").read_text()
     sudoers = (
         REPO_ROOT / "infra" / "sudoers" / "evonith-edge-deploy.example"
     ).read_text()
@@ -126,16 +127,20 @@ def test_device_templates_and_workflow_are_safe() -> None:
     assert "EVONITH_CUDA_REQUIRED=false" in raspberry_pi
     assert "EVONITH_UVICORN_HOST=127.0.0.1" in jetson
     assert "EVONITH_UVICORN_HOST=127.0.0.1" in raspberry_pi
-    assert "evonith-jetson" in workflow
-    assert "evonith-pi" in workflow
+    assert not (workflows_dir / "edge-ci-cd.yml").exists()
+    assert "Deploy to Raspberry Pi" in workflow
     assert "needs: test" in workflow
     assert "persist-credentials: false" in workflow
-    assert "EVONITH_DEPLOY_TARGET" in workflow
-    assert "refs/heads/release" in workflow
-    assert workflow.count("--branch release") == 2
-    assert "default: pi" in workflow
-    assert "DEPLOY_JETSON_ENABLED" not in workflow
-    assert "DEPLOY_PI_ENABLED" not in workflow
-    assert "refs/heads/dev-v01'" not in workflow
+    assert "PI_HOST" in workflow
+    assert "PI_USER" in workflow
+    assert "PI_PORT" in workflow
+    assert "PI_SSH_PRIVATE_KEY" in workflow
+    assert "PI_KNOWN_HOSTS" in workflow
+    assert "StrictHostKeyChecking=yes" in workflow
+    assert "      - production" in workflow
+    assert workflow.count("--branch production") == 1
+    assert "--device raspberry-pi" in workflow
+    assert "evonith-jetson" not in workflow
+    assert "EVONITH_DEPLOY_TARGET" not in workflow
     assert "systemctl restart evonith-backend" in sudoers
     assert "ALL=(ALL)" not in sudoers

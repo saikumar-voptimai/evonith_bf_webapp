@@ -124,7 +124,7 @@ jobs:
           cd "$EVONITH_DEPLOY_REPO_DIR"
           scripts/deploy_edge_release.sh \
             --ref "$GITHUB_SHA" \
-            --branch release \
+            --branch production \
             --device raspberry-pi
           REMOTE
 
