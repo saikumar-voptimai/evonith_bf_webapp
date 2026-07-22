@@ -79,15 +79,20 @@ jobs:
       - name: Configure SSH
         env:
           PI_HOST: ${{ secrets.PI_HOST }}
+          PI_PORT: ${{ secrets.PI_PORT }}
           PI_USER: ${{ secrets.PI_USER }}
           PI_SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_PRIVATE_KEY }}
           PI_KNOWN_HOSTS: ${{ secrets.PI_KNOWN_HOSTS }}
         run: |
           set -Eeuo pipefail
+          PI_PORT="${PI_PORT:-22}"
           : "${PI_HOST:?PI_HOST secret is required}"
           : "${PI_USER:?PI_USER secret is required}"
           : "${PI_SSH_PRIVATE_KEY:?PI_SSH_PRIVATE_KEY secret is required}"
           : "${PI_KNOWN_HOSTS:?PI_KNOWN_HOSTS secret is required}"
+          case "$PI_PORT" in
+            ''|*[!0-9]*) echo "PI_PORT must be numeric" >&2; exit 1 ;;
+          esac
           install -m 700 -d "$HOME/.ssh"
           printf '%s\n' "$PI_SSH_PRIVATE_KEY" > "$HOME/.ssh/pi_deploy_key"
           chmod 600 "$HOME/.ssh/pi_deploy_key"
@@ -97,12 +102,15 @@ jobs:
       - name: Deploy exact tested commit
         env:
           PI_HOST: ${{ secrets.PI_HOST }}
+          PI_PORT: ${{ secrets.PI_PORT }}
           PI_USER: ${{ secrets.PI_USER }}
           RELEASE_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
+          PI_PORT="${PI_PORT:-22}"
           ssh \
             -i "$HOME/.ssh/pi_deploy_key" \
+            -p "$PI_PORT" \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
