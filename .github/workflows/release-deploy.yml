@@ -15,8 +15,10 @@ concurrency:
 env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.11.16"
-  PI_REPO_DIR: /opt/evonith-bf
+  PI_REPO_DIR: /home/voptimaise/Desktop/Evonith/evonith_bf_webapp
   BACKEND_SERVICE: evonith-backend.service
+  DEPLOY_HEALTH_URL: http://127.0.0.1:8080/api/v1/health
+  DEPLOY_READINESS_URL: http://127.0.0.1:8080/api/v1/readiness
   LLM_PROVIDER: openai
   OPENAI_API_KEY: ci-placeholder
   QDRANT_URL: http://localhost:6333
@@ -119,7 +121,7 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             "$PI_USER@$PI_HOST" \
-            "EVONITH_DEPLOY_REPO_DIR=$PI_REPO_DIR EVONITH_BACKEND_SERVICE=$BACKEND_SERVICE GITHUB_SHA=$RELEASE_SHA bash -se" <<'REMOTE'
+            "EVONITH_DEPLOY_REPO_DIR=$PI_REPO_DIR EVONITH_BACKEND_SERVICE=$BACKEND_SERVICE EVONITH_DEPLOY_HEALTH_URL=$DEPLOY_HEALTH_URL EVONITH_DEPLOY_READINESS_URL=$DEPLOY_READINESS_URL GITHUB_SHA=$RELEASE_SHA bash -se" <<'REMOTE'
           set -Eeuo pipefail
           cd "$EVONITH_DEPLOY_REPO_DIR"
           scripts/deploy_edge_release.sh \
