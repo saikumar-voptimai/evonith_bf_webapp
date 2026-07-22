@@ -131,18 +131,16 @@ def test_device_templates_and_workflow_are_safe() -> None:
     assert "Deploy to Raspberry Pi" in workflow
     assert "needs: test" in workflow
     assert "persist-credentials: false" in workflow
-    assert "PI_HOST" in workflow
-    assert "PI_USER" in workflow
-    assert "PI_PORT" in workflow
-    assert "PI_SSH_PRIVATE_KEY" in workflow
-    assert "PI_KNOWN_HOSTS" in workflow
+    assert "runs-on: [self-hosted, linux, evonith-pi]" in workflow
     assert "/home/voptimaise/Desktop/Evonith/evonith_bf_webapp" in workflow
     assert "http://127.0.0.1:80/api/v1/health" in workflow
     assert "http://127.0.0.1:80/api/v1/readiness" in workflow
-    assert "StrictHostKeyChecking=yes" in workflow
-    assert "      - production" in workflow
+    assert "--repo-dir \"$PI_REPO_DIR\"" in workflow
     assert workflow.count("--branch production") == 1
     assert "--device raspberry-pi" in workflow
+    assert "PI_SSH_PRIVATE_KEY" not in workflow
+    assert "StrictHostKeyChecking" not in workflow
+    assert "ssh \\" not in workflow
     assert "evonith-jetson" not in workflow
     assert "EVONITH_DEPLOY_TARGET" not in workflow
     assert "systemctl restart evonith-backend" in sudoers
