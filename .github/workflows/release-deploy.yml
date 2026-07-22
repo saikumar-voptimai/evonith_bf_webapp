@@ -13,10 +13,13 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PYTHON_VERSION: "3.10"
+  PYTHON_VERSION: "3.11"
   UV_VERSION: "0.11.16"
   PI_REPO_DIR: /opt/evonith-bf
   BACKEND_SERVICE: evonith-backend.service
+  LLM_PROVIDER: openai
+  OPENAI_API_KEY: ci-placeholder
+  QDRANT_URL: http://localhost:6333
 
 jobs:
   test:
