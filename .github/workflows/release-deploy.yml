@@ -1,0 +1,122 @@
+name: Release Deploy
+
+on:
+  push:
+    branches:
+      - release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-deploy-raspberry-pi
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.10"
+  UV_VERSION: "0.11.16"
+  PI_REPO_DIR: /opt/evonith-bf
+  BACKEND_SERVICE: evonith-backend.service
+
+jobs:
+  test:
+    name: Test release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Show tool versions
+        run: |
+          python --version
+          uv --version
+
+      - name: Install locked development dependencies
+        if: ${{ hashFiles('uv.lock') != '' }}
+        run: uv sync --frozen --group dev
+
+      - name: Install pip development dependencies
+        if: ${{ hashFiles('uv.lock') == '' }}
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          elif [ -f requirements/dev.txt ]; then
+            python -m pip install -r requirements/dev.txt
+          else
+            python -m pip install -e .
+          fi
+
+      - name: Validate deployment shell scripts
+        run: bash -n scripts/edge_start_backend.sh scripts/bootstrap_edge_host.sh scripts/deploy_edge_release.sh
+
+      - name: Run repository tests
+        if: ${{ hashFiles('uv.lock') != '' }}
+        run: uv run pytest tests -q
+
+      - name: Run repository tests with pip
+        if: ${{ hashFiles('uv.lock') == '' }}
+        run: python -m pytest tests -q
+
+  deploy:
+    name: Deploy to Raspberry Pi
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: raspberry-pi-production
+    steps:
+      - name: Configure SSH
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+          PI_SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_PRIVATE_KEY }}
+          PI_KNOWN_HOSTS: ${{ secrets.PI_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          : "${PI_HOST:?PI_HOST secret is required}"
+          : "${PI_USER:?PI_USER secret is required}"
+          : "${PI_SSH_PRIVATE_KEY:?PI_SSH_PRIVATE_KEY secret is required}"
+          : "${PI_KNOWN_HOSTS:?PI_KNOWN_HOSTS secret is required}"
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$PI_SSH_PRIVATE_KEY" > "$HOME/.ssh/pi_deploy_key"
+          chmod 600 "$HOME/.ssh/pi_deploy_key"
+          printf '%s\n' "$PI_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 644 "$HOME/.ssh/known_hosts"
+
+      - name: Deploy exact tested commit
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          ssh \
+            -i "$HOME/.ssh/pi_deploy_key" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_USER@$PI_HOST" \
+            "EVONITH_DEPLOY_REPO_DIR=$PI_REPO_DIR EVONITH_BACKEND_SERVICE=$BACKEND_SERVICE GITHUB_SHA=$RELEASE_SHA bash -se" <<'REMOTE'
+          set -Eeuo pipefail
+          cd "$EVONITH_DEPLOY_REPO_DIR"
+          scripts/deploy_edge_release.sh \
+            --ref "$GITHUB_SHA" \
+            --branch release \
+            --device raspberry-pi
+          REMOTE
+
+      - name: Remove SSH key
+        if: ${{ always() }}
+        run: rm -f "$HOME/.ssh/pi_deploy_key"
