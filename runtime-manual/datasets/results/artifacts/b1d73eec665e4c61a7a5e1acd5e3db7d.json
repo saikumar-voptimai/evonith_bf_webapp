@@ -1,0 +1,13 @@
+{
+  "artifact_id": "b1d73eec665e4c61a7a5e1acd5e3db7d",
+  "artifact_kind": "data_export",
+  "content_type": "text/csv",
+  "created_at": "2026-07-23T09:36:26.388351+00:00",
+  "expires_at": "2026-07-24T09:36:26.388351+00:00",
+  "filename": "online_data_20260723_093626Z.csv",
+  "idempotency_key_hash": "15b3aeb3f9cf9fc2ad1415824dd19057718f08fb6e2fb44db58ea384d3702ee5",
+  "owner_user_id": "900ef580-57a1-517e-8271-c384e3785057",
+  "query_fingerprint": "64d04ce660b6c44ef7c4f51de2709d78802ae204d41bba01599e8d7848844119",
+  "row_count": 1,
+  "storage_name": "b1d73eec665e4c61a7a5e1acd5e3db7d_online_data_20260723_093626Z.csv"
+}

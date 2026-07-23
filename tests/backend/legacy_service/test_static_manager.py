@@ -4,11 +4,13 @@ Tests for StaticDatasetManager â€” the lag-aware cache logic.
 No InfluxDB or PostgreSQL calls. MlDatasetFetcher is fully mocked.
 """
 import json
+import re
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import furnace_data.dataset.static as static_module
 import pytest
 
 from furnace_data.dataset.static import (
@@ -89,9 +91,7 @@ class TestCsvRotation:
 
     def test_versioned_filename_format(self):
         fn = _versioned_filename()
-        assert fn.startswith("furnace_dataset_")
-        assert fn.endswith(".csv")
-        assert len(fn) == len("furnace_dataset_20260401_123456.csv")
+        assert re.fullmatch(r"furnace_dataset_\d{8}_\d{6}_\d{6}\.csv", fn)
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +181,66 @@ class TestSave:
         assert meta.rows == len(sample_ml_df)
         assert meta.csv_file == path.name
         assert meta.rm_choice == "charge"
+        assert meta.data_start == sample_ml_df.index.min().date().isoformat()
+        assert meta.raw_end == sample_ml_df.index.max().date().isoformat()
+        assert meta.confirmed_end == (
+            sample_ml_df.index.max().date() - timedelta(days=mgr.offline_lag_days)
+        ).isoformat()
+        assert "+00:00" in meta.last_updated
+
+    def test_save_preserves_old_metadata_pointer_when_csv_promotion_fails(
+        self, monkeypatch, tmp_path, sample_ml_df
+    ):
+        mgr = StaticDatasetManager.__new__(StaticDatasetManager)
+        mgr.static_dir = tmp_path
+        mgr.offline_lag_days = 3
+        mgr.max_versions = 3
+        old_path = mgr.save(sample_ml_df, "RM Charge")
+        old_meta = _load_meta(tmp_path)
+        assert old_meta is not None
+
+        original_replace = static_module.os.replace
+
+        def fail_csv_promotion(source, destination):
+            if Path(destination).suffix == ".csv":
+                raise OSError("simulated CSV promotion failure")
+            return original_replace(source, destination)
+
+        monkeypatch.setattr(static_module.os, "replace", fail_csv_promotion)
+        with pytest.raises(OSError, match="promotion failure"):
+            mgr.save(sample_ml_df.iloc[:10], "RM Charge")
+
+        current_meta = _load_meta(tmp_path)
+        assert current_meta is not None
+        assert current_meta.csv_file == old_meta.csv_file
+        assert old_path.exists()
+
+    def test_save_preserves_old_pointer_when_metadata_publish_fails(
+        self, monkeypatch, tmp_path, sample_ml_df
+    ):
+        mgr = StaticDatasetManager.__new__(StaticDatasetManager)
+        mgr.static_dir = tmp_path
+        mgr.offline_lag_days = 3
+        mgr.max_versions = 1
+        old_path = mgr.save(sample_ml_df, "RM Charge")
+        old_meta = _load_meta(tmp_path)
+        assert old_meta is not None
+
+        monkeypatch.setattr(
+            static_module,
+            "_save_meta",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("metadata publish failed")),
+        )
+        with pytest.raises(OSError, match="metadata publish failed"):
+            mgr.save(sample_ml_df.iloc[:10], "RM Charge")
+
+        current_meta = _load_meta(tmp_path)
+        assert current_meta is not None
+        assert current_meta.csv_file == old_meta.csv_file
+        assert mgr.current_csv_path() == old_path
+        assert old_path.exists()
+        # Rotation follows pointer publication, so it cannot remove the active file.
+        assert len(list(tmp_path.glob("furnace_dataset_*.csv"))) == 2
 
     def test_save_rotates_old_files(self, tmp_path, sample_ml_df):
         mgr = StaticDatasetManager.__new__(StaticDatasetManager)

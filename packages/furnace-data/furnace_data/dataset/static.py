@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 import pandas as pd
 
@@ -98,9 +100,17 @@ def _load_meta(static_dir: Path) -> Optional[CacheMeta]:
 
 
 def _save_meta(static_dir: Path, meta: CacheMeta) -> None:
+    """Atomically publish the cache pointer after a new CSV is durable."""
     meta_path = static_dir / _META_FILE
-    with open(meta_path, "w") as f:
-        json.dump(asdict(meta), f, indent=2)
+    temporary_path = meta_path.with_name(f".{meta_path.name}.{uuid4().hex}.tmp")
+    try:
+        with temporary_path.open("w", encoding="utf-8") as handle:
+            json.dump(asdict(meta), handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, meta_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +119,7 @@ def _save_meta(static_dir: Path, meta: CacheMeta) -> None:
 
 
 def _versioned_filename() -> str:
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     return f"{_CSV_PREFIX}{ts}.csv"
 
 
@@ -150,7 +160,7 @@ class StaticDatasetManager:
     1. Load the existing versioned CSV + ``cache_meta.json`` (or a legacy
        bootstrap CSV on first run).
     2. Compute ``confirmed_end = raw_end - offline_lag_days``.
-    3. Keep the frozen rows (index ≤ *confirmed_end*) unchanged.
+    3. Keep the frozen rows (index â‰¤ *confirmed_end*) unchanged.
     4. Re-fetch *confirmed_end* -> today to pick up delayed offline data.
     5. Merge (new rows win on overlap), optionally clean with
        :class:`~furnace_data.dataset.cleaning.DataCleaner`.
@@ -269,28 +279,44 @@ class StaticDatasetManager:
 
         df_out = df.copy()
         df_out.index.name = None
-        df_out.to_csv(csv_path, index=True)
-        log.info("Saved %s (%d rows, %d cols)", filename, len(df), len(df.columns))
-
-        _rotate_csvs(self.static_dir, self.max_versions)
+        temporary_csv = csv_path.with_name(f".{csv_path.name}.{uuid4().hex}.tmp")
+        try:
+            df_out.to_csv(temporary_csv, index=True)
+            with temporary_csv.open("rb+") as handle:
+                handle.flush()
+                os.fsync(handle.fileno())
+            # The old metadata pointer continues to reference the old version
+            # until this new version has been fully written and atomically named.
+            os.replace(temporary_csv, csv_path)
+        finally:
+            temporary_csv.unlink(missing_ok=True)
+        log.info("Saved staged version %s (%d rows, %d cols)", filename, len(df), len(df.columns))
 
         today = date.today()
-        raw_end = today
-        confirmed_end = today - timedelta(days=self.offline_lag_days)
-        data_start = df.index.min().date() if not df.empty else today
+        date_index = pd.to_datetime(df.index, errors="coerce") if not df.empty else pd.DatetimeIndex([])
+        valid_dates = date_index[~pd.isna(date_index)]
+        if len(valid_dates):
+            data_start = pd.Timestamp(valid_dates.min()).date()
+            raw_end = pd.Timestamp(valid_dates.max()).date()
+        else:
+            data_start = today
+            raw_end = today
+        confirmed_end = raw_end - timedelta(days=self.offline_lag_days)
 
         meta = CacheMeta(
             rm_choice="charge" if rm_choice == "RM Charge" else "dpr",
             data_start=data_start.isoformat(),
             confirmed_end=confirmed_end.isoformat(),
             raw_end=raw_end.isoformat(),
-            last_updated=datetime.now().isoformat(timespec="seconds"),
+            last_updated=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             offline_lag_days=self.offline_lag_days,
             rows=len(df),
             columns=len(df.columns),
             csv_file=filename,
         )
         _save_meta(self.static_dir, meta)
+        # Rotate only after promotion, so a failed write cannot remove the active version.
+        _rotate_csvs(self.static_dir, self.max_versions)
 
         return csv_path
 

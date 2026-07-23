@@ -23,8 +23,14 @@ log = logging.getLogger(__name__)
 
 
 class TaskState:
-    def __init__(self, task_id: str, callback_url: Optional[str] = None):
+    def __init__(
+        self,
+        task_id: str,
+        callback_url: Optional[str] = None,
+        owner_user_id: Optional[str] = None,
+    ):
         self.task_id = task_id
+        self.owner_user_id = str(owner_user_id) if owner_user_id else None
         self.status: TaskStatus = TaskStatus.pending
         self.progress: Optional[str] = None
         self.created_at: datetime = datetime.utcnow()
@@ -40,9 +46,14 @@ class TaskManager:
     def __init__(self):
         self._tasks: dict[str, TaskState] = {}
 
-    def create_task(self, callback_url: Optional[str] = None) -> TaskState:
+    def create_task(
+        self,
+        callback_url: Optional[str] = None,
+        *,
+        owner_user_id: Optional[str] = None,
+    ) -> TaskState:
         task_id = uuid.uuid4().hex[:12]
-        task = TaskState(task_id, callback_url)
+        task = TaskState(task_id, callback_url, owner_user_id)
         self._tasks[task_id] = task
         return task
 

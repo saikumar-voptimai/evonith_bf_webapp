@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+# Permissions are issued by the backend token service; routes never infer them
+# from a browser-supplied role. Data Explorer keeps read/export capabilities
+# separate from dataset mutation capabilities.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "admin": frozenset(
         {
@@ -11,15 +14,25 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "burden:history:delete",
             "users:write",
             "feedback:moderate",
+            "data:read",
+            "data:export",
+            "data:export:any",
+            "datasets:build",
+            "datasets:refresh",
+            "datasets:override",
         }
     ),
     "supervisor": frozenset(
         {
             "hopper:write",
             "feedback:moderate",
+            "data:read",
+            "data:export",
+            "datasets:build",
+            "datasets:refresh",
         }
     ),
-    "user": frozenset(),
+    "user": frozenset({"data:read", "data:export"}),
 }
 
 VALID_ROLES = frozenset(ROLE_PERMISSIONS)

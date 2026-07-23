@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pandas as pd
 
-from apps.backend_api.app.api.v1.schemas.data import DataQueryRequest
+from apps.backend_api.app.api.v1.schemas.data import OfflineDataQuery, OnlineDataQuery
 from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
 from apps.backend_api.app.core.errors import ApiError
 from apps.backend_api.app.services.copilot_safety_service import CopilotSafetyService, warning
@@ -42,14 +42,68 @@ class CopilotDataService:
             return pd.DataFrame([value])
         raise ApiError("COPILOT_DATA_QUERY_INVALID", "Unsupported input_data shape.", status_code=422)
 
+    @staticmethod
+    def _aware_datetime(value: Any) -> datetime | None:
+        if value is None or value == "":
+            return None
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    def _time_range(self, payload: dict[str, Any], filters: dict[str, Any]) -> dict[str, Any]:
+        start = self._aware_datetime(payload.get("start_time"))
+        end = self._aware_datetime(payload.get("end_time"))
+        if start is not None and end is not None:
+            return {"kind": "absolute", "start": start, "end": end}
+        preset = str(filters.get("preset_id") or filters.get("preset") or "last_1_hour")
+        return {"kind": "preset", "preset_id": preset.strip().lower().replace(" ", "_")}
+
+    def _typed_query(self, source: str, payload: dict[str, Any], limit: int):
+        filters = payload.get("filters") or {}
+        if not isinstance(filters, dict):
+            raise ApiError("COPILOT_DATA_QUERY_INVALID", "filters must be an object.", status_code=422)
+        time_range = self._time_range(payload, filters)
+        columns = payload.get("columns") if isinstance(payload.get("columns"), list) else None
+        if source == "online":
+            measurements = filters.get("measurements")
+            if not isinstance(measurements, list) or not measurements:
+                # Legacy callers used ``columns`` for measurement IDs; preserve
+                # that only when every value is a valid public measurement ID.
+                if columns and all(isinstance(value, str) and value in {"process_params", "temperature_profile", "heatload_delta_t", "cooling_water", "delta_t", "miscellaneous"} for value in columns):
+                    measurements = columns
+                    fields = None
+                else:
+                    measurements = ["process_params"]
+                    fields = filters.get("fields") or columns
+            else:
+                fields = filters.get("fields") or columns
+            return OnlineDataQuery(
+                source="online",
+                measurements=measurements,
+                time_range=time_range,
+                aggregation=None,
+                fields=fields,
+                limit=max(1, limit),
+                offset=0,
+            )
+        if source == "offline":
+            report_id = str(filters.get("report_id") or filters.get("report_type") or payload.get("report_type") or "hm_slag")
+            return OfflineDataQuery(
+                source="offline",
+                selection={"kind": "report", "report_id": report_id.strip().lower()},
+                time_range=time_range,
+                aggregation=None,
+                fields=columns,
+                limit=max(1, limit),
+                offset=0,
+            )
+        raise ApiError("COPILOT_DATA_QUERY_INVALID", "Unsupported data source.", status_code=422)
+
     def fetch_recent_data(self, payload: dict[str, Any]) -> dict[str, Any]:
         source = str(payload.get("source") or "online").strip().lower()
-        limit = min(
-            self.settings.copilot_max_json_rows,
-            max(0, int(payload.get("limit") or 500)),
-        )
+        limit = min(self.settings.copilot_max_json_rows, max(1, int(payload.get("limit") or 500)))
         warnings: list[dict[str, Any]] = []
-
         try:
             if source in {"input_data", "mock", "test"}:
                 rows = (payload.get("filters") or {}).get("rows", [])
@@ -57,25 +111,10 @@ class CopilotDataService:
             else:
                 from apps.backend_api.app.services import data_service
 
-                query = DataQueryRequest(
-                    source=source,
-                    start_time=payload.get("start_time"),
-                    end_time=payload.get("end_time"),
-                    columns=payload.get("columns"),
-                    filters=payload.get("filters") or {},
-                    limit=limit,
-                    timezone=payload.get("timezone") or "Asia/Kolkata",
+                df = data_service.fetch_dataframe(
+                    self._typed_query(source, payload, limit),
+                    settings=self.settings,
                 )
-                df = data_service.fetch_dataframe(query)
-                if payload.get("columns") and source != "online":
-                    missing = [col for col in payload["columns"] if col not in df.columns]
-                    if missing:
-                        raise ApiError(
-                            "COPILOT_DATA_QUERY_INVALID",
-                            f"Unknown column(s): {missing}",
-                            status_code=400,
-                        )
-                    df = df[payload["columns"]]
         except ApiError:
             raise
         except ValueError as exc:
@@ -85,7 +124,6 @@ class CopilotDataService:
 
         if df.empty:
             warnings.append(warning("COPILOT_DATA_EMPTY", "No Copilot data rows were returned."))
-
         columns, rows, row_count, truncated = dataframe_to_preview(
             df,
             limit=limit,

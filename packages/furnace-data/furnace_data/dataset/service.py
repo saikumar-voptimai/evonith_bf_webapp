@@ -581,7 +581,11 @@ class DatasetService:
         )
 
         if df is None or df.empty:
-            return pd.DataFrame()
+            result = pd.DataFrame()
+            result.attrs["synthetic_row_count"] = 0
+            result.attrs["synthetic_timestamps"] = ()
+            result.attrs["interpolated_columns"] = ()
+            return result
 
         if df.index.tz is None:
             df.index = df.index.tz_localize("UTC")
@@ -592,7 +596,11 @@ class DatasetService:
             df = df[[c for c in keep_columns if c in df.columns]]
 
         if df.empty:
-            return pd.DataFrame()
+            result = pd.DataFrame()
+            result.attrs["synthetic_row_count"] = 0
+            result.attrs["synthetic_timestamps"] = ()
+            result.attrs["interpolated_columns"] = ()
+            return result
 
         # Partition columns into numerically-imputable vs metadata-text.  Neon
         # returns the lab/cast/batch identifiers as object-typed strings/UUIDs;
@@ -618,17 +626,38 @@ class DatasetService:
 
         combined_index = df.index.union(target_index)
         df2 = df.reindex(combined_index)
+        # A grid timestamp is synthetic only when no source row existed at that
+        # instant. This provenance is kept in DataFrame attrs so API consumers
+        # can disclose interpolation without exposing source internals.
+        synthetic_index = target_index[~target_index.isin(df.index)]
+        filled_columns: set[str] = set()
 
         if numeric_cols:
-            df2[numeric_cols] = df2[numeric_cols].infer_objects(copy=False)
-            df2[numeric_cols] = df2[numeric_cols].apply(pd.to_numeric, errors="coerce")
-            df2[numeric_cols] = df2[numeric_cols].interpolate(method="time")
+            numeric_before = (
+                df2[numeric_cols]
+                .infer_objects(copy=False)
+                .apply(pd.to_numeric, errors="coerce")
+            )
+            numeric_after = numeric_before.interpolate(method="time")
+            filled_columns.update(
+                str(column)
+                for column in numeric_cols
+                if (numeric_before[column].isna() & numeric_after[column].notna()).any()
+            )
+            df2[numeric_cols] = numeric_after
 
         if non_numeric_cols:
-            # Forward-fill metadata so each hourly slot inherits the most recent
-            # lab sample identifier; back-fill the first rows that have no prior
+            # Forward-fill metadata so each grid slot inherits the most recent
+            # lab sample identifier; back-fill the first slots that have no prior
             # value so they aren't NaN.
-            df2[non_numeric_cols] = df2[non_numeric_cols].ffill().bfill()
+            metadata_before = df2[non_numeric_cols].copy()
+            metadata_after = metadata_before.ffill().bfill()
+            filled_columns.update(
+                str(column)
+                for column in non_numeric_cols
+                if (metadata_before[column].isna() & metadata_after[column].notna()).any()
+            )
+            df2[non_numeric_cols] = metadata_after
 
         df_final = df2.loc[target_index]
 
@@ -638,8 +667,19 @@ class DatasetService:
             cutoff = now.floor(f"{interval_minutes}min")
             df_final = df_final.loc[start_local:cutoff]
 
+        # Current-day truncation may remove the tail of the synthetic grid.
+        synthetic_index = synthetic_index[synthetic_index.isin(df_final.index)]
+        interpolated_columns = tuple(
+            str(column) for column in df.columns if str(column) in filled_columns
+        )
+        synthetic_timestamps = tuple(
+            timestamp.isoformat() for timestamp in synthetic_index
+        )
         df_final.index = df_final.index.tz_localize(None)
         df_final.index.name = "time"
+        df_final.attrs["synthetic_row_count"] = len(synthetic_index)
+        df_final.attrs["synthetic_timestamps"] = synthetic_timestamps
+        df_final.attrs["interpolated_columns"] = interpolated_columns
 
         return df_final
 

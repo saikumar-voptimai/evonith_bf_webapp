@@ -23,7 +23,6 @@ from apps.backend_api.app.core.config import BackendSettings, load_backend_setti
 from apps.backend_api.app.core.errors import register_exception_handlers
 from apps.backend_api.app.core.logging import configure_logging
 from apps.backend_api.app.core.middleware import AccessLogMiddleware, RequestIdMiddleware
-from apps.backend_api.app.routes import data as legacy_data
 from apps.backend_api.app.routes import dataset as legacy_dataset
 from apps.backend_api.app.routes import health as legacy_health
 from apps.backend_api.app.services.audit_service import AuditService
@@ -94,8 +93,13 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-        expose_headers=["X-Request-ID"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Request-ID",
+        ],
+        expose_headers=["Content-Disposition", "X-Dataset-Version", "X-Request-ID"],
     )
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIdMiddleware)
@@ -105,7 +109,9 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
 
     if settings.enable_legacy_routes:
         app.include_router(legacy_health.router)
-        app.include_router(legacy_data.router)
+        # The former standalone /data router accepted physical table names and
+        # bypassed the v1 authorization/typed-contract boundary. Its supported
+        # functionality is consolidated under /api/v1/data, so never mount it.
         app.include_router(legacy_dataset.router)
 
     log.info("Evonith backend API starting")

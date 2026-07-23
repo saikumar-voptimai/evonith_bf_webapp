@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # Static dataset cache settings
     offline_lag_days: int = 3           # days to keep "unconfirmed" (re-fetched each run)
     static_max_versions: int = 3        # how many versioned CSVs to keep
+    dataset_job_ttl_hours: int = 24
+    dataset_job_workers: int = 1
+    dataset_max_build_range_days: int = 366
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

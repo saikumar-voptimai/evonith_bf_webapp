@@ -50,7 +50,7 @@ def test_dataset_fetcher_routes_interactive_ml_to_offline_db() -> None:
     service = FakeService()
     fetcher = DatasetFetcher(service=service)
 
-    df = fetcher.get_ml_dataset(
+    df = fetcher.get_dataset(
         start_date=date(2026, 1, 1),
         end_date=date(2026, 1, 1),
         rm_choice="RM Charge",
@@ -102,7 +102,7 @@ def test_dataset_fetcher_default_source_is_offline_db_for_static_manager() -> No
     service = FakeService()
     fetcher = DatasetFetcher(service=service)
 
-    fetcher.get_ml_dataset(
+    fetcher.get_dataset(
         start_date=date(2026, 1, 1),
         end_date=date(2026, 1, 1),
         rm_choice="RM Charge",

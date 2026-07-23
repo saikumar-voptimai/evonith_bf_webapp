@@ -28,7 +28,9 @@ except ModuleNotFoundError:  # pragma: no cover - repo-root import compatibility
     )
 
 
-SAFE_RETRY_METHODS = {"GET"}
+# Reads are safe to retry. Mutations deliberately remain single-attempt: even
+# an Idempotency-Key must be explicitly supported by the backend contract.
+SAFE_RETRY_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 def is_wrapped_api_response(payload: Any) -> bool:
@@ -59,6 +61,7 @@ class ApiClient:
         max_retries: int | None = None,
         verify_ssl: bool | None = None,
         transport: httpx.BaseTransport | None = None,
+        access_token: str | None = None,
     ):
         settings = load_frontend_settings()
         self.base_url = (base_url or settings.backend_api_base_url).rstrip("/")
@@ -73,6 +76,7 @@ class ApiClient:
         self.health_path = settings.backend_api_health_path
         self.readiness_path = settings.backend_api_readiness_path
         self.transport = transport
+        self.access_token = str(access_token or "").strip() or None
         self.last_request_id: str | None = None
         self.last_response_request_id: str | None = None
 
@@ -104,13 +108,18 @@ class ApiClient:
         json: dict[str, Any] | list[Any] | None = None,
         headers: dict[str, str] | None = None,
         expect_json: bool = True,
+        idempotency_key: str | None = None,
     ) -> Any:
         """Send a backend request and return decoded JSON by default."""
         method = method.upper()
-        request_id = (headers or {}).get("X-Request-ID") or str(uuid.uuid4())
+        supplied_headers = dict(headers or {})
+        request_id = supplied_headers.get("X-Request-ID") or str(uuid.uuid4())
         request_headers = {"X-Request-ID": request_id}
-        if headers:
-            request_headers.update(headers)
+        if self.access_token and "Authorization" not in supplied_headers:
+            request_headers["Authorization"] = f"Bearer {self.access_token}"
+        request_headers.update(supplied_headers)
+        if idempotency_key:
+            request_headers["Idempotency-Key"] = str(idempotency_key)
         self.last_request_id = request_id
         self.last_response_request_id = None
 
@@ -219,8 +228,17 @@ class ApiClient:
         json: dict[str, Any] | list[Any] | None = None,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> Any:
-        return self.request("POST", path, json=json, params=params, headers=headers)
+        return self.request(
+            "POST",
+            path,
+            json=json,
+            params=params,
+            headers=headers,
+            idempotency_key=idempotency_key,
+        )
 
     def put(
         self,
@@ -273,10 +291,12 @@ class ApiClient:
         headers: dict[str, str] | None = None,
     ) -> Any:
         """Upload one file using multipart/form-data without unsafe retries."""
-        request_id = (headers or {}).get("X-Request-ID") or str(uuid.uuid4())
+        supplied_headers = dict(headers or {})
+        request_id = supplied_headers.get("X-Request-ID") or str(uuid.uuid4())
         request_headers = {"X-Request-ID": request_id}
-        if headers:
-            request_headers.update(headers)
+        if self.access_token and "Authorization" not in supplied_headers:
+            request_headers["Authorization"] = f"Bearer {self.access_token}"
+        request_headers.update(supplied_headers)
         self.last_request_id = request_id
         self.last_response_request_id = None
 
@@ -310,6 +330,6 @@ class ApiClient:
         return self.get(self.readiness_path)
 
 
-def get_api_client() -> ApiClient:
-    """Return a configured API client instance."""
-    return ApiClient()
+def get_api_client(access_token: str | None = None) -> ApiClient:
+    """Return a configured API client, optionally preconfigured for bearer auth."""
+    return ApiClient(access_token=access_token)

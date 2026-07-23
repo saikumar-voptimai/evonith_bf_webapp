@@ -50,6 +50,10 @@ PRESET_TIMEDELTAS = {
 _IST = pytz.timezone("Asia/Kolkata")
 
 
+class OnlineDataSourceUnavailableError(RuntimeError):
+    """All requested online source reads failed before returning a frame."""
+
+
 def list_measurements() -> dict:
     """Return all measurements and their field names from YAML config."""
     data_mapping = config.get("data_mapping", {})
@@ -104,6 +108,7 @@ def fetch_online(
         end_time = end_time.replace(tzinfo=timezone.utc)
 
     frames: List[pd.DataFrame] = []
+    failures = 0
 
     for measurement in measurements:
         fetcher = BaseDataFetcher(
@@ -132,9 +137,18 @@ def fetch_online(
                 frames.append(df)
                 log.info("Fetched %s: %d rows, %d cols", measurement, len(df), len(df.columns))
         except Exception as e:
+            failures += 1
             log.warning("Failed to fetch %s: %s", measurement, e)
 
     if not frames:
+        # An empty successful query is a valid 200 response.  A complete source
+        # outage must retain its failure signal so the v1 service can emit the
+        # required DATA_SOURCE_UNAVAILABLE response instead of a misleading
+        # empty preview.
+        if failures == len(measurements):
+            raise OnlineDataSourceUnavailableError(
+                "All requested online measurements were unavailable."
+            )
         return pd.DataFrame()
 
     if len(frames) == 1:

@@ -28,13 +28,13 @@ class UnifiedJobService:
 
     @staticmethod
     def _dataset_jobs() -> list[dict[str, Any]]:
-        with job_service._lock:  # noqa: SLF001 - explicit adapter over existing registry.
-            jobs = list(job_service._jobs.values())  # noqa: SLF001
+        # Dataset jobs are durable; do not read the compatibility in-memory cache.
+        jobs = job_service.list_jobs(limit=500)
         return [
             {
                 "job_id": job.job_id,
                 "source": "datasets",
-                "workflow": "dataset_refresh",
+                "workflow": job.operation,
                 "status": job.status,
                 "progress": job.progress,
                 "message": redact_value(job.message),

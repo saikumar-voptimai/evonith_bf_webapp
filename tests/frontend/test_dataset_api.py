@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from apps.frontend_streamlit.services.api_errors import BackendUnavailableError
+from apps.frontend_streamlit.services.api_errors import BackendApiHTTPError, BackendUnavailableError
 from apps.frontend_streamlit.services.dataset_api import (
+    get_dataset_artifact_download_url,
     get_dataset_job,
     get_dataset_job_download_url,
     list_datasets,
@@ -37,6 +38,32 @@ def test_list_datasets_calls_datasets_endpoint():
     assert client.calls == [("GET", "/datasets", None)]
 
 
+def test_legacy_dataset_adapters_can_inject_a_bearer_header():
+    class HeaderClient(FakeClient):
+        def get(self, path, params=None, headers=None):
+            self.calls.append(("GET", path, params, headers))
+            return {"request_id": "id", "data": {"ok": True}, "meta": {}}
+
+        def post(self, path, json=None, params=None, headers=None):
+            self.calls.append(("POST", path, json, params, headers))
+            return {"request_id": "id", "data": {"job_id": "job"}, "meta": {}}
+
+    client = HeaderClient()
+
+    list_datasets(client, access_token="reader-token")
+    refresh_dataset({"dataset_id": "static_ml_dataset"}, client, access_token="reader-token")
+
+    assert client.calls == [
+        ("GET", "/datasets", None, {"Authorization": "Bearer reader-token"}),
+        (
+            "POST",
+            "/datasets/refresh",
+            {"dataset_id": "static_ml_dataset"},
+            None,
+            {"Authorization": "Bearer reader-token"},
+        ),
+    ]
+
 def test_preview_dataset_calls_preview_endpoint():
     client = FakeClient()
 
@@ -63,11 +90,14 @@ def test_get_dataset_job_calls_job_endpoint():
     assert client.calls == [("GET", "/datasets/jobs/job-1", None)]
 
 
-def test_job_download_url_uses_base_url():
-    assert (
+def test_dataset_download_url_helpers_fail_safely_without_exposing_raw_urls():
+    with pytest.raises(BackendApiHTTPError) as job_exc:
         get_dataset_job_download_url("job-1", FakeClient())
-        == "http://localhost:8080/api/v1/datasets/jobs/job-1/download"
-    )
+    with pytest.raises(BackendApiHTTPError) as artifact_exc:
+        get_dataset_artifact_download_url("artifact-1", FakeClient())
+
+    assert job_exc.value.error_code == "AUTHENTICATED_DOWNLOAD_REQUIRED"
+    assert artifact_exc.value.error_code == "AUTHENTICATED_DOWNLOAD_REQUIRED"
 
 
 def test_backend_unavailable_propagates_cleanly():

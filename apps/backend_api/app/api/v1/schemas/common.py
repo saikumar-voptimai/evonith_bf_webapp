@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
+
+
+ApiDataT = TypeVar("ApiDataT")
 
 
 class ApiMeta(BaseModel):
@@ -12,9 +15,9 @@ class ApiMeta(BaseModel):
     api_version: str = "v1"
 
 
-class ApiResponse(BaseModel):
+class ApiResponse(BaseModel, Generic[ApiDataT]):
     request_id: str
-    data: Any
+    data: ApiDataT
     meta: ApiMeta = Field(default_factory=ApiMeta)
 
 

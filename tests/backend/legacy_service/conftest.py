@@ -71,17 +71,44 @@ def sample_ml_df() -> pd.DataFrame:
 # FastAPI test client
 # ---------------------------------------------------------------------------
 
+class _LegacyAdminAuthService:
+    def current_user_from_token(self, token: str):
+        if token != "legacy-admin":
+            from apps.backend_api.app.core.errors import ApiError
+
+            raise ApiError("INVALID_TOKEN", "Invalid token.", status_code=401)
+        return {
+            "id": "legacy-admin",
+            "role": "admin",
+            "permissions": [
+                "data:read",
+                "data:export",
+                "data:export:any",
+                "datasets:build",
+                "datasets:refresh",
+                "datasets:override",
+            ],
+        }
+
+
 @pytest.fixture(scope="session")
 def client():
-    """
-    Session-scoped test client.
-    Static dir / results dir are pointed at temp paths via env vars.
-    """
-    # These are read at Settings() instantiation; must be set before first import
+    """Session client with a backend-issued admin test identity."""
     os.environ.setdefault("RESULTS_DIR", "/tmp/furnace_api_test_results")
     os.environ.setdefault("STATIC_DIR", "/tmp/furnace_api_test_static")
 
+    from apps.backend_api.app.core.config import BackendSettings
+    from apps.backend_api.app.main import create_app
 
-    from apps.backend_api.app.main import app
+    app = create_app(
+        BackendSettings(
+            api_prefix="/api/v1",
+            backend_env="test",
+            backend_log_level="WARNING",
+            enable_legacy_routes=True,
+        )
+    )
+    app.state.auth_service = _LegacyAdminAuthService()
     with TestClient(app) as c:
+        c.headers.update({"Authorization": "Bearer legacy-admin"})
         yield c

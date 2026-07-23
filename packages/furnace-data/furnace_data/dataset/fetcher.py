@@ -389,6 +389,6 @@ class DatasetFetcher:
                 raise
             return pd.DataFrame()
 
-    # Keep the old name as an alias so any callers that used MlDatasetFetcher.get_ml_dataset()
-    # continue to work after renaming.
+    # Deprecated compatibility alias retained for older integrations; new callers
+    # must use get_dataset().
     get_ml_dataset = get_dataset

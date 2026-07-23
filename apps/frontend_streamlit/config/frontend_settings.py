@@ -35,6 +35,14 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _optional_env_bool(name: str) -> bool | None:
+    """Return an explicit bool, preserving an unset migration flag as None."""
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return None
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def _env_float(name: str, default: float) -> float:
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
@@ -84,6 +92,14 @@ def load_frontend_settings() -> FrontendSettings:
         key: _env_bool(env_name, False)
         for key, env_name in PAGE_API_FLAG_ENV_VARS.items()
     }
+    # DATASETS was a partial migration flag. Data Explorer must use one complete
+    # gateway mode, so retain it only as an alias for deployments that have not
+    # yet set the new flag. An explicit new flag always wins.
+    explicit_data_explorer = _optional_env_bool("USE_BACKEND_API_DATA_EXPLORER")
+    if explicit_data_explorer is None:
+        page_flags["data_explorer"] = page_flags["datasets"]
+    else:
+        page_flags["data_explorer"] = explicit_data_explorer
     return FrontendSettings(
         backend_api_base_url=_env("BACKEND_API_BASE_URL", DEFAULT_BACKEND_API_BASE_URL),
         use_backend_api=_env_bool("USE_BACKEND_API", False),

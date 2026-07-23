@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from apps.frontend_streamlit.services.api_errors import BackendUnavailableError
+from apps.frontend_streamlit.services.api_errors import BackendApiHTTPError, BackendUnavailableError
 from apps.frontend_streamlit.services.data_api import export_data, get_artifact_download_url, list_data_sources, preview_data
 
 
@@ -32,6 +32,20 @@ def test_list_data_sources_calls_sources_endpoint():
     assert client.calls == [("GET", "/data/sources", None)]
 
 
+def test_legacy_data_adapter_can_inject_a_bearer_header():
+    class HeaderClient(FakeClient):
+        def get(self, path, params=None, headers=None):
+            self.calls.append(("GET", path, params, headers))
+            return {"request_id": "id", "data": [{"id": "online"}], "meta": {}}
+
+    client = HeaderClient()
+
+    list_data_sources(client, access_token="reader-token")
+
+    assert client.calls == [
+        ("GET", "/data/sources", None, {"Authorization": "Bearer reader-token"})
+    ]
+
 def test_preview_data_calls_preview_endpoint():
     client = FakeClient()
 
@@ -50,11 +64,11 @@ def test_export_data_calls_export_endpoint():
     ]
 
 
-def test_artifact_download_url_uses_base_url():
-    assert (
+def test_artifact_download_url_fails_safely_without_exposing_raw_url():
+    with pytest.raises(BackendApiHTTPError) as exc_info:
         get_artifact_download_url("abc", FakeClient())
-        == "http://localhost:8080/api/v1/data/artifacts/abc/download"
-    )
+
+    assert exc_info.value.error_code == "AUTHENTICATED_DOWNLOAD_REQUIRED"
 
 
 def test_backend_unavailable_propagates_cleanly():

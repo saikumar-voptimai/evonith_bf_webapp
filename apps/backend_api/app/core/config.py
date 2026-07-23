@@ -60,7 +60,7 @@ class BackendSettings(BaseSettings):
         default_factory=lambda: list(_DEFAULT_CORS_ORIGINS),
         validation_alias="BACKEND_CORS_ORIGINS",
     )
-    enable_legacy_routes: bool = Field(True, validation_alias="EVONITH_ENABLE_LEGACY_ROUTES")
+    enable_legacy_routes: bool = Field(False, validation_alias="EVONITH_ENABLE_LEGACY_ROUTES")
     openapi_title: str = Field(
         "Evonith BF Backend API",
         validation_alias="EVONITH_OPENAPI_TITLE",
@@ -100,6 +100,43 @@ class BackendSettings(BaseSettings):
     auth_bootstrap_admin_enabled: bool = Field(
         False,
         validation_alias="EVONITH_AUTH_BOOTSTRAP_ADMIN_ENABLED",
+    )
+    # Data Explorer API limits. Aliases retain phase-4 environment names.
+    data_preview_max_rows: int = Field(
+        500,
+        validation_alias=AliasChoices("DATA_PREVIEW_MAX_ROWS", "DATA_API_MAX_PREVIEW_ROWS"),
+    )
+    data_max_selected_fields: int = Field(
+        20,
+        validation_alias="DATA_MAX_SELECTED_FIELDS",
+    )
+    data_export_max_rows: int = Field(
+        100000,
+        validation_alias="DATA_EXPORT_MAX_ROWS",
+    )
+    data_export_ttl_hours: int = Field(
+        24,
+        validation_alias=AliasChoices("DATA_EXPORT_TTL_HOURS", "DATA_API_ARTIFACT_TTL_HOURS"),
+    )
+    hot_metal_slag_max_preview_days: int = Field(
+        31,
+        validation_alias="HOT_METAL_SLAG_MAX_PREVIEW_DAYS",
+    )
+    hot_metal_slag_max_interval_minutes: int = Field(
+        600,
+        validation_alias="HOT_METAL_SLAG_MAX_INTERVAL_MINUTES",
+    )
+    dataset_job_ttl_hours: int = Field(
+        24,
+        validation_alias="DATASET_JOB_TTL_HOURS",
+    )
+    dataset_job_workers: int = Field(
+        1,
+        validation_alias="DATASET_JOB_WORKERS",
+    )
+    dataset_max_build_range_days: int = Field(
+        366,
+        validation_alias="DATASET_MAX_BUILD_RANGE_DAYS",
     )
     feedback_require_auth: bool = Field(
         True,
@@ -628,6 +665,15 @@ class BackendSettings(BaseSettings):
     @field_validator(
         "auth_access_token_expire_minutes",
         "auth_min_password_length",
+        "data_preview_max_rows",
+        "data_max_selected_fields",
+        "data_export_max_rows",
+        "data_export_ttl_hours",
+        "hot_metal_slag_max_preview_days",
+        "hot_metal_slag_max_interval_minutes",
+        "dataset_job_ttl_hours",
+        "dataset_job_workers",
+        "dataset_max_build_range_days",
         "uvicorn_workers",
         "uvicorn_port",
         "frontend_port",
@@ -774,6 +820,18 @@ class BackendSettings(BaseSettings):
         if isinstance(value, (list, tuple, set)):
             return [str(origin).strip() for origin in value if str(origin).strip()]
         return list(_DEFAULT_CORS_ORIGINS)
+
+    @field_validator("cors_origins")
+    @classmethod
+    def reject_credentialed_wildcard_origin(cls, origins: list[str]) -> list[str]:
+        # The application always enables credentialed browser requests. A
+        # wildcard origin is invalid in that mode and could silently broaden
+        # cross-origin access if accepted by a proxy or future middleware.
+        if "*" in origins:
+            raise ValueError(
+                "BACKEND_CORS_ORIGINS must not contain '*' when credentials are enabled"
+            )
+        return origins
 
     def safe_runtime_profile_summary(self) -> dict[str, Any]:
         """Return public-safe runtime profile metadata for status endpoints."""
