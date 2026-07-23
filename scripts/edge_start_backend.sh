@@ -16,6 +16,8 @@ export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-1}"
 export VECLIB_MAXIMUM_THREADS="${VECLIB_MAXIMUM_THREADS:-1}"
 export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
+export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
 
 mkdir -p "${EVONITH_RUNTIME_DIR}"
 if [ ! -w "${EVONITH_RUNTIME_DIR}" ]; then
@@ -25,7 +27,11 @@ fi
 
 echo "Starting Evonith backend profile=${EVONITH_BACKEND_PROFILE} host=${EVONITH_UVICORN_HOST} port=${EVONITH_UVICORN_PORT} workers=${EVONITH_UVICORN_WORKERS}"
 cd "$(dirname "$0")/.."
-cmd=(uvicorn apps.backend_api.app.main:app \
+uvicorn_bin="${EVONITH_UVICORN_BIN:-uvicorn}"
+if [ -z "${EVONITH_UVICORN_BIN:-}" ] && [ -x ".venv/bin/uvicorn" ]; then
+  uvicorn_bin=".venv/bin/uvicorn"
+fi
+cmd=("${uvicorn_bin}" apps.backend_api.app.main:app \
   --host "${EVONITH_UVICORN_HOST}" \
   --port "${EVONITH_UVICORN_PORT}" \
   --workers "${EVONITH_UVICORN_WORKERS}")

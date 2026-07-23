@@ -86,7 +86,7 @@ class XGBoostJsonModel:
          - return XGBoostJsonModel - Wrapper that can be used like a model object.
     """
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, device: str = "cpu") -> None:
         """
         Load the XGBoost booster from its JSON artifact.
 
@@ -115,6 +115,11 @@ class XGBoostJsonModel:
 
         self.booster = xgb.Booster()
         self.booster.load_model(str(path))
+        normalized_device = str(device or "cpu").strip().lower()
+        if normalized_device == "cuda":
+            normalized_device = "cuda:0"
+        self.device = normalized_device
+        self.booster.set_param({"device": self.device})
         self.feature_names_in_ = list(self.booster.feature_names or [])
 
     def predict(self, X: Any) -> Any:

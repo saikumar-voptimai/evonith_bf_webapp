@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass
-import json
 from pathlib import Path
 import re
 from typing import Any
 
 from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
 from apps.backend_api.app.core.errors import ApiError
+from apps.backend_api.app.services.accelerator_service import AcceleratorService
 from apps.backend_api.app.services.optional_dependency_service import require_optional_module
 from furnace_data.assets import model_dir_from_config
+from furnace_data.optimization_runtime.model_bundle import XGBoostJsonModel
 
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 _MODEL_EXTENSIONS = {".joblib", ".pkl", ".json", ".pth"}
@@ -122,7 +123,8 @@ class ModelRegistryService:
         path = self._model_path(model_name)
         try:
             if path.suffix.lower() == ".json":
-                model = json.loads(path.read_text(encoding="utf-8"))
+                device = AcceleratorService(self.settings).resolve_xgboost_device()
+                model = XGBoostJsonModel(path, device=device)
             else:
                 joblib = require_optional_module("joblib", "backend-ml")
 
@@ -165,5 +167,6 @@ class ModelRegistryService:
         return {
             "model_name": model_name,
             "predictions": [float(value) for value in list(predictions)],
+            "device": str(getattr(model, "device", "cpu")),
             "model_status": self.get_model_status(model_name),
         }
