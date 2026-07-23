@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -12,32 +14,45 @@ from apps.backend_api.app.core.errors import ApiError
 from apps.backend_api.app.repositories.furnacemind_conversation_repository import (
     ConversationRecord,
     FurnaceMindConversationRepository,
+    MessageFeedbackRecord,
     MessageRecord,
 )
-from apps.backend_api.app.repositories.furnacemind_document_repository import FurnaceMindDocumentRepository
-from apps.backend_api.app.repositories.furnacemind_run_repository import FurnaceMindRunRepository, RunRecord
+from apps.backend_api.app.repositories.furnacemind_document_repository import DocumentRecord, FurnaceMindDocumentRepository
+from apps.backend_api.app.repositories.furnacemind_run_repository import FurnaceMindRunRepository, RunRecord, idempotency_hash
+from apps.backend_api.app.repositories.furnacemind_task_repository import FurnaceMindTaskRepository
 from apps.backend_api.app.services.compute_artifact_service import ComputeArtifactService
 from apps.backend_api.app.services.furnacemind_document_service import FurnaceMindDocumentService
 from apps.backend_api.app.services.furnacemind_event_service import FurnaceMindEventService
 from apps.backend_api.app.services.furnacemind_llm_service import FurnaceMindLLMService
 from apps.backend_api.app.services.furnacemind_memory_service import FurnaceMindMemoryService
 from apps.backend_api.app.services.furnacemind_prompt_service import FurnaceMindPromptService
+from apps.backend_api.app.services.furnacemind_report_service import FurnaceMindReportService
 from apps.backend_api.app.services.furnacemind_retrieval_service import FurnaceMindRetrievalService
 from apps.backend_api.app.services.furnacemind_safety_service import FurnaceMindSafetyService, warning
+from apps.backend_api.app.services.furnacemind_skill_service import FurnaceMindSkillService
 from apps.backend_api.app.services.furnacemind_tool_executor import FurnaceMindToolExecutor
 from apps.backend_api.app.services.furnacemind_tool_registry import FurnaceMindToolRegistry
 
 log = logging.getLogger(__name__)
-
+_TERMINAL_RUN_STATUSES = {"completed", "failed", "cancelled"}
+_TERMINAL_TASK_STATUSES = {"completed", "failed", "cancelled"}
 
 def _user_id(user: dict[str, Any] | None) -> str | None:
     value = (user or {}).get("id")
     return str(value) if value is not None else None
 
 
+def _owner_scope(user: dict[str, Any] | None) -> str:
+    return _user_id(user) or "anonymous"
+
+
 def _is_admin(user: dict[str, Any] | None) -> bool:
     return str((user or {}).get("role") or "").lower() == "admin"
 
+
+def _fingerprint(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 class FurnaceMindService:
     """Coordinate FurnaceMind conversations, runs, docs, memory, LLM, and tools."""
@@ -49,17 +64,21 @@ class FurnaceMindService:
         conversation_repository: FurnaceMindConversationRepository | None = None,
         run_repository: FurnaceMindRunRepository | None = None,
         document_repository: FurnaceMindDocumentRepository | None = None,
+        task_repository: FurnaceMindTaskRepository | None = None,
         safety_service: FurnaceMindSafetyService | None = None,
         memory_service: FurnaceMindMemoryService | None = None,
         llm_service: FurnaceMindLLMService | None = None,
         prompt_service: FurnaceMindPromptService | None = None,
         artifact_service: ComputeArtifactService | None = None,
+        skill_service: FurnaceMindSkillService | None = None,
+        report_service: FurnaceMindReportService | None = None,
     ) -> None:
         self.settings = settings or load_backend_settings()
         database_url = self.settings.furnacemind_database_url.strip() or None
         self.conversations = conversation_repository or FurnaceMindConversationRepository(database_url=database_url)
         self.runs = run_repository or FurnaceMindRunRepository(database_url=database_url)
         self.documents = document_repository or FurnaceMindDocumentRepository(database_url=database_url)
+        self.tasks = task_repository or FurnaceMindTaskRepository(database_url=database_url)
         self.safety = safety_service or FurnaceMindSafetyService(self.settings)
         self.memory = memory_service or FurnaceMindMemoryService(self.settings, safety=self.safety)
         self.llm = llm_service or FurnaceMindLLMService(self.settings)
@@ -69,6 +88,17 @@ class FurnaceMindService:
             repository=self.documents,
             settings=self.settings,
             safety=self.safety,
+        )
+        self.skill_service = skill_service or FurnaceMindSkillService(
+            task_repository=self.tasks,
+            settings=self.settings,
+            safety=self.safety,
+        )
+        self.report_service = report_service or FurnaceMindReportService(
+            task_repository=self.tasks,
+            settings=self.settings,
+            safety=self.safety,
+            artifact_service=self.artifacts,
         )
         self.retrieval = FurnaceMindRetrievalService(
             conversation_repository=self.conversations,
@@ -93,6 +123,9 @@ class FurnaceMindService:
         self.conversations.ensure_schema()
         self.runs.ensure_schema()
         self.documents.ensure_schema()
+        self.tasks.ensure_schema()
+        self.skill_service.ensure_schema()
+        self.report_service.ensure_schema()
 
     def get_config(self) -> dict[str, Any]:
         warnings = []
@@ -112,6 +145,8 @@ class FurnaceMindService:
             "qdrant_configured": bool(self.settings.furnacemind_qdrant_url and os.getenv(self.settings.furnacemind_qdrant_api_key_env, "")),
             "embeddings_enabled": self.settings.furnacemind_embeddings_enabled,
             "documents_enabled": self.settings.furnacemind_documents_enabled,
+            "skills_enabled": True,
+            "reports_enabled": True,
             "tools_enabled": self.settings.furnacemind_tools_enabled,
             "streaming_enabled": self.settings.furnacemind_streaming_enabled,
             "polling_fallback_enabled": self.settings.furnacemind_polling_fallback_enabled,
@@ -218,34 +253,84 @@ class FurnaceMindService:
         payload: dict[str, Any],
         current_user: dict[str, Any] | None,
         *,
+        idempotency_key: str,
         request_id: str | None = None,
     ) -> dict[str, Any]:
         record = self._conversation_or_404(conversation_id)
         self._require_conversation_access(record, current_user)
         message = self.safety.enforce_message_limit(payload.get("message") or "")
-        self.safety.block_unsafe_options(payload.get("options") or {})
+        options = payload.get("options") or {}
+        self._block_unsafe_run_options(options)
+        request_payload = {
+            "conversation_id": record.id,
+            "message": message,
+            "document_ids": [str(item) for item in (payload.get("document_ids") or [])],
+            "tool_mode": str(payload.get("tool_mode") or "auto").lower(),
+            "allow_llm": payload.get("allow_llm"),
+            "stream": bool(payload.get("stream", False)),
+            "options": self.safety.redact(options),
+        }
+        key_hash = self._require_idempotency(idempotency_key)
+        owner = _owner_scope(current_user)
+        fingerprint = _fingerprint(request_payload)
+        existing = self.runs.find_run_for_idempotency(owner_id=owner, idempotency_key_hash=key_hash)
+        if existing is not None:
+            if existing.request_fingerprint != fingerprint:
+                raise ApiError("IDEMPOTENCY_KEY_REUSED", "Idempotency-Key was already used for a different FurnaceMind run request.", 409)
+            return self.run_response(existing)
         user_message = self.conversations.create_message(
             {
                 "conversation_id": record.id,
                 "role": "user",
                 "content": self.safety.redact(message),
                 "status": "complete",
-                "metadata": {"document_ids": payload.get("document_ids") or []},
+                "metadata": {"document_ids": request_payload["document_ids"]},
             }
         )
         run = self.runs.create_run(
             {
                 "conversation_id": record.id,
-                "owner_id": _user_id(current_user),
+                "owner_id": owner,
                 "status": "pending",
                 "user_message_id": user_message.id,
                 "progress": 0.0,
-                "current_step": "created",
+                "current_step": "queued",
+                "request": request_payload,
+                "idempotency_key_hash": key_hash,
+                "request_fingerprint": fingerprint,
             }
         )
         self.events.append(run_id=run.id, conversation_id=record.id, event_type="run_created", payload={"request_id": request_id})
         self.events.append(run_id=run.id, conversation_id=record.id, event_type="message_created", payload={"message_id": user_message.id})
-        return self._process_run(run, user_message, payload, current_user, request_id=request_id)
+        return self.run_response(run)
+
+    def process_run(
+        self,
+        run_id: str,
+        current_user: dict[str, Any] | None,
+        *,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        run = self._run_or_404(run_id)
+        if run.status in _TERMINAL_RUN_STATUSES:
+            return self.run_response(run)
+        conversation = self._conversation_or_404(run.conversation_id)
+        self._require_conversation_access(conversation, current_user)
+        user_message = self.conversations.get_message(run.user_message_id or "")
+        if user_message is None:
+            failed = self.runs.update_run_status(
+                run.id,
+                status="failed",
+                progress=1.0,
+                current_step="failed",
+                error_code="FURNACEMIND_MESSAGE_NOT_FOUND",
+                error_message="FurnaceMind run message not found.",
+            )
+            return self.run_response(failed or run)
+        try:
+            return self._process_run(run, user_message, run.request, current_user, request_id=request_id)
+        except ApiError:
+            return self.run_response(self._run_or_404(run.id))
 
     def _process_run(
         self,
@@ -259,6 +344,23 @@ class FurnaceMindService:
         warnings: list[dict[str, Any]] = []
         artifacts: list[dict[str, Any]] = []
         try:
+            waiting = self._documents_waiting_for_index(payload.get("document_ids") or [], current_user)
+            if waiting:
+                waiting_warning = warning(
+                    "FURNACEMIND_DOCUMENTS_NOT_READY",
+                    "One or more selected documents must be indexed before this run can continue.",
+                    {"document_ids": waiting},
+                )
+                updated = self.runs.update_run_status(
+                    run.id,
+                    status="waiting_for_documents",
+                    progress=0.05,
+                    current_step="waiting_for_documents",
+                    warnings=[waiting_warning],
+                )
+                self.events.append(run_id=run.id, conversation_id=run.conversation_id, event_type="run_waiting_for_documents", payload={"document_ids": waiting})
+                return self.run_response(updated or run)
+
             self.runs.update_run_status(run.id, status="running", progress=0.15, current_step="retrieval")
             self.events.append(run_id=run.id, conversation_id=run.conversation_id, event_type="run_started", payload={})
             self.events.append(run_id=run.id, conversation_id=run.conversation_id, event_type="retrieval_started", payload={})
@@ -278,15 +380,10 @@ class FurnaceMindService:
 
             tool_results: list[dict[str, Any]] = []
             tool_mode = str(payload.get("tool_mode") or "auto").lower()
-            requested_tool_calls = list((payload.get("options") or {}).get("tool_calls") or [])
-            if tool_mode != "none" and requested_tool_calls:
-                self.events.append(run_id=run.id, conversation_id=run.conversation_id, event_type="tool_started", payload={"count": len(requested_tool_calls)})
-                tool_results, tool_warnings = self.tool_executor.execute_many(requested_tool_calls)
-                warnings.extend(tool_warnings)
-                self.events.append(run_id=run.id, conversation_id=run.conversation_id, event_type="tool_completed", payload={"count": len(tool_results)})
-            elif tool_mode != "none" and not self.settings.furnacemind_tools_enabled:
+            if tool_mode != "none" and not self.settings.furnacemind_tools_enabled:
                 warnings.append(warning("FURNACEMIND_TOOLS_DISABLED", "FurnaceMind tools are disabled."))
-
+            elif tool_mode != "none":
+                self.events.append(run_id=run.id, conversation_id=run.conversation_id, event_type="tool_policy_applied", payload={"allowed_tools": self.tool_registry.allowed_tool_names()})
             prompt, prompt_warnings = self.prompts.build_prompt(
                 message=user_message.content,
                 context=context,
@@ -317,6 +414,8 @@ class FurnaceMindService:
                         "created_at": datetime.now(timezone.utc).isoformat(),
                     },
                     ttl_hours=self.settings.furnacemind_artifact_ttl_hours,
+                    owner_user_id=_owner_scope(current_user),
+                    calculation_id=run.id,
                 )
                 artifacts.append(self.artifacts.response(metadata, "/furnacemind"))
                 self.events.append(run_id=run.id, conversation_id=run.conversation_id, event_type="artifact_created", payload={"artifact_id": metadata.artifact_id})
@@ -428,9 +527,120 @@ class FurnaceMindService:
         self._require_conversation_access(conversation, current_user)
         return self.events.list_events(run.id)
 
+    def cancel_run(self, run_id: str, current_user: dict[str, Any] | None) -> dict[str, Any]:
+        run = self._run_or_404(run_id)
+        conversation = self._conversation_or_404(run.conversation_id)
+        self._require_conversation_access(conversation, current_user)
+        if run.status in _TERMINAL_RUN_STATUSES:
+            return self.get_run_status(run_id, current_user)
+        cancelled = self.runs.update_run_status(run.id, status="cancelled", progress=run.progress, current_step="cancelled")
+        self.events.append(run_id=run.id, conversation_id=run.conversation_id, event_type="run_cancelled", payload={})
+        return self.get_run_status((cancelled or run).id, current_user)
     def list_tools(self) -> list[dict[str, Any]]:
         return self.tool_registry.list_tools()
 
+    def start_document_index(
+        self,
+        document_id: str,
+        current_user: dict[str, Any] | None,
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        record = self._document_or_404(document_id)
+        self.document_service.require_document_access(record, current_user)
+        key_hash = self._require_idempotency(idempotency_key)
+        owner = _owner_scope(current_user)
+        request = {"document_id": document_id, "chunk_count": record.chunk_count, "size_bytes": record.size_bytes}
+        fingerprint = _fingerprint(request)
+        existing = self.tasks.find_by_idempotency(owner_id=owner, task_type="document_index", idempotency_key_hash=key_hash)
+        if existing is not None:
+            if existing.request_fingerprint != fingerprint:
+                raise ApiError("IDEMPOTENCY_KEY_REUSED", "Idempotency-Key was already used for a different FurnaceMind document index request.", 409)
+            return self.task_response(existing)
+        task = self.tasks.create_task(
+            {
+                "task_type": "document_index",
+                "resource_id": document_id,
+                "owner_id": owner,
+                "status": "pending",
+                "progress": 0.0,
+                "current_step": "queued",
+                "request": request,
+                "idempotency_key_hash": key_hash,
+                "request_fingerprint": fingerprint,
+            }
+        )
+        self._append_task_event(task.id, "document_index_queued", {"document_id": document_id})
+        return self.task_response(task)
+
+    def process_document_index(self, task_id: str, current_user: dict[str, Any] | None) -> dict[str, Any]:
+        task = self._task_or_404(task_id)
+        if task.status in _TERMINAL_TASK_STATUSES:
+            return self.task_response(task)
+        try:
+            self.tasks.update_task_status(task.id, status="running", progress=0.35, current_step="indexing")
+            self._append_task_event(task.id, "document_index_started", {"document_id": task.resource_id})
+            result = self.document_service.index_document(
+                str(task.resource_id or ""),
+                current_user=current_user,
+                memory_service=self.memory,
+            )
+            completed = self.tasks.update_task_status(
+                task.id,
+                status="completed",
+                progress=1.0,
+                current_step="completed",
+                result={"document": result},
+                warnings=result.get("warnings", []),
+            )
+            self._append_task_event(task.id, "document_index_completed", {"document_id": task.resource_id, "indexed": result.get("indexed")})
+            return self.task_response(completed or task)
+        except ApiError as exc:
+            failed = self.tasks.update_task_status(
+                task.id,
+                status="failed",
+                progress=1.0,
+                current_step="failed",
+                error_code=exc.code,
+                error_message=exc.message,
+            )
+            self._append_task_event(task.id, "document_index_failed", {"error_code": exc.code})
+            return self.task_response(failed or task)
+
+    def document_index_status(self, document_id: str, current_user: dict[str, Any] | None) -> dict[str, Any]:
+        record = self._document_or_404(document_id)
+        self.document_service.require_document_access(record, current_user)
+        task = self.tasks.latest_for_resource(task_type="document_index", resource_id=document_id, owner_id=_owner_scope(current_user))
+        if task is None:
+            return {
+                "id": None,
+                "task_type": "document_index",
+                "resource_id": document_id,
+                "status": "completed" if record.indexed else "not_started",
+                "progress": 1.0 if record.indexed else 0.0,
+                "current_step": "indexed" if record.indexed else record.status,
+                "error_code": None,
+                "error_message": None,
+                "warnings": [],
+                "artifacts": [],
+                "result": {"document": self.document_service.response(record)},
+                "created_at": None,
+                "updated_at": None,
+                "completed_at": None,
+            }
+        return self.task_response(task)
+
+    def document_index_events(self, document_id: str, current_user: dict[str, Any] | None) -> list[dict[str, Any]]:
+        task = self._latest_document_task(document_id, current_user)
+        return self.task_event_responses(task.id)
+
+    def cancel_document_index(self, document_id: str, current_user: dict[str, Any] | None) -> dict[str, Any]:
+        task = self._latest_document_task(document_id, current_user)
+        if task.status in _TERMINAL_TASK_STATUSES:
+            return self.task_response(task)
+        cancelled = self.tasks.update_task_status(task.id, status="cancelled", progress=task.progress, current_step="cancelled")
+        self._append_task_event(task.id, "document_index_cancelled", {"document_id": document_id})
+        return self.task_response(cancelled or task)
     def submit_message_feedback(
         self,
         message_id: str,
@@ -453,13 +663,61 @@ class FurnaceMindService:
                 "tags": payload.get("tags") or [],
             }
         )
+        return self.feedback_response(record)
+
+    def list_feedback(self, *, filters: dict[str, Any], current_user: dict[str, Any] | None) -> dict[str, Any]:
+        self._require_user(current_user)
+        query = dict(filters)
+        if self.settings.furnacemind_require_auth and not _is_admin(current_user):
+            query["owner_id"] = _user_id(current_user)
+        items, total = self.conversations.list_message_feedback(query)
         return {
-            "id": record.id,
-            "message_id": record.message_id,
-            "conversation_id": record.conversation_id,
-            "created_at": record.created_at,
+            "items": [self.feedback_response(item) for item in items],
+            "total": total,
+            "limit": min(200, max(1, int(query.get("limit") or 50))),
+            "offset": max(0, int(query.get("offset") or 0)),
         }
 
+    def _documents_waiting_for_index(self, document_ids: list[str], current_user: dict[str, Any] | None) -> list[str]:
+        waiting: list[str] = []
+        for document_id in document_ids:
+            record = self._document_or_404(str(document_id))
+            self.document_service.require_document_access(record, current_user)
+            if not record.indexed:
+                waiting.append(record.id)
+        return waiting
+
+    def _latest_document_task(self, document_id: str, current_user: dict[str, Any] | None):
+        record = self._document_or_404(document_id)
+        self.document_service.require_document_access(record, current_user)
+        task = self.tasks.latest_for_resource(task_type="document_index", resource_id=document_id, owner_id=_owner_scope(current_user))
+        if task is None:
+            raise ApiError("FURNACEMIND_TASK_NOT_FOUND", "FurnaceMind document index task not found.", 404)
+        return task
+
+    def _append_task_event(self, task_id: str, event_type: str, payload: dict[str, Any]) -> None:
+        task = self._task_or_404(task_id)
+        self.tasks.append_event(
+            {
+                "task_id": task.id,
+                "task_type": task.task_type,
+                "resource_id": task.resource_id,
+                "event_type": event_type,
+                "payload": self.safety.redact(payload),
+            }
+        )
+
+    def _task_or_404(self, task_id: str):
+        task = self.tasks.get_task(task_id)
+        if task is None:
+            raise ApiError("FURNACEMIND_TASK_NOT_FOUND", "FurnaceMind task not found.", 404)
+        return task
+
+    def _document_or_404(self, document_id: str) -> DocumentRecord:
+        record = self.documents.get_document(document_id)
+        if record is None:
+            raise ApiError("FURNACEMIND_DOCUMENT_NOT_FOUND", "FurnaceMind document not found.", 404)
+        return record
     def _require_user(self, current_user: dict[str, Any] | None) -> None:
         if self.settings.furnacemind_require_auth and not current_user:
             raise ApiError("AUTH_REQUIRED", "Authentication is required.", status_code=401)
@@ -486,6 +744,35 @@ class FurnaceMindService:
             return
         raise ApiError("FURNACEMIND_FORBIDDEN", "You are not allowed to access this conversation.", 403)
 
+
+    @staticmethod
+    def _require_idempotency(idempotency_key: str | None) -> str:
+        key_hash = idempotency_hash(idempotency_key)
+        if not key_hash:
+            raise ApiError("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key is required for FurnaceMind mutations.", 400)
+        return key_hash
+
+    def _block_unsafe_run_options(self, options: dict[str, Any]) -> None:
+        self.safety.block_unsafe_options(options)
+        blocked_keys = {
+            "tool_calls",
+            "raw_sql",
+            "sql",
+            "raw_flux",
+            "flux",
+            "python",
+            "shell",
+            "provider_settings",
+            "api_key",
+            "system_prompt",
+        }
+        for key in blocked_keys:
+            if key in options:
+                raise ApiError(
+                    "FURNACEMIND_UNSAFE_INPUT",
+                    "FurnaceMind API does not accept client-supplied tools, code, provider settings, SQL, Flux, or system prompts.",
+                    status_code=403,
+                )
     def run_response(self, run: RunRecord) -> dict[str, Any]:
         return {
             "id": run.id,
@@ -535,6 +822,54 @@ class FurnaceMindService:
             "warnings": record.warnings,
         }
 
+
+    @staticmethod
+    def feedback_response(record: MessageFeedbackRecord) -> dict[str, Any]:
+        return {
+            "id": record.id,
+            "message_id": record.message_id,
+            "conversation_id": record.conversation_id,
+            "owner_id": record.owner_id,
+            "rating": record.rating,
+            "helpful": record.helpful,
+            "comment": record.comment,
+            "tags": record.tags,
+            "created_at": record.created_at,
+        }
+
+    @staticmethod
+    def task_response(task) -> dict[str, Any]:
+        return {
+            "id": task.id,
+            "task_type": task.task_type,
+            "resource_id": task.resource_id,
+            "status": task.status,
+            "progress": task.progress,
+            "current_step": task.current_step,
+            "error_code": task.error_code,
+            "error_message": task.error_message,
+            "warnings": task.warnings,
+            "artifacts": task.artifacts,
+            "result": task.result,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at,
+            "completed_at": task.completed_at,
+        }
+
+    def task_event_responses(self, task_id: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": event.id,
+                "task_id": event.task_id,
+                "task_type": event.task_type,
+                "resource_id": event.resource_id,
+                "event_type": event.event_type,
+                "sequence": event.sequence,
+                "payload": event.payload,
+                "created_at": event.created_at,
+            }
+            for event in self.tasks.list_events(task_id)
+        ]
     def _json_safe(self, value: Any) -> str:
         import json
 

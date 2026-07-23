@@ -34,6 +34,15 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "material_balance:config:write",
             "material_balance:diagnostics",
             "material_balance:artifacts:read:any",
+            "furnacemind:read",
+            "furnacemind:run",
+            "furnacemind:runs:cancel:any",
+            "furnacemind:documents:write",
+            "furnacemind:skills:write",
+            "furnacemind:reports:run",
+            "furnacemind:feedback:write",
+            "furnacemind:artifacts:read",
+            "furnacemind:artifacts:read:any",
         }
     ),
     "supervisor": frozenset(
@@ -53,6 +62,13 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "material_balance:run",
             "material_balance:export",
             "material_balance:config:write",
+            "furnacemind:read",
+            "furnacemind:run",
+            "furnacemind:documents:write",
+            "furnacemind:skills:write",
+            "furnacemind:reports:run",
+            "furnacemind:feedback:write",
+            "furnacemind:artifacts:read",
         }
     ),
     "user": frozenset(
@@ -65,6 +81,12 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "material_balance:read",
             "material_balance:run",
             "material_balance:export",
+            "furnacemind:read",
+            "furnacemind:run",
+            "furnacemind:documents:write",
+            "furnacemind:reports:run",
+            "furnacemind:feedback:write",
+            "furnacemind:artifacts:read",
         }
     ),
 }

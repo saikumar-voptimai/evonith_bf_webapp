@@ -128,11 +128,11 @@ def test_phase9_furnacemind_authenticated_flow(monkeypatch, tmp_path):
             headers=headers,
         )
         document_id = upload.json()["data"]["id"]
-        indexed = client.post(f"/api/v1/furnacemind/documents/{document_id}/index", headers=headers)
+        indexed = client.post(f"/api/v1/furnacemind/documents/{document_id}/index", headers={**headers, "Idempotency-Key": "auth-doc-index"})
         non_llm = client.post(
             f"/api/v1/furnacemind/conversations/{conversation_id}/runs",
             json={"message": "Summarise pressure", "document_ids": [document_id], "allow_llm": False},
-            headers=headers,
+            headers={**headers, "Idempotency-Key": "auth-run-non-llm"},
         )
         mock_llm = client.post(
             f"/api/v1/furnacemind/conversations/{conversation_id}/runs",
@@ -140,9 +140,9 @@ def test_phase9_furnacemind_authenticated_flow(monkeypatch, tmp_path):
                 "message": "Summarise pressure",
                 "document_ids": [document_id],
                 "allow_llm": True,
-                "options": {"tool_calls": [{"name": "data_summary", "input": {"rows": [{"x": 1}]}}], "export": True},
+                "options": {"export": True},
             },
-            headers=headers,
+            headers={**headers, "Idempotency-Key": "auth-run-llm"},
         )
         run_id = mock_llm.json()["data"]["id"]
         status = client.get(f"/api/v1/furnacemind/runs/{run_id}", headers=headers)
@@ -153,8 +153,8 @@ def test_phase9_furnacemind_authenticated_flow(monkeypatch, tmp_path):
         feedback = client.post(f"/api/v1/furnacemind/messages/{assistant_id}/feedback", json={"helpful": True}, headers=headers)
         me = client.get("/api/v1/auth/me", headers=headers)
         admin_users = client.get("/api/v1/admin/users", headers=headers)
-        data_sources = client.get("/api/v1/data/sources")
-        datasets = client.get("/api/v1/datasets")
+        data_sources = client.get("/api/v1/data/sources", headers=headers)
+        datasets = client.get("/api/v1/datasets", headers=headers)
         feedback_config = client.get("/api/v1/feedback/config")
         mb = client.get("/api/v1/material-balance/config")
         rec = client.get("/api/v1/recommendations/config")
@@ -168,10 +168,10 @@ def test_phase9_furnacemind_authenticated_flow(monkeypatch, tmp_path):
     assert conversation.status_code == 200
     assert forbidden.status_code == 403
     assert upload.status_code == 200
-    assert indexed.json()["data"]["indexed"] is True
-    assert non_llm.status_code == 200
-    assert non_llm.json()["data"]["status"] == "completed"
-    assert mock_llm.status_code == 200
+    assert indexed.status_code == 202
+    assert indexed.json()["data"]["status"] in {"pending", "completed"}
+    assert non_llm.status_code == 202
+    assert mock_llm.status_code == 202
     assert status.json()["data"]["result_message"]["metadata"]["llm_used"] is True
     assert [event["sequence"] for event in events.json()["data"]] == sorted(
         event["sequence"] for event in events.json()["data"]

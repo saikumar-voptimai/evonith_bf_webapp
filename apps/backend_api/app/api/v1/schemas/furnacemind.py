@@ -204,3 +204,127 @@ class MessageFeedbackResponse(BaseModel):
     message_id: str
     conversation_id: str
     created_at: datetime
+    owner_id: str | int | None = None
+    rating: int | None = None
+    helpful: bool | None = None
+    comment: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class FeedbackListResponse(BaseModel):
+    items: list[MessageFeedbackResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class TaskEventResponse(BaseModel):
+    id: str
+    task_id: str
+    task_type: str
+    resource_id: str | None = None
+    event_type: str
+    sequence: int
+    payload: dict[str, Any]
+    created_at: datetime
+
+
+class TaskStatusResponse(BaseModel):
+    id: str | None = None
+    task_type: str
+    resource_id: str | None = None
+    status: str
+    progress: float | None = None
+    current_step: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    result: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class SkillCreateRequest(BaseModel):
+    name: str
+    symbol: str | None = None
+    description: str | None = None
+    instruction: str
+    is_active: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillPatchRequest(BaseModel):
+    name: str | None = None
+    symbol: str | None = None
+    description: str | None = None
+    instruction: str | None = None
+    is_active: bool | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class SkillResponse(BaseModel):
+    id: str
+    slug: str
+    name: str
+    symbol: str | None = None
+    description: str | None = None
+    instruction: str
+    source_type: str
+    owner_id: str | int | None = None
+    is_active: bool
+    indexed: bool
+    index_status: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime | None = None
+
+
+class SkillListResponse(BaseModel):
+    items: list[SkillResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class ReportConfigResponse(BaseModel):
+    report_types: list[str]
+    shift_labels: list[str]
+    default_include_analysis: bool
+    artifact_ttl_hours: int
+
+
+class ReportCreateRequest(BaseModel):
+    report_type: Literal["Shift", "Day"] = "Shift"
+    selected_date: str
+    shift_label: Literal["A", "B", "C"] | None = None
+    include_analysis: bool = False
+
+
+class ReportResponse(BaseModel):
+    id: str | None = None
+    task_id: str
+    status: str
+    progress: float | None = None
+    current_step: str | None = None
+    report_type: str | None = None
+    selected_date: str | None = None
+    shift_label: str | None = None
+    include_analysis: bool | None = None
+    document: dict[str, Any] | None = None
+    markdown: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class ReportListResponse(BaseModel):
+    items: list[ReportResponse]
+    total: int
+    limit: int
+    offset: int

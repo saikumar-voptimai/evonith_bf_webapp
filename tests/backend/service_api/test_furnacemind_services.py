@@ -164,9 +164,10 @@ def test_memory_retrieval_prompt_llm_tools_events_and_orchestration(tmp_path, mo
             "message": "Summarise pressure",
             "document_ids": [uploaded["id"]],
             "allow_llm": True,
-            "options": {"tool_calls": [{"name": "data_summary", "input": {"rows": [{"a": 1}]}}], "export": True},
+            "options": {"export": True},
         },
         {"id": "u1"},
+        idempotency_key="service-run-key",
         request_id="req",
     )
 
@@ -176,7 +177,9 @@ def test_memory_retrieval_prompt_llm_tools_events_and_orchestration(tmp_path, mo
     assert llm.generate(prompt).provider_name == "mock"
     assert tool["output"]["row_count"] == 1
     assert event_service.list_events(run.id)[0]["payload"]["token"] == "[REDACTED]"
-    assert run_response["status"] == "completed"
+    assert run_response["status"] == "pending"
+    processed = service.process_run(run_response["id"], {"id": "u1"}, request_id="req")
+    assert processed["status"] == "completed"
     status = service.get_run_status(run_response["id"], {"id": "u1"})
     assert status["result_message"]["role"] == "assistant"
     assert status["artifacts"]

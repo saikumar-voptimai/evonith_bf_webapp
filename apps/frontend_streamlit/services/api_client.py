@@ -289,6 +289,7 @@ class ApiClient:
         content: bytes,
         content_type: str,
         headers: dict[str, str] | None = None,
+        idempotency_key: str | None = None,
     ) -> Any:
         """Upload one file using multipart/form-data without unsafe retries."""
         supplied_headers = dict(headers or {})
@@ -297,6 +298,8 @@ class ApiClient:
         if self.access_token and "Authorization" not in supplied_headers:
             request_headers["Authorization"] = f"Bearer {self.access_token}"
         request_headers.update(supplied_headers)
+        if idempotency_key:
+            request_headers["Idempotency-Key"] = str(idempotency_key)
         self.last_request_id = request_id
         self.last_response_request_id = None
 

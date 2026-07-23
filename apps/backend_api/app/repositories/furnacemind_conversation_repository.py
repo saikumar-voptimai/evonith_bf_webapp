@@ -444,3 +444,38 @@ class FurnaceMindConversationRepository:
                 tags=list(_from_json(row["tags_json"], [])),
                 created_at=_parse_dt(row["created_at"]) or utc_now(),
             )
+    def list_message_feedback(self, filters: dict[str, Any]) -> tuple[list[MessageFeedbackRecord], int]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        if filters.get("owner_id") is not None:
+            clauses.append("owner_id = ?")
+            values.append(str(filters["owner_id"]))
+        if filters.get("conversation_id") is not None:
+            clauses.append("conversation_id = ?")
+            values.append(str(filters["conversation_id"]))
+        where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        limit = min(200, max(1, int(filters.get("limit") or 50)))
+        offset = max(0, int(filters.get("offset") or 0))
+        with self._connect() as connection:
+            total = int(connection.execute(f"SELECT COUNT(*) FROM furnacemind_message_feedback{where_sql}", values).fetchone()[0])
+            rows = connection.execute(
+                "SELECT * FROM furnacemind_message_feedback"
+                + where_sql
+                + " ORDER BY created_at DESC, seq DESC LIMIT ? OFFSET ?",
+                [*values, limit, offset],
+            ).fetchall()
+            return [self._feedback_from_row(row) for row in rows], total
+
+    @staticmethod
+    def _feedback_from_row(row: sqlite3.Row) -> MessageFeedbackRecord:
+        return MessageFeedbackRecord(
+            id=str(row["id"]),
+            message_id=str(row["message_id"]),
+            conversation_id=str(row["conversation_id"]),
+            owner_id=row["owner_id"],
+            rating=row["rating"],
+            helpful=None if row["helpful"] is None else bool(row["helpful"]),
+            comment=row["comment"],
+            tags=list(_from_json(row["tags_json"], [])),
+            created_at=_parse_dt(row["created_at"]) or utc_now(),
+        )

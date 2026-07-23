@@ -20,8 +20,8 @@ class FakeClient:
         self.calls.append(("GET", path, params, headers or {}))
         return {"request_id": "req", "data": {"ok": True}, "meta": {}}
 
-    def post(self, path, json=None, params=None, headers=None):
-        self.calls.append(("POST", path, json, params, headers or {}))
+    def post(self, path, json=None, params=None, headers=None, idempotency_key=None):
+        self.calls.append(("POST", path, json, params, headers or {}, idempotency_key))
         return {"request_id": "req", "data": {"ok": True}, "meta": {}}
 
     def patch(self, path, json=None, params=None, headers=None):
@@ -32,8 +32,8 @@ class FakeClient:
         self.calls.append(("DELETE", path, params, headers or {}))
         return {"request_id": "req", "data": {"deleted": True}, "meta": {}}
 
-    def upload(self, path, *, filename, content, content_type, headers=None):
-        self.calls.append(("UPLOAD", path, filename, content, content_type, headers or {}))
+    def upload(self, path, *, filename, content, content_type, headers=None, idempotency_key=None):
+        self.calls.append(("UPLOAD", path, filename, content, content_type, headers or {}, idempotency_key))
         return {"request_id": "req", "data": {"id": "doc"}, "meta": {}}
 
 
@@ -62,8 +62,10 @@ def test_furnacemind_adapter_calls_expected_endpoints():
     assert client.calls[1][0:3] == ("POST", "/furnacemind/conversations", {"title": "x"})
     assert client.calls[5][1] == "/furnacemind/conversations/c1/archive"
     assert client.calls[8][1] == "/furnacemind/conversations/c1/runs"
+    assert client.calls[8][-1].startswith("fm-run-")
     assert client.calls[10][1] == "/furnacemind/runs/r1/events"
     assert client.calls[13][1] == "/furnacemind/documents/d1/index"
+    assert client.calls[13][-1].startswith("fm-doc-index-")
     assert client.calls[-1][1] == "/furnacemind/messages/m1/feedback"
 
 
@@ -83,6 +85,7 @@ def test_furnacemind_upload_and_artifact_url():
             b"hello",
             "text/plain",
             {"Authorization": "Bearer tok"},
+            None,
         )
     ]
     assert (
