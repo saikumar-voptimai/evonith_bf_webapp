@@ -1,4 +1,4 @@
-﻿"""Frontend settings for the Streamlit-to-backend migration."""
+"""Frontend settings for the Streamlit-to-backend migration."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ PAGE_API_FLAG_ENV_VARS: dict[str, str] = {
     "feedback": "USE_BACKEND_API_FEEDBACK",
     "material_balance": "USE_BACKEND_API_MATERIAL_BALANCE",
     "recommendations": "USE_BACKEND_API_RECOMMENDATIONS",
+    "vsense": "USE_BACKEND_API_VSENSE",
     "blend_optimizer": "USE_BACKEND_API_BLEND_OPTIMIZER",
     "copilot": "USE_BACKEND_API_COPILOT",
     "furnacemind": "USE_BACKEND_API_FURNACEMIND",
@@ -101,6 +102,14 @@ def load_frontend_settings() -> FrontendSettings:
         page_flags["data_explorer"] = page_flags["datasets"]
     else:
         page_flags["data_explorer"] = explicit_data_explorer
+    # Recommendations was the temporary Page 4 API flag. V-Sense has its own
+    # complete API gateway now, but deployments can keep the old flag until
+    # they set USE_BACKEND_API_VSENSE explicitly.
+    explicit_vsense = _optional_env_bool("USE_BACKEND_API_VSENSE")
+    if explicit_vsense is None:
+        page_flags["vsense"] = page_flags["recommendations"]
+    else:
+        page_flags["vsense"] = explicit_vsense
     return FrontendSettings(
         backend_api_base_url=_env("BACKEND_API_BASE_URL", DEFAULT_BACKEND_API_BASE_URL),
         use_backend_api=_env_bool("USE_BACKEND_API", False),

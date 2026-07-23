@@ -1,4 +1,4 @@
-﻿"""Backend API settings loaded from environment variables."""
+"""Backend API settings loaded from environment variables."""
 
 from __future__ import annotations
 
@@ -141,6 +141,63 @@ class BackendSettings(BaseSettings):
     vboard_processing_policy: str = Field(
         "legacy_v1",
         validation_alias="EVONITH_VBOARD_PROCESSING_POLICY",
+    )
+    # V-Sense API limits, optimizer policy, and backend-only review policy.
+    vsense_context_ttl_seconds: int = Field(
+        1800,
+        validation_alias="EVONITH_VSENSE_CONTEXT_TTL_SECONDS",
+    )
+    vsense_live_lookback_minutes: int = Field(
+        15,
+        validation_alias="EVONITH_VSENSE_LIVE_LOOKBACK_MINUTES",
+    )
+    vsense_max_live_staleness_seconds: int = Field(
+        900,
+        validation_alias="EVONITH_VSENSE_MAX_LIVE_STALENESS_SECONDS",
+    )
+    vsense_max_concurrent_runs: int = Field(
+        1,
+        validation_alias="EVONITH_VSENSE_MAX_CONCURRENT_RUNS",
+    )
+    vsense_run_timeout_seconds: int = Field(
+        180,
+        validation_alias="EVONITH_VSENSE_RUN_TIMEOUT_SECONDS",
+    )
+    vsense_default_algorithm_version: str = Field(
+        "legacy_v1",
+        validation_alias="EVONITH_VSENSE_DEFAULT_ALGORITHM_VERSION",
+    )
+    vsense_default_iteration_budget: str = Field(
+        "standard",
+        validation_alias="EVONITH_VSENSE_DEFAULT_ITERATION_BUDGET",
+    )
+    vsense_default_seed: int = Field(
+        42,
+        validation_alias="EVONITH_VSENSE_DEFAULT_SEED",
+    )
+    vsense_require_approved_bounds: bool = Field(
+        True,
+        validation_alias="EVONITH_VSENSE_REQUIRE_APPROVED_BOUNDS",
+    )
+    vsense_advanced_diagnostics: bool = Field(
+        False,
+        validation_alias="EVONITH_VSENSE_ADVANCED_DIAGNOSTICS",
+    )
+    vsense_llm_enabled: bool = Field(
+        False,
+        validation_alias="EVONITH_VSENSE_LLM_ENABLED",
+    )
+    vsense_llm_provider: str = Field(
+        "openai",
+        validation_alias="EVONITH_VSENSE_LLM_PROVIDER",
+    )
+    vsense_llm_model: str = Field(
+        "",
+        validation_alias="EVONITH_VSENSE_LLM_MODEL",
+    )
+    vsense_llm_timeout_seconds: int = Field(
+        45,
+        validation_alias="EVONITH_VSENSE_LLM_TIMEOUT_SECONDS",
     )
     # Data Explorer API limits. Aliases retain phase-4 environment names.
     data_preview_max_rows: int = Field(
@@ -714,6 +771,13 @@ class BackendSettings(BaseSettings):
         "vboard_query_timeout_seconds",
         "vboard_clock_skew_seconds",
         "vboard_cache_max_items",
+        "vsense_context_ttl_seconds",
+        "vsense_live_lookback_minutes",
+        "vsense_max_live_staleness_seconds",
+        "vsense_max_concurrent_runs",
+        "vsense_run_timeout_seconds",
+        "vsense_default_seed",
+        "vsense_llm_timeout_seconds",
         "data_preview_max_rows",
         "data_max_selected_fields",
         "data_export_max_rows",
@@ -799,6 +863,9 @@ class BackendSettings(BaseSettings):
         "audit_storage_backend",
         "metrics_format",
         "vboard_processing_policy",
+        "vsense_default_algorithm_version",
+        "vsense_default_iteration_budget",
+        "vsense_llm_provider",
         "ml_device",
         "xgboost_device",
     )
@@ -836,6 +903,7 @@ class BackendSettings(BaseSettings):
         "furnacemind_embedding_model",
         "furnacemind_embedding_api_key_env",
         "vboard_default_timezone",
+        "vsense_llm_model",
     )
     @classmethod
     def normalize_feedback_string(cls, value: str) -> str:

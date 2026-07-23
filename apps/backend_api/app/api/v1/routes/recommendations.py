@@ -45,7 +45,7 @@ def _wrap(request: Request, data: Any, warnings: list[str] | None = None) -> Api
     )
 
 
-@router.get("/config", response_model=ApiResponse)
+@router.get("/config", response_model=ApiResponse, deprecated=True)
 def config(
     request: Request,
     current_user: dict[str, Any] | None = Depends(get_optional_current_user),
@@ -55,7 +55,7 @@ def config(
     return _wrap(request, service.config())
 
 
-@router.post("/run", response_model=ApiResponse)
+@router.post("/run", response_model=ApiResponse, deprecated=True)
 def run(
     request: Request,
     payload: RecommendationRequest,
@@ -66,7 +66,7 @@ def run(
     return _wrap(request, service.run(payload.model_dump(), route_prefix="/recommendations"))
 
 
-@router.post("/jobs", response_model=ApiResponse)
+@router.post("/jobs", response_model=ApiResponse, deprecated=True)
 def start_job(
     request: Request,
     payload: RecommendationRequest,
@@ -82,7 +82,7 @@ def start_job(
     return _wrap(request, compute_job_service.response(job))
 
 
-@router.get("/jobs/{job_id}", response_model=ApiResponse)
+@router.get("/jobs/{job_id}", response_model=ApiResponse, deprecated=True)
 def get_job(
     request: Request,
     job_id: str,
@@ -95,7 +95,7 @@ def get_job(
     return _wrap(request, compute_job_service.status(job))
 
 
-@router.get("/artifacts/{artifact_id}/download")
+@router.get("/artifacts/{artifact_id}/download", deprecated=True)
 def download_artifact(
     request: Request,
     artifact_id: str,

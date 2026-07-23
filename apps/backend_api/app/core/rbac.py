@@ -1,4 +1,4 @@
-﻿"""Backend-only role and permission helpers."""
+"""Backend-only role and permission helpers."""
 
 from __future__ import annotations
 
@@ -21,6 +21,13 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "datasets:refresh",
             "datasets:override",
             "vboard:read",
+            "vsense:read",
+            "vsense:run",
+            "vsense:bounds:write",
+            "vsense:diagnostics",
+            "vsense:llm",
+            "vsense:runs:read:any",
+            "vsense:runs:cancel:any",
         }
     ),
     "supervisor": frozenset(
@@ -32,11 +39,22 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "datasets:build",
             "datasets:refresh",
             "vboard:read",
+            "vsense:read",
+            "vsense:run",
+            "vsense:bounds:write",
+            "vsense:llm",
         }
     ),
-    "user": frozenset({"data:read", "data:export", "vboard:read"}),
+    "user": frozenset(
+        {
+            "data:read",
+            "data:export",
+            "vboard:read",
+            "vsense:read",
+            "vsense:run",
+        }
+    ),
 }
-
 VALID_ROLES = frozenset(ROLE_PERMISSIONS)
 ALL_PERMISSIONS = frozenset().union(*ROLE_PERMISSIONS.values())
 
