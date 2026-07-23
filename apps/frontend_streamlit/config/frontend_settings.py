@@ -1,4 +1,4 @@
-"""Frontend settings for the Streamlit-to-backend migration."""
+﻿"""Frontend settings for the Streamlit-to-backend migration."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ PAGE_API_FLAG_ENV_VARS: dict[str, str] = {
     "copilot": "USE_BACKEND_API_COPILOT",
     "furnacemind": "USE_BACKEND_API_FURNACEMIND",
     "ops": "USE_BACKEND_API_OPS",
+    "vboard": "USE_BACKEND_API_VBOARD",
 }
 
 

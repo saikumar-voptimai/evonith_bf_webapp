@@ -1,4 +1,4 @@
-"""API v1 router composition."""
+﻿"""API v1 router composition."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from apps.backend_api.app.api.v1.routes import (
     plant_admin,
     recommendations,
     status,
+    vboard,
 )
 
 router = APIRouter()
@@ -39,6 +40,7 @@ router.include_router(blend_optimizer.router)
 router.include_router(copilot.router)
 router.include_router(furnacemind.router)
 router.include_router(status.router)
+router.include_router(vboard.router)
 router.include_router(metrics.router)
 router.include_router(jobs.router)
 router.include_router(ops.router)

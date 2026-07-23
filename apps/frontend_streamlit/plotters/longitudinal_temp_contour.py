@@ -1,4 +1,4 @@
-"""Longitudinal (cross-section) temperature contour plotter.
+﻿"""Longitudinal (cross-section) temperature contour plotter.
 
 Renders Matplotlib filled contour plots of furnace wall temperatures
 along the vertical axis for each quadrant, masked to the actual furnace
@@ -12,6 +12,10 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
 from .base_contour import BasePlotter
+
+
+def _axis_id(prefix: str, n: int) -> str:
+    return prefix if n == 1 else f"{prefix}{n}"
 
 
 class LongitudinalTemperaturePlotter(BasePlotter):
@@ -99,7 +103,7 @@ class LongitudinalTemperaturePlotter(BasePlotter):
                 ax.text(
                     -2.7,
                     region_y,
-                    f"{temp_at_region:.1f}°C",
+                    f"{temp_at_region:.1f}Â°C",
                     color="white",
                     fontsize=10,
                     fontweight="bold",
@@ -124,7 +128,7 @@ class LongitudinalTemperaturePlotter(BasePlotter):
         cbar_ticks = np.arange(global_min, global_max + step, step)
         cbar.set_ticks(cbar_ticks)
         cbar.set_ticklabels([f"{tick:.1f}" for tick in cbar_ticks])
-        cbar.set_label("Temperature (°C)")
+        cbar.set_label("Temperature (Â°C)")
         return fig
 
     def plot_plotly(
@@ -147,16 +151,17 @@ class LongitudinalTemperaturePlotter(BasePlotter):
         y_grid = Y[:, 0]
 
         step = 100
-        all_temps = np.concatenate(temperatures_list)
-        min_val = min(all_temps) // step
-        max_val = max(all_temps) // step
-
-        if np.isnan(min_val) or np.isnan(max_val):
-            # Probable data missing error
-            raise ValueError("Missing data in DB - Try different time range")
+        arrays = [np.asarray(values, dtype=float) for values in temperatures_list]
+        all_temps = np.concatenate(arrays)
+        finite_temps = all_temps[np.isfinite(all_temps)]
+        if finite_temps.size == 0:
+            raise ValueError("No finite temperature data is available for this range")
+        min_val = np.nanmin(finite_temps) // step
+        max_val = np.nanmax(finite_temps) // step
         vmin = int(min_val) * step
         vmax = int(max_val) * step
-
+        if vmin == vmax:
+            vmax = vmin + step
         fig = make_subplots(
             rows=1,
             cols=len(temperatures_list),
@@ -185,7 +190,7 @@ class LongitudinalTemperaturePlotter(BasePlotter):
                     colorscale="Viridis",
                     colorbar=(
                         dict(
-                            title="Temperature (°C)",
+                            title="Temperature (Â°C)",
                             ticks="outside",
                             tickvals=np.arange(vmin, vmax + step, step),
                         )
@@ -225,42 +230,42 @@ class LongitudinalTemperaturePlotter(BasePlotter):
                         text=region_name,
                         x=-5.5,
                         y=region_y,
-                        xref=f"x{idx+1}",
-                        yref="y",
+                        xref=_axis_id("x", idx + 1),
+                        yref=_axis_id("y", idx + 1),
                         font=dict(size=15, color="black", weight="bold"),
                         showarrow=False,
                     )
                 fig.add_annotation(
-                    text=f"{temp_val:.1f}°C",
+                    text=f"{temp_val:.1f}Â°C",
                     x=-1.8,
                     y=region_y,
-                    xref=f"x{idx+1}",
-                    yref="y",
+                    xref=_axis_id("x", idx + 1),
+                    yref=_axis_id("y", idx + 1),
                     font=dict(size=15, color="white", weight="bold"),
                     showarrow=False,
                 )
                 fig.add_annotation(
-                    text=f"+{(tempmax_val - temp_val):.1f}°C",
+                    text=f"+{(tempmax_val - temp_val):.1f}Â°C",
                     x=-1.2,
                     y=region_y + 0.5,
-                    xref=f"x{idx+1}",
-                    yref="y",
+                    xref=_axis_id("x", idx + 1),
+                    yref=_axis_id("y", idx + 1),
                     font=dict(size=12, color="red", weight="bold"),
                     showarrow=False,
                 )
                 fig.add_annotation(
-                    text=f"{(tempmin_val - temp_val):.1f}°C",
+                    text=f"{(tempmin_val - temp_val):.1f}Â°C",
                     x=-1.2,
                     y=region_y - 0.5,
-                    xref=f"x{idx+1}",
-                    yref="y",
+                    xref=_axis_id("x", idx + 1),
+                    yref=_axis_id("y", idx + 1),
                     font=dict(size=12, color="green", weight="bold"),
                     showarrow=False,
                 )
 
             fig.add_annotation(
                 text=f"Q{idx + 1}",
-                xref=f"x{idx+1}",
+                xref=_axis_id("x", idx + 1),
                 yref="paper",
                 x=0.5,
                 y=1.05,

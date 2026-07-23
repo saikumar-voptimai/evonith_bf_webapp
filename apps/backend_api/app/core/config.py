@@ -1,4 +1,4 @@
-"""Backend API settings loaded from environment variables."""
+﻿"""Backend API settings loaded from environment variables."""
 
 from __future__ import annotations
 
@@ -100,6 +100,47 @@ class BackendSettings(BaseSettings):
     auth_bootstrap_admin_enabled: bool = Field(
         False,
         validation_alias="EVONITH_AUTH_BOOTSTRAP_ADMIN_ENABLED",
+    )
+    # V-Board API limits and processing policy.
+    vboard_cache_ttl_seconds: int = Field(
+        60,
+        validation_alias="EVONITH_VBOARD_CACHE_TTL_SECONDS",
+    )
+    vboard_historical_cache_ttl_seconds: int = Field(
+        300,
+        validation_alias="EVONITH_VBOARD_HISTORICAL_CACHE_TTL_SECONDS",
+    )
+    vboard_max_absolute_range_days: int = Field(
+        31,
+        validation_alias="EVONITH_VBOARD_MAX_ABSOLUTE_RANGE_DAYS",
+    )
+    vboard_max_timeseries_points: int = Field(
+        2000,
+        validation_alias="EVONITH_VBOARD_MAX_TIMESERIES_POINTS",
+    )
+    vboard_max_source_rows: int = Field(
+        200000,
+        validation_alias="EVONITH_VBOARD_MAX_SOURCE_ROWS",
+    )
+    vboard_query_timeout_seconds: int = Field(
+        20,
+        validation_alias="EVONITH_VBOARD_QUERY_TIMEOUT_SECONDS",
+    )
+    vboard_clock_skew_seconds: int = Field(
+        300,
+        validation_alias="EVONITH_VBOARD_CLOCK_SKEW_SECONDS",
+    )
+    vboard_cache_max_items: int = Field(
+        128,
+        validation_alias="EVONITH_VBOARD_CACHE_MAX_ITEMS",
+    )
+    vboard_default_timezone: str = Field(
+        "Asia/Kolkata",
+        validation_alias="EVONITH_VBOARD_DEFAULT_TIMEZONE",
+    )
+    vboard_processing_policy: str = Field(
+        "legacy_v1",
+        validation_alias="EVONITH_VBOARD_PROCESSING_POLICY",
     )
     # Data Explorer API limits. Aliases retain phase-4 environment names.
     data_preview_max_rows: int = Field(
@@ -665,6 +706,14 @@ class BackendSettings(BaseSettings):
     @field_validator(
         "auth_access_token_expire_minutes",
         "auth_min_password_length",
+        "vboard_cache_ttl_seconds",
+        "vboard_historical_cache_ttl_seconds",
+        "vboard_max_absolute_range_days",
+        "vboard_max_timeseries_points",
+        "vboard_max_source_rows",
+        "vboard_query_timeout_seconds",
+        "vboard_clock_skew_seconds",
+        "vboard_cache_max_items",
         "data_preview_max_rows",
         "data_max_selected_fields",
         "data_export_max_rows",
@@ -749,6 +798,7 @@ class BackendSettings(BaseSettings):
         "furnacemind_embedding_provider",
         "audit_storage_backend",
         "metrics_format",
+        "vboard_processing_policy",
         "ml_device",
         "xgboost_device",
     )
@@ -785,6 +835,7 @@ class BackendSettings(BaseSettings):
         "furnacemind_qdrant_collection",
         "furnacemind_embedding_model",
         "furnacemind_embedding_api_key_env",
+        "vboard_default_timezone",
     )
     @classmethod
     def normalize_feedback_string(cls, value: str) -> str:
