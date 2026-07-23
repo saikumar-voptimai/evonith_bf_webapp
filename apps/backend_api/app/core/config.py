@@ -1,4 +1,15 @@
-"""Backend API settings loaded from environment variables."""
+"""Central environment-backed configuration for the Evonith backend API.
+
+This module defines ``BackendSettings``, the typed source of configuration for
+the independently runnable FastAPI backend and its services. It maps supported
+``EVONITH_*`` environment variables to documented defaults and applies shared
+normalization and safety bounds before settings are consumed by application
+code. The settings include server, authentication, storage, model, FurnaceMind,
+dependency-profile, observability, and runtime-control options.
+
+The module only defines and loads configuration. It does not start the API,
+connect to external systems, or execute FurnaceMind workflows.
+"""
 
 from __future__ import annotations
 
@@ -484,6 +495,10 @@ class BackendSettings(BaseSettings):
         5,
         validation_alias="EVONITH_FURNACEMIND_MAX_TOOL_CALLS_PER_RUN",
     )
+    furnacemind_graph_max_iterations: int = Field(
+        8,
+        validation_alias="EVONITH_FURNACEMIND_GRAPH_MAX_ITERATIONS",
+    )
     furnacemind_enable_code_execution: bool = Field(
         False,
         validation_alias="EVONITH_FURNACEMIND_ENABLE_CODE_EXECUTION",
@@ -666,6 +681,7 @@ class BackendSettings(BaseSettings):
         "furnacemind_vector_timeout_seconds",
         "furnacemind_tool_timeout_seconds",
         "furnacemind_max_tool_calls_per_run",
+        "furnacemind_graph_max_iterations",
         "furnacemind_run_ttl_hours",
         "furnacemind_artifact_ttl_hours",
         "furnacemind_event_retention_hours",

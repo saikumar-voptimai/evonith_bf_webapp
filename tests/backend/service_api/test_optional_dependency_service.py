@@ -1,4 +1,10 @@
-"""Tests for Phase 11 optional dependency helpers."""
+"""Tests for safe optional-dependency discovery and reporting.
+
+This module verifies successful and missing lazy imports, cached availability
+checks, structured installation guidance, and status responses that do not leak
+paths or secrets. It also confirms that LangGraph is reported as an optional
+member of the ``backend-ai`` runtime profile.
+"""
 
 from __future__ import annotations
 
@@ -48,5 +54,9 @@ def test_optional_dependency_status_is_path_and_secret_safe():
     status = service.get_optional_dependency_status()
 
     assert any(item["feature_group"] == "backend-ai" for item in status)
+    assert any(
+        item["module"] == "langgraph" and item["feature_group"] == "backend-ai"
+        for item in status
+    )
     assert "site-packages" not in str(status)
     assert "api_key" not in str(status).lower()

@@ -35,7 +35,7 @@ uv run python scripts/check_import_boundaries.py
 | `backend-base` | FastAPI backend import/start profile | FastAPI, Uvicorn, Pydantic, settings, auth hashing, SQLAlchemy, pandas/numpy, shared package | Streamlit, OpenAI/Anthropic, Qdrant, torch, sentence-transformers, xgboost |
 | `backend-data` | Backend data connectors | InfluxDB client, PostgreSQL driver, pyarrow/openpyxl | AI/vector/local LLM |
 | `backend-ml` | Optional model/compute support | scikit-learn, scipy, joblib, xgboost | Provider SDKs and vector stores |
-| `backend-ai` | Optional provider LLM calls | OpenAI, Anthropic, tiktoken | Local LLM stack |
+| `backend-ai` | Optional provider LLM calls and orchestration | OpenAI, Anthropic, LangGraph, tiktoken | Local LLM stack |
 | `backend-vector` | Optional vector/memory support | qdrant-client, sentence-transformers, torch, voyageai | Enabled features remain off unless configured |
 | `backend-documents` | Optional document extraction | PyMuPDF, python-docx, python-pptx, pypdf | OCR stack |
 | `frontend` | Streamlit UI and API adapters | Streamlit, plotting/UI libraries, HTTP clients | Backend server internals, DB/vector/LLM/model packages |

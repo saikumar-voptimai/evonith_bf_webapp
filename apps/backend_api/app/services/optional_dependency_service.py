@@ -1,4 +1,14 @@
-"""Safe optional dependency probes and lazy imports for runtime profiles."""
+"""Safe discovery and loading of optional backend dependencies.
+
+This module maps optional Python modules to Evonith runtime profiles, checks
+module availability without importing heavy packages, and performs lazy imports
+only when a feature actually needs them. It also produces structured API errors
+and dependency-status responses with installation guidance while avoiding local
+package paths, credentials, and other sensitive diagnostic details.
+
+The ``backend-ai`` profile includes LangGraph alongside provider SDKs, allowing
+deployments without AI features to keep those packages optional.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +23,12 @@ from apps.backend_api.app.core.errors import ApiError
 
 
 FEATURE_GROUP_MODULES: dict[str, tuple[str, ...]] = {
-    "backend-ai": ("openai", "anthropic", "tiktoken"),
+    "backend-ai": (
+        "openai",
+        "anthropic",
+        "langgraph",
+        "tiktoken",
+    ),
     "backend-ml": ("joblib", "sklearn", "scipy", "xgboost"),
     "backend-vector": ("qdrant_client", "sentence_transformers", "torch"),
     "backend-documents": ("fitz", "docx", "pptx", "pypdf"),
@@ -32,6 +47,7 @@ MODULE_INSTALL_HINTS: dict[str, str] = {
     "pptx": "backend-documents",
     "openai": "backend-ai",
     "anthropic": "backend-ai",
+    "langgraph": "backend-ai",
     "qdrant_client": "backend-vector",
     "sentence_transformers": "backend-vector",
     "torch": "backend-vector",

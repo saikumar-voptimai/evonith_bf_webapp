@@ -65,6 +65,7 @@ backend-ai = [
     "langchain>=0.3.0",
     "langchain-community>=0.3.0",
     "langchain-openai>=0.2.0",
+    "langgraph>=1.2.0",
     "openai>=1.102.0",
     "tiktoken>=0.8.0",
 ]
