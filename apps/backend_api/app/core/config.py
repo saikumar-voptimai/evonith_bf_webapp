@@ -364,6 +364,38 @@ class BackendSettings(BaseSettings):
         False,
         validation_alias="EVONITH_MATERIAL_BALANCE_ALLOW_RUNTIME_CONFIG",
     )
+    material_balance_default_timezone: str = Field(
+        "Asia/Kolkata",
+        validation_alias="EVONITH_MATERIAL_BALANCE_DEFAULT_TIMEZONE",
+    )
+    material_balance_default_algorithm_version: str = Field(
+        "legacy_v1",
+        validation_alias="EVONITH_MATERIAL_BALANCE_DEFAULT_ALGORITHM_VERSION",
+    )
+    material_balance_cache_ttl_seconds: int = Field(
+        300,
+        validation_alias="EVONITH_MATERIAL_BALANCE_CACHE_TTL_SECONDS",
+    )
+    material_balance_max_rm_lag_hours: int = Field(
+        240,
+        validation_alias="EVONITH_MATERIAL_BALANCE_MAX_RM_LAG_HOURS",
+    )
+    material_balance_max_blast_lag_hours: int = Field(
+        48,
+        validation_alias="EVONITH_MATERIAL_BALANCE_MAX_BLAST_LAG_HOURS",
+    )
+    material_balance_max_dust_catcher_t: float = Field(
+        500.0,
+        validation_alias="EVONITH_MATERIAL_BALANCE_MAX_DUST_CATCHER_T",
+    )
+    material_balance_require_completed_day: bool = Field(
+        True,
+        validation_alias="EVONITH_MATERIAL_BALANCE_REQUIRE_COMPLETED_DAY",
+    )
+    material_balance_export_ttl_hours: int = Field(
+        24,
+        validation_alias="EVONITH_MATERIAL_BALANCE_EXPORT_TTL_HOURS",
+    )
     recommendations_enable_explanations: bool = Field(
         True,
         validation_alias="EVONITH_RECOMMENDATIONS_ENABLE_EXPLANATIONS",

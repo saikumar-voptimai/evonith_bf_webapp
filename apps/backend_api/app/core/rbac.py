@@ -28,6 +28,12 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "vsense:llm",
             "vsense:runs:read:any",
             "vsense:runs:cancel:any",
+            "material_balance:read",
+            "material_balance:run",
+            "material_balance:export",
+            "material_balance:config:write",
+            "material_balance:diagnostics",
+            "material_balance:artifacts:read:any",
         }
     ),
     "supervisor": frozenset(
@@ -43,6 +49,10 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "vsense:run",
             "vsense:bounds:write",
             "vsense:llm",
+            "material_balance:read",
+            "material_balance:run",
+            "material_balance:export",
+            "material_balance:config:write",
         }
     ),
     "user": frozenset(
@@ -52,6 +62,9 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "vboard:read",
             "vsense:read",
             "vsense:run",
+            "material_balance:read",
+            "material_balance:run",
+            "material_balance:export",
         }
     ),
 }

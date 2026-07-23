@@ -1,4 +1,4 @@
-"""Day-windowed data fetchers for the Material Balance page.
+"""Day-windowed data fetchers for the Material Balance page and API.
 
 The static ML dataset stores dataframe aliases from the cleaned ML export.
 This module converts those aliases to the logical mapping names defined in
@@ -9,23 +9,51 @@ such as which logical columns are daily tonnages, live in
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, Tuple
 
 import pandas as pd
 import pytz
 
-from furnace_data.dataset.static_csv import load_static_dataset
 from furnace_data.config import load_config
+from furnace_data.dataset.static_csv import get_static_dataset_path, load_static_dataset
 from furnace_data.influx.base import BaseDataFetcher
 from furnace_data.offline import fetch_offline_report
 
 log = logging.getLogger("root")
 
 IST = pytz.timezone("Asia/Kolkata")
+STATIC_DATASET_ID = "static_ml_dataset"
+WINDOW_POLICY_VERSION = "hourly_shift_v1"
+
+
+@dataclass(frozen=True)
+class MaterialBalanceWindow:
+    """Resolved local and UTC window for one Material Balance slice."""
+
+    local_start: datetime
+    local_end: datetime
+    utc_start: datetime
+    utc_end: datetime
+
+
+@dataclass(frozen=True)
+class StaticDatasetSnapshot:
+    """Immutable dataset snapshot used by one calculation."""
+
+    dataset_id: str
+    version: str
+    frame: pd.DataFrame
+    minimum_date: date | None
+    maximum_date: date | None
+    row_count: int
+
 
 # ---------------------------------------------------------------------------
 # Config-backed column resolution
@@ -121,25 +149,79 @@ def _online_influx_to_mapping_name() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# IST to UTC conversion helper
+# IST to UTC conversion helpers
 # ---------------------------------------------------------------------------
+
+
+def _local_window(day: date, lag_hours: int = 0) -> MaterialBalanceWindow:
+    start_local = IST.localize(datetime(day.year, day.month, day.day, 0, 0, 0))
+    end_local = start_local + timedelta(days=1)
+    if lag_hours:
+        start_local = start_local - timedelta(hours=int(lag_hours))
+        end_local = end_local - timedelta(hours=int(lag_hours))
+    return MaterialBalanceWindow(
+        local_start=start_local,
+        local_end=end_local,
+        utc_start=start_local.astimezone(timezone.utc),
+        utc_end=end_local.astimezone(timezone.utc),
+    )
 
 
 def get_day_window_utc(day: date) -> Tuple[datetime, datetime]:
     """Return ``(start_utc, end_utc)`` for one IST calendar day."""
-    start_local = IST.localize(datetime(day.year, day.month, day.day, 0, 0, 0))
-    end_local = start_local + timedelta(days=1)
-    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+    window = _local_window(day)
+    return window.utc_start, window.utc_end
+
+
+def resolve_material_balance_windows(
+    day: date,
+    *,
+    rm_lag_hours: int = 0,
+    blast_lag_hours: int = 0,
+) -> tuple[MaterialBalanceWindow, MaterialBalanceWindow, MaterialBalanceWindow]:
+    """Return output, raw-material and blast windows for one IST day."""
+
+    return (
+        _local_window(day, 0),
+        _local_window(day, int(rm_lag_hours)),
+        _local_window(day, int(blast_lag_hours)),
+    )
 
 
 # ---------------------------------------------------------------------------
-# Static ML dataset loader
+# Static ML dataset loader and snapshot helpers
 # ---------------------------------------------------------------------------
 
 
-def _load_static_dataset() -> pd.DataFrame:
-    """Load, timestamp-parse, and rename the full static ML dataset."""
-    df = load_static_dataset()
+def _resolve_existing_static_dataset_path() -> Path | None:
+    """Return an existing static dataset CSV path without building it."""
+
+    csv_path = get_static_dataset_path()
+    if csv_path.exists():
+        return csv_path
+    try:
+        from furnace_data.dataset import static_csv as static_csv_module
+
+        fallback = static_csv_module._legacy_static_dataset_path()  # noqa: SLF001
+    except Exception:  # noqa: BLE001
+        fallback = None
+    if fallback is not None and fallback.exists():
+        return fallback
+    return None
+
+
+def _dataset_file_version(path: Path) -> str:
+    stat = path.stat()
+    payload = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+@lru_cache(maxsize=2)
+def _load_static_dataset_from_path(path_text: str, version: str) -> pd.DataFrame:
+    """Load a known CSV snapshot; *version* is part of the cache key."""
+
+    _ = version
+    df = load_static_dataset(Path(path_text))
     if df.empty:
         return pd.DataFrame()
 
@@ -150,15 +232,153 @@ def _load_static_dataset() -> pd.DataFrame:
     return df
 
 
+@lru_cache(maxsize=2)
+def _load_static_dataset() -> pd.DataFrame:
+    """Load, timestamp-parse, and rename the full static ML dataset."""
+    path = _resolve_existing_static_dataset_path()
+    if path is None:
+        return pd.DataFrame()
+    return _load_static_dataset_from_path(str(path), _dataset_file_version(path))
+
+
 def _window_from_csv(
     df: pd.DataFrame,
     day: date,
     lag_hours: int = 0,
 ) -> pd.DataFrame:
-    """Slice rows for one calendar day, with optional whole-day lag."""
-    target_date = day - timedelta(hours=lag_hours)
-    mask = df["timestamp"].dt.date == target_date
+    """Slice rows for one IST day with a true hour-shifted input window."""
+    _, lagged_window, _ = resolve_material_balance_windows(
+        day,
+        rm_lag_hours=int(lag_hours),
+        blast_lag_hours=0,
+    )
+    return _window_from_snapshot_frame(df, lagged_window)
+
+
+def _window_from_snapshot_frame(df: pd.DataFrame, window: MaterialBalanceWindow) -> pd.DataFrame:
+    start = window.local_start.replace(tzinfo=None)
+    end = window.local_end.replace(tzinfo=None)
+    ts = pd.to_datetime(df["timestamp"], errors="coerce")
+    if getattr(ts.dt, "tz", None) is not None:
+        ts = ts.dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
+    mask = (ts >= start) & (ts < end)
     return df.loc[mask].copy()
+
+
+def get_static_dataset_metadata() -> dict[str, Any]:
+    """Return public metadata for the canonical dataset without rebuilding it."""
+
+    path = _resolve_existing_static_dataset_path()
+    if path is None:
+        return {
+            "dataset_id": STATIC_DATASET_ID,
+            "version": None,
+            "status": "missing",
+            "available_date_range": {"minimum": None, "maximum": None},
+            "row_count": 0,
+        }
+
+    version = _dataset_file_version(path)
+    try:
+        index_frame = pd.read_csv(path, usecols=[0], low_memory=False)
+        ts = pd.to_datetime(index_frame.iloc[:, 0], errors="coerce").dropna()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Static dataset metadata read failed: %s", exc)
+        return {
+            "dataset_id": STATIC_DATASET_ID,
+            "version": version,
+            "status": "not_ready",
+            "available_date_range": {"minimum": None, "maximum": None},
+            "row_count": 0,
+        }
+
+    dates = ts.dt.date if not ts.empty else pd.Series(dtype=object)
+    minimum = dates.min() if not dates.empty else None
+    maximum = dates.max() if not dates.empty else None
+    return {
+        "dataset_id": STATIC_DATASET_ID,
+        "version": version,
+        "status": "ready" if minimum and maximum else "missing",
+        "available_date_range": {"minimum": minimum, "maximum": maximum},
+        "row_count": int(len(index_frame)),
+    }
+
+
+def load_static_dataset_snapshot() -> StaticDatasetSnapshot:
+    """Load the canonical dataset once for a calculation without rebuilding it."""
+
+    metadata = get_static_dataset_metadata()
+    version = metadata.get("version")
+    if metadata.get("status") != "ready" or not version:
+        raise FileNotFoundError("Static ML dataset is not available.")
+    path = _resolve_existing_static_dataset_path()
+    if path is None:
+        raise FileNotFoundError("Static ML dataset is not available.")
+    frame = _load_static_dataset_from_path(str(path), str(version)).copy()
+    range_info = metadata.get("available_date_range") or {}
+    return StaticDatasetSnapshot(
+        dataset_id=STATIC_DATASET_ID,
+        version=str(version),
+        frame=frame,
+        minimum_date=range_info.get("minimum"),
+        maximum_date=range_info.get("maximum"),
+        row_count=int(metadata.get("row_count") or len(frame)),
+    )
+
+
+def aggregate_rm_from_snapshot(
+    snapshot: StaticDatasetSnapshot,
+    window: MaterialBalanceWindow,
+) -> pd.DataFrame:
+    """Return one row with RM composition averages and mass sums."""
+
+    source = _window_from_snapshot_frame(snapshot.frame, window)
+    if source.empty:
+        return pd.DataFrame()
+    mass_cols = _schema_mass_cols()
+    result: Dict[str, float] = {}
+    for col in source.columns:
+        if col == "timestamp":
+            continue
+        series = pd.to_numeric(source[col], errors="coerce")
+        value = series.sum(skipna=True) if col in mass_cols else series.mean(skipna=True)
+        result[col] = float(value) if pd.notna(value) else float("nan")
+    out = pd.DataFrame([result])
+    out.attrs["n_rows"] = len(source)
+    return out
+
+
+def aggregate_hm_slag_from_snapshot(
+    snapshot: StaticDatasetSnapshot,
+    window: MaterialBalanceWindow,
+) -> pd.DataFrame:
+    """Return one row with HM and slag chemistry averages."""
+
+    source = _window_from_snapshot_frame(snapshot.frame, window)
+    if source.empty:
+        return pd.DataFrame()
+    avg = source.mean(numeric_only=True).to_frame().T
+    avg.attrs["n_rows"] = len(source)
+    return avg
+
+
+def aggregate_online_from_snapshot(
+    snapshot: StaticDatasetSnapshot,
+    window: MaterialBalanceWindow,
+) -> Dict[str, float]:
+    """Return blast/process averages from a snapshot."""
+
+    source = _window_from_snapshot_frame(snapshot.frame, window)
+    if source.empty:
+        return {}
+    out: Dict[str, float] = {}
+    for field in _process_fields():
+        if field in source.columns:
+            value = pd.to_numeric(source[field], errors="coerce").mean(skipna=True)
+            out[field] = float(value) if pd.notna(value) else 0.0
+        else:
+            out[field] = 0.0
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -228,14 +448,9 @@ def fetch_static_online_for_day(day: date, lag_hours: int = 0) -> Dict[str, floa
 
 def get_csv_date_range() -> Tuple[date | None, date | None]:
     """Return the earliest and latest IST dates available in the static dataset."""
-    df = _load_static_dataset()
-    if df.empty or "timestamp" not in df.columns:
-        return None, None
-    ts = df["timestamp"].dropna()
-    if ts.empty:
-        return None, None
-    dates = ts.dt.date
-    return dates.min(), dates.max()
+    metadata = get_static_dataset_metadata()
+    range_info = metadata.get("available_date_range") or {}
+    return range_info.get("minimum"), range_info.get("maximum")
 
 
 # ---------------------------------------------------------------------------
@@ -244,18 +459,21 @@ def get_csv_date_range() -> Tuple[date | None, date | None]:
 
 
 def clear_day_caches(day: date) -> None:
-    """Invalidate every per-day cached fetch for a given IST date."""
+    """Invalidate Material Balance dataset/config caches."""
+    _ = day
     for fn in (
-        fetch_static_rm_for_day,
-        fetch_static_hm_slag_for_day,
-        fetch_static_online_for_day,
-        fetch_rm_for_day,
-        fetch_hm_slag_for_day,
-        fetch_dpr_for_day,
-        fetch_online_aggregates_for_day,
+        _load_static_dataset,
+        _load_static_dataset_from_path,
+        _settings_config,
+        _material_balance_config,
+        _rename_dict,
+        _dataset_alias_to_mapping_name,
+        _schema_mass_cols,
+        _process_fields,
+        _online_influx_to_mapping_name,
     ):
         try:
-            fn.clear()
+            fn.cache_clear()
         except Exception:  # noqa: BLE001
             pass
 
@@ -299,18 +517,27 @@ def fetch_hm_slag_for_day(day: date) -> pd.DataFrame:
     return avg
 
 
+def fetch_dpr_for_window(window: MaterialBalanceWindow) -> pd.DataFrame:
+    """Fetch daily production report rows for a resolved UTC window."""
+    try:
+        df = fetch_offline_report("DPR", (window.utc_start, window.utc_end))
+    except Exception as exc:
+        log.warning(
+            "fetch_dpr_for_window(%s, %s) failed: %s",
+            window.utc_start,
+            window.utc_end,
+            exc,
+        )
+        return pd.DataFrame()
+    return df if df is not None else pd.DataFrame()
+
+
 def fetch_dpr_for_day(day: date) -> pd.DataFrame:
     """Fetch daily production report row(s) from the offline database."""
-    start_utc, end_utc = get_day_window_utc(day)
-    try:
-        df = fetch_offline_report("DPR", (start_utc, end_utc))
-    except Exception as exc:
-        log.warning("fetch_dpr_for_day(%s) failed: %s", day, exc)
-        return pd.DataFrame()
-
+    output_window, _, _ = resolve_material_balance_windows(day)
+    df = fetch_dpr_for_window(output_window)
     if df is None or df.empty:
         return pd.DataFrame()
-
     return df
 
 

@@ -75,7 +75,7 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
     try:
         model_registry_service = ModelRegistryService(settings=settings)
         app.state.model_registry_service = model_registry_service
-        app.state.material_balance_service = MaterialBalanceService(settings=settings)
+        app.state.material_balance_service = MaterialBalanceService(settings=settings, audit_service=getattr(app.state, "audit_service", None))
         app.state.recommendation_service = RecommendationService(settings=settings)
         app.state.blend_optimizer_service = BlendOptimizerService(
             settings=settings,

@@ -210,10 +210,7 @@ def apply_dpr_mapping(
 ) -> Dict[str, float]:
     """Translate a raw DPR DataFrame into ``{canonical_field: mass_t}``.
 
-    If multiple rows are returned for the day (rare — DPR is daily) the
-    sum is taken: DPR fields are typically already-aggregated daily
-    totals, so summing the (usually single) row equals the row value.
-    Missing or unmapped fields silently produce 0.0.
+    If multiple rows are returned for the day, the latest non-null value is used. DPR fields are daily cumulative snapshots unless explicitly modeled otherwise. Missing or unmapped fields silently produce 0.0.
 
     Args:
         dpr_df (pd.DataFrame): Raw DPR row(s) from
@@ -235,8 +232,8 @@ def apply_dpr_mapping(
             out[canonical] = 0.0
             continue
         try:
-            v = pd.to_numeric(dpr_df[col], errors="coerce").sum()
-            out[canonical] = float(v) if pd.notna(v) else 0.0
+            series = pd.to_numeric(dpr_df[col], errors="coerce").dropna()
+            out[canonical] = float(series.iloc[-1]) if not series.empty else 0.0
         except Exception:  # noqa: BLE001
             out[canonical] = 0.0
     return out
