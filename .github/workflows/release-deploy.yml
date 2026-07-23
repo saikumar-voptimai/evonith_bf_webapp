@@ -13,10 +13,15 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PYTHON_VERSION: "3.10"
+  PYTHON_VERSION: "3.11"
   UV_VERSION: "0.11.16"
-  PI_REPO_DIR: /opt/evonith-bf
-  BACKEND_SERVICE: evonith-backend.service
+  PI_REPO_DIR: /home/voptimaise/Desktop/Evonith/evonith_bf_webapp
+  BACKEND_SERVICE: evonith-backend
+  DEPLOY_HEALTH_URL: http://127.0.0.1:80/api/v1/health
+  DEPLOY_READINESS_URL: http://127.0.0.1:80/api/v1/readiness
+  LLM_PROVIDER: openai
+  OPENAI_API_KEY: ci-placeholder
+  QDRANT_URL: http://localhost:6333
 
 jobs:
   test:
@@ -72,59 +77,20 @@ jobs:
   deploy:
     name: Deploy to Raspberry Pi
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, evonith-pi]
     timeout-minutes: 30
     environment: raspberry-pi-production
     steps:
-      - name: Configure SSH
-        env:
-          PI_HOST: ${{ secrets.PI_HOST }}
-          PI_PORT: ${{ secrets.PI_PORT }}
-          PI_USER: ${{ secrets.PI_USER }}
-          PI_SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_PRIVATE_KEY }}
-          PI_KNOWN_HOSTS: ${{ secrets.PI_KNOWN_HOSTS }}
-        run: |
-          set -Eeuo pipefail
-          PI_PORT="${PI_PORT:-22}"
-          : "${PI_HOST:?PI_HOST secret is required}"
-          : "${PI_USER:?PI_USER secret is required}"
-          : "${PI_SSH_PRIVATE_KEY:?PI_SSH_PRIVATE_KEY secret is required}"
-          : "${PI_KNOWN_HOSTS:?PI_KNOWN_HOSTS secret is required}"
-          case "$PI_PORT" in
-            ''|*[!0-9]*) echo "PI_PORT must be numeric" >&2; exit 1 ;;
-          esac
-          install -m 700 -d "$HOME/.ssh"
-          printf '%s\n' "$PI_SSH_PRIVATE_KEY" > "$HOME/.ssh/pi_deploy_key"
-          chmod 600 "$HOME/.ssh/pi_deploy_key"
-          printf '%s\n' "$PI_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          chmod 644 "$HOME/.ssh/known_hosts"
-
       - name: Deploy exact tested commit
         env:
-          PI_HOST: ${{ secrets.PI_HOST }}
-          PI_PORT: ${{ secrets.PI_PORT }}
-          PI_USER: ${{ secrets.PI_USER }}
           RELEASE_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
-          PI_PORT="${PI_PORT:-22}"
-          ssh \
-            -i "$HOME/.ssh/pi_deploy_key" \
-            -p "$PI_PORT" \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_USER@$PI_HOST" \
-            "EVONITH_DEPLOY_REPO_DIR=$PI_REPO_DIR EVONITH_BACKEND_SERVICE=$BACKEND_SERVICE GITHUB_SHA=$RELEASE_SHA bash -se" <<'REMOTE'
-          set -Eeuo pipefail
-          cd "$EVONITH_DEPLOY_REPO_DIR"
-          scripts/deploy_edge_release.sh \
-            --ref "$GITHUB_SHA" \
-            --branch release \
+          EVONITH_BACKEND_SERVICE="$BACKEND_SERVICE" \
+          EVONITH_DEPLOY_HEALTH_URL="$DEPLOY_HEALTH_URL" \
+          EVONITH_DEPLOY_READINESS_URL="$DEPLOY_READINESS_URL" \
+          "$PI_REPO_DIR/scripts/deploy_edge_release.sh" \
+            --repo-dir "$PI_REPO_DIR" \
+            --ref "$RELEASE_SHA" \
+            --branch production \
             --device raspberry-pi
-          REMOTE
-
-      - name: Remove SSH key
-        if: ${{ always() }}
-        run: rm -f "$HOME/.ssh/pi_deploy_key"
