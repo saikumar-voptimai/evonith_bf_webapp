@@ -4,6 +4,7 @@ This directory is split into active operating docs and archived migration histor
 
 ## Start Here
 
+- [FurnaceMind Phase 0 baseline](furnacemind/phase-0-baseline.md) - DEV/UAT gap analysis, implementation order, and acceptance checklist.
 - [Repository cleanup plan](migration/post-phase-13-structure-cleanup-plan.md) - current restructure map, compatibility surfaces, risks, and validation history.
 - [Testing guide](testing/phase-13-testing-guide.md) - current regression, deployment, release-readiness, and manual verification commands.
 - [OpenAPI v1 export](api/openapi-v1.json) - generated backend API contract.
