@@ -265,7 +265,7 @@ class HopperHistoryRepository:
         user_id: UUID | None,
         ip_address: str | None,
         source_type: str = "webapp",
-    ) -> None:
+    ) -> int:
         """Insert one full hopper-material snapshot."""
         from_time = _as_aware_utc(from_time)
         with self._session_factory() as session:
@@ -274,16 +274,35 @@ class HopperHistoryRepository:
                 if hopper not in HOPPER_COLUMNS:
                     raise ValueError(f"Invalid hopper: {hopper}")
                 snapshot[hopper] = material_code
-            session.add(
-                HopperRawMaterialHistory(
-                    date_time=from_time,
-                    ip_address=ip_address,
-                    user_modified=user_id,
-                    source_type=source_type,
-                    **snapshot,
-                )
+            row = HopperRawMaterialHistory(
+                date_time=from_time,
+                ip_address=ip_address,
+                user_modified=user_id,
+                source_type=source_type,
+                **snapshot,
             )
+            session.add(row)
             session.commit()
+            return int(row.id)
+
+    def get_hopper_snapshot_at(self, ts: datetime | None = None) -> dict[str, Any]:
+        """Return the latest hopper snapshot row at or before *ts*."""
+        with self._session_factory() as session:
+            row = self._latest_row(session, ts)
+            payload = {
+                "id": getattr(row, "id", None),
+                "date_time": getattr(row, "date_time", None),
+                "source_type": getattr(row, "source_type", None),
+                "ip_address": getattr(row, "ip_address", None),
+                "user_modified": (
+                    str(row.user_modified)
+                    if row is not None and row.user_modified
+                    else None
+                ),
+                "created_at": getattr(row, "created_at", None),
+            }
+            payload.update(self._row_to_codes(row))
+            return payload
 
     def get_current_hopper_material_codes(self) -> dict[str, str | None]:
         """Return current hopper to material-code map."""
@@ -298,13 +317,17 @@ class HopperHistoryRepository:
             row = self._latest_row(session, ts)
             return getattr(row, hopper) if row else None
 
-    def get_hopper_material_history(self) -> list[dict[str, Any]]:
+    def get_hopper_material_history(
+        self, *, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         """Return complete hopper snapshot history rows."""
         with self._session_factory() as session:
             stmt = select(HopperRawMaterialHistory).order_by(
                 HopperRawMaterialHistory.date_time.desc(),
                 HopperRawMaterialHistory.id.desc(),
             )
+            if limit is not None:
+                stmt = stmt.offset(max(0, offset)).limit(max(1, int(limit)))
             rows = session.execute(stmt).scalars().all()
             out = []
             for row in rows:
@@ -323,17 +346,40 @@ class HopperHistoryRepository:
                 out.append(payload)
             return out
 
-    def delete_hopper_material_history(self, record_ids: list[int]) -> None:
+    def count_hopper_material_history(self) -> int:
+        """Return total hopper snapshot history rows."""
+        with self._session_factory() as session:
+            return int(
+                session.execute(
+                    select(func.count()).select_from(HopperRawMaterialHistory)
+                ).scalar_one()
+            )
+
+    def delete_hopper_material_history(self, record_ids: list[int]) -> int:
         """Delete hopper snapshot rows by IDs."""
         if not record_ids:
-            return
+            return 0
         with self._session_factory() as session:
-            session.execute(
+            requested_ids = {int(record_id) for record_id in record_ids}
+            found_ids = {
+                int(row[0])
+                for row in session.execute(
+                    select(HopperRawMaterialHistory.id).where(
+                        HopperRawMaterialHistory.id.in_(requested_ids)
+                    )
+                ).all()
+            }
+            if found_ids != requested_ids:
+                session.rollback()
+                missing = sorted(requested_ids - found_ids)
+                raise ValueError(f"Invalid hopper history id(s): {missing}")
+            result = session.execute(
                 delete(HopperRawMaterialHistory).where(
-                    HopperRawMaterialHistory.id.in_(record_ids)
+                    HopperRawMaterialHistory.id.in_(requested_ids)
                 )
             )
             session.commit()
+            return int(result.rowcount or 0)
 
 
 class BurdenHistoryRepository:
@@ -400,7 +446,7 @@ class BurdenHistoryRepository:
         user_id: UUID | None = None,
         ip: str = "",
         source_type: str = "webapp",
-    ) -> None:
+    ) -> int:
         """Insert one full burden snapshot copied from latest prior row plus edits."""
         timestamp = _as_aware_utc(timestamp)
         unknown = sorted(set(row_values) - set(BURDEN_VALUE_COLUMNS))
@@ -416,24 +462,47 @@ class BurdenHistoryRepository:
                     snapshot[field] = value
                 else:
                     snapshot[field] = float(value)
-            session.add(
-                BurdenHistory(
-                    date_time=timestamp,
-                    source_type=source_type,
-                    ip_address=ip,
-                    user_modified=user_id,
-                    **snapshot,
-                )
+            row = BurdenHistory(
+                date_time=timestamp,
+                source_type=source_type,
+                ip_address=ip,
+                user_modified=user_id,
+                **snapshot,
             )
+            session.add(row)
             session.commit()
+            return int(row.id)
 
-    def get_burden_history(self) -> list[dict[str, Any]]:
+    def get_burden_snapshot_at(self, ts: datetime | None = None) -> dict[str, Any]:
+        """Return the latest burden snapshot row at or before *ts*."""
+        with self._session_factory() as session:
+            row = self._latest_row(session, ts)
+            payload = {
+                "id": getattr(row, "id", None),
+                "date_time": getattr(row, "date_time", None),
+                "source_type": getattr(row, "source_type", None),
+                "ip_address": getattr(row, "ip_address", None),
+                "user_modified": (
+                    str(row.user_modified)
+                    if row is not None and row.user_modified
+                    else None
+                ),
+                "created_at": getattr(row, "created_at", None),
+            }
+            payload.update(self._row_to_values(row))
+            return payload
+
+    def get_burden_history(
+        self, *, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         """Return full burden snapshot history."""
         with self._session_factory() as session:
             stmt = select(BurdenHistory).order_by(
                 BurdenHistory.date_time.desc(),
                 BurdenHistory.id.desc(),
             )
+            if limit is not None:
+                stmt = stmt.offset(max(0, offset)).limit(max(1, int(limit)))
             rows = session.execute(stmt).scalars().all()
             out = []
             for row in rows:
@@ -455,15 +524,34 @@ class BurdenHistoryRepository:
         with self._session_factory() as session:
             return self._row_to_values(self._latest_row(session, ts))
 
-    def delete_burden_history(self, record_ids: list[int]) -> None:
+    def count_burden_history(self) -> int:
+        """Return total burden snapshot history rows."""
+        with self._session_factory() as session:
+            return int(
+                session.execute(select(func.count()).select_from(BurdenHistory)).scalar_one()
+            )
+
+    def delete_burden_history(self, record_ids: list[int]) -> int:
         """Delete burden snapshot rows by IDs."""
         if not record_ids:
-            return
+            return 0
         with self._session_factory() as session:
-            session.execute(
-                delete(BurdenHistory).where(BurdenHistory.id.in_(record_ids))
+            requested_ids = {int(record_id) for record_id in record_ids}
+            found_ids = {
+                int(row[0])
+                for row in session.execute(
+                    select(BurdenHistory.id).where(BurdenHistory.id.in_(requested_ids))
+                ).all()
+            }
+            if found_ids != requested_ids:
+                session.rollback()
+                missing = sorted(requested_ids - found_ids)
+                raise ValueError(f"Invalid burden history id(s): {missing}")
+            result = session.execute(
+                delete(BurdenHistory).where(BurdenHistory.id.in_(requested_ids))
             )
             session.commit()
+            return int(result.rowcount or 0)
 
     def fetch_distribution_frame(
         self, *, start_date: date, end_date: date

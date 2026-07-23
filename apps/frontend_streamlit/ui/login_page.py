@@ -8,8 +8,6 @@ and session state initialisation via :func:`~utils.session.login_user`.
 import streamlit as st
 
 from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
-from apps.frontend_streamlit.data.db import UserDataService
-from apps.frontend_streamlit.domain.auth_service import AuthService
 from apps.frontend_streamlit.services.api_errors import BackendApiHTTPError, FrontendApiError
 from apps.frontend_streamlit.services.auth_api import login as backend_login
 from apps.frontend_streamlit.utils.session import login_user
@@ -33,9 +31,12 @@ class LoginPage:
         self.auth_service = None
         self.use_backend_api_auth = is_backend_api_enabled("auth")
 
-    def _direct_auth_service(self) -> AuthService:
+    def _direct_auth_service(self):
         """Create direct-mode auth objects lazily."""
         if self.db is None or self.auth_service is None:
+            from apps.frontend_streamlit.data.db import UserDataService
+            from apps.frontend_streamlit.domain.auth_service import AuthService
+
             self.db = UserDataService()
             self.auth_service = AuthService(self.db)
         return self.auth_service
@@ -143,6 +144,7 @@ class LoginPage:
             user_id=user.get("id"),
             access_token=result.get("access_token"),
             token_expires_at=result.get("expires_at"),
+            permissions=user.get("permissions") or [],
         )
         st.success(f"Welcome, {user.get('username') or username}!")
         st.rerun()

@@ -45,6 +45,51 @@ class AdminService:
             )
         return normalized
 
+    def _count_active_admins(self) -> int:
+        counter = getattr(self.repository, "count_active_admins", None)
+        if counter is not None:
+            return int(counter())
+        users = self.repository.list_users(limit=500, offset=0)
+        return sum(
+            1
+            for user in users
+            if str(user.role).lower() == "admin" and bool(user.is_active)
+        )
+
+    def _guard_admin_update(
+        self,
+        user_id: str,
+        changes: dict[str, Any],
+        actor_user: dict[str, Any] | None,
+    ) -> UserRecord:
+        target = self.repository.find_by_id(user_id)
+        if target is None:
+            raise ApiError("ADMIN_USER_NOT_FOUND", "User not found.", status_code=404)
+
+        deactivating = changes.get("is_active") is False
+        actor_id = str((actor_user or {}).get("id") or "")
+        if deactivating and actor_id and actor_id == str(target.id):
+            raise ApiError(
+                "FORBIDDEN",
+                "The currently authenticated admin cannot be deactivated.",
+                status_code=403,
+            )
+
+        new_role = changes.get("role")
+        demoting_admin = (
+            new_role is not None
+            and str(target.role).lower() == "admin"
+            and str(new_role).strip().lower() != "admin"
+        )
+        if (deactivating or demoting_admin) and str(target.role).lower() == "admin" and target.is_active:
+            if self._count_active_admins() <= 1:
+                raise ApiError(
+                    "FORBIDDEN",
+                    "The final active admin cannot be deactivated or demoted.",
+                    status_code=403,
+                )
+        return target
+
     def list_users(self, *, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         """Return a paginated user list."""
         users = self.repository.list_users(limit=limit, offset=offset)
@@ -102,10 +147,18 @@ class AdminService:
             raise ApiError("ADMIN_USER_INVALID", str(exc), status_code=422) from exc
         return self._profile(user)
 
-    def update_user(self, user_id: str, **changes: Any) -> dict[str, Any]:
-        """Patch allowed user metadata."""
+    def update_user(
+        self,
+        user_id: str,
+        *,
+        actor_user: dict[str, Any] | None = None,
+        **changes: Any,
+    ) -> dict[str, Any]:
+        """Patch allowed user metadata with admin safety guards."""
         if "username" in changes and changes["username"] is not None:
             changes["username"] = self._require_username(changes["username"])
+
+        self._guard_admin_update(user_id, changes, actor_user)
 
         try:
             user = self.repository.update_user(user_id, **changes)
@@ -140,9 +193,15 @@ class AdminService:
         self.repository.update_password_hash(user_id, password_hash)
         return {"reset": True}
 
-    def set_active(self, user_id: str, is_active: bool) -> dict[str, Any]:
+    def set_active(
+        self,
+        user_id: str,
+        is_active: bool,
+        *,
+        actor_user: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Activate or deactivate a user."""
-        return self.update_user(user_id, is_active=is_active)
+        return self.update_user(user_id, actor_user=actor_user, is_active=is_active)
 
     @staticmethod
     def list_roles() -> dict[str, Any]:

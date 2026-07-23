@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
+from apps.frontend_streamlit.services.welcome_gateway import get_welcome_gateway
 from apps.frontend_streamlit.utils.session import has_permission, logout_user
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -54,6 +56,33 @@ if "admin_tool_selection" not in st.session_state:
 selection = st.session_state.get("admin_tool_selection")
 
 
+def _api_error_text(exc: FrontendApiError) -> str:
+    parts = [exc.message]
+    if exc.error_code:
+        parts.append(f"code={exc.error_code}")
+    if exc.request_id:
+        parts.append(f"request_id={exc.request_id}")
+    return " ".join(parts)
+
+
+try:
+    _welcome_gateway = get_welcome_gateway()
+except FrontendApiError as exc:
+    st.error(f"Backend API mode is unavailable: {_api_error_text(exc)}")
+    st.stop()
+
+_allowed_admin_selections = set()
+if has_permission("hopper:write"):
+    _allowed_admin_selections.add("hopper")
+if has_permission("burden:write"):
+    _allowed_admin_selections.add("burden")
+if has_permission("users:write"):
+    _allowed_admin_selections.add("register")
+if selection is not None and selection not in _allowed_admin_selections:
+    st.session_state["admin_tool_selection"] = None
+    selection = None
+
+
 def _back_btn():
     if st.button("⬅  Back to Dashboard"):
         st.session_state["admin_tool_selection"] = None
@@ -63,13 +92,13 @@ def _back_btn():
 if selection == "hopper" and has_permission("hopper:write"):
     _back_btn()
     from apps.frontend_streamlit.ui.hopper_admin_page import hopper_admin_page
-    hopper_admin_page(st.session_state.get("auth_user"))
+    hopper_admin_page(st.session_state.get("auth_user"), gateway=_welcome_gateway)
     st.stop()
 
 if selection == "burden" and has_permission("burden:write"):
     _back_btn()
     from apps.frontend_streamlit.ui.burden_admin_page import burden_admin_page
-    burden_admin_page(st.session_state.get("auth_user"))
+    burden_admin_page(st.session_state.get("auth_user"), gateway=_welcome_gateway)
     st.stop()
 
 if selection == "register" and has_permission("users:write"):
@@ -146,36 +175,38 @@ st.html(f"""
 """)
 
 # ── Live KPI bar ──────────────────────────────────────────────────────────────
-@st.cache_data(ttl=120, show_spinner=False)
-def _live_kpis() -> tuple[dict, str]:
-    """Returns (values_dict, error_msg). error_msg is empty string on success."""
+def _live_kpis() -> tuple[dict[str, float | None], list[str], str]:
+    """Returns KPI values, backend warnings, and a display-safe error."""
     try:
-        from furnace_data.influx.online import fetch_online_df
-        df = fetch_online_df(
-            selected_measurements=["process_params"],
-            time_range="last 1 hour",
-            window_by="15 minutes",
-            column_naming="field",
+        response = _welcome_gateway.get_kpis(window="1h", bucket="15m")
+        data = response.get("data", {})
+        metrics = data.get("metrics", {})
+
+        def metric_value(key: str):
+            metric = metrics.get(key) or {}
+            return metric.get("value")
+
+        return (
+            {
+                "prod": metric_value("production_rate"),
+                "fuel": metric_value("fuel_rate"),
+                "etaco": metric_value("eta_co"),
+                "wind": metric_value("blast_volume"),
+            },
+            list(response.get("warnings") or []),
+            "",
         )
-        if df is None or df.empty:
-            return {}, "No data returned for the last hour."
-        def m(col):
-            return round(float(df[col].dropna().mean()), 1) if col in df.columns else None
-        values = {
-            "prod":  m("production_per_hour"),
-            "fuel":  m("fuel_rate"),
-            "etaco": m("body_etaco"),
-            "wind":  m("hot_blast_vol_nm3h"),
-        }
-        return values, ""
-    except Exception as e:
-        return {}, str(e)
+    except FrontendApiError as exc:
+        return {}, [], _api_error_text(exc)
+    except Exception as exc:
+        return {}, [], str(exc)
 
 
-kpis, _kpi_err = _live_kpis()
+kpis, _kpi_warnings, _kpi_err = _live_kpis()
 if _kpi_err:
-    st.caption(f"⚠ Live KPIs unavailable: {_kpi_err}")
-
+    st.caption(f"Live KPIs unavailable: {_kpi_err}")
+for _warning in _kpi_warnings:
+    st.caption(f"Live KPI warning: {_warning}")
 
 def _fmt(v, d=1):
     return f"{v:,.{d}f}" if v is not None else "&#8212;"
@@ -272,7 +303,7 @@ _tile(
 _tile(_fc, "custom_pages/8_Feedback.py", "📮", "Feedback",
       "Submit feature requests, bug reports, and operational feedback.", "#b45309")
 
-# ── Admin tools ───────────────────────────────────────────────────────────────
+# Administration tools
 if (
     has_permission("hopper:write")
     or has_permission("burden:write")
@@ -283,17 +314,19 @@ if (
             "text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.8rem;'>"
             "Administration</p>")
     _a1, _a2, _a3 = st.columns(3)
-    with _a1:
-        if st.button("🛠  Hopper Mapping", width="stretch"):
-            st.session_state["admin_tool_selection"] = "hopper"
-            st.rerun()
+    if has_permission("hopper:write"):
+        with _a1:
+            if st.button("Hopper Mapping", width="stretch"):
+                st.session_state["admin_tool_selection"] = "hopper"
+                st.rerun()
     if has_permission("burden:write"):
         with _a2:
-            if st.button("📊  Burden Distribution", width="stretch"):
+            if st.button("Burden Distribution", width="stretch"):
                 st.session_state["admin_tool_selection"] = "burden"
                 st.rerun()
+    if has_permission("users:write"):
         with _a3:
-            if st.button("📝  User Management", width="stretch"):
+            if st.button("User Management", width="stretch"):
                 st.session_state["admin_tool_selection"] = "register"
                 st.rerun()
 

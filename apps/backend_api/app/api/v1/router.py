@@ -10,6 +10,7 @@ from apps.backend_api.app.api.v1.routes import (
     blend_optimizer,
     copilot,
     data,
+    dashboard,
     datasets,
     feedback,
     furnacemind,
@@ -18,6 +19,7 @@ from apps.backend_api.app.api.v1.routes import (
     material_balance,
     metrics,
     ops,
+    plant_admin,
     recommendations,
     status,
 )
@@ -26,9 +28,11 @@ router = APIRouter()
 router.include_router(health.router)
 router.include_router(auth.router)
 router.include_router(admin.router)
+router.include_router(plant_admin.router)
 router.include_router(feedback.router)
 router.include_router(data.router)
 router.include_router(datasets.router)
+router.include_router(dashboard.router)
 router.include_router(material_balance.router)
 router.include_router(recommendations.router)
 router.include_router(blend_optimizer.router)

@@ -1,237 +1,227 @@
-"""Burden distribution admin page for ring-charge pattern management.
+﻿"""Burden distribution admin page for ring-charge pattern management."""
 
-Allows supervisors and admins to update burden distribution parameters
-(charge patterns, coke/non-coke angles, portions) stored via
-:class:`~data.db.BurdenConfigService` snapshot logic.
-"""
+from __future__ import annotations
 
-# --------- burden_admin_page.py ----------
 from datetime import datetime
+from zoneinfo import ZoneInfo
+from typing import Any
 
 import streamlit as st
 
-from apps.frontend_streamlit.data.db import BurdenConfigService
+from apps.frontend_streamlit.services.api_errors import FrontendApiError
+from apps.frontend_streamlit.services.welcome_gateway import WelcomeGateway
+
+LOCAL_TZ = ZoneInfo("Asia/Kolkata")
+
+
+def _api_error_text(exc: FrontendApiError) -> str:
+    parts = [exc.message]
+    if exc.error_code:
+        parts.append(f"code={exc.error_code}")
+    if exc.request_id:
+        parts.append(f"request_id={exc.request_id}")
+    return " ".join(parts)
+
+
+def _local_effective_datetime(prefix: str) -> datetime | None:
+    st.markdown("#### Effective From")
+    col_date, col_time = st.columns(2)
+    with col_date:
+        from_date = st.date_input("Date", key=f"{prefix}_date")
+    with col_time:
+        time_str = st.text_input("Time (HH:MM)", value="00:00", key=f"{prefix}_time")
+    try:
+        from_time = datetime.strptime(time_str, "%H:%M").time()
+    except ValueError:
+        st.error("Invalid time format. Use HH:MM.")
+        return None
+    return datetime.combine(from_date, from_time, tzinfo=LOCAL_TZ)
 
 
 class BurdenAdminPage:
-    """Streamlit admin interface for editing burden distribution fields.
+    """Streamlit admin interface for editing burden distribution fields."""
 
-    Attributes:
-        db:            :class:`~data.db.Database` instance.
-        burden_fields: Dict of burden field metadata loaded from ``materials.yml``.
-        history:       In-session list of recently applied changes.
-    """
+    def __init__(self, gateway: WelcomeGateway) -> None:
+        self.gateway = gateway
 
-    TEXT_FIELDS = [
-        "coke_charge_pattern",
-        "non_coke_charge_pattern",
-        "burden_changing_purpose",
-    ]
-
-    def __init__(self) -> None:
-        """Initialise with a fresh database connection and current burden state."""
-        self.db = BurdenConfigService()
-        self.burden_fields = self.db.burden_fields  # loaded from materials.yml
-        self.history = []
-
-    # -----------------------------------------------
-    # IP extraction
-    # -----------------------------------------------
-    def get_client_ip(self):
+    def _load_context(self) -> dict[str, Any] | None:
         try:
-            forwarded_for = st.context.headers.get("X-Forwarded-For")
-            if forwarded_for:
-                return forwarded_for.split(",")[0].strip()
+            return self.gateway.get_burden_context(at=datetime.now(LOCAL_TZ))
+        except FrontendApiError as exc:
+            st.error(f"Could not load burden context: {_api_error_text(exc)}")
+            return None
+        except Exception as exc:
+            st.error(f"Could not load burden context: {exc}")
+            return None
 
-            return st.context.headers.get("REMOTE_ADDR", "unknown")
-        except:
-            return "unknown"
-
-    # -----------------------------------------------
-    # Get latest burden values
-    # -----------------------------------------------
-    def get_current_burden_values(self):
-        now = datetime.now()
-        return self.db.get_all_current_burden_values(now)
-
-    # -----------------------------------------------
-    # RENDER FORM
-    # -----------------------------------------------
-    def render_form(self, username):
-
-        current_values = self.get_current_burden_values()
-        updated_values = {}
-
-        # ----------------------- Time selection -----------------------
-        st.markdown("#### ⏱️ Effective From")
-
-        col_date, col_time = st.columns(2)
-
-        with col_date:
-            from_date = st.date_input("Date", key="burden_from_date")
-
-        with col_time:
-            time_str = st.text_input(
-                "Time (HH:MM)", value="00:00", key="burden_from_time"
-            )
-
+    def _handle_submission(
+        self,
+        *,
+        values: dict[str, str | float | None],
+        effective_at: datetime,
+        expected_snapshot_id: int | None,
+    ) -> None:
+        payload = {
+            "effective_at": effective_at.isoformat(),
+            "expected_snapshot_id": expected_snapshot_id,
+            "values": values,
+        }
+        signature = repr(payload)
+        if st.session_state.get("burden_last_submit_signature") == signature:
+            st.info("This burden submission is already being processed.")
+            return
+        st.session_state["burden_last_submit_signature"] = signature
         try:
-            from_time = datetime.strptime(time_str, "%H:%M").time()
-        except ValueError:
-            st.error(" Invalid time format. Use HH:MM")
+            self.gateway.update_burden_distribution(payload)
+        except FrontendApiError as exc:
+            st.session_state.pop("burden_last_submit_signature", None)
+            if exc.status_code == 409 or exc.error_code == "CONFIG_VERSION_CONFLICT":
+                st.warning("The burden configuration changed before your save. Reloading the latest context.")
+                st.session_state["burden_conflict_message"] = True
+                st.rerun()
+            st.error(f"Error updating burden distribution: {_api_error_text(exc)}")
+            return
+        except Exception as exc:
+            st.session_state.pop("burden_last_submit_signature", None)
+            st.error(f"Error updating burden distribution: {exc}")
             return
 
-        from_dt = datetime.combine(from_date, from_time)
+        st.session_state.pop("burden_last_submit_signature", None)
+        st.session_state["burden_success_msg"] = "Burden distribution updated successfully."
+        st.rerun()
+
+    def render_form(self, context: dict[str, Any]) -> None:
+        effective_at = _local_effective_datetime("burden_effective")
+        if effective_at is None:
+            return
 
         st.divider()
-
-        # ----------------------- Burden Fields -----------------------
         st.markdown("#### Set Values for Burden Distribution Fields")
+        fields = context.get("fields", [])
+        current_values = context.get("values", {}) or {}
+        updated_values: dict[str, str | float | None] = {}
 
-        for i in range(0, len(self.burden_fields), 3):
+        for i in range(0, len(fields), 3):
             cols = st.columns(3)
-
-            for j, field_name in enumerate(self.burden_fields[i : i + 3]):
+            for j, field in enumerate(fields[i : i + 3]):
+                key = field["key"]
+                label = field.get("label") or key.replace("_", " ").title()
+                initial = current_values.get(key)
                 with cols[j]:
-
-                    initial_value = current_values.get(field_name)
-
-                    if field_name in self.TEXT_FIELDS:
-                        val = st.text_input(
-                            field_name.replace("_", " ").title(),
-                            value=(
-                                str(initial_value) if initial_value is not None else ""
-                            ),
-                            key=f"burden_{field_name}",
+                    if field.get("value_type") == "text":
+                        raw_value = st.text_input(
+                            label,
+                            value=str(initial) if initial is not None else "",
+                            key=f"burden_{key}",
                         )
+                        updated_values[key] = raw_value if raw_value != "" else None
                     else:
-                        val = st.number_input(
-                            field_name.replace("_", " ").title(),
-                            value=(
-                                float(initial_value)
-                                if isinstance(initial_value, (int, float))
-                                else 0.0
-                            ),
-                            step=0.1,
-                            key=f"burden_{field_name}",
+                        null_key = f"burden_{key}_null"
+                        is_null = st.checkbox(
+                            "No value",
+                            value=initial is None,
+                            key=null_key,
                         )
+                        number_value = st.number_input(
+                            label,
+                            value=float(initial) if isinstance(initial, (int, float)) else 0.0,
+                            step=float(field.get("step") or 0.1),
+                            disabled=is_null,
+                            key=f"burden_{key}",
+                        )
+                        updated_values[key] = None if is_null else float(number_value)
 
-                    updated_values[field_name] = val
-
-        submitted = st.form_submit_button("💾 Save Burden Distribution")
-
+        submitted = st.form_submit_button("Save Burden Distribution")
         if submitted:
-            ip = self.get_client_ip()
-            self.handle_submission(
-                updated_values, current_values, from_dt, username, ip
+            self._handle_submission(
+                values=updated_values,
+                effective_at=effective_at,
+                expected_snapshot_id=context.get("snapshot_id"),
             )
 
-    # -----------------------------------------------
-    # HANDLE SUBMISSION
-    # -----------------------------------------------
-    def handle_submission(self, updated_values, current_values, from_dt, username, ip):
-        changes = 0
-        errors = False
+    def render_history(self, fields: list[dict[str, Any]]) -> None:
+        st.markdown("### Burden Distribution History")
+        limit = st.selectbox("Rows per page", [25, 50, 100], index=1, key="burden_history_limit")
+        offset = int(st.session_state.get("burden_history_offset", 0))
 
-        changed_values = {}
-        for field_name, new_value in updated_values.items():
-            old_value = current_values.get(field_name)
+        try:
+            history = self.gateway.list_burden_history(limit=int(limit), offset=offset)
+        except FrontendApiError as exc:
+            st.warning(f"Could not load burden history: {_api_error_text(exc)}")
+            return
+        except Exception as exc:
+            st.warning(f"Could not load burden history: {exc}")
+            return
 
-            if isinstance(old_value, (int, float)) and isinstance(new_value, str):
-                try:
-                    new_value = float(new_value)
-                except:
-                    pass
-
-            if str(old_value) == str(new_value):
-                continue
-
-            changed_values[field_name] = new_value
-            changes += 1
-
-        if changed_values:
-            try:
-                self.db.update_burden_row(
-                    changed_values,
-                    timestamp=from_dt,
-                    modifier=username,
-                    ip=ip,
-                )
-            except Exception as e:
-                st.error(f"❌ Error updating burden distribution: {e}")
-                errors = True
-
-        if not errors:
-            if changes == 0:
-                st.info("ℹ️ No fields were changed.")
-            else:
-                st.session_state["burden_success_msg"] = (
-                    f"✅ Updated {changes} field(s)."
-                )
-                st.rerun()
-
-    # -----------------------------------------------
-    # RENDER HISTORY
-    # -----------------------------------------------
-    def render_history(self):
-        st.markdown("### 📋 Burden Distribution History")
-
-        history = self.db.get_burden_history()
-
-        if not history:
+        total = int(history.get("total", 0))
+        items = history.get("items", [])
+        if not items:
             st.info("No history available yet.")
             return
 
-        for row in history:
-            row["delete"] = False
+        field_keys = [field["key"] for field in fields]
+        rows = []
+        for item in items:
+            row = {
+                "snapshot_id": item.get("snapshot_id"),
+                "effective_at": item.get("effective_at"),
+                "source_type": item.get("source_type"),
+                "actor": (item.get("actor") or {}).get("username") or (item.get("actor") or {}).get("user_id"),
+                "created_at": item.get("created_at"),
+                "delete": False,
+            }
+            row.update({field: (item.get("values") or {}).get(field) for field in field_keys})
+            rows.append(row)
 
         edited = st.data_editor(
-            history,
+            rows,
             hide_index=True,
             width="stretch",
-            column_config={
-                "delete": st.column_config.CheckboxColumn("Delete"),
-                "id": None,
-            },
-            column_order=[
-                "id",
-                "date_time",
-                *self.burden_fields,
-                "source_type",
-                "user_modified",
-                "ip_address",
-                "delete",
-            ],
+            column_config={"delete": st.column_config.CheckboxColumn("Delete")},
         )
-
-        delete_ids = [row["id"] for row in edited if row["delete"]]
-
-        if st.button("🗑️ Delete Selected", disabled=len(delete_ids) == 0):
+        delete_ids = [int(row["snapshot_id"]) for row in edited if row.get("delete")]
+        confirm = st.checkbox("Confirm history deletion", disabled=not delete_ids, key="burden_delete_confirm")
+        if st.button("Delete Selected", disabled=not delete_ids or not confirm):
             try:
-                self.db.delete_burden_history(delete_ids)
-                st.success(f"🗑️ Deleted {len(delete_ids)} record(s).")
+                result = self.gateway.delete_burden_history(delete_ids)
+                st.success(f"Deleted {result.get('deleted_count', 0)} record(s).")
                 st.rerun()
-            except Exception as e:
-                st.error(f"❌ Error deleting: {e}")
+            except FrontendApiError as exc:
+                st.error(f"Error deleting records: {_api_error_text(exc)}")
+            except Exception as exc:
+                st.error(f"Error deleting records: {exc}")
 
-    # -----------------------------------------------
-    # MAIN RENDER
-    # -----------------------------------------------
-    def render(self, username):
-        st.subheader("🔧 Burden Distribution Admin Panel")
+        c1, c2, c3 = st.columns([1, 1, 4])
+        with c1:
+            if st.button("Previous", disabled=offset <= 0, key="burden_prev"):
+                st.session_state["burden_history_offset"] = max(0, offset - int(limit))
+                st.rerun()
+        with c2:
+            if st.button("Next", disabled=offset + int(limit) >= total, key="burden_next"):
+                st.session_state["burden_history_offset"] = offset + int(limit)
+                st.rerun()
+        with c3:
+            st.caption(f"Showing {offset + 1}-{min(offset + len(items), total)} of {total}")
 
+    def render(self, username: str | None = None) -> None:
+        st.subheader("Burden Distribution Admin Panel")
         if st.session_state.get("burden_success_msg"):
-            st.success(st.session_state["burden_success_msg"])
-            st.session_state.pop("burden_success_msg", None)
+            st.success(st.session_state.pop("burden_success_msg"))
+        if st.session_state.pop("burden_conflict_message", None):
+            st.info("Loaded the latest burden distribution after a version conflict.")
+
+        context = self._load_context()
+        if context is None:
+            return
 
         with st.form("burden_update_form", clear_on_submit=False):
-            self.render_form(username)
+            self.render_form(context)
+        self.render_history(context.get("fields", []))
 
-        self.render_history()
 
+def burden_admin_page(username: str | None = None, gateway: WelcomeGateway | None = None) -> None:
+    if gateway is None:
+        from apps.frontend_streamlit.services.welcome_gateway import get_welcome_gateway
 
-# -----------------------------------------------------
-# Entry point
-# -----------------------------------------------------
-def burden_admin_page(username):
-    BurdenAdminPage().render(username)
+        gateway = get_welcome_gateway()
+    BurdenAdminPage(gateway).render(username)

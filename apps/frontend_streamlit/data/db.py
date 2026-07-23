@@ -1,4 +1,4 @@
-"""Streamlit-facing relational services for the BF2 web application.
+﻿"""Streamlit-facing relational services for the BF2 web application.
 
 The persistence implementation lives in :mod:`furnace_data.relational`.
 This module only adapts repository methods to the webapp's session/auth and
@@ -14,7 +14,7 @@ from typing import Any
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 
-from apps.frontend_streamlit.data.material_mapping import MaterialNameMapper
+from furnace_data.material_mapping import MaterialNameMapper
 from furnace_data.relational import (
     BurdenHistoryRepository,
     HopperHistoryRepository,

@@ -30,7 +30,7 @@ def list_users(
     request: Request,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    _admin_user: dict = Depends(require_admin_user),
+    current_user: dict = Depends(require_admin_user),
     admin_service: AdminService = Depends(get_admin_service),
 ):
     return _wrap(request, admin_service.list_users(limit=limit, offset=offset))
@@ -40,7 +40,7 @@ def list_users(
 def create_user(
     request: Request,
     payload: UserCreateRequest,
-    _admin_user: dict = Depends(require_admin_user),
+    current_user: dict = Depends(require_admin_user),
     admin_service: AdminService = Depends(get_admin_service),
 ):
     data = admin_service.create_user(**payload.model_dump())
@@ -51,7 +51,7 @@ def create_user(
 def get_user(
     request: Request,
     user_id: str,
-    _admin_user: dict = Depends(require_admin_user),
+    current_user: dict = Depends(require_admin_user),
     admin_service: AdminService = Depends(get_admin_service),
 ):
     return _wrap(request, admin_service.get_user(user_id))
@@ -62,10 +62,14 @@ def update_user(
     request: Request,
     user_id: str,
     payload: UserUpdateRequest,
-    _admin_user: dict = Depends(require_admin_user),
+    current_user: dict = Depends(require_admin_user),
     admin_service: AdminService = Depends(get_admin_service),
 ):
-    data = admin_service.update_user(user_id, **payload.model_dump(exclude_unset=True))
+    data = admin_service.update_user(
+        user_id,
+        actor_user=current_user,
+        **payload.model_dump(exclude_unset=True),
+    )
     return _wrap(request, data)
 
 
@@ -74,7 +78,7 @@ def reset_user_password(
     request: Request,
     user_id: str,
     payload: PasswordResetRequest,
-    _admin_user: dict = Depends(require_admin_user),
+    current_user: dict = Depends(require_admin_user),
     admin_service: AdminService = Depends(get_admin_service),
 ):
     return _wrap(request, admin_service.reset_password(user_id, payload.new_password))
@@ -84,26 +88,32 @@ def reset_user_password(
 def deactivate_user(
     request: Request,
     user_id: str,
-    _admin_user: dict = Depends(require_admin_user),
+    current_user: dict = Depends(require_admin_user),
     admin_service: AdminService = Depends(get_admin_service),
 ):
-    return _wrap(request, admin_service.set_active(user_id, False))
+    return _wrap(
+        request,
+        admin_service.set_active(user_id, False, actor_user=current_user),
+    )
 
 
 @router.post("/users/{user_id}/activate", response_model=ApiResponse)
 def activate_user(
     request: Request,
     user_id: str,
-    _admin_user: dict = Depends(require_admin_user),
+    current_user: dict = Depends(require_admin_user),
     admin_service: AdminService = Depends(get_admin_service),
 ):
-    return _wrap(request, admin_service.set_active(user_id, True))
+    return _wrap(
+        request,
+        admin_service.set_active(user_id, True, actor_user=current_user),
+    )
 
 
 @router.get("/roles", response_model=ApiResponse)
 def list_roles(
     request: Request,
-    _admin_user: dict = Depends(require_admin_user),
+    current_user: dict = Depends(require_admin_user),
     admin_service: AdminService = Depends(get_admin_service),
 ):
     return _wrap(request, admin_service.list_roles())
@@ -112,7 +122,7 @@ def list_roles(
 @router.get("/permissions", response_model=ApiResponse)
 def list_permissions(
     request: Request,
-    _admin_user: dict = Depends(require_admin_user),
+    current_user: dict = Depends(require_admin_user),
     admin_service: AdminService = Depends(get_admin_service),
 ):
     return _wrap(request, admin_service.list_permissions())

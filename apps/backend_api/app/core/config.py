@@ -8,7 +8,12 @@ from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-_DEFAULT_CORS_ORIGINS = ("http://localhost:8501", "http://127.0.0.1:8501")
+_DEFAULT_CORS_ORIGINS = (
+    "http://localhost:8501",
+    "http://127.0.0.1:8501",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
 
 
 class BackendSettings(BaseSettings):

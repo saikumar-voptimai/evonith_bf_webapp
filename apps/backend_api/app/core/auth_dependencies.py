@@ -94,6 +94,21 @@ def require_role(*roles: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
     return _dependency
 
 
+def require_permission(permission: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """Build a dependency requiring a backend-issued permission."""
+    required = str(permission or "").strip()
+
+    def _dependency(
+        current_user: dict[str, Any] = Depends(require_authenticated_user),
+    ) -> dict[str, Any]:
+        permissions = {str(item) for item in current_user.get("permissions") or []}
+        if required not in permissions:
+            raise ApiError("FORBIDDEN", "Insufficient permissions.", status_code=403)
+        return current_user
+
+    return _dependency
+
+
 def require_admin_user(
     current_user: dict[str, Any] = Depends(require_authenticated_user),
 ) -> dict[str, Any]:

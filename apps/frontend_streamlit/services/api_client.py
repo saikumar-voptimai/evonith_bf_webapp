@@ -244,9 +244,10 @@ class ApiClient:
         self,
         path: str,
         params: dict[str, Any] | None = None,
+        json: dict[str, Any] | list[Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> Any:
-        return self.request("DELETE", path, params=params, headers=headers)
+        return self.request("DELETE", path, params=params, json=json, headers=headers)
 
     def download(
         self,

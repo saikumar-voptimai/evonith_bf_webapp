@@ -6,7 +6,9 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "admin": frozenset(
         {
             "hopper:write",
+            "hopper:history:delete",
             "burden:write",
+            "burden:history:delete",
             "users:write",
             "feedback:moderate",
         }

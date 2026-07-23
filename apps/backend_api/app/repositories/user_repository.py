@@ -121,6 +121,17 @@ class UserRepository:
         with self.session_factory() as session:
             return int(session.execute(select(func.count()).select_from(User)).scalar_one())
 
+    def count_active_admins(self) -> int:
+        """Return active users whose primary role is admin."""
+        with self.session_factory() as session:
+            return int(
+                session.execute(
+                    select(func.count())
+                    .select_from(User)
+                    .where(User.role == "admin", User.is_active.is_(True))
+                ).scalar_one()
+            )
+
     def create_user(
         self,
         *,

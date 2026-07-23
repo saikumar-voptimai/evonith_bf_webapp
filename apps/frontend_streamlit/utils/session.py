@@ -37,7 +37,18 @@ def permissions_for_role(role: str | None) -> frozenset[str]:
     return ROLE_PERMISSIONS.get(str(role or "").strip().lower(), frozenset())
 
 
-def _set_permissions(role: str | None) -> None:
+def _set_permissions(
+    role: str | None,
+    permissions: Iterable[str] | None = None,
+) -> None:
+    if permissions is not None:
+        st.session_state["permissions"] = sorted({str(item) for item in permissions})
+        return
+    if st.session_state.get("auth_backend_mode"):
+        st.session_state["permissions"] = sorted(
+            {str(item) for item in st.session_state.get("permissions", [])}
+        )
+        return
     st.session_state["permissions"] = sorted(permissions_for_role(role))
 
 
@@ -88,7 +99,7 @@ def current_user_id() -> str | None:
 def current_permissions() -> set[str]:
     """Return permissions for the current session role."""
     _set_permissions(st.session_state.get("role"))
-    return set(st.session_state.get("permissions", []))
+    return {str(item) for item in st.session_state.get("permissions", [])}
 
 
 def has_permission(permission: str) -> bool:
@@ -118,6 +129,7 @@ def login_user(
     *,
     access_token: str | None = None,
     token_expires_at: str | None = None,
+    permissions: Iterable[str] | None = None,
 ) -> None:
     """
     Store the authenticated user, database UUID, and permissions in session.
@@ -149,7 +161,7 @@ def login_user(
         st.session_state["auth_token_expires_at"] = str(token_expires_at)
     else:
         st.session_state.pop("auth_token_expires_at", None)
-    _set_permissions(role)
+    _set_permissions(role, permissions)
 
 
 def logout_user() -> None:

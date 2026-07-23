@@ -151,8 +151,18 @@ class AuditService:
             return "ops.status.viewed" if method == "GET" else "ops.changed"
         if method not in {"POST", "PUT", "PATCH", "DELETE"}:
             return None
-        if path.startswith("/api/v1/admin/users") and method == "POST":
-            return "admin.user.updated" if "/deactivate" in path or "/activate" in path else "admin.user.created"
+        if path.startswith("/api/v1/admin/hopper-mappings"):
+            if method == "DELETE":
+                return "plant.hopper_history.deleted"
+            if method in {"PUT", "POST", "PATCH"}:
+                return "plant.hopper_mapping.updated"
+        if path.startswith("/api/v1/admin/burden-distribution"):
+            if method == "DELETE":
+                return "plant.burden_history.deleted"
+            if method in {"PUT", "POST", "PATCH"}:
+                return "plant.burden_distribution.updated"
+        if path.startswith("/api/v1/admin/users") and method in {"POST", "PATCH"}:
+            return "admin.user.updated" if "/deactivate" in path or "/activate" in path or method == "PATCH" else "admin.user.created"
         if path.startswith("/api/v1/feedback") and method == "POST":
             return "feedback.ticket.created"
         if path.startswith("/api/v1/material-balance"):
