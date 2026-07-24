@@ -1,4 +1,4 @@
-"""Canonical FastAPI application entrypoint for the Phase 12 layout."""
+﻿"""Canonical FastAPI application entrypoint for the Phase 12 layout."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def create_app(backend_settings: BackendSettings | None = None) -> FastAPI:
             "Idempotency-Key",
             "X-Request-ID",
         ],
-        expose_headers=["Content-Disposition", "X-Dataset-Version", "X-Request-ID"],
+        expose_headers=["Content-Disposition", "ETag", "X-Dataset-Version", "X-Request-ID"],
     )
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIdMiddleware)

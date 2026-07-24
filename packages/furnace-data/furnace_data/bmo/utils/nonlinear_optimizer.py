@@ -111,6 +111,8 @@ def run_nonlinear_optimizer(
     progress_callback: (
         Callable[[int, float, float | None, int, float], bool] | None
     ) = None,
+    precomputed_lp_blend: BlendEvaluation | None = None,
+    precomputed_lp_errors: list[str] | None = None,
 ) -> tuple[BlendEvaluation | None, list[str]]:
     """
     Run nonlinear total-cost BMO optimization with DE.
@@ -145,21 +147,25 @@ def run_nonlinear_optimizer(
     if pre_errors:
         return None, pre_errors
 
-    lp_blend, lp_errors = run_lp_baseline(
-        ores,
-        target_production_mt=target_production_mt,
-        target_slag_qty_mt=target_slag_qty_mt,
-        feo_in_slag_pct=feo_in_slag_pct,
-        target_slag_basicity_min=target_slag_basicity_min,
-        target_slag_basicity_max=target_slag_basicity_max,
-        target_slag_t_basicity_min=target_slag_t_basicity_min,
-        target_slag_t_basicity_max=target_slag_t_basicity_max,
-        fuel_ash_inputs=fuel_ash_inputs,
-        flux_inputs=flux_inputs,
-        dust_inputs=dust_inputs,
-        slag_balance_settings=slag_balance_settings,
-        hot_metal_target_mt=hot_metal_target_mt,
-    )
+    if precomputed_lp_blend is not None:
+        lp_blend = precomputed_lp_blend
+        lp_errors = list(precomputed_lp_errors or [])
+    else:
+        lp_blend, lp_errors = run_lp_baseline(
+            ores,
+            target_production_mt=target_production_mt,
+            target_slag_qty_mt=target_slag_qty_mt,
+            feo_in_slag_pct=feo_in_slag_pct,
+            target_slag_basicity_min=target_slag_basicity_min,
+            target_slag_basicity_max=target_slag_basicity_max,
+            target_slag_t_basicity_min=target_slag_t_basicity_min,
+            target_slag_t_basicity_max=target_slag_t_basicity_max,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            hot_metal_target_mt=hot_metal_target_mt,
+        )
     if lp_blend is None:
         return None, [
             "Total-cost optimizer skipped because hard LP constraints are infeasible.",

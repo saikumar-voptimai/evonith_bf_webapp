@@ -1,4 +1,4 @@
-"""Backend-only role and permission helpers."""
+﻿"""Backend-only role and permission helpers."""
 
 from __future__ import annotations
 
@@ -13,7 +13,14 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "burden:write",
             "burden:history:delete",
             "users:write",
+            "feedback:read",
+            "feedback:create",
+            "feedback:comment",
+            "feedback:attachments:write",
             "feedback:moderate",
+            "feedback:delete",
+            "feedback:attachments:delete",
+            "feedback:read:any",
             "data:read",
             "data:export",
             "data:export:any",
@@ -43,12 +50,27 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "furnacemind:feedback:write",
             "furnacemind:artifacts:read",
             "furnacemind:artifacts:read:any",
+            "blend_optimizer:read",
+            "blend_optimizer:run",
+            "blend_optimizer:preferences:write",
+            "blend_optimizer:diagnostics",
+            "blend_optimizer:export",
+            "blend_optimizer:runs:read:any",
+            "blend_optimizer:runs:cancel:any",
+            "blend_optimizer:artifacts:read:any",
         }
     ),
     "supervisor": frozenset(
         {
             "hopper:write",
+            "feedback:read",
+            "feedback:create",
+            "feedback:comment",
+            "feedback:attachments:write",
             "feedback:moderate",
+            "feedback:delete",
+            "feedback:attachments:delete",
+            "feedback:read:any",
             "data:read",
             "data:export",
             "datasets:build",
@@ -69,10 +91,19 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "furnacemind:reports:run",
             "furnacemind:feedback:write",
             "furnacemind:artifacts:read",
+            "blend_optimizer:read",
+            "blend_optimizer:run",
+            "blend_optimizer:preferences:write",
+            "blend_optimizer:diagnostics",
+            "blend_optimizer:export",
         }
     ),
     "user": frozenset(
         {
+            "feedback:read",
+            "feedback:create",
+            "feedback:comment",
+            "feedback:attachments:write",
             "data:read",
             "data:export",
             "vboard:read",
@@ -87,6 +118,10 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "furnacemind:reports:run",
             "furnacemind:feedback:write",
             "furnacemind:artifacts:read",
+            "blend_optimizer:read",
+            "blend_optimizer:run",
+            "blend_optimizer:preferences:write",
+            "blend_optimizer:export",
         }
     ),
 }
@@ -113,3 +148,6 @@ def roles_payload() -> list[dict[str, object]]:
         {"role": role, "permissions": sorted(permissions)}
         for role, permissions in sorted(ROLE_PERMISSIONS.items())
     ]
+
+
+

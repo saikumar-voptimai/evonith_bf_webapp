@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections.abc import Mapping
@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 
 from apps.frontend_streamlit.config.frontend_settings import is_backend_api_enabled
 from apps.frontend_streamlit.services.api_errors import FrontendApiError
-from apps.frontend_streamlit.services.blend_optimizer_api import get_blend_optimizer_context, optimize_blend
+from apps.frontend_streamlit.services.blend_optimizer_gateway import get_blend_optimizer_gateway
 
 
 def _api_token() -> str | None:
@@ -31,43 +31,7 @@ def _api_token() -> str | None:
     return token or None
 
 
-def _render_api_mode() -> None:
-    st.title("Blend Mix Optimizer")
-    st.caption("Blend Optimizer mode: Backend API")
-    try:
-        context = get_blend_optimizer_context(token=_api_token())
-    except FrontendApiError as exc:
-        request_id = f" Request ID: {exc.request_id}." if exc.request_id else ""
-        st.error(f"Backend Blend Optimizer context failed: {exc.message}.{request_id}")
-        return
-    materials = context.get("materials") or []
-    st.dataframe(materials, width="stretch")
-    target_total = st.number_input("Target total quantity (MT)", min_value=1.0, value=100.0)
-    max_candidates = st.number_input("Max candidates", min_value=1, max_value=100, value=5)
-    if st.button("Optimize Blend", type="primary"):
-        try:
-            result = optimize_blend(
-                {
-                    "materials": materials,
-                    "constraints": {"target_total_qty_mt": float(target_total)},
-                    "options": {"max_candidates": int(max_candidates)},
-                },
-                token=_api_token(),
-            )
-        except FrontendApiError as exc:
-            request_id = f" Request ID: {exc.request_id}." if exc.request_id else ""
-            st.error(f"Backend optimization failed: {exc.message}.{request_id}")
-            return
-        best = result.get("best_candidate") or {}
-        st.metric("Best objective cost", (best.get("metrics") or {}).get("objective_cost"))
-        table = (result.get("tables") or {}).get("candidates") or {}
-        st.dataframe(table.get("rows") or [], width="stretch")
-
-
-if is_backend_api_enabled("blend_optimizer"):
-    _render_api_mode()
-    st.stop()
-
+BMO_BACKEND_API_MODE = is_backend_api_enabled("blend_optimizer")
 from apps.frontend_streamlit.config.config_loader import load_config
 from furnace_data.bmo.data import EvonithBmoContextProvider
 from furnace_data.bmo.data.basicity_defaults import derive_basicity_bounds_from_static_dataset
@@ -1034,6 +998,7 @@ def _get_model_service() -> FuelUnitCostModelService:
          - return FuelUnitCostModelService - Cached fuel-cost prediction service.
     """
 
+    
     bmo_cfg = _get_bmo_config()
     runtime_cfg = build_runtime_config(bmo_cfg)
     bundle_cfg = dict(runtime_cfg.get("model_bundle", {}))
@@ -1062,6 +1027,7 @@ def _get_si_service() -> SiPredictionService:
          - return SiPredictionService - Cached Si prediction service.
     """
 
+    
     bmo_cfg = _get_bmo_config()
     return SiPredictionService(bundle_cfg=bmo_cfg.get("si_model_bundle", {}))
 
@@ -1212,7 +1178,88 @@ def _selected_ores_from_editor(
 
 
 
+
+def _ore_to_api_payload(ore: OreInput) -> dict[str, Any]:
+    return {
+        "ore_id": ore.ore_id,
+        "selected": True,
+        "stock_mt": float(ore.stock_mt),
+        "price_rs_per_mt": float(ore.price_rs_per_mt),
+        "min_share_pct": float(ore.min_share_pct),
+        "max_share_pct": float(ore.max_share_pct),
+        "chemistry": asdict(ore.chemistry),
+    }
+
+
+def _dataclass_list_payload(items: list[Any]) -> list[dict[str, Any]]:
+    return [asdict(item) for item in items]
+
+
+def _build_bmo_api_scenario(
+    *,
+    selected_ores: list[OreInput],
+    target_production_mt: float,
+    target_slag_qty_mt: float,
+    target_slag_basicity_min: float,
+    target_slag_basicity_max: float,
+    target_slag_t_basicity_min: float,
+    target_slag_t_basicity_max: float,
+    feo_in_slag_pct: float,
+    fuel_ash_inputs: list[FuelAshInput],
+    flux_inputs: list[FluxInput],
+    dust_inputs: list[DustInput],
+    slag_balance_settings: SlagBalanceSettings,
+) -> dict[str, Any]:
+    return {
+        "targets": {
+            "target_hot_metal_mt": float(target_production_mt),
+            "max_slag_mt": float(target_slag_qty_mt),
+            "basicity_min": float(target_slag_basicity_min),
+            "basicity_max": float(target_slag_basicity_max),
+            "t_basicity_min": float(target_slag_t_basicity_min),
+            "t_basicity_max": float(target_slag_t_basicity_max),
+            "feo_in_slag_pct": float(feo_in_slag_pct),
+        },
+        "ores": [_ore_to_api_payload(ore) for ore in selected_ores],
+        "fuel_ash_inputs": _dataclass_list_payload(fuel_ash_inputs),
+        "flux_inputs": _dataclass_list_payload(flux_inputs),
+        "dust_inputs": _dataclass_list_payload(dust_inputs),
+        "slag_balance": asdict(slag_balance_settings),
+        "confirmations": ["operator_review_required"],
+    }
+
+
+def _submit_bmo_api_run(mode: str, scenario: dict[str, Any]) -> dict[str, Any] | None:
+    gateway = get_blend_optimizer_gateway(token=_api_token())
+    context = st.session_state.get("bmo.context")
+    if not context:
+        context_key = st.session_state.get("bmo.context_idempotency_key") or f"bmo-context-{datetime.utcnow().timestamp()}"
+        st.session_state["bmo.context_idempotency_key"] = context_key
+        context = gateway.create_context(
+            {"source_refresh": "use_cached", "include_recent_manual_blend": True, "include_diagnostics_summary": True},
+            idempotency_key=context_key,
+        )
+        st.session_state["bmo.context"] = context
+        st.session_state["bmo.context_version"] = context.get("context_version")
+    context_id = str(context.get("context_id") or context.get("id") or "")
+    context_version = str(context.get("context_version") or st.session_state.get("bmo.context_version") or "")
+    run_key_name = "bmo.lp_idempotency_key" if mode == "lp_baseline" else "bmo.total_idempotency_key"
+    run_key = st.session_state.get(run_key_name) or f"bmo-{mode}-{datetime.utcnow().timestamp()}"
+    st.session_state[run_key_name] = run_key
+    if mode == "lp_baseline":
+        run = gateway.run_lp_baseline(context_id, context_version, scenario, idempotency_key=run_key)
+    else:
+        run = gateway.run_total_cost_optimizer(context_id, context_version, scenario, idempotency_key=run_key)
+    st.session_state["bmo.active_run_id"] = run.get("run_id")
+    st.session_state["bmo.active_run_mode"] = mode
+    status = gateway.get_run(str(run.get("run_id")))
+    st.session_state["bmo.run_status"] = status
+    if status.get("status") == "completed":
+        st.session_state["bmo.last_completed_result"] = status.get("result")
+        st.session_state["bmo.result_stale"] = False
+    return status
 apply_bmo_styles()
+
 bmo_cfg = _get_bmo_config()
 provider = _get_context_provider()
 model_service = _get_model_service()
@@ -1575,7 +1622,7 @@ requested_total = bool(
     run_total_clicked or pending_run_after_refresh in {"total", "both"}
 )
 
-if run_lp_clicked or run_total_clicked:
+if (run_lp_clicked or run_total_clicked) and not BMO_BACKEND_API_MODE:
     with st.spinner("Checking static ML dataset freshness..."):
         refresh_result = _refresh_static_dataset_if_needed(
             bmo_cfg, force=force_static_refresh
@@ -1612,6 +1659,37 @@ if requested_lp or requested_total:
         )
     elif len(selected_ores) < 2:
         st.error("Select at least two ores before running optimization.")
+    elif BMO_BACKEND_API_MODE:
+        scenario = _build_bmo_api_scenario(
+            selected_ores=selected_ores,
+            target_production_mt=target_production_mt,
+            target_slag_qty_mt=target_slag_qty_mt,
+            target_slag_basicity_min=target_slag_basicity_min,
+            target_slag_basicity_max=target_slag_basicity_max,
+            target_slag_t_basicity_min=target_slag_t_basicity_min,
+            target_slag_t_basicity_max=target_slag_t_basicity_max,
+            feo_in_slag_pct=feo_in_slag_pct,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+        )
+        try:
+            if requested_lp:
+                with st.spinner("Submitting LP baseline to backend..."):
+                    _submit_bmo_api_run("lp_baseline", scenario)
+            if requested_total:
+                with st.spinner("Submitting total-cost optimizer to backend..."):
+                    _submit_bmo_api_run("total_cost", scenario)
+        except FrontendApiError as exc:
+            request_id = f" Request ID: {exc.request_id}." if exc.request_id else ""
+            st.error(f"Backend Blend Optimizer run failed: {exc.message}.{request_id}")
+        status = st.session_state.get("bmo.run_status") or {}
+        result = status.get("result") or st.session_state.get("bmo.last_completed_result")
+        if status:
+            st.info(f"Backend run {status.get('run_id')} is {status.get('status')}.")
+        if result:
+            st.json(result, expanded=False)
     else:
         fuel_context = None
 

@@ -1,4 +1,4 @@
-"""Integration smoke for Phase 6 feedback API storage and attachment flow."""
+﻿"""Integration smoke for Phase 6 feedback API storage and attachment flow."""
 
 from __future__ import annotations
 
@@ -31,18 +31,21 @@ def test_phase6_feedback_create_upload_download_flow(monkeypatch, tmp_path):
     with TestClient(app, raise_server_exceptions=False) as client:
         create = client.post(
             "/api/v1/feedback/tickets",
-            json={"title": "Issue", "description": "Details", "priority": "medium"},
+            json={"page_id": "feedback", "title": "Issue", "description": "Details", "ideal_closure": "Fix soon", "priority": "medium"},
+            headers={"Idempotency-Key": "integration-create"},
         )
         ticket_id = create.json()["data"]["id"]
         upload = client.post(
             f"/api/v1/feedback/tickets/{ticket_id}/attachments",
             files={"file": ("evidence.txt", b"evidence", "text/plain")},
+            headers={"Idempotency-Key": "integration-upload"},
         )
         attachment_id = upload.json()["data"]["id"]
         download = client.get(f"/api/v1/feedback/attachments/{attachment_id}/download")
 
-    assert create.status_code == 200
-    assert upload.status_code == 200
+    assert create.status_code == 201
+    assert upload.status_code == 201
     assert download.status_code == 200
     assert download.content == b"evidence"
     assert (tmp_path / "runtime" / "uploads" / "feedback").exists()
+

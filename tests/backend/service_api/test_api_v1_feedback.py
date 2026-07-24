@@ -1,4 +1,5 @@
-"""Tests for Phase 6 backend feedback API endpoints and services."""
+﻿
+"""Tests for backend feedback API endpoints and services."""
 
 from __future__ import annotations
 
@@ -24,77 +25,120 @@ def _feedback_client(app_factory, monkeypatch, tmp_path) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
-def test_feedback_config_returns_upload_policy(app_factory, monkeypatch, tmp_path):
+def _ticket_payload(**overrides):
+    payload = {
+        "page_id": "data_explorer",
+        "title": "Data Explorer feedback",
+        "description": "Preview table does not load",
+        "ideal_closure": "Restore the preview before shift handover.",
+        "priority": "high",
+        "tags": ["preview"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_feedback_config_returns_typed_catalog_and_upload_policy(app_factory, monkeypatch, tmp_path):
     with _feedback_client(app_factory, monkeypatch, tmp_path) as client:
         response = client.get("/api/v1/feedback/config")
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert "open" in data["statuses"]
-    assert ".txt" in data["allowed_attachment_extensions"]
+    assert data["catalog_version"] == "feedback-catalog-v1"
+    assert {item["id"] for item in data["pages"]} == {
+        "welcome",
+        "data_explorer",
+        "vboard",
+        "vsense",
+        "copilot",
+        "material_balance",
+        "furnacemind",
+        "blend_optimizer",
+        "feedback",
+    }
+    assert {item["id"] for item in data["statuses"]} >= {"open", "dependency_conflict", "rejected", "closed"}
+    assert ".txt" in data["attachments"]["allowed_extensions"]
 
 
-def test_feedback_ticket_create_list_update_comment_and_attachment_flow(
-    app_factory, monkeypatch, tmp_path
-):
+def test_feedback_ticket_create_list_update_comment_and_attachment_flow(app_factory, monkeypatch, tmp_path):
     with _feedback_client(app_factory, monkeypatch, tmp_path) as client:
         create = client.post(
             "/api/v1/feedback/tickets",
-            json={
-                "title": "Data Explorer feedback",
-                "description": "Preview table does not load",
-                "category": "Data Explorer",
-                "priority": "high",
-                "page": "Data Explorer",
-            },
+            json=_ticket_payload(),
+            headers={"Idempotency-Key": "create-flow-1"},
         )
         ticket = create.json()["data"]
         listed = client.get("/api/v1/feedback/tickets")
+        summary = client.get("/api/v1/feedback/summary")
         comment = client.post(
             f"/api/v1/feedback/tickets/{ticket['id']}/comments",
             json={"body": "closing after validation"},
+            headers={"Idempotency-Key": "comment-flow-1"},
         )
         upload = client.post(
             f"/api/v1/feedback/tickets/{ticket['id']}/attachments",
             files={"file": ("note.txt", b"hello feedback", "text/plain")},
+            headers={"Idempotency-Key": "upload-flow-1"},
         )
         attachment = upload.json()["data"]
-        attachment_list = client.get(
-            f"/api/v1/feedback/tickets/{ticket['id']}/attachments"
-        )
-        download = client.get(
-            f"/api/v1/feedback/attachments/{attachment['id']}/download"
-        )
+        attachment_list = client.get(f"/api/v1/feedback/tickets/{ticket['id']}/attachments")
+        download = client.get(f"/api/v1/feedback/attachments/{attachment['id']}/download")
+        events = client.get(f"/api/v1/feedback/tickets/{ticket['id']}/events")
         updated = client.patch(
             f"/api/v1/feedback/tickets/{ticket['id']}",
-            json={"status": "closed"},
+            json={"status": "closed", "expected_version": ticket["version"]},
         )
 
-    assert create.status_code == 200
+    assert create.status_code == 201
     assert ticket["ticket_number"].startswith("FB-")
+    assert ticket["page"]["id"] == "data_explorer"
+    assert ticket["status"]["id"] == "open"
+    assert ticket["version"] == 1
     assert listed.status_code == 200
     assert listed.json()["data"]["total"] == 1
+    assert summary.json()["data"]["total"] == 1
     assert updated.status_code == 200
-    assert updated.json()["data"]["status"] == "closed"
-    assert comment.status_code == 200
-    assert upload.status_code == 200
+    assert updated.json()["data"]["status"]["id"] == "closed"
+    assert comment.status_code == 201
+    assert upload.status_code == 201
     assert attachment["original_filename"] == "note.txt"
-    assert attachment_list.json()["data"][0]["id"] == attachment["id"]
+    assert attachment["checksum_sha256"]
+    assert attachment_list.json()["data"]["items"][0]["id"] == attachment["id"]
     assert download.status_code == 200
     assert download.content == b"hello feedback"
-    assert download.headers["x-request-id"]
+    assert download.headers["x-content-type-options"] == "nosniff"
+    assert events.json()["data"]["items"][0]["event_type"] == "ticket_created"
+
+
+def test_feedback_idempotency_replays_and_conflicts(app_factory, monkeypatch, tmp_path):
+    with _feedback_client(app_factory, monkeypatch, tmp_path) as client:
+        first = client.post("/api/v1/feedback/tickets", json=_ticket_payload(), headers={"Idempotency-Key": "same-key"})
+        replay = client.post("/api/v1/feedback/tickets", json=_ticket_payload(), headers={"Idempotency-Key": "same-key"})
+        conflict = client.post(
+            "/api/v1/feedback/tickets",
+            json=_ticket_payload(description="Different issue"),
+            headers={"Idempotency-Key": "same-key"},
+        )
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json()["data"]["id"] == first.json()["data"]["id"]
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "FEEDBACK_IDEMPOTENCY_CONFLICT"
 
 
 def test_feedback_upload_rejects_disallowed_extension(app_factory, monkeypatch, tmp_path):
     with _feedback_client(app_factory, monkeypatch, tmp_path) as client:
         create = client.post(
             "/api/v1/feedback/tickets",
-            json={"title": "Issue", "description": "Details", "priority": "low"},
+            json=_ticket_payload(page_id="feedback", priority="low"),
+            headers={"Idempotency-Key": "create-bad-upload"},
         )
         ticket_id = create.json()["data"]["id"]
         response = client.post(
             f"/api/v1/feedback/tickets/{ticket_id}/attachments",
             files={"file": ("bad.exe", b"nope", "application/octet-stream")},
+            headers={"Idempotency-Key": "upload-bad"},
         )
 
     assert response.status_code == 415
@@ -123,13 +167,10 @@ def test_feedback_service_enforces_owner_and_manager_rules(tmp_path):
     manager = {"id": "m1", "username": "lead", "role": "supervisor"}
 
     ticket = service.create_ticket(
-        payload={
-            "title": "Issue",
-            "description": "Details",
-            "priority": "medium",
-        },
+        payload=_ticket_payload(page_id="feedback", priority="medium"),
         current_user=owner,
         request_id="req",
+        idempotency_key="service-create-1",
     )
 
     with pytest.raises(ApiError) as forbidden:
@@ -137,25 +178,28 @@ def test_feedback_service_enforces_owner_and_manager_rules(tmp_path):
     with pytest.raises(ApiError) as status_forbidden:
         service.update_ticket(
             ticket_id=ticket["id"],
-            payload={"status": "closed"},
+            payload={"status": "closed", "expected_version": ticket["version"]},
             current_user=owner,
         )
     updated = service.update_ticket(
         ticket_id=ticket["id"],
-        payload={"status": "closed"},
+        payload={"status": "closed", "expected_version": ticket["version"]},
         current_user=manager,
     )
 
     assert forbidden.value.status_code == 403
     assert status_forbidden.value.status_code == 403
-    assert updated["status"] == "closed"
+    assert updated["status"]["id"] == "closed"
+    assert updated["closed_at"] is not None
 
 
-def test_feedback_openapi_includes_feedback_endpoints(client):
+def test_feedback_openapi_includes_typed_feedback_endpoints(client):
     schema = client.get("/openapi.json").json()
 
-    assert "/api/v1/feedback/tickets" in schema["paths"]
-    assert "/api/v1/feedback/tickets/{ticket_id}/attachments" in schema["paths"]
+    assert schema["paths"]["/api/v1/feedback/config"]["get"]["operationId"] == "get_feedback_config"
+    assert schema["paths"]["/api/v1/feedback/tickets"]["post"]["operationId"] == "create_feedback_ticket"
+    assert "/api/v1/feedback/tickets/{ticket_id}/events" in schema["paths"]
+    assert "/api/v1/feedback/tickets/{ticket_id}/transitions" in schema["paths"]
 
 
 def test_feedback_migration_dry_run_does_not_copy_rows(tmp_path):
@@ -206,7 +250,7 @@ def test_feedback_migration_dry_run_does_not_copy_rows(tmp_path):
                 ideal_closure_text, status, created_at, updated_at, created_by, updated_by
             )
             VALUES (1, 'TKT-000001', 'Feedback', 'operator', 'high', 'Issue',
-                    'Fix soon', 'open', '2026-01-01T00:00:00+00:00',
+                    'Fix soon', 'dependency_conflict', '2026-01-01T00:00:00+00:00',
                     '2026-01-01T00:00:00+00:00', 'operator', 'operator')
             """
         )
@@ -215,7 +259,7 @@ def test_feedback_migration_dry_run_does_not_copy_rows(tmp_path):
             INSERT INTO ticket_events (
                 id, ticket_id, event_type, old_status, new_status, comment, actor, created_at
             )
-            VALUES (1, 1, 'created', NULL, 'open', 'Ticket created', 'operator',
+            VALUES (1, 1, 'status_changed', 'open', 'dependency_conflict', 'Blocked', 'operator',
                     '2026-01-01T00:00:00+00:00')
             """
         )
@@ -236,10 +280,7 @@ def test_feedback_migration_dry_run_does_not_copy_rows(tmp_path):
         feedback_require_auth=False,
         feedback_database_url=f"sqlite:///{target_db.as_posix()}",
     )
-    result = FeedbackMigrationService(settings=settings).migrate(
-        dry_run=True,
-        source_db=source_db,
-    )
+    result = FeedbackMigrationService(settings=settings).migrate(dry_run=True, source_db=source_db)
 
     assert result.dry_run is True
     assert result.copied_tickets == 1

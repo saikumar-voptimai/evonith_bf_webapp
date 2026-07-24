@@ -1,8 +1,9 @@
-"""Copy legacy direct-mode feedback tickets into backend feedback tables."""
+﻿"""Copy legacy direct-mode feedback tickets into backend feedback tables."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import json
 import mimetypes
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 from apps.backend_api.app.core.config import BackendSettings, load_backend_settings
 from apps.backend_api.app.repositories.feedback_repository import FeedbackRepository, _sqlite_url_to_path
 from apps.backend_api.app.services.feedback_attachment_service import FeedbackAttachmentService
+from furnace_data.app_catalog import canonical_page_id, page_label
 from furnace_data.runtime_paths import get_feedback_db_path, get_feedback_upload_dir, get_repo_root
 
 
@@ -224,6 +226,8 @@ class FeedbackMigrationService:
             return None
 
         page_name = str(legacy_ticket.get("page_name") or "Feedback").strip() or "Feedback"
+        page_id = canonical_page_id(page_name) or "feedback"
+        page_name = page_label(page_id) or page_name
         reported_by = str(legacy_ticket.get("reported_by") or "").strip()
         ideal_closure = str(legacy_ticket.get("ideal_closure_text") or "").strip()
         metadata = {
@@ -238,7 +242,8 @@ class FeedbackMigrationService:
         created_at = _legacy_timestamp(legacy_ticket.get("created_at"))
         updated_at = _legacy_timestamp(legacy_ticket.get("updated_at")) or created_at
         status = _legacy_status(legacy_ticket.get("status"))
-        closed_at = updated_at if status in {"closed", "resolved", "rejected"} else None
+        resolved_at = updated_at if status in {"resolved", "rejected"} else None
+        closed_at = updated_at if status == "closed" else None
 
         result.messages.append(f"{'would copy' if dry_run else 'copy'} ticket {ticket_number}")
         if dry_run:
@@ -250,29 +255,37 @@ class FeedbackMigrationService:
             target.execute(
                 """
                 INSERT OR REPLACE INTO feedback_tickets (
-                    id, ticket_number, title, description, category, priority, status,
-                    page, tags_json, metadata_json, created_by, created_by_username,
-                    assigned_to, resolution_notes, created_at, updated_at, closed_at
+                    id, ticket_number, version, title, description, ideal_closure,
+                    category, priority, status, page_id, page, tags_json,
+                    metadata_json, created_by, created_by_username, updated_by,
+                    updated_by_username, assigned_to, resolution_notes, created_at,
+                    updated_at, last_activity_at, resolved_at, closed_at, deleted_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 """,
                 (
                     target_id,
                     ticket_number,
                     title,
                     str(legacy_ticket.get("description") or ""),
+                    ideal_closure or None,
                     page_name,
                     _legacy_priority(legacy_ticket.get("criticality")),
                     status,
+                    page_id,
                     page_name,
                     json.dumps(["legacy-direct-mode"], sort_keys=True),
                     json.dumps(metadata, sort_keys=True),
                     str(legacy_ticket.get("created_by") or reported_by or "") or None,
                     reported_by or str(legacy_ticket.get("created_by") or "") or None,
+                    str(legacy_ticket.get("updated_by") or "") or None,
+                    str(legacy_ticket.get("updated_by") or "") or None,
                     None,
-                    ideal_closure or None,
+                    None,
                     created_at,
                     updated_at,
+                    updated_at,
+                    resolved_at,
                     closed_at,
                 ),
             )
@@ -298,45 +311,54 @@ class FeedbackMigrationService:
         if dry_run:
             for event_row in events:
                 event = _row_dict(event_row)
-                comment_id = f"fbc_legacy_{event['id']}"
-                result.messages.append(f"would copy comment {comment_id}")
+                event_id = f"fbe_legacy_{event['id']}"
+                result.messages.append(f"would copy event {event_id}")
                 result.copied_comments += 1
             return
 
         with self._target_connection() as target:
             for event_row in events:
                 event = _row_dict(event_row)
-                comment_id = f"fbc_legacy_{event['id']}"
+                event_id = f"fbe_legacy_{event['id']}"
                 exists = target.execute(
-                    "SELECT 1 FROM feedback_comments WHERE id = ?",
-                    (comment_id,),
+                    "SELECT 1 FROM feedback_events WHERE id = ?",
+                    (event_id,),
                 ).fetchone()
                 if exists and not overwrite:
                     continue
-                body = str(event.get("comment") or event.get("event_type") or "Legacy event")
-                if event.get("old_status") or event.get("new_status"):
-                    body = (
-                        f"{body} "
-                        f"({event.get('old_status') or '-'} -> {event.get('new_status') or '-'})"
-                    ).strip()
+                sequence = int(
+                    target.execute(
+                        "SELECT COALESCE(MAX(sequence), 0) + 1 FROM feedback_events WHERE ticket_id = ?",
+                        (target_ticket_id,),
+                    ).fetchone()[0]
+                )
+                event_type = str(event.get("event_type") or "legacy_event").strip().lower().replace("-", "_")
+                if event_type == "created":
+                    event_type = "ticket_created"
+                note = str(event.get("comment") or "").strip() or None
                 target.execute(
                     """
-                    INSERT OR REPLACE INTO feedback_comments (
-                        id, ticket_id, body, created_by, created_by_username, created_at
+                    INSERT OR REPLACE INTO feedback_events (
+                        id, ticket_id, event_type, actor_user_id, actor_username,
+                        old_status, new_status, note, payload_json, sequence, created_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        comment_id,
+                        event_id,
                         target_ticket_id,
-                        body,
+                        event_type,
                         str(event.get("actor") or "") or None,
                         str(event.get("actor") or "") or None,
+                        _legacy_status(event.get("old_status")) if event.get("old_status") else None,
+                        _legacy_status(event.get("new_status")) if event.get("new_status") else None,
+                        note,
+                        json.dumps({"legacy_event_id": event.get("id")}, sort_keys=True),
+                        sequence,
                         _legacy_timestamp(event.get("created_at")),
                     ),
                 )
                 result.copied_comments += 1
-
     def _copy_attachments(
         self,
         *,
@@ -413,15 +435,16 @@ class FeedbackMigrationService:
                 result.messages.append(f"copy attachment {source_file} -> {target_file}")
 
                 shutil.copy2(source_file, target_file)
+                checksum_sha256 = hashlib.sha256(target_file.read_bytes()).hexdigest()
                 content_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
                 target.execute(
                     """
                     INSERT OR REPLACE INTO feedback_attachments (
                         id, ticket_id, filename, original_filename, stored_filename,
-                        content_type, size_bytes, created_by, created_by_username,
-                        created_at, deleted_at
+                        content_type, size_bytes, checksum_sha256, storage_status,
+                        created_by, created_by_username, created_at, deleted_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                     """,
                     (
                         attachment_id,
@@ -431,6 +454,8 @@ class FeedbackMigrationService:
                         stored_filename,
                         content_type,
                         target_file.stat().st_size,
+                        checksum_sha256,
+                        "stored",
                         str(image.get("uploaded_by") or "") or None,
                         str(image.get("uploaded_by") or "") or None,
                         _legacy_timestamp(image.get("created_at")),
@@ -450,3 +475,12 @@ class FeedbackMigrationService:
             if candidate.exists():
                 return candidate
         return root / path
+
+
+
+
+
+
+
+
+

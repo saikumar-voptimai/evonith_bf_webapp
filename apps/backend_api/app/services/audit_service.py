@@ -1,4 +1,4 @@
-"""Best-effort audit logging service."""
+﻿"""Best-effort audit logging service."""
 
 from __future__ import annotations
 
@@ -163,8 +163,21 @@ class AuditService:
                 return "plant.burden_distribution.updated"
         if path.startswith("/api/v1/admin/users") and method in {"POST", "PATCH"}:
             return "admin.user.updated" if "/deactivate" in path or "/activate" in path or method == "PATCH" else "admin.user.created"
-        if path.startswith("/api/v1/feedback") and method == "POST":
-            return "feedback.ticket.created"
+        if path.startswith("/api/v1/feedback"):
+            if method == "POST" and path.endswith("/comments"):
+                return "feedback.comment.created"
+            if method == "POST" and path.endswith("/attachments"):
+                return "feedback.attachment.uploaded"
+            if method == "DELETE" and "/attachments/" in path:
+                return "feedback.attachment.deleted"
+            if method == "DELETE" and "/tickets/" in path:
+                return "feedback.ticket.deleted"
+            if method == "POST" and (path.endswith("/transitions") or path.endswith("/close") or path.endswith("/reopen")):
+                return "feedback.ticket.transitioned"
+            if method == "PATCH" and "/tickets/" in path:
+                return "feedback.ticket.updated"
+            if method == "POST" and path.rstrip("/").endswith("/feedback/tickets"):
+                return "feedback.ticket.created"
         if path.startswith("/api/v1/material-balance"):
             return "compute.material_balance.run"
         if path.startswith("/api/v1/recommendations"):
@@ -180,4 +193,7 @@ class AuditService:
         if path.startswith("/api/v1/furnacemind/documents"):
             return "furnacemind.document.uploaded"
         return "api.state_changed"
+
+
+
 

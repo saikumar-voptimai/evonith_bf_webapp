@@ -1,3 +1,4 @@
+﻿
 """Attachment handling for backend feedback tickets."""
 
 from __future__ import annotations
@@ -5,6 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
+import hashlib
+from io import BytesIO
 import logging
 from pathlib import Path
 import re
@@ -78,7 +81,13 @@ class FeedbackAttachmentService:
             )
         return safe_name[:180]
 
-    def _validate_type(self, filename: str, content_type: str, size_bytes: int) -> None:
+    def _validate_type(
+        self,
+        filename: str,
+        content_type: str,
+        size_bytes: int,
+        content: bytes,
+    ) -> None:
         if size_bytes > self.max_size_bytes:
             raise ApiError(
                 "FEEDBACK_ATTACHMENT_TOO_LARGE",
@@ -86,7 +95,6 @@ class FeedbackAttachmentService:
                 status_code=413,
                 details={"max_attachment_mb": self.settings.feedback_max_attachment_mb},
             )
-
         extension = Path(filename).suffix.lower()
         allowed_extensions = {
             ext.lower() if ext.startswith(".") else f".{ext.lower()}"
@@ -99,16 +107,35 @@ class FeedbackAttachmentService:
                 status_code=415,
                 details={"extension": extension},
             )
-
-        allowed_types = {
-            item.lower() for item in self.settings.feedback_allowed_attachment_types
-        }
+        allowed_types = {item.lower() for item in self.settings.feedback_allowed_attachment_types}
         if content_type.lower() not in allowed_types:
             raise ApiError(
                 "FEEDBACK_ATTACHMENT_TYPE_NOT_ALLOWED",
                 "Attachment content type is not allowed.",
                 status_code=415,
                 details={"content_type": content_type},
+            )
+        self._validate_signature(extension=extension, content_type=content_type, content=content)
+
+    @staticmethod
+    def _validate_signature(*, extension: str, content_type: str, content: bytes) -> None:
+        """Verify basic magic bytes for binary attachment types."""
+        lower_type = content_type.lower()
+        valid = True
+        if lower_type == "image/png" or extension == ".png":
+            valid = content.startswith(b"\x89PNG\r\n\x1a\n")
+        elif lower_type == "image/jpeg" or extension in {".jpg", ".jpeg"}:
+            valid = content.startswith(b"\xff\xd8")
+        elif lower_type == "image/webp" or extension == ".webp":
+            valid = len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP"
+        elif lower_type == "application/pdf" or extension == ".pdf":
+            valid = content.startswith(b"%PDF")
+        if not valid:
+            raise ApiError(
+                "FEEDBACK_ATTACHMENT_SIGNATURE_MISMATCH",
+                "Attachment content does not match its declared type.",
+                status_code=415,
+                details={"content_type": content_type, "extension": extension},
             )
 
     async def parse_upload_request(self, request: Request) -> ParsedUpload:
@@ -127,15 +154,9 @@ class FeedbackAttachmentService:
             chunks.append(chunk)
         body = b"".join(chunks)
         content_type = request.headers.get("content-type", "application/octet-stream")
-
         if content_type.lower().startswith("multipart/form-data"):
             return self._parse_multipart(body=body, content_type=content_type)
-
-        filename = (
-            request.headers.get("x-filename")
-            or request.query_params.get("filename")
-            or "upload"
-        )
+        filename = request.headers.get("x-filename") or request.query_params.get("filename") or "upload"
         return ParsedUpload(
             filename=str(filename),
             content_type=content_type.split(";", 1)[0].strip() or "application/octet-stream",
@@ -146,10 +167,7 @@ class FeedbackAttachmentService:
     def _parse_multipart(*, body: bytes, content_type: str) -> ParsedUpload:
         """Parse first file part from a multipart body using stdlib email."""
         message = BytesParser(policy=policy.default).parsebytes(
-            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode(
-                "utf-8"
-            )
-            + body
+            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + body
         )
         for part in message.iter_parts():
             filename = part.get_filename()
@@ -183,14 +201,11 @@ class FeedbackAttachmentService:
                 "Maximum attachments per ticket reached.",
                 status_code=409,
             )
-
         safe_name = self.sanitize_filename(upload.filename)
         size_bytes = len(upload.content)
-        content_type = (upload.content_type or "application/octet-stream").split(";", 1)[
-            0
-        ].strip()
-        self._validate_type(safe_name, content_type, size_bytes)
-
+        content_type = (upload.content_type or "application/octet-stream").split(";", 1)[0].strip()
+        self._validate_type(safe_name, content_type, size_bytes, upload.content)
+        checksum_sha256 = hashlib.sha256(upload.content).hexdigest()
         attachment_id = f"fba_{uuid4().hex}"
         stored_filename = f"{ticket_id}_{attachment_id}_{safe_name}"
         target_path = (self.upload_dir / stored_filename).resolve()
@@ -198,11 +213,10 @@ class FeedbackAttachmentService:
             target_path.relative_to(self.upload_dir.resolve())
         except ValueError as exc:
             raise ApiError(
-                "FEEDBACK_ATTACHMENT_PATH_INVALID",
+                "FEEDBACK_ATTACHMENT_INVALID_FILENAME",
                 "Attachment path is invalid.",
                 status_code=400,
             ) from exc
-
         try:
             target_path.write_bytes(upload.content)
             record = self.repository.add_attachment_metadata(
@@ -214,15 +228,14 @@ class FeedbackAttachmentService:
                     "stored_filename": stored_filename,
                     "content_type": content_type,
                     "size_bytes": size_bytes,
-                    "created_by": str(current_user.get("id"))
-                    if current_user and current_user.get("id")
-                    else None,
-                    "created_by_username": str(current_user.get("username"))
-                    if current_user and current_user.get("username")
-                    else None,
+                    "checksum_sha256": checksum_sha256,
+                    "storage_status": "stored",
+                    "created_by": str(current_user.get("id")) if current_user and current_user.get("id") else None,
+                    "created_by_username": str(current_user.get("username")) if current_user and current_user.get("username") else None,
                 }
             )
         except ApiError:
+            target_path.unlink(missing_ok=True)
             raise
         except Exception as exc:
             target_path.unlink(missing_ok=True)
@@ -231,7 +244,6 @@ class FeedbackAttachmentService:
                 "Attachment upload failed.",
                 status_code=500,
             ) from exc
-
         log.info(
             "feedback_attachment_uploaded request_id=%s ticket_id=%s attachment_id=%s content_type=%s size_bytes=%s",
             request_id,
@@ -249,7 +261,7 @@ class FeedbackAttachmentService:
             path.relative_to(self.upload_dir.resolve())
         except ValueError as exc:
             raise ApiError(
-                "FEEDBACK_ATTACHMENT_PATH_INVALID",
+                "FEEDBACK_ATTACHMENT_INVALID_FILENAME",
                 "Attachment path is invalid.",
                 status_code=400,
             ) from exc
@@ -272,3 +284,31 @@ class FeedbackAttachmentService:
                 "Attachment delete failed.",
                 status_code=500,
             ) from exc
+
+    def build_image_preview(self, attachment: FeedbackAttachmentRecord) -> tuple[bytes, str]:
+        """Return a bounded image preview for an attachment."""
+        if attachment.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+            raise ApiError(
+                "FEEDBACK_ATTACHMENT_PREVIEW_UNSUPPORTED",
+                "Preview is only available for image attachments.",
+                status_code=415,
+            )
+        path = self.resolve_download_path(attachment)
+        try:
+            from PIL import Image
+        except ImportError:
+            data = path.read_bytes()
+            if len(data) > min(self.max_size_bytes, 2 * 1024 * 1024):
+                raise ApiError(
+                    "FEEDBACK_ATTACHMENT_PREVIEW_UNSUPPORTED",
+                    "Image preview generation is unavailable for this file.",
+                    status_code=415,
+                )
+            return data, attachment.content_type
+        with Image.open(path) as image:
+            image.thumbnail((640, 640))
+            if image.mode not in {"RGB", "RGBA"}:
+                image = image.convert("RGB")
+            output = BytesIO()
+            image.save(output, format="PNG", optimize=True)
+            return output.getvalue(), "image/png"

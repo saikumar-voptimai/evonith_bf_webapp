@@ -1,4 +1,4 @@
-"""Backend API settings loaded from environment variables."""
+﻿"""Backend API settings loaded from environment variables."""
 
 from __future__ import annotations
 
@@ -284,7 +284,7 @@ class BackendSettings(BaseSettings):
         validation_alias="EVONITH_FEEDBACK_DEFAULT_STATUS",
     )
     feedback_allowed_statuses: list[str] = Field(
-        default_factory=lambda: ["open", "in_progress", "resolved", "closed", "rejected"],
+        default_factory=lambda: ["open", "in_progress", "dependency_conflict", "resolved", "rejected", "closed"],
         validation_alias="EVONITH_FEEDBACK_ALLOWED_STATUSES",
     )
     feedback_allowed_priorities: list[str] = Field(
@@ -419,6 +419,30 @@ class BackendSettings(BaseSettings):
     blend_optimizer_enable_model_predictions: bool = Field(
         True,
         validation_alias="EVONITH_BLEND_OPTIMIZER_ENABLE_MODEL_PREDICTIONS",
+    )
+    blend_optimizer_database_url: str = Field(
+        "",
+        validation_alias="EVONITH_BMO_DATABASE_URL",
+    )
+    bmo_context_ttl_seconds: int = Field(
+        1800,
+        validation_alias="EVONITH_BMO_CONTEXT_TTL_SECONDS",
+    )
+    bmo_default_timezone: str = Field(
+        "Asia/Kolkata",
+        validation_alias="EVONITH_BMO_DEFAULT_TIMEZONE",
+    )
+    bmo_max_selected_ores: int = Field(
+        20,
+        validation_alias="EVONITH_BMO_MAX_SELECTED_ORES",
+    )
+    bmo_max_concurrent_runs: int = Field(
+        1,
+        validation_alias="EVONITH_BMO_MAX_CONCURRENT_RUNS",
+    )
+    bmo_default_iteration_budget: str = Field(
+        "standard",
+        validation_alias="EVONITH_BMO_DEFAULT_ITERATION_BUDGET",
     )
     copilot_require_auth: bool = Field(
         True,
@@ -1017,3 +1041,4 @@ class BackendSettings(BaseSettings):
 def load_backend_settings() -> BackendSettings:
     """Load backend settings from the current environment."""
     return BackendSettings()
+
