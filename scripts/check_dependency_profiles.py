@@ -1,5 +1,16 @@
 #!/usr/bin/env python
-"""Validate dependency profile metadata without installing packages."""
+"""Validate Evonith dependency-profile boundaries without installing packages.
+
+This command-line check reads ``pyproject.toml`` and the profile files under
+``requirements/``. It verifies required groups, expected optional packages,
+backend/frontend isolation, canonical project paths, and consistency between
+dependency metadata and requirements files. LangGraph is required in the
+``backend-ai`` profile and forbidden from the lightweight backend base profile.
+
+The script performs local, read-only metadata checks and makes no network calls.
+It prints actionable failures and returns a nonzero exit code when a dependency
+boundary or required project convention is violated.
+"""
 
 from __future__ import annotations
 
@@ -40,6 +51,7 @@ BACKEND_BASE_FORBIDDEN = {
     "chromadb",
     "fitz",
     "langchain",
+    "langgraph",
     "onnxruntime",
     "openai",
     "pydeck",
@@ -67,7 +79,7 @@ PROJECT_DEFAULT_FORBIDDEN = BACKEND_BASE_FORBIDDEN | {
 EXPECTED_OPTIONAL_DEPS = {
     "backend-data": {"influxdb3-python", "psycopg2-binary"},
     "backend-ml": {"joblib", "scikit-learn", "xgboost"},
-    "backend-ai": {"openai", "anthropic"},
+    "backend-ai": {"openai", "anthropic", "langgraph"},
     "backend-vector": {"qdrant-client", "sentence-transformers", "torch"},
     "backend-documents": {"pymupdf", "python-docx", "pypdf"},
 }
