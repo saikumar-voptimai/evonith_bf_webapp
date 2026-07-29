@@ -62,6 +62,7 @@ from utils.bmo import (
     FuelUnitCostModelService,
     OreInput,
     SlagBalanceSettings,
+    compute_charging_requirements,
     run_lp_baseline,
     run_nonlinear_optimizer,
     validate_selected_pellet_inputs,
@@ -73,7 +74,10 @@ from ui.bmo.editor_inputs import (
     fuel_ash_inputs_from_editor,
     slag_balance_settings_from_editor,
 )
-from utils.bmo.constraints import check_blend_constraints
+from utils.bmo.constraints import (
+    burden_capacity_ratio_mt_per_thm,
+    check_blend_constraints,
+)
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.si_prediction import SiPredictionService
 from utils.bmo.fuel_rates import get_recent_fuel_input_rates
@@ -616,6 +620,8 @@ def _render_blend_comparison(
     flux_inputs: list[FluxInput],
     dust_inputs: list[DustInput],
     slag_balance_settings: SlagBalanceSettings,
+    charge_mass_mt: float,
+    charging_hours_per_day: float,
     manual_ores: list[OreInput] | None = None,
 ) -> None:
     """Operator-focused comparison of the manual blend vs the optimizer blends.
@@ -637,6 +643,8 @@ def _render_blend_comparison(
          - target_production_mt: float - HM basis for cost / slag / model fields.
          - feo_in_slag_pct: float - FeO assumed to report into slag.
          - fuel_ash_inputs / flux_inputs / dust_inputs / slag_balance_settings - Slag-balance inputs.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge.
+         - charging_hours_per_day: float - Hours over which the daily blend is charged.
          - manual_ores: list[OreInput] | None - Materials available for the manual blend.
 
     Returns:
@@ -762,6 +770,18 @@ def _render_blend_comparison(
     if len(options) < 2:
         return
     labels = [label for label, _, _ in options]
+    charging_by_blend_id = {
+        id(blend): compute_charging_requirements(
+            blend,
+            charge_mass_mt=charge_mass_mt,
+            hours_per_day=charging_hours_per_day,
+        )
+        for _, blend, _ in options
+    }
+
+    def _charging_value(blend: Any, key: str) -> float | None:
+        value = charging_by_blend_id[id(blend)].get(key)
+        return float(value) if value is not None else None
 
     # ---- Inputs: suggested blend mix (Share %), LP and DE side by side ----
     st.markdown("###### Suggested blend mix (Share %)")
@@ -815,6 +835,38 @@ def _render_blend_comparison(
     metric_specs = [
         ("Total Cost (Rs/THM)", lambda b, si: _display_total(b), "{:,.0f}"),
         ("Ore Cost (Rs/THM)", lambda b, si: b.ore_cost_per_thm_rs, "{:,.0f}"),
+        (
+            "IBRM + Flux (MT)",
+            lambda b, si: float(
+                b.diagnostics.get("total_burden_qty_mt", b.total_qty_mt) or 0.0
+            ),
+            "{:,.0f}",
+        ),
+        (
+            "Flux Rate (kg/THM)",
+            lambda b, si: _charging_value(b, "flux_rate_kg_per_thm"),
+            "{:,.1f}",
+        ),
+        (
+            "Nut Coke in Charges (MT)",
+            lambda b, si: _charging_value(b, "nut_coke_total_mt"),
+            "{:,.1f}",
+        ),
+        (
+            "Total Charge Mix (MT)",
+            lambda b, si: _charging_value(b, "total_charge_mix_mt"),
+            "{:,.0f}",
+        ),
+        (
+            "Charge Mix (MT/hr)",
+            lambda b, si: _charging_value(b, "charge_mix_mt_per_hour"),
+            "{:,.1f}",
+        ),
+        (
+            "Required Charges (/hr)",
+            lambda b, si: _charging_value(b, "required_charges_per_hour"),
+            "{:,.2f}",
+        ),
         # 1-decimal so small but real blend-to-blend differences aren't hidden by
         # rounding (the fuel model is only weakly blend-sensitive -- see the help
         # note on the outcomes table).
@@ -1476,6 +1528,14 @@ basicity_defaults.update(
 basicity_defaults = apply_model_input_preferences(
     basicity_defaults, operator_preferences
 )
+burden_capacity_cfg = bmo_cfg.get("burden_capacity", {}) or {}
+default_burden_capacity_ratio = burden_capacity_ratio_mt_per_thm(burden_capacity_cfg)
+burden_capacity_enabled = bool(burden_capacity_cfg.get("enabled", True))
+burden_capacity_ratio = float(default_burden_capacity_ratio)
+charge_mass_mt = float(burden_capacity_cfg.get("charge_mass_mt", 26.4) or 26.4)
+charging_hours_per_day = float(
+    burden_capacity_cfg.get("hours_per_day", 24.0) or 24.0
+)
 
 with st.form("bmo_model_input_form", clear_on_submit=False):
     st.markdown("### Model Inputs")
@@ -1593,6 +1653,17 @@ st.caption(
     f"Optimiser Fe requirement: {target_fe_mt:,.1f} MT "
     f"from {target_production_mt:,.1f} MT HM at {hm_fe_pct_for_target:.2f}% Fe."
 )
+
+# Absolute cap handed to the solvers, re-derived from the current HM target so
+# it tracks the operator's input rather than a fixed reference day.
+max_burden_qty_mt: float | None = None
+if burden_capacity_enabled and burden_capacity_ratio > 0.0:
+    max_burden_qty_mt = float(burden_capacity_ratio) * float(target_production_mt)
+    st.caption(
+        f"Charging capacity: IBRM + flux limited to {max_burden_qty_mt:,.0f} MT "
+        f"({burden_capacity_ratio:,.3f} MT per MT HM x {target_production_mt:,.0f} "
+        "MT HM). Blends needing more tonnes than this are rejected."
+    )
 
 default_selected_names = set(ui_cfg.get("default_selected_ores", []))
 default_selected_ids = [
@@ -1850,6 +1921,7 @@ if requested_lp or requested_total:
                 target_slag_basicity_max=target_slag_basicity_max,
                 target_slag_t_basicity_min=None,
                 target_slag_t_basicity_max=None,
+                max_burden_qty_mt=max_burden_qty_mt,
                 fuel_ash_inputs=fuel_ash_inputs,
                 flux_inputs=flux_inputs,
                 dust_inputs=dust_inputs,
@@ -1919,6 +1991,7 @@ if requested_lp or requested_total:
                     target_slag_qty_mt=target_slag_qty_mt,
                     target_slag_basicity_min=target_slag_basicity_min,
                     target_slag_basicity_max=target_slag_basicity_max,
+                    max_burden_qty_mt=max_burden_qty_mt,
                 )
                 lp_result.feasible = len(lp_result.violations) == 0
                 # Display-only Si prediction for the baseline blend (not optimized).
@@ -2037,6 +2110,7 @@ if requested_lp or requested_total:
                 target_slag_basicity_max=target_slag_basicity_max,
                 target_slag_t_basicity_min=None,
                 target_slag_t_basicity_max=None,
+                max_burden_qty_mt=max_burden_qty_mt,
                 model_service=model_service,
                 process_context=process_context,
                 history_df=history_df,
@@ -2137,6 +2211,8 @@ if lp_result is not None or de_result is not None:
                 lp_result,
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 is_lp_mode=True,
+                charge_mass_mt=charge_mass_mt,
+                charging_hours_per_day=charging_hours_per_day,
             )
             _render_si_metric(st.session_state.get("bmo_lp_si"))
             _render_lp_flux_additions(lp_result)
@@ -2160,6 +2236,8 @@ if lp_result is not None or de_result is not None:
                 "DE Total-Cost Result",
                 de_result,
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
+                charge_mass_mt=charge_mass_mt,
+                charging_hours_per_day=charging_hours_per_day,
             )
             _render_si_metric(st.session_state.get("bmo_de_si"))
             _render_lp_flux_additions(de_result)
@@ -2204,6 +2282,8 @@ if lp_result is not None or de_result is not None:
                 flux_inputs=flux_inputs,
                 dust_inputs=dust_inputs,
                 slag_balance_settings=slag_balance_settings,
+                charge_mass_mt=charge_mass_mt,
+                charging_hours_per_day=charging_hours_per_day,
                 manual_ores=ores,
             )
         else:

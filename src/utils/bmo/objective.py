@@ -40,6 +40,8 @@ class BmoObjectiveEvaluator:
          - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
+         - max_burden_qty_mt: float | None - Charging-throughput ceiling on total wet
+           IBRM + flux in MT. ``None`` leaves the burden quantity unbounded.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
          - process_context: dict[str, float] | None - Latest process variables.
          - history_df: pd.DataFrame | None - Historical process data for lagged features.
@@ -68,6 +70,7 @@ class BmoObjectiveEvaluator:
         target_slag_basicity_max: float | None = None,
         target_slag_t_basicity_min: float | None = None,
         target_slag_t_basicity_max: float | None = None,
+        max_burden_qty_mt: float | None = None,
         fuel_ash_inputs: list[FuelAshInput] | None = None,
         flux_inputs: list[FluxInput] | None = None,
         dust_inputs: list[DustInput] | None = None,
@@ -119,6 +122,11 @@ class BmoObjectiveEvaluator:
         # compatibility with older callers, but do not penalize or validate it.
         self.target_slag_t_basicity_min = None
         self.target_slag_t_basicity_max = None
+        self.max_burden_qty_mt = (
+            float(max_burden_qty_mt)
+            if max_burden_qty_mt is not None and float(max_burden_qty_mt) > 0.0
+            else None
+        )
         self.model_service = model_service
         self.process_context = process_context or {}
         self.history_df = history_df
@@ -228,6 +236,7 @@ class BmoObjectiveEvaluator:
             self.penalty_cfg.get("penalty_production_excess", penalty_fe)
         )
         penalty_slag = float(self.penalty_cfg.get("penalty_slag", 3000.0))
+        penalty_burden = float(self.penalty_cfg.get("penalty_burden", penalty_slag))
         penalty_basicity = float(
             self.penalty_cfg.get("penalty_basicity", penalty_slag * 100.0)
         )
@@ -269,6 +278,18 @@ class BmoObjectiveEvaluator:
         slag_penalty = 0.0
         if blend.slag_mt > self.target_slag_qty_mt:
             slag_penalty += (blend.slag_mt - self.target_slag_qty_mt) * penalty_slag
+
+        # Charging-throughput cap on IBRM + flux. DE reaches the Fe target by
+        # scaling total burden, so without this penalty a lean, cheap blend just
+        # buys more tonnes -- tonnes the charging system cannot deliver.
+        burden_penalty = 0.0
+        burden_qty_mt = float(
+            blend.diagnostics.get("total_burden_qty_mt", blend.total_qty_mt) or 0.0
+        )
+        if self.max_burden_qty_mt is not None:
+            burden_excess_mt = burden_qty_mt - self.max_burden_qty_mt
+            if burden_excess_mt > 0.0:
+                burden_penalty = burden_excess_mt * penalty_burden
 
         def _basicity_penalty(
             *,
@@ -313,6 +334,7 @@ class BmoObjectiveEvaluator:
             + fe_penalty
             + production_excess_penalty
             + slag_penalty
+            + burden_penalty
             + basicity_penalty
             + t_basicity_penalty
             + finite_penalty
@@ -330,6 +352,7 @@ class BmoObjectiveEvaluator:
             target_slag_basicity_max=self.target_slag_basicity_max,
             target_slag_t_basicity_min=None,
             target_slag_t_basicity_max=None,
+            max_burden_qty_mt=self.max_burden_qty_mt,
         )
         feasible = len(violations) == 0
 
@@ -346,6 +369,8 @@ class BmoObjectiveEvaluator:
                 "penalty_fe": float(fe_penalty),
                 "penalty_production_excess": float(production_excess_penalty),
                 "penalty_slag": float(slag_penalty),
+                "penalty_burden_capacity": float(burden_penalty),
+                "total_burden_qty_mt": float(burden_qty_mt),
                 "penalty_slag_basicity": float(basicity_penalty),
                 "penalty_slag_t_basicity": float(t_basicity_penalty),
                 "penalty_non_finite": float(finite_penalty),

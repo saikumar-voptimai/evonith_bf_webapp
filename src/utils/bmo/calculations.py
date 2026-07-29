@@ -474,6 +474,83 @@ def _weighted_avg(ores: list[OreInput], weights: dict[str, float], attr: str) ->
     return acc
 
 
+def compute_charging_requirements(
+    blend: BlendEvaluation,
+    *,
+    charge_mass_mt: float = 26.4,
+    hours_per_day: float = 24.0,
+) -> dict[str, float | None]:
+    """Calculate flux rate and the charging rate required by a solved blend.
+
+    The charging system carries wet IBRM, wet flux, and nut coke. Nut coke is
+    stored as kg/THM in the fuel-rate diagnostics, so its daily tonnes are
+    ``nut_coke_kg_thm * hot_metal_mt / 1000``. Required charges per hour are:
+
+    ``(IBRM + flux + nut coke) / hours_per_day / charge_mass_mt``.
+
+    Args:
+         - blend: BlendEvaluation - Evaluated LP, DE, or manual blend.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge.
+         - hours_per_day: float - Charging hours represented by the blend target.
+
+    Returns:
+         - return dict[str, float | None] - Flux kg/THM, nut-coke tonnes,
+           total charge-mix tonnes, tonnes/hour, and required charges/hour.
+           Nut-coke-dependent results are ``None`` when the rate is unavailable.
+    """
+
+    diagnostics = blend.diagnostics or {}
+    hot_metal_mt = float(diagnostics.get("hot_metal_target_mt", 0.0) or 0.0)
+    flux_mt = max(0.0, float(diagnostics.get("total_flux_wet_qty_mt", 0.0) or 0.0))
+    burden_mt = max(
+        0.0,
+        float(diagnostics.get("total_burden_qty_mt", blend.total_qty_mt) or 0.0),
+    )
+    flux_rate_kg_thm = (
+        flux_mt * 1000.0 / hot_metal_mt if hot_metal_mt > 0.0 else None
+    )
+
+    fuel_rates = diagnostics.get("fuel_rate_estimate") or {}
+    raw_nut_coke_rate = (
+        fuel_rates.get("nut_coke_rate_kg_thm")
+        if isinstance(fuel_rates, dict)
+        else None
+    )
+    try:
+        nut_coke_rate_kg_thm = (
+            max(0.0, float(raw_nut_coke_rate))
+            if raw_nut_coke_rate is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        nut_coke_rate_kg_thm = None
+
+    nut_coke_total_mt: float | None = None
+    total_charge_mix_mt: float | None = None
+    charge_mix_mt_per_hour: float | None = None
+    required_charges_per_hour: float | None = None
+    if nut_coke_rate_kg_thm is not None and hot_metal_mt > 0.0:
+        nut_coke_total_mt = nut_coke_rate_kg_thm * hot_metal_mt / 1000.0
+        total_charge_mix_mt = burden_mt + nut_coke_total_mt
+        if float(hours_per_day) > 0.0:
+            charge_mix_mt_per_hour = total_charge_mix_mt / float(hours_per_day)
+            if float(charge_mass_mt) > 0.0:
+                required_charges_per_hour = (
+                    charge_mix_mt_per_hour / float(charge_mass_mt)
+                )
+
+    return {
+        "total_flux_wet_qty_mt": float(flux_mt),
+        "flux_rate_kg_per_thm": flux_rate_kg_thm,
+        "total_burden_qty_mt": float(burden_mt),
+        "nut_coke_rate_kg_per_thm": nut_coke_rate_kg_thm,
+        "nut_coke_total_mt": nut_coke_total_mt,
+        "total_charge_mix_mt": total_charge_mix_mt,
+        "charge_mix_mt_per_hour": charge_mix_mt_per_hour,
+        "required_charges_per_hour": required_charges_per_hour,
+    }
+
+
 def compute_effective_fe_pct(
     fe_t_pct: float, feo_pct: float, feo_in_slag_pct: float
 ) -> float:
@@ -607,6 +684,13 @@ def evaluate_blend(
     fuel_ash_slag_mt = float(sum(fuel_ash_contribution_mt_by_fuel.values()))
     flux_contribution_mt_by_flux = compute_flux_slag_contributions_mt(flux_inputs)
     flux_slag_mt = float(sum(flux_contribution_mt_by_flux.values()))
+    total_flux_wet_qty_mt = float(
+        sum(
+            max(0.0, float(flux.wet_qty_mt or 0.0))
+            for flux in flux_inputs or []
+            if flux.enabled
+        )
+    )
     basicity_cao_mt = total_dry_qty_mt * (_safe_pct(cao_pct) / 100.0)
     basicity_mgo_mt = total_dry_qty_mt * (_safe_pct(mgo_pct) / 100.0)
     basicity_sio2_mt = total_dry_qty_mt * (_safe_pct(sio2_pct) / 100.0)
@@ -735,6 +819,11 @@ def evaluate_blend(
         diagnostics={
             "formula": "dry_weight_fe_and_ore_fuel_ash_flux_slag",
             "total_dry_qty_mt": float(total_dry_qty_mt),
+            # Wet tonnes actually going through the charging system: IBRM plus
+            # flux, whether that flux is a fixed addition or one the optimizer
+            # bought. This is what the charging-throughput cap applies to.
+            "total_flux_wet_qty_mt": float(total_flux_wet_qty_mt),
+            "total_burden_qty_mt": float(total_qty_mt + total_flux_wet_qty_mt),
             "dry_weight_mt_by_ore": {
                 ore_id: float(value) for ore_id, value in dry_quantities_mt.items()
             },

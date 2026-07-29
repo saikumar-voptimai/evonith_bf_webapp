@@ -15,6 +15,33 @@ bmo:
   chemistry:
     feo_in_slag_pct: 0.4
 
+  # Charging-throughput ceiling on the wet burden the optimizer may plan.
+  #
+  # The furnace accepts at most ``max_charges_per_hour`` charges of about
+  # ``charge_mass_mt`` each, and part of every charge is nut coke, which is not
+  # an optimizer variable. What is left is the daily room for IBRM (ore, sinter,
+  # pellet) plus flux:
+  #
+  #   max_ibrm_flux_mt = 26.4 * 7.5 * 24 - 160 = 4592 MT
+  #
+  # Without this cap the optimizer is free to answer a low-Fe burden by simply
+  # charging more of it. The plant cannot: charges are already at capacity, so
+  # more tonnes at a lower Fe% means holding the charge rate and losing yield,
+  # or raising oxygen the plant does not have. The ceiling is expressed per MT
+  # of hot metal (4592 / 2350 = 1.954) so it re-scales with the operator's
+  # target rather than being pinned to a 2350 MT day.
+  burden_capacity:
+    enabled: true
+    max_charges_per_hour: 7.5
+    charge_mass_mt: 26.4
+    hours_per_day: 24.0
+    # Nut coke rides in the same charges but is not optimised here; it is capped
+    # at 70 kg/THM, about 160 MT/day, and reserved off the top.
+    nut_coke_reserved_mt: 160.0
+    # Hot metal the raw capacity above was derived against; only used to turn
+    # that absolute daily capacity into the per-MT-HM ratio.
+    reference_hot_metal_mt: 2350.0
+
   fuel_ash_inputs:
     - fuel_id: coke
       display_name: Coke
@@ -36,7 +63,10 @@ bmo:
     - fuel_id: nut_coke
       display_name: Nut Coke
       enabled: true
-      rate_kg_per_thm: 20.0
+      # Plant operating setpoint. Live Influx data normally supplies the same
+      # 70 kg/THM value; keeping the offline default aligned prevents a network
+      # failure from reverting the displayed/back-calculated solution to 20.
+      rate_kg_per_thm: 70.0
       price_rs_per_mt: 24000.0
       moisture_pct: 0.44
       ash_pct: 11.67
@@ -238,7 +268,7 @@ bmo:
     sinter_deviation_sensitivity_rs_per_thm: 1200.0
     default_rates_kg_per_thm:
       coke_rate_kg_per_thm: 340.0
-      nut_coke_rate_kg_per_thm: 20.0
+      nut_coke_rate_kg_per_thm: 70.0
       pci_rate_kg_per_thm: 170.0
     default_prices_rs_per_kg:
       coke_price_rs_per_kg: 28.0

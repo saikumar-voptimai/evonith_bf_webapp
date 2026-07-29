@@ -7,6 +7,7 @@ BMO page and tests.
 
 from utils.bmo.calculations import (
     FE_FROM_FEO_FACTOR,
+    compute_charging_requirements,
     compute_dry_fraction,
     compute_dry_weight_mt,
     compute_effective_fe_pct,
@@ -47,6 +48,7 @@ from utils.bmo.types import (
 
 __all__ = [
     "FE_FROM_FEO_FACTOR",
+    "compute_charging_requirements",
     "compute_dry_fraction",
     "compute_dry_weight_mt",
     "compute_effective_fe_pct",

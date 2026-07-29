@@ -7,12 +7,68 @@ so the UI reports constraint warnings consistently across optimization methods.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from math import isfinite
+from typing import Any
 
 import pandas as pd
 
 from utils.bmo.types import BlendEvaluation, OreInput
+
+# Fallbacks mirroring ``setting_bmo.yml -> bmo.burden_capacity``; used when the
+# config block is missing so the cap still reflects the plant's real ceiling.
+_DEFAULT_BURDEN_CAPACITY = {
+    "max_charges_per_hour": 7.5,
+    "charge_mass_mt": 26.4,
+    "hours_per_day": 24.0,
+    "nut_coke_reserved_mt": 160.0,
+    "reference_hot_metal_mt": 2350.0,
+}
+
+
+def burden_capacity_ratio_mt_per_thm(
+    burden_capacity_cfg: Mapping[str, Any] | None = None,
+) -> float:
+    """
+    Return the max wet IBRM + flux MT the furnace can charge per MT of hot metal.
+
+    The furnace tops out at ``max_charges_per_hour`` charges of ``charge_mass_mt``
+    each. Nut coke rides in those same charges but is not an optimizer variable,
+    so it is reserved off the top; the remainder is the daily room for IBRM (ore,
+    sinter, pellet) plus flux. Dividing by the hot metal that capacity was sized
+    against turns it into a ratio that re-scales with the operator's target:
+
+        (26.4 * 7.5 * 24 - 160) / 2350 = 1.954 MT burden per MT HM
+
+    Args:
+         - burden_capacity_cfg: Mapping[str, Any] | None - ``bmo.burden_capacity``
+           config block. Missing keys fall back to the plant defaults above.
+
+    Returns:
+         - return float - Wet burden MT allowed per MT of hot metal, or 0.0 when
+           the configured numbers cannot produce a positive capacity.
+    """
+
+    cfg = dict(_DEFAULT_BURDEN_CAPACITY)
+    cfg.update(dict(burden_capacity_cfg or {}))
+
+    def _value(key: str) -> float:
+        try:
+            return float(cfg.get(key, _DEFAULT_BURDEN_CAPACITY[key]))
+        except (TypeError, ValueError):
+            return float(_DEFAULT_BURDEN_CAPACITY[key])
+
+    charge_capacity_mt = (
+        _value("charge_mass_mt")
+        * _value("max_charges_per_hour")
+        * _value("hours_per_day")
+    )
+    available_mt = charge_capacity_mt - _value("nut_coke_reserved_mt")
+    reference_hm_mt = _value("reference_hot_metal_mt")
+    if available_mt <= 0.0 or reference_hm_mt <= 0.0:
+        return 0.0
+    return float(available_mt / reference_hm_mt)
 
 
 def check_blend_constraints(
@@ -25,9 +81,11 @@ def check_blend_constraints(
     target_slag_basicity_max: float | None = None,
     target_slag_t_basicity_min: float | None = None,
     target_slag_t_basicity_max: float | None = None,
+    max_burden_qty_mt: float | None = None,
     fe_tolerance_mt: float = 0.5,
     slag_tolerance_mt: float = 0.0,
     basicity_tolerance: float = 1e-3,
+    burden_tolerance_mt: float = 1e-6,
 ) -> list[str]:
     """
     Check a completed blend against BMO physical and planning constraints.
@@ -47,6 +105,9 @@ def check_blend_constraints(
          - target_slag_basicity_max: float | None - Maximum CaO / SiO2 basicity.
          - target_slag_t_basicity_min: float | None - Minimum (CaO + MgO) / SiO2 basicity.
          - target_slag_t_basicity_max: float | None - Maximum (CaO + MgO) / SiO2 basicity.
+         - max_burden_qty_mt: float | None - Charging-throughput ceiling on total wet
+           IBRM + flux in MT. ``None`` disables the check. See
+           ``burden_capacity_ratio_mt_per_thm``.
          - fe_tolerance_mt: float - Allowed Fe production tolerance in MT.
          - slag_tolerance_mt: float - Allowed slag tolerance in MT. The
            default is zero because BMO treats max slag as a strict cap.
@@ -77,6 +138,17 @@ def check_blend_constraints(
         violations.append(
             f"Slag exceeds bound: {blend.slag_mt:.2f} > {target_slag_qty_mt:.2f} MT."
         )
+
+    if max_burden_qty_mt is not None and float(max_burden_qty_mt) > 0.0:
+        burden_qty_mt = float(
+            blend.diagnostics.get("total_burden_qty_mt", blend.total_qty_mt) or 0.0
+        )
+        if burden_qty_mt > float(max_burden_qty_mt) + burden_tolerance_mt:
+            violations.append(
+                f"Charging capacity exceeded: IBRM + flux {burden_qty_mt:,.2f} > "
+                f"{float(max_burden_qty_mt):,.2f} MT. The burden needs more tonnes "
+                "than the furnace can charge in a day; use higher-Fe material."
+            )
 
     def _check_basicity(
         *,

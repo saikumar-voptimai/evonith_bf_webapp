@@ -104,6 +104,7 @@ def run_nonlinear_optimizer(
     target_slag_basicity_max: float | None = None,
     target_slag_t_basicity_min: float | None = None,
     target_slag_t_basicity_max: float | None = None,
+    max_burden_qty_mt: float | None = None,
     fuel_ash_inputs: list[FuelAshInput] | None = None,
     flux_inputs: list[FluxInput] | None = None,
     dust_inputs: list[DustInput] | None = None,
@@ -129,6 +130,8 @@ def run_nonlinear_optimizer(
          - target_slag_basicity_max: float | None - Maximum CaO / SiO2 basicity.
          - target_slag_t_basicity_min/max: float | None - Legacy display-only inputs,
            ignored by DE optimization.
+         - max_burden_qty_mt: float | None - Charging-throughput ceiling on total wet
+           IBRM + flux in MT. ``None`` leaves the burden quantity unbounded.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
          - process_context: dict[str, float] | None - Latest process variables.
          - history_df: pd.DataFrame | None - Historical process data for lagged features.
@@ -155,6 +158,7 @@ def run_nonlinear_optimizer(
         target_slag_basicity_max=target_slag_basicity_max,
         target_slag_t_basicity_min=None,
         target_slag_t_basicity_max=None,
+        max_burden_qty_mt=max_burden_qty_mt,
         fuel_ash_inputs=fuel_ash_inputs,
         flux_inputs=flux_inputs,
         dust_inputs=dust_inputs,
@@ -203,6 +207,7 @@ def run_nonlinear_optimizer(
         target_slag_basicity_max=target_slag_basicity_max,
         target_slag_t_basicity_min=None,
         target_slag_t_basicity_max=None,
+        max_burden_qty_mt=max_burden_qty_mt,
         model_service=model_service,
         process_context=process_context,
         history_df=history_df,
@@ -363,6 +368,7 @@ def run_nonlinear_optimizer(
         target_slag_basicity_max=target_slag_basicity_max,
         target_slag_t_basicity_min=None,
         target_slag_t_basicity_max=None,
+        max_burden_qty_mt=max_burden_qty_mt,
     )
     blend.feasible = len(violations) == 0
     blend.violations = violations
