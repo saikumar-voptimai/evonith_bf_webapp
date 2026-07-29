@@ -143,13 +143,20 @@ def evaluate_blend_with_fuel_prediction(
                 fuel_cost_per_thm_rs=float(prediction.value),
                 process_context=process_context,
                 history_df=history_df,
+                fuel_ash_inputs=fuel_ash_inputs,
             )
             fuel_rate_source = "model_cost_residual"
     else:
+        # ``fuel_ash_inputs`` pins nut coke + PCI to the operator's visible run
+        # inputs so only coke is back-solved from the predicted cost. Without
+        # them the decomposition re-derived nut coke from history and reported
+        # ~30 kg/THM against the plant's 70 kg/THM, which also threw the coke
+        # residual (and so the re-priced fuel cost) off by the difference.
         fuel_rates = estimate_fuel_rates_from_cost(
             fuel_cost_per_thm_rs=float(prediction.value),
             process_context=process_context,
             history_df=history_df,
+            fuel_ash_inputs=fuel_ash_inputs,
         )
         fuel_rate_source = "model_cost_residual"
         if fuel_rates is None:

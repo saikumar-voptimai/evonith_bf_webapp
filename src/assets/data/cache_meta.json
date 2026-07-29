@@ -2,11 +2,11 @@
   "version": 1,
   "rm_choice": "full",
   "data_start": "2025-04-01",
-  "confirmed_end": "2026-07-20",
-  "raw_end": "2026-07-20",
-  "last_updated": "2026-07-20T02:31:56",
+  "confirmed_end": "2026-07-30",
+  "raw_end": "2026-07-30",
+  "last_updated": "2026-07-30T02:16:38",
   "offline_lag_days": 0,
-  "rows": 5999,
+  "rows": 6219,
   "columns": 156,
-  "csv_file": "furnace_dataset_20260720_023152_959140.csv"
+  "csv_file": "furnace_dataset_20260730_021637_958410.csv"
 }

@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from utils.bmo.calculations import compute_charging_requirements
 from utils.bmo.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
 
 
@@ -854,6 +855,8 @@ def render_blend_metrics(
     blend: BlendEvaluation,
     observed_slag_rate_kg_per_thm: float | None = None,
     is_lp_mode: bool = False,
+    charge_mass_mt: float = 26.4,
+    charging_hours_per_day: float = 24.0,
 ) -> None:
     """
     Render summary metrics and constraint warnings for a blend result.
@@ -867,6 +870,8 @@ def render_blend_metrics(
          - title: str - Section title shown above the metrics.
          - blend: BlendEvaluation - Evaluated blend result to display.
          - observed_slag_rate_kg_per_thm: float | None - Plant slag rate from DPR for comparison.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge.
+         - charging_hours_per_day: float - Hours over which the daily blend is charged.
 
     Returns:
          - return None - Writes metrics and warnings to the Streamlit page.
@@ -974,11 +979,35 @@ def render_blend_metrics(
     )
     c4.metric("Fe Produced (MT)", f"{blend.fe_production_mt:,.2f}")
 
-    # Row 2: dry quantity, final Fe%, slag rate, slag MT.
-    c5, c6, c7, c8 = st.columns(4)
+    charging = compute_charging_requirements(
+        blend,
+        charge_mass_mt=charge_mass_mt,
+        hours_per_day=charging_hours_per_day,
+    )
+
+    # Row 2: dry ore quantity, charging burden/flux rate, Fe%, and slag.
+    c5, c_burden, c_flux_rate, c6, c7, c8 = st.columns(6)
     dry_qty = float(blend.diagnostics.get("total_dry_qty_mt", 0.0) or 0.0)
+    burden_qty = float(
+        blend.diagnostics.get("total_burden_qty_mt", blend.total_qty_mt) or 0.0
+    )
     hm_basis_mt = float(blend.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0)
     c5.metric("Dry Qty (MT)", f"{dry_qty:,.2f}")
+    c_burden.metric(
+        "IBRM + Flux (MT)",
+        f"{burden_qty:,.2f}",
+        help=(
+            "Total wet ore/sinter/pellet plus enabled wet flux sent through the "
+            "charging system. This is the quantity checked against the furnace "
+            "charging-capacity limit."
+        ),
+    )
+    flux_rate = charging["flux_rate_kg_per_thm"]
+    c_flux_rate.metric(
+        "Flux Rate (kg/THM)",
+        f"{float(flux_rate):,.1f}" if flux_rate is not None else "n/a",
+        help="Total enabled wet flux divided by the target hot metal tonnage.",
+    )
     c6.metric("Final Fe (%)", f"{blend.fe_t_pct:,.2f}")
     # Slag rate is undefined when Fe production is zero; show "n/a" rather
     # than 0.00 kg/THM which would mislead an operator into thinking the
@@ -1046,6 +1075,51 @@ def render_blend_metrics(
         )
     else:
         st.caption("Fuel-rate estimate unavailable because latest PCI rate is missing.")
+
+    st.markdown("##### Charging Requirement")
+    charge_cols = st.columns(4)
+    nut_coke_total_mt = charging["nut_coke_total_mt"]
+    total_charge_mix_mt = charging["total_charge_mix_mt"]
+    charge_mix_mt_per_hour = charging["charge_mix_mt_per_hour"]
+    required_charges_per_hour = charging["required_charges_per_hour"]
+    charge_cols[0].metric(
+        "Nut Coke in Charges (MT)",
+        (
+            f"{float(nut_coke_total_mt):,.1f}"
+            if nut_coke_total_mt is not None
+            else "n/a"
+        ),
+    )
+    charge_cols[1].metric(
+        "Total Charge Mix (MT)",
+        (
+            f"{float(total_charge_mix_mt):,.1f}"
+            if total_charge_mix_mt is not None
+            else "n/a"
+        ),
+        help="Wet IBRM + wet flux + nut coke tonnes.",
+    )
+    charge_cols[2].metric(
+        "Charge Mix (MT/hr)",
+        (
+            f"{float(charge_mix_mt_per_hour):,.1f}"
+            if charge_mix_mt_per_hour is not None
+            else "n/a"
+        ),
+        help=f"Total charge mix divided by {charging_hours_per_day:g} hours.",
+    )
+    charge_cols[3].metric(
+        "Required Charges (/hr)",
+        (
+            f"{float(required_charges_per_hour):,.2f}"
+            if required_charges_per_hour is not None
+            else "n/a"
+        ),
+        help=(
+            f"Charge mix MT/hr divided by {charge_mass_mt:g} MT per charge. "
+            "For 4,200 MT/day: 4,200 / 24 / 26.4 = 6.63 charges/hr."
+        ),
+    )
 
     if blend.violations:
         st.warning("Constraint violations:\n- " + "\n- ".join(blend.violations))

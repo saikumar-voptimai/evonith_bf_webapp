@@ -30,7 +30,9 @@ LP_EXACT_SLAG_RETRIES = 6
 
 
 def _structural_infeasibility_reasons(
-    ores: list[OreInput], target_fe_mt: float
+    ores: list[OreInput],
+    target_fe_mt: float,
+    max_burden_qty_mt: float | None = None,
 ) -> list[str]:
     """
     Detect infeasibility causes that need no solver, with operator guidance.
@@ -85,6 +87,28 @@ def _structural_infeasibility_reasons(
             f"target needs {float(target_fe_mt):,.0f} MT. Add stock, select "
             "higher-Fe ores, or lower the target hot metal."
         )
+
+    # Even a burden made entirely of the richest available ore needs a minimum
+    # tonnage to carry the Fe target. If that alone breaches the charging cap,
+    # no blend can fit and the operator needs richer material, not a re-solve.
+    if max_burden_qty_mt is not None and float(max_burden_qty_mt) > 0.0:
+        best_fe_per_wet_mt = max(
+            (
+                compute_dry_fraction(ore.chemistry.moisture_pct)
+                * (float(ore.chemistry.fe_t_pct) / 100.0)
+                for ore in stocked
+            ),
+            default=0.0,
+        )
+        if best_fe_per_wet_mt > 0.0:
+            min_burden_mt = float(target_fe_mt) / best_fe_per_wet_mt
+            if min_burden_mt > float(max_burden_qty_mt) + 1e-6:
+                reasons.append(
+                    f"The Fe target needs at least {min_burden_mt:,.0f} MT of burden "
+                    f"even using only the richest ore in stock, but the furnace can "
+                    f"charge {float(max_burden_qty_mt):,.0f} MT of IBRM + flux per "
+                    "day. Select higher-Fe material, or lower the target hot metal."
+                )
 
     return reasons
 
@@ -228,6 +252,7 @@ def _explain_lp_infeasibility(
     target_slag_basicity_max: float | None,
     target_slag_t_basicity_min: float | None,
     target_slag_t_basicity_max: float | None,
+    max_burden_qty_mt: float | None,
     fuel_ash_inputs: list[FuelAshInput] | None,
     flux_inputs: list[FluxInput] | None,
     dust_inputs: list[DustInput] | None,
@@ -259,12 +284,51 @@ def _explain_lp_infeasibility(
          - return list[str] - Actionable reasons; empty if none could be isolated.
     """
 
-    reasons = _structural_infeasibility_reasons(ores, target_production_mt)
+    reasons = _structural_infeasibility_reasons(
+        ores, target_production_mt, max_burden_qty_mt
+    )
     if reasons:
         return reasons
 
+    # Isolate the charging cap first: it is the newest limit and the one an
+    # operator is least likely to suspect, and re-solving without it is cheap.
+    if max_burden_qty_mt is not None and float(max_burden_qty_mt) > 0.0:
+        without_burden_cap, _ = run_lp_baseline(
+            ores,
+            target_production_mt=target_production_mt,
+            target_slag_qty_mt=target_slag_qty_mt,
+            feo_in_slag_pct=feo_in_slag_pct,
+            target_slag_basicity_min=target_slag_basicity_min,
+            target_slag_basicity_max=target_slag_basicity_max,
+            target_slag_t_basicity_min=None,
+            target_slag_t_basicity_max=None,
+            max_burden_qty_mt=None,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            hot_metal_target_mt=hot_metal_target_mt,
+            _explain=False,
+        )
+        if without_burden_cap is not None:
+            needed_mt = float(
+                without_burden_cap.diagnostics.get(
+                    "total_burden_qty_mt", without_burden_cap.total_qty_mt
+                )
+                or 0.0
+            )
+            reasons.append(
+                "The blend only becomes feasible when the charging-capacity cap is "
+                f"lifted; it needs about {needed_mt:,.0f} MT of IBRM + flux versus "
+                f"the {float(max_burden_qty_mt):,.0f} MT the furnace can charge per "
+                "day. Select higher-Fe material (this burden is too lean to make the "
+                "target within the charge rate), or lower the target hot metal."
+            )
+            return reasons
+
     common = dict(
         feo_in_slag_pct=feo_in_slag_pct,
+        max_burden_qty_mt=max_burden_qty_mt,
         fuel_ash_inputs=fuel_ash_inputs,
         flux_inputs=flux_inputs,
         dust_inputs=dust_inputs,
@@ -365,6 +429,7 @@ def run_lp_baseline(
     target_slag_basicity_max: float | None = None,
     target_slag_t_basicity_min: float | None = None,
     target_slag_t_basicity_max: float | None = None,
+    max_burden_qty_mt: float | None = None,
     fuel_ash_inputs: list[FuelAshInput] | None = None,
     flux_inputs: list[FluxInput] | None = None,
     dust_inputs: list[DustInput] | None = None,
@@ -392,6 +457,8 @@ def run_lp_baseline(
            ignored by LP optimization.
          - target_slag_t_basicity_max: float | None - Legacy display-only input,
            ignored by LP optimization.
+         - max_burden_qty_mt: float | None - Charging-throughput ceiling on total wet
+           IBRM + flux in MT. ``None`` leaves the burden quantity unbounded.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
          - fuel_ash_inputs: list[FuelAshInput] | None - Fuel ash records used for slag.
          - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
@@ -476,6 +543,22 @@ def run_lp_baseline(
     slag_row_idx = len(a_ub_rows)
     a_ub_rows.append(slag_coeff)
     b_ub_values.append(float(target_slag_qty_mt) - slag_base_mt)
+
+    # Charging-throughput ceiling: every ore and flux tonne occupies room in the
+    # same charges, so they share one budget. Without it the LP can meet the Fe
+    # target from low-Fe material simply by charging more of it, which the plant
+    # cannot do at capacity.
+    if max_burden_qty_mt is not None and float(max_burden_qty_mt) > 0.0:
+        fixed_flux_qty_mt = sum(
+            max(0.0, float(flux.wet_qty_mt or 0.0))
+            for flux in fixed_fluxes
+            if flux.enabled
+        )
+        a_ub_rows.append(np.ones(n + n_flux, dtype=float))
+        # Fixed flux is folded into the linear-model base and has no decision
+        # variable, but it still travels through the charging system. Reserve
+        # its tonnes from the shared ore + optimisable-flux budget.
+        b_ub_values.append(float(max_burden_qty_mt) - fixed_flux_qty_mt)
 
     def _add_basicity_bounds(
         *,
@@ -566,6 +649,7 @@ def run_lp_baseline(
                         target_slag_basicity_max=target_slag_basicity_max,
                         target_slag_t_basicity_min=None,
                         target_slag_t_basicity_max=None,
+                        max_burden_qty_mt=max_burden_qty_mt,
                         fuel_ash_inputs=fuel_ash_inputs,
                         flux_inputs=flux_inputs,
                         dust_inputs=dust_inputs,
@@ -621,6 +705,7 @@ def run_lp_baseline(
             target_slag_basicity_max=target_slag_basicity_max,
             target_slag_t_basicity_min=None,
             target_slag_t_basicity_max=None,
+            max_burden_qty_mt=max_burden_qty_mt,
             slag_tolerance_mt=LP_EXACT_SLAG_TOLERANCE_MT,
         )
         if not violations:
