@@ -15,6 +15,10 @@ import numpy as np
 import pandas as pd
 
 from domain.optimization_runtime import ObjectiveResult, OptimizerRunner
+from utils.bmo.coke_correction import (
+    CokeCorrectionReference,
+    CokeCorrectionSettings,
+)
 from utils.bmo.constraints import check_blend_constraints, validate_ore_bounds
 from utils.bmo.lp_solver import run_lp_baseline
 from utils.bmo.model_service import FuelUnitCostModelService
@@ -110,6 +114,10 @@ def run_nonlinear_optimizer(
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
     hot_metal_target_mt: float | None = None,
+    coke_correction_settings: CokeCorrectionSettings | None = None,
+    coke_correction_reference: CokeCorrectionReference | None = None,
+    hot_metal_si_pct: float | None = None,
+    fuel_rate_anchor_basis: str = "model_cost",
     progress_callback: (
         Callable[[int, float, float | None, int, float], bool] | None
     ) = None,
@@ -140,6 +148,15 @@ def run_nonlinear_optimizer(
          - flux_inputs: list[FluxInput] | None - Fixed flux records used for slag.
          - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
+         - coke_correction_settings: CokeCorrectionSettings | None - Physics
+           coke-rate correction settings, forwarded to the seed LP and to every
+           DE candidate so both optimise the same objective.
+         - coke_correction_reference: CokeCorrectionReference | None - Recent
+           observed operating point, resolved once and held frozen for the run.
+         - hot_metal_si_pct: float | None - Si used by the correction's Si term,
+           held constant across candidates (see ``BmoObjectiveEvaluator``).
+         - fuel_rate_anchor_basis: str - ``"observed"`` or ``"model_cost"``; see
+           ``evaluate_blend_with_fuel_prediction``.
 
     Returns:
          - return tuple[BlendEvaluation | None, list[str]] - Best blend and errors.
@@ -164,6 +181,12 @@ def run_nonlinear_optimizer(
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
         hot_metal_target_mt=hot_metal_target_mt,
+        # The seed must be optimised against the same objective DE will use.
+        # Seeding from an uncorrected LP would drop DE into the low-Fe corner the
+        # correction exists to avoid, and DE only explores a few percent around
+        # its seed - it would never find its way back out.
+        coke_correction_settings=coke_correction_settings,
+        coke_correction_reference=coke_correction_reference,
     )
     if lp_blend is None:
         return None, [
@@ -218,6 +241,10 @@ def run_nonlinear_optimizer(
         penalty_cfg=de_cfg,
         prebuilt_context=prebuilt_context,
         hot_metal_target_mt=hot_metal_target_mt,
+        coke_correction_settings=coke_correction_settings,
+        coke_correction_reference=coke_correction_reference,
+        hot_metal_si_pct=hot_metal_si_pct,
+        fuel_rate_anchor_basis=fuel_rate_anchor_basis,
     )
 
     # Every DE function evaluation is recorded here as a compact

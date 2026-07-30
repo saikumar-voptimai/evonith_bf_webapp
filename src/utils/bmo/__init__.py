@@ -22,6 +22,17 @@ from utils.bmo.calculations import (
     compute_slag_forming_oxides_pct,
     evaluate_blend,
 )
+from utils.bmo.coke_correction import (
+    CokeCorrectionDrivers,
+    CokeCorrectionReference,
+    CokeCorrectionResult,
+    CokeCorrectionSettings,
+    build_reference,
+    compute_burden_oxygen_kg_per_thm,
+    compute_coke_correction,
+    compute_flux_co2_kg_per_thm,
+    load_coke_correction_settings,
+)
 from utils.bmo.constraints import validate_selected_pellet_inputs
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.lp_solver import run_lp_baseline
@@ -62,6 +73,15 @@ __all__ = [
     "compute_slag_contribution_mt",
     "compute_slag_forming_oxides_pct",
     "evaluate_blend",
+    "CokeCorrectionDrivers",
+    "CokeCorrectionReference",
+    "CokeCorrectionResult",
+    "CokeCorrectionSettings",
+    "build_reference",
+    "compute_burden_oxygen_kg_per_thm",
+    "compute_coke_correction",
+    "compute_flux_co2_kg_per_thm",
+    "load_coke_correction_settings",
     "validate_selected_pellet_inputs",
     "evaluate_blend_with_fuel_prediction",
     "run_lp_baseline",
