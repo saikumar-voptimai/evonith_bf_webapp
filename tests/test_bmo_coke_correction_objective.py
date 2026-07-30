@@ -397,6 +397,173 @@ def test_lp_infeasibility_explanation_receives_the_correction(monkeypatch):
     assert all(call.get("coke_correction_settings") is settings for call in calls)
 
 
+# --------------------------------------------------------------------------
+# Fuel-rate anchor basis
+# --------------------------------------------------------------------------
+
+
+def _fuel_ash(coke_rate: float = 295.0):
+    from utils.bmo.types import FuelAshInput
+
+    return [
+        FuelAshInput(fuel_id="coke", display_name="Coke", rate_kg_per_thm=coke_rate,
+                     price_rs_per_mt=28_000.0, ash_pct=11.0, sio2_pct=55.0),
+        FuelAshInput(fuel_id="nut_coke", display_name="Nut Coke", rate_kg_per_thm=70.0,
+                     price_rs_per_mt=24_000.0, ash_pct=11.0, sio2_pct=55.0),
+        FuelAshInput(fuel_id="pci", display_name="PCI", rate_kg_per_thm=180.0,
+                     price_rs_per_mt=18_000.0, ash_pct=9.0, sio2_pct=49.0),
+    ]
+
+
+def _blend_with_anchor(basis: str, *, coke_rate: float = 295.0, settings=None,
+                       reference=None):
+    from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
+
+    return evaluate_blend_with_fuel_prediction(
+        ores=[_ore("lean", fe_t=52.0, sio2=9.0), _ore("rich", fe_t=64.0, sio2=3.0)],
+        quantities_mt={"lean": 100.0, "rich": 100.0},
+        feo_in_slag_pct=0.0,
+        model_service=_FakeModelService(),
+        process_context=_CTX,
+        history_df=None,
+        fuel_ash_inputs=_fuel_ash(coke_rate),
+        hot_metal_target_mt=_HM_MT,
+        fuel_rate_anchor_basis=basis,
+        coke_correction_settings=settings,
+        coke_correction_reference=reference,
+    )
+
+
+def test_observed_anchor_reports_the_plant_coke_rate_not_the_model_residual():
+    """The model's cost is a near-constant, so its residual is not the plant."""
+
+    model = _blend_with_anchor("model_cost")
+    observed = _blend_with_anchor("observed", coke_rate=295.0)
+
+    assert observed.diagnostics["fuel_rate_estimate"]["coke_rate_kg_thm"] == pytest.approx(295.0)
+    assert observed.diagnostics["fuel_rate_estimate_source"] == "observed_fuel_ash_inputs"
+    # 12,900 Rs/THM back-solves to something quite different from 295.
+    assert model.diagnostics["fuel_rate_estimate"]["coke_rate_kg_thm"] != pytest.approx(295.0)
+    assert model.diagnostics["fuel_rate_estimate_source"] == "model_cost_residual"
+
+
+def test_observed_anchor_rebases_fuel_cost_to_match_the_rates_it_reports():
+    blend = _blend_with_anchor("observed", coke_rate=295.0)
+
+    expected = (
+        295.0 * ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
+        + 70.0 * ASSUMED_FUEL_PRICES_RS_PER_KG["nut_coke"]
+        + 180.0 * ASSUMED_FUEL_PRICES_RS_PER_KG["pci"]
+    )
+    assert blend.fuel_cost_per_thm_rs == pytest.approx(expected)
+    assert blend.diagnostics["fuel_cost_per_thm_rs_model"] == pytest.approx(12_900.0)
+
+
+def test_rebasing_leaves_ore_cost_intact():
+    """Ore cost is derived as (objective - fuel), so both must move together."""
+
+    model = _blend_with_anchor("model_cost")
+    observed = _blend_with_anchor("observed")
+
+    assert observed.ore_cost_per_thm_rs == pytest.approx(model.ore_cost_per_thm_rs)
+    derived = observed.objective_rs_per_thm - observed.fuel_cost_per_thm_rs
+    assert derived == pytest.approx(observed.ore_cost_per_thm_rs)
+
+
+def test_observed_anchor_falls_back_when_the_editor_rows_are_incomplete():
+    from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
+
+    blend = evaluate_blend_with_fuel_prediction(
+        ores=[_ore("lean", fe_t=52.0, sio2=9.0)],
+        quantities_mt={"lean": 200.0},
+        feo_in_slag_pct=0.0,
+        model_service=_FakeModelService(),
+        process_context=_CTX,
+        history_df=None,
+        fuel_ash_inputs=None,          # no editor rows at all
+        hot_metal_target_mt=_HM_MT,
+        fuel_rate_anchor_basis="observed",
+    )
+
+    assert blend.diagnostics["fuel_rate_estimate_source"] == "model_cost_residual"
+    # No rebase happened, so the model cost is untouched.
+    assert "fuel_cost_per_thm_rs_model" not in blend.diagnostics
+    assert blend.fuel_cost_per_thm_rs == pytest.approx(12_900.0)
+
+
+def test_default_anchor_basis_is_unchanged_behaviour():
+    explicit = _blend_with_anchor("model_cost")
+    from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
+
+    default = evaluate_blend_with_fuel_prediction(
+        ores=[_ore("lean", fe_t=52.0, sio2=9.0), _ore("rich", fe_t=64.0, sio2=3.0)],
+        quantities_mt={"lean": 100.0, "rich": 100.0},
+        feo_in_slag_pct=0.0,
+        model_service=_FakeModelService(),
+        process_context=_CTX,
+        history_df=None,
+        fuel_ash_inputs=_fuel_ash(),
+        hot_metal_target_mt=_HM_MT,
+    )
+
+    assert default.fuel_cost_per_thm_rs == pytest.approx(explicit.fuel_cost_per_thm_rs)
+    assert default.diagnostics["fuel_rate_estimate"] == explicit.diagnostics["fuel_rate_estimate"]
+
+
+def test_correction_adds_on_top_of_the_observed_anchor():
+    """The reported total fuel must move by the full correction, from the plant rate."""
+
+    settings = _settings()
+    reference = _reference()
+    blend = _blend_with_anchor(
+        "observed", coke_rate=295.0, settings=settings, reference=reference
+    )
+
+    anchor = blend.diagnostics["fuel_rate_estimate_anchor"]
+    corrected = blend.diagnostics["fuel_rate_estimate"]
+    delta = blend.diagnostics["coke_correction_delta_kg_thm"]
+
+    assert anchor["coke_rate_kg_thm"] == pytest.approx(295.0)
+    assert anchor["total_fuel_rate_kg_thm"] == pytest.approx(295.0 + 70.0 + 180.0)
+    assert corrected["coke_rate_kg_thm"] == pytest.approx(295.0 + delta)
+    # The whole delta lands in the total, because nut coke and PCI do not move.
+    assert corrected["total_fuel_rate_kg_thm"] == pytest.approx(
+        anchor["total_fuel_rate_kg_thm"] + delta
+    )
+
+
+def test_anchor_choice_does_not_change_which_blend_wins():
+    """Both anchors are near-constant, so the swap is an offset, not a gradient."""
+
+    settings = _settings()
+    reference = _reference()
+    qty_a, qty_b = np.array([140.0, 10.0]), np.array([10.0, 140.0])
+    flux = np.array([0.0])
+
+    def gap(basis: str) -> float:
+        evaluator = BmoObjectiveEvaluator(
+            ores=[_ore("lean", fe_t=52.0, sio2=9.0), _ore("rich", fe_t=64.0, sio2=3.0)],
+            target_production_mt=60.0,
+            target_slag_qty_mt=5000.0,
+            feo_in_slag_pct=0.0,
+            model_service=_FakeModelService(),
+            process_context=_CTX,
+            history_df=None,
+            penalty_cfg={},
+            fuel_ash_inputs=_fuel_ash(),
+            flux_inputs=[_limestone()],
+            hot_metal_target_mt=_HM_MT,
+            coke_correction_settings=settings,
+            coke_correction_reference=reference,
+            fuel_rate_anchor_basis=basis,
+        )
+        a = evaluator.evaluate_quantities(qty_a, flux_quantities=flux).objective_value
+        b = evaluator.evaluate_quantities(qty_b, flux_quantities=flux).objective_value
+        return a - b
+
+    assert gap("observed") == pytest.approx(gap("model_cost"), abs=1e-6)
+
+
 def test_de_seed_lp_receives_the_correction(monkeypatch):
     from utils.bmo import nonlinear_optimizer
 

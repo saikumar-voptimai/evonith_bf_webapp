@@ -117,6 +117,7 @@ def run_nonlinear_optimizer(
     coke_correction_settings: CokeCorrectionSettings | None = None,
     coke_correction_reference: CokeCorrectionReference | None = None,
     hot_metal_si_pct: float | None = None,
+    fuel_rate_anchor_basis: str = "model_cost",
     progress_callback: (
         Callable[[int, float, float | None, int, float], bool] | None
     ) = None,
@@ -154,6 +155,8 @@ def run_nonlinear_optimizer(
            observed operating point, resolved once and held frozen for the run.
          - hot_metal_si_pct: float | None - Si used by the correction's Si term,
            held constant across candidates (see ``BmoObjectiveEvaluator``).
+         - fuel_rate_anchor_basis: str - ``"observed"`` or ``"model_cost"``; see
+           ``evaluate_blend_with_fuel_prediction``.
 
     Returns:
          - return tuple[BlendEvaluation | None, list[str]] - Best blend and errors.
@@ -241,6 +244,7 @@ def run_nonlinear_optimizer(
         coke_correction_settings=coke_correction_settings,
         coke_correction_reference=coke_correction_reference,
         hot_metal_si_pct=hot_metal_si_pct,
+        fuel_rate_anchor_basis=fuel_rate_anchor_basis,
     )
 
     # Every DE function evaluation is recorded here as a compact

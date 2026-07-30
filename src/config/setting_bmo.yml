@@ -250,6 +250,31 @@ bmo:
     # leave correction at 1.0 unless empirical calibration is still needed.
     slag_correction_factor: 1.0
 
+  # What LP and DE anchor their reported fuel rates to, before the coke-rate
+  # correction below is applied.
+  #
+  #   observed    - the current plant rates from the Fuel Ash table (coke seeded
+  #                 from the live tag, nut coke 70, PCI from the live tag). The
+  #                 blend's fuel cost is rebased to match, so at the reference
+  #                 operating point the reported rate equals what the furnace is
+  #                 actually running.
+  #   model_cost  - back-solve coke as the residual of the model's predicted cost.
+  #
+  # WHY observed IS THE DEFAULT. The model's cost output is very nearly a
+  # constant (~13,364 Rs/THM). Back-solving coke from it gives
+  #     total fuel = (x - 70*24)/28 + 70 + PCI*(1 - 18/28)
+  #                ~ 487 + 0.357 * PCI
+  # so the reported total fuel rate is pinned to roughly 546-552 kg/THM for any
+  # realistic PCI, no matter what the plant is doing, and every recommendation
+  # inherits that offset. Note also that the decomposition conserves cost rather
+  # than mass, so a PCI reading 15 kg/THM low does not cut total fuel by 15 - it
+  # cuts it by 5 and inflates coke by 9.
+  #
+  # Switching anchors cannot change which blend the optimizer picks: both are
+  # near-constant across blends, so the difference is an offset, not a gradient.
+  # It changes the reported level only.
+  fuel_rate_anchor_basis: observed
+
   # ---------------------------------------------------------------------------
   # Physics-based coke-rate correction.
   #

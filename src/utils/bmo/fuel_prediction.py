@@ -63,6 +63,39 @@ def _current_fuel_prices_rs_per_kg(
     return prices
 
 
+def _rebase_fuel_cost_to_anchor(
+    blend: BlendEvaluation, fuel_rates: Any
+) -> None:
+    """Make the blend's fuel cost agree with the fuel rates being reported.
+
+    Called only on the observed-anchor path. When the anchor is the model's own
+    cost residual the two are already the same number, so there is nothing to
+    reconcile; the manual blend is left alone entirely, since its cost is the
+    realised one and is not an optimizer input.
+
+    Priced at the model's baseline prices, because that is the basis the
+    optimizer minimises on and the basis the LP's linear correction term uses.
+    Both anchors are near-constant across blends, so swapping one for the other
+    shifts the reported cost level without changing which blend wins.
+    """
+
+    anchor_cost = (
+        fuel_rates.coke_rate_kg_thm * ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
+        + fuel_rates.nut_coke_rate_kg_thm * ASSUMED_FUEL_PRICES_RS_PER_KG["nut_coke"]
+        + fuel_rates.pci_rate_kg_thm * ASSUMED_FUEL_PRICES_RS_PER_KG["pci"]
+    )
+    rebase_delta = float(anchor_cost) - float(blend.fuel_cost_per_thm_rs)
+    if rebase_delta == 0.0:
+        return
+
+    blend.diagnostics["fuel_cost_per_thm_rs_model"] = float(blend.fuel_cost_per_thm_rs)
+    blend.diagnostics["fuel_cost_rebase_rs_per_thm"] = rebase_delta
+    blend.fuel_cost_per_thm_rs = float(blend.fuel_cost_per_thm_rs) + rebase_delta
+    # Ore cost is derived downstream as (objective - fuel), so both must move
+    # together to leave it intact.
+    blend.objective_rs_per_thm = float(blend.objective_rs_per_thm) + rebase_delta
+
+
 def _apply_coke_correction(
     *,
     blend: BlendEvaluation,
@@ -154,6 +187,7 @@ def evaluate_blend_with_fuel_prediction(
     prebuilt_context: PreBuiltFeatureContext | None = None,
     hot_metal_target_mt: float | None = None,
     fuel_rate_basis: str = "model_cost",
+    fuel_rate_anchor_basis: str = "model_cost",
     coke_correction_settings: CokeCorrectionSettings | None = None,
     coke_correction_reference: CokeCorrectionReference | None = None,
     hot_metal_si_pct: float | None = None,
@@ -185,6 +219,13 @@ def evaluate_blend_with_fuel_prediction(
            PCI rates from the Fuel Ash table (seeded from the latest static
            dataset row), re-priced at current prices — the realised fuel cost.
            Either basis falls back to the other when its data is unavailable.
+         - fuel_rate_anchor_basis: str - What optimized blends anchor their fuel
+           rates to. ``"model_cost"`` (default) back-solves coke from the model's
+           predicted cost. ``"observed"`` uses the current plant rates from the
+           Fuel Ash table instead, and rebases the blend's fuel cost to match, so
+           the reported rate equals current operation before any correction is
+           applied. Ignored when ``fuel_rate_basis="inputs"``, which already uses
+           the observed rates.
          - coke_correction_settings: CokeCorrectionSettings | None - Physics
            coke-rate correction settings. ``None`` disables it entirely, which
            keeps every pre-existing caller byte-identical.
@@ -235,6 +276,26 @@ def evaluate_blend_with_fuel_prediction(
         fuel_rates = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
         fuel_rate_source = "fuel_ash_inputs"
         if fuel_rates is None:
+            fuel_rates = estimate_fuel_rates_from_cost(
+                fuel_cost_per_thm_rs=float(prediction.value),
+                process_context=process_context,
+                history_df=history_df,
+                fuel_ash_inputs=fuel_ash_inputs,
+            )
+            fuel_rate_source = "model_cost_residual"
+    elif fuel_rate_anchor_basis == "observed":
+        # Anchor on what the furnace is actually running rather than on the
+        # model's residual. The model's cost output is very nearly a constant
+        # (~13,364 Rs/THM), so back-solving coke from it pins the reported total
+        # fuel rate to roughly 487 + 0.357 x PCI regardless of what the plant is
+        # doing, and every recommendation inherits that offset. Anchoring on the
+        # observed rates makes the reported rate equal current operation at the
+        # reference point, which is what the correction's delta assumes.
+        fuel_rates = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
+        fuel_rate_source = "observed_fuel_ash_inputs"
+        if fuel_rates is not None:
+            _rebase_fuel_cost_to_anchor(blend, fuel_rates)
+        else:
             fuel_rates = estimate_fuel_rates_from_cost(
                 fuel_cost_per_thm_rs=float(prediction.value),
                 process_context=process_context,

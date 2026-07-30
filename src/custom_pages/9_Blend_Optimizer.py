@@ -1740,6 +1740,7 @@ if target_slag_basicity_min > target_slag_basicity_max:
     st.error("Min Basicity CaO/SiO2 must be less than or equal to Max Basicity.")
 feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
 coke_correction_settings = load_coke_correction_settings(bmo_cfg)
+fuel_rate_anchor_basis = str(bmo_cfg.get("fuel_rate_anchor_basis", "model_cost"))
 
 
 ores, ore_diagnostics = _cached_build_ore_inputs(
@@ -2114,6 +2115,7 @@ if requested_lp or requested_total:
                     coke_correction_settings=coke_correction_settings,
                     coke_correction_reference=coke_correction_reference,
                     hot_metal_si_pct=lp_si,
+                    fuel_rate_anchor_basis=fuel_rate_anchor_basis,
                 )
                 lp_result.diagnostics["lp_flux_quantities_mt"] = lp_solved_flux_mt
                 lp_result.diagnostics["flux_cost_per_thm_rs"] = float(
@@ -2260,6 +2262,7 @@ if requested_lp or requested_total:
                 # inferences for a fraction of a kg/THM. A fixed offset applies
                 # equally to every candidate and cannot distort the search.
                 hot_metal_si_pct=st.session_state.get("bmo_lp_si"),
+                fuel_rate_anchor_basis=fuel_rate_anchor_basis,
                 progress_callback=_de_progress,
             )
             # Persist the full candidate cloud now, before the guardrail below may

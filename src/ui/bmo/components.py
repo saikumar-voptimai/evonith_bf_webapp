@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.bmo.calculations import compute_charging_requirements
+from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
 from utils.bmo.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
 
 
@@ -959,9 +960,24 @@ def render_blend_metrics(
     fuel_help_base = (
         "Post-hoc XGBoost estimate on the selected blend." if is_lp_mode else fuel_help
     )
+    # What the physics correction costs, in the same units as the tile it sits
+    # under. Without this the operator can see the coke-rate delta but has no way
+    # to tell how much of the fuel bill it accounts for.
+    correction_delta_kg = blend.diagnostics.get("coke_correction_delta_kg_thm")
+    correction_cost = None
+    if correction_delta_kg:
+        correction_cost = float(correction_delta_kg) * float(
+            (blend.diagnostics.get("current_fuel_prices_rs_per_kg") or {}).get(
+                "coke", ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
+            )
+        )
     c2.metric(
         fuel_label_est,
         f"{fuel_cost_display:,.2f}",
+        delta=(
+            f"{correction_cost:+,.0f} physics" if correction_cost else None
+        ),
+        delta_color="off",
         help=((fuel_help_base or "") + reprice_help) or None,
     )
     c_flux.metric(
@@ -1093,9 +1109,27 @@ def render_blend_metrics(
             f"{float(fuel_rate_estimate.get('nut_coke_rate_kg_thm', 0.0)):,.1f}",
             help=f"Source: {fuel_rate_estimate.get('nut_coke_source', 'unknown')}",
         )
+        total_fuel_help = None
+        if isinstance(anchor_estimate, dict) and correction_delta:
+            # The whole point of the correction is that it moves the total fuel
+            # rate. Naming the value it moved from is what makes that legible -
+            # without it the operator has no baseline to compare against and the
+            # delta looks like it went missing.
+            total_fuel_help = (
+                "Uncorrected: "
+                f"{float(anchor_estimate.get('total_fuel_rate_kg_thm', 0.0)):,.1f}"
+                " kg/THM. Only coke moves; nut coke and PCI are run inputs."
+            )
         r3.metric(
             "Total Fuel Rate (kg/THM)",
             f"{float(fuel_rate_estimate.get('total_fuel_rate_kg_thm', 0.0)):,.1f}",
+            delta=(
+                f"{float(correction_delta):+,.1f} physics"
+                if correction_delta
+                else None
+            ),
+            delta_color="off",
+            help=total_fuel_help,
         )
         r4.metric(
             "PCI (kg/THM)",

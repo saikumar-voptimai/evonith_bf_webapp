@@ -85,6 +85,7 @@ class BmoObjectiveEvaluator:
         coke_correction_settings: CokeCorrectionSettings | None = None,
         coke_correction_reference: CokeCorrectionReference | None = None,
         hot_metal_si_pct: float | None = None,
+        fuel_rate_anchor_basis: str = "model_cost",
     ) -> None:
         """
         Store optimizer inputs and precompute array forms of bounds.
@@ -166,6 +167,9 @@ class BmoObjectiveEvaluator:
         # move the objective by a fraction of a kg/THM; a constant offset does
         # not distort the search at all.
         self.hot_metal_si_pct = hot_metal_si_pct
+        # Both anchors are near-constant across blends, so this shifts the level
+        # of every candidate's cost equally and cannot change which one wins.
+        self.fuel_rate_anchor_basis = fuel_rate_anchor_basis
         self.penalty_cfg = penalty_cfg
         self.prebuilt_context = prebuilt_context
         self.hot_metal_target_mt = hot_metal_target_mt
@@ -233,6 +237,7 @@ class BmoObjectiveEvaluator:
             coke_correction_settings=self.coke_correction_settings,
             coke_correction_reference=self.coke_correction_reference,
             hot_metal_si_pct=self.hot_metal_si_pct,
+            fuel_rate_anchor_basis=self.fuel_rate_anchor_basis,
         )
         # Flux cost per THM keeps DE from over-dosing flux (it costs money, like ore).
         thm_basis = float(self.hot_metal_target_mt or blend.fe_production_mt or 0.0)
