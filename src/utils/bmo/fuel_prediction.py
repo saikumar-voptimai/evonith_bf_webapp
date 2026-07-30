@@ -13,11 +13,18 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 
 from utils.bmo.calculations import evaluate_blend
+from utils.bmo.coke_correction import (
+    CokeCorrectionReference,
+    CokeCorrectionSettings,
+    build_drivers,
+    compute_coke_correction,
+)
 from utils.bmo.feature_builder import PreBuiltFeatureContext, build_feature_payload
 from utils.bmo.fuel_rates import (
     ASSUMED_FUEL_PRICES_RS_PER_KG,
     estimate_fuel_rates_from_cost,
     estimate_fuel_rates_from_inputs,
+    with_coke_delta,
 )
 from utils.bmo.types import (
     BlendEvaluation,
@@ -56,6 +63,82 @@ def _current_fuel_prices_rs_per_kg(
     return prices
 
 
+def _apply_coke_correction(
+    *,
+    blend: BlendEvaluation,
+    fuel_rates: Any,
+    ores: list[OreInput],
+    quantities_mt: Mapping[str, float],
+    flux_inputs: list[FluxInput] | None,
+    process_context: Mapping[str, Any] | None,
+    hot_metal_si_pct: float | None,
+    settings: CokeCorrectionSettings | None,
+    reference: CokeCorrectionReference | None,
+    fuel_rate_basis: str,
+) -> Any | None:
+    """Attach the physics coke-rate correction and return the corrected rates.
+
+    Returns ``None`` when nothing should change, so the caller keeps the
+    uncorrected rates untouched.
+
+    The correction is *always* computed and recorded when configured, even where
+    it is not applied. That is deliberate: the manual blend is the operator's
+    realised-cost reference, so its cost must stay as measured, but seeing a
+    large correction there is the clearest signal that the reference operating
+    point is mis-set.
+    """
+
+    if settings is None or not settings.enabled:
+        return None
+
+    drivers = build_drivers(
+        blend=blend,
+        ores=ores,
+        quantities_mt=quantities_mt,
+        flux_inputs=flux_inputs,
+        hot_metal_si_pct=hot_metal_si_pct,
+        process_context=process_context,
+    )
+    result = compute_coke_correction(
+        anchor_coke_rate_kg_thm=fuel_rates.coke_rate_kg_thm,
+        anchor_nut_coke_rate_kg_thm=fuel_rates.nut_coke_rate_kg_thm,
+        anchor_pci_rate_kg_thm=fuel_rates.pci_rate_kg_thm,
+        drivers=drivers,
+        reference=reference if reference is not None else CokeCorrectionReference(),
+        settings=settings,
+    )
+
+    is_manual_blend = fuel_rate_basis == "inputs"
+    apply = settings.apply_to_objective and (
+        settings.apply_to_manual_blend or not is_manual_blend
+    )
+
+    blend.diagnostics["coke_correction"] = result.to_dict()
+    blend.diagnostics["coke_correction_delta_kg_thm"] = float(
+        result.applied_delta_kg_thm
+    )
+    blend.diagnostics["coke_correction_applied"] = bool(apply)
+
+    if not apply or result.applied_delta_kg_thm == 0.0:
+        return None
+
+    # The optimizer minimises at the model's baseline prices, so the correction
+    # must be priced there too. Using the operator's current coke price here
+    # would make the LP's linear term and this path optimise different things.
+    cost_delta = float(result.applied_delta_kg_thm) * ASSUMED_FUEL_PRICES_RS_PER_KG[
+        "coke"
+    ]
+    blend.diagnostics["fuel_cost_per_thm_rs_uncorrected"] = float(
+        blend.fuel_cost_per_thm_rs
+    )
+    blend.fuel_cost_per_thm_rs = float(blend.fuel_cost_per_thm_rs) + cost_delta
+    # Ore cost is derived downstream as (objective - fuel), so both must move by
+    # the same amount to leave it intact.
+    blend.objective_rs_per_thm = float(blend.objective_rs_per_thm) + cost_delta
+
+    return with_coke_delta(fuel_rates, result.applied_delta_kg_thm)
+
+
 def evaluate_blend_with_fuel_prediction(
     *,
     ores: list[OreInput],
@@ -71,6 +154,9 @@ def evaluate_blend_with_fuel_prediction(
     prebuilt_context: PreBuiltFeatureContext | None = None,
     hot_metal_target_mt: float | None = None,
     fuel_rate_basis: str = "model_cost",
+    coke_correction_settings: CokeCorrectionSettings | None = None,
+    coke_correction_reference: CokeCorrectionReference | None = None,
+    hot_metal_si_pct: float | None = None,
 ) -> BlendEvaluation:
     """
     Evaluate a blend and attach the model-predicted fuel unit cost.
@@ -99,6 +185,16 @@ def evaluate_blend_with_fuel_prediction(
            PCI rates from the Fuel Ash table (seeded from the latest static
            dataset row), re-priced at current prices — the realised fuel cost.
            Either basis falls back to the other when its data is unavailable.
+         - coke_correction_settings: CokeCorrectionSettings | None - Physics
+           coke-rate correction settings. ``None`` disables it entirely, which
+           keeps every pre-existing caller byte-identical.
+         - coke_correction_reference: CokeCorrectionReference | None - The recent
+           observed operating point the correction is anchored to. Resolve it
+           once per run and pass the same frozen object to every candidate: that
+           is what keeps the DE objective a single consistent function instead of
+           one whose shape shifts as reference data comes and goes.
+         - hot_metal_si_pct: float | None - Predicted Si for this blend, used by
+           the correction's Si term.
 
     Returns:
          - return BlendEvaluation - Blend metrics with fuel prediction diagnostics.
@@ -163,8 +259,28 @@ def evaluate_blend_with_fuel_prediction(
             fuel_rates = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
             fuel_rate_source = "fuel_ash_inputs"
     if fuel_rates is not None:
-        blend.diagnostics["fuel_rate_estimate"] = fuel_rates.to_dict()
+        # Keep the uncorrected rates alongside the corrected ones. Operators
+        # compare the two directly, and a correction is only trustworthy if the
+        # number it replaced is still on screen.
+        blend.diagnostics["fuel_rate_estimate_anchor"] = fuel_rates.to_dict()
         blend.diagnostics["fuel_rate_estimate_source"] = fuel_rate_source
+
+        correction = _apply_coke_correction(
+            blend=blend,
+            fuel_rates=fuel_rates,
+            ores=ores,
+            quantities_mt=quantities,
+            flux_inputs=flux_inputs,
+            process_context=process_context,
+            hot_metal_si_pct=hot_metal_si_pct,
+            settings=coke_correction_settings,
+            reference=coke_correction_reference,
+            fuel_rate_basis=fuel_rate_basis,
+        )
+        if correction is not None:
+            fuel_rates = correction
+
+        blend.diagnostics["fuel_rate_estimate"] = fuel_rates.to_dict()
         # Re-price physical fuel rates at the operator's current prices. Prefer
         # the Fuel Ash editor rates; only reverse-solve from model cost when
         # those run inputs are unavailable. Stored in diagnostics only (display

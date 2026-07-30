@@ -45,6 +45,7 @@ from ui.bmo import (
     build_ore_editor_df,
     render_blend_metrics,
     render_blend_table,
+    render_coke_correction_breakdown,
     render_diagnostics,
     render_dust_editor,
     render_flux_editor,
@@ -56,13 +57,20 @@ from ui.bmo import (
     render_slag_balance_settings,
 )
 from utils.bmo import (
+    CokeCorrectionDrivers,
+    CokeCorrectionReference,
+    CokeCorrectionSettings,
     DustInput,
     FluxInput,
     FuelAshInput,
     FuelUnitCostModelService,
     OreInput,
     SlagBalanceSettings,
+    build_reference,
+    compute_burden_oxygen_kg_per_thm,
     compute_charging_requirements,
+    compute_flux_co2_kg_per_thm,
+    load_coke_correction_settings,
     run_lp_baseline,
     run_nonlinear_optimizer,
     validate_selected_pellet_inputs,
@@ -732,6 +740,19 @@ def _render_blend_comparison(
                 _bundle_status,
                 fuel_warnings,
             ) = _load_fuel_prediction_context(provider)
+            manual_si = _predict_blend_si(
+                ores=compare_ores,
+                quantities_mt=manual_quantities,
+                process_context=process_context,
+                history_df=history_df,
+                hot_metal_target_mt=target_production_mt,
+            )
+            # The manual blend describes current operation, so it is also the
+            # best available "current burden" for the correction's reference.
+            # Persisting it lets the next optimizer run anchor the oxygen and Si
+            # terms to a real burden instead of switching them off.
+            st.session_state["bmo_manual_quantities_mt"] = dict(manual_quantities)
+            st.session_state["bmo_manual_si"] = manual_si
             manual_blend = evaluate_blend_with_fuel_prediction(
                 ores=compare_ores,
                 quantities_mt=manual_quantities,
@@ -749,13 +770,22 @@ def _render_blend_comparison(
                 # latest static-dataset row) at current prices. Optimized blends
                 # instead convert the ML-predicted cost (default "model_cost").
                 fuel_rate_basis="inputs",
-            )
-            manual_si = _predict_blend_si(
-                ores=compare_ores,
-                quantities_mt=manual_quantities,
-                process_context=process_context,
-                history_df=history_df,
-                hot_metal_target_mt=target_production_mt,
+                # Computed and shown but not applied (apply_to_manual_blend is
+                # false): the manual blend is the realised-cost reference, and a
+                # large correction here is the clearest signal that the reference
+                # operating point itself is mis-set.
+                coke_correction_settings=coke_correction_settings,
+                coke_correction_reference=_build_coke_correction_reference(
+                    settings=coke_correction_settings,
+                    observed_slag_rate_kg_per_thm=observed_slag_rate,
+                    flux_inputs=flux_inputs,
+                    hot_metal_target_mt=target_production_mt,
+                    process_context=process_context,
+                    current_quantities_mt=manual_quantities,
+                    ores=compare_ores,
+                    current_si_pct=manual_si,
+                ),
+                hot_metal_si_pct=manual_si,
             )
             for warning in fuel_warnings:
                 st.warning(str(warning))
@@ -806,14 +836,15 @@ def _render_blend_comparison(
             return None
         return float(getattr(blend, attr, 0.0) or 0.0)
 
-    def _fuel_rate_total(blend: Any) -> float | None:
-        value = (blend.diagnostics.get("fuel_rate_estimate") or {}).get(
-            "total_fuel_rate_kg_thm"
-        )
+    def _rate_field(blend: Any, estimate_key: str, field: str) -> float | None:
+        value = (blend.diagnostics.get(estimate_key) or {}).get(field)
         try:
             return float(value) if value is not None else None
         except (TypeError, ValueError):
             return None
+
+    def _fuel_rate_total(blend: Any) -> float | None:
+        return _rate_field(blend, "fuel_rate_estimate", "total_fuel_rate_kg_thm")
 
     # Fuel + total costs are shown re-priced at the operator's current fuel
     # prices when available (display-only; the optimizer used baseline prices).
@@ -873,6 +904,27 @@ def _render_blend_comparison(
         ("Fuel Cost (Rs/THM)", lambda b, si: _display_fuel(b), "{:,.1f}"),
         ("Flux Cost (Rs/THM)", lambda b, si: _flux_cost(b), "{:,.1f}"),
         ("Fuel Rate (kg/THM)", lambda b, si: _fuel_rate_total(b), "{:,.1f}"),
+        # Uncorrected and corrected side by side: a correction is only worth
+        # trusting if the number it replaced is still visible next to it.
+        (
+            "Coke Rate, uncorrected (kg/THM)",
+            lambda b, si: _rate_field(b, "fuel_rate_estimate_anchor", "coke_rate_kg_thm"),
+            "{:,.1f}",
+        ),
+        (
+            "Coke Rate, corrected (kg/THM)",
+            lambda b, si: _rate_field(b, "fuel_rate_estimate", "coke_rate_kg_thm"),
+            "{:,.1f}",
+        ),
+        (
+            "Coke Correction (kg/THM)",
+            lambda b, si: (
+                float(b.diagnostics["coke_correction_delta_kg_thm"])
+                if "coke_correction_delta_kg_thm" in b.diagnostics
+                else None
+            ),
+            "{:+,.1f}",
+        ),
         ("Hot-Metal Si (%)", lambda b, si: si, "{:,.3f}"),
         (
             "Slag Basicity (CaO/SiO2)",
@@ -1428,6 +1480,67 @@ def _load_fuel_prediction_context(
     return model_service, process_context, history_df, bundle_status, warnings
 
 
+def _build_coke_correction_reference(
+    *,
+    settings: CokeCorrectionSettings,
+    observed_slag_rate_kg_per_thm: float | None,
+    flux_inputs: list[FluxInput] | None,
+    hot_metal_target_mt: float,
+    process_context: Mapping[str, Any] | None = None,
+    current_quantities_mt: Mapping[str, float] | None = None,
+    ores: list[OreInput] | None = None,
+    current_si_pct: float | None = None,
+) -> CokeCorrectionReference:
+    """
+    Resolve the operating point the coke correction is anchored to.
+
+    Built once per run and passed unchanged to the LP, to DE, and to every DE
+    candidate, so the corrected objective is one fixed function rather than one
+    that shifts as reference data appears and disappears.
+
+    The two terms enabled by default need no solved blend: slag comes from the
+    observed DPR rate and flux CO2 from the flux rows as the operator has them
+    charged. That avoids a circular dependency where the reference would need
+    the LP result the LP needs the reference to produce.
+
+    Args:
+         - settings: CokeCorrectionSettings - Parsed correction settings.
+         - observed_slag_rate_kg_per_thm: float | None - Observed DPR slag rate.
+         - flux_inputs: list[FluxInput] | None - Flux rows as currently charged.
+         - hot_metal_target_mt: float - HM basis for the per-THM drivers.
+         - process_context: Mapping[str, Any] | None - Recent process values.
+         - current_quantities_mt: Mapping[str, float] | None - Current burden, when known.
+         - ores: list[OreInput] | None - Ores backing ``current_quantities_mt``.
+         - current_si_pct: float | None - Si model output for the current burden.
+
+    Returns:
+         - return CokeCorrectionReference - Reference operating point.
+    """
+
+    burden_oxygen = None
+    if ores and current_quantities_mt:
+        burden_oxygen = compute_burden_oxygen_kg_per_thm(
+            ores=ores,
+            quantities_mt=current_quantities_mt,
+            hot_metal_mt=hot_metal_target_mt,
+        )
+
+    current_drivers = CokeCorrectionDrivers(
+        slag_rate_kg_per_thm=None,
+        flux_co2_kg_per_thm=compute_flux_co2_kg_per_thm(
+            flux_inputs=flux_inputs, hot_metal_mt=hot_metal_target_mt
+        ),
+        burden_oxygen_kg_per_thm=burden_oxygen,
+        hot_metal_si_pct=current_si_pct,
+    )
+    return build_reference(
+        settings=settings,
+        observed_slag_rate_kg_per_thm=observed_slag_rate_kg_per_thm,
+        current_drivers=current_drivers,
+        process_context=process_context,
+    )
+
+
 def _selected_ores_from_editor(
     editor_df: pd.DataFrame, base_ores: list[OreInput]
 ) -> list[OreInput]:
@@ -1626,6 +1739,7 @@ basicity_bounds_valid = (
 if target_slag_basicity_min > target_slag_basicity_max:
     st.error("Min Basicity CaO/SiO2 must be less than or equal to Max Basicity.")
 feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
+coke_correction_settings = load_coke_correction_settings(bmo_cfg)
 
 
 ores, ore_diagnostics = _cached_build_ore_inputs(
@@ -1911,6 +2025,18 @@ if requested_lp or requested_total:
     else:
         fuel_context = None
 
+        # Resolved once for the whole run and reused by the LP, DE, and every DE
+        # candidate, so both solvers optimise one identical objective.
+        coke_correction_reference = _build_coke_correction_reference(
+            settings=coke_correction_settings,
+            observed_slag_rate_kg_per_thm=observed_slag_rate,
+            flux_inputs=flux_inputs,
+            hot_metal_target_mt=target_production_mt,
+            current_quantities_mt=st.session_state.get("bmo_manual_quantities_mt"),
+            ores=selected_ores,
+            current_si_pct=st.session_state.get("bmo_manual_si"),
+        )
+
         with st.spinner("Running LP baseline..."):
             lp_result, lp_errors = run_lp_baseline(
                 selected_ores,
@@ -1927,6 +2053,8 @@ if requested_lp or requested_total:
                 dust_inputs=dust_inputs,
                 slag_balance_settings=slag_balance_settings,
                 hot_metal_target_mt=target_production_mt,
+                coke_correction_settings=coke_correction_settings,
+                coke_correction_reference=coke_correction_reference,
             )
             if lp_result is not None:
                 lp_physical_result = lp_result
@@ -1962,6 +2090,15 @@ if requested_lp or requested_total:
                     else flux
                     for flux in flux_inputs
                 ]
+                # Si is predicted before the fuel re-evaluation, not after, so the
+                # correction's Si term sees this blend's own Si instead of nothing.
+                lp_si = _predict_blend_si(
+                    ores=selected_ores,
+                    quantities_mt=lp_physical_result.quantities_mt,
+                    process_context=process_context,
+                    history_df=history_df,
+                    hot_metal_target_mt=target_production_mt,
+                )
                 lp_result = evaluate_blend_with_fuel_prediction(
                     ores=selected_ores,
                     quantities_mt=lp_physical_result.quantities_mt,
@@ -1974,6 +2111,9 @@ if requested_lp or requested_total:
                     dust_inputs=dust_inputs,
                     slag_balance_settings=slag_balance_settings,
                     hot_metal_target_mt=target_production_mt,
+                    coke_correction_settings=coke_correction_settings,
+                    coke_correction_reference=coke_correction_reference,
+                    hot_metal_si_pct=lp_si,
                 )
                 lp_result.diagnostics["lp_flux_quantities_mt"] = lp_solved_flux_mt
                 lp_result.diagnostics["flux_cost_per_thm_rs"] = float(
@@ -1994,14 +2134,7 @@ if requested_lp or requested_total:
                     max_burden_qty_mt=max_burden_qty_mt,
                 )
                 lp_result.feasible = len(lp_result.violations) == 0
-                # Display-only Si prediction for the baseline blend (not optimized).
-                st.session_state["bmo_lp_si"] = _predict_blend_si(
-                    ores=selected_ores,
-                    quantities_mt=lp_physical_result.quantities_mt,
-                    process_context=process_context,
-                    history_df=history_df,
-                    hot_metal_target_mt=target_production_mt,
-                )
+                st.session_state["bmo_lp_si"] = lp_si
         # LP always runs in this rerun and shares DE's fuel-prediction context, so
         # always persist it. This keeps the LP tab and the LP-vs-DE comparison on
         # the SAME live snapshot DE used, avoiding a stale LP (from an earlier,
@@ -2120,6 +2253,13 @@ if requested_lp or requested_total:
                 dust_inputs=dust_inputs,
                 slag_balance_settings=slag_balance_settings,
                 hot_metal_target_mt=target_production_mt,
+                coke_correction_settings=coke_correction_settings,
+                coke_correction_reference=coke_correction_reference,
+                # Constant across candidates on purpose: the Si model is
+                # blend-flat, so calling it per candidate would buy thousands of
+                # inferences for a fraction of a kg/THM. A fixed offset applies
+                # equally to every candidate and cannot distort the search.
+                hot_metal_si_pct=st.session_state.get("bmo_lp_si"),
                 progress_callback=_de_progress,
             )
             # Persist the full candidate cloud now, before the guardrail below may
@@ -2215,6 +2355,7 @@ if lp_result is not None or de_result is not None:
                 charging_hours_per_day=charging_hours_per_day,
             )
             _render_si_metric(st.session_state.get("bmo_lp_si"))
+            render_coke_correction_breakdown(lp_result)
             _render_lp_flux_additions(lp_result)
             render_blend_table(lp_result, selected_ores)
             _render_share_pie(lp_result, selected_ores, "LP Share (%)")
@@ -2240,6 +2381,7 @@ if lp_result is not None or de_result is not None:
                 charging_hours_per_day=charging_hours_per_day,
             )
             _render_si_metric(st.session_state.get("bmo_de_si"))
+            render_coke_correction_breakdown(de_result)
             _render_lp_flux_additions(de_result)
             render_blend_table(de_result, selected_ores)
             _render_share_pie(de_result, selected_ores, "DE Share (%)")

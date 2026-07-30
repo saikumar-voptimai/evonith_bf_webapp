@@ -14,6 +14,11 @@ import numpy as np
 from scipy.optimize import linprog
 
 from utils.bmo.calculations import compute_dry_fraction, evaluate_blend
+from utils.bmo.coke_correction import (
+    CokeCorrectionReference,
+    CokeCorrectionSettings,
+    build_linear_coke_correction_cost_coeffs,
+)
 from utils.bmo.constraints import check_blend_constraints, validate_ore_bounds
 from utils.bmo.types import (
     BlendEvaluation,
@@ -258,6 +263,8 @@ def _explain_lp_infeasibility(
     dust_inputs: list[DustInput] | None,
     slag_balance_settings: SlagBalanceSettings | None,
     hot_metal_target_mt: float | None,
+    coke_correction_settings: CokeCorrectionSettings | None = None,
+    coke_correction_reference: CokeCorrectionReference | None = None,
 ) -> list[str]:
     """
     Explain an infeasible LP by isolating the binding constraint family.
@@ -279,6 +286,10 @@ def _explain_lp_infeasibility(
          - fuel_ash_inputs / flux_inputs / dust_inputs - Fixed slag contributors.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
          - hot_metal_target_mt: float | None - HM basis for fuel/slag rates.
+         - coke_correction_settings / coke_correction_reference - Forwarded to
+           every re-solve. Omitting them would make the explanation probe a
+           different objective than the one that actually failed, so it could
+           report the wrong binding constraint.
 
     Returns:
          - return list[str] - Actionable reasons; empty if none could be isolated.
@@ -308,6 +319,8 @@ def _explain_lp_infeasibility(
             dust_inputs=dust_inputs,
             slag_balance_settings=slag_balance_settings,
             hot_metal_target_mt=hot_metal_target_mt,
+            coke_correction_settings=coke_correction_settings,
+            coke_correction_reference=coke_correction_reference,
             _explain=False,
         )
         if without_burden_cap is not None:
@@ -334,6 +347,8 @@ def _explain_lp_infeasibility(
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
         hot_metal_target_mt=hot_metal_target_mt,
+        coke_correction_settings=coke_correction_settings,
+        coke_correction_reference=coke_correction_reference,
     )
     has_basicity = any(
         bound is not None
@@ -435,6 +450,8 @@ def run_lp_baseline(
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
     hot_metal_target_mt: float | None = None,
+    coke_correction_settings: CokeCorrectionSettings | None = None,
+    coke_correction_reference: CokeCorrectionReference | None = None,
     _explain: bool = True,
 ) -> tuple[BlendEvaluation | None, list[str]]:
     """
@@ -465,6 +482,13 @@ def run_lp_baseline(
          - dust_inputs: list[DustInput] | None - Dust rows deducted in final balance.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
          - hot_metal_target_mt: float | None - Operator HM target used as THM denominator.
+         - coke_correction_settings: CokeCorrectionSettings | None - Physics
+           coke-rate correction. Its slag-heat, flux-calcination, and burden-oxygen
+           terms are linear in the LP decision variables, so they are added to the
+           cost vector and the problem stays a true LP.
+         - coke_correction_reference: CokeCorrectionReference | None - Recent
+           observed operating point. It shifts the correction by a constant, which
+           does not change ``argmin``, so the LP needs it only for reporting.
 
     Returns:
          - return tuple[BlendEvaluation | None, list[str]] - LP blend and errors.
@@ -543,6 +567,22 @@ def run_lp_baseline(
     slag_row_idx = len(a_ub_rows)
     a_ub_rows.append(slag_coeff)
     b_ub_values.append(float(target_slag_qty_mt) - slag_base_mt)
+
+    # Price the physics coke correction into the objective. Without it the LP
+    # sees no fuel consequence at all for a leaner burden - the fuel model is
+    # blend-blind - so it buys the cheapest, highest-gangue material available
+    # and only discovers the coke bill afterwards, on the display.
+    #
+    # This changes only ``c``, never ``A_ub``/``b_ub``, so every constraint and
+    # the exact-slag retry loop below behave exactly as before.
+    coke_correction_coeffs = build_linear_coke_correction_cost_coeffs(
+        ores=ores,
+        variable_fluxes=variable_fluxes,
+        settings=coke_correction_settings or CokeCorrectionSettings(),
+        slag_coeff=slag_coeff,
+        hot_metal_target_mt=float(hot_metal_target_mt or target_production_mt or 0.0),
+    )
+    c = c + coke_correction_coeffs
 
     # Charging-throughput ceiling: every ore and flux tonne occupies room in the
     # same charges, so they share one budget. Without it the LP can meet the Fe
@@ -655,6 +695,8 @@ def run_lp_baseline(
                         dust_inputs=dust_inputs,
                         slag_balance_settings=slag_balance_settings,
                         hot_metal_target_mt=hot_metal_target_mt,
+                        coke_correction_settings=coke_correction_settings,
+                        coke_correction_reference=coke_correction_reference,
                     )
                 )
             return None, messages
@@ -696,6 +738,21 @@ def run_lp_baseline(
         blend.diagnostics["flux_cost_per_thm_rs"] = (
             float(flux_cost_total_rs / flux_thm_basis) if flux_thm_basis > 0.0 else 0.0
         )
+        # What the LP actually priced, so the linear signal can be reconciled
+        # against the clamped nonlinear correction the page reports.
+        if float(np.abs(coke_correction_coeffs).max(initial=0.0)) > 0.0:
+            blend.diagnostics["lp_coke_correction_linear_terms"] = {
+                "coefficients_rs_per_wet_mt": {
+                    column_id: float(coke_correction_coeffs[idx])
+                    for idx, column_id in enumerate(
+                        [ore.ore_id for ore in ores]
+                        + [flux.flux_id for flux in variable_fluxes]
+                    )
+                },
+                "cost_rs": float(
+                    np.dot(coke_correction_coeffs, np.asarray(result.x, dtype=float))
+                ),
+            }
         violations = check_blend_constraints(
             blend,
             ores,

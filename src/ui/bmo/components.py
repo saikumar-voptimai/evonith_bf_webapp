@@ -900,13 +900,24 @@ def render_blend_metrics(
     # Row 1: costs + Fe produced. Ore cost first in both modes; only the
     # emphasis/help differs (LP minimises ore cost; DE minimises ore + fuel).
     c1, c2, c_flux, c3, c4 = st.columns(5)
+    correction_priced_into_lp = bool(
+        blend.diagnostics.get("lp_coke_correction_linear_terms")
+    )
     if is_lp_mode:
         c1.metric(
             "Ore Cost (Rs/THM, LP-optimised)",
             f"{blend.ore_cost_per_thm_rs:,.2f}",
             help=(
-                "LP minimises ore cost only, subject to Fe target, slag cap, "
-                "share bounds, and stock bounds."
+                (
+                    "LP minimises ore cost plus flux cost plus the physics "
+                    "coke-rate correction, subject to Fe target, slag cap, "
+                    "share bounds, and stock bounds."
+                )
+                if correction_priced_into_lp
+                else (
+                    "LP minimises ore cost only, subject to Fe target, slag cap, "
+                    "share bounds, and stock bounds."
+                )
             ),
         )
     else:
@@ -1052,12 +1063,30 @@ def render_blend_metrics(
         b2.metric("Slag T Basicity", "n/a")
 
     fuel_rate_estimate = blend.diagnostics.get("fuel_rate_estimate")
+    anchor_estimate = blend.diagnostics.get("fuel_rate_estimate_anchor")
+    correction_delta = blend.diagnostics.get("coke_correction_delta_kg_thm")
     st.markdown("##### Estimated Fuel Rates")
     if isinstance(fuel_rate_estimate, dict):
         r1, r2, r3, r4 = st.columns(4)
+        coke_help = None
+        if isinstance(anchor_estimate, dict) and correction_delta:
+            # Name the uncorrected value the correction moved away from, so the
+            # operator never has to take the corrected number on faith.
+            coke_help = (
+                f"Model-derived (uncorrected): "
+                f"{float(anchor_estimate.get('coke_rate_kg_thm', 0.0)):,.1f} kg/THM. "
+                "Physics correction shown as the delta."
+            )
         r1.metric(
             "Coke Rate (kg/THM)",
             f"{float(fuel_rate_estimate.get('coke_rate_kg_thm', 0.0)):,.1f}",
+            delta=(
+                f"{float(correction_delta):+,.1f} physics"
+                if correction_delta
+                else None
+            ),
+            delta_color="off",
+            help=coke_help,
         )
         r2.metric(
             "Nut Coke Rate (kg/THM)",
@@ -1123,6 +1152,93 @@ def render_blend_metrics(
 
     if blend.violations:
         st.warning("Constraint violations:\n- " + "\n- ".join(blend.violations))
+
+
+def render_coke_correction_breakdown(blend: BlendEvaluation) -> None:
+    """
+    Render the per-term physics coke-rate correction for one blend.
+
+    The correction supplies the entire blend-to-fuel sensitivity in BMO, because
+    the trained fuel model barely responds to the burden at all. That makes it
+    the one number an operator most needs to be able to interrogate, so every
+    term shows its coefficient, both driver values, and where its reference came
+    from — and both the uncorrected and corrected coke rates stay on screen.
+
+    Args:
+         - blend: BlendEvaluation - Blend carrying ``coke_correction`` diagnostics.
+
+    Returns:
+         - return None - Renders Streamlit widgets.
+    """
+
+    correction = blend.diagnostics.get("coke_correction")
+    if not isinstance(correction, dict) or not correction.get("enabled"):
+        return
+
+    anchor = float(correction.get("anchor_coke_rate_kg_thm", 0.0) or 0.0)
+    corrected = float(correction.get("corrected_coke_rate_kg_thm", 0.0) or 0.0)
+    delta = float(correction.get("applied_delta_kg_thm", 0.0) or 0.0)
+    applied = bool(blend.diagnostics.get("coke_correction_applied", False))
+
+    with st.expander(
+        f"Coke-rate physics correction: {anchor:,.1f} → {corrected:,.1f} kg/THM "
+        f"({delta:+,.1f})",
+        expanded=False,
+    ):
+        st.caption(
+            "Priced into the optimizer's objective."
+            if applied
+            else "Shown for reference only; not added to this blend's cost."
+        )
+
+        rows = [
+            {
+                "Term": term.get("label", term.get("term_id", "")),
+                "Coefficient": term.get("k_display", ""),
+                "Blend": term.get("x_blend"),
+                "Reference": term.get("x_reference"),
+                "Units": term.get("x_units", ""),
+                "Reference source": (
+                    term.get("reference_source")
+                    or term.get("disabled_reason")
+                    or ""
+                ),
+                "Δ Coke (kg/THM)": term.get("delta_kg_thm"),
+                "Capped": bool(term.get("term_clamp_binding"))
+                or bool(term.get("envelope_exceeded")),
+            }
+            for term in correction.get("terms", [])
+            # Disabled-by-configuration terms would only add rows that always
+            # read zero, which erodes trust in the rows that do matter.
+            if term.get("enabled")
+            or term.get("disabled_reason") != "term disabled in configuration"
+        ]
+        if rows:
+            st.dataframe(
+                pd.DataFrame(rows),
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "Blend": st.column_config.NumberColumn("Blend", format="%.2f"),
+                    "Reference": st.column_config.NumberColumn(
+                        "Reference", format="%.2f"
+                    ),
+                    "Δ Coke (kg/THM)": st.column_config.NumberColumn(
+                        "Δ Coke (kg/THM)", format="%+.2f"
+                    ),
+                },
+            )
+
+        for warning in correction.get("warnings", []) or []:
+            st.warning(str(warning))
+
+        lp_terms = blend.diagnostics.get("lp_coke_correction_linear_terms")
+        if isinstance(lp_terms, dict):
+            st.caption(
+                "The LP priced this correction linearly, so its signal is not "
+                "clamped; the value above is. Large gaps between the two are "
+                "reported as warnings."
+            )
 
 
 def build_blend_table_df(

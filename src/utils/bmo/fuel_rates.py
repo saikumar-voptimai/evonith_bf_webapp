@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 import pandas as pd
@@ -141,6 +141,38 @@ def estimate_fuel_rates_from_inputs(
         total_fuel_rate_kg_thm=total_fuel_rate,
         pci_source="fuel_ash_inputs.pci.rate_kg_per_thm",
         nut_coke_source="fuel_ash_inputs.nut_coke.rate_kg_per_thm",
+    )
+
+
+def with_coke_delta(
+    rates: EstimatedFuelRates, delta_kg_thm: float
+) -> EstimatedFuelRates:
+    """Return ``rates`` with a coke-rate delta applied and totals kept in step.
+
+    Only regular coke moves: nut coke and PCI are operator-set run inputs, so a
+    physics correction to the furnace's coke demand lands entirely on the
+    residual fuel. Recomputing both totals here rather than at the call site
+    keeps ``total_coke_rate_kg_thm`` and ``total_fuel_rate_kg_thm`` from drifting
+    out of agreement with the coke rate they are meant to summarise.
+
+    Args:
+         - rates: EstimatedFuelRates - Uncorrected fuel rates.
+         - delta_kg_thm: float - Coke-rate delta in kg/THM, may be negative.
+
+    Returns:
+         - return EstimatedFuelRates - Rates with the delta applied.
+    """
+
+    delta = _to_float(delta_kg_thm) or 0.0
+    coke_rate = max(0.0, float(rates.coke_rate_kg_thm) + delta)
+    nut_rate = float(rates.nut_coke_rate_kg_thm)
+    pci_rate = float(rates.pci_rate_kg_thm)
+
+    return replace(
+        rates,
+        coke_rate_kg_thm=coke_rate,
+        total_coke_rate_kg_thm=coke_rate + nut_rate,
+        total_fuel_rate_kg_thm=coke_rate + nut_rate + pci_rate,
     )
 
 

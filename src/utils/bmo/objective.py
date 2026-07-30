@@ -15,6 +15,10 @@ import numpy as np
 import pandas as pd
 
 from domain.optimization_runtime import ObjectiveResult
+from utils.bmo.coke_correction import (
+    CokeCorrectionReference,
+    CokeCorrectionSettings,
+)
 from utils.bmo.constraints import check_blend_constraints
 from utils.bmo.feature_builder import PreBuiltFeatureContext
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
@@ -78,6 +82,9 @@ class BmoObjectiveEvaluator:
         prebuilt_context: PreBuiltFeatureContext | None = None,
         hot_metal_target_mt: float | None = None,
         fe_tolerance_mt: float = 0.5,
+        coke_correction_settings: CokeCorrectionSettings | None = None,
+        coke_correction_reference: CokeCorrectionReference | None = None,
+        hot_metal_si_pct: float | None = None,
     ) -> None:
         """
         Store optimizer inputs and precompute array forms of bounds.
@@ -147,6 +154,18 @@ class BmoObjectiveEvaluator:
         self.n_flux = len(self.variable_fluxes)
         self.dust_inputs = dust_inputs
         self.slag_balance_settings = slag_balance_settings
+        # Both are resolved once, before the search starts, and held frozen for
+        # every candidate. That is what makes the corrected objective a single
+        # consistent function: a term whose reference could not be resolved is
+        # off for the whole run rather than flickering between iterations, so
+        # the search never chases a moving cost surface.
+        self.coke_correction_settings = coke_correction_settings
+        self.coke_correction_reference = coke_correction_reference
+        # Constant across candidates by design. The Si model is blend-flat, and
+        # calling it per candidate would cost thousands of XGBoost inferences to
+        # move the objective by a fraction of a kg/THM; a constant offset does
+        # not distort the search at all.
+        self.hot_metal_si_pct = hot_metal_si_pct
         self.penalty_cfg = penalty_cfg
         self.prebuilt_context = prebuilt_context
         self.hot_metal_target_mt = hot_metal_target_mt
@@ -211,6 +230,9 @@ class BmoObjectiveEvaluator:
             slag_balance_settings=self.slag_balance_settings,
             prebuilt_context=self.prebuilt_context,
             hot_metal_target_mt=self.hot_metal_target_mt,
+            coke_correction_settings=self.coke_correction_settings,
+            coke_correction_reference=self.coke_correction_reference,
+            hot_metal_si_pct=self.hot_metal_si_pct,
         )
         # Flux cost per THM keeps DE from over-dosing flux (it costs money, like ore).
         thm_basis = float(self.hot_metal_target_mt or blend.fe_production_mt or 0.0)
@@ -374,6 +396,15 @@ class BmoObjectiveEvaluator:
                 "penalty_slag_basicity": float(basicity_penalty),
                 "penalty_slag_t_basicity": float(t_basicity_penalty),
                 "penalty_non_finite": float(finite_penalty),
+                "coke_correction_delta_kg_thm": float(
+                    blend.diagnostics.get("coke_correction_delta_kg_thm", 0.0) or 0.0
+                ),
+                "fuel_cost_per_thm_rs_uncorrected": float(
+                    blend.diagnostics.get(
+                        "fuel_cost_per_thm_rs_uncorrected",
+                        blend.fuel_cost_per_thm_rs,
+                    )
+                ),
             },
             feasible=feasible,
             violations=violations,
