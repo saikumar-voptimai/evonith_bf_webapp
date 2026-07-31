@@ -482,9 +482,9 @@ def compute_charging_requirements(
 ) -> dict[str, float | None]:
     """Calculate flux rate and the charging rate required by a solved blend.
 
-    The charging system carries wet IBRM, wet flux, and nut coke. Nut coke is
-    stored as kg/THM in the fuel-rate diagnostics, so its daily tonnes are
-    ``nut_coke_kg_thm * hot_metal_mt / 1000``. Required charges per hour are:
+    The charging system carries wet IBRM, wet flux, and nut coke. Fuel rates are
+    stored as kg/THM in diagnostics, so their daily tonnes are
+    ``rate_kg_thm * hot_metal_mt / 1000``. Required charges per hour are:
 
     ``(IBRM + flux + nut coke) / hours_per_day / charge_mass_mt``.
 
@@ -494,9 +494,10 @@ def compute_charging_requirements(
          - hours_per_day: float - Charging hours represented by the blend target.
 
     Returns:
-         - return dict[str, float | None] - Flux kg/THM, nut-coke tonnes,
-           total charge-mix tonnes, tonnes/hour, and required charges/hour.
-           Nut-coke-dependent results are ``None`` when the rate is unavailable.
+         - return dict[str, float | None] - Flux kg/THM, coke/nut-coke/PCI
+           tonnes, total charge-mix tonnes, tonnes/hour, required charges/hour,
+           and hot-metal tonnes per charge. Rate-dependent results are ``None``
+           when their source rate is unavailable.
     """
 
     diagnostics = blend.diagnostics or {}
@@ -511,43 +512,59 @@ def compute_charging_requirements(
     )
 
     fuel_rates = diagnostics.get("fuel_rate_estimate") or {}
-    raw_nut_coke_rate = (
-        fuel_rates.get("nut_coke_rate_kg_thm")
-        if isinstance(fuel_rates, dict)
-        else None
-    )
-    try:
-        nut_coke_rate_kg_thm = (
-            max(0.0, float(raw_nut_coke_rate))
-            if raw_nut_coke_rate is not None
-            else None
-        )
-    except (TypeError, ValueError):
-        nut_coke_rate_kg_thm = None
 
+    def _non_negative_fuel_rate(field: str) -> float | None:
+        raw_rate = fuel_rates.get(field) if isinstance(fuel_rates, dict) else None
+        try:
+            return max(0.0, float(raw_rate)) if raw_rate is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    coke_rate_kg_thm = _non_negative_fuel_rate("coke_rate_kg_thm")
+    nut_coke_rate_kg_thm = _non_negative_fuel_rate("nut_coke_rate_kg_thm")
+    pci_rate_kg_thm = _non_negative_fuel_rate("pci_rate_kg_thm")
+
+    coke_total_mt: float | None = None
     nut_coke_total_mt: float | None = None
+    pci_total_mt: float | None = None
     total_charge_mix_mt: float | None = None
     charge_mix_mt_per_hour: float | None = None
     required_charges_per_hour: float | None = None
-    if nut_coke_rate_kg_thm is not None and hot_metal_mt > 0.0:
-        nut_coke_total_mt = nut_coke_rate_kg_thm * hot_metal_mt / 1000.0
-        total_charge_mix_mt = burden_mt + nut_coke_total_mt
-        if float(hours_per_day) > 0.0:
-            charge_mix_mt_per_hour = total_charge_mix_mt / float(hours_per_day)
-            if float(charge_mass_mt) > 0.0:
-                required_charges_per_hour = (
-                    charge_mix_mt_per_hour / float(charge_mass_mt)
-                )
+    hot_metal_per_charge_mt: float | None = None
+    if hot_metal_mt > 0.0:
+        if coke_rate_kg_thm is not None:
+            coke_total_mt = coke_rate_kg_thm * hot_metal_mt / 1000.0
+        if nut_coke_rate_kg_thm is not None:
+            nut_coke_total_mt = nut_coke_rate_kg_thm * hot_metal_mt / 1000.0
+            total_charge_mix_mt = burden_mt + nut_coke_total_mt
+            if float(hours_per_day) > 0.0:
+                charge_mix_mt_per_hour = total_charge_mix_mt / float(hours_per_day)
+                if float(charge_mass_mt) > 0.0:
+                    required_charges_per_hour = (
+                        charge_mix_mt_per_hour / float(charge_mass_mt)
+                    )
+                    daily_charges = (
+                        required_charges_per_hour * float(hours_per_day)
+                    )
+                    if daily_charges > 0.0:
+                        hot_metal_per_charge_mt = hot_metal_mt / daily_charges
+        if pci_rate_kg_thm is not None:
+            pci_total_mt = pci_rate_kg_thm * hot_metal_mt / 1000.0
 
     return {
         "total_flux_wet_qty_mt": float(flux_mt),
         "flux_rate_kg_per_thm": flux_rate_kg_thm,
         "total_burden_qty_mt": float(burden_mt),
+        "coke_rate_kg_per_thm": coke_rate_kg_thm,
+        "coke_total_mt": coke_total_mt,
         "nut_coke_rate_kg_per_thm": nut_coke_rate_kg_thm,
         "nut_coke_total_mt": nut_coke_total_mt,
+        "pci_rate_kg_per_thm": pci_rate_kg_thm,
+        "pci_total_mt": pci_total_mt,
         "total_charge_mix_mt": total_charge_mix_mt,
         "charge_mix_mt_per_hour": charge_mix_mt_per_hour,
         "required_charges_per_hour": required_charges_per_hour,
+        "hot_metal_per_charge_mt": hot_metal_per_charge_mt,
     }
 
 

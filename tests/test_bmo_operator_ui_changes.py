@@ -366,16 +366,27 @@ def test_blend_table_includes_slag_per_fe_ratio() -> None:
     assert ore_b["slag_per_fe"] == pytest.approx(0.0)
 
 
-def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
-    captured = {"markdown": [], "metrics": [], "captions": []}
+def test_main_metrics_show_target_hot_metal_as_production(monkeypatch) -> None:
+    captured = {
+        "markdown": [],
+        "metrics": [],
+        "metric_values": {},
+        "captions": [],
+        "events": [],
+    }
 
     class FakeColumn:
         def metric(self, label, value, **_kwargs):
-            captured["metrics"].append(str(label))
+            label_text = str(label)
+            captured["metrics"].append(label_text)
+            captured["metric_values"][label_text] = str(value)
+            captured["events"].append(("metric", label_text))
 
     class FakeStreamlit:
         def markdown(self, text, **_kwargs):
-            captured["markdown"].append(str(text))
+            markdown_text = str(text)
+            captured["markdown"].append(markdown_text)
+            captured["events"].append(("markdown", markdown_text))
 
         def columns(self, count):
             return [FakeColumn() for _ in range(int(count))]
@@ -394,6 +405,12 @@ def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
             "hm_reduction_mno_mt": 4.26,
             "hm_reduction_tio2_mt": 1.12,
             "hm_reduction_alkali_mt": 0.67,
+            "fuel_rate_estimate": {
+                "coke_rate_kg_thm": 400.0,
+                "nut_coke_rate_kg_thm": 70.0,
+                "pci_rate_kg_thm": 150.0,
+                "total_fuel_rate_kg_thm": 620.0,
+            },
         }
     )
 
@@ -408,6 +425,35 @@ def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
     assert "MnO -> HM Mn" not in rendered
     assert "TiO2 -> HM Ti" not in rendered
     assert "Alkali -> Gas" not in rendered
+    assert captured["metric_values"]["Production"] == "100.0 MT"
+    assert "Fe Produced (MT)" not in captured["metrics"]
+    for hidden_metric in (
+        "Slag T Basicity",
+        "Dry Qty (MT)",
+        "IBRM + Flux (MT)",
+        "Total Charge Mix (MT)",
+        "Charge Mix (MT/hr)",
+    ):
+        assert hidden_metric not in captured["metrics"]
+
+    charging_heading = captured["events"].index(
+        ("markdown", "##### Charging Requirement")
+    )
+    charging_metrics = [
+        value
+        for kind, value in captured["events"][charging_heading + 1 :]
+        if kind == "metric"
+    ]
+    assert charging_metrics == [
+        "Required Charges (/hr)",
+        "Coke in Charges (MT)",
+        "Nut Coke in Charges (MT)",
+        "PCI in Charges (MT)",
+        "Hot Metal per Charge (MT)",
+    ]
+    assert captured["metric_values"]["Coke in Charges (MT)"] == "40.0"
+    assert captured["metric_values"]["PCI in Charges (MT)"] == "15.0"
+    assert captured["metric_values"]["Hot Metal per Charge (MT)"] == "16.815"
 
 
 def _flux_df():

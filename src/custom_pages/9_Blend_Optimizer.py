@@ -867,13 +867,6 @@ def _render_blend_comparison(
         ("Total Cost (Rs/THM)", lambda b, si: _display_total(b), "{:,.0f}"),
         ("Ore Cost (Rs/THM)", lambda b, si: b.ore_cost_per_thm_rs, "{:,.0f}"),
         (
-            "IBRM + Flux (MT)",
-            lambda b, si: float(
-                b.diagnostics.get("total_burden_qty_mt", b.total_qty_mt) or 0.0
-            ),
-            "{:,.0f}",
-        ),
-        (
             "Flux Rate (kg/THM)",
             lambda b, si: _charging_value(b, "flux_rate_kg_per_thm"),
             "{:,.1f}",
@@ -881,16 +874,6 @@ def _render_blend_comparison(
         (
             "Nut Coke in Charges (MT)",
             lambda b, si: _charging_value(b, "nut_coke_total_mt"),
-            "{:,.1f}",
-        ),
-        (
-            "Total Charge Mix (MT)",
-            lambda b, si: _charging_value(b, "total_charge_mix_mt"),
-            "{:,.0f}",
-        ),
-        (
-            "Charge Mix (MT/hr)",
-            lambda b, si: _charging_value(b, "charge_mix_mt_per_hour"),
             "{:,.1f}",
         ),
         (
@@ -929,11 +912,6 @@ def _render_blend_comparison(
         (
             "Slag Basicity (CaO/SiO2)",
             lambda b, si: _basicity(b, "slag_basicity_denominator_mt", "slag_basicity"),
-            "{:,.3f}",
-        ),
-        (
-            "Slag T-Basicity",
-            lambda b, si: _basicity(b, "slag_t_basicity_denominator_mt", "slag_t_basicity"),
             "{:,.3f}",
         ),
         ("Slag Rate (kg/THM)", lambda b, si: b.slag_rate_kg_per_thm, "{:,.0f}"),
