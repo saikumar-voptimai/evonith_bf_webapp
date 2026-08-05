@@ -250,30 +250,16 @@ bmo:
     # leave correction at 1.0 unless empirical calibration is still needed.
     slag_correction_factor: 1.0
 
-  # What LP and DE anchor their reported fuel rates to, before the coke-rate
-  # correction below is applied.
+  # LP and DE derive their uncorrected coke rate directly from the model's one
+  # predicted fuel-cost value, using the prices on which that model was trained:
   #
-  #   observed    - the current plant rates from the Fuel Ash table (coke seeded
-  #                 from the live tag, nut coke 70, PCI from the live tag). The
-  #                 blend's fuel cost is rebased to match, so at the reference
-  #                 operating point the reported rate equals what the furnace is
-  #                 actually running.
-  #   model_cost  - back-solve coke as the residual of the model's predicted cost.
+  #   coke = (predicted fuel cost - nut coke * 24 - PCI * 18) / 28
   #
-  # WHY observed IS THE DEFAULT. The model's cost output is very nearly a
-  # constant (~13,364 Rs/THM). Back-solving coke from it gives
-  #     total fuel = (x - 70*24)/28 + 70 + PCI*(1 - 18/28)
-  #                ~ 487 + 0.357 * PCI
-  # so the reported total fuel rate is pinned to roughly 546-552 kg/THM for any
-  # realistic PCI, no matter what the plant is doing, and every recommendation
-  # inherits that offset. Note also that the decomposition conserves cost rather
-  # than mass, so a PCI reading 15 kg/THM low does not cut total fuel by 15 - it
-  # cuts it by 5 and inflates coke by 9.
-  #
-  # Switching anchors cannot change which blend the optimizer picks: both are
-  # near-constant across blends, so the difference is an offset, not a gradient.
-  # It changes the reported level only.
-  fuel_rate_anchor_basis: observed
+  # Nut coke and PCI stay pinned to the operator's run inputs. The correction
+  # below is then applied once to regular coke only. Keeping prediction,
+  # decomposition, and correction in that order avoids duplicate inference and
+  # makes the result fully auditable.
+  fuel_rate_anchor_basis: model_cost
 
   # ---------------------------------------------------------------------------
   # Physics-based coke-rate correction.
@@ -300,7 +286,12 @@ bmo:
   # therefore derived from first principles, with plant data used only as a
   # plausibility bound. This layer supplies the ENTIRE blend -> fuel sensitivity.
   #
-  # FORM.  coke_rate_corrected = coke_rate_anchor + clamp(sum of dCoke_i)
+  # FORM.  coke_rate_corrected = coke_rate_from_predicted_cost
+  #                               + slag effect
+  #                               + flux calcination effect
+  #                               + silicon effect
+  # Guardrails below may taper or cap unsafe extrapolation.
+  # More generally: coke_rate_corrected = coke_rate_anchor + clamp(sum of dCoke_i)
   #        dCoke_i = k_i * (x_i_blend - x_i_reference)
   # The anchor is the existing model-derived coke rate (provenance unchanged) and
   # the reference is the RECENT OBSERVED operating point, so the correction is
@@ -337,7 +328,7 @@ bmo:
       # Defensible band: 20-35.
       slag_heat:
         enabled: true
-        kg_coke_per_100kg_slag: 30.0
+        kg_coke_per_100kg_slag: 22.0
         max_abs_kg_thm: 45.0
         # Observed slag rate spans roughly +/- 60 kg/THM around a normal
         # operating point. Deviations beyond 1.5x this are compressed rather

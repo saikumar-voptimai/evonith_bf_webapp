@@ -3,19 +3,18 @@ ore_editor:
   - sinter_sp_02
   - geomin_clo
   - lloyds_clo
-  - nmdc_donimalai
-  - gomti_clo
+  - lloyds_pellet
   rows:
     sinter_sp_02:
-      price_rs_per_mt: 7789.0
+      price_rs_per_mt: 8417.0
       min_share_pct: 58.0
       max_share_pct: 70.0
     geomin_clo:
-      price_rs_per_mt: 3827.0
+      price_rs_per_mt: 4231.0
       min_share_pct: 0.0
       max_share_pct: 20.0
     lloyds_clo:
-      price_rs_per_mt: 8051.0
+      price_rs_per_mt: 8716.0
       min_share_pct: 0.0
       max_share_pct: 30.0
     nmdc_donimalai:
@@ -55,7 +54,7 @@ ore_editor:
       min_share_pct: 0.0
       max_share_pct: 10.0
     lloyds_pellet:
-      price_rs_per_mt: 9650.0
+      price_rs_per_mt: 9600.0
       min_share_pct: 0.0
       max_share_pct: 10.0
     sarda_pellet:

@@ -18,6 +18,7 @@ def _config(_: str) -> dict:
         "rename_dict": {
             "pellet_sio2_pct": "PELLET_PCT_SIO2",
             "weighted_coke_angle": "WEIGHTED_COKE_ANGLE",
+            "coke_cri": "COKE_CRI",
         },
         "cleaning": {
             "column_groups": {
@@ -60,6 +61,21 @@ def test_load_static_dataset_fetches_canonical_table_when_no_copy(
 
     def fake_fetch(table_name, *args, **kwargs):
         calls.append(table_name)
+        if table_name == "raw_material_strength_analysis":
+            return pd.DataFrame(
+                {
+                    "material_code": ["coke_1"],
+                    "property_1": [82.0],
+                    "property_2": [6.0],
+                    "property_3": [24.0],
+                    "property_4": [65.0],
+                    "property_1_name": ["M-40"],
+                    "property_2_name": ["M-10"],
+                    "property_3_name": ["CRI"],
+                    "property_4_name": ["CSR"],
+                },
+                index=pd.DatetimeIndex(["2026-05-04T18:30:00Z"], name="time"),
+            )
         selected_columns.extend(kwargs["columns"])
         return pd.DataFrame(
             {"pellet_sio2_pct": [4.2], "weighted_coke_angle": [37.0]},
@@ -87,15 +103,22 @@ def test_load_static_dataset_fetches_canonical_table_when_no_copy(
     )
     monkeypatch.setattr(manager_module, "build_default_config", lambda: object())
     monkeypatch.setattr(manager_module, "DataCleaner", IdentityCleaner)
+    monkeypatch.setattr(manager_module, "load_config", _config)
+    monkeypatch.setattr(
+        StaticDatasetManager,
+        "_current_local_hour",
+        staticmethod(lambda: pd.Timestamp("2026-05-05 23:00:00")),
+    )
     static_csv.load_static_dataset.clear()
 
     csv_path = tmp_path / "missing.csv"
     df = static_csv.load_static_dataset(csv_path)
 
-    assert calls == ["historical_static_ml_dataset"]
+    assert calls == ["historical_static_ml_dataset", "raw_material_strength_analysis"]
     assert selected_columns == ["pellet_sio2_pct", "weighted_coke_angle"]
     assert "coke__p01_angles" not in selected_columns
-    assert list(df.columns) == ["PELLET_PCT_SIO2", "WEIGHTED_COKE_ANGLE"]
+    assert list(df.columns) == ["PELLET_PCT_SIO2", "WEIGHTED_COKE_ANGLE", "COKE_CRI"]
+    assert float(df.iloc[0]["COKE_CRI"]) == 24.0
     assert df.index[0] == pd.Timestamp("2026-05-05 05:30:00")
     assert csv_path.exists()
 
@@ -256,6 +279,25 @@ def test_static_dataset_delta_resample_sums_material_quantities_hourly() -> None
     assert hourly.loc[pd.Timestamp("2026-05-05 00:00:00"), "FLUX_1_CALC_MT"] == 3.0
     assert hourly.loc[pd.Timestamp("2026-05-05 00:00:00"), "ORE_SIO2%"] == 4.0
     assert hourly.loc[pd.Timestamp("2026-05-05 01:00:00"), "ORE_1_CALC_MT"] == 5.0
+
+
+def test_static_dataset_coke_cri_is_effective_until_next_lab_result() -> None:
+    df = pd.DataFrame(
+        {"TOPBAR": [0.30, 0.31, 0.32, 0.33]},
+        index=pd.date_range("2026-05-05 00:00:00", periods=4, freq="1h", name="time"),
+    )
+    samples = pd.Series(
+        [22.0, 24.0],
+        index=pd.DatetimeIndex(
+            ["2026-05-05 00:30:00", "2026-05-05 02:30:00"],
+            name="time",
+        ),
+    )
+
+    enriched = static_csv.merge_coke_cri_samples(df, samples)
+
+    assert enriched["COKE_CRI"].tolist() == [22.0, 22.0, 22.0, 24.0]
+    assert enriched["COKE_CRI"].notna().all()
 
 
 def test_static_dataset_delta_fills_missing_pci_quantity_rowwise(

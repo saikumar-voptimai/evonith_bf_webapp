@@ -722,6 +722,7 @@ rename_dict:
     "coke_im_pct": "COKE_IM%"
     "coke_fc_pct": "COKE_FC%"
     "coke_moist_pct": "COKE_MOIST%"
+    "coke_cri": "COKE_CRI"
     "coke_mt": "COKE_CALC_MT"
     "coke_off_mt": "COKE_OFF_MT"
     "coke_on_mt": "COKE_ON_MT"
@@ -843,6 +844,7 @@ cleaning:
       - coke_im_pct
       - coke_fc_pct
       - coke_moist_pct
+      - coke_cri
       - coke_mt
       - nutcoke_moist_pct
       - nutcoke_vm_pct

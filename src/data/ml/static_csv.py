@@ -13,6 +13,7 @@ import streamlit as st
 from sqlalchemy import inspect
 
 from config.config_loader import load_config
+from furnace_data.dataset.service import collapse_strength_frame
 from furnace_data.offline import fetch_offline_data
 from furnace_data.relational.engine import build_relational_engine
 
@@ -20,6 +21,20 @@ log = logging.getLogger(__name__)
 
 _STATIC_ML_TABLE = "historical_static_ml_dataset"
 _STATIC_ML_SCHEMA = "offline_feed"
+_STRENGTH_TABLE = "raw_material_strength_analysis"
+_COKE_CRI_COLUMN = "COKE_CRI"
+_COKE_CRI_LOOKBACK_DAYS = 365
+_COKE_CRI_SOURCE_COLUMNS = [
+    "material_code",
+    "property_1",
+    "property_2",
+    "property_3",
+    "property_4",
+    "property_1_name",
+    "property_2_name",
+    "property_3_name",
+    "property_4_name",
+]
 _RAW_BURDEN_COLUMN_RE = re.compile(
     r"^(?:coke|noncoke|non_coke)__p\d+_(?:angles|rings)$",
     re.IGNORECASE,
@@ -71,6 +86,96 @@ def _rename_columns_for_app(df: pd.DataFrame) -> pd.DataFrame:
     if not isinstance(rename_dict, dict):
         raise TypeError("setting_ds_dv.yml rename_dict must be a mapping.")
     return df.rename(columns={str(k): str(v) for k, v in rename_dict.items()})
+
+
+def merge_coke_cri_samples(
+    df: pd.DataFrame,
+    samples: pd.Series,
+) -> pd.DataFrame:
+    """Attach time-effective coke CRI values to every row of ``df``.
+
+    A laboratory result remains effective until the next result. ``merge_asof``
+    performs that lookup for the complete dataset in one vectorized operation.
+    Rows before the first available lab result receive the earliest known value,
+    which keeps the requested CSV feature complete even when the strength table
+    begins after the furnace dataset.
+    """
+
+    if df.empty or samples.empty:
+        return df
+
+    out = df.copy()
+    source = pd.to_numeric(samples, errors="coerce").dropna()
+    if source.empty:
+        return out
+
+    source.index = pd.DatetimeIndex(pd.to_datetime(source.index, errors="coerce"))
+    source = source.loc[~source.index.isna()]
+    if source.empty:
+        return out
+    source = source.groupby(level=0).last().sort_index()
+
+    target = pd.DataFrame(
+        {
+            "time": pd.DatetimeIndex(pd.to_datetime(out.index, errors="coerce")),
+            "_row_order": range(len(out)),
+        }
+    ).dropna(subset=["time"])
+    source_frame = source.rename(_COKE_CRI_COLUMN).rename_axis("time").reset_index()
+    aligned = pd.merge_asof(
+        target.sort_values("time"),
+        source_frame.sort_values("time"),
+        on="time",
+        direction="backward",
+    )
+    aligned[_COKE_CRI_COLUMN] = aligned[_COKE_CRI_COLUMN].bfill()
+    aligned = aligned.sort_values("_row_order")
+    if len(aligned) != len(out):
+        raise ValueError("Furnace dataset contains an invalid timestamp; cannot align COKE_CRI.")
+    out[_COKE_CRI_COLUMN] = aligned[_COKE_CRI_COLUMN].to_numpy(dtype=float)
+    return out
+
+
+def enrich_with_coke_cri(df: pd.DataFrame) -> pd.DataFrame:
+    """Fetch coke CRI once and merge it onto the full furnace dataset."""
+
+    if df.empty or not isinstance(df.index, pd.DatetimeIndex):
+        return df
+
+    local_tz = (
+        load_config("setting_ds_dv.yml")
+        .get("ml_dataset", {})
+        .get("local_tz", "Asia/Kolkata")
+    )
+    first = pd.Timestamp(df.index.min())
+    last = pd.Timestamp(df.index.max())
+    if first.tzinfo is None:
+        first = first.tz_localize(ZoneInfo(local_tz))
+    else:
+        first = first.tz_convert(ZoneInfo(local_tz))
+    if last.tzinfo is None:
+        last = last.tz_localize(ZoneInfo(local_tz))
+    else:
+        last = last.tz_convert(ZoneInfo(local_tz))
+
+    strength = fetch_offline_data(
+        _STRENGTH_TABLE,
+        (
+            first.tz_convert("UTC") - pd.Timedelta(days=_COKE_CRI_LOOKBACK_DAYS),
+            last.tz_convert("UTC") + pd.Timedelta(days=1),
+        ),
+        query_type="raw",
+        columns=_COKE_CRI_SOURCE_COLUMNS,
+    )
+    collapsed = collapse_strength_frame(strength)
+    if collapsed.empty or "coke_cri" not in collapsed.columns:
+        log.warning("No coke CRI samples were found in raw material strength analysis.")
+        return df
+
+    samples = pd.to_numeric(collapsed["coke_cri"], errors="coerce").dropna()
+    if isinstance(samples.index, pd.DatetimeIndex) and samples.index.tz is not None:
+        samples.index = samples.index.tz_convert(ZoneInfo(local_tz)).tz_localize(None)
+    return merge_coke_cri_samples(df, samples)
 
 
 def _available_static_dataset_columns() -> set[str]:
@@ -134,6 +239,7 @@ def fetch_static_dataset_from_database(sort_index: bool = True) -> pd.DataFrame:
     log.info("Loaded static ML dataset from database table %s", _STATIC_ML_TABLE)
     df = _normalise_index(df, assume_naive_utc=True)
     df = _rename_columns_for_app(df)
+    df = enrich_with_coke_cri(df)
     return df.sort_index() if sort_index else df
 
 

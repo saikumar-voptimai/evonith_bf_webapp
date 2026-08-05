@@ -14,8 +14,11 @@ while the re-priced cost is stored in ``blend.diagnostics``.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
+import yaml
 
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.fuel_rates import (
@@ -28,6 +31,21 @@ from utils.bmo.types import FuelAshInput, OreChemistry, OreInput
 
 # Recent PCI + nut coke rates so the decomposition is fully determined.
 _CTX = {"PCI_KG/THM": 150.0, "NUT COKE RATE KG/THM": 20.0}
+
+
+def test_runtime_config_uses_predicted_cost_then_three_coke_corrections():
+    """Keep the deployed BMO calculation aligned with the operator formula."""
+
+    config_path = Path(__file__).parents[1] / "src" / "config" / "setting_bmo.yml"
+    bmo_cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))["bmo"]
+
+    assert bmo_cfg["fuel_rate_anchor_basis"] == "model_cost"
+    enabled_terms = {
+        term_id
+        for term_id, term_cfg in bmo_cfg["coke_rate_correction"]["terms"].items()
+        if term_cfg.get("enabled")
+    }
+    assert enabled_terms == {"slag_heat", "flux_calcination", "hot_metal_si"}
 
 
 class _FakePrediction:

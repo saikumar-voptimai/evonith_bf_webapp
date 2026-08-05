@@ -90,7 +90,7 @@ class StaticDatasetManager:
         today = self._current_local_hour().date()
 
         if base_end >= today - timedelta(days=1):
-            return df_base
+            return self._fill_coke_cri(df_base)
 
         delta_start = base_end + timedelta(days=1)
         rm_mode = "dpr" if str(rm_choice).lower() in ("rm dpr", "dpr") else "charge"
@@ -105,6 +105,7 @@ class StaticDatasetManager:
         combined = self._clip_to_current_hour(
             pd.concat([df_base, df_delta]).sort_index()
         )
+        combined = self._fill_coke_cri(combined)
 
         log.info(
             "Combined base (%d rows, ends %s) + delta (%d rows, ends %s) = %d rows total.",
@@ -247,7 +248,12 @@ class StaticDatasetManager:
 
         frames: list[pd.DataFrame] = []
         if context_cols:
-            frames.append(df[context_cols].resample("1h").mean().ffill(limit=24))
+            context = df[context_cols].resample("1h").mean().ffill(limit=24)
+            if "COKE_CRI" in context.columns:
+                # Coke CRI is a slow-moving lab result, valid until superseded.
+                # Do not let the generic 24-hour context limit create holes.
+                context["COKE_CRI"] = context["COKE_CRI"].ffill().bfill()
+            frames.append(context)
         if quantity_cols:
             frames.append(df[quantity_cols].resample("1h").sum(min_count=1))
 
@@ -276,6 +282,18 @@ class StaticDatasetManager:
                 out.loc[has_slot_data, aggregate] = (
                     values.loc[has_slot_data].fillna(0.0).sum(axis=1)
                 )
+        return out
+
+    @staticmethod
+    def _fill_coke_cri(df: pd.DataFrame) -> pd.DataFrame:
+        """Keep the slow-moving CRI result complete across base/delta boundaries."""
+
+        if df.empty or "COKE_CRI" not in df.columns:
+            return df
+        out = df.copy()
+        values = pd.to_numeric(out["COKE_CRI"], errors="coerce")
+        if values.notna().any():
+            out["COKE_CRI"] = values.ffill().bfill()
         return out
 
     def get_db_end_date(self) -> date | None:

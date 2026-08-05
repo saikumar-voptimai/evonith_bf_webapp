@@ -42,6 +42,69 @@ _OFFLINE_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
 _STRENGTH_COMPAT_COLUMNS = ("ai", "ti", "ri", "rdi")
 
 
+def collapse_strength_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Collapse generic strength properties into ML-ready material features.
+
+    The strength table stores values in ``property_1..4`` and supplies their
+    meanings through matching ``property_*_name`` columns. Sinter properties
+    retain the legacy ``ai``/``ti``/``ri``/``rdi`` names, while CRI is accepted
+    only from coke rows and exposed as ``coke_cri``. Keeping the material check
+    here prevents a similarly named property on another material from leaking
+    into the coke feature.
+    """
+
+    if df.empty:
+        return df
+
+    out = pd.DataFrame(index=df.index)
+    material_codes = (
+        df["material_code"].astype("string").str.strip().str.lower()
+        if "material_code" in df.columns
+        else pd.Series("", index=df.index, dtype="string")
+    )
+    is_coke = material_codes.str.startswith("coke", na=False)
+
+    for idx in range(1, 5):
+        name_col = f"property_{idx}_name"
+        value_col = f"property_{idx}"
+        if name_col not in df.columns or value_col not in df.columns:
+            continue
+
+        names = df[name_col].astype("string").str.strip().str.lower()
+        values = pd.to_numeric(df[value_col], errors="coerce")
+        for target_col in _STRENGTH_COMPAT_COLUMNS:
+            if target_col not in out.columns:
+                out[target_col] = pd.NA
+            matched = names == target_col
+            out.loc[matched, target_col] = values[matched].to_numpy()
+
+        if "coke_cri" not in out.columns:
+            out["coke_cri"] = pd.NA
+        coke_cri = is_coke & names.eq("cri")
+        out.loc[coke_cri, "coke_cri"] = values[coke_cri].to_numpy()
+
+    for target_col in _STRENGTH_COMPAT_COLUMNS:
+        if target_col in df.columns:
+            values = pd.to_numeric(df[target_col], errors="coerce")
+            if target_col not in out.columns:
+                out[target_col] = values
+            else:
+                out[target_col] = out[target_col].combine_first(values)
+
+    if "coke_cri" in df.columns:
+        values = pd.to_numeric(df["coke_cri"], errors="coerce")
+        if "coke_cri" not in out.columns:
+            out["coke_cri"] = values
+        else:
+            out["coke_cri"] = out["coke_cri"].combine_first(values)
+
+    if out.empty:
+        return pd.DataFrame()
+    if isinstance(out.index, pd.DatetimeIndex):
+        out = out.groupby(level=0).first()
+    return out.dropna(how="all")
+
+
 @dataclass
 class DatasetService:
     """4-step fetch pipeline for the furnace dataset.
@@ -100,37 +163,7 @@ class DatasetService:
 
     @staticmethod
     def _collapse_strength_frame(df: pd.DataFrame) -> pd.DataFrame:
-        if df.empty:
-            return df
-
-        out = pd.DataFrame(index=df.index)
-        for idx in range(1, 5):
-            name_col = f"property_{idx}_name"
-            value_col = f"property_{idx}"
-            if name_col not in df.columns or value_col not in df.columns:
-                continue
-
-            names = df[name_col].astype("string").str.strip().str.lower()
-            values = pd.to_numeric(df[value_col], errors="coerce")
-            for target_col in _STRENGTH_COMPAT_COLUMNS:
-                if target_col not in out.columns:
-                    out[target_col] = pd.NA
-                matched = names == target_col
-                out.loc[matched, target_col] = values[matched].to_numpy()
-
-        for target_col in _STRENGTH_COMPAT_COLUMNS:
-            if target_col in df.columns:
-                values = pd.to_numeric(df[target_col], errors="coerce")
-                if target_col not in out.columns:
-                    out[target_col] = values
-                else:
-                    out[target_col] = out[target_col].combine_first(values)
-
-        if out.empty:
-            return pd.DataFrame()
-        if isinstance(out.index, pd.DatetimeIndex):
-            out = out.groupby(level=0).first()
-        return out.dropna(how="all")
+        return collapse_strength_frame(df)
 
     def _add_offline_ml_aliases(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add ML-compatible aggregate aliases for offline report table columns."""

@@ -518,6 +518,7 @@ def test_dataset_service_offline_rm_fetch_combines_charge_and_rm_hm(monkeypatch)
     assert float(df.iloc[0]["sinter_cold_strength_ti"]) == 79.0
     assert float(df.iloc[0]["sinter_hot_strength_ri"]) == 70.0
     assert float(df.iloc[0]["sinter_hot_strength_rdi"]) == 30.0
+    assert float(df.iloc[0]["coke_cri"]) == 24.0
 
 
 def test_dataset_service_offline_weighted_chemistry_uses_latest_before(monkeypatch) -> None:
