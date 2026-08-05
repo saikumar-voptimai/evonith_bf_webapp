@@ -75,3 +75,53 @@ flux_editor:
 model_inputs:
   target_slag_basicity_min: 1.05
   target_slag_basicity_max: 1.15
+fuel_ash_editor:
+  rows:
+    coke:
+      enabled: true
+      price_rs_per_mt: 28000.0
+      im_pct: 0.46
+      vm_pct: 0.91
+      ash_pct: 12.36
+      sio2_pct: 57.69
+      al2o3_pct: 26.38
+      cao_pct: 2.7
+      mgo_pct: 1.05
+      fe2o3_pct: 6.49
+      tio2_pct: 1.59
+      na2o_pct: 0.0
+      k2o_pct: 0.0
+      s_pct: 0.72
+      p_pct: 0.054
+    nut_coke:
+      enabled: true
+      price_rs_per_mt: 24000.0
+      im_pct: 0.5
+      vm_pct: 1.07
+      ash_pct: 12.18
+      sio2_pct: 56.85
+      al2o3_pct: 26.81
+      cao_pct: 2.67
+      mgo_pct: 1.03
+      fe2o3_pct: 7.1
+      tio2_pct: 1.59
+      na2o_pct: 0.0
+      k2o_pct: 0.0
+      s_pct: 0.78
+      p_pct: 0.053
+    pci:
+      enabled: true
+      price_rs_per_mt: 18000.0
+      im_pct: 1.88
+      vm_pct: 19.79
+      ash_pct: 8.11
+      sio2_pct: 50.0
+      al2o3_pct: 28.27
+      cao_pct: 5.19
+      mgo_pct: 1.93
+      fe2o3_pct: 5.81
+      tio2_pct: 1.03
+      na2o_pct: 0.547
+      k2o_pct: 1.606
+      s_pct: 0.38
+      p_pct: 0.057

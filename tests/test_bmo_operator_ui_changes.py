@@ -9,18 +9,21 @@ import yaml
 
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
+    apply_fuel_ash_preferences,
     apply_flux_preferences,
     apply_model_input_preferences,
     apply_ore_editor_preferences,
+    build_fuel_ash_preferences,
     build_flux_preferences,
     build_model_input_preferences,
     build_ore_editor_preferences,
     load_ore_editor_preferences,
+    save_fuel_ash_preferences,
     save_flux_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
 )
-from ui.bmo.components import build_blend_table_df
+from ui.bmo.components import build_blend_table_df, build_fuel_ash_editor_df
 from ui.bmo import components
 from utils.bmo.types import BlendEvaluation, OreChemistry, OreInput
 
@@ -371,15 +374,17 @@ def test_main_metrics_show_target_hot_metal_as_production(monkeypatch) -> None:
         "markdown": [],
         "metrics": [],
         "metric_values": {},
+        "metric_kwargs": {},
         "captions": [],
         "events": [],
     }
 
     class FakeColumn:
-        def metric(self, label, value, **_kwargs):
+        def metric(self, label, value, **kwargs):
             label_text = str(label)
             captured["metrics"].append(label_text)
             captured["metric_values"][label_text] = str(value)
+            captured["metric_kwargs"][label_text] = kwargs
             captured["events"].append(("metric", label_text))
 
     class FakeStreamlit:
@@ -411,6 +416,7 @@ def test_main_metrics_show_target_hot_metal_as_production(monkeypatch) -> None:
                 "pci_rate_kg_thm": 150.0,
                 "total_fuel_rate_kg_thm": 620.0,
             },
+            "coke_correction_delta_kg_thm": 10.9,
         }
     )
 
@@ -426,6 +432,17 @@ def test_main_metrics_show_target_hot_metal_as_production(monkeypatch) -> None:
     assert "TiO2 -> HM Ti" not in rendered
     assert "Alkali -> Gas" not in rendered
     assert captured["metric_values"]["Production"] == "100.0 MT"
+    fuel_cost_kwargs = captured["metric_kwargs"]["Fuel Cost (Rs/THM)"]
+    assert fuel_cost_kwargs.get("border", False) is False
+    assert fuel_cost_kwargs["delta"] == "Model Predicted"
+    assert fuel_cost_kwargs["delta_color"] == "off"
+    assert fuel_cost_kwargs["delta_arrow"] == "off"
+    coke_rate_kwargs = captured["metric_kwargs"]["Coke Rate (kg/THM)"]
+    assert coke_rate_kwargs.get("border", False) is False
+    assert coke_rate_kwargs["delta"] == "Model Predicted"
+    assert coke_rate_kwargs["delta_color"] == "off"
+    assert coke_rate_kwargs["delta_arrow"] == "off"
+    assert "physics" not in (rendered + repr(captured["metric_kwargs"])).lower()
     assert "Fe Produced (MT)" not in captured["metrics"]
     for hidden_metric in (
         "Slag T Basicity",
@@ -535,3 +552,136 @@ def test_flux_save_preserves_ore_preferences(tmp_path) -> None:
     assert loaded["ore_editor"]["rows"]["ore_a"]["price_rs_per_mt"] == 111.0
     assert loaded["flux_editor"]["rows"]["quartz"]["price_rs_per_mt"] == 2100.0
     assert loaded["flux_editor"]["rows"]["quartz"]["stock_mt"] == 600.0
+
+
+def _fuel_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "fuel_id": "coke",
+                "fuel_name": "Coke",
+                "enabled": True,
+                "rate_kg_per_thm": 340.0,
+                "price_rs_per_mt": 28_000.0,
+                "im_pct": 0.52,
+                "vm_pct": 0.94,
+                "ash_pct": 11.46,
+                "sio2_pct": 55.07,
+                "al2o3_pct": 27.09,
+                "cao_pct": 3.25,
+                "mgo_pct": 1.21,
+                "fe2o3_pct": 7.22,
+                "tio2_pct": 1.462,
+                "na2o_pct": 0.0,
+                "k2o_pct": 0.0,
+                "s_pct": 0.74,
+                "p_pct": 0.04292,
+            }
+        ]
+    )
+
+
+def test_fuel_editor_uses_separate_im_and_vm_columns(monkeypatch) -> None:
+    editor_df = build_fuel_ash_editor_df(
+        [{"fuel_id": "coke", "moisture_pct": 0.37, "vm_pct": 0.94}]
+    )
+    assert editor_df.iloc[0]["im_pct"] == 0.37
+    assert editor_df.iloc[0]["vm_pct"] == 0.94
+    assert "moisture_pct" not in editor_df.columns
+
+    captured: dict = {}
+
+    class FakeColumnConfig:
+        @staticmethod
+        def NumberColumn(label, **kwargs):
+            return {"label": label, **kwargs}
+
+        @staticmethod
+        def CheckboxColumn(label, **_kwargs):
+            return {"label": label}
+
+        @staticmethod
+        def TextColumn(label, **_kwargs):
+            return {"label": label}
+
+    class FakeStreamlit:
+        column_config = FakeColumnConfig()
+
+        @staticmethod
+        def data_editor(df, **kwargs):
+            captured.update(kwargs)
+            return df
+
+    monkeypatch.setattr(components, "st", FakeStreamlit())
+    components.render_fuel_ash_editor(editor_df)
+
+    assert captured["column_config"]["im_pct"]["label"] == "Ash % IM"
+    assert captured["column_config"]["vm_pct"]["label"] == "Ash % VM"
+    for column in (
+        "rate_kg_per_thm",
+        "price_rs_per_mt",
+        "im_pct",
+        "vm_pct",
+        "ash_pct",
+        "sio2_pct",
+        "al2o3_pct",
+        "cao_pct",
+        "mgo_pct",
+        "fe2o3_pct",
+        "tio2_pct",
+        "na2o_pct",
+        "k2o_pct",
+        "s_pct",
+    ):
+        assert captured["column_config"][column]["step"] <= 0.01
+    assert captured["column_config"]["p_pct"]["step"] < 0.01
+
+
+def test_fuel_preferences_preserve_live_rate_and_restore_other_values() -> None:
+    edited = _fuel_df()
+    edited.loc[0, "rate_kg_per_thm"] = 999.0
+    edited.loc[0, "enabled"] = False
+    edited.loc[0, "vm_pct"] = 1.05
+
+    prefs = build_fuel_ash_preferences(edited)
+    saved = prefs["fuel_ash_editor"]["rows"]["coke"]
+    assert "rate_kg_per_thm" not in saved
+    assert saved["enabled"] is False
+    assert saved["im_pct"] == 0.52
+    assert saved["vm_pct"] == 1.05
+    assert saved["p_pct"] == 0.04292
+
+    fresh = _fuel_df()
+    fresh.loc[0, "rate_kg_per_thm"] = 355.25
+    fresh.loc[0, "vm_pct"] = 9.99
+    # Even a stale rate written by an older app version must be ignored.
+    prefs["fuel_ash_editor"]["rows"]["coke"]["rate_kg_per_thm"] = 111.0
+    restored = apply_fuel_ash_preferences(fresh, prefs).iloc[0]
+    assert bool(restored["enabled"]) is False
+    assert restored["rate_kg_per_thm"] == 355.25
+    assert restored["vm_pct"] == 1.05
+
+
+def test_fuel_save_preserves_existing_operator_preferences(tmp_path) -> None:
+    path = tmp_path / "prefs.yml"
+    save_ore_editor_preferences(
+        path,
+        pd.DataFrame(
+            [
+                {
+                    "ore_id": "ore_a",
+                    "selected": True,
+                    "price_rs_per_mt": 111.0,
+                    "min_share_pct": 5.0,
+                    "max_share_pct": 40.0,
+                }
+            ]
+        ),
+    )
+
+    save_fuel_ash_preferences(path, _fuel_df())
+    loaded = load_ore_editor_preferences(path)
+
+    assert loaded["ore_editor"]["rows"]["ore_a"]["price_rs_per_mt"] == 111.0
+    assert loaded["fuel_ash_editor"]["rows"]["coke"]["vm_pct"] == 0.94
+    assert "rate_kg_per_thm" not in loaded["fuel_ash_editor"]["rows"]["coke"]

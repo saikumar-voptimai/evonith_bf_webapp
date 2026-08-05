@@ -26,10 +26,12 @@ from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
+    apply_fuel_ash_preferences,
     apply_flux_preferences,
     apply_model_input_preferences,
     apply_ore_editor_preferences,
     load_ore_editor_preferences,
+    save_fuel_ash_preferences,
     save_flux_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
@@ -45,7 +47,6 @@ from ui.bmo import (
     build_ore_editor_df,
     render_blend_metrics,
     render_blend_table,
-    render_coke_correction_breakdown,
     render_diagnostics,
     render_dust_editor,
     render_flux_editor,
@@ -1906,16 +1907,65 @@ _render_data_diagnostics(
     expanded=bool(visible_data_warnings),
 )
 
-fuel_ash_df = build_fuel_ash_editor_df(
-    _fuel_ash_cfg_with_recent_rates(
-        bmo_cfg.get("fuel_ash_inputs", []), recent_fuel_rates
-    )
+fuel_ash_base_df = apply_fuel_ash_preferences(
+    build_fuel_ash_editor_df(
+        _fuel_ash_cfg_with_recent_rates(
+            bmo_cfg.get("fuel_ash_inputs", []), recent_fuel_rates
+        )
+    ),
+    operator_preferences,
 )
-if not fuel_ash_df.empty:
-    st.markdown("### Fuel Ash Inputs")
-    edited_fuel_ash_df = render_fuel_ash_editor(fuel_ash_df)
+stored_fuel_ash_df = st.session_state.get("bmo_applied_fuel_ash_df")
+if (
+    isinstance(stored_fuel_ash_df, pd.DataFrame)
+    and {"fuel_id", "im_pct", "vm_pct"}.issubset(stored_fuel_ash_df.columns)
+    and set(stored_fuel_ash_df["fuel_id"].astype(str))
+    == set(fuel_ash_base_df["fuel_id"].astype(str))
+):
+    fuel_ash_source_df = stored_fuel_ash_df
 else:
-    edited_fuel_ash_df = fuel_ash_df
+    fuel_ash_source_df = fuel_ash_base_df
+
+if not fuel_ash_source_df.empty:
+    st.markdown("### Fuel Ash Inputs")
+    with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
+        edited_fuel_ash_candidate_df = render_fuel_ash_editor(fuel_ash_source_df)
+        st.caption(
+            "Apply uses these values for the current session. Save stores Fuel "
+            "Ash chemistry, price, and Use state for future sessions. Rate "
+            "(kg/THM) is live data and is never saved."
+        )
+        fuel_apply_col, fuel_save_col = st.columns(2)
+        fuel_inputs_applied = _form_submit_button(
+            fuel_apply_col,
+            "Apply Fuel Inputs",
+            type="primary",
+            width="stretch",
+        )
+        fuel_inputs_saved = _form_submit_button(
+            fuel_save_col,
+            "Save Fuel Inputs for Next Time",
+            type="secondary",
+            width="stretch",
+        )
+    if fuel_inputs_applied or fuel_inputs_saved:
+        edited_fuel_ash_df = edited_fuel_ash_candidate_df.copy()
+        st.session_state["bmo_applied_fuel_ash_df"] = edited_fuel_ash_df
+        _clear_bmo_results()
+        if fuel_inputs_saved:
+            try:
+                saved_path = save_fuel_ash_preferences(
+                    operator_preferences_path, edited_fuel_ash_df
+                )
+                st.success(f"Fuel Ash inputs saved to {saved_path}.")
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not save Fuel Ash inputs: {exc}")
+        else:
+            st.success("Fuel Ash inputs applied.")
+    else:
+        edited_fuel_ash_df = fuel_ash_source_df
+else:
+    edited_fuel_ash_df = fuel_ash_source_df
 fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
 
 with st.expander("Advanced Slag Balance Inputs", expanded=False):
@@ -2336,7 +2386,6 @@ if lp_result is not None or de_result is not None:
                 charging_hours_per_day=charging_hours_per_day,
             )
             _render_si_metric(st.session_state.get("bmo_lp_si"))
-            render_coke_correction_breakdown(lp_result)
             _render_lp_flux_additions(lp_result)
             render_blend_table(lp_result, selected_ores)
             _render_share_pie(lp_result, selected_ores, "LP Share (%)")
@@ -2362,7 +2411,6 @@ if lp_result is not None or de_result is not None:
                 charging_hours_per_day=charging_hours_per_day,
             )
             _render_si_metric(st.session_state.get("bmo_de_si"))
-            render_coke_correction_breakdown(de_result)
             _render_lp_flux_additions(de_result)
             render_blend_table(de_result, selected_ores)
             _render_share_pie(de_result, selected_ores, "DE Share (%)")

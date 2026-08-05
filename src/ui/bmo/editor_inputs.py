@@ -73,7 +73,15 @@ def fuel_ash_inputs_from_editor(editor_df: pd.DataFrame) -> list[FuelAshInput]:
                 enabled=bool(row.get("enabled", True)),
                 rate_kg_per_thm=float_from_row(row, "rate_kg_per_thm"),
                 price_rs_per_mt=float_from_row(row, "price_rs_per_mt"),
-                moisture_pct=float_from_row(row, "moisture_pct"),
+                # Fuel IM was historically stored under ``moisture_pct``.
+                # Prefer the correctly named editor column while retaining a
+                # migration fallback for old/session-restored dataframes.
+                moisture_pct=float_from_row(
+                    row,
+                    "im_pct",
+                    float_from_row(row, "moisture_pct"),
+                ),
+                vm_pct=float_from_row(row, "vm_pct"),
                 ash_pct=float_from_row(row, "ash_pct"),
                 sio2_pct=float_from_row(row, "sio2_pct"),
                 al2o3_pct=float_from_row(row, "al2o3_pct"),

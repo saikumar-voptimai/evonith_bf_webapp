@@ -107,7 +107,10 @@ class FuelAshInput:
          - enabled: bool - Whether this fuel should contribute ash to slag.
          - rate_kg_per_thm: float - Wet fuel rate in kg per THM.
          - price_rs_per_mt: float - Operator's current fuel price in Rs per MT (Rs/tonne).
-         - moisture_pct: float - Fuel moisture percentage.
+         - moisture_pct: float - Fuel inherent-moisture percentage (% IM).
+           The legacy attribute name is retained because dry-weight calculations
+           already consume it throughout BMO.
+         - vm_pct: float - Fuel volatile-matter percentage (% VM).
          - ash_pct: float - Ash percentage in the fuel.
          - sio2_pct: float - SiO2 percentage inside the ash.
          - al2o3_pct: float - Al2O3 percentage inside the ash.
@@ -130,6 +133,7 @@ class FuelAshInput:
     rate_kg_per_thm: float = 0.0
     price_rs_per_mt: float = 0.0
     moisture_pct: float = 0.0
+    vm_pct: float = 0.0
     ash_pct: float = 0.0
     sio2_pct: float = 0.0
     al2o3_pct: float = 0.0
@@ -141,6 +145,12 @@ class FuelAshInput:
     k2o_pct: float = 0.0
     s_pct: float = 0.0
     p_pct: float = 0.0
+
+    @property
+    def im_pct(self) -> float:
+        """Expose the correctly named inherent-moisture value."""
+
+        return float(self.moisture_pct)
 
 
 @dataclass

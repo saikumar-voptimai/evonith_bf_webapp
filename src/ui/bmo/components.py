@@ -14,7 +14,6 @@ import pandas as pd
 import streamlit as st
 
 from utils.bmo.calculations import compute_charging_requirements
-from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
 from utils.bmo.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
 
 
@@ -251,9 +250,10 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
     Build the editable fuel ash chemistry table from BMO configuration.
 
     Fuel ash defaults come from the laboratory ash-analysis workbook and can be
-    overridden by operators for each run. The table keeps rate, moisture, ash,
-    ash oxide chemistry, and dry-fuel-basis S/P together so the slag calculation
-    can apply the full fuel ash sequence.
+    overridden by operators for each run. The table keeps rate, inherent
+    moisture (IM), volatile matter (VM), ash, ash oxide chemistry, and
+    dry-fuel-basis S/P together so the slag calculation can apply the full fuel
+    ash sequence.
 
     Args:
          - fuel_ash_cfg: list[dict[str, Any]] - Configured fuel ash defaults.
@@ -271,7 +271,12 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
                 "fuel_name": str(item.get("display_name", item.get("fuel_id", ""))),
                 "rate_kg_per_thm": float(item.get("rate_kg_per_thm", 0.0) or 0.0),
                 "price_rs_per_mt": float(item.get("price_rs_per_mt", 0.0) or 0.0),
-                "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
+                # ``moisture_pct`` is accepted as a migration fallback for older
+                # BMO config/operator files where IM was mislabeled as moisture.
+                "im_pct": float(
+                    item.get("im_pct", item.get("moisture_pct", 0.0)) or 0.0
+                ),
+                "vm_pct": float(item.get("vm_pct", 0.0) or 0.0),
                 "ash_pct": float(item.get("ash_pct", 0.0) or 0.0),
                 "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
                 "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
@@ -312,7 +317,8 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "fuel_name",
         "rate_kg_per_thm",
         "price_rs_per_mt",
-        "moisture_pct",
+        "im_pct",
+        "vm_pct",
         "ash_pct",
         "sio2_pct",
         "al2o3_pct",
@@ -332,44 +338,49 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "fuel_id": st.column_config.TextColumn("Fuel ID", disabled=True),
             "fuel_name": st.column_config.TextColumn("Fuel", disabled=True),
             "rate_kg_per_thm": st.column_config.NumberColumn(
-                "Rate (kg/THM)", min_value=0.0, step=1.0
+                "Rate (kg/THM)", min_value=0.0, step=0.01
             ),
             "price_rs_per_mt": st.column_config.NumberColumn(
-                "Price (Rs/MT)", min_value=0.0, step=100.0,
+                "Price (Rs/MT)", min_value=0.0, step=0.01,
                 help="Current fuel price; the displayed unit fuel cost is re-priced to this.",
             ),
-            "moisture_pct": st.column_config.NumberColumn(
-                "Moisture (%)", min_value=0.0, max_value=100.0, step=0.1
+            "im_pct": st.column_config.NumberColumn(
+                "Ash % IM", min_value=0.0, max_value=100.0, step=0.01,
+                help="Inherent moisture percentage.",
+            ),
+            "vm_pct": st.column_config.NumberColumn(
+                "Ash % VM", min_value=0.0, max_value=100.0, step=0.01,
+                help="Volatile matter percentage.",
             ),
             "ash_pct": st.column_config.NumberColumn(
-                "Ash (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "sio2_pct": st.column_config.NumberColumn(
-                "Ash SiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash SiO2 (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "al2o3_pct": st.column_config.NumberColumn(
-                "Ash Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "cao_pct": st.column_config.NumberColumn(
-                "Ash CaO (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash CaO (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "mgo_pct": st.column_config.NumberColumn(
-                "Ash MgO (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash MgO (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "fe2o3_pct": st.column_config.NumberColumn(
-                "Ash Fe2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash Fe2O3 (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "tio2_pct": st.column_config.NumberColumn(
-                "Ash TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash TiO2 (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "na2o_pct": st.column_config.NumberColumn(
-                "Ash Na2O (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash Na2O (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "k2o_pct": st.column_config.NumberColumn(
-                "Ash K2O (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash K2O (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "s_pct": st.column_config.NumberColumn(
-                "S in Fuel (%)", min_value=0.0, max_value=100.0, step=0.1
+                "S in Fuel (%)", min_value=0.0, max_value=100.0, step=0.01
             ),
             "p_pct": st.column_config.NumberColumn(
                 "P in Fuel (%)", min_value=0.0, max_value=100.0, step=0.001
@@ -888,9 +899,6 @@ def render_blend_metrics(
         if model_prediction is not None
         else False
     )
-    fuel_label = (
-        "Fuel Cost (Rs/THM, fallback)" if fuel_used_fallback else "Fuel Cost (Rs/THM)"
-    )
     fuel_help = (
         "Fallback formula in use - the XGBoost model was unavailable or "
         "rejected the prediction. Treat the cost as a placeholder."
@@ -901,24 +909,13 @@ def render_blend_metrics(
     # Row 1: costs + target production. Ore cost first in both modes; only the
     # emphasis/help differs (LP minimises ore cost; DE minimises ore + fuel).
     c1, c2, c_flux, c3, c4 = st.columns(5)
-    correction_priced_into_lp = bool(
-        blend.diagnostics.get("lp_coke_correction_linear_terms")
-    )
     if is_lp_mode:
         c1.metric(
             "Ore Cost (Rs/THM, LP-optimised)",
             f"{blend.ore_cost_per_thm_rs:,.2f}",
             help=(
-                (
-                    "LP minimises ore cost plus flux cost plus the physics "
-                    "coke-rate correction, subject to Fe target, slag cap, "
-                    "share bounds, and stock bounds."
-                )
-                if correction_priced_into_lp
-                else (
-                    "LP minimises ore cost only, subject to Fe target, slag cap, "
-                    "share bounds, and stock bounds."
-                )
+                "LP minimises configured operating cost subject to Fe target, "
+                "slag cap, share bounds, and stock bounds."
             ),
         )
     else:
@@ -953,31 +950,19 @@ def render_blend_metrics(
         else ""
     )
     fuel_label_est = (
-        "Fuel Cost (Rs/THM, est., current price, fallback)"
+        "Fuel Cost (Rs/THM, fallback)"
         if fuel_used_fallback
-        else "Fuel Cost (Rs/THM, est., current price)"
+        else "Fuel Cost (Rs/THM)"
     )
     fuel_help_base = (
         "Post-hoc XGBoost estimate on the selected blend." if is_lp_mode else fuel_help
     )
-    # What the physics correction costs, in the same units as the tile it sits
-    # under. Without this the operator can see the coke-rate delta but has no way
-    # to tell how much of the fuel bill it accounts for.
-    correction_delta_kg = blend.diagnostics.get("coke_correction_delta_kg_thm")
-    correction_cost = None
-    if correction_delta_kg:
-        correction_cost = float(correction_delta_kg) * float(
-            (blend.diagnostics.get("current_fuel_prices_rs_per_kg") or {}).get(
-                "coke", ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
-            )
-        )
     c2.metric(
         fuel_label_est,
         f"{fuel_cost_display:,.2f}",
-        delta=(
-            f"{correction_cost:+,.0f} physics" if correction_cost else None
-        ),
+        delta="Fallback Estimate" if fuel_used_fallback else "Model Predicted",
         delta_color="off",
+        delta_arrow="off",
         help=((fuel_help_base or "") + reprice_help) or None,
     )
     c_flux.metric(
@@ -1066,57 +1051,25 @@ def render_blend_metrics(
         )
 
     fuel_rate_estimate = blend.diagnostics.get("fuel_rate_estimate")
-    anchor_estimate = blend.diagnostics.get("fuel_rate_estimate_anchor")
-    correction_delta = blend.diagnostics.get("coke_correction_delta_kg_thm")
     st.markdown("##### Estimated Fuel Rates")
     if isinstance(fuel_rate_estimate, dict):
         r1, r2, r3, r4 = st.columns(4)
-        coke_help = None
-        if isinstance(anchor_estimate, dict) and correction_delta:
-            # Name the uncorrected value the correction moved away from, so the
-            # operator never has to take the corrected number on faith.
-            coke_help = (
-                f"Model-derived (uncorrected): "
-                f"{float(anchor_estimate.get('coke_rate_kg_thm', 0.0)):,.1f} kg/THM. "
-                "Physics correction shown as the delta."
-            )
         r1.metric(
             "Coke Rate (kg/THM)",
             f"{float(fuel_rate_estimate.get('coke_rate_kg_thm', 0.0)):,.1f}",
-            delta=(
-                f"{float(correction_delta):+,.1f} physics"
-                if correction_delta
-                else None
-            ),
+            delta="Model Predicted",
             delta_color="off",
-            help=coke_help,
+            delta_arrow="off",
+            help="Final coke-rate prediction used by the BMO result.",
         )
         r2.metric(
             "Nut Coke Rate (kg/THM)",
             f"{float(fuel_rate_estimate.get('nut_coke_rate_kg_thm', 0.0)):,.1f}",
             help=f"Source: {fuel_rate_estimate.get('nut_coke_source', 'unknown')}",
         )
-        total_fuel_help = None
-        if isinstance(anchor_estimate, dict) and correction_delta:
-            # The whole point of the correction is that it moves the total fuel
-            # rate. Naming the value it moved from is what makes that legible -
-            # without it the operator has no baseline to compare against and the
-            # delta looks like it went missing.
-            total_fuel_help = (
-                "Uncorrected: "
-                f"{float(anchor_estimate.get('total_fuel_rate_kg_thm', 0.0)):,.1f}"
-                " kg/THM. Only coke moves; nut coke and PCI are run inputs."
-            )
         r3.metric(
             "Total Fuel Rate (kg/THM)",
             f"{float(fuel_rate_estimate.get('total_fuel_rate_kg_thm', 0.0)):,.1f}",
-            delta=(
-                f"{float(correction_delta):+,.1f} physics"
-                if correction_delta
-                else None
-            ),
-            delta_color="off",
-            help=total_fuel_help,
         )
         r4.metric(
             "PCI (kg/THM)",

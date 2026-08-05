@@ -26,6 +26,27 @@ PERSISTED_FLUX_COLUMNS = (
     "stock_mt",
 )
 
+# Unlike ore/flux chemistry, Fuel Ash chemistry is an explicit operator input.
+# Save it so a deliberately entered laboratory set survives restarts. The fuel
+# rate is intentionally excluded: it is refreshed from live/static plant data
+# and must never be replaced by a saved operator preference.
+PERSISTED_FUEL_NUMERIC_COLUMNS = (
+    "price_rs_per_mt",
+    "im_pct",
+    "vm_pct",
+    "ash_pct",
+    "sio2_pct",
+    "al2o3_pct",
+    "cao_pct",
+    "mgo_pct",
+    "fe2o3_pct",
+    "tio2_pct",
+    "na2o_pct",
+    "k2o_pct",
+    "s_pct",
+    "p_pct",
+)
+
 
 def _float_or_none(value: Any) -> float | None:
     if pd.isna(value):
@@ -160,6 +181,55 @@ def apply_flux_preferences(
     return out
 
 
+def build_fuel_ash_preferences(fuel_df: pd.DataFrame) -> dict[str, Any]:
+    """Build Fuel Ash preferences without persisting the live fuel rate."""
+
+    if fuel_df.empty or "fuel_id" not in fuel_df.columns:
+        return {"fuel_ash_editor": {"rows": {}}}
+
+    rows: dict[str, dict[str, float | bool]] = {}
+    for _, row in fuel_df.iterrows():
+        fuel_id = str(row.get("fuel_id", "")).strip()
+        if not fuel_id:
+            continue
+        saved_row: dict[str, float | bool] = {
+            "enabled": bool(row.get("enabled", True))
+        }
+        for column in PERSISTED_FUEL_NUMERIC_COLUMNS:
+            if column not in row:
+                continue
+            value = _float_or_none(row.get(column))
+            if value is not None:
+                saved_row[column] = value
+        rows[fuel_id] = saved_row
+    return {"fuel_ash_editor": {"rows": rows}}
+
+
+def apply_fuel_ash_preferences(
+    fuel_df: pd.DataFrame, preferences: dict[str, Any]
+) -> pd.DataFrame:
+    """Overlay saved Fuel Ash values while preserving the current live rate."""
+
+    if fuel_df.empty or "fuel_id" not in fuel_df.columns:
+        return fuel_df
+
+    saved_rows = (preferences.get("fuel_ash_editor", {}) if preferences else {}).get(
+        "rows", {}
+    ) or {}
+    out = fuel_df.copy()
+    for index, row in out.iterrows():
+        fuel_id = str(row.get("fuel_id", "")).strip()
+        saved = saved_rows.get(fuel_id, {}) or {}
+        if "enabled" in saved:
+            out.at[index, "enabled"] = bool(saved["enabled"])
+        for column in PERSISTED_FUEL_NUMERIC_COLUMNS:
+            if column in out.columns and column in saved:
+                value = _float_or_none(saved[column])
+                if value is not None:
+                    out.at[index, column] = value
+    return out
+
+
 def load_ore_editor_preferences(path: str | Path) -> dict[str, Any]:
     """Load saved BMO ore editor preferences, returning empty prefs if absent."""
 
@@ -190,6 +260,18 @@ def save_flux_preferences(path: str | Path, flux_df: pd.DataFrame) -> Path:
     pref_path.parent.mkdir(parents=True, exist_ok=True)
     payload = load_ore_editor_preferences(pref_path)
     payload.update(build_flux_preferences(flux_df))
+    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
+        yaml.safe_dump(payload, file, sort_keys=False)
+    return pref_path
+
+
+def save_fuel_ash_preferences(path: str | Path, fuel_df: pd.DataFrame) -> Path:
+    """Persist Fuel Ash settings except the live rate and return the path."""
+
+    pref_path = Path(path)
+    pref_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = load_ore_editor_preferences(pref_path)
+    payload.update(build_fuel_ash_preferences(fuel_df))
     with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
         yaml.safe_dump(payload, file, sort_keys=False)
     return pref_path

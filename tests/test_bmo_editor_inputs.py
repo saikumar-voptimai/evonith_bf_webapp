@@ -51,6 +51,8 @@ class TestFuelAshInputsFromEditor:
                     "fuel_name": "Coke",
                     "enabled": True,
                     "rate_kg_per_thm": 340.0,
+                    "im_pct": 0.52,
+                    "vm_pct": 0.94,
                     "ash_pct": 11.5,
                     "sio2_pct": 55.0,
                 },
@@ -63,10 +65,19 @@ class TestFuelAshInputsFromEditor:
         assert coke.fuel_id == "coke"
         assert coke.display_name == "Coke"
         assert coke.rate_kg_per_thm == 340.0
+        assert coke.im_pct == 0.52
+        assert coke.vm_pct == 0.94
         assert coke.ash_pct == 11.5
         assert coke.sio2_pct == 55.0
         # Unspecified chemistry columns default to 0.0 via float_from_row.
         assert coke.cao_pct == 0.0
+
+    def test_legacy_moisture_column_is_treated_as_im(self):
+        out = fuel_ash_inputs_from_editor(
+            pd.DataFrame([{"fuel_id": "coke", "moisture_pct": 0.37}])
+        )
+
+        assert out[0].im_pct == 0.37
 
 
 class TestFluxInputsFromEditor:
