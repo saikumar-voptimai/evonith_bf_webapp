@@ -251,7 +251,7 @@ bmo:
     mn_to_mno_factor: 1.291
     # With HM-driven PI chemistry the slag balance is self-consistent;
     # leave correction at 1.0 unless empirical calibration is still needed.
-    slag_correction_factor: 1.0
+    slag_correction_factor: 0.9
 
   # LP and DE derive their uncorrected coke rate directly from the model's one
   # predicted fuel-cost value, using the prices on which that model was trained:
