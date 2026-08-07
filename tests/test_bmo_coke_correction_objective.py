@@ -9,6 +9,8 @@ starts from.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -562,6 +564,51 @@ def test_anchor_choice_does_not_change_which_blend_wins():
         return a - b
 
     assert gap("observed") == pytest.approx(gap("model_cost"), abs=1e-6)
+
+
+def test_shipped_anchor_basis_keeps_the_coke_rate_a_prediction():
+    """The shipped config must back-solve coke from the model, not read the tag.
+
+    A reported coke rate that is seeded from the live coke tag is a restatement
+    of what the furnace was running an hour ago, not a forecast of the blend. The
+    physics correction is a delta on top of the prediction; it is not itself the
+    prediction. See setting_bmo.yml for the full note.
+    """
+
+    import yaml
+
+    path = Path(__file__).resolve().parents[1] / "src" / "config" / "setting_bmo.yml"
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8"))["bmo"]
+
+    assert cfg["fuel_rate_anchor_basis"] == "model_cost"
+
+
+def test_model_cost_anchor_back_solves_coke_and_ignores_the_editor_coke_rate():
+    """Coke must come out of the cost residual even when a coke row is present.
+
+    The Fuel Ash table still pins nut coke and PCI - they are operator run inputs
+    - but its coke figure must not become the answer.
+    """
+
+    editor_coke = 295.0
+    blend = _blend_with_anchor("model_cost", coke_rate=editor_coke)
+
+    rates = blend.diagnostics["fuel_rate_estimate"]
+    assert blend.diagnostics["fuel_rate_estimate_source"] == "model_cost_residual"
+    assert rates["coke_rate_kg_thm"] != pytest.approx(editor_coke)
+    # Nut coke and PCI are taken verbatim from the editor rows.
+    assert rates["nut_coke_rate_kg_thm"] == pytest.approx(70.0)
+    assert rates["pci_rate_kg_thm"] == pytest.approx(180.0)
+    # coke = (cost - nut x p_nut - pci x p_pci) / p_coke
+    expected = (
+        12_900.0
+        - 70.0 * ASSUMED_FUEL_PRICES_RS_PER_KG["nut_coke"]
+        - 180.0 * ASSUMED_FUEL_PRICES_RS_PER_KG["pci"]
+    ) / ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
+    assert rates["coke_rate_kg_thm"] == pytest.approx(expected)
+    # No rebase on this path: the cost and the rates are the same number.
+    assert "fuel_cost_per_thm_rs_model" not in blend.diagnostics
+    assert blend.fuel_cost_per_thm_rs == pytest.approx(12_900.0)
 
 
 def test_de_seed_lp_receives_the_correction(monkeypatch):

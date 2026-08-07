@@ -94,6 +94,69 @@ def _build_initial_share_population(
     return np.vstack(population)
 
 
+def _build_random_share_population(
+    *,
+    min_shares: np.ndarray,
+    max_shares: np.ndarray,
+    sample_count: int,
+    seed: int,
+) -> np.ndarray:
+    """
+    Build a DE start population that does not depend on an LP solution.
+
+    Used when the LP is infeasible, or when the operator asks for an independent
+    search. Unlike the LP-seeded population, which explores a few percent around
+    one point, this spreads across the whole share simplex: the midpoint of the
+    bounds, one corner per ore with that ore pushed to its maximum, then Dirichlet
+    draws. Dirichlet rather than independent uniforms because independent draws
+    concentrate near the centre once projected back onto the simplex, which would
+    leave the corners — where a lean or a rich burden lives — unexplored.
+
+    Args:
+         - min_shares: np.ndarray - Per-ore minimum share as a fraction.
+         - max_shares: np.ndarray - Per-ore maximum share as a fraction.
+         - sample_count: int - Number of population members to return.
+         - seed: int - Seed for reproducibility.
+
+    Returns:
+         - return np.ndarray - ``(sample_count, n_ore)`` share population.
+    """
+
+    rng = np.random.default_rng(seed)
+    n = int(len(min_shares))
+    population: list[np.ndarray] = [
+        _project_shares((min_shares + max_shares) / 2.0, min_shares, max_shares)
+    ]
+    for index in range(n):
+        corner = np.array(min_shares, dtype=float)
+        corner[index] = float(max_shares[index])
+        population.append(_project_shares(corner, min_shares, max_shares))
+    while len(population) < sample_count:
+        population.append(
+            _project_shares(rng.dirichlet(np.ones(n)), min_shares, max_shares)
+        )
+    return np.vstack(population[: max(sample_count, 1)])
+
+
+def _build_random_flux_population(
+    *,
+    flux_bounds: list[tuple[float, float]],
+    sample_count: int,
+    seed: int,
+) -> np.ndarray:
+    """Uniform draws inside each flux's ``(0, stock)`` bound, plus an all-zero row."""
+
+    rng = np.random.default_rng(seed)
+    lo = np.array([b[0] for b in flux_bounds], dtype=float)
+    hi = np.array([b[1] for b in flux_bounds], dtype=float)
+    # Charging no flux at all is a legitimate and common answer, so make sure it
+    # is in the population rather than leaving DE to stumble onto it.
+    rows = [lo.copy()]
+    while len(rows) < sample_count:
+        rows.append(lo + rng.random(lo.shape) * (hi - lo))
+    return np.vstack(rows[: max(sample_count, 1)])
+
+
 def run_nonlinear_optimizer(
     ores: list[OreInput],
     *,
@@ -125,9 +188,12 @@ def run_nonlinear_optimizer(
     """
     Run nonlinear total-cost BMO optimization with DE.
 
-    The nonlinear path starts from the feasible LP baseline, then explores wet
-    quantity vectors with a fuel-aware objective. If the hard LP constraints are
-    infeasible, DE is skipped because there is no reliable feasible seed.
+    The nonlinear path normally starts from the feasible LP baseline, then
+    explores wet quantity vectors with a fuel-aware objective. ``de_cfg`` key
+    ``initial_solution`` decides what happens when the LP cannot solve:
+    ``"lp"`` skips DE entirely, ``"random"`` never consults the LP, and
+    ``"lp_else_random"`` (the default) falls back to a population spread across
+    the share simplex so an infeasible LP no longer takes DE down with it.
 
     Args:
          - ores: list[OreInput] - Ores selected for optimization.
@@ -166,29 +232,45 @@ def run_nonlinear_optimizer(
     if pre_errors:
         return None, pre_errors
 
-    lp_blend, lp_errors = run_lp_baseline(
-        ores,
-        target_production_mt=target_production_mt,
-        target_slag_qty_mt=target_slag_qty_mt,
-        feo_in_slag_pct=feo_in_slag_pct,
-        target_slag_basicity_min=target_slag_basicity_min,
-        target_slag_basicity_max=target_slag_basicity_max,
-        target_slag_t_basicity_min=None,
-        target_slag_t_basicity_max=None,
-        max_burden_qty_mt=max_burden_qty_mt,
-        fuel_ash_inputs=fuel_ash_inputs,
-        flux_inputs=flux_inputs,
-        dust_inputs=dust_inputs,
-        slag_balance_settings=slag_balance_settings,
-        hot_metal_target_mt=hot_metal_target_mt,
-        # The seed must be optimised against the same objective DE will use.
-        # Seeding from an uncorrected LP would drop DE into the low-Fe corner the
-        # correction exists to avoid, and DE only explores a few percent around
-        # its seed - it would never find its way back out.
-        coke_correction_settings=coke_correction_settings,
-        coke_correction_reference=coke_correction_reference,
-    )
-    if lp_blend is None:
+    # How DE gets its starting population.
+    #   lp              - seed from the LP baseline; abort if the LP is infeasible
+    #   random          - ignore the LP entirely and search from a spread population
+    #   lp_else_random  - prefer the LP, fall back to a random spread when it fails
+    # The default rescues the case the LP cannot solve. An infeasible LP does not
+    # always mean the problem is unsatisfiable: the LP works on a linearised slag
+    # and basicity model, so it can reject a burden the exact evaluation accepts.
+    # DE scores with soft penalties, so it can return a best-effort blend there,
+    # flagged with its violations, instead of the page showing nothing at all.
+    seed_strategy = str(de_cfg.get("initial_solution", "lp_else_random")).strip().lower()
+    if seed_strategy not in {"lp", "random", "lp_else_random"}:
+        seed_strategy = "lp_else_random"
+
+    lp_blend: BlendEvaluation | None = None
+    lp_errors: list[str] = []
+    if seed_strategy != "random":
+        lp_blend, lp_errors = run_lp_baseline(
+            ores,
+            target_production_mt=target_production_mt,
+            target_slag_qty_mt=target_slag_qty_mt,
+            feo_in_slag_pct=feo_in_slag_pct,
+            target_slag_basicity_min=target_slag_basicity_min,
+            target_slag_basicity_max=target_slag_basicity_max,
+            target_slag_t_basicity_min=None,
+            target_slag_t_basicity_max=None,
+            max_burden_qty_mt=max_burden_qty_mt,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            hot_metal_target_mt=hot_metal_target_mt,
+            # The seed must be optimised against the same objective DE will use.
+            # Seeding from an uncorrected LP would drop DE into the low-Fe corner
+            # the correction exists to avoid, and DE only explores a few percent
+            # around its seed - it would never find its way back out.
+            coke_correction_settings=coke_correction_settings,
+            coke_correction_reference=coke_correction_reference,
+        )
+    if lp_blend is None and seed_strategy == "lp":
         return None, [
             "Total-cost optimizer skipped because hard LP constraints are infeasible.",
             *lp_errors,
@@ -317,7 +399,13 @@ def run_nonlinear_optimizer(
 
     baseline_solution: dict[str, Any] | None = None
     initial_population: np.ndarray | None = None
-    if lp_blend.total_qty_mt > 0:
+    n_vars = n_ore + n_flux
+    min_samples = max(5, int(de_cfg.get("popsize", 10)) * n_vars)
+    sample_count = max(
+        min_samples, int(de_cfg.get("initial_population_samples", min_samples))
+    )
+    seed_used = "lp" if (lp_blend is not None and lp_blend.total_qty_mt > 0) else "random"
+    if lp_blend is not None and lp_blend.total_qty_mt > 0:
         lp_quantities = np.array(
             [float(lp_blend.quantities_mt.get(ore.ore_id, 0.0)) for ore in ores],
             dtype=float,
@@ -339,14 +427,11 @@ def run_nonlinear_optimizer(
             "violations": list(baseline_result.violations),
             "diagnostics": dict(baseline_result.diagnostics),
         }
-        n_vars = n_ore + n_flux
-        min_samples = max(5, int(de_cfg.get("popsize", 10)) * n_vars)
-        sample_count = int(de_cfg.get("initial_population_samples", min_samples))
         ore_population = _build_initial_share_population(
             lp_shares=lp_shares,
             min_shares=min_shares,
             max_shares=max_shares,
-            sample_count=max(min_samples, sample_count),
+            sample_count=sample_count,
             seed=int(de_cfg.get("seed", 42)),
         )
         if n_flux > 0:
@@ -359,6 +444,25 @@ def run_nonlinear_optimizer(
                 noise = rng.normal(0.0, 1.0, size=lp_flux_vec.shape) * spread
                 flux_rows.append(np.clip(lp_flux_vec + noise, flux_lo, flux_hi))
             initial_population = np.hstack([ore_population, np.vstack(flux_rows)])
+        else:
+            initial_population = ore_population
+    else:
+        # No usable LP seed. Search from a population spread across the whole
+        # share simplex instead of returning nothing. There is no baseline
+        # solution to hand the runner, so DE keeps whatever it finds.
+        ore_population = _build_random_share_population(
+            min_shares=min_shares,
+            max_shares=max_shares,
+            sample_count=sample_count,
+            seed=int(de_cfg.get("seed", 42)),
+        )
+        if n_flux > 0:
+            flux_population = _build_random_flux_population(
+                flux_bounds=flux_bounds,
+                sample_count=ore_population.shape[0],
+                seed=int(de_cfg.get("seed", 42)) + 1,
+            )
+            initial_population = np.hstack([ore_population, flux_population])
         else:
             initial_population = ore_population
 
@@ -407,4 +511,13 @@ def run_nonlinear_optimizer(
         "compare_metrics": optimization_result.compare_metrics,
     }
     blend.diagnostics["de_candidates"] = de_candidates
+    # Provenance of the start population. When the LP could not seed DE the
+    # operator needs to know the result came from an unguided search and that the
+    # LP's own reasons are worth reading, so carry both rather than dropping them.
+    blend.diagnostics["de_seed"] = {
+        "strategy_requested": seed_strategy,
+        "strategy_used": seed_used,
+        "lp_seed_available": lp_blend is not None,
+        "lp_seed_errors": list(lp_errors),
+    }
     return blend, []

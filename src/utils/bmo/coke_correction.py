@@ -1039,26 +1039,55 @@ def compute_coke_correction(
     corrected_coke = anchor + applied_delta
     band_bindings: list[str] = []
 
+    # The bands limit how far the CORRECTION may move a rate. They must never
+    # move a rate on their own. An anchor outside its band is an input problem -
+    # a bad PCI reading or a bad model cost - and clamping toward the band there
+    # would relabel that gap as a physics correction, which is how a -8 kg/THM
+    # slag term once got displayed as +75. Stand the affected band down for that
+    # run, and say plainly that the anchor itself is out of range.
     low, high = settings.coke_rate_band_kg_thm
-    if corrected_coke < low or corrected_coke > high:
+    anchor_in_band = low <= anchor <= high
+    if not anchor_in_band:
+        # The band is calibrated against a plausible anchor. Against an
+        # implausible one it cannot help, so it stands down rather than dragging
+        # the answer somewhere the physics never asked for.
+        warnings.append(
+            f"The model-derived coke rate of {anchor:,.1f} kg/THM is already "
+            f"outside the expected {low:,.0f}-{high:,.0f} kg/THM band before any "
+            "correction, so the band has been stood down for this run. Check the "
+            f"predicted fuel cost and the PCI ({pci:,.1f} kg/THM) and nut coke "
+            f"({nut:,.1f} kg/THM) rates feeding the cost decomposition."
+        )
+    if anchor_in_band and (corrected_coke < low or corrected_coke > high):
         wanted = corrected_coke
         corrected_coke = min(max(corrected_coke, low), high)
         band_bindings.append("coke_rate")
         warnings.append(
-            f"Corrected coke rate hit the {corrected_coke:,.0f} kg/THM band edge; "
-            f"the physics delta wanted {wanted:,.0f} kg/THM."
+            f"The correction was capped at {corrected_coke:,.1f} kg/THM of coke; "
+            f"the physics terms alone would have given {wanted:,.1f} kg/THM."
         )
         applied_delta = corrected_coke - anchor
 
+    anchor_total_fuel = anchor + nut + pci
     corrected_total_fuel = corrected_coke + nut + pci
     fuel_low, fuel_high = settings.total_fuel_rate_band_kg_thm
-    if corrected_total_fuel < fuel_low or corrected_total_fuel > fuel_high:
+    fuel_anchor_in_band = fuel_low <= anchor_total_fuel <= fuel_high
+    if not fuel_anchor_in_band:
+        warnings.append(
+            f"The uncorrected total fuel rate of {anchor_total_fuel:,.1f} kg/THM "
+            f"is already outside the expected {fuel_low:,.0f}-{fuel_high:,.0f} "
+            "kg/THM band, so that band has been stood down for this run."
+        )
+    if fuel_anchor_in_band and (
+        corrected_total_fuel < fuel_low or corrected_total_fuel > fuel_high
+    ):
         wanted_fuel = corrected_total_fuel
         corrected_total_fuel = min(max(corrected_total_fuel, fuel_low), fuel_high)
         band_bindings.append("total_fuel_rate")
         warnings.append(
-            f"Corrected total fuel rate hit the {corrected_total_fuel:,.0f} kg/THM "
-            f"band edge; the physics delta wanted {wanted_fuel:,.0f} kg/THM."
+            f"The correction was capped at {corrected_total_fuel:,.1f} kg/THM of "
+            f"total fuel; the physics terms alone would have given "
+            f"{wanted_fuel:,.1f} kg/THM."
         )
         corrected_coke = max(0.0, corrected_total_fuel - nut - pci)
         applied_delta = corrected_coke - anchor

@@ -186,6 +186,8 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "ore_name",
         "stock_mt",
         "price_rs_per_mt",
+        "min_share_pct",
+        "max_share_pct",
         "moisture_pct",
         "fe_t_pct",
         "sio2_pct",
@@ -194,8 +196,6 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "mgo_pct",
         "mno_pct",
         "tio2_pct",
-        "min_share_pct",
-        "max_share_pct",
     )
     editor_kwargs: dict[str, Any] = {
         "hide_index": True,
@@ -1213,11 +1213,15 @@ def render_coke_correction_breakdown(blend: BlendEvaluation) -> None:
     corrected = float(correction.get("corrected_coke_rate_kg_thm", 0.0) or 0.0)
     delta = float(correction.get("applied_delta_kg_thm", 0.0) or 0.0)
     applied = bool(blend.diagnostics.get("coke_correction_applied", False))
+    warnings = list(correction.get("warnings", []) or [])
 
     with st.expander(
         f"Coke-rate physics correction: {anchor:,.1f} → {corrected:,.1f} kg/THM "
         f"({delta:+,.1f})",
-        expanded=False,
+        # A warning about an implausible anchor is an operator action, not an
+        # audit detail. Open the breakdown so it cannot hide behind a collapsed
+        # expander; clean runs remain compact.
+        expanded=bool(warnings),
     ):
         st.caption(
             "Priced into the optimizer's objective."
@@ -1263,7 +1267,7 @@ def render_coke_correction_breakdown(blend: BlendEvaluation) -> None:
                 },
             )
 
-        for warning in correction.get("warnings", []) or []:
+        for warning in warnings:
             st.warning(str(warning))
 
         lp_terms = blend.diagnostics.get("lp_coke_correction_linear_terms")
