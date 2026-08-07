@@ -118,6 +118,60 @@ def _structural_infeasibility_reasons(
     return reasons
 
 
+def _nominal_linearisation_quantities(
+    ores: list[OreInput], target_production_mt: float
+) -> dict[str, float]:
+    """
+    Build a burden that actually delivers the Fe target, for use as the
+    linearisation point.
+
+    The slag balance nets BF gas dust off the component totals and clamps the
+    result at zero. Probing at an EMPTY burden puts those clamps in a different
+    branch from any real solution: with 48 MT of dust at 33% Fe the deduction
+    (15.8 MT) exceeds the fuel-ash Fe (~6.9 MT), so net Fe clamps to zero, pig
+    iron is zero, and the probe sees none of the SiO2 that silicon reduction
+    removes. The linear model then under-states basicity by ~11% and the LP
+    hands back a blend that fails its own exact validation.
+
+    Probing around a realistic burden keeps every clamp in the same branch the
+    solution lives in, so the dust subtraction stays linear where it matters.
+
+    Args:
+         - ores: list[OreInput] - Ores selected for LP.
+         - target_production_mt: float - Required dry Fe production in MT.
+
+    Returns:
+         - return dict[str, float] - Wet quantities keyed by ore id.
+    """
+
+    count = len(ores)
+    if count == 0:
+        return {}
+    lo = np.array([max(0.0, float(o.min_share_pct)) / 100.0 for o in ores])
+    hi = np.array([max(0.0, float(o.max_share_pct)) / 100.0 for o in ores])
+    shares = np.clip((lo + hi) / 2.0, lo, np.maximum(hi, lo))
+    total_share = float(np.sum(shares))
+    shares = (
+        shares / total_share
+        if total_share > 0.0
+        else np.full(count, 1.0 / count, dtype=float)
+    )
+    fe_per_wet = np.array(
+        [
+            compute_dry_fraction(o.chemistry.moisture_pct)
+            * max(0.0, float(o.chemistry.fe_t_pct))
+            / 100.0
+            for o in ores
+        ],
+        dtype=float,
+    )
+    fe_per_blend = float(np.dot(shares, fe_per_wet))
+    if fe_per_blend <= 0.0 or target_production_mt <= 0.0:
+        return {ore.ore_id: 0.0 for ore in ores}
+    total_wet = float(target_production_mt) / fe_per_blend
+    return {ore.ore_id: float(shares[i] * total_wet) for i, ore in enumerate(ores)}
+
+
 def _build_linear_slag_and_basicity_terms(
     ores: list[OreInput],
     *,
@@ -128,15 +182,23 @@ def _build_linear_slag_and_basicity_terms(
     slag_balance_settings: SlagBalanceSettings | None,
     hot_metal_target_mt: float | None,
     variable_fluxes: list[FluxInput] | None = None,
+    target_production_mt: float = 0.0,
 ) -> tuple[np.ndarray, float, np.ndarray, float, np.ndarray, float, np.ndarray, float]:
     """
     Estimate linear final-slag and basicity terms for LP hard constraints.
 
     The active BMO slag calculation is linear in ore quantities while fuel ash
     scales with hot-metal production and flux/dust rows remain fixed. This
-    helper evaluates the configured slag calculation at zero burden and at one
-    wet MT for each ore to derive ``base + sum(coeff_i * qty_i)`` terms for
-    total slag, basicity numerator, and basicity denominator.
+    helper takes a first-order expansion of the configured slag calculation and
+    returns ``base + sum(coeff_i * qty_i)`` terms for total slag, basicity
+    numerator, and basicity denominator.
+
+    The expansion point is a NOMINAL burden that meets the Fe target, not an
+    empty one: BF gas dust is netted off the component totals with a zero clamp,
+    and at an empty burden those clamps sit in a different branch from any real
+    solution. See ``_nominal_linearisation_quantities``. The returned terms are
+    still of the form ``base + coeff . x`` - the expansion point is folded back
+    into ``base`` - so every caller is unaffected.
 
     Args:
          - ores: list[OreInput] - Ores selected for LP.
@@ -145,12 +207,13 @@ def _build_linear_slag_and_basicity_terms(
          - flux_inputs: list[FluxInput] | None - Fixed flux rows used by slag calculation.
          - dust_inputs: list[DustInput] | None - Dust rows deducted from full balance.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
+         - target_production_mt: float - Fe target, used to size the expansion point.
 
     Returns:
          - return tuple - Slag, basicity numerator, and denominator linear terms.
     """
 
-    zero_quantities = {ore.ore_id: 0.0 for ore in ores}
+    zero_quantities = _nominal_linearisation_quantities(ores, target_production_mt)
     base_blend = evaluate_blend(
         ores=ores,
         quantities_mt=zero_quantities,
@@ -178,8 +241,10 @@ def _build_linear_slag_and_basicity_terms(
     basicity_denominator_coeffs: list[float] = []
     t_basicity_numerator_coeffs: list[float] = []
     for ore in ores:
+        # Forward difference of one wet MT AROUND the expansion point, not from
+        # an empty burden, so the dust clamps stay in the solution's branch.
         unit_quantities = dict(zero_quantities)
-        unit_quantities[ore.ore_id] = 1.0
+        unit_quantities[ore.ore_id] = float(zero_quantities.get(ore.ore_id, 0.0)) + 1.0
         unit_blend = evaluate_blend(
             ores=ores,
             quantities_mt=unit_quantities,
@@ -235,15 +300,29 @@ def _build_linear_slag_and_basicity_terms(
             - base_t_basicity_numerator_mt
         )
 
+    # Fold the expansion point back into the intercept. Callers consume these as
+    # ``base + coeff . x`` over absolute quantities, so a first-order expansion
+    # taken at x0 has to report base = f(x0) - coeff . x0. Flux columns expand at
+    # zero quantity, so only the ore columns contribute to the shift.
+    expansion_point = np.array(
+        [float(zero_quantities.get(ore.ore_id, 0.0)) for ore in ores]
+        + [0.0] * len(variable_fluxes or []),
+        dtype=float,
+    )
+    slag_coeff_arr = np.array(slag_coeffs, dtype=float)
+    num_coeff_arr = np.array(basicity_numerator_coeffs, dtype=float)
+    den_coeff_arr = np.array(basicity_denominator_coeffs, dtype=float)
+    t_num_coeff_arr = np.array(t_basicity_numerator_coeffs, dtype=float)
+
     return (
-        np.array(slag_coeffs, dtype=float),
-        base_slag_mt,
-        np.array(basicity_numerator_coeffs, dtype=float),
-        base_basicity_numerator_mt,
-        np.array(basicity_denominator_coeffs, dtype=float),
-        base_basicity_denominator_mt,
-        np.array(t_basicity_numerator_coeffs, dtype=float),
-        base_t_basicity_numerator_mt,
+        slag_coeff_arr,
+        base_slag_mt - float(slag_coeff_arr @ expansion_point),
+        num_coeff_arr,
+        base_basicity_numerator_mt - float(num_coeff_arr @ expansion_point),
+        den_coeff_arr,
+        base_basicity_denominator_mt - float(den_coeff_arr @ expansion_point),
+        t_num_coeff_arr,
+        base_t_basicity_numerator_mt - float(t_num_coeff_arr @ expansion_point),
     )
 
 
@@ -563,6 +642,7 @@ def run_lp_baseline(
         slag_balance_settings=slag_balance_settings,
         hot_metal_target_mt=hot_metal_target_mt,
         variable_fluxes=variable_fluxes,
+        target_production_mt=target_production_mt,
     )
     slag_row_idx = len(a_ub_rows)
     a_ub_rows.append(slag_coeff)

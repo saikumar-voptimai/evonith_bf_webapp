@@ -253,27 +253,37 @@ bmo:
   # What LP and DE anchor their reported fuel rates to, before the coke-rate
   # correction below is applied.
   #
-  #   observed    - the current plant rates from the Fuel Ash table (coke seeded
-  #                 from the live tag, nut coke 70, PCI from the live tag). The
-  #                 blend's fuel cost is rebased to match, so at the reference
-  #                 operating point the reported rate equals what the furnace is
-  #                 actually running.
-  #   model_cost  - back-solve coke as the residual of the model's predicted cost.
+  #   model_cost  - back-solve coke as the residual of the model's predicted cost:
+  #                     coke = (predicted cost - PCI x p_pci - 70 x p_nut) / p_coke
+  #                 Nut coke and PCI are pinned to the operator's Fuel Ash inputs,
+  #                 so coke is the only unknown and the reported rate stays a
+  #                 PREDICTION.
+  #   observed    - read the current plant coke rate off the Fuel Ash table
+  #                 instead, and rebase the blend's fuel cost to match.
   #
-  # WHY observed IS THE DEFAULT. The model's cost output is very nearly a
-  # constant (~13,364 Rs/THM). Back-solving coke from it gives
-  #     total fuel = (x - 70*24)/28 + 70 + PCI*(1 - 18/28)
-  #                ~ 487 + 0.357 * PCI
-  # so the reported total fuel rate is pinned to roughly 546-552 kg/THM for any
-  # realistic PCI, no matter what the plant is doing, and every recommendation
-  # inherits that offset. Note also that the decomposition conserves cost rather
-  # than mass, so a PCI reading 15 kg/THM low does not cut total fuel by 15 - it
-  # cuts it by 5 and inflates coke by 9.
+  # WHY model_cost IS THE DEFAULT. The coke rate BMO reports has to be a
+  # prediction of what this blend will need, not a restatement of what the
+  # furnace happened to be running an hour ago. Anchoring on the live coke tag
+  # turns an input into the answer: every recommendation would open at today's
+  # coke rate and differ from it only by the physics correction, which is not a
+  # forecast of the blend at all. ``observed`` remains available for diagnosing
+  # the level, but it should not drive an operating recommendation.
+  #
+  # KNOWN LIMITATION of model_cost, measured 2026-07-30. The model's cost output
+  # is very nearly a constant (~13,364 Rs/THM - doubling ORE_CALC_THM moves it
+  # 0.012%). Back-solving coke from it gives
+  #     total fuel = (x - 70 x 24)/28 + 70 + PCI x (1 - 18/28)
+  #                ~ 487 + 0.357 x PCI
+  # so the anchor sits near 546-552 kg/THM for any realistic PCI and carries
+  # almost no blend information of its own. The blend sensitivity therefore comes
+  # entirely from coke_rate_correction below. Note also that the decomposition
+  # conserves cost rather than mass: a PCI reading 15 kg/THM low does not cut
+  # total fuel by 15, it cuts it by 5 and inflates coke by 9.
   #
   # Switching anchors cannot change which blend the optimizer picks: both are
   # near-constant across blends, so the difference is an offset, not a gradient.
   # It changes the reported level only.
-  fuel_rate_anchor_basis: observed
+  fuel_rate_anchor_basis: model_cost
 
   # ---------------------------------------------------------------------------
   # Physics-based coke-rate correction.
@@ -327,17 +337,37 @@ bmo:
 
     terms:
       # ---- 1. SLAG HEAT ------------------------------------------------------
-      # Slag leaves the furnace at ~1500 C and that heat is paid for in coke.
-      #   enthalpy ~ cp 1.25 kJ/kg.K x ~1475 K + 0.21 MJ/kg heat of fusion
-      #            ~ 1.8 MJ/kg (rounded down: part of the slag heat is recovered
-      #              by the ascending gas, so not all of it is charged at the
-      #              marginal rate)
-      #   marginal coke heat delivered to the lower zone ~ 6.0 MJ/kg
-      #   => 1.8 / 6.0 = 0.30 kg coke per kg slag = 30 per 100 kg/THM
-      # Defensible band: 20-35.
+      # EMPIRICALLY ANCHORED - this is the one coefficient this plant's data can
+      # actually measure. Full derivation and diagnostics in
+      # docs/bmo_fuel_slag_si_findings.md section 2.
+      #
+      # Daily mass balance over 222 days. Coke and burden masses come from
+      # offline_feed.charge_data, NOT from COKE_CALC_MT, which correlates only
+      # +0.16 with the actual charge dumps and made earlier estimates useless:
+      #     fuel MT/day ~ hot metal t/day + slag MT/day + controls
+      # Six specifications, adding blast, RM strength, burden distribution, Si
+      # and eta CO in turn, give +18.4 to +26.9 kg fuel per 100 kg slag, every
+      # one significant at p<0.001. Bootstrap median +20.9, 90% CI [+11.4,+30.0].
+      # Instrumenting with burden-only slag to purge the shared coke-ash error
+      # gives +20.0 +/- 7.8 against an OLS +21.8, so shared error is worth <2.
+      #
+      # 22 sits within one standard error of every estimate and slightly on the
+      # cautious side: a higher coefficient penalises lean burden more, and this
+      # tool's failure mode is over-buying cheap high-gangue ore.
+      #
+      # PHYSICS CROSS-CHECK. The coefficient is slag enthalpy over marginal coke
+      # heat. Slag enthalpy at ~1500 C is cp 1.25 kJ/kg.K x ~1475 K + 0.21 MJ/kg
+      # of fusion ~ 1.8 MJ/kg. At k=0.22 that implies 1.8/0.22 = 8.2 MJ/kg of
+      # usable coke heat in the lower zone. The previous value of 30 assumed
+      # 6.0 MJ/kg, which was a mid-range guess with no plant basis.
+      #
+      # KNOWN UNCERTAINTY: substituting DPR measured slag for the Al2O3 tracer
+      # gives +9.0 +/- 8.3, not significant. The two agree on level (727 vs 739
+      # MT/day) but correlate only +0.59 day to day, and the regression lives on
+      # day-to-day variation. Reconciled slag weighing would settle this.
       slag_heat:
         enabled: true
-        kg_coke_per_100kg_slag: 30.0
+        kg_coke_per_100kg_slag: 22.0
         max_abs_kg_thm: 45.0
         # Observed slag rate spans roughly +/- 60 kg/THM around a normal
         # operating point. Deviations beyond 1.5x this are compressed rather
@@ -437,6 +467,20 @@ bmo:
 
   optimization:
     enabled: true
+    # Where DE gets its starting population.
+    #   lp             - seed from the LP baseline; if the LP is infeasible, DE
+    #                    does not run at all (the old behaviour)
+    #   random         - ignore the LP and search from a population spread across
+    #                    the whole share simplex
+    #   lp_else_random - prefer the LP seed, fall back to random when it fails
+    #
+    # An infeasible LP does not always mean the problem is unsatisfiable: the LP
+    # optimises a LINEARISED slag and basicity model, so it can reject a burden
+    # the exact evaluation would accept. DE scores with soft penalties, so it can
+    # still return a best-effort blend with its violations listed, which is more
+    # use to an operator than an empty result pane. The blend records which seed
+    # it actually used under diagnostics["de_seed"].
+    initial_solution: lp_else_random
     strategy: best1bin
     maxiter: 30
     popsize: 10

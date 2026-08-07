@@ -1964,9 +1964,35 @@ if _dust_entered_mt > 0 and not slag_balance_settings.enabled:
         "from the slag balance."
     )
 
+_DE_SEED_LABELS = {
+    "lp_else_random": "LP seed, random fallback (recommended)",
+    "lp": "LP seed only (skip DE if LP is infeasible)",
+    "random": "Random start (ignore the LP)",
+}
+
 run_lp_clicked = False
 run_total_clicked = False
 with st.form("bmo_run_form", clear_on_submit=False):
+    seed_options = list(_DE_SEED_LABELS)
+    configured_seed = str(opt_cfg.get("initial_solution", "lp_else_random")).lower()
+    de_seed_choice = st.selectbox(
+        "Total-cost optimizer start point",
+        options=seed_options,
+        index=(
+            seed_options.index(configured_seed)
+            if configured_seed in seed_options
+            else 0
+        ),
+        format_func=lambda key: _DE_SEED_LABELS[key],
+        help=(
+            "The optimizer normally starts from the LP baseline. When the LP is "
+            "infeasible that used to stop it running at all, even though an "
+            "infeasible LP only means the *linearised* slag and basicity model "
+            "found no solution. A random start searches the whole share range "
+            "instead and returns the best blend it can reach, with any "
+            "constraint violations listed on the result."
+        ),
+    )
     run_col1, run_col2 = st.columns(2)
     run_lp_clicked = _form_submit_button(
         run_col1,
@@ -2249,7 +2275,8 @@ if requested_lp or requested_total:
                 model_service=model_service,
                 process_context=process_context,
                 history_df=history_df,
-                de_cfg=opt_cfg,
+                # The selectbox overrides the configured default for this run.
+                de_cfg={**opt_cfg, "initial_solution": de_seed_choice},
                 fuel_ash_inputs=fuel_ash_inputs,
                 flux_inputs=flux_inputs,
                 dust_inputs=dust_inputs,
@@ -2376,6 +2403,26 @@ if lp_result is not None or de_result is not None:
                     "(it can hit its iteration/time budget). Showing the LP "
                     "baseline blend as the best available solution."
                 )
+            _de_seed = de_result.diagnostics.get("de_seed") or {}
+            if _de_seed.get("strategy_used") == "random":
+                # Without this the operator cannot tell an unguided search from an
+                # LP-seeded one, and the LP's reasons for failing would be lost.
+                _lp_reasons = _de_seed.get("lp_seed_errors") or []
+                st.warning(
+                    "This result came from a **random start**, not the LP "
+                    "baseline"
+                    + (
+                        " — the LP was infeasible."
+                        if not _de_seed.get("lp_seed_available")
+                        else "."
+                    )
+                    + " It is the best blend the search reached; check the "
+                    "constraint violations below before acting on it."
+                )
+                if _lp_reasons:
+                    with st.expander("Why the LP could not solve", expanded=False):
+                        for _reason in _lp_reasons:
+                            st.markdown(f"- {_reason}")
             render_blend_metrics(
                 "DE Total-Cost Result",
                 de_result,

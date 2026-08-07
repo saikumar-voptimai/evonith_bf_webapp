@@ -69,6 +69,33 @@ def _blend() -> BlendEvaluation:
     )
 
 
+def test_ore_editor_keeps_share_bounds_beside_price(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_data_editor(frame: pd.DataFrame, **kwargs):
+        captured.update(kwargs)
+        return frame
+
+    monkeypatch.setattr(components.st, "data_editor", fake_data_editor)
+    editor_df = components.build_ore_editor_df(
+        [_ore("ore_a", "ORE A")], default_selected_ids=["ore_a"]
+    )
+
+    returned = components.render_ore_editor(editor_df)
+
+    assert returned is editor_df
+    column_order = tuple(captured["column_order"])
+    assert column_order[:6] == (
+        "selected",
+        "ore_name",
+        "stock_mt",
+        "price_rs_per_mt",
+        "min_share_pct",
+        "max_share_pct",
+    )
+    assert column_order.index("max_share_pct") < column_order.index("moisture_pct")
+
+
 def test_ore_editor_preferences_persist_operator_defaults_but_not_stock_or_chemistry() -> None:
     edited = pd.DataFrame(
         [

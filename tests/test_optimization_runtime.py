@@ -1540,6 +1540,10 @@ def test_nonlinear_optimizer_skips_de_when_lp_constraints_are_infeasible():
         fallback_cfg={},
     )
 
+    # ``initial_solution="lp"`` is the strategy that gives up when the LP cannot
+    # seed DE. The shipped default is now ``lp_else_random``, which falls back to
+    # a random start population instead - see
+    # tests/test_bmo_de_seed_strategy.py for that path.
     blend, errors = run_nonlinear_optimizer(
         ores,
         target_production_mt=130.0,
@@ -1548,7 +1552,13 @@ def test_nonlinear_optimizer_skips_de_when_lp_constraints_are_infeasible():
         model_service=model_service,
         process_context={},
         history_df=pd.DataFrame(),
-        de_cfg={"maxiter": 50, "popsize": 20, "polish": False, "seed": 42},
+        de_cfg={
+            "maxiter": 50,
+            "popsize": 20,
+            "polish": False,
+            "seed": 42,
+            "initial_solution": "lp",
+        },
     )
 
     assert blend is None
@@ -1557,3 +1567,50 @@ def test_nonlinear_optimizer_skips_de_when_lp_constraints_are_infeasible():
         == "Total-cost optimizer skipped because hard LP constraints are infeasible."
     )
     assert any("LP infeasible" in error for error in errors)
+
+
+def test_nonlinear_optimizer_falls_back_to_a_random_start_by_default():
+    """The same infeasible LP must no longer stop DE running.
+
+    An infeasible LP only means the linearised slag and basicity model found no
+    solution. DE scores with soft penalties, so it can still report the best
+    blend it reaches, with the violations attached.
+    """
+
+    ores = [
+        OreInput(
+            ore_id="low_fe", display_name="LOW FE", stock_mt=100.0,
+            price_rs_per_mt=1000.0, min_share_pct=0.0, max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=50.0),
+        ),
+        OreInput(
+            ore_id="medium_fe", display_name="MEDIUM FE", stock_mt=100.0,
+            price_rs_per_mt=1200.0, min_share_pct=0.0, max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=60.0),
+        ),
+    ]
+    model_service = FuelUnitCostModelService(
+        bundle_cfg={
+            "model_path": "src/assets/models/bmo_fuel/definitely_missing_model.joblib",
+            "scaler_path": "src/assets/models/bmo_fuel/definitely_missing_scaler.joblib",
+        },
+        fallback_cfg={},
+    )
+
+    blend, errors = run_nonlinear_optimizer(
+        ores,
+        target_production_mt=130.0,
+        target_slag_qty_mt=100.0,
+        feo_in_slag_pct=0.4,
+        model_service=model_service,
+        process_context={},
+        history_df=pd.DataFrame(),
+        de_cfg={"maxiter": 20, "popsize": 10, "polish": False, "seed": 42},
+    )
+
+    assert blend is not None
+    assert errors == []
+    seed = blend.diagnostics["de_seed"]
+    assert seed["strategy_used"] == "random"
+    assert seed["lp_seed_available"] is False
+    assert seed["lp_seed_errors"]
