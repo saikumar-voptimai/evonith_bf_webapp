@@ -88,7 +88,9 @@ def test_flux_rate_and_required_charges_use_charge_mass_and_nut_coke() -> None:
         hot_metal_target_mt=100.0,
     )
     blend.diagnostics['fuel_rate_estimate'] = {
+        'coke_rate_kg_thm': 400.0,
         'nut_coke_rate_kg_thm': 70.0,
+        'pci_rate_kg_thm': 150.0,
     }
 
     charging = compute_charging_requirements(
@@ -99,10 +101,15 @@ def test_flux_rate_and_required_charges_use_charge_mass_and_nut_coke() -> None:
 
     # IBRM 4,183 + flux 10 + nut coke 7 = 4,200 MT/day.
     assert charging['flux_rate_kg_per_thm'] == pytest.approx(100.0)
+    assert charging['coke_total_mt'] == pytest.approx(40.0)
     assert charging['nut_coke_total_mt'] == pytest.approx(7.0)
+    assert charging['pci_total_mt'] == pytest.approx(15.0)
     assert charging['total_charge_mix_mt'] == pytest.approx(4200.0)
     assert charging['charge_mix_mt_per_hour'] == pytest.approx(175.0)
     assert charging['required_charges_per_hour'] == pytest.approx(175.0 / 26.4)
+    assert charging['hot_metal_per_charge_mt'] == pytest.approx(
+        100.0 / ((175.0 / 26.4) * 24.0)
+    )
 
 
 def test_lp_reserves_fixed_flux_from_shared_charging_capacity() -> None:

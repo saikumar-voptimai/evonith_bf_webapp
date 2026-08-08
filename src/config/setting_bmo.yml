@@ -49,6 +49,7 @@ bmo:
       rate_kg_per_thm: 340.0
       price_rs_per_mt: 28000.0
       moisture_pct: 0.37
+      vm_pct: 0.92
       ash_pct: 11.46
       sio2_pct: 55.07
       al2o3_pct: 27.09
@@ -69,6 +70,7 @@ bmo:
       rate_kg_per_thm: 70.0
       price_rs_per_mt: 24000.0
       moisture_pct: 0.44
+      vm_pct: 1.02
       ash_pct: 11.67
       sio2_pct: 55.12
       al2o3_pct: 27.20
@@ -90,6 +92,7 @@ bmo:
       rate_kg_per_thm: 180.0
       price_rs_per_mt: 18000.0
       moisture_pct: 1.16
+      vm_pct: 20.02
       ash_pct: 9.20
       sio2_pct: 49.49
       al2o3_pct: 25.64

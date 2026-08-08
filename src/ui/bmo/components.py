@@ -251,9 +251,10 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
     Build the editable fuel ash chemistry table from BMO configuration.
 
     Fuel ash defaults come from the laboratory ash-analysis workbook and can be
-    overridden by operators for each run. The table keeps rate, moisture, ash,
-    ash oxide chemistry, and dry-fuel-basis S/P together so the slag calculation
-    can apply the full fuel ash sequence.
+    overridden by operators for each run. The table keeps rate, inherent
+    moisture (IM), volatile matter (VM), ash, ash oxide chemistry, and
+    dry-fuel-basis S/P together so the slag calculation can apply the full fuel
+    ash sequence.
 
     Args:
          - fuel_ash_cfg: list[dict[str, Any]] - Configured fuel ash defaults.
@@ -272,6 +273,7 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
                 "rate_kg_per_thm": float(item.get("rate_kg_per_thm", 0.0) or 0.0),
                 "price_rs_per_mt": float(item.get("price_rs_per_mt", 0.0) or 0.0),
                 "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
+                "vm_pct": float(item.get("vm_pct", 0.0) or 0.0),
                 "ash_pct": float(item.get("ash_pct", 0.0) or 0.0),
                 "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
                 "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
@@ -313,6 +315,7 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "rate_kg_per_thm",
         "price_rs_per_mt",
         "moisture_pct",
+        "vm_pct",
         "ash_pct",
         "sio2_pct",
         "al2o3_pct",
@@ -339,7 +342,10 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
                 help="Current fuel price; the displayed unit fuel cost is re-priced to this.",
             ),
             "moisture_pct": st.column_config.NumberColumn(
-                "Moisture (%)", min_value=0.0, max_value=100.0, step=0.1
+                "Ash % IM", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "vm_pct": st.column_config.NumberColumn(
+                "Ash % VM", min_value=0.0, max_value=100.0, step=0.1
             ),
             "ash_pct": st.column_config.NumberColumn(
                 "Ash (%)", min_value=0.0, max_value=100.0, step=0.1
@@ -960,6 +966,7 @@ def render_blend_metrics(
     fuel_help_base = (
         "Post-hoc XGBoost estimate on the selected blend." if is_lp_mode else fuel_help
     )
+    hm_basis_mt = float(blend.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0)
     # What the physics correction costs, in the same units as the tile it sits
     # under. Without this the operator can see the coke-rate delta but has no way
     # to tell how much of the fuel bill it accounts for.
@@ -1004,7 +1011,11 @@ def render_blend_metrics(
             "optimizer flux cost and re-prices fuel at current prices."
         ),
     )
-    c4.metric("Fe Produced (MT)", f"{blend.fe_production_mt:,.2f}")
+    c4.metric(
+        "Production",
+        f"{hm_basis_mt:,.1f} MT",
+        help="Target HM / Pig Iron (MT) entered in Model Inputs.",
+    )
 
     charging = compute_charging_requirements(
         blend,
@@ -1012,23 +1023,8 @@ def render_blend_metrics(
         hours_per_day=charging_hours_per_day,
     )
 
-    # Row 2: dry ore quantity, charging burden/flux rate, Fe%, and slag.
-    c5, c_burden, c_flux_rate, c6, c7, c8 = st.columns(6)
-    dry_qty = float(blend.diagnostics.get("total_dry_qty_mt", 0.0) or 0.0)
-    burden_qty = float(
-        blend.diagnostics.get("total_burden_qty_mt", blend.total_qty_mt) or 0.0
-    )
-    hm_basis_mt = float(blend.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0)
-    c5.metric("Dry Qty (MT)", f"{dry_qty:,.2f}")
-    c_burden.metric(
-        "IBRM + Flux (MT)",
-        f"{burden_qty:,.2f}",
-        help=(
-            "Total wet ore/sinter/pellet plus enabled wet flux sent through the "
-            "charging system. This is the quantity checked against the furnace "
-            "charging-capacity limit."
-        ),
-    )
+    # Row 2: flux rate, Fe%, and slag.
+    c_flux_rate, c6, c7, c8 = st.columns(4)
     flux_rate = charging["flux_rate_kg_per_thm"]
     c_flux_rate.metric(
         "Flux Rate (kg/THM)",
@@ -1066,17 +1062,15 @@ def render_blend_metrics(
             "formula, not the BMO XGBoost model." + reason_text
         )
 
-    # Row 3: basicity pair.
-    b1, b2 = st.columns(2)
+    # Row 3: operator-facing slag basicity.
+    b1 = st.columns(1)[0]
     basicity_denominator_mt = float(
         blend.diagnostics.get("slag_basicity_denominator_mt", 0.0) or 0.0
     )
     if basicity_denominator_mt > 0:
         b1.metric("Slag Basicity CaO/SiO2", f"{blend.slag_basicity:,.3f}")
-        b2.metric("Slag T Basicity", f"{blend.slag_t_basicity:,.3f}")
     else:
         b1.metric("Slag Basicity CaO/SiO2", "n/a")
-        b2.metric("Slag T Basicity", "n/a")
 
     fuel_rate_estimate = blend.diagnostics.get("fuel_rate_estimate")
     anchor_estimate = blend.diagnostics.get("fuel_rate_estimate_anchor")
@@ -1140,12 +1134,18 @@ def render_blend_metrics(
         st.caption("Fuel-rate estimate unavailable because latest PCI rate is missing.")
 
     st.markdown("##### Charging Requirement")
-    charge_cols = st.columns(4)
+    charge_cols = st.columns(5)
+    coke_total_mt = charging["coke_total_mt"]
     nut_coke_total_mt = charging["nut_coke_total_mt"]
-    total_charge_mix_mt = charging["total_charge_mix_mt"]
-    charge_mix_mt_per_hour = charging["charge_mix_mt_per_hour"]
+    pci_total_mt = charging["pci_total_mt"]
     required_charges_per_hour = charging["required_charges_per_hour"]
+    hot_metal_per_charge_mt = charging["hot_metal_per_charge_mt"]
     charge_cols[0].metric(
+        "Coke in Charges (MT)",
+        f"{float(coke_total_mt):,.1f}" if coke_total_mt is not None else "n/a",
+        help="Coke Rate (kg/THM) x Production (MT) / 1,000.",
+    )
+    charge_cols[1].metric(
         "Nut Coke in Charges (MT)",
         (
             f"{float(nut_coke_total_mt):,.1f}"
@@ -1153,23 +1153,10 @@ def render_blend_metrics(
             else "n/a"
         ),
     )
-    charge_cols[1].metric(
-        "Total Charge Mix (MT)",
-        (
-            f"{float(total_charge_mix_mt):,.1f}"
-            if total_charge_mix_mt is not None
-            else "n/a"
-        ),
-        help="Wet IBRM + wet flux + nut coke tonnes.",
-    )
     charge_cols[2].metric(
-        "Charge Mix (MT/hr)",
-        (
-            f"{float(charge_mix_mt_per_hour):,.1f}"
-            if charge_mix_mt_per_hour is not None
-            else "n/a"
-        ),
-        help=f"Total charge mix divided by {charging_hours_per_day:g} hours.",
+        "PCI in Charges (MT)",
+        f"{float(pci_total_mt):,.1f}" if pci_total_mt is not None else "n/a",
+        help="PCI (kg/THM) x Production (MT) / 1,000.",
     )
     charge_cols[3].metric(
         "Required Charges (/hr)",
@@ -1181,6 +1168,18 @@ def render_blend_metrics(
         help=(
             f"Charge mix MT/hr divided by {charge_mass_mt:g} MT per charge. "
             "For 4,200 MT/day: 4,200 / 24 / 26.4 = 6.63 charges/hr."
+        ),
+    )
+    charge_cols[4].metric(
+        "Hotmetal per Charge (MT)",
+        (
+            f"{float(hot_metal_per_charge_mt):,.2f}"
+            if hot_metal_per_charge_mt is not None
+            else "n/a"
+        ),
+        help=(
+            "Production / (Required Charges (/hr) x "
+            f"{charging_hours_per_day:g} hours)."
         ),
     )
 
@@ -1356,7 +1355,6 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
             "ore_name",
             "share_pct",
             "quantity_mt",
-            "dry_quantity_mt",
             "fe_contribution_mt",
             "slag_contribution_mt",
             "price_rs_per_mt",
@@ -1367,9 +1365,6 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
             "share_pct": share_col,
             "quantity_mt": st.column_config.NumberColumn(
                 "Wet Qty (MT)", format="%.1f"
-            ),
-            "dry_quantity_mt": st.column_config.NumberColumn(
-                "Dry Qty (MT)", format="%.1f"
             ),
             "fe_contribution_mt": st.column_config.NumberColumn(
                 "Fe (MT)", format="%.1f"

@@ -9,13 +9,19 @@ import yaml
 
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
+    apply_dust_preferences,
+    apply_fuel_ash_preferences,
     apply_flux_preferences,
     apply_model_input_preferences,
     apply_ore_editor_preferences,
+    build_dust_preferences,
+    build_fuel_ash_preferences,
     build_flux_preferences,
     build_model_input_preferences,
     build_ore_editor_preferences,
     load_ore_editor_preferences,
+    save_dust_preferences,
+    save_fuel_ash_preferences,
     save_flux_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
@@ -437,6 +443,57 @@ def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
     assert "Alkali -> Gas" not in rendered
 
 
+def test_main_metrics_show_production_and_requested_charging_values(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeColumn:
+        def metric(self, label, value, **_kwargs):
+            captured[str(label)] = str(value)
+
+    class FakeStreamlit:
+        def markdown(self, _text, **_kwargs):
+            pass
+
+        def columns(self, count):
+            return [FakeColumn() for _ in range(int(count))]
+
+        def caption(self, _text):
+            pass
+
+        def warning(self, _text):
+            pass
+
+    blend = _blend()
+    blend.diagnostics.update(
+        {
+            "total_burden_qty_mt": 193.0,
+            "fuel_rate_estimate": {
+                "coke_rate_kg_thm": 400.0,
+                "nut_coke_rate_kg_thm": 70.0,
+                "pci_rate_kg_thm": 150.0,
+                "total_fuel_rate_kg_thm": 620.0,
+            },
+        }
+    )
+
+    monkeypatch.setattr(components, "st", FakeStreamlit())
+    components.render_blend_metrics("LP Baseline Result", blend)
+
+    assert captured["Production"] == "100.0 MT"
+    assert captured["Coke in Charges (MT)"] == "40.0"
+    assert captured["PCI in Charges (MT)"] == "15.0"
+    assert captured["Hotmetal per Charge (MT)"] == "13.20"
+    hidden = {
+        "Fe Produced (MT)",
+        "Slag T Basicity",
+        "Dry Qty (MT)",
+        "IBRM + Flux (MT)",
+        "Total Charge Mix (MT)",
+        "Charge Mix (MT/hr)",
+    }
+    assert hidden.isdisjoint(captured)
+
+
 def _flux_df():
     return pd.DataFrame(
         [
@@ -460,6 +517,139 @@ def _flux_df():
             },
         ]
     )
+
+
+def _fuel_ash_df():
+    return pd.DataFrame(
+        [
+            {
+                "fuel_id": "coke",
+                "fuel_name": "Coke",
+                "enabled": True,
+                "rate_kg_per_thm": 340.0,
+                "price_rs_per_mt": 28000.0,
+                "moisture_pct": 0.4,
+                "vm_pct": 0.9,
+                "ash_pct": 11.5,
+                "sio2_pct": 55.0,
+            }
+        ]
+    )
+
+
+def _dust_df():
+    return pd.DataFrame(
+        [
+            {
+                "dust_id": "bf_gas_dust",
+                "dust_name": "BF Gas Dust",
+                "enabled": True,
+                "wet_qty_mt": 12.0,
+                "moisture_pct": 4.0,
+                "sio2_pct": 8.0,
+                "al2o3_pct": 3.0,
+                "cao_pct": 5.0,
+                "mgo_pct": 2.0,
+                "fe_pct": 35.0,
+                "mn_pct": 0.5,
+                "p_pct": 0.1,
+                "s_pct": 0.2,
+                "ti_pct": 0.3,
+                "zn_pct": 1.0,
+                "na2o_pct": 0.4,
+                "k2o_pct": 0.6,
+                "caf2_pct": 0.0,
+            }
+        ]
+    )
+
+
+def test_dust_preferences_persist_and_apply_all_editable_values() -> None:
+    prefs = build_dust_preferences(_dust_df())
+    saved = prefs["dust_editor"]["rows"]["bf_gas_dust"]
+
+    assert saved["enabled"] is True
+    assert saved["wet_qty_mt"] == 12.0
+    assert saved["moisture_pct"] == 4.0
+    assert saved["fe_pct"] == 35.0
+    assert saved["k2o_pct"] == 0.6
+
+    fresh = _dust_df()
+    fresh.loc[0, ["wet_qty_mt", "moisture_pct", "fe_pct"]] = [1.0, 2.0, 3.0]
+    applied = apply_dust_preferences(fresh, prefs)
+
+    assert applied.loc[0, "wet_qty_mt"] == 12.0
+    assert applied.loc[0, "moisture_pct"] == 4.0
+    assert applied.loc[0, "fe_pct"] == 35.0
+
+
+def test_dust_save_preserves_fuel_ash_preferences(tmp_path) -> None:
+    path = tmp_path / "prefs.yml"
+    save_fuel_ash_preferences(path, _fuel_ash_df())
+
+    save_dust_preferences(path, _dust_df())
+    loaded = load_ore_editor_preferences(path)
+
+    assert loaded["fuel_ash_editor"]["rows"]["coke"]["vm_pct"] == 0.9
+    assert loaded["dust_editor"]["rows"]["bf_gas_dust"]["wet_qty_mt"] == 12.0
+
+
+def test_fuel_ash_editor_labels_im_and_adds_vm(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_data_editor(frame: pd.DataFrame, **kwargs):
+        captured.update(kwargs)
+        return frame
+
+    monkeypatch.setattr(components.st, "data_editor", fake_data_editor)
+    editor_df = components.build_fuel_ash_editor_df(
+        [
+            {
+                "fuel_id": "coke",
+                "display_name": "Coke",
+                "moisture_pct": 0.4,
+                "vm_pct": 0.9,
+            }
+        ]
+    )
+
+    returned = components.render_fuel_ash_editor(editor_df)
+
+    assert returned is editor_df
+    assert editor_df.loc[0, "vm_pct"] == 0.9
+    assert "vm_pct" in captured["column_order"]
+    column_config = captured["column_config"]
+    assert column_config["moisture_pct"]["label"] == "Ash % IM"
+    assert column_config["vm_pct"]["label"] == "Ash % VM"
+
+
+def test_fuel_ash_preferences_persist_and_apply_all_editable_values() -> None:
+    prefs = build_fuel_ash_preferences(_fuel_ash_df())
+    saved = prefs["fuel_ash_editor"]["rows"]["coke"]
+
+    assert saved["enabled"] is True
+    assert saved["moisture_pct"] == 0.4
+    assert saved["vm_pct"] == 0.9
+    assert saved["ash_pct"] == 11.5
+
+    fresh = _fuel_ash_df()
+    fresh.loc[0, ["rate_kg_per_thm", "moisture_pct", "vm_pct"]] = [1.0, 2.0, 3.0]
+    applied = apply_fuel_ash_preferences(fresh, prefs)
+
+    assert applied.loc[0, "rate_kg_per_thm"] == 340.0
+    assert applied.loc[0, "moisture_pct"] == 0.4
+    assert applied.loc[0, "vm_pct"] == 0.9
+
+
+def test_fuel_ash_save_preserves_other_preferences(tmp_path) -> None:
+    path = tmp_path / "prefs.yml"
+    save_flux_preferences(path, _flux_df())
+
+    save_fuel_ash_preferences(path, _fuel_ash_df())
+    loaded = load_ore_editor_preferences(path)
+
+    assert loaded["flux_editor"]["rows"]["dolomite"]["stock_mt"] == 450.0
+    assert loaded["fuel_ash_editor"]["rows"]["coke"]["vm_pct"] == 0.9
 
 
 def test_flux_preferences_persist_only_price_and_stock() -> None:
