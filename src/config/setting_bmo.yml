@@ -6,41 +6,99 @@ bmo:
 
   target:
     target_production_mt: 2350.0
+    # Slag is capped by RATE, not by an absolute tonnage: the tonnage then
+    # re-scales with the operator's HM target instead of silently tightening
+    # when the target moves. target_slag_qty_mt is the fallback for callers that
+    # still pass an absolute cap.
+    #
+    # PLANT BASIS. The operator types the slag rate the plant would measure. The
+    # model's own calculated slag runs above that (789 MT model vs 733 MT by the
+    # Al2O3 tracer and 739 MT by DPR over the last 3 months), so the cap is
+    # divided by model_to_plant_slag_factor before it reaches the solvers. See
+    # docs/bmo_fuel_slag_si_findings.md section 0.5.
+    target_slag_rate_kg_per_thm: 290.0
     target_slag_qty_mt: 750.0
+    # plant_slag = model_slag * factor. 733 / 789 = 0.929.
+    # Set to 1.0 to make the operator's number a raw model-basis target.
+    # This scales the slag TOTAL only. It cannot distort the Al2O3 / MgO limits
+    # below, because slag_correction_factor multiplies every component uniformly
+    # and so cancels out of any percentage-of-slag ratio.
+    model_to_plant_slag_factor: 1
     target_slag_basicity_min: 0.0
     target_slag_basicity_max: 10.0
-    target_slag_t_basicity_min: 0.0
-    target_slag_t_basicity_max: 10.0
+    # (CaO + MgO) / SiO2. Enforced as a hard LP constraint and a DE penalty.
+    # Plant p5-p95 over 6,402 hours is 1.216 - 1.401, mean 1.308.
+    target_slag_t_basicity_min: 1.20
+    target_slag_t_basicity_max: 1.45
+
+    # ---- Slag-quality window ------------------------------------------------
+    # Set any limit to null to switch it off.
+    #
+    # Al2O3 and MgO are inert: all of each reports to slag, so their MASSES are
+    # fixed by what is charged and their PERCENTAGES move inversely with total
+    # slag. Cutting the slag rate therefore pushes Al2O3 up and MgO down-hill,
+    # which is why the Al2O3 cap is the limit that actually binds a slag-rate
+    # reduction:
+    #
+    #   at 330 kg/THM the plant runs 18.71% Al2O3 (mean of 6,402 hours)
+    #   at 290 kg/THM the SAME Al2O3 mass reads 18.71 * 330/290 = 21.3%
+    #
+    # So holding 290 kg/THM under a 20% cap requires roughly 6% less Al2O3 into
+    # the furnace, and since ~28% of slag Al2O3 is coke ash (not a blend
+    # variable), about 8% less Al2O3 from the burden itself. The slag reduction
+    # has to come out of alumina-bearing gangue specifically, not any gangue.
+    #
+    # Plant reference, same 6,402 hours:
+    #   Al2O3%    mean 18.71, p5 16.36, p95 20.58   -> over 20% in 17.0% of hours
+    #   MgO%      mean  7.82, p5  6.91, p95  8.69   -> under 7% in  7.8% of hours
+    #   MgO/Al2O3 mean 0.419, p5 0.365, p95 0.485   -> under 0.36 in 3.3% of hours
+    #   all three held together in 74.8% of hours
+    target_slag_al2o3_max_pct: 20.0
+    target_slag_mgo_min_pct: 7.0
+    # Mass ratio, NOT a ratio of the two percentages above - it is therefore
+    # scale-free and does not move with the slag rate at all. It constrains the
+    # burden alone: "charge at least 0.36 t MgO per t Al2O3".
+    target_slag_mgo_al2o3_ratio_min: 0.36
 
   chemistry:
     feo_in_slag_pct: 0.4
 
   # Charging-throughput ceiling on the wet burden the optimizer may plan.
   #
-  # The furnace accepts at most ``max_charges_per_hour`` charges of about
-  # ``charge_mass_mt`` each, and part of every charge is nut coke, which is not
-  # an optimizer variable. What is left is the daily room for IBRM (ore, sinter,
-  # pellet) plus flux:
+  # The skips accept at most ``max_charges_per_hour`` charges of about
+  # ``charge_mass_mt`` each, around the clock. Nut coke rides in those same
+  # charges but is not an optimizer variable - it is pinned at 70 kg/THM - so
+  # its tonnage follows from the hot-metal target and is deducted off the top.
+  # What is left is the daily room for IBRM (ore, sinter, pellet) plus flux:
   #
-  #   max_ibrm_flux_mt = 26.4 * 7.5 * 24 - 160 = 4592 MT
+  #   capacity = 26.4 * 7.5 * 24        = 4752 MT/day
+  #   nut coke = 70 * 2350 / 1000       =  164 MT/day
+  #   room     = 4752 - 164             = 4588 MT/day
   #
   # Without this cap the optimizer is free to answer a low-Fe burden by simply
   # charging more of it. The plant cannot: charges are already at capacity, so
   # more tonnes at a lower Fe% means holding the charge rate and losing yield,
-  # or raising oxygen the plant does not have. The ceiling is expressed per MT
-  # of hot metal (4592 / 2350 = 1.954) so it re-scales with the operator's
-  # target rather than being pinned to a 2350 MT day.
+  # or raising oxygen the plant does not have.
+  #
+  # The ceiling is an ABSOLUTE daily tonnage and does not scale with the HM
+  # target - the charging system runs the same 24 hours whatever iron is asked
+  # for. Only the nut-coke deduction moves with the target. Charging hours and
+  # nut-coke tonnes are therefore NOT config keys: hours are always 24, and nut
+  # coke is derived from its rate.
+  #
+  # THE TWO NUMBERS BELOW ARE DEFAULTS ONLY. Both are exposed on the Blend
+  # Optimizer page under "Charging capacity", because they move with skip-car
+  # condition and burden bulk density. A saved value in bmo_operator_inputs.yml
+  # overrides what is here.
   burden_capacity:
     enabled: true
+    # Observed charges/hr: median 6.38, p95 6.75, p99 7.02, max 7.25.
     max_charges_per_hour: 7.5
+    # OPEN QUESTION (findings section 6): the plant's own charge reports put the
+    # actual total charge mass at a mean of 30.1 MT, p95 31.2, against the 26.4
+    # here - a ~14% difference in the ceiling. Needs plant confirmation before
+    # the default is moved; the operator can already override it on the page.
     charge_mass_mt: 26.4
-    hours_per_day: 24.0
-    # Nut coke rides in the same charges but is not optimised here; it is capped
-    # at 70 kg/THM, about 160 MT/day, and reserved off the top.
-    nut_coke_reserved_mt: 160.0
-    # Hot metal the raw capacity above was derived against; only used to turn
-    # that absolute daily capacity into the per-MT-HM ratio.
-    reference_hot_metal_mt: 2350.0
 
   fuel_ash_inputs:
     - fuel_id: coke
@@ -498,6 +556,12 @@ bmo:
     penalty_production_excess: 3000.0
     penalty_slag: 3000.0
     penalty_basicity: 50000.0
+    # Per percentage POINT of slag Al2O3 / MgO deviation. A percentage-point
+    # deviation is an order of magnitude larger than a basicity deviation, so
+    # this is deliberately 10x smaller than penalty_basicity; at 5,000 a 1 pp
+    # breach still costs 5,000 Rs/THM against a ~13,000 Rs/THM objective, which
+    # is decisive without drowning out the ore/fuel trade-off DE is exploring.
+    penalty_slag_chemistry: 5000.0
 
   fallback_fuel_model:
     target_sinter_share_pct: 60.0

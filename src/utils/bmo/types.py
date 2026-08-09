@@ -375,6 +375,11 @@ class BlendEvaluation:
          - slag_rate_kg_per_thm: float - Slag rate against the app's THM denominator.
          - slag_basicity: float - Slag basicity, CaO / SiO2.
          - slag_t_basicity: float - Total slag basicity, (CaO + MgO) / SiO2.
+         - slag_al2o3_pct: float - Al2O3 percentage of final slag.
+         - slag_mgo_pct: float - MgO percentage of final slag.
+         - slag_mgo_al2o3_ratio: float - MgO / Al2O3 mass ratio in final slag. Unlike
+           the two percentages this is scale-free: it does not move when total slag
+           mass changes, so it is purely a burden-selection quantity.
          - diagnostics: dict[str, Any] - Additional calculation and solver details.
 
     Returns:
@@ -398,6 +403,9 @@ class BlendEvaluation:
     slag_rate_kg_per_thm: float = 0.0
     slag_basicity: float = 0.0
     slag_t_basicity: float = 0.0
+    slag_al2o3_pct: float = 0.0
+    slag_mgo_pct: float = 0.0
+    slag_mgo_al2o3_ratio: float = 0.0
     diagnostics: dict[str, Any] = field(default_factory=dict)
 
 

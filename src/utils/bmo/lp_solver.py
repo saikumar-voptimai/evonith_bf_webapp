@@ -8,7 +8,7 @@ instead of showing a low-cost blend that violates the target slag cap.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 from scipy.optimize import linprog
@@ -32,6 +32,47 @@ from utils.bmo.types import (
 FE_TOLERANCE_MT = 0.5
 LP_EXACT_SLAG_TOLERANCE_MT = 1e-6
 LP_EXACT_SLAG_RETRIES = 6
+
+
+@dataclass
+class LinearSlagTerms:
+    """
+    First-order ``base + coeff . x`` expansion of every slag quantity the LP bounds.
+
+    Each field pairs a coefficient vector over the LP decision variables (ore
+    columns then optimisable-flux columns) with the intercept that reproduces the
+    exact calculation at the expansion point. Every constraint the LP places on
+    slag is a ratio of two of these linear quantities, which is what keeps the
+    problem a true LP rather than a fractional program:
+
+        CaO / SiO2      >= b_min      ->  b_min * SiO2 - CaO      <= 0
+        Al2O3 / slag    <= a_max      ->  Al2O3 - a_max * slag    <= 0
+        MgO / Al2O3     >= r_min      ->  r_min * Al2O3 - MgO     <= 0
+
+    Args:
+         - slag_coeff / slag_base_mt: Total final slag.
+         - basicity_numerator_*: CaO in final slag (B2 numerator).
+         - basicity_denominator_*: SiO2 in final slag (shared B2 / T-basicity denominator).
+         - t_basicity_numerator_*: CaO + MgO in final slag (T-basicity numerator).
+         - al2o3_*: Al2O3 in final slag.
+         - mgo_*: MgO in final slag.
+
+    Returns:
+         - return LinearSlagTerms - Linearised slag terms for LP row construction.
+    """
+
+    slag_coeff: np.ndarray
+    slag_base_mt: float
+    basicity_numerator_coeff: np.ndarray
+    basicity_numerator_base_mt: float
+    basicity_denominator_coeff: np.ndarray
+    basicity_denominator_base_mt: float
+    t_basicity_numerator_coeff: np.ndarray
+    t_basicity_numerator_base_mt: float
+    al2o3_coeff: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    al2o3_base_mt: float = 0.0
+    mgo_coeff: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    mgo_base_mt: float = 0.0
 
 
 def _structural_infeasibility_reasons(
@@ -183,9 +224,9 @@ def _build_linear_slag_and_basicity_terms(
     hot_metal_target_mt: float | None,
     variable_fluxes: list[FluxInput] | None = None,
     target_production_mt: float = 0.0,
-) -> tuple[np.ndarray, float, np.ndarray, float, np.ndarray, float, np.ndarray, float]:
+) -> LinearSlagTerms:
     """
-    Estimate linear final-slag and basicity terms for LP hard constraints.
+    Estimate linear final-slag, basicity, and slag-chemistry terms for LP constraints.
 
     The active BMO slag calculation is linear in ore quantities while fuel ash
     scales with hot-metal production and flux/dust rows remain fixed. This
@@ -210,8 +251,26 @@ def _build_linear_slag_and_basicity_terms(
          - target_production_mt: float - Fe target, used to size the expansion point.
 
     Returns:
-         - return tuple - Slag, basicity numerator, and denominator linear terms.
+         - return LinearSlagTerms - Slag, basicity, and slag-chemistry linear terms.
     """
+
+    # Every quantity the LP needs to bound, and where to read it off a blend.
+    # ``None`` means "total slag", which lives on the blend rather than in
+    # diagnostics. Adding a bounded slag quantity means adding one row here.
+    probes: dict[str, str | None] = {
+        "slag": None,
+        "basicity_numerator": "slag_basicity_numerator_mt",
+        "basicity_denominator": "slag_basicity_denominator_mt",
+        "t_basicity_numerator": "slag_t_basicity_numerator_mt",
+        "al2o3": "slag_al2o3_mt",
+        "mgo": "slag_mgo_mt",
+    }
+
+    def _read(blend: BlendEvaluation, key: str) -> float:
+        diagnostic_key = probes[key]
+        if diagnostic_key is None:
+            return float(blend.slag_mt)
+        return float(blend.diagnostics.get(diagnostic_key, 0.0) or 0.0)
 
     zero_quantities = _nominal_linearisation_quantities(ores, target_production_mt)
     base_blend = evaluate_blend(
@@ -225,21 +284,9 @@ def _build_linear_slag_and_basicity_terms(
         slag_balance_settings=slag_balance_settings,
         hot_metal_target_mt=hot_metal_target_mt,
     )
-    base_slag_mt = float(base_blend.slag_mt)
-    base_basicity_numerator_mt = float(
-        base_blend.diagnostics.get("slag_basicity_numerator_mt", 0.0) or 0.0
-    )
-    base_basicity_denominator_mt = float(
-        base_blend.diagnostics.get("slag_basicity_denominator_mt", 0.0) or 0.0
-    )
-    base_t_basicity_numerator_mt = float(
-        base_blend.diagnostics.get("slag_t_basicity_numerator_mt", 0.0) or 0.0
-    )
+    base_values = {key: _read(base_blend, key) for key in probes}
+    coeffs: dict[str, list[float]] = {key: [] for key in probes}
 
-    slag_coeffs: list[float] = []
-    basicity_numerator_coeffs: list[float] = []
-    basicity_denominator_coeffs: list[float] = []
-    t_basicity_numerator_coeffs: list[float] = []
     for ore in ores:
         # Forward difference of one wet MT AROUND the expansion point, not from
         # an empty burden, so the dust clamps stay in the solution's branch.
@@ -256,23 +303,13 @@ def _build_linear_slag_and_basicity_terms(
             slag_balance_settings=slag_balance_settings,
             hot_metal_target_mt=hot_metal_target_mt,
         )
-        slag_coeffs.append(float(unit_blend.slag_mt) - base_slag_mt)
-        basicity_numerator_coeffs.append(
-            float(unit_blend.diagnostics.get("slag_basicity_numerator_mt", 0.0) or 0.0)
-            - base_basicity_numerator_mt
-        )
-        basicity_denominator_coeffs.append(
-            float(unit_blend.diagnostics.get("slag_basicity_denominator_mt", 0.0) or 0.0)
-            - base_basicity_denominator_mt
-        )
-        t_basicity_numerator_coeffs.append(
-            float(unit_blend.diagnostics.get("slag_t_basicity_numerator_mt", 0.0) or 0.0)
-            - base_t_basicity_numerator_mt
-        )
+        for key in probes:
+            coeffs[key].append(_read(unit_blend, key) - base_values[key])
 
     # Marginal contribution of each optimisable flux (per 1 wet MT), appended as
     # extra decision-variable columns. Dolomite raises CaO (basicity numerator)
-    # and MgO (T-basicity); quartz raises SiO2 (denominator, lowering basicity).
+    # and MgO (T-basicity, and the MgO floor); quartz raises SiO2 (denominator,
+    # lowering basicity).
     base_flux_inputs = list(flux_inputs or [])
     for flux in variable_fluxes or []:
         unit_flux_blend = evaluate_blend(
@@ -286,19 +323,8 @@ def _build_linear_slag_and_basicity_terms(
             slag_balance_settings=slag_balance_settings,
             hot_metal_target_mt=hot_metal_target_mt,
         )
-        slag_coeffs.append(float(unit_flux_blend.slag_mt) - base_slag_mt)
-        basicity_numerator_coeffs.append(
-            float(unit_flux_blend.diagnostics.get("slag_basicity_numerator_mt", 0.0) or 0.0)
-            - base_basicity_numerator_mt
-        )
-        basicity_denominator_coeffs.append(
-            float(unit_flux_blend.diagnostics.get("slag_basicity_denominator_mt", 0.0) or 0.0)
-            - base_basicity_denominator_mt
-        )
-        t_basicity_numerator_coeffs.append(
-            float(unit_flux_blend.diagnostics.get("slag_t_basicity_numerator_mt", 0.0) or 0.0)
-            - base_t_basicity_numerator_mt
-        )
+        for key in probes:
+            coeffs[key].append(_read(unit_flux_blend, key) - base_values[key])
 
     # Fold the expansion point back into the intercept. Callers consume these as
     # ``base + coeff . x`` over absolute quantities, so a first-order expansion
@@ -309,20 +335,24 @@ def _build_linear_slag_and_basicity_terms(
         + [0.0] * len(variable_fluxes or []),
         dtype=float,
     )
-    slag_coeff_arr = np.array(slag_coeffs, dtype=float)
-    num_coeff_arr = np.array(basicity_numerator_coeffs, dtype=float)
-    den_coeff_arr = np.array(basicity_denominator_coeffs, dtype=float)
-    t_num_coeff_arr = np.array(t_basicity_numerator_coeffs, dtype=float)
+    arrays = {key: np.array(values, dtype=float) for key, values in coeffs.items()}
+    intercepts = {
+        key: base_values[key] - float(arrays[key] @ expansion_point) for key in probes
+    }
 
-    return (
-        slag_coeff_arr,
-        base_slag_mt - float(slag_coeff_arr @ expansion_point),
-        num_coeff_arr,
-        base_basicity_numerator_mt - float(num_coeff_arr @ expansion_point),
-        den_coeff_arr,
-        base_basicity_denominator_mt - float(den_coeff_arr @ expansion_point),
-        t_num_coeff_arr,
-        base_t_basicity_numerator_mt - float(t_num_coeff_arr @ expansion_point),
+    return LinearSlagTerms(
+        slag_coeff=arrays["slag"],
+        slag_base_mt=intercepts["slag"],
+        basicity_numerator_coeff=arrays["basicity_numerator"],
+        basicity_numerator_base_mt=intercepts["basicity_numerator"],
+        basicity_denominator_coeff=arrays["basicity_denominator"],
+        basicity_denominator_base_mt=intercepts["basicity_denominator"],
+        t_basicity_numerator_coeff=arrays["t_basicity_numerator"],
+        t_basicity_numerator_base_mt=intercepts["t_basicity_numerator"],
+        al2o3_coeff=arrays["al2o3"],
+        al2o3_base_mt=intercepts["al2o3"],
+        mgo_coeff=arrays["mgo"],
+        mgo_base_mt=intercepts["mgo"],
     )
 
 
@@ -336,6 +366,9 @@ def _explain_lp_infeasibility(
     target_slag_basicity_max: float | None,
     target_slag_t_basicity_min: float | None,
     target_slag_t_basicity_max: float | None,
+    target_slag_al2o3_max_pct: float | None,
+    target_slag_mgo_min_pct: float | None,
+    target_slag_mgo_al2o3_ratio_min: float | None,
     max_burden_qty_mt: float | None,
     fuel_ash_inputs: list[FuelAshInput] | None,
     flux_inputs: list[FluxInput] | None,
@@ -360,8 +393,10 @@ def _explain_lp_infeasibility(
          - target_slag_qty_mt: float - Operator slag cap in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
           - target_slag_basicity_min/max: float | None - CaO/SiO2 bounds.
-          - target_slag_t_basicity_min/max: float | None - Legacy display-only inputs,
-            ignored by LP feasibility.
+          - target_slag_t_basicity_min/max: float | None - (CaO+MgO)/SiO2 bounds.
+          - target_slag_al2o3_max_pct / target_slag_mgo_min_pct /
+            target_slag_mgo_al2o3_ratio_min: float | None - Slag-quality limits, each
+            dropped in turn to find which one blocks the blend.
          - fuel_ash_inputs / flux_inputs / dust_inputs - Fixed slag contributors.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
          - hot_metal_target_mt: float | None - HM basis for fuel/slag rates.
@@ -380,6 +415,16 @@ def _explain_lp_infeasibility(
     if reasons:
         return reasons
 
+    # Values every re-solve below must carry unless it is deliberately dropping
+    # one of them to test whether that limit is the blocker.
+    quality_kwargs: dict[str, float | None] = {
+        "target_slag_al2o3_max_pct": target_slag_al2o3_max_pct,
+        "target_slag_mgo_min_pct": target_slag_mgo_min_pct,
+        "target_slag_mgo_al2o3_ratio_min": target_slag_mgo_al2o3_ratio_min,
+        "target_slag_t_basicity_min": target_slag_t_basicity_min,
+        "target_slag_t_basicity_max": target_slag_t_basicity_max,
+    }
+
     # Isolate the charging cap first: it is the newest limit and the one an
     # operator is least likely to suspect, and re-solving without it is cheap.
     if max_burden_qty_mt is not None and float(max_burden_qty_mt) > 0.0:
@@ -390,8 +435,7 @@ def _explain_lp_infeasibility(
             feo_in_slag_pct=feo_in_slag_pct,
             target_slag_basicity_min=target_slag_basicity_min,
             target_slag_basicity_max=target_slag_basicity_max,
-            target_slag_t_basicity_min=None,
-            target_slag_t_basicity_max=None,
+            **quality_kwargs,
             max_burden_qty_mt=None,
             fuel_ash_inputs=fuel_ash_inputs,
             flux_inputs=flux_inputs,
@@ -429,6 +473,90 @@ def _explain_lp_infeasibility(
         coke_correction_settings=coke_correction_settings,
         coke_correction_reference=coke_correction_reference,
     )
+    # Every slag limit currently in force, and how to describe it once we know
+    # which one is doing the blocking. Each is dropped in turn, cheapest and
+    # most-likely-culprit first, and the first drop that makes the LP solvable
+    # names the binding limit AND reports what this burden can actually reach.
+    slag_quality_limits: list[dict[str, object]] = [
+        {
+            "keys": {"target_slag_al2o3_max_pct": target_slag_al2o3_max_pct},
+            "active": target_slag_al2o3_max_pct is not None,
+            "label": "the slag Al2O3 cap",
+            "attr": "slag_al2o3_pct",
+            "format": "Al2O3 ~ {value:.2f}% against a {limit:.2f}% cap",
+            "limit": target_slag_al2o3_max_pct,
+            "advice": (
+                "Al2O3 is inert, so its mass is fixed by what you charge and its "
+                "percentage rises as slag falls. Select lower-alumina ore, or raise "
+                "the cap / Max Slag."
+            ),
+        },
+        {
+            "keys": {"target_slag_mgo_al2o3_ratio_min": target_slag_mgo_al2o3_ratio_min},
+            "active": target_slag_mgo_al2o3_ratio_min is not None,
+            "label": "the slag MgO/Al2O3 floor",
+            "attr": "slag_mgo_al2o3_ratio",
+            "format": "MgO/Al2O3 ~ {value:.3f} against a {limit:.3f} floor",
+            "limit": target_slag_mgo_al2o3_ratio_min,
+            "advice": (
+                "This ratio does not move with slag rate at all. Add an MgO source "
+                "(dolomite) or drop the high-alumina material."
+            ),
+        },
+        {
+            "keys": {"target_slag_mgo_min_pct": target_slag_mgo_min_pct},
+            "active": target_slag_mgo_min_pct is not None,
+            "label": "the slag MgO floor",
+            "attr": "slag_mgo_pct",
+            "format": "MgO ~ {value:.2f}% against a {limit:.2f}% floor",
+            "limit": target_slag_mgo_min_pct,
+            "advice": "Add dolomite stock, or lower the MgO floor.",
+        },
+        {
+            "keys": {
+                "target_slag_t_basicity_min": target_slag_t_basicity_min,
+                "target_slag_t_basicity_max": target_slag_t_basicity_max,
+            },
+            "active": (
+                target_slag_t_basicity_min is not None
+                or target_slag_t_basicity_max is not None
+            ),
+            "label": "the slag T Basicity bounds",
+            "attr": "slag_t_basicity",
+            "format": "T Basicity ~ {value:.3f}",
+            "limit": None,
+            "advice": "Widen the T Basicity bounds, or adjust the CaO / MgO flux split.",
+        },
+    ]
+    active_slag_quality = [limit for limit in slag_quality_limits if limit["active"]]
+
+    for limit in active_slag_quality:
+        relaxed = dict(quality_kwargs)
+        for key in limit["keys"]:
+            relaxed[key] = None
+        without_limit, _ = run_lp_baseline(
+            ores,
+            target_production_mt=target_production_mt,
+            target_slag_qty_mt=target_slag_qty_mt,
+            target_slag_basicity_min=target_slag_basicity_min,
+            target_slag_basicity_max=target_slag_basicity_max,
+            _explain=False,
+            **relaxed,
+            **common,
+        )
+        if without_limit is None:
+            continue
+        reached = float(getattr(without_limit, str(limit["attr"]), 0.0) or 0.0)
+        detail = str(limit["format"]).format(
+            value=reached,
+            limit=float(limit["limit"] or 0.0),
+        )
+        reasons.append(
+            f"The blend becomes feasible once {limit['label']} is removed, so that "
+            f"is the binding limit. This burden reaches {detail}. {limit['advice']}"
+        )
+        return reasons
+
     has_basicity = any(
         bound is not None
         for bound in (
@@ -444,6 +572,7 @@ def _explain_lp_infeasibility(
             target_production_mt=target_production_mt,
             target_slag_qty_mt=target_slag_qty_mt,
             _explain=False,
+            **quality_kwargs,
             **common,
         )
         if without_basicity is not None:
@@ -453,9 +582,8 @@ def _explain_lp_infeasibility(
                 target_slag_qty_mt=big_slag_cap_mt,
                 target_slag_basicity_min=target_slag_basicity_min,
                 target_slag_basicity_max=target_slag_basicity_max,
-                target_slag_t_basicity_min=None,
-                target_slag_t_basicity_max=None,
                 _explain=False,
+                **quality_kwargs,
                 **common,
             )
             if with_basicity_without_slag_cap is not None:
@@ -499,6 +627,7 @@ def _explain_lp_infeasibility(
         target_production_mt=target_production_mt,
         target_slag_qty_mt=big_slag_cap_mt,
         _explain=False,
+        **quality_kwargs,
         **common,
     )
     if without_slag_cap is not None:
@@ -523,6 +652,9 @@ def run_lp_baseline(
     target_slag_basicity_max: float | None = None,
     target_slag_t_basicity_min: float | None = None,
     target_slag_t_basicity_max: float | None = None,
+    target_slag_al2o3_max_pct: float | None = None,
+    target_slag_mgo_min_pct: float | None = None,
+    target_slag_mgo_al2o3_ratio_min: float | None = None,
     max_burden_qty_mt: float | None = None,
     fuel_ash_inputs: list[FuelAshInput] | None = None,
     flux_inputs: list[FluxInput] | None = None,
@@ -549,10 +681,11 @@ def run_lp_baseline(
          - target_slag_qty_mt: float - Maximum slag quantity checked after solve.
          - target_slag_basicity_min: float | None - Minimum allowed CaO / SiO2 basicity.
          - target_slag_basicity_max: float | None - Maximum allowed CaO / SiO2 basicity.
-         - target_slag_t_basicity_min: float | None - Legacy display-only input,
-           ignored by LP optimization.
-         - target_slag_t_basicity_max: float | None - Legacy display-only input,
-           ignored by LP optimization.
+         - target_slag_t_basicity_min: float | None - Minimum (CaO + MgO) / SiO2.
+         - target_slag_t_basicity_max: float | None - Maximum (CaO + MgO) / SiO2.
+         - target_slag_al2o3_max_pct: float | None - Maximum Al2O3 % of final slag.
+         - target_slag_mgo_min_pct: float | None - Minimum MgO % of final slag.
+         - target_slag_mgo_al2o3_ratio_min: float | None - Minimum MgO / Al2O3 ratio.
          - max_burden_qty_mt: float | None - Charging-throughput ceiling on total wet
            IBRM + flux in MT. ``None`` leaves the burden quantity unbounded.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
@@ -580,6 +713,14 @@ def run_lp_baseline(
         and float(target_slag_basicity_min) > float(target_slag_basicity_max)
     ):
         pre_errors.append("Min slag basicity cannot be greater than max slag basicity.")
+    if (
+        target_slag_t_basicity_min is not None
+        and target_slag_t_basicity_max is not None
+        and float(target_slag_t_basicity_min) > float(target_slag_t_basicity_max)
+    ):
+        pre_errors.append(
+            "Min slag T Basicity cannot be greater than max slag T Basicity."
+        )
     if pre_errors:
         return None, pre_errors
 
@@ -624,16 +765,7 @@ def run_lp_baseline(
         float(target_production_mt) + FE_TOLERANCE_MT,
     ]
 
-    (
-        slag_coeff,
-        slag_base_mt,
-        basicity_numerator_coeff,
-        basicity_numerator_base_mt,
-        basicity_denominator_coeff,
-        basicity_denominator_base_mt,
-        _t_basicity_numerator_coeff,
-        _t_basicity_numerator_base_mt,
-    ) = _build_linear_slag_and_basicity_terms(
+    terms = _build_linear_slag_and_basicity_terms(
         ores,
         feo_in_slag_pct=feo_in_slag_pct,
         fuel_ash_inputs=fuel_ash_inputs,
@@ -644,6 +776,8 @@ def run_lp_baseline(
         variable_fluxes=variable_fluxes,
         target_production_mt=target_production_mt,
     )
+    slag_coeff = terms.slag_coeff
+    slag_base_mt = terms.slag_base_mt
     slag_row_idx = len(a_ub_rows)
     a_ub_rows.append(slag_coeff)
     b_ub_values.append(float(target_slag_qty_mt) - slag_base_mt)
@@ -680,7 +814,7 @@ def run_lp_baseline(
         # its tonnes from the shared ore + optimisable-flux budget.
         b_ub_values.append(float(max_burden_qty_mt) - fixed_flux_qty_mt)
 
-    def _add_basicity_bounds(
+    def _add_ratio_bounds(
         *,
         numerator_coeff: np.ndarray,
         numerator_base_mt: float,
@@ -689,23 +823,82 @@ def run_lp_baseline(
         min_value: float | None,
         max_value: float | None,
     ) -> None:
+        """
+        Bound ``numerator / denominator`` between two limits as LP rows.
+
+        Both sides are linear in x, so cross-multiplying keeps the constraint
+        linear: ``num/den >= m`` becomes ``m*den - num <= 0``. This holds only
+        while the denominator is positive, which it is for every quantity used
+        here (SiO2 mass, total slag mass, Al2O3 mass) on any burden that makes
+        the Fe target.
+        """
+
         if min_value is not None:
-            min_basicity = float(min_value)
-            a_ub_rows.append(min_basicity * denominator_coeff - numerator_coeff)
-            b_ub_values.append(numerator_base_mt - min_basicity * denominator_base_mt)
+            minimum = float(min_value)
+            a_ub_rows.append(minimum * denominator_coeff - numerator_coeff)
+            b_ub_values.append(numerator_base_mt - minimum * denominator_base_mt)
 
         if max_value is not None:
-            max_basicity = float(max_value)
-            a_ub_rows.append(numerator_coeff - max_basicity * denominator_coeff)
-            b_ub_values.append(max_basicity * denominator_base_mt - numerator_base_mt)
+            maximum = float(max_value)
+            a_ub_rows.append(numerator_coeff - maximum * denominator_coeff)
+            b_ub_values.append(maximum * denominator_base_mt - numerator_base_mt)
 
-    _add_basicity_bounds(
-        numerator_coeff=basicity_numerator_coeff,
-        numerator_base_mt=basicity_numerator_base_mt,
-        denominator_coeff=basicity_denominator_coeff,
-        denominator_base_mt=basicity_denominator_base_mt,
+    # CaO / SiO2
+    _add_ratio_bounds(
+        numerator_coeff=terms.basicity_numerator_coeff,
+        numerator_base_mt=terms.basicity_numerator_base_mt,
+        denominator_coeff=terms.basicity_denominator_coeff,
+        denominator_base_mt=terms.basicity_denominator_base_mt,
         min_value=target_slag_basicity_min,
         max_value=target_slag_basicity_max,
+    )
+    # (CaO + MgO) / SiO2
+    _add_ratio_bounds(
+        numerator_coeff=terms.t_basicity_numerator_coeff,
+        numerator_base_mt=terms.t_basicity_numerator_base_mt,
+        denominator_coeff=terms.basicity_denominator_coeff,
+        denominator_base_mt=terms.basicity_denominator_base_mt,
+        min_value=target_slag_t_basicity_min,
+        max_value=target_slag_t_basicity_max,
+    )
+    # Al2O3 % of slag. Expressed against total slag rather than as an absolute
+    # mass because that is how the plant measures and controls it -- and because
+    # it is the limit that binds when the slag rate is cut: Al2O3 is inert, so
+    # its mass stays put while the denominator shrinks.
+    _add_ratio_bounds(
+        numerator_coeff=terms.al2o3_coeff,
+        numerator_base_mt=terms.al2o3_base_mt,
+        denominator_coeff=slag_coeff,
+        denominator_base_mt=slag_base_mt,
+        min_value=None,
+        max_value=(
+            float(target_slag_al2o3_max_pct) / 100.0
+            if target_slag_al2o3_max_pct is not None
+            else None
+        ),
+    )
+    # MgO % of slag.
+    _add_ratio_bounds(
+        numerator_coeff=terms.mgo_coeff,
+        numerator_base_mt=terms.mgo_base_mt,
+        denominator_coeff=slag_coeff,
+        denominator_base_mt=slag_base_mt,
+        min_value=(
+            float(target_slag_mgo_min_pct) / 100.0
+            if target_slag_mgo_min_pct is not None
+            else None
+        ),
+        max_value=None,
+    )
+    # MgO / Al2O3. Scale-free -- total slag cancels -- so this one constrains the
+    # burden alone and cannot be satisfied by moving the slag rate.
+    _add_ratio_bounds(
+        numerator_coeff=terms.mgo_coeff,
+        numerator_base_mt=terms.mgo_base_mt,
+        denominator_coeff=terms.al2o3_coeff,
+        denominator_base_mt=terms.al2o3_base_mt,
+        min_value=target_slag_mgo_al2o3_ratio_min,
+        max_value=None,
     )
     for idx, ore in enumerate(ores):
         min_share = float(ore.min_share_pct) / 100.0
@@ -767,8 +960,11 @@ def run_lp_baseline(
                         feo_in_slag_pct=feo_in_slag_pct,
                         target_slag_basicity_min=target_slag_basicity_min,
                         target_slag_basicity_max=target_slag_basicity_max,
-                        target_slag_t_basicity_min=None,
-                        target_slag_t_basicity_max=None,
+                        target_slag_t_basicity_min=target_slag_t_basicity_min,
+                        target_slag_t_basicity_max=target_slag_t_basicity_max,
+                        target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+                        target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+                        target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
                         max_burden_qty_mt=max_burden_qty_mt,
                         fuel_ash_inputs=fuel_ash_inputs,
                         flux_inputs=flux_inputs,
@@ -840,8 +1036,11 @@ def run_lp_baseline(
             target_slag_qty_mt=target_slag_qty_mt,
             target_slag_basicity_min=target_slag_basicity_min,
             target_slag_basicity_max=target_slag_basicity_max,
-            target_slag_t_basicity_min=None,
-            target_slag_t_basicity_max=None,
+            target_slag_t_basicity_min=target_slag_t_basicity_min,
+            target_slag_t_basicity_max=target_slag_t_basicity_max,
+            target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+            target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+            target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
             max_burden_qty_mt=max_burden_qty_mt,
             slag_tolerance_mt=LP_EXACT_SLAG_TOLERANCE_MT,
         )

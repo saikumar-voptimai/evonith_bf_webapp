@@ -17,6 +17,17 @@ PERSISTED_NUMERIC_COLUMNS = (
 PERSISTED_MODEL_INPUT_COLUMNS = (
     "target_slag_basicity_min",
     "target_slag_basicity_max",
+    "target_slag_t_basicity_min",
+    "target_slag_t_basicity_max",
+    "target_slag_rate_kg_per_thm",
+    "target_slag_al2o3_max_pct",
+    "target_slag_mgo_min_pct",
+    "target_slag_mgo_al2o3_ratio_min",
+    # Charging plant. These move with skip-car condition and burden bulk density,
+    # so the operator sets them rather than editing yml. Charging hours are always
+    # 24 and nut-coke tonnage is derived from its rate, so neither is stored.
+    "max_charges_per_hour",
+    "charge_mass_mt",
 )
 
 # Flux price/stock are operator inputs (like ore price/bounds), so they persist

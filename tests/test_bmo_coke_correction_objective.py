@@ -344,7 +344,7 @@ def test_lp_reuses_the_shared_slag_coefficients(monkeypatch):
 
     def _spy(*args, **kwargs):
         result = original(*args, **kwargs)
-        seen["slag_coeff"] = np.array(result[0], dtype=float)
+        seen["slag_coeff"] = np.array(result.slag_coeff, dtype=float)
         return result
 
     monkeypatch.setattr(lp_solver, "_build_linear_slag_and_basicity_terms", _spy)

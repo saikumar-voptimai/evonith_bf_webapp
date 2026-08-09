@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.bmo.calculations import compute_charging_requirements
+from utils.bmo.constraints import CHARGING_HOURS_PER_DAY
 from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
 from utils.bmo.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
 
@@ -863,7 +864,6 @@ def render_blend_metrics(
     observed_slag_rate_kg_per_thm: float | None = None,
     is_lp_mode: bool = False,
     charge_mass_mt: float = 26.4,
-    charging_hours_per_day: float = 24.0,
 ) -> None:
     """
     Render summary metrics and constraint warnings for a blend result.
@@ -877,8 +877,8 @@ def render_blend_metrics(
          - title: str - Section title shown above the metrics.
          - blend: BlendEvaluation - Evaluated blend result to display.
          - observed_slag_rate_kg_per_thm: float | None - Plant slag rate from DPR for comparison.
-         - charge_mass_mt: float - Tonnes carried by one furnace charge.
-         - charging_hours_per_day: float - Hours over which the daily blend is charged.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge. Charging
+           runs 24 h (``CHARGING_HOURS_PER_DAY``), so that is not an argument.
 
     Returns:
          - return None - Writes metrics and warnings to the Streamlit page.
@@ -1020,7 +1020,7 @@ def render_blend_metrics(
     charging = compute_charging_requirements(
         blend,
         charge_mass_mt=charge_mass_mt,
-        hours_per_day=charging_hours_per_day,
+        hours_per_day=CHARGING_HOURS_PER_DAY,
     )
 
     # Row 2: flux rate, Fe%, and slag.
@@ -1071,6 +1071,29 @@ def render_blend_metrics(
         b1.metric("Slag Basicity CaO/SiO2", f"{blend.slag_basicity:,.3f}")
     else:
         b1.metric("Slag Basicity CaO/SiO2", "n/a")
+
+    # Row 4: slag-quality window. Al2O3 and MgO are shown next to basicity
+    # because they move together: all three are ratios against the same slag,
+    # so a change in slag rate shifts every one of them at once.
+    q1, q2, q3 = st.columns(3)
+    slag_chemistry_denominator_mt = float(
+        blend.diagnostics.get("slag_chemistry_denominator_mt", 0.0) or 0.0
+    )
+    if slag_chemistry_denominator_mt > 0:
+        q1.metric("Slag Al2O3 (%)", f"{blend.slag_al2o3_pct:,.2f}")
+        q2.metric("Slag MgO (%)", f"{blend.slag_mgo_pct:,.2f}")
+        q3.metric(
+            "Slag MgO/Al2O3",
+            f"{blend.slag_mgo_al2o3_ratio:,.3f}",
+            help=(
+                "Mass ratio, not a ratio of the two percentages beside it. It does "
+                "not move with the slag rate, so it constrains the burden alone."
+            ),
+        )
+    else:
+        q1.metric("Slag Al2O3 (%)", "n/a")
+        q2.metric("Slag MgO (%)", "n/a")
+        q3.metric("Slag MgO/Al2O3", "n/a")
 
     fuel_rate_estimate = blend.diagnostics.get("fuel_rate_estimate")
     anchor_estimate = blend.diagnostics.get("fuel_rate_estimate_anchor")
@@ -1179,7 +1202,7 @@ def render_blend_metrics(
         ),
         help=(
             "Production / (Required Charges (/hr) x "
-            f"{charging_hours_per_day:g} hours)."
+            f"{CHARGING_HOURS_PER_DAY:g} hours)."
         ),
     )
 

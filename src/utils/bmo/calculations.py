@@ -711,6 +711,11 @@ def evaluate_blend(
     basicity_cao_mt = total_dry_qty_mt * (_safe_pct(cao_pct) / 100.0)
     basicity_mgo_mt = total_dry_qty_mt * (_safe_pct(mgo_pct) / 100.0)
     basicity_sio2_mt = total_dry_qty_mt * (_safe_pct(sio2_pct) / 100.0)
+    # Al2O3 is inert: none of it is reduced or volatilised, so every tonne
+    # charged reports to slag. It is tracked alongside the basicity components
+    # because the slag-quality limits (Al2O3 cap, MgO floor, MgO/Al2O3 floor)
+    # need its mass on exactly the same basis.
+    slag_al2o3_mt = total_dry_qty_mt * (_safe_pct(al2o3_pct) / 100.0)
     for fuel in fuel_ash_inputs or []:
         if not fuel.enabled:
             continue
@@ -722,6 +727,7 @@ def evaluate_blend(
         basicity_cao_mt += ash_mt * (_safe_pct(fuel.cao_pct) / 100.0)
         basicity_mgo_mt += ash_mt * (_safe_pct(fuel.mgo_pct) / 100.0)
         basicity_sio2_mt += ash_mt * (_safe_pct(fuel.sio2_pct) / 100.0)
+        slag_al2o3_mt += ash_mt * (_safe_pct(fuel.al2o3_pct) / 100.0)
     for flux in flux_inputs or []:
         if not flux.enabled:
             continue
@@ -729,6 +735,7 @@ def evaluate_blend(
         basicity_cao_mt += dry_flux_mt * (_safe_pct(flux.cao_pct) / 100.0)
         basicity_mgo_mt += dry_flux_mt * (_safe_pct(flux.mgo_pct) / 100.0)
         basicity_sio2_mt += dry_flux_mt * (_safe_pct(flux.sio2_pct) / 100.0)
+        slag_al2o3_mt += dry_flux_mt * (_safe_pct(flux.al2o3_pct) / 100.0)
     slag_basicity_source = "simplified_ore_fuel_flux"
     simplified_slag_mt = ore_slag_mt + fuel_ash_slag_mt + flux_slag_mt
     slag_mt = simplified_slag_mt
@@ -748,10 +755,20 @@ def evaluate_blend(
         basicity_cao_mt = float(slag_components.get("cao", 0.0))
         basicity_mgo_mt = float(slag_components.get("mgo", 0.0))
         basicity_sio2_mt = float(slag_components.get("sio2", 0.0))
+        slag_al2o3_mt = float(slag_components.get("al2o3", 0.0))
         slag_basicity_source = "full_slag_balance"
     slag_basicity = compute_slag_basicity(basicity_cao_mt, basicity_sio2_mt)
     slag_t_basicity = compute_slag_basicity(
         basicity_cao_mt + basicity_mgo_mt, basicity_sio2_mt
+    )
+    # Percentages of FINAL slag, so they are directly comparable to the plant's
+    # own slag analysis. The ratio is deliberately taken on masses rather than on
+    # the two percentages: it is then independent of total slag mass, and stays
+    # meaningful even if the slag total is uncertain.
+    slag_al2o3_pct = (slag_al2o3_mt / slag_mt) * 100.0 if slag_mt > 0.0 else 0.0
+    slag_mgo_pct = (basicity_mgo_mt / slag_mt) * 100.0 if slag_mt > 0.0 else 0.0
+    slag_mgo_al2o3_ratio = (
+        basicity_mgo_mt / slag_al2o3_mt if slag_al2o3_mt > 0.0 else 0.0
     )
     slag_source_correction_factor = 1.0
     if full_slag_balance is not None:
@@ -833,6 +850,9 @@ def evaluate_blend(
         slag_rate_kg_per_thm=float(slag_rate_kg_per_thm),
         slag_basicity=float(slag_basicity),
         slag_t_basicity=float(slag_t_basicity),
+        slag_al2o3_pct=float(slag_al2o3_pct),
+        slag_mgo_pct=float(slag_mgo_pct),
+        slag_mgo_al2o3_ratio=float(slag_mgo_al2o3_ratio),
         diagnostics={
             "formula": "dry_weight_fe_and_ore_fuel_ash_flux_slag",
             "total_dry_qty_mt": float(total_dry_qty_mt),
@@ -933,6 +953,17 @@ def evaluate_blend(
             "slag_basicity_cao_mt": float(basicity_cao_mt),
             "slag_basicity_mgo_mt": float(basicity_mgo_mt),
             "slag_basicity_sio2_mt": float(basicity_sio2_mt),
+            # Slag-quality limits. The Al2O3 cap and MgO floor are ratios against
+            # total slag, so they are validated with slag_mt as the denominator;
+            # the MgO/Al2O3 floor uses the Al2O3 mass instead.
+            "slag_al2o3_mt": float(slag_al2o3_mt),
+            "slag_mgo_mt": float(basicity_mgo_mt),
+            "slag_al2o3_pct": float(slag_al2o3_pct),
+            "slag_mgo_pct": float(slag_mgo_pct),
+            "slag_mgo_al2o3_ratio": float(slag_mgo_al2o3_ratio),
+            "slag_chemistry_denominator_mt": float(slag_mt),
+            "slag_mgo_al2o3_denominator_mt": float(slag_al2o3_mt),
+            "slag_chemistry_source": str(slag_basicity_source),
             "slag_basicity_source": slag_basicity_source,
         },
     )

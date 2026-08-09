@@ -852,7 +852,14 @@ def test_lp_baseline_applies_slag_basicity_min_as_hard_constraint():
     assert blend.quantities_mt["costly_basic"] >= blend.quantities_mt["cheap_acid"]
 
 
-def test_lp_baseline_ignores_t_basicity_bounds():
+def test_lp_baseline_enforces_t_basicity_bounds():
+    """T Basicity is a real LP constraint, not a display KPI.
+
+    The only ore here carries no MgO, so (CaO+MgO)/SiO2 equals CaO/SiO2 = 1.0 and
+    can never reach the 2.0 floor. The LP must refuse rather than hand back a
+    blend that breaches the bound, and must name T Basicity as the reason.
+    """
+
     ores = [
         OreInput(
             ore_id="balanced_ore",
@@ -870,22 +877,35 @@ def test_lp_baseline_ignores_t_basicity_bounds():
         )
     ]
 
-    blend, errors = run_lp_baseline(
-        ores,
+    common = dict(
         target_production_mt=50.0,
         target_slag_qty_mt=100.0,
         feo_in_slag_pct=0.0,
         target_slag_basicity_min=0.5,
         target_slag_basicity_max=1.5,
-        target_slag_t_basicity_min=2.0,
-        target_slag_t_basicity_max=3.0,
     )
 
+    blocked, errors = run_lp_baseline(
+        ores,
+        target_slag_t_basicity_min=2.0,
+        target_slag_t_basicity_max=3.0,
+        **common,
+    )
+    assert blocked is None
+    assert any("T Basicity" in error for error in errors)
+
+    # Same burden, bounds it can actually meet: now it solves.
+    blend, errors = run_lp_baseline(
+        ores,
+        target_slag_t_basicity_min=0.5,
+        target_slag_t_basicity_max=1.5,
+        **common,
+    )
     assert errors == []
     assert blend is not None
     assert blend.feasible is True
     assert blend.slag_basicity == pytest.approx(1.0)
-    assert blend.slag_t_basicity < 2.0
+    assert blend.slag_t_basicity == pytest.approx(1.0)
 
 
 def test_lp_baseline_does_not_return_exact_slag_violating_blend(monkeypatch):
@@ -903,7 +923,20 @@ def test_lp_baseline_does_not_return_exact_slag_violating_blend(monkeypatch):
 
     def underestimated_slag_terms(*args, **kwargs):
         zeros = np.zeros(len(ores), dtype=float)
-        return zeros, 0.0, zeros, 0.0, zeros, 0.0, zeros, 0.0
+        return lp_solver.LinearSlagTerms(
+            slag_coeff=zeros,
+            slag_base_mt=0.0,
+            basicity_numerator_coeff=zeros,
+            basicity_numerator_base_mt=0.0,
+            basicity_denominator_coeff=zeros,
+            basicity_denominator_base_mt=0.0,
+            t_basicity_numerator_coeff=zeros,
+            t_basicity_numerator_base_mt=0.0,
+            al2o3_coeff=zeros,
+            al2o3_base_mt=0.0,
+            mgo_coeff=zeros,
+            mgo_base_mt=0.0,
+        )
 
     monkeypatch.setattr(
         lp_solver, "_build_linear_slag_and_basicity_terms", underestimated_slag_terms
@@ -1218,6 +1251,8 @@ def test_bmo_objective_penalizes_slag_basicity_violation():
     assert result.feasible is False
     assert any("Slag basicity below bound" in item for item in result.violations)
 
+    # T Basicity is enforced on the same footing as CaO/SiO2. This ore carries no
+    # MgO, so (CaO+MgO)/SiO2 == CaO/SiO2 == 0.1 and the 0.5 floor is breached.
     t_evaluator = BmoObjectiveEvaluator(
         ores=ores,
         target_production_mt=50.0,
@@ -1232,9 +1267,26 @@ def test_bmo_objective_penalizes_slag_basicity_violation():
     )
     t_result = t_evaluator.evaluate_quantities(np.array([100.0], dtype=float))
 
-    assert t_result.components["penalty_slag_t_basicity"] == pytest.approx(0.0)
-    assert t_result.feasible is True
-    assert not any("Slag T Basicity" in item for item in t_result.violations)
+    assert t_result.components["penalty_slag_t_basicity"] > 0.0
+    assert t_result.feasible is False
+    assert any("Slag T Basicity below bound" in item for item in t_result.violations)
+
+    # Bounds the same blend can meet: no penalty, no violation.
+    satisfied = BmoObjectiveEvaluator(
+        ores=ores,
+        target_production_mt=50.0,
+        target_slag_qty_mt=100.0,
+        target_slag_t_basicity_min=0.0,
+        target_slag_t_basicity_max=2.0,
+        feo_in_slag_pct=0.0,
+        model_service=model_service,
+        process_context={},
+        history_df=pd.DataFrame(),
+        penalty_cfg={"penalty_basicity": 1000.0},
+    ).evaluate_quantities(np.array([100.0], dtype=float))
+
+    assert satisfied.components["penalty_slag_t_basicity"] == pytest.approx(0.0)
+    assert not any("Slag T Basicity" in item for item in satisfied.violations)
 
 
 def test_bmo_objective_penalizes_production_above_target():

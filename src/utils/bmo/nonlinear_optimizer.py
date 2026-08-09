@@ -171,6 +171,9 @@ def run_nonlinear_optimizer(
     target_slag_basicity_max: float | None = None,
     target_slag_t_basicity_min: float | None = None,
     target_slag_t_basicity_max: float | None = None,
+    target_slag_al2o3_max_pct: float | None = None,
+    target_slag_mgo_min_pct: float | None = None,
+    target_slag_mgo_al2o3_ratio_min: float | None = None,
     max_burden_qty_mt: float | None = None,
     fuel_ash_inputs: list[FuelAshInput] | None = None,
     flux_inputs: list[FluxInput] | None = None,
@@ -202,8 +205,10 @@ def run_nonlinear_optimizer(
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
          - target_slag_basicity_min: float | None - Minimum CaO / SiO2 basicity.
          - target_slag_basicity_max: float | None - Maximum CaO / SiO2 basicity.
-         - target_slag_t_basicity_min/max: float | None - Legacy display-only inputs,
-           ignored by DE optimization.
+         - target_slag_t_basicity_min/max: float | None - (CaO + MgO) / SiO2 bounds.
+         - target_slag_al2o3_max_pct: float | None - Maximum Al2O3 % of final slag.
+         - target_slag_mgo_min_pct: float | None - Minimum MgO % of final slag.
+         - target_slag_mgo_al2o3_ratio_min: float | None - Minimum MgO / Al2O3 ratio.
          - max_burden_qty_mt: float | None - Charging-throughput ceiling on total wet
            IBRM + flux in MT. ``None`` leaves the burden quantity unbounded.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
@@ -255,8 +260,11 @@ def run_nonlinear_optimizer(
             feo_in_slag_pct=feo_in_slag_pct,
             target_slag_basicity_min=target_slag_basicity_min,
             target_slag_basicity_max=target_slag_basicity_max,
-            target_slag_t_basicity_min=None,
-            target_slag_t_basicity_max=None,
+            target_slag_t_basicity_min=target_slag_t_basicity_min,
+            target_slag_t_basicity_max=target_slag_t_basicity_max,
+            target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+            target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+            target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
             max_burden_qty_mt=max_burden_qty_mt,
             fuel_ash_inputs=fuel_ash_inputs,
             flux_inputs=flux_inputs,
@@ -310,8 +318,11 @@ def run_nonlinear_optimizer(
         feo_in_slag_pct=float(feo_in_slag_pct),
         target_slag_basicity_min=target_slag_basicity_min,
         target_slag_basicity_max=target_slag_basicity_max,
-        target_slag_t_basicity_min=None,
-        target_slag_t_basicity_max=None,
+        target_slag_t_basicity_min=target_slag_t_basicity_min,
+        target_slag_t_basicity_max=target_slag_t_basicity_max,
+        target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+        target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+        target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
         max_burden_qty_mt=max_burden_qty_mt,
         model_service=model_service,
         process_context=process_context,
@@ -497,8 +508,11 @@ def run_nonlinear_optimizer(
         target_slag_qty_mt=target_slag_qty_mt,
         target_slag_basicity_min=target_slag_basicity_min,
         target_slag_basicity_max=target_slag_basicity_max,
-        target_slag_t_basicity_min=None,
-        target_slag_t_basicity_max=None,
+        target_slag_t_basicity_min=target_slag_t_basicity_min,
+        target_slag_t_basicity_max=target_slag_t_basicity_max,
+        target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+        target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+        target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
         max_burden_qty_mt=max_burden_qty_mt,
     )
     blend.feasible = len(violations) == 0

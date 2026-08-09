@@ -16,38 +16,62 @@ import pandas as pd
 
 from utils.bmo.types import BlendEvaluation, OreInput
 
+# The furnace charges round the clock; this is not an operating choice.
+CHARGING_HOURS_PER_DAY = 24.0
+
 # Fallbacks mirroring ``setting_bmo.yml -> bmo.burden_capacity``; used when the
 # config block is missing so the cap still reflects the plant's real ceiling.
 _DEFAULT_BURDEN_CAPACITY = {
     "max_charges_per_hour": 7.5,
     "charge_mass_mt": 26.4,
-    "hours_per_day": 24.0,
-    "nut_coke_reserved_mt": 160.0,
-    "reference_hot_metal_mt": 2350.0,
 }
 
+# Plant operating set point. Nut coke is held here rather than optimised, so its
+# tonnage follows directly from the hot-metal target.
+DEFAULT_NUT_COKE_RATE_KG_PER_THM = 70.0
 
-def burden_capacity_ratio_mt_per_thm(
+
+def max_ibrm_flux_capacity_mt(
     burden_capacity_cfg: Mapping[str, Any] | None = None,
+    *,
+    target_hot_metal_mt: float,
+    nut_coke_rate_kg_per_thm: float = DEFAULT_NUT_COKE_RATE_KG_PER_THM,
 ) -> float:
     """
-    Return the max wet IBRM + flux MT the furnace can charge per MT of hot metal.
+    Return the wet IBRM + flux tonnage the charging system can deliver in a day.
 
-    The furnace tops out at ``max_charges_per_hour`` charges of ``charge_mass_mt``
-    each. Nut coke rides in those same charges but is not an optimizer variable,
-    so it is reserved off the top; the remainder is the daily room for IBRM (ore,
-    sinter, pellet) plus flux. Dividing by the hot metal that capacity was sized
-    against turns it into a ratio that re-scales with the operator's target:
+    The skips carry at most ``max_charges_per_hour`` charges of ``charge_mass_mt``
+    each, around the clock. Nut coke rides in those same charges but is not an
+    optimizer variable - it is pinned at a rate - so its tonnage is deducted off
+    the top and the remainder is the room for IBRM (ore, sinter, pellet) plus
+    flux::
 
-        (26.4 * 7.5 * 24 - 160) / 2350 = 1.954 MT burden per MT HM
+        capacity = 7.5 * 26.4 * 24                = 4752 MT/day
+        nut coke = 70 * 2350 / 1000               =  164 MT/day
+        room     = 4752 - 164                     = 4588 MT/day
+
+    This is an ABSOLUTE daily tonnage. It deliberately does not scale with the
+    hot-metal target, because the charging system runs the same 24 hours no
+    matter how much iron is being asked for. An earlier version expressed the
+    ceiling as a per-MT-HM ratio taken against a 2350 t reference day, which
+    understated the room by ~15% at a 2000 t target and, worse, allowed 5,076 MT
+    at a 2600 t target - more than the skips can physically deliver. Only the
+    nut-coke deduction moves with the target, and it does so directly.
+
+    Without this cap the optimizer is free to answer a low-Fe burden by simply
+    charging more of it. The plant cannot: charges are already at capacity, so
+    more tonnes at a lower Fe% means holding the charge rate and losing yield.
 
     Args:
          - burden_capacity_cfg: Mapping[str, Any] | None - ``bmo.burden_capacity``
            config block. Missing keys fall back to the plant defaults above.
+         - target_hot_metal_mt: float - Operator hot-metal target, used only to
+           convert the nut-coke rate into tonnes.
+         - nut_coke_rate_kg_per_thm: float - Nut coke set point in kg/THM.
 
     Returns:
-         - return float - Wet burden MT allowed per MT of hot metal, or 0.0 when
-           the configured numbers cannot produce a positive capacity.
+         - return float - Wet IBRM + flux MT available per day, or 0.0 when the
+           configured numbers leave no positive room.
     """
 
     cfg = dict(_DEFAULT_BURDEN_CAPACITY)
@@ -62,13 +86,20 @@ def burden_capacity_ratio_mt_per_thm(
     charge_capacity_mt = (
         _value("charge_mass_mt")
         * _value("max_charges_per_hour")
-        * _value("hours_per_day")
+        * CHARGING_HOURS_PER_DAY
     )
-    available_mt = charge_capacity_mt - _value("nut_coke_reserved_mt")
-    reference_hm_mt = _value("reference_hot_metal_mt")
-    if available_mt <= 0.0 or reference_hm_mt <= 0.0:
-        return 0.0
-    return float(available_mt / reference_hm_mt)
+    try:
+        nut_coke_mt = (
+            max(0.0, float(nut_coke_rate_kg_per_thm))
+            * max(0.0, float(target_hot_metal_mt))
+            / 1000.0
+        )
+    except (TypeError, ValueError):
+        nut_coke_mt = (
+            DEFAULT_NUT_COKE_RATE_KG_PER_THM * max(0.0, float(target_hot_metal_mt))
+        ) / 1000.0
+
+    return max(0.0, float(charge_capacity_mt - nut_coke_mt))
 
 
 def check_blend_constraints(
@@ -81,10 +112,15 @@ def check_blend_constraints(
     target_slag_basicity_max: float | None = None,
     target_slag_t_basicity_min: float | None = None,
     target_slag_t_basicity_max: float | None = None,
+    target_slag_al2o3_max_pct: float | None = None,
+    target_slag_mgo_min_pct: float | None = None,
+    target_slag_mgo_al2o3_ratio_min: float | None = None,
     max_burden_qty_mt: float | None = None,
     fe_tolerance_mt: float = 0.5,
     slag_tolerance_mt: float = 0.0,
     basicity_tolerance: float = 1e-3,
+    slag_pct_tolerance: float = 1e-2,
+    slag_ratio_tolerance: float = 1e-3,
     burden_tolerance_mt: float = 1e-6,
 ) -> list[str]:
     """
@@ -105,9 +141,17 @@ def check_blend_constraints(
          - target_slag_basicity_max: float | None - Maximum CaO / SiO2 basicity.
          - target_slag_t_basicity_min: float | None - Minimum (CaO + MgO) / SiO2 basicity.
          - target_slag_t_basicity_max: float | None - Maximum (CaO + MgO) / SiO2 basicity.
+         - target_slag_al2o3_max_pct: float | None - Maximum Al2O3 percentage of slag.
+           This is the limit that binds when the slag rate is cut: Al2O3 is inert, so
+           its mass is conserved and its percentage rises as total slag falls.
+         - target_slag_mgo_min_pct: float | None - Minimum MgO percentage of slag.
+           Cutting slag rate relaxes this one, for the same concentration reason.
+         - target_slag_mgo_al2o3_ratio_min: float | None - Minimum MgO / Al2O3 mass
+           ratio. Scale-free: it does not move with total slag mass at all, so it is
+           purely a statement about which materials are charged.
          - max_burden_qty_mt: float | None - Charging-throughput ceiling on total wet
            IBRM + flux in MT. ``None`` disables the check. See
-           ``burden_capacity_ratio_mt_per_thm``.
+           ``max_ibrm_flux_capacity_mt``.
          - fe_tolerance_mt: float - Allowed Fe production tolerance in MT.
          - slag_tolerance_mt: float - Allowed slag tolerance in MT. The
            default is zero because BMO treats max slag as a strict cap.
@@ -118,6 +162,10 @@ def check_blend_constraints(
            tolerance (~0.1% on a ~0.94 basicity, far finer than real slag control)
            absorbs that drift so a value equal to the bound at display precision
            is not flagged as "0.940 < 0.940".
+         - slag_pct_tolerance: float - Numeric tolerance on the Al2O3/MgO percentage
+           bounds, in percentage points. Same LP-drift reason as basicity: 0.01 pp is
+           far below both display precision and real slag-analysis repeatability.
+         - slag_ratio_tolerance: float - Numeric tolerance on the MgO/Al2O3 bound.
 
     Returns:
          - return list[str] - Human-readable constraint violation messages.
@@ -205,6 +253,71 @@ def check_blend_constraints(
         max_value=(
             float(target_slag_t_basicity_max)
             if target_slag_t_basicity_max is not None
+            else None
+        ),
+    )
+
+    def _check_slag_quality(
+        *,
+        label: str,
+        value: float,
+        denominator_key: str,
+        unit: str,
+        tolerance: float,
+        min_value: float | None = None,
+        max_value: float | None = None,
+    ) -> None:
+        """Validate one slag-quality ratio against its configured bound."""
+
+        if min_value is None and max_value is None:
+            return
+        denominator = float(blend.diagnostics.get(denominator_key, 0.0) or 0.0)
+        ratio = float(value or 0.0)
+        if denominator <= 0.0 or not isfinite(ratio):
+            violations.append(f"{label} unavailable: no slag mass to measure against.")
+            return
+        if min_value is not None and ratio < min_value - tolerance:
+            violations.append(
+                f"{label} below bound: {ratio:.3f}{unit} < {min_value:.3f}{unit}."
+            )
+        if max_value is not None and ratio > max_value + tolerance:
+            violations.append(
+                f"{label} above bound: {ratio:.3f}{unit} > {max_value:.3f}{unit}."
+            )
+
+    _check_slag_quality(
+        label="Slag Al2O3",
+        value=float(getattr(blend, "slag_al2o3_pct", 0.0) or 0.0),
+        denominator_key="slag_chemistry_denominator_mt",
+        unit="%",
+        tolerance=slag_pct_tolerance,
+        max_value=(
+            float(target_slag_al2o3_max_pct)
+            if target_slag_al2o3_max_pct is not None
+            else None
+        ),
+    )
+    _check_slag_quality(
+        label="Slag MgO",
+        value=float(getattr(blend, "slag_mgo_pct", 0.0) or 0.0),
+        denominator_key="slag_chemistry_denominator_mt",
+        unit="%",
+        tolerance=slag_pct_tolerance,
+        min_value=(
+            float(target_slag_mgo_min_pct)
+            if target_slag_mgo_min_pct is not None
+            else None
+        ),
+    )
+    _check_slag_quality(
+        label="Slag MgO/Al2O3",
+        value=float(getattr(blend, "slag_mgo_al2o3_ratio", 0.0) or 0.0),
+        denominator_key="slag_mgo_al2o3_denominator_mt",
+        unit="",
+        tolerance=slag_ratio_tolerance,
+        min_value=(
+            float(target_slag_mgo_al2o3_ratio_min)
+            if target_slag_mgo_al2o3_ratio_min is not None
             else None
         ),
     )
