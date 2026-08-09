@@ -26,10 +26,14 @@ from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
+    apply_dust_preferences,
+    apply_fuel_ash_preferences,
     apply_flux_preferences,
     apply_model_input_preferences,
     apply_ore_editor_preferences,
     load_ore_editor_preferences,
+    save_dust_preferences,
+    save_fuel_ash_preferences,
     save_flux_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
@@ -864,18 +868,23 @@ def _render_blend_comparison(
 
     # (row label, accessor(blend, si) -> value | None, format string)
     metric_specs = [
+        (
+            "Production",
+            lambda b, si: float(
+                b.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0
+            ),
+            "{:,.1f} MT",
+        ),
         ("Total Cost (Rs/THM)", lambda b, si: _display_total(b), "{:,.0f}"),
         ("Ore Cost (Rs/THM)", lambda b, si: b.ore_cost_per_thm_rs, "{:,.0f}"),
         (
-            "IBRM + Flux (MT)",
-            lambda b, si: float(
-                b.diagnostics.get("total_burden_qty_mt", b.total_qty_mt) or 0.0
-            ),
-            "{:,.0f}",
-        ),
-        (
             "Flux Rate (kg/THM)",
             lambda b, si: _charging_value(b, "flux_rate_kg_per_thm"),
+            "{:,.1f}",
+        ),
+        (
+            "Coke in Charges (MT)",
+            lambda b, si: _charging_value(b, "coke_total_mt"),
             "{:,.1f}",
         ),
         (
@@ -884,18 +893,18 @@ def _render_blend_comparison(
             "{:,.1f}",
         ),
         (
-            "Total Charge Mix (MT)",
-            lambda b, si: _charging_value(b, "total_charge_mix_mt"),
-            "{:,.0f}",
-        ),
-        (
-            "Charge Mix (MT/hr)",
-            lambda b, si: _charging_value(b, "charge_mix_mt_per_hour"),
+            "PCI in Charges (MT)",
+            lambda b, si: _charging_value(b, "pci_total_mt"),
             "{:,.1f}",
         ),
         (
             "Required Charges (/hr)",
             lambda b, si: _charging_value(b, "required_charges_per_hour"),
+            "{:,.2f}",
+        ),
+        (
+            "Hotmetal per Charge (MT)",
+            lambda b, si: _charging_value(b, "hot_metal_per_charge_mt"),
             "{:,.2f}",
         ),
         # 1-decimal so small but real blend-to-blend differences aren't hidden by
@@ -929,11 +938,6 @@ def _render_blend_comparison(
         (
             "Slag Basicity (CaO/SiO2)",
             lambda b, si: _basicity(b, "slag_basicity_denominator_mt", "slag_basicity"),
-            "{:,.3f}",
-        ),
-        (
-            "Slag T-Basicity",
-            lambda b, si: _basicity(b, "slag_t_basicity_denominator_mt", "slag_t_basicity"),
             "{:,.3f}",
         ),
         ("Slag Rate (kg/THM)", lambda b, si: b.slag_rate_kg_per_thm, "{:,.0f}"),
@@ -1928,26 +1932,128 @@ _render_data_diagnostics(
     expanded=bool(visible_data_warnings),
 )
 
-fuel_ash_df = build_fuel_ash_editor_df(
-    _fuel_ash_cfg_with_recent_rates(
-        bmo_cfg.get("fuel_ash_inputs", []), recent_fuel_rates
-    )
+fuel_ash_base_df = apply_fuel_ash_preferences(
+    build_fuel_ash_editor_df(
+        _fuel_ash_cfg_with_recent_rates(
+            bmo_cfg.get("fuel_ash_inputs", []), recent_fuel_rates
+        )
+    ),
+    operator_preferences,
 )
-if not fuel_ash_df.empty:
-    st.markdown("### Fuel Ash Inputs")
-    edited_fuel_ash_df = render_fuel_ash_editor(fuel_ash_df)
+stored_fuel_ash_df = st.session_state.get("bmo_applied_fuel_ash_editor_df")
+if (
+    isinstance(stored_fuel_ash_df, pd.DataFrame)
+    and not fuel_ash_base_df.empty
+    and "fuel_id" in stored_fuel_ash_df.columns
+    and "vm_pct" in stored_fuel_ash_df.columns
+    and set(stored_fuel_ash_df["fuel_id"].astype(str))
+    == set(fuel_ash_base_df["fuel_id"].astype(str))
+):
+    fuel_ash_editor_source_df = stored_fuel_ash_df
 else:
-    edited_fuel_ash_df = fuel_ash_df
+    fuel_ash_editor_source_df = fuel_ash_base_df
+
+with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
+    st.markdown("### Fuel Ash Inputs")
+    if not fuel_ash_editor_source_df.empty:
+        edited_fuel_ash_candidate_df = render_fuel_ash_editor(
+            fuel_ash_editor_source_df
+        )
+    else:
+        edited_fuel_ash_candidate_df = fuel_ash_editor_source_df
+    st.caption(
+        "Save keeps all Fuel Ash values for the next session. IM is used for "
+        "the dry-fuel ash calculation; VM is retained with the fuel analysis."
+    )
+    fuel_apply_col, fuel_save_col = st.columns(2)
+    fuel_ash_inputs_applied = _form_submit_button(
+        fuel_apply_col,
+        "Apply Fuel Ash Inputs",
+        type="primary",
+        width="stretch",
+    )
+    fuel_ash_inputs_saved = _form_submit_button(
+        fuel_save_col,
+        "Save Fuel Ash Inputs for Next Time",
+        type="secondary",
+        width="stretch",
+    )
+if fuel_ash_inputs_applied or fuel_ash_inputs_saved:
+    edited_fuel_ash_df = edited_fuel_ash_candidate_df.copy()
+    st.session_state["bmo_applied_fuel_ash_editor_df"] = edited_fuel_ash_df
+    _clear_bmo_results()
+    if fuel_ash_inputs_saved:
+        try:
+            saved_path = save_fuel_ash_preferences(
+                operator_preferences_path, edited_fuel_ash_df
+            )
+            st.success(f"Fuel Ash inputs saved to {saved_path}.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not save Fuel Ash inputs: {exc}")
+    else:
+        st.success("Fuel Ash inputs applied.")
+else:
+    edited_fuel_ash_df = fuel_ash_editor_source_df
 fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
 
+dust_base_df = apply_dust_preferences(
+    build_dust_editor_df(bmo_cfg.get("dust_inputs", [])), operator_preferences
+)
+stored_dust_df = st.session_state.get("bmo_applied_dust_editor_df")
+if (
+    isinstance(stored_dust_df, pd.DataFrame)
+    and not dust_base_df.empty
+    and "dust_id" in stored_dust_df.columns
+    and set(stored_dust_df["dust_id"].astype(str))
+    == set(dust_base_df["dust_id"].astype(str))
+):
+    dust_editor_source_df = stored_dust_df
+else:
+    dust_editor_source_df = dust_base_df
+
+dust_inputs_applied = False
+dust_inputs_saved = False
 with st.expander("Advanced Slag Balance Inputs", expanded=False):
     slag_settings_values = render_slag_balance_settings(bmo_cfg.get("slag_balance", {}))
-    dust_df = build_dust_editor_df(bmo_cfg.get("dust_inputs", []))
-    if not dust_df.empty:
+    if not dust_editor_source_df.empty:
         st.markdown("##### BF Gas Dust")
-        edited_dust_df = render_dust_editor(dust_df)
+        with st.form("bmo_dust_input_form", clear_on_submit=False):
+            edited_dust_candidate_df = render_dust_editor(dust_editor_source_df)
+            st.caption(
+                "Save keeps the BF Gas Dust quantity, moisture, enabled state, "
+                "and chemistry values for the next session."
+            )
+            dust_apply_col, dust_save_col = st.columns(2)
+            dust_inputs_applied = _form_submit_button(
+                dust_apply_col,
+                "Apply BF Gas Dust Inputs",
+                type="primary",
+                width="stretch",
+            )
+            dust_inputs_saved = _form_submit_button(
+                dust_save_col,
+                "Save BF Gas Dust Inputs for Next Time",
+                type="secondary",
+                width="stretch",
+            )
     else:
-        edited_dust_df = dust_df
+        edited_dust_candidate_df = dust_editor_source_df
+if dust_inputs_applied or dust_inputs_saved:
+    edited_dust_df = edited_dust_candidate_df.copy()
+    st.session_state["bmo_applied_dust_editor_df"] = edited_dust_df
+    _clear_bmo_results()
+    if dust_inputs_saved:
+        try:
+            saved_path = save_dust_preferences(
+                operator_preferences_path, edited_dust_df
+            )
+            st.success(f"BF Gas Dust inputs saved to {saved_path}.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not save BF Gas Dust inputs: {exc}")
+    else:
+        st.success("BF Gas Dust inputs applied.")
+else:
+    edited_dust_df = dust_editor_source_df
 dust_inputs = dust_inputs_from_editor(edited_dust_df)
 slag_balance_settings = slag_balance_settings_from_editor(
     slag_settings_values, hm_chem_values, hm_snapshot

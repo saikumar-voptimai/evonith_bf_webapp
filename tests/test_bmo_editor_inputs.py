@@ -51,6 +51,8 @@ class TestFuelAshInputsFromEditor:
                     "fuel_name": "Coke",
                     "enabled": True,
                     "rate_kg_per_thm": 340.0,
+                    "moisture_pct": 0.4,
+                    "vm_pct": 0.9,
                     "ash_pct": 11.5,
                     "sio2_pct": 55.0,
                 },
@@ -63,6 +65,8 @@ class TestFuelAshInputsFromEditor:
         assert coke.fuel_id == "coke"
         assert coke.display_name == "Coke"
         assert coke.rate_kg_per_thm == 340.0
+        assert coke.moisture_pct == 0.4
+        assert coke.vm_pct == 0.9
         assert coke.ash_pct == 11.5
         assert coke.sio2_pct == 55.0
         # Unspecified chemistry columns default to 0.0 via float_from_row.

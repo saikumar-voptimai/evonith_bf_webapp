@@ -26,6 +26,45 @@ PERSISTED_FLUX_COLUMNS = (
     "stock_mt",
 )
 
+# Every editable Fuel Ash value is an operator input. Persist the complete row
+# by stable fuel id so saved values remain aligned when config or recent-rate
+# defaults are refreshed.
+PERSISTED_FUEL_ASH_NUMERIC_COLUMNS = (
+    "rate_kg_per_thm",
+    "price_rs_per_mt",
+    "moisture_pct",
+    "vm_pct",
+    "ash_pct",
+    "sio2_pct",
+    "al2o3_pct",
+    "cao_pct",
+    "mgo_pct",
+    "fe2o3_pct",
+    "tio2_pct",
+    "na2o_pct",
+    "k2o_pct",
+    "s_pct",
+    "p_pct",
+)
+
+PERSISTED_DUST_NUMERIC_COLUMNS = (
+    "wet_qty_mt",
+    "moisture_pct",
+    "sio2_pct",
+    "al2o3_pct",
+    "cao_pct",
+    "mgo_pct",
+    "fe_pct",
+    "mn_pct",
+    "p_pct",
+    "s_pct",
+    "ti_pct",
+    "zn_pct",
+    "na2o_pct",
+    "k2o_pct",
+    "caf2_pct",
+)
+
 
 def _float_or_none(value: Any) -> float | None:
     if pd.isna(value):
@@ -160,6 +199,100 @@ def apply_flux_preferences(
     return out
 
 
+def build_fuel_ash_preferences(editor_df: pd.DataFrame) -> dict[str, Any]:
+    """Build persisted Fuel Ash rows keyed by stable fuel id."""
+
+    if editor_df.empty or "fuel_id" not in editor_df.columns:
+        return {"fuel_ash_editor": {"rows": {}}}
+
+    rows: dict[str, dict[str, float | bool]] = {}
+    for _, row in editor_df.iterrows():
+        fuel_id = str(row.get("fuel_id", "")).strip()
+        if not fuel_id:
+            continue
+        saved_row: dict[str, float | bool] = {"enabled": bool(row.get("enabled", True))}
+        for column in PERSISTED_FUEL_ASH_NUMERIC_COLUMNS:
+            if column not in row:
+                continue
+            value = _float_or_none(row.get(column))
+            if value is not None:
+                saved_row[column] = value
+        rows[fuel_id] = saved_row
+    return {"fuel_ash_editor": {"rows": rows}}
+
+
+def apply_fuel_ash_preferences(
+    fuel_ash_df: pd.DataFrame, preferences: dict[str, Any]
+) -> pd.DataFrame:
+    """Apply saved Fuel Ash inputs over freshly built configuration rows."""
+
+    if fuel_ash_df.empty or "fuel_id" not in fuel_ash_df.columns:
+        return fuel_ash_df
+
+    saved_rows = (preferences.get("fuel_ash_editor", {}) if preferences else {}).get(
+        "rows", {}
+    ) or {}
+    out = fuel_ash_df.copy()
+    for index, row in out.iterrows():
+        fuel_id = str(row.get("fuel_id", "")).strip()
+        saved = saved_rows.get(fuel_id, {}) or {}
+        if "enabled" in saved and "enabled" in out.columns:
+            out.at[index, "enabled"] = bool(saved["enabled"])
+        for column in PERSISTED_FUEL_ASH_NUMERIC_COLUMNS:
+            if column in out.columns and column in saved:
+                value = _float_or_none(saved[column])
+                if value is not None:
+                    out.at[index, column] = value
+    return out
+
+
+def build_dust_preferences(editor_df: pd.DataFrame) -> dict[str, Any]:
+    """Build persisted BF Gas Dust rows keyed by stable dust id."""
+
+    if editor_df.empty or "dust_id" not in editor_df.columns:
+        return {"dust_editor": {"rows": {}}}
+
+    rows: dict[str, dict[str, float | bool]] = {}
+    for _, row in editor_df.iterrows():
+        dust_id = str(row.get("dust_id", "")).strip()
+        if not dust_id:
+            continue
+        saved_row: dict[str, float | bool] = {"enabled": bool(row.get("enabled", True))}
+        for column in PERSISTED_DUST_NUMERIC_COLUMNS:
+            if column not in row:
+                continue
+            value = _float_or_none(row.get(column))
+            if value is not None:
+                saved_row[column] = value
+        rows[dust_id] = saved_row
+    return {"dust_editor": {"rows": rows}}
+
+
+def apply_dust_preferences(
+    dust_df: pd.DataFrame, preferences: dict[str, Any]
+) -> pd.DataFrame:
+    """Apply saved BF Gas Dust inputs over fresh configuration rows."""
+
+    if dust_df.empty or "dust_id" not in dust_df.columns:
+        return dust_df
+
+    saved_rows = (preferences.get("dust_editor", {}) if preferences else {}).get(
+        "rows", {}
+    ) or {}
+    out = dust_df.copy()
+    for index, row in out.iterrows():
+        dust_id = str(row.get("dust_id", "")).strip()
+        saved = saved_rows.get(dust_id, {}) or {}
+        if "enabled" in saved and "enabled" in out.columns:
+            out.at[index, "enabled"] = bool(saved["enabled"])
+        for column in PERSISTED_DUST_NUMERIC_COLUMNS:
+            if column in out.columns and column in saved:
+                value = _float_or_none(saved[column])
+                if value is not None:
+                    out.at[index, column] = value
+    return out
+
+
 def load_ore_editor_preferences(path: str | Path) -> dict[str, Any]:
     """Load saved BMO ore editor preferences, returning empty prefs if absent."""
 
@@ -190,6 +323,30 @@ def save_flux_preferences(path: str | Path, flux_df: pd.DataFrame) -> Path:
     pref_path.parent.mkdir(parents=True, exist_ok=True)
     payload = load_ore_editor_preferences(pref_path)
     payload.update(build_flux_preferences(flux_df))
+    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
+        yaml.safe_dump(payload, file, sort_keys=False)
+    return pref_path
+
+
+def save_fuel_ash_preferences(path: str | Path, fuel_ash_df: pd.DataFrame) -> Path:
+    """Persist all editable Fuel Ash inputs and return the written path."""
+
+    pref_path = Path(path)
+    pref_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = load_ore_editor_preferences(pref_path)
+    payload.update(build_fuel_ash_preferences(fuel_ash_df))
+    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
+        yaml.safe_dump(payload, file, sort_keys=False)
+    return pref_path
+
+
+def save_dust_preferences(path: str | Path, dust_df: pd.DataFrame) -> Path:
+    """Persist all editable BF Gas Dust inputs and return the written path."""
+
+    pref_path = Path(path)
+    pref_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = load_ore_editor_preferences(pref_path)
+    payload.update(build_dust_preferences(dust_df))
     with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
         yaml.safe_dump(payload, file, sort_keys=False)
     return pref_path
