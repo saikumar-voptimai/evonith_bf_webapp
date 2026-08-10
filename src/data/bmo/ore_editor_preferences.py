@@ -112,6 +112,58 @@ def build_ore_editor_preferences(editor_df: pd.DataFrame) -> dict[str, Any]:
     return {"ore_editor": {"selected_ore_ids": selected_ids, "rows": rows}}
 
 
+# Slag-side pig-iron chemistry. Held at the operating point rather than tracking
+# the latest cast, so it is an operator setting that must survive a session.
+PERSISTED_HM_CHEMISTRY_COLUMNS = (
+    "carbon_pct",
+    "silicon_pct",
+    "sulphur_pct",
+    "other_pct",
+)
+
+
+def build_hm_chemistry_preferences(values: dict[str, Any]) -> dict[str, Any]:
+    """Build a preference payload for the held slag-side HM chemistry."""
+
+    saved: dict[str, float] = {}
+    for key in PERSISTED_HM_CHEMISTRY_COLUMNS:
+        value = _float_or_none(values.get(key))
+        if value is not None:
+            saved[key] = value
+    return {"hot_metal_chemistry": saved}
+
+
+def apply_hm_chemistry_preferences(
+    defaults: dict[str, Any], preferences: dict[str, Any]
+) -> dict[str, Any]:
+    """Overlay saved slag-side HM chemistry onto the yml ``slag_balance`` block.
+
+    Only the four PI-chemistry keys are overlaid; every other slag_balance
+    setting (recovery, gas loss, conversion factors) stays config-driven.
+    """
+
+    out = dict(defaults)
+    saved = preferences.get("hot_metal_chemistry", {}) if preferences else {}
+    for key in PERSISTED_HM_CHEMISTRY_COLUMNS:
+        if key in saved:
+            value = _float_or_none(saved.get(key))
+            if value is not None:
+                out[key] = value
+    return out
+
+
+def save_hm_chemistry_preferences(path: str | Path, values: dict[str, Any]) -> Path:
+    """Persist the held slag-side HM chemistry and return the written path."""
+
+    pref_path = Path(path)
+    pref_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = load_ore_editor_preferences(pref_path)
+    payload.update(build_hm_chemistry_preferences(values))
+    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
+        yaml.safe_dump(payload, file, sort_keys=False)
+    return pref_path
+
+
 def build_model_input_preferences(values: dict[str, Any]) -> dict[str, Any]:
     """Build a compact preference payload for BMO model inputs."""
 

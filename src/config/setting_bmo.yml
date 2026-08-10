@@ -293,12 +293,26 @@ bmo:
 
   slag_balance:
     enabled: true
-    # PI chemistry fallbacks: used only when live HM_SLAG fetch fails.
-    # Live values from offline_feed.hot_metal_slag_analysis override these.
-    carbon_pct: 4.2
-    silicon_pct: 0.7
-    sulphur_pct: 0.03
-    other_pct: 0.1
+    # PI chemistry used by the slag balance. THESE ARE THE VALUES USED, not
+    # fallbacks: the live HM_SLAG sample is still fetched and shown beside them
+    # on the page for reference, but it no longer prefills them.
+    #
+    # Why hold them rather than track the cast: these four numbers only enter the
+    # slag side, where they set the pig-iron closure and the SiO2 consumed by Si
+    # reduction. A single cast's Si swings far more than the true operating point
+    # does, and feeding that swing into the slag balance moves calculated slag
+    # and basicity for a reason that has nothing to do with the blend being
+    # evaluated. Holding them keeps blend-to-blend comparisons on one basis.
+    #
+    # This does NOT affect the Si used anywhere else - the Si prediction model
+    # and the coke-correction Si term both still run off live/model Si.
+    #
+    # Operator-settable on the page under "Hot Metal Chemistry Assumptions";
+    # a saved value in bmo_operator_inputs.yml overrides what is here.
+    carbon_pct: 4.24
+    silicon_pct: 0.6
+    sulphur_pct: 0.035
+    other_pct: 0.0
     pi_loss_pct: 0.2
     fe_to_pig_iron_fraction: 0.999
     mn_recovery_pct: 60.0

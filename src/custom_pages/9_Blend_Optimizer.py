@@ -29,12 +29,14 @@ from data.bmo.ore_editor_preferences import (
     apply_dust_preferences,
     apply_fuel_ash_preferences,
     apply_flux_preferences,
+    apply_hm_chemistry_preferences,
     apply_model_input_preferences,
     apply_ore_editor_preferences,
     load_ore_editor_preferences,
     save_dust_preferences,
     save_fuel_ash_preferences,
     save_flux_preferences,
+    save_hm_chemistry_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
 )
@@ -2128,17 +2130,36 @@ flux_inputs = flux_inputs_from_editor(edited_flux_df)
 with st.expander("Hot Metal Chemistry Assumptions", expanded=False):
     with st.form("bmo_assumption_input_form", clear_on_submit=False):
         hm_chem_values = render_hot_metal_chemistry(
-            hm_snapshot, bmo_cfg.get("slag_balance", {})
+            hm_snapshot,
+            apply_hm_chemistry_preferences(
+                bmo_cfg.get("slag_balance", {}) or {}, operator_preferences
+            ),
         )
+        hm_apply_col, hm_save_col = st.columns(2)
         assumptions_applied = _form_submit_button(
-            st,
+            hm_apply_col,
             "Apply Assumptions",
             type="primary",
             width="stretch",
         )
-if assumptions_applied:
+        assumptions_saved = _form_submit_button(
+            hm_save_col,
+            "Save for Later",
+            type="secondary",
+            width="stretch",
+        )
+if assumptions_applied or assumptions_saved:
     _clear_bmo_results()
-    st.success("Assumptions applied.")
+    if assumptions_saved:
+        try:
+            saved_path = save_hm_chemistry_preferences(
+                operator_preferences_path, hm_chem_values
+            )
+            st.success(f"Hot metal chemistry saved to {saved_path}.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not save hot metal chemistry: {exc}")
+    else:
+        st.success("Assumptions applied.")
 
 selected_ores = _selected_ores_from_editor(edited_df, ores)
 pellet_input_issues = validate_selected_pellet_inputs(
