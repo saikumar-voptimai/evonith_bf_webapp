@@ -7,8 +7,9 @@ import pytest
 
 from utils.bmo.calculations import compute_charging_requirements, evaluate_blend
 from utils.bmo.constraints import (
-    burden_capacity_ratio_mt_per_thm,
+    CHARGING_HOURS_PER_DAY,
     check_blend_constraints,
+    max_ibrm_flux_capacity_mt,
 )
 from utils.bmo.lp_solver import run_lp_baseline
 from utils.bmo.objective import BmoObjectiveEvaluator
@@ -48,11 +49,96 @@ class _ModelService:
         return _Prediction()
 
 
-def test_default_capacity_ratio_reconstructs_4592_mt_reference_limit() -> None:
-    ratio = burden_capacity_ratio_mt_per_thm()
+def test_default_capacity_reproduces_the_plant_reference_limit() -> None:
+    capacity = max_ibrm_flux_capacity_mt(target_hot_metal_mt=2350.0)
 
-    assert ratio == pytest.approx((26.4 * 7.5 * 24.0 - 160.0) / 2350.0)
-    assert ratio * 2350.0 == pytest.approx(4592.0)
+    assert capacity == pytest.approx(26.4 * 7.5 * 24.0 - 70.0 * 2350.0 / 1000.0)
+    assert capacity == pytest.approx(4587.5)
+
+
+def test_capacity_tracks_operator_charge_rate_and_charge_mass() -> None:
+    """Charges/hr and MT/charge are operator inputs, not yml constants.
+
+    The page rebuilds the ceiling from whatever the operator typed, so both
+    numbers have to move it proportionally. The plant's charge reports show an
+    actual mean charge mass near 30.1 MT against the 26.4 default (findings
+    section 6), which is a ~14% ceiling difference - large enough that it must
+    not be stuck in config.
+    """
+
+    base = max_ibrm_flux_capacity_mt(
+        {"max_charges_per_hour": 7.5, "charge_mass_mt": 26.4},
+        target_hot_metal_mt=2350.0,
+    )
+
+    heavier_charge = max_ibrm_flux_capacity_mt(
+        {"max_charges_per_hour": 7.5, "charge_mass_mt": 30.1},
+        target_hot_metal_mt=2350.0,
+    )
+    assert heavier_charge > base
+    assert heavier_charge == pytest.approx(30.1 * 7.5 * 24.0 - 164.5)
+
+    faster_charging = max_ibrm_flux_capacity_mt(
+        {"max_charges_per_hour": 8.0, "charge_mass_mt": 26.4},
+        target_hot_metal_mt=2350.0,
+    )
+    assert faster_charging > base
+    assert faster_charging == pytest.approx(26.4 * 8.0 * 24.0 - 164.5)
+
+
+def test_capacity_is_absolute_and_never_exceeds_what_the_skips_can_deliver() -> None:
+    """The ceiling must not scale with the HM target.
+
+    The charging system runs the same 24 hours whatever iron is asked for, so
+    only the nut-coke deduction moves with the target. The superseded per-THM
+    ratio (cap = 1.954 x HM) got this wrong in both directions: it understated
+    the room by ~15% at a 2000 t target, and at 2600 t it allowed 5,076 MT -
+    more than the 4,752 MT the skips can physically carry in a day.
+    """
+
+    cfg = {"max_charges_per_hour": 7.5, "charge_mass_mt": 26.4}
+    physical_capacity_mt = 26.4 * 7.5 * CHARGING_HOURS_PER_DAY
+
+    caps = {
+        hm: max_ibrm_flux_capacity_mt(cfg, target_hot_metal_mt=hm)
+        for hm in (2000.0, 2350.0, 2600.0)
+    }
+
+    for hm, cap in caps.items():
+        assert cap < physical_capacity_mt, hm
+        assert cap == pytest.approx(physical_capacity_mt - 70.0 * hm / 1000.0)
+
+    # Higher HM consumes more nut coke, so it leaves LESS room, never more.
+    assert caps[2000.0] > caps[2350.0] > caps[2600.0]
+
+    # The old ratio form would have allowed more than the skips can deliver.
+    superseded_ratio_cap = (physical_capacity_mt - 164.5) / 2350.0 * 2600.0
+    assert superseded_ratio_cap > physical_capacity_mt
+    assert caps[2600.0] < superseded_ratio_cap
+
+
+def test_capacity_responds_to_the_nut_coke_rate() -> None:
+    """Nut coke is derived from its rate, not entered as a tonnage."""
+
+    cfg = {"max_charges_per_hour": 7.5, "charge_mass_mt": 26.4}
+    at_70 = max_ibrm_flux_capacity_mt(
+        cfg, target_hot_metal_mt=2350.0, nut_coke_rate_kg_per_thm=70.0
+    )
+    at_90 = max_ibrm_flux_capacity_mt(
+        cfg, target_hot_metal_mt=2350.0, nut_coke_rate_kg_per_thm=90.0
+    )
+
+    assert at_70 - at_90 == pytest.approx(20.0 * 2350.0 / 1000.0)
+
+
+def test_capacity_is_zero_when_the_operator_zeroes_the_charging_plant() -> None:
+    """A zero charge rate or charge mass must disable the cap, not go negative."""
+
+    for zeroed in ("max_charges_per_hour", "charge_mass_mt"):
+        cfg = {"max_charges_per_hour": 7.5, "charge_mass_mt": 26.4, zeroed: 0.0}
+        assert (
+            max_ibrm_flux_capacity_mt(cfg, target_hot_metal_mt=2350.0) == 0.0
+        )
 
 
 def test_blend_diagnostics_and_constraint_include_wet_fixed_flux() -> None:

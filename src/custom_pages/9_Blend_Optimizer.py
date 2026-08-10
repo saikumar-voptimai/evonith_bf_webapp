@@ -29,12 +29,14 @@ from data.bmo.ore_editor_preferences import (
     apply_dust_preferences,
     apply_fuel_ash_preferences,
     apply_flux_preferences,
+    apply_hm_chemistry_preferences,
     apply_model_input_preferences,
     apply_ore_editor_preferences,
     load_ore_editor_preferences,
     save_dust_preferences,
     save_fuel_ash_preferences,
     save_flux_preferences,
+    save_hm_chemistry_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
 )
@@ -87,7 +89,9 @@ from ui.bmo.editor_inputs import (
     slag_balance_settings_from_editor,
 )
 from utils.bmo.constraints import (
-    burden_capacity_ratio_mt_per_thm,
+    CHARGING_HOURS_PER_DAY,
+    DEFAULT_NUT_COKE_RATE_KG_PER_THM,
+    max_ibrm_flux_capacity_mt,
     check_blend_constraints,
 )
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
@@ -309,7 +313,7 @@ def _recent_fuel_rates_live() -> dict[str, float | str]:
 
 
 @_data_cache(show_spinner=False, ttl=600)
-def _basicity_defaults_from_static_csv(
+def _model_input_defaults_from_static_csv(
     static_path: str, mtime_ns: int
 ) -> dict[str, float]:
     if mtime_ns <= 0:
@@ -633,7 +637,6 @@ def _render_blend_comparison(
     dust_inputs: list[DustInput],
     slag_balance_settings: SlagBalanceSettings,
     charge_mass_mt: float,
-    charging_hours_per_day: float,
     manual_ores: list[OreInput] | None = None,
 ) -> None:
     """Operator-focused comparison of the manual blend vs the optimizer blends.
@@ -655,8 +658,8 @@ def _render_blend_comparison(
          - target_production_mt: float - HM basis for cost / slag / model fields.
          - feo_in_slag_pct: float - FeO assumed to report into slag.
          - fuel_ash_inputs / flux_inputs / dust_inputs / slag_balance_settings - Slag-balance inputs.
-         - charge_mass_mt: float - Tonnes carried by one furnace charge.
-         - charging_hours_per_day: float - Hours over which the daily blend is charged.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge. Charging
+           runs 24 h, so that is a constant rather than an argument.
          - manual_ores: list[OreInput] | None - Materials available for the manual blend.
 
     Returns:
@@ -808,7 +811,6 @@ def _render_blend_comparison(
         id(blend): compute_charging_requirements(
             blend,
             charge_mass_mt=charge_mass_mt,
-            hours_per_day=charging_hours_per_day,
         )
         for _, blend, _ in options
     }
@@ -941,6 +943,25 @@ def _render_blend_comparison(
             "{:,.3f}",
         ),
         ("Slag Rate (kg/THM)", lambda b, si: b.slag_rate_kg_per_thm, "{:,.0f}"),
+        (
+            "Slag Al2O3 (%)",
+            lambda b, si: _basicity(
+                b, "slag_chemistry_denominator_mt", "slag_al2o3_pct"
+            ),
+            "{:,.2f}",
+        ),
+        (
+            "Slag MgO (%)",
+            lambda b, si: _basicity(b, "slag_chemistry_denominator_mt", "slag_mgo_pct"),
+            "{:,.2f}",
+        ),
+        (
+            "Slag MgO/Al2O3",
+            lambda b, si: _basicity(
+                b, "slag_mgo_al2o3_denominator_mt", "slag_mgo_al2o3_ratio"
+            ),
+            "{:,.3f}",
+        ),
     ]
     out_rows = []
     for row_label, accessor, fmt in metric_specs:
@@ -1635,76 +1656,239 @@ recent_fuel_rates = {
     **_recent_fuel_rates_from_static_csv(static_path, static_mtime_ns),
     **_recent_fuel_rates_live(),
 }
-basicity_defaults = {
+def _optional_target(key: str, fallback: float | None) -> float | None:
+    """Read a slag-window limit from config, treating an absent/null key as off."""
+
+    if key not in target_cfg:
+        return fallback
+    raw = target_cfg.get(key)
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return fallback
+
+
+model_input_defaults = {
     "target_slag_basicity_min": float(target_cfg.get("target_slag_basicity_min", 0.0)),
     "target_slag_basicity_max": float(target_cfg.get("target_slag_basicity_max", 10.0)),
+    "target_slag_t_basicity_min": float(
+        _optional_target("target_slag_t_basicity_min", 0.0) or 0.0
+    ),
+    "target_slag_t_basicity_max": float(
+        _optional_target("target_slag_t_basicity_max", 10.0) or 10.0
+    ),
+    "target_slag_rate_kg_per_thm": float(
+        target_cfg.get("target_slag_rate_kg_per_thm", 290.0)
+    ),
+    "target_slag_al2o3_max_pct": float(
+        _optional_target("target_slag_al2o3_max_pct", 20.0) or 0.0
+    ),
+    "target_slag_mgo_min_pct": float(
+        _optional_target("target_slag_mgo_min_pct", 7.0) or 0.0
+    ),
+    "target_slag_mgo_al2o3_ratio_min": float(
+        _optional_target("target_slag_mgo_al2o3_ratio_min", 0.36) or 0.0
+    ),
 }
-basicity_defaults.update(
-    _basicity_defaults_from_static_csv(static_path, static_mtime_ns)
+# plant_slag = model_slag * factor, so a plant-basis target divides by it to get
+# the model-basis cap the solvers actually enforce. See setting_bmo.yml.
+model_to_plant_slag_factor = float(
+    target_cfg.get("model_to_plant_slag_factor", 1.0) or 1.0
 )
-basicity_defaults = apply_model_input_preferences(
-    basicity_defaults, operator_preferences
+if model_to_plant_slag_factor <= 0.0:
+    model_to_plant_slag_factor = 1.0
+model_input_defaults.update(
+    _model_input_defaults_from_static_csv(static_path, static_mtime_ns)
 )
+# Charging plant is operator-configurable too. Charges per hour and tonnes per
+# charge are the only two numbers that set the throughput ceiling, and both move
+# with skip-car condition and burden bulk density, so pinning them in yml made
+# the ceiling stale. Charging hours are always 24 and nut coke follows from its
+# rate, so neither is an input. Defaults still come from config.
 burden_capacity_cfg = bmo_cfg.get("burden_capacity", {}) or {}
-default_burden_capacity_ratio = burden_capacity_ratio_mt_per_thm(burden_capacity_cfg)
-burden_capacity_enabled = bool(burden_capacity_cfg.get("enabled", True))
-burden_capacity_ratio = float(default_burden_capacity_ratio)
-charge_mass_mt = float(burden_capacity_cfg.get("charge_mass_mt", 26.4) or 26.4)
-charging_hours_per_day = float(
-    burden_capacity_cfg.get("hours_per_day", 24.0) or 24.0
+model_input_defaults.update(
+    {
+        "max_charges_per_hour": float(
+            burden_capacity_cfg.get("max_charges_per_hour", 7.5) or 7.5
+        ),
+        "charge_mass_mt": float(burden_capacity_cfg.get("charge_mass_mt", 26.4) or 26.4),
+    }
+)
+model_input_defaults = apply_model_input_preferences(
+    model_input_defaults, operator_preferences
+)
+burden_capacity_enabled_default = bool(burden_capacity_cfg.get("enabled", True))
+# Nut coke is a held set point, not an optimizer variable, so its daily tonnage
+# is just rate x HM target. Take the rate from the same source that seeds the
+# Fuel Ash editor, so the cap and the displayed fuel rate never disagree.
+nut_coke_rate_kg_per_thm = float(
+    recent_fuel_rates.get("nut_coke_rate_kg_thm")
+    or next(
+        (
+            row.get("rate_kg_per_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM)
+            for row in bmo_cfg.get("fuel_ash_inputs", [])
+            if str(row.get("fuel_id", "")).strip() == "nut_coke"
+        ),
+        DEFAULT_NUT_COKE_RATE_KG_PER_THM,
+    )
 )
 
 with st.form("bmo_model_input_form", clear_on_submit=False):
     st.markdown("### Model Inputs")
-    layout_col1, layout_col2, layout_col3, layout_col4 = st.columns(4)
-    with layout_col1:
-        chemistry_mode = st.selectbox(
-            "Chemistry mode",
-            options=["latest", "avg"],
-            index=0 if str(bmo_cfg.get("chemistry_mode", "latest")) == "latest" else 1,
-            key="bmo_chemistry_mode",
+
+    with st.expander("Production target and chemistry source", expanded=True):
+        layout_col1, layout_col2, layout_col3, layout_col4 = st.columns(4)
+        with layout_col1:
+            chemistry_mode = st.selectbox(
+                "Chemistry mode",
+                options=["latest", "avg"],
+                index=(
+                    0 if str(bmo_cfg.get("chemistry_mode", "latest")) == "latest" else 1
+                ),
+                key="bmo_chemistry_mode",
+            )
+        chemistry_window_days = layout_col2.slider(
+            "Chemistry window for avg (days)",
+            min_value=1,
+            max_value=180,
+            value=int(bmo_cfg.get("chemistry_window_days", 30)),
+            key="bmo_chemistry_window_days",
+            help=(
+                "Used only when Chemistry mode is avg. Latest mode uses the last "
+                "charged instance."
+            ),
         )
-    chemistry_window_days = layout_col2.slider(
-        "Chemistry window for avg (days)",
-        min_value=1,
-        max_value=180,
-        value=int(bmo_cfg.get("chemistry_window_days", 30)),
-        key="bmo_chemistry_window_days",
-        help="Used only when Chemistry mode is avg. Latest mode uses the last charged instance.",
-    )
-    target_production_mt = layout_col3.number_input(
-        "Target HM / Pig Iron (MT)",
-        min_value=0.0,
-        value=float(target_cfg.get("target_production_mt", 2350.0)),
-        step=5.0,
-        key="bmo_target_production_mt",
-    )
-    target_slag_qty_mt = layout_col4.number_input(
-        "Max Slag (MT)",
-        min_value=0.0,
-        value=float(target_cfg.get("target_slag_qty_mt", 750.0)),
-        step=5.0,
-        key="bmo_target_slag_qty_mt",
-    )
-    basicity_col1, basicity_col2 = st.columns(2)
-    target_slag_basicity_min = basicity_col1.number_input(
-        "Min Basicity CaO/SiO2",
-        min_value=0.0,
-        value=float(basicity_defaults["target_slag_basicity_min"]),
-        step=0.01,
-        format="%.3f",
-        key="bmo_target_slag_basicity_min",
-    )
-    target_slag_basicity_max = basicity_col2.number_input(
-        "Max Basicity CaO/SiO2",
-        min_value=0.0,
-        value=float(basicity_defaults["target_slag_basicity_max"]),
-        step=0.01,
-        format="%.3f",
-        key="bmo_target_slag_basicity_max",
-    )
-    target_slag_t_basicity_min = None
-    target_slag_t_basicity_max = None
+        target_production_mt = layout_col3.number_input(
+            "Target HM / Pig Iron (MT)",
+            min_value=0.0,
+            value=float(target_cfg.get("target_production_mt", 2350.0)),
+            step=5.0,
+            key="bmo_target_production_mt",
+        )
+        target_slag_rate_kg_per_thm = layout_col4.number_input(
+            "Max Slag Rate (kg/THM)",
+            min_value=0.0,
+            value=float(model_input_defaults["target_slag_rate_kg_per_thm"]),
+            step=5.0,
+            key="bmo_target_slag_rate_kg_per_thm",
+            help=(
+                "Plant basis: the slag rate the plant would measure. The model's own "
+                "calculated slag runs above that, so the cap is divided by "
+                f"{model_to_plant_slag_factor:.3f} before the optimizer sees it."
+            ),
+        )
+
+    with st.expander("Slag chemistry window", expanded=False):
+        st.caption(
+            "Set any limit to 0 to switch it off. Al2O3 and MgO are inert, so their "
+            "masses are fixed by what is charged and their percentages move "
+            "inversely with total slag: cutting the slag rate pushes Al2O3 up "
+            "towards its cap. MgO/Al2O3 is a mass ratio, so it does not move with "
+            "slag rate at all and constrains the burden alone."
+        )
+        basicity_col1, basicity_col2, basicity_col3, basicity_col4 = st.columns(4)
+        target_slag_basicity_min = basicity_col1.number_input(
+            "Min Basicity CaO/SiO2",
+            min_value=0.0,
+            value=float(model_input_defaults["target_slag_basicity_min"]),
+            step=0.01,
+            format="%.3f",
+            key="bmo_target_slag_basicity_min",
+        )
+        target_slag_basicity_max = basicity_col2.number_input(
+            "Max Basicity CaO/SiO2",
+            min_value=0.0,
+            value=float(model_input_defaults["target_slag_basicity_max"]),
+            step=0.01,
+            format="%.3f",
+            key="bmo_target_slag_basicity_max",
+        )
+        target_slag_t_basicity_min = basicity_col3.number_input(
+            "Min T Basicity (CaO+MgO)/SiO2",
+            min_value=0.0,
+            value=float(model_input_defaults["target_slag_t_basicity_min"]),
+            step=0.01,
+            format="%.3f",
+            key="bmo_target_slag_t_basicity_min",
+        )
+        target_slag_t_basicity_max = basicity_col4.number_input(
+            "Max T Basicity (CaO+MgO)/SiO2",
+            min_value=0.0,
+            value=float(model_input_defaults["target_slag_t_basicity_max"]),
+            step=0.01,
+            format="%.3f",
+            key="bmo_target_slag_t_basicity_max",
+        )
+        # Four columns again (last one left empty) so this row lines up with the
+        # basicity row above instead of rendering at a different width.
+        quality_col1, quality_col2, quality_col3, _quality_spacer = st.columns(4)
+        target_slag_al2o3_max_pct = quality_col1.number_input(
+            "Max Al2O3 in slag (%)",
+            min_value=0.0,
+            value=float(model_input_defaults["target_slag_al2o3_max_pct"]),
+            step=0.5,
+            format="%.2f",
+            key="bmo_target_slag_al2o3_max_pct",
+        )
+        target_slag_mgo_min_pct = quality_col2.number_input(
+            "Min MgO in slag (%)",
+            min_value=0.0,
+            value=float(model_input_defaults["target_slag_mgo_min_pct"]),
+            step=0.25,
+            format="%.2f",
+            key="bmo_target_slag_mgo_min_pct",
+        )
+        target_slag_mgo_al2o3_ratio_min = quality_col3.number_input(
+            "Min MgO/Al2O3",
+            min_value=0.0,
+            value=float(model_input_defaults["target_slag_mgo_al2o3_ratio_min"]),
+            step=0.01,
+            format="%.3f",
+            key="bmo_target_slag_mgo_al2o3_ratio_min",
+        )
+
+    with st.expander("Charging capacity", expanded=False):
+        st.caption(
+            "Charges per hour and tonnes per charge are the only two numbers that "
+            "set the throughput ceiling - charging runs 24 h, and nut coke is a "
+            "held set point so its tonnage follows from the HM target and is "
+            "deducted off the top. What is left is the daily room for IBRM plus "
+            "flux. Without this cap the optimizer can answer a low-Fe burden by "
+            "simply charging more of it, which the plant cannot do at capacity."
+        )
+        # Same 4-column grid as the slag window above so every input in the form
+        # sits on one consistent line width.
+        charge_col1, charge_col2, charge_col3, _charge_spacer = st.columns(4)
+        max_charges_per_hour = charge_col1.number_input(
+            "Max charges per hour",
+            min_value=0.0,
+            value=float(model_input_defaults["max_charges_per_hour"]),
+            step=0.05,
+            format="%.2f",
+            key="bmo_max_charges_per_hour",
+            help="Observed: median 6.38, p95 6.75, p99 7.02, max 7.25.",
+        )
+        charge_mass_mt = charge_col2.number_input(
+            "Max qty per charge (MT)",
+            min_value=0.0,
+            value=float(model_input_defaults["charge_mass_mt"]),
+            step=0.1,
+            format="%.2f",
+            key="bmo_charge_mass_mt",
+            help=(
+                "Total charge mass including nut coke. Plant charge reports show an "
+                "actual mean around 30.1 MT (p95 31.2) against the 26.4 default; see "
+                "docs/bmo_fuel_slag_si_findings.md section 6."
+            ),
+        )
+        burden_capacity_enabled = charge_col3.checkbox(
+            "Enforce charging capacity",
+            value=burden_capacity_enabled_default,
+            key="bmo_burden_capacity_enabled",
+        )
+
     model_apply_col, model_save_col = st.columns(2)
     model_inputs_applied = _form_submit_button(
         model_apply_col,
@@ -1714,7 +1898,7 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
     )
     model_inputs_saved = _form_submit_button(
         model_save_col,
-        "Save Basicity Inputs for Next Time",
+        "Save Settings for Next Time",
         type="secondary",
         width="stretch",
     )
@@ -1728,20 +1912,56 @@ if model_inputs_applied or model_inputs_saved:
                 {
                     "target_slag_basicity_min": target_slag_basicity_min,
                     "target_slag_basicity_max": target_slag_basicity_max,
+                    "target_slag_t_basicity_min": target_slag_t_basicity_min,
+                    "target_slag_t_basicity_max": target_slag_t_basicity_max,
+                    "target_slag_rate_kg_per_thm": target_slag_rate_kg_per_thm,
+                    "target_slag_al2o3_max_pct": target_slag_al2o3_max_pct,
+                    "target_slag_mgo_min_pct": target_slag_mgo_min_pct,
+                    "target_slag_mgo_al2o3_ratio_min": target_slag_mgo_al2o3_ratio_min,
+                    "max_charges_per_hour": max_charges_per_hour,
+                    "charge_mass_mt": charge_mass_mt,
                 },
             )
-            st.success(f"Basicity inputs saved to {saved_path}.")
+            st.success(f"Slag and charging settings saved to {saved_path}.")
         except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not save basicity inputs: {exc}")
+            st.error(f"Could not save settings: {exc}")
     else:
         st.success("Model inputs applied.")
 elif chemistry_mode == "latest":
     st.caption("Latest chemistry uses the last charged instance for each material.")
 basicity_bounds_valid = (
     target_slag_basicity_min <= target_slag_basicity_max
+    and target_slag_t_basicity_min <= target_slag_t_basicity_max
 )
 if target_slag_basicity_min > target_slag_basicity_max:
     st.error("Min Basicity CaO/SiO2 must be less than or equal to Max Basicity.")
+if target_slag_t_basicity_min > target_slag_t_basicity_max:
+    st.error("Min T Basicity must be less than or equal to Max T Basicity.")
+
+# A limit of 0 means "not enforced"; the solvers take None for that.
+target_slag_t_basicity_min = target_slag_t_basicity_min or None
+target_slag_t_basicity_max = (
+    target_slag_t_basicity_max if target_slag_t_basicity_max > 0.0 else None
+)
+target_slag_al2o3_max_pct = target_slag_al2o3_max_pct or None
+target_slag_mgo_min_pct = target_slag_mgo_min_pct or None
+target_slag_mgo_al2o3_ratio_min = target_slag_mgo_al2o3_ratio_min or None
+
+# The operator's rate is on the PLANT's basis; the solvers work in the model's,
+# which reads high. Convert once here so every downstream call sees one number.
+target_slag_qty_mt = (
+    float(target_slag_rate_kg_per_thm)
+    * float(target_production_mt)
+    / 1000.0
+    / model_to_plant_slag_factor
+)
+if model_to_plant_slag_factor != 1.0:
+    st.caption(
+        f"Slag cap: {target_slag_rate_kg_per_thm:,.0f} kg/THM plant basis "
+        f"= {target_slag_qty_mt:,.0f} MT model basis at "
+        f"{target_production_mt:,.0f} MT HM "
+        f"(model/plant factor {model_to_plant_slag_factor:.3f})."
+    )
 feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
 coke_correction_settings = load_coke_correction_settings(bmo_cfg)
 fuel_rate_anchor_basis = str(bmo_cfg.get("fuel_rate_anchor_basis", "model_cost"))
@@ -1773,15 +1993,42 @@ st.caption(
     f"from {target_production_mt:,.1f} MT HM at {hm_fe_pct_for_target:.2f}% Fe."
 )
 
-# Absolute cap handed to the solvers, re-derived from the current HM target so
-# it tracks the operator's input rather than a fixed reference day.
+# Charging ceiling, rebuilt from the operator's own charge rate / charge mass
+# rather than the yml snapshot. This is an absolute daily tonnage - the skips run
+# 24 h whatever HM is targeted - so only the nut-coke deduction tracks the target.
 max_burden_qty_mt: float | None = None
-if burden_capacity_enabled and burden_capacity_ratio > 0.0:
-    max_burden_qty_mt = float(burden_capacity_ratio) * float(target_production_mt)
+if burden_capacity_enabled:
+    max_burden_qty_mt = max_ibrm_flux_capacity_mt(
+        {
+            "max_charges_per_hour": max_charges_per_hour,
+            "charge_mass_mt": charge_mass_mt,
+        },
+        target_hot_metal_mt=target_production_mt,
+        nut_coke_rate_kg_per_thm=nut_coke_rate_kg_per_thm,
+    )
+    daily_charge_capacity_mt = (
+        charge_mass_mt * max_charges_per_hour * CHARGING_HOURS_PER_DAY
+    )
+    nut_coke_mt = nut_coke_rate_kg_per_thm * target_production_mt / 1000.0
+    if max_burden_qty_mt > 0.0:
+        st.caption(
+            f"Charging capacity: {max_charges_per_hour:,.2f} charges/hr x "
+            f"{charge_mass_mt:,.2f} MT x 24 h = {daily_charge_capacity_mt:,.0f} MT/day, "
+            f"less {nut_coke_mt:,.0f} MT nut coke "
+            f"({nut_coke_rate_kg_per_thm:,.0f} kg/THM x {target_production_mt:,.0f} MT HM) "
+            f"= IBRM + flux limited to {max_burden_qty_mt:,.0f} MT. "
+            "Blends needing more tonnes than this are rejected."
+        )
+    else:
+        max_burden_qty_mt = None
+        st.warning(
+            "Charging capacity works out to zero or less - nut coke alone fills "
+            "every charge. Check charges per hour and tonnes per charge."
+        )
+else:
     st.caption(
-        f"Charging capacity: IBRM + flux limited to {max_burden_qty_mt:,.0f} MT "
-        f"({burden_capacity_ratio:,.3f} MT per MT HM x {target_production_mt:,.0f} "
-        "MT HM). Blends needing more tonnes than this are rejected."
+        "Charging capacity is not being enforced: the optimizer may plan more "
+        "burden tonnes than the charging system can deliver."
     )
 
 default_selected_names = set(ui_cfg.get("default_selected_ores", []))
@@ -1883,17 +2130,36 @@ flux_inputs = flux_inputs_from_editor(edited_flux_df)
 with st.expander("Hot Metal Chemistry Assumptions", expanded=False):
     with st.form("bmo_assumption_input_form", clear_on_submit=False):
         hm_chem_values = render_hot_metal_chemistry(
-            hm_snapshot, bmo_cfg.get("slag_balance", {})
+            hm_snapshot,
+            apply_hm_chemistry_preferences(
+                bmo_cfg.get("slag_balance", {}) or {}, operator_preferences
+            ),
         )
+        hm_apply_col, hm_save_col = st.columns(2)
         assumptions_applied = _form_submit_button(
-            st,
+            hm_apply_col,
             "Apply Assumptions",
             type="primary",
             width="stretch",
         )
-if assumptions_applied:
+        assumptions_saved = _form_submit_button(
+            hm_save_col,
+            "Save for Later",
+            type="secondary",
+            width="stretch",
+        )
+if assumptions_applied or assumptions_saved:
     _clear_bmo_results()
-    st.success("Assumptions applied.")
+    if assumptions_saved:
+        try:
+            saved_path = save_hm_chemistry_preferences(
+                operator_preferences_path, hm_chem_values
+            )
+            st.success(f"Hot metal chemistry saved to {saved_path}.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not save hot metal chemistry: {exc}")
+    else:
+        st.success("Assumptions applied.")
 
 selected_ores = _selected_ores_from_editor(edited_df, ores)
 pellet_input_issues = validate_selected_pellet_inputs(
@@ -2178,8 +2444,11 @@ if requested_lp or requested_total:
                 feo_in_slag_pct=feo_in_slag_pct,
                 target_slag_basicity_min=target_slag_basicity_min,
                 target_slag_basicity_max=target_slag_basicity_max,
-                target_slag_t_basicity_min=None,
-                target_slag_t_basicity_max=None,
+                target_slag_t_basicity_min=target_slag_t_basicity_min,
+                target_slag_t_basicity_max=target_slag_t_basicity_max,
+                target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+                target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+                target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
                 max_burden_qty_mt=max_burden_qty_mt,
                 fuel_ash_inputs=fuel_ash_inputs,
                 flux_inputs=flux_inputs,
@@ -2265,6 +2534,11 @@ if requested_lp or requested_total:
                     target_slag_qty_mt=target_slag_qty_mt,
                     target_slag_basicity_min=target_slag_basicity_min,
                     target_slag_basicity_max=target_slag_basicity_max,
+                    target_slag_t_basicity_min=target_slag_t_basicity_min,
+                    target_slag_t_basicity_max=target_slag_t_basicity_max,
+                    target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+                    target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+                    target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
                     max_burden_qty_mt=max_burden_qty_mt,
                 )
                 lp_result.feasible = len(lp_result.violations) == 0
@@ -2375,8 +2649,11 @@ if requested_lp or requested_total:
                 feo_in_slag_pct=feo_in_slag_pct,
                 target_slag_basicity_min=target_slag_basicity_min,
                 target_slag_basicity_max=target_slag_basicity_max,
-                target_slag_t_basicity_min=None,
-                target_slag_t_basicity_max=None,
+                target_slag_t_basicity_min=target_slag_t_basicity_min,
+                target_slag_t_basicity_max=target_slag_t_basicity_max,
+                target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+                target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+                target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
                 max_burden_qty_mt=max_burden_qty_mt,
                 model_service=model_service,
                 process_context=process_context,
@@ -2488,7 +2765,6 @@ if lp_result is not None or de_result is not None:
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 is_lp_mode=True,
                 charge_mass_mt=charge_mass_mt,
-                charging_hours_per_day=charging_hours_per_day,
             )
             _render_si_metric(st.session_state.get("bmo_lp_si"))
             render_coke_correction_breakdown(lp_result)
@@ -2534,7 +2810,6 @@ if lp_result is not None or de_result is not None:
                 de_result,
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 charge_mass_mt=charge_mass_mt,
-                charging_hours_per_day=charging_hours_per_day,
             )
             _render_si_metric(st.session_state.get("bmo_de_si"))
             render_coke_correction_breakdown(de_result)
@@ -2581,7 +2856,6 @@ if lp_result is not None or de_result is not None:
                 dust_inputs=dust_inputs,
                 slag_balance_settings=slag_balance_settings,
                 charge_mass_mt=charge_mass_mt,
-                charging_hours_per_day=charging_hours_per_day,
                 manual_ores=ores,
             )
         else:

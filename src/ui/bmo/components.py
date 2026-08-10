@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.bmo.calculations import compute_charging_requirements
+from utils.bmo.constraints import CHARGING_HOURS_PER_DAY
 from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
 from utils.bmo.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
 
@@ -689,40 +690,46 @@ def render_hot_metal_chemistry(
     cfg_defaults: dict[str, Any],
 ) -> dict[str, float]:
     """
-    Render Hot Metal PI chemistry inputs prefilled from live HM analysis.
+    Render the held slag-side Hot Metal PI chemistry, with the live cast beside it.
 
     These four values feed the full slag-balance pig-iron partitioning: HM C/Si/S
     determine the metallic-mass denominator and the SiO2 consumed by Si reduction;
-    HM Others (Mn+P+Ti+Cr) closes the PI chemistry. Operators can override the
-    prefilled values when the latest HM sample looks abnormal.
+    HM Others (Mn+P+Ti+Cr) closes the PI chemistry.
+
+    They are deliberately NOT prefilled from the latest cast. A single HM_SLAG row
+    swings much more than the real operating point, and letting that swing into
+    the slag balance moves calculated slag and basicity for a reason unrelated to
+    the blend under comparison - two blends run minutes apart would not be
+    comparable. The live cast is still fetched and displayed underneath so a
+    genuine drift in the operating point stays visible.
+
+    Scope is the slag side only. HM Mn% and Ti% partitioning still come from the
+    live snapshot, and the Si prediction model and coke-correction Si term are
+    untouched.
 
     Args:
          - hm_snapshot: dict[str, Any] - Snapshot from get_hm_slag_snapshot; may be empty.
-         - cfg_defaults: dict[str, Any] - yml slag_balance defaults used as fallback.
+         - cfg_defaults: dict[str, Any] - Held slag-side values: yml ``slag_balance``
+           defaults, already overlaid with any saved operator preference.
 
     Returns:
          - return dict[str, float] - Edited carbon_pct, silicon_pct, sulphur_pct, other_pct.
     """
 
     st.markdown("### Hot Metal Chemistry")
-    source = hm_snapshot.get("source") if hm_snapshot else None
-    n_rows = int(hm_snapshot.get("n_rows_used", 0) or 0) if hm_snapshot else 0
-    if source:
-        plural = "s" if n_rows != 1 else ""
-        st.caption(f"Source: {source} ({n_rows} HM_SLAG row{plural})")
-    else:
-        st.caption("HM_SLAG data unavailable — falling back to yml defaults")
+    st.caption(
+        "Slag-side only. These four values set the pig-iron closure and the SiO2 "
+        "consumed by Si reduction in the slag balance. They are HELD at the "
+        "operating point rather than tracking the latest cast, because a single "
+        "cast's Si swings far more than the true operating point does and that "
+        "swing would move calculated slag and basicity for reasons unrelated to "
+        "the blend being compared. The Si prediction and the coke-correction Si "
+        "term are unaffected - both still use live / model Si."
+    )
 
-    def _prefill(live_key: str, fallback_key: str) -> float:
-        live = hm_snapshot.get(live_key) if hm_snapshot else None
+    def _default(key: str) -> float:
         try:
-            live_value = float(live) if live is not None else 0.0
-        except (TypeError, ValueError):
-            live_value = 0.0
-        if live_value > 0:
-            return live_value
-        try:
-            return float(cfg_defaults.get(fallback_key, 0.0))
+            return float(cfg_defaults.get(key, 0.0) or 0.0)
         except (TypeError, ValueError):
             return 0.0
 
@@ -733,8 +740,9 @@ def render_hot_metal_chemistry(
                 "HM C (%)",
                 min_value=0.0,
                 max_value=10.0,
-                value=_prefill("chem_pct_c", "carbon_pct"),
+                value=_default("carbon_pct"),
                 step=0.01,
+                key="bmo_hm_carbon_pct",
             )
         ),
         "silicon_pct": float(
@@ -742,8 +750,9 @@ def render_hot_metal_chemistry(
                 "HM Si (%)",
                 min_value=0.0,
                 max_value=5.0,
-                value=_prefill("chem_pct_si", "silicon_pct"),
+                value=_default("silicon_pct"),
                 step=0.01,
+                key="bmo_hm_silicon_pct",
             )
         ),
         "sulphur_pct": float(
@@ -751,9 +760,10 @@ def render_hot_metal_chemistry(
                 "HM S (%)",
                 min_value=0.0,
                 max_value=1.0,
-                value=_prefill("chem_pct_s", "sulphur_pct"),
+                value=_default("sulphur_pct"),
                 step=0.001,
                 format="%.3f",
+                key="bmo_hm_sulphur_pct",
             )
         ),
         "other_pct": float(
@@ -761,12 +771,78 @@ def render_hot_metal_chemistry(
                 "HM Others (%) (Mn+P+Ti+Cr)",
                 min_value=0.0,
                 max_value=5.0,
-                value=_prefill("others_pct", "other_pct"),
+                value=_default("other_pct"),
                 step=0.01,
+                key="bmo_hm_other_pct",
             )
         ),
     }
+
+    # The live cast is still fetched and shown, so the operator can see when the
+    # held values have drifted away from what the furnace is actually making.
+    _render_live_hm_reference(hm_snapshot, values)
     return values
+
+
+def _render_live_hm_reference(
+    hm_snapshot: dict[str, Any],
+    held_values: dict[str, float],
+) -> None:
+    """
+    Show the latest HM_SLAG cast beside the held slag-side values.
+
+    Reference only - nothing here feeds a calculation. Its job is to make a
+    drifting operating point visible, so the held values get revisited instead
+    of quietly going stale.
+
+    Args:
+         - hm_snapshot: dict[str, Any] - Snapshot from get_hm_slag_snapshot.
+         - held_values: dict[str, float] - The values actually used by the balance.
+
+    Returns:
+         - return None - Writes a caption to the Streamlit page.
+    """
+
+    source = hm_snapshot.get("source") if hm_snapshot else None
+    if not source:
+        st.caption("Live HM_SLAG unavailable - cannot compare against the latest cast.")
+        return
+
+    n_rows = int(hm_snapshot.get("n_rows_used", 0) or 0)
+    plural = "s" if n_rows != 1 else ""
+
+    def _live(key: str) -> float | None:
+        raw = hm_snapshot.get(key)
+        try:
+            value = float(raw) if raw is not None else None
+        except (TypeError, ValueError):
+            return None
+        return value if value and value > 0 else None
+
+    parts: list[str] = []
+    for label, live_key, held_key, precision in (
+        ("C", "chem_pct_c", "carbon_pct", 2),
+        ("Si", "chem_pct_si", "silicon_pct", 2),
+        ("S", "chem_pct_s", "sulphur_pct", 3),
+        ("Others", "others_pct", "other_pct", 2),
+    ):
+        live_value = _live(live_key)
+        if live_value is None:
+            continue
+        held = float(held_values.get(held_key, 0.0) or 0.0)
+        delta = live_value - held
+        parts.append(
+            f"{label} {live_value:.{precision}f} ({delta:+.{precision}f} vs held)"
+        )
+
+    if not parts:
+        st.caption(f"Latest cast: {source} ({n_rows} HM_SLAG row{plural}) - no usable values.")
+        return
+    st.caption(
+        f"Latest cast for reference ({source}, {n_rows} HM_SLAG row{plural}): "
+        + ", ".join(parts)
+        + ". Not used by the slag balance."
+    )
 
 
 def render_slag_balance_settings(
@@ -863,7 +939,6 @@ def render_blend_metrics(
     observed_slag_rate_kg_per_thm: float | None = None,
     is_lp_mode: bool = False,
     charge_mass_mt: float = 26.4,
-    charging_hours_per_day: float = 24.0,
 ) -> None:
     """
     Render summary metrics and constraint warnings for a blend result.
@@ -877,8 +952,8 @@ def render_blend_metrics(
          - title: str - Section title shown above the metrics.
          - blend: BlendEvaluation - Evaluated blend result to display.
          - observed_slag_rate_kg_per_thm: float | None - Plant slag rate from DPR for comparison.
-         - charge_mass_mt: float - Tonnes carried by one furnace charge.
-         - charging_hours_per_day: float - Hours over which the daily blend is charged.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge. Charging
+           runs 24 h (``CHARGING_HOURS_PER_DAY``), so that is not an argument.
 
     Returns:
          - return None - Writes metrics and warnings to the Streamlit page.
@@ -1020,7 +1095,7 @@ def render_blend_metrics(
     charging = compute_charging_requirements(
         blend,
         charge_mass_mt=charge_mass_mt,
-        hours_per_day=charging_hours_per_day,
+        hours_per_day=CHARGING_HOURS_PER_DAY,
     )
 
     # Row 2: flux rate, Fe%, and slag.
@@ -1071,6 +1146,29 @@ def render_blend_metrics(
         b1.metric("Slag Basicity CaO/SiO2", f"{blend.slag_basicity:,.3f}")
     else:
         b1.metric("Slag Basicity CaO/SiO2", "n/a")
+
+    # Row 4: slag-quality window. Al2O3 and MgO are shown next to basicity
+    # because they move together: all three are ratios against the same slag,
+    # so a change in slag rate shifts every one of them at once.
+    q1, q2, q3 = st.columns(3)
+    slag_chemistry_denominator_mt = float(
+        blend.diagnostics.get("slag_chemistry_denominator_mt", 0.0) or 0.0
+    )
+    if slag_chemistry_denominator_mt > 0:
+        q1.metric("Slag Al2O3 (%)", f"{blend.slag_al2o3_pct:,.2f}")
+        q2.metric("Slag MgO (%)", f"{blend.slag_mgo_pct:,.2f}")
+        q3.metric(
+            "Slag MgO/Al2O3",
+            f"{blend.slag_mgo_al2o3_ratio:,.3f}",
+            help=(
+                "Mass ratio, not a ratio of the two percentages beside it. It does "
+                "not move with the slag rate, so it constrains the burden alone."
+            ),
+        )
+    else:
+        q1.metric("Slag Al2O3 (%)", "n/a")
+        q2.metric("Slag MgO (%)", "n/a")
+        q3.metric("Slag MgO/Al2O3", "n/a")
 
     fuel_rate_estimate = blend.diagnostics.get("fuel_rate_estimate")
     anchor_estimate = blend.diagnostics.get("fuel_rate_estimate_anchor")
@@ -1179,7 +1277,7 @@ def render_blend_metrics(
         ),
         help=(
             "Production / (Required Charges (/hr) x "
-            f"{charging_hours_per_day:g} hours)."
+            f"{CHARGING_HOURS_PER_DAY:g} hours)."
         ),
     )
 

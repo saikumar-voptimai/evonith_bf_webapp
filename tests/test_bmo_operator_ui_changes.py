@@ -244,7 +244,14 @@ def test_ore_editor_preferences_load_reads_yaml(monkeypatch) -> None:
     assert loaded["ore_editor"]["rows"]["ore_a"]["price_rs_per_mt"] == 7250.0
 
 
-def test_model_input_preferences_persist_only_basicity_bounds() -> None:
+def test_model_input_preferences_persist_the_whole_slag_window() -> None:
+    """Every operator-set slag limit persists; plant targets do not.
+
+    Target HM and the absolute slag tonnage are per-run planning decisions, so
+    they stay out. The slag window (basicity, T basicity, rate, Al2O3, MgO,
+    MgO/Al2O3) is a standing spec the operator should not retype each session.
+    """
+
     prefs = build_model_input_preferences(
         {
             "target_production_mt": 2350.0,
@@ -253,6 +260,16 @@ def test_model_input_preferences_persist_only_basicity_bounds() -> None:
             "target_slag_basicity_max": 1.14,
             "target_slag_t_basicity_min": 1.24,
             "target_slag_t_basicity_max": 1.40,
+            "target_slag_rate_kg_per_thm": 290.0,
+            "target_slag_al2o3_max_pct": 20.0,
+            "target_slag_mgo_min_pct": 7.0,
+            "target_slag_mgo_al2o3_ratio_min": 0.36,
+            "max_charges_per_hour": 7.5,
+            "charge_mass_mt": 30.1,
+            # Not persisted: charging is always 24 h, and nut-coke tonnage is
+            # derived from its rate rather than entered.
+            "charging_hours_per_day": 24.0,
+            "nut_coke_reserved_mt": 160.0,
         }
     )
 
@@ -260,8 +277,20 @@ def test_model_input_preferences_persist_only_basicity_bounds() -> None:
         "model_inputs": {
             "target_slag_basicity_min": 1.02,
             "target_slag_basicity_max": 1.14,
+            "target_slag_t_basicity_min": 1.24,
+            "target_slag_t_basicity_max": 1.40,
+            "target_slag_rate_kg_per_thm": 290.0,
+            "target_slag_al2o3_max_pct": 20.0,
+            "target_slag_mgo_min_pct": 7.0,
+            "target_slag_mgo_al2o3_ratio_min": 0.36,
+            "max_charges_per_hour": 7.5,
+            "charge_mass_mt": 30.1,
         }
     }
+    assert "target_production_mt" not in prefs["model_inputs"]
+    assert "target_slag_qty_mt" not in prefs["model_inputs"]
+    assert "charging_hours_per_day" not in prefs["model_inputs"]
+    assert "nut_coke_reserved_mt" not in prefs["model_inputs"]
 
 
 def test_model_input_preferences_override_static_defaults() -> None:
@@ -283,7 +312,9 @@ def test_model_input_preferences_override_static_defaults() -> None:
     assert applied["target_slag_basicity_min"] == 1.05
     assert applied["target_slag_basicity_max"] == 1.16
     assert applied["target_slag_t_basicity_min"] == 1.25
-    assert applied["target_slag_t_basicity_max"] == 1.41
+    # A saved T-basicity bound now wins over the static-dataset default, the same
+    # way a saved CaO/SiO2 bound already did.
+    assert applied["target_slag_t_basicity_max"] == 1.38
 
 
 def test_model_input_save_preserves_ore_preferences(monkeypatch) -> None:
@@ -314,8 +345,8 @@ def test_model_input_save_preserves_ore_preferences(monkeypatch) -> None:
 
     assert loaded["ore_editor"]["rows"]["ore_a"]["price_rs_per_mt"] == 7000.0
     assert loaded["model_inputs"]["target_slag_basicity_min"] == 1.02
-    assert "target_slag_t_basicity_min" not in loaded["model_inputs"]
-    assert "target_slag_t_basicity_max" not in loaded["model_inputs"]
+    assert loaded["model_inputs"]["target_slag_t_basicity_min"] == 1.24
+    assert loaded["model_inputs"]["target_slag_t_basicity_max"] == 1.40
 
 
 def test_ore_input_save_preserves_model_preferences(monkeypatch) -> None:
