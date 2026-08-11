@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from domain.optimization_runtime import ObjectiveResult, OptimizerRunner
+from utils.bmo.calculations import scale_ore_quantities_to_hot_metal
 from utils.bmo.coke_correction import (
     CokeCorrectionReference,
     CokeCorrectionSettings,
@@ -31,6 +33,7 @@ from utils.bmo.types import (
     OreInput,
     SlagBalanceSettings,
 )
+
 
 def _project_shares(
     raw: np.ndarray, min_shares: np.ndarray, max_shares: np.ndarray
@@ -57,6 +60,12 @@ def _quantities_from_shares(
     shares: np.ndarray,
     ores: list[OreInput],
     target_fe_mt: float,
+    hot_metal_target_mt: float | None = None,
+    fuel_ash_inputs: list[FuelAshInput] | None = None,
+    flux_inputs: list[FluxInput] | None = None,
+    dust_inputs: list[DustInput] | None = None,
+    slag_balance_settings: SlagBalanceSettings | None = None,
+    charge_mass_mt: float = 26.4,
 ) -> np.ndarray:
     fe_per_wet_mt = np.array(
         [
@@ -71,7 +80,29 @@ def _quantities_from_shares(
     if fe_per_blend_mt <= 0.0:
         return np.zeros(len(ores), dtype=float)
     total_wet_mt = float(target_fe_mt) / fe_per_blend_mt
-    return shares * total_wet_mt
+    quantities = shares * total_wet_mt
+    if (
+        hot_metal_target_mt is not None
+        and float(hot_metal_target_mt) > 0.0
+        and slag_balance_settings is not None
+        and slag_balance_settings.enabled
+    ):
+        scaled = scale_ore_quantities_to_hot_metal(
+            ores=ores,
+            reference_quantities_mt={
+                ore.ore_id: float(quantities[index]) for index, ore in enumerate(ores)
+            },
+            target_hot_metal_mt=float(hot_metal_target_mt),
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            charge_mass_mt=charge_mass_mt,
+        )
+        quantities = np.array(
+            [float(scaled.get(ore.ore_id, 0.0)) for ore in ores], dtype=float
+        )
+    return quantities
 
 
 def _build_initial_share_population(
@@ -83,9 +114,7 @@ def _build_initial_share_population(
     seed: int,
 ) -> np.ndarray:
     rng = np.random.default_rng(seed)
-    population: list[np.ndarray] = [
-        _project_shares(lp_shares, min_shares, max_shares)
-    ]
+    population: list[np.ndarray] = [_project_shares(lp_shares, min_shares, max_shares)]
     scales = [0.01, 0.025, 0.05, 0.075, 0.10]
     while len(population) < sample_count:
         scale = scales[(len(population) - 1) % len(scales)]
@@ -180,6 +209,7 @@ def run_nonlinear_optimizer(
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
     hot_metal_target_mt: float | None = None,
+    charge_mass_mt: float = 26.4,
     coke_correction_settings: CokeCorrectionSettings | None = None,
     coke_correction_reference: CokeCorrectionReference | None = None,
     hot_metal_si_pct: float | None = None,
@@ -246,7 +276,9 @@ def run_nonlinear_optimizer(
     # and basicity model, so it can reject a burden the exact evaluation accepts.
     # DE scores with soft penalties, so it can return a best-effort blend there,
     # flagged with its violations, instead of the page showing nothing at all.
-    seed_strategy = str(de_cfg.get("initial_solution", "lp_else_random")).strip().lower()
+    seed_strategy = (
+        str(de_cfg.get("initial_solution", "lp_else_random")).strip().lower()
+    )
     if seed_strategy not in {"lp", "random", "lp_else_random"}:
         seed_strategy = "lp_else_random"
 
@@ -277,6 +309,7 @@ def run_nonlinear_optimizer(
             # around its seed - it would never find its way back out.
             coke_correction_settings=coke_correction_settings,
             coke_correction_reference=coke_correction_reference,
+            charge_mass_mt=charge_mass_mt,
         )
     if lp_blend is None and seed_strategy == "lp":
         return None, [
@@ -338,6 +371,7 @@ def run_nonlinear_optimizer(
         coke_correction_reference=coke_correction_reference,
         hot_metal_si_pct=hot_metal_si_pct,
         fuel_rate_anchor_basis=fuel_rate_anchor_basis,
+        charge_mass_mt=charge_mass_mt,
     )
 
     # Every DE function evaluation is recorded here as a compact
@@ -362,12 +396,22 @@ def run_nonlinear_optimizer(
 
         raw = np.asarray(raw_x, dtype=float)
         ore_x = raw[:n_ore]
-        flux_x = raw[n_ore:n_ore + n_flux]
+        flux_x = raw[n_ore : n_ore + n_flux]
         shares = _project_shares(ore_x, min_shares, max_shares)
+        candidate_flux_inputs = list(evaluator.fixed_fluxes) + [
+            replace(flux, wet_qty_mt=float(flux_x[j]))
+            for j, flux in enumerate(variable_fluxes)
+        ]
         quantities = _quantities_from_shares(
             shares=shares,
             ores=ores,
             target_fe_mt=float(target_production_mt),
+            hot_metal_target_mt=hot_metal_target_mt,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=candidate_flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            charge_mass_mt=charge_mass_mt,
         )
         result = evaluator.evaluate_quantities(quantities, flux_quantities=flux_x)
         result.diagnostics["candidate_shares_pct"] = (shares * 100.0).tolist()
@@ -415,7 +459,9 @@ def run_nonlinear_optimizer(
     sample_count = max(
         min_samples, int(de_cfg.get("initial_population_samples", min_samples))
     )
-    seed_used = "lp" if (lp_blend is not None and lp_blend.total_qty_mt > 0) else "random"
+    seed_used = (
+        "lp" if (lp_blend is not None and lp_blend.total_qty_mt > 0) else "random"
+    )
     if lp_blend is not None and lp_blend.total_qty_mt > 0:
         lp_quantities = np.array(
             [float(lp_blend.quantities_mt.get(ore.ore_id, 0.0)) for ore in ores],

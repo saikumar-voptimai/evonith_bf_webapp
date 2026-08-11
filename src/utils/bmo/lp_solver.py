@@ -73,6 +73,8 @@ class LinearSlagTerms:
     al2o3_base_mt: float = 0.0
     mgo_coeff: np.ndarray = field(default_factory=lambda: np.zeros(0))
     mgo_base_mt: float = 0.0
+    production_coeff: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    production_base_mt: float = 0.0
 
 
 def _structural_infeasibility_reasons(
@@ -224,6 +226,7 @@ def _build_linear_slag_and_basicity_terms(
     hot_metal_target_mt: float | None,
     variable_fluxes: list[FluxInput] | None = None,
     target_production_mt: float = 0.0,
+    charge_mass_mt: float = 26.4,
 ) -> LinearSlagTerms:
     """
     Estimate linear final-slag, basicity, and slag-chemistry terms for LP constraints.
@@ -259,6 +262,7 @@ def _build_linear_slag_and_basicity_terms(
     # diagnostics. Adding a bounded slag quantity means adding one row here.
     probes: dict[str, str | None] = {
         "slag": None,
+        "production": "iron_closure_production_mt",
         "basicity_numerator": "slag_basicity_numerator_mt",
         "basicity_denominator": "slag_basicity_denominator_mt",
         "t_basicity_numerator": "slag_t_basicity_numerator_mt",
@@ -283,6 +287,7 @@ def _build_linear_slag_and_basicity_terms(
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
         hot_metal_target_mt=hot_metal_target_mt,
+        charge_mass_mt=charge_mass_mt,
     )
     base_values = {key: _read(base_blend, key) for key in probes}
     coeffs: dict[str, list[float]] = {key: [] for key in probes}
@@ -302,6 +307,7 @@ def _build_linear_slag_and_basicity_terms(
             dust_inputs=dust_inputs,
             slag_balance_settings=slag_balance_settings,
             hot_metal_target_mt=hot_metal_target_mt,
+            charge_mass_mt=charge_mass_mt,
         )
         for key in probes:
             coeffs[key].append(_read(unit_blend, key) - base_values[key])
@@ -318,10 +324,12 @@ def _build_linear_slag_and_basicity_terms(
             feo_in_slag_pct=feo_in_slag_pct,
             fuel_cost_per_thm_rs=0.0,
             fuel_ash_inputs=fuel_ash_inputs,
-            flux_inputs=base_flux_inputs + [replace(flux, wet_qty_mt=1.0, enabled=True)],
+            flux_inputs=base_flux_inputs
+            + [replace(flux, wet_qty_mt=1.0, enabled=True)],
             dust_inputs=dust_inputs,
             slag_balance_settings=slag_balance_settings,
             hot_metal_target_mt=hot_metal_target_mt,
+            charge_mass_mt=charge_mass_mt,
         )
         for key in probes:
             coeffs[key].append(_read(unit_flux_blend, key) - base_values[key])
@@ -353,6 +361,8 @@ def _build_linear_slag_and_basicity_terms(
         al2o3_base_mt=intercepts["al2o3"],
         mgo_coeff=arrays["mgo"],
         mgo_base_mt=intercepts["mgo"],
+        production_coeff=arrays["production"],
+        production_base_mt=intercepts["production"],
     )
 
 
@@ -492,7 +502,9 @@ def _explain_lp_infeasibility(
             ),
         },
         {
-            "keys": {"target_slag_mgo_al2o3_ratio_min": target_slag_mgo_al2o3_ratio_min},
+            "keys": {
+                "target_slag_mgo_al2o3_ratio_min": target_slag_mgo_al2o3_ratio_min
+            },
             "active": target_slag_mgo_al2o3_ratio_min is not None,
             "label": "the slag MgO/Al2O3 floor",
             "attr": "slag_mgo_al2o3_ratio",
@@ -600,10 +612,14 @@ def _explain_lp_infeasibility(
                 }
                 flux_text = ""
                 if added_flux:
-                    flux_text = " LP would add " + ", ".join(
-                        f"{flux_id} {qty:,.0f} MT"
-                        for flux_id, qty in added_flux.items()
-                    ) + "."
+                    flux_text = (
+                        " LP would add "
+                        + ", ".join(
+                            f"{flux_id} {qty:,.0f} MT"
+                            for flux_id, qty in added_flux.items()
+                        )
+                        + "."
+                    )
                 reasons.append(
                     "The blend can meet the slag basicity limits only if the "
                     "Max Slag cap is lifted. With LP-added flux it reaches "
@@ -663,6 +679,7 @@ def run_lp_baseline(
     hot_metal_target_mt: float | None = None,
     coke_correction_settings: CokeCorrectionSettings | None = None,
     coke_correction_reference: CokeCorrectionReference | None = None,
+    charge_mass_mt: float = 26.4,
     _explain: bool = True,
 ) -> tuple[BlendEvaluation | None, list[str]]:
     """
@@ -735,35 +752,14 @@ def run_lp_baseline(
         if flux.optimizable and flux.enabled and float(flux.stock_mt) > 0.0
     ]
     variable_flux_ids = {flux.flux_id for flux in variable_fluxes}
-    fixed_fluxes = [flux for flux in all_fluxes if flux.flux_id not in variable_flux_ids]
+    fixed_fluxes = [
+        flux for flux in all_fluxes if flux.flux_id not in variable_flux_ids
+    ]
     n_flux = len(variable_fluxes)
 
     ore_prices = [float(ore.price_rs_per_mt) for ore in ores]
     flux_prices = [float(flux.price_rs_per_mt) for flux in variable_fluxes]
     c = np.array(ore_prices + flux_prices, dtype=float)
-
-    fe_coeff = np.concatenate(
-        [
-            np.array(
-                [
-                    compute_dry_fraction(ore.chemistry.moisture_pct)
-                    * (float(ore.chemistry.fe_t_pct) / 100.0)
-                    for ore in ores
-                ],
-                dtype=float,
-            ),
-            # Flux iron reports to slag, not hot metal, so flux adds no Fe here.
-            np.zeros(n_flux, dtype=float),
-        ]
-    )
-    a_ub_rows = [
-        -fe_coeff,  # Fe >= target
-        fe_coeff,  # Fe <= target + tolerance
-    ]
-    b_ub_values = [
-        -float(target_production_mt),
-        float(target_production_mt) + FE_TOLERANCE_MT,
-    ]
 
     terms = _build_linear_slag_and_basicity_terms(
         ores,
@@ -775,7 +771,42 @@ def run_lp_baseline(
         hot_metal_target_mt=hot_metal_target_mt,
         variable_fluxes=variable_fluxes,
         target_production_mt=target_production_mt,
+        charge_mass_mt=charge_mass_mt,
     )
+    use_full_iron_closure = bool(
+        slag_balance_settings is not None
+        and slag_balance_settings.enabled
+        and hot_metal_target_mt is not None
+        and float(hot_metal_target_mt) > 0.0
+    )
+    if use_full_iron_closure:
+        production_coeff = terms.production_coeff
+        production_base_mt = float(terms.production_base_mt)
+        production_target_mt = float(hot_metal_target_mt)
+    else:
+        production_coeff = np.concatenate(
+            [
+                np.array(
+                    [
+                        compute_dry_fraction(ore.chemistry.moisture_pct)
+                        * (float(ore.chemistry.fe_t_pct) / 100.0)
+                        for ore in ores
+                    ],
+                    dtype=float,
+                ),
+                np.zeros(n_flux, dtype=float),
+            ]
+        )
+        production_base_mt = 0.0
+        production_target_mt = float(target_production_mt)
+    # base + coeff.x >= target and <= target+tolerance.  On the full-balance
+    # path this is actual pig iron, so fuel/flux Fe, dust Fe, FeO loss, and PI
+    # loss are all present in the production closure.
+    a_ub_rows = [-production_coeff, production_coeff]
+    b_ub_values = [
+        production_base_mt - production_target_mt,
+        production_target_mt + FE_TOLERANCE_MT - production_base_mt,
+    ]
     slag_coeff = terms.slag_coeff
     slag_base_mt = terms.slag_base_mt
     slag_row_idx = len(a_ub_rows)
@@ -947,8 +978,7 @@ def run_lp_baseline(
             err = result.message or "LP solver failed."
             if attempt > 0:
                 return None, [
-                    "LP infeasible or failed after exact slag tightening: "
-                    f"{err}"
+                    "LP infeasible or failed after exact slag tightening: " f"{err}"
                 ]
             messages = [f"LP infeasible or failed: {err}"]
             if _explain:
@@ -977,9 +1007,7 @@ def run_lp_baseline(
                 )
             return None, messages
 
-        quantities = {
-            ore.ore_id: float(result.x[idx]) for idx, ore in enumerate(ores)
-        }
+        quantities = {ore.ore_id: float(result.x[idx]) for idx, ore in enumerate(ores)}
         # Rebuild the flux list with the LP-decided quantities for optimisable
         # fluxes so the final evaluation reflects the flux the LP actually added.
         solved_flux_quantities = {
@@ -1000,6 +1028,7 @@ def run_lp_baseline(
             dust_inputs=dust_inputs,
             slag_balance_settings=slag_balance_settings,
             hot_metal_target_mt=hot_metal_target_mt,
+            charge_mass_mt=charge_mass_mt,
         )
         blend.diagnostics["lp_flux_quantities_mt"] = solved_flux_quantities
         # Cost of the flux the LP bought (per THM), on the same HM basis the blend
@@ -1008,9 +1037,7 @@ def run_lp_baseline(
             float(result.x[n + j]) * float(flux.price_rs_per_mt)
             for j, flux in enumerate(variable_fluxes)
         )
-        flux_thm_basis = float(
-            hot_metal_target_mt or blend.fe_production_mt or 0.0
-        )
+        flux_thm_basis = float(hot_metal_target_mt or blend.fe_production_mt or 0.0)
         blend.diagnostics["flux_cost_per_thm_rs"] = (
             float(flux_cost_total_rs / flux_thm_basis) if flux_thm_basis > 0.0 else 0.0
         )
@@ -1047,9 +1074,7 @@ def run_lp_baseline(
         if not violations:
             blend.feasible = True
             blend.violations = []
-            blend.diagnostics["lp_exact_slag_tightening_mt"] = float(
-                slag_tightening_mt
-            )
+            blend.diagnostics["lp_exact_slag_tightening_mt"] = float(slag_tightening_mt)
             blend.diagnostics["lp_exact_slag_attempts"] = int(attempt + 1)
             return blend, []
 

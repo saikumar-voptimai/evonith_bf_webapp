@@ -67,13 +67,13 @@ bmo:
   #
   # The skips accept at most ``max_charges_per_hour`` charges of about
   # ``charge_mass_mt`` each, around the clock. Nut coke rides in those same
-  # charges but is not an optimizer variable - it is pinned at 70 kg/THM - so
+  # charges but is not an optimizer variable, so
   # its tonnage follows from the hot-metal target and is deducted off the top.
   # What is left is the daily room for IBRM (ore, sinter, pellet) plus flux:
   #
-  #   capacity = 26.4 * 7.5 * 24        = 4752 MT/day
-  #   nut coke = 70 * 2350 / 1000       =  164 MT/day
-  #   room     = 4752 - 164             = 4588 MT/day
+  #   capacity = charge_mass * max_charges_per_hour * 24
+  #   nut coke = wet_rate_kg_per_thm * hot_metal_target / 1000
+  #   room     = capacity - nut_coke
   #
   # Without this cap the optimizer is free to answer a low-Fe burden by simply
   # charging more of it. The plant cannot: charges are already at capacity, so
@@ -94,74 +94,87 @@ bmo:
     enabled: true
     # Observed charges/hr: median 6.38, p95 6.75, p99 7.02, max 7.25.
     max_charges_per_hour: 7.5
-    # OPEN QUESTION (findings section 6): the plant's own charge reports put the
-    # actual total charge mass at a mean of 30.1 MT, p95 31.2, against the 26.4
-    # here - a ~14% difference in the ceiling. Needs plant confirmation before
-    # the default is moved; the operator can already override it on the page.
-    charge_mass_mt: 26.4
+    # Workbook BURDEN-case total charge mass. The operator can override it on
+    # the page when the current skip-car condition or burden bulk density differs.
+    charge_mass_mt: 26.45927
 
   fuel_ash_inputs:
     - fuel_id: coke
       display_name: Coke
       enabled: true
-      rate_kg_per_thm: 340.0
+      rate_kg_per_thm: 312.66597646306445
+      rate_basis: wet
       price_rs_per_mt: 28000.0
-      moisture_pct: 0.37
-      vm_pct: 0.92
-      ash_pct: 11.46
-      sio2_pct: 55.07
-      al2o3_pct: 27.09
-      cao_pct: 3.25
-      mgo_pct: 1.21
-      fe2o3_pct: 7.22
-      tio2_pct: 1.462
+      moisture_pct: 0.0
+      vm_pct: 0.898
+      ash_pct: 12.176
+      sio2_pct: 57.69
+      al2o3_pct: 26.38
+      cao_pct: 2.7
+      mgo_pct: 1.05
+      fe2o3_pct: 6.49
+      mn_basis: mn
+      mn_pct: 0.02
+      ti_basis: ti
+      ti_pct: 1.59
+      alkali_pct: 2.0778580814717476
       na2o_pct: 0.0
       k2o_pct: 0.0
-      s_pct: 0.74
-      p_pct: 0.04292
+      s_pct: 0.72
+      p_pct: 0.032
+      chemistry_source: BF-2 Burden (2).xlsx/BURDEN
     - fuel_id: nut_coke
       display_name: Nut Coke
       enabled: true
-      # Plant operating setpoint. Live Influx data normally supplies the same
-      # 70 kg/THM value; keeping the offline default aligned prevents a network
-      # failure from reverting the displayed/back-calculated solution to 20.
-      rate_kg_per_thm: 70.0
+      # Workbook-source wet-basis rate. Live operation may override the rate;
+      # the basis and chemistry remain explicit.
+      rate_kg_per_thm: 76.43714690081553
+      rate_basis: wet
       price_rs_per_mt: 24000.0
-      moisture_pct: 0.44
-      vm_pct: 1.02
-      ash_pct: 11.67
-      sio2_pct: 55.12
-      al2o3_pct: 27.20
-      cao_pct: 3.21
-      mgo_pct: 1.25
-      fe2o3_pct: 7.40
-      tio2_pct: 1.511
+      moisture_pct: 8.5
+      vm_pct: 1.04
+      ash_pct: 12.55
+      sio2_pct: 56.85
+      al2o3_pct: 26.81
+      cao_pct: 2.67
+      mgo_pct: 1.03
+      fe2o3_pct: 7.1
+      mn_basis: mn
+      mn_pct: 0.02
+      ti_basis: ti
+      ti_pct: 1.598
+      alkali_pct: 2.0
       na2o_pct: 0.0
       k2o_pct: 0.0
-      s_pct: 0.73
-      p_pct: 0.04416
+      s_pct: 0.78
+      p_pct: 0.032
+      chemistry_source: BF-2 Burden (2).xlsx/BURDEN
     - fuel_id: pci
       display_name: PCI
       enabled: true
       # Live/recent plant rates overwrite this at page load; the offline default
-      # is the operating set point (~180) for the same reason nut coke is held
-      # at 70 - a fetch failure must not silently move the back-calculated coke
-      # residual by the difference.
+      # remains the workbook-source operating point.
       rate_kg_per_thm: 180.0
+      rate_basis: wet
       price_rs_per_mt: 18000.0
-      moisture_pct: 1.16
-      vm_pct: 20.02
-      ash_pct: 9.20
-      sio2_pct: 49.49
-      al2o3_pct: 25.64
-      cao_pct: 6.04
-      mgo_pct: 2.12
-      fe2o3_pct: 8.15
-      tio2_pct: 1.04
-      na2o_pct: 0.547
-      k2o_pct: 1.606
-      s_pct: 0.35
-      p_pct: 0.04031
+      moisture_pct: 2.05
+      vm_pct: 19.9
+      ash_pct: 8.63
+      sio2_pct: 50.0
+      al2o3_pct: 28.27
+      cao_pct: 5.19
+      mgo_pct: 1.93
+      fe2o3_pct: 5.81
+      mn_basis: mn
+      mn_pct: 0.05
+      ti_basis: ti
+      ti_pct: 1.031
+      alkali_pct: 2.1900347624565466
+      na2o_pct: 0.0
+      k2o_pct: 0.0
+      s_pct: 0.38
+      p_pct: 0.021
+      chemistry_source: BF-2 Burden (2).xlsx/BURDEN
 
   flux_inputs:
     - flux_id: quartz
@@ -275,16 +288,19 @@ bmo:
     - dust_id: bf_gas_dust
       display_name: BF Gas Dust
       enabled: true
+      rate_basis: kg_per_charge
       wet_qty_mt: 0.0
+      quantity_kg_per_charge: 530.0
+      source: BF-2 Burden (2).xlsx/BURDEN
       moisture_pct: 0.0
-      sio2_pct: 0.0
-      al2o3_pct: 0.0
-      cao_pct: 0.0
-      mgo_pct: 0.0
-      fe_pct: 0.0
+      sio2_pct: 4.5
+      al2o3_pct: 4.86
+      cao_pct: 5.63
+      mgo_pct: 3.57
+      fe_pct: 33.5
       mn_pct: 0.0
-      p_pct: 0.0
-      s_pct: 0.0
+      p_pct: 0.054
+      s_pct: 0.1
       ti_pct: 0.0
       zn_pct: 0.0
       na2o_pct: 0.0
@@ -309,9 +325,9 @@ bmo:
     #
     # Operator-settable on the page under "Hot Metal Chemistry Assumptions";
     # a saved value in bmo_operator_inputs.yml overrides what is here.
-    carbon_pct: 4.24
+    carbon_pct: 4.2
     silicon_pct: 0.6
-    sulphur_pct: 0.035
+    sulphur_pct: 0.03
     other_pct: 0.0
     pi_loss_pct: 0.2
     fe_to_pig_iron_fraction: 0.999
@@ -608,6 +624,7 @@ bmo:
 
   data_sources:
     static_dataset_path: src/assets/data/furnace_dataset.csv
+    static_dataset_url: http://125.23.100.62:8081/furnace_dataset.csv
     stock_table: offline_feed.raw_material_stock
     stock_time_range: last 1 week
     stock_fallback_reference_qty_mt: 3800.0

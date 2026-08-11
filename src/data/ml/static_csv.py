@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 import re
+from io import BytesIO
 from datetime import date
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -29,9 +32,8 @@ _RAW_BURDEN_COLUMN_RE = re.compile(
 def get_static_dataset_path(data_rel_path: str | None = None) -> Path:
     """Resolve the legacy static dataset path inside the webapp repo.
 
-    The current app can refresh this file from the static ML database table.
-    This helper remains
-    for older call sites that still pass a path-shaped argument around.
+    The current app refreshes this local fallback from the published hourly CSV.
+    This helper remains for call sites that pass a path-shaped argument around.
     """
     rel_path = data_rel_path or load_config("setting_ds_dv.yml")["DATA"]
     return (Path(__file__).resolve().parents[3] / rel_path).resolve()
@@ -45,7 +47,9 @@ def _normalise_index(df: pd.DataFrame, *, assume_naive_utc: bool) -> pd.DataFram
     if not isinstance(out.index, pd.DatetimeIndex):
         for candidate in ("time", "date_time", "timestamp"):
             if candidate in out.columns:
-                out[candidate] = pd.to_datetime(out[candidate], errors="coerce", utc=True)
+                out[candidate] = pd.to_datetime(
+                    out[candidate], errors="coerce", utc=True
+                )
                 out = out.set_index(candidate)
                 break
 
@@ -111,7 +115,9 @@ def _static_dataset_fetch_columns() -> list[str]:
     ]
 
     if not candidates:
-        raise RuntimeError("No configured static ML dataset columns exist in the database.")
+        raise RuntimeError(
+            "No configured static ML dataset columns exist in the database."
+        )
 
     return candidates
 
@@ -137,6 +143,69 @@ def fetch_static_dataset_from_database(sort_index: bool = True) -> pd.DataFrame:
     return df.sort_index() if sort_index else df
 
 
+def fetch_static_dataset_from_url(
+    url: str,
+    *,
+    timeout_seconds: float = 60.0,
+    sort_index: bool = True,
+) -> pd.DataFrame:
+    """Fetch and validate the published hourly furnace CSV.
+
+    The endpoint already publishes the finished application dataset, so this
+    path deliberately does not rebuild or clean it from database sources.
+    """
+
+    source_url = str(url or "").strip()
+    if not source_url:
+        raise ValueError("Static furnace dataset URL is empty.")
+
+    request = Request(
+        source_url,
+        headers={"User-Agent": "evonith-bf-webapp/1.0", "Accept": "text/csv,*/*"},
+    )
+    try:
+        with urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response:
+            payload = response.read()
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(
+            f"Could not fetch static furnace dataset from {source_url}: {exc}"
+        ) from exc
+
+    if not payload:
+        raise RuntimeError(
+            f"Static furnace dataset URL returned an empty file: {source_url}"
+        )
+
+    try:
+        df = pd.read_csv(
+            BytesIO(payload),
+            index_col=0,
+            parse_dates=True,
+            low_memory=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - expose malformed publisher output
+        raise RuntimeError(
+            f"Static furnace dataset URL returned invalid CSV: {source_url}: {exc}"
+        ) from exc
+
+    df = _normalise_index(df, assume_naive_utc=False)
+    df = _rename_columns_for_app(df)
+    if df.empty:
+        raise RuntimeError(f"Static furnace dataset URL returned 0 rows: {source_url}")
+    if not isinstance(df.index, pd.DatetimeIndex) or df.index.isna().any():
+        raise RuntimeError("Static furnace dataset must contain a valid time index.")
+    if df.index.duplicated().any():
+        raise RuntimeError("Static furnace dataset contains duplicate timestamps.")
+
+    log.info(
+        "Loaded hourly static furnace dataset from %s (%d rows, %d columns).",
+        source_url,
+        len(df),
+        len(df.columns),
+    )
+    return df.sort_index() if sort_index else df
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_static_dataset(
     path: str | Path | None = None,
@@ -149,8 +218,9 @@ def load_static_dataset(
     """Load the static furnace ML dataset.
 
     The legacy CSV-oriented arguments are accepted for compatibility, but the
-    local rotating cache is preferred when present. If no local copy exists,
-    the full static ML table is fetched from the configured database.
+    local fallback is preferred when present. If it is missing, the configured
+    published URL is fetched; deployments without a URL retain the legacy
+    database fallback.
     """
     if path is None:
         csv_path = get_static_dataset_path()
@@ -162,7 +232,10 @@ def load_static_dataset(
     if not csv_path.exists():
         from data.ml.static_dataset_manager import StaticDatasetManager
 
-        manager = StaticDatasetManager(csv_path)
+        source_url = str(
+            load_config("setting_ds_dv.yml").get("DATA_URL", "") or ""
+        ).strip()
+        manager = StaticDatasetManager(csv_path, remote_url=source_url or None)
         df = manager.update_static()
         manager.save(df)
         return df.sort_index() if sort_index else df
@@ -185,15 +258,17 @@ def update_cutoff_date(new_date: date) -> None:
     ``DatasetFetcher._fetch_full_range`` uses the static table for the
     newly written period on subsequent interactive fetches.
     """
-    yml_path = (Path(__file__).resolve().parents[2] / "config" / "setting_ds_dv.yml")
+    yml_path = Path(__file__).resolve().parents[2] / "config" / "setting_ds_dv.yml"
     text = yml_path.read_text(encoding="utf-8")
     updated = re.sub(
         r'(cutoff_date:\s*")[^"]+(")',
-        rf'\g<1>{new_date.isoformat()}\g<2>',
+        rf"\g<1>{new_date.isoformat()}\g<2>",
         text,
     )
     if updated == text:
-        log.warning("update_cutoff_date: pattern not found in setting_ds_dv.yml — skipped.")
+        log.warning(
+            "update_cutoff_date: pattern not found in setting_ds_dv.yml — skipped."
+        )
         return
     yml_path.write_text(updated, encoding="utf-8")
     log.info("cutoff_date advanced to %s in setting_ds_dv.yml.", new_date.isoformat())

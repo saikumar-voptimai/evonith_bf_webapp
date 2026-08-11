@@ -173,13 +173,29 @@ def check_blend_constraints(
 
     violations: list[str] = []
 
-    if blend.fe_production_mt < target_production_mt - fe_tolerance_mt:
-        violations.append(
-            f"Fe production below required target: {blend.fe_production_mt:.2f} < {target_production_mt:.2f} MT."
+    production_value_mt = float(blend.fe_production_mt)
+    production_target_mt = float(target_production_mt)
+    production_label = "Fe production"
+    if blend.diagnostics.get("iron_closure_basis") == "actual_pig_iron":
+        production_value_mt = float(
+            blend.diagnostics.get("iron_closure_production_mt", 0.0) or 0.0
         )
-    if blend.fe_production_mt > target_production_mt + fe_tolerance_mt:
+        production_target_mt = float(
+            blend.diagnostics.get("iron_closure_target_mt", 0.0)
+            or blend.diagnostics.get("hot_metal_target_mt", 0.0)
+            or target_production_mt
+        )
+        production_label = "Chemical hot metal"
+
+    if production_value_mt < production_target_mt - fe_tolerance_mt:
         violations.append(
-            f"Fe production above required target: {blend.fe_production_mt:.2f} > {target_production_mt:.2f} MT."
+            f"{production_label} below required target: "
+            f"{production_value_mt:.2f} < {production_target_mt:.2f} MT."
+        )
+    if production_value_mt > production_target_mt + fe_tolerance_mt:
+        violations.append(
+            f"{production_label} above required target: "
+            f"{production_value_mt:.2f} > {production_target_mt:.2f} MT."
         )
 
     if blend.slag_mt > target_slag_qty_mt + slag_tolerance_mt:
@@ -208,14 +224,10 @@ def check_blend_constraints(
     ) -> None:
         if min_value is None and max_value is None:
             return
-        denominator = float(
-            blend.diagnostics.get(denominator_key, 0.0) or 0.0
-        )
+        denominator = float(blend.diagnostics.get(denominator_key, 0.0) or 0.0)
         basicity = float(value or 0.0)
         if denominator <= 0.0 or not isfinite(basicity):
-            violations.append(
-                f"{label} unavailable: SiO2 denominator is zero."
-            )
+            violations.append(f"{label} unavailable: SiO2 denominator is zero.")
         else:
             if min_value is not None and basicity < min_value - basicity_tolerance:
                 violations.append(
@@ -416,7 +428,9 @@ def validate_selected_pellet_inputs(
 
         stock_source = str(ore.metadata.get("stock_source", ""))
         if float(ore.stock_mt or 0.0) <= 0.0:
-            issues.append(f"{ore.display_name}: enter positive pellet stock before running.")
+            issues.append(
+                f"{ore.display_name}: enter positive pellet stock before running."
+            )
         elif stock_source != "offline_db":
             issues.append(
                 f"{ore.display_name}: stock is not from raw_material_stock; confirm the editor stock value."

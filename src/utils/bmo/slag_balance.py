@@ -13,9 +13,11 @@ from utils.bmo.types import (
     DustInput,
     FluxInput,
     FuelAshInput,
+    MN_IN_MNO_FRACTION,
     OreInput,
     SlagBalanceResult,
     SlagBalanceSettings,
+    TI_IN_TIO2_FRACTION,
 )
 
 COMPONENT_KEYS = (
@@ -33,8 +35,8 @@ COMPONENT_KEYS = (
     "caf2",
 )
 
-MN_FROM_MNO_FACTOR = 54.938 / 70.937
-TI_FROM_TIO2_FACTOR = 47.867 / 79.866
+MN_FROM_MNO_FACTOR = MN_IN_MNO_FRACTION
+TI_FROM_TIO2_FACTOR = TI_IN_TIO2_FRACTION
 FE_FROM_FE2O3_FACTOR = 111.69 / 159.69
 
 
@@ -118,6 +120,30 @@ def _component_mass_mt(dry_weight_mt: float, component_pct: float) -> float:
     """
 
     return max(0.0, _safe_float(dry_weight_mt)) * (_safe_pct(component_pct) / 100.0)
+
+
+def fuel_quantities_mt(fuel: FuelAshInput, hot_metal_mt: float) -> tuple[float, float]:
+    """Resolve one fuel rate into wet and dry tonnes without double moisture loss.
+
+    A wet rate is converted to wet tonnes first and moisture is removed once. A
+    dry rate is converted directly to dry tonnes and moisture is used only to
+    back-calculate its wet charging quantity.
+    """
+
+    rate_mt = (
+        max(0.0, _safe_float(fuel.rate_kg_per_thm))
+        * max(0.0, _safe_float(hot_metal_mt))
+        / 1000.0
+    )
+    dry_fraction = (100.0 - _safe_pct(fuel.moisture_pct)) / 100.0
+    basis = str(getattr(fuel, "rate_basis", "wet") or "wet").strip().lower()
+    if basis == "dry":
+        dry_fuel_mt = rate_mt
+        wet_fuel_mt = dry_fuel_mt / dry_fraction if dry_fraction > 0.0 else 0.0
+    else:
+        wet_fuel_mt = rate_mt
+        dry_fuel_mt = wet_fuel_mt * dry_fraction
+    return float(wet_fuel_mt), float(dry_fuel_mt)
 
 
 def _empty_components() -> dict[str, float]:
@@ -302,8 +328,7 @@ def build_fuel_ash_component_totals(
     for fuel in fuel_ash_inputs or []:
         if not fuel.enabled:
             continue
-        wet_fuel_mt = max(0.0, _safe_float(fuel.rate_kg_per_thm)) * hot_metal / 1000.0
-        dry_fuel_mt = _dry_weight_mt(wet_fuel_mt, fuel.moisture_pct)
+        _wet_fuel_mt, dry_fuel_mt = fuel_quantities_mt(fuel, hot_metal)
         ash_mt = dry_fuel_mt * (_safe_pct(fuel.ash_pct) / 100.0)
         totals["sio2"] += _component_mass_mt(ash_mt, fuel.sio2_pct)
         totals["al2o3"] += _component_mass_mt(ash_mt, fuel.al2o3_pct)
@@ -312,10 +337,12 @@ def build_fuel_ash_component_totals(
         totals["fe"] += (
             _component_mass_mt(ash_mt, fuel.fe2o3_pct) * FE_FROM_FE2O3_FACTOR
         )
+        totals["mn"] += _component_mass_mt(ash_mt, fuel.mno_pct) * MN_FROM_MNO_FACTOR
         totals["ti"] += _component_mass_mt(ash_mt, fuel.tio2_pct) * TI_FROM_TIO2_FACTOR
-        totals["alkali"] += _component_mass_mt(
-            ash_mt, _safe_pct(fuel.na2o_pct) + _safe_pct(fuel.k2o_pct)
-        )
+        alkali_pct = _safe_pct(getattr(fuel, "alkali_pct", 0.0))
+        if alkali_pct <= 0.0:
+            alkali_pct = _safe_pct(fuel.na2o_pct) + _safe_pct(fuel.k2o_pct)
+        totals["alkali"] += _component_mass_mt(ash_mt, alkali_pct)
         totals["s"] += _component_mass_mt(dry_fuel_mt, fuel.s_pct)
         totals["p"] += _component_mass_mt(dry_fuel_mt, fuel.p_pct)
     return totals
@@ -412,7 +439,9 @@ def _attribute_per_source_slag(
         for component, mass in source_components.items():
             gross = _safe_float(total_into_bf.get(component, 0.0))
             net_share = (
-                _safe_float(net_into_bf.get(component, 0.0)) / gross if gross > 0 else 1.0
+                _safe_float(net_into_bf.get(component, 0.0)) / gross
+                if gross > 0
+                else 1.0
             )
             total += _safe_float(mass) * net_share * retention.get(component, 0.0)
         return total
@@ -496,13 +525,9 @@ def calculate_full_slag_balance(
         + net_into_bf["p"]
         + net_into_bf["zn"]
     )
-    theoretical_pi_initial_mt = (
-        metallic_mass_initial_mt * 100.0 / pig_iron_metal_pct
-    )
+    theoretical_pi_initial_mt = metallic_mass_initial_mt * 100.0 / pig_iron_metal_pct
     pi_loss_pct = min(_safe_pct(settings.pi_loss_pct), 99.0)
-    actual_pi_initial_mt = theoretical_pi_initial_mt * (
-        (100.0 - pi_loss_pct) / 100.0
-    )
+    actual_pi_initial_mt = theoretical_pi_initial_mt * ((100.0 - pi_loss_pct) / 100.0)
 
     hm_mn_pct = _safe_pct(getattr(settings, "mn_pct", 0.0))
     hm_ti_pct = _safe_pct(getattr(settings, "ti_pct", 0.0))
@@ -529,8 +554,11 @@ def calculate_full_slag_balance(
     theoretical_pi_mt = metallic_mass_mt * 100.0 / pig_iron_metal_pct
     actual_pi_mt = theoretical_pi_mt * ((100.0 - pi_loss_pct) / 100.0)
 
+    # The workbook closes hot-metal chemistry on theoretical pig iron, then
+    # applies the separate PI-loss percentage to obtain actual production.
+    # Using actual PI here applies the loss twice to Si/S removals.
     sio2_consumed_mt = (
-        actual_pi_mt
+        theoretical_pi_mt
         * (_safe_pct(settings.silicon_pct) / 100.0)
         * max(0.0, _safe_float(settings.si_to_sio2_factor))
     )
@@ -540,7 +568,7 @@ def calculate_full_slag_balance(
 
     mno_slag_mt = mn_remaining_mt * max(0.0, _safe_float(settings.mn_to_mno_factor))
 
-    sulphur_pi_mt = actual_pi_mt * (_safe_pct(settings.sulphur_pct) / 100.0)
+    sulphur_pi_mt = theoretical_pi_mt * (_safe_pct(settings.sulphur_pct) / 100.0)
     sulphur_gas_mt = net_into_bf["s"] * (
         _safe_pct(settings.sulphur_gas_loss_pct) / 100.0
     )
