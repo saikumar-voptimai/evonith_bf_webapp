@@ -1364,13 +1364,14 @@ def render_blend_metrics(
         st.caption("Fuel-rate estimate unavailable because latest PCI rate is missing.")
 
     st.markdown("##### Charging Requirement")
-    charge_cols = st.columns(6)
+    charge_cols = st.columns(5)
     coke_total_mt = charging["coke_total_mt"]
     nut_coke_total_mt = charging["nut_coke_total_mt"]
     pci_total_mt = charging["pci_total_mt"]
     required_charges_per_hour = charging["required_charges_per_hour"]
-    hot_metal_per_charge_mt = charging["hot_metal_per_charge_mt"]
-    planning_hot_metal_per_charge_mt = charging["planning_hot_metal_per_charge_mt"]
+    chemical_hot_metal_per_charge_mt = charging[
+        "chemical_hot_metal_per_charge_mt"
+    ]
     charge_cols[0].metric(
         "Coke in Charges (MT)",
         f"{float(coke_total_mt):,.1f}" if coke_total_mt is not None else "n/a",
@@ -1404,25 +1405,13 @@ def render_blend_metrics(
     charge_cols[4].metric(
         "Hotmetal per Charge (MT)",
         (
-            f"{float(hot_metal_per_charge_mt):,.2f}"
-            if hot_metal_per_charge_mt is not None
+            f"{float(chemical_hot_metal_per_charge_mt):,.2f}"
+            if chemical_hot_metal_per_charge_mt is not None
             else "n/a"
         ),
         help=(
             "Chemical HM/charge: full slag/material balance actual pig iron "
             "divided by the burden charge count."
-        ),
-    )
-    charge_cols[5].metric(
-        "Planning HM/charge (MT)",
-        (
-            f"{float(planning_hot_metal_per_charge_mt):,.2f}"
-            if planning_hot_metal_per_charge_mt is not None
-            else "n/a"
-        ),
-        help=(
-            "Target production divided by planned charges. Kept separately from "
-            "the chemical material-balance KPI."
         ),
     )
 

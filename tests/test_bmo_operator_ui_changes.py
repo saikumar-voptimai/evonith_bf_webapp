@@ -504,6 +504,7 @@ def test_main_metrics_show_production_and_requested_charging_values(monkeypatch)
                 "pci_rate_kg_thm": 150.0,
                 "total_fuel_rate_kg_thm": 620.0,
             },
+            "full_slag_balance": {"actual_pig_iron_mt": 100.0},
         }
     )
 
@@ -514,6 +515,7 @@ def test_main_metrics_show_production_and_requested_charging_values(monkeypatch)
     assert captured["Coke in Charges (MT)"] == "40.0"
     assert captured["PCI in Charges (MT)"] == "15.0"
     assert captured["Hotmetal per Charge (MT)"] == "13.20"
+    assert "Planning HM/charge (MT)" not in captured
     hidden = {
         "Fe Produced (MT)",
         "Slag T Basicity",

@@ -958,11 +958,6 @@ def _render_blend_comparison(
             lambda b, si: _charging_value(b, "chemical_hot_metal_per_charge_mt"),
             "{:,.2f}",
         ),
-        (
-            "Planning HM/charge (MT)",
-            lambda b, si: _charging_value(b, "planning_hot_metal_per_charge_mt"),
-            "{:,.2f}",
-        ),
         # 1-decimal so small but real blend-to-blend differences aren't hidden by
         # rounding (the fuel model is only weakly blend-sensitive -- see the help
         # note on the outcomes table).

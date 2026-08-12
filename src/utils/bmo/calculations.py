@@ -636,8 +636,9 @@ def compute_charging_requirements(
 
     ``(IBRM + flux + nut coke) / hours_per_day / charge_mass_mt``.
 
-    Coke and PCI tonnes use the same kg/THM-to-MT conversion. Hot metal per
-    charge is the production target divided by the number of daily charges.
+    Coke and PCI tonnes use the same kg/THM-to-MT conversion. Chemical hot metal
+    per charge is the full material-balance pig iron divided by the number of
+    daily charges.
 
     Args:
          - blend: BlendEvaluation - Evaluated LP, DE, or manual blend.
@@ -646,8 +647,8 @@ def compute_charging_requirements(
 
     Returns:
          - return dict[str, float | None] - Flux kg/THM, fuel tonnes, total
-           charge-mix tonnes, tonnes/hour, required charges/hour, and hot metal
-           per charge. Rate-dependent results are ``None`` when unavailable.
+           charge-mix tonnes, tonnes/hour, required charges/hour, and chemical
+           hot metal per charge. Rate-dependent results are ``None`` when unavailable.
     """
 
     diagnostics = blend.diagnostics or {}
@@ -679,7 +680,6 @@ def compute_charging_requirements(
     charge_mix_mt_per_hour: float | None = None
     required_charges_per_hour: float | None = None
     chemical_hot_metal_per_charge_mt: float | None = None
-    planning_hot_metal_per_charge_mt: float | None = None
     fuel_usage = {
         str(row.get("fuel_id", "")): row
         for row in diagnostics.get("fuel_usage", []) or []
@@ -710,7 +710,6 @@ def compute_charging_requirements(
                 )
                 if required_charges_per_hour > 0.0:
                     charge_count = required_charges_per_hour * float(hours_per_day)
-                    planning_hot_metal_per_charge_mt = hot_metal_mt / charge_count
                     full_balance = diagnostics.get("full_slag_balance", {}) or {}
                     chemical_hot_metal_mt = float(
                         full_balance.get("actual_pig_iron_mt", 0.0) or 0.0
@@ -719,12 +718,6 @@ def compute_charging_requirements(
                         chemical_hot_metal_per_charge_mt = (
                             chemical_hot_metal_mt / charge_count
                         )
-
-    # Without the full ledger, retain the old planning value as a safe fallback
-    # so simplified-mode callers do not lose their existing KPI.
-    hot_metal_per_charge_mt = (
-        chemical_hot_metal_per_charge_mt or planning_hot_metal_per_charge_mt
-    )
 
     return {
         "total_flux_wet_qty_mt": float(flux_mt),
@@ -739,9 +732,7 @@ def compute_charging_requirements(
         "total_charge_mix_mt": total_charge_mix_mt,
         "charge_mix_mt_per_hour": charge_mix_mt_per_hour,
         "required_charges_per_hour": required_charges_per_hour,
-        "hot_metal_per_charge_mt": hot_metal_per_charge_mt,
         "chemical_hot_metal_per_charge_mt": chemical_hot_metal_per_charge_mt,
-        "planning_hot_metal_per_charge_mt": planning_hot_metal_per_charge_mt,
     }
 
 
