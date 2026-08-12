@@ -193,9 +193,9 @@ def test_flux_rate_and_required_charges_use_charge_mass_and_nut_coke() -> None:
     assert charging['total_charge_mix_mt'] == pytest.approx(4200.0)
     assert charging['charge_mix_mt_per_hour'] == pytest.approx(175.0)
     assert charging['required_charges_per_hour'] == pytest.approx(175.0 / 26.4)
-    assert charging['hot_metal_per_charge_mt'] == pytest.approx(
-        100.0 / ((175.0 / 26.4) * 24.0)
-    )
+    assert charging['chemical_hot_metal_per_charge_mt'] is None
+    assert 'hot_metal_per_charge_mt' not in charging
+    assert 'planning_hot_metal_per_charge_mt' not in charging
 
 
 def test_lp_reserves_fixed_flux_from_shared_charging_capacity() -> None:

@@ -8,6 +8,7 @@ same total-cost fields.
 
 from __future__ import annotations
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
@@ -42,6 +43,25 @@ if TYPE_CHECKING:
 _FUEL_ID_TO_PRICE_KEY = {"coke": "coke", "nut_coke": "nut_coke", "pci": "pci"}
 
 
+def _fuel_inputs_with_rates(
+    fuel_ash_inputs: list[FuelAshInput] | None, fuel_rates: Any
+) -> list[FuelAshInput]:
+    """Rebuild fuel chemistry rows with the exact rates used by the result."""
+
+    rates = {
+        "coke": float(fuel_rates.coke_rate_kg_thm),
+        "nut_coke": float(fuel_rates.nut_coke_rate_kg_thm),
+        "pci": float(fuel_rates.pci_rate_kg_thm),
+    }
+    return [
+        replace(
+            fuel,
+            rate_kg_per_thm=rates.get(str(fuel.fuel_id).lower(), fuel.rate_kg_per_thm),
+        )
+        for fuel in fuel_ash_inputs or []
+    ]
+
+
 def _current_fuel_prices_rs_per_kg(
     fuel_ash_inputs: list[FuelAshInput] | None,
 ) -> dict[str, float]:
@@ -63,9 +83,7 @@ def _current_fuel_prices_rs_per_kg(
     return prices
 
 
-def _rebase_fuel_cost_to_anchor(
-    blend: BlendEvaluation, fuel_rates: Any
-) -> None:
+def _rebase_fuel_cost_to_anchor(blend: BlendEvaluation, fuel_rates: Any) -> None:
     """Make the blend's fuel cost agree with the fuel rates being reported.
 
     Called only on the observed-anchor path. When the anchor is the model's own
@@ -158,9 +176,9 @@ def _apply_coke_correction(
     # The optimizer minimises at the model's baseline prices, so the correction
     # must be priced there too. Using the operator's current coke price here
     # would make the LP's linear term and this path optimise different things.
-    cost_delta = float(result.applied_delta_kg_thm) * ASSUMED_FUEL_PRICES_RS_PER_KG[
-        "coke"
-    ]
+    cost_delta = (
+        float(result.applied_delta_kg_thm) * ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
+    )
     blend.diagnostics["fuel_cost_per_thm_rs_uncorrected"] = float(
         blend.fuel_cost_per_thm_rs
     )
@@ -186,6 +204,7 @@ def evaluate_blend_with_fuel_prediction(
     slag_balance_settings: SlagBalanceSettings | None = None,
     prebuilt_context: PreBuiltFeatureContext | None = None,
     hot_metal_target_mt: float | None = None,
+    charge_mass_mt: float = 26.4,
     fuel_rate_basis: str = "model_cost",
     fuel_rate_anchor_basis: str = "model_cost",
     coke_correction_settings: CokeCorrectionSettings | None = None,
@@ -256,19 +275,6 @@ def evaluate_blend_with_fuel_prediction(
             hot_metal_target_mt=hot_metal_target_mt,
         )
         prediction = model_service.predict(feature_payload, history_df)
-    blend = evaluate_blend(
-        ores=ores,
-        quantities_mt=quantities,
-        feo_in_slag_pct=feo_in_slag_pct,
-        fuel_cost_per_thm_rs=float(prediction.value),
-        fuel_ash_inputs=fuel_ash_inputs,
-        flux_inputs=flux_inputs,
-        dust_inputs=dust_inputs,
-        slag_balance_settings=slag_balance_settings,
-        hot_metal_target_mt=hot_metal_target_mt,
-    )
-    blend.diagnostics["model_prediction"] = prediction
-    blend.diagnostics["feature_details"] = prediction.details
     # Rate basis differs by blend kind (see docstring): manual blends show the
     # realised cost from actual current rates; optimized blends convert the
     # ML-predicted cost so the display stays blend-sensitive.
@@ -293,9 +299,7 @@ def evaluate_blend_with_fuel_prediction(
         # reference point, which is what the correction's delta assumes.
         fuel_rates = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
         fuel_rate_source = "observed_fuel_ash_inputs"
-        if fuel_rates is not None:
-            _rebase_fuel_cost_to_anchor(blend, fuel_rates)
-        else:
+        if fuel_rates is None:
             fuel_rates = estimate_fuel_rates_from_cost(
                 fuel_cost_per_thm_rs=float(prediction.value),
                 process_context=process_context,
@@ -319,6 +323,28 @@ def evaluate_blend_with_fuel_prediction(
         if fuel_rates is None:
             fuel_rates = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
             fuel_rate_source = "fuel_ash_inputs"
+
+    preliminary_fuel_inputs = (
+        _fuel_inputs_with_rates(fuel_ash_inputs, fuel_rates)
+        if fuel_rates is not None
+        else list(fuel_ash_inputs or [])
+    )
+    blend = evaluate_blend(
+        ores=ores,
+        quantities_mt=quantities,
+        feo_in_slag_pct=feo_in_slag_pct,
+        fuel_cost_per_thm_rs=float(prediction.value),
+        fuel_ash_inputs=preliminary_fuel_inputs,
+        flux_inputs=flux_inputs,
+        dust_inputs=dust_inputs,
+        slag_balance_settings=slag_balance_settings,
+        hot_metal_target_mt=hot_metal_target_mt,
+        charge_mass_mt=charge_mass_mt,
+    )
+
+    if fuel_rate_source == "observed_fuel_ash_inputs" and fuel_rates is not None:
+        _rebase_fuel_cost_to_anchor(blend, fuel_rates)
+
     if fuel_rates is not None:
         # Keep the uncorrected rates alongside the corrected ones. Operators
         # compare the two directly, and a correction is only trustworthy if the
@@ -341,6 +367,38 @@ def evaluate_blend_with_fuel_prediction(
         if correction is not None:
             fuel_rates = correction
 
+        # The corrected rates are the rates used by the final slag/material
+        # balance.  Re-evaluate once so slag, B2/IB4, dust conversion, charging,
+        # and the displayed fuel rates are one internally consistent result.
+        final_fuel_inputs = _fuel_inputs_with_rates(fuel_ash_inputs, fuel_rates)
+        carried_diagnostics = dict(blend.diagnostics)
+        final_blend = evaluate_blend(
+            ores=ores,
+            quantities_mt=quantities,
+            feo_in_slag_pct=feo_in_slag_pct,
+            fuel_cost_per_thm_rs=float(blend.fuel_cost_per_thm_rs),
+            fuel_ash_inputs=final_fuel_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            hot_metal_target_mt=hot_metal_target_mt,
+            charge_mass_mt=charge_mass_mt,
+        )
+        for key in (
+            "fuel_cost_per_thm_rs_model",
+            "fuel_cost_rebase_rs_per_thm",
+            "fuel_cost_per_thm_rs_uncorrected",
+            "coke_correction",
+            "coke_correction_delta_kg_thm",
+            "coke_correction_applied",
+        ):
+            if key in carried_diagnostics:
+                final_blend.diagnostics[key] = carried_diagnostics[key]
+        blend = final_blend
+        blend.diagnostics["fuel_rate_estimate_anchor"] = carried_diagnostics[
+            "fuel_rate_estimate_anchor"
+        ]
+        blend.diagnostics["fuel_rate_estimate_source"] = fuel_rate_source
         blend.diagnostics["fuel_rate_estimate"] = fuel_rates.to_dict()
         # Re-price physical fuel rates at the operator's current prices. Prefer
         # the Fuel Ash editor rates; only reverse-solve from model cost when
@@ -359,4 +417,6 @@ def evaluate_blend_with_fuel_prediction(
             ore_cost + adjusted_fuel_cost
         )
         blend.diagnostics["current_fuel_prices_rs_per_kg"] = current_prices
+    blend.diagnostics["model_prediction"] = prediction
+    blend.diagnostics["feature_details"] = prediction.details
     return blend

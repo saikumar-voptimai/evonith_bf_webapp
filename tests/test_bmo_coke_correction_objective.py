@@ -230,8 +230,7 @@ def test_de_records_both_uncorrected_and_corrected_rates():
 
     assert anchor["coke_rate_kg_thm"] != corrected["coke_rate_kg_thm"]
     assert corrected["coke_rate_kg_thm"] == pytest.approx(
-        anchor["coke_rate_kg_thm"]
-        + blend.diagnostics["coke_correction_delta_kg_thm"]
+        anchor["coke_rate_kg_thm"] + blend.diagnostics["coke_correction_delta_kg_thm"]
     )
     # Nut coke and PCI are operator run inputs and must survive untouched.
     assert anchor["nut_coke_rate_kg_thm"] == corrected["nut_coke_rate_kg_thm"]
@@ -408,17 +407,36 @@ def _fuel_ash(coke_rate: float = 295.0):
     from utils.bmo.types import FuelAshInput
 
     return [
-        FuelAshInput(fuel_id="coke", display_name="Coke", rate_kg_per_thm=coke_rate,
-                     price_rs_per_mt=28_000.0, ash_pct=11.0, sio2_pct=55.0),
-        FuelAshInput(fuel_id="nut_coke", display_name="Nut Coke", rate_kg_per_thm=70.0,
-                     price_rs_per_mt=24_000.0, ash_pct=11.0, sio2_pct=55.0),
-        FuelAshInput(fuel_id="pci", display_name="PCI", rate_kg_per_thm=180.0,
-                     price_rs_per_mt=18_000.0, ash_pct=9.0, sio2_pct=49.0),
+        FuelAshInput(
+            fuel_id="coke",
+            display_name="Coke",
+            rate_kg_per_thm=coke_rate,
+            price_rs_per_mt=28_000.0,
+            ash_pct=11.0,
+            sio2_pct=55.0,
+        ),
+        FuelAshInput(
+            fuel_id="nut_coke",
+            display_name="Nut Coke",
+            rate_kg_per_thm=70.0,
+            price_rs_per_mt=24_000.0,
+            ash_pct=11.0,
+            sio2_pct=55.0,
+        ),
+        FuelAshInput(
+            fuel_id="pci",
+            display_name="PCI",
+            rate_kg_per_thm=180.0,
+            price_rs_per_mt=18_000.0,
+            ash_pct=9.0,
+            sio2_pct=49.0,
+        ),
     ]
 
 
-def _blend_with_anchor(basis: str, *, coke_rate: float = 295.0, settings=None,
-                       reference=None):
+def _blend_with_anchor(
+    basis: str, *, coke_rate: float = 295.0, settings=None, reference=None
+):
     from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 
     return evaluate_blend_with_fuel_prediction(
@@ -442,10 +460,16 @@ def test_observed_anchor_reports_the_plant_coke_rate_not_the_model_residual():
     model = _blend_with_anchor("model_cost")
     observed = _blend_with_anchor("observed", coke_rate=295.0)
 
-    assert observed.diagnostics["fuel_rate_estimate"]["coke_rate_kg_thm"] == pytest.approx(295.0)
-    assert observed.diagnostics["fuel_rate_estimate_source"] == "observed_fuel_ash_inputs"
+    assert observed.diagnostics["fuel_rate_estimate"][
+        "coke_rate_kg_thm"
+    ] == pytest.approx(295.0)
+    assert (
+        observed.diagnostics["fuel_rate_estimate_source"] == "observed_fuel_ash_inputs"
+    )
     # 12,900 Rs/THM back-solves to something quite different from 295.
-    assert model.diagnostics["fuel_rate_estimate"]["coke_rate_kg_thm"] != pytest.approx(295.0)
+    assert model.diagnostics["fuel_rate_estimate"]["coke_rate_kg_thm"] != pytest.approx(
+        295.0
+    )
     assert model.diagnostics["fuel_rate_estimate_source"] == "model_cost_residual"
 
 
@@ -482,7 +506,7 @@ def test_observed_anchor_falls_back_when_the_editor_rows_are_incomplete():
         model_service=_FakeModelService(),
         process_context=_CTX,
         history_df=None,
-        fuel_ash_inputs=None,          # no editor rows at all
+        fuel_ash_inputs=None,  # no editor rows at all
         hot_metal_target_mt=_HM_MT,
         fuel_rate_anchor_basis="observed",
     )
@@ -509,7 +533,10 @@ def test_default_anchor_basis_is_unchanged_behaviour():
     )
 
     assert default.fuel_cost_per_thm_rs == pytest.approx(explicit.fuel_cost_per_thm_rs)
-    assert default.diagnostics["fuel_rate_estimate"] == explicit.diagnostics["fuel_rate_estimate"]
+    assert (
+        default.diagnostics["fuel_rate_estimate"]
+        == explicit.diagnostics["fuel_rate_estimate"]
+    )
 
 
 def test_correction_adds_on_top_of_the_observed_anchor():
@@ -535,7 +562,7 @@ def test_correction_adds_on_top_of_the_observed_anchor():
 
 
 def test_anchor_choice_does_not_change_which_blend_wins():
-    """Both anchors are near-constant, so the swap is an offset, not a gradient."""
+    """Final-fuel recalculation may move the gap, but not reverse the ranking."""
 
     settings = _settings()
     reference = _reference()
@@ -563,7 +590,11 @@ def test_anchor_choice_does_not_change_which_blend_wins():
         b = evaluator.evaluate_quantities(qty_b, flux_quantities=flux).objective_value
         return a - b
 
-    assert gap("observed") == pytest.approx(gap("model_cost"), abs=1e-6)
+    observed_gap = gap("observed")
+    model_gap = gap("model_cost")
+
+    assert observed_gap != pytest.approx(0.0, abs=1e-6)
+    assert np.sign(observed_gap) == np.sign(model_gap)
 
 
 def test_shipped_anchor_basis_keeps_the_coke_rate_a_prediction():

@@ -51,15 +51,20 @@ PERSISTED_FUEL_ASH_NUMERIC_COLUMNS = (
     "cao_pct",
     "mgo_pct",
     "fe2o3_pct",
+    "mno_pct",
     "tio2_pct",
+    "alkali_pct",
     "na2o_pct",
     "k2o_pct",
     "s_pct",
     "p_pct",
 )
 
+PERSISTED_FUEL_ASH_TEXT_COLUMNS = ("rate_basis", "mn_basis", "ti_basis")
+
 PERSISTED_DUST_NUMERIC_COLUMNS = (
     "wet_qty_mt",
+    "quantity_kg_per_charge",
     "moisture_pct",
     "sio2_pct",
     "al2o3_pct",
@@ -75,6 +80,8 @@ PERSISTED_DUST_NUMERIC_COLUMNS = (
     "k2o_pct",
     "caf2_pct",
 )
+
+PERSISTED_DUST_TEXT_COLUMNS = ("rate_basis",)
 
 
 def _float_or_none(value: Any) -> float | None:
@@ -268,18 +275,22 @@ def build_fuel_ash_preferences(editor_df: pd.DataFrame) -> dict[str, Any]:
     if editor_df.empty or "fuel_id" not in editor_df.columns:
         return {"fuel_ash_editor": {"rows": {}}}
 
-    rows: dict[str, dict[str, float | bool]] = {}
+    rows: dict[str, dict[str, Any]] = {}
     for _, row in editor_df.iterrows():
         fuel_id = str(row.get("fuel_id", "")).strip()
         if not fuel_id:
             continue
-        saved_row: dict[str, float | bool] = {"enabled": bool(row.get("enabled", True))}
+        saved_row: dict[str, Any] = {"enabled": bool(row.get("enabled", True))}
         for column in PERSISTED_FUEL_ASH_NUMERIC_COLUMNS:
             if column not in row:
                 continue
             value = _float_or_none(row.get(column))
             if value is not None:
                 saved_row[column] = value
+        for column in PERSISTED_FUEL_ASH_TEXT_COLUMNS:
+            if column in row and str(row.get(column, "")).strip():
+                saved_row[column] = str(row[column]).strip().lower()
+        saved_row["chemistry_source"] = "manual"
         rows[fuel_id] = saved_row
     return {"fuel_ash_editor": {"rows": rows}}
 
@@ -306,6 +317,11 @@ def apply_fuel_ash_preferences(
                 value = _float_or_none(saved[column])
                 if value is not None:
                     out.at[index, column] = value
+        for column in PERSISTED_FUEL_ASH_TEXT_COLUMNS:
+            if column in out.columns and column in saved:
+                out.at[index, column] = str(saved[column])
+        if "chemistry_source" in out.columns and "chemistry_source" in saved:
+            out.at[index, "chemistry_source"] = str(saved["chemistry_source"])
     return out
 
 
@@ -315,18 +331,22 @@ def build_dust_preferences(editor_df: pd.DataFrame) -> dict[str, Any]:
     if editor_df.empty or "dust_id" not in editor_df.columns:
         return {"dust_editor": {"rows": {}}}
 
-    rows: dict[str, dict[str, float | bool]] = {}
+    rows: dict[str, dict[str, Any]] = {}
     for _, row in editor_df.iterrows():
         dust_id = str(row.get("dust_id", "")).strip()
         if not dust_id:
             continue
-        saved_row: dict[str, float | bool] = {"enabled": bool(row.get("enabled", True))}
+        saved_row: dict[str, Any] = {"enabled": bool(row.get("enabled", True))}
         for column in PERSISTED_DUST_NUMERIC_COLUMNS:
             if column not in row:
                 continue
             value = _float_or_none(row.get(column))
             if value is not None:
                 saved_row[column] = value
+        for column in PERSISTED_DUST_TEXT_COLUMNS:
+            if column in row and str(row.get(column, "")).strip():
+                saved_row[column] = str(row[column]).strip().lower()
+        saved_row["source"] = "manual"
         rows[dust_id] = saved_row
     return {"dust_editor": {"rows": rows}}
 
@@ -353,6 +373,11 @@ def apply_dust_preferences(
                 value = _float_or_none(saved[column])
                 if value is not None:
                     out.at[index, column] = value
+        for column in PERSISTED_DUST_TEXT_COLUMNS:
+            if column in out.columns and column in saved:
+                out.at[index, column] = str(saved[column])
+        if "source" in out.columns and "source" in saved:
+            out.at[index, "source"] = str(saved["source"])
     return out
 
 

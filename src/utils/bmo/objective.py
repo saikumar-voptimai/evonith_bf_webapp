@@ -31,6 +31,7 @@ from utils.bmo.types import (
     SlagBalanceSettings,
 )
 
+
 class BmoObjectiveEvaluator:
     """
     Evaluate BMO candidate quantities as total-cost objective values.
@@ -89,6 +90,7 @@ class BmoObjectiveEvaluator:
         coke_correction_reference: CokeCorrectionReference | None = None,
         hot_metal_si_pct: float | None = None,
         fuel_rate_anchor_basis: str = "model_cost",
+        charge_mass_mt: float = 26.4,
     ) -> None:
         """
         Store optimizer inputs and precompute array forms of bounds.
@@ -194,9 +196,10 @@ class BmoObjectiveEvaluator:
         # move the objective by a fraction of a kg/THM; a constant offset does
         # not distort the search at all.
         self.hot_metal_si_pct = hot_metal_si_pct
-        # Both anchors are near-constant across blends, so this shifts the level
-        # of every candidate's cost equally and cannot change which one wins.
+        # The chosen anchor is propagated into the final fuel-ash ledger, so the
+        # objective and the displayed slag use the same physical fuel rates.
         self.fuel_rate_anchor_basis = fuel_rate_anchor_basis
+        self.charge_mass_mt = float(charge_mass_mt)
         self.penalty_cfg = penalty_cfg
         self.prebuilt_context = prebuilt_context
         self.hot_metal_target_mt = hot_metal_target_mt
@@ -265,6 +268,7 @@ class BmoObjectiveEvaluator:
             coke_correction_reference=self.coke_correction_reference,
             hot_metal_si_pct=self.hot_metal_si_pct,
             fuel_rate_anchor_basis=self.fuel_rate_anchor_basis,
+            charge_mass_mt=self.charge_mass_mt,
         )
         # Flux cost per THM keeps DE from over-dosing flux (it costs money, like ore).
         thm_basis = float(self.hot_metal_target_mt or blend.fe_production_mt or 0.0)
@@ -316,24 +320,32 @@ class BmoObjectiveEvaluator:
         )
         share_penalty = share_violation * penalty_share
 
+        production_value_mt = float(blend.fe_production_mt)
+        production_target_mt = self.target_production_mt
+        if blend.diagnostics.get("iron_closure_basis") == "actual_pig_iron":
+            production_value_mt = float(
+                blend.diagnostics.get("iron_closure_production_mt", 0.0) or 0.0
+            )
+            production_target_mt = float(
+                blend.diagnostics.get("iron_closure_target_mt", 0.0)
+                or self.hot_metal_target_mt
+                or self.target_production_mt
+            )
+
         fe_penalty = 0.0
         fe_shortfall_mt = max(
             0.0,
-            self.target_production_mt - self.fe_tolerance_mt - blend.fe_production_mt,
+            production_target_mt - self.fe_tolerance_mt - production_value_mt,
         )
         if fe_shortfall_mt > 0.0:
-            fe_penalty += (
-                fe_shortfall_mt
-            ) * penalty_fe
+            fe_penalty += (fe_shortfall_mt) * penalty_fe
         production_excess_penalty = 0.0
         fe_excess_mt = max(
             0.0,
-            blend.fe_production_mt - self.target_production_mt - self.fe_tolerance_mt,
+            production_value_mt - production_target_mt - self.fe_tolerance_mt,
         )
         if fe_excess_mt > 0.0:
-            production_excess_penalty += (
-                fe_excess_mt
-            ) * penalty_production_excess
+            production_excess_penalty += (fe_excess_mt) * penalty_production_excess
 
         slag_penalty = 0.0
         if blend.slag_mt > self.target_slag_qty_mt:
@@ -360,9 +372,7 @@ class BmoObjectiveEvaluator:
             weight: float,
         ) -> float:
             penalty = 0.0
-            denominator = float(
-                blend.diagnostics.get(denominator_key, 0.0) or 0.0
-            )
+            denominator = float(blend.diagnostics.get(denominator_key, 0.0) or 0.0)
             if min_value is not None:
                 if denominator <= 0.0 or not math.isfinite(value):
                     penalty += penalty_large

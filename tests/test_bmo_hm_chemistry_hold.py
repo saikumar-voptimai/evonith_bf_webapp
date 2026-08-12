@@ -29,9 +29,9 @@ CONFIG_PATH = "src/config/setting_bmo.yml"
 
 # What the operator asked to hold.
 HELD = {
-    "carbon_pct": 4.24,
+    "carbon_pct": 4.2,
     "silicon_pct": 0.6,
-    "sulphur_pct": 0.035,
+    "sulphur_pct": 0.03,
     "other_pct": 0.0,
 }
 
@@ -83,9 +83,9 @@ def test_shipped_config_holds_the_operator_specified_values() -> None:
 
     cfg = _slag_balance_cfg()
 
-    assert cfg["carbon_pct"] == pytest.approx(4.24)
+    assert cfg["carbon_pct"] == pytest.approx(4.2)
     assert cfg["silicon_pct"] == pytest.approx(0.6)
-    assert cfg["sulphur_pct"] == pytest.approx(0.035)
+    assert cfg["sulphur_pct"] == pytest.approx(0.03)
     assert cfg["other_pct"] == pytest.approx(0.0)
 
 
@@ -108,9 +108,9 @@ def test_held_values_are_not_overwritten_by_the_live_cast() -> None:
 
     settings = slag_balance_settings_from_editor({"enabled": True}, HELD, live_cast)
 
-    assert settings.carbon_pct == pytest.approx(4.24)
+    assert settings.carbon_pct == pytest.approx(4.2)
     assert settings.silicon_pct == pytest.approx(0.6)
-    assert settings.sulphur_pct == pytest.approx(0.035)
+    assert settings.sulphur_pct == pytest.approx(0.03)
     assert settings.other_pct == pytest.approx(0.0)
     # Mn/Ti partitioning is explicitly still live.
     assert settings.mn_pct == pytest.approx(0.25)
@@ -167,7 +167,7 @@ def test_hm_chemistry_preferences_round_trip() -> None:
     )
 
     assert applied["silicon_pct"] == pytest.approx(0.55)
-    assert applied["carbon_pct"] == pytest.approx(4.24)
+    assert applied["carbon_pct"] == pytest.approx(4.2)
     # Everything else in slag_balance stays config-driven.
     assert applied["pi_loss_pct"] == pytest.approx(0.2)
     assert applied["alkali_to_slag_fraction"] == pytest.approx(0.8)

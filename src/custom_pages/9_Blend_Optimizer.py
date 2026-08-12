@@ -95,6 +95,8 @@ from utils.bmo.constraints import (
     check_blend_constraints,
 )
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
+from utils.bmo.calculations import scale_ore_quantities_to_hot_metal
+from utils.bmo.types import oxide_pct_from_basis
 from utils.bmo.si_prediction import SiPredictionService
 from utils.bmo.fuel_rates import get_recent_fuel_input_rates
 from utils.session import is_logged_in
@@ -184,7 +186,8 @@ def _static_dataset_manager(bmo_cfg: dict[str, Any]) -> StaticDatasetManager:
     static_path = data_sources.get(
         "static_dataset_path", "src/assets/data/furnace_dataset.csv"
     )
-    return StaticDatasetManager(static_path)
+    static_url = str(data_sources.get("static_dataset_url", "") or "").strip()
+    return StaticDatasetManager(static_path, remote_url=static_url or None)
 
 
 def _parse_meta_datetime(value: str | None) -> datetime | None:
@@ -215,6 +218,10 @@ def _static_dataset_status(bmo_cfg: dict[str, Any]) -> dict[str, Any]:
     stale = last_updated is None or now - last_updated >= timedelta(
         minutes=max_age_minutes
     )
+    if manager.remote_url and (
+        meta is None or str(meta.source_url or "").strip() != manager.remote_url
+    ):
+        stale = True
     return {
         "manager": manager,
         "meta": meta,
@@ -429,43 +436,37 @@ def _refresh_static_dataset_if_needed(
 
 
 @fragment
-def _render_static_dataset_bar(bmo_cfg: dict[str, Any]) -> bool:
+def _render_static_dataset_bar(
+    bmo_cfg: dict[str, Any], refresh_result: dict[str, Any] | None = None
+) -> None:
     status = _static_dataset_status(bmo_cfg)
     state = status["state"] if status["exists"] else "missing"
-    force = False
-    with st.expander("Static dataset refresh", expanded=False):
-        cols = st.columns([1.1, 1.2, 1.0, 1.0, 1.0])
+    data_sources = bmo_cfg.get("data_sources", {}) or {}
+    source_url = str(data_sources.get("static_dataset_url", "") or "").strip()
+    with st.expander("Data sources", expanded=False):
+        cols = st.columns([1.1, 1.2, 1.0])
         cols[0].metric("Static Dataset", state.title())
         cols[1].metric("Latest Data", status["latest_data_end"] or "Unknown")
         last_updated = status["last_updated"]
         cols[2].metric(
-            "Last Refresh",
+            "Last Fetch",
             last_updated.strftime("%Y-%m-%d %H:%M") if last_updated else "Never",
         )
-        force = cols[3].checkbox(
-            "Force refresh on run",
-            value=False,
-            key="bmo_force_static_refresh",
+        st.caption(
+            "The furnace CSV is fetched automatically at most once per hour. "
+            "The local CSV is used only if the published endpoint is unavailable."
         )
-        notice = st.session_state.pop("bmo_static_refresh_notice", None)
-        if notice:
-            st.success(str(notice))
-        if cols[4].button("Refresh now"):
-            with st.spinner("Refreshing static ML dataset..."):
-                result = _refresh_static_dataset_if_needed(bmo_cfg, force=True)
-            if result.get("error"):
-                st.error(f"Static dataset refresh failed: {result['error']}")
-            else:
-                st.session_state["bmo_static_refresh_notice"] = (
-                    "Static ML dataset refreshed."
-                )
-                rerun_fragment()
-        if state == "stale":
-            st.caption("Static dataset is older than the BMO one-hour refresh gate.")
-        elif state == "missing":
+        if source_url:
+            st.caption(f"Published source: {source_url}")
+        if refresh_result and refresh_result.get("error"):
             st.warning(
-                "Static ML dataset is missing; optimizer run will refresh first."
+                "Hourly furnace CSV fetch failed; using the last local copy. "
+                f"Error: {refresh_result['error']}"
             )
+        if state == "stale":
+            st.caption("The last successful furnace CSV fetch is over one hour old.")
+        elif state == "missing":
+            st.warning("No usable furnace CSV is available.")
         st.divider()
         src_col1, src_col2 = st.columns([1.0, 2.0])
         if src_col1.button("Refresh source data", key="bmo_refresh_source_data"):
@@ -480,7 +481,6 @@ def _render_static_dataset_bar(bmo_cfg: dict[str, Any]) -> bool:
             "cached from page open for responsiveness. Click to pull the latest "
             "manual-entry records."
         )
-    return force
 
 
 def _context_group(field: str) -> str:
@@ -585,6 +585,13 @@ def _target_quantities_from_shares(
     shares_pct: dict[str, float],
     ores: list[OreInput],
     target_fe_mt: float,
+    *,
+    target_hot_metal_mt: float | None = None,
+    fuel_ash_inputs: list[FuelAshInput] | None = None,
+    flux_inputs: list[FluxInput] | None = None,
+    dust_inputs: list[DustInput] | None = None,
+    slag_balance_settings: SlagBalanceSettings | None = None,
+    charge_mass_mt: float = 26.4,
 ) -> tuple[dict[str, float], float, list[str]]:
     """
     Scale operator-edited burden shares into wet quantities for the target HM.
@@ -607,7 +614,11 @@ def _target_quantities_from_shares(
 
     total_share = sum(max(0.0, float(v)) for v in shares_pct.values())
     if total_share <= 0:
-        return {}, 0.0, ["Manual shares sum to zero; enter at least one positive share."]
+        return (
+            {},
+            0.0,
+            ["Manual shares sum to zero; enter at least one positive share."],
+        )
     shares = {oid: max(0.0, float(v)) / total_share for oid, v in shares_pct.items()}
     fe_per_blend_mt = 0.0
     for ore in ores:
@@ -615,13 +626,25 @@ def _target_quantities_from_shares(
         fe_fraction = max(0.0, float(ore.chemistry.fe_t_pct) / 100.0)
         fe_per_blend_mt += shares.get(ore.ore_id, 0.0) * dry_fraction * fe_fraction
     if fe_per_blend_mt <= 0:
-        return {}, total_share, ["Manual blend Fe% is unavailable; cannot scale to target HM."]
+        return (
+            {},
+            total_share,
+            ["Manual blend Fe% is unavailable; cannot scale to target HM."],
+        )
     total_qty = float(target_fe_mt) / fe_per_blend_mt
-    return (
-        {oid: sh * total_qty for oid, sh in shares.items()},
-        total_share,
-        [],
-    )
+    quantities = {oid: sh * total_qty for oid, sh in shares.items()}
+    if target_hot_metal_mt and slag_balance_settings and slag_balance_settings.enabled:
+        quantities = scale_ore_quantities_to_hot_metal(
+            ores=ores,
+            reference_quantities_mt=quantities,
+            target_hot_metal_mt=target_hot_metal_mt,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            charge_mass_mt=charge_mass_mt,
+        )
+    return quantities, total_share, []
 
 
 def _render_blend_comparison(
@@ -641,7 +664,7 @@ def _render_blend_comparison(
 ) -> None:
     """Operator-focused comparison of the manual blend vs the optimizer blends.
 
-    Presents two tables on the same target-Fe basis so the operator can decide at
+    Presents two tables on the same all-source iron-closure basis so the operator can decide at
     a glance:
 
       * **Inputs** - the suggested blend mix (ore share %) for each option, so the
@@ -654,7 +677,7 @@ def _render_blend_comparison(
          - optimizer_candidates: list[tuple[str, BlendEvaluation, float | None]] -
            (label, blend, predicted Si) per optimizer result (LP, DE), in display order.
          - selected_ores: list[OreInput] - Ores the optimizer chose between.
-         - target_fe_mt: float - Fe target the manual blend is scaled to.
+         - target_fe_mt: float - Initial Fe-only scale used to seed the full closure.
          - target_production_mt: float - HM basis for cost / slag / model fields.
          - feo_in_slag_pct: float - FeO assumed to report into slag.
          - fuel_ash_inputs / flux_inputs / dust_inputs / slag_balance_settings - Slag-balance inputs.
@@ -673,21 +696,25 @@ def _render_blend_comparison(
 
     manual_ores_by_id = {ore.ore_id: ore for ore in (manual_ores or selected_ores)}
     manual_ores_by_id.update({ore.ore_id: ore for ore in selected_ores})
-    snapshot = provider.get_recent_manual_blend_snapshot(list(manual_ores_by_id.values()))
+    snapshot = provider.get_recent_manual_blend_snapshot(
+        list(manual_ores_by_id.values())
+    )
     rows_by_ore = {str(row.get("ore_id")): row for row in snapshot.get("rows", [])}
     compare_ores = selected_ores
 
     st.markdown("##### Manual blend vs optimizer")
     st.caption(
         "Edit the manual Share (%) to try any burden split. Shares are normalised to "
-        "100% and scaled to the same target Fe as the optimizer, so every option is "
-        "compared on the same basis."
+        "100% and scaled through the same all-source Fe/material closure as the "
+        "optimizer, so every option is compared on the same basis."
     )
     start_time, end_time = snapshot.get("start_time"), snapshot.get("end_time")
     if rows_by_ore and start_time and end_time:
         st.caption(f"Manual blend seeded from last shift ({start_time} to {end_time}).")
     elif not rows_by_ore:
-        st.caption("No last-shift manual blend found; seeded from the optimizer shares.")
+        st.caption(
+            "No last-shift manual blend found; seeded from the optimizer shares."
+        )
 
     seed_rows = []
     for ore in compare_ores:
@@ -695,7 +722,11 @@ def _render_blend_comparison(
         if seed_share <= 0:
             seed_share = float(primary_blend.shares_pct.get(ore.ore_id, 0.0))
         seed_rows.append(
-            {"ore_id": ore.ore_id, "ore_name": ore.display_name, "manual_share_pct": seed_share}
+            {
+                "ore_id": ore.ore_id,
+                "ore_name": ore.display_name,
+                "manual_share_pct": seed_share,
+            }
         )
     # Seed the editor with shares already normalised to 100%. The blend is
     # normalised before evaluation, so the "Suggested blend mix" table shows
@@ -726,8 +757,18 @@ def _render_blend_comparison(
         str(row["ore_id"]): float(row["manual_share_pct"] or 0.0)
         for _, row in edited_share_df.iterrows()
     }
-    manual_quantities, normalized_total, scale_warnings = _target_quantities_from_shares(
-        manual_shares_pct, compare_ores, target_fe_mt
+    manual_quantities, normalized_total, scale_warnings = (
+        _target_quantities_from_shares(
+            manual_shares_pct,
+            compare_ores,
+            target_fe_mt,
+            target_hot_metal_mt=target_production_mt,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            charge_mass_mt=charge_mass_mt,
+        )
     )
     if normalized_total > 0:
         st.caption(
@@ -793,6 +834,7 @@ def _render_blend_comparison(
                     current_si_pct=manual_si,
                 ),
                 hot_metal_si_pct=manual_si,
+                charge_mass_mt=charge_mass_mt,
             )
             for warning in fuel_warnings:
                 st.warning(str(warning))
@@ -832,7 +874,8 @@ def _render_blend_comparison(
         hide_index=True,
         width="stretch",
         column_config={
-            label: st.column_config.NumberColumn(label, format="%.1f") for label in labels
+            label: st.column_config.NumberColumn(label, format="%.1f")
+            for label in labels
         },
     )
 
@@ -856,7 +899,11 @@ def _render_blend_comparison(
     # prices when available (display-only; the optimizer used baseline prices).
     def _display_fuel(blend: Any) -> float:
         adjusted = blend.diagnostics.get("adjusted_fuel_cost_per_thm_rs")
-        return float(adjusted) if adjusted is not None else float(blend.fuel_cost_per_thm_rs)
+        return (
+            float(adjusted)
+            if adjusted is not None
+            else float(blend.fuel_cost_per_thm_rs)
+        )
 
     def _flux_cost(blend: Any) -> float:
         return float(blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0)
@@ -865,16 +912,18 @@ def _render_blend_comparison(
         # Total = ore + (re-priced) fuel + optimizer-added flux, so the cheapest
         # option and the saving vs manual account for the flux spend too.
         adjusted = blend.diagnostics.get("adjusted_objective_rs_per_thm")
-        base = float(adjusted) if adjusted is not None else float(blend.objective_rs_per_thm)
+        base = (
+            float(adjusted)
+            if adjusted is not None
+            else float(blend.objective_rs_per_thm)
+        )
         return base + _flux_cost(blend)
 
     # (row label, accessor(blend, si) -> value | None, format string)
     metric_specs = [
         (
             "Production",
-            lambda b, si: float(
-                b.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0
-            ),
+            lambda b, si: float(b.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0),
             "{:,.1f} MT",
         ),
         ("Total Cost (Rs/THM)", lambda b, si: _display_total(b), "{:,.0f}"),
@@ -905,8 +954,8 @@ def _render_blend_comparison(
             "{:,.2f}",
         ),
         (
-            "Hotmetal per Charge (MT)",
-            lambda b, si: _charging_value(b, "hot_metal_per_charge_mt"),
+            "Chemical Hotmetal per Charge (MT)",
+            lambda b, si: _charging_value(b, "chemical_hot_metal_per_charge_mt"),
             "{:,.2f}",
         ),
         # 1-decimal so small but real blend-to-blend differences aren't hidden by
@@ -919,7 +968,9 @@ def _render_blend_comparison(
         # trusting if the number it replaced is still visible next to it.
         (
             "Coke Rate, uncorrected (kg/THM)",
-            lambda b, si: _rate_field(b, "fuel_rate_estimate_anchor", "coke_rate_kg_thm"),
+            lambda b, si: _rate_field(
+                b, "fuel_rate_estimate_anchor", "coke_rate_kg_thm"
+            ),
             "{:,.1f}",
         ),
         (
@@ -940,6 +991,11 @@ def _render_blend_comparison(
         (
             "Slag Basicity (CaO/SiO2)",
             lambda b, si: _basicity(b, "slag_basicity_denominator_mt", "slag_basicity"),
+            "{:,.3f}",
+        ),
+        (
+            "IB4 (CaO+MgO)/(SiO2+Al2O3)",
+            lambda b, si: _basicity(b, "slag_ib4_denominator_mt", "slag_ib4"),
             "{:,.3f}",
         ),
         ("Slag Rate (kg/THM)", lambda b, si: b.slag_rate_kg_per_thm, "{:,.0f}"),
@@ -1011,8 +1067,6 @@ def _render_blend_comparison(
             f"Best optimizer blend is {saving:+,.0f} Rs/THM vs the manual blend "
             "(positive = optimizer is cheaper)."
         )
-
-
 
 
 @fragment
@@ -1238,7 +1292,9 @@ def _render_si_metric(si_value: float | None) -> None:
 def _render_lp_flux_additions(blend: Any) -> None:
     """Show the flux quantities the optimizer added to hold slag basicity in bounds."""
 
-    flux_qty = (getattr(blend, "diagnostics", None) or {}).get("lp_flux_quantities_mt") or {}
+    flux_qty = (getattr(blend, "diagnostics", None) or {}).get(
+        "lp_flux_quantities_mt"
+    ) or {}
     added = {str(k): float(v) for k, v in flux_qty.items() if float(v) > 1e-6}
     if not added:
         return
@@ -1378,13 +1434,9 @@ def _render_de_exploration(
 
     # Blend combination columns: one share column per ore, one MT column per
     # flux the optimizer controls. Older session records may lack these dicts.
-    ore_names = {
-        ore.ore_id: ore.display_name for ore in (selected_ores or [])
-    }
+    ore_names = {ore.ore_id: ore.display_name for ore in (selected_ores or [])}
     if "shares_pct" in ranked.columns:
-        share_dicts = [
-            d if isinstance(d, dict) else {} for d in ranked["shares_pct"]
-        ]
+        share_dicts = [d if isinstance(d, dict) else {} for d in ranked["shares_pct"]]
         ore_ids: list[str] = []
         for d in share_dicts:
             for ore_id in d:
@@ -1392,13 +1444,9 @@ def _render_de_exploration(
                     ore_ids.append(ore_id)
         for ore_id in ore_ids:
             label = f"{ore_names.get(ore_id, ore_id.upper())} (%)"
-            table[label] = [
-                round(float(d.get(ore_id, 0.0)), 1) for d in share_dicts
-            ]
+            table[label] = [round(float(d.get(ore_id, 0.0)), 1) for d in share_dicts]
     if "flux_mt" in ranked.columns:
-        flux_dicts = [
-            d if isinstance(d, dict) else {} for d in ranked["flux_mt"]
-        ]
+        flux_dicts = [d if isinstance(d, dict) else {} for d in ranked["flux_mt"]]
         flux_ids: list[str] = []
         for d in flux_dicts:
             for flux_id in d:
@@ -1604,8 +1652,16 @@ def _selected_ores_from_editor(
             al2o3_pct=float_from_row(row, "al2o3_pct", base.chemistry.al2o3_pct),
             cao_pct=float_from_row(row, "cao_pct", base.chemistry.cao_pct),
             mgo_pct=float_from_row(row, "mgo_pct", base.chemistry.mgo_pct),
-            mno_pct=float_from_row(row, "mno_pct", base.chemistry.mno_pct),
-            tio2_pct=float_from_row(row, "tio2_pct", base.chemistry.tio2_pct),
+            mno_pct=oxide_pct_from_basis(
+                float_from_row(row, "mno_pct", base.chemistry.mno_pct),
+                str(row.get("mn_basis", "mno")),
+                element="mn",
+            ),
+            tio2_pct=oxide_pct_from_basis(
+                float_from_row(row, "tio2_pct", base.chemistry.tio2_pct),
+                str(row.get("ti_basis", "tio2")),
+                element="ti",
+            ),
         )
         selected_ores.append(
             replace(
@@ -1620,7 +1676,6 @@ def _selected_ores_from_editor(
     return selected_ores
 
 
-
 apply_bmo_styles()
 bmo_cfg = _get_bmo_config()
 provider = _get_context_provider()
@@ -1628,8 +1683,15 @@ model_service = _get_model_service()
 bundle_status = model_service.get_bundle_status()
 st.session_state["bmo_bundle_status"] = bundle_status
 render_header(bundle_status)
-force_static_refresh = _render_static_dataset_bar(bmo_cfg)
-pending_run_after_refresh = st.session_state.pop("bmo_pending_run_after_refresh", None)
+with st.spinner("Checking the hourly furnace dataset..."):
+    static_refresh_result = _refresh_static_dataset_if_needed(bmo_cfg)
+if static_refresh_result.get("error") and not static_refresh_result.get("usable"):
+    st.error(
+        "The hourly furnace CSV could not be fetched and no local fallback exists. "
+        f"Error: {static_refresh_result['error']}"
+    )
+    st.stop()
+_render_static_dataset_bar(bmo_cfg, static_refresh_result)
 # Bumped by the "Refresh source data" button; keys the cached offline-source
 # reads so they are fetched once per session and reused until the operator asks
 # for fresh data.
@@ -1656,6 +1718,8 @@ recent_fuel_rates = {
     **_recent_fuel_rates_from_static_csv(static_path, static_mtime_ns),
     **_recent_fuel_rates_live(),
 }
+
+
 def _optional_target(key: str, fallback: float | None) -> float | None:
     """Read a slag-window limit from config, treating an absent/null key as off."""
 
@@ -1713,7 +1777,9 @@ model_input_defaults.update(
         "max_charges_per_hour": float(
             burden_capacity_cfg.get("max_charges_per_hour", 7.5) or 7.5
         ),
-        "charge_mass_mt": float(burden_capacity_cfg.get("charge_mass_mt", 26.4) or 26.4),
+        "charge_mass_mt": float(
+            burden_capacity_cfg.get("charge_mass_mt", 26.4) or 26.4
+        ),
     }
 )
 model_input_defaults = apply_model_input_preferences(
@@ -2066,7 +2132,8 @@ if (
     isinstance(stored_flux_df, pd.DataFrame)
     and not flux_base_df.empty
     and "flux_id" in stored_flux_df.columns
-    and set(stored_flux_df["flux_id"].astype(str)) == set(flux_base_df["flux_id"].astype(str))
+    and set(stored_flux_df["flux_id"].astype(str))
+    == set(flux_base_df["flux_id"].astype(str))
 ):
     flux_editor_source_df = stored_flux_df
 else:
@@ -2222,9 +2289,7 @@ else:
 with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
     st.markdown("### Fuel Ash Inputs")
     if not fuel_ash_editor_source_df.empty:
-        edited_fuel_ash_candidate_df = render_fuel_ash_editor(
-            fuel_ash_editor_source_df
-        )
+        edited_fuel_ash_candidate_df = render_fuel_ash_editor(fuel_ash_editor_source_df)
     else:
         edited_fuel_ash_candidate_df = fuel_ash_editor_source_df
     st.caption(
@@ -2328,10 +2393,17 @@ slag_balance_settings = slag_balance_settings_from_editor(
 # Operator-visible warning: if dust is entered but the full slag balance
 # is disabled, the dust rows are silently ignored downstream. Surface
 # this so the operator knows their dust entry isn't being applied.
-_dust_entered_mt = sum(float(d.wet_qty_mt or 0.0) for d in dust_inputs if d.enabled)
-if _dust_entered_mt > 0 and not slag_balance_settings.enabled:
+_dust_entered = any(
+    d.enabled
+    and (
+        float(d.wet_qty_mt or 0.0) > 0.0
+        or float(getattr(d, "quantity_kg_per_charge", 0.0) or 0.0) > 0.0
+    )
+    for d in dust_inputs
+)
+if _dust_entered and not slag_balance_settings.enabled:
     st.warning(
-        f"BF gas dust ({_dust_entered_mt:,.1f} MT) is entered but "
+        "BF gas dust is entered but "
         "'Use full slag balance' is unchecked - dust will NOT be deducted "
         "from the slag balance."
     )
@@ -2379,38 +2451,8 @@ with st.form("bmo_run_form", clear_on_submit=False):
         width="stretch",
     )
 
-requested_lp = bool(run_lp_clicked or pending_run_after_refresh in {"lp", "both"})
-requested_total = bool(
-    run_total_clicked or pending_run_after_refresh in {"total", "both"}
-)
-
-if run_lp_clicked or run_total_clicked:
-    with st.spinner("Checking static ML dataset freshness..."):
-        refresh_result = _refresh_static_dataset_if_needed(
-            bmo_cfg, force=force_static_refresh
-        )
-    if refresh_result.get("error"):
-        if refresh_result.get("usable"):
-            st.warning(
-                "Static dataset refresh failed; continuing with the last usable local dataset. "
-                f"Error: {refresh_result['error']}"
-            )
-        else:
-            st.error(
-                "Static dataset refresh failed and no usable local dataset exists. "
-                f"Error: {refresh_result['error']}"
-            )
-            st.stop()
-    elif refresh_result.get("refreshed"):
-        st.session_state["bmo_pending_run_after_refresh"] = (
-            "both"
-            if run_lp_clicked and run_total_clicked
-            else "lp" if run_lp_clicked else "total"
-        )
-        st.success(
-            "Static ML dataset refreshed. Re-running optimizer with the updated dataset."
-        )
-        st.rerun()
+requested_lp = bool(run_lp_clicked)
+requested_total = bool(run_total_clicked)
 
 if requested_lp or requested_total:
     if not basicity_bounds_valid:
@@ -2457,6 +2499,7 @@ if requested_lp or requested_total:
                 hot_metal_target_mt=target_production_mt,
                 coke_correction_settings=coke_correction_settings,
                 coke_correction_reference=coke_correction_reference,
+                charge_mass_mt=charge_mass_mt,
             )
             if lp_result is not None:
                 lp_physical_result = lp_result
@@ -2487,9 +2530,11 @@ if requested_lp or requested_total:
                     ).items()
                 }
                 flux_inputs_for_display = [
-                    replace(flux, wet_qty_mt=lp_solved_flux_mt[flux.flux_id])
-                    if flux.flux_id in lp_solved_flux_mt
-                    else flux
+                    (
+                        replace(flux, wet_qty_mt=lp_solved_flux_mt[flux.flux_id])
+                        if flux.flux_id in lp_solved_flux_mt
+                        else flux
+                    )
                     for flux in flux_inputs
                 ]
                 # Si is predicted before the fuel re-evaluation, not after, so the
@@ -2517,6 +2562,7 @@ if requested_lp or requested_total:
                     coke_correction_reference=coke_correction_reference,
                     hot_metal_si_pct=lp_si,
                     fuel_rate_anchor_basis=fuel_rate_anchor_basis,
+                    charge_mass_mt=charge_mass_mt,
                 )
                 lp_result.diagnostics["lp_flux_quantities_mt"] = lp_solved_flux_mt
                 lp_result.diagnostics["flux_cost_per_thm_rs"] = float(
@@ -2551,9 +2597,7 @@ if requested_lp or requested_total:
         st.session_state["bmo_lp_errors"] = lp_errors
 
         if requested_total:
-            de_status = st.status(
-                "Total Cost Optimizer (DE) running…", expanded=True
-            )
+            de_status = st.status("Total Cost Optimizer (DE) running…", expanded=True)
             # Live "thinking" line, refreshed every generation so the operator
             # watches the solver churn through thousands of candidate blends.
             de_thinking_ph = de_status.empty()
@@ -2615,9 +2659,7 @@ if requested_lp or requested_total:
                     )
                     iteration_lines.append(line)
                     de_milestone_ph.write(line)
-                log.info(
-                    "BMO DE gen=%s nfev=%s best=%.1f", iteration, nfev, best_obj
-                )
+                log.info("BMO DE gen=%s nfev=%s best=%.1f", iteration, nfev, best_obj)
                 return False
 
             if fuel_context is None:
@@ -2674,6 +2716,7 @@ if requested_lp or requested_total:
                 hot_metal_si_pct=st.session_state.get("bmo_lp_si"),
                 fuel_rate_anchor_basis=fuel_rate_anchor_basis,
                 progress_callback=_de_progress,
+                charge_mass_mt=charge_mass_mt,
             )
             # Persist the full candidate cloud now, before the guardrail below may
             # replace de_result with an LP deepcopy (which has no de_candidates).
@@ -2704,6 +2747,7 @@ if requested_lp or requested_total:
                 ),
                 state="complete",
             )
+
             # Guardrail: DE jointly minimises ore + fuel and is seeded from the LP
             # baseline, so its total cost can never legitimately exceed LP's. If it
             # does (DE hit its iteration/time budget, or returned infeasible), report
@@ -2718,11 +2762,15 @@ if requested_lp or requested_total:
                     blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0
                 )
 
-            if lp_result is not None and lp_result.feasible and (
-                de_result is None
-                or not de_result.feasible
-                or _baseline_total_with_flux(de_result)
-                > _baseline_total_with_flux(lp_result) + 1e-6
+            if (
+                lp_result is not None
+                and lp_result.feasible
+                and (
+                    de_result is None
+                    or not de_result.feasible
+                    or _baseline_total_with_flux(de_result)
+                    > _baseline_total_with_flux(lp_result) + 1e-6
+                )
             ):
                 de_result = copy.deepcopy(lp_result)
                 de_result.diagnostics = dict(de_result.diagnostics)

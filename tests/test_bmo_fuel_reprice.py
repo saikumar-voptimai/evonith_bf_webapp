@@ -169,6 +169,26 @@ def test_default_basis_converts_model_cost_and_stays_blend_sensitive():
     )
 
 
+def test_final_slag_evaluation_uses_the_displayed_fuel_rates():
+    blend = _blend(_fuel_ash(28_000.0, 24_000.0, 18_000.0))
+    displayed = blend.diagnostics["fuel_rate_estimate"]
+    used = {
+        row["fuel_id"]: row
+        for row in blend.diagnostics["fuel_usage"]
+        if row["enabled"]
+    }
+
+    assert used["coke"]["rate_kg_per_thm"] == pytest.approx(
+        displayed["coke_rate_kg_thm"]
+    )
+    assert used["nut_coke"]["rate_kg_per_thm"] == pytest.approx(
+        displayed["nut_coke_rate_kg_thm"]
+    )
+    assert used["pci"]["rate_kg_per_thm"] == pytest.approx(
+        displayed["pci_rate_kg_thm"]
+    )
+
+
 def test_inputs_basis_uses_actual_current_rates_not_model_prediction():
     # Manual blend: realised cost from the actual current rates in the Fuel Ash
     # table, regardless of what the model predicts for the blend.

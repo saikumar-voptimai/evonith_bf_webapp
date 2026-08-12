@@ -15,6 +15,7 @@ import pandas as pd
 from config.config_loader import load_config
 from data.ml.static_csv import (
     fetch_static_dataset_from_database,
+    fetch_static_dataset_from_url,
     get_static_dataset_path,
     load_static_dataset,
 )
@@ -39,6 +40,7 @@ class CacheMeta:
     rows: int = 0
     columns: int = 0
     csv_file: str = ""
+    source_url: str = ""
 
     @property
     def confirmed_end_date(self) -> date | None:
@@ -50,14 +52,26 @@ class CacheMeta:
 
 
 class StaticDatasetManager:
-    """Maintain a stable CSV plus timestamped rotating copies of the full dataset."""
+    """Maintain a stable CSV plus timestamped rotating fallback copies.
+
+    When ``remote_url`` is set, the published CSV is authoritative and the
+    database rebuild/delta path is bypassed completely.
+    """
 
     _MAX_VERSIONED_FILES: int = 3
 
-    def __init__(self, static_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        static_path: str | Path | None = None,
+        *,
+        remote_url: str | None = None,
+        remote_timeout_seconds: float = 60.0,
+    ) -> None:
         self.static_path = (
             Path(static_path) if static_path is not None else get_static_dataset_path()
         )
+        self.remote_url = str(remote_url or "").strip()
+        self.remote_timeout_seconds = max(1.0, float(remote_timeout_seconds))
         self.static_path.parent.mkdir(parents=True, exist_ok=True)
         self._meta_path = self.static_path.parent / _CACHE_META_NAME
 
@@ -73,6 +87,14 @@ class StaticDatasetManager:
         to today without writing back to the database.
         """
         _ = start_date  # legacy compat
+
+        if self.remote_url:
+            return self._clip_to_current_hour(
+                fetch_static_dataset_from_url(
+                    self.remote_url,
+                    timeout_seconds=self.remote_timeout_seconds,
+                )
+            )
 
         df_base = fetch_static_dataset_from_database()
         df_base = self._clean_dataset(df_base)
@@ -108,8 +130,10 @@ class StaticDatasetManager:
 
         log.info(
             "Combined base (%d rows, ends %s) + delta (%d rows, ends %s) = %d rows total.",
-            len(df_base), base_end,
-            len(df_delta), df_delta.index.max().date(),
+            len(df_base),
+            base_end,
+            len(df_delta),
+            df_delta.index.max().date(),
             len(combined),
         )
         return combined
@@ -161,7 +185,10 @@ class StaticDatasetManager:
             # through hoppers so it never appears in charge_data).
             # Formula: PCI rate (kg/tHM) x production (t/hr) / 1000 = PCI mass (MT/hr).
             pci_col = "PCI_CALC_MT"
-            if "PCI_KG/THM" in df_raw.columns and "PRODUCTIONTONNESPERHR" in df_raw.columns:
+            if (
+                "PCI_KG/THM" in df_raw.columns
+                and "PRODUCTIONTONNESPERHR" in df_raw.columns
+            ):
                 derived_pci_mt = (
                     df_raw["PCI_KG/THM"] * df_raw["PRODUCTIONTONNESPERHR"] / 1000
                 )
@@ -185,7 +212,9 @@ class StaticDatasetManager:
             cleaned = self._repair_material_quantity_totals(cleaned)
 
             if cleaned.empty:
-                raise RuntimeError("Delta cleaning returned no rows even with lower threshold.")
+                raise RuntimeError(
+                    "Delta cleaning returned no rows even with lower threshold."
+                )
             return cleaned
         except Exception:
             log.warning("Post-cutoff delta fetch/clean failed.", exc_info=True)
@@ -240,7 +269,8 @@ class StaticDatasetManager:
     @staticmethod
     def _resample_local_delta_hourly(df: pd.DataFrame) -> pd.DataFrame:
         quantity_cols = [
-            col for col in df.columns
+            col
+            for col in df.columns
             if StaticDatasetManager._is_hourly_quantity_column(col)
         ]
         context_cols = [col for col in df.columns if col not in quantity_cols]
@@ -282,7 +312,10 @@ class StaticDatasetManager:
         """Return the latest ``date_time`` in ``historical_static_ml_dataset``."""
         try:
             from furnace_data.offline import get_offline_table_bounds
-            _, end, _ = get_offline_table_bounds("offline_feed.historical_static_ml_dataset")
+
+            _, end, _ = get_offline_table_bounds(
+                "offline_feed.historical_static_ml_dataset"
+            )
             return end.date() if end else None
         except Exception:
             return None
@@ -294,12 +327,19 @@ class StaticDatasetManager:
         try:
             data = json.loads(self._meta_path.read_text(encoding="utf-8"))
             fields = CacheMeta.__dataclass_fields__
-            return CacheMeta(**{key: value for key, value in data.items() if key in fields})
+            return CacheMeta(
+                **{key: value for key, value in data.items() if key in fields}
+            )
         except Exception:
             return None
 
     def current_csv_path(self) -> Path:
         """Return the active local CSV path."""
+        if self.remote_url:
+            # The published URL owns the dataset. Always expose the stable local
+            # fallback that is atomically replaced by each hourly fetch, rather
+            # than a database-generated versioned snapshot from an older run.
+            return self.static_path
         meta = self.get_meta()
         if meta and meta.csv_file:
             candidate = self.static_path.parent / meta.csv_file
@@ -344,6 +384,7 @@ class StaticDatasetManager:
             rows=len(df),
             columns=len(df.columns),
             csv_file=saved_path.name,
+            source_url=self.remote_url,
         )
 
     def _save_meta(self, meta: CacheMeta) -> None:

@@ -8,7 +8,10 @@ website_vars:
   api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
   email_missing_vars: "True"
 
+# Published dataset is authoritative and is fetched at most once per hour.
+# DATA remains the local outage fallback used when the endpoint is unavailable.
 DATA: "src/assets/data/furnace_dataset.csv"
+DATA_URL: "http://125.23.100.62:8081/furnace_dataset.csv"
 
 influx_offline:
   database: bf2_evonith_offline_utc

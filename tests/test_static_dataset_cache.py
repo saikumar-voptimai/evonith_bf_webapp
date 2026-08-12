@@ -31,7 +31,9 @@ def _config(_: str) -> dict:
     }
 
 
-def test_load_static_dataset_uses_local_copy_when_present(monkeypatch, tmp_path) -> None:
+def test_load_static_dataset_uses_local_copy_when_present(
+    monkeypatch, tmp_path
+) -> None:
     csv_path = tmp_path / "furnace_dataset.csv"
     pd.DataFrame(
         {"pellet_sio2_pct": [4.2]},
@@ -49,6 +51,80 @@ def test_load_static_dataset_uses_local_copy_when_present(monkeypatch, tmp_path)
 
     assert list(df.columns) == ["PELLET_PCT_SIO2"]
     assert df.index[0] == pd.Timestamp("2026-05-05 05:30:00")
+
+
+def test_fetch_static_dataset_from_url_validates_published_csv(monkeypatch) -> None:
+    payload = (
+        "time,PCI_KG/THM,SLAG_BASICITY\n"
+        "2026-08-11 14:00:00,180.0,1.07\n"
+        "2026-08-11 15:00:00,181.0,1.08\n"
+    ).encode("utf-8")
+    calls: list[tuple[str, float]] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return payload
+
+    def fake_urlopen(request, timeout):
+        calls.append((request.full_url, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr(static_csv, "urlopen", fake_urlopen)
+
+    df = static_csv.fetch_static_dataset_from_url(
+        "http://example.test/furnace_dataset.csv",
+        timeout_seconds=12,
+    )
+
+    assert calls == [("http://example.test/furnace_dataset.csv", 12.0)]
+    assert list(df.columns) == ["PCI_KG/THM", "SLAG_BASICITY"]
+    assert df.index.min() == pd.Timestamp("2026-08-11 14:00:00")
+    assert df.index.max() == pd.Timestamp("2026-08-11 15:00:00")
+
+
+def test_static_dataset_manager_uses_remote_publisher_instead_of_database(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    published = pd.DataFrame(
+        {"PCI_KG/THM": [180.0]},
+        index=pd.DatetimeIndex(["2026-08-11 15:00:00"], name="time"),
+    )
+    calls: list[tuple[str, float]] = []
+
+    def fake_remote(url, *, timeout_seconds, sort_index=True):
+        calls.append((url, timeout_seconds))
+        return published
+
+    def fail_database(*_args, **_kwargs):
+        raise AssertionError("database rebuild must not run for a published URL")
+
+    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_url", fake_remote)
+    monkeypatch.setattr(
+        manager_module, "fetch_static_dataset_from_database", fail_database
+    )
+    monkeypatch.setattr(
+        StaticDatasetManager,
+        "_current_local_hour",
+        staticmethod(lambda: pd.Timestamp("2026-08-11 16:00:00")),
+    )
+
+    manager = StaticDatasetManager(
+        tmp_path / "furnace_dataset.csv",
+        remote_url="http://example.test/furnace_dataset.csv",
+        remote_timeout_seconds=12,
+    )
+    result = manager.update_static()
+
+    assert calls == [("http://example.test/furnace_dataset.csv", 12.0)]
+    assert result.equals(published)
+    assert manager.current_csv_path() == tmp_path / "furnace_dataset.csv"
 
 
 def test_load_static_dataset_fetches_canonical_table_when_no_copy(
@@ -168,7 +244,9 @@ def test_static_dataset_manager_cleans_before_save(monkeypatch, tmp_path) -> Non
             out["cleaned_feature"] = out.pop("raw") + 1
             return out
 
-    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: raw_df)
+    monkeypatch.setattr(
+        manager_module, "fetch_static_dataset_from_database", lambda: raw_df
+    )
     monkeypatch.setattr(manager_module, "build_default_config", lambda: object())
     monkeypatch.setattr(manager_module, "DataCleaner", FakeCleaner)
     monkeypatch.setattr(static_csv.load_static_dataset, "clear", lambda: None)
@@ -202,7 +280,9 @@ def test_static_dataset_manager_ignores_db_rows_after_cutoff(
         index=pd.DatetimeIndex([pd.Timestamp(cutoff + timedelta(days=1))], name="time"),
     )
 
-    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: base)
+    monkeypatch.setattr(
+        manager_module, "fetch_static_dataset_from_database", lambda: base
+    )
     monkeypatch.setattr(StaticDatasetManager, "_clean_dataset", lambda self, df: df)
     monkeypatch.setattr(
         manager_module,
@@ -321,9 +401,13 @@ def test_static_dataset_manager_does_not_backfill_new_quantity_columns(
         index=pd.DatetimeIndex([pd.Timestamp(delta_day)], name="time"),
     )
 
-    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: base)
+    monkeypatch.setattr(
+        manager_module, "fetch_static_dataset_from_database", lambda: base
+    )
     monkeypatch.setattr(StaticDatasetManager, "_clean_dataset", lambda self, df: df)
-    monkeypatch.setattr(manager, "_fetch_and_clean_delta", lambda *args, **kwargs: delta)
+    monkeypatch.setattr(
+        manager, "_fetch_and_clean_delta", lambda *args, **kwargs: delta
+    )
 
     combined = manager.update_static()
 
@@ -361,7 +445,9 @@ def test_static_dataset_manager_raises_when_required_delta_is_empty(
         index=pd.DatetimeIndex([pd.Timestamp(base_day)], name="time"),
     )
 
-    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: base)
+    monkeypatch.setattr(
+        manager_module, "fetch_static_dataset_from_database", lambda: base
+    )
     monkeypatch.setattr(StaticDatasetManager, "_clean_dataset", lambda self, df: df)
     monkeypatch.setattr(
         StaticDatasetManager,
@@ -395,14 +481,18 @@ def test_static_dataset_manager_does_not_median_fill_base_only_columns(
         index=pd.DatetimeIndex([pd.Timestamp(delta_day)], name="time"),
     )
 
-    monkeypatch.setattr(manager_module, "fetch_static_dataset_from_database", lambda: base)
+    monkeypatch.setattr(
+        manager_module, "fetch_static_dataset_from_database", lambda: base
+    )
     monkeypatch.setattr(StaticDatasetManager, "_clean_dataset", lambda self, df: df)
     monkeypatch.setattr(
         StaticDatasetManager,
         "_current_local_hour",
         staticmethod(lambda: pd.Timestamp("2026-05-05 00:00:00")),
     )
-    monkeypatch.setattr(manager, "_fetch_and_clean_delta", lambda *args, **kwargs: delta)
+    monkeypatch.setattr(
+        manager, "_fetch_and_clean_delta", lambda *args, **kwargs: delta
+    )
 
     combined = manager.update_static()
 
