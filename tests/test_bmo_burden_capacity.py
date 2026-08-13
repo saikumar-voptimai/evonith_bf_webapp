@@ -8,12 +8,13 @@ import pytest
 from utils.bmo.calculations import compute_charging_requirements, evaluate_blend
 from utils.bmo.constraints import (
     CHARGING_HOURS_PER_DAY,
+    calculate_wet_nut_coke_mt,
     check_blend_constraints,
     max_ibrm_flux_capacity_mt,
 )
 from utils.bmo.lp_solver import run_lp_baseline
 from utils.bmo.objective import BmoObjectiveEvaluator
-from utils.bmo.types import FluxInput, OreChemistry, OreInput
+from utils.bmo.types import FluxInput, FuelAshInput, OreChemistry, OreInput
 
 
 def _ore() -> OreInput:
@@ -131,6 +132,22 @@ def test_capacity_responds_to_the_nut_coke_rate() -> None:
     assert at_70 - at_90 == pytest.approx(20.0 * 2350.0 / 1000.0)
 
 
+def test_nut_coke_moisture_is_added_to_the_base_rate_and_capacity() -> None:
+    production_mt = 2350.0
+    wet_nut_coke_mt = calculate_wet_nut_coke_mt(70.0, production_mt, 8.9)
+
+    assert wet_nut_coke_mt == pytest.approx(
+        ((70.0 * production_mt) + (70.0 * production_mt * 8.9 / 100.0))
+        / 1000.0
+    )
+    capacity = max_ibrm_flux_capacity_mt(
+        target_hot_metal_mt=production_mt,
+        nut_coke_rate_kg_per_thm=70.0,
+        nut_coke_moisture_pct=8.9,
+    )
+    assert capacity == pytest.approx(26.4 * 7.5 * 24.0 - wet_nut_coke_mt)
+
+
 def test_capacity_is_zero_when_the_operator_zeroes_the_charging_plant() -> None:
     """A zero charge rate or charge mass must disable the cap, not go negative."""
 
@@ -196,6 +213,34 @@ def test_flux_rate_and_required_charges_use_charge_mass_and_nut_coke() -> None:
     assert charging['chemical_hot_metal_per_charge_mt'] is None
     assert 'hot_metal_per_charge_mt' not in charging
     assert 'planning_hot_metal_per_charge_mt' not in charging
+
+
+def test_charging_requirement_adds_nut_coke_moisture_to_base_rate() -> None:
+    ore = _ore()
+    blend = evaluate_blend(
+        ores=[ore],
+        quantities_mt={ore.ore_id: 4183.0},
+        feo_in_slag_pct=0.0,
+        flux_inputs=[_fixed_flux()],
+        fuel_ash_inputs=[
+            FuelAshInput(
+                fuel_id="nut_coke",
+                display_name="Nut Coke",
+                rate_kg_per_thm=70.0,
+                moisture_pct=10.0,
+                add_moisture_to_rate=True,
+            )
+        ],
+        hot_metal_target_mt=100.0,
+    )
+    blend.diagnostics['fuel_rate_estimate'] = {'nut_coke_rate_kg_thm': 70.0}
+
+    charging = compute_charging_requirements(blend)
+
+    assert charging['nut_coke_moisture_pct'] == pytest.approx(10.0)
+    assert charging['nut_coke_wet_rate_kg_per_thm'] == pytest.approx(77.0)
+    assert charging['nut_coke_total_mt'] == pytest.approx(7.7)
+    assert charging['total_charge_mix_mt'] == pytest.approx(4200.7)
 
 
 def test_lp_reserves_fixed_flux_from_shared_charging_capacity() -> None:

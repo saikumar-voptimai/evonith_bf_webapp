@@ -74,6 +74,9 @@ def fuel_ash_inputs_from_editor(editor_df: pd.DataFrame) -> list[FuelAshInput]:
                 enabled=bool(row.get("enabled", True)),
                 rate_kg_per_thm=float_from_row(row, "rate_kg_per_thm"),
                 rate_basis=str(row.get("rate_basis", "wet") or "wet").lower(),
+                add_moisture_to_rate=bool(
+                    row.get("add_moisture_to_rate", False)
+                ),
                 price_rs_per_mt=float_from_row(row, "price_rs_per_mt"),
                 moisture_pct=float_from_row(row, "moisture_pct"),
                 vm_pct=float_from_row(row, "vm_pct"),

@@ -91,6 +91,7 @@ from ui.bmo.editor_inputs import (
 from utils.bmo.constraints import (
     CHARGING_HOURS_PER_DAY,
     DEFAULT_NUT_COKE_RATE_KG_PER_THM,
+    calculate_wet_nut_coke_mt,
     max_ibrm_flux_capacity_mt,
     check_blend_constraints,
 )
@@ -572,6 +573,10 @@ def _fuel_ash_cfg_with_recent_rates(
         rate = fuel_rates.get(rate_key or "")
         if rate is not None:
             row["rate_kg_per_thm"] = float(rate)
+            if fuel_id == "nut_coke":
+                # The live/default nut-coke tag is the base 70 kg/THM quantity;
+                # its TM is added later to produce the wet charge quantity.
+                row["add_moisture_to_rate"] = True
         analysis = (fuel_analysis or {}).get(fuel_id, {})
         for field in ("moisture_pct", "vm_pct"):
             value = analysis.get(field)
@@ -1820,19 +1825,26 @@ model_input_defaults = apply_model_input_preferences(
     model_input_defaults, operator_preferences
 )
 burden_capacity_enabled_default = bool(burden_capacity_cfg.get("enabled", True))
-# Nut coke is a held set point, not an optimizer variable, so its daily tonnage
-# is just rate x HM target. Take the rate from the same source that seeds the
-# Fuel Ash editor, so the cap and the displayed fuel rate never disagree.
+# Nut coke is a held set point, not an optimizer variable. The live/default
+# rate is a base quantity and the Fuel Ash TM is added to obtain wet tonnes.
+# Take both from the same source that seeds the editor so the cap and result do
+# not disagree.
+nut_coke_cfg = next(
+    (
+        row
+        for row in bmo_cfg.get("fuel_ash_inputs", [])
+        if str(row.get("fuel_id", "")).strip() == "nut_coke"
+    ),
+    {},
+)
+recent_nut_coke_rate = recent_fuel_rates.get("nut_coke_rate_kg_thm")
 nut_coke_rate_kg_per_thm = float(
-    recent_fuel_rates.get("nut_coke_rate_kg_thm")
-    or next(
-        (
-            row.get("rate_kg_per_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM)
-            for row in bmo_cfg.get("fuel_ash_inputs", [])
-            if str(row.get("fuel_id", "")).strip() == "nut_coke"
-        ),
-        DEFAULT_NUT_COKE_RATE_KG_PER_THM,
-    )
+    recent_nut_coke_rate
+    if recent_nut_coke_rate is not None
+    else nut_coke_cfg.get("rate_kg_per_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM)
+)
+nut_coke_add_moisture = recent_nut_coke_rate is not None or bool(
+    nut_coke_cfg.get("add_moisture_to_rate", False)
 )
 
 with st.form("bmo_model_input_form", clear_on_submit=False):
@@ -2080,6 +2092,18 @@ fuel_analysis, fuel_analysis_warnings = _cached_fuel_analysis_snapshot(
     provider, chemistry_mode, chemistry_window_days, source_cache_version
 )
 ore_diagnostics["warnings"].extend(fuel_analysis_warnings)
+nut_coke_moisture_raw = (fuel_analysis.get("nut_coke") or {}).get("moisture_pct")
+if nut_coke_moisture_raw is None:
+    nut_coke_moisture_raw = nut_coke_cfg.get("moisture_pct", 0.0)
+try:
+    nut_coke_moisture_pct = min(
+        100.0, max(0.0, float(nut_coke_moisture_raw or 0.0))
+    )
+except (TypeError, ValueError):
+    nut_coke_moisture_pct = 0.0
+nut_coke_charge_moisture_pct = (
+    nut_coke_moisture_pct if nut_coke_add_moisture else 0.0
+)
 observed_slag_rate = float(hm_snapshot.get("observed_slag_rate_kg_per_thm", 0.0) or 0.0)
 hm_fe_pct_for_target = float(
     hm_snapshot.get("hm_fe_pct_for_target")
@@ -2109,17 +2133,27 @@ if burden_capacity_enabled:
         },
         target_hot_metal_mt=target_production_mt,
         nut_coke_rate_kg_per_thm=nut_coke_rate_kg_per_thm,
+        nut_coke_moisture_pct=nut_coke_charge_moisture_pct,
     )
     daily_charge_capacity_mt = (
         charge_mass_mt * max_charges_per_hour * CHARGING_HOURS_PER_DAY
     )
-    nut_coke_mt = nut_coke_rate_kg_per_thm * target_production_mt / 1000.0
+    nut_coke_mt = calculate_wet_nut_coke_mt(
+        nut_coke_rate_kg_per_thm,
+        target_production_mt,
+        nut_coke_charge_moisture_pct,
+    )
+    nut_coke_wet_rate_kg_per_thm = nut_coke_rate_kg_per_thm * (
+        1.0 + nut_coke_charge_moisture_pct / 100.0
+    )
     if max_burden_qty_mt > 0.0:
         st.caption(
             f"Charging capacity: {max_charges_per_hour:,.2f} charges/hr x "
             f"{charge_mass_mt:,.2f} MT x 24 h = {daily_charge_capacity_mt:,.0f} MT/day, "
-            f"less {nut_coke_mt:,.0f} MT nut coke "
-            f"({nut_coke_rate_kg_per_thm:,.0f} kg/THM x {target_production_mt:,.0f} MT HM) "
+            f"less {nut_coke_mt:,.1f} MT wet nut coke "
+            f"({nut_coke_rate_kg_per_thm:,.1f} kg/THM base + "
+            f"{nut_coke_charge_moisture_pct:,.2f}% moisture = "
+            f"{nut_coke_wet_rate_kg_per_thm:,.2f} kg/THM wet) "
             f"= IBRM + flux limited to {max_burden_qty_mt:,.0f} MT. "
             "Blends needing more tonnes than this are rejected."
         )

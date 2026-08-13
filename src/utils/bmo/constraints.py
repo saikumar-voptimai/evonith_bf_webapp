@@ -31,11 +31,38 @@ _DEFAULT_BURDEN_CAPACITY = {
 DEFAULT_NUT_COKE_RATE_KG_PER_THM = 70.0
 
 
+def calculate_wet_nut_coke_mt(
+    base_rate_kg_per_thm: float,
+    production_mt: float,
+    moisture_pct: float = 0.0,
+) -> float:
+    """Return wet nut-coke MT after adding moisture to its base kg/THM rate.
+
+    The plant's nut-coke rate is a base quantity. Moisture is added using the
+    operator formula ``base + (base * moisture / 100)`` before converting kg
+    to MT.
+    """
+
+    def _nonnegative(value: float, fallback: float = 0.0) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return fallback
+        return max(0.0, parsed) if isfinite(parsed) else fallback
+
+    rate = _nonnegative(base_rate_kg_per_thm, DEFAULT_NUT_COKE_RATE_KG_PER_THM)
+    production = _nonnegative(production_mt)
+    moisture = min(100.0, _nonnegative(moisture_pct))
+    base_quantity_kg = rate * production
+    return float((base_quantity_kg + base_quantity_kg * moisture / 100.0) / 1000.0)
+
+
 def max_ibrm_flux_capacity_mt(
     burden_capacity_cfg: Mapping[str, Any] | None = None,
     *,
     target_hot_metal_mt: float,
     nut_coke_rate_kg_per_thm: float = DEFAULT_NUT_COKE_RATE_KG_PER_THM,
+    nut_coke_moisture_pct: float = 0.0,
 ) -> float:
     """
     Return the wet IBRM + flux tonnage the charging system can deliver in a day.
@@ -47,8 +74,8 @@ def max_ibrm_flux_capacity_mt(
     flux::
 
         capacity = 7.5 * 26.4 * 24                = 4752 MT/day
-        nut coke = 70 * 2350 / 1000               =  164 MT/day
-        room     = 4752 - 164                     = 4588 MT/day
+        nut coke = (70 * 2350) * (1 + 8.9 / 100) / 1000 = 179 MT/day
+        room     = 4752 - 179                          = 4573 MT/day
 
     This is an ABSOLUTE daily tonnage. It deliberately does not scale with the
     hot-metal target, because the charging system runs the same 24 hours no
@@ -68,6 +95,8 @@ def max_ibrm_flux_capacity_mt(
          - target_hot_metal_mt: float - Operator hot-metal target, used only to
            convert the nut-coke rate into tonnes.
          - nut_coke_rate_kg_per_thm: float - Nut coke set point in kg/THM.
+         - nut_coke_moisture_pct: float - Moisture added to the base nut-coke
+           quantity before its wet tonnes are deducted.
 
     Returns:
          - return float - Wet IBRM + flux MT available per day, or 0.0 when the
@@ -88,16 +117,11 @@ def max_ibrm_flux_capacity_mt(
         * _value("max_charges_per_hour")
         * CHARGING_HOURS_PER_DAY
     )
-    try:
-        nut_coke_mt = (
-            max(0.0, float(nut_coke_rate_kg_per_thm))
-            * max(0.0, float(target_hot_metal_mt))
-            / 1000.0
-        )
-    except (TypeError, ValueError):
-        nut_coke_mt = (
-            DEFAULT_NUT_COKE_RATE_KG_PER_THM * max(0.0, float(target_hot_metal_mt))
-        ) / 1000.0
+    nut_coke_mt = calculate_wet_nut_coke_mt(
+        nut_coke_rate_kg_per_thm,
+        target_hot_metal_mt,
+        nut_coke_moisture_pct,
+    )
 
     return max(0.0, float(charge_capacity_mt - nut_coke_mt))
 

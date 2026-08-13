@@ -631,8 +631,9 @@ def compute_charging_requirements(
     """Calculate fuel quantities and charging rates for a solved blend.
 
     The charging system carries wet IBRM, wet flux, and nut coke. Nut coke is
-    stored as kg/THM in the fuel-rate diagnostics, so its daily tonnes are
-    ``nut_coke_kg_thm * hot_metal_mt / 1000``. Required charges per hour are:
+    stored as a base kg/THM rate. Its wet daily tonnes add moisture as
+    ``(rate * hot_metal) * (1 + moisture / 100) / 1000``. Required charges per
+    hour are:
 
     ``(IBRM + flux + nut coke) / hours_per_day / charge_mass_mt``.
 
@@ -686,6 +687,31 @@ def compute_charging_requirements(
         if isinstance(row, dict)
     }
 
+    nut_coke_row = fuel_usage.get("nut_coke")
+    nut_coke_moisture_pct = 0.0
+    nut_coke_add_moisture = False
+    if nut_coke_row is not None:
+        nut_coke_add_moisture = bool(
+            nut_coke_row.get("add_moisture_to_rate", False)
+        )
+        try:
+            nut_coke_moisture_pct = min(
+                100.0,
+                max(0.0, float(nut_coke_row.get("moisture_pct", 0.0) or 0.0)),
+            )
+        except (TypeError, ValueError):
+            nut_coke_moisture_pct = 0.0
+        if nut_coke_rate_kg_thm is None:
+            try:
+                nut_coke_rate_kg_thm = max(
+                    0.0, float(nut_coke_row.get("rate_kg_per_thm"))
+                )
+            except (TypeError, ValueError):
+                nut_coke_rate_kg_thm = None
+    nut_coke_added_moisture_pct = (
+        nut_coke_moisture_pct if nut_coke_add_moisture else 0.0
+    )
+
     def _wet_total(fuel_id: str, rate: float | None) -> float | None:
         row = fuel_usage.get(fuel_id)
         if row is not None:
@@ -726,6 +752,12 @@ def compute_charging_requirements(
         "coke_rate_kg_per_thm": coke_rate_kg_thm,
         "coke_total_mt": coke_total_mt,
         "nut_coke_rate_kg_per_thm": nut_coke_rate_kg_thm,
+        "nut_coke_moisture_pct": nut_coke_added_moisture_pct,
+        "nut_coke_wet_rate_kg_per_thm": (
+            nut_coke_rate_kg_thm * (1.0 + nut_coke_added_moisture_pct / 100.0)
+            if nut_coke_rate_kg_thm is not None
+            else None
+        ),
         "nut_coke_total_mt": nut_coke_total_mt,
         "pci_rate_kg_per_thm": pci_rate_kg_thm,
         "pci_total_mt": pci_total_mt,
@@ -901,6 +933,8 @@ def evaluate_blend(
                 "enabled": bool(fuel.enabled),
                 "rate_kg_per_thm": float(fuel.rate_kg_per_thm),
                 "rate_basis": str(fuel.rate_basis),
+                "add_moisture_to_rate": bool(fuel.add_moisture_to_rate),
+                "moisture_pct": float(fuel.moisture_pct),
                 "wet_fuel_mt": float(wet_fuel_mt),
                 "dry_fuel_mt": float(dry_fuel_mt),
                 "chemistry_source": str(fuel.chemistry_source),
