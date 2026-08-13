@@ -269,10 +269,10 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
     Build the editable fuel ash chemistry table from BMO configuration.
 
     Fuel ash defaults come from the laboratory ash-analysis workbook and can be
-    overridden by operators for each run. The table keeps rate, inherent
-    moisture (IM), volatile matter (VM), ash, ash oxide chemistry, and
-    dry-fuel-basis S/P together so the slag calculation can apply the full fuel
-    ash sequence.
+    overridden by operators for each run. The table keeps rate, fuel moisture
+    (TM for coke/nut coke; IM for PCI), ash-analysis volatile matter (VM), ash
+    chemistry, and dry-fuel-basis S/P together so the slag calculation can
+    apply the full fuel ash sequence.
 
     Args:
          - fuel_ash_cfg: list[dict[str, Any]] - Configured fuel ash defaults.
@@ -385,10 +385,18 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
                 help="Current fuel price; the displayed unit fuel cost is re-priced to this.",
             ),
             "moisture_pct": st.column_config.NumberColumn(
-                "Ash % IM", min_value=0.0, max_value=100.0, step=0.1
+                "Moisture (%)",
+                min_value=0.0,
+                max_value=100.0,
+                step=0.1,
+                help="Total moisture (TM) for coke/nut coke; inherent moisture (IM) for PCI.",
             ),
             "vm_pct": st.column_config.NumberColumn(
-                "Ash % VM", min_value=0.0, max_value=100.0, step=0.1
+                "Ash Analysis VM (%)",
+                min_value=0.0,
+                max_value=100.0,
+                step=0.1,
+                help="Volatile matter supplied by fuel_chemistry.vm for the ash analysis.",
             ),
             "ash_pct": st.column_config.NumberColumn(
                 "Ash (%)", min_value=0.0, max_value=100.0, step=0.1
@@ -1405,7 +1413,7 @@ def render_blend_metrics(
     charge_cols[4].metric(
         "Hotmetal per Charge (MT)",
         (
-            f"{float(chemical_hot_metal_per_charge_mt):,.2f}"
+            f"{float(chemical_hot_metal_per_charge_mt):,.3f}"
             if chemical_hot_metal_per_charge_mt is not None
             else "n/a"
         ),
@@ -1509,7 +1517,10 @@ def render_coke_correction_breakdown(blend: BlendEvaluation) -> None:
 
 
 def build_blend_table_df(
-    blend: BlendEvaluation, selected_ores: list[OreInput]
+    blend: BlendEvaluation,
+    selected_ores: list[OreInput],
+    *,
+    charge_mass_mt: float = 26.4,
 ) -> pd.DataFrame:
     """
     Build the result table data for a blend.
@@ -1517,10 +1528,22 @@ def build_blend_table_df(
     Args:
          - blend: BlendEvaluation - Evaluated blend result to display.
          - selected_ores: list[OreInput] - Ores included in the current run.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge.
 
     Returns:
          - return pd.DataFrame - Per-ore result table sorted by share.
     """
+
+    charges_per_hour = compute_charging_requirements(
+        blend,
+        charge_mass_mt=charge_mass_mt,
+        hours_per_day=CHARGING_HOURS_PER_DAY,
+    )["required_charges_per_hour"]
+    daily_charges = (
+        float(charges_per_hour) * CHARGING_HOURS_PER_DAY
+        if charges_per_hour is not None and float(charges_per_hour) > 0.0
+        else None
+    )
 
     rows = []
     dry_weight_by_ore = blend.diagnostics.get("dry_weight_mt_by_ore", {}) or {}
@@ -1539,6 +1562,9 @@ def build_blend_table_df(
             {
                 "ore_name": ore.display_name,
                 "quantity_mt": qty,
+                "kg_per_charge": (
+                    qty * 1000.0 / daily_charges if daily_charges else None
+                ),
                 "dry_quantity_mt": float(dry_weight_by_ore.get(ore.ore_id, 0.0)),
                 "moisture_pct": float(ore.chemistry.moisture_pct),
                 "fe_contribution_mt": fe_mt,
@@ -1554,7 +1580,12 @@ def build_blend_table_df(
     return pd.DataFrame(rows).sort_values("share_pct", ascending=False)
 
 
-def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) -> None:
+def render_blend_table(
+    blend: BlendEvaluation,
+    selected_ores: list[OreInput],
+    *,
+    charge_mass_mt: float = 26.4,
+) -> None:
     """
     Render the ore quantity, share, stock, price, and cost table for a blend.
 
@@ -1565,12 +1596,13 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
     Args:
          - blend: BlendEvaluation - Evaluated blend result to display.
          - selected_ores: list[OreInput] - Ores included in the current run.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge.
 
     Returns:
          - return None - Writes the blend table to the Streamlit page.
     """
 
-    df = build_blend_table_df(blend, selected_ores)
+    df = build_blend_table_df(blend, selected_ores, charge_mass_mt=charge_mass_mt)
     # Share is shown as an inline progress bar so the burden split is
     # readable at a glance; ore cost is in lakhs to keep the numbers short.
     share_max = float(max(100.0, df["share_pct"].max())) if not df.empty else 100.0
@@ -1585,6 +1617,7 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
             "ore_name",
             "share_pct",
             "quantity_mt",
+            "kg_per_charge",
             "fe_contribution_mt",
             "slag_contribution_mt",
             "price_rs_per_mt",
@@ -1594,6 +1627,7 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
             "ore_name": st.column_config.TextColumn("Ore"),
             "share_pct": share_col,
             "quantity_mt": st.column_config.NumberColumn("Wet Qty (MT)", format="%.1f"),
+            "kg_per_charge": st.column_config.NumberColumn("KGs/charge", format="%.1f"),
             "fe_contribution_mt": st.column_config.NumberColumn(
                 "Fe (MT)", format="%.1f"
             ),

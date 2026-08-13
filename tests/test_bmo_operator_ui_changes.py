@@ -430,6 +430,26 @@ def test_blend_table_includes_slag_per_fe_ratio() -> None:
     assert ore_b["slag_per_fe"] == pytest.approx(0.0)
 
 
+def test_blend_table_calculates_wet_kg_per_charge() -> None:
+    blend = _blend()
+    blend.quantities_mt["ore_a"] = 2400.0
+    blend.diagnostics.update(
+        {
+            "total_burden_qty_mt": 6.62 * 24.0 * 26.4,
+            "fuel_rate_estimate": {"nut_coke_rate_kg_thm": 0.0},
+        }
+    )
+
+    df = build_blend_table_df(
+        blend,
+        [_ore("ore_a", "Sinter")],
+    )
+
+    assert df.iloc[0]["kg_per_charge"] == pytest.approx(
+        (2400.0 / (6.62 * 24.0)) * 1000.0
+    )
+
+
 def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
     captured = {"markdown": [], "metrics": [], "captions": []}
 
@@ -514,7 +534,7 @@ def test_main_metrics_show_production_and_requested_charging_values(monkeypatch)
     assert captured["Production"] == "100.0 MT"
     assert captured["Coke in Charges (MT)"] == "40.0"
     assert captured["PCI in Charges (MT)"] == "15.0"
-    assert captured["Hotmetal per Charge (MT)"] == "13.20"
+    assert captured["Hotmetal per Charge (MT)"] == "13.200"
     assert "Planning HM/charge (MT)" not in captured
     hidden = {
         "Fe Produced (MT)",
@@ -627,7 +647,7 @@ def test_dust_save_preserves_fuel_ash_preferences(tmp_path) -> None:
     assert loaded["dust_editor"]["rows"]["bf_gas_dust"]["wet_qty_mt"] == 12.0
 
 
-def test_fuel_ash_editor_labels_im_and_adds_vm(monkeypatch) -> None:
+def test_fuel_ash_editor_labels_moisture_and_adds_vm(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_data_editor(frame: pd.DataFrame, **kwargs):
@@ -652,8 +672,11 @@ def test_fuel_ash_editor_labels_im_and_adds_vm(monkeypatch) -> None:
     assert editor_df.loc[0, "vm_pct"] == 0.9
     assert "vm_pct" in captured["column_order"]
     column_config = captured["column_config"]
-    assert column_config["moisture_pct"]["label"] == "Ash % IM"
-    assert column_config["vm_pct"]["label"] == "Ash % VM"
+    assert column_config["moisture_pct"]["label"] == "Moisture (%)"
+    assert "TM" in column_config["moisture_pct"]["help"]
+    assert "IM" in column_config["moisture_pct"]["help"]
+    assert column_config["vm_pct"]["label"] == "Ash Analysis VM (%)"
+    assert "fuel_chemistry.vm" in column_config["vm_pct"]["help"]
 
 
 def test_fuel_ash_preferences_persist_and_apply_all_editable_values() -> None:

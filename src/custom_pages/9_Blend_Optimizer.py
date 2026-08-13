@@ -393,6 +393,21 @@ def _cached_hm_slag_snapshot(
     )
 
 
+def _cached_fuel_analysis_snapshot(
+    provider: EvonithBmoContextProvider,
+    mode: str,
+    window_days: int,
+    cache_version: int,
+) -> tuple[dict[str, dict[str, float]], list[str]]:
+    return _session_cached_source(
+        cache_version,
+        ("fuel_analysis", mode, window_days),
+        lambda: provider.get_fuel_analysis_snapshot(
+            mode=mode, window_days=window_days
+        ),
+    )
+
+
 def _cached_recent_active_pellet_ids(
     provider: EvonithBmoContextProvider,
     cache_version: int,
@@ -542,6 +557,7 @@ def _clear_bmo_results() -> None:
 def _fuel_ash_cfg_with_recent_rates(
     fuel_ash_cfg: list[dict[str, Any]],
     fuel_rates: dict[str, float | str],
+    fuel_analysis: Mapping[str, Mapping[str, float]] | None = None,
 ) -> list[dict[str, Any]]:
     rate_keys = {
         "coke": "coke_rate_kg_thm",
@@ -551,10 +567,16 @@ def _fuel_ash_cfg_with_recent_rates(
     rows: list[dict[str, Any]] = []
     for item in fuel_ash_cfg or []:
         row = dict(item)
-        rate_key = rate_keys.get(str(row.get("fuel_id", "")).strip())
+        fuel_id = str(row.get("fuel_id", "")).strip()
+        rate_key = rate_keys.get(fuel_id)
         rate = fuel_rates.get(rate_key or "")
         if rate is not None:
             row["rate_kg_per_thm"] = float(rate)
+        analysis = (fuel_analysis or {}).get(fuel_id, {})
+        for field in ("moisture_pct", "vm_pct"):
+            value = analysis.get(field)
+            if value is not None:
+                row[field] = float(value)
         rows.append(row)
     return rows
 
@@ -1116,6 +1138,7 @@ def _render_data_diagnostics(
         source_rows = []
         stock = diagnostics.get("stock", {})
         chemistry = diagnostics.get("chemistry", {})
+        fuel_analysis = diagnostics.get("fuel_analysis", {})
         hm = diagnostics.get("hm_slag", {})
         dpr = diagnostics.get("dpr", {})
         history = diagnostics.get("history", {})
@@ -1141,6 +1164,15 @@ def _render_data_diagnostics(
                         for row in chemistry.get("tables", [])
                     ),
                     "note": f"{chemistry.get('fallback_count', 0)} fallback material(s), mode={chemistry.get('mode', '')}",
+                },
+                {
+                    "area": "fuel_analysis",
+                    "source": fuel_analysis.get(
+                        "source", "offline_feed.fuel_chemistry"
+                    ),
+                    "timestamp/window": f"{fuel_analysis.get('start_time', '')} -> {fuel_analysis.get('end_time', '')}",
+                    "rows": fuel_analysis.get("returned_rows", 0),
+                    "note": f"Moisture for fuel basis; VM for ash analysis, mode={fuel_analysis.get('mode', '')}",
                 },
                 {
                     "area": "hm_slag",
@@ -1203,6 +1235,8 @@ def _render_data_diagnostics(
             _show_df(pd.DataFrame(stock.get("material_rows", [])))
             st.markdown("##### RM Chemistry")
             _show_df(pd.DataFrame(chemistry.get("material_rows", [])))
+            st.markdown("##### Fuel Analysis")
+            _show_df(pd.DataFrame(fuel_analysis.get("rows", [])))
             st.markdown("##### Flux Inputs")
             _show_df(pd.DataFrame(flux.get("rows", [])))
             st.markdown("##### Current Ore Editor Inputs")
@@ -2042,6 +2076,10 @@ hm_snapshot = _cached_hm_slag_snapshot(
     provider, chemistry_mode, chemistry_window_days, source_cache_version
 )
 ore_diagnostics["warnings"].extend(hm_snapshot.get("warnings", []))
+fuel_analysis, fuel_analysis_warnings = _cached_fuel_analysis_snapshot(
+    provider, chemistry_mode, chemistry_window_days, source_cache_version
+)
+ore_diagnostics["warnings"].extend(fuel_analysis_warnings)
 observed_slag_rate = float(hm_snapshot.get("observed_slag_rate_kg_per_thm", 0.0) or 0.0)
 hm_fe_pct_for_target = float(
     hm_snapshot.get("hm_fe_pct_for_target")
@@ -2268,7 +2306,9 @@ _render_data_diagnostics(
 fuel_ash_base_df = apply_fuel_ash_preferences(
     build_fuel_ash_editor_df(
         _fuel_ash_cfg_with_recent_rates(
-            bmo_cfg.get("fuel_ash_inputs", []), recent_fuel_rates
+            bmo_cfg.get("fuel_ash_inputs", []),
+            recent_fuel_rates,
+            fuel_analysis,
         )
     ),
     operator_preferences,
@@ -2293,8 +2333,9 @@ with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
     else:
         edited_fuel_ash_candidate_df = fuel_ash_editor_source_df
     st.caption(
-        "Save keeps all Fuel Ash values for the next session. IM is used for "
-        "the dry-fuel ash calculation; VM is retained with the fuel analysis."
+        "Fuel analysis uses Moisture from fuel_chemistry (TM for coke/nut coke; "
+        "IM for PCI). Ash analysis uses VM from fuel_chemistry. Moisture is "
+        "removed once from the wet fuel; VM is not deducted as moisture."
     )
     fuel_apply_col, fuel_save_col = st.columns(2)
     fuel_ash_inputs_applied = _form_submit_button(
@@ -2817,7 +2858,7 @@ if lp_result is not None or de_result is not None:
             _render_si_metric(st.session_state.get("bmo_lp_si"))
             render_coke_correction_breakdown(lp_result)
             _render_lp_flux_additions(lp_result)
-            render_blend_table(lp_result, selected_ores)
+            render_blend_table(lp_result, selected_ores, charge_mass_mt=charge_mass_mt)
             _render_share_pie(lp_result, selected_ores, "LP Share (%)")
             render_slag_balance_details(
                 lp_result, selected_ores, fuel_ash_inputs, flux_inputs
@@ -2862,7 +2903,7 @@ if lp_result is not None or de_result is not None:
             _render_si_metric(st.session_state.get("bmo_de_si"))
             render_coke_correction_breakdown(de_result)
             _render_lp_flux_additions(de_result)
-            render_blend_table(de_result, selected_ores)
+            render_blend_table(de_result, selected_ores, charge_mass_mt=charge_mass_mt)
             _render_share_pie(de_result, selected_ores, "DE Share (%)")
             _render_de_exploration(
                 st.session_state.get("bmo_de_candidates"), selected_ores
