@@ -127,7 +127,9 @@ def fuel_quantities_mt(fuel: FuelAshInput, hot_metal_mt: float) -> tuple[float, 
 
     A wet rate is converted to wet tonnes first and moisture is removed once. A
     dry rate is converted directly to dry tonnes and moisture is used only to
-    back-calculate its wet charging quantity.
+    back-calculate its wet charging quantity. Live/default nut coke can instead
+    be marked as a base rate; for that input the plant rule adds moisture as
+    ``base * (1 + moisture / 100)`` and retains the base as dry tonnes.
     """
 
     rate_mt = (
@@ -137,7 +139,10 @@ def fuel_quantities_mt(fuel: FuelAshInput, hot_metal_mt: float) -> tuple[float, 
     )
     dry_fraction = (100.0 - _safe_pct(fuel.moisture_pct)) / 100.0
     basis = str(getattr(fuel, "rate_basis", "wet") or "wet").strip().lower()
-    if basis == "dry":
+    if bool(getattr(fuel, "add_moisture_to_rate", False)):
+        dry_fuel_mt = rate_mt
+        wet_fuel_mt = rate_mt * (1.0 + _safe_pct(fuel.moisture_pct) / 100.0)
+    elif basis == "dry":
         dry_fuel_mt = rate_mt
         wet_fuel_mt = dry_fuel_mt / dry_fraction if dry_fraction > 0.0 else 0.0
     else:

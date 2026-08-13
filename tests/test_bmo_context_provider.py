@@ -560,6 +560,71 @@ def test_average_chemistry_snapshot_ignores_zero_values(tmp_path, monkeypatch) -
     assert ore_row["source"] == "offline_db_avg_non_zero"
 
 
+def test_fuel_analysis_averages_latest_moisture_and_vm_by_family(
+    tmp_path, monkeypatch
+) -> None:
+    settings_path, mapping_path = _write_bmo_files(tmp_path)
+
+    def fake_fetch(**kwargs):
+        assert kwargs["table_name"] == "offline_feed.fuel_chemistry"
+        assert kwargs["query_type"] == "raw"
+        return pd.DataFrame(
+            {
+                "date_time": pd.to_datetime(
+                    [
+                        "2026-05-01T00:00:00Z",
+                        "2026-05-02T00:00:00Z",
+                        "2026-05-02T00:30:00Z",
+                        "2026-05-02T01:00:00Z",
+                        "2026-05-02T01:30:00Z",
+                        "2026-05-02T02:00:00Z",
+                    ]
+                ),
+                "material_code": [
+                    "coke_1",
+                    "coke_1",
+                    "coke_2",
+                    "nut_coke_1",
+                    "nut_coke_2",
+                    "pci_1",
+                ],
+                "tm": [2.0, 4.0, 6.0, 8.0, 10.0, 7.0],
+                "moisture": [0.2, 0.4, 0.6, 0.8, 1.0, 1.3],
+                "vm": [1.0, 2.0, 4.0, 3.0, 5.0, 20.0],
+            }
+        ).set_index("date_time")
+
+    monkeypatch.setattr(context_module, "_fetch_offline_data", fake_fetch)
+    provider = EvonithBmoContextProvider(
+        setting_path=str(settings_path), mapping_path=str(mapping_path)
+    )
+
+    analysis, warnings = provider.get_fuel_analysis_snapshot(
+        mode="latest", window_days=30
+    )
+
+    assert warnings == []
+    assert analysis == {
+        "coke": {"moisture_pct": 5.0, "vm_pct": 3.0},
+        "nut_coke": {"moisture_pct": 9.0, "vm_pct": 4.0},
+        "pci": {"moisture_pct": 1.3, "vm_pct": 20.0},
+    }
+    rows = provider.get_data_diagnostics()["fuel_analysis"]["rows"]
+    rows_by_field = {
+        (row["fuel_id"], row["analysis_field"]): row for row in rows
+    }
+    assert rows_by_field[("coke", "moisture_pct")]["source_column"] == "tm"
+    assert rows_by_field[("pci", "moisture_pct")]["source_column"] == "moisture"
+    assert rows_by_field[("coke", "vm_pct")]["source_column"] == "vm"
+    assert (
+        rows_by_field[("coke", "moisture_pct")]["material_code"]
+        == "coke_1, coke_2"
+    )
+    assert rows_by_field[("coke", "moisture_pct")]["rows_used"] == 2
+    assert rows_by_field[("coke", "vm_pct")]["rows_used"] == 2
+    assert rows_by_field[("nut_coke", "moisture_pct")]["rows_used"] == 2
+
+
 def test_history_frame_does_not_auto_create_missing_static_dataset(tmp_path) -> None:
     settings_path, mapping_path = _write_bmo_files(tmp_path)
     provider = EvonithBmoContextProvider(

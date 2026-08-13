@@ -137,9 +137,11 @@ class FuelAshInput:
          - enabled: bool - Whether this fuel should contribute ash to slag.
          - rate_kg_per_thm: float - Fuel rate in kg per THM on ``rate_basis``.
          - rate_basis: str - ``wet`` or ``dry``; controls the one moisture conversion.
+         - add_moisture_to_rate: bool - Whether the kg/THM value is a base
+           nut-coke quantity to which moisture must be added.
          - price_rs_per_mt: float - Operator's current fuel price in Rs per MT (Rs/tonne).
-         - moisture_pct: float - Fuel inherent-moisture (IM) percentage.
-         - vm_pct: float - Fuel volatile-matter (VM) percentage.
+         - moisture_pct: float - Fuel TM for coke/nut coke, or IM for PCI.
+         - vm_pct: float - Volatile-matter (VM) percentage used by ash analysis.
          - ash_pct: float - Ash percentage in the fuel.
          - sio2_pct: float - SiO2 percentage inside the ash.
          - al2o3_pct: float - Al2O3 percentage inside the ash.
@@ -163,6 +165,7 @@ class FuelAshInput:
     enabled: bool = True
     rate_kg_per_thm: float = 0.0
     rate_basis: str = "wet"
+    add_moisture_to_rate: bool = False
     price_rs_per_mt: float = 0.0
     moisture_pct: float = 0.0
     vm_pct: float = 0.0

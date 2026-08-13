@@ -100,6 +100,13 @@ def test_ore_editor_keeps_share_bounds_beside_price(monkeypatch) -> None:
         "max_share_pct",
     )
     assert column_order.index("max_share_pct") < column_order.index("moisture_pct")
+    assert "mn_basis" not in column_order
+    assert "ti_basis" not in column_order
+    column_config = captured["column_config"]
+    for field in set(column_order) - {"selected", "ore_name"}:
+        type_config = column_config[field]["type_config"]
+        assert type_config["step"] == pytest.approx(0.01)
+        assert type_config["format"] == "%.2f"
 
 
 def test_ore_editor_preferences_persist_operator_defaults_but_not_stock_or_chemistry() -> None:
@@ -430,6 +437,26 @@ def test_blend_table_includes_slag_per_fe_ratio() -> None:
     assert ore_b["slag_per_fe"] == pytest.approx(0.0)
 
 
+def test_blend_table_calculates_wet_kg_per_charge() -> None:
+    blend = _blend()
+    blend.quantities_mt["ore_a"] = 2400.0
+    blend.diagnostics.update(
+        {
+            "total_burden_qty_mt": 6.62 * 24.0 * 26.4,
+            "fuel_rate_estimate": {"nut_coke_rate_kg_thm": 0.0},
+        }
+    )
+
+    df = build_blend_table_df(
+        blend,
+        [_ore("ore_a", "Sinter")],
+    )
+
+    assert df.iloc[0]["kg_per_charge"] == pytest.approx(
+        (2400.0 / (6.62 * 24.0)) * 1000.0
+    )
+
+
 def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
     captured = {"markdown": [], "metrics": [], "captions": []}
 
@@ -514,7 +541,7 @@ def test_main_metrics_show_production_and_requested_charging_values(monkeypatch)
     assert captured["Production"] == "100.0 MT"
     assert captured["Coke in Charges (MT)"] == "40.0"
     assert captured["PCI in Charges (MT)"] == "15.0"
-    assert captured["Hotmetal per Charge (MT)"] == "13.20"
+    assert captured["Hotmetal per Charge (MT)"] == "13.200"
     assert "Planning HM/charge (MT)" not in captured
     hidden = {
         "Fe Produced (MT)",
@@ -627,7 +654,7 @@ def test_dust_save_preserves_fuel_ash_preferences(tmp_path) -> None:
     assert loaded["dust_editor"]["rows"]["bf_gas_dust"]["wet_qty_mt"] == 12.0
 
 
-def test_fuel_ash_editor_labels_im_and_adds_vm(monkeypatch) -> None:
+def test_fuel_ash_editor_labels_moisture_and_adds_vm(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_data_editor(frame: pd.DataFrame, **kwargs):
@@ -650,10 +677,61 @@ def test_fuel_ash_editor_labels_im_and_adds_vm(monkeypatch) -> None:
 
     assert returned is editor_df
     assert editor_df.loc[0, "vm_pct"] == 0.9
-    assert "vm_pct" in captured["column_order"]
+    column_order = tuple(captured["column_order"])
+    assert "vm_pct" in column_order
+    for hidden in ("mn_basis", "rate_basis", "ti_basis", "chemistry_source"):
+        assert hidden not in column_order
     column_config = captured["column_config"]
-    assert column_config["moisture_pct"]["label"] == "Ash % IM"
-    assert column_config["vm_pct"]["label"] == "Ash % VM"
+    assert column_config["moisture_pct"]["label"] == "Moisture (%)"
+    assert "TM" in column_config["moisture_pct"]["help"]
+    assert "IM" in column_config["moisture_pct"]["help"]
+    assert column_config["vm_pct"]["label"] == "Ash Analysis VM (%)"
+    assert "fuel_chemistry.vm" in column_config["vm_pct"]["help"]
+    for field in set(column_order) - {"enabled", "fuel_name"}:
+        type_config = column_config[field]["type_config"]
+        assert type_config["step"] == pytest.approx(0.01)
+        assert type_config["format"] == "%.2f"
+
+
+def test_flux_and_dust_editors_hide_internal_columns_and_accept_two_decimals(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_data_editor(frame: pd.DataFrame, **kwargs):
+        captured.update(kwargs)
+        return frame
+
+    monkeypatch.setattr(components.st, "data_editor", fake_data_editor)
+    cases = (
+        (
+            components.render_flux_editor,
+            components.build_flux_editor_df(
+                [{"flux_id": "limestone", "display_name": "Limestone"}]
+            ),
+            {"mn_basis", "ti_basis"},
+            {"enabled", "flux_name", "optimizable"},
+        ),
+        (
+            components.render_dust_editor,
+            components.build_dust_editor_df(
+                [{"dust_id": "bf_gas_dust", "display_name": "BF Gas Dust"}]
+            ),
+            {"rate_basis", "wet_qty_mt", "source"},
+            {"enabled", "dust_name"},
+        ),
+    )
+
+    for render, editor_df, hidden_fields, nonnumeric_fields in cases:
+        captured.clear()
+        assert render(editor_df) is editor_df
+        column_order = tuple(captured["column_order"])
+        assert hidden_fields.isdisjoint(column_order)
+        column_config = captured["column_config"]
+        for field in set(column_order) - nonnumeric_fields:
+            type_config = column_config[field]["type_config"]
+            assert type_config["step"] == pytest.approx(0.01)
+            assert type_config["format"] == "%.2f"
 
 
 def test_fuel_ash_preferences_persist_and_apply_all_editable_values() -> None:

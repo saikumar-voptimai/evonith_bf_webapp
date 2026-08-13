@@ -32,6 +32,16 @@ HM_PI_CHEM_COLUMNS = ("chem_pct_c", "chem_pct_si", "chem_pct_s")
 HM_OTHER_CHEM_COLUMNS = ("chem_pct_mn", "chem_pct_p", "chem_pct_ti", "chem_pct_cr")
 HM_ALL_CHEM_COLUMNS = (HM_FE_COLUMN,) + HM_PI_CHEM_COLUMNS + HM_OTHER_CHEM_COLUMNS
 
+# Fuel chemistry stores total moisture (TM) separately from inherent moisture
+# (the ``moisture`` column). Coke rates are wet-basis rates and therefore use
+# TM; PCI uses IM, matching the laboratory analysis basis used by the ash
+# calculation. Prefixes cover whichever numbered material is currently active.
+FUEL_MOISTURE_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "coke": ("coke_", ("tm",)),
+    "nut_coke": ("nut_coke_", ("tm",)),
+    "pci": ("pci_", ("moisture", "im")),
+}
+
 
 def _resolve_repo_path(path_str: str) -> Path:
     """
@@ -135,6 +145,7 @@ class EvonithBmoContextProvider:
         )
         self._last_stock_diagnostics: dict[str, Any] = {}
         self._last_chemistry_diagnostics: dict[str, Any] = {}
+        self._last_fuel_analysis_diagnostics: dict[str, Any] = {}
         self._last_hm_slag_diagnostics: dict[str, Any] = {}
         self._last_dpr_diagnostics: dict[str, Any] = {}
         self._last_history_diagnostics: dict[str, Any] = {}
@@ -1170,6 +1181,190 @@ class EvonithBmoContextProvider:
         }
         return chemistry_by_ore, warnings
 
+    def get_fuel_analysis_snapshot(
+        self, mode: str = "latest", window_days: int | None = None
+    ) -> tuple[dict[str, dict[str, float]], list[str]]:
+        """Return fuel moisture and ash-analysis VM for each configured fuel.
+
+        One ``fuel_chemistry`` query supplies all three Fuel Ash rows. Coke and
+        nut coke use total moisture (``tm``); PCI uses inherent moisture (the
+        database ``moisture`` field). In latest mode Coke and Nut Coke average
+        the latest valid TM for every numbered material in their family (for
+        example, ``coke_1`` and ``coke_2``); PCI uses its newest valid IM.
+        The same material aggregation supplies ``vm`` separately for the ash
+        analysis. Average mode follows the page's chemistry window and averages
+        valid non-zero analyses.
+        """
+
+        cfg = self.settings.get("data_sources", {}) or {}
+        mode = "avg" if mode == "avg" else "latest"
+        days = int(window_days or cfg.get("chemistry_time_range_days", 30))
+        query_days = (
+            max(days, int(cfg.get("latest_usage_lookback_days", 365)))
+            if mode == "latest"
+            else days
+        )
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(days=query_days)
+        table_name = "offline_feed.fuel_chemistry"
+        warnings: list[str] = []
+        analysis_by_fuel: dict[str, dict[str, float]] = {}
+        diagnostic_rows: list[dict[str, Any]] = []
+
+        try:
+            raw_df = _fetch_offline_data(
+                table_name=table_name,
+                time_range=(start_time, end_time),
+                query_type="raw",
+            )
+        except Exception as exc:
+            warning = f"Fuel analysis query failed for {table_name}: {exc}"
+            warnings.append(warning)
+            self._last_fuel_analysis_diagnostics = {
+                "source": table_name,
+                "mode": mode,
+                "start_time": self._iso(start_time),
+                "end_time": self._iso(end_time),
+                "returned_rows": 0,
+                "rows": [],
+                "warnings": list(warnings),
+            }
+            return analysis_by_fuel, warnings
+
+        fuel_df = self._frame_with_time_column(raw_df)
+        if "material_code" in fuel_df.columns:
+            material_codes = (
+                fuel_df["material_code"].astype("string").str.strip().str.lower()
+            )
+        else:
+            material_codes = pd.Series("", index=fuel_df.index, dtype="string")
+
+        for fuel_id, (material_prefix, source_columns) in FUEL_MOISTURE_FIELDS.items():
+            family = fuel_df[material_codes.str.startswith(material_prefix, na=False)].copy()
+            for analysis_field, candidate_columns in (
+                ("moisture_pct", source_columns),
+                ("vm_pct", ("vm",)),
+            ):
+                selected_column = next(
+                    (
+                        column
+                        for column in candidate_columns
+                        if column in family.columns
+                        and pd.to_numeric(family[column], errors="coerce")
+                        .notna()
+                        .any()
+                    ),
+                    None,
+                )
+                if selected_column is None:
+                    warnings.append(
+                        f"Fuel {analysis_field} unavailable for {fuel_id}; "
+                        "using the configured fallback."
+                    )
+                    diagnostic_rows.append(
+                        {
+                            "fuel_id": fuel_id,
+                            "analysis_field": analysis_field,
+                            "material_prefix": material_prefix,
+                            "source_column": candidate_columns[0],
+                            "value_pct": None,
+                            "sample_timestamp": "",
+                            "rows_used": 0,
+                            "source": "fallback",
+                        }
+                    )
+                    continue
+
+                field_family = family.copy()
+                numeric = pd.to_numeric(field_family[selected_column], errors="coerce")
+                valid = numeric.notna() & numeric.between(
+                    0.0, 100.0, inclusive="both"
+                )
+                if mode == "avg":
+                    # Lab exports use zero as an empty placeholder in averaged
+                    # chemistry windows, consistent with the ore chemistry path.
+                    valid &= numeric.ne(0.0)
+                field_family = field_family.loc[valid].copy()
+                numeric = numeric.loc[valid]
+                if field_family.empty:
+                    warnings.append(
+                        f"Fuel {analysis_field} unavailable for {fuel_id}; "
+                        "using the configured fallback."
+                    )
+                    diagnostic_rows.append(
+                        {
+                            "fuel_id": fuel_id,
+                            "analysis_field": analysis_field,
+                            "material_prefix": material_prefix,
+                            "source_column": selected_column,
+                            "value_pct": None,
+                            "sample_timestamp": "",
+                            "rows_used": 0,
+                            "source": "fallback",
+                        }
+                    )
+                    continue
+
+                if mode == "avg":
+                    value = float(numeric.mean())
+                    used = field_family
+                    source = "offline_db_avg_non_zero"
+                elif fuel_id in {"coke", "nut_coke"}:
+                    field_family["_analysis_pct"] = numeric
+                    used = field_family.groupby("material_code", sort=False).tail(1)
+                    value = float(used["_analysis_pct"].mean())
+                    source = "offline_db_latest_material_avg"
+                else:
+                    position = len(field_family) - 1
+                    value = float(numeric.iloc[position])
+                    used = field_family.iloc[[position]]
+                    source = "offline_db_latest"
+                analysis_by_fuel.setdefault(fuel_id, {})[analysis_field] = value
+                diagnostic_rows.append(
+                    {
+                        "fuel_id": fuel_id,
+                        "analysis_field": analysis_field,
+                        "material_code": ", ".join(
+                            sorted(used["material_code"].astype(str).unique())
+                        ),
+                        "material_prefix": material_prefix,
+                        "source_column": selected_column,
+                        "value_pct": value,
+                        "sample_timestamp": (
+                            self._iso(used["time"].max())
+                            if "time" in used.columns
+                            else ""
+                        ),
+                        "rows_used": int(len(used)),
+                        "source": source,
+                    }
+                )
+
+        self._last_fuel_analysis_diagnostics = {
+            "source": table_name,
+            "mode": mode,
+            "start_time": self._iso(start_time),
+            "end_time": self._iso(end_time),
+            "returned_rows": int(len(fuel_df)),
+            "rows": diagnostic_rows,
+            "warnings": list(warnings),
+        }
+        return analysis_by_fuel, warnings
+
+    def get_fuel_moisture_snapshot(
+        self, mode: str = "latest", window_days: int | None = None
+    ) -> tuple[dict[str, float], list[str]]:
+        """Compatibility wrapper returning only the fuel-analysis moisture field."""
+
+        analysis, warnings = self.get_fuel_analysis_snapshot(
+            mode=mode, window_days=window_days
+        )
+        return {
+            fuel_id: values["moisture_pct"]
+            for fuel_id, values in analysis.items()
+            if "moisture_pct" in values
+        }, warnings
+
     def get_hm_slag_snapshot(
         self, *, mode: str = "latest", window_days: int = 30
     ) -> dict[str, Any]:
@@ -1851,6 +2046,7 @@ class EvonithBmoContextProvider:
         return {
             "stock": dict(self._last_stock_diagnostics),
             "chemistry": dict(self._last_chemistry_diagnostics),
+            "fuel_analysis": dict(self._last_fuel_analysis_diagnostics),
             "hm_slag": dict(self._last_hm_slag_diagnostics),
             "dpr": dict(self._last_dpr_diagnostics),
             "history": dict(self._last_history_diagnostics),
