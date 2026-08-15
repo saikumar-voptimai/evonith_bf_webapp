@@ -387,6 +387,7 @@ def _explain_lp_infeasibility(
     hot_metal_target_mt: float | None,
     coke_correction_settings: CokeCorrectionSettings | None = None,
     coke_correction_reference: CokeCorrectionReference | None = None,
+    price_coke_correction: bool = False,
 ) -> list[str]:
     """
     Explain an infeasible LP by isolating the binding constraint family.
@@ -454,6 +455,7 @@ def _explain_lp_infeasibility(
             hot_metal_target_mt=hot_metal_target_mt,
             coke_correction_settings=coke_correction_settings,
             coke_correction_reference=coke_correction_reference,
+            price_coke_correction=price_coke_correction,
             _explain=False,
         )
         if without_burden_cap is not None:
@@ -482,6 +484,7 @@ def _explain_lp_infeasibility(
         hot_metal_target_mt=hot_metal_target_mt,
         coke_correction_settings=coke_correction_settings,
         coke_correction_reference=coke_correction_reference,
+        price_coke_correction=price_coke_correction,
     )
     # Every slag limit currently in force, and how to describe it once we know
     # which one is doing the blocking. Each is dropped in turn, cheapest and
@@ -679,6 +682,7 @@ def run_lp_baseline(
     hot_metal_target_mt: float | None = None,
     coke_correction_settings: CokeCorrectionSettings | None = None,
     coke_correction_reference: CokeCorrectionReference | None = None,
+    price_coke_correction: bool = False,
     charge_mass_mt: float = 26.4,
     _explain: bool = True,
 ) -> tuple[BlendEvaluation | None, list[str]]:
@@ -813,21 +817,34 @@ def run_lp_baseline(
     a_ub_rows.append(slag_coeff)
     b_ub_values.append(float(target_slag_qty_mt) - slag_base_mt)
 
-    # Price the physics coke correction into the objective. Without it the LP
-    # sees no fuel consequence at all for a leaner burden - the fuel model is
-    # blend-blind - so it buys the cheapest, highest-gangue material available
-    # and only discovers the coke bill afterwards, on the display.
+    # Optionally price the physics coke correction into the objective.
+    #
+    # OFF by default. The LP's job is to pick the cheapest ore + flux mix that
+    # satisfies the slag rate, basicity, T-basicity, Al2O3, MgO and MgO/Al2O3
+    # limits - nothing else. Slag is governed by those hard constraints, not by
+    # a fuel term in the cost vector, so the reported cost is the purchase cost
+    # of a real basket of material and nothing has to be unpicked to explain it.
+    #
+    # DE is a different optimiser with a different objective (ore + predicted
+    # fuel, slag limits as soft penalties). Its seed LP must be optimised against
+    # the objective DE will actually use, otherwise the seed lands in a corner DE
+    # only explores a few percent around, so ``run_nonlinear_optimizer`` turns
+    # this on for its seed call.
     #
     # This changes only ``c``, never ``A_ub``/``b_ub``, so every constraint and
-    # the exact-slag retry loop below behave exactly as before.
-    coke_correction_coeffs = build_linear_coke_correction_cost_coeffs(
-        ores=ores,
-        variable_fluxes=variable_fluxes,
-        settings=coke_correction_settings or CokeCorrectionSettings(),
-        slag_coeff=slag_coeff,
-        hot_metal_target_mt=float(hot_metal_target_mt or target_production_mt or 0.0),
-    )
-    c = c + coke_correction_coeffs
+    # the exact-slag retry loop below behave identically either way.
+    coke_correction_coeffs = np.zeros(n + n_flux, dtype=float)
+    if price_coke_correction:
+        coke_correction_coeffs = build_linear_coke_correction_cost_coeffs(
+            ores=ores,
+            variable_fluxes=variable_fluxes,
+            settings=coke_correction_settings or CokeCorrectionSettings(),
+            slag_coeff=slag_coeff,
+            hot_metal_target_mt=float(
+                hot_metal_target_mt or target_production_mt or 0.0
+            ),
+        )
+        c = c + coke_correction_coeffs
 
     # Charging-throughput ceiling: every ore and flux tonne occupies room in the
     # same charges, so they share one budget. Without it the LP can meet the Fe
@@ -1003,6 +1020,7 @@ def run_lp_baseline(
                         hot_metal_target_mt=hot_metal_target_mt,
                         coke_correction_settings=coke_correction_settings,
                         coke_correction_reference=coke_correction_reference,
+                        price_coke_correction=price_coke_correction,
                     )
                 )
             return None, messages

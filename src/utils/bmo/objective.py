@@ -251,7 +251,11 @@ class BmoObjectiveEvaluator:
             for j, flux in enumerate(self.variable_fluxes)
         ]
 
+        # DE prices the CORRECTED fuel in its objective, so its slag has to be on
+        # the corrected-fuel basis too. The page's LP path deliberately does not
+        # do this - see ``evaluate_blend_with_fuel_prediction``.
         blend = evaluate_blend_with_fuel_prediction(
+            recompute_slag_with_corrected_fuel=True,
             ores=self.ores,
             quantities_mt=quantities,
             feo_in_slag_pct=self.feo_in_slag_pct,

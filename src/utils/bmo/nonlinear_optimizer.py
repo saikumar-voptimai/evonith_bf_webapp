@@ -307,8 +307,13 @@ def run_nonlinear_optimizer(
             # Seeding from an uncorrected LP would drop DE into the low-Fe corner
             # the correction exists to avoid, and DE only explores a few percent
             # around its seed - it would never find its way back out.
+            #
+            # This is why ``price_coke_correction`` exists as a flag rather than
+            # being deleted: the page's own LP is a pure ore-cost solve, but DE
+            # optimises ore + predicted fuel and its seed has to match.
             coke_correction_settings=coke_correction_settings,
             coke_correction_reference=coke_correction_reference,
+            price_coke_correction=True,
             charge_mass_mt=charge_mass_mt,
         )
     if lp_blend is None and seed_strategy == "lp":
