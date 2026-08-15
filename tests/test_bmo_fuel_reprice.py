@@ -83,6 +83,7 @@ def _blend(
     *,
     model_value: float = 12_900.0,
     fuel_rate_basis: str = "model_cost",
+    recompute_slag_with_corrected_fuel: bool = False,
 ):
     return evaluate_blend_with_fuel_prediction(
         ores=[_ore("ore_a", sio2=8.0, cao=1.0), _ore("ore_b", sio2=7.0, cao=1.5)],
@@ -94,6 +95,7 @@ def _blend(
         fuel_ash_inputs=fuel_ash,
         hot_metal_target_mt=100.0,
         fuel_rate_basis=fuel_rate_basis,
+        recompute_slag_with_corrected_fuel=recompute_slag_with_corrected_fuel,
     )
 
 
@@ -169,14 +171,46 @@ def test_default_basis_converts_model_cost_and_stays_blend_sensitive():
     )
 
 
-def test_final_slag_evaluation_uses_the_displayed_fuel_rates():
-    blend = _blend(_fuel_ash(28_000.0, 24_000.0, 18_000.0))
-    displayed = blend.diagnostics["fuel_rate_estimate"]
-    used = {
+def _fuel_usage(blend) -> dict:
+    return {
         row["fuel_id"]: row
         for row in blend.diagnostics["fuel_usage"]
         if row["enabled"]
     }
+
+
+def test_slag_uses_the_table_rates_not_the_back_solved_ones():
+    """The slag balance runs on the operator's Fuel Ash rows, full stop.
+
+    Those are the rates the LP built its slag / basicity / T-basicity / Al2O3 /
+    MgO rows against. Substituting the back-solved coke rate here used to shift
+    the displayed B2 by ~+0.011 and T basicity by ~+0.012 - enough to push a
+    blend the LP had placed exactly on a 1.150 ceiling out to 1.151, reported as
+    a constraint violation on a solution that never violated anything.
+    """
+
+    fuel_ash = _fuel_ash(28_000.0, 24_000.0, 18_000.0)
+    table_coke = next(f.rate_kg_per_thm for f in fuel_ash if f.fuel_id == "coke")
+    blend = _blend(fuel_ash)
+    used = _fuel_usage(blend)
+
+    assert used["coke"]["rate_kg_per_thm"] == pytest.approx(table_coke)
+    # The back-solved rate is still reported, and is genuinely different - which
+    # is exactly why it must not be the one generating ash.
+    displayed = blend.diagnostics["fuel_rate_estimate"]
+    assert displayed["coke_rate_kg_thm"] != pytest.approx(table_coke)
+    assert blend.diagnostics["slag_recomputed_with_corrected_fuel"] is False
+
+
+def test_de_still_ties_slag_to_the_displayed_fuel_rates():
+    """DE prices corrected fuel in its objective, so it opts back in."""
+
+    blend = _blend(
+        _fuel_ash(28_000.0, 24_000.0, 18_000.0),
+        recompute_slag_with_corrected_fuel=True,
+    )
+    displayed = blend.diagnostics["fuel_rate_estimate"]
+    used = _fuel_usage(blend)
 
     assert used["coke"]["rate_kg_per_thm"] == pytest.approx(
         displayed["coke_rate_kg_thm"]
@@ -187,6 +221,7 @@ def test_final_slag_evaluation_uses_the_displayed_fuel_rates():
     assert used["pci"]["rate_kg_per_thm"] == pytest.approx(
         displayed["pci_rate_kg_thm"]
     )
+    assert blend.diagnostics["slag_recomputed_with_corrected_fuel"] is True
 
 
 def test_inputs_basis_uses_actual_current_rates_not_model_prediction():

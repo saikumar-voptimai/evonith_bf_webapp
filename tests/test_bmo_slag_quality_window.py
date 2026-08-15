@@ -366,3 +366,49 @@ def test_de_slag_chemistry_penalty_weight_is_separately_configurable():
     assert dear.components["penalty_slag_al2o3"] == pytest.approx(
         cheap.components["penalty_slag_al2o3"] * 10.0
     )
+
+
+# --- The three basicity indices are distinct and must not be confused --------
+
+
+def test_b2_t_basicity_and_ib4_are_three_different_indices():
+    """Pins the scale of each, because IB4 already got mistaken for T Basicity.
+
+    IB4 puts Al2O3 (~19% of slag) into the denominator, so it reads far LOWER
+    than T Basicity off the same slag. Plant reference over 6,515 hours of
+    HM_SLAG analysis:
+
+        B2  = CaO/SiO2               mean 1.079
+        T.B = (CaO+MgO)/SiO2         mean 1.309
+        IB4 = (CaO+MgO)/(SiO2+Al2O3) mean 0.844
+
+    A ~0.85 IB4 is correct. A ~0.85 T Basicity would not be.
+    """
+
+    ores = [_ore("ore", al2o3=2.5, mgo=1.2, sio2=5.0, cao=5.5)]
+    blend = _blend(ores, {"ore": 1000.0})
+
+    cao = blend.diagnostics["slag_basicity_cao_mt"]
+    mgo = blend.diagnostics["slag_mgo_mt"]
+    sio2 = blend.diagnostics["slag_basicity_sio2_mt"]
+    al2o3 = blend.diagnostics["slag_al2o3_mt"]
+
+    assert blend.slag_basicity == pytest.approx(cao / sio2)
+    assert blend.slag_t_basicity == pytest.approx((cao + mgo) / sio2)
+    assert blend.slag_ib4 == pytest.approx((cao + mgo) / (sio2 + al2o3))
+
+    # Ordering is structural: same numerator, bigger denominator.
+    assert blend.slag_ib4 < blend.slag_t_basicity
+    assert blend.slag_basicity < blend.slag_t_basicity
+
+
+def test_ib4_and_t_basicity_reproduce_the_plant_slag_analysis():
+    """Both indices, computed from a slag matching the plant's mean analysis."""
+
+    # Plant mean slag: CaO 36.66, MgO 7.82, SiO2 34.02, Al2O3 18.71 (%).
+    cao, mgo, sio2, al2o3 = 36.66, 7.82, 34.02, 18.71
+
+    assert (cao + mgo) / sio2 == pytest.approx(1.309, abs=0.01)
+    assert (cao + mgo) / (sio2 + al2o3) == pytest.approx(0.844, abs=0.01)
+    # The gap between them is the whole reason they get confused.
+    assert (cao + mgo) / sio2 - (cao + mgo) / (sio2 + al2o3) > 0.4

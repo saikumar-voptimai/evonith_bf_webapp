@@ -189,6 +189,9 @@ def _run_lp(*, k_slag: float, slag_cap: float, ores=None, **kwargs):
         flux_inputs=[_limestone()],
         hot_metal_target_mt=_HM_MT,
         coke_correction_settings=settings,
+        # The LP now defaults to a pure ore-cost objective; these
+        # tests exercise the correction-pricing path DE still uses.
+        price_coke_correction=settings is not None,
         coke_correction_reference=_reference(),
     )
 
@@ -213,6 +216,9 @@ def _lp_with_fuel(*, k_slag: float, slag_cap: float, reference=None, **kwargs):
         flux_inputs=[_limestone()],
         hot_metal_target_mt=_HM_MT,
         coke_correction_settings=settings,
+        # The LP now defaults to a pure ore-cost objective; these
+        # tests exercise the correction-pricing path DE still uses.
+        price_coke_correction=settings is not None,
         coke_correction_reference=reference if reference is not None else _reference(),
     )
     if physical is None:

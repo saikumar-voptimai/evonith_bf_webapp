@@ -1021,6 +1021,16 @@ def _render_blend_comparison(
             "{:,.3f}",
         ),
         (
+            # Constrained. Plant runs ~1.31.
+            "Slag T-Basicity (CaO+MgO)/SiO2",
+            lambda b, si: _basicity(
+                b, "slag_t_basicity_denominator_mt", "slag_t_basicity"
+            ),
+            "{:,.3f}",
+        ),
+        (
+            # Display only. Reads ~0.84 at the plant, not ~1.31, because Al2O3
+            # joins the denominator - the two are easily mistaken for each other.
             "IB4 (CaO+MgO)/(SiO2+Al2O3)",
             lambda b, si: _basicity(b, "slag_ib4_denominator_mt", "slag_ib4"),
             "{:,.3f}",
@@ -2362,6 +2372,18 @@ else:
 
 with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
     st.markdown("### Fuel Ash Inputs")
+    st.caption(
+        "**These rows exist to put fuel ash into the slag balance.** The rate and "
+        "ash chemistry of each fuel decide how much ash it charges, and that ash "
+        "is part of the slag the LP constrains. Set a fuel's rate to 0 to drop its "
+        "ash from the slag entirely - nothing else changes."
+    )
+    st.caption(
+        "Two columns are also read by the separate fuel-cost step, which runs "
+        "AFTER the LP and never feeds back into slag: the **prices**, and the "
+        "**nut coke and PCI rates**. Coke rate is not read there at all - it is "
+        "back-solved from the model's predicted cost."
+    )
     if not fuel_ash_editor_source_df.empty:
         edited_fuel_ash_candidate_df = render_fuel_ash_editor(fuel_ash_editor_source_df)
     else:

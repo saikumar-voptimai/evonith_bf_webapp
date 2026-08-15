@@ -294,6 +294,9 @@ def _lp(*, settings=None, slag_cap: float = 400.0):
         feo_in_slag_pct=0.0,
         hot_metal_target_mt=_HM_MT,
         coke_correction_settings=settings,
+        # The LP now defaults to a pure ore-cost objective; these
+        # tests exercise the correction-pricing path DE still uses.
+        price_coke_correction=settings is not None,
     )
 
 

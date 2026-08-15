@@ -545,13 +545,19 @@ def test_main_metrics_show_production_and_requested_charging_values(monkeypatch)
     assert "Planning HM/charge (MT)" not in captured
     hidden = {
         "Fe Produced (MT)",
-        "Slag T Basicity",
         "Dry Qty (MT)",
         "IBRM + Flux (MT)",
         "Total Charge Mix (MT)",
         "Charge Mix (MT/hr)",
     }
     assert hidden.isdisjoint(captured)
+    # "Slag T Basicity" was hidden alongside the five above, but it does not
+    # belong with them: those are informational, whereas T Basicity is a HARD
+    # optimizer constraint driven by the Min/Max T Basicity inputs. Hiding it
+    # left the optimizer enforcing a limit the operator could not see - and IB4
+    # took its display slot, so a tile expected to read ~1.31 read ~0.85.
+    assert "Slag T Basicity" in captured
+    assert "IB4" in captured
 
 
 def _flux_df():

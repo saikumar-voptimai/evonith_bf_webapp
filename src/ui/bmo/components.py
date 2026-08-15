@@ -1238,7 +1238,17 @@ def render_blend_metrics(
         )
 
     # Row 3: workbook-comparable slag ratios from the final slag ledger.
-    b1, b2 = st.columns(2)
+    #
+    # All three are shown together because they are easy to confuse: they share a
+    # numerator or a denominator but sit on completely different scales. Plant
+    # reference over 6,515 hours of HM_SLAG analysis:
+    #     B2   = CaO/SiO2               mean 1.079,  p5-p95 1.005 - 1.155
+    #     T.B  = (CaO+MgO)/SiO2         mean 1.309,  p5-p95 1.216 - 1.403
+    #     IB4  = (CaO+MgO)/(SiO2+Al2O3) mean 0.844,  p5-p95 0.793 - 0.902
+    # IB4 reads far lower than T Basicity purely because Al2O3 (~18.7% of slag)
+    # joins its denominator - a ~0.85 IB4 is normal, not a fault. T Basicity is
+    # the one that is actually constrained, so it must stay visible.
+    b1, b2, b3 = st.columns(3)
     basicity_denominator_mt = float(
         blend.diagnostics.get("slag_basicity_denominator_mt", 0.0) or 0.0
     )
@@ -1246,17 +1256,36 @@ def render_blend_metrics(
         b1.metric("Slag Basicity CaO/SiO2", f"{blend.slag_basicity:,.3f}")
     else:
         b1.metric("Slag Basicity CaO/SiO2", "n/a")
+    t_basicity_denominator_mt = float(
+        blend.diagnostics.get("slag_t_basicity_denominator_mt", 0.0) or 0.0
+    )
+    if t_basicity_denominator_mt > 0:
+        b2.metric(
+            "Slag T Basicity",
+            f"{blend.slag_t_basicity:,.3f}",
+            help=(
+                "(CaO + MgO) / SiO2, from final slag components. This is the "
+                "ratio the optimizer constrains via the Min/Max T Basicity "
+                "inputs. Plant runs ~1.31."
+            ),
+        )
+    else:
+        b2.metric("Slag T Basicity", "n/a")
     ib4_denominator_mt = float(
         blend.diagnostics.get("slag_ib4_denominator_mt", 0.0) or 0.0
     )
     if ib4_denominator_mt > 0:
-        b2.metric(
+        b3.metric(
             "IB4",
             f"{blend.slag_ib4:,.3f}",
-            help="(CaO + MgO) / (SiO2 + Al2O3), from final slag components.",
+            help=(
+                "(CaO + MgO) / (SiO2 + Al2O3), from final slag components. "
+                "Display only - not constrained. Reads much lower than T "
+                "Basicity because Al2O3 is in the denominator; plant runs ~0.84."
+            ),
         )
     else:
-        b2.metric("IB4", "n/a")
+        b3.metric("IB4", "n/a")
 
     dust_usage = [
         row
