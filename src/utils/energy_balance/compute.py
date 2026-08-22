@@ -226,10 +226,14 @@ def run_energy_balance(
     }
 
     # --- supply ---------------------------------------------------------------
-    # Fuel hydrogen is physically correct to credit, but its size rests on an
-    # H% this plant does not measure, and switching it on drops closure from
-    # 1.002 to 0.910 with ~500 MJ/tHM unattributed. Off until the ultimate
-    # analysis exists; the figure is still reported in diagnostics either way.
+    # Fuel hydrogen is physically correct to credit, and its H% is now pinned
+    # from published rank data (no ultimate analysis exists or is coming). It
+    # stays OFF anyway, on measured grounds: the residual it would fill scales
+    # with total fuel, not with hydrogen. Over 152-205 kg/tHM of PCI the
+    # correlation between PCI rate and the back-calculated residual is -0.05 -
+    # the signature fuel hydrogen would leave is simply not there. Enabling it
+    # costs 6 points of closure and buys nothing. See energy_balance.yml.
+    # The figure is still reported in diagnostics either way.
     include_hydrogen = bool(supply_cfg.get("include_fuel_hydrogen", False))
     hydrogen_supply = fuel_hydrogen * _f(supply_cfg["hydrogen_lhv_mj_per_kg"])
     supply = {

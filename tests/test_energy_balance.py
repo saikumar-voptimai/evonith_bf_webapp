@@ -129,13 +129,39 @@ def test_carbon_dissolved_in_hot_metal_is_not_credited_as_fuel():
 # --- hydrogen -----------------------------------------------------------------
 
 
-def test_hydrogen_is_estimated_from_vm_and_says_so():
-    """No ultimate analysis exists at this plant, so provenance must be explicit."""
+def test_shipped_hydrogen_values_match_the_coals_rank():
+    """No ultimate analysis exists or is coming, so these come from the rank.
 
-    h_pct, source = hydrogen_pct_for_fuel("pci", 19.9)
+    The plant's PCI is medium-volatile bituminous (22.4% VM daf), which runs
+    4.5-4.9% H daf, i.e. ~4.2% as charged. Coke is 0.3-0.5%. A value outside
+    those bands means someone has substituted a guess for the rank data, so the
+    bounds are asserted rather than the exact figures.
+    """
 
-    assert h_pct == pytest.approx(19.9 * 0.25)
+    h_pci, source_pci = hydrogen_pct_for_fuel("pci", 20.03)
+    h_coke, source_coke = hydrogen_pct_for_fuel("coke", 0.94)
+
+    assert 3.5 <= h_pci <= 5.0
+    assert 0.25 <= h_coke <= 0.55
+    # Provenance must never claim more authority than a literature value has.
+    assert "configured" in source_pci and "configured" in source_coke
+
+
+def test_the_vm_backstop_reproduces_the_shipped_values():
+    """It only fires when a hydrogen_pct is null, and must not contradict it.
+
+    The previous flat factor of 0.25 returned 5.0% H for PCI at VM 20, above any
+    real medium-volatile bituminous coal. That overstatement was for years read
+    as evidence the hydrogen term could not be trusted.
+    """
+
+    cfg = load_config()
+    nulled = {**cfg, "fuels": {**cfg["fuels"], "hydrogen_pct": {"pci": None}}}
+
+    h_pct, source = hydrogen_pct_for_fuel("pci", 20.03, nulled)
+
     assert "estimated" in source
+    assert h_pct == pytest.approx(hydrogen_pct_for_fuel("pci", 20.03)[0], abs=0.25)
 
 
 def test_configured_hydrogen_overrides_the_correlation():
@@ -149,11 +175,16 @@ def test_configured_hydrogen_overrides_the_correlation():
 
 
 def test_fuel_hydrogen_is_computed_but_off_by_default():
-    """The term is physically right, but its size rests on an unmeasured H%.
+    """Physically right, deliberately not credited - and this is now MEASURED.
 
-    Switching it on drops closure from ~1.00 to ~0.91 with about 500 MJ/tHM
-    unattributed. So it is computed and reported, but not credited, until the
-    supplier's ultimate analysis is available.
+    The old reason was an unknown H%. That is settled: H% is fixed from the
+    coal's rank. The term stays off because the residual it would fill scales
+    with total fuel, not with hydrogen - over a PCI range of 152-205 kg/tHM the
+    correlation with the back-calculated residual is -0.05. Enabling it costs
+    ~6 points of closure and buys nothing.
+
+    See scripts/pci_hydrogen_from_closure.py. Do not flip this default without
+    re-running it.
     """
 
     result = run_energy_balance(_day())
@@ -161,7 +192,8 @@ def test_fuel_hydrogen_is_computed_but_off_by_default():
 
     assert d["fuel_hydrogen_included"] is False
     assert result.supply["hydrogen"] == 0.0
-    assert d["fuel_hydrogen_mj_per_thm_if_included"] > 900.0
+    # Still reported, so the size of what is being withheld stays visible.
+    assert d["fuel_hydrogen_mj_per_thm_if_included"] > 500.0
 
 
 def test_enabling_hydrogen_moves_closure_by_the_reported_amount():
@@ -189,7 +221,7 @@ def test_blast_moisture_is_never_credited_as_fuel():
 
     assert prov["blast_moisture"]["credited_as_fuel"] is False
     assert prov["blast_moisture"]["kg_h2o_per_thm"] > 0.0
-    # PCI dominates fuel hydrogen: ~7.5 kg H/tHM against ~2 from blast moisture.
+    # PCI dominates fuel hydrogen: ~6.3 kg H/tHM against ~2 from blast moisture.
     assert prov["pci"]["kg_h_per_thm"] > 3.0 * prov["blast_moisture"]["kg_h_per_thm"]
 
 

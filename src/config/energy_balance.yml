@@ -57,19 +57,41 @@ energy_balance:
     # H2 + 1/2 O2 -> H2O, lower heating value. Water leaves as vapour, so LHV.
     # Per kg of hydrogen ATOMS, which equals per kg H2.
     hydrogen_lhv_mj_per_kg: 120.0
-    # OFF BY DEFAULT, deliberately.
+    # OFF BY DEFAULT, deliberately - and this is now a MEASURED decision, not a
+    # pending one. Do not switch it on expecting an improvement.
     #
-    # Fuel hydrogen is physically a reductant and belongs on the input side. But
-    # its magnitude (~1,000 MJ/tHM) rests entirely on an H% this plant does not
-    # measure - see fuels.hydrogen_pct below. Switching it on drops measured
-    # closure from 1.002 to 0.910, leaving ~500 MJ/tHM that cannot yet be
-    # attributed: 10.4 kg H/tHM goes in, only 4.25 leaves as H2, and the
-    # reduction work the rest performed is already carried by the iron term.
+    # Fuel hydrogen is physically a reductant and belongs on the input side. The
+    # blocker was long assumed to be the unknown H% (no ultimate analysis exists
+    # at this plant or at the vendor). It is not. With H% now fixed from
+    # published data for this coal's rank - see fuels.hydrogen_pct - the term
+    # still degrades the balance on every measure, across 221 days:
     #
-    # Shipping it on would make the balance look worse without making it more
-    # correct, because the error would sit in a constant nobody measured. Set
-    # fuels.hydrogen_pct from the supplier's ultimate analysis, then turn this
-    # on and re-check closure.
+    #     H_pci    closure   implied shell loss   across-quarter drift
+    #     off       1.002            597 MJ/tHM         712 MJ/tHM
+    #     3.0%      0.953           1,420              668
+    #     4.2%      0.937           1,680              652
+    #     5.0%      0.927           1,847              631
+    #
+    # Measured shell loss is 195 MJ/tHM (stave rows 6-10) to 550 (flow-scaled to
+    # all circuits). Every H% drives the implied residual further away from it.
+    #
+    # The falsifying test. If fuel hydrogen were the missing input, the
+    # back-calculated shell loss would have to FALL as PCI rate rises, with
+    # slope -120 x H_fraction. Over a PCI range of 152-205 kg/tHM the measured
+    # correlation is -0.05, i.e. absent, and a regression returns a POSITIVE
+    # slope (+16.8 MJ per kg PCI) implying a negative hydrogen content. The
+    # hypothesis is refuted by this plant's own record.
+    #
+    # What that leaves. The residual scales with TOTAL fuel, not with hydrogen:
+    # every fuel rate carries a positive coefficient of roughly +17 to +29 MJ
+    # per kg, against a carbon credit of 28.5 MJ/kg coke. So only about a third
+    # of marginal fuel energy is being absorbed by the modelled outputs. That is
+    # a fuel-scaled OUTPUT term still missing - top gas, dust carbon or direct
+    # reduction split are the candidates - and until it is found, adding a
+    # correct input term simply widens a gap that is not hydrogen's fault.
+    #
+    # Turn this on only together with whatever closes that gap.
+    # See scripts/pci_hydrogen_from_closure.py to re-run the test.
     include_fuel_hydrogen: false
     blast_cp_kj_per_nm3_k: 1.40
     reference_temperature_c: 25.0
@@ -97,24 +119,44 @@ energy_balance:
       coke: 0.87
       nut_coke: 0.87
       pci: 0.75
-    # Hydrogen as a percentage of dry fuel.
+    # Hydrogen as a percentage of fuel as charged.
     #
-    # NOT MEASURED AT THIS PLANT. offline_feed.fuel_chemistry carries proximate
-    # analysis only (ash, FC, VM, moisture, TM) - there is no ultimate analysis
-    # anywhere in the schema. Set a value here the moment the supplier's C/H/O/N/S
-    # certificate is available; it scales an input term worth ~1,000 MJ/tHM.
+    # NOT MEASURED, AND WILL NOT BE. offline_feed.fuel_chemistry carries
+    # proximate analysis only (ash, FC, VM, moisture, TM); there is no ultimate
+    # analysis in the schema, and the vendor does not supply one either. So
+    # these are fixed from published data for this coal's RANK, which the
+    # proximate analysis is enough to establish. They are estimates, and the
+    # provenance string returned by hydrogen_pct_for_fuel says so.
     #
-    # Until then hydrogen_pct is null and H% is estimated from VM by the
-    # correlation below, which is standard for bituminous coals in the 18-22% VM
-    # band. It is a correlation, not a measurement.
+    # PCI. Plant median proximate (n=966): VM 20.03, ash 9.18, moisture 1.45,
+    # FC 69.68. On a dry ash-free basis VM = 20.03/89.37 = 22.4%, which places
+    # it in the MEDIUM-VOLATILE BITUMINOUS band (22-31% VM dmmf). Note this is
+    # imported-grade PCI, NOT indigenous Indian coal - at 9.2% ash it is
+    # nowhere near the 35-50% ash of domestic coal, so Indian indigenous coal
+    # analyses are the wrong reference class and were not used. Medium-volatile
+    # bituminous runs H = 4.5-4.9% daf; taking 4.7% and returning to the
+    # as-charged basis, 4.7 x 0.8937 = 4.2%.
+    #
+    # COKE. Carbonisation drives off nearly all hydrogen: BF coke runs 0.3-0.5%
+    # H, and this coke's VM of 0.94% sits at the low end of that. 0.35% used.
+    # The absolute contribution is small either way (~1 kg H/tHM).
+    #
+    # Changing these will NOT improve closure - see supply.include_fuel_hydrogen
+    # above, where the whole term is switched off on measured grounds.
     hydrogen_pct:
-      coke: null
-      nut_coke: null
-      pci: null
+      coke: 0.35
+      nut_coke: 0.35
+      pci: 4.2
+    # Backstop only, used if a hydrogen_pct above is set to null. Back-solved
+    # from the values above at this plant's typical VM, so it reproduces them at
+    # today's coals and degrades gracefully if VM drifts. The previous flat 0.25
+    # was wrong for coal - it returns 5.0% H at VM 20, above any real
+    # medium-volatile bituminous - and is kept only for coke, where the H/VM
+    # ratio genuinely is higher because coke VM is largely residual H2.
     hydrogen_from_vm_factor:
-      coke: 0.25
-      nut_coke: 0.25
-      pci: 0.25
+      coke: 0.37
+      nut_coke: 0.37
+      pci: 0.21
 
   # ---- blast moisture ------------------------------------------------------
   # Ambient humidity carried in with the blast. NOT instrumented - process_params

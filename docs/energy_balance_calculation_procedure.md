@@ -118,6 +118,6 @@ Population median closure **1.002**, across-quarter spread **3.2%**.
 
 ## 8. Known open items
 
-1. **Shell loss drifts by quarter** when back-calculated (805 → 93 MJ/tHM). Candidates: fuel hydrogen on the input side, blast humidity.
+1. **Shell loss drifts by quarter** when back-calculated (805 → 93 MJ/tHM). Fuel hydrogen was the leading candidate and has been **ruled out** — crediting it widens the gap at every plausible H% and barely touches the drift (712 → 652 MJ/tHM). The residual scales with total fuel, not hydrogen, so a fuel-scaled term is missing from the *output* side: top gas, dust carbon, or the direct/indirect reduction split. See `scripts/pci_hydrogen_from_closure.py`.
 2. **Blast-temperature coefficient** must be derived by perturbing the closed balance, not from a one-line formula.
 3. **Steam** is nil at this plant, so its energy effect cannot be calibrated from this data.

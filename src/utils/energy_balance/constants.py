@@ -101,12 +101,19 @@ def hydrogen_pct_for_fuel(
     """
     Hydrogen content of a fuel, measured if available and estimated otherwise.
 
-    This plant has no ultimate analysis: ``offline_feed.fuel_chemistry`` carries
-    proximate analysis only. So unless a value is configured, H% is estimated
-    from volatile matter using the standard correlation for bituminous coals in
-    the 18-22% VM band. The provenance is returned alongside the number so no
-    caller can mistake an estimate for a measurement - it scales an input term
-    worth roughly 1,000 MJ/tHM.
+    This plant has no ultimate analysis and the vendor does not supply one:
+    ``offline_feed.fuel_chemistry`` carries proximate analysis only. The
+    configured values are therefore fixed from published data for the coal's
+    RANK, which proximate analysis is sufficient to establish - the plant's PCI
+    is medium-volatile bituminous at 22.4% VM daf. See ``energy_balance.yml``
+    for the derivation.
+
+    Nothing here is a measurement, so the provenance string is returned
+    alongside the number and no caller may drop it. Note that "configured" now
+    means "literature value for the rank", not "from a certificate".
+
+    The VM fallback applies only where a value is null. It is a backstop
+    calibrated to this plant's typical VM, not a general correlation.
 
     Args:
          - fuel_id: str - "coke", "nut_coke" or "pci".
@@ -122,7 +129,10 @@ def hydrogen_pct_for_fuel(
     measured = (fuels.get("hydrogen_pct") or {}).get(fuel_id)
     if measured is not None:
         try:
-            return float(measured), "configured (ultimate analysis)"
+            # NOT "ultimate analysis" - no such analysis exists for these fuels.
+            # The string is surfaced in diagnostics and must not imply a
+            # measurement that was never made.
+            return float(measured), "configured (literature value for coal rank)"
         except (TypeError, ValueError):
             pass
     factor = float((fuels.get("hydrogen_from_vm_factor") or {}).get(fuel_id, 0.25))
