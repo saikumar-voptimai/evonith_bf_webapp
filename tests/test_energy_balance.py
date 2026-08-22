@@ -228,6 +228,44 @@ def test_blast_moisture_is_never_credited_as_fuel():
 # --- structure ----------------------------------------------------------------
 
 
+def test_top_gas_volume_is_cross_checked_against_a_carbon_balance():
+    """Two independent volumes that must agree - and on this plant, do not.
+
+    Carbon gives ~14% more top gas than nitrogen. The disagreement tracks the
+    balance's residual (r = +0.77) and drives most of its across-quarter drift.
+    Root cause is the gas analysis both are computed from: an under-read of
+    CO+CO2 pushes the two estimates in opposite directions.
+
+    Reported rather than corrected, so the flag must actually fire on a typical
+    day. If this test starts failing because the ratio came back to 1.0, the
+    analyser has been fixed - which is the outcome we want, not a broken test.
+    """
+
+    d = run_energy_balance(_day()).diagnostics
+
+    assert d["top_gas_nm3_per_thm_carbon_basis"] > d["top_gas_nm3_per_thm"]
+    assert d["top_gas_volume_ratio_carbon_to_nitrogen"] == pytest.approx(1.14, abs=0.06)
+    assert d["gas_analysis_suspect"] is True
+
+
+def test_carbon_basis_volume_agrees_when_the_analysis_is_consistent():
+    """The check must not fire on good data, or it is just noise.
+
+    Raising CO+CO2 by the ~3 points the reconciliation calls for should bring
+    the two volumes together and clear the flag.
+    """
+
+    day = _day()
+    fixed = EnergyBalanceInputs(
+        **{**day.__dict__, "top_gas_co_pct": 26.7, "top_gas_co2_pct": 20.1}
+    )
+
+    d = run_energy_balance(fixed).diagnostics
+
+    assert d["top_gas_volume_ratio_carbon_to_nitrogen"] == pytest.approx(1.0, abs=0.05)
+    assert d["gas_analysis_suspect"] is False
+
+
 def test_implied_shell_loss_is_reported_for_cross_checking():
     """If it disagrees with the measured value, a term is missing.
 

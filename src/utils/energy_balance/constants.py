@@ -19,6 +19,7 @@ CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "energy_balance.y
 FE_IN_FEO_FRACTION = 55.845 / 71.844
 H2O_TO_H_FRACTION = 2.016 / 18.015
 NM3_PER_KMOL = 22.414
+C_MOLAR_MASS = 12.011
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,

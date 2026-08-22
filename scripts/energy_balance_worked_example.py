@@ -232,14 +232,23 @@ def main() -> None:
     add("")
     add("## 8. Known open items")
     add("")
-    add("1. **Shell loss drifts by quarter** when back-calculated "
-        "(805 → 93 MJ/tHM). Fuel hydrogen was the leading candidate and has "
-        "been **ruled out** — crediting it widens the gap at every plausible "
-        "H% and barely touches the drift (712 → 652 MJ/tHM). The residual "
-        "scales with total fuel, not hydrogen, so a fuel-scaled term is "
-        "missing from the *output* side: top gas, dust carbon, or the "
-        "direct/indirect reduction split. "
-        "See `scripts/pci_hydrogen_from_closure.py`.")
+    add("1. **The top gas analyser appears to under-read CO+CO₂ by ~3 "
+        "percentage points**, and this is the root of the quarterly drift in "
+        "back-calculated shell loss (805 → 93 MJ/tHM). Top-gas volume can be "
+        "derived two independent ways and they must agree; carbon gives "
+        "1,867 Nm³/tHM against nitrogen's 1,632, a 14% gap that tracks the "
+        "residual day by day (r = +0.77) and accounts for 77% of the drift "
+        "(712 → 165 MJ/tHM once removed). An under-read of CO+CO₂ biases the "
+        "two estimates in *opposite* directions, so a single instrument fault "
+        "explains the whole pattern — and the CO₂/(CO+CO₂) ratio stays flat at "
+        "42–43% while the sum drifts, which a genuine process change would not "
+        "do. The gap shrinks 4.0 → 1.0 points across the four quarters. "
+        "**Action: check the analyser service record.** Reported via the "
+        "`gas_analysis_suspect` diagnostic, deliberately not corrected in "
+        "code. See `scripts/topgas_carbon_vs_nitrogen.py`.")
+    add("1b. Fuel hydrogen was the earlier candidate for this and has been "
+        "**ruled out** — crediting it widens the gap at every plausible H% and "
+        "barely touches the drift. See `scripts/pci_hydrogen_from_closure.py`.")
     add("2. **Blast-temperature coefficient** must be derived by perturbing the "
         "closed balance, not from a one-line formula.")
     add("3. **Steam** is nil at this plant, so its energy effect cannot be "

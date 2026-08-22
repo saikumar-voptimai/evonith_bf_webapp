@@ -36,8 +36,10 @@ from math import isfinite
 from typing import Any
 
 from utils.energy_balance.constants import (
+    C_MOLAR_MASS,
     FE_IN_FEO_FRACTION,
     H2O_TO_H_FRACTION,
+    NM3_PER_KMOL,
     hydrogen_pct_for_fuel,
     load_config,
 )
@@ -191,6 +193,30 @@ def run_energy_balance(
         * _f(gas_cfg["h2_lhv_mj_per_nm3"]),
     }
 
+    # Cross-check the SAME volume against a carbon balance. Every kg of carbon
+    # burnt must leave as CO or CO2, so this is an independent estimate with no
+    # fitted constant, and the two must agree.
+    #
+    # They do not. Measured over 221 days, carbon gives 1,867 Nm3/tHM against
+    # nitrogen's 1,632, a 14% disagreement that tracks the balance's residual
+    # day by day (r = +0.77) and accounts for most of its across-quarter drift.
+    #
+    # The cause is the gas analysis both are computed from: an under-read of
+    # CO+CO2 inflates N2_top (so V_nitrogen falls) while shrinking the divisor
+    # of V_carbon (so V_carbon rises). One fault, opposite signs - which is
+    # exactly the pattern seen. Reconciling needs CO+CO2 about 3 points higher
+    # than measured. See scripts/topgas_carbon_vs_nitrogen.py.
+    #
+    # Reported, not corrected. The fix belongs on the analyser, and silently
+    # rescaling plant measurements here would bury an instrument fault.
+    cox_pct = _f(inputs.top_gas_co_pct) + _f(inputs.top_gas_co2_pct)
+    v_top_carbon = (
+        carbon_burnt / C_MOLAR_MASS * NM3_PER_KMOL / (cox_pct / 100.0)
+        if cox_pct > 0.0
+        else 0.0
+    )
+    v_ratio = v_top_carbon / v_top if v_top > 0.0 else 0.0
+
     # --- demand ---------------------------------------------------------------
     burden_water_kg = (
         sum(
@@ -277,6 +303,12 @@ def run_energy_balance(
             "fuel_hydrogen_included": include_hydrogen,
             "hydrogen_provenance": hydrogen_provenance,
             "top_gas_nm3_per_thm": v_top,
+            "top_gas_nm3_per_thm_carbon_basis": v_top_carbon,
+            "top_gas_volume_ratio_carbon_to_nitrogen": v_ratio,
+            # True when the two independent volumes disagree by more than 5%,
+            # which on this plant's record means the top gas analysis is
+            # under-reading CO+CO2. Treat the day's closure with suspicion.
+            "gas_analysis_suspect": bool(v_ratio and abs(v_ratio - 1.0) > 0.05),
             "burden_water_kg_per_thm": burden_water_kg,
             "closure_green_range": tuple(closure_cfg.get("green_range", (0.97, 1.03))),
             "closure_amber_range": tuple(closure_cfg.get("amber_range", (0.93, 1.07))),
