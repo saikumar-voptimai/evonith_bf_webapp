@@ -308,6 +308,55 @@ def _recent_fuel_rates_from_static_csv(
 
 
 @_data_cache(show_spinner=False, ttl=600)
+def _live_process_snapshot() -> dict[str, float]:
+    """Blast, top-gas and shell-cooling tags for the Layer 2 energy balance.
+
+    Layer 2 needs the CURRENT operating point: what the blast is doing now, what
+    the top gas analysis reads, and how much heat the staves are shedding. All
+    of it is one-hour-averaged so a single bad scan cannot move a
+    recommendation. Returns an empty dict on any failure, and the caller then
+    tells the operator the layer is unavailable rather than guessing.
+    """
+
+    wanted = (
+        "hot_blast_vol_nm3h", "hot_blast_temp", "hot_blast_press",
+        "oxygen_enrichment_pct", "top_press_avg", "steam_injection",
+        "co_pct", "co2_pct", "h2_pct", "top_temp_avg",
+    )
+    try:
+        from furnace_data.influx.online import fetch_online_df
+
+        df = fetch_online_df(
+            selected_measurements=["process_params", "heatload_delta_t"],
+            time_range="last 1 hour",
+            window_by="15 minutes",
+            column_naming="field",
+        )
+    except Exception as exc:  # noqa: BLE001 - network/auth failures fall back
+        log.warning("Live process snapshot unavailable: %s", exc)
+        return {}
+    if df is None or df.empty:
+        return {}
+
+    out: dict[str, float] = {}
+    for field in wanted:
+        if field in df.columns:
+            value = pd.to_numeric(df[field], errors="coerce").mean()
+            if pd.notna(value):
+                out[field] = float(value)
+
+    # Stave heat load: the tags read in MW, so x3.6 gives GJ/hr. The x3600
+    # "GW.hr" conversion is 1000x too large - see energy_balance.yml.
+    quad = [f"heat_load_r{r}_q{q}" for r in range(6, 11) for q in range(1, 5)]
+    have = [c for c in quad if c in df.columns]
+    if have:
+        total_mw = df[have].apply(pd.to_numeric, errors="coerce").sum(axis=1).mean()
+        if pd.notna(total_mw) and 2.0 <= float(total_mw) <= 12.0:
+            out["shell_loss_gj_per_hr"] = float(total_mw) * 3.6
+    return out
+
+
+@_data_cache(show_spinner=False, ttl=600)
 def _recent_fuel_rates_live() -> dict[str, float | str]:
     """Live coke / nut coke / PCI rates from InfluxDB, averaged over the last hour.
 
@@ -1380,6 +1429,282 @@ def _get_si_service() -> SiPredictionService:
 
     bmo_cfg = _get_bmo_config()
     return SiPredictionService(bundle_cfg=bmo_cfg.get("si_model_bundle", {}))
+
+
+def _render_process_recommendation(
+    blend: Any,
+    *,
+    label: str,
+    hot_metal_mt: float,
+    ores: list[Any],
+    hm_chem_values: dict[str, float],
+    hm_snapshot: dict[str, Any],
+    flux_inputs: list[Any],
+    fuel_ash_inputs: list[Any],
+) -> None:
+    """Layer 2: control settings for the blend Layer 1 has just chosen.
+
+    The blend is an input. This section never reconsiders it - it asks only
+    what blast settings supply the energy that blend demands, at least fuel
+    cost.
+    """
+
+    from utils.bmo.process_recommendation import (
+        ControlSettings,
+        blend_to_energy_inputs,
+        recommend_controls,
+    )
+
+    st.markdown("##### Recommended process parameters")
+    snapshot = _live_process_snapshot()
+    if not snapshot.get("hot_blast_vol_nm3h"):
+        st.info(
+            "Live blast and top-gas tags are unavailable, so control parameters "
+            "cannot be recommended for this blend. The blend itself is unaffected."
+        )
+        return
+
+    fuel_rates = blend.diagnostics.get("fuel_rate_estimate") or {}
+    if not fuel_rates:
+        st.info("Fuel-rate estimate unavailable; cannot run the energy balance.")
+        return
+
+    flux_mt = sum(
+        max(0.0, float(flux.wet_qty_mt or 0.0)) for flux in flux_inputs if flux.enabled
+    )
+    vm_by_fuel = {
+        str(fuel.fuel_id): float(getattr(fuel, "vm_pct", 0.0) or 0.0)
+        for fuel in fuel_ash_inputs
+    }
+    try:
+        energy_inputs = blend_to_energy_inputs(
+            blend,
+            hot_metal_mt=hot_metal_mt,
+            ores=ores,
+            fuel_rates_kg_per_thm=fuel_rates,
+            hm_chemistry={
+                "carbon_pct": hm_chem_values.get("carbon_pct", 4.3),
+                "silicon_pct": hm_chem_values.get("silicon_pct", 0.5),
+                "iron_pct": float(hm_snapshot.get("hm_fe_pct_for_target") or 94.5),
+                "manganese_pct": float(hm_snapshot.get("chem_pct_mn") or 0.2),
+                "slag_feo_pct": float(hm_snapshot.get("slag_pct_feo") or 0.4),
+            },
+            process_snapshot=snapshot,
+            flux_mt=flux_mt,
+            fuel_vm_pct=vm_by_fuel,
+            shell_loss_gj_per_hr=snapshot.get("shell_loss_gj_per_hr"),
+        )
+        current = ControlSettings(
+            blast_temperature_c=snapshot.get("hot_blast_temp", 0.0),
+            oxygen_enrichment_pct=snapshot.get("oxygen_enrichment_pct", 0.0),
+            blast_volume_nm3_per_hr=snapshot.get("hot_blast_vol_nm3h", 0.0),
+            pci_kg_per_thm=float(fuel_rates.get("pci_rate_kg_thm", 0.0) or 0.0),
+            hot_blast_pressure_bar=snapshot.get("hot_blast_press", 0.0),
+            top_pressure_bar=snapshot.get("top_press_avg", 0.0),
+            steam_kg_per_hr=snapshot.get("steam_injection", 0.0),
+        )
+        release_pci = st.checkbox(
+            "Allow PCI to move",
+            value=False,
+            key=f"bmo_pr_pci_{label}",
+            help="PCI is held by default. Release it only when you intend to change it.",
+        )
+        recommendation = recommend_controls(
+            blend_inputs=energy_inputs,
+            current=current,
+            prices_rs_per_kg={
+                str(fuel.fuel_id): float(fuel.price_rs_per_mt or 0.0) / 1000.0
+                for fuel in fuel_ash_inputs
+            },
+            optimise_pci=release_pci,
+        )
+    except Exception as exc:  # noqa: BLE001 - never break the blend result pane
+        log.warning("Process recommendation failed: %s", exc)
+        st.warning(f"Could not compute process parameters: {exc}")
+        return
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric(
+        "Coke Rate (kg/THM)",
+        f"{recommendation.coke_rate_kg_per_thm:,.1f}",
+        delta=f"{recommendation.coke_rate_kg_per_thm - recommendation.current_coke_rate_kg_per_thm:+,.1f}",
+        delta_color="inverse",
+    )
+    c2.metric(
+        "Fuel Cost (Rs/THM)",
+        f"{recommendation.fuel_cost_rs_per_thm:,.0f}",
+        delta=f"{-recommendation.fuel_cost_saving_rs_per_thm:+,.0f}",
+        delta_color="inverse",
+    )
+    c3.metric(
+        "RAFT (C, advisory)",
+        f"{recommendation.raft_c:,.0f}" if recommendation.raft_c else "n/a",
+        help=(
+            "Advisory only. The RAFT correlation has forward R2 of 0.11 and an "
+            "unattributed seasonal bias up to 46 C, so it guides but does not "
+            "constrain the recommendation."
+        ),
+    )
+
+    optimised = set(recommendation.diagnostics["optimised_controls"])
+    rows = []
+    for key, delta in recommendation.deltas().items():
+        rows.append(
+            {
+                "Control": key.replace("_", " ").title(),
+                "Current": getattr(recommendation.current, key),
+                "Recommended": getattr(recommendation.settings, key),
+                "Change": delta,
+                "Role": "optimised" if key in optimised else "pass-through",
+            }
+        )
+    st.dataframe(
+        pd.DataFrame(rows),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Current": st.column_config.NumberColumn("Current", format="%.2f"),
+            "Recommended": st.column_config.NumberColumn("Recommended", format="%.2f"),
+            "Change": st.column_config.NumberColumn("Change", format="%+.2f"),
+            "Role": st.column_config.Column(
+                "Role",
+                help=(
+                    "Hot blast pressure, top pressure and steam do not appear in "
+                    "an energy balance - they act through permeability and gas "
+                    "utilisation - so they are shown unchanged rather than given "
+                    "a fabricated value."
+                ),
+            ),
+        },
+    )
+    for warning in recommendation.warnings:
+        st.warning(warning)
+
+
+def _render_transition_ladder(
+    *,
+    provider: Any,
+    ores: list[Any],
+    lp_kwargs: dict[str, Any],
+    slag_rate_cap_kg_per_thm: float | None,
+) -> None:
+    """The path from what the plant is charging today to the LP optimum.
+
+    The LP says where to go. It does not say how to get there, and a
+    20-percentage-point share change is not an instruction anyone can act on -
+    burden descent takes 6-7 hours and ore supply does not turn overnight. Each
+    rung here is a full LP solve under a per-ore move cap, so every step on the
+    path independently satisfies all six slag limits.
+    """
+
+    from utils.bmo.transition import build_transition_ladder
+
+    st.markdown("##### Path from the current blend")
+    move_col, _ = st.columns([1, 3])
+    move_pct = move_col.number_input(
+        "Max share change per step (%)",
+        min_value=1.0, max_value=50.0, value=5.0, step=1.0,
+        key="bmo_transition_move_pct",
+        help=(
+            "Your step-change policy. Smaller steps mean more shifts to reach "
+            "the optimum but a gentler move for the furnace."
+        ),
+    )
+
+    snapshot = provider.get_recent_manual_blend_snapshot(ores)
+    manual_shares = {
+        str(row.get("ore_id")): float(row.get("share_pct", 0.0) or 0.0)
+        for row in snapshot.get("rows", [])
+    }
+    if not any(manual_shares.values()):
+        st.info(
+            "No recent manual blend found, so there is nothing to transition "
+            "from. The optimal blend above still stands."
+        )
+        return
+
+    try:
+        ladder = build_transition_ladder(
+            ores, manual_shares,
+            max_share_move_pct=float(move_pct),
+            _slag_rate_cap=slag_rate_cap_kg_per_thm,
+            **lp_kwargs,
+        )
+    except Exception as exc:  # noqa: BLE001 - never break the result pane
+        log.warning("Transition ladder failed: %s", exc)
+        st.warning(f"Could not build the transition path: {exc}")
+        return
+
+    if not ladder.start_is_admissible:
+        st.error(
+            "**The blend currently being charged already breaches your limits**, "
+            "so there is no step-by-step path from it. Fix these first:\n- "
+            + "\n- ".join(ladder.start_violations)
+        )
+        return
+
+    rows = []
+    if ladder.start_blend is not None:
+        rows.append(
+            {
+                "Step": "now",
+                **{
+                    ore.display_name: ladder.start_shares_pct.get(ore.ore_id, 0.0)
+                    for ore in ores
+                },
+                "Ore Cost (Rs/THM)": ladder.start_blend.ore_cost_per_thm_rs,
+                "Slag (kg/THM)": ladder.start_blend.slag_rate_kg_per_thm,
+                "B2": ladder.start_blend.slag_basicity,
+                "Binding": "",
+            }
+        )
+    for rung in ladder.rungs:
+        if not rung.feasible:
+            rows.append({"Step": str(rung.index), "Binding": "infeasible"})
+            continue
+        rows.append(
+            {
+                "Step": str(rung.index),
+                **{
+                    ore.display_name: rung.shares_pct.get(ore.ore_id, 0.0)
+                    for ore in ores
+                },
+                "Ore Cost (Rs/THM)": rung.blend.ore_cost_per_thm_rs,
+                "Slag (kg/THM)": rung.blend.slag_rate_kg_per_thm,
+                "B2": rung.blend.slag_basicity,
+                "Binding": "; ".join(rung.binding_limits),
+            }
+        )
+
+    st.dataframe(
+        pd.DataFrame(rows),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Binding": st.column_config.Column(
+                "Binding",
+                help=(
+                    "What stops this step going further - a slag limit, or an "
+                    "ore's own maximum share. Raising the named limit is what "
+                    "would unlock more saving."
+                ),
+            ),
+        },
+    )
+
+    saving = ladder.ore_cost_saving_rs_per_thm()
+    steps = len([r for r in ladder.rungs if r.feasible])
+    if saving:
+        st.success(
+            f"**{steps} step{'s' if steps != 1 else ''}** to reach the optimum, "
+            f"worth **Rs {saving:,.0f}/THM** in ore cost."
+        )
+    if not ladder.converged:
+        st.info(
+            "The path had not converged within the step limit - the optimum is "
+            "further away than the steps allowed. Raise the step size or accept "
+            "a longer transition."
+        )
 
 
 def _render_si_metric(si_value: float | None) -> None:
@@ -2974,6 +3299,44 @@ if lp_result is not None or de_result is not None:
             _render_share_pie(lp_result, selected_ores, "LP Share (%)")
             render_slag_balance_details(
                 lp_result, selected_ores, fuel_ash_inputs, flux_inputs
+            )
+            _render_process_recommendation(
+                lp_result,
+                label="lp",
+                hot_metal_mt=target_production_mt,
+                ores=selected_ores,
+                hm_chem_values=hm_chem_values,
+                hm_snapshot=hm_snapshot,
+                flux_inputs=flux_inputs,
+                fuel_ash_inputs=fuel_ash_inputs,
+            )
+            _render_transition_ladder(
+                provider=provider,
+                ores=selected_ores,
+                lp_kwargs=dict(
+                    target_production_mt=target_fe_mt,
+                    target_slag_qty_mt=target_slag_qty_mt,
+                    feo_in_slag_pct=feo_in_slag_pct,
+                    target_slag_basicity_min=target_slag_basicity_min,
+                    target_slag_basicity_max=target_slag_basicity_max,
+                    target_slag_t_basicity_min=target_slag_t_basicity_min,
+                    target_slag_t_basicity_max=target_slag_t_basicity_max,
+                    target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+                    target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+                    target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
+                    max_burden_qty_mt=max_burden_qty_mt,
+                    fuel_ash_inputs=fuel_ash_inputs,
+                    flux_inputs=flux_inputs,
+                    dust_inputs=dust_inputs,
+                    slag_balance_settings=slag_balance_settings,
+                    hot_metal_target_mt=target_production_mt,
+                    charge_mass_mt=charge_mass_mt,
+                ),
+                slag_rate_cap_kg_per_thm=(
+                    target_slag_qty_mt / target_production_mt * 1000.0
+                    if target_production_mt
+                    else None
+                ),
             )
         else:
             st.info("Run LP baseline to see deterministic cost-minimized blend.")
