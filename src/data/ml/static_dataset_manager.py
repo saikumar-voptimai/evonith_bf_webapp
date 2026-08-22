@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import shutil
@@ -349,6 +350,41 @@ class StaticDatasetManager:
         if latest is not None:
             return latest
         return self.static_path
+
+    def get_csv_end_timestamp(self) -> pd.Timestamp | None:
+        """Read the time value from the CSV's last data row.
+
+        Only the tail of the file is read, avoiding a full multi-megabyte CSV
+        parse just to render dataset status in the UI.
+        """
+        path = self.current_csv_path()
+        if not path.exists():
+            return None
+
+        try:
+            with path.open("rb") as handle:
+                handle.seek(0, 2)
+                position = handle.tell()
+                buffer = b""
+                while position > 0 and len(buffer.splitlines()) < 2:
+                    chunk_size = min(4096, position)
+                    position -= chunk_size
+                    handle.seek(position)
+                    buffer = handle.read(chunk_size) + buffer
+
+            lines = [line for line in buffer.splitlines() if line.strip()]
+            if len(lines) < 2:
+                return None
+            row = next(csv.reader([lines[-1].decode("utf-8-sig")]))
+            if not row:
+                return None
+            value = pd.to_datetime(row[0], errors="coerce")
+            return None if pd.isna(value) else pd.Timestamp(value)
+        except (OSError, UnicodeError, csv.Error, ValueError):
+            log.warning(
+                "Could not read final CSV timestamp from %s", path, exc_info=True
+            )
+            return None
 
     def _versioned_filename(self) -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")

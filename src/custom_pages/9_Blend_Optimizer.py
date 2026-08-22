@@ -182,12 +182,41 @@ def _get_context_provider() -> EvonithBmoContextProvider:
     )
 
 
+_STATIC_DATASET_LINK_KEY = "bmo_static_dataset_use_link"
+_STATIC_DATASET_SOURCE_CHANGED_KEY = "_bmo_static_dataset_source_changed"
+
+
+def _configured_static_dataset_url(bmo_cfg: dict[str, Any]) -> str:
+    """Return a BMO-specific URL override or the central DATA_URL."""
+    data_sources = bmo_cfg.get("data_sources", {}) or {}
+    override = str(data_sources.get("static_dataset_url", "") or "").strip()
+    if override:
+        return override
+    return str(load_config("setting_ds_dv.yml").get("DATA_URL", "") or "").strip()
+
+
+def _use_static_dataset_link(bmo_cfg: dict[str, Any]) -> bool:
+    source_url = _configured_static_dataset_url(bmo_cfg)
+    return bool(source_url) and bool(
+        st.session_state.get(_STATIC_DATASET_LINK_KEY, True)
+    )
+
+
+def _mark_static_dataset_source_changed() -> None:
+    """Request a full-page rerun after the fragment-scoped toggle rerun."""
+    st.session_state[_STATIC_DATASET_SOURCE_CHANGED_KEY] = True
+
+
 def _static_dataset_manager(bmo_cfg: dict[str, Any]) -> StaticDatasetManager:
     data_sources = bmo_cfg.get("data_sources", {}) or {}
     static_path = data_sources.get(
         "static_dataset_path", "src/assets/data/furnace_dataset.csv"
     )
-    static_url = str(data_sources.get("static_dataset_url", "") or "").strip()
+    static_url = (
+        _configured_static_dataset_url(bmo_cfg)
+        if _use_static_dataset_link(bmo_cfg)
+        else ""
+    )
     return StaticDatasetManager(static_path, remote_url=static_url or None)
 
 
@@ -204,6 +233,7 @@ def _static_dataset_status(bmo_cfg: dict[str, Any]) -> dict[str, Any]:
     manager = _static_dataset_manager(bmo_cfg)
     meta = manager.get_meta()
     csv_path = manager.current_csv_path()
+    csv_end_timestamp = manager.get_csv_end_timestamp()
     last_updated = _parse_meta_datetime(meta.last_updated if meta else None)
     max_age_minutes = int(
         (bmo_cfg.get("data_sources", {}) or {}).get(
@@ -219,9 +249,8 @@ def _static_dataset_status(bmo_cfg: dict[str, Any]) -> dict[str, Any]:
     stale = last_updated is None or now - last_updated >= timedelta(
         minutes=max_age_minutes
     )
-    if manager.remote_url and (
-        meta is None or str(meta.source_url or "").strip() != manager.remote_url
-    ):
+    expected_source = manager.remote_url
+    if meta is None or str(meta.source_url or "").strip() != expected_source:
         stale = True
     return {
         "manager": manager,
@@ -229,7 +258,9 @@ def _static_dataset_status(bmo_cfg: dict[str, Any]) -> dict[str, Any]:
         "csv_path": csv_path,
         "exists": csv_path.exists(),
         "last_updated": last_updated,
+        "last_fetch": csv_end_timestamp,
         "latest_data_end": meta.raw_end if meta else "",
+        "source_mode": "link" if manager.remote_url else "code",
         "state": "stale" if stale else "fresh",
         "max_age_minutes": max_age_minutes,
     }
@@ -455,32 +486,57 @@ def _refresh_static_dataset_if_needed(
 def _render_static_dataset_bar(
     bmo_cfg: dict[str, Any], refresh_result: dict[str, Any] | None = None
 ) -> None:
+    if st.session_state.pop(_STATIC_DATASET_SOURCE_CHANGED_KEY, False):
+        st.rerun()
+
     status = _static_dataset_status(bmo_cfg)
     state = status["state"] if status["exists"] else "missing"
-    data_sources = bmo_cfg.get("data_sources", {}) or {}
-    source_url = str(data_sources.get("static_dataset_url", "") or "").strip()
+    source_url = _configured_static_dataset_url(bmo_cfg)
     with st.expander("Data sources", expanded=False):
+        use_link = st.toggle(
+            "Fetch dataset through DATA_URL",
+            value=_use_static_dataset_link(bmo_cfg),
+            key=_STATIC_DATASET_LINK_KEY,
+            disabled=not bool(source_url),
+            help=(
+                "On: download the published furnace CSV. "
+                "Off: rebuild it through the normal database/code pipeline."
+            ),
+            on_change=_mark_static_dataset_source_changed,
+        )
+        st.caption(
+            "Selected dataset source: "
+            + ("Published link" if use_link else "Normal code pipeline")
+        )
         cols = st.columns([1.1, 1.2, 1.0])
         cols[0].metric("Static Dataset", state.title())
         cols[1].metric("Latest Data", status["latest_data_end"] or "Unknown")
-        last_updated = status["last_updated"]
+        last_fetch = status["last_fetch"]
         cols[2].metric(
             "Last Fetch",
-            last_updated.strftime("%Y-%m-%d %H:%M") if last_updated else "Never",
+            last_fetch.strftime("%Y-%m-%d %H:%M") if last_fetch else "Never",
         )
-        st.caption(
-            "The furnace CSV is fetched automatically at most once per hour. "
-            "The local CSV is used only if the published endpoint is unavailable."
-        )
-        if source_url:
+        if use_link:
+            st.caption(
+                "The published furnace CSV is fetched automatically at most once "
+                "per hour; the local CSV is retained as the fallback."
+            )
             st.caption(f"Published source: {source_url}")
+        else:
+            st.caption(
+                "The normal pipeline builds the dataset from the offline database "
+                "and configured online process sources."
+            )
         if refresh_result and refresh_result.get("error"):
             st.warning(
-                "Hourly furnace CSV fetch failed; using the last local copy. "
+                "Dataset refresh failed; using the last local copy. "
                 f"Error: {refresh_result['error']}"
             )
         if state == "stale":
-            st.caption("The last successful furnace CSV fetch is over one hour old.")
+            st.caption(
+                "The selected dataset source has not refreshed successfully "
+                "in the last hour."
+            )
         elif state == "missing":
             st.warning("No usable furnace CSV is available.")
         st.divider()
