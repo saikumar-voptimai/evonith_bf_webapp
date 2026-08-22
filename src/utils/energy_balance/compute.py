@@ -166,7 +166,17 @@ def run_energy_balance(
         rates[fuel] * _f(carbon_fraction.get(fuel)) for fuel in _FUELS
     )
     carbon_to_hm = _f(inputs.hm_carbon_pct) / 100.0 * 1000.0
-    carbon_burnt = max(0.0, carbon_charged - carbon_to_hm)
+    # Carbon leaving through the top as dust is charged but never burnt - the
+    # same category of error as crediting carbon dissolved in hot metal, which
+    # once put closure at 0.47. Only flue and GCP dust qualify; cast-house dust
+    # leaves at the cast house and stock-house dust is a pre-charging handling
+    # loss. The carbon percentages are NOT measured here (see assumptions.py).
+    dust_cfg = settings["fuels"].get("dust_carbon_pct", {})
+    carbon_to_dust = (
+        _f(inputs.flue_dust_mt) * _f(dust_cfg.get("flue"))
+        + _f(inputs.gcp_dust_mt) * _f(dust_cfg.get("gcp"))
+    ) / 100.0 / hm * 1000.0
+    carbon_burnt = max(0.0, carbon_charged - carbon_to_hm - carbon_to_dust)
 
     # --- hydrogen -------------------------------------------------------------
     fuel_hydrogen, hydrogen_provenance = _hydrogen_charged_kg_per_thm(
@@ -297,6 +307,7 @@ def run_energy_balance(
             "rates_kg_per_thm": rates,
             "carbon_charged_kg_per_thm": carbon_charged,
             "carbon_to_hot_metal_kg_per_thm": carbon_to_hm,
+            "carbon_to_dust_kg_per_thm": carbon_to_dust,
             "carbon_burnt_kg_per_thm": carbon_burnt,
             "fuel_hydrogen_kg_per_thm": fuel_hydrogen,
             "fuel_hydrogen_mj_per_thm_if_included": hydrogen_supply,

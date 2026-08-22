@@ -39,12 +39,25 @@ class EnergyBalanceInputs:
            roughly 1,400 MJ/tHM.
          - hm_iron_pct / hm_silicon_pct / hm_manganese_pct: float - HM analysis.
          - slag_feo_pct: float - FeO remaining in slag.
+         - flue_dust_mt / gcp_dust_mt: float - Dust leaving through the TOP,
+           from DPR. Carbon in it is charged but never burnt, so it comes off
+           the input exactly like carbon dissolved in hot metal. Cast-house and
+           stock-house dust are deliberately NOT here: the first leaves at the
+           cast house and the second is a handling loss before charging.
          - fuel_vm_pct: dict[str, float] - Volatile matter per fuel id, used to
            estimate hydrogen while ultimate analysis is unavailable.
          - moisture_pct: dict[str, float] - Free moisture per material id.
          - flux_loi_pct: float - Flux loss on ignition.
-         - shell_loss_gj_per_hr: float | None - Measured stave heat load already
-           converted to GJ/hr. ``None`` falls back to the configured estimate.
+         - shell_loss_gj_per_hr: float | None - Shell heat loss in GJ/hr, SCALED
+           TO ALL COOLING CIRCUITS. ``None`` falls back to the configured
+           estimate.
+
+           Passing the raw stave rows 6-10 figure here is a mistake that costs
+           about 590 MJ/tHM and drops closure from 1.00 to 0.97. Those rows
+           cover bosh, belly and lower stack only; hearth, bottom, tuyere nose
+           and upper shaft are missing and must be added by cooling-water flow
+           share first (roughly a 3x scale-up on this furnace). The units are
+           GJ/hr either way, so nothing here can catch the error for you.
 
     Returns:
          - return EnergyBalanceInputs - One day of measured inputs.
@@ -67,6 +80,8 @@ class EnergyBalanceInputs:
     hm_silicon_pct: float = 0.0
     hm_manganese_pct: float = 0.0
     slag_feo_pct: float = 0.0
+    flue_dust_mt: float = 0.0
+    gcp_dust_mt: float = 0.0
     flux_mt: float = 0.0
     sinter_mt: float = 0.0
     ore_mt: float = 0.0

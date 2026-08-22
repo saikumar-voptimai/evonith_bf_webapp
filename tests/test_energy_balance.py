@@ -52,7 +52,7 @@ def _day() -> EnergyBalanceInputs:
         fuel_vm_pct={"coke": 0.9, "nut_coke": 1.0, "pci": 19.9},
         moisture_pct={"ore": 4.0, "pellet": 2.0, "flux": 1.0, "coke": 0.4,
                       "nut_coke": 8.5, "sinter": 0.0},
-        shell_loss_gj_per_hr=28.29,
+        shell_loss_gj_per_hr=28.29,  # stave rows 6-10 only - see the closure test
     )
 
 
@@ -85,9 +85,36 @@ def test_degraded_gas_analysis_returns_zero_rather_than_exploding():
 
 
 def test_balance_closes_on_the_reference_day():
+    """UNRESOLVED: closure and the coke-rate solve want different shell losses.
+
+    This fixture passes the STAVE ROWS 6-10 heat load, 28.29 GJ/hr -> 298
+    MJ/tHM. The documented worked example instead uses the flow-scaled
+    all-circuits figure, 886 MJ/tHM for this day, and that is where its headline
+    closure of 1.002 comes from. The two have never agreed, and a +/-0.05
+    tolerance here was wide enough that nobody noticed.
+
+    Swapping this fixture to the flow-scaled value does fix closure - 0.967 ->
+    1.004 - but then test_solver_reproduces_the_measured_coke_rate breaks,
+    overshooting 337 kg/tHM by 11%. The two strongest validations of the balance
+    disagree about the same number:
+
+        shell loss    closure    solved coke rate
+        298 MJ/tHM      0.967    339.7  (measured 337.2, +0.7%)
+        886 MJ/tHM      1.004    375.2  (+11.3%)
+
+    Neither is obviously right. A BF should lose 200-400 MJ/tHM through the
+    shell, which favours 298; but 298 leaves closure 3% short. The flow-scaled
+    figure assumes every cooling circuit runs the same temperature rise, which
+    is the weakest link and worth measuring per circuit.
+
+    Pinned at the stave value so the solver validation stands, and asserted
+    loosely on purpose - tightening it would force a choice the data does not
+    yet support.
+    """
+
     result = run_energy_balance(_day())
 
-    assert result.closure == pytest.approx(1.0, abs=0.05)
+    assert result.closure == pytest.approx(0.967, abs=0.01)
     assert result.closure_band in {"green", "amber"}
 
 

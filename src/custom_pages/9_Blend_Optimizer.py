@@ -1431,6 +1431,106 @@ def _get_si_service() -> SiPredictionService:
     return SiPredictionService(bundle_cfg=bmo_cfg.get("si_model_bundle", {}))
 
 
+def _render_energy_assumptions() -> None:
+    """Every energy-balance number the plant has not measured, as an input table.
+
+    These are the figures currently carrying literature or assumed values. The
+    balance's structure is an accounting identity and needs no calibration, but
+    these scalars do, and each one silently scales a real term. Putting them in
+    front of the operator is the only way a guess ever gets replaced by a
+    measurement.
+
+    Physics is deliberately absent from this table - iron oxide reduction
+    enthalpy, calorific values, molar volume. Overriding those would be breaking
+    the balance rather than calibrating it.
+    """
+
+    from utils.energy_balance.assumptions import (
+        BY_KEY,
+        current_values,
+        load_overrides,
+        save_overrides,
+    )
+
+    with st.expander("Plant assumptions — operator input", expanded=False):
+        st.caption(
+            "Values the plant has not measured. Anything you enter here is used "
+            "by the energy balance and the process recommendation, and is "
+            "remembered between sessions. Leave a row alone to keep the shipped "
+            "default."
+        )
+
+        rows = current_values()
+        assumed = sum(1 for r in rows if r["Source"] == "assumed")
+        supplied = sum(1 for r in rows if r["Source"] == "operator")
+        cols = st.columns(3)
+        cols[0].metric("Parameters", len(rows))
+        cols[1].metric("Still assumed", assumed)
+        cols[2].metric("You have supplied", supplied)
+
+        frame = pd.DataFrame(rows)
+        edited = st.data_editor(
+            frame[["Parameter", "Value", "Unit", "Source", "Default",
+                   "Basis", "Why it matters"]],
+            hide_index=True,
+            use_container_width=True,
+            key="energy_assumptions_editor",
+            column_config={
+                "Value": st.column_config.NumberColumn(
+                    "Value", help="Your figure. Bounds are enforced on save.",
+                    format="%.3f",
+                ),
+                "Source": st.column_config.TextColumn("Source", disabled=True),
+                "Default": st.column_config.NumberColumn(
+                    "Shipped", disabled=True, format="%.3f"
+                ),
+                "Unit": st.column_config.TextColumn("Unit", disabled=True),
+                "Parameter": st.column_config.TextColumn("Parameter", disabled=True),
+                "Basis": st.column_config.TextColumn(
+                    "Where the default came from", disabled=True, width="large"
+                ),
+                "Why it matters": st.column_config.TextColumn(
+                    "Why it matters", disabled=True, width="large"
+                ),
+            },
+        )
+
+        left, right = st.columns([1, 1])
+        if left.button("Save assumptions", key="save_energy_assumptions"):
+            # Match rows by position: Parameter is disabled, so the editor
+            # cannot reorder or rename them.
+            updated = {
+                rows[i]["key"]: float(value)
+                for i, value in enumerate(edited["Value"].tolist())
+            }
+            out_of_range = [
+                BY_KEY[key].label
+                for key, value in updated.items()
+                if not (BY_KEY[key].minimum <= value <= BY_KEY[key].maximum)
+            ]
+            path = save_overrides(updated)
+            if out_of_range:
+                st.warning(
+                    "Clamped to their physical bounds: " + ", ".join(out_of_range)
+                )
+            st.success(f"Saved to {path.name}. Re-run the optimiser to apply.")
+        if right.button("Reset to shipped defaults", key="reset_energy_assumptions"):
+            save_overrides({})
+            st.success("Reset. Re-run the optimiser to apply.")
+
+        if load_overrides():
+            st.caption(
+                "⚠️ Operator values are in force. The worked example in "
+                "`docs/energy_balance_calculation_procedure.md` was generated "
+                "with the shipped defaults, so it will no longer match exactly."
+            )
+        st.caption(
+            "Highest-impact unknowns are listed first. The two dust-carbon rows "
+            "are the weakest numbers in the whole balance — one lab analysis of "
+            "each dust stream would settle them."
+        )
+
+
 def _render_process_recommendation(
     blend: Any,
     *,
@@ -1454,6 +1554,8 @@ def _render_process_recommendation(
         blend_to_energy_inputs,
         recommend_controls,
     )
+    from utils.energy_balance.assumptions import apply_overrides as apply_energy_overrides
+    from utils.energy_balance.constants import load_config as load_energy_config
 
     st.markdown("##### Recommended process parameters")
     snapshot = _live_process_snapshot()
@@ -1517,6 +1619,11 @@ def _render_process_recommendation(
                 for fuel in fuel_ash_inputs
             },
             optimise_pci=release_pci,
+            # Operator-supplied values for the unmeasured constants. Applied
+            # here at the app boundary rather than inside the math layer, so
+            # the balance stays pure and tests stay hermetic - a saved override
+            # file on a developer's machine must not change test results.
+            energy_cfg=apply_energy_overrides(load_energy_config()),
         )
     except Exception as exc:  # noqa: BLE001 - never break the blend result pane
         log.warning("Process recommendation failed: %s", exc)
@@ -3300,6 +3407,7 @@ if lp_result is not None or de_result is not None:
             render_slag_balance_details(
                 lp_result, selected_ores, fuel_ash_inputs, flux_inputs
             )
+            _render_energy_assumptions()
             _render_process_recommendation(
                 lp_result,
                 label="lp",

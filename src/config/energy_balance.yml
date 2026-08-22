@@ -119,6 +119,23 @@ energy_balance:
       coke: 0.87
       nut_coke: 0.87
       pci: 0.75
+    # Carbon leaving through the TOP as dust, weight % of the dust.
+    #
+    # This carbon is charged but never burnt, so it comes off the input side
+    # exactly like carbon dissolved in hot metal. dpr_data records four dust
+    # streams; only these two leave through the top:
+    #     flue_dust_mt   dust catcher, coarse carryover        counted
+    #     gcp_dust_mt    gas cleaning plant, fine              counted
+    #     cast_house_dust_mt    leaves at the cast house       NOT counted
+    #     stock_house_dust_mt   handling loss before charging  NOT counted
+    #
+    # NOT MEASURED. These are literature figures for the two dust types and are
+    # the weakest numbers in the carbon balance - one lab analysis of each
+    # stream would settle them. Exposed to the operator via
+    # utils/energy_balance/assumptions.py.
+    dust_carbon_pct:
+      flue: 30.0
+      gcp: 20.0
     # Hydrogen as a percentage of fuel as charged.
     #
     # NOT MEASURED, AND WILL NOT BE. offline_feed.fuel_chemistry carries

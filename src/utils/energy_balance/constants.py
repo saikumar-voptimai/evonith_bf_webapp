@@ -49,8 +49,11 @@ DEFAULTS: dict[str, Any] = {
     },
     "fuels": {
         "carbon_fraction": {"coke": 0.87, "nut_coke": 0.87, "pci": 0.75},
-        "hydrogen_pct": {"coke": None, "nut_coke": None, "pci": None},
-        "hydrogen_from_vm_factor": {"coke": 0.25, "nut_coke": 0.25, "pci": 0.25},
+        # Literature values for the coal's rank; no ultimate analysis exists.
+        "hydrogen_pct": {"coke": 0.35, "nut_coke": 0.35, "pci": 4.2},
+        "hydrogen_from_vm_factor": {"coke": 0.37, "nut_coke": 0.37, "pci": 0.21},
+        # Carbon in top-leaving dust. Charged but never burnt.
+        "dust_carbon_pct": {"flue": 30.0, "gcp": 20.0},
     },
     "blast_moisture_g_per_nm3": 15.0,
     "shell_loss": {
