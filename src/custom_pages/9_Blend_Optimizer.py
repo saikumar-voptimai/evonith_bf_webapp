@@ -322,6 +322,11 @@ def _live_process_snapshot() -> dict[str, float]:
         "hot_blast_vol_nm3h", "hot_blast_temp", "hot_blast_press",
         "oxygen_enrichment_pct", "top_press_avg", "steam_injection",
         "co_pct", "co2_pct", "h2_pct", "top_temp_avg",
+        # PCI must come from the live tag, never from the Fuel Ash box. The box
+        # is operator-editable and exists for SLAG estimation; the energy
+        # balance solves coke around whatever PCI it is given, so a stale figure
+        # there lands on the coke rate at roughly 0.86 kg per kg.
+        "coal_rate_actual_value", "oxygen_flow", "production_per_hour",
     )
     try:
         from furnace_data.influx.online import fetch_online_df
@@ -1578,12 +1583,27 @@ def _render_process_recommendation(
         str(fuel.fuel_id): float(getattr(fuel, "vm_pct", 0.0) or 0.0)
         for fuel in fuel_ash_inputs
     }
+    # PCI from the LIVE TAG, never from the Fuel Ash box. The box is
+    # operator-editable and exists for slag estimation; the energy balance
+    # solves coke around whatever PCI it is handed, so a stale box value lands
+    # on the coke rate at roughly 0.86 kg per kg. Resolved here, before the
+    # blend inputs are built, so both the balance and the control baseline see
+    # the same figure.
+    live_pci = float(snapshot.get("coal_rate_actual_value") or 0.0)
+    box_pci = float(fuel_rates.get("pci_rate_kg_thm", 0.0) or 0.0)
+    pci_now = live_pci if live_pci > 0.0 else box_pci
+    energy_fuel_rates = {**fuel_rates, "pci_rate_kg_thm": pci_now}
+    if live_pci > 0.0 and box_pci > 0.0 and abs(live_pci - box_pci) > 10.0:
+        st.caption(
+            f"⚠️ PCI: using the live tag **{live_pci:,.0f} kg/THM** for the energy "
+            f"balance, not the Fuel Ash box's {box_pci:,.0f}. The box drives slag only."
+        )
     try:
         energy_inputs = blend_to_energy_inputs(
             blend,
             hot_metal_mt=hot_metal_mt,
             ores=ores,
-            fuel_rates_kg_per_thm=fuel_rates,
+            fuel_rates_kg_per_thm=energy_fuel_rates,
             hm_chemistry={
                 "carbon_pct": hm_chem_values.get("carbon_pct", 4.3),
                 "silicon_pct": hm_chem_values.get("silicon_pct", 0.5),
@@ -1600,7 +1620,7 @@ def _render_process_recommendation(
             blast_temperature_c=snapshot.get("hot_blast_temp", 0.0),
             oxygen_enrichment_pct=snapshot.get("oxygen_enrichment_pct", 0.0),
             blast_volume_nm3_per_hr=snapshot.get("hot_blast_vol_nm3h", 0.0),
-            pci_kg_per_thm=float(fuel_rates.get("pci_rate_kg_thm", 0.0) or 0.0),
+            pci_kg_per_thm=pci_now,
             hot_blast_pressure_bar=snapshot.get("hot_blast_press", 0.0),
             top_pressure_bar=snapshot.get("top_press_avg", 0.0),
             steam_kg_per_hr=snapshot.get("steam_injection", 0.0),
