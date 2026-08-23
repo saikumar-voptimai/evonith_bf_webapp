@@ -1636,6 +1636,13 @@ def _render_process_recommendation(
         f"{recommendation.coke_rate_kg_per_thm:,.1f}",
         delta=f"{recommendation.coke_rate_kg_per_thm - recommendation.current_coke_rate_kg_per_thm:+,.1f}",
         delta_color="inverse",
+        help=(
+            "ENERGY BALANCE figure, not a forecast of the plant's coke rate. "
+            "It is what the balance says this burden needs at these controls. "
+            "Trust the CHANGE, not the level - the level carries a shell-loss "
+            "uncertainty that largely cancels between the two settings. See the "
+            "coke rate comparison below."
+        ),
     )
     c2.metric(
         "Fuel Cost (Rs/THM)",
@@ -1643,15 +1650,83 @@ def _render_process_recommendation(
         delta=f"{-recommendation.fuel_cost_saving_rs_per_thm:+,.0f}",
         delta_color="inverse",
     )
+    raft_delta = recommendation.raft_delta_c
     c3.metric(
-        "RAFT (C, advisory)",
+        "RAFT (C)",
         f"{recommendation.raft_c:,.0f}" if recommendation.raft_c else "n/a",
+        delta=(f"{raft_delta:+,.0f}" if raft_delta is not None else None),
+        delta_color="off",
         help=(
-            "Advisory only. The RAFT correlation has forward R2 of 0.11 and an "
-            "unattributed seasonal bias up to 46 C, so it guides but does not "
-            "constrain the recommendation."
+            "Computed directly from the recommended controls: blast temperature, "
+            "oxygen enrichment, blast moisture + steam, and PCI as a "
+            "concentration in the blast. Forward-validated against body_raft, "
+            "MAE 17 C and R2 0.63 - so a change smaller than about 17 C is "
+            "not meaningful."
         ),
     )
+    if raft_delta is not None and recommendation.current_raft_c:
+        direction = (
+            "hotter" if raft_delta > 0 else "colder" if raft_delta < 0 else "unchanged"
+        )
+        strength = "within measurement noise" if abs(raft_delta) < 17.0 else "significant"
+        st.caption(
+            f"RAFT moves from **{recommendation.current_raft_c:,.0f} °C** to "
+            f"**{recommendation.raft_c:,.0f} °C** — raceway runs **{direction}** "
+            f"by {abs(raft_delta):,.0f} °C ({strength}, formula is good to ±17 °C)."
+        )
+
+    # Three different coke rates exist in this app and they do not agree. Naming
+    # them side by side is the only way to stop the comparison being misread.
+    plant_coke = float(fuel_rates.get("coke_rate_kg_thm", 0.0) or 0.0)
+    with st.expander("Where does this coke rate come from?", expanded=False):
+        comparison = [
+            {
+                "Figure": "Plant actual (recent charge reports)",
+                "kg/THM": round(plant_coke, 1) if plant_coke else None,
+                "What it is": "What the furnace is actually being charged.",
+            },
+            {
+                "Figure": "Energy balance, at CURRENT controls",
+                "kg/THM": round(recommendation.current_coke_rate_kg_per_thm, 1),
+                "What it is": (
+                    "What the balance says this burden needs right now. The gap "
+                    "against plant actual is the balance's own bias."
+                ),
+            },
+            {
+                "Figure": "Energy balance, at RECOMMENDED controls",
+                "kg/THM": round(recommendation.coke_rate_kg_per_thm, 1),
+                "What it is": "The headline figure above.",
+            },
+        ]
+        st.dataframe(pd.DataFrame(comparison), hide_index=True,
+                     use_container_width=True)
+        bias = (
+            recommendation.current_coke_rate_kg_per_thm - plant_coke
+            if plant_coke else None
+        )
+        st.markdown(
+            "**Only the last two are comparable.** Both come from the same "
+            "energy balance, so whatever bias it carries cancels between them — "
+            "that is why the delta is the number to act on and the level is not."
+            + (
+                f"\n\nAgainst plant actual the balance currently reads "
+                f"**{bias:+,.1f} kg/THM**. "
+                + (
+                    "That is within the model's expected accuracy."
+                    if abs(bias) < 15
+                    else "That is larger than expected — most likely the "
+                    "shell-loss question in "
+                    "`docs/energy_balance_findings_and_open_decisions.md` §5, "
+                    "which moves this figure by up to 11%."
+                )
+                if bias is not None else ""
+            )
+            + "\n\nThe **ML fuel-cost model** is a third, separate estimate. It "
+            "is trained on plant history and is blend-blind; the energy balance "
+            "is physics and responds to the blend. They will not agree, and are "
+            "not meant to."
+        )
 
     optimised = set(recommendation.diagnostics["optimised_controls"])
     rows = []
@@ -1743,12 +1818,19 @@ def _render_transition_ladder(
         return
 
     if not ladder.start_is_admissible:
-        st.error(
-            "**The blend currently being charged already breaches your limits**, "
-            "so there is no step-by-step path from it. Fix these first:\n- "
-            + "\n- ".join(ladder.start_violations)
+        recovery = ladder.diagnostics.get("recovery_move_pct")
+        note = (
+            "**The blend currently being charged is outside your limits.** "
+            "Step 1 below brings it back inside — make that move first, then "
+            "continue down the path.\n- " + "\n- ".join(ladder.start_violations)
         )
-        return
+        if recovery:
+            note += (
+                f"\n\n**Step 1 needs a {recovery:.1f}% share move**, more than "
+                f"the {ladder.max_share_move_pct:.1f}% step you have set — "
+                "recovery is not possible within it."
+            )
+        st.warning(note)
 
     rows = []
     if ladder.start_blend is not None:

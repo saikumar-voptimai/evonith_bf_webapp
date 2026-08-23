@@ -53,7 +53,7 @@ DEFAULTS: dict[str, Any] = {
         "hydrogen_pct": {"coke": 0.35, "nut_coke": 0.35, "pci": 4.2},
         "hydrogen_from_vm_factor": {"coke": 0.37, "nut_coke": 0.37, "pci": 0.21},
         # Carbon in top-leaving dust. Charged but never burnt.
-        "dust_carbon_pct": {"flue": 30.0, "gcp": 20.0},
+        "dust_carbon_pct": {"flue": 22.3, "gcp": 47.1},
     },
     "blast_moisture_g_per_nm3": 15.0,
     "shell_loss": {

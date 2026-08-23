@@ -12,6 +12,8 @@ so they are passed through untouched rather than given fabricated values.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from utils.bmo.process_recommendation import (
@@ -144,9 +146,12 @@ def test_leaving_the_observed_envelope_raises_a_warning():
 
 
 def test_raft_is_advisory_and_never_blocks():
-    """Forward R2 is 0.11 with a seasonal bias up to 46 C, so it cannot be a
-    hard constraint - it would block valid settings in some months and pass
-    invalid ones in others."""
+    """Good to +/-17 C, which is useful guidance but not a hard limit.
+
+    A furnace limit has to come from the plant's operating standard. Blocking a
+    recommendation on a 17 C-accurate estimate would reject valid settings that
+    sit near the band edge.
+    """
 
     r = _recommend()
 
@@ -156,22 +161,66 @@ def test_raft_is_advisory_and_never_blocks():
     assert r.settings is not None
 
 
-def test_raft_correlation_uses_the_calibrated_coefficients():
-    """Intercept 1555.4 and 0.810 per C match the textbook 1559 and 0.839."""
+def test_raft_uses_the_plants_own_workbook_coefficients():
+    """Delegates to utils.energy_balance.raft, which is parity-tested to 1e-6.
 
-    hot = raft_from_controls(
-        ControlSettings(1250.0, 4.0, 110000.0, 150.0)
-    )
-    cool = raft_from_controls(
-        ControlSettings(1150.0, 4.0, 110000.0, 150.0)
-    )
+    Only the blast-temperature coefficient survives as a plain per-degree
+    number. The oxygen term is 4972 x (O2 flow / dry blast), so per point of
+    enrichment it works out near 65 C rather than the 50 the literature form
+    used - the difference being that the workbook divides by DRY blast, not by
+    the raw reading.
+    """
 
-    assert (hot - cool) / 100.0 == pytest.approx(0.810, rel=0.02)
-    # More PCI cools the raceway; more oxygen heats it.
-    assert raft_from_controls(ControlSettings(1200.0, 4.0, 110000.0, 200.0)) < \
-        raft_from_controls(ControlSettings(1200.0, 4.0, 110000.0, 150.0))
-    assert raft_from_controls(ControlSettings(1200.0, 5.0, 110000.0, 150.0)) > \
-        raft_from_controls(ControlSettings(1200.0, 4.0, 110000.0, 150.0))
+    base = ControlSettings(1200.0, 4.0, 110000.0, 150.0)
+    hotter = raft_from_controls(replace(base, blast_temperature_c=1300.0))
+
+    assert (hotter - raft_from_controls(base)) / 100.0 == pytest.approx(
+        0.839, rel=0.01
+    )
+    per_point = raft_from_controls(
+        replace(base, oxygen_enrichment_pct=5.0)
+    ) - raft_from_controls(base)
+    assert 60.0 < per_point < 70.0
+    # And it lands where this furnace actually runs.
+    assert 2100.0 < raft_from_controls(base) < 2400.0
+
+
+def test_raft_falls_with_pci_moisture_and_steam():
+    """All three carry heat into the raceway and absorb it. Signs must be right."""
+
+    base = ControlSettings(1200.0, 4.0, 110000.0, 150.0)
+
+    assert raft_from_controls(replace(base, pci_kg_per_thm=200.0)) < raft_from_controls(base)
+    assert raft_from_controls(base, blast_moisture_g_per_nm3=25.0) < raft_from_controls(
+        base, blast_moisture_g_per_nm3=15.0
+    )
+    assert raft_from_controls(replace(base, steam_kg_per_hr=2000.0)) < raft_from_controls(base)
+
+
+def test_pci_enters_raft_as_a_blast_concentration_not_a_rate():
+    """The same kg/tHM of PCI cools MORE when the blast is smaller.
+
+    This is the substantive change from the old correlation, which used PCI in
+    kg/tHM directly and so gave the same answer at any wind rate. Coal, steam
+    and humidity are all heat sinks carried in the blast, so all three belong on
+    a per-Nm3 basis.
+    """
+
+    base = ControlSettings(1200.0, 4.0, 110000.0, 150.0)
+
+    lean = raft_from_controls(base, blast_nm3_per_thm=1600.0)
+    rich = raft_from_controls(base, blast_nm3_per_thm=900.0)
+
+    assert rich < lean
+
+
+def test_raft_direction_is_reported_not_just_the_level():
+    """A bare RAFT number cannot be acted on; the operator needs the direction."""
+
+    r = _recommend()
+
+    assert r.current_raft_c is not None
+    assert r.raft_delta_c == pytest.approx(r.raft_c - r.current_raft_c)
 
 
 def test_current_settings_are_reported_for_comparison():

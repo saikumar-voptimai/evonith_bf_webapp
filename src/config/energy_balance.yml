@@ -129,13 +129,32 @@ energy_balance:
     #     cast_house_dust_mt    leaves at the cast house       NOT counted
     #     stock_house_dust_mt   handling loss before charging  NOT counted
     #
-    # NOT MEASURED. These are literature figures for the two dust types and are
-    # the weakest numbers in the carbon balance - one lab analysis of each
-    # stream would settle them. Exposed to the operator via
-    # utils/energy_balance/assumptions.py.
+    # NOW FROM PLANT XRF DATA, and the literature guesses they replace were
+    # badly wrong - GCP dust is more than twice as carbon-rich as assumed, not
+    # less. BF-2 only, n=6 each:
+    #
+    #     stream         LoI %   range        Fe2O3 %   ZnO %
+    #     dust catcher   24.83   15.19-44.32    54.84    2.65
+    #     GCP            52.29   45.15-55.40    27.28    4.80
+    #
+    # That ordering is physically right on reflection: GCP dust is the fine
+    # fraction that escapes the dust catcher, and fine coke and coal particles
+    # carry over furthest, so the fine stream is the carbon-rich one. Its lower
+    # Fe2O3 says the same thing.
+    #
+    # LoI IS THE CARBON PROXY, and one sample proves it. The 07-Apr-25 dust
+    # catcher row carries a proximate analysis alongside: Ash 74.49 + LoI 25.51
+    # = 100, and VM 7.54 + FC 17.97 = 25.51 exactly. So LoI is the combustible
+    # fraction. Carbon is FC plus the carbon within VM, i.e. slightly LESS than
+    # LoI - roughly 90% of it at that sample's VM/FC split. These values are
+    # 0.90 x LoI on that basis.
+    #
+    # Averages of six spot samples, so a monthly composite would be better. The
+    # dust-catcher spread (15-44% LoI) is wide enough that a single day's figure
+    # should not be trusted. Overridable via the operator assumptions table.
     dust_carbon_pct:
-      flue: 30.0
-      gcp: 20.0
+      flue: 22.3
+      gcp: 47.1
     # Hydrogen as a percentage of fuel as charged.
     #
     # NOT MEASURED, AND WILL NOT BE. offline_feed.fuel_chemistry carries
@@ -262,9 +281,34 @@ process_recommendation:
   # blast humidity and adding H2 as a proxy did not help. So the band is
   # reported as guidance with its uncertainty, and does not block a solution.
   raft:
-    intercept: 1555.4
-    per_c_blast_temp: 0.8100
-    per_pct_o2: 26.511
-    per_kg_pci: -2.2229
+    # THE CALCULATION LIVES IN utils/energy_balance/raft.py, not here.
+    #
+    # RAFT now follows the plant's own workbook (Raft Calculation EML.xlsx) via
+    # its implementation guide, reproduced to 1e-6 against the guide's cached
+    # values in tests/test_raft_workbook.py. The constants 1559 / 0.839 / 4972 /
+    # 6.033 / 3010 are the workbook's and are held in code beside the balance
+    # they belong to, because they are meaningless split from the dry-blast
+    # chain that feeds them.
+    #
+    # WHAT WAS REPLACED, AND WHY THE REPLACEMENT SCORES WORSE. A literature form
+    # calibrated against body_raft scored forward R2 0.63; the workbook form
+    # scores 0.38-0.40. That is not a reason to keep the fitted one. RAFT cannot
+    # be measured - body_raft is itself a calculated tag - so a closer fit to it
+    # means closer agreement with the DCS's arithmetic, not more correctness.
+    # The workbook form is the plant's engineering standard and is essentially
+    # UNBIASED against the DCS with no calibration at all: mean error -9.7 C
+    # over 2,697 hours. See scripts/raft_formula_validation.py.
+    #
+    # BLAST FLOW BASIS. The guide flags this as ambiguous and requires an
+    # explicit choice. Resolved from the plant's own tags: at O2/wind = 5.01%,
+    # the total basis implies 4.23 enrichment points against the
+    # oxygen_enrichment_pct tag's 4.20; the cold basis implies 4.01. So the
+    # measured flow already includes enrichment oxygen and injected steam.
+    blast_flow_basis: total
+    # Used only when production is unknown, so PCI kg/tHM cannot be turned into
+    # a mass flow. Plant median.
+    fallback_blast_nm3_per_thm: 1206.0
     advisory_band_c: [2100.0, 2350.0]
-    stated_uncertainty_c: 46.0
+    # Spread against body_raft on the workbook form. Not an accuracy claim about
+    # RAFT itself, which has no measurement to be accurate against.
+    stated_uncertainty_c: 19.0

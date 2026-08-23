@@ -236,7 +236,11 @@ def test_table_rows_label_operator_values_distinctly():
 
     assert by_key["fuels.dust_carbon_pct.flue"]["Source"] == "operator"
     assert by_key["fuels.dust_carbon_pct.flue"]["Value"] == pytest.approx(33.0)
-    assert by_key["fuels.dust_carbon_pct.gcp"]["Source"] == "assumed"
+    # Untouched rows keep their own confidence label, never "operator".
+    assert by_key["fuels.dust_carbon_pct.gcp"]["Source"] != "operator"
+    assert by_key["fuels.dust_carbon_pct.gcp"]["Value"] == pytest.approx(
+        BY_KEY["fuels.dust_carbon_pct.gcp"].default
+    )
 
 
 def test_the_weakest_numbers_are_listed_first():

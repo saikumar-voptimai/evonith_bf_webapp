@@ -83,12 +83,13 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         key="fuels.dust_carbon_pct.flue",
         label="Carbon in flue dust (dust catcher)",
         unit="%",
-        default=30.0,
-        basis="Literature for dust-catcher carryover, largely coke fines. "
-              "Not measured at this plant.",
-        confidence="assumed",
-        impact="Carbon charged but never burnt. At ~29 kg dust/tHM each 10 "
-               "points of carbon moves closure by about 0.6%.",
+        default=22.3,
+        basis="Plant XRF, BF-2, n=6: mean LoI 24.83% (range 15.2-44.3), taken "
+              "at 90% to exclude the hydrogen and oxygen in volatile matter.",
+        confidence="literature",
+        impact="Carbon charged but never burnt. The 15-44% spread across spot "
+               "samples is wide - a monthly composite would be worth more than "
+               "another spot sample.",
         minimum=0.0,
         maximum=60.0,
     ),
@@ -96,13 +97,13 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         key="fuels.dust_carbon_pct.gcp",
         label="Carbon in GCP dust",
         unit="%",
-        default=20.0,
-        basis="Literature. GCP dust is finer than dust-catcher carryover, "
-              "richer in Fe and Zn, poorer in carbon.",
-        confidence="assumed",
-        impact="Same mechanism as flue dust. A single lab analysis of both "
-               "dust streams would remove the last assumption in the carbon "
-               "balance.",
+        default=47.1,
+        basis="Plant XRF, BF-2, n=6: mean LoI 52.29% (range 45.2-55.4), taken "
+              "at 90%. More than double the 20% previously assumed.",
+        confidence="literature",
+        impact="GCP dust is the fine carry-over fraction, so it is the "
+               "CARBON-RICH stream, not the lean one - its Fe2O3 is 27% against "
+               "the dust catcher's 55%. The old assumption had this backwards.",
         minimum=0.0,
         maximum=60.0,
     ),

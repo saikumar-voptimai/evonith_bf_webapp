@@ -120,6 +120,57 @@ def test_the_path_saves_money_monotonically():
 # --- honesty about where the path stops -----------------------------------------
 
 
+def test_an_out_of_bounds_start_still_gets_a_path():
+    """The operator needs an instruction, not just a complaint.
+
+    Reporting "your current blend breaches the limits" and stopping leaves them
+    with a violation and nothing to do about it - which is exactly what happened
+    in the field on a blend that was out by 0.009 on T-basicity and 0.12% on
+    Al2O3. The first rung must recover feasibility, and every later rung carries
+    on toward the optimum as normal.
+    """
+
+    ladder = _ladder(target_slag_basicity_max=1.55)
+
+    assert not ladder.start_is_admissible
+    assert ladder.rungs, "an inadmissible start must still produce steps"
+    first = ladder.rungs[0]
+    assert first.is_recovery
+    assert first.feasible
+    assert first.blend.violations == []
+
+
+def test_recovery_widens_the_step_only_when_it_has_to():
+    """A routine step policy may be too small to climb back inside the limits.
+
+    Widening is confined to the first rung and only when the start is already
+    out of bounds - the operator's step policy must still govern every ordinary
+    move. Being told "this one needs 12%, not your usual 5%" is itself the
+    useful finding.
+    """
+
+    tight = _ladder(max_share_move_pct=0.5, target_slag_basicity_max=1.55)
+
+    assert not tight.start_is_admissible
+    assert tight.rungs and tight.rungs[0].feasible
+    widened = tight.diagnostics.get("recovery_move_pct")
+    if widened is not None:
+        assert widened > 0.5
+        # Only the recovery rung may exceed the policy.
+        for rung in tight.rungs[1:]:
+            assert (rung.move_used_pct or 0.0) <= 0.5 + 1e-9
+
+
+def test_a_feasible_start_never_widens_or_flags_recovery():
+    """Widening must not leak into the normal path."""
+
+    ladder = _ladder(target_slag_basicity_max=1.70)
+
+    assert ladder.start_is_admissible
+    assert ladder.diagnostics.get("recovery_move_pct") is None
+    assert not any(rung.is_recovery for rung in ladder.rungs)
+
+
 def test_a_blend_already_out_of_bounds_is_reported_as_such():
     """A different problem from 'the optimum is far away', and needs saying.
 

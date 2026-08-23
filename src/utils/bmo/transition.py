@@ -44,6 +44,10 @@ from utils.bmo.types import BlendEvaluation, OreInput
 DEFAULT_MAX_SHARE_MOVE_PCT = 5.0
 DEFAULT_MAX_RUNGS = 12
 CONVERGENCE_TOL_PCT = 0.05
+# Applied to the first rung ONLY, and only when the current blend is already out
+# of bounds. Recovering feasibility may genuinely need a bigger move than the
+# operator's routine step policy allows, and they need telling how big.
+RECOVERY_WIDENING_FACTORS = (1.5, 2.0, 3.0, 4.0, 6.0, 10.0, 20.0)
 
 
 @dataclass
@@ -55,6 +59,13 @@ class TransitionRung:
     blend: BlendEvaluation | None
     errors: list[str] = field(default_factory=list)
     binding_limits: list[str] = field(default_factory=list)
+    # True when this rung's job is to bring an out-of-bounds current blend back
+    # inside the limits, rather than to reduce cost. Worth distinguishing: it is
+    # a correction the operator should make regardless of what it saves.
+    is_recovery: bool = False
+    # Move actually required for this rung, which exceeds the operator's chosen
+    # step only when recovering feasibility was impossible within it.
+    move_used_pct: float | None = None
 
     @property
     def feasible(self) -> bool:
@@ -307,9 +318,29 @@ def build_transition_ladder(
     current = dict(start)
     converged = False
 
+    recovery_move_pct: float | None = None
+
     for index in range(1, int(max_rungs) + 1):
         stepped_ores = _ores_bounded_around(ores, current, delta)
         blend, errors = run_lp_baseline(stepped_ores, **lp_kwargs)
+        move_used = delta
+
+        # An out-of-bounds starting blend may not be able to get back inside the
+        # limits within the operator's chosen step. Rather than give up - which
+        # leaves them with a violation and no instruction - widen the FIRST step
+        # until recovery is possible, and report how far they actually have to
+        # move. A required step larger than policy is itself the finding.
+        if blend is None and index == 1 and start_violations:
+            for factor in RECOVERY_WIDENING_FACTORS:
+                widened = min(delta * factor, 100.0)
+                blend, errors = run_lp_baseline(
+                    _ores_bounded_around(ores, current, widened), **lp_kwargs
+                )
+                if blend is not None:
+                    move_used = widened
+                    recovery_move_pct = widened
+                    break
+
         if blend is None:
             rungs.append(TransitionRung(index=index, shares_pct=dict(current),
                                         blend=None, errors=list(errors)))
@@ -325,6 +356,8 @@ def build_transition_ladder(
                 shares_pct=next_shares,
                 blend=blend,
                 binding_limits=_binding_limits(blend, targets, ores),
+                is_recovery=bool(index == 1 and start_violations),
+                move_used_pct=move_used,
             )
         )
 
@@ -351,5 +384,8 @@ def build_transition_ladder(
             "rungs_taken": len(rungs),
             "hit_max_rungs": len(rungs) >= int(max_rungs) and not converged,
             "targets": targets,
+            # Set only when the first step had to exceed the operator's policy
+            # to get back inside the limits.
+            "recovery_move_pct": recovery_move_pct,
         },
     )

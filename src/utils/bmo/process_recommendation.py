@@ -28,11 +28,18 @@ So the objective is grounded in physics, not in a fitted response surface - a
 distinction that matters because every fitted alternative tried on this plant's
 record failed to generalise forward.
 
-RAFT IS ADVISORY.
+RAFT COMES FREE.
 
-The calibration against RAFTOC gives textbook coefficients but only R2 = 0.11
-forward, with an unattributed seasonal bias up to +46 C. It is reported with
-that uncertainty and does NOT block a recommendation.
+Everything the raceway heat balance responds to - blast temperature, oxygen,
+moisture, steam, injected coal - is already a control this layer recommends, so
+RAFT needs no separate model. It is computed straight from the settings using
+the standard industry form, with only the intercept calibrated to this plant.
+
+Forward-validated against body_raft over 2,697 hours, intercept fitted on the
+first half and scored on the second: MAE 17 C, R2 0.63, correlation 0.85. The
+fitted correlation this replaced managed R2 0.16 and had no moisture term at
+all. It is still reported as guidance rather than a hard constraint, and the
+direction of change matters more than the level.
 """
 
 from __future__ import annotations
@@ -81,12 +88,26 @@ class ProcessRecommendation:
     fuel_cost_rs_per_thm: float
     current_fuel_cost_rs_per_thm: float
     raft_c: float | None
+    current_raft_c: float | None = None
     warnings: list[str] = field(default_factory=list)
     diagnostics: dict[str, Any] = field(default_factory=dict)
 
     @property
     def fuel_cost_saving_rs_per_thm(self) -> float:
         return self.current_fuel_cost_rs_per_thm - self.fuel_cost_rs_per_thm
+
+    @property
+    def raft_delta_c(self) -> float | None:
+        """Change in RAFT, so the operator sees a direction and not just a level.
+
+        A bare RAFT figure cannot be acted on - what matters is whether this
+        recommendation pushes the raceway hotter or colder, and by how much
+        against the +/-17 C the formula is good to.
+        """
+
+        if self.raft_c is None or self.current_raft_c is None:
+            return None
+        return self.raft_c - self.current_raft_c
 
     def deltas(self) -> dict[str, float]:
         return {
@@ -96,26 +117,78 @@ class ProcessRecommendation:
 
 
 def raft_from_controls(
-    settings: ControlSettings, cfg: dict[str, Any] | None = None
+    settings: ControlSettings,
+    cfg: dict[str, Any] | None = None,
+    *,
+    blast_nm3_per_thm: float | None = None,
+    blast_moisture_g_per_nm3: float = 15.0,
 ) -> float:
     """
-    RAFT from the calibrated correlation. ADVISORY only - see module docstring.
+    RAFT computed directly from the control settings, standard industry form.
+
+    Everything the raceway heat balance responds to is a control we are already
+    recommending, so RAFT does not need a separate model - it falls out:
+
+        RAFT = intercept
+             + 0.85 x blast temperature C
+             + 50   x oxygen enrichment %
+             - 5.5  x (blast moisture + steam), g per Nm3 of blast
+             - 2.0  x PCI,                      g per Nm3 of blast
+
+    PCI and steam enter as a CONCENTRATION IN THE BLAST rather than as a rate.
+    That is what makes the form coherent: moisture, steam and injected coal are
+    all things carried into the raceway that absorb heat, so all three are
+    expressed per Nm3 of blast.
+
+    Forward-validated on 2,697 hours with the intercept calibrated on the first
+    half only: test MAE 17 C, R2 0.63, correlation 0.85. The correlation this
+    replaces managed R2 0.16 and carried no moisture term whatsoever.
 
     Args:
          - settings: ControlSettings - Candidate controls.
          - cfg: dict[str, Any] | None - ``process_recommendation`` block.
+         - blast_nm3_per_thm: float | None - Blast volume per tonne hot metal,
+           needed to convert PCI and steam into blast concentrations. Falls back
+           to the configured plant median when unknown.
+         - blast_moisture_g_per_nm3: float - Ambient humidity in the blast. Not
+           instrumented here; comes from the operator assumptions table.
 
     Returns:
-         - return float - Estimated RAFT in degrees C.
+         - return float - RAFT in degrees C.
     """
 
-    raft = (cfg or _load_pr_config())["raft"]
-    return (
-        float(raft["intercept"])
-        + float(raft["per_c_blast_temp"]) * settings.blast_temperature_c
-        + float(raft["per_pct_o2"]) * settings.oxygen_enrichment_pct
-        + float(raft["per_kg_pci"]) * settings.pci_kg_per_thm
+    from utils.energy_balance.raft import compute_raft, oxygen_flow_from_enrichment
+
+    raft_cfg = (cfg or _load_pr_config()).get("raft", {})
+    basis = str(raft_cfg.get("blast_flow_basis", "total"))
+    wind_per_thm = float(
+        blast_nm3_per_thm or raft_cfg.get("fallback_blast_nm3_per_thm", 1206.0)
     )
+    if wind_per_thm <= 0.0:
+        wind_per_thm = float(raft_cfg.get("fallback_blast_nm3_per_thm", 1206.0))
+
+    steam_t_h = max(0.0, settings.steam_kg_per_hr) / 1000.0
+    # The optimiser's handle is enrichment percent; the workbook needs the
+    # oxygen FLOW, and the two are linked through the dry blast.
+    oxygen_nm3_h = oxygen_flow_from_enrichment(
+        enrichment_pct=settings.oxygen_enrichment_pct,
+        blast_volume_nm3_h=settings.blast_volume_nm3_per_hr,
+        steam_injection_t_h=steam_t_h,
+        ambient_humidity_g_nm3=blast_moisture_g_per_nm3,
+        blast_flow_basis=basis,
+    )
+    # PCI is charged per tonne of hot metal but injected per hour, so the
+    # production rate implied by the wind is what converts between them.
+    production_t_h = settings.blast_volume_nm3_per_hr / wind_per_thm
+    return compute_raft(
+        blast_temperature_c=settings.blast_temperature_c,
+        blast_volume_nm3_h=settings.blast_volume_nm3_per_hr,
+        oxygen_injection_nm3_h=oxygen_nm3_h,
+        steam_injection_t_h=steam_t_h,
+        ambient_humidity_g_nm3=blast_moisture_g_per_nm3,
+        coal_injection_t_h=settings.pci_kg_per_thm * production_t_h / 1000.0,
+        blast_flow_basis=basis,
+    ).raft_c
 
 
 def _load_pr_config(path: str | None = None) -> dict[str, Any]:
@@ -243,13 +316,30 @@ def recommend_controls(
                 f"[{float(lo):,.1f}, {float(hi):,.1f}] - this is extrapolation"
             )
 
-    raft = raft_from_controls(best, cfg)
+    # RAFT is computed from the controls themselves, so it must be evaluated at
+    # each setting's OWN blast volume - the recommendation usually changes wind,
+    # which changes the PCI concentration in the blast and hence RAFT.
+    try:
+        moisture = float(ecfg.get("blast_moisture_g_per_nm3", 15.0))
+    except (TypeError, ValueError):
+        moisture = 15.0
+
+    def _raft_for(settings: ControlSettings) -> float:
+        wind_per_thm = settings.blast_volume_nm3_per_hr * 24.0 / hm if hm > 0 else None
+        return raft_from_controls(
+            settings, cfg,
+            blast_nm3_per_thm=wind_per_thm,
+            blast_moisture_g_per_nm3=moisture,
+        )
+
+    raft = _raft_for(best)
+    current_raft = _raft_for(current)
     band = cfg.get("raft", {}).get("advisory_band_c")
     if band and not (float(band[0]) <= raft <= float(band[1])):
         warnings.append(
-            f"RAFT advisory {raft:,.0f} C is outside {band}. Advisory only: the "
-            "RAFT correlation has forward R2 0.11 and an unattributed seasonal "
-            f"bias up to {cfg.get('raft', {}).get('stated_uncertainty_c', 46)} C."
+            f"RAFT {raft:,.0f} C is outside the operating band {band}. Typical "
+            f"error is +/-{cfg.get('raft', {}).get('stated_uncertainty_c', 17)} C, "
+            "so treat a marginal excursion as marginal."
         )
 
     return ProcessRecommendation(
@@ -260,6 +350,7 @@ def recommend_controls(
         fuel_cost_rs_per_thm=cost,
         current_fuel_cost_rs_per_thm=current_cost,
         raft_c=raft,
+        current_raft_c=current_raft,
         warnings=warnings,
         diagnostics={
             "optimised_controls": controls,

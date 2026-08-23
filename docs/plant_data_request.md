@@ -117,7 +117,7 @@ Shell heat loss is one of the larger output terms in the balance, and at present
 we cannot pin it down within a factor of three.
 
 We have good data for stave rows 6 to 10, which gives **298 MJ/tHM**. But rows 6
-to 10 cover only bosh, belly and lower stack. Hearth, bottom, tuyere nose and
+to 10 . Hearth, bottom, tuyere nose and
 upper shaft are not included. To cover them we currently scale up by cooling
 water **flow share**, which gives **886 MJ/tHM**.
 
