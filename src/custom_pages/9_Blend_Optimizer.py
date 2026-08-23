@@ -1650,18 +1650,28 @@ def _render_process_recommendation(
         st.warning(f"Could not compute process parameters: {exc}")
         return
 
+    # The energy balance predicts coke with the right shape but the wrong level
+    # - +19.7 kg/tHM over 239 days. A rolling offset fitted on recent plant
+    # history takes MAPE from 7.2% to 3.4%. Applied AFTER the optimise, because
+    # a constant shift cannot change which controls win, only the reported
+    # level. See utils/bmo/coke_calibration.py.
+    from utils.bmo.coke_calibration import load_calibration
+
+    calib = load_calibration()
+    coke_shown = calib.apply(recommendation.coke_rate_kg_per_thm)
+    coke_now = calib.apply(recommendation.current_coke_rate_kg_per_thm)
+
     c1, c2, c3 = st.columns(3)
     c1.metric(
         "Coke Rate (kg/THM)",
-        f"{recommendation.coke_rate_kg_per_thm:,.1f}",
-        delta=f"{recommendation.coke_rate_kg_per_thm - recommendation.current_coke_rate_kg_per_thm:+,.1f}",
+        f"{coke_shown:,.1f}",
+        delta=f"{coke_shown - coke_now:+,.1f}",
         delta_color="inverse",
         help=(
-            "ENERGY BALANCE figure, not a forecast of the plant's coke rate. "
-            "It is what the balance says this burden needs at these controls. "
-            "Trust the CHANGE, not the level - the level carries a shell-loss "
-            "uncertainty that largely cancels between the two settings. See the "
-            "coke rate comparison below."
+            "Energy balance, corrected by a rolling bias offset fitted on recent "
+            "plant history. Forward-tested MAPE 3.4%. The CHANGE is the more "
+            "reliable half - it is unaffected by the offset, which cancels "
+            "between the two settings. See the breakdown below."
         ),
     )
     c2.metric(
@@ -1706,47 +1716,67 @@ def _render_process_recommendation(
                 "What it is": "What the furnace is actually being charged.",
             },
             {
-                "Figure": "Energy balance, at CURRENT controls",
+                "Figure": "Energy balance, RAW at current controls",
                 "kg/THM": round(recommendation.current_coke_rate_kg_per_thm, 1),
                 "What it is": (
-                    "What the balance says this burden needs right now. The gap "
-                    "against plant actual is the balance's own bias."
+                    "Uncorrected. Runs high — the balance has a known bias."
                 ),
             },
             {
-                "Figure": "Energy balance, at RECOMMENDED controls",
-                "kg/THM": round(recommendation.coke_rate_kg_per_thm, 1),
+                "Figure": f"less bias offset ({calib.offset_kg_per_thm:+.1f})",
+                "kg/THM": round(coke_now, 1),
+                "What it is": (
+                    f"Offset fitted on {calib.sample_days} recent days"
+                    f" ({calib.first_day} → {calib.last_day}), residual sd "
+                    f"{calib.residual_sd_kg_per_thm:.0f} kg/THM."
+                    if calib.is_usable else "No calibration on file."
+                ),
+            },
+            {
+                "Figure": "Corrected, at RECOMMENDED controls",
+                "kg/THM": round(coke_shown, 1),
                 "What it is": "The headline figure above.",
             },
         ]
         st.dataframe(pd.DataFrame(comparison), hide_index=True,
                      use_container_width=True)
-        bias = (
-            recommendation.current_coke_rate_kg_per_thm - plant_coke
-            if plant_coke else None
-        )
+        residual = coke_now - plant_coke if plant_coke else None
         st.markdown(
-            "**Only the last two are comparable.** Both come from the same "
-            "energy balance, so whatever bias it carries cancels between them — "
-            "that is why the delta is the number to act on and the level is not."
+            "**Why an offset at all.** Backtested over 239 days, the raw energy "
+            "balance runs **+19.7 kg/THM high** with MAPE 7.2% and R² 0.07 — the "
+            "shape is right, the level is not. One rolling offset takes that to "
+            "MAPE 3.4%, R² 0.74 on a forward test. It is shown rather than "
+            "folded in, because its size measures how much the balance is still "
+            "missing: when the top-gas analyser and shell-loss questions are "
+            "settled, it should shrink on its own."
             + (
-                f"\n\nAgainst plant actual the balance currently reads "
-                f"**{bias:+,.1f} kg/THM**. "
+                f"\n\nAfter correction the balance sits **{residual:+,.1f} kg/THM** "
+                "from plant actual"
                 + (
-                    "That is within the model's expected accuracy."
-                    if abs(bias) < 15
-                    else "That is larger than expected — most likely the "
-                    "shell-loss question in "
-                    "`docs/energy_balance_findings_and_open_decisions.md` §5, "
-                    "which moves this figure by up to 11%."
+                    " — within the model's expected scatter."
+                    if abs(residual) < 15
+                    else ". That is wider than the ±10 kg/THM the offset usually "
+                    "leaves, so this blend or these controls are further from "
+                    "recent operation than the calibration window covers."
                 )
-                if bias is not None else ""
+                if residual is not None else ""
             )
+            + "\n\n**The delta is the more reliable half.** The offset cancels "
+            "between the two settings, so the recommended change is unaffected "
+            "by any of this."
             + "\n\nThe **ML fuel-cost model** is a third, separate estimate. It "
             "is trained on plant history and is blend-blind; the energy balance "
             "is physics and responds to the blend. They will not agree, and are "
             "not meant to."
         )
+        if calib.is_stale():
+            st.warning(
+                f"Calibration was fitted {calib.age_days()} days ago. The bias "
+                "drifts about 2 kg/THM per quarter — run "
+                "`scripts/refresh_coke_calibration.py`."
+            )
+        for note in calib.notes:
+            st.caption(f"⚠️ {note}")
 
     optimised = set(recommendation.diagnostics["optimised_controls"])
     rows = []
