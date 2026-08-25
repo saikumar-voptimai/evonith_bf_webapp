@@ -411,8 +411,7 @@ def main() -> None:
           f"{chrono['MAE']/te_y.mean():.1%}")
     print(f"  MAE / test sd = {chrono['MAE']/te_y.std():.2f}"
           "   (1.00 = no better than predicting the test mean)")
-    print("
-  Coke rate barely shifts between the halves, so the tree is not")
+    print("\n  Coke rate barely shifts between the halves, so the tree is not")
     print("  asked to extrapolate. That is the whole reason this target works.")
 
     print("\n  Four reframings, all chronological:")
