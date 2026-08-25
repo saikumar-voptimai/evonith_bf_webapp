@@ -1,6 +1,21 @@
-"""BMO fuel-cost model V5: coke strength + physics-derived energy features.
+"""BMO coke-rate model V5: coke strength + physics-derived energy features.
 
 Run:  python scripts/train_bmo_fuel_v5.py
+
+TARGET IS THE COKE RATE, not unit cost. V4 predicted unit cost, which expands to
+
+    unitcost = 28*coke + 24*(total_fuel - coke - pci) + 18*pci
+             = 4*coke + 24*total_fuel - 6*pci
+
+so it was dominated 24-to-4 by TOTAL FUEL - the one quantity the plant
+deliberately holds flat. Over the test period total fuel varies with sd 8.1
+kg/tHM against coke's 16.1, so the old target buried the signal underneath the
+constant and left almost nothing forward-predictable.
+
+Coke rate is also the number the Blend Optimizer actually shows, so the model is
+now scored on the job it is used for. PCI stays a FEATURE - it is a control the
+operator sets. Nut coke does not: it sits near 70 kg/tHM and is derived as
+total fuel minus coke minus PCI, so it carries the target inside it.
 
 Rebuilds the V4 notebook pipeline as a runnable script and adds three things:
 
@@ -25,15 +40,10 @@ split puts neighbouring hours either side of the fence, so the reported score is
 not reachable forward. Both splits are run below so the size of that gap is
 visible rather than argued about.
 
-Second, the target is worth expanding:
-
-    unitcost = 28*coke + 24*(total_fuel - coke - pci) + 18*pci
-             = 4*coke + 24*total_fuel - 6*pci
-
-It is dominated by TOTAL FUEL at a coefficient of 24, not by coke at 4. Total
-fuel and coke rate are both correctly excluded from the features, but it is
-worth knowing what the model is really being asked to predict: any feature
-carrying total fuel is six times more dangerous than one carrying coke.
+Second, with coke rate as the target the exclusions stop being precautionary.
+ACT. FUEL RATE = coke + nut + PCI, so it contains the target outright, and nut
+coke is derived from it. Either one left in the feature set would reproduce the
+V4 score by a different route.
 """
 
 from __future__ import annotations
@@ -88,17 +98,26 @@ def load_base() -> pd.DataFrame:
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
     df = df.dropna(subset=["time"]).sort_values("time").reset_index(drop=True)
 
-    coke = num(df, "COKE RATE KG/THM")
-    pci = num(df, "PCI_KG/THM")
-    total = num(df, "ACT. FUEL RATEKG/THM.")
-    nut = total - (coke + pci)
-    df["unitcost_new"] = coke * 28.0 + nut * 24.0 + pci * 18.0
-    df = df[df["unitcost_new"] > 0].reset_index(drop=True)
+    # TARGET IS THE COKE RATE ITSELF.
+    #
+    # The V4 target was unit cost, which expands to
+    #     4*coke + 24*TotalFuel - 6*PCI
+    # and is therefore dominated 24-to-4 by total fuel - the one quantity the
+    # plant deliberately holds flat. In the test period total fuel varies with
+    # sd 8.1 kg/tHM against coke's 16.1, so the old target buried the signal
+    # under the constant.
+    #
+    # Coke rate is also the number the page shows, so the model is now scored on
+    # the thing it is actually used for. PCI stays as a FEATURE - it is a control
+    # the operator sets. Nut coke does not: it is held near 70 kg/tHM, and it is
+    # computed as TotalFuel - coke - PCI, so it carries the target inside it.
+    df["target"] = num(df, "COKE RATE KG/THM")
+    df = df[df["target"] > 0].reset_index(drop=True)
 
     # V4 cruising filters: stable operation only.
     mask = (
         (num(df, "HOT BLAST VOLUMENM3/HR.") >= 90_000)
-        & (pci.reindex(df.index).fillna(0) >= 100)
+        & (num(df, "PCI_KG/THM") >= 100)
         & (num(df, "FURNACETOPGASANALYSISCO2ETACO").between(38, 47))
         & (num(df, "PRODUCTIONTONNESPERHR") >= 75)
         & (num(df, "ACT. FUEL RATEKG/THM.").between(500, 600))
@@ -243,14 +262,18 @@ def add_engineered(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
 # features                                                                      #
 # --------------------------------------------------------------------------- #
 
-# Anything carrying the target. Total fuel is the dangerous one: it enters the
-# target at a coefficient of 24 against coke's 4.
+# With coke rate as the target these are not precautions, they are the target
+# in disguise. ACT. FUEL RATE = coke + nut + PCI, so it contains coke outright.
+# Nut coke is computed as fuel - coke - PCI, so it does too. COKE_CALC_MT is the
+# coke charged. Leaving any of them in would reproduce the V4 result by a
+# different route.
 LEAK = {
     "COKE RATE KG/THM", "ACT. FUEL RATEKG/THM.", "UNITCOST LAKHS/THM",
-    "unitcost_new", "PRODUCTIONTONNESPERHR", "TOTAL OXYGENNM3/HR.",
+    "unitcost_new", "target", "PRODUCTIONTONNESPERHR", "TOTAL OXYGENNM3/HR.",
     "FURNACETOPGASANALYSISCO2ETACO", "FURNACE TOP GAS ANALYSISCO2%",
     "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%",
     "COKE_CALC_MT", "NUTCOKE_CALC_MT", "COKE_CALC_THM", "NUTCOKE_CALC_THM",
+    "COKE_OFF_THM", "COKE_ON_THM", "NUTCOKE_YARD_YARD_THM",
 }
 LEAK_PREFIX = ("SLAG_PCT", "CHEM_", "RAFTOC", "HMT_GT")
 
@@ -277,12 +300,12 @@ def evaluate(
     from sklearn.preprocessing import StandardScaler
     from xgboost import XGBRegressor
 
-    frame = df[["time", "unitcost_new", *features]].replace(
+    frame = df[["time", "target", *features]].replace(
         [np.inf, -np.inf], np.nan
     )
-    frame = frame.dropna(subset=["unitcost_new"]).sort_values("time")
+    frame = frame.dropna(subset=["target"]).sort_values("time")
     x = frame[features].fillna(frame[features].median(numeric_only=True)).fillna(0.0)
-    y = frame["unitcost_new"]
+    y = frame["target"]
 
     if chronological:
         cut = int(len(frame) * (1 - TEST_FRACTION))
@@ -314,7 +337,7 @@ def evaluate(
         "n_test": len(y_te),
     }
     print(f"  {label:38s} feats {result['n_features']:4d}  "
-          f"MAE {result['MAE']:7.1f}  R2 {result['R2']:+7.4f}")
+          f"MAE {result['MAE']:7.2f}  R2 {result['R2']:+7.4f}")
     return result | {"model": model, "features": features, "x": x, "y": y}
 
 
@@ -377,18 +400,20 @@ def main() -> None:
     ].sum()
     print(f"\n  new features carry {new_share:.1%} of total gain")
 
-    banner("5. WHY R2 IS ZERO, AND WHAT ACTUALLY HELPS")
-    frame = df[["time", "unitcost_new"]].dropna().sort_values("time")
+    banner("5. WHY THE TARGET CHANGE WORKED, AND WHAT ELSE HELPS")
+    frame = df[["time", "target"]].dropna().sort_values("time")
     cut = int(len(frame) * (1 - TEST_FRACTION))
-    tr_y, te_y = frame["unitcost_new"].iloc[:cut], frame["unitcost_new"].iloc[cut:]
-    print(f"  target level  train {tr_y.mean():8.0f}  test {te_y.mean():8.0f}"
-          f"   shift {te_y.mean() - tr_y.mean():+.0f} Rs/tHM")
-    print(f"  target spread train sd {tr_y.std():6.0f}  test sd {te_y.std():6.0f}")
-    print(f"  MAE {chrono['MAE']:.0f} on a level of {te_y.mean():,.0f} is "
-          f"{chrono['MAE']/te_y.mean():.1%} - the LEVEL is roughly right.")
-    print("  R2 near zero means none of the test period's VARIANCE is explained.")
-    print("  That is the same finding as the earlier fuel work: the plant holds")
-    print("  fuel nearly constant, so there is little real variance to predict.")
+    tr_y, te_y = frame["target"].iloc[:cut], frame["target"].iloc[cut:]
+    print(f"  target level  train {tr_y.mean():8.1f}  test {te_y.mean():8.1f}"
+          f"   shift {te_y.mean() - tr_y.mean():+.1f} kg/tHM")
+    print(f"  target spread train sd {tr_y.std():6.1f}  test sd {te_y.std():6.1f} kg/tHM")
+    print(f"  MAE {chrono['MAE']:.1f} kg/tHM on a level of {te_y.mean():.0f} is "
+          f"{chrono['MAE']/te_y.mean():.1%}")
+    print(f"  MAE / test sd = {chrono['MAE']/te_y.std():.2f}"
+          "   (1.00 = no better than predicting the test mean)")
+    print("
+  Coke rate barely shifts between the halves, so the tree is not")
+    print("  asked to extrapolate. That is the whole reason this target works.")
 
     print("\n  Four reframings, all chronological:")
     # (a) physics only - does the prior carry signal without 125 competitors?
@@ -412,11 +437,11 @@ def _ridge(df: pd.DataFrame, features: list[str], *, label: str) -> None:
     from sklearn.metrics import mean_absolute_error, r2_score
     from sklearn.preprocessing import StandardScaler
 
-    frame = df[["time", "unitcost_new", *features]].replace(
+    frame = df[["time", "target", *features]].replace(
         [np.inf, -np.inf], np.nan
-    ).dropna(subset=["unitcost_new"]).sort_values("time")
+    ).dropna(subset=["target"]).sort_values("time")
     x = frame[features].fillna(frame[features].median(numeric_only=True)).fillna(0.0)
-    y = frame["unitcost_new"]
+    y = frame["target"]
     cut = int(len(frame) * (1 - TEST_FRACTION))
     scaler = StandardScaler().fit(x.iloc[:cut])
     model = RidgeCV(alphas=np.logspace(-2, 4, 25)).fit(
