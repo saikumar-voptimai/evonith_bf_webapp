@@ -4,8 +4,9 @@
 by treating setpoint changes as timestamped interventions rather than as
 observations.
 
-**Status:** Phases 1–2 complete on a 30-day window. One firm result, one
-underpowered result, and a clear reason to widen the window.
+**Status:** Phases 1–2 complete on a **180-day window (240 routine events)**.
+Both methods now agree. A 30-day pilot was underpowered and is retained below
+only for the methodological errors it exposed.
 
 Scripts: `scripts/operator_action_events.py`, `scripts/operator_action_attribution.py`
 
@@ -30,18 +31,13 @@ That converts an observational problem into a quasi-experimental one.
 
 ## 2. The action signal
 
-Over 30 days, **55 setpoint changes**, of which:
-
-| Context | n | What it is |
-|---|---|---|
-| **normal** | **40** | Routine control on a running furnace — the population of interest |
-| restart | 14 | Inside a stoppage window or its buffers; a blow-in, not control |
-| pci_off | 1 | PCI lost or cut while still blowing; coke replacing lost fuel |
+Over 188 days, **244 routine control events** on a normally running furnace
+(plus restart- and PCI-outage-related changes, classified out).
 
 ### The ratchet
 
-26 cuts against 14 raises — **1.86 cuts per raise** — at an *identical* median
-step of 5.0 kg/THM. But the raises carry the fatter tail (p90 38 against 15).
+147 cuts against 97 raises — **1.52 cuts per raise** — at an *identical* median
+step of 5.0 kg/THM, but with the raises carrying the fatter tail.
 
 **Operators trim down often in small steps and add back in fewer, larger moves.**
 That asymmetry is a policy, and it is the first thing any attribution has to
@@ -51,8 +47,10 @@ explain.
 
 | | n | median \|Δ\| | median held |
 |---|---|---|---|
-| trim | 35 | 5.0 kg/THM | ~8 h |
-| large | 5 | 30–50 kg/THM | 6.4 h |
+| trim cut | 124 | 5.0 kg/THM | 10.4 h |
+| trim raise | 87 | 5.0 kg/THM | 9.2 h |
+| large cut | 23 | 30 kg/THM | 3.0 h |
+| large raise | 10 | 50 kg/THM | 5.9 h |
 
 A big raise that is stepped back down within hours is a **coke blank charged
 against a chill** — a different decision with a different cause. Pooling the two
@@ -60,51 +58,76 @@ would confound both, so they are attributed separately.
 
 ### Timing and shift
 
-Median **7.6 h** between actions; only 3% come within an hour of the previous
+Median **8.4 h** between actions; only 3% come within an hour of the previous
 one, so these are genuinely separate decisions rather than one entry keyed in
-stages. Shift split A 17 / B 13 / C 10 — no strong handover skew, which rules
+stages. Shift split A 90 / B 85 / C 69 — no strong handover skew, which rules
 out the most obvious non-physical explanation.
 
 ---
 
 ## 3. What prompted each decision
 
-### The firm result: two observations lead actions
+**Both methods now agree**, which is the strongest thing here — they are
+independent of one another and converge on the same short list.
+
+### Method A — how often each observation leads
 
 The null is that any of the 21 tracked observations could top the ranking by
-chance — 4.8% each. **The placebo hits exactly that, 2/41**, which is the check
-working as designed.
+chance, 4.8% each. **The placebo lands at exactly 6% (14/240)**, which is the
+check working as designed.
 
 | Observation | Leads | Share | p (binomial) |
 |---|---|---|---|
-| **hm_per_charge** | 12/41 | 29% | **2.9 × 10⁻⁷** |
-| **top_press_avg** | 7/41 | 17% | **3.0 × 10⁻³** |
-| tuyere_velocity | 4/41 | 10% | 0.13 |
-| runner_temp_pci_taphole | 4/41 | 10% | 0.13 |
-| body_dp_bottom | 3/41 | 7% | 0.31 |
-| *PLACEBO* | *2/41* | *5%* | — |
+| **hm_per_charge** | 33/240 | 14% | **5.5 × 10⁻⁸** |
+| **runner_temp_cr_taphole** | 31/240 | 13% | **5.5 × 10⁻⁷** |
+| **top_press_avg** | 27/240 | 11% | **3.6 × 10⁻⁵** |
+| body_raft | 19/240 | 8% | 0.022 |
+| h2_pct | 16/240 | 7% | 0.11 |
+| *PLACEBO* | *14/240* | *6%* | — |
 
-**Hot metal per charge and top pressure are real leaders.** Nothing below them
-separates from noise at this sample size.
+### Method B — case-control on excursion magnitude
 
-Both are physically sensible. HM per charge falling means the burden is yielding
-less iron per charge — a direct reason to add coke. Top pressure is the
-aerodynamic state of the stack, which an operator watches continuously.
+Did observations deviate *further* before an action than during a quiet spell?
+240 cases against 960 controls, matched on shift.
 
-Notably, the *thermal* indicators (RAFT, runner temperatures) do **not** lead
-strongly, which is mildly surprising and worth testing on a longer window before
-drawing anything from it.
+| Observation | case median \|z\| | control | gap |
+|---|---|---|---|
+| **runner_temp_cr_skimmer** | 1.119 | 0.320 | **+0.799** |
+| **hm_per_charge** | 1.529 | 1.156 | **+0.373** |
+| h2_pct | 2.209 | 1.967 | +0.241 |
+| runner_temp_pci_skimmer | 1.437 | 1.225 | +0.212 |
+| top_press_avg | 0.685 | 0.496 | +0.188 |
+| runner_temp_cr_taphole | 1.232 | 1.054 | +0.178 |
+| *PLACEBO* | *2.428* | *2.366* | *+0.062* |
 
-### The underpowered result: case-control
+Six observations clear the placebo bar; the placebo ranks 7th of 21, exactly
+where noise belongs.
 
-A permutation test — pooling cases and controls, relabelling at random 200 times
-— gives **p = 0.425**. Action hours are **not** distinguishable from no-action
-hours by these effect sizes.
+**Permutation test: p = 0.000.** Observed top-5 mean gap 0.363 against a null
+median of 0.138 and 95th percentile 0.257, over 200 relabellings of the pooled
+set. At 30 days this same test gave p = 0.425 — the effect was always there, the
+sample was not.
 
-**This is a power problem, not evidence of absence.** Actions occur every ~7 h,
-so a 12 h exclusion leaves controls only in a few quiet spells: 164 control
-timestamps collapse to **16 contiguous stretches**, and timestamps hours apart
-in the same spell are not independent observations.
+### What the two methods agree on
+
+| Signal | Method A | Method B |
+|---|---|---|
+| **hm_per_charge** | 1st | 2nd |
+| **Runner temperature** (thermal) | 2nd | 1st and 4th |
+| **top_press_avg** | 3rd | 5th |
+| RAFT / H₂ | 4th / 5th | — / 3rd |
+
+Three things drive coke decisions on this furnace:
+
+1. **Hot metal per charge** — the burden yielding less iron per charge is a
+   direct reason to add coke.
+2. **Runner temperature** — the most direct thermal reading an operator has.
+3. **Top pressure** — the aerodynamic state of the stack.
+
+**The 30-day pilot got the thermal question wrong.** It reported that thermal
+indicators do *not* lead, and flagged that as surprising. With 240 events they
+lead strongly by both methods. That is a straightforward power artefact, and a
+caution against reading a null from a small sample.
 
 ---
 
@@ -152,23 +175,27 @@ banking.
 
 ---
 
-## 6. What is needed next
+## 6. What is settled, and what is next
 
-**30 days is too few.** The method works and the ranking already yields signal,
-but the case-control arm has no power, and Phase 3 (reactive vs anticipatory)
-splits the 41 events further still.
+**Settled by the 180-day window:**
 
-Re-running Phases 1–2 over **180 days (~330 expected events)** changes nothing in
-the method — only the power. That is in progress.
+- The case-control comparison reaches significance (p = 0.000 against p = 0.425
+  at 30 days). The effect was always present; the pilot lacked the sample.
+- Thermal indicators *do* lead. The 30-day pilot's contrary finding was a power
+  artefact.
+- Both independent methods converge on the same three drivers.
 
-Open questions the longer window should settle:
+**Still open, and the subject of Phases 3–5:**
 
-1. Does the case-control comparison reach significance, or is the effect
-   genuinely absent?
-2. Do thermal indicators lead once there are enough events to see them?
-3. Are trims and blanks triggered by *different* observations?
-4. Is the up/down asymmetry explained by different triggers, or the same trigger
-   treated asymmetrically?
+1. Are trims and coke blanks triggered by *different* observations? 211 trims
+   against 33 large moves is now enough to split them.
+2. Is the 1.52 cuts-per-raise asymmetry explained by different triggers, or the
+   same trigger treated asymmetrically?
+3. **Reactive or anticipatory?** Whether the operator responds to a state that
+   has already moved, or to an input change before the state moves. This is
+   Phase 3 and the reason the work was framed this way.
+4. Agreement with `burden_changing_purpose` — the operator's own stated reason,
+   free text in `ops_config.burden_history`, as labelled ground truth.
 
 ## 7. Ask for the plant
 

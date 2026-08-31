@@ -178,6 +178,34 @@ def robust_z(panel: pd.DataFrame) -> pd.DataFrame:
     return z.clip(-Z_CLIP, Z_CLIP)
 
 
+def rolling_peak_z(zscores: pd.DataFrame) -> pd.DataFrame:
+    """Signed peak z over the trailing trigger window, for every timestamp.
+
+    Computed ONCE for the whole panel instead of re-slicing per event. At 244
+    events and 200 permutations the per-timestamp version needs a quarter of a
+    million frame slices; this is two rolling passes.
+
+    "Signed peak" keeps the direction of the largest excursion: an operator
+    responds to how far something went and which way, not to its magnitude
+    alone.
+
+    Args:
+         - zscores: pd.DataFrame - Robust z-scores on the analysis grid.
+
+    Returns:
+         - return pd.DataFrame - Peak z in the window ENDING one LEAD_GAP before
+           each timestamp, so nothing at or after the decision leaks in.
+    """
+
+    steps = max(2, int(TRIGGER_WINDOW / pd.Timedelta(GRID)))
+    lead = max(1, int(LEAD_GAP / pd.Timedelta(GRID)))
+    roll = zscores.rolling(steps, min_periods=max(2, steps // 4))
+    high, low = roll.max(), roll.min()
+    peak = high.where(high.abs() >= low.abs(), low)
+    # Shift so the window stops short of the event rather than including it.
+    return peak.shift(lead)
+
+
 def slope_per_hour(panel: pd.DataFrame, at: pd.Timestamp) -> pd.Series:
     """Least-squares trend over the trigger window, per hour."""
 
@@ -258,7 +286,7 @@ def sample_controls(
 
 
 def effect_sizes(
-    zscores: pd.DataFrame, cases: list[pd.Timestamp], controls: list[pd.Timestamp]
+    peak: pd.DataFrame, cases: list[pd.Timestamp], controls: list[pd.Timestamp]
 ) -> pd.DataFrame:
     """Per-observation separation between action hours and no-action hours.
 
@@ -267,19 +295,26 @@ def effect_sizes(
     """
 
     def peaks(times: list[pd.Timestamp]) -> pd.DataFrame:
-        rows = []
-        for t in times:
-            w = zscores.loc[t - TRIGGER_WINDOW: t - LEAD_GAP]
-            if w.empty:
-                continue
-            rows.append(w.apply(
-                lambda s: s.loc[s.abs().idxmax()] if s.notna().any() else np.nan
-            ))
-        return pd.DataFrame(rows)
+        # Events are timestamped to the second; the peak frame lives on the
+        # 15-minute grid. ffill takes the most recent grid point at or before
+        # each event - an exact index intersection finds nothing at all.
+        if not times:
+            return pd.DataFrame(columns=peak.columns)
+        return peak.reindex(pd.DatetimeIndex(sorted(times)), method="ffill")
 
-    case_peaks, control_peaks = peaks(cases), peaks(controls)
+    # COMPARE MAGNITUDES, NOT SIGNED PEAKS.
+    #
+    # The signed peak is bimodal - adjacent windows share 31 of 32 points, so it
+    # sits near +2 or -2 and rarely near zero. Its MEDIAN is therefore unstable,
+    # flipping between modes on a 50.1/49.9 split. Summarising it that way made
+    # the PLACEBO the strongest "discriminator" in the table at a gap of 3.511,
+    # purely because cases and controls landed on opposite modes.
+    #
+    # |peak| is unimodal and answers the question actually being asked: were
+    # observations deviating FURTHER before an action than during a quiet spell?
+    case_peaks, control_peaks = peaks(cases).abs(), peaks(controls).abs()
     rows = []
-    for col in zscores.columns:
+    for col in peak.columns:
         a = case_peaks[col].dropna() if col in case_peaks else pd.Series(dtype=float)
         b = control_peaks[col].dropna() if col in control_peaks else pd.Series(dtype=float)
         if len(a) < 5 or len(b) < 5:
@@ -288,13 +323,18 @@ def effect_sizes(
         rows.append({
             "observation": col,
             "group": GROUP_OF.get(col, "placebo"),
-            "case_median_z": float(a.median()),
-            "control_median_z": float(b.median()),
-            "abs_gap": float(abs(a.median() - b.median())),
+            "case_med_absz": float(a.median()),
+            "ctrl_med_absz": float(b.median()),
+            "abs_gap": float(a.median() - b.median()),
             "cohens_d": float((a.mean() - b.mean()) / pooled) if pooled else np.nan,
             "n_case": len(a),
         })
-    return pd.DataFrame(rows).sort_values("abs_gap", ascending=False)
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
+    # Sort by the SIGNED gap: an observation deviating further before actions is
+    # the hypothesis. One deviating LESS is not evidence for it.
+    return frame.sort_values("abs_gap", ascending=False)
 
 
 def main() -> None:
@@ -315,6 +355,7 @@ def main() -> None:
 
     panel = build_panel(raw)
     zscores = robust_z(panel)
+    peak = rolling_peak_z(zscores)
 
     banner("0. SETUP")
     print(f"  {len(events)} routine control events in the {days}-day analysis "
@@ -397,7 +438,7 @@ def main() -> None:
         print("  Timestamps hours apart in the same quiet spell are not independent")
         print(f"  observations, so the effective control n is nearer {stretches} "
               f"than {len(controls)} - and the power is correspondingly small.")
-    table = effect_sizes(zscores, cases, controls)
+    table = effect_sizes(peak, cases, controls)
     if table.empty:
         print("  insufficient overlap to compare")
     else:
@@ -420,7 +461,7 @@ def main() -> None:
 
     if not table.empty:
         def top_gap(case_times, control_times) -> float:
-            t = effect_sizes(zscores, case_times, control_times)
+            t = effect_sizes(peak, case_times, control_times)
             if t.empty:
                 return np.nan
             return float(t[t["observation"] != PLACEBO]["abs_gap"].head(5).mean())
