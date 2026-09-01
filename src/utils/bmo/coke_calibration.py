@@ -43,9 +43,20 @@ CALIBRATION_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "coke_rate_calibration.json"
 )
 DEFAULT_WINDOW_DAYS = 90
-# Beyond this the offset has drifted far enough to be worth refreshing. Measured
-# drift is ~2 kg/tHM per quarter, so a stale quarter costs about that much.
-STALE_AFTER_DAYS = 45
+# STALENESS IS EXPENSIVE, far more than first assumed. Measured over 281 days
+# (scripts/coke_calibration_cadence.py), holding a calibration without refitting:
+#
+#     held for     MAE   MAPE%      R2
+#         0 d     13.9    4.59   +0.428
+#        30 d     18.9    6.34   +0.054
+#        60 d     27.7    9.29   -0.820
+#        90 d     33.0   11.12   -1.232
+#
+# A month of neglect wipes out almost all the predictive value; a quarter makes
+# the correction worse than useless. The first version of this file said 45 days
+# on an assumed drift of "~2 kg/tHM per quarter" - the real drift is 3.3 kg/tHM
+# per MONTH. Warn early and often.
+STALE_AFTER_DAYS = 14
 # A day whose residual sits this far from the window median is a data problem -
 # a mis-keyed charge report or a blowdown - not a bias to calibrate against.
 OUTLIER_SIGMA = 3.0
