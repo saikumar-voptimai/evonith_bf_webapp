@@ -157,12 +157,28 @@ def test_a_recent_calibration_is_not_stale():
                         residual_sd_kg_per_thm=10.0, window_days=90,
                         fitted_on="2026-08-01")
 
-    assert c.age_days(date(2026, 8, 20)) == 19
-    assert not c.is_stale(date(2026, 8, 20))
+    assert c.age_days(date(2026, 8, 8)) == 7
+    assert not c.is_stale(date(2026, 8, 8))
+
+
+def test_two_weeks_old_is_already_stale():
+    """The threshold is 14 days, and that is evidence-based, not a guess.
+
+    Measured over 281 days: a calibration held 30 days takes R2 from +0.43 to
+    +0.05, and held 90 days to -1.23 - worse than applying no correction. An
+    earlier version of this file warned at 45 days, on an assumed drift of
+    2 kg/tHM per quarter. The real figure is 3.3 kg/tHM per month.
+    """
+
+    c = CokeCalibration(offset_kg_per_thm=20.0, sample_days=90,
+                        residual_sd_kg_per_thm=10.0, window_days=90,
+                        fitted_on="2026-08-01")
+
+    assert c.is_stale(date(2026, 8, 20)), "19 days must now count as stale"
 
 
 def test_an_old_calibration_is_stale():
-    """The bias moves ~2 kg/tHM a quarter, so a stale offset silently decays."""
+    """At 3.3 kg/tHM per month of drift, a months-old offset is worse than none."""
 
     c = CokeCalibration(offset_kg_per_thm=20.0, sample_days=90,
                         residual_sd_kg_per_thm=10.0, window_days=90,
