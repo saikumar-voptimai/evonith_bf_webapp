@@ -168,8 +168,14 @@ def robust_z(panel: pd.DataFrame) -> pd.DataFrame:
     median = roll.median()
     iqr = roll.quantile(0.75) - roll.quantile(0.25)
 
+    # The floor needs a global scale that cannot itself collapse. A tag sitting
+    # at one value for more than 75% of the record has a global IQR of exactly
+    # zero, which made the floor NaN and left the guard doing nothing - the very
+    # case it exists for. Standard deviation is non-zero whenever the tag moves
+    # at all, so it is the fallback.
     global_iqr = panel.quantile(0.75) - panel.quantile(0.25)
-    floor = (SCALE_FLOOR_FRACTION * global_iqr).replace(0.0, np.nan)
+    global_scale = global_iqr.where(global_iqr > 0.0, panel.std())
+    floor = (SCALE_FLOOR_FRACTION * global_scale).replace(0.0, np.nan)
     scale = (iqr / 1.349).clip(lower=floor / 1.349, axis=1)
 
     z = (panel - median) / scale
