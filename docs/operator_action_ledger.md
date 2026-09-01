@@ -175,31 +175,139 @@ banking.
 
 ---
 
-## 6. What is settled, and what is next
+## 6. Reactive or anticipatory (Phase 3)
 
-**Settled by the 180-day window:**
+All 240 routine decisions, classified on what was true before and after each:
 
-- The case-control comparison reaches significance (p = 0.000 against p = 0.425
-  at 30 days). The effect was always present; the pilot lacked the sample.
-- Thermal indicators *do* lead. The 30-day pilot's contrary finding was a power
-  artefact.
-- Both independent methods converge on the same three drivers.
+| Class | n | % |
+|---|---|---|
+| **reactive** - the state had already deviated | 193 | 80% |
+| coordinated - another control moved with it | 21 | 9% |
+| anticipatory? - quiet before, moved after | 20 | 8% |
+| unexplained | 6 | 2% |
 
-**Still open, and the subject of Phases 3–5:**
+**Only 2% unexplained.** The observable tags span most of what operators act
+on, which is a better result than the plan expected.
 
-1. Are trims and coke blanks triggered by *different* observations? 211 trims
-   against 33 large moves is now enough to split them.
-2. Is the 1.52 cuts-per-raise asymmetry explained by different triggers, or the
-   same trigger treated asymmetrically?
-3. **Reactive or anticipatory?** Whether the operator responds to a state that
-   has already moved, or to an input change before the state moves. This is
-   Phase 3 and the reason the work was framed this way.
-4. Agreement with `burden_changing_purpose` — the operator's own stated reason,
-   free text in `ops_config.burden_history`, as labelled ground truth.
+**Every large move is reactive - all 33.** A coke blank is never a coordinated
+package and never anticipatory; it is always a response to a state that has
+already moved. That vindicates separating trims from blanks.
 
-## 7. Ask for the plant
+**The ratchet is NOT explained by class**, contrary to expectation. Cuts are
+77% reactive and raises 85% - if anything raises are *more* reactive. The
+asymmetry lives inside the reactive population, so it is about *how* operators
+respond rather than about responding to different things.
 
-`BF2 Coal rate actual value` implies a plant-side **set value** sibling tag that
-is not ingested anywhere. Requesting it — and any coke-rate equivalent — would
-give the PCI action signal directly. PCI is the co-control operators trade
-against coke, so its action signal would roughly double what can be explained.
+**Controls moving with coke:** hot blast temperature 38% of events, PCI 32%,
+oxygen 26%, blast volume 20%. Blast temperature co-moves more often than PCI -
+the coke setpoint is part of a thermal package more often than a fuel
+substitution.
+
+### A number retracted inside the same run
+
+The script first reported a median operator response lag of **5.7 h**. It is an
+artefact - widening the lookback window moves it in lockstep:
+
+| Window | 4 h | 8 h | 12 h | 24 h | 48 h |
+|---|---|---|---|---|---|
+| Median lag | 2.8 | 5.3 | 6.8 | 13.8 | 27.9 |
+
+Every one is about 0.6 x the window - what you get when the peak falls at a
+random point inside it. **Do not quote a reaction time from this work.**
+Measuring one needs excursion *onset* rather than peak, plus a control
+comparison.
+
+---
+
+## 7. How long inputs take to show up (Phase 4)
+
+Six inputs against eleven responses, lags 0-24 h, on three filter bases with a
+placebo input as the bar.
+
+| Basis | Gas | Thermal | Aero |
+|---|---|---|---|
+| levels | 0 h | 5.5 h | 0 h |
+| detrended | 0 h | **12.5 h** | 0 h |
+| differenced | 0 h | 0 h | 0 h |
+
+**Gas and aero respond at lag 0**, robustly across all three. The shipped
+model's `lag1` for GasImpact is about right.
+
+**Thermal is not identified.** Three answers from the same data, ranges
+spanning the whole sweep. Neither the docs' 6-7 h nor the model's `lag4` is
+supported - and neither is refuted. That matters because **127 of the shipped
+model's 253 features are lagged on that assumption.**
+
+Using only two bases would have produced a confident wrong answer either way.
+Levels alone inflates everything through shared drift; first differencing is a
+high-pass filter that removes the very band a multi-hour lag lives in, so its
+flat 0 h cannot refute a lag.
+
+**A tautology worth recording:** `body_raft` is *calculated* from blast
+temperature, oxygen and PCI - the inputs being swept against it. Its lag-0
+correlation is definitional. Drop it from any future thermal sweep, leaving the
+runner temperatures, which are measured only at tapping - a likely reason the
+thermal lag resists identification at all.
+
+---
+
+## 8. Phase 5 could not be done, and the plan was wrong to expect it
+
+The plan proposed validating the attribution against `burden_changing_purpose`,
+the operator's own written reason, as labelled ground truth. **That was my
+error, on two counts.**
+
+**Wrong table for the question.** The field records why a *burden distribution*
+change was made - rings, angles, charge pattern - not why the coke rate moved.
+They are different decisions.
+
+**And there is almost no data.** `ops_config.burden_history` and its source
+`public.burden_distribution` are the same 21 rows, spanning 2025-06-28 to
+**2026-03-15**. Against 240 coke events (2026-03-06 to 2026-08-28) the overlap
+is **9 days, 4 coke events and 2 burden changes**, with exactly one coke event
+within 6 h of a burden change.
+
+**The table appears to have stopped being written in March 2026** - worth the
+plant knowing independently of this analysis.
+
+No other source of operator intent exists. Every schema in the replica was
+searched for columns named like remark, reason, comment, purpose, note,
+observation or action; the only hits are feedback tickets and this field.
+
+### What the reasons do still tell us
+
+Qualitatively the vocabulary corroborates the quantitative findings - wall
+temperature fluctuation, temperature spike in the bosh region, top temperature
+deviation, centre working, gas flow in the periphery. Thermal and aerodynamic
+language throughout, the same two families Phases 2-3 found dominant. That is
+corroboration of a weak kind, not validation, and should not be presented as
+more.
+
+---
+
+## 9. What is settled, and what is not
+
+**Settled:**
+
+- Coke setpoint changes are recoverable as clean, timestamped interventions.
+- Three drivers, agreed by two independent methods: hot metal per charge,
+  runner temperature, top pressure.
+- 80% of decisions are reactive; only 2% unexplained.
+- Every large move (coke blank) is reactive.
+- Gas and aero respond immediately; the thermal lag is not identifiable.
+
+**Not settled, and now known to be unreachable with current data:**
+
+- **Anticipation.** The 8% class is an upper bound. Separating anticipation
+  from consequence needs the disturbance, and the disturbance log has 21
+  records ending in March.
+- **Operator reaction time.** Needs onset-based measurement, not peak.
+- **The thermal lag.** Needs a thermal response measured continuously rather
+  than at tapping.
+
+**Worth doing next, in order of value:**
+
+1. Ask the plant to resume logging burden changes, and to log *coke* changes
+   with a reason. That one change would make anticipation answerable.
+2. Re-run Phase 4 without `body_raft`, on runner temperatures alone.
+3. Onset-based reaction time, with a control comparison.
