@@ -457,6 +457,35 @@ def test_blend_table_calculates_wet_kg_per_charge() -> None:
     )
 
 
+class _FakeLayout:
+    """Context-manager stand-ins for st.container / st.expander / st.tabs.
+
+    render_blend_metrics groups its tiles into bordered containers and puts the
+    reference diagrams behind an expander. A double without these raises
+    AttributeError on layout rather than on anything the test is asserting.
+    """
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+
+class _FakeLayoutMixin:
+    def container(self, **_kwargs):
+        return _FakeLayout()
+
+    def expander(self, *_args, **_kwargs):
+        return _FakeLayout()
+
+    def divider(self):
+        pass
+
+    def image(self, *_args, **_kwargs):
+        pass
+
+
 def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
     captured = {"markdown": [], "metrics": [], "captions": []}
 
@@ -464,7 +493,10 @@ def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
         def metric(self, label, value, **_kwargs):
             captured["metrics"].append(str(label))
 
-    class FakeStreamlit:
+        def markdown(self, text, **_kwargs):
+            captured["markdown"].append(str(text))
+
+    class FakeStreamlit(_FakeLayoutMixin):
         def markdown(self, text, **_kwargs):
             captured["markdown"].append(str(text))
 
@@ -508,7 +540,10 @@ def test_main_metrics_show_production_and_requested_charging_values(monkeypatch)
         def metric(self, label, value, **_kwargs):
             captured[str(label)] = str(value)
 
-    class FakeStreamlit:
+        def markdown(self, _text, **_kwargs):
+            pass
+
+    class FakeStreamlit(_FakeLayoutMixin):
         def markdown(self, _text, **_kwargs):
             pass
 
@@ -538,10 +573,22 @@ def test_main_metrics_show_production_and_requested_charging_values(monkeypatch)
     monkeypatch.setattr(components, "st", FakeStreamlit())
     components.render_blend_metrics("LP Baseline Result", blend)
 
-    assert captured["Production"] == "100.0 MT"
-    assert captured["Coke in Charges (MT)"] == "40.0"
-    assert captured["PCI in Charges (MT)"] == "15.0"
-    assert captured["Hotmetal per Charge (MT)"] == "13.200"
+    # Labels carry their unit now and the tiles are grouped, so these match on
+    # meaning rather than on the exact wording of a heading.
+    def tile(token: str) -> str:
+        if token in captured:
+            return captured[token]
+        matches = [key for key in captured if token.lower() in key.lower()]
+        assert matches, f"no tile matching {token!r}; captured: {sorted(captured)}"
+        # An ambiguous token would let this assert against the wrong tile —
+        # "Coke (MT)" is a substring of "Nut coke (MT)".
+        assert len(matches) == 1, f"{token!r} matched several tiles: {matches}"
+        return captured[matches[0]]
+
+    assert tile("Production") == "100.0"
+    assert tile("Coke (MT)") == "40.0"
+    assert tile("PCI (MT)") == "15.0"
+    assert tile("Hot metal per charge") == "13.200"
     assert "Planning HM/charge (MT)" not in captured
     hidden = {
         "Fe Produced (MT)",
@@ -556,8 +603,10 @@ def test_main_metrics_show_production_and_requested_charging_values(monkeypatch)
     # optimizer constraint driven by the Min/Max T Basicity inputs. Hiding it
     # left the optimizer enforcing a limit the operator could not see - and IB4
     # took its display slot, so a tile expected to read ~1.31 read ~0.85.
-    assert "Slag T Basicity" in captured
-    assert "IB4" in captured
+    assert any("T-Basicity" in key or "T Basicity" in key for key in captured), (
+        f"T Basicity tile is missing; captured: {sorted(captured)}"
+    )
+    assert any("IB4" in key for key in captured)
 
 
 def _flux_df():
