@@ -1078,62 +1078,6 @@ _PLANT_SLAG_BANDS: dict[str, tuple[float, float]] = {
 }
 
 
-_IMAGE_DIR = Path(__file__).resolve().parents[2] / "assets" / "img" / "furnace"
-
-
-def _render_furnace_view() -> None:
-    """Reference diagrams for what the numbers above are describing.
-
-    BUNDLED, NOT HOTLINKED. Both files sit in ``src/assets/img/furnace`` so the
-    page renders identically on a plant machine with no internet egress, and so
-    a remote host changing a URL cannot put a broken image in front of an
-    operator.
-
-    Both are openly licensed and the attribution below is a licence condition,
-    not decoration — see ATTRIBUTIONS.md beside the files.
-    """
-
-    reactions = _IMAGE_DIR / "blast_furnace_zone_reactions.jpg"
-    section = _IMAGE_DIR / "blast_furnace_cross_section.png"
-
-    if reactions.exists():
-        st.markdown("**Reduction chemistry, by zone**")
-        st.image(str(reactions), width="stretch")
-        st.caption(
-            "Why the numbers above move the way they do. Reading up from the "
-            "tuyeres: coke burns to CO₂ and is regenerated to CO by the "
-            "Boudouard reaction (C + CO₂ → 2CO) — that regeneration is what the "
-            "energy balance charges coke for. Flux calcines at ~945 °C "
-            "(CaCO₃ → CaO + CO₂), which is the flux CO₂ term in the coke "
-            "correction, and the freed CaO then takes up silica as CaSiO₃ at "
-            "~1125 °C, which is the slag this blend is being designed around.  \n"
-            "*Diagram: OpenStax, "
-            "[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), via "
-            "[Wikimedia Commons]"
-            "(https://commons.wikimedia.org/wiki/File:Blast_Furnace_Reactions.jpg).*"
-        )
-
-    if section.exists():
-        st.divider()
-        st.markdown("**Plant layout**")
-        st.image(str(section), width="stretch")
-        st.caption(
-            "Burden goes up the skip hoist (1–3) and through the bell (4) into "
-            "the stack; hot blast from the stoves (13) enters at the tuyeres, "
-            "with PCI injected alongside. Hot metal (11) and slag are tapped at "
-            "the hearth; top gas leaves through the dust catcher (12) — the "
-            "stream whose analyser under-read drives most of the balance's "
-            "residual bias.  \n"
-            "*Diagram: Tosaka, "
-            "[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), via "
-            "[Wikimedia Commons]"
-            "(https://commons.wikimedia.org/wiki/File:Blast_furnace_NT.PNG).*"
-        )
-
-    if not reactions.exists() and not section.exists():
-        st.caption("Reference diagrams are not bundled in this deployment.")
-
-
 def _render_cost_group(
     blend: BlendEvaluation, *, is_lp_mode: bool, fuel_used_fallback: bool
 ) -> float:
@@ -1515,9 +1459,6 @@ def render_blend_metrics(
         hm_basis_mt=hm_basis_mt,
     )
     _render_charging_group(blend, charging, charge_mass_mt=charge_mass_mt)
-
-    with st.expander("🏭 Furnace view — where this blend goes", expanded=False):
-        _render_furnace_view()
 
     # --- Provenance and warnings -------------------------------------------------
     if fuel_used_fallback:

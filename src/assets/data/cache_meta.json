@@ -2,12 +2,12 @@
   "version": 1,
   "rm_choice": "full",
   "data_start": "2025-04-01",
-  "confirmed_end": "2026-09-01",
-  "raw_end": "2026-09-01",
-  "last_updated": "2026-09-02T13:55:22",
+  "confirmed_end": "2026-09-02",
+  "raw_end": "2026-09-02",
+  "last_updated": "2026-09-03T04:02:05",
   "offline_lag_days": 0,
-  "rows": 6637,
+  "rows": 6668,
   "columns": 160,
-  "csv_file": "furnace_dataset_20260902_135516_383794.csv",
+  "csv_file": "furnace_dataset_20260903_040202_952812.csv",
   "source_url": "http://125.23.100.62:8081/furnace_dataset.csv"
 }

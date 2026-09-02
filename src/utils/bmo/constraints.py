@@ -30,6 +30,23 @@ _DEFAULT_BURDEN_CAPACITY = {
 # tonnage follows directly from the hot-metal target.
 DEFAULT_NUT_COKE_RATE_KG_PER_THM = 70.0
 
+# HALF THE DISPLAY RESOLUTION OF THE VIOLATION MESSAGE, which prints MT to two
+# decimals. Below this, the two numbers in the message round to the same text
+# and the operator is told "Slag exceeds bound: 775.50 > 775.50 MT" - a message
+# that cannot be acted on and that contradicts the solver, which had already
+# declared the blend feasible.
+#
+# It is not float noise alone. The LP drives slag exactly onto the cap, and the
+# page then RE-EVALUATES the displayed blend through a different path - fuel
+# re-priced, slag recomputed on corrected fuel rates - so the value that reaches
+# this check has drifted by more than an ulp. The LP's own post-solve check uses
+# a tighter 1e-6 because at that point nothing has been re-evaluated yet.
+#
+# 0.005 MT is 5 kg of slag a day against a cap in the hundreds of tonnes, so it
+# concedes nothing physically. The same reasoning already governs
+# ``basicity_tolerance`` below - see its note about "0.940 < 0.940".
+SLAG_DISPLAY_TOLERANCE_MT = 0.005
+
 
 def calculate_wet_nut_coke_mt(
     base_rate_kg_per_thm: float,
@@ -141,7 +158,7 @@ def check_blend_constraints(
     target_slag_mgo_al2o3_ratio_min: float | None = None,
     max_burden_qty_mt: float | None = None,
     fe_tolerance_mt: float = 0.5,
-    slag_tolerance_mt: float = 0.0,
+    slag_tolerance_mt: float = SLAG_DISPLAY_TOLERANCE_MT,
     basicity_tolerance: float = 1e-3,
     slag_pct_tolerance: float = 1e-2,
     slag_ratio_tolerance: float = 1e-3,
@@ -177,8 +194,9 @@ def check_blend_constraints(
            IBRM + flux in MT. ``None`` disables the check. See
            ``max_ibrm_flux_capacity_mt``.
          - fe_tolerance_mt: float - Allowed Fe production tolerance in MT.
-         - slag_tolerance_mt: float - Allowed slag tolerance in MT. The
-           default is zero because BMO treats max slag as a strict cap.
+         - slag_tolerance_mt: float - Allowed slag tolerance in MT. Defaults to
+           ``SLAG_DISPLAY_TOLERANCE_MT``; see that constant for why it is not
+           zero.
          - basicity_tolerance: float - Numeric tolerance for basicity bounds.
            The LP minimises cost, so it drives basicity onto the min (or max)
            bound exactly; the linearised LP basicity then differs from the exact
