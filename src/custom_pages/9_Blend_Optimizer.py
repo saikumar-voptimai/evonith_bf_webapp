@@ -58,6 +58,7 @@ from ui.bmo import (
     render_fuel_ash_editor,
     render_header,
     render_hot_metal_chemistry,
+    render_model_accuracy_tab,
     render_ore_editor,
     render_slag_balance_details,
     render_slag_balance_settings,
@@ -697,24 +698,67 @@ def _fuel_ash_cfg_with_recent_rates(
 
 
 def _render_share_pie(blend: Any, selected_ores: list[OreInput], title: str) -> None:
-    rows = [
-        {
-            "ore_name": ore.display_name,
-            "share_pct": float(blend.shares_pct.get(ore.ore_id, 0.0)),
-        }
-        for ore in selected_ores
-        if float(blend.shares_pct.get(ore.ore_id, 0.0)) > 0
-    ]
+    """Blend shares as a donut, largest first, tonnage in the middle.
+
+    Ordered by share rather than by ore id so the eye lands on the material
+    that dominates the blend; small slivers keep their label outside the ring
+    instead of overprinting each other inside it.
+    """
+
+    rows = sorted(
+        (
+            {
+                "ore_name": ore.display_name,
+                "share_pct": float(blend.shares_pct.get(ore.ore_id, 0.0)),
+                "qty_mt": float(blend.quantities_mt.get(ore.ore_id, 0.0) or 0.0),
+            }
+            for ore in selected_ores
+            if float(blend.shares_pct.get(ore.ore_id, 0.0)) > 0
+        ),
+        key=lambda row: row["share_pct"],
+        reverse=True,
+    )
     if not rows:
         return
-    fig = px.pie(
-        pd.DataFrame(rows),
-        names="ore_name",
-        values="share_pct",
-        title=title,
-        hole=0.35,
+
+    frame = pd.DataFrame(rows)
+    total_mt = float(frame["qty_mt"].sum())
+    fig = go.Figure(
+        go.Pie(
+            labels=frame["ore_name"],
+            values=frame["share_pct"],
+            hole=0.62,
+            sort=False,
+            direction="clockwise",
+            textposition="auto",
+            texttemplate="%{percent:.1%}",
+            insidetextorientation="horizontal",
+            customdata=frame[["qty_mt"]],
+            hovertemplate=(
+                "<b>%{label}</b><br>%{percent:.1%} of blend"
+                "<br>%{customdata[0]:,.1f} MT<extra></extra>"
+            ),
+            marker=dict(
+                colors=px.colors.qualitative.Safe,
+                line=dict(color="rgba(128,128,128,0.35)", width=1),
+            ),
+        )
     )
-    fig.update_traces(textposition="inside", textinfo="percent+label")
+    fig.add_annotation(
+        text=(
+            f"<span style='font-size:19px'><b>{total_mt:,.0f}</b></span>"
+            f"<br><span style='font-size:11px'>MT burden</span>"
+        ),
+        showarrow=False, font=dict(size=13),
+    )
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=14)),
+        margin=dict(l=8, r=8, t=36, b=8),
+        height=330,
+        showlegend=True,
+        legend=dict(orientation="v", x=1.0, xanchor="left", y=0.5, yanchor="middle",
+                    font=dict(size=11)),
+    )
     st.plotly_chart(fig, width="stretch")
 
 
@@ -999,21 +1043,17 @@ def _render_blend_comparison(
         return float(value) if value is not None else None
 
     # ---- Inputs: suggested blend mix (Share %), LP and DE side by side ----
-    st.markdown("###### Suggested blend mix (Share %)")
-    mix_rows = []
-    for ore in compare_ores:
-        row: dict[str, Any] = {"Ore": ore.display_name}
-        for label, blend, _ in options:
-            row[label] = float(blend.shares_pct.get(ore.ore_id, 0.0))
-        mix_rows.append(row)
-    st.dataframe(
-        pd.DataFrame(mix_rows),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            label: st.column_config.NumberColumn(label, format="%.1f")
-            for label in labels
-        },
+    mix_frame = pd.DataFrame(
+        [
+            {
+                "Ore": ore.display_name,
+                **{
+                    label: float(blend.shares_pct.get(ore.ore_id, 0.0))
+                    for label, blend, _ in options
+                },
+            }
+            for ore in compare_ores
+        ]
     )
 
     # ---- Outputs: the KPIs an operator decides on ----
@@ -1166,35 +1206,50 @@ def _render_blend_comparison(
             "{:,.3f}",
         ),
     ]
-    out_rows = []
-    for row_label, accessor, fmt in metric_specs:
-        row = {"Outcome": row_label}
-        for label, blend, si in options:
-            value = accessor(blend, si)
-            row[label] = fmt.format(value) if isinstance(value, (int, float)) else "n/a"
-        out_rows.append(row)
-    st.markdown("###### Key outcomes")
-    st.dataframe(
-        pd.DataFrame(out_rows),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Outcome": st.column_config.Column(
-                "Outcome",
-                help=(
-                    "Manual Fuel Cost is the realised cost: actual current "
-                    "coke/nut-coke/PCI rates at current prices. LP/DE Fuel Cost "
-                    "converts the ML-predicted fuel cost for that blend to "
-                    "current prices; the optimizer itself still minimises the "
-                    "model's baseline-price objective. Fuel Rate is the physical "
-                    "rate basis behind each display."
-                ),
-            ),
-        },
-    )
+    def _rows_for(spec_labels: list[str]) -> pd.DataFrame:
+        """Format one group of the outcome table."""
 
-    # Headline: cheapest option by total cost + optimizer saving vs the manual
-    # blend, both at the operator's current fuel prices (display-only).
+        rows = []
+        for row_label, accessor, fmt in metric_specs:
+            if row_label not in spec_labels:
+                continue
+            row = {"Outcome": row_label}
+            for label, blend, si in options:
+                value = accessor(blend, si)
+                row[label] = (
+                    fmt.format(value) if isinstance(value, (int, float)) else "n/a"
+                )
+            rows.append(row)
+        return pd.DataFrame(rows)
+
+    # Grouped rather than one 25-row wall. The groups are the questions an
+    # operator asks in order: what does it cost, what fuel does it need, what
+    # slag does it make, and how does it get charged.
+    groups = {
+        "💰 Cost": ["Total Cost (Rs/THM)", "Ore Cost (Rs/THM)",
+                    "Fuel Cost (Rs/THM)", "Flux Cost (Rs/THM)"],
+        "🔥 Fuel": ["Fuel Rate (kg/THM)", "Coke Rate, uncorrected (kg/THM)",
+                    "Coke Rate, corrected (kg/THM)", "Coke Correction (kg/THM)",
+                    "Hot-Metal Si (%)"],
+        "🌋 Slag": ["Slag Rate (kg/THM)", "Slag Basicity (CaO/SiO2)",
+                    "Slag T-Basicity (CaO+MgO)/SiO2",
+                    "IB4 (CaO+MgO)/(SiO2+Al2O3)", "Slag Al2O3 (%)",
+                    "Slag MgO (%)", "Slag MgO/Al2O3"],
+        "🚚 Charging": ["Production", "Flux Rate (kg/THM)", "Coke in Charges (MT)",
+                        "Nut Coke in Charges (MT)", "PCI in Charges (MT)",
+                        "Required Charges (/hr)",
+                        "Chemical Hotmetal per Charge (MT)"],
+    }
+    # A row that belongs to no group would simply vanish, and nothing on screen
+    # would say a metric had gone missing. Cheap to check, so check.
+    _ungrouped = {label for label, _, _ in metric_specs} - {
+        label for labels_in_group in groups.values() for label in labels_in_group
+    }
+    if _ungrouped:
+        groups["Other"] = sorted(_ungrouped)
+
+    # Headline FIRST. The cheapest option and the saving are the decision; the
+    # detail below is the justification, and reading order should match.
     cheapest_label = min(options, key=lambda option: _display_total(option[1]))[0]
     cols = st.columns(len(options))
     for col, (label, blend, _) in zip(cols, options):
@@ -1210,10 +1265,52 @@ def _render_blend_comparison(
             key=_display_total,
         )
         saving = _display_total(manual_blend) - _display_total(best_optimizer)
-        st.caption(
-            f"Best optimizer blend is {saving:+,.0f} Rs/THM vs the manual blend "
-            "(positive = optimizer is cheaper)."
+        st.success(
+            f"**{saving:+,.0f} Rs/THM** — best optimizer blend against the manual "
+            "blend (positive means the optimizer is cheaper)."
+            if saving > 0 else
+            f"**{saving:+,.0f} Rs/THM** — the manual blend is already at or below "
+            "the optimizer's cost."
         )
+
+    st.markdown("###### Key outcomes")
+    outcome_tabs = st.tabs([*groups, "🧱 Mix"])
+    with outcome_tabs[-1]:
+        st.dataframe(
+            mix_frame,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                label: st.column_config.NumberColumn(label, format="%.1f")
+                for label in labels
+            },
+        )
+        st.caption("Share of the burden, per cent, for each option.")
+    for tab, (group_name, spec_labels) in zip(outcome_tabs, groups.items()):
+        with tab:
+            frame = _rows_for(spec_labels)
+            if frame.empty:
+                st.caption("Nothing to show for this group.")
+                continue
+            st.dataframe(
+                frame,
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "Outcome": st.column_config.Column(
+                        "Outcome",
+                        help=(
+                            "Manual Fuel Cost is the realised cost: actual "
+                            "current coke/nut-coke/PCI rates at current prices. "
+                            "LP/DE Fuel Cost is that blend's predicted fuel cost "
+                            "converted to current prices; the optimizer itself "
+                            "still minimises the model's baseline-price "
+                            "objective. Fuel Rate is the physical rate basis "
+                            "behind each display."
+                        ),
+                    ),
+                },
+            )
 
 
 @fragment
@@ -1958,6 +2055,59 @@ def _render_si_metric(si_value: float | None) -> None:
     )
 
 
+def _render_fuel_basis_note(blend: Any) -> None:
+    """Say which of the three coke rates this blend's fuel cost was built on.
+
+    The anchor is invisible in the numbers - a fuel cost of 15,406 Rs/THM looks
+    the same whether it came from the energy balance or from yesterday's Fuel
+    Ash row. When the physics anchor silently falls back, the operator has to be
+    able to see that it did, and why.
+    """
+
+    source = str(blend.diagnostics.get("fuel_rate_estimate_source", ""))
+    anchor = st.session_state.get("bmo_energy_anchor")
+
+    if source == "energy_balance_anchor" and anchor is not None:
+        st.caption(
+            f"Coke level from the **energy balance** — solved at current controls "
+            f"({anchor.raw_coke_rate_kg_thm:,.1f} kg/THM), less the "
+            f"{anchor.offset_kg_per_thm:+,.1f} kg/THM bias offset fitted on "
+            f"{anchor.calibration.sample_days} recent days. Blend-to-blend "
+            "differences come from the physics correction above, not from this."
+        )
+        for note in anchor.notes:
+            st.caption(f"⚠️ {note}")
+        return
+
+    if anchor is not None and not anchor.usable:
+        # Configured for the physics anchor and did not get it. Say so plainly
+        # rather than letting the observed figure pass for the balance's answer.
+        st.warning(
+            "**Fuel cost is anchored on the observed coke rate, not the energy "
+            "balance.** "
+            + " ".join(anchor.notes)
+        )
+        return
+
+    if source in ("observed_fuel_ash_inputs", "fuel_ash_inputs"):
+        st.caption(
+            "Coke level from the **Fuel Ash table** — what the plant is charging "
+            "now. It does not respond to a change in controls."
+        )
+    elif source == "model_cost_residual":
+        st.caption(
+            "Coke level back-solved from the **ML fuel-cost model**. That model's "
+            "output is near-constant across blends, so treat the level as "
+            "indicative and read the correction above for the blend effect."
+        )
+    elif anchor is None and str(fuel_rate_anchor_basis) == "energy_balance":
+        st.caption(
+            "The energy-balance anchor needs a current burden to solve against. "
+            "Open the **Comparison** tab once (it records what is being charged "
+            "now), then run again."
+        )
+
+
 def _render_lp_flux_additions(blend: Any) -> None:
     """Show the flux quantities the optimizer added to hold slag basicity in bounds."""
 
@@ -2280,6 +2430,77 @@ def _build_coke_correction_reference(
         observed_slag_rate_kg_per_thm=observed_slag_rate_kg_per_thm,
         current_drivers=current_drivers,
         process_context=process_context,
+    )
+
+
+def _resolve_energy_anchor(
+    *,
+    basis: str,
+    ores: list[OreInput],
+    fuel_ash_inputs: list[FuelAshInput],
+    flux_inputs: list[FluxInput],
+    hm_chem_values: Mapping[str, float],
+    hm_snapshot: Mapping[str, Any],
+    hot_metal_mt: float,
+    observed_slag_rate_kg_per_thm: float,
+) -> Any | None:
+    """Solve the energy-balance coke anchor for the current operating point.
+
+    Returns ``None`` when the page is not configured to use it, so the caller
+    can tell "switched off" from "tried and could not" — the second carries
+    notes worth showing the operator, the first does not.
+    """
+
+    if basis != "energy_balance":
+        return None
+
+    from utils.bmo.energy_anchor import solve_energy_anchor
+
+    quantities = st.session_state.get("bmo_manual_quantities_mt") or {}
+    if not quantities:
+        return None
+
+    snapshot = _live_process_snapshot()
+    # PCI from the LIVE TAG, for the same reason the recommendation panel takes
+    # it from there: the balance solves coke around whatever PCI it is handed,
+    # so a stale editor value lands on the coke rate at about 0.86 kg per kg.
+    editor = {
+        str(fuel.fuel_id): float(getattr(fuel, "rate_kg_per_thm", 0.0) or 0.0)
+        for fuel in fuel_ash_inputs
+    }
+    live_pci = float(snapshot.get("coal_rate_actual_value") or 0.0)
+
+    return solve_energy_anchor(
+        quantities_mt=quantities,
+        ores=ores,
+        # Slag from the OBSERVED rate rather than from a solved blend: the
+        # anchor describes what the furnace is doing now, and the DPR rate is
+        # the measurement of exactly that.
+        slag_mt=observed_slag_rate_kg_per_thm * hot_metal_mt / 1000.0,
+        hot_metal_mt=hot_metal_mt,
+        fuel_rates_kg_per_thm={
+            "coke_rate_kg_thm": editor.get("coke", 0.0),
+            "nut_coke_rate_kg_thm": editor.get("nut_coke", 70.0),
+            "pci_rate_kg_thm": live_pci if live_pci > 0.0 else editor.get("pci", 0.0),
+        },
+        hm_chemistry={
+            "carbon_pct": hm_chem_values.get("carbon_pct", 4.3),
+            "silicon_pct": hm_chem_values.get("silicon_pct", 0.5),
+            "iron_pct": float(hm_snapshot.get("hm_fe_pct_for_target") or 94.5),
+            "manganese_pct": float(hm_snapshot.get("chem_pct_mn") or 0.2),
+            "slag_feo_pct": float(hm_snapshot.get("slag_pct_feo") or 0.4),
+        },
+        process_snapshot=snapshot,
+        flux_mt=sum(
+            max(0.0, float(flux.wet_qty_mt or 0.0))
+            for flux in flux_inputs
+            if flux.enabled
+        ),
+        fuel_vm_pct={
+            str(fuel.fuel_id): float(getattr(fuel, "vm_pct", 0.0) or 0.0)
+            for fuel in fuel_ash_inputs
+        },
+        shell_loss_gj_per_hr=snapshot.get("shell_loss_gj_per_hr"),
     )
 
 
@@ -3195,6 +3416,29 @@ if requested_lp or requested_total:
             current_si_pct=st.session_state.get("bmo_manual_si"),
         )
 
+        # The LEVEL the whole fuel cost sits on: the closed energy balance
+        # solved at the current controls and the current burden, less the
+        # rolling bias offset. Resolved once here for the same reason the
+        # correction reference is - one number, identical for LP, DE, and every
+        # DE candidate, so the objective is a single fixed function. Blend
+        # sensitivity is the correction's job, not the anchor's.
+        energy_anchor = _resolve_energy_anchor(
+            basis=fuel_rate_anchor_basis,
+            ores=selected_ores,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            hm_chem_values=hm_chem_values,
+            hm_snapshot=hm_snapshot,
+            hot_metal_mt=target_production_mt,
+            observed_slag_rate_kg_per_thm=observed_slag_rate,
+        )
+        st.session_state["bmo_energy_anchor"] = energy_anchor
+        anchor_coke_rate = (
+            energy_anchor.coke_rate_kg_thm
+            if energy_anchor is not None and energy_anchor.usable
+            else None
+        )
+
         with st.spinner("Running LP baseline..."):
             lp_result, lp_errors = run_lp_baseline(
                 selected_ores,
@@ -3279,6 +3523,7 @@ if requested_lp or requested_total:
                     coke_correction_reference=coke_correction_reference,
                     hot_metal_si_pct=lp_si,
                     fuel_rate_anchor_basis=fuel_rate_anchor_basis,
+                    anchor_coke_rate_kg_thm=anchor_coke_rate,
                     charge_mass_mt=charge_mass_mt,
                 )
                 lp_result.diagnostics["lp_flux_quantities_mt"] = lp_solved_flux_mt
@@ -3432,6 +3677,7 @@ if requested_lp or requested_total:
                 # equally to every candidate and cannot distort the search.
                 hot_metal_si_pct=st.session_state.get("bmo_lp_si"),
                 fuel_rate_anchor_basis=fuel_rate_anchor_basis,
+                anchor_coke_rate_kg_thm=anchor_coke_rate,
                 progress_callback=_de_progress,
                 charge_mass_mt=charge_mass_mt,
             )
@@ -3520,10 +3766,15 @@ if de_errors:
     st.error("Total cost optimizer errors:\n- " + "\n- ".join(de_errors))
 
 if lp_result is not None or de_result is not None:
-    tab_lp, tab_de, tab_cmp = st.tabs(["LP Baseline", "Total Cost (DE)", "Comparison"])
+    tab_lp, tab_de, tab_cmp, tab_acc = st.tabs(
+        ["LP Baseline", "Total Cost (DE)", "Comparison", "Model accuracy"]
+    )
 
     with tab_lp:
         if lp_result is not None:
+            # The headline stays above the sub-tabs: cost, slag rate and
+            # feasibility are what the operator checks first, and burying them
+            # one click deep would mean every tab needs its own copy.
             render_blend_metrics(
                 "LP Baseline Result",
                 lp_result,
@@ -3531,53 +3782,74 @@ if lp_result is not None or de_result is not None:
                 is_lp_mode=True,
                 charge_mass_mt=charge_mass_mt,
             )
-            _render_si_metric(st.session_state.get("bmo_lp_si"))
-            render_coke_correction_breakdown(lp_result)
-            _render_lp_flux_additions(lp_result)
-            render_blend_table(lp_result, selected_ores, charge_mass_mt=charge_mass_mt)
-            _render_share_pie(lp_result, selected_ores, "LP Share (%)")
-            render_slag_balance_details(
-                lp_result, selected_ores, fuel_ash_inputs, flux_inputs
+            lp_blend_tab, lp_fuel_tab, lp_slag_tab, lp_ctrl_tab, lp_path_tab = st.tabs(
+                ["🧱 Blend", "🔥 Fuel & coke", "🌋 Slag", "🎛️ Controls", "🪜 Path there"]
             )
-            _render_energy_assumptions()
-            _render_process_recommendation(
-                lp_result,
-                label="lp",
-                hot_metal_mt=target_production_mt,
-                ores=selected_ores,
-                hm_chem_values=hm_chem_values,
-                hm_snapshot=hm_snapshot,
-                flux_inputs=flux_inputs,
-                fuel_ash_inputs=fuel_ash_inputs,
-            )
-            _render_transition_ladder(
-                provider=provider,
-                ores=selected_ores,
-                lp_kwargs=dict(
-                    target_production_mt=target_fe_mt,
-                    target_slag_qty_mt=target_slag_qty_mt,
-                    feo_in_slag_pct=feo_in_slag_pct,
-                    target_slag_basicity_min=target_slag_basicity_min,
-                    target_slag_basicity_max=target_slag_basicity_max,
-                    target_slag_t_basicity_min=target_slag_t_basicity_min,
-                    target_slag_t_basicity_max=target_slag_t_basicity_max,
-                    target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
-                    target_slag_mgo_min_pct=target_slag_mgo_min_pct,
-                    target_slag_mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
-                    max_burden_qty_mt=max_burden_qty_mt,
-                    fuel_ash_inputs=fuel_ash_inputs,
+
+            with lp_blend_tab:
+                table_col, donut_col = st.columns([3, 2], gap="medium")
+                with table_col:
+                    render_blend_table(
+                        lp_result, selected_ores, charge_mass_mt=charge_mass_mt
+                    )
+                with donut_col:
+                    _render_share_pie(lp_result, selected_ores, "LP share of burden")
+                _render_lp_flux_additions(lp_result)
+
+            with lp_fuel_tab:
+                _render_si_metric(st.session_state.get("bmo_lp_si"))
+                render_coke_correction_breakdown(lp_result)
+                _render_fuel_basis_note(lp_result)
+
+            with lp_slag_tab:
+                render_slag_balance_details(
+                    lp_result, selected_ores, fuel_ash_inputs, flux_inputs
+                )
+
+            with lp_ctrl_tab:
+                _render_process_recommendation(
+                    lp_result,
+                    label="lp",
+                    hot_metal_mt=target_production_mt,
+                    ores=selected_ores,
+                    hm_chem_values=hm_chem_values,
+                    hm_snapshot=hm_snapshot,
                     flux_inputs=flux_inputs,
-                    dust_inputs=dust_inputs,
-                    slag_balance_settings=slag_balance_settings,
-                    hot_metal_target_mt=target_production_mt,
-                    charge_mass_mt=charge_mass_mt,
-                ),
-                slag_rate_cap_kg_per_thm=(
-                    target_slag_qty_mt / target_production_mt * 1000.0
-                    if target_production_mt
-                    else None
-                ),
-            )
+                    fuel_ash_inputs=fuel_ash_inputs,
+                )
+                _render_energy_assumptions()
+
+            with lp_path_tab:
+                _render_transition_ladder(
+                    provider=provider,
+                    ores=selected_ores,
+                    lp_kwargs=dict(
+                        target_production_mt=target_fe_mt,
+                        target_slag_qty_mt=target_slag_qty_mt,
+                        feo_in_slag_pct=feo_in_slag_pct,
+                        target_slag_basicity_min=target_slag_basicity_min,
+                        target_slag_basicity_max=target_slag_basicity_max,
+                        target_slag_t_basicity_min=target_slag_t_basicity_min,
+                        target_slag_t_basicity_max=target_slag_t_basicity_max,
+                        target_slag_al2o3_max_pct=target_slag_al2o3_max_pct,
+                        target_slag_mgo_min_pct=target_slag_mgo_min_pct,
+                        target_slag_mgo_al2o3_ratio_min=(
+                            target_slag_mgo_al2o3_ratio_min
+                        ),
+                        max_burden_qty_mt=max_burden_qty_mt,
+                        fuel_ash_inputs=fuel_ash_inputs,
+                        flux_inputs=flux_inputs,
+                        dust_inputs=dust_inputs,
+                        slag_balance_settings=slag_balance_settings,
+                        hot_metal_target_mt=target_production_mt,
+                        charge_mass_mt=charge_mass_mt,
+                    ),
+                    slag_rate_cap_kg_per_thm=(
+                        target_slag_qty_mt / target_production_mt * 1000.0
+                        if target_production_mt
+                        else None
+                    ),
+                )
         else:
             st.info("Run LP baseline to see deterministic cost-minimized blend.")
 
@@ -3615,21 +3887,38 @@ if lp_result is not None or de_result is not None:
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 charge_mass_mt=charge_mass_mt,
             )
-            _render_si_metric(st.session_state.get("bmo_de_si"))
-            render_coke_correction_breakdown(de_result)
-            _render_lp_flux_additions(de_result)
-            render_blend_table(de_result, selected_ores, charge_mass_mt=charge_mass_mt)
-            _render_share_pie(de_result, selected_ores, "DE Share (%)")
-            _render_de_exploration(
-                st.session_state.get("bmo_de_candidates"), selected_ores
+            de_blend_tab, de_fuel_tab, de_slag_tab, de_search_tab = st.tabs(
+                ["🧱 Blend", "🔥 Fuel & coke", "🌋 Slag", "🔎 Search"]
             )
-            render_slag_balance_details(
-                de_result, selected_ores, fuel_ash_inputs, flux_inputs
-            )
-            if not bundle_status.get("model_loaded"):
-                st.info(
-                    "Model artifact is missing. Fuel term is currently coming from fallback "
-                    "formula until model/scaler bundle is provided."
+
+            with de_blend_tab:
+                table_col, donut_col = st.columns([3, 2], gap="medium")
+                with table_col:
+                    render_blend_table(
+                        de_result, selected_ores, charge_mass_mt=charge_mass_mt
+                    )
+                with donut_col:
+                    _render_share_pie(de_result, selected_ores, "DE share of burden")
+                _render_lp_flux_additions(de_result)
+
+            with de_fuel_tab:
+                _render_si_metric(st.session_state.get("bmo_de_si"))
+                render_coke_correction_breakdown(de_result)
+                _render_fuel_basis_note(de_result)
+                if not bundle_status.get("model_loaded"):
+                    st.info(
+                        "Model artifact is missing. Fuel term is currently coming "
+                        "from fallback formula until model/scaler bundle is provided."
+                    )
+
+            with de_slag_tab:
+                render_slag_balance_details(
+                    de_result, selected_ores, fuel_ash_inputs, flux_inputs
+                )
+
+            with de_search_tab:
+                _render_de_exploration(
+                    st.session_state.get("bmo_de_candidates"), selected_ores
                 )
         else:
             st.info("Run total-cost optimizer to see ore + fuel optimized blend.")
@@ -3666,5 +3955,8 @@ if lp_result is not None or de_result is not None:
             st.info(
                 "Run LP or DE to compare the suggested blend with the last manual shift."
             )
+
+    with tab_acc:
+        render_model_accuracy_tab()
 
 render_diagnostics(de_result or lp_result, ore_diagnostics)

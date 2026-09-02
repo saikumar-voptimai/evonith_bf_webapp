@@ -371,10 +371,19 @@ bmo:
   # conserves cost rather than mass: a PCI reading 15 kg/THM low does not cut
   # total fuel by 15, it cuts it by 5 and inflates coke by 9.
   #
-  # Switching anchors cannot change which blend the optimizer picks: both are
-  # near-constant across blends, so the difference is an offset, not a gradient.
+  # Switching anchors cannot change which blend the optimizer picks: all three
+  # are constant across blends, so the difference is an offset, not a gradient.
   # It changes the reported level only.
-  fuel_rate_anchor_basis: model_cost
+  #
+  # energy_balance (current): solve the closed energy balance at the CURRENT
+  # controls and burden, then subtract the rolling bias offset fitted on recent
+  # plant history. Backtested over 239 days, that is MAPE 3.37% and R2 +0.74
+  # forward, against 7.24% / +0.07 for the raw balance. It is the only one of
+  # the three that responds to what the furnace is actually being asked to do,
+  # rather than reporting yesterday's number or the model's near-constant.
+  # Falls back to observed when the live tags, the calibration, or the solve
+  # are unavailable — see utils/bmo/energy_anchor.py.
+  fuel_rate_anchor_basis: energy_balance
 
   # ---------------------------------------------------------------------------
   # Physics-based coke-rate correction.

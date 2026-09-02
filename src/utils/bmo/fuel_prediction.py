@@ -26,6 +26,7 @@ from utils.bmo.fuel_rates import (
     estimate_fuel_rates_from_cost,
     estimate_fuel_rates_from_inputs,
     with_coke_delta,
+    with_coke_rate,
 )
 from utils.bmo.types import (
     BlendEvaluation,
@@ -207,6 +208,7 @@ def evaluate_blend_with_fuel_prediction(
     charge_mass_mt: float = 26.4,
     fuel_rate_basis: str = "model_cost",
     fuel_rate_anchor_basis: str = "model_cost",
+    anchor_coke_rate_kg_thm: float | None = None,
     coke_correction_settings: CokeCorrectionSettings | None = None,
     coke_correction_reference: CokeCorrectionReference | None = None,
     hot_metal_si_pct: float | None = None,
@@ -259,8 +261,16 @@ def evaluate_blend_with_fuel_prediction(
            predicted cost. ``"observed"`` uses the current plant rates from the
            Fuel Ash table instead, and rebases the blend's fuel cost to match, so
            the reported rate equals current operation before any correction is
-           applied. Ignored when ``fuel_rate_basis="inputs"``, which already uses
-           the observed rates.
+           applied. ``"energy_balance"`` uses ``anchor_coke_rate_kg_thm`` - the
+           closed energy balance solved at current controls, less the rolling
+           bias offset - and falls back to ``"observed"`` when that is absent.
+           Ignored when ``fuel_rate_basis="inputs"``, which already uses the
+           observed rates.
+         - anchor_coke_rate_kg_thm: float | None - Calibrated energy-balance coke
+           rate for the current operating point, from
+           ``utils.bmo.energy_anchor.solve_energy_anchor``. ONE value for the
+           whole run, identical for every candidate: it sets the level, while the
+           physics coke correction supplies the per-blend shape.
          - coke_correction_settings: CokeCorrectionSettings | None - Physics
            coke-rate correction settings. ``None`` disables it entirely, which
            keeps every pre-existing caller byte-identical.
@@ -305,7 +315,29 @@ def evaluate_blend_with_fuel_prediction(
                 fuel_ash_inputs=fuel_ash_inputs,
             )
             fuel_rate_source = "model_cost_residual"
-    elif fuel_rate_anchor_basis == "observed":
+    elif fuel_rate_anchor_basis == "energy_balance" and anchor_coke_rate_kg_thm:
+        # The energy balance solved at the CURRENT controls and burden, less the
+        # rolling bias offset. This sets the LEVEL the fuel cost sits on; blend
+        # sensitivity still comes from the physics correction applied below, so
+        # the two do not double-count. Nut coke and PCI stay as the operator set
+        # them - the balance solves for coke and coke alone.
+        observed = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
+        if observed is None:
+            observed = estimate_fuel_rates_from_cost(
+                fuel_cost_per_thm_rs=float(prediction.value),
+                process_context=process_context,
+                history_df=history_df,
+                fuel_ash_inputs=fuel_ash_inputs,
+            )
+        if observed is None:
+            fuel_rates = None
+            fuel_rate_source = "energy_balance_unavailable"
+        else:
+            fuel_rates = with_coke_rate(observed, float(anchor_coke_rate_kg_thm))
+            fuel_rate_source = "energy_balance_anchor"
+    elif fuel_rate_anchor_basis == "observed" or (
+        fuel_rate_anchor_basis == "energy_balance" and not anchor_coke_rate_kg_thm
+    ):
         # Anchor on what the furnace is actually running rather than on the
         # model's residual. The model's cost output is very nearly a constant
         # (~13,364 Rs/THM), so back-solving coke from it pins the reported total
@@ -368,7 +400,10 @@ def evaluate_blend_with_fuel_prediction(
         charge_mass_mt=charge_mass_mt,
     )
 
-    if fuel_rate_source == "observed_fuel_ash_inputs" and fuel_rates is not None:
+    if fuel_rates is not None and fuel_rate_source in (
+        "observed_fuel_ash_inputs",
+        "energy_balance_anchor",
+    ):
         _rebase_fuel_cost_to_anchor(blend, fuel_rates)
 
     if fuel_rates is not None:

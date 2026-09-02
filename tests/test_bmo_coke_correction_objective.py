@@ -601,12 +601,25 @@ def test_anchor_choice_does_not_change_which_blend_wins():
 
 
 def test_shipped_anchor_basis_keeps_the_coke_rate_a_prediction():
-    """The shipped config must back-solve coke from the model, not read the tag.
+    """The shipped coke rate must be predicted, never the live tag read back.
 
-    A reported coke rate that is seeded from the live coke tag is a restatement
-    of what the furnace was running an hour ago, not a forecast of the blend. The
-    physics correction is a delta on top of the prediction; it is not itself the
-    prediction. See setting_bmo.yml for the full note.
+    A reported coke rate seeded from the live coke tag is a restatement of what
+    the furnace was running an hour ago, not a forecast. The physics correction
+    is a delta on top of the prediction; it is not itself the prediction.
+
+    Two bases satisfy that and ``observed`` does not:
+
+        model_cost      back-solve coke from the ML model's predicted cost
+        energy_balance  solve the closed energy balance at current controls,
+                        less the rolling bias offset (currently shipped -
+                        MAPE 3.37%, R2 +0.74 forward, against 7.24% / +0.07
+                        for the same balance uncorrected)
+
+    Note that ``energy_balance`` FALLS BACK to observed at runtime when the live
+    tags or the calibration are missing. That is a degradation the page reports
+    on screen, not a configured choice, which is why this asserts on the config
+    rather than on any particular blend's ``fuel_rate_estimate_source``.
+    See setting_bmo.yml for the full note.
     """
 
     import yaml
@@ -614,7 +627,8 @@ def test_shipped_anchor_basis_keeps_the_coke_rate_a_prediction():
     path = Path(__file__).resolve().parents[1] / "src" / "config" / "setting_bmo.yml"
     cfg = yaml.safe_load(path.read_text(encoding="utf-8"))["bmo"]
 
-    assert cfg["fuel_rate_anchor_basis"] == "model_cost"
+    assert cfg["fuel_rate_anchor_basis"] in ("model_cost", "energy_balance")
+    assert cfg["fuel_rate_anchor_basis"] != "observed"
 
 
 def test_model_cost_anchor_back_solves_coke_and_ignores_the_editor_coke_rate():

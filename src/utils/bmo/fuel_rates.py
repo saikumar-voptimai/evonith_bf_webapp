@@ -176,6 +176,36 @@ def with_coke_delta(
     )
 
 
+def with_coke_rate(
+    rates: EstimatedFuelRates, coke_rate_kg_thm: float
+) -> EstimatedFuelRates:
+    """Return ``rates`` with the coke rate REPLACED and both totals kept in step.
+
+    The sibling of ``with_coke_delta``, for the case where the caller knows the
+    coke rate outright rather than a change to it - the energy-balance anchor,
+    which solves for coke directly. Nut coke and PCI are untouched for the same
+    reason as there: they are operator-set run inputs, not furnace demand.
+
+    Args:
+         - rates: EstimatedFuelRates - Rates whose coke figure is to be replaced.
+         - coke_rate_kg_thm: float - The coke rate to adopt, kg/THM.
+
+    Returns:
+         - return EstimatedFuelRates - Rates on the new coke level.
+    """
+
+    coke_rate = max(0.0, float(_to_float(coke_rate_kg_thm) or 0.0))
+    nut_rate = float(rates.nut_coke_rate_kg_thm)
+    pci_rate = float(rates.pci_rate_kg_thm)
+
+    return replace(
+        rates,
+        coke_rate_kg_thm=coke_rate,
+        total_coke_rate_kg_thm=coke_rate + nut_rate,
+        total_fuel_rate_kg_thm=coke_rate + nut_rate + pci_rate,
+    )
+
+
 def estimate_fuel_rates_from_cost(
     *,
     fuel_cost_per_thm_rs: float,

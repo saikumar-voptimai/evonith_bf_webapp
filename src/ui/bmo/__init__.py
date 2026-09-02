@@ -18,6 +18,12 @@ from ui.bmo.components import (
     render_slag_balance_details,
     render_slag_balance_settings,
 )
+from ui.bmo.model_accuracy import (
+    render_coke_accuracy,
+    render_model_accuracy_tab,
+    render_retrain_control,
+    render_si_accuracy,
+)
 
 __all__ = [
     "apply_bmo_styles",
@@ -28,6 +34,7 @@ __all__ = [
     "build_ore_editor_df",
     "render_blend_metrics",
     "render_blend_table",
+    "render_coke_accuracy",
     "render_coke_correction_breakdown",
     "render_diagnostics",
     "render_dust_editor",
@@ -35,7 +42,10 @@ __all__ = [
     "render_header",
     "render_fuel_ash_editor",
     "render_hot_metal_chemistry",
+    "render_model_accuracy_tab",
     "render_ore_editor",
+    "render_retrain_control",
+    "render_si_accuracy",
     "render_slag_balance_details",
     "render_slag_balance_settings",
 ]
