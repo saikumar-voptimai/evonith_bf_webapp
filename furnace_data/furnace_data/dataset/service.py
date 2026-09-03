@@ -39,7 +39,37 @@ _OFFLINE_RM_QUANTITY_VIEWS = {
 _OFFLINE_STATIC_ML_TABLE = "offline_feed.historical_static_ml_dataset"
 _OFFLINE_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
 _OFFLINE_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
-_STRENGTH_COMPAT_COLUMNS = ("ai", "ti", "ri", "rdi")
+_STRENGTH_LOOKBACK_DAYS = 90
+_STRENGTH_PROPERTY_COLUMNS = {
+    "ai": "ai",
+    "ti": "ti",
+    "ri": "ri",
+    "rdi": "rdi",
+    "m40": "coke_m40",
+    "m10": "coke_m10",
+    "csr": "coke_csr",
+    "cri": "coke_cri",
+}
+
+# Older strength sources exposed property names directly instead of through the
+# generic property_1..4 columns. Keep those inputs compatible while producing a
+# single canonical set of dataset columns.
+_STRENGTH_DIRECT_COLUMNS = {
+    "ai": "ai",
+    "ti": "ti",
+    "ri": "ri",
+    "rdi": "rdi",
+    "m40": "coke_m40",
+    "m_40": "coke_m40",
+    "coke_m40": "coke_m40",
+    "m10": "coke_m10",
+    "m_10": "coke_m10",
+    "coke_m10": "coke_m10",
+    "csr": "coke_csr",
+    "coke_csr": "coke_csr",
+    "cri": "coke_cri",
+    "coke_cri": "coke_cri",
+}
 
 
 @dataclass
@@ -100,6 +130,13 @@ class DatasetService:
 
     @staticmethod
     def _collapse_strength_frame(df: pd.DataFrame) -> pd.DataFrame:
+        """Pivot mapped material properties into canonical dataset columns.
+
+        Property positions are intentionally not hard-coded: the meaning of
+        ``property_1..4`` comes from ``material_property_mapping`` and can vary
+        by material (for example, coke uses M-40/M-10/CRI/CSR while sinter uses
+        AI/TI/RDI/RI).
+        """
         if df.empty:
             return df
 
@@ -110,17 +147,23 @@ class DatasetService:
             if name_col not in df.columns or value_col not in df.columns:
                 continue
 
-            names = df[name_col].astype("string").str.strip().str.lower()
+            names = (
+                df[name_col]
+                .astype("string")
+                .str.strip()
+                .str.lower()
+                .str.replace(r"[^a-z0-9]+", "", regex=True)
+            )
             values = pd.to_numeric(df[value_col], errors="coerce")
-            for target_col in _STRENGTH_COMPAT_COLUMNS:
+            for property_name, target_col in _STRENGTH_PROPERTY_COLUMNS.items():
                 if target_col not in out.columns:
-                    out[target_col] = pd.NA
-                matched = names == target_col
+                    out[target_col] = pd.Series(float("nan"), index=df.index)
+                matched = names == property_name
                 out.loc[matched, target_col] = values[matched].to_numpy()
 
-        for target_col in _STRENGTH_COMPAT_COLUMNS:
-            if target_col in df.columns:
-                values = pd.to_numeric(df[target_col], errors="coerce")
+        for source_col, target_col in _STRENGTH_DIRECT_COLUMNS.items():
+            if source_col in df.columns:
+                values = pd.to_numeric(df[source_col], errors="coerce")
                 if target_col not in out.columns:
                     out[target_col] = values
                 else:
@@ -131,6 +174,24 @@ class DatasetService:
         if isinstance(out.index, pd.DatetimeIndex):
             out = out.groupby(level=0).first()
         return out.dropna(how="all")
+
+    @staticmethod
+    def _align_latest_strength(
+        strength: pd.DataFrame,
+        target_index: pd.Index,
+    ) -> pd.DataFrame:
+        """Align each charge with the latest earlier strength lab sample."""
+        if strength.empty or target_index.empty:
+            return pd.DataFrame()
+
+        targets = pd.DatetimeIndex(target_index).sort_values().unique()
+        aligned = strength.sort_index().reindex(
+            targets,
+            method="ffill",
+            tolerance=pd.Timedelta(days=_STRENGTH_LOOKBACK_DAYS),
+        )
+        aligned.index.name = target_index.name or "time"
+        return aligned.dropna(how="all")
 
     def _add_offline_ml_aliases(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add ML-compatible aggregate aliases for offline report table columns."""
@@ -517,14 +578,24 @@ class DatasetService:
             raise ValueError("mode must be 'charge' or 'dpr'")
 
         df_rm = self._fetch_offline_table(table_name, start_dt, end_dt)
-        df_rm_hm = self._collapse_strength_frame(
-            self._fetch_offline_table(_OFFLINE_STRENGTH_TABLE, start_dt, end_dt)
+        df_strength = self._collapse_strength_frame(
+            self._fetch_offline_table(
+                _OFFLINE_STRENGTH_TABLE,
+                start_dt - timedelta(days=_STRENGTH_LOOKBACK_DAYS),
+                end_dt,
+            )
         )
         df_chem = self._fetch_offline_weighted_chemistry(
             mode=mode,
             start_dt=start_dt,
             end_dt=end_dt,
         )
+        target_index = (
+            df_rm.index
+            if df_rm is not None and not df_rm.empty
+            else df_chem.index
+        )
+        df_rm_hm = self._align_latest_strength(df_strength, target_index)
 
         frames = [
             df

@@ -18,6 +18,7 @@ from utils.bmo.types import (
     FluxInput,
     FuelAshInput,
     SlagBalanceSettings,
+    oxide_pct_from_basis,
 )
 
 
@@ -72,19 +73,37 @@ def fuel_ash_inputs_from_editor(editor_df: pd.DataFrame) -> list[FuelAshInput]:
                 display_name=str(row.get("fuel_name", fuel_id)),
                 enabled=bool(row.get("enabled", True)),
                 rate_kg_per_thm=float_from_row(row, "rate_kg_per_thm"),
+                rate_basis=str(row.get("rate_basis", "wet") or "wet").lower(),
+                add_moisture_to_rate=bool(
+                    row.get("add_moisture_to_rate", False)
+                ),
                 price_rs_per_mt=float_from_row(row, "price_rs_per_mt"),
                 moisture_pct=float_from_row(row, "moisture_pct"),
+                vm_pct=float_from_row(row, "vm_pct"),
                 ash_pct=float_from_row(row, "ash_pct"),
                 sio2_pct=float_from_row(row, "sio2_pct"),
                 al2o3_pct=float_from_row(row, "al2o3_pct"),
                 cao_pct=float_from_row(row, "cao_pct"),
                 mgo_pct=float_from_row(row, "mgo_pct"),
                 fe2o3_pct=float_from_row(row, "fe2o3_pct"),
-                tio2_pct=float_from_row(row, "tio2_pct"),
+                mno_pct=oxide_pct_from_basis(
+                    float_from_row(row, "mno_pct"),
+                    str(row.get("mn_basis", "mno")),
+                    element="mn",
+                ),
+                tio2_pct=oxide_pct_from_basis(
+                    float_from_row(row, "tio2_pct"),
+                    str(row.get("ti_basis", "tio2")),
+                    element="ti",
+                ),
+                alkali_pct=float_from_row(row, "alkali_pct"),
                 na2o_pct=float_from_row(row, "na2o_pct"),
                 k2o_pct=float_from_row(row, "k2o_pct"),
                 s_pct=float_from_row(row, "s_pct"),
                 p_pct=float_from_row(row, "p_pct"),
+                chemistry_source=str(
+                    row.get("chemistry_source", "default") or "default"
+                ),
             )
         )
     return fuel_ash_inputs
@@ -115,6 +134,11 @@ def dust_inputs_from_editor(editor_df: pd.DataFrame) -> list[DustInput]:
                 display_name=str(row.get("dust_name", dust_id)),
                 enabled=bool(row.get("enabled", True)),
                 wet_qty_mt=float_from_row(row, "wet_qty_mt"),
+                quantity_kg_per_charge=float_from_row(row, "quantity_kg_per_charge"),
+                rate_basis=str(
+                    row.get("rate_basis", "mt_per_day") or "mt_per_day"
+                ).lower(),
+                source=str(row.get("source", "manual") or "manual"),
                 moisture_pct=float_from_row(row, "moisture_pct"),
                 sio2_pct=float_from_row(row, "sio2_pct"),
                 al2o3_pct=float_from_row(row, "al2o3_pct"),
@@ -168,8 +192,16 @@ def flux_inputs_from_editor(editor_df: pd.DataFrame) -> list[FluxInput]:
                 cao_pct=float_from_row(row, "cao_pct"),
                 mgo_pct=float_from_row(row, "mgo_pct"),
                 fe2o3_pct=float_from_row(row, "fe2o3_pct"),
-                mno_pct=float_from_row(row, "mno_pct"),
-                tio2_pct=float_from_row(row, "tio2_pct"),
+                mno_pct=oxide_pct_from_basis(
+                    float_from_row(row, "mno_pct"),
+                    str(row.get("mn_basis", "mno")),
+                    element="mn",
+                ),
+                tio2_pct=oxide_pct_from_basis(
+                    float_from_row(row, "tio2_pct"),
+                    str(row.get("ti_basis", "tio2")),
+                    element="ti",
+                ),
                 na2o_pct=float_from_row(row, "na2o_pct"),
                 k2o_pct=float_from_row(row, "k2o_pct"),
                 caf2_pct=float_from_row(row, "caf2_pct"),

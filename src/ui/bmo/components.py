@@ -13,7 +13,25 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from utils.bmo.types import BlendEvaluation, FluxInput, FuelAshInput, OreInput
+from utils.bmo.calculations import compute_charging_requirements
+from utils.bmo.constraints import CHARGING_HOURS_PER_DAY
+from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
+from utils.bmo.types import (
+    MN_IN_MNO_FRACTION,
+    TI_IN_TIO2_FRACTION,
+    BlendEvaluation,
+    FluxInput,
+    FuelAshInput,
+    OreInput,
+)
+
+
+def _two_decimal_number_column(label: str, **kwargs: Any) -> Any:
+    """Build an editable numeric column with consistent two-decimal precision."""
+
+    kwargs["step"] = 0.01
+    kwargs["format"] = "%.2f"
+    return st.column_config.NumberColumn(label, **kwargs)
 
 
 @st.cache_data(show_spinner=False)
@@ -157,7 +175,9 @@ def build_ore_editor_df(
                 "al2o3_pct": float(ore.chemistry.al2o3_pct),
                 "cao_pct": float(ore.chemistry.cao_pct),
                 "mgo_pct": float(ore.chemistry.mgo_pct),
+                "mn_basis": "mno",
                 "mno_pct": float(ore.chemistry.mno_pct),
+                "ti_basis": "tio2",
                 "tio2_pct": float(ore.chemistry.tio2_pct),
             }
         )
@@ -184,6 +204,8 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "ore_name",
         "stock_mt",
         "price_rs_per_mt",
+        "min_share_pct",
+        "max_share_pct",
         "moisture_pct",
         "fe_t_pct",
         "sio2_pct",
@@ -192,8 +214,6 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "mgo_pct",
         "mno_pct",
         "tio2_pct",
-        "min_share_pct",
-        "max_share_pct",
     )
     editor_kwargs: dict[str, Any] = {
         "hide_index": True,
@@ -201,40 +221,46 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "selected": st.column_config.CheckboxColumn("Use", default=True),
             "ore_id": st.column_config.TextColumn("Ore ID", disabled=True),
             "ore_name": st.column_config.TextColumn("Ore / Source", disabled=True),
-            "stock_mt": st.column_config.NumberColumn(
+            "stock_mt": _two_decimal_number_column(
                 "Stock (MT)", min_value=0.0, step=10.0
             ),
-            "price_rs_per_mt": st.column_config.NumberColumn(
+            "price_rs_per_mt": _two_decimal_number_column(
                 "Price (Rs/MT)", min_value=0.0, step=10.0
             ),
-            "moisture_pct": st.column_config.NumberColumn(
+            "moisture_pct": _two_decimal_number_column(
                 "Moisture (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "fe_t_pct": st.column_config.NumberColumn(
+            "fe_t_pct": _two_decimal_number_column(
                 "Fe(T) (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "sio2_pct": st.column_config.NumberColumn(
+            "sio2_pct": _two_decimal_number_column(
                 "SiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "al2o3_pct": st.column_config.NumberColumn(
+            "al2o3_pct": _two_decimal_number_column(
                 "Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "cao_pct": st.column_config.NumberColumn(
+            "cao_pct": _two_decimal_number_column(
                 "CaO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "mgo_pct": st.column_config.NumberColumn(
+            "mgo_pct": _two_decimal_number_column(
                 "MgO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "mno_pct": st.column_config.NumberColumn(
-                "MnO (%)", min_value=0.0, max_value=100.0, step=0.1
+            "mn_basis": st.column_config.SelectboxColumn(
+                "Mn basis", options=["mn", "mno"]
             ),
-            "tio2_pct": st.column_config.NumberColumn(
-                "TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            "mno_pct": _two_decimal_number_column(
+                "Mn / MnO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "min_share_pct": st.column_config.NumberColumn(
+            "ti_basis": st.column_config.SelectboxColumn(
+                "Ti basis", options=["ti", "tio2"]
+            ),
+            "tio2_pct": _two_decimal_number_column(
+                "Ti / TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "min_share_pct": _two_decimal_number_column(
                 "Min Share (%)", min_value=0.0, max_value=100.0, step=0.5
             ),
-            "max_share_pct": st.column_config.NumberColumn(
+            "max_share_pct": _two_decimal_number_column(
                 "Max Share (%)", min_value=0.0, max_value=100.0, step=0.5
             ),
         },
@@ -249,9 +275,10 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
     Build the editable fuel ash chemistry table from BMO configuration.
 
     Fuel ash defaults come from the laboratory ash-analysis workbook and can be
-    overridden by operators for each run. The table keeps rate, moisture, ash,
-    ash oxide chemistry, and dry-fuel-basis S/P together so the slag calculation
-    can apply the full fuel ash sequence.
+    overridden by operators for each run. The table keeps rate, fuel moisture
+    (TM for coke/nut coke; IM for PCI), ash-analysis volatile matter (VM), ash
+    chemistry, and dry-fuel-basis S/P together so the slag calculation can
+    apply the full fuel ash sequence.
 
     Args:
          - fuel_ash_cfg: list[dict[str, Any]] - Configured fuel ash defaults.
@@ -262,25 +289,43 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
 
     rows = []
     for item in fuel_ash_cfg or []:
+        mn_basis = str(item.get("mn_basis", "mno") or "mno").lower()
+        ti_basis = str(item.get("ti_basis", "tio2") or "tio2").lower()
         rows.append(
             {
                 "enabled": bool(item.get("enabled", True)),
                 "fuel_id": str(item.get("fuel_id", "")),
                 "fuel_name": str(item.get("display_name", item.get("fuel_id", ""))),
                 "rate_kg_per_thm": float(item.get("rate_kg_per_thm", 0.0) or 0.0),
+                "rate_basis": str(item.get("rate_basis", "wet") or "wet").lower(),
+                "add_moisture_to_rate": bool(
+                    item.get("add_moisture_to_rate", False)
+                ),
                 "price_rs_per_mt": float(item.get("price_rs_per_mt", 0.0) or 0.0),
                 "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
+                "vm_pct": float(item.get("vm_pct", 0.0) or 0.0),
                 "ash_pct": float(item.get("ash_pct", 0.0) or 0.0),
                 "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
                 "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
                 "cao_pct": float(item.get("cao_pct", 0.0) or 0.0),
                 "mgo_pct": float(item.get("mgo_pct", 0.0) or 0.0),
                 "fe2o3_pct": float(item.get("fe2o3_pct", 0.0) or 0.0),
-                "tio2_pct": float(item.get("tio2_pct", 0.0) or 0.0),
+                "mn_basis": mn_basis,
+                "mno_pct": float(
+                    item.get("mn_pct" if mn_basis == "mn" else "mno_pct", 0.0) or 0.0
+                ),
+                "ti_basis": ti_basis,
+                "tio2_pct": float(
+                    item.get("ti_pct" if ti_basis == "ti" else "tio2_pct", 0.0) or 0.0
+                ),
+                "alkali_pct": float(item.get("alkali_pct", 0.0) or 0.0),
                 "na2o_pct": float(item.get("na2o_pct", 0.0) or 0.0),
                 "k2o_pct": float(item.get("k2o_pct", 0.0) or 0.0),
                 "s_pct": float(item.get("s_pct", 0.0) or 0.0),
                 "p_pct": float(item.get("p_pct", 0.0) or 0.0),
+                "chemistry_source": str(
+                    item.get("chemistry_source", "default") or "default"
+                ),
             }
         )
     return pd.DataFrame(rows)
@@ -311,13 +356,16 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "rate_kg_per_thm",
         "price_rs_per_mt",
         "moisture_pct",
+        "vm_pct",
         "ash_pct",
         "sio2_pct",
         "al2o3_pct",
         "cao_pct",
         "mgo_pct",
         "fe2o3_pct",
+        "mno_pct",
         "tio2_pct",
+        "alkali_pct",
         "na2o_pct",
         "k2o_pct",
         "s_pct",
@@ -329,48 +377,79 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "enabled": st.column_config.CheckboxColumn("Use", default=True),
             "fuel_id": st.column_config.TextColumn("Fuel ID", disabled=True),
             "fuel_name": st.column_config.TextColumn("Fuel", disabled=True),
-            "rate_kg_per_thm": st.column_config.NumberColumn(
+            "rate_kg_per_thm": _two_decimal_number_column(
                 "Rate (kg/THM)", min_value=0.0, step=1.0
             ),
-            "price_rs_per_mt": st.column_config.NumberColumn(
-                "Price (Rs/MT)", min_value=0.0, step=100.0,
+            "rate_basis": st.column_config.SelectboxColumn(
+                "Rate basis", options=["wet", "dry"]
+            ),
+            "price_rs_per_mt": _two_decimal_number_column(
+                "Price (Rs/MT)",
+                min_value=0.0,
+                step=100.0,
                 help="Current fuel price; the displayed unit fuel cost is re-priced to this.",
             ),
-            "moisture_pct": st.column_config.NumberColumn(
-                "Moisture (%)", min_value=0.0, max_value=100.0, step=0.1
+            "moisture_pct": _two_decimal_number_column(
+                "Moisture (%)",
+                min_value=0.0,
+                max_value=100.0,
+                step=0.1,
+                help="Total moisture (TM) for coke/nut coke; inherent moisture (IM) for PCI.",
             ),
-            "ash_pct": st.column_config.NumberColumn(
+            "vm_pct": _two_decimal_number_column(
+                "Ash Analysis VM (%)",
+                min_value=0.0,
+                max_value=100.0,
+                step=0.1,
+                help="Volatile matter supplied by fuel_chemistry.vm for the ash analysis.",
+            ),
+            "ash_pct": _two_decimal_number_column(
                 "Ash (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "sio2_pct": st.column_config.NumberColumn(
+            "sio2_pct": _two_decimal_number_column(
                 "Ash SiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "al2o3_pct": st.column_config.NumberColumn(
+            "al2o3_pct": _two_decimal_number_column(
                 "Ash Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "cao_pct": st.column_config.NumberColumn(
+            "cao_pct": _two_decimal_number_column(
                 "Ash CaO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "mgo_pct": st.column_config.NumberColumn(
+            "mgo_pct": _two_decimal_number_column(
                 "Ash MgO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "fe2o3_pct": st.column_config.NumberColumn(
+            "fe2o3_pct": _two_decimal_number_column(
                 "Ash Fe2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "tio2_pct": st.column_config.NumberColumn(
-                "Ash TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            "mn_basis": st.column_config.SelectboxColumn(
+                "Mn basis", options=["mn", "mno"]
             ),
-            "na2o_pct": st.column_config.NumberColumn(
+            "mno_pct": _two_decimal_number_column(
+                "Ash Mn / MnO (%)", min_value=0.0, max_value=100.0, step=0.01
+            ),
+            "ti_basis": st.column_config.SelectboxColumn(
+                "Ti basis", options=["ti", "tio2"]
+            ),
+            "tio2_pct": _two_decimal_number_column(
+                "Ash Ti / TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "alkali_pct": _two_decimal_number_column(
+                "Ash Alkali (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "na2o_pct": _two_decimal_number_column(
                 "Ash Na2O (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "k2o_pct": st.column_config.NumberColumn(
+            "k2o_pct": _two_decimal_number_column(
                 "Ash K2O (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "s_pct": st.column_config.NumberColumn(
+            "s_pct": _two_decimal_number_column(
                 "S in Fuel (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "p_pct": st.column_config.NumberColumn(
+            "p_pct": _two_decimal_number_column(
                 "P in Fuel (%)", min_value=0.0, max_value=100.0, step=0.001
+            ),
+            "chemistry_source": st.column_config.TextColumn(
+                "Chemistry source", disabled=True
             ),
         },
     }
@@ -398,6 +477,8 @@ def build_flux_editor_df(flux_cfg: list[dict[str, Any]]) -> pd.DataFrame:
     for item in flux_cfg or []:
         if bool(item.get("hidden_by_default", False)):
             continue
+        mn_basis = str(item.get("mn_basis", "mno") or "mno").lower()
+        ti_basis = str(item.get("ti_basis", "tio2") or "tio2").lower()
         rows.append(
             {
                 "enabled": bool(item.get("enabled", True)),
@@ -413,8 +494,14 @@ def build_flux_editor_df(flux_cfg: list[dict[str, Any]]) -> pd.DataFrame:
                 "cao_pct": float(item.get("cao_pct", 0.0) or 0.0),
                 "mgo_pct": float(item.get("mgo_pct", 0.0) or 0.0),
                 "fe2o3_pct": float(item.get("fe2o3_pct", 0.0) or 0.0),
-                "mno_pct": float(item.get("mno_pct", 0.0) or 0.0),
-                "tio2_pct": float(item.get("tio2_pct", 0.0) or 0.0),
+                "mn_basis": mn_basis,
+                "mno_pct": float(
+                    item.get("mn_pct" if mn_basis == "mn" else "mno_pct", 0.0) or 0.0
+                ),
+                "ti_basis": ti_basis,
+                "tio2_pct": float(
+                    item.get("ti_pct" if ti_basis == "ti" else "tio2_pct", 0.0) or 0.0
+                ),
                 "na2o_pct": float(item.get("na2o_pct", 0.0) or 0.0),
                 "k2o_pct": float(item.get("k2o_pct", 0.0) or 0.0),
                 "caf2_pct": float(item.get("caf2_pct", 0.0) or 0.0),
@@ -481,55 +568,61 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
                     "(0..stock) to hold slag basicity within bounds."
                 ),
             ),
-            "price_rs_per_mt": st.column_config.NumberColumn(
+            "price_rs_per_mt": _two_decimal_number_column(
                 "Price (Rs/MT)", min_value=0.0, step=50.0
             ),
-            "stock_mt": st.column_config.NumberColumn(
+            "stock_mt": _two_decimal_number_column(
                 "Stock (MT)", min_value=0.0, step=10.0
             ),
-            "moisture_pct": st.column_config.NumberColumn(
+            "moisture_pct": _two_decimal_number_column(
                 "Moisture/TM (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "sio2_pct": st.column_config.NumberColumn(
+            "sio2_pct": _two_decimal_number_column(
                 "SiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "al2o3_pct": st.column_config.NumberColumn(
+            "al2o3_pct": _two_decimal_number_column(
                 "Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "cao_pct": st.column_config.NumberColumn(
+            "cao_pct": _two_decimal_number_column(
                 "CaO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "mgo_pct": st.column_config.NumberColumn(
+            "mgo_pct": _two_decimal_number_column(
                 "MgO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "fe2o3_pct": st.column_config.NumberColumn(
+            "fe2o3_pct": _two_decimal_number_column(
                 "Fe2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "mno_pct": st.column_config.NumberColumn(
-                "MnO (%)", min_value=0.0, max_value=100.0, step=0.1
+            "mno_pct": _two_decimal_number_column(
+                "Mn / MnO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "tio2_pct": st.column_config.NumberColumn(
-                "TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            "mn_basis": st.column_config.SelectboxColumn(
+                "Mn basis", options=["mn", "mno"]
             ),
-            "na2o_pct": st.column_config.NumberColumn(
+            "tio2_pct": _two_decimal_number_column(
+                "Ti / TiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
+            ),
+            "ti_basis": st.column_config.SelectboxColumn(
+                "Ti basis", options=["ti", "tio2"]
+            ),
+            "na2o_pct": _two_decimal_number_column(
                 "Na2O (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "k2o_pct": st.column_config.NumberColumn(
+            "k2o_pct": _two_decimal_number_column(
                 "K2O (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "caf2_pct": st.column_config.NumberColumn(
+            "caf2_pct": _two_decimal_number_column(
                 "CaF2 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "p_pct": st.column_config.NumberColumn(
+            "p_pct": _two_decimal_number_column(
                 "P (%)", min_value=0.0, max_value=100.0, step=0.001
             ),
-            "s_pct": st.column_config.NumberColumn(
+            "s_pct": _two_decimal_number_column(
                 "S (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "zn_pct": st.column_config.NumberColumn(
+            "zn_pct": _two_decimal_number_column(
                 "Zn (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "loi_pct": st.column_config.NumberColumn(
+            "loi_pct": _two_decimal_number_column(
                 "LOI (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
         },
@@ -561,7 +654,14 @@ def build_dust_editor_df(dust_cfg: list[dict[str, Any]]) -> pd.DataFrame:
                 "enabled": bool(item.get("enabled", True)),
                 "dust_id": str(item.get("dust_id", "")),
                 "dust_name": str(item.get("display_name", item.get("dust_id", ""))),
+                "rate_basis": str(
+                    item.get("rate_basis", "mt_per_day") or "mt_per_day"
+                ).lower(),
                 "wet_qty_mt": float(item.get("wet_qty_mt", 0.0) or 0.0),
+                "quantity_kg_per_charge": float(
+                    item.get("quantity_kg_per_charge", 0.0) or 0.0
+                ),
+                "source": str(item.get("source", "default") or "default"),
                 "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
                 "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
                 "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
@@ -602,7 +702,7 @@ def render_dust_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     visible_columns = (
         "enabled",
         "dust_name",
-        "wet_qty_mt",
+        "quantity_kg_per_charge",
         "moisture_pct",
         "sio2_pct",
         "al2o3_pct",
@@ -624,49 +724,56 @@ def render_dust_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "enabled": st.column_config.CheckboxColumn("Use", default=True),
             "dust_id": st.column_config.TextColumn("Dust ID", disabled=True),
             "dust_name": st.column_config.TextColumn("Dust", disabled=True),
-            "wet_qty_mt": st.column_config.NumberColumn(
-                "Wet Qty (MT)", min_value=0.0, step=1.0
+            "rate_basis": st.column_config.SelectboxColumn(
+                "Quantity basis", options=["kg_per_charge", "mt_per_day"]
             ),
-            "moisture_pct": st.column_config.NumberColumn(
+            "wet_qty_mt": _two_decimal_number_column(
+                "Dust (MT/day)", min_value=0.0, step=1.0
+            ),
+            "quantity_kg_per_charge": _two_decimal_number_column(
+                "Dust (kg/charge)", min_value=0.0, step=10.0
+            ),
+            "source": st.column_config.TextColumn("Source", disabled=True),
+            "moisture_pct": _two_decimal_number_column(
                 "Moisture (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "sio2_pct": st.column_config.NumberColumn(
+            "sio2_pct": _two_decimal_number_column(
                 "SiO2 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "al2o3_pct": st.column_config.NumberColumn(
+            "al2o3_pct": _two_decimal_number_column(
                 "Al2O3 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "cao_pct": st.column_config.NumberColumn(
+            "cao_pct": _two_decimal_number_column(
                 "CaO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "mgo_pct": st.column_config.NumberColumn(
+            "mgo_pct": _two_decimal_number_column(
                 "MgO (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "fe_pct": st.column_config.NumberColumn(
+            "fe_pct": _two_decimal_number_column(
                 "Fe (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "mn_pct": st.column_config.NumberColumn(
+            "mn_pct": _two_decimal_number_column(
                 "Mn (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "p_pct": st.column_config.NumberColumn(
+            "p_pct": _two_decimal_number_column(
                 "P (%)", min_value=0.0, max_value=100.0, step=0.001
             ),
-            "s_pct": st.column_config.NumberColumn(
+            "s_pct": _two_decimal_number_column(
                 "S (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "ti_pct": st.column_config.NumberColumn(
+            "ti_pct": _two_decimal_number_column(
                 "Ti (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "zn_pct": st.column_config.NumberColumn(
+            "zn_pct": _two_decimal_number_column(
                 "Zn (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "na2o_pct": st.column_config.NumberColumn(
+            "na2o_pct": _two_decimal_number_column(
                 "Na2O (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "k2o_pct": st.column_config.NumberColumn(
+            "k2o_pct": _two_decimal_number_column(
                 "K2O (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
-            "caf2_pct": st.column_config.NumberColumn(
+            "caf2_pct": _two_decimal_number_column(
                 "CaF2 (%)", min_value=0.0, max_value=100.0, step=0.1
             ),
         },
@@ -681,40 +788,46 @@ def render_hot_metal_chemistry(
     cfg_defaults: dict[str, Any],
 ) -> dict[str, float]:
     """
-    Render Hot Metal PI chemistry inputs prefilled from live HM analysis.
+    Render the held slag-side Hot Metal PI chemistry, with the live cast beside it.
 
     These four values feed the full slag-balance pig-iron partitioning: HM C/Si/S
     determine the metallic-mass denominator and the SiO2 consumed by Si reduction;
-    HM Others (Mn+P+Ti+Cr) closes the PI chemistry. Operators can override the
-    prefilled values when the latest HM sample looks abnormal.
+    HM Others (Mn+P+Ti+Cr) closes the PI chemistry.
+
+    They are deliberately NOT prefilled from the latest cast. A single HM_SLAG row
+    swings much more than the real operating point, and letting that swing into
+    the slag balance moves calculated slag and basicity for a reason unrelated to
+    the blend under comparison - two blends run minutes apart would not be
+    comparable. The live cast is still fetched and displayed underneath so a
+    genuine drift in the operating point stays visible.
+
+    Scope is the slag side only. HM Mn% and Ti% partitioning still come from the
+    live snapshot, and the Si prediction model and coke-correction Si term are
+    untouched.
 
     Args:
          - hm_snapshot: dict[str, Any] - Snapshot from get_hm_slag_snapshot; may be empty.
-         - cfg_defaults: dict[str, Any] - yml slag_balance defaults used as fallback.
+         - cfg_defaults: dict[str, Any] - Held slag-side values: yml ``slag_balance``
+           defaults, already overlaid with any saved operator preference.
 
     Returns:
          - return dict[str, float] - Edited carbon_pct, silicon_pct, sulphur_pct, other_pct.
     """
 
     st.markdown("### Hot Metal Chemistry")
-    source = hm_snapshot.get("source") if hm_snapshot else None
-    n_rows = int(hm_snapshot.get("n_rows_used", 0) or 0) if hm_snapshot else 0
-    if source:
-        plural = "s" if n_rows != 1 else ""
-        st.caption(f"Source: {source} ({n_rows} HM_SLAG row{plural})")
-    else:
-        st.caption("HM_SLAG data unavailable — falling back to yml defaults")
+    st.caption(
+        "Slag-side only. These four values set the pig-iron closure and the SiO2 "
+        "consumed by Si reduction in the slag balance. They are HELD at the "
+        "operating point rather than tracking the latest cast, because a single "
+        "cast's Si swings far more than the true operating point does and that "
+        "swing would move calculated slag and basicity for reasons unrelated to "
+        "the blend being compared. The Si prediction and the coke-correction Si "
+        "term are unaffected - both still use live / model Si."
+    )
 
-    def _prefill(live_key: str, fallback_key: str) -> float:
-        live = hm_snapshot.get(live_key) if hm_snapshot else None
+    def _default(key: str) -> float:
         try:
-            live_value = float(live) if live is not None else 0.0
-        except (TypeError, ValueError):
-            live_value = 0.0
-        if live_value > 0:
-            return live_value
-        try:
-            return float(cfg_defaults.get(fallback_key, 0.0))
+            return float(cfg_defaults.get(key, 0.0) or 0.0)
         except (TypeError, ValueError):
             return 0.0
 
@@ -725,8 +838,9 @@ def render_hot_metal_chemistry(
                 "HM C (%)",
                 min_value=0.0,
                 max_value=10.0,
-                value=_prefill("chem_pct_c", "carbon_pct"),
+                value=_default("carbon_pct"),
                 step=0.01,
+                key="bmo_hm_carbon_pct",
             )
         ),
         "silicon_pct": float(
@@ -734,8 +848,9 @@ def render_hot_metal_chemistry(
                 "HM Si (%)",
                 min_value=0.0,
                 max_value=5.0,
-                value=_prefill("chem_pct_si", "silicon_pct"),
+                value=_default("silicon_pct"),
                 step=0.01,
+                key="bmo_hm_silicon_pct",
             )
         ),
         "sulphur_pct": float(
@@ -743,9 +858,10 @@ def render_hot_metal_chemistry(
                 "HM S (%)",
                 min_value=0.0,
                 max_value=1.0,
-                value=_prefill("chem_pct_s", "sulphur_pct"),
+                value=_default("sulphur_pct"),
                 step=0.001,
                 format="%.3f",
+                key="bmo_hm_sulphur_pct",
             )
         ),
         "other_pct": float(
@@ -753,12 +869,80 @@ def render_hot_metal_chemistry(
                 "HM Others (%) (Mn+P+Ti+Cr)",
                 min_value=0.0,
                 max_value=5.0,
-                value=_prefill("others_pct", "other_pct"),
+                value=_default("other_pct"),
                 step=0.01,
+                key="bmo_hm_other_pct",
             )
         ),
     }
+
+    # The live cast is still fetched and shown, so the operator can see when the
+    # held values have drifted away from what the furnace is actually making.
+    _render_live_hm_reference(hm_snapshot, values)
     return values
+
+
+def _render_live_hm_reference(
+    hm_snapshot: dict[str, Any],
+    held_values: dict[str, float],
+) -> None:
+    """
+    Show the latest HM_SLAG cast beside the held slag-side values.
+
+    Reference only - nothing here feeds a calculation. Its job is to make a
+    drifting operating point visible, so the held values get revisited instead
+    of quietly going stale.
+
+    Args:
+         - hm_snapshot: dict[str, Any] - Snapshot from get_hm_slag_snapshot.
+         - held_values: dict[str, float] - The values actually used by the balance.
+
+    Returns:
+         - return None - Writes a caption to the Streamlit page.
+    """
+
+    source = hm_snapshot.get("source") if hm_snapshot else None
+    if not source:
+        st.caption("Live HM_SLAG unavailable - cannot compare against the latest cast.")
+        return
+
+    n_rows = int(hm_snapshot.get("n_rows_used", 0) or 0)
+    plural = "s" if n_rows != 1 else ""
+
+    def _live(key: str) -> float | None:
+        raw = hm_snapshot.get(key)
+        try:
+            value = float(raw) if raw is not None else None
+        except (TypeError, ValueError):
+            return None
+        return value if value and value > 0 else None
+
+    parts: list[str] = []
+    for label, live_key, held_key, precision in (
+        ("C", "chem_pct_c", "carbon_pct", 2),
+        ("Si", "chem_pct_si", "silicon_pct", 2),
+        ("S", "chem_pct_s", "sulphur_pct", 3),
+        ("Others", "others_pct", "other_pct", 2),
+    ):
+        live_value = _live(live_key)
+        if live_value is None:
+            continue
+        held = float(held_values.get(held_key, 0.0) or 0.0)
+        delta = live_value - held
+        parts.append(
+            f"{label} {live_value:.{precision}f} ({delta:+.{precision}f} vs held)"
+        )
+
+    if not parts:
+        st.caption(
+            f"Latest cast: {source} ({n_rows} HM_SLAG row{plural}) - no usable values."
+        )
+        return
+    st.caption(
+        f"Latest cast for reference ({source}, {n_rows} HM_SLAG row{plural}): "
+        + ", ".join(parts)
+        + ". Not used by the slag balance."
+    )
 
 
 def render_slag_balance_settings(
@@ -849,24 +1033,372 @@ def render_slag_balance_settings(
     return values
 
 
+def _fmt(value: Any, spec: str = ",.2f", unavailable: str = "n/a") -> str:
+    """Format a number, or say plainly that there isn't one."""
+
+    try:
+        if value is None:
+            return unavailable
+        number = float(value)
+    except (TypeError, ValueError):
+        return unavailable
+    if number != number:  # NaN
+        return unavailable
+    return format(number, spec)
+
+
+def _band_note(value: float | None, low: float, high: float) -> tuple[str, bool]:
+    """Where a value sits against the plant's own operating band.
+
+    ISA-101 high-performance HMI practice is that a bare number carries no
+    situational awareness - the operator needs the normal range beside it to
+    know whether to act. These bands are the plant's measured p5-p95 over 6,515
+    hours of HM_SLAG analysis, not textbook figures, so "outside" means outside
+    what THIS furnace actually does.
+
+    Returns:
+         - return tuple[str, bool] - Caption text, and whether it is in band.
+    """
+
+    if value is None:
+        return f"plant {low:g}–{high:g}", True
+    inside = low <= float(value) <= high
+    marker = "✓" if inside else "⚠"
+    return f"{marker} plant {low:g}–{high:g}", inside
+
+
+# Plant p5-p95 over 6,515 hours of HM_SLAG analysis. B2 and IB4 are display-only;
+# T Basicity is the one the optimizer actually constrains. IB4 reads far lower
+# than T Basicity purely because Al2O3 (~18.7% of slag) joins its denominator -
+# a ~0.85 IB4 is normal, not a fault.
+_PLANT_SLAG_BANDS: dict[str, tuple[float, float]] = {
+    "b2": (1.005, 1.155),
+    "t_basicity": (1.216, 1.403),
+    "ib4": (0.793, 0.902),
+}
+
+
+def _render_cost_group(
+    blend: BlendEvaluation, *, is_lp_mode: bool, fuel_used_fallback: bool
+) -> float:
+    """Every rupee figure in one place. Returns the total for the headline."""
+
+    adjusted_fuel = blend.diagnostics.get("adjusted_fuel_cost_per_thm_rs")
+    adjusted_total = blend.diagnostics.get("adjusted_objective_rs_per_thm")
+    fuel_cost_display = (
+        float(adjusted_fuel)
+        if adjusted_fuel is not None
+        else float(blend.fuel_cost_per_thm_rs)
+    )
+    # Flux the optimizer bought (dolomite/quartz/limestone) is a real spend, so
+    # it belongs in the total alongside ore and fuel.
+    flux_cost_display = float(blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0)
+    base_total = (
+        float(adjusted_total)
+        if adjusted_total is not None
+        else float(blend.objective_rs_per_thm)
+    )
+    total_display = base_total + flux_cost_display
+
+    correction_delta_kg = blend.diagnostics.get("coke_correction_delta_kg_thm")
+    correction_cost = None
+    if correction_delta_kg:
+        correction_cost = float(correction_delta_kg) * float(
+            (blend.diagnostics.get("current_fuel_prices_rs_per_kg") or {}).get(
+                "coke", ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
+            )
+        )
+
+    with st.container(border=True):
+        st.markdown("###### 💰 &nbsp;Cost &nbsp;<small>Rs / THM</small>",
+                    unsafe_allow_html=True)
+        c_ore, c_fuel, c_flux, c_total = st.columns(4)
+        c_ore.metric(
+            "Ore",
+            _fmt(blend.ore_cost_per_thm_rs),
+            help=(
+                "LP minimises ore cost plus flux cost plus the physics coke-rate "
+                "correction, subject to Fe target, slag cap, share bounds and "
+                "stock bounds."
+                if is_lp_mode
+                else "DE jointly minimises ore + fuel cost."
+            ),
+        )
+        c_fuel.metric(
+            "Fuel" + (" (fallback)" if fuel_used_fallback else ""),
+            _fmt(fuel_cost_display),
+            delta=(f"{correction_cost:+,.0f} physics" if correction_cost else None),
+            delta_color="off",
+            help=(
+                (
+                    "Fallback formula in use — the XGBoost model was unavailable "
+                    "or rejected the prediction. Treat this as a placeholder. "
+                    if fuel_used_fallback
+                    else ""
+                )
+                + (
+                    "Re-priced to the operator's current fuel prices; the model's "
+                    f"baseline-price value is Rs {blend.fuel_cost_per_thm_rs:,.0f}."
+                    if adjusted_fuel is not None
+                    else ""
+                )
+            )
+            or None,
+        )
+        c_flux.metric(
+            "Flux",
+            _fmt(flux_cost_display),
+            help=(
+                "Flux (dolomite/quartz/limestone) the optimizer added to hold "
+                "slag basicity in bounds. Included in the total."
+            ),
+        )
+        c_total.metric(
+            "**Total**",
+            _fmt(total_display),
+            help="Ore + fuel + optimizer-added flux, all at current prices.",
+        )
+    return total_display
+
+
+def _render_fuel_group(blend: BlendEvaluation) -> None:
+    """Coke, nut coke, PCI and the total they sum to."""
+
+    estimate = blend.diagnostics.get("fuel_rate_estimate")
+    anchor = blend.diagnostics.get("fuel_rate_estimate_anchor")
+    correction_delta = blend.diagnostics.get("coke_correction_delta_kg_thm")
+
+    with st.container(border=True):
+        st.markdown("###### 🔥 &nbsp;Fuel rates &nbsp;<small>kg / THM</small>",
+                    unsafe_allow_html=True)
+        if not isinstance(estimate, dict):
+            st.caption(
+                "Fuel-rate estimate unavailable because the latest PCI rate is "
+                "missing."
+            )
+            return
+
+        coke_help = None
+        total_help = None
+        if isinstance(anchor, dict) and correction_delta:
+            # Name the uncorrected value the correction moved away from, so the
+            # operator never has to take the corrected number on faith.
+            coke_help = (
+                "Uncorrected: "
+                f"{float(anchor.get('coke_rate_kg_thm', 0.0)):,.1f} kg/THM. "
+                "The physics correction is shown as the delta."
+            )
+            total_help = (
+                "Uncorrected: "
+                f"{float(anchor.get('total_fuel_rate_kg_thm', 0.0)):,.1f} kg/THM. "
+                "Only coke moves — nut coke and PCI are operator run inputs."
+            )
+
+        f1, f2, f3, f4 = st.columns(4)
+        f1.metric(
+            "Coke",
+            _fmt(estimate.get("coke_rate_kg_thm"), ",.1f"),
+            delta=(
+                f"{float(correction_delta):+,.1f} physics" if correction_delta else None
+            ),
+            delta_color="off",
+            help=coke_help,
+        )
+        f2.metric(
+            "Nut coke",
+            _fmt(estimate.get("nut_coke_rate_kg_thm"), ",.1f"),
+            help=f"Source: {estimate.get('nut_coke_source', 'unknown')}",
+        )
+        f3.metric(
+            "PCI",
+            _fmt(estimate.get("pci_rate_kg_thm"), ",.1f"),
+            help=f"Source: {estimate.get('pci_source', 'unknown')}",
+        )
+        f4.metric(
+            "**Total fuel**",
+            _fmt(estimate.get("total_fuel_rate_kg_thm"), ",.1f"),
+            delta=(
+                f"{float(correction_delta):+,.1f} physics" if correction_delta else None
+            ),
+            delta_color="off",
+            help=total_help,
+        )
+
+
+def _render_slag_group(
+    blend: BlendEvaluation,
+    *,
+    observed_slag_rate_kg_per_thm: float | None,
+    hm_basis_mt: float,
+) -> None:
+    """Slag quantity on top, then the ratios that decide whether it will run.
+
+    The three basicity ratios are shown together because they are easy to
+    confuse — they share a numerator or a denominator but sit on completely
+    different scales. Each carries the plant's own p5-p95 band, so the number
+    means something without the operator having to remember what normal is.
+    """
+
+    denominators = {
+        "b2": float(blend.diagnostics.get("slag_basicity_denominator_mt", 0.0) or 0.0),
+        "t_basicity": float(
+            blend.diagnostics.get("slag_t_basicity_denominator_mt", 0.0) or 0.0
+        ),
+        "ib4": float(blend.diagnostics.get("slag_ib4_denominator_mt", 0.0) or 0.0),
+    }
+    chemistry_mt = float(
+        blend.diagnostics.get("slag_chemistry_denominator_mt", 0.0) or 0.0
+    )
+
+    with st.container(border=True):
+        st.markdown("###### 🌋 &nbsp;Slag", unsafe_allow_html=True)
+
+        s1, s2, s3, s4 = st.columns(4)
+        if hm_basis_mt <= 0:
+            # Undefined rather than zero: 0.00 kg/THM would read as clean iron.
+            s1.metric("Rate (kg/THM)", "n/a")
+        elif observed_slag_rate_kg_per_thm and observed_slag_rate_kg_per_thm > 0:
+            delta = blend.slag_rate_kg_per_thm - float(observed_slag_rate_kg_per_thm)
+            s1.metric(
+                "Rate (kg/THM)",
+                _fmt(blend.slag_rate_kg_per_thm),
+                delta=(
+                    f"{delta:+.1f} vs observed "
+                    f"{observed_slag_rate_kg_per_thm:,.1f}"
+                ),
+                delta_color="off",
+                help="Observed = plant DPR slag/HM over the chemistry window.",
+            )
+        else:
+            s1.metric("Rate (kg/THM)", _fmt(blend.slag_rate_kg_per_thm))
+        s2.metric("Quantity (MT)", _fmt(blend.slag_mt))
+        s3.metric(
+            "Al₂O₃ (%)",
+            _fmt(blend.slag_al2o3_pct if chemistry_mt > 0 else None),
+        )
+        s4.metric("MgO (%)", _fmt(blend.slag_mgo_pct if chemistry_mt > 0 else None))
+
+        st.markdown(
+            "<div class='bmo-subtle' style='margin-top:2px'>Basicity ratios — "
+            "against this plant's own p5–p95 band</div>",
+            unsafe_allow_html=True,
+        )
+        r1, r2, r3, r4 = st.columns(4)
+        for column, key, label, value, helptext in (
+            (r1, "b2", "B2 &nbsp;CaO/SiO₂", blend.slag_basicity,
+             "Display only. Not constrained by the optimizer."),
+            (r2, "t_basicity", "T-Basicity &nbsp;(CaO+MgO)/SiO₂",
+             blend.slag_t_basicity,
+             "This is the ratio the optimizer constrains, via the Min/Max "
+             "T Basicity inputs."),
+            (r3, "ib4", "IB4 &nbsp;(CaO+MgO)/(SiO₂+Al₂O₃)", blend.slag_ib4,
+             "Display only. Reads much lower than T-Basicity because Al₂O₃ is "
+             "in the denominator — ~0.84 is normal, not a fault."),
+        ):
+            available = denominators[key] > 0
+            shown = float(value) if available else None
+            low, high = _PLANT_SLAG_BANDS[key]
+            note, inside = _band_note(shown, low, high)
+            column.metric(
+                label.replace("&nbsp;", " "), _fmt(shown, ",.3f"), help=helptext
+            )
+            # Colour only for the abnormal case, per high-performance HMI
+            # practice: a screen where everything is coloured says nothing.
+            column.markdown(
+                f"<div class='{'bmo-subtle' if inside else 'bmo-status-warn'}' "
+                f"style='margin-top:-10px;font-size:11px'>{note}</div>",
+                unsafe_allow_html=True,
+            )
+        r4.metric(
+            "MgO/Al₂O₃",
+            _fmt(blend.slag_mgo_al2o3_ratio if chemistry_mt > 0 else None, ",.3f"),
+            help=(
+                "Mass ratio, not a ratio of the two percentages above. It does "
+                "not move with the slag rate, so it constrains the burden alone."
+            ),
+        )
+
+
+def _render_charging_group(
+    blend: BlendEvaluation, charging: dict[str, Any], *, charge_mass_mt: float
+) -> None:
+    """What actually has to be tipped in, and how often."""
+
+    with st.container(border=True):
+        st.markdown("###### 🚚 &nbsp;Charging", unsafe_allow_html=True)
+        g1, g2, g3, g4, g5 = st.columns(5)
+        g1.metric(
+            "Coke (MT)",
+            _fmt(charging.get("coke_total_mt"), ",.1f"),
+            help="Coke rate (kg/THM) × production (MT) / 1,000.",
+        )
+        g2.metric(
+            "Nut coke (MT)",
+            _fmt(charging.get("nut_coke_total_mt"), ",.1f"),
+            help=(
+                "Wet nut coke = (base kg/THM × production) + "
+                "(base kg/THM × production × moisture% / 100), then / 1,000 for MT."
+            ),
+        )
+        g3.metric(
+            "PCI (MT)",
+            _fmt(charging.get("pci_total_mt"), ",.1f"),
+            help="PCI (kg/THM) × production (MT) / 1,000.",
+        )
+        g4.metric(
+            "Charges (/hr)",
+            _fmt(charging.get("required_charges_per_hour")),
+            help=(
+                f"Charge mix MT/hr divided by {charge_mass_mt:g} MT per charge. "
+                "For 4,200 MT/day: 4,200 / 24 / 26.4 = 6.63 charges/hr."
+            ),
+        )
+        g5.metric(
+            "Hot metal per charge (MT)",
+            _fmt(charging.get("chemical_hot_metal_per_charge_mt"), ",.3f"),
+            help=(
+                "Chemical HM per charge: the full slag/material-balance pig iron "
+                "divided by the burden charge count."
+            ),
+        )
+        flux_rate = charging.get("flux_rate_kg_per_thm")
+        st.caption(
+            f"Flux rate **{_fmt(flux_rate, ',.1f')} kg/THM** — total enabled wet "
+            "flux over the target hot metal tonnage."
+        )
+
+
 def render_blend_metrics(
     title: str,
     blend: BlendEvaluation,
     observed_slag_rate_kg_per_thm: float | None = None,
     is_lp_mode: bool = False,
+    charge_mass_mt: float = 26.4,
 ) -> None:
     """
     Render summary metrics and constraint warnings for a blend result.
 
-    The metric rows separate wet quantity, dry quantity, slag MT, and slag rate
-    so users can see how moisture and slag-forming oxides affect the result. When
-    an observed slag rate is supplied, it is shown beside the computed value with
-    the gap so operators can manually tune the slag correction factor.
+    LAID OUT THE WAY A FURNACE RUNS, not the way the code happens to compute.
+    An overview strip carries the three figures a decision is made on, then four
+    grouped panels follow the material through the process: what it costs, what
+    fuel it burns, what slag it makes, and how it gets charged.
+
+    That structure follows high-performance HMI practice (ISA-101): overview
+    before detail, layout ordered by process flow, consistent tile sizes, and
+    colour reserved for the abnormal case rather than sprayed across a screen
+    where it stops meaning anything. The basicity ratios carry the plant's own
+    operating band beside them, because a bare ratio gives an operator nothing
+    to judge against.
 
     Args:
          - title: str - Section title shown above the metrics.
          - blend: BlendEvaluation - Evaluated blend result to display.
-         - observed_slag_rate_kg_per_thm: float | None - Plant slag rate from DPR for comparison.
+         - observed_slag_rate_kg_per_thm: float | None - Plant slag rate from
+           DPR for comparison.
+         - is_lp_mode: bool - Changes only the cost help text; LP minimises ore,
+           DE minimises ore + fuel.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge. Charging
+           runs 24 h (``CHARGING_HOURS_PER_DAY``), so that is not an argument.
 
     Returns:
          - return None - Writes metrics and warnings to the Streamlit page.
@@ -874,185 +1406,202 @@ def render_blend_metrics(
 
     st.markdown(f"#### {title}")
 
-    # Fuel-cost source: model vs deterministic fallback. The label and help text
-    # change so an operator can tell at a glance which one fed the objective.
     model_prediction = blend.diagnostics.get("model_prediction")
     fuel_used_fallback = bool(
         getattr(model_prediction, "used_fallback", False)
         if model_prediction is not None
         else False
     )
-    fuel_label = (
-        "Fuel Cost (Rs/THM, fallback)" if fuel_used_fallback else "Fuel Cost (Rs/THM)"
-    )
-    fuel_help = (
-        "Fallback formula in use - the XGBoost model was unavailable or "
-        "rejected the prediction. Treat the cost as a placeholder."
-        if fuel_used_fallback
-        else None
-    )
-
-    # Row 1: costs + Fe produced. Ore cost first in both modes; only the
-    # emphasis/help differs (LP minimises ore cost; DE minimises ore + fuel).
-    c1, c2, c_flux, c3, c4 = st.columns(5)
-    if is_lp_mode:
-        c1.metric(
-            "Ore Cost (Rs/THM, LP-optimised)",
-            f"{blend.ore_cost_per_thm_rs:,.2f}",
-            help=(
-                "LP minimises ore cost only, subject to Fe target, slag cap, "
-                "share bounds, and stock bounds."
-            ),
-        )
-    else:
-        c1.metric(
-            "Ore Cost (Rs/THM)",
-            f"{blend.ore_cost_per_thm_rs:,.2f}",
-            help="DE jointly minimises ore + fuel cost.",
-        )
-    # Fuel + total cost are shown at the operator's current fuel prices from the
-    # Fuel Ash editor. The optimizer still uses the model's baseline-price cost;
-    # display re-pricing falls back to a model-cost residual only when the editor
-    # rates are unavailable.
-    adjusted_fuel = blend.diagnostics.get("adjusted_fuel_cost_per_thm_rs")
-    adjusted_total = blend.diagnostics.get("adjusted_objective_rs_per_thm")
-    fuel_cost_display = (
-        float(adjusted_fuel) if adjusted_fuel is not None
-        else blend.fuel_cost_per_thm_rs
-    )
-    # Flux the optimizer bought (dolomite/quartz/limestone) is a real spend, so it
-    # belongs in the total cost alongside ore + fuel.
-    flux_cost_display = float(blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0)
-    base_total = (
-        float(adjusted_total) if adjusted_total is not None
-        else blend.objective_rs_per_thm
-    )
-    total_display = base_total + flux_cost_display
-    reprice_help = (
-        " The model-predicted fuel cost for this blend, converted to the "
-        "current fuel prices; the model's baseline-price value is "
-        f"Rs {blend.fuel_cost_per_thm_rs:,.0f}/THM."
-        if adjusted_fuel is not None
-        else ""
-    )
-    fuel_label_est = (
-        "Fuel Cost (Rs/THM, est., current price, fallback)"
-        if fuel_used_fallback
-        else "Fuel Cost (Rs/THM, est., current price)"
-    )
-    fuel_help_base = (
-        "Post-hoc XGBoost estimate on the selected blend." if is_lp_mode else fuel_help
-    )
-    c2.metric(
-        fuel_label_est,
-        f"{fuel_cost_display:,.2f}",
-        help=((fuel_help_base or "") + reprice_help) or None,
-    )
-    c_flux.metric(
-        "Flux Cost (Rs/THM)",
-        f"{flux_cost_display:,.2f}",
-        help=(
-            "Cost of the flux (dolomite/quartz/limestone) the optimizer added to "
-            "hold slag basicity within bounds. Included in Total Cost."
-        ),
-    )
-    total_label = (
-        "Total Cost (ore + fuel + flux, Rs/THM)"
-        if is_lp_mode
-        else "Total Cost (Rs/THM, current price)"
-    )
-    c3.metric(
-        total_label,
-        f"{total_display:,.2f}",
-        help=(
-            "Ore cost plus the current-price fuel-cost estimate plus optimizer-"
-            "added flux cost."
-            if is_lp_mode
-            else "DE minimises ore + fuel at baseline prices; display adds "
-            "optimizer flux cost and re-prices fuel at current prices."
-        ),
-    )
-    c4.metric("Fe Produced (MT)", f"{blend.fe_production_mt:,.2f}")
-
-    # Row 2: dry quantity, final Fe%, slag rate, slag MT.
-    c5, c6, c7, c8 = st.columns(4)
-    dry_qty = float(blend.diagnostics.get("total_dry_qty_mt", 0.0) or 0.0)
     hm_basis_mt = float(blend.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0)
-    c5.metric("Dry Qty (MT)", f"{dry_qty:,.2f}")
-    c6.metric("Final Fe (%)", f"{blend.fe_t_pct:,.2f}")
-    # Slag rate is undefined when Fe production is zero; show "n/a" rather
-    # than 0.00 kg/THM which would mislead an operator into thinking the
-    # blend produced clean iron. The observed value is the plant's realised
-    # slag rate averaged over the chosen chemistry window (recent days).
-    if hm_basis_mt <= 0:
-        c7.metric("Slag Rate (kg/THM)", "n/a")
-    elif observed_slag_rate_kg_per_thm and observed_slag_rate_kg_per_thm > 0:
-        delta = blend.slag_rate_kg_per_thm - float(observed_slag_rate_kg_per_thm)
-        c7.metric(
-            "Slag Rate (kg/THM)",
-            f"{blend.slag_rate_kg_per_thm:,.2f}",
-            delta=(
-                f"{delta:+.1f} vs observed {observed_slag_rate_kg_per_thm:,.1f} "
-                "(recent avg)"
-            ),
-            delta_color="off",
-            help="Observed = plant DPR slag/HM averaged over the chemistry window.",
-        )
-    else:
-        c7.metric("Slag Rate (kg/THM)", f"{blend.slag_rate_kg_per_thm:,.2f}")
-    c8.metric("Slag (MT)", f"{blend.slag_mt:,.2f}")
+    charging = compute_charging_requirements(
+        blend,
+        charge_mass_mt=charge_mass_mt,
+        hours_per_day=CHARGING_HOURS_PER_DAY,
+    )
 
+    # --- Level 1: the overview strip -------------------------------------------
+    #
+    # Everything a decision turns on, above the fold, before any detail. The
+    # status tile is the only place colour is used unconditionally, and it is
+    # the one thing that must never be missed.
+    adjusted_total = blend.diagnostics.get("adjusted_objective_rs_per_thm")
+    flux_cost = float(blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0)
+    headline_total = (
+        float(adjusted_total)
+        if adjusted_total is not None
+        else float(blend.objective_rs_per_thm)
+    ) + flux_cost
+
+    o1, o2, o3, o4 = st.columns(4)
+    o1.metric(
+        "Total cost (Rs/THM)",
+        _fmt(headline_total, ",.0f"),
+        help="Ore + fuel + optimizer-added flux, at the operator's current prices.",
+    )
+    o2.metric("Production (MT)", _fmt(hm_basis_mt, ",.1f"),
+              help="Target hot metal / pig iron entered in Model Inputs.")
+    o3.metric("Final Fe (%)", _fmt(blend.fe_t_pct))
+    if blend.violations:
+        o4.metric("Status", f"⚠ {len(blend.violations)}",
+                  help="Constraint violations — listed below.")
+    else:
+        o4.metric("Status", "✓ feasible",
+                  help="Every constraint the optimizer was given is satisfied.")
+
+    # --- Level 2: detail, in process order --------------------------------------
+    _render_cost_group(
+        blend, is_lp_mode=is_lp_mode, fuel_used_fallback=fuel_used_fallback
+    )
+    _render_fuel_group(blend)
+    _render_slag_group(
+        blend,
+        observed_slag_rate_kg_per_thm=observed_slag_rate_kg_per_thm,
+        hm_basis_mt=hm_basis_mt,
+    )
+    _render_charging_group(blend, charging, charge_mass_mt=charge_mass_mt)
+
+    # --- Provenance and warnings -------------------------------------------------
     if fuel_used_fallback:
         reason = (getattr(model_prediction, "details", {}) or {}).get("reason")
-        reason_text = f" Reason: {reason}." if reason else ""
         st.caption(
-            "WARNING - Fuel cost above came from the deterministic fallback "
-            "formula, not the BMO XGBoost model." + reason_text
+            "⚠️ Fuel cost above came from the deterministic fallback formula, "
+            "not the BMO XGBoost model."
+            + (f" Reason: {reason}." if reason else "")
         )
 
-    # Row 3: basicity pair.
-    b1, b2 = st.columns(2)
-    basicity_denominator_mt = float(
-        blend.diagnostics.get("slag_basicity_denominator_mt", 0.0) or 0.0
-    )
-    if basicity_denominator_mt > 0:
-        b1.metric("Slag Basicity CaO/SiO2", f"{blend.slag_basicity:,.3f}")
-        b2.metric("Slag T Basicity", f"{blend.slag_t_basicity:,.3f}")
-    else:
-        b1.metric("Slag Basicity CaO/SiO2", "n/a")
-        b2.metric("Slag T Basicity", "n/a")
-
-    fuel_rate_estimate = blend.diagnostics.get("fuel_rate_estimate")
-    st.markdown("##### Estimated Fuel Rates")
-    if isinstance(fuel_rate_estimate, dict):
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric(
-            "Coke Rate (kg/THM)",
-            f"{float(fuel_rate_estimate.get('coke_rate_kg_thm', 0.0)):,.1f}",
-        )
-        r2.metric(
-            "Nut Coke Rate (kg/THM)",
-            f"{float(fuel_rate_estimate.get('nut_coke_rate_kg_thm', 0.0)):,.1f}",
-            help=f"Source: {fuel_rate_estimate.get('nut_coke_source', 'unknown')}",
-        )
-        r3.metric(
-            "Total Fuel Rate (kg/THM)",
-            f"{float(fuel_rate_estimate.get('total_fuel_rate_kg_thm', 0.0)):,.1f}",
-        )
-        r4.metric(
-            "PCI (kg/THM)",
-            f"{float(fuel_rate_estimate.get('pci_rate_kg_thm', 0.0)):,.1f}",
-            help=f"Source: {fuel_rate_estimate.get('pci_source', 'unknown')}",
-        )
-    else:
-        st.caption("Fuel-rate estimate unavailable because latest PCI rate is missing.")
+    dust_usage = [
+        row
+        for row in blend.diagnostics.get("dust_usage", []) or []
+        if isinstance(row, dict) and row.get("enabled", True)
+    ]
+    fuel_usage = [
+        row
+        for row in blend.diagnostics.get("fuel_usage", []) or []
+        if isinstance(row, dict) and row.get("enabled", True)
+    ]
+    if dust_usage or fuel_usage:
+        with st.expander("Material sources and chemistry basis", expanded=False):
+            for row in dust_usage:
+                st.caption(
+                    "Dust used: "
+                    f"{float(row.get('wet_qty_mt', 0.0)):,.2f} MT/day | "
+                    f"{float(row.get('kg_per_charge', 0.0)):,.1f} kg/charge | "
+                    f"source: {row.get('source', 'default')} | chemistry (%): "
+                    f"SiO2 {float(row.get('sio2_pct', 0.0)):g}, "
+                    f"Al2O3 {float(row.get('al2o3_pct', 0.0)):g}, "
+                    f"CaO {float(row.get('cao_pct', 0.0)):g}, "
+                    f"MgO {float(row.get('mgo_pct', 0.0)):g}, "
+                    f"Fe {float(row.get('fe_pct', 0.0)):g}."
+                )
+            if fuel_usage:
+                st.caption(
+                    "Fuel chemistry / rate basis: "
+                    + "; ".join(
+                        f"{row.get('display_name', row.get('fuel_id', 'fuel'))}: "
+                        f"{row.get('chemistry_source', 'default')} / "
+                        f"{row.get('rate_basis', 'wet')}"
+                        for row in fuel_usage
+                    )
+                )
 
     if blend.violations:
         st.warning("Constraint violations:\n- " + "\n- ".join(blend.violations))
 
 
+def render_coke_correction_breakdown(blend: BlendEvaluation) -> None:
+    """
+    Render the per-term physics coke-rate correction for one blend.
+
+    The correction supplies the entire blend-to-fuel sensitivity in BMO, because
+    the trained fuel model barely responds to the burden at all. That makes it
+    the one number an operator most needs to be able to interrogate, so every
+    term shows its coefficient, both driver values, and where its reference came
+    from — and both the uncorrected and corrected coke rates stay on screen.
+
+    Args:
+         - blend: BlendEvaluation - Blend carrying ``coke_correction`` diagnostics.
+
+    Returns:
+         - return None - Renders Streamlit widgets.
+    """
+
+    correction = blend.diagnostics.get("coke_correction")
+    if not isinstance(correction, dict) or not correction.get("enabled"):
+        return
+
+    anchor = float(correction.get("anchor_coke_rate_kg_thm", 0.0) or 0.0)
+    corrected = float(correction.get("corrected_coke_rate_kg_thm", 0.0) or 0.0)
+    delta = float(correction.get("applied_delta_kg_thm", 0.0) or 0.0)
+    applied = bool(blend.diagnostics.get("coke_correction_applied", False))
+    warnings = list(correction.get("warnings", []) or [])
+
+    with st.expander(
+        f"Coke-rate physics correction: {anchor:,.1f} → {corrected:,.1f} kg/THM "
+        f"({delta:+,.1f})",
+        # A warning about an implausible anchor is an operator action, not an
+        # audit detail. Open the breakdown so it cannot hide behind a collapsed
+        # expander; clean runs remain compact.
+        expanded=bool(warnings),
+    ):
+        st.caption(
+            "Priced into the optimizer's objective."
+            if applied
+            else "Shown for reference only; not added to this blend's cost."
+        )
+
+        rows = [
+            {
+                "Term": term.get("label", term.get("term_id", "")),
+                "Coefficient": term.get("k_display", ""),
+                "Blend": term.get("x_blend"),
+                "Reference": term.get("x_reference"),
+                "Units": term.get("x_units", ""),
+                "Reference source": (
+                    term.get("reference_source") or term.get("disabled_reason") or ""
+                ),
+                "Δ Coke (kg/THM)": term.get("delta_kg_thm"),
+                "Capped": bool(term.get("term_clamp_binding"))
+                or bool(term.get("envelope_exceeded")),
+            }
+            for term in correction.get("terms", [])
+            # Disabled-by-configuration terms would only add rows that always
+            # read zero, which erodes trust in the rows that do matter.
+            if term.get("enabled")
+            or term.get("disabled_reason") != "term disabled in configuration"
+        ]
+        if rows:
+            st.dataframe(
+                pd.DataFrame(rows),
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "Blend": st.column_config.NumberColumn("Blend", format="%.2f"),
+                    "Reference": st.column_config.NumberColumn(
+                        "Reference", format="%.2f"
+                    ),
+                    "Δ Coke (kg/THM)": st.column_config.NumberColumn(
+                        "Δ Coke (kg/THM)", format="%+.2f"
+                    ),
+                },
+            )
+
+        for warning in warnings:
+            st.warning(str(warning))
+
+        lp_terms = blend.diagnostics.get("lp_coke_correction_linear_terms")
+        if isinstance(lp_terms, dict):
+            st.caption(
+                "The LP priced this correction linearly, so its signal is not "
+                "clamped; the value above is. Large gaps between the two are "
+                "reported as warnings."
+            )
+
+
 def build_blend_table_df(
-    blend: BlendEvaluation, selected_ores: list[OreInput]
+    blend: BlendEvaluation,
+    selected_ores: list[OreInput],
+    *,
+    charge_mass_mt: float = 26.4,
 ) -> pd.DataFrame:
     """
     Build the result table data for a blend.
@@ -1060,10 +1609,22 @@ def build_blend_table_df(
     Args:
          - blend: BlendEvaluation - Evaluated blend result to display.
          - selected_ores: list[OreInput] - Ores included in the current run.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge.
 
     Returns:
          - return pd.DataFrame - Per-ore result table sorted by share.
     """
+
+    charges_per_hour = compute_charging_requirements(
+        blend,
+        charge_mass_mt=charge_mass_mt,
+        hours_per_day=CHARGING_HOURS_PER_DAY,
+    )["required_charges_per_hour"]
+    daily_charges = (
+        float(charges_per_hour) * CHARGING_HOURS_PER_DAY
+        if charges_per_hour is not None and float(charges_per_hour) > 0.0
+        else None
+    )
 
     rows = []
     dry_weight_by_ore = blend.diagnostics.get("dry_weight_mt_by_ore", {}) or {}
@@ -1082,6 +1643,9 @@ def build_blend_table_df(
             {
                 "ore_name": ore.display_name,
                 "quantity_mt": qty,
+                "kg_per_charge": (
+                    qty * 1000.0 / daily_charges if daily_charges else None
+                ),
                 "dry_quantity_mt": float(dry_weight_by_ore.get(ore.ore_id, 0.0)),
                 "moisture_pct": float(ore.chemistry.moisture_pct),
                 "fe_contribution_mt": fe_mt,
@@ -1097,7 +1661,12 @@ def build_blend_table_df(
     return pd.DataFrame(rows).sort_values("share_pct", ascending=False)
 
 
-def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) -> None:
+def render_blend_table(
+    blend: BlendEvaluation,
+    selected_ores: list[OreInput],
+    *,
+    charge_mass_mt: float = 26.4,
+) -> None:
     """
     Render the ore quantity, share, stock, price, and cost table for a blend.
 
@@ -1108,12 +1677,13 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
     Args:
          - blend: BlendEvaluation - Evaluated blend result to display.
          - selected_ores: list[OreInput] - Ores included in the current run.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge.
 
     Returns:
          - return None - Writes the blend table to the Streamlit page.
     """
 
-    df = build_blend_table_df(blend, selected_ores)
+    df = build_blend_table_df(blend, selected_ores, charge_mass_mt=charge_mass_mt)
     # Share is shown as an inline progress bar so the burden split is
     # readable at a glance; ore cost is in lakhs to keep the numbers short.
     share_max = float(max(100.0, df["share_pct"].max())) if not df.empty else 100.0
@@ -1128,7 +1698,7 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
             "ore_name",
             "share_pct",
             "quantity_mt",
-            "dry_quantity_mt",
+            "kg_per_charge",
             "fe_contribution_mt",
             "slag_contribution_mt",
             "price_rs_per_mt",
@@ -1137,12 +1707,8 @@ def render_blend_table(blend: BlendEvaluation, selected_ores: list[OreInput]) ->
         column_config={
             "ore_name": st.column_config.TextColumn("Ore"),
             "share_pct": share_col,
-            "quantity_mt": st.column_config.NumberColumn(
-                "Wet Qty (MT)", format="%.1f"
-            ),
-            "dry_quantity_mt": st.column_config.NumberColumn(
-                "Dry Qty (MT)", format="%.1f"
-            ),
+            "quantity_mt": st.column_config.NumberColumn("Wet Qty (MT)", format="%.1f"),
+            "kg_per_charge": st.column_config.NumberColumn("KGs/charge", format="%.1f"),
             "fe_contribution_mt": st.column_config.NumberColumn(
                 "Fe (MT)", format="%.1f"
             ),
@@ -1200,8 +1766,8 @@ def render_slag_balance_details(
     dry_by_ore = diag.get("dry_weight_mt_by_ore", {}) or {}
     flux_dry = diag.get("flux_dry_weight_mt_by_flux", {}) or {}
 
-    ti_factor = 79.866 / 47.867
-    mn_factor = 70.937 / 54.938
+    ti_factor = 1.0 / TI_IN_TIO2_FRACTION
+    mn_factor = 1.0 / MN_IN_MNO_FRACTION
     fe_to_feo_factor = 72.0 / 56.0
 
     with st.expander("Slag Balance Details", expanded=False):
@@ -1320,25 +1886,24 @@ def render_slag_balance_details(
 
         # --- Section 3: HM-removal worked breakdown ---
         st.markdown("##### Hot-Metal removals — worked breakdown")
-        actual_pi = float(full_balance.get("actual_pig_iron_mt", 0.0) or 0.0)
-        hm_si = float(fb_diag.get("hm_mn_pct_used", 0.0)) * 0  # placeholder
+        theoretical_pi = float(full_balance.get("theoretical_pig_iron_mt", 0.0) or 0.0)
         hm_si_pct = (
             float(blend.diagnostics.get("hm_reduction_sio2_mt", 0.0))
-            / (actual_pi * 2.14)
+            / (theoretical_pi * 2.14)
             * 100
-            if actual_pi > 0
+            if theoretical_pi > 0
             else 0.0
         )
         sulphur_pi = float(fb_diag.get("sulphur_to_pig_iron_mt", 0.0))
         sulphur_gas = float(fb_diag.get("sulphur_to_gas_mt", 0.0))
-        hm_s_pct = (sulphur_pi / actual_pi * 100) if actual_pi > 0 else 0.0
+        hm_s_pct = sulphur_pi / theoretical_pi * 100 if theoretical_pi > 0 else 0.0
         alkali_fraction = float(fb_diag.get("alkali_to_slag_fraction", 0.8))
         alkali_input = float(net_into_bf.get("alkali", 0.0))
         sio2_consumed = float(fb_diag.get("sio2_consumed_by_si_mt", 0.0))
         worked_rows = [
             {
                 "removal": "SiO2 to HM Si",
-                "formula": f"PI x HM_Si% x 2.14 = {actual_pi:.0f} x {hm_si_pct:.3f}% x 2.14",
+                "formula": f"Theoretical PI x HM_Si% x 2.14 = {theoretical_pi:.0f} x {hm_si_pct:.3f}% x 2.14",
                 "value_mt": round(sio2_consumed, 2),
             },
             {
@@ -1357,7 +1922,7 @@ def render_slag_balance_details(
             },
             {
                 "removal": "S to PI",
-                "formula": f"PI x HM_S% = {actual_pi:.0f} x {hm_s_pct:.4f}%",
+                "formula": f"Theoretical PI x HM_S% = {theoretical_pi:.0f} x {hm_s_pct:.4f}%",
                 "value_mt": round(sulphur_pi, 3),
             },
             {
@@ -1402,14 +1967,19 @@ def render_slag_balance_details(
                     ),
                 }
             )
+        fuel_usage_by_id = {
+            str(row.get("fuel_id", "")): row
+            for row in (diag.get("fuel_usage", []) or [])
+        }
         for fuel in fuel_ash_inputs or []:
             if not fuel.enabled:
                 continue
+            fuel_usage = fuel_usage_by_id.get(fuel.fuel_id, {})
             per_mat_rows.append(
                 {
                     "material": fuel.display_name,
                     "type": "fuel ash",
-                    "dry_mt": None,
+                    "dry_mt": round(float(fuel_usage.get("dry_fuel_mt", 0.0)), 1),
                     "slag_contribution_mt": round(
                         float(fuel_by_id.get(fuel.fuel_id, 0.0)), 2
                     ),
@@ -1450,12 +2020,19 @@ def render_slag_balance_details(
                     "tio2_input_mt": round(tio2_mt, 3),
                 }
             )
-        hot_metal_for_fuel = float(blend.fe_production_mt or 0.0)
+        hot_metal_for_fuel = float(diag.get("iron_closure_target_mt", 0.0) or 0.0)
         for fuel in fuel_ash_inputs or []:
             if not fuel.enabled:
                 continue
-            wet_mt = float(fuel.rate_kg_per_thm) * hot_metal_for_fuel / 1000.0
-            dry_mt = wet_mt * (1.0 - float(fuel.moisture_pct) / 100.0)
+            fuel_usage = fuel_usage_by_id.get(fuel.fuel_id, {})
+            dry_mt = float(fuel_usage.get("dry_fuel_mt", 0.0) or 0.0)
+            if not fuel_usage:
+                rate_mt = float(fuel.rate_kg_per_thm) * hot_metal_for_fuel / 1000.0
+                dry_mt = (
+                    rate_mt
+                    if fuel.rate_basis == "dry"
+                    else rate_mt * (1.0 - float(fuel.moisture_pct) / 100.0)
+                )
             ash_mt = dry_mt * (float(fuel.ash_pct) / 100.0)
             tio2_mt = ash_mt * (float(fuel.tio2_pct) / 100.0)
             total_tio2 += tio2_mt
@@ -1506,9 +2083,7 @@ def render_slag_balance_details(
         fuel_ash_by_fuel = (
             blend.diagnostics.get("fuel_ash_contribution_mt_by_fuel", {}) or {}
         )
-        flux_by_flux = (
-            blend.diagnostics.get("flux_contribution_mt_by_flux", {}) or {}
-        )
+        flux_by_flux = blend.diagnostics.get("flux_contribution_mt_by_flux", {}) or {}
         if any(float(value or 0.0) > 0.0 for value in fuel_ash_by_fuel.values()):
             fuel_rows = [
                 {
@@ -1521,7 +2096,7 @@ def render_slag_balance_details(
             _safe_dataframe(
                 pd.DataFrame(fuel_rows),
                 hide_index=True,
-                width='stretch',
+                width="stretch",
             )
 
         if any(float(value or 0.0) > 0.0 for value in flux_by_flux.values()):
@@ -1531,9 +2106,7 @@ def render_slag_balance_details(
             flux_rows = [
                 {
                     "flux": str(flux_id).replace("_", " ").title(),
-                    "dry_quantity_mt": float(
-                        flux_dry_weights.get(flux_id, 0.0) or 0.0
-                    ),
+                    "dry_quantity_mt": float(flux_dry_weights.get(flux_id, 0.0) or 0.0),
                     "slag_contribution_mt": float(value or 0.0),
                 }
                 for flux_id, value in flux_by_flux.items()
@@ -1542,7 +2115,7 @@ def render_slag_balance_details(
             _safe_dataframe(
                 pd.DataFrame(flux_rows),
                 hide_index=True,
-                width='stretch',
+                width="stretch",
             )
 
         if slag_components:
@@ -1557,7 +2130,7 @@ def render_slag_balance_details(
             _safe_dataframe(
                 pd.DataFrame(component_rows),
                 hide_index=True,
-                width='stretch',
+                width="stretch",
             )
 
 

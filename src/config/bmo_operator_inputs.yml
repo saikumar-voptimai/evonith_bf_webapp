@@ -3,8 +3,8 @@ ore_editor:
   - sinter_sp_02
   - geomin_clo
   - lloyds_clo
-  - nmdc_donimalai
-  - gomti_clo
+  - nmdc_rom
+  - lloyds_pellet
   rows:
     sinter_sp_02:
       price_rs_per_mt: 7789.0
@@ -45,7 +45,7 @@ ore_editor:
     nmdc_rom:
       price_rs_per_mt: 8739.0
       min_share_pct: 0.0
-      max_share_pct: 30.0
+      max_share_pct: 20.0
     lloyds_oversize_clo:
       price_rs_per_mt: 6162.0
       min_share_pct: 0.0
@@ -56,7 +56,7 @@ ore_editor:
       max_share_pct: 10.0
     lloyds_pellet:
       price_rs_per_mt: 9650.0
-      min_share_pct: 0.0
+      min_share_pct: 10.0
       max_share_pct: 10.0
     sarda_pellet:
       price_rs_per_mt: 9650.0
@@ -76,3 +76,26 @@ flux_editor:
 model_inputs:
   target_slag_basicity_min: 1.05
   target_slag_basicity_max: 1.15
+  charge_mass_mt: 26.45927
+dust_editor:
+  rows:
+    bf_gas_dust:
+      enabled: true
+      rate_basis: kg_per_charge
+      wet_qty_mt: 0.0
+      quantity_kg_per_charge: 530.0
+      source: BF-2 Burden (2).xlsx/BURDEN
+      moisture_pct: 0.0
+      sio2_pct: 4.5
+      al2o3_pct: 4.86
+      cao_pct: 5.63
+      mgo_pct: 3.57
+      fe_pct: 33.5
+      mn_pct: 0.0
+      p_pct: 0.054
+      s_pct: 0.1
+      ti_pct: 0.0
+      zn_pct: 0.0
+      na2o_pct: 0.0
+      k2o_pct: 0.0
+      caf2_pct: 0.0

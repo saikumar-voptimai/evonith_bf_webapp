@@ -8,7 +8,10 @@ website_vars:
   api_url: "https://mcartalert.com/WebService/GeneralService.asmx/realtimedataVP"
   email_missing_vars: "True"
 
+# Published dataset is authoritative and is fetched at most once per hour.
+# DATA remains the local outage fallback used when the endpoint is unavailable.
 DATA: "src/assets/data/furnace_dataset.csv"
+DATA_URL: "http://125.23.100.62:8081/furnace_dataset.csv"
 
 influx_offline:
   database: bf2_evonith_offline_utc
@@ -725,6 +728,10 @@ rename_dict:
     "coke_mt": "COKE_CALC_MT"
     "coke_off_mt": "COKE_OFF_MT"
     "coke_on_mt": "COKE_ON_MT"
+    "coke_m40": "COKE_M-40"
+    "coke_m10": "COKE_M-10"
+    "coke_csr": "COKE_CSR"
+    "coke_cri": "COKE_CRI"
 
 
     "flux_tm_pct": "FLUX_TM%"
@@ -844,6 +851,10 @@ cleaning:
       - coke_fc_pct
       - coke_moist_pct
       - coke_mt
+      - coke_m40
+      - coke_m10
+      - coke_csr
+      - coke_cri
       - nutcoke_moist_pct
       - nutcoke_vm_pct
       - nutcoke_im_pct

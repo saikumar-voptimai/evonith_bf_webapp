@@ -383,6 +383,63 @@ def test_dataset_service_maps_fuel_moisture_to_moisture_and_im(monkeypatch) -> N
     assert float(df.iloc[0]["pci2_fc_pct"]) == 72.0
 
 
+def test_dataset_service_uses_latest_prior_coke_strength_sample(monkeypatch) -> None:
+    def fake_offline_fetch(table_name, time_range):
+        charge_time = pd.DatetimeIndex(["2026-01-02T00:00:00Z"], name="time")
+        if table_name == "offline_feed.charge_data":
+            return pd.DataFrame({"coke_1_mt": [4.0]}, index=charge_time)
+        if table_name == "offline_feed.raw_material_strength_analysis":
+            assert pd.Timestamp(time_range[0]) < pd.Timestamp("2026-01-01T00:00:00Z")
+            return pd.DataFrame(
+                {
+                    "material_code": ["coke_1"],
+                    "property_1": [81.2],
+                    "property_2": [6.1],
+                    "property_3": [24.8],
+                    "property_4": [65.4],
+                    "property_1_name": ["M-40"],
+                    "property_2_name": ["M-10"],
+                    "property_3_name": ["CRI"],
+                    "property_4_name": ["CSR"],
+                },
+                index=pd.DatetimeIndex(["2026-01-01T00:00:00Z"], name="time"),
+            )
+        if table_name == "offline_feed.v_charge_material_quantities":
+            return pd.DataFrame(
+                {
+                    "material_code": ["coke_1"],
+                    "quantity": [4.0],
+                    "source_column_name": ["coke_1_mt"],
+                },
+                index=charge_time,
+            )
+        if table_name in {
+            "offline_feed.ore_chemistry",
+            "offline_feed.sinter_chemistry",
+            "offline_feed.fuel_chemistry",
+            "offline_feed.flux_chemistry",
+        }:
+            return pd.DataFrame()
+        raise AssertionError(table_name)
+
+    monkeypatch.setattr(
+        "furnace_data.dataset.service.fetch_database_offline_data",
+        fake_offline_fetch,
+    )
+
+    df = DatasetService().fetch_rm_data(
+        start_date=date(2026, 1, 2),
+        end_date=date(2026, 1, 2),
+        mode="charge",
+    )
+
+    assert df.index.tolist() == [pd.Timestamp("2026-01-02 05:30:00")]
+    assert float(df.iloc[0]["coke_m40"]) == 81.2
+    assert float(df.iloc[0]["coke_m10"]) == 6.1
+    assert float(df.iloc[0]["coke_csr"]) == 65.4
+    assert float(df.iloc[0]["coke_cri"]) == 24.8
+
+
 def test_dataset_service_temperature_params_computes_hearth_average(monkeypatch) -> None:
     class FakeFetcher:
         def __init__(self, measurement):
@@ -518,6 +575,16 @@ def test_dataset_service_offline_rm_fetch_combines_charge_and_rm_hm(monkeypatch)
     assert float(df.iloc[0]["sinter_cold_strength_ti"]) == 79.0
     assert float(df.iloc[0]["sinter_hot_strength_ri"]) == 70.0
     assert float(df.iloc[0]["sinter_hot_strength_rdi"]) == 30.0
+    assert float(df.iloc[0]["coke_m40"]) == 77.0
+    assert float(df.iloc[0]["coke_m10"]) == 6.0
+    assert float(df.iloc[0]["coke_csr"]) == 64.0
+    assert float(df.iloc[0]["coke_cri"]) == 24.0
+
+    renamed = DatasetFetcher._clean_df(df, keep_unmapped=True)
+    assert float(renamed.iloc[0]["COKE_M-40"]) == 77.0
+    assert float(renamed.iloc[0]["COKE_M-10"]) == 6.0
+    assert float(renamed.iloc[0]["COKE_CSR"]) == 64.0
+    assert float(renamed.iloc[0]["COKE_CRI"]) == 24.0
 
 
 def test_dataset_service_offline_weighted_chemistry_uses_latest_before(monkeypatch) -> None:

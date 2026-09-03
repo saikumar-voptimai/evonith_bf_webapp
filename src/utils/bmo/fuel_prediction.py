@@ -8,16 +8,25 @@ same total-cost fields.
 
 from __future__ import annotations
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from utils.bmo.calculations import evaluate_blend
+from utils.bmo.coke_correction import (
+    CokeCorrectionReference,
+    CokeCorrectionSettings,
+    build_drivers,
+    compute_coke_correction,
+)
 from utils.bmo.feature_builder import PreBuiltFeatureContext, build_feature_payload
 from utils.bmo.fuel_rates import (
     ASSUMED_FUEL_PRICES_RS_PER_KG,
     estimate_fuel_rates_from_cost,
     estimate_fuel_rates_from_inputs,
+    with_coke_delta,
+    with_coke_rate,
 )
 from utils.bmo.types import (
     BlendEvaluation,
@@ -33,6 +42,25 @@ if TYPE_CHECKING:
 
 # Fuel-ash ``fuel_id`` -> re-price key used by ASSUMED_FUEL_PRICES_RS_PER_KG.
 _FUEL_ID_TO_PRICE_KEY = {"coke": "coke", "nut_coke": "nut_coke", "pci": "pci"}
+
+
+def _fuel_inputs_with_rates(
+    fuel_ash_inputs: list[FuelAshInput] | None, fuel_rates: Any
+) -> list[FuelAshInput]:
+    """Rebuild fuel chemistry rows with the exact rates used by the result."""
+
+    rates = {
+        "coke": float(fuel_rates.coke_rate_kg_thm),
+        "nut_coke": float(fuel_rates.nut_coke_rate_kg_thm),
+        "pci": float(fuel_rates.pci_rate_kg_thm),
+    }
+    return [
+        replace(
+            fuel,
+            rate_kg_per_thm=rates.get(str(fuel.fuel_id).lower(), fuel.rate_kg_per_thm),
+        )
+        for fuel in fuel_ash_inputs or []
+    ]
 
 
 def _current_fuel_prices_rs_per_kg(
@@ -56,6 +84,113 @@ def _current_fuel_prices_rs_per_kg(
     return prices
 
 
+def _rebase_fuel_cost_to_anchor(blend: BlendEvaluation, fuel_rates: Any) -> None:
+    """Make the blend's fuel cost agree with the fuel rates being reported.
+
+    Called only on the observed-anchor path. When the anchor is the model's own
+    cost residual the two are already the same number, so there is nothing to
+    reconcile; the manual blend is left alone entirely, since its cost is the
+    realised one and is not an optimizer input.
+
+    Priced at the model's baseline prices, because that is the basis the
+    optimizer minimises on and the basis the LP's linear correction term uses.
+    Both anchors are near-constant across blends, so swapping one for the other
+    shifts the reported cost level without changing which blend wins.
+    """
+
+    anchor_cost = (
+        fuel_rates.coke_rate_kg_thm * ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
+        + fuel_rates.nut_coke_rate_kg_thm * ASSUMED_FUEL_PRICES_RS_PER_KG["nut_coke"]
+        + fuel_rates.pci_rate_kg_thm * ASSUMED_FUEL_PRICES_RS_PER_KG["pci"]
+    )
+    rebase_delta = float(anchor_cost) - float(blend.fuel_cost_per_thm_rs)
+    if rebase_delta == 0.0:
+        return
+
+    blend.diagnostics["fuel_cost_per_thm_rs_model"] = float(blend.fuel_cost_per_thm_rs)
+    blend.diagnostics["fuel_cost_rebase_rs_per_thm"] = rebase_delta
+    blend.fuel_cost_per_thm_rs = float(blend.fuel_cost_per_thm_rs) + rebase_delta
+    # Ore cost is derived downstream as (objective - fuel), so both must move
+    # together to leave it intact.
+    blend.objective_rs_per_thm = float(blend.objective_rs_per_thm) + rebase_delta
+
+
+def _apply_coke_correction(
+    *,
+    blend: BlendEvaluation,
+    fuel_rates: Any,
+    ores: list[OreInput],
+    quantities_mt: Mapping[str, float],
+    flux_inputs: list[FluxInput] | None,
+    process_context: Mapping[str, Any] | None,
+    hot_metal_si_pct: float | None,
+    settings: CokeCorrectionSettings | None,
+    reference: CokeCorrectionReference | None,
+    fuel_rate_basis: str,
+) -> Any | None:
+    """Attach the physics coke-rate correction and return the corrected rates.
+
+    Returns ``None`` when nothing should change, so the caller keeps the
+    uncorrected rates untouched.
+
+    The correction is *always* computed and recorded when configured, even where
+    it is not applied. That is deliberate: the manual blend is the operator's
+    realised-cost reference, so its cost must stay as measured, but seeing a
+    large correction there is the clearest signal that the reference operating
+    point is mis-set.
+    """
+
+    if settings is None or not settings.enabled:
+        return None
+
+    drivers = build_drivers(
+        blend=blend,
+        ores=ores,
+        quantities_mt=quantities_mt,
+        flux_inputs=flux_inputs,
+        hot_metal_si_pct=hot_metal_si_pct,
+        process_context=process_context,
+    )
+    result = compute_coke_correction(
+        anchor_coke_rate_kg_thm=fuel_rates.coke_rate_kg_thm,
+        anchor_nut_coke_rate_kg_thm=fuel_rates.nut_coke_rate_kg_thm,
+        anchor_pci_rate_kg_thm=fuel_rates.pci_rate_kg_thm,
+        drivers=drivers,
+        reference=reference if reference is not None else CokeCorrectionReference(),
+        settings=settings,
+    )
+
+    is_manual_blend = fuel_rate_basis == "inputs"
+    apply = settings.apply_to_objective and (
+        settings.apply_to_manual_blend or not is_manual_blend
+    )
+
+    blend.diagnostics["coke_correction"] = result.to_dict()
+    blend.diagnostics["coke_correction_delta_kg_thm"] = float(
+        result.applied_delta_kg_thm
+    )
+    blend.diagnostics["coke_correction_applied"] = bool(apply)
+
+    if not apply or result.applied_delta_kg_thm == 0.0:
+        return None
+
+    # The optimizer minimises at the model's baseline prices, so the correction
+    # must be priced there too. Using the operator's current coke price here
+    # would make the LP's linear term and this path optimise different things.
+    cost_delta = (
+        float(result.applied_delta_kg_thm) * ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
+    )
+    blend.diagnostics["fuel_cost_per_thm_rs_uncorrected"] = float(
+        blend.fuel_cost_per_thm_rs
+    )
+    blend.fuel_cost_per_thm_rs = float(blend.fuel_cost_per_thm_rs) + cost_delta
+    # Ore cost is derived downstream as (objective - fuel), so both must move by
+    # the same amount to leave it intact.
+    blend.objective_rs_per_thm = float(blend.objective_rs_per_thm) + cost_delta
+
+    return with_coke_delta(fuel_rates, result.applied_delta_kg_thm)
+
+
 def evaluate_blend_with_fuel_prediction(
     *,
     ores: list[OreInput],
@@ -70,7 +205,14 @@ def evaluate_blend_with_fuel_prediction(
     slag_balance_settings: SlagBalanceSettings | None = None,
     prebuilt_context: PreBuiltFeatureContext | None = None,
     hot_metal_target_mt: float | None = None,
+    charge_mass_mt: float = 26.4,
     fuel_rate_basis: str = "model_cost",
+    fuel_rate_anchor_basis: str = "model_cost",
+    anchor_coke_rate_kg_thm: float | None = None,
+    coke_correction_settings: CokeCorrectionSettings | None = None,
+    coke_correction_reference: CokeCorrectionReference | None = None,
+    hot_metal_si_pct: float | None = None,
+    recompute_slag_with_corrected_fuel: bool = False,
 ) -> BlendEvaluation:
     """
     Evaluate a blend and attach the model-predicted fuel unit cost.
@@ -78,6 +220,21 @@ def evaluate_blend_with_fuel_prediction(
     LP optimization still decides quantities from ore economics and physical
     constraints. This helper is used after a quantity vector exists so LP and
     DE results can both show a comparable fuel-cost prediction.
+
+    The slag balance and the fuel estimate are two SEPARATE stages, and by
+    default the second does not feed back into the first:
+
+    1. Slag is computed from the blend plus the fuel-ash rates the operator
+       entered in the Fuel Ash table. That is the slag the LP constrained, and
+       it is what gets displayed.
+    2. The fuel estimate then predicts unit cost from the blend, back-solves a
+       coke rate against the table's prices, and applies the physics coke
+       correction. This is REPORTING only.
+
+    Letting stage 2 rewrite stage 1 is what made the displayed basicity differ
+    from the basicity the LP actually solved for. ``recompute_slag_with_corrected_fuel``
+    restores the old feedback and exists only for DE, whose objective genuinely
+    prices the corrected fuel and therefore needs slag on the same basis.
 
     Args:
          - ores: list[OreInput] - Ores included in the solved blend.
@@ -99,6 +256,31 @@ def evaluate_blend_with_fuel_prediction(
            PCI rates from the Fuel Ash table (seeded from the latest static
            dataset row), re-priced at current prices — the realised fuel cost.
            Either basis falls back to the other when its data is unavailable.
+         - fuel_rate_anchor_basis: str - What optimized blends anchor their fuel
+           rates to. ``"model_cost"`` (default) back-solves coke from the model's
+           predicted cost. ``"observed"`` uses the current plant rates from the
+           Fuel Ash table instead, and rebases the blend's fuel cost to match, so
+           the reported rate equals current operation before any correction is
+           applied. ``"energy_balance"`` uses ``anchor_coke_rate_kg_thm`` - the
+           closed energy balance solved at current controls, less the rolling
+           bias offset - and falls back to ``"observed"`` when that is absent.
+           Ignored when ``fuel_rate_basis="inputs"``, which already uses the
+           observed rates.
+         - anchor_coke_rate_kg_thm: float | None - Calibrated energy-balance coke
+           rate for the current operating point, from
+           ``utils.bmo.energy_anchor.solve_energy_anchor``. ONE value for the
+           whole run, identical for every candidate: it sets the level, while the
+           physics coke correction supplies the per-blend shape.
+         - coke_correction_settings: CokeCorrectionSettings | None - Physics
+           coke-rate correction settings. ``None`` disables it entirely, which
+           keeps every pre-existing caller byte-identical.
+         - coke_correction_reference: CokeCorrectionReference | None - The recent
+           observed operating point the correction is anchored to. Resolve it
+           once per run and pass the same frozen object to every candidate: that
+           is what keeps the DE objective a single consistent function instead of
+           one whose shape shifts as reference data comes and goes.
+         - hot_metal_si_pct: float | None - Predicted Si for this blend, used by
+           the correction's Si term.
 
     Returns:
          - return BlendEvaluation - Blend metrics with fuel prediction diagnostics.
@@ -119,19 +301,6 @@ def evaluate_blend_with_fuel_prediction(
             hot_metal_target_mt=hot_metal_target_mt,
         )
         prediction = model_service.predict(feature_payload, history_df)
-    blend = evaluate_blend(
-        ores=ores,
-        quantities_mt=quantities,
-        feo_in_slag_pct=feo_in_slag_pct,
-        fuel_cost_per_thm_rs=float(prediction.value),
-        fuel_ash_inputs=fuel_ash_inputs,
-        flux_inputs=flux_inputs,
-        dust_inputs=dust_inputs,
-        slag_balance_settings=slag_balance_settings,
-        hot_metal_target_mt=hot_metal_target_mt,
-    )
-    blend.diagnostics["model_prediction"] = prediction
-    blend.diagnostics["feature_details"] = prediction.details
     # Rate basis differs by blend kind (see docstring): manual blends show the
     # realised cost from actual current rates; optimized blends convert the
     # ML-predicted cost so the display stays blend-sensitive.
@@ -143,21 +312,168 @@ def evaluate_blend_with_fuel_prediction(
                 fuel_cost_per_thm_rs=float(prediction.value),
                 process_context=process_context,
                 history_df=history_df,
+                fuel_ash_inputs=fuel_ash_inputs,
+            )
+            fuel_rate_source = "model_cost_residual"
+    elif fuel_rate_anchor_basis == "energy_balance" and anchor_coke_rate_kg_thm:
+        # The energy balance solved at the CURRENT controls and burden, less the
+        # rolling bias offset. This sets the LEVEL the fuel cost sits on; blend
+        # sensitivity still comes from the physics correction applied below, so
+        # the two do not double-count. Nut coke and PCI stay as the operator set
+        # them - the balance solves for coke and coke alone.
+        observed = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
+        if observed is None:
+            observed = estimate_fuel_rates_from_cost(
+                fuel_cost_per_thm_rs=float(prediction.value),
+                process_context=process_context,
+                history_df=history_df,
+                fuel_ash_inputs=fuel_ash_inputs,
+            )
+        if observed is None:
+            fuel_rates = None
+            fuel_rate_source = "energy_balance_unavailable"
+        else:
+            fuel_rates = with_coke_rate(observed, float(anchor_coke_rate_kg_thm))
+            fuel_rate_source = "energy_balance_anchor"
+    elif fuel_rate_anchor_basis == "observed" or (
+        fuel_rate_anchor_basis == "energy_balance" and not anchor_coke_rate_kg_thm
+    ):
+        # Anchor on what the furnace is actually running rather than on the
+        # model's residual. The model's cost output is very nearly a constant
+        # (~13,364 Rs/THM), so back-solving coke from it pins the reported total
+        # fuel rate to roughly 487 + 0.357 x PCI regardless of what the plant is
+        # doing, and every recommendation inherits that offset. Anchoring on the
+        # observed rates makes the reported rate equal current operation at the
+        # reference point, which is what the correction's delta assumes.
+        fuel_rates = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
+        fuel_rate_source = "observed_fuel_ash_inputs"
+        if fuel_rates is None:
+            fuel_rates = estimate_fuel_rates_from_cost(
+                fuel_cost_per_thm_rs=float(prediction.value),
+                process_context=process_context,
+                history_df=history_df,
+                fuel_ash_inputs=fuel_ash_inputs,
             )
             fuel_rate_source = "model_cost_residual"
     else:
+        # ``fuel_ash_inputs`` pins nut coke + PCI to the operator's visible run
+        # inputs so only coke is back-solved from the predicted cost. Without
+        # them the decomposition re-derived nut coke from history and reported
+        # ~30 kg/THM against the plant's 70 kg/THM, which also threw the coke
+        # residual (and so the re-priced fuel cost) off by the difference.
         fuel_rates = estimate_fuel_rates_from_cost(
             fuel_cost_per_thm_rs=float(prediction.value),
             process_context=process_context,
             history_df=history_df,
+            fuel_ash_inputs=fuel_ash_inputs,
         )
         fuel_rate_source = "model_cost_residual"
         if fuel_rates is None:
             fuel_rates = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
             fuel_rate_source = "fuel_ash_inputs"
+
+    # Which fuel rates generate the ash in THIS blend's slag balance.
+    #
+    # Default: the operator's Fuel Ash rows, untouched. Those are the rates the
+    # LP built its slag / basicity / T-basicity / Al2O3 / MgO rows against, so
+    # using anything else here means the displayed slag is not the slag that was
+    # constrained. Substituting the back-solved coke rate (~296 kg/THM against a
+    # table 312.67) shifted B2 by about +0.011 and T basicity by +0.012, which is
+    # enough on its own to push a blend that the LP placed exactly on a 1.150
+    # ceiling out to 1.151, and a T basicity on 1.364 out to 1.376.
+    #
+    # DE opts into the substitution because its objective prices the back-solved
+    # and corrected fuel, so its slag has to be on that same basis.
+    preliminary_fuel_inputs = list(fuel_ash_inputs or [])
+    if recompute_slag_with_corrected_fuel and fuel_rates is not None:
+        preliminary_fuel_inputs = _fuel_inputs_with_rates(fuel_ash_inputs, fuel_rates)
+    blend = evaluate_blend(
+        ores=ores,
+        quantities_mt=quantities,
+        feo_in_slag_pct=feo_in_slag_pct,
+        fuel_cost_per_thm_rs=float(prediction.value),
+        fuel_ash_inputs=preliminary_fuel_inputs,
+        flux_inputs=flux_inputs,
+        dust_inputs=dust_inputs,
+        slag_balance_settings=slag_balance_settings,
+        hot_metal_target_mt=hot_metal_target_mt,
+        charge_mass_mt=charge_mass_mt,
+    )
+
+    if fuel_rates is not None and fuel_rate_source in (
+        "observed_fuel_ash_inputs",
+        "energy_balance_anchor",
+    ):
+        _rebase_fuel_cost_to_anchor(blend, fuel_rates)
+
     if fuel_rates is not None:
-        blend.diagnostics["fuel_rate_estimate"] = fuel_rates.to_dict()
+        # Keep the uncorrected rates alongside the corrected ones. Operators
+        # compare the two directly, and a correction is only trustworthy if the
+        # number it replaced is still on screen.
+        blend.diagnostics["fuel_rate_estimate_anchor"] = fuel_rates.to_dict()
         blend.diagnostics["fuel_rate_estimate_source"] = fuel_rate_source
+
+        correction = _apply_coke_correction(
+            blend=blend,
+            fuel_rates=fuel_rates,
+            ores=ores,
+            quantities_mt=quantities,
+            flux_inputs=flux_inputs,
+            process_context=process_context,
+            hot_metal_si_pct=hot_metal_si_pct,
+            settings=coke_correction_settings,
+            reference=coke_correction_reference,
+            fuel_rate_basis=fuel_rate_basis,
+        )
+        if correction is not None:
+            fuel_rates = correction
+
+        # Stage 2 does NOT rewrite stage 1.
+        #
+        # The slag on ``blend`` was computed from the operator's Fuel Ash rates,
+        # and that is the slag the LP placed its rate / basicity / T-basicity /
+        # Al2O3 / MgO rows against. Re-running the balance here with the
+        # back-solved and physics-corrected coke rate moved every one of those
+        # ratios after the fact, so the page showed a basicity the LP had never
+        # agreed to (measured: up to ~0.04 on B2, ~0.05 on T-basicity).
+        #
+        # The corrected rates are reported instead, on the untouched blend.
+        # DE opts back into the feedback because its objective prices the
+        # corrected fuel, so it needs slag on that same basis.
+        carried_diagnostics = dict(blend.diagnostics)
+        if recompute_slag_with_corrected_fuel:
+            final_fuel_inputs = _fuel_inputs_with_rates(fuel_ash_inputs, fuel_rates)
+            final_blend = evaluate_blend(
+                ores=ores,
+                quantities_mt=quantities,
+                feo_in_slag_pct=feo_in_slag_pct,
+                fuel_cost_per_thm_rs=float(blend.fuel_cost_per_thm_rs),
+                fuel_ash_inputs=final_fuel_inputs,
+                flux_inputs=flux_inputs,
+                dust_inputs=dust_inputs,
+                slag_balance_settings=slag_balance_settings,
+                hot_metal_target_mt=hot_metal_target_mt,
+                charge_mass_mt=charge_mass_mt,
+            )
+            for key in (
+                "fuel_cost_per_thm_rs_model",
+                "fuel_cost_rebase_rs_per_thm",
+                "fuel_cost_per_thm_rs_uncorrected",
+                "coke_correction",
+                "coke_correction_delta_kg_thm",
+                "coke_correction_applied",
+            ):
+                if key in carried_diagnostics:
+                    final_blend.diagnostics[key] = carried_diagnostics[key]
+            blend = final_blend
+        blend.diagnostics["slag_recomputed_with_corrected_fuel"] = bool(
+            recompute_slag_with_corrected_fuel
+        )
+        blend.diagnostics["fuel_rate_estimate_anchor"] = carried_diagnostics[
+            "fuel_rate_estimate_anchor"
+        ]
+        blend.diagnostics["fuel_rate_estimate_source"] = fuel_rate_source
+        blend.diagnostics["fuel_rate_estimate"] = fuel_rates.to_dict()
         # Re-price physical fuel rates at the operator's current prices. Prefer
         # the Fuel Ash editor rates; only reverse-solve from model cost when
         # those run inputs are unavailable. Stored in diagnostics only (display
@@ -175,4 +491,6 @@ def evaluate_blend_with_fuel_prediction(
             ore_cost + adjusted_fuel_cost
         )
         blend.diagnostics["current_fuel_prices_rs_per_kg"] = current_prices
+    blend.diagnostics["model_prediction"] = prediction
+    blend.diagnostics["feature_details"] = prediction.details
     return blend

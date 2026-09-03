@@ -1,4 +1,4 @@
-"""Background refresh for the local static ML dataset cache."""
+"""Hourly background refresh for the published furnace-dataset fallback."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-REFRESH_THRESHOLD_HOURS: int = 6
-OFFLINE_LAG_DAYS: int = 2       # offline DB data has a ~24-48 h ingestion lag
+REFRESH_THRESHOLD_HOURS: int = 1
+OFFLINE_LAG_DAYS: int = 2  # offline DB data has a ~24-48 h ingestion lag
 
 _lock = threading.Lock()
 _refreshing: bool = False
@@ -28,7 +28,8 @@ def maybe_refresh(config: dict, rm_choice: str = "Full") -> bool:
     from data.ml.static_dataset_manager import StaticDatasetManager
 
     static_path = get_static_dataset_path(config.get("DATA"))
-    meta = StaticDatasetManager(static_path).get_meta()
+    remote_url = str(config.get("DATA_URL", "") or "").strip() or None
+    meta = StaticDatasetManager(static_path, remote_url=remote_url).get_meta()
 
     if not _is_stale(meta):
         return False
@@ -44,7 +45,7 @@ def maybe_refresh(config: dict, rm_choice: str = "Full") -> bool:
     )
     threading.Thread(
         target=_do_refresh,
-        args=(static_path, rm_choice),
+        args=(static_path, rm_choice, remote_url),
         name="dataset-refresher",
         daemon=True,
     ).start()
@@ -79,12 +80,14 @@ def _is_stale(meta) -> bool:
     return False
 
 
-def _do_refresh(static_path: Path, rm_choice: str) -> None:
+def _do_refresh(
+    static_path: Path, rm_choice: str, remote_url: str | None = None
+) -> None:
     global _refreshing, _dataset_version
     try:
         from data.ml.static_dataset_manager import StaticDatasetManager
 
-        manager = StaticDatasetManager(static_path)
+        manager = StaticDatasetManager(static_path, remote_url=remote_url)
         df = manager.update_static(rm_choice=rm_choice)
         if df.empty:
             log.warning("Static dataset refresh returned no rows; skipping save")

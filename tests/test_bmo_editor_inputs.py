@@ -51,6 +51,8 @@ class TestFuelAshInputsFromEditor:
                     "fuel_name": "Coke",
                     "enabled": True,
                     "rate_kg_per_thm": 340.0,
+                    "moisture_pct": 0.4,
+                    "vm_pct": 0.9,
                     "ash_pct": 11.5,
                     "sio2_pct": 55.0,
                 },
@@ -63,10 +65,36 @@ class TestFuelAshInputsFromEditor:
         assert coke.fuel_id == "coke"
         assert coke.display_name == "Coke"
         assert coke.rate_kg_per_thm == 340.0
+        assert coke.moisture_pct == 0.4
+        assert coke.vm_pct == 0.9
         assert coke.ash_pct == 11.5
         assert coke.sio2_pct == 55.0
         # Unspecified chemistry columns default to 0.0 via float_from_row.
         assert coke.cao_pct == 0.0
+
+    def test_converts_elemental_mn_ti_once_and_keeps_rate_basis(self):
+        df = pd.DataFrame(
+            [
+                {
+                    "fuel_id": "nut_coke",
+                    "rate_kg_per_thm": 76.437,
+                    "rate_basis": "wet",
+                    "mn_basis": "mn",
+                    "mno_pct": 0.02,
+                    "ti_basis": "ti",
+                    "tio2_pct": 1.598,
+                    "alkali_pct": 2.0,
+                    "chemistry_source": "BF-2 Burden (2).xlsx/BURDEN",
+                }
+            ]
+        )
+
+        fuel = fuel_ash_inputs_from_editor(df)[0]
+        assert fuel.rate_basis == "wet"
+        assert fuel.mno_pct == pytest.approx(0.02 / 0.774461846)
+        assert fuel.tio2_pct == pytest.approx(1.598 / 0.599341397)
+        assert fuel.alkali_pct == pytest.approx(2.0)
+        assert fuel.chemistry_source == "BF-2 Burden (2).xlsx/BURDEN"
 
 
 class TestFluxInputsFromEditor:
@@ -108,6 +136,23 @@ class TestDustInputsFromEditor:
         assert out[0].dust_id == "bf_gas_dust"
         assert out[0].display_name == "BF Gas Dust"
         assert out[0].wet_qty_mt == 5.0
+
+    def test_builds_kg_per_charge_dust_with_source(self):
+        df = pd.DataFrame(
+            [
+                {
+                    "dust_id": "bf_gas_dust",
+                    "rate_basis": "kg_per_charge",
+                    "quantity_kg_per_charge": 530.0,
+                    "source": "BF-2 Burden (2).xlsx/BURDEN",
+                }
+            ]
+        )
+
+        dust = dust_inputs_from_editor(df)[0]
+        assert dust.rate_basis == "kg_per_charge"
+        assert dust.quantity_kg_per_charge == pytest.approx(530.0)
+        assert dust.source == "BF-2 Burden (2).xlsx/BURDEN"
 
 
 class TestSlagBalanceSettingsFromEditor:

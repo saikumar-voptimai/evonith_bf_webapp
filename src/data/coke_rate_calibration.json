@@ -1,0 +1,11 @@
+{
+  "offset_kg_per_thm": 24.473969952984373,
+  "sample_days": 88,
+  "residual_sd_kg_per_thm": 10.407077447450252,
+  "window_days": 90,
+  "fitted_on": "2026-08-23",
+  "first_day": "2026-05-05",
+  "last_day": "2026-08-21",
+  "outliers_dropped": 2,
+  "notes": []
+}

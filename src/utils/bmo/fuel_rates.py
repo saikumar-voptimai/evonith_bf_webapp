@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 import pandas as pd
@@ -67,6 +67,14 @@ _PRODUCTION_KEYS = (
     "PRODUCTIONTONNESPERHR.",
     "production_tonnes_per_hr",
 )
+
+# Hours aggregated when nut coke has to be derived from charged mass. The last
+# row of the history frame is the *current* hour, which holds only the charges
+# recorded so far (e.g. 3.2 MT of a normal ~6.8 MT/hour). Dividing that partial
+# mass by a full hour of production produced a nut coke rate of ~30 kg/THM
+# instead of the plant's ~70 kg/THM. Summing mass and production over a full day
+# makes the derived rate insensitive to where in the hour the page is opened.
+_NUT_COKE_DERIVE_WINDOW_HOURS = 24
 _FUEL_INPUT_ID_TO_RATE_KEY = {
     "coke": "coke",
     "coke_1": "coke",
@@ -78,14 +86,14 @@ _FUEL_INPUT_ID_TO_RATE_KEY = {
 }
 
 
-def estimate_fuel_rates_from_inputs(
+def _rates_from_fuel_ash_inputs(
     fuel_ash_inputs: Sequence[Any] | None,
-) -> EstimatedFuelRates | None:
-    """Return physical fuel rates from the operator Fuel Ash table.
+) -> dict[str, float]:
+    """Return ``{fuel key: rate kg/THM}`` for the Fuel Ash editor rows present.
 
-    The Fuel Ash editor is the visible run input for coke, nut coke, and PCI
-    rates. When those rows are present, display re-pricing should use them
-    directly instead of reverse-solving coke from the model's predicted cost.
+    Disabled rows report a zero rate (the fuel is not charged); rows that are
+    missing entirely are simply absent from the result so callers can decide
+    what to fall back to.
     """
 
     input_rates: dict[str, float] = {}
@@ -101,6 +109,20 @@ def estimate_fuel_rates_from_inputs(
         if not bool(getattr(fuel, "enabled", True)):
             rate = 0.0
         input_rates[key] = max(0.0, float(rate))
+    return input_rates
+
+
+def estimate_fuel_rates_from_inputs(
+    fuel_ash_inputs: Sequence[Any] | None,
+) -> EstimatedFuelRates | None:
+    """Return physical fuel rates from the operator Fuel Ash table.
+
+    The Fuel Ash editor is the visible run input for coke, nut coke, and PCI
+    rates. When those rows are present, display re-pricing should use them
+    directly instead of reverse-solving coke from the model's predicted cost.
+    """
+
+    input_rates = _rates_from_fuel_ash_inputs(fuel_ash_inputs)
 
     if not {"coke", "nut_coke", "pci"}.issubset(input_rates):
         return None
@@ -122,11 +144,74 @@ def estimate_fuel_rates_from_inputs(
     )
 
 
+def with_coke_delta(
+    rates: EstimatedFuelRates, delta_kg_thm: float
+) -> EstimatedFuelRates:
+    """Return ``rates`` with a coke-rate delta applied and totals kept in step.
+
+    Only regular coke moves: nut coke and PCI are operator-set run inputs, so a
+    physics correction to the furnace's coke demand lands entirely on the
+    residual fuel. Recomputing both totals here rather than at the call site
+    keeps ``total_coke_rate_kg_thm`` and ``total_fuel_rate_kg_thm`` from drifting
+    out of agreement with the coke rate they are meant to summarise.
+
+    Args:
+         - rates: EstimatedFuelRates - Uncorrected fuel rates.
+         - delta_kg_thm: float - Coke-rate delta in kg/THM, may be negative.
+
+    Returns:
+         - return EstimatedFuelRates - Rates with the delta applied.
+    """
+
+    delta = _to_float(delta_kg_thm) or 0.0
+    coke_rate = max(0.0, float(rates.coke_rate_kg_thm) + delta)
+    nut_rate = float(rates.nut_coke_rate_kg_thm)
+    pci_rate = float(rates.pci_rate_kg_thm)
+
+    return replace(
+        rates,
+        coke_rate_kg_thm=coke_rate,
+        total_coke_rate_kg_thm=coke_rate + nut_rate,
+        total_fuel_rate_kg_thm=coke_rate + nut_rate + pci_rate,
+    )
+
+
+def with_coke_rate(
+    rates: EstimatedFuelRates, coke_rate_kg_thm: float
+) -> EstimatedFuelRates:
+    """Return ``rates`` with the coke rate REPLACED and both totals kept in step.
+
+    The sibling of ``with_coke_delta``, for the case where the caller knows the
+    coke rate outright rather than a change to it - the energy-balance anchor,
+    which solves for coke directly. Nut coke and PCI are untouched for the same
+    reason as there: they are operator-set run inputs, not furnace demand.
+
+    Args:
+         - rates: EstimatedFuelRates - Rates whose coke figure is to be replaced.
+         - coke_rate_kg_thm: float - The coke rate to adopt, kg/THM.
+
+    Returns:
+         - return EstimatedFuelRates - Rates on the new coke level.
+    """
+
+    coke_rate = max(0.0, float(_to_float(coke_rate_kg_thm) or 0.0))
+    nut_rate = float(rates.nut_coke_rate_kg_thm)
+    pci_rate = float(rates.pci_rate_kg_thm)
+
+    return replace(
+        rates,
+        coke_rate_kg_thm=coke_rate,
+        total_coke_rate_kg_thm=coke_rate + nut_rate,
+        total_fuel_rate_kg_thm=coke_rate + nut_rate + pci_rate,
+    )
+
+
 def estimate_fuel_rates_from_cost(
     *,
     fuel_cost_per_thm_rs: float,
     process_context: Mapping[str, Any] | None = None,
     history_df: pd.DataFrame | None = None,
+    fuel_ash_inputs: Sequence[Any] | None = None,
     pci_price_rs_per_kg: float = ASSUMED_FUEL_PRICES_RS_PER_KG["pci"],
     coke_price_rs_per_kg: float = ASSUMED_FUEL_PRICES_RS_PER_KG["coke"],
     nut_coke_price_rs_per_kg: float = ASSUMED_FUEL_PRICES_RS_PER_KG["nut_coke"],
@@ -136,10 +221,17 @@ def estimate_fuel_rates_from_cost(
 
     The model cost is decomposed as
     ``cost = coke_rate*coke_price + nut_rate*nut_price + pci_rate*pci_price``.
-    Nut coke rate is fixed from recent context (fallback 70 kg/THM) and PCI rate
-    from the most recent process value, so coke rate is the residual. The prices
-    should be the ones the model's cost target was built with (see
+    Nut coke and PCI are pinned to their current operating rates so coke rate is
+    the residual, which is what makes the decomposition blend-sensitive. The
+    prices should be the ones the model's cost target was built with (see
     ``ASSUMED_FUEL_PRICES_RS_PER_KG``) so the recovered rates are physical.
+
+    Nut coke and PCI are taken from ``fuel_ash_inputs`` — the Fuel Ash editor
+    rows, which are the operator-visible run inputs seeded from the live plant
+    tags (nut coke reads a constant 70 kg/THM). Only when a row is absent does
+    the rate fall back to recent process context / history. Re-deriving them
+    from history here instead would silently disagree with the rates the
+    operator can see and edit on the page.
     """
 
     input_rates = get_recent_fuel_input_rates(
@@ -147,13 +239,21 @@ def estimate_fuel_rates_from_cost(
         history_df=history_df,
         nut_coke_fallback_kg_thm=nut_coke_fallback_kg_thm,
     )
-    pci_rate = input_rates.get("pci_rate_kg_thm")
-    pci_source = str(input_rates.get("pci_source", ""))
+    editor_rates = _rates_from_fuel_ash_inputs(fuel_ash_inputs)
+
+    pci_rate = editor_rates.get("pci")
+    pci_source = "fuel_ash_inputs.pci.rate_kg_per_thm"
+    if pci_rate is None:
+        pci_rate = input_rates.get("pci_rate_kg_thm")
+        pci_source = str(input_rates.get("pci_source", ""))
     if pci_rate is None:
         return None
 
-    nut_rate = float(input_rates["nut_coke_rate_kg_thm"])
-    nut_source = str(input_rates.get("nut_coke_source", ""))
+    nut_rate = editor_rates.get("nut_coke")
+    nut_source = "fuel_ash_inputs.nut_coke.rate_kg_per_thm"
+    if nut_rate is None:
+        nut_rate = float(input_rates["nut_coke_rate_kg_thm"])
+        nut_source = str(input_rates.get("nut_coke_source", ""))
 
     coke_rate = (
         float(fuel_cost_per_thm_rs)
@@ -261,6 +361,18 @@ def _derive_nut_coke_rate(
     process_context: Mapping[str, Any] | None,
     history_df: pd.DataFrame | None,
 ) -> tuple[float | None, str]:
+    """Derive nut coke kg/THM from charged mass when no rate field exists.
+
+    Aggregated over ``_NUT_COKE_DERIVE_WINDOW_HOURS`` of history rather than
+    read off the newest row: the newest row is the current, still-accumulating
+    hour, so a single-row ratio understates the rate by however much of the hour
+    has not elapsed yet.
+    """
+
+    windowed = _derive_nut_coke_rate_from_window(history_df)
+    if windowed[0] is not None:
+        return windowed
+
     nut_mt, nut_source = _pick_recent_value(
         _NUT_COKE_MT_KEYS,
         process_context=process_context,
@@ -280,6 +392,55 @@ def _derive_nut_coke_rate(
     return (float(nut_mt) * 1000.0 / float(production)), (
         f"derived:{nut_source}/{production_source}"
     )
+
+
+def _derive_nut_coke_rate_from_window(
+    history_df: pd.DataFrame | None,
+    window_hours: int = _NUT_COKE_DERIVE_WINDOW_HOURS,
+) -> tuple[float | None, str]:
+    """Nut coke kg/THM as ``sum(charged MT) / sum(production)`` over recent hours.
+
+    Both series are hourly, so summing them before dividing gives the mass-
+    weighted rate for the window and dilutes the incomplete final hour to a
+    fraction of the total instead of letting it set the whole answer.
+    """
+
+    if history_df is None or history_df.empty:
+        return None, ""
+    nut_column = _first_present_column(history_df, _NUT_COKE_MT_KEYS)
+    production_column = _first_present_column(history_df, _PRODUCTION_KEYS)
+    if nut_column is None or production_column is None:
+        return None, ""
+
+    frame = pd.DataFrame(
+        {
+            "nut_mt": pd.to_numeric(history_df[nut_column], errors="coerce"),
+            "production": pd.to_numeric(history_df[production_column], errors="coerce"),
+        }
+    ).dropna()
+    # Hours with no production (or no charge recorded) carry no information
+    # about the rate and would only bias the ratio.
+    frame = frame[(frame["nut_mt"] > 0.0) & (frame["production"] > 0.0)]
+    if frame.empty:
+        return None, ""
+
+    frame = frame.tail(max(1, int(window_hours)))
+    nut_total = float(frame["nut_mt"].sum())
+    production_total = float(frame["production"].sum())
+    if production_total <= 0.0:
+        return None, ""
+    return (nut_total * 1000.0 / production_total), (
+        f"derived_{len(frame)}h:history.{nut_column}/history.{production_column}"
+    )
+
+
+def _first_present_column(
+    history_df: pd.DataFrame, keys: tuple[str, ...]
+) -> str | None:
+    for key in keys:
+        if key in history_df.columns:
+            return key
+    return None
 
 
 def _pick_from_history(

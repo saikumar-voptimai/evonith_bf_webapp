@@ -7,9 +7,11 @@ contribution, final Fe percent, slag rate, and Rs/THM economics for BMO results.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from math import isfinite
+from typing import Mapping
 
-from utils.bmo.slag_balance import calculate_full_slag_balance
+from utils.bmo.slag_balance import calculate_full_slag_balance, fuel_quantities_mt
 from utils.bmo.types import (
     BlendEvaluation,
     DustInput,
@@ -275,11 +277,8 @@ def compute_fuel_ash_slag_factor_per_thm(
     for fuel in fuel_ash_inputs or []:
         if not fuel.enabled:
             continue
-        wet_fuel_per_thm_mt = compute_fuel_wet_weight_mt(
-            fuel.rate_kg_per_thm, hot_metal_mt=1.0
-        )
-        dry_fuel_per_thm_mt = wet_fuel_per_thm_mt * compute_dry_fraction(
-            fuel.moisture_pct
+        _wet_fuel_per_thm_mt, dry_fuel_per_thm_mt = fuel_quantities_mt(
+            fuel, hot_metal_mt=1.0
         )
         ash_mt_per_thm = dry_fuel_per_thm_mt * (_safe_pct(fuel.ash_pct) / 100.0)
         ash_oxide_pct = compute_slag_forming_oxides_pct(
@@ -288,7 +287,7 @@ def compute_fuel_ash_slag_factor_per_thm(
             cao_pct=fuel.cao_pct,
             mgo_pct=fuel.mgo_pct,
             tio2_pct=fuel.tio2_pct,
-            mno_pct=0.0,
+            mno_pct=fuel.mno_pct,
             na2o_pct=fuel.na2o_pct,
             k2o_pct=fuel.k2o_pct,
         )
@@ -320,10 +319,7 @@ def compute_fuel_ash_slag_contributions_mt(
         if not fuel.enabled:
             contributions[fuel.fuel_id] = 0.0
             continue
-        wet_fuel_mt = compute_fuel_wet_weight_mt(
-            fuel.rate_kg_per_thm, hot_metal_mt=hot_metal_mt
-        )
-        dry_fuel_mt = compute_dry_weight_mt(wet_fuel_mt, fuel.moisture_pct)
+        _wet_fuel_mt, dry_fuel_mt = fuel_quantities_mt(fuel, hot_metal_mt)
         ash_mt = dry_fuel_mt * (_safe_pct(fuel.ash_pct) / 100.0)
         ash_oxide_pct = compute_slag_forming_oxides_pct(
             sio2_pct=fuel.sio2_pct,
@@ -331,7 +327,7 @@ def compute_fuel_ash_slag_contributions_mt(
             cao_pct=fuel.cao_pct,
             mgo_pct=fuel.mgo_pct,
             tio2_pct=fuel.tio2_pct,
-            mno_pct=0.0,
+            mno_pct=fuel.mno_pct,
             na2o_pct=fuel.na2o_pct,
             k2o_pct=fuel.k2o_pct,
         )
@@ -474,6 +470,304 @@ def _weighted_avg(ores: list[OreInput], weights: dict[str, float], attr: str) ->
     return acc
 
 
+def compute_charge_count(
+    quantities_mt: Mapping[str, float],
+    *,
+    flux_inputs: list[FluxInput] | None,
+    fuel_ash_inputs: list[FuelAshInput] | None,
+    hot_metal_mt: float,
+    charge_mass_mt: float,
+) -> float:
+    """Return burden charges on the same wet charge-mix basis used by the UI."""
+
+    ore_wet_mt = sum(max(0.0, float(value or 0.0)) for value in quantities_mt.values())
+    flux_wet_mt = sum(
+        max(0.0, float(flux.wet_qty_mt or 0.0))
+        for flux in flux_inputs or []
+        if flux.enabled
+    )
+    nut_coke_wet_mt = 0.0
+    for fuel in fuel_ash_inputs or []:
+        if fuel.enabled and str(fuel.fuel_id).strip().lower() == "nut_coke":
+            wet_mt, _dry_mt = fuel_quantities_mt(fuel, hot_metal_mt)
+            nut_coke_wet_mt += wet_mt
+    charge_mass = max(0.0, float(charge_mass_mt or 0.0))
+    if charge_mass <= 0.0:
+        return 0.0
+    return float((ore_wet_mt + flux_wet_mt + nut_coke_wet_mt) / charge_mass)
+
+
+def resolve_dust_inputs(
+    dust_inputs: list[DustInput] | None, *, charge_count: float
+) -> tuple[list[DustInput], list[dict[str, float | str | bool]]]:
+    """Resolve dust kg/charge and MT/day onto one wet-tonnage ledger."""
+
+    resolved: list[DustInput] = []
+    diagnostics: list[dict[str, float | str | bool]] = []
+    charges = max(0.0, float(charge_count or 0.0))
+    for dust in dust_inputs or []:
+        basis = str(getattr(dust, "rate_basis", "mt_per_day") or "mt_per_day")
+        basis = basis.strip().lower()
+        configured_mt = max(0.0, float(dust.wet_qty_mt or 0.0))
+        configured_kg_charge = max(
+            0.0, float(getattr(dust, "quantity_kg_per_charge", 0.0) or 0.0)
+        )
+        if basis == "kg_per_charge":
+            wet_qty_mt = configured_kg_charge * charges / 1000.0
+            kg_per_charge = configured_kg_charge
+        else:
+            wet_qty_mt = configured_mt
+            kg_per_charge = wet_qty_mt * 1000.0 / charges if charges > 0.0 else 0.0
+        resolved_dust = replace(dust, wet_qty_mt=wet_qty_mt)
+        resolved.append(resolved_dust)
+        diagnostics.append(
+            {
+                "dust_id": dust.dust_id,
+                "display_name": dust.display_name,
+                "enabled": bool(dust.enabled),
+                "rate_basis": basis,
+                "wet_qty_mt": float(wet_qty_mt),
+                "kg_per_charge": float(kg_per_charge),
+                "charge_count": float(charges),
+                "source": str(getattr(dust, "source", "default") or "default"),
+                "moisture_pct": float(dust.moisture_pct),
+                "sio2_pct": float(dust.sio2_pct),
+                "al2o3_pct": float(dust.al2o3_pct),
+                "cao_pct": float(dust.cao_pct),
+                "mgo_pct": float(dust.mgo_pct),
+                "fe_pct": float(dust.fe_pct),
+                "mn_pct": float(dust.mn_pct),
+                "p_pct": float(dust.p_pct),
+                "s_pct": float(dust.s_pct),
+                "ti_pct": float(dust.ti_pct),
+            }
+        )
+    return resolved, diagnostics
+
+
+def scale_ore_quantities_to_hot_metal(
+    *,
+    ores: list[OreInput],
+    reference_quantities_mt: Mapping[str, float],
+    target_hot_metal_mt: float,
+    fuel_ash_inputs: list[FuelAshInput] | None,
+    flux_inputs: list[FluxInput] | None,
+    dust_inputs: list[DustInput] | None,
+    slag_balance_settings: SlagBalanceSettings | None,
+    charge_mass_mt: float = 26.4,
+) -> dict[str, float]:
+    """Scale an ore mix with the complete Fe/pig-iron closure.
+
+    The old scaler equated ore Fe directly to target HM Fe.  This secant solve
+    instead sizes the ore vector until the full ledger's actual pig iron equals
+    the target, so fuel-ash Fe, flux Fe, dust Fe, residual FeO, and PI loss all
+    participate in the closure.
+    """
+
+    reference = {
+        ore.ore_id: max(0.0, float(reference_quantities_mt.get(ore.ore_id, 0.0)))
+        for ore in ores
+    }
+    reference_total = sum(reference.values())
+    target = max(0.0, float(target_hot_metal_mt or 0.0))
+    settings = slag_balance_settings
+    if (
+        reference_total <= 0.0
+        or target <= 0.0
+        or settings is None
+        or not settings.enabled
+    ):
+        return reference
+
+    shares = {ore_id: qty / reference_total for ore_id, qty in reference.items()}
+
+    def _actual_pi(total_wet_mt: float) -> float:
+        quantities = {ore_id: share * total_wet_mt for ore_id, share in shares.items()}
+        charges = compute_charge_count(
+            quantities,
+            flux_inputs=flux_inputs,
+            fuel_ash_inputs=fuel_ash_inputs,
+            hot_metal_mt=target,
+            charge_mass_mt=charge_mass_mt,
+        )
+        resolved_dust, _dust_diag = resolve_dust_inputs(
+            dust_inputs, charge_count=charges
+        )
+        result = calculate_full_slag_balance(
+            ores=ores,
+            quantities_mt=quantities,
+            hot_metal_mt=target,
+            settings=settings,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=resolved_dust,
+        )
+        return float(result.actual_pig_iron_mt)
+
+    # Start close to the old Fe-only answer, then use a local secant.  Around a
+    # physical burden the component ledger is linear; the short iteration also
+    # remains safe if a zero clamp changes branch far from the solution.
+    total = reference_total
+    for _ in range(4):
+        actual = _actual_pi(total)
+        step = max(1.0, total * 0.01)
+        slope = (_actual_pi(total + step) - actual) / step
+        if slope <= 0.0 or not isfinite(slope):
+            break
+        updated = max(0.0, total + (target - actual) / slope)
+        if abs(updated - total) <= 1e-8 * max(1.0, total):
+            total = updated
+            break
+        total = updated
+    return {ore_id: float(share * total) for ore_id, share in shares.items()}
+
+
+def compute_charging_requirements(
+    blend: BlendEvaluation,
+    *,
+    charge_mass_mt: float = 26.4,
+    hours_per_day: float = 24.0,
+) -> dict[str, float | None]:
+    """Calculate fuel quantities and charging rates for a solved blend.
+
+    The charging system carries wet IBRM, wet flux, and nut coke. Nut coke is
+    stored as a base kg/THM rate. Its wet daily tonnes add moisture as
+    ``(rate * hot_metal) * (1 + moisture / 100) / 1000``. Required charges per
+    hour are:
+
+    ``(IBRM + flux + nut coke) / hours_per_day / charge_mass_mt``.
+
+    Coke and PCI tonnes use the same kg/THM-to-MT conversion. Chemical hot metal
+    per charge is the full material-balance pig iron divided by the number of
+    daily charges.
+
+    Args:
+         - blend: BlendEvaluation - Evaluated LP, DE, or manual blend.
+         - charge_mass_mt: float - Tonnes carried by one furnace charge.
+         - hours_per_day: float - Charging hours represented by the blend target.
+
+    Returns:
+         - return dict[str, float | None] - Flux kg/THM, fuel tonnes, total
+           charge-mix tonnes, tonnes/hour, required charges/hour, and chemical
+           hot metal per charge. Rate-dependent results are ``None`` when unavailable.
+    """
+
+    diagnostics = blend.diagnostics or {}
+    hot_metal_mt = float(diagnostics.get("hot_metal_target_mt", 0.0) or 0.0)
+    flux_mt = max(0.0, float(diagnostics.get("total_flux_wet_qty_mt", 0.0) or 0.0))
+    burden_mt = max(
+        0.0,
+        float(diagnostics.get("total_burden_qty_mt", blend.total_qty_mt) or 0.0),
+    )
+    flux_rate_kg_thm = flux_mt * 1000.0 / hot_metal_mt if hot_metal_mt > 0.0 else None
+
+    fuel_rates = diagnostics.get("fuel_rate_estimate") or {}
+
+    def _nonnegative_rate(key: str) -> float | None:
+        raw_value = fuel_rates.get(key) if isinstance(fuel_rates, dict) else None
+        try:
+            return max(0.0, float(raw_value)) if raw_value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    coke_rate_kg_thm = _nonnegative_rate("coke_rate_kg_thm")
+    nut_coke_rate_kg_thm = _nonnegative_rate("nut_coke_rate_kg_thm")
+    pci_rate_kg_thm = _nonnegative_rate("pci_rate_kg_thm")
+
+    coke_total_mt: float | None = None
+    nut_coke_total_mt: float | None = None
+    pci_total_mt: float | None = None
+    total_charge_mix_mt: float | None = None
+    charge_mix_mt_per_hour: float | None = None
+    required_charges_per_hour: float | None = None
+    chemical_hot_metal_per_charge_mt: float | None = None
+    fuel_usage = {
+        str(row.get("fuel_id", "")): row
+        for row in diagnostics.get("fuel_usage", []) or []
+        if isinstance(row, dict)
+    }
+
+    nut_coke_row = fuel_usage.get("nut_coke")
+    nut_coke_moisture_pct = 0.0
+    nut_coke_add_moisture = False
+    if nut_coke_row is not None:
+        nut_coke_add_moisture = bool(
+            nut_coke_row.get("add_moisture_to_rate", False)
+        )
+        try:
+            nut_coke_moisture_pct = min(
+                100.0,
+                max(0.0, float(nut_coke_row.get("moisture_pct", 0.0) or 0.0)),
+            )
+        except (TypeError, ValueError):
+            nut_coke_moisture_pct = 0.0
+        if nut_coke_rate_kg_thm is None:
+            try:
+                nut_coke_rate_kg_thm = max(
+                    0.0, float(nut_coke_row.get("rate_kg_per_thm"))
+                )
+            except (TypeError, ValueError):
+                nut_coke_rate_kg_thm = None
+    nut_coke_added_moisture_pct = (
+        nut_coke_moisture_pct if nut_coke_add_moisture else 0.0
+    )
+
+    def _wet_total(fuel_id: str, rate: float | None) -> float | None:
+        row = fuel_usage.get(fuel_id)
+        if row is not None:
+            try:
+                return max(0.0, float(row.get("wet_fuel_mt", 0.0) or 0.0))
+            except (TypeError, ValueError):
+                pass
+        if rate is not None and hot_metal_mt > 0.0:
+            return rate * hot_metal_mt / 1000.0
+        return None
+
+    coke_total_mt = _wet_total("coke", coke_rate_kg_thm)
+    pci_total_mt = _wet_total("pci", pci_rate_kg_thm)
+    nut_coke_total_mt = _wet_total("nut_coke", nut_coke_rate_kg_thm)
+    if nut_coke_total_mt is not None and hot_metal_mt > 0.0:
+        total_charge_mix_mt = burden_mt + nut_coke_total_mt
+        if float(hours_per_day) > 0.0:
+            charge_mix_mt_per_hour = total_charge_mix_mt / float(hours_per_day)
+            if float(charge_mass_mt) > 0.0:
+                required_charges_per_hour = charge_mix_mt_per_hour / float(
+                    charge_mass_mt
+                )
+                if required_charges_per_hour > 0.0:
+                    charge_count = required_charges_per_hour * float(hours_per_day)
+                    full_balance = diagnostics.get("full_slag_balance", {}) or {}
+                    chemical_hot_metal_mt = float(
+                        full_balance.get("actual_pig_iron_mt", 0.0) or 0.0
+                    )
+                    if chemical_hot_metal_mt > 0.0:
+                        chemical_hot_metal_per_charge_mt = (
+                            chemical_hot_metal_mt / charge_count
+                        )
+
+    return {
+        "total_flux_wet_qty_mt": float(flux_mt),
+        "flux_rate_kg_per_thm": flux_rate_kg_thm,
+        "total_burden_qty_mt": float(burden_mt),
+        "coke_rate_kg_per_thm": coke_rate_kg_thm,
+        "coke_total_mt": coke_total_mt,
+        "nut_coke_rate_kg_per_thm": nut_coke_rate_kg_thm,
+        "nut_coke_moisture_pct": nut_coke_added_moisture_pct,
+        "nut_coke_wet_rate_kg_per_thm": (
+            nut_coke_rate_kg_thm * (1.0 + nut_coke_added_moisture_pct / 100.0)
+            if nut_coke_rate_kg_thm is not None
+            else None
+        ),
+        "nut_coke_total_mt": nut_coke_total_mt,
+        "pci_rate_kg_per_thm": pci_rate_kg_thm,
+        "pci_total_mt": pci_total_mt,
+        "total_charge_mix_mt": total_charge_mix_mt,
+        "charge_mix_mt_per_hour": charge_mix_mt_per_hour,
+        "required_charges_per_hour": required_charges_per_hour,
+        "chemical_hot_metal_per_charge_mt": chemical_hot_metal_per_charge_mt,
+    }
+
+
 def compute_effective_fe_pct(
     fe_t_pct: float, feo_pct: float, feo_in_slag_pct: float
 ) -> float:
@@ -506,6 +800,7 @@ def evaluate_blend(
     dust_inputs: list[DustInput] | None = None,
     slag_balance_settings: SlagBalanceSettings | None = None,
     hot_metal_target_mt: float | None = None,
+    charge_mass_mt: float = 26.4,
 ) -> BlendEvaluation:
     """
     Evaluate one BMO blend using dry-weight Fe calculation.
@@ -532,6 +827,7 @@ def evaluate_blend(
          - dust_inputs: list[DustInput] | None - BF gas dust rows deducted from balance.
          - slag_balance_settings: SlagBalanceSettings | None - Full balance settings.
          - hot_metal_target_mt: float | None - Operator-entered HM basis for Rs/THM and kg/THM.
+         - charge_mass_mt: float - Wet ore + flux + nut-coke mass represented by one charge.
 
     Returns:
          - return BlendEvaluation - Blend cost, chemistry, production, and diagnostics.
@@ -607,20 +903,60 @@ def evaluate_blend(
     fuel_ash_slag_mt = float(sum(fuel_ash_contribution_mt_by_fuel.values()))
     flux_contribution_mt_by_flux = compute_flux_slag_contributions_mt(flux_inputs)
     flux_slag_mt = float(sum(flux_contribution_mt_by_flux.values()))
+    total_flux_wet_qty_mt = float(
+        sum(
+            max(0.0, float(flux.wet_qty_mt or 0.0))
+            for flux in flux_inputs or []
+            if flux.enabled
+        )
+    )
+    charge_count = compute_charge_count(
+        quantities_mt,
+        flux_inputs=flux_inputs,
+        fuel_ash_inputs=fuel_ash_inputs,
+        hot_metal_mt=hm_basis_mt,
+        charge_mass_mt=charge_mass_mt,
+    )
+    resolved_dust_inputs, dust_usage = resolve_dust_inputs(
+        dust_inputs, charge_count=charge_count
+    )
+    fuel_usage = []
+    for fuel in fuel_ash_inputs or []:
+        if fuel.enabled:
+            wet_fuel_mt, dry_fuel_mt = fuel_quantities_mt(fuel, hm_basis_mt)
+        else:
+            wet_fuel_mt, dry_fuel_mt = 0.0, 0.0
+        fuel_usage.append(
+            {
+                "fuel_id": fuel.fuel_id,
+                "display_name": fuel.display_name,
+                "enabled": bool(fuel.enabled),
+                "rate_kg_per_thm": float(fuel.rate_kg_per_thm),
+                "rate_basis": str(fuel.rate_basis),
+                "add_moisture_to_rate": bool(fuel.add_moisture_to_rate),
+                "moisture_pct": float(fuel.moisture_pct),
+                "wet_fuel_mt": float(wet_fuel_mt),
+                "dry_fuel_mt": float(dry_fuel_mt),
+                "chemistry_source": str(fuel.chemistry_source),
+            }
+        )
     basicity_cao_mt = total_dry_qty_mt * (_safe_pct(cao_pct) / 100.0)
     basicity_mgo_mt = total_dry_qty_mt * (_safe_pct(mgo_pct) / 100.0)
     basicity_sio2_mt = total_dry_qty_mt * (_safe_pct(sio2_pct) / 100.0)
+    # Al2O3 is inert: none of it is reduced or volatilised, so every tonne
+    # charged reports to slag. It is tracked alongside the basicity components
+    # because the slag-quality limits (Al2O3 cap, MgO floor, MgO/Al2O3 floor)
+    # need its mass on exactly the same basis.
+    slag_al2o3_mt = total_dry_qty_mt * (_safe_pct(al2o3_pct) / 100.0)
     for fuel in fuel_ash_inputs or []:
         if not fuel.enabled:
             continue
-        wet_fuel_mt = compute_fuel_wet_weight_mt(
-            fuel.rate_kg_per_thm, hot_metal_mt=hm_basis_mt
-        )
-        dry_fuel_mt = compute_dry_weight_mt(wet_fuel_mt, fuel.moisture_pct)
+        _wet_fuel_mt, dry_fuel_mt = fuel_quantities_mt(fuel, hm_basis_mt)
         ash_mt = dry_fuel_mt * (_safe_pct(fuel.ash_pct) / 100.0)
         basicity_cao_mt += ash_mt * (_safe_pct(fuel.cao_pct) / 100.0)
         basicity_mgo_mt += ash_mt * (_safe_pct(fuel.mgo_pct) / 100.0)
         basicity_sio2_mt += ash_mt * (_safe_pct(fuel.sio2_pct) / 100.0)
+        slag_al2o3_mt += ash_mt * (_safe_pct(fuel.al2o3_pct) / 100.0)
     for flux in flux_inputs or []:
         if not flux.enabled:
             continue
@@ -628,6 +964,7 @@ def evaluate_blend(
         basicity_cao_mt += dry_flux_mt * (_safe_pct(flux.cao_pct) / 100.0)
         basicity_mgo_mt += dry_flux_mt * (_safe_pct(flux.mgo_pct) / 100.0)
         basicity_sio2_mt += dry_flux_mt * (_safe_pct(flux.sio2_pct) / 100.0)
+        slag_al2o3_mt += dry_flux_mt * (_safe_pct(flux.al2o3_pct) / 100.0)
     slag_basicity_source = "simplified_ore_fuel_flux"
     simplified_slag_mt = ore_slag_mt + fuel_ash_slag_mt + flux_slag_mt
     slag_mt = simplified_slag_mt
@@ -640,17 +977,31 @@ def evaluate_blend(
             settings=slag_balance_settings,
             fuel_ash_inputs=fuel_ash_inputs,
             flux_inputs=flux_inputs,
-            dust_inputs=dust_inputs,
+            dust_inputs=resolved_dust_inputs,
         )
         slag_mt = full_slag_balance.total_slag_mt
         slag_components = full_slag_balance.slag_components_mt
         basicity_cao_mt = float(slag_components.get("cao", 0.0))
         basicity_mgo_mt = float(slag_components.get("mgo", 0.0))
         basicity_sio2_mt = float(slag_components.get("sio2", 0.0))
+        slag_al2o3_mt = float(slag_components.get("al2o3", 0.0))
         slag_basicity_source = "full_slag_balance"
     slag_basicity = compute_slag_basicity(basicity_cao_mt, basicity_sio2_mt)
     slag_t_basicity = compute_slag_basicity(
         basicity_cao_mt + basicity_mgo_mt, basicity_sio2_mt
+    )
+    slag_ib4 = compute_slag_basicity(
+        basicity_cao_mt + basicity_mgo_mt,
+        basicity_sio2_mt + slag_al2o3_mt,
+    )
+    # Percentages of FINAL slag, so they are directly comparable to the plant's
+    # own slag analysis. The ratio is deliberately taken on masses rather than on
+    # the two percentages: it is then independent of total slag mass, and stays
+    # meaningful even if the slag total is uncertain.
+    slag_al2o3_pct = (slag_al2o3_mt / slag_mt) * 100.0 if slag_mt > 0.0 else 0.0
+    slag_mgo_pct = (basicity_mgo_mt / slag_mt) * 100.0 if slag_mt > 0.0 else 0.0
+    slag_mgo_al2o3_ratio = (
+        basicity_mgo_mt / slag_al2o3_mt if slag_al2o3_mt > 0.0 else 0.0
     )
     slag_source_correction_factor = 1.0
     if full_slag_balance is not None:
@@ -698,8 +1049,15 @@ def evaluate_blend(
         tio2_unaccounted_mt = float(fb_diag.get("tio2_unaccounted_mt", 0.0))
     if total_dry_qty_mt > 0:
         slag_pct = (slag_mt / total_dry_qty_mt) * 100.0
+    slag_rate_denominator_mt = hm_basis_mt
+    slag_rate_denominator = "hot_metal_target_mt"
+    if full_slag_balance is not None and full_slag_balance.actual_pig_iron_mt > 0.0:
+        slag_rate_denominator_mt = float(full_slag_balance.actual_pig_iron_mt)
+        slag_rate_denominator = "full_slag_balance.actual_pig_iron_mt"
     slag_rate_kg_per_thm = (
-        (slag_mt / hm_basis_mt) * 1000.0 if hm_basis_mt > 0 else 0.0
+        (slag_mt / slag_rate_denominator_mt) * 1000.0
+        if slag_rate_denominator_mt > 0
+        else 0.0
     )
 
     ore_cost_total_rs = 0.0
@@ -732,9 +1090,22 @@ def evaluate_blend(
         slag_rate_kg_per_thm=float(slag_rate_kg_per_thm),
         slag_basicity=float(slag_basicity),
         slag_t_basicity=float(slag_t_basicity),
+        slag_ib4=float(slag_ib4),
+        slag_al2o3_pct=float(slag_al2o3_pct),
+        slag_mgo_pct=float(slag_mgo_pct),
+        slag_mgo_al2o3_ratio=float(slag_mgo_al2o3_ratio),
         diagnostics={
             "formula": "dry_weight_fe_and_ore_fuel_ash_flux_slag",
             "total_dry_qty_mt": float(total_dry_qty_mt),
+            # Wet tonnes actually going through the charging system: IBRM plus
+            # flux, whether that flux is a fixed addition or one the optimizer
+            # bought. This is what the charging-throughput cap applies to.
+            "total_flux_wet_qty_mt": float(total_flux_wet_qty_mt),
+            "total_burden_qty_mt": float(total_qty_mt + total_flux_wet_qty_mt),
+            "charge_mass_mt": float(charge_mass_mt),
+            "charge_count": float(charge_count),
+            "dust_usage": dust_usage,
+            "fuel_usage": fuel_usage,
             "dry_weight_mt_by_ore": {
                 ore_id: float(value) for ore_id, value in dry_quantities_mt.items()
             },
@@ -815,18 +1186,43 @@ def evaluate_blend(
                 else {}
             ),
             "slag_rate_kg_per_thm": float(slag_rate_kg_per_thm),
-            "slag_rate_denominator_mt": float(hm_basis_mt),
-            "slag_rate_denominator": "hot_metal_target_mt",
+            "slag_rate_denominator_mt": float(slag_rate_denominator_mt),
+            "slag_rate_denominator": slag_rate_denominator,
             "hot_metal_target_mt": float(hm_basis_mt),
+            "iron_closure_production_mt": float(
+                full_slag_balance.actual_pig_iron_mt
+                if full_slag_balance is not None
+                else fe_production_mt
+            ),
+            "iron_closure_target_mt": float(
+                hm_basis_mt if full_slag_balance is not None else fe_production_mt
+            ),
+            "iron_closure_basis": (
+                "actual_pig_iron" if full_slag_balance is not None else "ore_fe"
+            ),
             "slag_basicity": float(slag_basicity),
             "slag_t_basicity": float(slag_t_basicity),
+            "slag_ib4": float(slag_ib4),
             "slag_basicity_numerator_mt": float(basicity_cao_mt),
             "slag_basicity_denominator_mt": float(basicity_sio2_mt),
             "slag_t_basicity_numerator_mt": float(basicity_cao_mt + basicity_mgo_mt),
             "slag_t_basicity_denominator_mt": float(basicity_sio2_mt),
+            "slag_ib4_numerator_mt": float(basicity_cao_mt + basicity_mgo_mt),
+            "slag_ib4_denominator_mt": float(basicity_sio2_mt + slag_al2o3_mt),
             "slag_basicity_cao_mt": float(basicity_cao_mt),
             "slag_basicity_mgo_mt": float(basicity_mgo_mt),
             "slag_basicity_sio2_mt": float(basicity_sio2_mt),
+            # Slag-quality limits. The Al2O3 cap and MgO floor are ratios against
+            # total slag, so they are validated with slag_mt as the denominator;
+            # the MgO/Al2O3 floor uses the Al2O3 mass instead.
+            "slag_al2o3_mt": float(slag_al2o3_mt),
+            "slag_mgo_mt": float(basicity_mgo_mt),
+            "slag_al2o3_pct": float(slag_al2o3_pct),
+            "slag_mgo_pct": float(slag_mgo_pct),
+            "slag_mgo_al2o3_ratio": float(slag_mgo_al2o3_ratio),
+            "slag_chemistry_denominator_mt": float(slag_mt),
+            "slag_mgo_al2o3_denominator_mt": float(slag_al2o3_mt),
+            "slag_chemistry_source": str(slag_basicity_source),
             "slag_basicity_source": slag_basicity_source,
         },
     )

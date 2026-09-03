@@ -10,6 +10,36 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# Element mass fractions in the corresponding oxides.  These constants match
+# the plant workbook and are also used by the editor ingestion layer so an
+# elemental Mn/Ti analysis is converted exactly once before entering the
+# calculation ledger.
+MN_IN_MNO_FRACTION = 0.774461846
+TI_IN_TIO2_FRACTION = 0.599341397
+
+
+def oxide_pct_from_basis(value_pct: float, basis: str, *, element: str) -> float:
+    """Return a canonical oxide percentage from an elemental-or-oxide input."""
+
+    try:
+        value = max(0.0, float(value_pct or 0.0))
+    except (TypeError, ValueError):
+        value = 0.0
+    normalized = str(basis or "").strip().lower().replace("_", "")
+    if element == "mn":
+        return (
+            value / MN_IN_MNO_FRACTION
+            if normalized in {"mn", "elemental", "elementalmn"}
+            else value
+        )
+    if element == "ti":
+        return (
+            value / TI_IN_TIO2_FRACTION
+            if normalized in {"ti", "elemental", "elementalti"}
+            else value
+        )
+    raise ValueError(f"Unsupported chemistry element: {element}")
+
 
 @dataclass
 class OreChemistry:
@@ -105,16 +135,22 @@ class FuelAshInput:
          - fuel_id: str - Stable fuel identifier used in diagnostics.
          - display_name: str - Human-readable fuel name shown in the UI.
          - enabled: bool - Whether this fuel should contribute ash to slag.
-         - rate_kg_per_thm: float - Wet fuel rate in kg per THM.
+         - rate_kg_per_thm: float - Fuel rate in kg per THM on ``rate_basis``.
+         - rate_basis: str - ``wet`` or ``dry``; controls the one moisture conversion.
+         - add_moisture_to_rate: bool - Whether the kg/THM value is a base
+           nut-coke quantity to which moisture must be added.
          - price_rs_per_mt: float - Operator's current fuel price in Rs per MT (Rs/tonne).
-         - moisture_pct: float - Fuel moisture percentage.
+         - moisture_pct: float - Fuel TM for coke/nut coke, or IM for PCI.
+         - vm_pct: float - Volatile-matter (VM) percentage used by ash analysis.
          - ash_pct: float - Ash percentage in the fuel.
          - sio2_pct: float - SiO2 percentage inside the ash.
          - al2o3_pct: float - Al2O3 percentage inside the ash.
          - cao_pct: float - CaO percentage inside the ash.
          - mgo_pct: float - MgO percentage inside the ash.
          - fe2o3_pct: float - Fe2O3 percentage inside the ash for diagnostics.
+         - mno_pct: float - Canonical MnO percentage inside the ash.
          - tio2_pct: float - TiO2 percentage inside the ash.
+         - alkali_pct: float - Total alkali percentage inside ash, when reported.
          - na2o_pct: float - Na2O percentage inside the ash.
          - k2o_pct: float - K2O percentage inside the ash.
          - s_pct: float - Sulphur percentage on dry fuel basis.
@@ -128,19 +164,25 @@ class FuelAshInput:
     display_name: str
     enabled: bool = True
     rate_kg_per_thm: float = 0.0
+    rate_basis: str = "wet"
+    add_moisture_to_rate: bool = False
     price_rs_per_mt: float = 0.0
     moisture_pct: float = 0.0
+    vm_pct: float = 0.0
     ash_pct: float = 0.0
     sio2_pct: float = 0.0
     al2o3_pct: float = 0.0
     cao_pct: float = 0.0
     mgo_pct: float = 0.0
     fe2o3_pct: float = 0.0
+    mno_pct: float = 0.0
     tio2_pct: float = 0.0
+    alkali_pct: float = 0.0
     na2o_pct: float = 0.0
     k2o_pct: float = 0.0
     s_pct: float = 0.0
     p_pct: float = 0.0
+    chemistry_source: str = "default"
 
 
 @dataclass
@@ -220,7 +262,11 @@ class DustInput:
          - dust_id: str - Stable dust identifier used in diagnostics.
          - display_name: str - Human-readable dust name shown in the UI.
          - enabled: bool - Whether this dust row should be deducted.
-         - wet_qty_mt: float - Wet dust quantity in MT.
+         - wet_qty_mt: float - Wet dust quantity in MT/day when basis is ``mt_per_day``.
+         - quantity_kg_per_charge: float - Wet dust kg/charge when basis is
+           ``kg_per_charge``.
+         - rate_basis: str - ``mt_per_day`` or ``kg_per_charge``.
+         - source: str - Provenance shown to the operator.
          - moisture_pct: float - Dust moisture percentage.
          - sio2_pct: float - SiO2 percentage on dry dust basis.
          - al2o3_pct: float - Al2O3 percentage on dry dust basis.
@@ -244,6 +290,9 @@ class DustInput:
     display_name: str
     enabled: bool = True
     wet_qty_mt: float = 0.0
+    quantity_kg_per_charge: float = 0.0
+    rate_basis: str = "mt_per_day"
+    source: str = "default"
     moisture_pct: float = 0.0
     sio2_pct: float = 0.0
     al2o3_pct: float = 0.0
@@ -373,6 +422,12 @@ class BlendEvaluation:
          - slag_rate_kg_per_thm: float - Slag rate against the app's THM denominator.
          - slag_basicity: float - Slag basicity, CaO / SiO2.
          - slag_t_basicity: float - Total slag basicity, (CaO + MgO) / SiO2.
+         - slag_ib4: float - IB4, (CaO + MgO) / (SiO2 + Al2O3).
+         - slag_al2o3_pct: float - Al2O3 percentage of final slag.
+         - slag_mgo_pct: float - MgO percentage of final slag.
+         - slag_mgo_al2o3_ratio: float - MgO / Al2O3 mass ratio in final slag. Unlike
+           the two percentages this is scale-free: it does not move when total slag
+           mass changes, so it is purely a burden-selection quantity.
          - diagnostics: dict[str, Any] - Additional calculation and solver details.
 
     Returns:
@@ -396,6 +451,10 @@ class BlendEvaluation:
     slag_rate_kg_per_thm: float = 0.0
     slag_basicity: float = 0.0
     slag_t_basicity: float = 0.0
+    slag_ib4: float = 0.0
+    slag_al2o3_pct: float = 0.0
+    slag_mgo_pct: float = 0.0
+    slag_mgo_al2o3_ratio: float = 0.0
     diagnostics: dict[str, Any] = field(default_factory=dict)
 
 

@@ -15,6 +15,10 @@ import numpy as np
 import pandas as pd
 
 from domain.optimization_runtime import ObjectiveResult
+from utils.bmo.coke_correction import (
+    CokeCorrectionReference,
+    CokeCorrectionSettings,
+)
 from utils.bmo.constraints import check_blend_constraints
 from utils.bmo.feature_builder import PreBuiltFeatureContext
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
@@ -26,6 +30,7 @@ from utils.bmo.types import (
     OreInput,
     SlagBalanceSettings,
 )
+
 
 class BmoObjectiveEvaluator:
     """
@@ -40,6 +45,8 @@ class BmoObjectiveEvaluator:
          - target_production_mt: float - Target hot-metal production in MT.
          - target_slag_qty_mt: float - Maximum allowed slag quantity in MT.
          - feo_in_slag_pct: float - FeO percentage assumed to report into slag.
+         - max_burden_qty_mt: float | None - Charging-throughput ceiling on total wet
+           IBRM + flux in MT. ``None`` leaves the burden quantity unbounded.
          - model_service: FuelUnitCostModelService - Fuel-cost prediction service.
          - process_context: dict[str, float] | None - Latest process variables.
          - history_df: pd.DataFrame | None - Historical process data for lagged features.
@@ -68,6 +75,10 @@ class BmoObjectiveEvaluator:
         target_slag_basicity_max: float | None = None,
         target_slag_t_basicity_min: float | None = None,
         target_slag_t_basicity_max: float | None = None,
+        target_slag_al2o3_max_pct: float | None = None,
+        target_slag_mgo_min_pct: float | None = None,
+        target_slag_mgo_al2o3_ratio_min: float | None = None,
+        max_burden_qty_mt: float | None = None,
         fuel_ash_inputs: list[FuelAshInput] | None = None,
         flux_inputs: list[FluxInput] | None = None,
         dust_inputs: list[DustInput] | None = None,
@@ -75,6 +86,12 @@ class BmoObjectiveEvaluator:
         prebuilt_context: PreBuiltFeatureContext | None = None,
         hot_metal_target_mt: float | None = None,
         fe_tolerance_mt: float = 0.5,
+        coke_correction_settings: CokeCorrectionSettings | None = None,
+        coke_correction_reference: CokeCorrectionReference | None = None,
+        hot_metal_si_pct: float | None = None,
+        fuel_rate_anchor_basis: str = "model_cost",
+        anchor_coke_rate_kg_thm: float | None = None,
+        charge_mass_mt: float = 26.4,
     ) -> None:
         """
         Store optimizer inputs and precompute array forms of bounds.
@@ -115,10 +132,39 @@ class BmoObjectiveEvaluator:
             if target_slag_basicity_max is not None
             else None
         )
-        # T-basicity is a display KPI only. Keep the constructor parameters for
-        # compatibility with older callers, but do not penalize or validate it.
-        self.target_slag_t_basicity_min = None
-        self.target_slag_t_basicity_max = None
+        self.target_slag_t_basicity_min = (
+            float(target_slag_t_basicity_min)
+            if target_slag_t_basicity_min is not None
+            else None
+        )
+        self.target_slag_t_basicity_max = (
+            float(target_slag_t_basicity_max)
+            if target_slag_t_basicity_max is not None
+            else None
+        )
+        # Slag-quality limits. DE penalises these rather than rejecting outright,
+        # so an over-constrained problem still returns a best-effort blend with
+        # its violations named instead of an empty result pane.
+        self.target_slag_al2o3_max_pct = (
+            float(target_slag_al2o3_max_pct)
+            if target_slag_al2o3_max_pct is not None
+            else None
+        )
+        self.target_slag_mgo_min_pct = (
+            float(target_slag_mgo_min_pct)
+            if target_slag_mgo_min_pct is not None
+            else None
+        )
+        self.target_slag_mgo_al2o3_ratio_min = (
+            float(target_slag_mgo_al2o3_ratio_min)
+            if target_slag_mgo_al2o3_ratio_min is not None
+            else None
+        )
+        self.max_burden_qty_mt = (
+            float(max_burden_qty_mt)
+            if max_burden_qty_mt is not None and float(max_burden_qty_mt) > 0.0
+            else None
+        )
         self.model_service = model_service
         self.process_context = process_context or {}
         self.history_df = history_df
@@ -139,6 +185,23 @@ class BmoObjectiveEvaluator:
         self.n_flux = len(self.variable_fluxes)
         self.dust_inputs = dust_inputs
         self.slag_balance_settings = slag_balance_settings
+        # Both are resolved once, before the search starts, and held frozen for
+        # every candidate. That is what makes the corrected objective a single
+        # consistent function: a term whose reference could not be resolved is
+        # off for the whole run rather than flickering between iterations, so
+        # the search never chases a moving cost surface.
+        self.coke_correction_settings = coke_correction_settings
+        self.coke_correction_reference = coke_correction_reference
+        # Constant across candidates by design. The Si model is blend-flat, and
+        # calling it per candidate would cost thousands of XGBoost inferences to
+        # move the objective by a fraction of a kg/THM; a constant offset does
+        # not distort the search at all.
+        self.hot_metal_si_pct = hot_metal_si_pct
+        # The chosen anchor is propagated into the final fuel-ash ledger, so the
+        # objective and the displayed slag use the same physical fuel rates.
+        self.fuel_rate_anchor_basis = fuel_rate_anchor_basis
+        self.anchor_coke_rate_kg_thm = anchor_coke_rate_kg_thm
+        self.charge_mass_mt = float(charge_mass_mt)
         self.penalty_cfg = penalty_cfg
         self.prebuilt_context = prebuilt_context
         self.hot_metal_target_mt = hot_metal_target_mt
@@ -190,7 +253,11 @@ class BmoObjectiveEvaluator:
             for j, flux in enumerate(self.variable_fluxes)
         ]
 
+        # DE prices the CORRECTED fuel in its objective, so its slag has to be on
+        # the corrected-fuel basis too. The page's LP path deliberately does not
+        # do this - see ``evaluate_blend_with_fuel_prediction``.
         blend = evaluate_blend_with_fuel_prediction(
+            recompute_slag_with_corrected_fuel=True,
             ores=self.ores,
             quantities_mt=quantities,
             feo_in_slag_pct=self.feo_in_slag_pct,
@@ -203,6 +270,12 @@ class BmoObjectiveEvaluator:
             slag_balance_settings=self.slag_balance_settings,
             prebuilt_context=self.prebuilt_context,
             hot_metal_target_mt=self.hot_metal_target_mt,
+            coke_correction_settings=self.coke_correction_settings,
+            coke_correction_reference=self.coke_correction_reference,
+            hot_metal_si_pct=self.hot_metal_si_pct,
+            fuel_rate_anchor_basis=self.fuel_rate_anchor_basis,
+            anchor_coke_rate_kg_thm=self.anchor_coke_rate_kg_thm,
+            charge_mass_mt=self.charge_mass_mt,
         )
         # Flux cost per THM keeps DE from over-dosing flux (it costs money, like ore).
         thm_basis = float(self.hot_metal_target_mt or blend.fe_production_mt or 0.0)
@@ -228,8 +301,15 @@ class BmoObjectiveEvaluator:
             self.penalty_cfg.get("penalty_production_excess", penalty_fe)
         )
         penalty_slag = float(self.penalty_cfg.get("penalty_slag", 3000.0))
+        penalty_burden = float(self.penalty_cfg.get("penalty_burden", penalty_slag))
         penalty_basicity = float(
             self.penalty_cfg.get("penalty_basicity", penalty_slag * 100.0)
+        )
+        # Per percentage POINT of Al2O3 / MgO deviation, so it defaults an order of
+        # magnitude below penalty_basicity while still dominating the ~13,000
+        # Rs/THM objective for any violation worth caring about.
+        penalty_slag_chemistry = float(
+            self.penalty_cfg.get("penalty_slag_chemistry", penalty_basicity / 10.0)
         )
         penalty_large = float(self.penalty_cfg.get("penalty_large", 1_000_000.0))
 
@@ -247,59 +327,109 @@ class BmoObjectiveEvaluator:
         )
         share_penalty = share_violation * penalty_share
 
+        production_value_mt = float(blend.fe_production_mt)
+        production_target_mt = self.target_production_mt
+        if blend.diagnostics.get("iron_closure_basis") == "actual_pig_iron":
+            production_value_mt = float(
+                blend.diagnostics.get("iron_closure_production_mt", 0.0) or 0.0
+            )
+            production_target_mt = float(
+                blend.diagnostics.get("iron_closure_target_mt", 0.0)
+                or self.hot_metal_target_mt
+                or self.target_production_mt
+            )
+
         fe_penalty = 0.0
         fe_shortfall_mt = max(
             0.0,
-            self.target_production_mt - self.fe_tolerance_mt - blend.fe_production_mt,
+            production_target_mt - self.fe_tolerance_mt - production_value_mt,
         )
         if fe_shortfall_mt > 0.0:
-            fe_penalty += (
-                fe_shortfall_mt
-            ) * penalty_fe
+            fe_penalty += (fe_shortfall_mt) * penalty_fe
         production_excess_penalty = 0.0
         fe_excess_mt = max(
             0.0,
-            blend.fe_production_mt - self.target_production_mt - self.fe_tolerance_mt,
+            production_value_mt - production_target_mt - self.fe_tolerance_mt,
         )
         if fe_excess_mt > 0.0:
-            production_excess_penalty += (
-                fe_excess_mt
-            ) * penalty_production_excess
+            production_excess_penalty += (fe_excess_mt) * penalty_production_excess
 
         slag_penalty = 0.0
         if blend.slag_mt > self.target_slag_qty_mt:
             slag_penalty += (blend.slag_mt - self.target_slag_qty_mt) * penalty_slag
 
-        def _basicity_penalty(
+        # Charging-throughput cap on IBRM + flux. DE reaches the Fe target by
+        # scaling total burden, so without this penalty a lean, cheap blend just
+        # buys more tonnes -- tonnes the charging system cannot deliver.
+        burden_penalty = 0.0
+        burden_qty_mt = float(
+            blend.diagnostics.get("total_burden_qty_mt", blend.total_qty_mt) or 0.0
+        )
+        if self.max_burden_qty_mt is not None:
+            burden_excess_mt = burden_qty_mt - self.max_burden_qty_mt
+            if burden_excess_mt > 0.0:
+                burden_penalty = burden_excess_mt * penalty_burden
+
+        def _bound_penalty(
             *,
             value: float,
             denominator_key: str,
             min_value: float | None,
             max_value: float | None,
+            weight: float,
         ) -> float:
             penalty = 0.0
-            denominator = float(
-                blend.diagnostics.get(denominator_key, 0.0) or 0.0
-            )
+            denominator = float(blend.diagnostics.get(denominator_key, 0.0) or 0.0)
             if min_value is not None:
                 if denominator <= 0.0 or not math.isfinite(value):
                     penalty += penalty_large
                 elif value < min_value:
-                    penalty += (min_value - value) * penalty_basicity
+                    penalty += (min_value - value) * weight
             if max_value is not None:
                 if denominator <= 0.0 or not math.isfinite(value):
                     penalty += penalty_large
                 elif value > max_value:
-                    penalty += (value - max_value) * penalty_basicity
+                    penalty += (value - max_value) * weight
             return float(penalty)
 
-        basicity_penalty = _basicity_penalty(
+        basicity_penalty = _bound_penalty(
             value=float(getattr(blend, "slag_basicity", 0.0) or 0.0),
             denominator_key="slag_basicity_denominator_mt",
             min_value=self.target_slag_basicity_min,
             max_value=self.target_slag_basicity_max,
+            weight=penalty_basicity,
         )
-        t_basicity_penalty = 0.0
+        t_basicity_penalty = _bound_penalty(
+            value=float(getattr(blend, "slag_t_basicity", 0.0) or 0.0),
+            denominator_key="slag_t_basicity_denominator_mt",
+            min_value=self.target_slag_t_basicity_min,
+            max_value=self.target_slag_t_basicity_max,
+            weight=penalty_basicity,
+        )
+        # Al2O3 and MgO violations are measured in percentage POINTS, an order of
+        # magnitude larger than a basicity deviation, so they get their own weight
+        # rather than sharing penalty_basicity and swamping every other term.
+        al2o3_penalty = _bound_penalty(
+            value=float(getattr(blend, "slag_al2o3_pct", 0.0) or 0.0),
+            denominator_key="slag_chemistry_denominator_mt",
+            min_value=None,
+            max_value=self.target_slag_al2o3_max_pct,
+            weight=penalty_slag_chemistry,
+        )
+        mgo_penalty = _bound_penalty(
+            value=float(getattr(blend, "slag_mgo_pct", 0.0) or 0.0),
+            denominator_key="slag_chemistry_denominator_mt",
+            min_value=self.target_slag_mgo_min_pct,
+            max_value=None,
+            weight=penalty_slag_chemistry,
+        )
+        mgo_al2o3_penalty = _bound_penalty(
+            value=float(getattr(blend, "slag_mgo_al2o3_ratio", 0.0) or 0.0),
+            denominator_key="slag_mgo_al2o3_denominator_mt",
+            min_value=self.target_slag_mgo_al2o3_ratio_min,
+            max_value=None,
+            weight=penalty_basicity,
+        )
 
         finite_penalty = 0.0
         if not math.isfinite(blend.objective_rs_per_thm):
@@ -313,8 +443,12 @@ class BmoObjectiveEvaluator:
             + fe_penalty
             + production_excess_penalty
             + slag_penalty
+            + burden_penalty
             + basicity_penalty
             + t_basicity_penalty
+            + al2o3_penalty
+            + mgo_penalty
+            + mgo_al2o3_penalty
             + finite_penalty
         )
         objective_value = float(
@@ -328,8 +462,12 @@ class BmoObjectiveEvaluator:
             target_slag_qty_mt=self.target_slag_qty_mt,
             target_slag_basicity_min=self.target_slag_basicity_min,
             target_slag_basicity_max=self.target_slag_basicity_max,
-            target_slag_t_basicity_min=None,
-            target_slag_t_basicity_max=None,
+            target_slag_t_basicity_min=self.target_slag_t_basicity_min,
+            target_slag_t_basicity_max=self.target_slag_t_basicity_max,
+            target_slag_al2o3_max_pct=self.target_slag_al2o3_max_pct,
+            target_slag_mgo_min_pct=self.target_slag_mgo_min_pct,
+            target_slag_mgo_al2o3_ratio_min=self.target_slag_mgo_al2o3_ratio_min,
+            max_burden_qty_mt=self.max_burden_qty_mt,
         )
         feasible = len(violations) == 0
 
@@ -346,9 +484,23 @@ class BmoObjectiveEvaluator:
                 "penalty_fe": float(fe_penalty),
                 "penalty_production_excess": float(production_excess_penalty),
                 "penalty_slag": float(slag_penalty),
+                "penalty_burden_capacity": float(burden_penalty),
+                "total_burden_qty_mt": float(burden_qty_mt),
                 "penalty_slag_basicity": float(basicity_penalty),
                 "penalty_slag_t_basicity": float(t_basicity_penalty),
+                "penalty_slag_al2o3": float(al2o3_penalty),
+                "penalty_slag_mgo": float(mgo_penalty),
+                "penalty_slag_mgo_al2o3": float(mgo_al2o3_penalty),
                 "penalty_non_finite": float(finite_penalty),
+                "coke_correction_delta_kg_thm": float(
+                    blend.diagnostics.get("coke_correction_delta_kg_thm", 0.0) or 0.0
+                ),
+                "fuel_cost_per_thm_rs_uncorrected": float(
+                    blend.diagnostics.get(
+                        "fuel_cost_per_thm_rs_uncorrected",
+                        blend.fuel_cost_per_thm_rs,
+                    )
+                ),
             },
             feasible=feasible,
             violations=violations,

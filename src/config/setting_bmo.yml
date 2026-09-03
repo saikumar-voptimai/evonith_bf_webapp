@@ -6,67 +6,175 @@ bmo:
 
   target:
     target_production_mt: 2350.0
+    # Slag is capped by RATE, not by an absolute tonnage: the tonnage then
+    # re-scales with the operator's HM target instead of silently tightening
+    # when the target moves. target_slag_qty_mt is the fallback for callers that
+    # still pass an absolute cap.
+    #
+    # PLANT BASIS. The operator types the slag rate the plant would measure. The
+    # model's own calculated slag runs above that (789 MT model vs 733 MT by the
+    # Al2O3 tracer and 739 MT by DPR over the last 3 months), so the cap is
+    # divided by model_to_plant_slag_factor before it reaches the solvers. See
+    # docs/bmo_fuel_slag_si_findings.md section 0.5.
+    target_slag_rate_kg_per_thm: 290.0
     target_slag_qty_mt: 750.0
+    # plant_slag = model_slag * factor. 733 / 789 = 0.929.
+    # Set to 1.0 to make the operator's number a raw model-basis target.
+    # This scales the slag TOTAL only. It cannot distort the Al2O3 / MgO limits
+    # below, because slag_correction_factor multiplies every component uniformly
+    # and so cancels out of any percentage-of-slag ratio.
+    model_to_plant_slag_factor: 1
     target_slag_basicity_min: 0.0
     target_slag_basicity_max: 10.0
-    target_slag_t_basicity_min: 0.0
-    target_slag_t_basicity_max: 10.0
+    # (CaO + MgO) / SiO2. Enforced as a hard LP constraint and a DE penalty.
+    # Plant p5-p95 over 6,402 hours is 1.216 - 1.401, mean 1.308.
+    target_slag_t_basicity_min: 1.20
+    target_slag_t_basicity_max: 1.45
+
+    # ---- Slag-quality window ------------------------------------------------
+    # Set any limit to null to switch it off.
+    #
+    # Al2O3 and MgO are inert: all of each reports to slag, so their MASSES are
+    # fixed by what is charged and their PERCENTAGES move inversely with total
+    # slag. Cutting the slag rate therefore pushes Al2O3 up and MgO down-hill,
+    # which is why the Al2O3 cap is the limit that actually binds a slag-rate
+    # reduction:
+    #
+    #   at 330 kg/THM the plant runs 18.71% Al2O3 (mean of 6,402 hours)
+    #   at 290 kg/THM the SAME Al2O3 mass reads 18.71 * 330/290 = 21.3%
+    #
+    # So holding 290 kg/THM under a 20% cap requires roughly 6% less Al2O3 into
+    # the furnace, and since ~28% of slag Al2O3 is coke ash (not a blend
+    # variable), about 8% less Al2O3 from the burden itself. The slag reduction
+    # has to come out of alumina-bearing gangue specifically, not any gangue.
+    #
+    # Plant reference, same 6,402 hours:
+    #   Al2O3%    mean 18.71, p5 16.36, p95 20.58   -> over 20% in 17.0% of hours
+    #   MgO%      mean  7.82, p5  6.91, p95  8.69   -> under 7% in  7.8% of hours
+    #   MgO/Al2O3 mean 0.419, p5 0.365, p95 0.485   -> under 0.36 in 3.3% of hours
+    #   all three held together in 74.8% of hours
+    target_slag_al2o3_max_pct: 20.0
+    target_slag_mgo_min_pct: 7.0
+    # Mass ratio, NOT a ratio of the two percentages above - it is therefore
+    # scale-free and does not move with the slag rate at all. It constrains the
+    # burden alone: "charge at least 0.36 t MgO per t Al2O3".
+    target_slag_mgo_al2o3_ratio_min: 0.36
 
   chemistry:
     feo_in_slag_pct: 0.4
+
+  # Charging-throughput ceiling on the wet burden the optimizer may plan.
+  #
+  # The skips accept at most ``max_charges_per_hour`` charges of about
+  # ``charge_mass_mt`` each, around the clock. Nut coke rides in those same
+  # charges but is not an optimizer variable, so
+  # its tonnage follows from the hot-metal target and is deducted off the top.
+  # What is left is the daily room for IBRM (ore, sinter, pellet) plus flux:
+  #
+  #   capacity = charge_mass * max_charges_per_hour * 24
+  #   nut coke = wet_rate_kg_per_thm * hot_metal_target / 1000
+  #   room     = capacity - nut_coke
+  #
+  # Without this cap the optimizer is free to answer a low-Fe burden by simply
+  # charging more of it. The plant cannot: charges are already at capacity, so
+  # more tonnes at a lower Fe% means holding the charge rate and losing yield,
+  # or raising oxygen the plant does not have.
+  #
+  # The ceiling is an ABSOLUTE daily tonnage and does not scale with the HM
+  # target - the charging system runs the same 24 hours whatever iron is asked
+  # for. Only the nut-coke deduction moves with the target. Charging hours and
+  # nut-coke tonnes are therefore NOT config keys: hours are always 24, and nut
+  # coke is derived from its rate.
+  #
+  # THE TWO NUMBERS BELOW ARE DEFAULTS ONLY. Both are exposed on the Blend
+  # Optimizer page under "Charging capacity", because they move with skip-car
+  # condition and burden bulk density. A saved value in bmo_operator_inputs.yml
+  # overrides what is here.
+  burden_capacity:
+    enabled: true
+    # Observed charges/hr: median 6.38, p95 6.75, p99 7.02, max 7.25.
+    max_charges_per_hour: 7.5
+    # Workbook BURDEN-case total charge mass. The operator can override it on
+    # the page when the current skip-car condition or burden bulk density differs.
+    charge_mass_mt: 26.45927
 
   fuel_ash_inputs:
     - fuel_id: coke
       display_name: Coke
       enabled: true
-      rate_kg_per_thm: 340.0
+      rate_kg_per_thm: 312.66597646306445
+      rate_basis: wet
       price_rs_per_mt: 28000.0
-      moisture_pct: 0.37
-      ash_pct: 11.46
-      sio2_pct: 55.07
-      al2o3_pct: 27.09
-      cao_pct: 3.25
-      mgo_pct: 1.21
-      fe2o3_pct: 7.22
-      tio2_pct: 1.462
+      moisture_pct: 0.0
+      vm_pct: 0.898
+      ash_pct: 12.176
+      sio2_pct: 57.69
+      al2o3_pct: 26.38
+      cao_pct: 2.7
+      mgo_pct: 1.05
+      fe2o3_pct: 6.49
+      mn_basis: mn
+      mn_pct: 0.02
+      ti_basis: ti
+      ti_pct: 1.59
+      alkali_pct: 2.0778580814717476
       na2o_pct: 0.0
       k2o_pct: 0.0
-      s_pct: 0.74
-      p_pct: 0.04292
+      s_pct: 0.72
+      p_pct: 0.032
+      chemistry_source: BF-2 Burden (2).xlsx/BURDEN
     - fuel_id: nut_coke
       display_name: Nut Coke
       enabled: true
-      rate_kg_per_thm: 20.0
+      # Workbook-source wet-basis rate. Live operation may override the rate;
+      # the basis and chemistry remain explicit.
+      rate_kg_per_thm: 76.43714690081553
+      rate_basis: wet
       price_rs_per_mt: 24000.0
-      moisture_pct: 0.44
-      ash_pct: 11.67
-      sio2_pct: 55.12
-      al2o3_pct: 27.20
-      cao_pct: 3.21
-      mgo_pct: 1.25
-      fe2o3_pct: 7.40
-      tio2_pct: 1.511
+      moisture_pct: 8.5
+      vm_pct: 1.04
+      ash_pct: 12.55
+      sio2_pct: 56.85
+      al2o3_pct: 26.81
+      cao_pct: 2.67
+      mgo_pct: 1.03
+      fe2o3_pct: 7.1
+      mn_basis: mn
+      mn_pct: 0.02
+      ti_basis: ti
+      ti_pct: 1.598
+      alkali_pct: 2.0
       na2o_pct: 0.0
       k2o_pct: 0.0
-      s_pct: 0.73
-      p_pct: 0.04416
+      s_pct: 0.78
+      p_pct: 0.032
+      chemistry_source: BF-2 Burden (2).xlsx/BURDEN
     - fuel_id: pci
       display_name: PCI
       enabled: true
-      rate_kg_per_thm: 170.0
+      # Live/recent plant rates overwrite this at page load; the offline default
+      # remains the workbook-source operating point.
+      rate_kg_per_thm: 180.0
+      rate_basis: wet
       price_rs_per_mt: 18000.0
-      moisture_pct: 1.16
-      ash_pct: 9.20
-      sio2_pct: 49.49
-      al2o3_pct: 25.64
-      cao_pct: 6.04
-      mgo_pct: 2.12
-      fe2o3_pct: 8.15
-      tio2_pct: 1.04
-      na2o_pct: 0.547
-      k2o_pct: 1.606
-      s_pct: 0.35
-      p_pct: 0.04031
+      moisture_pct: 2.05
+      vm_pct: 19.9
+      ash_pct: 8.63
+      sio2_pct: 50.0
+      al2o3_pct: 28.27
+      cao_pct: 5.19
+      mgo_pct: 1.93
+      fe2o3_pct: 5.81
+      mn_basis: mn
+      mn_pct: 0.05
+      ti_basis: ti
+      ti_pct: 1.031
+      alkali_pct: 2.1900347624565466
+      na2o_pct: 0.0
+      k2o_pct: 0.0
+      s_pct: 0.38
+      p_pct: 0.021
+      chemistry_source: BF-2 Burden (2).xlsx/BURDEN
 
   flux_inputs:
     - flux_id: quartz
@@ -180,16 +288,19 @@ bmo:
     - dust_id: bf_gas_dust
       display_name: BF Gas Dust
       enabled: true
+      rate_basis: kg_per_charge
       wet_qty_mt: 0.0
+      quantity_kg_per_charge: 530.0
+      source: BF-2 Burden (2).xlsx/BURDEN
       moisture_pct: 0.0
-      sio2_pct: 0.0
-      al2o3_pct: 0.0
-      cao_pct: 0.0
-      mgo_pct: 0.0
-      fe_pct: 0.0
+      sio2_pct: 4.5
+      al2o3_pct: 4.86
+      cao_pct: 5.63
+      mgo_pct: 3.57
+      fe_pct: 33.5
       mn_pct: 0.0
-      p_pct: 0.0
-      s_pct: 0.0
+      p_pct: 0.054
+      s_pct: 0.1
       ti_pct: 0.0
       zn_pct: 0.0
       na2o_pct: 0.0
@@ -198,12 +309,26 @@ bmo:
 
   slag_balance:
     enabled: true
-    # PI chemistry fallbacks: used only when live HM_SLAG fetch fails.
-    # Live values from offline_feed.hot_metal_slag_analysis override these.
+    # PI chemistry used by the slag balance. THESE ARE THE VALUES USED, not
+    # fallbacks: the live HM_SLAG sample is still fetched and shown beside them
+    # on the page for reference, but it no longer prefills them.
+    #
+    # Why hold them rather than track the cast: these four numbers only enter the
+    # slag side, where they set the pig-iron closure and the SiO2 consumed by Si
+    # reduction. A single cast's Si swings far more than the true operating point
+    # does, and feeding that swing into the slag balance moves calculated slag
+    # and basicity for a reason that has nothing to do with the blend being
+    # evaluated. Holding them keeps blend-to-blend comparisons on one basis.
+    #
+    # This does NOT affect the Si used anywhere else - the Si prediction model
+    # and the coke-correction Si term both still run off live/model Si.
+    #
+    # Operator-settable on the page under "Hot Metal Chemistry Assumptions";
+    # a saved value in bmo_operator_inputs.yml overrides what is here.
     carbon_pct: 4.2
-    silicon_pct: 0.7
+    silicon_pct: 0.6
     sulphur_pct: 0.03
-    other_pct: 0.1
+    other_pct: 0.0
     pi_loss_pct: 0.2
     fe_to_pig_iron_fraction: 0.999
     mn_recovery_pct: 60.0
@@ -216,8 +341,246 @@ bmo:
     # leave correction at 1.0 unless empirical calibration is still needed.
     slag_correction_factor: 1.0
 
+  # What LP and DE anchor their reported fuel rates to, before the coke-rate
+  # correction below is applied.
+  #
+  #   model_cost  - back-solve coke as the residual of the model's predicted cost:
+  #                     coke = (predicted cost - PCI x p_pci - 70 x p_nut) / p_coke
+  #                 Nut coke and PCI are pinned to the operator's Fuel Ash inputs,
+  #                 so coke is the only unknown and the reported rate stays a
+  #                 PREDICTION.
+  #   observed    - read the current plant coke rate off the Fuel Ash table
+  #                 instead, and rebase the blend's fuel cost to match.
+  #
+  # WHY model_cost IS THE DEFAULT. The coke rate BMO reports has to be a
+  # prediction of what this blend will need, not a restatement of what the
+  # furnace happened to be running an hour ago. Anchoring on the live coke tag
+  # turns an input into the answer: every recommendation would open at today's
+  # coke rate and differ from it only by the physics correction, which is not a
+  # forecast of the blend at all. ``observed`` remains available for diagnosing
+  # the level, but it should not drive an operating recommendation.
+  #
+  # KNOWN LIMITATION of model_cost, measured 2026-07-30. The model's cost output
+  # is very nearly a constant (~13,364 Rs/THM - doubling ORE_CALC_THM moves it
+  # 0.012%). Back-solving coke from it gives
+  #     total fuel = (x - 70 x 24)/28 + 70 + PCI x (1 - 18/28)
+  #                ~ 487 + 0.357 x PCI
+  # so the anchor sits near 546-552 kg/THM for any realistic PCI and carries
+  # almost no blend information of its own. The blend sensitivity therefore comes
+  # entirely from coke_rate_correction below. Note also that the decomposition
+  # conserves cost rather than mass: a PCI reading 15 kg/THM low does not cut
+  # total fuel by 15, it cuts it by 5 and inflates coke by 9.
+  #
+  # Switching anchors cannot change which blend the optimizer picks: all three
+  # are constant across blends, so the difference is an offset, not a gradient.
+  # It changes the reported level only.
+  #
+  # energy_balance (current): solve the closed energy balance at the CURRENT
+  # controls and burden, then subtract the rolling bias offset fitted on recent
+  # plant history. Backtested over 239 days, that is MAPE 3.37% and R2 +0.74
+  # forward, against 7.24% / +0.07 for the raw balance. It is the only one of
+  # the three that responds to what the furnace is actually being asked to do,
+  # rather than reporting yesterday's number or the model's near-constant.
+  # Falls back to observed when the live tags, the calibration, or the solve
+  # are unavailable — see utils/bmo/energy_anchor.py.
+  fuel_rate_anchor_basis: energy_balance
+
+  # ---------------------------------------------------------------------------
+  # Physics-based coke-rate correction.
+  #
+  # WHY THIS EXISTS. The deployed fuel unit-cost model (unitcost_fuel_model.json,
+  # 256 features) is functionally blind to the burden: doubling ORE_CALC_THM
+  # moves the prediction 1.6 Rs/THM out of 13,364 (0.012%), flux x8 gives
+  # -5 Rs/THM, and TOTAL_CLO_THM x1.5 gives +1.2 Rs/THM. The Si model is
+  # similarly blend-flat (0.371 -> 0.384 %Si at 2x sinter).
+  #
+  # Plant history cannot supply the missing sensitivity either. Across 6,219
+  # hourly rows and 477 DPR days the slag coefficient bounces from -35 to +0.3 kg
+  # fuel per 100 kg slag depending on specification (R2 <= 0.155, r ~ 0.05-0.15),
+  # Si comes out at -7.2 per 0.1% where physics says +5, and blast temperature
+  # has the wrong sign. That is a lagged control loop, not physics: fuel rate
+  # against thermal state correlates -0.45 contemporaneously (the operator
+  # cutting fuel when the furnace runs hot) but flips POSITIVE at lags 4-9 h,
+  # peaking at 6-7 h - exactly burden descent time. The direction is recoverable
+  # from plant data; the magnitude is not, because the controller cancels the
+  # very excursion one would need to measure. Retraining cannot fix this.
+  #
+  # Only 8 of 256 DPR days exceed 800 MT/day slag and ZERO exceed 850, so a
+  # 900 MT/day scenario is pure extrapolation. Every coefficient below is
+  # therefore derived from first principles, with plant data used only as a
+  # plausibility bound. This layer supplies the ENTIRE blend -> fuel sensitivity.
+  #
+  # FORM.  coke_rate_corrected = coke_rate_anchor + clamp(sum of dCoke_i)
+  #        dCoke_i = k_i * (x_i_blend - x_i_reference)
+  # The anchor is the existing model-derived coke rate (provenance unchanged) and
+  # the reference is the RECENT OBSERVED operating point, so the correction is
+  # exactly zero when the blend reproduces current conditions.
+  coke_rate_correction:
+    enabled: true
+    # false -> compute and display only. Display-only will NOT stop the optimizer
+    # choosing low-Fe blends, which is the whole point of this layer: it would
+    # attach a large correction to a blend chosen precisely because it ignored
+    # that correction.
+    apply_to_objective: true
+    # The manual blend is the operator's realised-cost reference. Its correction
+    # is computed and shown - a large value there means the reference point is
+    # mis-set - but is not added to its cost.
+    apply_to_manual_blend: false
+
+    guardrails:
+      max_abs_correction_kg_thm: 60.0
+      # Smooth tanh compression begins at 0.6 x the cap (36 kg/THM) so the
+      # objective has no hard kink for differential evolution to trip over.
+      taper_start_fraction: 0.6
+      coke_rate_band_kg_thm: [280.0, 420.0]
+      total_fuel_rate_band_kg_thm: [480.0, 680.0]
+
+    terms:
+      # ---- 1. SLAG HEAT ------------------------------------------------------
+      # EMPIRICALLY ANCHORED - this is the one coefficient this plant's data can
+      # actually measure. Full derivation and diagnostics in
+      # docs/bmo_fuel_slag_si_findings.md section 2.
+      #
+      # Daily mass balance over 222 days. Coke and burden masses come from
+      # offline_feed.charge_data, NOT from COKE_CALC_MT, which correlates only
+      # +0.16 with the actual charge dumps and made earlier estimates useless:
+      #     fuel MT/day ~ hot metal t/day + slag MT/day + controls
+      # Six specifications, adding blast, RM strength, burden distribution, Si
+      # and eta CO in turn, give +18.4 to +26.9 kg fuel per 100 kg slag, every
+      # one significant at p<0.001. Bootstrap median +20.9, 90% CI [+11.4,+30.0].
+      # Instrumenting with burden-only slag to purge the shared coke-ash error
+      # gives +20.0 +/- 7.8 against an OLS +21.8, so shared error is worth <2.
+      #
+      # 22 sits within one standard error of every estimate and slightly on the
+      # cautious side: a higher coefficient penalises lean burden more, and this
+      # tool's failure mode is over-buying cheap high-gangue ore.
+      #
+      # PHYSICS CROSS-CHECK. The coefficient is slag enthalpy over marginal coke
+      # heat. Slag enthalpy at ~1500 C is cp 1.25 kJ/kg.K x ~1475 K + 0.21 MJ/kg
+      # of fusion ~ 1.8 MJ/kg. At k=0.22 that implies 1.8/0.22 = 8.2 MJ/kg of
+      # usable coke heat in the lower zone. The previous value of 30 assumed
+      # 6.0 MJ/kg, which was a mid-range guess with no plant basis.
+      #
+      # KNOWN UNCERTAINTY: substituting DPR measured slag for the Al2O3 tracer
+      # gives +9.0 +/- 8.3, not significant. The two agree on level (727 vs 739
+      # MT/day) but correlate only +0.59 day to day, and the regression lives on
+      # day-to-day variation. Reconciled slag weighing would settle this.
+      slag_heat:
+        enabled: true
+        kg_coke_per_100kg_slag: 22.0
+        max_abs_kg_thm: 45.0
+        # Observed slag rate spans roughly +/- 60 kg/THM around a normal
+        # operating point. Deviations beyond 1.5x this are compressed rather
+        # than extrapolated linearly.
+        envelope_halfwidth_kg_per_thm: 60.0
+        reference_source: observed_dpr    # observed_dpr | model_current
+        reference_fixed_kg_per_thm: 320.0 # only if neither source resolves
+
+      # ---- 2. FLUX CALCINATION ----------------------------------------------
+      # Driven by CO2 RELEASED from carbonate flux (flux LOI), NOT total flux
+      # mass. AVOIDING DOUBLE-COUNTING: the CaO/MgO residue of the flux already
+      # enters slag mass and is therefore already charged by slag_heat above.
+      # This term charges only what slag_heat cannot see - the CO2 leaving as gas.
+      #   CaCO3 -> CaO + CO2 : 178 kJ/mol = 1.78 MJ/kg CaCO3. Most of this
+      #                        endotherm is met by top gas ABOVE the thermal
+      #                        reserve zone, so it is not charged at the marginal
+      #                        lower-zone rate.
+      #   Boudouard C + CO2 -> 2CO : consumes 12 kg C per 44 kg CO2
+      #                        = 0.273 kg C per kg CO2, or ~0.31 kg coke at 87%
+      #                        C in coke. This dominates.
+      #   => k ~ 0.30 kg coke per kg CO2 = 30 per 100 kg CO2/THM. Band 25-45.
+      #
+      # OPERATOR NOTE: this adds roughly 3,400 Rs/MT to limestone that costs
+      # 1,800 Rs/MT, so the LP may decline raw carbonate flux entirely. That is
+      # physically correct - calcination really is expensive, which is why
+      # pre-calcined burden is preferred - but it is a visible behaviour change.
+      # Set enabled: false to switch it off without touching the other terms.
+      #
+      # KNOWN GAP: OreChemistry carries no LOI field, so ore/sinter carbonates
+      # are not captured. Sinter and pellet are pre-calcined so the gap is small
+      # for this burden, but it is a gap, not an assumption that ore LOI is zero.
+      flux_calcination:
+        enabled: true
+        kg_coke_per_100kg_co2: 30.0
+        max_abs_kg_thm: 25.0
+        envelope_halfwidth_kg_per_thm: 15.0
+        reference_source: model_current
+
+      # ---- 3. BURDEN OXYGEN / DIRECT REDUCTION -------------------------------
+      # Oxygen bound to Fe differs across the burden: Fe2O3 carries 48/112 =
+      # 0.4286 kg O per kg Fe, FeO carries 16/56 = 0.2857. The fraction reduced
+      # directly (FeO + C -> Fe + CO) consumes 1 mol C per mol O = 0.75 kg C per
+      # kg O. At a ~30% direct-reduction fraction and 87% C in coke:
+      #   0.30 x 0.75 / 0.87 = 0.26 kg coke per kg extra O.
+      # SCALE CHECK: a full 100% sinter -> 100% pellet swing is only ~13.6 kg
+      # extra O/THM, i.e. ~3.5 kg coke/THM. Genuinely modest - hence disabled by
+      # default; enable once the slag and flux terms are trusted.
+      burden_oxygen:
+        enabled: false
+        kg_coke_per_kg_oxygen: 0.26
+        max_abs_kg_thm: 20.0
+        envelope_halfwidth_kg_per_thm: 25.0
+        reference_source: model_current
+
+      # ---- 4. HOT-METAL SILICON ----------------------------------------------
+      #   SiO2 + 2C -> Si + 2CO : 690 kJ/mol Si = 690/28.09 = 24.6 MJ/kg Si
+      #   heat  : 24.6 / 6.0 MJ/kg   = 4.1 kg coke per kg Si
+      #   carbon: 2 mol C per mol Si = 24.02/28.09 = 0.857 kg C per kg Si,
+      #                                /0.87 = 0.98 kg coke per kg Si
+      #   => ~5.1 kg coke per kg Si. 0.1% Si on 1000 kg HM is 1.0 kg Si/THM.
+      #
+      # HONEST EXPECTATION: this term will contribute ~ZERO today. Its input is
+      # the Si model, which is blend-flat (0.371 -> 0.384 %Si at 2x sinter). It
+      # is included because the physics is right and because it becomes live the
+      # moment a blend-sensitive Si model is deployed - not because it currently
+      # moves the answer. Do NOT inflate the coefficient to compensate; there is
+      # a test that fails if someone does.
+      #
+      # reference_source is deliberately model_current (the Si model's own
+      # prediction for the current burden) and NOT the measured cast Si: using
+      # measured Si would turn the model's constant offset into a constant,
+      # blend-independent bias - pure noise.
+      hot_metal_si:
+        enabled: true
+        kg_coke_per_0p1pct_si: 5.0
+        max_abs_kg_thm: 15.0
+        envelope_halfwidth_pct: 0.25
+        reference_source: model_current
+
+      # ---- 5. OPERATOR-CONDITION TERMS (schema only) -------------------------
+      # These do NOT move with the blend. reference == current, so they
+      # contribute exactly 0.0 until a what-if input exists on the page. Shipped
+      # disabled so the breakdown table has no rows that always read zero; the
+      # term loop is generic, so enabling them later is config plus one input.
+      hm_temperature:
+        enabled: false
+        kg_coke_per_10c: 2.5
+        max_abs_kg_thm: 15.0
+        envelope_halfwidth_c: 40.0
+        reference_source: observed_current
+      blast_temperature:
+        enabled: false
+        kg_coke_per_100c: -10.0
+        max_abs_kg_thm: 20.0
+        envelope_halfwidth_c: 120.0
+        reference_source: observed_current
+
   optimization:
     enabled: true
+    # Where DE gets its starting population.
+    #   lp             - seed from the LP baseline; if the LP is infeasible, DE
+    #                    does not run at all (the old behaviour)
+    #   random         - ignore the LP and search from a population spread across
+    #                    the whole share simplex
+    #   lp_else_random - prefer the LP seed, fall back to random when it fails
+    #
+    # An infeasible LP does not always mean the problem is unsatisfiable: the LP
+    # optimises a LINEARISED slag and basicity model, so it can reject a burden
+    # the exact evaluation would accept. DE scores with soft penalties, so it can
+    # still return a best-effort blend with its violations listed, which is more
+    # use to an operator than an empty result pane. The blend records which seed
+    # it actually used under diagnostics["de_seed"].
+    initial_solution: lp_else_random
     strategy: best1bin
     maxiter: 30
     popsize: 10
@@ -232,13 +595,19 @@ bmo:
     penalty_production_excess: 3000.0
     penalty_slag: 3000.0
     penalty_basicity: 50000.0
+    # Per percentage POINT of slag Al2O3 / MgO deviation. A percentage-point
+    # deviation is an order of magnitude larger than a basicity deviation, so
+    # this is deliberately 10x smaller than penalty_basicity; at 5,000 a 1 pp
+    # breach still costs 5,000 Rs/THM against a ~13,000 Rs/THM objective, which
+    # is decisive without drowning out the ore/fuel trade-off DE is exploring.
+    penalty_slag_chemistry: 5000.0
 
   fallback_fuel_model:
     target_sinter_share_pct: 60.0
     sinter_deviation_sensitivity_rs_per_thm: 1200.0
     default_rates_kg_per_thm:
       coke_rate_kg_per_thm: 340.0
-      nut_coke_rate_kg_per_thm: 20.0
+      nut_coke_rate_kg_per_thm: 70.0
       pci_rate_kg_per_thm: 170.0
     default_prices_rs_per_kg:
       coke_price_rs_per_kg: 28.0
@@ -264,6 +633,7 @@ bmo:
 
   data_sources:
     static_dataset_path: src/assets/data/furnace_dataset.csv
+    static_dataset_url: http://125.23.100.62:8081/furnace_dataset.csv
     stock_table: offline_feed.raw_material_stock
     stock_time_range: last 1 week
     stock_fallback_reference_qty_mt: 3800.0
