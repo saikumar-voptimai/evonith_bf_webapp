@@ -23,6 +23,7 @@ from agents.furnacemind.context import SystemPromptContext
 from agents.furnacemind.skill_registry import SkillRegistry
 from agents.furnacemind.skill_vector_store import SkillVectorStore
 from agents.furnacemind.skills import SkillEngine
+from agents.furnacemind.web_search import web_search_configuration_error
 from agents.llm.llm_client import OpenRouterClient
 from agents.memory import fm_memory
 from agents.memory.conversation_history import ConversationHistoryStore
@@ -590,6 +591,43 @@ def _render_reasoning_selector() -> str:
     return normalize_openrouter_reasoning_level(selected)
 
 
+def _render_web_search_toggle() -> bool:
+    """Render the session toggle that controls live public-web search.
+
+    The toggle only gates the chat-time ``web_search`` tool. It does not affect
+    uploaded knowledge retrieval or deliberate URL scrape/index actions, which
+    remain explicit storage operations.
+
+    Returns:
+        ``True`` when live web search is enabled for the current Streamlit
+        session; otherwise ``False``.
+    """
+    unavailable_reason = web_search_configuration_error()
+    web_search_available = unavailable_reason is None
+    if not web_search_available:
+        st.session_state["fm_web_search_enabled"] = False
+
+    enabled = st.sidebar.toggle(
+        "Web search",
+        key="fm_web_search_enabled",
+        disabled=not web_search_available,
+        help=(
+            "Allow FurnaceMind to search the public web for current external "
+            "sources. Stored knowledge and URL ingestion are handled separately."
+        ),
+    )
+    if not web_search_available:
+        st.sidebar.caption(unavailable_reason or "Web search is unavailable.")
+    else:
+        used, limit = furnace_tools.web_search_session_usage()
+        remaining = max(0, limit - used)
+        if remaining:
+            st.sidebar.caption(f"{remaining} of {limit} searches remaining")
+        else:
+            st.sidebar.caption("Session search limit reached")
+    return bool(enabled)
+
+
 def _render_conversation_controls(
     *,
     context: SystemPromptContext,
@@ -697,6 +735,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     memory_summary_token_limit = settings.memory_summary_token_limit
 
     st.session_state["knowledge_store"] = knowledge_store
+    st.session_state["knowledge_embedding_client"] = embedding_client
     st.session_state["fm_user_id"] = user_id
     if document_repository is not None:
         st.session_state["knowledge_document_repository"] = document_repository
@@ -717,6 +756,7 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
         st.session_state.chat_history = []
     st.session_state.setdefault("fm_artifact_store", {})
     selected_reasoning_level = _render_reasoning_selector()
+    _render_web_search_toggle()
 
     if not user_id:
         history_store = None

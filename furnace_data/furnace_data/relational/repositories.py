@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 import pandas as pd
 from sqlalchemy import MetaData, Table, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker, undefer
 
 from .models import (
     BURDEN_VALUE_COLUMNS,
@@ -979,7 +979,14 @@ class MemoryDocumentRepository:
              - return: Uploaded document rows detached from the session.
         """
         with self._session_factory() as session:
-            stmt = select(MemoryDocument)
+            # These small columns are deferred on the model, but callers inspect
+            # them after the rows are detached below. Load them while the session
+            # is active to avoid a detached-instance lazy-load error.
+            stmt = select(MemoryDocument).options(
+                undefer(MemoryDocument.content_type),
+                undefer(MemoryDocument.file_size),
+                undefer(MemoryDocument.sha256),
+            )
             if user_id:
                 stmt = stmt.where(MemoryDocument.user_id == user_id)
             if active_only:
