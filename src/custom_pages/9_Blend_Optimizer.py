@@ -56,6 +56,7 @@ from ui.bmo import (
     render_dust_editor,
     render_flux_editor,
     render_fuel_ash_editor,
+    render_furnace_commentary,
     render_header,
     render_hot_metal_chemistry,
     render_model_accuracy_tab,
@@ -100,6 +101,7 @@ from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.calculations import scale_ore_quantities_to_hot_metal
 from utils.bmo.types import oxide_pct_from_basis
 from utils.bmo.si_prediction import SiPredictionService
+from utils.bmo.coke_calibration import load_calibration as load_coke_calibration
 from utils.bmo.fuel_rates import get_recent_fuel_input_rates
 from utils.session import is_logged_in
 
@@ -1017,6 +1019,11 @@ def _render_blend_comparison(
                 hot_metal_si_pct=manual_si,
                 charge_mass_mt=charge_mass_mt,
             )
+            # Persisted so the furnace commentary below can state the optimizer's
+            # proposal as a DELTA against what the plant is actually running.
+            # Without it the model can only describe levels, which an operator
+            # already knows.
+            st.session_state["bmo_manual_blend"] = manual_blend
             for warning in fuel_warnings:
                 st.warning(str(warning))
         except Exception as exc:  # noqa: BLE001
@@ -3958,5 +3965,19 @@ if lp_result is not None or de_result is not None:
 
     with tab_acc:
         render_model_accuracy_tab()
+
+    # Below every number it describes, never above. The commentary is a reading
+    # of the results, so it must not be the first thing an operator sees.
+    st.divider()
+    render_furnace_commentary(
+        live_snapshot=_live_process_snapshot(),
+        ores=selected_ores,
+        lp_blend=lp_result,
+        de_blend=de_result,
+        manual_blend=st.session_state.get("bmo_manual_blend"),
+        calibration=load_coke_calibration(),
+        energy_anchor=st.session_state.get("bmo_energy_anchor"),
+        production_target_mt=target_production_mt,
+    )
 
 render_diagnostics(de_result or lp_result, ore_diagnostics)

@@ -18,6 +18,7 @@ from ui.bmo.components import (
     render_slag_balance_details,
     render_slag_balance_settings,
 )
+from ui.bmo.commentary import render_furnace_commentary
 from ui.bmo.model_accuracy import (
     render_coke_accuracy,
     render_model_accuracy_tab,
@@ -39,6 +40,7 @@ __all__ = [
     "render_diagnostics",
     "render_dust_editor",
     "render_flux_editor",
+    "render_furnace_commentary",
     "render_header",
     "render_fuel_ash_editor",
     "render_hot_metal_chemistry",
