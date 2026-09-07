@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 from logging.config import fileConfig
+from pathlib import Path
+
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 
 # Ensure local furnace_data package is importable when running migrations
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -16,7 +17,7 @@ FURNACE_DATA_SRC = PROJECT_ROOT / "furnace_data"
 if str(FURNACE_DATA_SRC) not in sys.path:
     sys.path.append(str(FURNACE_DATA_SRC))
 
-from furnace_data.relational.models import Base
+from furnace_data.relational.models import Base  # noqa: E402
 
 config = context.config
 
@@ -25,7 +26,10 @@ if config.config_file_name is not None:
 
 database_url = os.getenv("DATABASE_URL")
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+    # ConfigParser treats percent signs in URL-encoded credentials as
+    # interpolation markers. Doubling them preserves the URL returned by
+    # ``get_main_option`` while allowing Alembic to parse the setting.
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 

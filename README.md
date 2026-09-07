@@ -843,3 +843,13 @@ The codebase bridges three naming conventions:
 | Production | `production_per_hour` | `ProductionTonnesPerHr` | `BF2 Production per hr` |
 
 The `data_mapping` section in `config/setting_ds_dv.yml` is the authoritative translation table used throughout the app.
+
+---
+
+## 15. Scheduled Tasks Deployment
+
+The Scheduled Tasks page stores validated JSON definitions in PostgreSQL. Its
+restricted headless FurnaceMind executor, database-backed run lifecycle, Linux
+timer provisioning, Streamlit-to-Jetson command queue, revision-safe editing,
+safety gates, and deployment settings are documented in
+[docs/scheduled_tasks_systemd.md](docs/scheduled_tasks_systemd.md).

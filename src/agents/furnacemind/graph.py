@@ -2,9 +2,10 @@
 
 This module replaces the old hand-written model/tool loop with a small
 LangGraph state machine while keeping the rest of FurnaceMind unchanged. The
-Streamlit page still prepares the system prompt, selected skill context,
-semantically retrieved skill context, memory, feedback lessons, and knowledge
-context before this workflow starts.
+Interactive and scheduled callers prepare their own system prompt and runtime
+context before this workflow starts. The graph accepts injected progress and
+tool-dispatch boundaries so the same model loop can run in Streamlit or in a
+restricted background worker.
 
 The graph is responsible for only the agent loop:
 
@@ -28,6 +29,8 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, TypedDict
 
@@ -36,6 +39,9 @@ from langgraph.graph import END, StateGraph
 from agents.llm.llm_client import OpenRouterClient
 
 _MAX_ITERATIONS = 8
+
+ToolDispatcher = Callable[..., str]
+ActivityCallback = Callable[[], None]
 
 _TOOL_LABELS: dict[str, str] = {
     "fetch_ml_data": "Reading ML dataset...",
@@ -59,13 +65,18 @@ class FurnaceMindGraphState(TypedDict):
             appending assistant messages, tool outputs, and optional MRAG visual
             messages.
         tools: OpenAI-compatible tool schemas exposed to the model.
-        status_box: Streamlit placeholder used to show the currently running
-            tool label.
+        status_box: Streamlit-shaped progress sink; unattended runs use a no-op
+            implementation.
         final_response: Final assistant response once the model stops requesting
             tools.
         last_tool_result: Last tool output, used as a defensive fallback if the
             workflow reaches its iteration limit before a final response exists.
         iterations: Number of tool-execution rounds already completed.
+        tool_dispatcher: Runtime-specific function/tool execution boundary.
+        allowed_tool_names: Optional server-side tool policy allowlist.
+        fail_on_tool_error: Whether malformed or failed tool calls abort the run.
+        activity_callback: Optional lease and cancellation checkpoint.
+        tool_events: Sanitized names, outcomes, and result sizes for auditing.
     """
 
     llm: OpenRouterClient
@@ -75,6 +86,38 @@ class FurnaceMindGraphState(TypedDict):
     final_response: str
     last_tool_result: str | None
     iterations: int
+    tool_dispatcher: ToolDispatcher
+    allowed_tool_names: frozenset[str] | None
+    fail_on_tool_error: bool
+    activity_callback: ActivityCallback | None
+    tool_events: list[dict[str, object]]
+
+
+@dataclass(frozen=True, slots=True)
+class FurnaceMindGraphResult:
+    """Structured result from one FurnaceMind model/tool workflow.
+
+    ``tool_events`` deliberately contains only tool names, success flags, and
+    result sizes. Tool arguments and results can contain plant data or secrets
+    and therefore do not belong in scheduled-run metadata.
+    """
+
+    final_response: str
+    tool_events: tuple[dict[str, object], ...]
+    iterations: int
+
+
+class FurnaceMindGraphToolError(RuntimeError):
+    """Raised when strict unattended execution cannot safely run a tool call."""
+
+
+class NullStatusBox:
+    """No-op progress sink used by non-Streamlit FurnaceMind callers."""
+
+    def status(self, _label: str, *, expanded: bool = False) -> None:
+        """Discard a progress update from the graph."""
+
+        del expanded
 
 
 def execute_openai_tool_call(*, name: str, arguments: dict[str, Any]) -> str:
@@ -219,6 +262,40 @@ def _parse_tool_arguments(raw_arguments: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _parse_tool_arguments_strict(raw_arguments: Any) -> dict[str, Any]:
+    """Parse tool arguments or reject malformed model output.
+
+    Interactive chat keeps the forgiving parser above so the model can recover
+    from a malformed call. Scheduled execution uses this strict variant because
+    silently replacing invalid arguments with an empty object can create a
+    successful-looking report for the wrong data window.
+    """
+
+    if isinstance(raw_arguments, dict):
+        return raw_arguments
+    if not isinstance(raw_arguments, str) or not raw_arguments.strip():
+        raise FurnaceMindGraphToolError("A scheduled tool call omitted its arguments.")
+    try:
+        parsed = json.loads(raw_arguments)
+    except json.JSONDecodeError as exc:
+        raise FurnaceMindGraphToolError(
+            "A scheduled tool call contained malformed JSON arguments."
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise FurnaceMindGraphToolError(
+            "A scheduled tool call must use a JSON object for its arguments."
+        )
+    return parsed
+
+
+def _report_activity(state: FurnaceMindGraphState) -> None:
+    """Notify an optional runner callback before and after external work."""
+
+    callback = state.get("activity_callback")
+    if callback is not None:
+        callback()
+
+
 def _tool_error_result(tool_name: str, exc: Exception) -> str:
     """Format a tool exception as model-readable tool output.
 
@@ -249,11 +326,15 @@ def _call_model(state: FurnaceMindGraphState) -> FurnaceMindGraphState:
         message. If the model returned plain content, ``final_response`` is set
         and the graph can finalize.
     """
-    completion = state["llm"].chat_completions(
-        messages=state["messages"],
-        tools=state["tools"],
-        tool_choice="auto",
-    )
+    _report_activity(state)
+    try:
+        completion = state["llm"].chat_completions(
+            messages=state["messages"],
+            tools=state["tools"],
+            tool_choice="auto",
+        )
+    finally:
+        _report_activity(state)
     msg = completion.choices[0].message
 
     content = _strip_thinking(getattr(msg, "content", None) or "")
@@ -298,13 +379,42 @@ def _execute_tools(state: FurnaceMindGraphState) -> FurnaceMindGraphState:
         label = _TOOL_LABELS.get(tool_name, f"Running {tool_name}...")
         state["status_box"].status(label, expanded=False)
 
+        succeeded = True
         try:
-            result = execute_openai_tool_call(
+            allowed_tool_names = state.get("allowed_tool_names")
+            if allowed_tool_names is not None and tool_name not in allowed_tool_names:
+                raise FurnaceMindGraphToolError(
+                    f"Tool {tool_name or 'unknown_tool'} is not allowed by this job policy."
+                )
+            raw_arguments = function.get("arguments")
+            arguments = (
+                _parse_tool_arguments_strict(raw_arguments)
+                if state.get("fail_on_tool_error")
+                else _parse_tool_arguments(raw_arguments)
+            )
+            _report_activity(state)
+            result = state["tool_dispatcher"](
                 name=tool_name,
-                arguments=_parse_tool_arguments(function.get("arguments")),
+                arguments=arguments,
             )
         except Exception as exc:
+            succeeded = False
+            if state.get("fail_on_tool_error"):
+                if isinstance(exc, FurnaceMindGraphToolError):
+                    raise
+                raise FurnaceMindGraphToolError(
+                    f"Scheduled tool {tool_name or 'unknown_tool'} failed."
+                ) from exc
             result = _tool_error_result(tool_name, exc)
+        finally:
+            _report_activity(state)
+        state["tool_events"].append(
+            {
+                "name": tool_name or "unknown_tool",
+                "succeeded": succeeded,
+                "result_characters": len(result),
+            }
+        )
         state["last_tool_result"] = result
         state["messages"].append(
             {
@@ -411,14 +521,18 @@ def build_furnacemind_graph():
     return graph.compile()
 
 
-def run_furnacemind_graph_loop(
+def run_furnacemind_graph(
     *,
     llm: OpenRouterClient,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
-    status_box: Any,
-) -> str:
-    """Run one complete FurnaceMind model/tool workflow.
+    status_box: Any | None = None,
+    tool_dispatcher: ToolDispatcher | None = None,
+    allowed_tool_names: frozenset[str] | set[str] | None = None,
+    fail_on_tool_error: bool = False,
+    activity_callback: ActivityCallback | None = None,
+) -> FurnaceMindGraphResult:
+    """Run one complete workflow and return safe structured execution data.
 
     Args:
         llm: Configured OpenRouter chat client used by the graph.
@@ -426,12 +540,18 @@ def run_furnacemind_graph_loop(
             list is mutated in-place with assistant turns, tool results, and any
             MRAG visual messages produced during the run.
         tools: OpenAI-compatible schemas for tools the model may call.
-        status_box: Streamlit placeholder used to display progress labels while
-            tools execute.
+        status_box: Optional Streamlit-shaped progress sink. Headless callers
+            receive a no-op sink when it is omitted.
+        tool_dispatcher: Callable that executes one named local tool.
+        allowed_tool_names: Optional independent runtime allowlist. This is
+            enforced even if a model emits a tool absent from its schemas.
+        fail_on_tool_error: Raise tool and argument failures instead of returning
+            them to the model as conversational tool messages.
+        activity_callback: Optional lease/cancellation check invoked around model
+            and tool calls.
 
     Returns:
-        Final assistant response text. Hidden reasoning blocks have already been
-        stripped before this value is set.
+        Final text plus a sanitized tool event summary and iteration count.
     """
     _ensure_langchain_debug_compat()
     result = build_furnacemind_graph().invoke(
@@ -439,10 +559,45 @@ def run_furnacemind_graph_loop(
             "llm": llm,
             "messages": messages,
             "tools": tools,
-            "status_box": status_box,
+            "status_box": status_box or NullStatusBox(),
             "final_response": "",
             "last_tool_result": None,
             "iterations": 0,
+            "tool_dispatcher": tool_dispatcher or execute_openai_tool_call,
+            "allowed_tool_names": (
+                frozenset(allowed_tool_names)
+                if allowed_tool_names is not None
+                else None
+            ),
+            "fail_on_tool_error": fail_on_tool_error,
+            "activity_callback": activity_callback,
+            "tool_events": [],
         }
     )
-    return result["final_response"]
+    return FurnaceMindGraphResult(
+        final_response=result["final_response"],
+        tool_events=tuple(dict(event) for event in result["tool_events"]),
+        iterations=result["iterations"],
+    )
+
+
+def run_furnacemind_graph_loop(
+    *,
+    llm: OpenRouterClient,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    status_box: Any,
+) -> str:
+    """Run the backward-compatible interactive graph entry point.
+
+    The Streamlit wrapper historically consumed only a string. New unattended
+    callers should use :func:`run_furnacemind_graph` to receive structured,
+    privacy-bounded execution metadata and strict tool enforcement.
+    """
+
+    return run_furnacemind_graph(
+        llm=llm,
+        messages=messages,
+        tools=tools,
+        status_box=status_box,
+    ).final_response

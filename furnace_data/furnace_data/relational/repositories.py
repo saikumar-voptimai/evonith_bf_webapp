@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime, time, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
 import pandas as pd
-from sqlalchemy import MetaData, Table, delete, func, select, update
+from sqlalchemy import MetaData, Table, and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, aliased, sessionmaker
 
 from .models import (
     BURDEN_VALUE_COLUMNS,
@@ -27,6 +28,16 @@ from .models import (
     MemoryDocument,
     MemoryFact,
     MemorySummary,
+    ScheduledJob,
+    ScheduledJobCommand,
+    ScheduledJobCommandAction,
+    ScheduledJobCommandStatus,
+    ScheduledJobOutput,
+    ScheduledJobRevision,
+    ScheduledJobRun,
+    ScheduledJobRunLog,
+    ScheduledJobRunStatus,
+    ScheduledJobStatus,
     User,
     UserRole,
     UserRoleAssignment,
@@ -40,6 +51,48 @@ def _new_id(prefix: str) -> str:
 
 
 _UNSET: Any = object()
+_MAX_SCHEDULED_JOB_ERROR_LENGTH = 4096
+_SCHEDULED_JOB_CLEANUP_PENDING_MESSAGE = "Timer cleanup is pending."
+
+
+class ScheduledJobRunLeaseBusyError(RuntimeError):
+    """Raised when resume or recovery meets a still-owned execution lease."""
+
+    def __init__(self, lease_expires_at: datetime) -> None:
+        """Store the database lease deadline for bounded retry decisions."""
+
+        self.lease_expires_at = _as_aware_utc(lease_expires_at)
+        super().__init__(
+            "A scheduled-job execution is still in flight until "
+            f"{self.lease_expires_at.isoformat()}."
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledJobResumeSettlement:
+    """Atomic resume result and any expired run cancelled before activation."""
+
+    job: ScheduledJob
+    cancelled_run: ScheduledJobRun | None
+
+
+def _bounded_scheduled_job_error(error: str) -> str:
+    """Return a non-empty scheduler error bounded for safe persistence."""
+
+    normalized = error.strip()
+    if not normalized:
+        normalized = "External scheduler operation failed without an error message."
+    return normalized[:_MAX_SCHEDULED_JOB_ERROR_LENGTH]
+
+
+def _scheduled_timer_unit_name(job_id: str) -> str:
+    """Return the only timer unit name allowed for a scheduled-job row."""
+
+    try:
+        canonical_job_id = str(UUID(job_id))
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ValueError("job_id must be a valid UUID for timer activation.") from exc
+    return f"furnacemind-job-{canonical_job_id}.timer"
 
 
 def _json_string_values(value: Any) -> list[str]:
@@ -109,6 +162,58 @@ def _as_aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _database_utc_now(session: Session) -> datetime:
+    """Return the authoritative database wall clock normalized to UTC.
+
+    PostgreSQL ``CURRENT_TIMESTAMP`` is fixed at transaction start, which is
+    unsafe for leases after a row-lock wait.  ``clock_timestamp()`` returns the
+    actual wall clock.  Other dialects retain the portable SQL timestamp used
+    by the SQLite-backed repository tests.
+    """
+
+    bind = session.get_bind()
+    clock = (
+        func.clock_timestamp()
+        if bind.dialect.name == "postgresql"
+        else func.current_timestamp()
+    )
+    value = session.execute(select(clock)).scalar_one()
+    if not isinstance(value, datetime):
+        raise ValueError("Database clock did not return a timestamp.")
+    return _as_aware_utc(value)
+
+
+def _positive_seconds(value: int, *, field_name: str) -> int:
+    """Validate a positive integer duration used by an execution lease."""
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{field_name} must be a positive integer.")
+    return value
+
+
+def _is_one_time_job(job: ScheduledJob) -> bool:
+    """Return whether a stored job definition has a one-time trigger."""
+
+    definition = job.definition_json
+    if not isinstance(definition, dict):
+        return False
+    schedule = definition.get("schedule")
+    if not isinstance(schedule, dict):
+        return False
+    trigger = schedule.get("trigger")
+    return isinstance(trigger, dict) and trigger.get("type") == "once"
+
+
+def _monotonic_transition_time(previous: datetime, candidate: datetime) -> datetime:
+    """Return a UTC row-version timestamp strictly newer than ``previous``."""
+
+    normalized_previous = _as_aware_utc(previous)
+    normalized_candidate = _as_aware_utc(candidate)
+    if normalized_candidate <= normalized_previous:
+        return normalized_previous + timedelta(microseconds=1)
+    return normalized_candidate
 
 
 class UserRepository:
@@ -1020,6 +1125,8 @@ class _ReflectedTableRepository:
         table_name: str,
         schema: str = "furnace_mind",
     ) -> None:
+        """Store reflection settings for one optional relational table."""
+
         self._session_factory = session_factory
         self._table_name = table_name
         self._schema = schema
@@ -1063,6 +1170,8 @@ class MemoryChunkRepository(_ReflectedTableRepository):
     """Best-effort repository for the optional ``memory_chunks`` table."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Bind the repository to the optional ``memory_chunks`` table."""
+
         super().__init__(session_factory, table_name="memory_chunks")
 
     def create_chunks(
@@ -1148,6 +1257,8 @@ class RetrievalTraceRepository(_ReflectedTableRepository):
     """Best-effort repository for the optional ``retrieval_traces`` table."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Bind the repository to the optional ``retrieval_traces`` table."""
+
         super().__init__(session_factory, table_name="retrieval_traces")
 
     def create_trace(
@@ -1905,3 +2016,1848 @@ class FeedbackItemRepository:
                 )
             )
             session.commit()
+
+
+class ScheduledJobRepository:
+    """Persistence operations for validated scheduled-job definitions."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+
+        self._session_factory = session_factory
+
+    def create_job(
+        self,
+        *,
+        job_name: str,
+        schema_version: str,
+        definition: dict[str, Any],
+        created_by_user_id: UUID,
+        created_by_username: str,
+        target_device_id: str,
+    ) -> ScheduledJob:
+        """Persist a definition in the pending-provisioning state."""
+
+        job_type = definition.get("job_type")
+        if not isinstance(job_type, str):
+            raise ValueError("Validated definition is missing its job type.")
+
+        job = ScheduledJob(
+            job_name=job_name,
+            job_type=job_type,
+            is_active=False,
+            schema_version=schema_version,
+            definition_json=definition,
+            status=ScheduledJobStatus.PENDING_PROVISIONING.value,
+            created_by_user_id=created_by_user_id,
+            created_by_username=created_by_username,
+            target_device_id=target_device_id,
+        )
+        with self._session_factory() as session:
+            session.add(job)
+            session.flush()
+            session.add(
+                ScheduledJobRevision(
+                    job_id=job.job_id,
+                    revision_number=1,
+                    schema_version=schema_version,
+                    definition_json=definition,
+                    changed_by_user_id=created_by_user_id,
+                    changed_by_username=created_by_username,
+                    change_kind="created",
+                )
+            )
+            session.commit()
+            session.refresh(job)
+            session.expunge(job)
+            return job
+
+    def get_job(self, job_id: str) -> ScheduledJob | None:
+        """Return a scheduled job by its UUID-formatted text identifier."""
+
+        with self._session_factory() as session:
+            job = session.get(ScheduledJob, job_id)
+            if job is not None:
+                session.expunge(job)
+            return job
+
+    def list_jobs_for_owner(
+        self,
+        *,
+        owner_user_id: UUID,
+        limit: int = 50,
+    ) -> list[tuple[ScheduledJob, ScheduledJobRun | None]]:
+        """Return recent owner jobs with each latest run in one bounded query."""
+
+        if not 1 <= limit <= 100:
+            raise ValueError("Scheduled-job list limit must be between 1 and 100.")
+        latest_run = aliased(ScheduledJobRun)
+        latest_run_id = (
+            select(latest_run.run_id)
+            .where(latest_run.job_id == ScheduledJob.job_id)
+            .order_by(latest_run.created_at.desc(), latest_run.run_id.desc())
+            .limit(1)
+            .correlate(ScheduledJob)
+            .scalar_subquery()
+        )
+        statement = (
+            select(ScheduledJob, ScheduledJobRun)
+            .outerjoin(ScheduledJobRun, ScheduledJobRun.run_id == latest_run_id)
+            .where(ScheduledJob.created_by_user_id == owner_user_id)
+            .order_by(ScheduledJob.created_at.desc(), ScheduledJob.job_id.desc())
+            .limit(limit)
+        )
+        with self._session_factory() as session:
+            rows = session.execute(statement).all()
+            results: list[tuple[ScheduledJob, ScheduledJobRun | None]] = []
+            for job, run in rows:
+                session.expunge(job)
+                if run is not None:
+                    session.expunge(run)
+                results.append((job, run))
+            return results
+
+    def get_job_for_owner(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: UUID,
+    ) -> ScheduledJob | None:
+        """Return one job only when it belongs to the authenticated owner."""
+
+        with self._session_factory() as session:
+            job = session.execute(
+                select(ScheduledJob).where(
+                    ScheduledJob.job_id == job_id,
+                    ScheduledJob.created_by_user_id == owner_user_id,
+                )
+            ).scalar_one_or_none()
+            if job is not None:
+                session.expunge(job)
+            return job
+
+    def list_run_history_for_owner(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: UUID,
+        limit: int = 25,
+    ) -> list[tuple[ScheduledJobRun, ScheduledJobOutput | None]]:
+        """Return recent run/output pairs for one owner job without N+1 reads."""
+
+        if not 1 <= limit <= 100:
+            raise ValueError("Scheduled-job history limit must be between 1 and 100.")
+        statement = (
+            select(ScheduledJobRun, ScheduledJobOutput)
+            .join(ScheduledJob, ScheduledJob.job_id == ScheduledJobRun.job_id)
+            .outerjoin(
+                ScheduledJobOutput,
+                ScheduledJobOutput.run_id == ScheduledJobRun.run_id,
+            )
+            .where(
+                ScheduledJobRun.job_id == job_id,
+                ScheduledJob.created_by_user_id == owner_user_id,
+            )
+            .order_by(
+                ScheduledJobRun.created_at.desc(),
+                ScheduledJobRun.run_id.desc(),
+            )
+            .limit(limit)
+        )
+        with self._session_factory() as session:
+            rows = session.execute(statement).all()
+            results: list[tuple[ScheduledJobRun, ScheduledJobOutput | None]] = []
+            for run, output in rows:
+                session.expunge(run)
+                if output is not None:
+                    session.expunge(output)
+                results.append((run, output))
+            return results
+
+    def reconciliation_cutoff(self) -> datetime:
+        """Return the database clock used to freeze one reconciliation scan."""
+
+        with self._session_factory() as session:
+            value = session.execute(select(func.current_timestamp())).scalar_one()
+            if not isinstance(value, datetime):
+                raise ValueError("Database clock did not return a timestamp.")
+            if session.bind is not None and session.bind.dialect.name == "sqlite":
+                # SQLite truncates CURRENT_TIMESTAMP to whole seconds while
+                # ORM defaults retain microseconds. Include that current second
+                # so freshly committed test/development rows are not skipped.
+                value += timedelta(seconds=1)
+            return _as_aware_utc(value)
+
+    def list_reconciliation_job_ids(
+        self,
+        *,
+        target_device_id: str,
+        created_through: datetime,
+        after_created_at: datetime | None = None,
+        after_job_id: str | None = None,
+        limit: int = 100,
+    ) -> list[tuple[str, datetime]]:
+        """List one immutable keyset page of jobs for explicit reconciliation."""
+
+        target = target_device_id.strip()
+        if not target:
+            raise ValueError("target_device_id must not be empty.")
+        if not 1 <= limit <= 500:
+            raise ValueError("Reconciliation page limit must be between 1 and 500.")
+        if (after_created_at is None) != (after_job_id is None):
+            raise ValueError("Both reconciliation cursor fields are required together.")
+
+        cutoff = _as_aware_utc(created_through)
+        statement = select(ScheduledJob.job_id, ScheduledJob.created_at).where(
+            ScheduledJob.target_device_id == target,
+            ScheduledJob.created_at <= cutoff,
+            or_(
+                ScheduledJob.status.not_in(
+                    {
+                        ScheduledJobStatus.COMPLETED.value,
+                        ScheduledJobStatus.EXECUTION_FAILED.value,
+                        ScheduledJobStatus.DELETED.value,
+                    }
+                ),
+                ScheduledJob.provisioning_error.is_not(None),
+            ),
+        )
+        if after_created_at is not None and after_job_id is not None:
+            cursor_time = _as_aware_utc(after_created_at)
+            statement = statement.where(
+                or_(
+                    ScheduledJob.created_at > cursor_time,
+                    and_(
+                        ScheduledJob.created_at == cursor_time,
+                        ScheduledJob.job_id > after_job_id,
+                    ),
+                )
+            )
+        statement = statement.order_by(
+            ScheduledJob.created_at.asc(),
+            ScheduledJob.job_id.asc(),
+        ).limit(limit)
+        with self._session_factory() as session:
+            rows = session.execute(statement).all()
+        return [(str(row.job_id), _as_aware_utc(row.created_at)) for row in rows]
+
+    def activate_job(
+        self,
+        *,
+        job_id: str,
+        expected_status: str,
+        expected_updated_at: datetime,
+        timer_unit_name: str,
+        activated_at: datetime | None = None,
+    ) -> ScheduledJob | None:
+        """Activate a provisioned job when its expected lifecycle version matches.
+
+        ``None`` means the job was not found, the source state was invalid, or
+        another writer changed its status or ``updated_at`` timestamp first. A
+        running occurrence also blocks this generic transition; callers
+        resuming a paused job must use ``settle_and_activate_job`` so an expired
+        lease is handled atomically.
+        """
+
+        allowed_statuses = {
+            ScheduledJobStatus.PENDING_PROVISIONING.value,
+            ScheduledJobStatus.PROVISIONING_FAILED.value,
+            ScheduledJobStatus.PAUSED.value,
+        }
+        if expected_status not in allowed_statuses:
+            return None
+        if timer_unit_name != _scheduled_timer_unit_name(job_id):
+            raise ValueError(
+                "timer_unit_name must be derived from the scheduled job UUID."
+            )
+
+        with self._session_factory() as session:
+            job = session.execute(
+                select(ScheduledJob)
+                .where(
+                    ScheduledJob.job_id == job_id,
+                    ScheduledJob.status == expected_status,
+                    ScheduledJob.updated_at == expected_updated_at,
+                )
+                .with_for_update()
+            ).scalar_one_or_none()
+            if job is None:
+                session.rollback()
+                return None
+            running_run_id = session.execute(
+                select(ScheduledJobRun.run_id)
+                .where(
+                    ScheduledJobRun.job_id == job_id,
+                    ScheduledJobRun.status == ScheduledJobRunStatus.RUNNING.value,
+                )
+                .limit(1)
+                .with_for_update()
+            ).scalar_one_or_none()
+            if running_run_id is not None:
+                session.rollback()
+                return None
+
+            database_now = _database_utc_now(session)
+            job.status = ScheduledJobStatus.ACTIVE.value
+            job.is_active = True
+            job.activated_at = _as_aware_utc(activated_at or database_now)
+            job.activation_generation += 1
+            job.timer_unit_name = timer_unit_name
+            job.provisioning_error = None
+            job.updated_at = _monotonic_transition_time(job.updated_at, database_now)
+            session.commit()
+            session.refresh(job)
+            session.expunge(job)
+            return job
+
+    def settle_and_activate_job(
+        self,
+        *,
+        job_id: str,
+        expected_status: str,
+        expected_updated_at: datetime,
+        timer_unit_name: str,
+        activated_at: datetime | None = None,
+    ) -> ScheduledJobResumeSettlement | None:
+        """Atomically settle an expired in-flight run and resume a paused job.
+
+        A live lease raises ``ScheduledJobRunLeaseBusyError``. An expired run is
+        cancelled and fenced in the same short transaction that rotates the
+        activation generation. ``None`` reports a lifecycle CAS conflict.
+        """
+
+        if expected_status != ScheduledJobStatus.PAUSED.value:
+            return None
+        if timer_unit_name != _scheduled_timer_unit_name(job_id):
+            raise ValueError(
+                "timer_unit_name must be derived from the scheduled job UUID."
+            )
+
+        with self._session_factory() as session:
+            job = session.execute(
+                select(ScheduledJob)
+                .where(
+                    ScheduledJob.job_id == job_id,
+                    ScheduledJob.status == expected_status,
+                    ScheduledJob.updated_at == expected_updated_at,
+                )
+                .with_for_update()
+            ).scalar_one_or_none()
+            if job is None:
+                session.rollback()
+                return None
+
+            run = session.execute(
+                select(ScheduledJobRun)
+                .where(
+                    ScheduledJobRun.job_id == job_id,
+                    ScheduledJobRun.status == ScheduledJobRunStatus.RUNNING.value,
+                )
+                .order_by(
+                    ScheduledJobRun.created_at.asc(), ScheduledJobRun.run_id.asc()
+                )
+                .limit(1)
+                .with_for_update()
+            ).scalar_one_or_none()
+            database_now = _database_utc_now(session)
+            if run is not None:
+                if (
+                    run.lease_expires_at is not None
+                    and _as_aware_utc(run.lease_expires_at) > database_now
+                ):
+                    raise ScheduledJobRunLeaseBusyError(run.lease_expires_at)
+                run.status = ScheduledJobRunStatus.CANCELLED.value
+                run.completed_at = database_now
+                run.lease_token = None
+                run.lease_expires_at = None
+                run.attempt_deadline_at = None
+                run.retry_not_before_at = None
+                run.error_message = "Expired execution cancelled before job resume."
+                session.add(
+                    ScheduledJobRunLog(
+                        run_id=run.run_id,
+                        log_level="warning",
+                        message="Expired execution lease cancelled before job resume.",
+                        metadata_json={"attempt_number": run.attempt_number},
+                    )
+                )
+
+            job.status = ScheduledJobStatus.ACTIVE.value
+            job.is_active = True
+            job.activated_at = _as_aware_utc(activated_at or database_now)
+            job.activation_generation += 1
+            job.timer_unit_name = timer_unit_name
+            job.provisioning_error = None
+            job.updated_at = _monotonic_transition_time(job.updated_at, database_now)
+            session.commit()
+            session.refresh(job)
+            session.expunge(job)
+            if run is not None:
+                session.refresh(run)
+                session.expunge(run)
+            return ScheduledJobResumeSettlement(job=job, cancelled_run=run)
+
+    def repair_timer_unit_name(
+        self,
+        *,
+        job_id: str,
+        expected_status: str,
+        expected_updated_at: datetime,
+        timer_unit_name: str,
+    ) -> ScheduledJob | None:
+        """Repair an active job's UUID-derived timer receipt with CAS semantics."""
+
+        if expected_status != ScheduledJobStatus.ACTIVE.value:
+            return None
+        if timer_unit_name != _scheduled_timer_unit_name(job_id):
+            raise ValueError(
+                "timer_unit_name must be derived from the scheduled job UUID."
+            )
+        return self._compare_and_set_job(
+            job_id=job_id,
+            expected_status=expected_status,
+            expected_updated_at=expected_updated_at,
+            transitioned_at=utc_now(),
+            values={"timer_unit_name": timer_unit_name},
+        )
+
+    def mark_provisioning_failed(
+        self,
+        *,
+        job_id: str,
+        expected_status: str,
+        expected_updated_at: datetime,
+        error: str,
+    ) -> ScheduledJob | None:
+        """Record a provisioning failure when the expected job version matches.
+
+        Active jobs are accepted for compensation after a timer-start failure.
+        ``None`` means the job was not found, the source state was invalid, or
+        another writer changed its status or ``updated_at`` timestamp first.
+        """
+
+        allowed_statuses = {
+            ScheduledJobStatus.PENDING_PROVISIONING.value,
+            ScheduledJobStatus.ACTIVE.value,
+            ScheduledJobStatus.PROVISIONING_FAILED.value,
+        }
+        if expected_status not in allowed_statuses:
+            return None
+        return self._compare_and_set_job(
+            job_id=job_id,
+            expected_status=expected_status,
+            expected_updated_at=expected_updated_at,
+            transitioned_at=utc_now(),
+            values={
+                "status": ScheduledJobStatus.PROVISIONING_FAILED.value,
+                "is_active": False,
+                "activated_at": None,
+                "provisioning_error": _bounded_scheduled_job_error(error),
+            },
+        )
+
+    def pause_job(
+        self,
+        *,
+        job_id: str,
+        expected_status: str,
+        expected_updated_at: datetime,
+    ) -> ScheduledJob | None:
+        """Pause an active job when its expected lifecycle version matches.
+
+        ``None`` means the job was not found, the source state was invalid, or
+        another writer changed its status or ``updated_at`` timestamp first.
+        """
+
+        if expected_status != ScheduledJobStatus.ACTIVE.value:
+            return None
+        return self._compare_and_set_job(
+            job_id=job_id,
+            expected_status=expected_status,
+            expected_updated_at=expected_updated_at,
+            transitioned_at=utc_now(),
+            values={
+                "status": ScheduledJobStatus.PAUSED.value,
+                "is_active": False,
+                "activated_at": None,
+                "provisioning_error": None,
+            },
+        )
+
+    def mark_deleted(
+        self,
+        *,
+        job_id: str,
+        expected_status: str,
+        expected_updated_at: datetime,
+    ) -> ScheduledJob | None:
+        """Archive a non-deleted job when its expected lifecycle version matches.
+
+        ``None`` means the job was not found, was already deleted, or another
+        writer changed its status or ``updated_at`` timestamp first.
+        """
+
+        allowed_statuses = {
+            ScheduledJobStatus.PENDING_PROVISIONING.value,
+            ScheduledJobStatus.ACTIVE.value,
+            ScheduledJobStatus.PAUSED.value,
+            ScheduledJobStatus.PROVISIONING_FAILED.value,
+            ScheduledJobStatus.COMPLETED.value,
+            ScheduledJobStatus.EXECUTION_FAILED.value,
+        }
+        if expected_status not in allowed_statuses:
+            return None
+        return self._compare_and_set_job(
+            job_id=job_id,
+            expected_status=expected_status,
+            expected_updated_at=expected_updated_at,
+            transitioned_at=utc_now(),
+            values={
+                "status": ScheduledJobStatus.DELETED.value,
+                "is_active": False,
+                "activated_at": None,
+                "timer_unit_name": None,
+                "provisioning_error": _SCHEDULED_JOB_CLEANUP_PENDING_MESSAGE,
+            },
+        )
+
+    def record_external_error(
+        self,
+        *,
+        job_id: str,
+        expected_status: str,
+        expected_updated_at: datetime,
+        error: str,
+    ) -> ScheduledJob | None:
+        """Store an external-operation error without changing lifecycle state.
+
+        Deleted jobs are supported so failed post-archive cleanup remains
+        visible without reopening the terminal state. ``None`` means the job
+        was not found, the source state was invalid, or its version changed.
+        """
+
+        if expected_status not in {status.value for status in ScheduledJobStatus}:
+            return None
+        return self._compare_and_set_job(
+            job_id=job_id,
+            expected_status=expected_status,
+            expected_updated_at=expected_updated_at,
+            transitioned_at=utc_now(),
+            values={
+                "provisioning_error": _bounded_scheduled_job_error(error),
+            },
+        )
+
+    def clear_external_error(
+        self,
+        *,
+        job_id: str,
+        expected_status: str,
+        expected_updated_at: datetime,
+    ) -> ScheduledJob | None:
+        """Clear an external-operation error without changing lifecycle state.
+
+        Deleted jobs are supported for successful cleanup reconciliation.
+        ``None`` means the job was not found, the source state was invalid, or
+        another writer changed its status or ``updated_at`` timestamp first.
+        """
+
+        if expected_status not in {status.value for status in ScheduledJobStatus}:
+            return None
+        return self._compare_and_set_job(
+            job_id=job_id,
+            expected_status=expected_status,
+            expected_updated_at=expected_updated_at,
+            transitioned_at=utc_now(),
+            values={"provisioning_error": None},
+        )
+
+    def _compare_and_set_job(
+        self,
+        *,
+        job_id: str,
+        expected_status: str,
+        expected_updated_at: datetime,
+        transitioned_at: datetime,
+        values: dict[str, Any],
+    ) -> ScheduledJob | None:
+        """Apply one short atomic update when status and timestamp still match."""
+
+        normalized_expected = _as_aware_utc(expected_updated_at)
+        normalized_transition = _as_aware_utc(transitioned_at)
+        if normalized_transition <= normalized_expected:
+            normalized_transition = normalized_expected + timedelta(microseconds=1)
+        with self._session_factory() as session:
+            job = session.execute(
+                update(ScheduledJob)
+                .where(
+                    ScheduledJob.job_id == job_id,
+                    ScheduledJob.status == expected_status,
+                    ScheduledJob.updated_at == expected_updated_at,
+                )
+                .values(updated_at=normalized_transition, **values)
+                .returning(ScheduledJob)
+            ).scalar_one_or_none()
+            if job is None:
+                session.rollback()
+                return None
+            session.commit()
+            session.expunge(job)
+            return job
+
+
+class ScheduledJobCommandRepository:
+    """Persist owner commands, processing leases, and definition revisions.
+
+    Web requests and Jetson processing deliberately use short transactions.
+    The external systemd operation occurs only after a command lease has been
+    committed, so no database row lock is held while Linux is being changed.
+    """
+
+    _ALLOWED_SOURCE_STATUSES = {
+        ScheduledJobCommandAction.PROVISION.value: {
+            ScheduledJobStatus.PENDING_PROVISIONING.value,
+            ScheduledJobStatus.PROVISIONING_FAILED.value,
+        },
+        ScheduledJobCommandAction.PAUSE.value: {
+            ScheduledJobStatus.ACTIVE.value,
+        },
+        ScheduledJobCommandAction.RESUME.value: {
+            ScheduledJobStatus.PAUSED.value,
+        },
+        ScheduledJobCommandAction.UPDATE.value: {
+            ScheduledJobStatus.PENDING_PROVISIONING.value,
+            ScheduledJobStatus.PROVISIONING_FAILED.value,
+            ScheduledJobStatus.PAUSED.value,
+            ScheduledJobStatus.ACTIVE.value,
+        },
+        ScheduledJobCommandAction.ARCHIVE.value: {
+            ScheduledJobStatus.PENDING_PROVISIONING.value,
+            ScheduledJobStatus.PROVISIONING_FAILED.value,
+            ScheduledJobStatus.PAUSED.value,
+            ScheduledJobStatus.ACTIVE.value,
+            ScheduledJobStatus.COMPLETED.value,
+            ScheduledJobStatus.EXECUTION_FAILED.value,
+        },
+    }
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+
+        self._session_factory = session_factory
+
+    def enqueue_for_owner(
+        self,
+        *,
+        job_id: str,
+        action: str,
+        owner_user_id: UUID,
+        requested_by_username: str,
+        expected_job_updated_at: datetime,
+        definition: dict[str, Any] | None = None,
+        maximum_attempts: int = 3,
+    ) -> ScheduledJobCommand:
+        """Atomically validate ownership/state and enqueue one command.
+
+        If the same job already has a pending or processing command, that
+        command is returned. This makes button retries harmless and preserves
+        the single-writer ordering required for lifecycle operations.
+        """
+
+        allowed_statuses = self._ALLOWED_SOURCE_STATUSES.get(action)
+        if allowed_statuses is None:
+            raise ValueError("Unsupported scheduled-job command action.")
+        if (action == ScheduledJobCommandAction.UPDATE.value) != (
+            definition is not None
+        ):
+            raise ValueError("Only update commands may contain a definition.")
+        if not 1 <= maximum_attempts <= 10:
+            raise ValueError("maximum_attempts must be between 1 and 10.")
+
+        with self._session_factory() as session:
+            job = session.execute(
+                select(ScheduledJob)
+                .where(
+                    ScheduledJob.job_id == job_id,
+                    ScheduledJob.created_by_user_id == owner_user_id,
+                )
+                .with_for_update()
+            ).scalar_one_or_none()
+            if job is None:
+                raise ValueError("Scheduled job was not found for this owner.")
+
+            open_command = session.execute(
+                select(ScheduledJobCommand)
+                .where(
+                    ScheduledJobCommand.job_id == job_id,
+                    ScheduledJobCommand.status.in_(
+                        {
+                            ScheduledJobCommandStatus.PENDING.value,
+                            ScheduledJobCommandStatus.PROCESSING.value,
+                        }
+                    ),
+                )
+                .order_by(
+                    ScheduledJobCommand.created_at.asc(),
+                    ScheduledJobCommand.command_id.asc(),
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            if open_command is not None:
+                session.expunge(open_command)
+                return open_command
+
+            if job.status not in allowed_statuses:
+                raise ValueError(
+                    f"Cannot {action} a scheduled job with status {job.status}."
+                )
+            if definition is not None:
+                target = definition.get("target_device")
+                requested_target = (
+                    target.get("device_id") if isinstance(target, dict) else None
+                )
+                if requested_target != job.target_device_id:
+                    raise ValueError(
+                        "A scheduled job cannot be moved to another device by "
+                        "editing it."
+                    )
+            if _as_aware_utc(job.updated_at) != _as_aware_utc(expected_job_updated_at):
+                raise ValueError(
+                    "Scheduled job changed after the page was loaded; refresh it."
+                )
+
+            database_now = _database_utc_now(session)
+            command = ScheduledJobCommand(
+                job_id=job.job_id,
+                action=action,
+                requested_job_status=job.status,
+                status=ScheduledJobCommandStatus.PENDING.value,
+                target_device_id=job.target_device_id,
+                requested_by_user_id=owner_user_id,
+                requested_by_username=requested_by_username,
+                expected_job_updated_at=_as_aware_utc(expected_job_updated_at),
+                definition_json=definition,
+                maximum_attempts=maximum_attempts,
+                available_at=database_now,
+                created_at=database_now,
+            )
+            session.add(command)
+            session.commit()
+            session.refresh(command)
+            session.expunge(command)
+            return command
+
+    def latest_for_owner(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: UUID,
+    ) -> ScheduledJobCommand | None:
+        """Return the newest command for one job only when ownership matches."""
+
+        statement = (
+            select(ScheduledJobCommand)
+            .join(ScheduledJob, ScheduledJob.job_id == ScheduledJobCommand.job_id)
+            .where(
+                ScheduledJobCommand.job_id == job_id,
+                ScheduledJob.created_by_user_id == owner_user_id,
+            )
+            .order_by(
+                ScheduledJobCommand.created_at.desc(),
+                ScheduledJobCommand.command_id.desc(),
+            )
+            .limit(1)
+        )
+        with self._session_factory() as session:
+            command = session.execute(statement).scalar_one_or_none()
+            if command is not None:
+                session.expunge(command)
+            return command
+
+    def claim_next(
+        self,
+        *,
+        target_device_id: str,
+        worker_id: str,
+        lease_seconds: int,
+    ) -> ScheduledJobCommand | None:
+        """Claim the oldest due command, reclaiming only expired leases."""
+
+        if not target_device_id.strip() or len(target_device_id) > 128:
+            raise ValueError("target_device_id must be 1 to 128 characters.")
+        if not worker_id.strip() or len(worker_id) > 128:
+            raise ValueError("worker_id must be 1 to 128 characters.")
+        if not 5 <= lease_seconds <= 3600:
+            raise ValueError("lease_seconds must be between 5 and 3600.")
+
+        with self._session_factory() as session:
+            database_now = _database_utc_now(session)
+            session.execute(
+                update(ScheduledJobCommand)
+                .where(
+                    ScheduledJobCommand.target_device_id == target_device_id,
+                    ScheduledJobCommand.status
+                    == ScheduledJobCommandStatus.PROCESSING.value,
+                    ScheduledJobCommand.lease_expires_at <= database_now,
+                    ScheduledJobCommand.attempt_count
+                    >= ScheduledJobCommand.maximum_attempts,
+                )
+                .values(
+                    status=ScheduledJobCommandStatus.FAILED.value,
+                    lease_token=None,
+                    lease_expires_at=None,
+                    completed_at=database_now,
+                    error_message=(
+                        "Command worker lease expired after its final attempt."
+                    ),
+                )
+            )
+            command = session.execute(
+                select(ScheduledJobCommand)
+                .where(
+                    ScheduledJobCommand.target_device_id == target_device_id,
+                    ScheduledJobCommand.attempt_count
+                    < ScheduledJobCommand.maximum_attempts,
+                    or_(
+                        and_(
+                            ScheduledJobCommand.status
+                            == ScheduledJobCommandStatus.PENDING.value,
+                            ScheduledJobCommand.available_at <= database_now,
+                        ),
+                        and_(
+                            ScheduledJobCommand.status
+                            == ScheduledJobCommandStatus.PROCESSING.value,
+                            ScheduledJobCommand.lease_expires_at <= database_now,
+                        ),
+                    ),
+                )
+                .order_by(
+                    ScheduledJobCommand.created_at.asc(),
+                    ScheduledJobCommand.command_id.asc(),
+                )
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            ).scalar_one_or_none()
+            if command is None:
+                session.commit()
+                return None
+
+            command.status = ScheduledJobCommandStatus.PROCESSING.value
+            command.attempt_count += 1
+            command.lease_token = uuid4()
+            command.lease_expires_at = database_now + timedelta(seconds=lease_seconds)
+            command.worker_id = worker_id
+            command.started_at = database_now
+            command.completed_at = None
+            session.commit()
+            session.refresh(command)
+            session.expunge(command)
+            return command
+
+    def mark_succeeded(
+        self,
+        *,
+        command_id: UUID,
+        lease_token: UUID,
+        resulting_job_status: str,
+    ) -> ScheduledJobCommand | None:
+        """Complete a command only when the caller still owns its lease."""
+
+        with self._session_factory() as session:
+            database_now = _database_utc_now(session)
+            command = session.execute(
+                update(ScheduledJobCommand)
+                .where(
+                    ScheduledJobCommand.command_id == command_id,
+                    ScheduledJobCommand.status
+                    == ScheduledJobCommandStatus.PROCESSING.value,
+                    ScheduledJobCommand.lease_token == lease_token,
+                )
+                .values(
+                    status=ScheduledJobCommandStatus.SUCCEEDED.value,
+                    resulting_job_status=resulting_job_status,
+                    error_message=None,
+                    lease_token=None,
+                    lease_expires_at=None,
+                    completed_at=database_now,
+                )
+                .returning(ScheduledJobCommand)
+            ).scalar_one_or_none()
+            if command is None:
+                session.rollback()
+                return None
+            session.commit()
+            session.expunge(command)
+            return command
+
+    def mark_failed_or_retry(
+        self,
+        *,
+        command_id: UUID,
+        lease_token: UUID,
+        error: str,
+        retry_delay_seconds: int,
+        retry: bool = True,
+    ) -> ScheduledJobCommand | None:
+        """Release a failed attempt for retry or make it terminal when exhausted."""
+
+        if not 1 <= retry_delay_seconds <= 3600:
+            raise ValueError("retry_delay_seconds must be between 1 and 3600.")
+        with self._session_factory() as session:
+            command = session.execute(
+                select(ScheduledJobCommand)
+                .where(
+                    ScheduledJobCommand.command_id == command_id,
+                    ScheduledJobCommand.status
+                    == ScheduledJobCommandStatus.PROCESSING.value,
+                    ScheduledJobCommand.lease_token == lease_token,
+                )
+                .with_for_update()
+            ).scalar_one_or_none()
+            if command is None:
+                session.rollback()
+                return None
+
+            database_now = _database_utc_now(session)
+            command.error_message = _bounded_scheduled_job_error(error)
+            command.lease_token = None
+            command.lease_expires_at = None
+            if retry and command.attempt_count < command.maximum_attempts:
+                command.status = ScheduledJobCommandStatus.PENDING.value
+                command.available_at = database_now + timedelta(
+                    seconds=retry_delay_seconds
+                )
+                command.completed_at = None
+            else:
+                command.status = ScheduledJobCommandStatus.FAILED.value
+                command.completed_at = database_now
+            session.commit()
+            session.refresh(command)
+            session.expunge(command)
+            return command
+
+    def apply_definition_revision(
+        self,
+        *,
+        job_id: str,
+        expected_updated_at: datetime,
+        definition: dict[str, Any],
+        changed_by_user_id: UUID,
+        changed_by_username: str,
+        change_kind: str = "edited",
+    ) -> ScheduledJob | None:
+        """CAS-apply a validated definition and append its immutable revision."""
+
+        if change_kind not in {"edited", "rollback"}:
+            raise ValueError("change_kind must be edited or rollback.")
+        trusted_fields = (
+            definition.get("job_name"),
+            definition.get("job_type"),
+            definition.get("schema_version"),
+        )
+        if not all(isinstance(value, str) for value in trusted_fields):
+            raise ValueError("Validated definition is missing trusted job fields.")
+
+        with self._session_factory() as session:
+            job = session.execute(
+                select(ScheduledJob)
+                .where(ScheduledJob.job_id == job_id)
+                .with_for_update()
+            ).scalar_one_or_none()
+            if job is None or _as_aware_utc(job.updated_at) != _as_aware_utc(
+                expected_updated_at
+            ):
+                session.rollback()
+                return None
+            if job.status not in {
+                ScheduledJobStatus.PENDING_PROVISIONING.value,
+                ScheduledJobStatus.PROVISIONING_FAILED.value,
+                ScheduledJobStatus.PAUSED.value,
+            }:
+                session.rollback()
+                return None
+
+            latest_revision = session.execute(
+                select(func.max(ScheduledJobRevision.revision_number)).where(
+                    ScheduledJobRevision.job_id == job_id
+                )
+            ).scalar_one()
+            revision_number = int(latest_revision or 0) + 1
+            database_now = _database_utc_now(session)
+            job.job_name = str(definition["job_name"])
+            job.job_type = str(definition["job_type"])
+            job.schema_version = str(definition["schema_version"])
+            job.definition_json = definition
+            job.provisioning_error = None
+            job.updated_at = _monotonic_transition_time(job.updated_at, database_now)
+            session.add(
+                ScheduledJobRevision(
+                    job_id=job.job_id,
+                    revision_number=revision_number,
+                    schema_version=job.schema_version,
+                    definition_json=definition,
+                    changed_by_user_id=changed_by_user_id,
+                    changed_by_username=changed_by_username,
+                    change_kind=change_kind,
+                    created_at=database_now,
+                )
+            )
+            session.commit()
+            session.refresh(job)
+            session.expunge(job)
+            return job
+
+    def list_revisions_for_owner(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: UUID,
+        limit: int = 25,
+    ) -> list[ScheduledJobRevision]:
+        """Return a bounded newest-first revision history for one owner job."""
+
+        if not 1 <= limit <= 100:
+            raise ValueError("Revision history limit must be between 1 and 100.")
+        statement = (
+            select(ScheduledJobRevision)
+            .join(ScheduledJob, ScheduledJob.job_id == ScheduledJobRevision.job_id)
+            .where(
+                ScheduledJobRevision.job_id == job_id,
+                ScheduledJob.created_by_user_id == owner_user_id,
+            )
+            .order_by(ScheduledJobRevision.revision_number.desc())
+            .limit(limit)
+        )
+        with self._session_factory() as session:
+            revisions = list(session.execute(statement).scalars())
+            for revision in revisions:
+                session.expunge(revision)
+            return revisions
+
+
+class ScheduledJobRunRepository:
+    """Persist fenced claims, retries, terminal states, logs, and outputs."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository with a SQLAlchemy session factory."""
+
+        self._session_factory = session_factory
+
+    @staticmethod
+    def _execution_policy(
+        job: ScheduledJob,
+        *,
+        timeout_seconds: int | None,
+        lease_seconds: int,
+        retry_interval_seconds: int | None = None,
+    ) -> tuple[int, int, int]:
+        """Return validated hard-timeout, lease, and backoff durations."""
+
+        retry = job.definition_json.get("retry")
+        retry = retry if isinstance(retry, dict) else {}
+        timeout = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else retry.get("timeout_seconds", 600)
+        )
+        retry_interval = (
+            retry_interval_seconds
+            if retry_interval_seconds is not None
+            else retry.get("retry_interval_seconds", 60)
+        )
+        return (
+            _positive_seconds(timeout, field_name="timeout_seconds"),
+            _positive_seconds(lease_seconds, field_name="lease_seconds"),
+            _positive_seconds(
+                retry_interval,
+                field_name="retry_interval_seconds",
+            ),
+        )
+
+    @staticmethod
+    def _clear_execution_lease(run: ScheduledJobRun) -> None:
+        """Clear ownership fields when a run leaves the running state."""
+
+        run.lease_token = None
+        run.lease_expires_at = None
+        run.attempt_deadline_at = None
+        run.retry_not_before_at = None
+
+    @staticmethod
+    def _terminalize_one_time_job(
+        job: ScheduledJob,
+        run: ScheduledJobRun,
+        *,
+        succeeded: bool,
+        completed_at: datetime,
+    ) -> None:
+        """Retire the matching activation of a one-time job atomically."""
+
+        if (
+            not _is_one_time_job(job)
+            or job.status
+            not in {
+                ScheduledJobStatus.ACTIVE.value,
+                ScheduledJobStatus.PAUSED.value,
+            }
+            or job.activation_generation != run.activation_generation
+        ):
+            return
+        job.status = (
+            ScheduledJobStatus.COMPLETED.value
+            if succeeded
+            else ScheduledJobStatus.EXECUTION_FAILED.value
+        )
+        job.is_active = False
+        job.activated_at = None
+        job.timer_unit_name = None
+        job.provisioning_error = _SCHEDULED_JOB_CLEANUP_PENDING_MESSAGE
+        job.updated_at = _monotonic_transition_time(job.updated_at, completed_at)
+
+    @staticmethod
+    def _cancel_locked_run(
+        session: Session,
+        run: ScheduledJobRun,
+        *,
+        completed_at: datetime,
+        error_message: str,
+        log_message: str,
+    ) -> None:
+        """Cancel and fence a locked running row with one audit message."""
+
+        run.status = ScheduledJobRunStatus.CANCELLED.value
+        run.completed_at = completed_at
+        run.error_message = error_message
+        ScheduledJobRunRepository._clear_execution_lease(run)
+        session.add(
+            ScheduledJobRunLog(
+                run_id=run.run_id,
+                log_level="warning",
+                message=log_message,
+                metadata_json={"attempt_number": run.attempt_number},
+            )
+        )
+
+    @staticmethod
+    def _require_fenced_running_run(
+        run: ScheduledJobRun,
+        *,
+        expected_lease_token: UUID,
+        expected_attempt_number: int,
+        database_now: datetime,
+    ) -> None:
+        """Reject terminal rows and workers with superseded or expired leases."""
+
+        if run.status != ScheduledJobRunStatus.RUNNING.value:
+            raise ValueError("Only a running scheduled-job run can transition.")
+        if (
+            run.lease_token != expected_lease_token
+            or run.attempt_number != expected_attempt_number
+        ):
+            raise ValueError("Scheduled-job execution lease is no longer owned.")
+        if (
+            run.lease_expires_at is None
+            or _as_aware_utc(run.lease_expires_at) <= database_now
+        ):
+            raise ValueError("Scheduled-job execution lease has expired.")
+
+    def _locked_job_and_run(
+        self,
+        session: Session,
+        *,
+        run_id: UUID,
+    ) -> tuple[ScheduledJob, ScheduledJobRun] | None:
+        """Lock a run's job first and its run second to prevent deadlocks."""
+
+        candidate_job_id = session.execute(
+            select(ScheduledJobRun.job_id).where(ScheduledJobRun.run_id == run_id)
+        ).scalar_one_or_none()
+        if candidate_job_id is None:
+            return None
+        job = session.execute(
+            select(ScheduledJob)
+            .where(ScheduledJob.job_id == candidate_job_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if job is None:
+            return None
+        run = session.execute(
+            select(ScheduledJobRun)
+            .where(ScheduledJobRun.run_id == run_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if run is None:
+            return None
+        return job, run
+
+    def create_run(
+        self,
+        *,
+        job_id: str,
+        scheduled_for: datetime,
+        triggered_by: str,
+        timeout_seconds: int = 600,
+        lease_seconds: int = 90,
+    ) -> ScheduledJobRun:
+        """Claim one occurrence with a database-clock fenced execution lease."""
+
+        with self._session_factory() as session:
+            job = session.execute(
+                select(ScheduledJob)
+                .where(
+                    ScheduledJob.job_id == job_id,
+                    ScheduledJob.status == ScheduledJobStatus.ACTIVE.value,
+                    ScheduledJob.is_active.is_(True),
+                    ScheduledJob.activated_at.is_not(None),
+                    ScheduledJob.activated_at <= scheduled_for,
+                )
+                .with_for_update()
+            ).scalar_one_or_none()
+            if job is None:
+                raise ValueError("Scheduled job is not active for this occurrence.")
+            timeout, lease, _ = self._execution_policy(
+                job,
+                timeout_seconds=timeout_seconds,
+                lease_seconds=lease_seconds,
+            )
+            database_now = _database_utc_now(session)
+            attempt_deadline = database_now + timedelta(seconds=timeout)
+            run = ScheduledJobRun(
+                job_id=job_id,
+                scheduled_for=scheduled_for,
+                status=ScheduledJobRunStatus.RUNNING.value,
+                attempt_number=1,
+                activation_generation=job.activation_generation,
+                lease_token=uuid4(),
+                lease_expires_at=min(
+                    database_now + timedelta(seconds=lease),
+                    attempt_deadline,
+                ),
+                attempt_deadline_at=attempt_deadline,
+                retry_not_before_at=None,
+                started_at=database_now,
+                triggered_by=triggered_by,
+            )
+            session.add(run)
+            session.flush()
+            session.add(
+                ScheduledJobRunLog(
+                    run_id=run.run_id,
+                    log_level="info",
+                    message="Scheduled occurrence claimed for execution.",
+                    metadata_json={"attempt_number": 1},
+                )
+            )
+            session.commit()
+            session.refresh(run)
+            session.expunge(run)
+            return run
+
+    def get_run_for_occurrence(
+        self,
+        *,
+        job_id: str,
+        scheduled_for: datetime,
+    ) -> ScheduledJobRun | None:
+        """Return the run that already owns a logical scheduled occurrence."""
+
+        with self._session_factory() as session:
+            run = session.execute(
+                select(ScheduledJobRun).where(
+                    ScheduledJobRun.job_id == job_id,
+                    ScheduledJobRun.scheduled_for == scheduled_for,
+                )
+            ).scalar_one_or_none()
+            if run is not None:
+                session.expunge(run)
+            return run
+
+    def get_running_run_for_job(self, *, job_id: str) -> ScheduledJobRun | None:
+        """Return the sole running occurrence for one scheduled job."""
+
+        with self._session_factory() as session:
+            run = session.execute(
+                select(ScheduledJobRun)
+                .where(
+                    ScheduledJobRun.job_id == job_id,
+                    ScheduledJobRun.status == ScheduledJobRunStatus.RUNNING.value,
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            if run is not None:
+                session.expunge(run)
+            return run
+
+    def renew_lease(
+        self,
+        *,
+        run_id: UUID,
+        expected_lease_token: UUID,
+        expected_attempt_number: int,
+        lease_seconds: int = 90,
+    ) -> ScheduledJobRun | None:
+        """Renew a currently owned lease without reviving a superseded worker."""
+
+        lease = _positive_seconds(lease_seconds, field_name="lease_seconds")
+        with self._session_factory() as session:
+            run = session.execute(
+                select(ScheduledJobRun)
+                .where(ScheduledJobRun.run_id == run_id)
+                .with_for_update()
+            ).scalar_one_or_none()
+            if run is None:
+                return None
+            database_now = _database_utc_now(session)
+            deadline = (
+                _as_aware_utc(run.attempt_deadline_at)
+                if run.attempt_deadline_at is not None
+                else None
+            )
+            if deadline is not None and database_now >= deadline:
+                raise ValueError("Scheduled-job attempt deadline has elapsed.")
+            self._require_fenced_running_run(
+                run,
+                expected_lease_token=expected_lease_token,
+                expected_attempt_number=expected_attempt_number,
+                database_now=database_now,
+            )
+            candidate_expiry = database_now + timedelta(seconds=lease)
+            if deadline is not None:
+                candidate_expiry = min(candidate_expiry, deadline)
+            run.lease_expires_at = candidate_expiry
+            session.commit()
+            session.refresh(run)
+            session.expunge(run)
+            return run
+
+    def schedule_retry(
+        self,
+        *,
+        run_id: UUID,
+        expected_lease_token: UUID,
+        expected_attempt_number: int,
+        previous_error: str,
+        retry_interval_seconds: int,
+        lease_seconds: int = 90,
+    ) -> ScheduledJobRun | None:
+        """Durably schedule the next attempt before sleeping outside the DB."""
+
+        retry_interval = _positive_seconds(
+            retry_interval_seconds,
+            field_name="retry_interval_seconds",
+        )
+        lease = _positive_seconds(lease_seconds, field_name="lease_seconds")
+        with self._session_factory() as session:
+            locked = self._locked_job_and_run(session, run_id=run_id)
+            if locked is None:
+                return None
+            _, run = locked
+            database_now = _database_utc_now(session)
+            self._require_fenced_running_run(
+                run,
+                expected_lease_token=expected_lease_token,
+                expected_attempt_number=expected_attempt_number,
+                database_now=database_now,
+            )
+            run.attempt_number += 1
+            run.retry_not_before_at = database_now + timedelta(seconds=retry_interval)
+            run.attempt_deadline_at = None
+            run.lease_expires_at = database_now + timedelta(seconds=lease)
+            run.error_message = previous_error
+            session.add(
+                ScheduledJobRunLog(
+                    run_id=run.run_id,
+                    log_level="warning",
+                    message="Execution attempt failed; retry scheduled.",
+                    metadata_json={
+                        "attempt_number": run.attempt_number,
+                        "previous_error": previous_error,
+                        "retry_not_before_at": run.retry_not_before_at.isoformat(),
+                    },
+                )
+            )
+            session.commit()
+            session.refresh(run)
+            session.expunge(run)
+            return run
+
+    def begin_retry_attempt(
+        self,
+        *,
+        run_id: UUID,
+        expected_lease_token: UUID,
+        expected_attempt_number: int,
+        timeout_seconds: int,
+        lease_seconds: int = 90,
+    ) -> ScheduledJobRun | None:
+        """Move an owned retry from durable backoff into execution."""
+
+        with self._session_factory() as session:
+            locked = self._locked_job_and_run(session, run_id=run_id)
+            if locked is None:
+                return None
+            job, run = locked
+            database_now = _database_utc_now(session)
+            self._require_fenced_running_run(
+                run,
+                expected_lease_token=expected_lease_token,
+                expected_attempt_number=expected_attempt_number,
+                database_now=database_now,
+            )
+            timeout, lease, _ = self._execution_policy(
+                job,
+                timeout_seconds=timeout_seconds,
+                lease_seconds=lease_seconds,
+            )
+            if run.retry_not_before_at is None:
+                raise ValueError("Scheduled-job run is not waiting for a retry.")
+            retry_at = _as_aware_utc(run.retry_not_before_at)
+            if database_now < retry_at:
+                raise ScheduledJobRunLeaseBusyError(retry_at)
+            deadline = database_now + timedelta(seconds=timeout)
+            run.started_at = database_now
+            run.attempt_deadline_at = deadline
+            run.retry_not_before_at = None
+            run.lease_expires_at = min(
+                database_now + timedelta(seconds=lease),
+                deadline,
+            )
+            session.commit()
+            session.refresh(run)
+            session.expunge(run)
+            return run
+
+    def recover_or_get_running_run(
+        self,
+        *,
+        job_id: str,
+        stale_before: datetime | None = None,
+        triggered_by: str,
+        maximum_attempts: int,
+        timeout_seconds: int | None = None,
+        lease_seconds: int = 90,
+        retry_interval_seconds: int | None = None,
+    ) -> tuple[ScheduledJobRun, bool] | None:
+        """Return a live lease or atomically reclaim one using database time.
+
+        ``stale_before`` remains accepted for source compatibility but is not an
+        authority: the persisted lease and database clock decide ownership.
+        """
+
+        del stale_before
+        with self._session_factory() as session:
+            job = session.execute(
+                select(ScheduledJob)
+                .where(
+                    ScheduledJob.job_id == job_id,
+                    ScheduledJob.status == ScheduledJobStatus.ACTIVE.value,
+                    ScheduledJob.is_active.is_(True),
+                    ScheduledJob.activated_at.is_not(None),
+                )
+                .with_for_update()
+            ).scalar_one_or_none()
+            if job is None:
+                raise ValueError("Scheduled job is no longer active.")
+            run = session.execute(
+                select(ScheduledJobRun)
+                .where(
+                    ScheduledJobRun.job_id == job_id,
+                    ScheduledJobRun.status == ScheduledJobRunStatus.RUNNING.value,
+                )
+                .limit(1)
+                .with_for_update()
+            ).scalar_one_or_none()
+            if run is None:
+                return None
+            database_now = _database_utc_now(session)
+            if run.activation_generation != job.activation_generation:
+                self._cancel_locked_run(
+                    session,
+                    run,
+                    completed_at=database_now,
+                    error_message="Occurrence predates the job's current activation.",
+                    log_message="Pre-activation occurrence cancelled during recovery.",
+                )
+                session.commit()
+                return None
+            if (
+                run.lease_expires_at is not None
+                and _as_aware_utc(run.lease_expires_at) > database_now
+            ):
+                session.expunge(run)
+                return run, False
+
+            timeout, lease, retry_interval = self._execution_policy(
+                job,
+                timeout_seconds=timeout_seconds,
+                lease_seconds=lease_seconds,
+                retry_interval_seconds=retry_interval_seconds,
+            )
+            self._recover_locked_run(
+                session,
+                job=job,
+                run=run,
+                database_now=database_now,
+                triggered_by=triggered_by,
+                maximum_attempts=maximum_attempts,
+                timeout_seconds=timeout,
+                lease_seconds=lease,
+                retry_interval_seconds=retry_interval,
+            )
+            session.commit()
+            session.refresh(run)
+            session.expunge(run)
+            return run, True
+
+    def _recover_locked_run(
+        self,
+        session: Session,
+        *,
+        job: ScheduledJob,
+        run: ScheduledJobRun,
+        database_now: datetime,
+        triggered_by: str,
+        maximum_attempts: int,
+        timeout_seconds: int,
+        lease_seconds: int,
+        retry_interval_seconds: int,
+    ) -> None:
+        """Fence and recover one expired run while job then run are locked."""
+
+        if run.retry_not_before_at is None and run.attempt_number >= maximum_attempts:
+            run.status = ScheduledJobRunStatus.TIMED_OUT.value
+            run.completed_at = database_now
+            run.error_message = (
+                "Execution lease expired after the final permitted attempt."
+            )
+            self._clear_execution_lease(run)
+            self._terminalize_one_time_job(
+                job,
+                run,
+                succeeded=False,
+                completed_at=database_now,
+            )
+            session.add(
+                ScheduledJobRunLog(
+                    run_id=run.run_id,
+                    log_level="error",
+                    message="Expired final execution lease marked timed out.",
+                    metadata_json={"attempt_number": run.attempt_number},
+                )
+            )
+            return
+
+        run.lease_token = uuid4()
+        run.triggered_by = triggered_by
+        if run.retry_not_before_at is not None:
+            retry_at = _as_aware_utc(run.retry_not_before_at)
+            if retry_at <= database_now:
+                deadline = database_now + timedelta(seconds=timeout_seconds)
+                run.started_at = database_now
+                run.retry_not_before_at = None
+                run.attempt_deadline_at = deadline
+                run.lease_expires_at = min(
+                    database_now + timedelta(seconds=lease_seconds),
+                    deadline,
+                )
+                message = "Expired retry-wait lease reclaimed for execution."
+            else:
+                run.lease_expires_at = database_now + timedelta(seconds=lease_seconds)
+                message = "Expired retry-wait lease reclaimed before its due time."
+        else:
+            run.attempt_number += 1
+            run.attempt_deadline_at = None
+            run.retry_not_before_at = database_now + timedelta(
+                seconds=retry_interval_seconds
+            )
+            run.lease_expires_at = database_now + timedelta(seconds=lease_seconds)
+            run.error_message = "Previous execution lease expired."
+            message = "Expired execution lease reclaimed for retry."
+        session.add(
+            ScheduledJobRunLog(
+                run_id=run.run_id,
+                log_level="warning",
+                message=message,
+                metadata_json={"attempt_number": run.attempt_number},
+            )
+        )
+
+    def recover_stale_run(
+        self,
+        *,
+        run_id: UUID,
+        stale_before: datetime | None = None,
+        triggered_by: str,
+        maximum_attempts: int,
+        timeout_seconds: int | None = None,
+        lease_seconds: int = 90,
+        retry_interval_seconds: int | None = None,
+    ) -> ScheduledJobRun | None:
+        """Reclaim one expired run by identifier using its persisted lease."""
+
+        del stale_before
+        with self._session_factory() as session:
+            locked = self._locked_job_and_run(session, run_id=run_id)
+            if locked is None:
+                return None
+            job, run = locked
+            if (
+                job.status != ScheduledJobStatus.ACTIVE.value
+                or not job.is_active
+                or job.activated_at is None
+            ):
+                raise ValueError("Scheduled job is no longer active.")
+            if run.status != ScheduledJobRunStatus.RUNNING.value:
+                return None
+            database_now = _database_utc_now(session)
+            if run.activation_generation != job.activation_generation:
+                self._cancel_locked_run(
+                    session,
+                    run,
+                    completed_at=database_now,
+                    error_message="Occurrence predates the job's current activation.",
+                    log_message="Pre-activation occurrence cancelled during recovery.",
+                )
+            elif (
+                run.lease_expires_at is not None
+                and _as_aware_utc(run.lease_expires_at) > database_now
+            ):
+                return None
+            else:
+                timeout, lease, retry_interval = self._execution_policy(
+                    job,
+                    timeout_seconds=timeout_seconds,
+                    lease_seconds=lease_seconds,
+                    retry_interval_seconds=retry_interval_seconds,
+                )
+                self._recover_locked_run(
+                    session,
+                    job=job,
+                    run=run,
+                    database_now=database_now,
+                    triggered_by=triggered_by,
+                    maximum_attempts=maximum_attempts,
+                    timeout_seconds=timeout,
+                    lease_seconds=lease,
+                    retry_interval_seconds=retry_interval,
+                )
+            session.commit()
+            session.refresh(run)
+            session.expunge(run)
+            return run
+
+    def record_retry(
+        self,
+        *,
+        run_id: UUID,
+        attempt_number: int,
+        previous_error: str,
+        expected_lease_token: UUID,
+        expected_attempt_number: int,
+        timeout_seconds: int = 600,
+        lease_seconds: int = 90,
+    ) -> ScheduledJobRun | None:
+        """Advance directly to a retry after the caller's completed backoff."""
+
+        with self._session_factory() as session:
+            locked = self._locked_job_and_run(session, run_id=run_id)
+            if locked is None:
+                return None
+            job, run = locked
+            database_now = _database_utc_now(session)
+            self._require_fenced_running_run(
+                run,
+                expected_lease_token=expected_lease_token,
+                expected_attempt_number=expected_attempt_number,
+                database_now=database_now,
+            )
+            if attempt_number != run.attempt_number + 1:
+                raise ValueError("Retry attempt must advance by exactly one.")
+            timeout, lease, _ = self._execution_policy(
+                job,
+                timeout_seconds=timeout_seconds,
+                lease_seconds=lease_seconds,
+            )
+            deadline = database_now + timedelta(seconds=timeout)
+            run.attempt_number = attempt_number
+            run.lease_token = uuid4()
+            run.lease_expires_at = min(
+                database_now + timedelta(seconds=lease),
+                deadline,
+            )
+            run.attempt_deadline_at = deadline
+            run.retry_not_before_at = None
+            run.started_at = database_now
+            run.error_message = previous_error
+            session.add(
+                ScheduledJobRunLog(
+                    run_id=run.run_id,
+                    log_level="warning",
+                    message="Execution attempt failed; retrying.",
+                    metadata_json={
+                        "attempt_number": attempt_number,
+                        "previous_error": previous_error,
+                    },
+                )
+            )
+            session.commit()
+            session.refresh(run)
+            session.expunge(run)
+            return run
+
+    def complete_run(
+        self,
+        *,
+        run_id: UUID,
+        expected_lease_token: UUID,
+        expected_attempt_number: int,
+        output_type: str,
+        content: str | None,
+        content_json: dict[str, Any] | None,
+        artifact_path: str | None,
+        output_metadata: dict[str, Any],
+    ) -> tuple[ScheduledJobRun, ScheduledJobOutput] | None:
+        """Persist output and atomically retire a matching one-time job."""
+
+        with self._session_factory() as session:
+            locked = self._locked_job_and_run(session, run_id=run_id)
+            if locked is None:
+                return None
+            job, run = locked
+            completed_at = _database_utc_now(session)
+            self._require_fenced_running_run(
+                run,
+                expected_lease_token=expected_lease_token,
+                expected_attempt_number=expected_attempt_number,
+                database_now=completed_at,
+            )
+            run.status = ScheduledJobRunStatus.COMPLETED.value
+            run.completed_at = completed_at
+            run.error_message = None
+            self._clear_execution_lease(run)
+            self._terminalize_one_time_job(
+                job,
+                run,
+                succeeded=True,
+                completed_at=completed_at,
+            )
+            output = ScheduledJobOutput(
+                run_id=run.run_id,
+                output_type=output_type,
+                content=content,
+                content_json=content_json,
+                artifact_path=artifact_path,
+                metadata_json=output_metadata,
+            )
+            session.add(output)
+            session.add(
+                ScheduledJobRunLog(
+                    run_id=run.run_id,
+                    log_level="info",
+                    message="Scheduled-job execution completed.",
+                    metadata_json={"attempt_number": run.attempt_number},
+                )
+            )
+            session.commit()
+            session.refresh(run)
+            session.refresh(output)
+            session.expunge(run)
+            session.expunge(output)
+            return run, output
+
+    def cancel_run(
+        self,
+        *,
+        run_id: UUID,
+        expected_lease_token: UUID,
+        expected_attempt_number: int,
+        reason: str,
+    ) -> ScheduledJobRun | None:
+        """Cooperatively cancel a fenced run and retire a one-time activation."""
+
+        with self._session_factory() as session:
+            locked = self._locked_job_and_run(session, run_id=run_id)
+            if locked is None:
+                return None
+            job, run = locked
+            completed_at = _database_utc_now(session)
+            self._require_fenced_running_run(
+                run,
+                expected_lease_token=expected_lease_token,
+                expected_attempt_number=expected_attempt_number,
+                database_now=completed_at,
+            )
+            self._cancel_locked_run(
+                session,
+                run,
+                completed_at=completed_at,
+                error_message=reason,
+                log_message="Scheduled-job execution cancelled cooperatively.",
+            )
+            self._terminalize_one_time_job(
+                job,
+                run,
+                succeeded=False,
+                completed_at=completed_at,
+            )
+            session.commit()
+            session.refresh(run)
+            session.expunge(run)
+            return run
+
+    def fail_run(
+        self,
+        *,
+        run_id: UUID,
+        expected_lease_token: UUID,
+        expected_attempt_number: int,
+        error_message: str,
+        timed_out: bool = False,
+    ) -> ScheduledJobRun | None:
+        """Persist a fenced failure and retire a matching one-time job."""
+
+        with self._session_factory() as session:
+            locked = self._locked_job_and_run(session, run_id=run_id)
+            if locked is None:
+                return None
+            job, run = locked
+            completed_at = _database_utc_now(session)
+            self._require_fenced_running_run(
+                run,
+                expected_lease_token=expected_lease_token,
+                expected_attempt_number=expected_attempt_number,
+                database_now=completed_at,
+            )
+            run.status = (
+                ScheduledJobRunStatus.TIMED_OUT.value
+                if timed_out
+                else ScheduledJobRunStatus.FAILED.value
+            )
+            run.completed_at = completed_at
+            run.error_message = error_message
+            self._clear_execution_lease(run)
+            self._terminalize_one_time_job(
+                job,
+                run,
+                succeeded=False,
+                completed_at=completed_at,
+            )
+            session.add(
+                ScheduledJobRunLog(
+                    run_id=run.run_id,
+                    log_level="error",
+                    message=(
+                        "Scheduled-job execution timed out."
+                        if timed_out
+                        else "Scheduled-job execution failed."
+                    ),
+                    metadata_json={
+                        "attempt_number": run.attempt_number,
+                        "error": error_message,
+                    },
+                )
+            )
+            session.commit()
+            session.refresh(run)
+            session.expunge(run)
+            return run

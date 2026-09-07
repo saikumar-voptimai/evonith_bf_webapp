@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from agents.furnacemind import graph as fm_graph
 
 
@@ -11,6 +13,8 @@ class _StatusBox:
     """Test double for the Streamlit status placeholder."""
 
     def __init__(self) -> None:
+        """Create an empty status-label capture list."""
+
         self.labels: list[str] = []
 
     def status(self, label: str, expanded: bool = False) -> None:  # noqa: ARG002
@@ -22,6 +26,8 @@ class _Function:
     """Fake OpenAI SDK function-call object."""
 
     def __init__(self, name: str, arguments: str) -> None:
+        """Store one fake function name and serialized argument object."""
+
         self.name = name
         self.arguments = arguments
 
@@ -30,6 +36,8 @@ class _ToolCall:
     """Fake OpenAI SDK tool-call object."""
 
     def __init__(self, name: str, arguments: str = "{}") -> None:
+        """Create a stable fake tool-call identifier and function payload."""
+
         self.id = f"call_{name}"
         self.function = _Function(name, arguments)
 
@@ -38,6 +46,8 @@ class _Message:
     """Fake OpenAI SDK chat message object."""
 
     def __init__(self, *, content: str = "", tool_calls: Any = None) -> None:
+        """Store fake assistant content and optional tool calls."""
+
         self.content = content
         self.tool_calls = tool_calls
 
@@ -46,6 +56,8 @@ class _Choice:
     """Fake OpenAI SDK choice wrapper."""
 
     def __init__(self, message: _Message) -> None:
+        """Wrap one fake message as an OpenAI-style completion choice."""
+
         self.message = message
 
 
@@ -53,6 +65,8 @@ class _Completion:
     """Fake OpenAI SDK completion response."""
 
     def __init__(self, message: _Message) -> None:
+        """Create an OpenAI-style completion containing one choice."""
+
         self.choices = [_Choice(message)]
 
 
@@ -66,6 +80,8 @@ class _FakeLLM:
         tool_arguments: str = '{"start_time": "2026-01-01"}',
         final_text: str = "<think>hidden</think>Final answer.",
     ) -> None:
+        """Configure the requested tool call and eventual final response."""
+
         self.calls = 0
         self.tool_name = tool_name
         self.tool_arguments = tool_arguments
@@ -92,6 +108,8 @@ def test_furnacemind_graph_executes_tool_then_returns_final_response(monkeypatch
     calls = []
 
     def fake_execute_openai_tool_call(*, name: str, arguments: dict[str, Any]) -> str:
+        """Record one dispatched tool call and return a stable tool result."""
+
         calls.append((name, arguments))
         return "tool result"
 
@@ -163,6 +181,8 @@ def test_furnacemind_graph_recovers_after_tool_error(monkeypatch):
     """Tool failures should be returned to the model instead of crashing."""
 
     def failing_tool(*, name: str, arguments: dict[str, Any]) -> str:  # noqa: ARG001
+        """Simulate a data-tool failure handled by the interactive graph."""
+
         raise RuntimeError("database unavailable")
 
     monkeypatch.setattr(
@@ -202,6 +222,8 @@ class _ToolChoiceRecordingLLM:
     """Fake LLM that records graph-level tool choice behavior."""
 
     def __init__(self, *, final_text: str = "Prompt-driven final answer.") -> None:
+        """Create a fake model with stable output and an empty call record."""
+
         self.tool_choices: list[str | dict[str, Any]] = []
         self.final_text = final_text
 
@@ -240,3 +262,65 @@ def test_graph_leaves_tool_routing_to_prompt_policy():
 
     assert response == "Prompt-driven final answer."
     assert llm.tool_choices == ["auto"]
+
+
+def test_headless_graph_enforces_runtime_tool_allowlist() -> None:
+    """A model cannot bypass the scheduled-job policy by naming another tool."""
+
+    dispatched: list[str] = []
+
+    def _dispatch(*, name: str, arguments: dict[str, Any]) -> str:
+        """Record a dispatch that the policy should prevent."""
+
+        del arguments
+        dispatched.append(name)
+        return "unexpected"
+
+    with pytest.raises(fm_graph.FurnaceMindGraphToolError, match="not allowed"):
+        fm_graph.run_furnacemind_graph(
+            llm=_FakeLLM(tool_name="execute_python_plot"),
+            messages=[{"role": "user", "content": "Run the scheduled report."}],
+            tools=[],
+            tool_dispatcher=_dispatch,
+            allowed_tool_names={"fetch_online_data"},
+            fail_on_tool_error=True,
+        )
+
+    assert dispatched == []
+
+
+def test_headless_graph_rejects_malformed_tool_arguments() -> None:
+    """Unattended execution must not replace malformed JSON with empty arguments."""
+
+    with pytest.raises(fm_graph.FurnaceMindGraphToolError, match="malformed JSON"):
+        fm_graph.run_furnacemind_graph(
+            llm=_FakeLLM(tool_arguments="{not-json"),
+            messages=[{"role": "user", "content": "Run the scheduled report."}],
+            tools=[],
+            tool_dispatcher=lambda **_: "unexpected",
+            allowed_tool_names={"fetch_ml_data"},
+            fail_on_tool_error=True,
+        )
+
+
+def test_headless_graph_returns_sanitized_tool_events() -> None:
+    """Structured metadata should record outcomes without arguments or result text."""
+
+    result = fm_graph.run_furnacemind_graph(
+        llm=_FakeLLM(),
+        messages=[{"role": "user", "content": "Run the scheduled report."}],
+        tools=[],
+        tool_dispatcher=lambda **_: "sensitive plant result",
+        allowed_tool_names={"fetch_ml_data"},
+        fail_on_tool_error=True,
+    )
+
+    assert result.final_response == "Final answer."
+    assert result.tool_events == (
+        {
+            "name": "fetch_ml_data",
+            "succeeded": True,
+            "result_characters": len("sensitive plant result"),
+        },
+    )
+    assert "sensitive" not in repr(result.tool_events)

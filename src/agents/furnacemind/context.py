@@ -22,7 +22,7 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 _COPILOT_DATA_DIR = Path(__file__).resolve().parents[2] / "storage" / "furnacemind"
-_REPO_ROOT = Path(__file__).resolve().parents[4]  # …/evonith_webapp
+_REPO_ROOT = Path(__file__).resolve().parents[3]  # repository root
 
 # Which SKILLS*.md files to inject per active skill. None = free chat (no skill docs).
 _SKILL_FILES: dict[str | None, list[str]] = {

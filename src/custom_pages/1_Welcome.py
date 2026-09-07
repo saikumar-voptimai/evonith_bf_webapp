@@ -1,4 +1,10 @@
-# src/custom_pages/1_Welcome.py
+"""Render the authenticated FurnaceMind landing and administration page.
+
+The page presents live BF2 indicators and navigation cards, while exposing
+administration entry points only when the signed-in user's role grants the
+required permission.
+"""
+
 import base64
 from pathlib import Path
 
@@ -54,7 +60,9 @@ if "admin_tool_selection" not in st.session_state:
 selection = st.session_state.get("admin_tool_selection")
 
 
-def _back_btn():
+def _back_btn() -> None:
+    """Return from an embedded administration view to the landing page."""
+
     if st.button("⬅  Back to Dashboard"):
         st.session_state["admin_tool_selection"] = None
         st.rerun()
@@ -63,18 +71,21 @@ def _back_btn():
 if selection == "hopper" and has_permission("hopper:write"):
     _back_btn()
     from ui.hopper_admin_page import hopper_admin_page
+
     hopper_admin_page(st.session_state.get("auth_user"))
     st.stop()
 
 if selection == "burden" and has_permission("burden:write"):
     _back_btn()
     from ui.burden_admin_page import burden_admin_page
+
     burden_admin_page(st.session_state.get("auth_user"))
     st.stop()
 
 if selection == "register" and has_permission("users:write"):
     _back_btn()
     from ui.user_management import register_page
+
     register_page()
     st.stop()
 
@@ -85,8 +96,11 @@ with _top_btn:
         logout_user()
         st.stop()
 
+
 # ── Hero banner ───────────────────────────────────────────────────────────────
 def _b64_file(path: str) -> str:
+    """Return a local image as base64, or an empty string when it is absent."""
+
     p = Path(path)
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
@@ -144,12 +158,14 @@ st.html(f"""
 </div>
 """)
 
+
 # ── Live KPI bar ──────────────────────────────────────────────────────────────
 @st.cache_data(ttl=120, show_spinner=False)
 def _live_kpis() -> tuple[dict, str]:
     """Returns (values_dict, error_msg). error_msg is empty string on success."""
     try:
         from furnace_data.influx.online import fetch_online_df
+
         df = fetch_online_df(
             selected_measurements=["process_params"],
             time_range="last 1 hour",
@@ -158,13 +174,19 @@ def _live_kpis() -> tuple[dict, str]:
         )
         if df is None or df.empty:
             return {}, "No data returned for the last hour."
-        def m(col):
-            return round(float(df[col].dropna().mean()), 1) if col in df.columns else None
+
+        def m(col: str) -> float | None:
+            """Return the rounded mean for an available KPI column."""
+
+            return (
+                round(float(df[col].dropna().mean()), 1) if col in df.columns else None
+            )
+
         values = {
-            "prod":  m("production_per_hour"),
-            "fuel":  m("fuel_rate"),
+            "prod": m("production_per_hour"),
+            "fuel": m("fuel_rate"),
             "etaco": m("body_etaco"),
-            "wind":  m("hot_blast_vol_nm3h"),
+            "wind": m("hot_blast_vol_nm3h"),
         }
         return values, ""
     except Exception as e:
@@ -176,11 +198,15 @@ if _kpi_err:
     st.caption(f"⚠ Live KPIs unavailable: {_kpi_err}")
 
 
-def _fmt(v, d=1):
+def _fmt(v: float | None, d: int = 1) -> str:
+    """Format an optional KPI value for display in a landing-page card."""
+
     return f"{v:,.{d}f}" if v is not None else "&#8212;"
 
 
 def _kpi_card(value: str, label: str, unit: str, grad: str) -> str:
+    """Render the HTML fragment for one live KPI card."""
+
     return f"""
     <div style="background:{grad}; border-radius:12px; padding:1.5rem;
                 text-align:center; box-shadow:0 2px 10px rgba(0,0,0,0.15);">
@@ -197,10 +223,25 @@ def _kpi_card(value: str, label: str, unit: str, grad: str) -> str:
 
 
 _kpi_specs = [
-    (_fmt(kpis.get("prod")),   "PRODUCTION RATE", "t / hr",   "linear-gradient(135deg,#166534,#16a34a)"),
-    (_fmt(kpis.get("fuel"),0), "FUEL RATE",       "kg / tHM", "linear-gradient(135deg,#92400e,#ea580c)"),
-    (_fmt(kpis.get("etaco")),  "ETA CO",          "%",        "linear-gradient(135deg,#1e3a8a,#2563eb)"),
-    (_fmt(kpis.get("wind"),0), "BLAST VOLUME",    "Nm³ / hr", "linear-gradient(135deg,#0c4a6e,#0284c7)"),
+    (
+        _fmt(kpis.get("prod")),
+        "PRODUCTION RATE",
+        "t / hr",
+        "linear-gradient(135deg,#166534,#16a34a)",
+    ),
+    (
+        _fmt(kpis.get("fuel"), 0),
+        "FUEL RATE",
+        "kg / tHM",
+        "linear-gradient(135deg,#92400e,#ea580c)",
+    ),
+    (_fmt(kpis.get("etaco")), "ETA CO", "%", "linear-gradient(135deg,#1e3a8a,#2563eb)"),
+    (
+        _fmt(kpis.get("wind"), 0),
+        "BLAST VOLUME",
+        "Nm³ / hr",
+        "linear-gradient(135deg,#0c4a6e,#0284c7)",
+    ),
 ]
 
 # st.columns ensures the grid reflows properly on narrow viewports
@@ -212,27 +253,68 @@ for _col, (val, label, unit, grad) in zip([_kc1, _kc2, _kc3, _kc4], _kpi_specs):
 st.html("<div style='margin-bottom:2rem'></div>")
 
 # ── Module tile grid ──────────────────────────────────────────────────────────
-st.html("<p style='color:#64748b; font-size:0.75rem; font-weight:700;"
-        "text-transform:uppercase; letter-spacing:0.1em; margin:0 0 1rem;'>"
-        "Platform Modules</p>")
+st.html(
+    "<p style='color:#64748b; font-size:0.75rem; font-weight:700;"
+    "text-transform:uppercase; letter-spacing:0.1em; margin:0 0 1rem;'>"
+    "Platform Modules</p>"
+)
 
 _TILES = [
-    ("custom_pages/2_Data_Explorer.py",      "📓", "Data Explorer",
-     "Browse InfluxDB telemetry, download datasets, and build ML training sets.",     "#2563eb"),
-    ("custom_pages/3_Data_Visualisation.py", "📈", "V-Board",
-     "Real-time 2D heat load contours and furnace body temperature profiles.",        "#7c3aed"),
-    ("custom_pages/4_Recommendations.py",    "💡", "V-Sense",
-     "Physics-informed AI recommendations for blast parameters and cost optimisation.","#059669"),
-    ("custom_pages/5_AI_Copilot.py",         "🤖", "AI CoPilot",
-     "Channeling propensity detection, anomaly scoring, and unit-cost benchmarking.", "#dc2626"),
-    ("custom_pages/6_Material_Balance.py",   "⚖️", "Material Balance",
-     "Daily 12-element mass balance — Sankey diagram, closure table, per-element bars.","#0891b2"),
-    ("custom_pages/7_FurnaceMind.py",        "🧠", "FurnaceMind",
-     "AI co-pilot: natural-language queries, trend plots, and live shift reports.",   "#7c2d12"),
+    (
+        "custom_pages/2_Data_Explorer.py",
+        "📓",
+        "Data Explorer",
+        "Browse InfluxDB telemetry, download datasets, and build ML training sets.",
+        "#2563eb",
+    ),
+    (
+        "custom_pages/3_Data_Visualisation.py",
+        "📈",
+        "V-Board",
+        "Real-time 2D heat load contours and furnace body temperature profiles.",
+        "#7c3aed",
+    ),
+    (
+        "custom_pages/4_Recommendations.py",
+        "💡",
+        "V-Sense",
+        "Physics-informed AI recommendations for blast parameters and cost optimisation.",
+        "#059669",
+    ),
+    (
+        "custom_pages/5_AI_Copilot.py",
+        "🤖",
+        "AI CoPilot",
+        "Channeling propensity detection, anomaly scoring, and unit-cost benchmarking.",
+        "#dc2626",
+    ),
+    (
+        "custom_pages/6_Material_Balance.py",
+        "⚖️",
+        "Material Balance",
+        "Daily 12-element mass balance — Sankey diagram, closure table, per-element bars.",
+        "#0891b2",
+    ),
+    (
+        "custom_pages/7_FurnaceMind.py",
+        "🧠",
+        "FurnaceMind",
+        "AI co-pilot: natural-language queries, trend plots, and live shift reports.",
+        "#7c2d12",
+    ),
 ]
 
 
-def _tile(col, page_path: str, icon: str, title: str, desc: str, color: str):
+def _tile(
+    col: object,
+    page_path: str,
+    icon: str,
+    title: str,
+    desc: str,
+    color: str,
+) -> None:
+    """Render one navigation tile inside a supplied Streamlit column."""
+
     with col:
         st.html(f"""
         <div style="background:{color}; border-radius:10px 10px 0 0;
@@ -258,8 +340,8 @@ for i in range(0, len(_TILES), 3):
         _tile(col, *tile)
     st.html("<div style='height:0.6rem'></div>")
 
-# Blend Optimizer + Feedback — centred
-_, _bmo_col, _fc, _ = st.columns([0.5, 1, 1, 0.5])
+# Planning, scheduling, and feedback
+_bmo_col, _schedule_col, _feedback_col = st.columns(3)
 _tile(
     _bmo_col,
     "custom_pages/9_Blend_Optimizer.py",
@@ -268,8 +350,22 @@ _tile(
     "LP baseline and nonlinear total-cost optimization for ore blend planning.",
     "#0f766e",
 )
-_tile(_fc, "custom_pages/8_Feedback.py", "📮", "Feedback",
-      "Submit feature requests, bug reports, and operational feedback.", "#b45309")
+_tile(
+    _schedule_col,
+    "custom_pages/10_Scheduled_Tasks.py",
+    "🗓️",
+    "Scheduled Tasks",
+    "Describe an operator task, choose its timing, and download its JSON definition.",
+    "#173c59",
+)
+_tile(
+    _feedback_col,
+    "custom_pages/8_Feedback.py",
+    "📮",
+    "Feedback",
+    "Submit feature requests, bug reports, and operational feedback.",
+    "#b45309",
+)
 
 # ── Admin tools ───────────────────────────────────────────────────────────────
 if (
@@ -278,9 +374,11 @@ if (
     or has_permission("users:write")
 ):
     st.markdown("---")
-    st.html("<p style='color:#94a3b8; font-size:0.75rem; font-weight:700;"
-            "text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.8rem;'>"
-            "Administration</p>")
+    st.html(
+        "<p style='color:#94a3b8; font-size:0.75rem; font-weight:700;"
+        "text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.8rem;'>"
+        "Administration</p>"
+    )
     _a1, _a2, _a3 = st.columns(3)
     with _a1:
         if st.button("🛠  Hopper Mapping", width="stretch"):
@@ -298,6 +396,8 @@ if (
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("---")
-st.html("<p style='text-align:center; color:#94a3b8; font-size:0.75rem;'>"
-        "Powered by <strong style='color:#f97316;'>V-OptimAIse</strong>"
-        " &middot; Blast Furnace Intelligence Platform</p>")
+st.html(
+    "<p style='text-align:center; color:#94a3b8; font-size:0.75rem;'>"
+    "Powered by <strong style='color:#f97316;'>V-OptimAIse</strong>"
+    " &middot; Blast Furnace Intelligence Platform</p>"
+)

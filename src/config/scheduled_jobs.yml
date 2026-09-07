@@ -1,0 +1,92 @@
+# Scheduled Tasks catalog and safe production defaults.
+schema_version: scheduled-jobs-catalog/v1
+
+# Operator-visible report choices. Only common settings are stored here; the
+# page and schema determine per-job validation behavior.
+job_types:
+  - id: eta_co_report
+    label: ETA CO Report
+    description: Trend ETA CO, evaluate configured limits, and prepare a report.
+    default_analysis_level: low
+    input_profile: eta_co
+  - id: shift_report
+    label: Shift Handover Summary
+    description: Summarize the previous completed BF2 shift for handover.
+    default_analysis_level: low
+    input_profile: common
+  - id: daily_report
+    label: Daily Furnace Summary
+    description: Summarize the previous BF2 calendar day.
+    default_analysis_level: low
+    input_profile: common
+  - id: furnace_summary
+    label: Furnace Performance Summary
+    description: Review BF2 performance for a selected data period.
+    default_analysis_level: low
+    input_profile: common
+  - id: custom_report
+    label: Custom Report
+    description: Follow the operator's natural-language instructions.
+    default_analysis_level: low
+    input_profile: common
+
+# Fixed execution target. Operators do not select a device in the UI.
+target_devices:
+  - device_id: bf2-jetson-01
+    device_type: jetson
+
+data_sources:
+  - id: online_process_data
+    label: Live process historian
+  - id: historical_furnace_data
+    label: Historical furnace dataset
+
+eta_co_signals:
+  - id: body_etaco
+    label: Body ETA CO
+
+aggregation_intervals:
+  - value: 1min
+    label: 1 minute
+    minutes: 1
+  - value: 5min
+    label: 5 minutes
+    minutes: 5
+  - value: 15min
+    label: 15 minutes
+    minutes: 15
+  - value: 30min
+    label: 30 minutes
+    minutes: 30
+  - value: 1h
+    label: 1 hour
+    minutes: 60
+
+# Timezones offered by the Scheduled Tasks form. Keep these as IANA names so
+# daylight-saving and offsets are resolved by the runtime.
+timezones:
+  - name: Asia/Kolkata
+    label: Asia/Kolkata (IST)
+  - name: UTC
+    label: UTC
+
+defaults:
+  timezone: Asia/Kolkata
+  target_device_id: bf2-jetson-01
+  eta_co:
+    signal: body_etaco
+    report_duration_minutes: 60
+    aggregation_interval: 1min
+    warning_threshold: 42.0
+    critical_threshold: 40.0
+    # Phase 5 persists text/JSON reports only; graph artifact storage is gated.
+    include_graph: false
+    include_ai_summary: true
+  reliability:
+    maximum_attempts: 3
+    retry_interval_seconds: 60
+    timeout_seconds: 600
+    notify_on_failure: true
+    overlap_policy: skip
+    misfire_policy: fire_once_latest
+  policy_profile: bf_operator_read_only_v1

@@ -10,6 +10,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -19,8 +20,12 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+JSON_DOCUMENT = JSON().with_variant(JSONB(), "postgresql")
 
 
 def utc_now() -> datetime:
@@ -38,6 +43,49 @@ class UserRole(str, Enum):
     ADMIN = "admin"
     SUPERVISOR = "supervisor"
     USER = "user"
+
+
+class ScheduledJobStatus(str, Enum):
+    """Lifecycle states for a persisted scheduled-job definition."""
+
+    PENDING_PROVISIONING = "pending_provisioning"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    PROVISIONING_FAILED = "provisioning_failed"
+    COMPLETED = "completed"
+    EXECUTION_FAILED = "execution_failed"
+    DELETED = "deleted"
+
+
+class ScheduledJobRunStatus(str, Enum):
+    """Lifecycle states for an individual scheduled-job execution."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
+    SKIPPED = "skipped"
+    CANCELLED = "cancelled"
+
+
+class ScheduledJobCommandAction(str, Enum):
+    """Allow-listed control actions accepted from the web application."""
+
+    PROVISION = "provision"
+    PAUSE = "pause"
+    RESUME = "resume"
+    UPDATE = "update"
+    ARCHIVE = "archive"
+
+
+class ScheduledJobCommandStatus(str, Enum):
+    """Durable processing states for Jetson lifecycle commands."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
 
 
 class User(Base):
@@ -526,4 +574,382 @@ class FeedbackItem(Base):
         DateTime(timezone=True),
         nullable=False,
         default=utc_now,
+    )
+
+
+class ScheduledJob(Base):
+    """Canonical definition and lifecycle state for one scheduled task."""
+
+    __tablename__ = "scheduled_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_provisioning', 'active', 'paused', "
+            "'provisioning_failed', 'completed', 'execution_failed', 'deleted')",
+            name="ck_automation_scheduled_jobs_status",
+        ),
+        CheckConstraint(
+            "activation_generation >= 0 AND "
+            "(status <> 'active' OR activation_generation > 0)",
+            name="ck_automation_scheduled_jobs_activation_generation",
+        ),
+        CheckConstraint(
+            "(status = 'active' AND is_active AND activated_at IS NOT NULL) OR "
+            "(status <> 'active' AND NOT is_active AND activated_at IS NULL)",
+            name="ck_automation_scheduled_jobs_activation_consistency",
+        ),
+        Index("ix_scheduled_jobs_creator_created", "owner_user_id", "created_at"),
+        Index("ix_scheduled_jobs_status_created", "status", "created_at"),
+        Index(
+            "ix_scheduled_jobs_target_created_job",
+            "target_device_id",
+            "created_at",
+            "job_id",
+        ),
+        {"schema": "automation"},
+    )
+
+    job_id: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        default=lambda: str(uuid4()),
+    )
+    job_name: Mapped[str] = mapped_column(Text, nullable=False)
+    job_type: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    definition_json: Mapped[dict] = mapped_column(
+        "definition", JSON_DOCUMENT, nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default=ScheduledJobStatus.PENDING_PROVISIONING.value,
+    )
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        "owner_user_id",
+        ForeignKey("identity.users.id"),
+        nullable=False,
+    )
+    created_by_username: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_device_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    timer_unit_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provisioning_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    activation_generation: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        default=0,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class ScheduledJobRevision(Base):
+    """Immutable snapshot of a scheduled-job definition revision."""
+
+    __tablename__ = "scheduled_job_revisions"
+    __table_args__ = (
+        CheckConstraint(
+            "revision_number >= 1",
+            name="ck_scheduled_job_revisions_number_positive",
+        ),
+        CheckConstraint(
+            "change_kind IN ('created', 'edited', 'rollback')",
+            name="ck_scheduled_job_revisions_change_kind",
+        ),
+        UniqueConstraint(
+            "job_id",
+            "revision_number",
+            name="uq_scheduled_job_revisions_job_number",
+        ),
+        Index("ix_scheduled_job_revisions_changer", "changed_by_user_id"),
+        {"schema": "automation"},
+    )
+
+    revision_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("automation.scheduled_jobs.job_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    revision_number: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    definition_json: Mapped[dict] = mapped_column(
+        "definition", JSON_DOCUMENT, nullable=False
+    )
+    changed_by_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("identity.users.id"),
+        nullable=False,
+    )
+    changed_by_username: Mapped[str] = mapped_column(String(128), nullable=False)
+    change_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class ScheduledJobCommand(Base):
+    """Owner-requested lifecycle command consumed by the target Jetson."""
+
+    __tablename__ = "scheduled_job_commands"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('provision', 'pause', 'resume', 'update', 'archive')",
+            name="ck_scheduled_job_commands_action",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'succeeded', 'failed')",
+            name="ck_scheduled_job_commands_status",
+        ),
+        CheckConstraint(
+            "requested_job_status IN ('pending_provisioning', 'active', 'paused', "
+            "'provisioning_failed', 'completed', 'execution_failed')",
+            name="ck_scheduled_job_commands_requested_job_status",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND maximum_attempts BETWEEN 1 AND 10",
+            name="ck_scheduled_job_commands_attempts",
+        ),
+        CheckConstraint(
+            "(action = 'update' AND definition IS NOT NULL) OR "
+            "(action <> 'update' AND definition IS NULL)",
+            name="ck_scheduled_job_commands_update_definition",
+        ),
+        CheckConstraint(
+            "(status = 'processing' AND lease_token IS NOT NULL AND "
+            "lease_expires_at IS NOT NULL AND started_at IS NOT NULL) OR "
+            "(status <> 'processing' AND lease_token IS NULL AND "
+            "lease_expires_at IS NULL)",
+            name="ck_scheduled_job_commands_lease_consistency",
+        ),
+        Index("ix_scheduled_job_commands_job_created", "job_id", "created_at"),
+        Index("ix_scheduled_job_commands_requester", "requested_by_user_id"),
+        Index(
+            "ix_scheduled_job_commands_pending_target",
+            "target_device_id",
+            "available_at",
+            "created_at",
+            "command_id",
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+        Index(
+            "ix_scheduled_job_commands_expired_lease",
+            "target_device_id",
+            "lease_expires_at",
+            "created_at",
+            "command_id",
+            postgresql_where=text("status = 'processing'"),
+            sqlite_where=text("status = 'processing'"),
+        ),
+        Index(
+            "uq_scheduled_job_commands_one_open_per_job",
+            "job_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'processing')"),
+            sqlite_where=text("status IN ('pending', 'processing')"),
+        ),
+        {"schema": "automation"},
+    )
+
+    command_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("automation.scheduled_jobs.job_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    requested_job_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=ScheduledJobCommandStatus.PENDING.value,
+    )
+    target_device_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    requested_by_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("identity.users.id"),
+        nullable=False,
+    )
+    requested_by_username: Mapped[str] = mapped_column(String(128), nullable=False)
+    expected_job_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    definition_json: Mapped[dict | None] = mapped_column(
+        "definition",
+        JSON(none_as_null=True).with_variant(
+            JSONB(none_as_null=True),
+            "postgresql",
+        ),
+        nullable=True,
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    maximum_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    lease_token: Mapped[UUID | None] = mapped_column(nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    resulting_job_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class ScheduledJobRun(Base):
+    """One logical job occurrence, including its current internal attempt."""
+
+    __tablename__ = "job_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'completed', 'failed', "
+            "'timed_out', 'skipped', 'cancelled')",
+            name="job_runs_status_check",
+        ),
+        CheckConstraint(
+            "attempt_number >= 1",
+            name="ck_job_runs_attempt_number_positive",
+        ),
+        CheckConstraint(
+            "(status = 'running' AND completed_at IS NULL AND "
+            "activation_generation > 0 AND lease_token IS NOT NULL AND "
+            "lease_expires_at IS NOT NULL AND "
+            "((retry_not_before_at IS NULL AND attempt_deadline_at IS NOT NULL) OR "
+            "(retry_not_before_at IS NOT NULL AND attempt_deadline_at IS NULL))) OR "
+            "(status <> 'running' AND lease_token IS NULL AND "
+            "lease_expires_at IS NULL AND attempt_deadline_at IS NULL AND "
+            "retry_not_before_at IS NULL)",
+            name="ck_job_runs_execution_lease_consistency",
+        ),
+        UniqueConstraint(
+            "job_id",
+            "scheduled_for",
+            name="uq_job_runs_job_scheduled_for",
+        ),
+        Index("ix_job_runs_job_created", "job_id", "created_at"),
+        Index("ix_job_runs_status_scheduled", "status", "scheduled_for"),
+        Index(
+            "uq_job_runs_one_running_per_job",
+            "job_id",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+            sqlite_where=text("status = 'running'"),
+        ),
+        {"schema": "automation"},
+    )
+
+    run_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("automation.scheduled_jobs.job_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    scheduled_for: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=ScheduledJobRunStatus.QUEUED.value
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    activation_generation: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        default=0,
+    )
+    lease_token: Mapped[UUID | None] = mapped_column(nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    attempt_deadline_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    retry_not_before_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    triggered_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class ScheduledJobRunLog(Base):
+    """Structured lifecycle message recorded for one scheduled-job run."""
+
+    __tablename__ = "job_run_logs"
+    __table_args__ = (
+        CheckConstraint(
+            "log_level IN ('debug', 'info', 'warning', 'error')",
+            name="job_run_logs_log_level_check",
+        ),
+        Index("ix_job_run_logs_run_id", "run_id"),
+        {"schema": "automation"},
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer(), "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("automation.job_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    log_level: Mapped[str] = mapped_column(Text, nullable=False, default="info")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(
+        "metadata",
+        JSON_DOCUMENT,
+        nullable=False,
+        default=dict,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class ScheduledJobOutput(Base):
+    """Text, JSON, or artifact output produced by a scheduled-job run."""
+
+    __tablename__ = "job_outputs"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_job_outputs_run_id"),
+        {"schema": "automation"},
+    )
+
+    output_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("automation.job_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    output_type: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_json: Mapped[dict | None] = mapped_column(JSON_DOCUMENT, nullable=True)
+    artifact_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(
+        "metadata",
+        JSON_DOCUMENT,
+        nullable=False,
+        default=dict,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
     )

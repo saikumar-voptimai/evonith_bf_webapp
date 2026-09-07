@@ -1,3 +1,5 @@
+"""Tests for role-derived Streamlit session authentication state."""
+
 from __future__ import annotations
 
 import importlib
@@ -9,10 +11,12 @@ import pytest
 
 
 class _RerunRaised(RuntimeError):
-    pass
+    """Signal that the Streamlit test double requested an application rerun."""
 
 
 def _load_session_module(monkeypatch):
+    """Import session helpers against an isolated Streamlit state test double."""
+
     streamlit_stub = types.SimpleNamespace(
         session_state={},
         rerun=lambda: (_ for _ in ()).throw(_RerunRaised()),
@@ -23,6 +27,8 @@ def _load_session_module(monkeypatch):
 
 
 def test_session_auth_does_not_import_cookie_component() -> None:
+    """Keep authentication independent from the removed cookie component."""
+
     source = Path("src/utils/session.py").read_text(encoding="utf-8")
 
     assert "streamlit_cookies_manager" not in source
@@ -31,6 +37,8 @@ def test_session_auth_does_not_import_cookie_component() -> None:
 
 
 def test_login_stores_role_and_derived_permissions(monkeypatch) -> None:
+    """Store identity state and derive permissions when a user logs in."""
+
     session, streamlit_stub = _load_session_module(monkeypatch)
 
     session.login_user("shift_supervisor", "supervisor")
@@ -44,8 +52,14 @@ def test_login_stores_role_and_derived_permissions(monkeypatch) -> None:
 
 
 def test_logout_clears_auth_state(monkeypatch) -> None:
+    """Clear identity and scheduled-task form state during logout."""
+
     session, streamlit_stub = _load_session_module(monkeypatch)
     session.login_user("admin", "admin")
+    streamlit_stub.session_state["scheduled_task_instructions"] = "private notes"
+    streamlit_stub.session_state["scheduled_task_generated_definition"] = {
+        "json": "private destination"
+    }
 
     with pytest.raises(_RerunRaised):
         session.logout_user()
@@ -53,3 +67,5 @@ def test_logout_clears_auth_state(monkeypatch) -> None:
     assert "auth_user" not in streamlit_stub.session_state
     assert "role" not in streamlit_stub.session_state
     assert "permissions" not in streamlit_stub.session_state
+    assert "scheduled_task_instructions" not in streamlit_stub.session_state
+    assert "scheduled_task_generated_definition" not in streamlit_stub.session_state

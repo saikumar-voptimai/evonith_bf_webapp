@@ -44,13 +44,17 @@ PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
         icon="🧠",
     ),
     AppPageDescriptor(
+        "custom_pages/10_Scheduled_Tasks.py",
+        title="Scheduled Tasks",
+        icon=":material/schedule:",
+    ),
+    AppPageDescriptor(
         "custom_pages/9_Blend_Optimizer.py",
         title="Blend Optimizer",
         icon=":material/science:",
     ),
     AppPageDescriptor("custom_pages/8_Feedback.py", title="Feedback", icon="📮"),
 )
-
 
 
 def get_navigation_pages() -> tuple[AppPageDescriptor, ...]:

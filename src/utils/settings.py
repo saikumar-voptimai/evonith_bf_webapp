@@ -1,8 +1,10 @@
 """Centralised configuration loader for all FurnaceMind services.
 
-Reads environment variables (loaded from ``.env`` via python-dotenv) and
-assembles typed :mod:`dataclasses` for LLM, embedding, Qdrant, anomaly
-detection, and general app settings.
+Reads environment variables and assembles typed :mod:`dataclasses` for LLM,
+embedding, Qdrant, anomaly detection, and general app settings. Interactive
+entry points may load a repository ``.env`` file; hardened background workers
+disable that behavior and receive configuration only from their process
+environment.
 
 The module-level singleton :data:`settings` is the single source of truth
 for runtime configuration; import it via::
@@ -20,7 +22,16 @@ from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
-load_dotenv()
+
+def _dotenv_loading_enabled() -> bool:
+    """Return whether this process permits implicit repository ``.env`` loading."""
+
+    value = os.getenv("FURNACEMIND_DISABLE_DOTENV", "").strip().lower()
+    return value not in {"1", "true", "yes", "on"}
+
+
+if _dotenv_loading_enabled():
+    load_dotenv()
 
 
 # ==========================================================
@@ -52,7 +63,6 @@ def normalize_openrouter_reasoning_level(value: str | None) -> str:
     """
     normalized = str(value or "").strip().lower()
     return _REASONING_LEVEL_ALIASES.get(normalized, "Medium")
-
 
 
 def _env_first(*names: str) -> str | None:
