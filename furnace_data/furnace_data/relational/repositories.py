@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from datetime import date, datetime, time, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -27,6 +28,7 @@ from .models import (
     MemoryDocument,
     MemoryFact,
     MemorySummary,
+    ScheduledTaskDefinitionRecord,
     User,
     UserRole,
     UserRoleAssignment,
@@ -37,6 +39,179 @@ from .models import (
 def _new_id(prefix: str) -> str:
     """Return a compact application id with a stable prefix."""
     return f"{prefix}_{uuid4().hex}"
+
+
+def _aware_utc(value: datetime) -> datetime:
+    """Return a timezone-aware UTC value for reliable version comparisons."""
+
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+class ScheduledTaskDefinitionRepository:
+    """Persist and mutate task definitions within an owner's boundary."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the repository from an application-managed session factory."""
+
+        self._session_factory = session_factory
+
+    def create(
+        self,
+        *,
+        definition: dict[str, object],
+        owner_user_id: UUID,
+        created_by_username: str,
+    ) -> ScheduledTaskDefinitionRecord:
+        """Insert and return one canonical scheduled-task definition."""
+
+        target = definition["target_device"]
+        assert isinstance(target, dict)
+        record = ScheduledTaskDefinitionRecord(
+            job_name=str(definition["job_name"]),
+            job_type=str(definition["job_type"]),
+            schema_version=str(definition["schema_version"]),
+            definition_json=deepcopy(definition),
+            owner_user_id=owner_user_id,
+            created_by_username=created_by_username,
+            target_device_id=str(target["device_id"]),
+            status="pending_provisioning",
+        )
+        with self._session_factory() as session:
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            session.expunge(record)
+        return record
+
+    def get_for_owner(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: UUID,
+    ) -> ScheduledTaskDefinitionRecord | None:
+        """Return one definition only when it belongs to the supplied owner."""
+
+        with self._session_factory() as session:
+            record = session.execute(
+                select(ScheduledTaskDefinitionRecord).where(
+                    ScheduledTaskDefinitionRecord.job_id == job_id,
+                    ScheduledTaskDefinitionRecord.owner_user_id == owner_user_id,
+                )
+            ).scalar_one_or_none()
+            if record is not None:
+                session.expunge(record)
+            return record
+
+    def list_for_owner(
+        self,
+        *,
+        owner_user_id: UUID,
+        limit: int,
+    ) -> list[ScheduledTaskDefinitionRecord]:
+        """Return a bounded, newest-first list for one owner."""
+
+        with self._session_factory() as session:
+            records = list(
+                session.execute(
+                    select(ScheduledTaskDefinitionRecord)
+                    .where(ScheduledTaskDefinitionRecord.owner_user_id == owner_user_id)
+                    .order_by(
+                        ScheduledTaskDefinitionRecord.created_at.desc(),
+                        ScheduledTaskDefinitionRecord.job_id.desc(),
+                    )
+                    .limit(limit)
+                ).scalars()
+            )
+            for record in records:
+                session.expunge(record)
+            return records
+
+    def update_for_owner(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: UUID,
+        expected_updated_at: datetime,
+        definition: dict[str, object],
+        changed_by_username: str,
+    ) -> ScheduledTaskDefinitionRecord | None:
+        """Replace JSON when ownership and the optimistic version still match."""
+
+        with self._session_factory() as session:
+            record = self._locked_owned_record(session, job_id, owner_user_id)
+            if record is None or _aware_utc(record.updated_at) != _aware_utc(
+                expected_updated_at
+            ):
+                session.rollback()
+                return None
+            record.job_name = str(definition["job_name"])
+            record.job_type = str(definition["job_type"])
+            record.schema_version = str(definition["schema_version"])
+            record.definition_json = deepcopy(definition)
+            record.created_by_username = changed_by_username
+            record.updated_at = utc_now()
+            session.commit()
+            session.refresh(record)
+            session.expunge(record)
+            return record
+
+    def archive_for_owner(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: UUID,
+        expected_updated_at: datetime,
+    ) -> ScheduledTaskDefinitionRecord | None:
+        """Mark an owned definition archived when its version still matches."""
+
+        with self._session_factory() as session:
+            record = self._locked_owned_record(session, job_id, owner_user_id)
+            if (
+                record is None
+                or record.status == "deleted"
+                or _aware_utc(record.updated_at) != _aware_utc(expected_updated_at)
+            ):
+                session.rollback()
+                return None
+            record.status = "deleted"
+            record.updated_at = utc_now()
+            session.commit()
+            session.refresh(record)
+            session.expunge(record)
+            return record
+
+    def delete_for_owner(self, *, job_id: str, owner_user_id: UUID) -> bool:
+        """Permanently delete an already archived definition for one owner."""
+
+        with self._session_factory() as session:
+            result = session.execute(
+                delete(ScheduledTaskDefinitionRecord).where(
+                    ScheduledTaskDefinitionRecord.job_id == job_id,
+                    ScheduledTaskDefinitionRecord.owner_user_id == owner_user_id,
+                    ScheduledTaskDefinitionRecord.status == "deleted",
+                )
+            )
+            session.commit()
+            return bool(result.rowcount)
+
+    @staticmethod
+    def _locked_owned_record(
+        session: Session,
+        job_id: str,
+        owner_user_id: UUID,
+    ) -> ScheduledTaskDefinitionRecord | None:
+        """Load one owned record with a row lock for a short mutation."""
+
+        return session.execute(
+            select(ScheduledTaskDefinitionRecord)
+            .where(
+                ScheduledTaskDefinitionRecord.job_id == job_id,
+                ScheduledTaskDefinitionRecord.owner_user_id == owner_user_id,
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
 
 
 _UNSET: Any = object()
@@ -1020,6 +1195,8 @@ class _ReflectedTableRepository:
         table_name: str,
         schema: str = "furnace_mind",
     ) -> None:
+        """Configure reflection for one optional table and its owning schema."""
+
         self._session_factory = session_factory
         self._table_name = table_name
         self._schema = schema
@@ -1063,6 +1240,8 @@ class MemoryChunkRepository(_ReflectedTableRepository):
     """Best-effort repository for the optional ``memory_chunks`` table."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Configure the repository for the optional memory-chunk table."""
+
         super().__init__(session_factory, table_name="memory_chunks")
 
     def create_chunks(
@@ -1148,6 +1327,8 @@ class RetrievalTraceRepository(_ReflectedTableRepository):
     """Best-effort repository for the optional ``retrieval_traces`` table."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Configure the repository for the optional retrieval-trace table."""
+
         super().__init__(session_factory, table_name="retrieval_traces")
 
     def create_trace(

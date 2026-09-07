@@ -28,6 +28,7 @@ from .models import (
     MemoryDocument,
     MemoryFact,
     MemorySummary,
+    ScheduledTaskDefinitionRecord,
     Skill,
     Unit,
     User,
@@ -46,6 +47,7 @@ from .repositories import (
     MemorySummaryRepository,
     PlantMasterRepository,
     RetrievalTraceRepository,
+    ScheduledTaskDefinitionRepository,
     SkillRepository,
     UserRepository,
 )
@@ -86,6 +88,8 @@ __all__ = [
     "MemorySummary",
     "MemorySummaryRepository",
     "RetrievalTraceRepository",
+    "ScheduledTaskDefinitionRecord",
+    "ScheduledTaskDefinitionRepository",
     "Skill",
     "SkillRepository",
 ]
