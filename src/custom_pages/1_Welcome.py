@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from utils.session import has_permission, logout_user
+from utils.session import has_permission, logout_user  # noqa: E402
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 if "auth_user" not in st.session_state:
@@ -258,8 +258,8 @@ for i in range(0, len(_TILES), 3):
         _tile(col, *tile)
     st.html("<div style='height:0.6rem'></div>")
 
-# Blend Optimizer + Feedback — centred
-_, _bmo_col, _fc, _ = st.columns([0.5, 1, 1, 0.5])
+# Planning, scheduling, and feedback
+_bmo_col, _schedule_col, _feedback_col = st.columns(3)
 _tile(
     _bmo_col,
     "custom_pages/9_Blend_Optimizer.py",
@@ -268,7 +268,15 @@ _tile(
     "LP baseline and nonlinear total-cost optimization for ore blend planning.",
     "#0f766e",
 )
-_tile(_fc, "custom_pages/8_Feedback.py", "📮", "Feedback",
+_tile(
+    _schedule_col,
+    "custom_pages/10_Scheduled_Tasks.py",
+    "🗓️",
+    "Scheduled Tasks",
+    "Create, inspect, and download validated scheduled-task JSON definitions.",
+    "#173c59",
+)
+_tile(_feedback_col, "custom_pages/8_Feedback.py", "📮", "Feedback",
       "Submit feature requests, bug reports, and operational feedback.", "#b45309")
 
 # ── Admin tools ───────────────────────────────────────────────────────────────

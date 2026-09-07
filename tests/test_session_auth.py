@@ -1,3 +1,5 @@
+"""Tests for role-derived Streamlit session authentication state."""
+
 from __future__ import annotations
 
 import importlib
@@ -46,6 +48,10 @@ def test_login_stores_role_and_derived_permissions(monkeypatch) -> None:
 def test_logout_clears_auth_state(monkeypatch) -> None:
     session, streamlit_stub = _load_session_module(monkeypatch)
     session.login_user("admin", "admin")
+    streamlit_stub.session_state["scheduled_task_instructions"] = "private notes"
+    streamlit_stub.session_state["scheduled_task_generated_definition"] = {
+        "json": "private definition"
+    }
 
     with pytest.raises(_RerunRaised):
         session.logout_user()
@@ -53,3 +59,5 @@ def test_logout_clears_auth_state(monkeypatch) -> None:
     assert "auth_user" not in streamlit_stub.session_state
     assert "role" not in streamlit_stub.session_state
     assert "permissions" not in streamlit_stub.session_state
+    assert "scheduled_task_instructions" not in streamlit_stub.session_state
+    assert "scheduled_task_generated_definition" not in streamlit_stub.session_state

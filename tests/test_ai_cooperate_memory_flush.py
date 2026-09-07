@@ -3,13 +3,26 @@ from __future__ import annotations
 import sys
 import types
 
+_INSTALLED_STUB_NAMES: list[str] = []
+
 
 def _install_module(name: str, **attrs) -> None:
     """Install a lightweight import stub for unused page dependencies."""
+
+    if name in sys.modules:
+        return
     module = types.ModuleType(name)
     for attr, value in attrs.items():
         setattr(module, attr, value)
-    sys.modules.setdefault(name, module)
+    sys.modules[name] = module
+    _INSTALLED_STUB_NAMES.append(name)
+
+
+def _remove_installed_stubs() -> None:
+    """Remove only the temporary modules installed by this test module."""
+
+    for name in reversed(_INSTALLED_STUB_NAMES):
+        sys.modules.pop(name, None)
 
 
 def _cache_resource(*args, **kwargs):
@@ -62,7 +75,10 @@ _install_module(
 _install_module("utils.session", current_user_id=lambda: "user-1")
 _install_module("utils.shift_windows", last_completed_shift=lambda: (None, ""))
 
-from agents.furnacemind import ai_cooperate_page  # noqa: E402
+try:
+    from agents.furnacemind import ai_cooperate_page  # noqa: E402
+finally:
+    _remove_installed_stubs()
 
 
 class FakeSummaryLLM:

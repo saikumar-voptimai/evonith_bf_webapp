@@ -38,6 +38,8 @@ def permissions_for_role(role: str | None) -> frozenset[str]:
 
 
 def _set_permissions(role: str | None) -> None:
+    """Refresh the session permission list from the authenticated role."""
+
     st.session_state["permissions"] = sorted(permissions_for_role(role))
 
 
@@ -143,4 +145,7 @@ def logout_user() -> None:
         "admin_tool_selection",
     ):
         st.session_state.pop(key, None)
+    for key in tuple(st.session_state):
+        if str(key).startswith("scheduled_task_"):
+            st.session_state.pop(key, None)
     st.rerun()
