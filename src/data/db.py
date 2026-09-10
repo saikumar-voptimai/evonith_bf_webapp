@@ -8,10 +8,12 @@ client material-name workflows.
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 from typing import Any
 
 from dotenv import load_dotenv
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from data.material_mapping import MaterialNameMapper
@@ -23,6 +25,7 @@ from furnace_data.relational import (
     build_relational_engine,
     build_relational_session_factory,
 )
+from utils.scheduled_jobs import validate_job_document
 
 load_dotenv()
 
@@ -267,3 +270,127 @@ class BurdenConfigService(_RelationalService):
     def delete_burden_history(self, record_ids: list[int]) -> None:
         """Delete burden-history records by IDs."""
         self._burden_repository.delete_burden_history(record_ids)
+
+
+class ScheduledJobService(_RelationalService):
+    """Small JSONB facade for ``automation.scheduled_jobs``."""
+
+    @staticmethod
+    def _serialized_job(job: dict[str, Any]) -> str:
+        validate_job_document(job)
+        return json.dumps(job, separators=(",", ":"), ensure_ascii=False)
+
+    @staticmethod
+    def _job_from_database(value: Any) -> dict[str, Any]:
+        if isinstance(value, str):
+            value = json.loads(value)
+        if not isinstance(value, dict):
+            raise ValueError("Stored scheduled job is not a JSON object.")
+        job = dict(value)
+        for removed_field in ("job_type", "job_inputs", "target_device"):
+            job.pop(removed_field, None)
+        return job
+
+    def create_job(self, job: dict[str, Any]) -> None:
+        """Insert one complete job document."""
+        statement = text("""
+            INSERT INTO automation.scheduled_jobs (job_description)
+            VALUES (CAST(:job_description AS JSONB))
+            """)
+        with self.engine.begin() as connection:
+            connection.execute(
+                statement,
+                {"job_description": self._serialized_job(job)},
+            )
+
+    def list_jobs(self) -> list[dict[str, Any]]:
+        """Return current job documents, newest database row first."""
+        statement = text("""
+            SELECT job_description
+            FROM automation.scheduled_jobs
+            ORDER BY date_time DESC
+            """)
+        with self.engine.connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [
+            self._job_from_database(row["job_description"])
+            for row in rows
+        ]
+
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        """Return one job by its JSON job ID."""
+        statement = text("""
+            SELECT job_description
+            FROM automation.scheduled_jobs
+            WHERE job_description->>'job_id' = :job_id
+            """)
+        with self.engine.connect() as connection:
+            row = (
+                connection.execute(
+                    statement,
+                    {"job_id": str(job_id)},
+                )
+                .mappings()
+                .first()
+            )
+        return self._job_from_database(row["job_description"]) if row else None
+
+    def update_job(self, job_id: str, job: dict[str, Any]) -> None:
+        """Replace the complete current JSON document for one job ID."""
+        if str(job.get("job_id")) != str(job_id):
+            raise ValueError("Job ID cannot be changed during update.")
+        statement = text("""
+            UPDATE automation.scheduled_jobs
+            SET job_description = CAST(:job_description AS JSONB)
+            WHERE job_description->>'job_id' = :job_id
+            """)
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                statement,
+                {
+                    "job_id": str(job_id),
+                    "job_description": self._serialized_job(job),
+                },
+            )
+        if result.rowcount == 0:
+            raise KeyError(f"Scheduled job not found: {job_id}")
+
+    def delete_job(self, job_id: str) -> None:
+        """Permanently delete one job by its JSON job ID."""
+        statement = text("""
+            DELETE FROM automation.scheduled_jobs
+            WHERE job_description->>'job_id' = :job_id
+            """)
+        with self.engine.begin() as connection:
+            result = connection.execute(statement, {"job_id": str(job_id)})
+        if result.rowcount == 0:
+            raise KeyError(f"Scheduled job not found: {job_id}")
+
+    def job_name_exists(
+        self,
+        job_name: str,
+        exclude_job_id: str | None = None,
+    ) -> bool:
+        """Return whether another job has the same trimmed, case-folded name."""
+        statement = text("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM automation.scheduled_jobs
+                WHERE LOWER(BTRIM(job_description->>'job_name'))
+                    = LOWER(BTRIM(CAST(:job_name AS TEXT)))
+                  AND (
+                      CAST(:exclude_job_id AS TEXT) IS NULL
+                      OR job_description->>'job_id'
+                          <> CAST(:exclude_job_id AS TEXT)
+                  )
+            )
+            """)
+        with self.engine.connect() as connection:
+            result = connection.execute(
+                statement,
+                {
+                    "job_name": str(job_name),
+                    "exclude_job_id": exclude_job_id,
+                },
+            )
+            return bool(result.scalar())

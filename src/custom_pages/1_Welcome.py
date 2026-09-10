@@ -229,6 +229,13 @@ _TILES = [
      "Daily 12-element mass balance — Sankey diagram, closure table, per-element bars.","#0891b2"),
     ("custom_pages/7_FurnaceMind.py",        "🧠", "FurnaceMind",
      "AI co-pilot: natural-language queries, trend plots, and live shift reports.",   "#7c2d12"),
+     ("custom_pages/8_Feedback.py",         "📮", "Feedback",   
+      "Submit feature requests, bug reports, and operational feedback.", "#b45309"),
+      ("custom_pages/9_Blend_Optimizer.py", "🧪", "Blend Optimizer",
+       "LP baseline and nonlinear total-cost optimization for ore blend planning.", "#0f766e"),
+
+     ("custom_pages/10_Scheduled_jobs.py",        "⏱️", "Scheduled Jobs",
+     "Schedule and monitor automated jobs for data processing and reporting.",   "#f97316"),
 ]
 
 
@@ -258,18 +265,7 @@ for i in range(0, len(_TILES), 3):
         _tile(col, *tile)
     st.html("<div style='height:0.6rem'></div>")
 
-# Blend Optimizer + Feedback — centred
-_, _bmo_col, _fc, _ = st.columns([0.5, 1, 1, 0.5])
-_tile(
-    _bmo_col,
-    "custom_pages/9_Blend_Optimizer.py",
-    "🧪",
-    "Blend Optimizer",
-    "LP baseline and nonlinear total-cost optimization for ore blend planning.",
-    "#0f766e",
-)
-_tile(_fc, "custom_pages/8_Feedback.py", "📮", "Feedback",
-      "Submit feature requests, bug reports, and operational feedback.", "#b45309")
+
 
 # ── Admin tools ───────────────────────────────────────────────────────────────
 if (
