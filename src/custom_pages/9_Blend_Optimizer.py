@@ -892,17 +892,64 @@ def _render_blend_comparison(
         "optimizer, so every option is compared on the same basis."
     )
     start_time, end_time = snapshot.get("start_time"), snapshot.get("end_time")
-    if rows_by_ore and start_time and end_time:
-        st.caption(f"Manual blend seeded from last shift ({start_time} to {end_time}).")
-    elif not rows_by_ore:
+    charged_ids = {
+        ore_id
+        for ore_id, row in rows_by_ore.items()
+        if float(row.get("share_pct", 0.0) or 0.0) > 0.0
+    }
+    selected_charged = charged_ids & {ore.ore_id for ore in compare_ores}
+    if rows_by_ore and selected_charged and start_time and end_time:
+        skipped = [
+            ore.display_name
+            for ore in compare_ores
+            if ore.ore_id not in selected_charged
+        ]
+        st.caption(
+            f"Manual blend seeded from last shift ({start_time} to {end_time})."
+            + (
+                # Named rather than silently zeroed. An operator seeing 0% against
+                # an ore they selected needs to know it reflects the shift record,
+                # not a data gap.
+                f" Not charged last shift, so shown at 0%: {', '.join(skipped)}."
+                if skipped
+                else ""
+            )
+        )
+    elif rows_by_ore and not selected_charged:
+        st.caption(
+            "None of the selected ores were charged last shift, so the manual "
+            "blend is seeded from the optimizer shares instead."
+        )
+    else:
         st.caption(
             "No last-shift manual blend found; seeded from the optimizer shares."
         )
 
+    # A ZERO IN A POPULATED SNAPSHOT IS INFORMATION, NOT A GAP.
+    #
+    # This used to fall back to the optimizer's share per ORE whenever an ore
+    # read zero for the last shift. But an ore reading zero means the plant
+    # chose not to charge it - and substituting the optimizer's own
+    # recommendation there both invents material the furnace never saw and,
+    # because the table is then renormalised to 100%, dilutes every material
+    # that WAS charged.
+    #
+    # Measured on 2026-09-10: true last-shift burden was sinter 60.6%, pellet
+    # 15.1%, Lloyds CLO 14.3%, Geomin CLO 10.0%, NMDC ROM 0.0%. NMDC ROM
+    # inherited the LP's ~20% and the table renormalised, so sinter displayed as
+    # 50.4% - the plant's 60% sinter reading as 50%. Every downstream consumer
+    # inherited that: the manual-vs-optimizer cost comparison, the coke
+    # correction reference, the energy-balance anchor, and the commentary's
+    # idea of "current operation".
+    #
+    # The optimizer is still a reasonable seed when there is NO last-shift data
+    # at all - that case is whole-table, is handled below, and already says so
+    # in its own caption.
+    use_last_shift = bool(selected_charged)
     seed_rows = []
     for ore in compare_ores:
         seed_share = float(rows_by_ore.get(ore.ore_id, {}).get("share_pct", 0.0) or 0.0)
-        if seed_share <= 0:
+        if seed_share <= 0 and not use_last_shift:
             seed_share = float(primary_blend.shares_pct.get(ore.ore_id, 0.0))
         seed_rows.append(
             {
@@ -2109,9 +2156,9 @@ def _render_fuel_basis_note(blend: Any) -> None:
         )
     elif anchor is None and str(fuel_rate_anchor_basis) == "energy_balance":
         st.caption(
-            "The energy-balance anchor needs a current burden to solve against. "
-            "Open the **Comparison** tab once (it records what is being charged "
-            "now), then run again."
+            "The energy-balance anchor could not find a current burden to solve "
+            "against — no charge data for the last shift. The coke level falls "
+            "back to the observed rate."
         )
 
 
@@ -2440,15 +2487,72 @@ def _build_coke_correction_reference(
     )
 
 
+def _current_burden_quantities(
+    *,
+    provider: EvonithBmoContextProvider,
+    ores: list[OreInput],
+    target_fe_mt: float,
+    hot_metal_mt: float,
+    fuel_ash_inputs: list[FuelAshInput],
+    flux_inputs: list[FluxInput],
+    dust_inputs: list[DustInput],
+    slag_balance_settings: SlagBalanceSettings,
+    charge_mass_mt: float,
+) -> dict[str, float]:
+    """What the plant charged last shift, scaled onto the target HM basis.
+
+    Runs the last-shift SHARES through the same Fe/material closure the
+    comparison tab uses, rather than scaling the raw shift tonnage. The shift's
+    own production is not the target production, so raw tonnes would put the
+    burden and the hot-metal basis on different footings and the energy balance
+    would then solve for a coke rate that belongs to neither.
+
+    An ore that was not charged stays out. A zero here is the plant's decision,
+    not a gap to be filled - see the note in the manual-blend seeding.
+    """
+
+    try:
+        snapshot = provider.get_recent_manual_blend_snapshot(ores)
+    except Exception as exc:  # noqa: BLE001 - the anchor is optional
+        log.warning("Could not read the last-shift burden: %s", exc)
+        return {}
+
+    shares = {
+        str(row.get("ore_id")): float(row.get("share_pct", 0.0) or 0.0)
+        for row in snapshot.get("rows", [])
+        if float(row.get("share_pct", 0.0) or 0.0) > 0.0
+    }
+    if not shares:
+        return {}
+
+    quantities, _total, _warnings = _target_quantities_from_shares(
+        shares,
+        [ore for ore in ores if ore.ore_id in shares],
+        target_fe_mt,
+        target_hot_metal_mt=hot_metal_mt,
+        fuel_ash_inputs=fuel_ash_inputs,
+        flux_inputs=flux_inputs,
+        dust_inputs=dust_inputs,
+        slag_balance_settings=slag_balance_settings,
+        charge_mass_mt=charge_mass_mt,
+    )
+    return {k: float(v) for k, v in (quantities or {}).items() if float(v) > 0.0}
+
+
 def _resolve_energy_anchor(
     *,
     basis: str,
+    provider: EvonithBmoContextProvider,
     ores: list[OreInput],
     fuel_ash_inputs: list[FuelAshInput],
     flux_inputs: list[FluxInput],
+    dust_inputs: list[DustInput],
+    slag_balance_settings: SlagBalanceSettings,
     hm_chem_values: Mapping[str, float],
     hm_snapshot: Mapping[str, Any],
     hot_metal_mt: float,
+    target_fe_mt: float,
+    charge_mass_mt: float,
     observed_slag_rate_kg_per_thm: float,
 ) -> Any | None:
     """Solve the energy-balance coke anchor for the current operating point.
@@ -2456,6 +2560,14 @@ def _resolve_energy_anchor(
     Returns ``None`` when the page is not configured to use it, so the caller
     can tell "switched off" from "tried and could not" — the second carries
     notes worth showing the operator, the first does not.
+
+    THE BURDEN IS FETCHED HERE, not read out of session state. It used to come
+    from ``bmo_manual_quantities_mt``, which the Comparison tab writes - and
+    that tab renders AFTER this runs. So on the first optimizer run of a session
+    the key was empty and the anchor silently never engaged, leaving the fuel
+    cost on the ML model's near-constant; on later runs it used the PREVIOUS
+    run's burden. Reading the last shift directly makes the anchor independent
+    of which tabs the operator happened to open, and of the order they render in.
     """
 
     if basis != "energy_balance":
@@ -2463,7 +2575,17 @@ def _resolve_energy_anchor(
 
     from utils.bmo.energy_anchor import solve_energy_anchor
 
-    quantities = st.session_state.get("bmo_manual_quantities_mt") or {}
+    quantities = _current_burden_quantities(
+        provider=provider,
+        ores=ores,
+        target_fe_mt=target_fe_mt,
+        hot_metal_mt=hot_metal_mt,
+        fuel_ash_inputs=fuel_ash_inputs,
+        flux_inputs=flux_inputs,
+        dust_inputs=dust_inputs,
+        slag_balance_settings=slag_balance_settings,
+        charge_mass_mt=charge_mass_mt,
+    )
     if not quantities:
         return None
 
@@ -3431,12 +3553,17 @@ if requested_lp or requested_total:
         # sensitivity is the correction's job, not the anchor's.
         energy_anchor = _resolve_energy_anchor(
             basis=fuel_rate_anchor_basis,
+            provider=provider,
             ores=selected_ores,
             fuel_ash_inputs=fuel_ash_inputs,
             flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
             hm_chem_values=hm_chem_values,
             hm_snapshot=hm_snapshot,
             hot_metal_mt=target_production_mt,
+            target_fe_mt=target_fe_mt,
+            charge_mass_mt=charge_mass_mt,
             observed_slag_rate_kg_per_thm=observed_slag_rate,
         )
         st.session_state["bmo_energy_anchor"] = energy_anchor
