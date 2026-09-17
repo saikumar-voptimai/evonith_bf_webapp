@@ -235,7 +235,7 @@ _TILES = [
       ("custom_pages/9_Blend_Optimizer.py", "🧪", "Blend Optimizer",
        "LP baseline and nonlinear total-cost optimization for ore blend planning.", "#0f766e"),
 
-     ("custom_pages/10_Scheduled_jobs.py",        "⏱️", "Scheduled Jobs",
+     ("custom_pages/10_Scheduled_Jobs.py",        "⏱️", "Scheduled Jobs",
      "Schedule and monitor automated jobs for data processing and reporting.",   "#f97316"),
 ]
 
