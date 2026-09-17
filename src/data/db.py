@@ -7,6 +7,7 @@ client material-name workflows.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from datetime import datetime
@@ -26,6 +27,14 @@ from furnace_data.relational import (
     build_relational_session_factory,
 )
 from utils.scheduled_jobs import generate_job_id, validate_job_document
+from utils.scheduled_job_access import (
+    ScheduledJobPrincipal,
+    can_create_job,
+    can_delete_job,
+    can_update_job,
+    can_view_job,
+    require_authorized,
+)
 
 load_dotenv()
 
@@ -273,7 +282,43 @@ class BurdenConfigService(_RelationalService):
 
 
 class ScheduledJobService(_RelationalService):
-    """Ordered-JSON facade for ``automation.scheduled_jobs``."""
+    """Ordered-JSON persistence with optional interactive authorization.
+
+    ``principal=None`` retains trusted system access for background workers.
+    Interactive callers must pass the principal derived from authenticated
+    session state; their reads and mutations are then policy-enforced here.
+    """
+
+    _IMMUTABLE_UPDATE_FIELDS = ("job_id", "created_by", "created_at")
+
+    def __init__(
+        self,
+        db_url: str | None = None,
+        *,
+        principal: ScheduledJobPrincipal | None = None,
+    ) -> None:
+        super().__init__(db_url=db_url)
+        self.principal = principal
+
+    def _require_view(self) -> None:
+        """Require global view permission for an interactive principal."""
+        if self.principal is not None:
+            require_authorized(can_view_job(self.principal), "view")
+
+    def _require_create(self) -> None:
+        """Require create permission for an interactive principal."""
+        if self.principal is not None:
+            require_authorized(can_create_job(self.principal), "create")
+
+    def _require_update(self, persisted_job: dict[str, Any]) -> None:
+        """Authorize updates from the persisted owner, never submitted data."""
+        if self.principal is not None:
+            require_authorized(can_update_job(self.principal, persisted_job), "update")
+
+    def _require_delete(self) -> None:
+        """Require global delete permission for an interactive principal."""
+        if self.principal is not None:
+            require_authorized(can_delete_job(self.principal), "delete")
 
     @staticmethod
     def _serialized_job(job: dict[str, Any]) -> str:
@@ -322,7 +367,11 @@ class ScheduledJobService(_RelationalService):
         return job
 
     def create_job(self, job: dict[str, Any]) -> None:
-        """Insert one complete job document."""
+        """Insert a job, forcing interactive ownership to the authenticated user."""
+        self._require_create()
+        document = copy.deepcopy(job)
+        if self.principal is not None:
+            document["created_by"] = self.principal.username
         statement = text("""
             INSERT INTO automation.scheduled_jobs (job_description)
             VALUES (CAST(:job_description AS JSON))
@@ -330,11 +379,25 @@ class ScheduledJobService(_RelationalService):
         with self.engine.begin() as connection:
             connection.execute(
                 statement,
-                {"job_description": self._serialized_job(job)},
+                {"job_description": self._serialized_job(document)},
             )
+
+    def create_cloned_job(
+        self,
+        source_job_id: str,
+        job: dict[str, Any],
+    ) -> None:
+        """Create a clone only when the persisted source job is updatable."""
+        source = self._get_job_unchecked(source_job_id)
+        if source is None:
+            self._require_update({})
+            raise KeyError(f"Scheduled job not found: {source_job_id}")
+        self._require_update(source)
+        self.create_job(job)
 
     def reserve_job_id(self) -> str:
         """Reserve the next concurrency-safe sequential job ID."""
+        self._require_create()
         create_sequence = text("""
             CREATE SEQUENCE IF NOT EXISTS automation.scheduled_job_id_seq
             AS BIGINT
@@ -354,6 +417,7 @@ class ScheduledJobService(_RelationalService):
 
     def list_jobs(self) -> list[dict[str, Any]]:
         """Return current job documents, newest database row first."""
+        self._require_view()
         statement = text("""
             SELECT job_description
             FROM automation.scheduled_jobs
@@ -361,13 +425,15 @@ class ScheduledJobService(_RelationalService):
             """)
         with self.engine.connect() as connection:
             rows = connection.execute(statement).mappings().all()
-        return [
-            self._job_from_database(row["job_description"])
-            for row in rows
-        ]
+        return [self._job_from_database(row["job_description"]) for row in rows]
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         """Return one job by its JSON job ID."""
+        self._require_view()
+        return self._get_job_unchecked(job_id)
+
+    def _get_job_unchecked(self, job_id: str) -> dict[str, Any] | None:
+        """Read one persisted job for policy checks or trusted system work."""
         statement = text("""
             SELECT job_description
             FROM automation.scheduled_jobs
@@ -385,9 +451,16 @@ class ScheduledJobService(_RelationalService):
         return self._job_from_database(row["job_description"]) if row else None
 
     def update_job(self, job_id: str, job: dict[str, Any]) -> None:
-        """Replace the complete current JSON document for one job ID."""
-        if str(job.get("job_id")) != str(job_id):
-            raise ValueError("Job ID cannot be changed during update.")
+        """Replace a job after persisted-owner authorization and identity checks."""
+        persisted = self._get_job_unchecked(job_id)
+        if persisted is None:
+            self._require_update({})
+            raise KeyError(f"Scheduled job not found: {job_id}")
+        self._require_update(persisted)
+        for field in self._IMMUTABLE_UPDATE_FIELDS:
+            if job.get(field) != persisted.get(field):
+                label = field.replace("_", " ").title()
+                raise ValueError(f"{label} cannot be changed during update.")
         statement = text("""
             UPDATE automation.scheduled_jobs
             SET job_description = CAST(:job_description AS JSON)
@@ -406,6 +479,7 @@ class ScheduledJobService(_RelationalService):
 
     def delete_job(self, job_id: str) -> None:
         """Permanently delete one job by its JSON job ID."""
+        self._require_delete()
         statement = text("""
             DELETE FROM automation.scheduled_jobs
             WHERE job_description->>'job_id' = :job_id
@@ -421,6 +495,7 @@ class ScheduledJobService(_RelationalService):
         exclude_job_id: str | None = None,
     ) -> bool:
         """Return whether another job has the same trimmed, case-folded name."""
+        self._require_view()
         statement = text("""
             SELECT EXISTS (
                 SELECT 1

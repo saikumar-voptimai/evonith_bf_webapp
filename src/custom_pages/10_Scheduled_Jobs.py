@@ -16,6 +16,14 @@ import streamlit as st
 from jsonschema import ValidationError
 
 from data.db import ScheduledJobService
+from utils.scheduled_job_access import (
+    ScheduledJobAuthorizationError,
+    ScheduledJobPrincipal,
+    can_create_job,
+    can_delete_job,
+    can_update_job,
+    can_view_job,
+)
 from utils.scheduled_jobs import (
     DEFAULT_FREQUENCY,
     DEFAULT_MODEL_LEVEL,
@@ -43,13 +51,14 @@ from utils.scheduled_jobs import (
     validate_job_document,
     validate_required_fields,
 )
+from utils.session import current_scheduled_job_principal
 from utils.shift_windows import SHIFT_WINDOWS
 
 log = logging.getLogger(__name__)
 ENFORCE_UNIQUE_JOB_NAME = True
 EDITOR_RESET_KEY = "scheduled_jobs_editor_reset_prefix"
 SELECTOR_GENERATION_KEY = "scheduled_existing_selector_generation"
-SERVICE_CACHE_VERSION = 6
+SERVICE_CACHE_VERSION = 7
 HISTORY_LABELS = {
     "revision_history": "Revision history",
     "run_history": "Run history",
@@ -62,18 +71,21 @@ HISTORY_LABELS = {
 
 
 @st.cache_resource(show_spinner=False)
-def _get_cached_service(cache_version: int) -> ScheduledJobService:
+def _get_cached_service(
+    cache_version: int, principal: ScheduledJobPrincipal
+) -> ScheduledJobService:
     """Return one relational scheduled-job service per Streamlit process."""
     del cache_version
-    return ScheduledJobService()
+    return ScheduledJobService(principal=principal)
 
 
 def get_scheduled_job_service() -> ScheduledJobService:
     """Return a current service and discard stale instances after code reloads."""
-    service = _get_cached_service(SERVICE_CACHE_VERSION)
+    authenticated = current_scheduled_job_principal()
+    service = _get_cached_service(SERVICE_CACHE_VERSION, authenticated)
     if service.__class__ is not ScheduledJobService:
         _get_cached_service.clear()
-        service = _get_cached_service(SERVICE_CACHE_VERSION)
+        service = _get_cached_service(SERVICE_CACHE_VERSION, authenticated)
     return service
 
 
@@ -395,15 +407,22 @@ def _duplicate_name_message(name: str) -> str:
 
 
 def _save_new_job(
-    service: ScheduledJobService, job: dict[str, Any], *, editor_base: str
+    service: ScheduledJobService,
+    job: dict[str, Any],
+    *,
+    editor_base: str,
+    clone_source_job_id: str | None = None,
 ) -> None:
     """Persist a new job, refresh editor state, and show a success flash."""
     try:
         if ENFORCE_UNIQUE_JOB_NAME and service.job_name_exists(job["job_name"]):
             st.error(_duplicate_name_message(job["job_name"]))
             return
-        service.create_job(job)
-    except (ValueError, ValidationError) as exc:
+        if clone_source_job_id:
+            service.create_cloned_job(clone_source_job_id, job)
+        else:
+            service.create_job(job)
+    except (ValueError, ValidationError, ScheduledJobAuthorizationError) as exc:
         st.error(str(exc))
         return
     except Exception:
@@ -455,6 +474,7 @@ def _table_rows(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "Job Name": job.get("job_name", ""),
             "Model Level": str(job.get("model_level", DEFAULT_MODEL_LEVEL)).title(),
             "Frequency": job.get("schedule", {}).get("frequency", ""),
+            "Created By": job.get("created_by", ""),
             "Delivery": ", ".join(
                 DELIVERY_CHANNEL_LABELS.get(name, name.title())
                 for name in job.get("delivery", {})
@@ -475,7 +495,7 @@ def _update_job(
     """Persist an updated job and rerun with a success flash."""
     try:
         service.update_job(job["job_id"], job)
-    except (ValueError, ValidationError) as exc:
+    except (ValueError, ValidationError, ScheduledJobAuthorizationError) as exc:
         st.error(str(exc))
         return
     except Exception:
@@ -502,7 +522,7 @@ def _confirm_archive(job_id: str, job_name: str, actor: str) -> None:
                 st.error("Scheduled job was not found.")
                 return
             archived = archive_job(current, actor=actor)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, ValidationError, ScheduledJobAuthorizationError) as exc:
             st.error(str(exc))
             return
         except Exception:
@@ -527,6 +547,9 @@ def _confirm_delete(job_id: str, job_name: str) -> None:
     if confirm.button("Confirm Delete", type="primary", key=f"confirm_delete_{job_id}"):
         try:
             get_scheduled_job_service().delete_job(job_id)
+        except ScheduledJobAuthorizationError as exc:
+            st.error(str(exc))
+            return
         except KeyError:
             st.error("Scheduled job was not found. It may already be deleted.")
             return
@@ -563,20 +586,32 @@ def _apply_action(
 
 
 def _render_actions(
-    service: ScheduledJobService, job: dict[str, Any], actor: str
+    service: ScheduledJobService,
+    job: dict[str, Any],
+    principal: ScheduledJobPrincipal,
 ) -> None:
     """Render status, run, clone, archive, and delete controls for one job."""
     st.markdown("#### Job actions")
-    status_column, run_column, clone_column, archive_column, delete_column = st.columns(
-        5
-    )
+    may_update = can_update_job(principal, job)
+    may_delete = can_delete_job(principal, job)
+    if not (may_update or may_delete):
+        st.info("Read-only: this job is owned by another account.")
+        return
+
     job_id, status = job["job_id"], job["status"]
     if status == "archived":
         st.info("This job is archived. Configuration and history remain read-only.")
-        if delete_column.button("Delete", key=f"delete_{job_id}"):
+        columns = st.columns(2)
+        if may_update and columns[0].button("Clone", key=f"clone_{job_id}"):
+            st.session_state["scheduled_clone_source"] = job_id
+            _rotate_editor(f"scheduled_clone_{job_id}")
+            st.rerun()
+        if may_delete and columns[1].button("Delete", key=f"delete_{job_id}"):
             _confirm_delete(job_id, job["job_name"])
         return
 
+    columns = st.columns(5 if may_delete else 4)
+    status_column, run_column, clone_column, archive_column = columns[:4]
     label, operation = (
         ("Pause", pause_job)
         if status == "active"
@@ -591,12 +626,12 @@ def _render_actions(
             if status == "active"
             else f"Job {job_id} is active."
         )
-        _apply_action(service, job, actor, operation, message)
+        _apply_action(service, job, principal.username, operation, message)
     if run_column.button("Run Now", key=f"run_{job_id}"):
         _apply_action(
             service,
             job,
-            actor,
+            principal.username,
             request_run_now,
             f"Manual execution request queued for job {job_id}.",
         )
@@ -605,16 +640,18 @@ def _render_actions(
         _rotate_editor(f"scheduled_clone_{job_id}")
         st.rerun()
     if archive_column.button("Archive", key=f"archive_{job_id}"):
-        _confirm_archive(job_id, job["job_name"], actor)
-    if delete_column.button("Delete", key=f"delete_{job_id}"):
+        _confirm_archive(job_id, job["job_name"], principal.username)
+    if may_delete and columns[4].button("Delete", key=f"delete_{job_id}"):
         _confirm_delete(job_id, job["job_name"])
 
 
 def _render_edit_panel(
-    service: ScheduledJobService, job: dict[str, Any], actor: str
+    service: ScheduledJobService,
+    job: dict[str, Any],
+    principal: ScheduledJobPrincipal,
 ) -> None:
     """Render and save revisioned configuration changes for a non-archived job."""
-    if job["status"] == "archived":
+    if job["status"] == "archived" or not can_update_job(principal, job):
         return
     with st.expander("Edit configuration", expanded=False):
         values = _render_editor(f"scheduled_edit_{job['job_id']}", job)
@@ -627,8 +664,8 @@ def _render_edit_panel(
             ):
                 st.error(_duplicate_name_message(updates["job_name"]))
                 return
-            revised = revise_job(job, updates, saved_by=actor)
-        except (ValueError, ValidationError) as exc:
+            revised = revise_job(job, updates, saved_by=principal.username)
+        except (ValueError, ValidationError, ScheduledJobAuthorizationError) as exc:
             st.error(str(exc))
             return
         except Exception:
@@ -645,10 +682,14 @@ def _render_edit_panel(
 
 
 def _render_clone_panel(
-    service: ScheduledJobService, source: dict[str, Any], actor: str
+    service: ScheduledJobService,
+    source: dict[str, Any],
+    principal: ScheduledJobPrincipal,
 ) -> None:
     """Render a prefilled editor that creates an independent copy of a job."""
-    if st.session_state.get("scheduled_clone_source") != source["job_id"]:
+    if st.session_state.get("scheduled_clone_source") != source[
+        "job_id"
+    ] or not can_update_job(principal, source):
         return
     st.divider()
     st.subheader("Clone configuration")
@@ -657,12 +698,16 @@ def _render_clone_panel(
     prefix = _editor_prefix(editor_base)
     job_id, created_at = _new_identity(prefix, service)
     defaults = clone_job_document(
-        source, created_by=actor, job_id=job_id, now=created_at
+        source, created_by=principal.username, job_id=job_id, now=created_at
     )
     values = _render_editor(prefix, defaults)
     try:
         preview = _candidate_from_editor(
-            values, service=service, status="draft", actor=actor, prefix=prefix
+            values,
+            service=service,
+            status="draft",
+            actor=principal.username,
+            prefix=prefix,
         )
     except (ValueError, ValidationError):
         preview = None
@@ -682,16 +727,27 @@ def _render_clone_panel(
         return
     try:
         cloned = _candidate_from_editor(
-            values, service=service, status=status, actor=actor, prefix=prefix
+            values,
+            service=service,
+            status=status,
+            actor=principal.username,
+            prefix=prefix,
         )
     except (ValueError, ValidationError) as exc:
         st.error(str(exc))
         return
-    _save_new_job(service, cloned, editor_base=editor_base)
+    _save_new_job(
+        service,
+        cloned,
+        editor_base=editor_base,
+        clone_source_job_id=source["job_id"],
+    )
 
 
 def _render_selected_job(
-    service: ScheduledJobService, job: dict[str, Any], actor: str
+    service: ScheduledJobService,
+    job: dict[str, Any],
+    principal: ScheduledJobPrincipal,
 ) -> None:
     """Render details, histories, editing, and actions for the selected job."""
     st.divider()
@@ -709,9 +765,13 @@ def _render_selected_job(
     ):
         column.metric(label, value)
 
-    current_tab, history_tab, control_tab = st.tabs(
-        ["Current Configuration", "Histories", "Edit & Actions"]
+    can_manage = can_update_job(principal, job)
+    show_controls = can_manage or can_delete_job(principal, job)
+    tabs = st.tabs(
+        ["Current Configuration", "Histories"]
+        + (["Edit & Actions"] if show_controls else [])
     )
+    current_tab, history_tab = tabs[:2]
     with current_tab:
         for title, field in (("Schedule", "schedule"), ("Delivery", "delivery")):
             st.markdown(f"##### {title}")
@@ -721,13 +781,19 @@ def _render_selected_job(
         for field, title in HISTORY_LABELS.items():
             st.markdown(f"##### {title}")
             st.json(job[field]) if job[field] else st.caption("No history yet")
-    with control_tab:
-        _render_actions(service, job, actor)
-        _render_edit_panel(service, job, actor)
-    _render_clone_panel(service, job, actor)
+    if show_controls:
+        with tabs[2]:
+            _render_actions(service, job, principal)
+            _render_edit_panel(service, job, principal)
+    else:
+        st.caption("Read-only access")
+    if can_manage:
+        _render_clone_panel(service, job, principal)
 
 
-def _render_existing_tab(service: ScheduledJobService, actor: str) -> None:
+def _render_existing_tab(
+    service: ScheduledJobService, principal: ScheduledJobPrincipal
+) -> None:
     """List persisted jobs and render the selected job's management panels."""
     st.subheader("Existing scheduled jobs")
     try:
@@ -747,7 +813,7 @@ def _render_existing_tab(service: ScheduledJobService, actor: str) -> None:
         format_func=lambda job_id: f"{by_id[job_id]['job_name']} | {job_id}",
         key=_selector_key(),
     )
-    _render_selected_job(service, by_id[selected_id], actor)
+    _render_selected_job(service, by_id[selected_id], principal)
 
 
 def main() -> None:
@@ -763,18 +829,25 @@ def main() -> None:
     )
     if flash := st.session_state.pop("scheduled_jobs_flash", None):
         st.success(flash)
+    principal = current_scheduled_job_principal()
+    if not can_view_job(principal):
+        st.error("You are not authorized to view scheduled jobs.")
+        return
     try:
         service = get_scheduled_job_service()
     except Exception:
         log.exception("Unable to initialize scheduled jobs")
         st.error("Unable to initialize Scheduled Jobs. Check the database connection.")
         return
-    actor = str(st.session_state.get("auth_user") or "unknown")
-    create_tab, existing_tab = st.tabs(["Create Job", "Existing Jobs"])
-    with create_tab:
-        _render_create_tab(service, actor)
-    with existing_tab:
-        _render_existing_tab(service, actor)
+    if can_create_job(principal):
+        create_tab, existing_tab = st.tabs(["Create Job", "Existing Jobs"])
+        with create_tab:
+            _render_create_tab(service, principal.username)
+        with existing_tab:
+            _render_existing_tab(service, principal)
+    else:
+        st.caption("Read-only access")
+        _render_existing_tab(service, principal)
 
 
 main()

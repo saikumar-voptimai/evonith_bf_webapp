@@ -41,6 +41,34 @@ def test_login_stores_role_and_derived_permissions(monkeypatch) -> None:
     assert "users:write" not in streamlit_stub.session_state["permissions"]
     assert session.is_logged_in()
     assert session.has_permission("feedback:moderate")
+    principal = session.current_scheduled_job_principal()
+    assert principal.username == "shift_supervisor"
+    assert "scheduled_jobs:update_own" in principal.permissions
+
+
+def test_scheduled_job_permissions_are_role_based_and_default_deny(monkeypatch) -> None:
+    session, _ = _load_session_module(monkeypatch)
+
+    admin = session.permissions_for_role("admin")
+    assert {
+        "scheduled_jobs:view_all",
+        "scheduled_jobs:create",
+        "scheduled_jobs:update_all",
+        "scheduled_jobs:delete_all",
+    } <= admin
+
+    supervisor = session.permissions_for_role("supervisor")
+    assert {
+        "scheduled_jobs:view_all",
+        "scheduled_jobs:create",
+        "scheduled_jobs:update_own",
+    } <= supervisor
+    assert "scheduled_jobs:update_all" not in supervisor
+    assert "scheduled_jobs:delete_all" not in supervisor
+
+    user = session.permissions_for_role("user")
+    assert user == frozenset({"scheduled_jobs:view_all"})
+    assert session.permissions_for_role("unknown") == frozenset()
 
 
 def test_logout_clears_auth_state(monkeypatch) -> None:

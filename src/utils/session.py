@@ -12,6 +12,14 @@ from collections.abc import Iterable
 
 import streamlit as st
 
+from utils.scheduled_job_access import (
+    CREATE as SCHEDULED_JOBS_CREATE,
+    DELETE_ALL as SCHEDULED_JOBS_DELETE_ALL,
+    UPDATE_ALL as SCHEDULED_JOBS_UPDATE_ALL,
+    UPDATE_OWN as SCHEDULED_JOBS_UPDATE_OWN,
+    VIEW_ALL as SCHEDULED_JOBS_VIEW_ALL,
+    ScheduledJobPrincipal,
+)
 
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "admin": frozenset(
@@ -20,15 +28,22 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "burden:write",
             "users:write",
             "feedback:moderate",
+            SCHEDULED_JOBS_VIEW_ALL,
+            SCHEDULED_JOBS_CREATE,
+            SCHEDULED_JOBS_UPDATE_ALL,
+            SCHEDULED_JOBS_DELETE_ALL,
         }
     ),
     "supervisor": frozenset(
         {
             "hopper:write",
             "feedback:moderate",
+            SCHEDULED_JOBS_VIEW_ALL,
+            SCHEDULED_JOBS_CREATE,
+            SCHEDULED_JOBS_UPDATE_OWN,
         }
     ),
-    "user": frozenset(),
+    "user": frozenset({SCHEDULED_JOBS_VIEW_ALL}),
 }
 
 
@@ -89,6 +104,16 @@ def current_permissions() -> set[str]:
     """Return permissions for the current session role."""
     _set_permissions(st.session_state.get("role"))
     return set(st.session_state.get("permissions", []))
+
+
+def current_scheduled_job_principal() -> ScheduledJobPrincipal:
+    """Return scheduled-job identity derived only from authenticated session data."""
+    if not is_logged_in():
+        return ScheduledJobPrincipal.from_permissions("", ())
+    return ScheduledJobPrincipal.from_permissions(
+        str(st.session_state.get("auth_user") or ""),
+        current_permissions(),
+    )
 
 
 def has_permission(permission: str) -> bool:
