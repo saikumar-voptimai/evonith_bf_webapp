@@ -1,7 +1,7 @@
-"""Pure helpers for scheduled-job configuration documents.
+"""Build and validate scheduled-job documents from shared YAML metadata.
 
-The Streamlit page and a future worker share the JSON contract in this module.
-This module deliberately does not execute jobs.
+The module owns configuration documents and state transitions only; a worker is
+responsible for executing jobs and delivering their output.
 """
 
 from __future__ import annotations
@@ -13,242 +13,107 @@ from datetime import datetime, time, timedelta
 from typing import Any
 from uuid import uuid4
 
+import pytz
 from jsonschema import Draft202012Validator, FormatChecker
 
-from utils.shift_windows import (
-    LOCAL_TIMEZONE,
-    LOCAL_TIMEZONE_NAME,
-    SHIFT_LABELS,
-    SHIFT_WINDOWS,
-)
+from config.config_loader import load_config
+from utils.shift_windows import SHIFT_LABELS, SHIFT_WINDOWS
 
-SCHEMA_VERSION = "1.0"
-FREQUENCIES = (
-    "Every Hour",
-    "Every Day",
-    "Every Shift",
-    "Every Week",
-    "Custom Schedule",
-)
-JOB_STATUSES = ("draft", "active", "paused", "archived")
-WEEKDAYS = (
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-)
+SCHEDULED_JOBS_CONFIG: dict[str, Any] = load_config("scheduled_jobs.yml") or {}
+SCHEMA_VERSION = str(SCHEDULED_JOBS_CONFIG["schema_version"])
+LOCAL_TIMEZONE_NAME = str(SCHEDULED_JOBS_CONFIG["timezone"])
+LOCAL_TIMEZONE = pytz.timezone(LOCAL_TIMEZONE_NAME)
 
+FREQUENCY_SETTINGS: dict[str, dict[str, Any]] = SCHEDULED_JOBS_CONFIG["frequencies"]
+FREQUENCIES = tuple(FREQUENCY_SETTINGS)
+DEFAULT_FREQUENCY = str(SCHEDULED_JOBS_CONFIG["default_frequency"])
+WEEKDAYS = tuple(SCHEDULED_JOBS_CONFIG["weekdays"])
+JOB_STATUSES = tuple(SCHEDULED_JOBS_CONFIG["job_statuses"])
+MODEL_LEVEL_HINTS: dict[str, str] = SCHEDULED_JOBS_CONFIG["model_levels"]
+MODEL_LEVELS = tuple(MODEL_LEVEL_HINTS)
+DEFAULT_MODEL_LEVEL = str(SCHEDULED_JOBS_CONFIG["default_model_level"])
+DELIVERY_CHANNEL_SETTINGS: dict[str, dict[str, Any]] = SCHEDULED_JOBS_CONFIG[
+    "delivery_channels"
+]
+DELIVERY_CHANNELS = tuple(DELIVERY_CHANNEL_SETTINGS)
+DELIVERY_CHANNEL_LABELS = {
+    name: str(settings["label"]) for name, settings in DELIVERY_CHANNEL_SETTINGS.items()
+}
+RETRY_FIELDS: dict[str, dict[str, Any]] = SCHEDULED_JOBS_CONFIG["retry_fields"]
+RETRY_DEFAULTS = {name: settings["default"] for name, settings in RETRY_FIELDS.items()}
+
+_CONFIGURATION_FIELDS = tuple(SCHEDULED_JOBS_CONFIG["editable_fields"])
+_HISTORY_FIELDS = tuple(SCHEDULED_JOBS_CONFIG["history_fields"])
+_JOB_ID_RE = re.compile(SCHEDULED_JOBS_CONFIG["id_patterns"]["job"])
+_RUN_ID_RE = re.compile(SCHEDULED_JOBS_CONFIG["id_patterns"]["run"])
 _EMAIL_RE = re.compile(
     r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@"
     r"(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}$",
     re.IGNORECASE,
 )
-_JOB_ID_RE = re.compile(r"^JOB-[A-F0-9]{12}$")
-_RUN_ID_RE = re.compile(r"^RUN-[A-F0-9]{12}$")
-_SENSITIVE_KEYS = {
-    "access_token",
-    "api_key",
-    "auth_token",
-    "client_secret",
-    "credential",
-    "credentials",
-    "connection_string",
-    "database_credential",
-    "database_credentials",
-    "database_password",
-    "database_url",
-    "db_url",
-    "password",
-    "private_key",
-    "refresh_token",
-    "secret",
-    "smtp_credential",
-    "smtp_credentials",
-    "smtp_host",
-    "smtp_password",
-    "smtp_port",
-    "smtp_server",
-    "smtp_username",
-    "token",
-}
-_SENSITIVE_KEYS_COLLAPSED = {
-    sensitive.replace("_", "") for sensitive in _SENSITIVE_KEYS
-}
-_SENSITIVE_SUFFIXES = (
-    "_password",
-    "_secret",
-    "_token",
-    "_credential",
-    "_credentials",
-    "_api_key",
-    "_private_key",
-)
-_CONFIGURATION_FIELDS = (
-    "job_name",
-    "instructions",
-    "timezone",
-    "schedule",
-    "email",
-    "retry",
+_SENSITIVE_KEYS = set(SCHEDULED_JOBS_CONFIG["sensitive_keys"])
+_SENSITIVE_KEYS_COLLAPSED = {key.replace("_", "") for key in _SENSITIVE_KEYS}
+_SENSITIVE_SUFFIXES = tuple(SCHEDULED_JOBS_CONFIG["sensitive_suffixes"])
+_CRON_FIELDS = tuple(SCHEDULED_JOBS_CONFIG["cron_fields"])
+
+
+def _frequency_for(kind: str) -> str:
+    """Return the configured frequency label for an internal schedule kind."""
+    return next(
+        name for name, values in FREQUENCY_SETTINGS.items() if values["kind"] == kind
+    )
+
+
+_HOURLY, _DAILY, _SHIFT, _WEEKLY, _CRON = (
+    _frequency_for(kind) for kind in ("hourly", "daily", "shift", "weekly", "cron")
 )
 
-
-JOB_DOCUMENT_SCHEMA: dict[str, Any] = {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "Scheduled job document",
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "schema_version",
-        "job_id",
-        "revision",
-        "job_name",
-        "instructions",
-        "status",
-        "created_at",
-        "updated_at",
-        "created_by",
-        "timezone",
-        "schedule",
-        "email",
-        "retry",
-        "last_run",
-        "next_run",
-        "revision_history",
-        "execution_requests",
-        "run_history",
-        "email_history",
-        "report_history",
-        "error_history",
-        "action_history",
-    ],
-    "properties": {
-        "schema_version": {"const": SCHEMA_VERSION},
-        "job_id": {"type": "string", "pattern": _JOB_ID_RE.pattern},
-        "revision": {"type": "integer", "minimum": 1},
-        "job_name": {"type": "string", "minLength": 1},
-        "instructions": {"type": "string", "minLength": 1},
-        "status": {"enum": list(JOB_STATUSES)},
-        "created_at": {"type": "string", "format": "date-time"},
-        "updated_at": {"type": "string", "format": "date-time"},
-        "created_by": {"type": "string", "minLength": 1},
-        "timezone": {"const": LOCAL_TIMEZONE_NAME},
-        "schedule": {
-            "type": "object",
-            "required": ["frequency", "timezone"],
-            "properties": {
-                "frequency": {"enum": list(FREQUENCIES)},
-                "timezone": {"const": LOCAL_TIMEZONE_NAME},
-                "execution_minute": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 59,
-                },
-                "execution_time": {
-                    "type": "string",
-                    "pattern": r"^([01]\d|2[0-3]):[0-5]\d$",
-                },
-                "weekday": {"enum": list(WEEKDAYS)},
-                "cron": {"type": "string", "minLength": 1},
-                "shifts": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "object",
-                        "required": ["label", "start_hour", "end_hour"],
-                        "properties": {
-                            "label": {"type": "string"},
-                            "start_hour": {"type": "integer"},
-                            "end_hour": {"type": "integer"},
-                        },
-                        "additionalProperties": True,
-                    },
-                },
-            },
-            "additionalProperties": False,
-        },
-        "email": {
-            "type": "object",
-            "required": ["enabled", "recipients", "subject", "attachment_formats"],
-            "properties": {
-                "enabled": {"type": "boolean"},
-                "recipients": {
-                    "type": "array",
-                    "uniqueItems": True,
-                    "items": {"type": "string", "format": "email"},
-                },
-                "subject": {"type": "string"},
-                "attachment_formats": {
-                    "type": "array",
-                    "uniqueItems": True,
-                    "items": {"enum": ["png", "csv", "json"]},
-                },
-            },
-            "additionalProperties": False,
-        },
-        "retry": {
-            "type": "object",
-            "required": [
-                "maximum_attempts",
-                "retry_interval_seconds",
-                "timeout_seconds",
-                "notify_on_failure",
-            ],
-            "properties": {
-                "maximum_attempts": {"type": "integer", "minimum": 1},
-                "retry_interval_seconds": {"type": "integer", "minimum": 1},
-                "timeout_seconds": {"type": "integer", "minimum": 1},
-                "notify_on_failure": {"type": "boolean"},
-            },
-            "additionalProperties": False,
-        },
-        "last_run": {
-            "anyOf": [
-                {"type": "null"},
-                {"type": "string", "format": "date-time"},
-            ]
-        },
-        "next_run": {
-            "anyOf": [
-                {"type": "null"},
-                {"type": "string", "format": "date-time"},
-            ]
-        },
-        "revision_history": {"type": "array", "items": {"type": "object"}},
-        "execution_requests": {"type": "array", "items": {"type": "object"}},
-        "run_history": {"type": "array", "items": {"type": "object"}},
-        "email_history": {"type": "array", "items": {"type": "object"}},
-        "report_history": {"type": "array", "items": {"type": "object"}},
-        "error_history": {"type": "array", "items": {"type": "object"}},
-        "action_history": {"type": "array", "items": {"type": "object"}},
-    },
+JOB_DOCUMENT_SCHEMA: dict[str, Any] = copy.deepcopy(
+    SCHEDULED_JOBS_CONFIG["document_schema"]
+)
+_PROPERTIES = JOB_DOCUMENT_SCHEMA["properties"]
+_PROPERTIES["schema_version"]["const"] = SCHEMA_VERSION
+_PROPERTIES["job_id"]["pattern"] = _JOB_ID_RE.pattern
+_PROPERTIES["model_level"]["enum"] = list(MODEL_LEVELS)
+_PROPERTIES["status"]["enum"] = list(JOB_STATUSES)
+_PROPERTIES["timezone"]["const"] = LOCAL_TIMEZONE_NAME
+_SCHEDULE_SCHEMA = _PROPERTIES["schedule"]["properties"]
+_SCHEDULE_SCHEMA["frequency"]["enum"] = list(FREQUENCIES)
+_SCHEDULE_SCHEMA["timezone"]["const"] = LOCAL_TIMEZONE_NAME
+_SCHEDULE_SCHEMA["weekday"]["enum"] = list(WEEKDAYS)
+_PROPERTIES["delivery"]["properties"] = {
+    name: copy.deepcopy(settings["schema"])
+    for name, settings in DELIVERY_CHANNEL_SETTINGS.items()
 }
-
+Draft202012Validator.check_schema(JOB_DOCUMENT_SCHEMA)
 _JOB_VALIDATOR = Draft202012Validator(
-    JOB_DOCUMENT_SCHEMA,
-    format_checker=FormatChecker(),
+    JOB_DOCUMENT_SCHEMA, format_checker=FormatChecker()
 )
 
 
-def _now(now: datetime | None = None) -> datetime:
-    """Return a timezone-aware timestamp in the configured local timezone."""
-    if now is None:
+def _now(value: datetime | None = None) -> datetime:
+    """Return *value* as a timezone-aware configured-local timestamp."""
+    if value is None:
         return datetime.now(LOCAL_TIMEZONE)
-    if now.tzinfo is None:
-        return LOCAL_TIMEZONE.localize(now)
-    return now.astimezone(LOCAL_TIMEZONE)
+    return (
+        LOCAL_TIMEZONE.localize(value)
+        if value.tzinfo is None
+        else value.astimezone(LOCAL_TIMEZONE)
+    )
 
 
 def _iso(value: datetime) -> str:
+    """Serialize a timestamp without unnecessary microseconds."""
     return value.isoformat(timespec="seconds")
 
 
-def generate_job_id() -> str:
-    """Generate a stable, display-friendly unique job identifier."""
-    return f"JOB-{uuid4().hex[:12].upper()}"
+def generate_job_id(job_number: int) -> str:
+    """Format a database-reserved sequential job number."""
+    if isinstance(job_number, bool) or not isinstance(job_number, int):
+        raise ValueError("Job number must be an integer.")
+    if job_number < 1001:
+        raise ValueError("Job number must be 1001 or greater.")
+    return f"Job-{job_number}"
 
 
 def generate_run_request_id() -> str:
@@ -257,18 +122,10 @@ def generate_run_request_id() -> str:
 
 
 def normalize_email_recipients(value: str | list[str] | tuple[str, ...]) -> list[str]:
-    """Split, validate, de-duplicate, and normalize email recipients."""
-    if isinstance(value, str):
-        candidates = re.split(r"[,;\n]+", value)
-    else:
-        candidates = list(value)
-
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        address = str(candidate).strip().lower()
-        if not address:
-            continue
+    """Split, validate, lowercase, and de-duplicate email recipients."""
+    candidates = re.split(r"[,;\n]+", value) if isinstance(value, str) else value
+    addresses = [str(candidate).strip().lower() for candidate in candidates]
+    for address in filter(None, addresses):
         local_part = address.partition("@")[0]
         if (
             not _EMAIL_RE.fullmatch(address)
@@ -277,101 +134,156 @@ def normalize_email_recipients(value: str | list[str] | tuple[str, ...]) -> list
             or ".." in local_part
         ):
             raise ValueError(f"Invalid email address: {address}")
-        if address not in seen:
-            normalized.append(address)
-            seen.add(address)
-    return normalized
+    return list(dict.fromkeys(filter(None, addresses)))
 
 
-def build_email_configuration(
-    *,
-    enabled: bool = False,
-    recipients: str | list[str] | tuple[str, ...] = "",
-    subject: str = "",
-    attachment_formats: list[str] | tuple[str, ...] = (),
+def _channel(delivery: Mapping[str, Any], name: str) -> Mapping[str, Any] | None:
+    """Return one channel mapping and reject non-object settings."""
+    value = delivery.get(name)
+    if value is not None and not isinstance(value, Mapping):
+        raise ValueError(f"{name.title()} delivery settings must be an object.")
+    return value
+
+
+def _required_text(settings: Mapping[str, Any], field: str, label: str) -> str:
+    """Normalize a required text field."""
+    value = str(settings.get(field) or "").strip()
+    if not value:
+        raise ValueError(f"{label} is required.")
+    return value
+
+
+def build_delivery_configuration(
+    delivery: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build email delivery settings without accepting transport credentials."""
-    normalized_recipients = normalize_email_recipients(recipients) if enabled else []
-    if enabled and not normalized_recipients:
-        raise ValueError("Enter at least one email recipient.")
+    """Validate and normalize worker-safe delivery settings for every channel."""
+    if delivery is not None and not isinstance(delivery, Mapping):
+        raise ValueError("Delivery settings must be an object.")
+    raw = delivery or {}
+    unknown = sorted(set(raw) - set(DELIVERY_CHANNELS))
+    if unknown:
+        raise ValueError(f"Unsupported delivery channel: {unknown[0]}")
 
-    formats = list(dict.fromkeys(str(item).lower() for item in attachment_formats))
-    invalid_formats = sorted(set(formats) - {"png", "csv", "json"})
-    if invalid_formats:
-        raise ValueError(f"Invalid attachment format: {invalid_formats[0]}")
+    configured: dict[str, Any] = {}
+    if email := _channel(raw, "email"):
+        recipients = normalize_email_recipients(email.get("to", ""))
+        if not recipients:
+            raise ValueError("Enter at least one email To recipient.")
+        formats = list(
+            dict.fromkeys(
+                str(item).lower() for item in email.get("attachment_formats", ())
+            )
+        )
+        allowed_formats = set(
+            DELIVERY_CHANNEL_SETTINGS["email"]["fields"]["attachment_formats"][
+                "options"
+            ]
+        )
+        if invalid := sorted(set(formats) - allowed_formats):
+            raise ValueError(f"Invalid attachment format: {invalid[0]}")
+        configured["email"] = {
+            "to": recipients,
+            "cc": normalize_email_recipients(email.get("cc", "")),
+            "bcc": normalize_email_recipients(email.get("bcc", "")),
+            "subject": _required_text(email, "subject", "Email Subject"),
+            "attachment_formats": formats,
+        }
+    elif "email" in raw:
+        raise ValueError("Enter at least one email To recipient.")
 
-    return {
-        "enabled": bool(enabled),
-        "recipients": normalized_recipients if enabled else [],
-        "subject": str(subject).strip() if enabled else "",
-        "attachment_formats": formats if enabled else [],
-    }
+    if slack := _channel(raw, "slack"):
+        configured["slack"] = {"id": _required_text(slack, "id", "Slack ID")}
+    elif "slack" in raw:
+        raise ValueError("Slack ID is required.")
+
+    if telegram := _channel(raw, "telegram"):
+        user_id = str(telegram.get("user_id") or "").strip()
+        channel_id = str(telegram.get("channel_id") or "").strip()
+        if not (user_id or channel_id):
+            raise ValueError("Enter a Telegram User ID or Channel ID.")
+        configured["telegram"] = {"user_id": user_id, "channel_id": channel_id}
+    elif "telegram" in raw:
+        raise ValueError("Enter a Telegram User ID or Channel ID.")
+
+    if whatsapp := _channel(raw, "whatsapp"):
+        recipient = next(
+            (
+                str(whatsapp.get(key) or "").strip()
+                for key in (
+                    "group_or_user_name",
+                    "group_name",
+                    "user_name",
+                    "phone_number",
+                )
+                if whatsapp.get(key)
+            ),
+            "",
+        )
+        if not recipient:
+            raise ValueError("WhatsApp Group/User Name is required.")
+        configured["whatsapp"] = {"group_or_user_name": recipient}
+    elif "whatsapp" in raw:
+        raise ValueError("WhatsApp Group/User Name is required.")
+    return configured
 
 
 def build_retry_configuration(
     *,
-    maximum_attempts: int = 3,
-    retry_interval_seconds: int = 60,
-    timeout_seconds: int = 300,
-    notify_on_failure: bool = True,
+    maximum_attempts: int = int(RETRY_DEFAULTS["maximum_attempts"]),
+    retry_interval_seconds: int = int(RETRY_DEFAULTS["retry_interval_seconds"]),
+    timeout_seconds: int = int(RETRY_DEFAULTS["timeout_seconds"]),
+    notify_on_failure: bool = bool(RETRY_DEFAULTS["notify_on_failure"]),
 ) -> dict[str, Any]:
-    """Build and validate retry/timeout settings."""
+    """Build validated retry and timeout settings using YAML-backed defaults."""
     values = {
         "maximum_attempts": maximum_attempts,
         "retry_interval_seconds": retry_interval_seconds,
         "timeout_seconds": timeout_seconds,
     }
-    for field, raw_value in values.items():
-        if (
-            isinstance(raw_value, bool)
-            or not isinstance(raw_value, int)
-            or raw_value < 1
-        ):
-            label = field.replace("_", " ").capitalize()
-            raise ValueError(f"{label} must be a positive integer.")
+    for field, value in values.items():
+        minimum = int(RETRY_FIELDS[field].get("minimum", 1))
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+            raise ValueError(
+                f"{field.replace('_', ' ').capitalize()} must be a positive integer."
+            )
     return {**values, "notify_on_failure": bool(notify_on_failure)}
 
 
-def _cron_value(value: str, minimum: int, maximum: int) -> bool:
-    if not value.isdigit():
-        return False
-    return minimum <= int(value) <= maximum
-
-
 def _cron_part_is_valid(part: str, minimum: int, maximum: int) -> bool:
+    """Validate comma, range, wildcard, and step syntax for one cron field."""
+
+    def valid_number(value: str) -> bool:
+        return value.isdigit() and minimum <= int(value) <= maximum
+
     for item in part.split(","):
-        if not item or item.count("/") > 1:
-            return False
         base, separator, step = item.partition("/")
-        if separator and (not step.isdigit() or int(step) < 1):
+        if (
+            not item
+            or item.count("/") > 1
+            or (separator and (not step.isdigit() or int(step) < 1))
+        ):
             return False
         if base == "*":
             continue
         if base.count("-") == 1:
             start, end = base.split("-", 1)
             if not (
-                _cron_value(start, minimum, maximum)
-                and _cron_value(end, minimum, maximum)
-                and int(start) <= int(end)
+                valid_number(start) and valid_number(end) and int(start) <= int(end)
             ):
                 return False
-            continue
-        if not _cron_value(base, minimum, maximum):
+        elif not valid_number(base):
             return False
     return True
 
 
 def cron_validation_error(expression: str) -> str | None:
-    """Return a concise error for an unsupported/malformed five-field cron."""
+    """Return a concise error for an unsupported or malformed five-field cron."""
     fields = str(expression or "").strip().split()
-    if len(fields) != 5:
-        return "expected exactly 5 fields."
-
-    ranges = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7))
-    labels = ("minute", "hour", "day of month", "month", "day of week")
-    for field, bounds, label in zip(fields, ranges, labels, strict=True):
-        if not _cron_part_is_valid(field, *bounds):
-            return f"invalid {label} field '{field}'."
+    if len(fields) != len(_CRON_FIELDS):
+        return f"expected exactly {len(_CRON_FIELDS)} fields."
+    for value, settings in zip(fields, _CRON_FIELDS, strict=True):
+        if not _cron_part_is_valid(value, settings["minimum"], settings["maximum"]):
+            return f"invalid {settings['label']} field '{value}'."
     return None
 
 
@@ -381,11 +293,11 @@ def validate_cron_expression(expression: str) -> bool:
 
 
 def _time_text(value: time | str | None) -> str:
+    """Normalize a time object or HH:MM string."""
     if isinstance(value, time):
         return value.strftime("%H:%M")
-    text_value = str(value or "").strip()
     try:
-        return datetime.strptime(text_value, "%H:%M").strftime("%H:%M")
+        return datetime.strptime(str(value or "").strip(), "%H:%M").strftime("%H:%M")
     except ValueError as exc:
         raise ValueError("Execution time is required.") from exc
 
@@ -398,17 +310,14 @@ def build_schedule(
     weekday: str | None = None,
     cron_expression: str | None = None,
 ) -> dict[str, Any]:
-    """Build and validate a supported schedule configuration."""
+    """Build a normalized schedule for any YAML-configured frequency."""
     if not str(frequency or "").strip():
         raise ValueError("Frequency is required.")
-    if frequency not in FREQUENCIES:
+    if frequency not in FREQUENCY_SETTINGS:
         raise ValueError(f"Unsupported frequency: {frequency}")
 
-    schedule: dict[str, Any] = {
-        "frequency": frequency,
-        "timezone": LOCAL_TIMEZONE_NAME,
-    }
-    if frequency == "Every Hour":
+    schedule: dict[str, Any] = {"frequency": frequency, "timezone": LOCAL_TIMEZONE_NAME}
+    if frequency == _HOURLY:
         if (
             isinstance(execution_minute, bool)
             or not isinstance(execution_minute, int)
@@ -416,28 +325,26 @@ def build_schedule(
         ):
             raise ValueError("Execution minute must be an integer from 0 to 59.")
         schedule["execution_minute"] = execution_minute
-    elif frequency == "Every Day":
+    elif frequency == _DAILY:
         schedule["execution_time"] = _time_text(execution_time)
-    elif frequency == "Every Shift":
+    elif frequency == _SHIFT:
         if not SHIFT_WINDOWS or not SHIFT_LABELS:
             raise ValueError("No production shifts are configured.")
-        schedule["shifts"] = [copy.deepcopy(dict(window)) for window in SHIFT_WINDOWS]
-    elif frequency == "Every Week":
+        schedule["shifts"] = copy.deepcopy(list(SHIFT_WINDOWS))
+    elif frequency == _WEEKLY:
         if weekday not in WEEKDAYS:
             raise ValueError("Weekday is required.")
-        schedule["weekday"] = weekday
-        schedule["execution_time"] = _time_text(execution_time)
+        schedule.update(weekday=weekday, execution_time=_time_text(execution_time))
     else:
         cron = str(cron_expression or "").strip()
-        error = cron_validation_error(cron)
-        if error:
+        if error := cron_validation_error(cron):
             raise ValueError(f"Invalid cron expression: {error}")
         schedule["cron"] = cron
     return schedule
 
 
 def validate_schedule(schedule: Mapping[str, Any]) -> None:
-    """Validate an already-built schedule with the same rules as creation."""
+    """Validate stored schedule semantics with the creation rules."""
     frequency = str(schedule.get("frequency") or "")
     rebuilt = build_schedule(
         frequency,
@@ -448,7 +355,7 @@ def validate_schedule(schedule: Mapping[str, Any]) -> None:
     )
     if schedule.get("timezone") != LOCAL_TIMEZONE_NAME:
         raise ValueError(f"Schedule timezone must be {LOCAL_TIMEZONE_NAME}.")
-    if frequency == "Every Shift" and schedule.get("shifts") != rebuilt["shifts"]:
+    if frequency == _SHIFT and schedule.get("shifts") != rebuilt["shifts"]:
         raise ValueError(
             "Every Shift must use the configured production shift windows."
         )
@@ -457,84 +364,68 @@ def validate_schedule(schedule: Mapping[str, Any]) -> None:
 def calculate_next_run(
     schedule: Mapping[str, Any], now: datetime | None = None
 ) -> str | None:
-    """Calculate the next local run for standard frequencies; cron stays worker-owned."""
+    """Calculate the next local run; custom cron evaluation remains worker-owned."""
     validate_schedule(schedule)
-    current = _now(now)
-    frequency = schedule["frequency"]
-
-    if frequency == "Custom Schedule":
+    current, frequency = _now(now), schedule["frequency"]
+    if frequency == _CRON:
         return None
-    if frequency == "Every Hour":
+    if frequency == _HOURLY:
         candidate = current.replace(
             minute=int(schedule["execution_minute"]), second=0, microsecond=0
         )
-        if candidate <= current:
-            candidate += timedelta(hours=1)
-        return _iso(candidate)
-
-    if frequency in {"Every Day", "Every Week"}:
-        execution_time = datetime.strptime(
-            str(schedule["execution_time"]), "%H:%M"
-        ).time()
+        return _iso(candidate + timedelta(hours=candidate <= current))
+    if frequency in {_DAILY, _WEEKLY}:
+        run_time = datetime.strptime(str(schedule["execution_time"]), "%H:%M").time()
         candidate_date = current.date()
-        if frequency == "Every Week":
-            days_ahead = WEEKDAYS.index(str(schedule["weekday"])) - current.weekday()
-            candidate_date += timedelta(days=days_ahead % 7)
-        candidate = LOCAL_TIMEZONE.localize(
-            datetime.combine(candidate_date, execution_time)
-        )
+        if frequency == _WEEKLY:
+            offset = WEEKDAYS.index(str(schedule["weekday"])) - current.weekday()
+            candidate_date += timedelta(days=offset % 7)
+        candidate = LOCAL_TIMEZONE.localize(datetime.combine(candidate_date, run_time))
         if candidate <= current:
-            candidate += timedelta(days=7 if frequency == "Every Week" else 1)
+            candidate += timedelta(days=7 if frequency == _WEEKLY else 1)
         return _iso(candidate)
 
-    candidates: list[datetime] = []
-    for day_offset in (0, 1):
-        candidate_date = current.date() + timedelta(days=day_offset)
-        for window in SHIFT_WINDOWS:
-            candidate = LOCAL_TIMEZONE.localize(
-                datetime.combine(
-                    candidate_date,
-                    time(hour=int(window["start_hour"])),
-                )
+    candidates = [
+        LOCAL_TIMEZONE.localize(
+            datetime.combine(
+                current.date() + timedelta(days=offset), time(int(window["start_hour"]))
             )
-            if candidate > current:
-                candidates.append(candidate)
-    return _iso(min(candidates))
+        )
+        for offset in (0, 1)
+        for window in SHIFT_WINDOWS
+    ]
+    return _iso(min(candidate for candidate in candidates if candidate > current))
 
 
 def validate_required_fields(
-    *,
-    job_name: str,
-    instructions: str,
-    frequency: str,
+    *, job_name: str, instructions: str, frequency: str
 ) -> list[str]:
-    """Return clear required-field validation messages for the page."""
-    errors: list[str] = []
-    if not str(job_name or "").strip():
-        errors.append("Job Name is required.")
-    if not str(instructions or "").strip():
-        errors.append("Job Instructions are required.")
-    if not str(frequency or "").strip():
-        errors.append("Frequency is required.")
-    return errors
+    """Return field-specific messages for missing required editor values."""
+    fields = {
+        "Job Name is required.": job_name,
+        "Job Instructions are required.": instructions,
+        "Frequency is required.": frequency,
+    }
+    return [
+        message for message, value in fields.items() if not str(value or "").strip()
+    ]
 
 
 def _normalized_key(value: Any) -> str:
+    """Convert a mapping key to normalized snake case for security checks."""
     snake_case = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", str(value).strip())
     return re.sub(r"[^a-z0-9]+", "_", snake_case.lower()).strip("_")
 
 
 def find_sensitive_keys(value: Any, path: str = "$") -> list[str]:
-    """Recursively find credential-like keys anywhere in a JSON-compatible value."""
+    """Recursively locate credential-like keys in a JSON-compatible value."""
     findings: list[str] = []
     if isinstance(value, Mapping):
         for key, child in value.items():
-            normalized = _normalized_key(key)
-            collapsed = normalized.replace("_", "")
-            child_path = f"{path}.{key}"
+            normalized, child_path = _normalized_key(key), f"{path}.{key}"
             if (
                 normalized in _SENSITIVE_KEYS
-                or collapsed in _SENSITIVE_KEYS_COLLAPSED
+                or normalized.replace("_", "") in _SENSITIVE_KEYS_COLLAPSED
                 or normalized.endswith(_SENSITIVE_SUFFIXES)
             ):
                 findings.append(child_path)
@@ -546,17 +437,16 @@ def find_sensitive_keys(value: Any, path: str = "$") -> list[str]:
 
 
 def assert_no_sensitive_keys(value: Any) -> None:
-    """Reject secrets and credential fields before preview/download/persistence."""
-    findings = find_sensitive_keys(value)
-    if findings:
+    """Reject secrets and credential fields before preview or persistence."""
+    if findings := find_sensitive_keys(value):
         raise ValueError(f"Sensitive field is not allowed: {findings[0]}")
 
 
 def _assert_report_value_is_metadata(value: Any, path: str) -> None:
+    """Reject embedded binary report content while allowing paths and metadata."""
     if isinstance(value, Mapping):
         for key, child in value.items():
-            normalized = _normalized_key(key)
-            child_path = f"{path}.{key}"
+            normalized, child_path = _normalized_key(key), f"{path}.{key}"
             if (
                 "base64" in normalized
                 or normalized == "binary"
@@ -564,8 +454,7 @@ def _assert_report_value_is_metadata(value: Any, path: str) -> None:
                 or normalized in {"image_data", "file_content"}
             ):
                 raise ValueError(
-                    "Report history may contain metadata or file paths only: "
-                    f"{child_path}"
+                    f"Report history may contain metadata or file paths only: {child_path}"
                 )
             _assert_report_value_is_metadata(child, child_path)
     elif isinstance(value, (list, tuple)):
@@ -575,39 +464,33 @@ def _assert_report_value_is_metadata(value: Any, path: str) -> None:
         raise ValueError(f"Report history may not contain binary file content: {path}")
     elif isinstance(value, str) and value.strip().lower().startswith("data:image/"):
         raise ValueError(
-            "Report history may contain metadata or file paths only: " f"{path}"
+            f"Report history may contain metadata or file paths only: {path}"
         )
 
 
-def _assert_report_metadata_only(job: Mapping[str, Any]) -> None:
-    _assert_report_value_is_metadata(job.get("report_history", []), "$.report_history")
-
-
 def validate_job_document(job: Mapping[str, Any]) -> None:
-    """Validate security, schedule semantics, and the complete JSON Schema."""
+    """Validate security, schedule semantics, delivery, and the JSON Schema."""
     assert_no_sensitive_keys(job)
-    _assert_report_metadata_only(job)
+    _assert_report_value_is_metadata(job.get("report_history", []), "$.report_history")
     _JOB_VALIDATOR.validate(job)
     validate_schedule(job["schedule"])
-    if job["email"]["enabled"]:
-        if not job["email"]["recipients"]:
-            raise ValueError("Enter at least one email recipient.")
-        normalize_email_recipients(job["email"]["recipients"])
+    build_delivery_configuration(job["delivery"])
 
 
 def build_job_document(
     *,
     job_name: str,
     instructions: str,
+    model_level: str,
     status: str,
     schedule: Mapping[str, Any],
-    email: Mapping[str, Any],
+    delivery: Mapping[str, Any],
     retry: Mapping[str, Any],
     created_by: str,
-    job_id: str | None = None,
+    job_id: str,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Build Revision 1 of a complete scheduled-job document."""
+    """Build and validate revision one of a complete scheduled-job document."""
     errors = validate_required_fields(
         job_name=job_name,
         instructions=instructions,
@@ -617,41 +500,38 @@ def build_job_document(
         raise ValueError(errors[0])
     if status not in {"draft", "active"}:
         raise ValueError("New job status must be draft or active.")
-    actor = str(created_by or "").strip()
+    actor, level = str(created_by or "").strip(), str(model_level or "").strip().lower()
     if not actor:
         raise ValueError("Created By is required.")
+    if level not in MODEL_LEVELS:
+        raise ValueError(f"Model Level must be {', '.join(MODEL_LEVELS)}.")
 
     timestamp = _now(now)
     document: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
-        "job_id": job_id or generate_job_id(),
+        "job_id": str(job_id),
         "revision": 1,
         "job_name": str(job_name).strip(),
         "instructions": str(instructions).strip(),
+        "model_level": level,
         "status": status,
         "created_at": _iso(timestamp),
         "updated_at": _iso(timestamp),
         "created_by": actor,
         "timezone": LOCAL_TIMEZONE_NAME,
         "schedule": copy.deepcopy(dict(schedule)),
-        "email": copy.deepcopy(dict(email)),
-        "retry": copy.deepcopy(dict(retry)),
+        "delivery": build_delivery_configuration(delivery),
         "last_run": None,
         "next_run": calculate_next_run(schedule, timestamp),
-        "revision_history": [],
-        "execution_requests": [],
-        "run_history": [],
-        "email_history": [],
-        "report_history": [],
-        "error_history": [],
-        "action_history": [],
+        **{field: [] for field in _HISTORY_FIELDS},
+        "retry": copy.deepcopy(dict(retry)),
     }
     validate_job_document(document)
     return document
 
 
 def configuration_snapshot(job: Mapping[str, Any]) -> dict[str, Any]:
-    """Return only editable configuration fields, with no histories."""
+    """Copy editable configuration fields without operational histories."""
     return {field: copy.deepcopy(job[field]) for field in _CONFIGURATION_FIELDS}
 
 
@@ -663,24 +543,19 @@ def revise_job(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Create the next revision while preserving an immutable prior snapshot."""
-    unsupported = sorted(set(configuration_updates) - set(_CONFIGURATION_FIELDS))
-    if unsupported:
+    if unsupported := sorted(set(configuration_updates) - set(_CONFIGURATION_FIELDS)):
         raise ValueError(f"Not an editable configuration field: {unsupported[0]}")
-
-    revised = copy.deepcopy(dict(job))
-    timestamp = _now(now)
-    prior_revision = int(revised["revision"])
+    revised, timestamp = copy.deepcopy(dict(job)), _now(now)
     revised["revision_history"].append(
         {
-            "revision": prior_revision,
+            "revision": revised["revision"],
             "saved_at": _iso(timestamp),
             "saved_by": str(saved_by).strip(),
             "configuration": configuration_snapshot(job),
         }
     )
-    for field, value in configuration_updates.items():
-        revised[field] = copy.deepcopy(value)
-    revised["revision"] = prior_revision + 1
+    revised.update(copy.deepcopy(dict(configuration_updates)))
+    revised["revision"] += 1
     revised["updated_at"] = _iso(timestamp)
     revised["next_run"] = (
         None
@@ -694,8 +569,8 @@ def revise_job(
 def _append_action(
     job: Mapping[str, Any], action: str, actor: str, now: datetime | None = None
 ) -> tuple[dict[str, Any], datetime]:
-    updated = copy.deepcopy(dict(job))
-    timestamp = _now(now)
+    """Copy a job and append a timestamped audit action."""
+    updated, timestamp = copy.deepcopy(dict(job)), _now(now)
     updated["updated_at"] = _iso(timestamp)
     updated["action_history"].append(
         {
@@ -707,42 +582,49 @@ def _append_action(
     return updated, timestamp
 
 
+def _change_status(
+    job: Mapping[str, Any], status: str, action: str, actor: str, now: datetime | None
+) -> dict[str, Any]:
+    """Apply an audited status transition without changing the revision."""
+    updated, timestamp = _append_action(job, action, actor, now)
+    updated["status"] = status
+    updated["next_run"] = (
+        calculate_next_run(updated["schedule"], timestamp)
+        if status == "active"
+        else None
+    )
+    validate_job_document(updated)
+    return updated
+
+
 def pause_job(
     job: Mapping[str, Any], *, actor: str, now: datetime | None = None
 ) -> dict[str, Any]:
     """Pause future execution without changing the configuration revision."""
     if job.get("status") == "archived":
         raise ValueError("Archived jobs cannot be paused.")
-    updated, _ = _append_action(job, "pause", actor, now)
-    updated["status"] = "paused"
-    updated["next_run"] = None
-    validate_job_document(updated)
-    return updated
+    return _change_status(job, "paused", "pause", actor, now)
 
 
 def resume_job(
     job: Mapping[str, Any], *, actor: str, now: datetime | None = None
 ) -> dict[str, Any]:
-    """Resume/activate scheduling without incrementing the revision."""
+    """Activate or resume scheduling without changing the revision."""
     if job.get("status") == "archived":
         raise ValueError("Archived jobs cannot be resumed.")
     action = "activate" if job.get("status") == "draft" else "resume"
-    updated, timestamp = _append_action(job, action, actor, now)
-    updated["status"] = "active"
-    updated["next_run"] = calculate_next_run(updated["schedule"], timestamp)
-    validate_job_document(updated)
-    return updated
+    return _change_status(job, "active", action, actor, now)
 
 
 def request_run_now(
     job: Mapping[str, Any], *, actor: str, now: datetime | None = None
 ) -> dict[str, Any]:
-    """Queue a manual execution request; never execute the report here."""
+    """Queue a manual execution request without running the report in-process."""
     if job.get("status") == "archived":
         raise ValueError("Archived jobs cannot be run.")
     updated, timestamp = _append_action(job, "run_now_requested", actor, now)
     request_id = generate_run_request_id()
-    if not _RUN_ID_RE.fullmatch(request_id):  # Defensive if generation changes.
+    if not _RUN_ID_RE.fullmatch(request_id):
         raise ValueError("Invalid run request ID.")
     updated["execution_requests"].append(
         {
@@ -760,27 +642,27 @@ def request_run_now(
 def archive_job(
     job: Mapping[str, Any], *, actor: str, now: datetime | None = None
 ) -> dict[str, Any]:
-    """Archive a job in place while preserving all histories."""
-    updated, _ = _append_action(job, "archive", actor, now)
-    updated["status"] = "archived"
-    updated["next_run"] = None
-    validate_job_document(updated)
-    return updated
+    """Archive a job while preserving its configuration and histories."""
+    return _change_status(job, "archived", "archive", actor, now)
 
 
 def clone_job_document(
-    job: Mapping[str, Any], *, created_by: str, now: datetime | None = None
+    job: Mapping[str, Any],
+    *,
+    created_by: str,
+    job_id: str,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Create an independent Revision 1 draft from another job's configuration."""
-    timestamp = _now(now)
-    cloned = build_job_document(
+    """Create an independent revision-one draft from another job."""
+    return build_job_document(
         job_name=f"{job['job_name']} (Copy)",
         instructions=job["instructions"],
+        model_level=job["model_level"],
         status="draft",
-        schedule=copy.deepcopy(job["schedule"]),
-        email=copy.deepcopy(job["email"]),
-        retry=copy.deepcopy(job["retry"]),
+        schedule=job["schedule"],
+        delivery=job["delivery"],
+        retry=job["retry"],
         created_by=created_by,
-        now=timestamp,
+        job_id=job_id,
+        now=_now(now),
     )
-    return cloned

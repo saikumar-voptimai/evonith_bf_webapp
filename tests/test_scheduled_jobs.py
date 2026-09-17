@@ -15,7 +15,7 @@ from utils.scheduled_jobs import (
     LOCAL_TIMEZONE,
     LOCAL_TIMEZONE_NAME,
     archive_job,
-    build_email_configuration,
+    build_delivery_configuration,
     build_job_document,
     build_retry_configuration,
     build_schedule,
@@ -38,25 +38,31 @@ def _job(status: str = "draft") -> dict:
     return build_job_document(
         job_name="ETA CO Shift Report",
         instructions="Generate the ETA CO report and trend graph.",
+        model_level="medium",
         status=status,
         schedule=build_schedule("Every Hour", execution_minute=30),
-        email=build_email_configuration(),
+        delivery=build_delivery_configuration(),
         retry=build_retry_configuration(),
         created_by="qa",
+        job_id="Job-1001",
         now=NOW,
     )
 
 
 def test_job_id_format_and_initial_revision_and_statuses() -> None:
-    assert generate_job_id().startswith("JOB-")
-    assert __import__("re").fullmatch(r"JOB-[A-F0-9]{12}", generate_job_id())
+    assert generate_job_id(1001) == "Job-1001"
+    assert generate_job_id(1002) == "Job-1002"
+    with pytest.raises(ValueError, match="1001 or greater"):
+        generate_job_id(1000)
     assert _job("draft")["revision"] == 1
     assert _job("draft")["status"] == "draft"
     active = _job("active")
     assert active["status"] == "active"
+    assert active["model_level"] == "medium"
     assert "job_type" not in active
     assert "job_inputs" not in active
     assert "target_device" not in active
+    assert list(active)[-1] == "retry"
 
 
 def test_required_fields_are_field_specific() -> None:
@@ -70,6 +76,17 @@ def test_required_fields_are_field_specific() -> None:
         "Job Instructions are required.",
         "Frequency is required.",
     ]
+
+
+@pytest.mark.parametrize("model_level", ["low", "medium", "high"])
+def test_supported_model_levels(model_level: str) -> None:
+    job = _job()
+    job["model_level"] = model_level
+    validate_job_document(job)
+
+    job["model_level"] = "extreme"
+    with pytest.raises(ValidationError):
+        validate_job_document(job)
 
 
 def test_schedules_use_kolkata_and_calculate_standard_next_runs() -> None:
@@ -112,29 +129,93 @@ def test_invalid_cron_expressions(expression: str) -> None:
         build_schedule("Custom Schedule", cron_expression=expression)
 
 
-def test_email_normalization_validation_and_disabled_behavior() -> None:
+def test_delivery_configuration_normalizes_all_supported_channels() -> None:
     assert normalize_email_recipients(
         "FIRST@example.com; second@example.com\nfirst@example.com"
     ) == ["first@example.com", "second@example.com"]
 
-    configured = build_email_configuration(
-        enabled=True,
-        recipients="first@example.com,second@example.com",
-        subject="Report",
-        attachment_formats=["png", "csv", "json"],
+    configured = build_delivery_configuration(
+        {
+            "email": {
+                "to": "first@example.com,second@example.com",
+                "cc": "manager@example.com",
+                "bcc": "",
+                "subject": "Report",
+                "attachment_formats": ["png", "csv", "json"],
+            },
+            "slack": {"id": "C012345"},
+            "telegram": {"user_id": "12345", "channel_id": ""},
+            "whatsapp": {
+                "group_or_user_name": "BF Operations",
+            },
+        }
     )
-    assert configured["recipients"] == ["first@example.com", "second@example.com"]
-    assert configured["attachment_formats"] == ["png", "csv", "json"]
-    assert build_email_configuration(enabled=False, recipients="not-an-email") == {
-        "enabled": False,
-        "recipients": [],
-        "subject": "",
-        "attachment_formats": [],
+    assert configured["email"]["to"] == [
+        "first@example.com",
+        "second@example.com",
+    ]
+    assert configured["email"]["cc"] == ["manager@example.com"]
+    assert configured["email"]["attachment_formats"] == ["png", "csv", "json"]
+    assert configured["slack"]["id"] == "C012345"
+    assert configured["telegram"]["user_id"] == "12345"
+    assert configured["whatsapp"] == {
+        "group_or_user_name": "BF Operations"
     }
-    with pytest.raises(ValueError, match="Enter at least one"):
-        build_email_configuration(enabled=True)
+    assert build_delivery_configuration(
+        {
+            "whatsapp": {
+                "group_name": "Legacy Group",
+                "user_name": "",
+                "phone_number": "",
+            }
+        }
+    )["whatsapp"] == {"group_or_user_name": "Legacy Group"}
+    assert build_delivery_configuration() == {}
+    job = _job()
+    job["delivery"] = configured
+    validate_job_document(job)
+
+    with pytest.raises(ValueError, match="email To recipient"):
+        build_delivery_configuration(
+            {"email": {"to": "", "subject": "Report"}}
+        )
+    with pytest.raises(ValueError, match="Slack ID"):
+        build_delivery_configuration({"slack": {"id": ""}})
+    with pytest.raises(ValueError, match="Telegram User ID or Channel ID"):
+        build_delivery_configuration({"telegram": {}})
+    with pytest.raises(ValueError, match="WhatsApp Group/User Name"):
+        build_delivery_configuration({"whatsapp": {}})
     with pytest.raises(ValueError, match="Invalid email address: invalid"):
         normalize_email_recipients("valid@example.com; invalid")
+
+
+def test_legacy_email_configuration_is_converted_for_delivery_agents() -> None:
+    legacy = _job()
+    legacy.pop("model_level")
+    legacy.pop("delivery")
+    legacy.pop("delivery_history")
+    legacy["email"] = {
+        "enabled": True,
+        "recipients": ["operator@example.com"],
+        "subject": "Legacy report",
+        "attachment_formats": ["csv"],
+    }
+    legacy["email_history"] = [{"status": "sent"}]
+
+    migrated = ScheduledJobService._job_from_database(legacy)
+
+    assert migrated["delivery"]["email"] == {
+        "to": ["operator@example.com"],
+        "cc": [],
+        "bcc": [],
+        "subject": "Legacy report",
+        "attachment_formats": ["csv"],
+    }
+    assert migrated["delivery_history"] == [{"status": "sent"}]
+    assert migrated["model_level"] == "medium"
+    assert "email" not in migrated
+    assert "email_history" not in migrated
+    validate_job_document(migrated)
 
 
 def test_retry_defaults_and_custom_values() -> None:
@@ -190,7 +271,10 @@ def test_revision_history_preserves_revision_one_and_creates_revision_two() -> N
     original_before = copy.deepcopy(original)
     revised = revise_job(
         original,
-        {"job_name": "Revised ETA CO Report"},
+        {
+            "job_name": "Revised ETA CO Report",
+            "model_level": "high",
+        },
         saved_by="editor",
         now=NOW,
     )
@@ -200,13 +284,20 @@ def test_revision_history_preserves_revision_one_and_creates_revision_two() -> N
     assert revised["revision_history"][0]["revision"] == 1
     snapshot = revised["revision_history"][0]["configuration"]
     assert snapshot["job_name"] == original["job_name"]
+    assert snapshot["model_level"] == "medium"
+    assert revised["model_level"] == "high"
     assert "revision_history" not in snapshot
 
 
 def test_clone_gets_new_identity_revision_one_and_empty_histories() -> None:
     source = request_run_now(_job("active"), actor="operator", now=NOW)
     source["run_history"].append({"status": "completed"})
-    cloned = clone_job_document(source, created_by="operator", now=NOW)
+    cloned = clone_job_document(
+        source,
+        created_by="operator",
+        job_id="Job-1002",
+        now=NOW,
+    )
 
     assert cloned["job_id"] != source["job_id"]
     assert cloned["revision"] == 1
@@ -215,7 +306,7 @@ def test_clone_gets_new_identity_revision_one_and_empty_histories() -> None:
         "revision_history",
         "execution_requests",
         "run_history",
-        "email_history",
+        "delivery_history",
         "report_history",
         "error_history",
         "action_history",
@@ -244,7 +335,7 @@ def test_archive_preserves_all_histories() -> None:
     for history in (
         "revision_history",
         "run_history",
-        "email_history",
+        "delivery_history",
         "report_history",
         "error_history",
     ):
@@ -305,6 +396,8 @@ class _FakeEngine:
         self.calls.append((sql, params or {}))
         if "SELECT EXISTS" in sql:
             return _FakeResult(scalar_value=True)
+        if "nextval('automation.scheduled_job_id_seq')" in sql:
+            return _FakeResult(scalar_value=1001)
         if "SELECT job_description" in sql:
             return _FakeResult(
                 rows=[{"job_description": json.dumps(self.job)}]
@@ -315,16 +408,32 @@ class _FakeEngine:
         pass
 
 
-def test_scheduled_job_service_uses_bound_jsonb_sql_without_postgres(
+def test_scheduled_job_service_uses_bound_ordered_json_sql_without_postgres(
     monkeypatch,
 ) -> None:
     job = _job()
+    retry_first_job = {
+        "retry": job["retry"],
+        **{key: value for key, value in job.items() if key != "retry"},
+    }
+    assert list(
+        json.loads(ScheduledJobService._serialized_job(retry_first_job))
+    )[-1] == "retry"
     legacy_job = {
         **job,
         "job_type": "ETA CO Report",
         "job_inputs": {"signal": "body_etaco"},
         "target_device": {"device_id": "bf2-pi-01"},
+        "email": {
+            "enabled": False,
+            "recipients": [],
+            "subject": "",
+            "attachment_formats": [],
+        },
+        "email_history": [],
     }
+    legacy_job.pop("delivery")
+    legacy_job.pop("delivery_history")
     engine = _FakeEngine(legacy_job)
     monkeypatch.setattr(
         db_module, "build_relational_engine", lambda db_url=None: engine
@@ -336,6 +445,7 @@ def test_scheduled_job_service_uses_bound_jsonb_sql_without_postgres(
     )
     service = ScheduledJobService(db_url="postgresql://example")
 
+    assert service.reserve_job_id() == "Job-1001"
     service.create_job(job)
     assert service.list_jobs() == [job]
     assert service.get_job(job["job_id"]) == job
@@ -347,6 +457,7 @@ def test_scheduled_job_service_uses_bound_jsonb_sql_without_postgres(
     assert "automation.scheduled_jobs" in all_sql
     assert "offline_feed.scheduled_jobs" not in all_sql
     assert "ORDER BY date_time DESC" in all_sql
+    assert "CREATE SEQUENCE IF NOT EXISTS automation.scheduled_job_id_seq" in all_sql
     assert "DELETE FROM automation.scheduled_jobs" in all_sql
     assert "scheduled-jobs" not in all_sql
     assert "name' OR TRUE --" not in all_sql
@@ -354,8 +465,9 @@ def test_scheduled_job_service_uses_bound_jsonb_sql_without_postgres(
         params.get("job_name") == "name' OR TRUE --" for _, params in engine.calls
     )
     assert any(
-        "CAST(:job_description AS JSONB)" in sql
+        "CAST(:job_description AS JSON)" in sql
         and isinstance(params.get("job_description"), str)
+        and list(json.loads(params["job_description"]))[-1] == "retry"
         for sql, params in engine.calls
     )
     assert any(

@@ -25,7 +25,7 @@ from furnace_data.relational import (
     build_relational_engine,
     build_relational_session_factory,
 )
-from utils.scheduled_jobs import validate_job_document
+from utils.scheduled_jobs import generate_job_id, validate_job_document
 
 load_dotenv()
 
@@ -273,12 +273,20 @@ class BurdenConfigService(_RelationalService):
 
 
 class ScheduledJobService(_RelationalService):
-    """Small JSONB facade for ``automation.scheduled_jobs``."""
+    """Ordered-JSON facade for ``automation.scheduled_jobs``."""
 
     @staticmethod
     def _serialized_job(job: dict[str, Any]) -> str:
         validate_job_document(job)
-        return json.dumps(job, separators=(",", ":"), ensure_ascii=False)
+        retry = job.get("retry")
+        ordered_job = {key: value for key, value in job.items() if key != "retry"}
+        if "retry" in job:
+            ordered_job["retry"] = retry
+        return json.dumps(
+            ordered_job,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
 
     @staticmethod
     def _job_from_database(value: Any) -> dict[str, Any]:
@@ -289,19 +297,60 @@ class ScheduledJobService(_RelationalService):
         job = dict(value)
         for removed_field in ("job_type", "job_inputs", "target_device"):
             job.pop(removed_field, None)
+        job.setdefault("model_level", "medium")
+        retry = job.pop("retry", None)
+        legacy_email = job.pop("email", None)
+        if "delivery" not in job:
+            job["delivery"] = {}
+            if isinstance(legacy_email, dict) and legacy_email.get("enabled"):
+                job["delivery"]["email"] = {
+                    "to": legacy_email.get("recipients", []),
+                    "cc": [],
+                    "bcc": [],
+                    "subject": legacy_email.get("subject")
+                    or job.get("job_name")
+                    or "Scheduled report",
+                    "attachment_formats": legacy_email.get(
+                        "attachment_formats", []
+                    ),
+                }
+        legacy_email_history = job.pop("email_history", [])
+        if "delivery_history" not in job:
+            job["delivery_history"] = legacy_email_history
+        if retry is not None:
+            job["retry"] = retry
         return job
 
     def create_job(self, job: dict[str, Any]) -> None:
         """Insert one complete job document."""
         statement = text("""
             INSERT INTO automation.scheduled_jobs (job_description)
-            VALUES (CAST(:job_description AS JSONB))
+            VALUES (CAST(:job_description AS JSON))
             """)
         with self.engine.begin() as connection:
             connection.execute(
                 statement,
                 {"job_description": self._serialized_job(job)},
             )
+
+    def reserve_job_id(self) -> str:
+        """Reserve the next concurrency-safe sequential job ID."""
+        create_sequence = text("""
+            CREATE SEQUENCE IF NOT EXISTS automation.scheduled_job_id_seq
+            AS BIGINT
+            START WITH 1001
+            INCREMENT BY 1
+            MINVALUE 1001
+            """)
+        next_number = text("""
+            SELECT nextval('automation.scheduled_job_id_seq')
+            """)
+        with self.engine.begin() as connection:
+            connection.execute(create_sequence)
+            job_number = connection.execute(next_number).scalar()
+        if job_number is None:
+            raise RuntimeError("Unable to reserve a scheduled job number.")
+        return generate_job_id(int(job_number))
 
     def list_jobs(self) -> list[dict[str, Any]]:
         """Return current job documents, newest database row first."""
@@ -341,7 +390,7 @@ class ScheduledJobService(_RelationalService):
             raise ValueError("Job ID cannot be changed during update.")
         statement = text("""
             UPDATE automation.scheduled_jobs
-            SET job_description = CAST(:job_description AS JSONB)
+            SET job_description = CAST(:job_description AS JSON)
             WHERE job_description->>'job_id' = :job_id
             """)
         with self.engine.begin() as connection:

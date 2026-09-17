@@ -1,0 +1,306 @@
+# Shared scheduled-job metadata. Keep UI choices and validation rules here so
+# the Streamlit editor and worker-facing JSON contract stay in sync.
+schema_version: "1.0"
+timezone: "Asia/Kolkata"
+default_frequency: "Every Day"
+default_model_level: "medium"
+
+frequencies:
+  Every Hour:
+    kind: hourly
+    execution_minute: 0
+  Every Day:
+    kind: daily
+    execution_time: "06:00"
+  Every Shift:
+    kind: shift
+  Every Week:
+    kind: weekly
+    weekday: Monday
+    execution_time: "06:00"
+  Custom Schedule:
+    kind: cron
+    cron: "0 6 * * 1-5"
+    help: "Standard five-field numeric cron, for example: 0 6 * * 1-5"
+
+weekdays: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+job_statuses: [draft, active, paused, archived]
+
+model_levels:
+  low: "Fastest for simple, routine jobs with lower processing cost."
+  medium: "Balanced speed and reasoning quality for most jobs."
+  high: "Deeper reasoning for complex jobs; takes more time and resources."
+
+delivery_channels:
+  email:
+    label: Email
+    fields:
+      to:
+        label: To
+        input: recipients
+        placeholder: "recipient@example.com"
+        help: "Required. Separate multiple addresses with commas."
+      cc:
+        label: "CC (optional)"
+        input: recipients
+        placeholder: "cc@example.com"
+        help: "Separate multiple addresses with commas."
+      bcc:
+        label: "BCC (optional)"
+        input: recipients
+        placeholder: "bcc@example.com"
+        help: "Separate multiple addresses with commas."
+      subject:
+        label: Subject
+        input: text
+        default: "Scheduled report"
+      attachment_formats:
+        label: Attachments
+        input: multiselect
+        options: [png, csv, json]
+    schema:
+      type: object
+      required: [to, cc, bcc, subject, attachment_formats]
+      properties:
+        to:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, format: email}
+        cc:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: email}
+        bcc:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: email}
+        subject: {type: string, minLength: 1}
+        attachment_formats:
+          type: array
+          uniqueItems: true
+          items: {enum: [png, csv, json]}
+      additionalProperties: false
+  slack:
+    label: Slack
+    fields:
+      id:
+        label: "Slack ID"
+        input: text
+        placeholder: "User or channel ID"
+    schema:
+      type: object
+      required: [id]
+      properties:
+        id: {type: string, minLength: 1}
+      additionalProperties: false
+  telegram:
+    label: Telegram
+    fields:
+      user_id:
+        label: "Telegram User ID"
+        input: text
+      channel_id:
+        label: "Telegram Channel ID"
+        input: text
+    schema:
+      type: object
+      required: [user_id, channel_id]
+      properties:
+        user_id: {type: string}
+        channel_id: {type: string}
+      anyOf:
+        - properties: {user_id: {minLength: 1}}
+        - properties: {channel_id: {minLength: 1}}
+      additionalProperties: false
+  whatsapp:
+    label: WhatsApp
+    fields:
+      group_or_user_name:
+        label: "Group/User Name"
+        input: text
+        placeholder: "WhatsApp group or user name"
+        aliases: [group_name, user_name, phone_number]
+    schema:
+      type: object
+      properties:
+        group_or_user_name: {type: string}
+        group_name: {type: string}
+        user_name: {type: string}
+        phone_number: {type: string}
+      anyOf:
+        - required: [group_or_user_name]
+          properties: {group_or_user_name: {minLength: 1}}
+        - required: [group_name]
+          properties: {group_name: {minLength: 1}}
+        - required: [user_name]
+          properties: {user_name: {minLength: 1}}
+        - required: [phone_number]
+          properties: {phone_number: {minLength: 1}}
+      additionalProperties: false
+
+retry_fields:
+  maximum_attempts:
+    label: "Maximum attempts"
+    input: number
+    default: 3
+    minimum: 1
+  retry_interval_seconds:
+    label: "Retry interval (seconds)"
+    input: number
+    default: 60
+    minimum: 1
+  timeout_seconds:
+    label: "Timeout (seconds)"
+    input: number
+    default: 300
+    minimum: 1
+  notify_on_failure:
+    label: "Notify on failure"
+    input: checkbox
+    default: true
+
+cron_fields:
+  - {label: minute, minimum: 0, maximum: 59}
+  - {label: hour, minimum: 0, maximum: 23}
+  - {label: day of month, minimum: 1, maximum: 31}
+  - {label: month, minimum: 1, maximum: 12}
+  - {label: day of week, minimum: 0, maximum: 7}
+
+editable_fields:
+  [job_name, instructions, model_level, timezone, schedule, delivery, retry]
+history_fields:
+  - revision_history
+  - execution_requests
+  - run_history
+  - delivery_history
+  - report_history
+  - error_history
+  - action_history
+
+id_patterns:
+  job: '^(?:Job-[1-9]\d*|JOB-[A-F0-9]{12})$'
+  run: '^RUN-[A-F0-9]{12}$'
+
+sensitive_keys:
+  - access_token
+  - api_key
+  - auth_token
+  - client_secret
+  - credential
+  - credentials
+  - connection_string
+  - database_credential
+  - database_credentials
+  - database_password
+  - database_url
+  - db_url
+  - password
+  - private_key
+  - refresh_token
+  - secret
+  - smtp_credential
+  - smtp_credentials
+  - smtp_host
+  - smtp_password
+  - smtp_port
+  - smtp_server
+  - smtp_username
+  - token
+sensitive_suffixes:
+  [_password, _secret, _token, _credential, _credentials, _api_key, _private_key]
+
+document_schema:
+  $schema: "https://json-schema.org/draft/2020-12/schema"
+  title: "Scheduled job document"
+  type: object
+  additionalProperties: false
+  required:
+    - schema_version
+    - job_id
+    - revision
+    - job_name
+    - instructions
+    - model_level
+    - status
+    - created_at
+    - updated_at
+    - created_by
+    - timezone
+    - schedule
+    - delivery
+    - retry
+    - last_run
+    - next_run
+    - revision_history
+    - execution_requests
+    - run_history
+    - delivery_history
+    - report_history
+    - error_history
+    - action_history
+  properties:
+    schema_version: {type: string}
+    job_id: {type: string}
+    revision: {type: integer, minimum: 1}
+    job_name: {type: string, minLength: 1}
+    instructions: {type: string, minLength: 1}
+    model_level: {type: string}
+    status: {type: string}
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+    created_by: {type: string, minLength: 1}
+    timezone: {type: string}
+    schedule:
+      type: object
+      required: [frequency, timezone]
+      properties:
+        frequency: {type: string}
+        timezone: {type: string}
+        execution_minute: {type: integer, minimum: 0, maximum: 59}
+        execution_time:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+        weekday: {type: string}
+        cron: {type: string, minLength: 1}
+        shifts:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [label, start_hour, end_hour]
+            properties:
+              label: {type: string}
+              start_hour: {type: integer}
+              end_hour: {type: integer}
+            additionalProperties: true
+      additionalProperties: false
+    delivery:
+      type: object
+      properties: {}
+      additionalProperties: false
+    retry:
+      type: object
+      required:
+        [maximum_attempts, retry_interval_seconds, timeout_seconds, notify_on_failure]
+      properties:
+        maximum_attempts: {type: integer, minimum: 1}
+        retry_interval_seconds: {type: integer, minimum: 1}
+        timeout_seconds: {type: integer, minimum: 1}
+        notify_on_failure: {type: boolean}
+      additionalProperties: false
+    last_run:
+      anyOf:
+        - {type: "null"}
+        - {type: string, format: date-time}
+    next_run:
+      anyOf:
+        - {type: "null"}
+        - {type: string, format: date-time}
+    revision_history: {type: array, items: {type: object}}
+    execution_requests: {type: array, items: {type: object}}
+    run_history: {type: array, items: {type: object}}
+    delivery_history: {type: array, items: {type: object}}
+    report_history: {type: array, items: {type: object}}
+    error_history: {type: array, items: {type: object}}
+    action_history: {type: array, items: {type: object}}
