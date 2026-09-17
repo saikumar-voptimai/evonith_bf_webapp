@@ -56,11 +56,32 @@ PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
     AppPageDescriptor("custom_pages/8_Feedback.py", title="Feedback", icon="📮"),
 )
 
+# Keep hidden pages registered so they can be restored without recreating their
+# metadata or page implementations.
+HIDDEN_PAGE_PATHS = frozenset(
+    {
+        "custom_pages/4_Recommendations.py",
+        "custom_pages/6_Material_Balance.py",
+        "custom_pages/8_Feedback.py",
+        "custom_pages/9_Blend_Optimizer.py",
+    }
+)
+_HIDDEN_PAGE_PATHS_CASEFOLD = {path.casefold() for path in HIDDEN_PAGE_PATHS}
+
+
+def is_page_visible(file_path: str) -> bool:
+    """Return whether a registered page should appear in the application UI."""
+    return file_path.casefold() not in _HIDDEN_PAGE_PATHS_CASEFOLD
+
 
 
 def get_navigation_pages() -> tuple[AppPageDescriptor, ...]:
-    """Return the full navigation registry."""
-    return PAGE_REGISTRY
+    """Return page descriptors that should appear in sidebar navigation."""
+    return tuple(
+        descriptor
+        for descriptor in PAGE_REGISTRY
+        if is_page_visible(descriptor.file_path)
+    )
 
 
 def get_feedback_page_options() -> list[str]:
@@ -68,5 +89,5 @@ def get_feedback_page_options() -> list[str]:
     return [
         descriptor.title
         for descriptor in PAGE_REGISTRY
-        if descriptor.include_in_feedback
+        if descriptor.include_in_feedback and is_page_visible(descriptor.file_path)
     ]

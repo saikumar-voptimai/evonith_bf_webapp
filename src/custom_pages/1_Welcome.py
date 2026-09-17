@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from config.page_registry import is_page_visible
 from utils.session import has_permission, logout_user
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -238,6 +239,8 @@ _TILES = [
      "Schedule and monitor automated jobs for data processing and reporting.",   "#f97316"),
 ]
 
+_VISIBLE_TILES = [tile for tile in _TILES if is_page_visible(tile[0])]
+
 
 def _tile(col, page_path: str, icon: str, title: str, desc: str, color: str):
     with col:
@@ -259,9 +262,9 @@ def _tile(col, page_path: str, icon: str, title: str, desc: str, color: str):
         st.page_link(page_path, label=f"Open {title}  →", width="stretch")
 
 
-for i in range(0, len(_TILES), 3):
+for i in range(0, len(_VISIBLE_TILES), 3):
     c1, c2, c3 = st.columns(3)
-    for col, tile in zip([c1, c2, c3], _TILES[i : i + 3]):
+    for col, tile in zip([c1, c2, c3], _VISIBLE_TILES[i : i + 3]):
         _tile(col, *tile)
     st.html("<div style='height:0.6rem'></div>")
 
