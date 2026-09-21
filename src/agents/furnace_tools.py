@@ -953,19 +953,33 @@ def fetch_offline_data(
 
         # Offline fetch returns UTC index (as per helper); convert + resample
         df = _to_ist_index(df)
+        is_charge_data = offline_report_type == "CHARGE" and source_detail in {
+            "CHARGE",
+            "offline_feed.charge_data",
+        }
         skip_resample = offline_report_type in {
             "RM_COMPOSITION",
             "RAW_MATERIAL_STRENGTH",
             "BURDEN_DISTRIBUTION",
             "HOPPER_MANAGEMENT",
-        } or bool(args.table_name)
+        } or bool(args.table_name and not is_charge_data)
         if (
             not skip_resample
             and df is not None
             and not df.empty
             and isinstance(df.index, pd.DatetimeIndex)
         ):
-            df = df.resample(cadence_final).mean(numeric_only=True)
+            if is_charge_data:
+                df = df.resample(cadence_final, closed="right", label="right").agg(
+                    {
+                        column: (lambda values: values.sum(min_count=1))
+                        if column.lower().endswith("_mt")
+                        else "mean"
+                        for column in df.select_dtypes(include="number").columns
+                    }
+                )
+            else:
+                df = df.resample(cadence_final).mean(numeric_only=True)
             df = df.dropna(how="all")
 
         # Prefix columns to avoid collisions during merge

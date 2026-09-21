@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 import types
 
+import pandas as pd
+
 
 def _install_plotly_stubs() -> None:
     """Install lightweight Plotly stubs before importing furnace_tools."""
@@ -39,6 +41,7 @@ def _install_langchain_tool_stub() -> None:
 _install_plotly_stubs()
 _install_langchain_tool_stub()
 
+from agents import furnace_tools  # noqa: E402
 from agents.furnace_tools import (  # noqa: E402
     apply_default_plot_style,
     get_openai_tool_schemas,
@@ -119,3 +122,41 @@ def test_default_plot_style_preserves_existing_distinct_colors() -> None:
     styled = apply_default_plot_style(fig)
 
     assert [trace.line.color for trace in styled.data] == ["red", "green"]
+
+
+def test_charge_fetch_sums_mt_columns_into_hour_ending_bucket(monkeypatch) -> None:
+    index = pd.DatetimeIndex(
+        [
+            "2026-01-01T19:40:00Z",
+            "2026-01-01T19:45:00Z",
+            "2026-01-01T20:00:00Z",
+            "2026-01-01T20:10:00Z",
+            "2026-01-01T20:20:00Z",
+        ],
+        name="time",
+    )
+    raw = pd.DataFrame(
+        {"sinter_1_mt": [5, 6, 7, 6, 5], "charges_per_hour": [4, 5, 6, 7, 8]},
+        index=index,
+    )
+    captured = {}
+
+    monkeypatch.setattr(furnace_tools, "_fetch_offline_table_df", lambda **_: raw)
+    monkeypatch.setattr(furnace_tools, "_new_dataset_id", lambda _: "offline_test")
+    monkeypatch.setattr(
+        furnace_tools,
+        "_save_dataset",
+        lambda *, df, **_: captured.update(df=df),
+    )
+
+    furnace_tools.fetch_offline_data(
+        report_type="CHARGE",
+        table_name="charge_data",
+        start_time_utc="2026-01-01T19:30:00Z",
+        end_time_utc="2026-01-01T20:30:00Z",
+    )
+
+    hourly = captured["df"]
+    expected_hour = pd.Timestamp("2026-01-02T02:00:00", tz="Asia/Kolkata")
+    assert hourly.loc[expected_hour, "Offline[Charge] - sinter_1_mt"] == 29
+    assert hourly.loc[expected_hour, "Offline[Charge] - charges_per_hour"] == 6
