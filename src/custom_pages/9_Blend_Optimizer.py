@@ -699,6 +699,60 @@ def _fuel_ash_cfg_with_recent_rates(
     return rows
 
 
+def _fuel_ash_df_with_pinned_rates(
+    fuel_ash_df: pd.DataFrame, fuel_rates: Mapping[str, Any]
+) -> pd.DataFrame:
+    """Force nut coke to its fixed rate and PCI to the live tag.
+
+    With the editor hidden these two are no longer operator inputs, so they are
+    taken from the sources that actually know them. Nut coke is a fixed charge
+    at this plant; PCI is a live tag. Coke is untouched - it is solved for, not
+    set, and whatever sits in this column is not read by the fuel-cost step.
+    """
+
+    out = fuel_ash_df.copy()
+    if "fuel_id" not in out.columns or "rate_kg_per_thm" not in out.columns:
+        return out
+
+    live_pci = fuel_rates.get("pci_rate_kg_thm")
+    pinned = {"nut_coke": DEFAULT_NUT_COKE_RATE_KG_PER_THM}
+    if live_pci is not None and float(live_pci) > 0.0:
+        pinned["pci"] = float(live_pci)
+
+    ids = out["fuel_id"].astype(str).str.strip().str.lower()
+    for fuel_id, rate in pinned.items():
+        out.loc[ids == fuel_id, "rate_kg_per_thm"] = float(rate)
+    return out
+
+
+def _render_pinned_fuel_rates(
+    fuel_ash_df: pd.DataFrame, fuel_rates: Mapping[str, Any]
+) -> None:
+    """State the fuel rates in force, read-only, so they are not invisible.
+
+    Hiding the editor must not mean hiding the numbers - an operator still has
+    to know what PCI the coke rate was solved against, and where it came from.
+    """
+
+    if "fuel_id" not in fuel_ash_df.columns:
+        return
+    rates = {
+        str(row["fuel_id"]).strip().lower(): float(row.get("rate_kg_per_thm", 0.0) or 0.0)
+        for _, row in fuel_ash_df.iterrows()
+    }
+    live_pci = fuel_rates.get("pci_rate_kg_thm")
+    pci_source = (
+        "live plant tag" if live_pci is not None and float(live_pci) > 0.0
+        else "fallback - LIVE TAG UNAVAILABLE"
+    )
+    st.caption(
+        f"**Fuel rates in force** — PCI **{rates.get('pci', 0.0):,.1f}** kg/THM "
+        f"({pci_source}), nut coke **{rates.get('nut_coke', 0.0):,.1f}** kg/THM "
+        "(fixed). Coke is solved by the energy balance, not set here. Ash "
+        "chemistry still feeds the slag balance from configuration."
+    )
+
+
 def _render_share_pie(blend: Any, selected_ores: list[OreInput], title: str) -> None:
     """Blend shares as a donut, largest first, tonnage in the middle.
 
@@ -3340,58 +3394,79 @@ if (
 else:
     fuel_ash_editor_source_df = fuel_ash_base_df
 
-with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
-    st.markdown("### Fuel Ash Inputs")
-    st.caption(
-        "**These rows exist to put fuel ash into the slag balance.** The rate and "
-        "ash chemistry of each fuel decide how much ash it charges, and that ash "
-        "is part of the slag the LP constrains. Set a fuel's rate to 0 to drop its "
-        "ash from the slag entirely - nothing else changes."
-    )
-    st.caption(
-        "Two columns are also read by the separate fuel-cost step, which runs "
-        "AFTER the LP and never feeds back into slag: the **prices**, and the "
-        "**nut coke and PCI rates**. Coke rate is not read there at all - it is "
-        "back-solved from the model's predicted cost."
-    )
-    if not fuel_ash_editor_source_df.empty:
-        edited_fuel_ash_candidate_df = render_fuel_ash_editor(fuel_ash_editor_source_df)
+# THE FUEL ASH EDITOR IS HIDDEN BY DEFAULT.
+#
+# These rows exist to put fuel ASH into the slag balance. But two of their
+# columns - the nut coke and PCI rates - are also read by the fuel-cost step,
+# and the plant was using the table to CONTROL those rates. That is not what the
+# table is for, and the caption saying so did not stop it. A number box that is
+# visible will be used.
+#
+# So the table is hidden and the two rates are pinned to their real sources:
+# PCI from the live plant tag, nut coke at its fixed 70 kg/THM. The ash
+# chemistry still reaches the slag balance exactly as before - only the ability
+# to edit it from this page is withdrawn. Set ui.show_fuel_ash_editor: true in
+# setting_bmo.yml to bring the editor back for debugging.
+show_fuel_ash_editor = bool((bmo_cfg.get("ui") or {}).get("show_fuel_ash_editor", False))
+
+if show_fuel_ash_editor:
+    with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
+        st.markdown("### Fuel Ash Inputs")
+        st.caption(
+            "**These rows exist to put fuel ash into the slag balance.** The rate and "
+            "ash chemistry of each fuel decide how much ash it charges, and that ash "
+            "is part of the slag the LP constrains. Set a fuel's rate to 0 to drop its "
+            "ash from the slag entirely - nothing else changes."
+        )
+        st.caption(
+            "Two columns are also read by the separate fuel-cost step, which runs "
+            "AFTER the LP and never feeds back into slag: the **prices**, and the "
+            "**nut coke and PCI rates**. Coke rate is not read there at all - it is "
+            "back-solved from the model's predicted cost."
+        )
+        if not fuel_ash_editor_source_df.empty:
+            edited_fuel_ash_candidate_df = render_fuel_ash_editor(fuel_ash_editor_source_df)
+        else:
+            edited_fuel_ash_candidate_df = fuel_ash_editor_source_df
+        st.caption(
+            "Fuel analysis uses Moisture from fuel_chemistry (TM for coke/nut coke; "
+            "IM for PCI). Ash analysis uses VM from fuel_chemistry. Moisture is "
+            "removed once from the wet fuel; VM is not deducted as moisture."
+        )
+        fuel_apply_col, fuel_save_col = st.columns(2)
+        fuel_ash_inputs_applied = _form_submit_button(
+            fuel_apply_col,
+            "Apply Fuel Ash Inputs",
+            type="primary",
+            width="stretch",
+        )
+        fuel_ash_inputs_saved = _form_submit_button(
+            fuel_save_col,
+            "Save Fuel Ash Inputs for Next Time",
+            type="secondary",
+            width="stretch",
+        )
+    if fuel_ash_inputs_applied or fuel_ash_inputs_saved:
+        edited_fuel_ash_df = edited_fuel_ash_candidate_df.copy()
+        st.session_state["bmo_applied_fuel_ash_editor_df"] = edited_fuel_ash_df
+        _clear_bmo_results()
+        if fuel_ash_inputs_saved:
+            try:
+                saved_path = save_fuel_ash_preferences(
+                    operator_preferences_path, edited_fuel_ash_df
+                )
+                st.success(f"Fuel Ash inputs saved to {saved_path}.")
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not save Fuel Ash inputs: {exc}")
+        else:
+            st.success("Fuel Ash inputs applied.")
     else:
-        edited_fuel_ash_candidate_df = fuel_ash_editor_source_df
-    st.caption(
-        "Fuel analysis uses Moisture from fuel_chemistry (TM for coke/nut coke; "
-        "IM for PCI). Ash analysis uses VM from fuel_chemistry. Moisture is "
-        "removed once from the wet fuel; VM is not deducted as moisture."
-    )
-    fuel_apply_col, fuel_save_col = st.columns(2)
-    fuel_ash_inputs_applied = _form_submit_button(
-        fuel_apply_col,
-        "Apply Fuel Ash Inputs",
-        type="primary",
-        width="stretch",
-    )
-    fuel_ash_inputs_saved = _form_submit_button(
-        fuel_save_col,
-        "Save Fuel Ash Inputs for Next Time",
-        type="secondary",
-        width="stretch",
-    )
-if fuel_ash_inputs_applied or fuel_ash_inputs_saved:
-    edited_fuel_ash_df = edited_fuel_ash_candidate_df.copy()
-    st.session_state["bmo_applied_fuel_ash_editor_df"] = edited_fuel_ash_df
-    _clear_bmo_results()
-    if fuel_ash_inputs_saved:
-        try:
-            saved_path = save_fuel_ash_preferences(
-                operator_preferences_path, edited_fuel_ash_df
-            )
-            st.success(f"Fuel Ash inputs saved to {saved_path}.")
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not save Fuel Ash inputs: {exc}")
-    else:
-        st.success("Fuel Ash inputs applied.")
+        edited_fuel_ash_df = fuel_ash_editor_source_df
 else:
-    edited_fuel_ash_df = fuel_ash_editor_source_df
+    edited_fuel_ash_df = _fuel_ash_df_with_pinned_rates(
+        fuel_ash_editor_source_df, recent_fuel_rates
+    )
+    _render_pinned_fuel_rates(edited_fuel_ash_df, recent_fuel_rates)
 fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
 
 dust_base_df = apply_dust_preferences(
@@ -3916,8 +3991,16 @@ if lp_result is not None or de_result is not None:
                 is_lp_mode=True,
                 charge_mass_mt=charge_mass_mt,
             )
-            lp_blend_tab, lp_fuel_tab, lp_slag_tab, lp_ctrl_tab, lp_path_tab = st.tabs(
-                ["🧱 Blend", "🔥 Fuel & coke", "🌋 Slag", "🎛️ Controls", "🪜 Path there"]
+            # Controls and Path are ONE tab, not two.
+            #
+            # They were split apart in 1d0ac2b and that was a mistake: a blend
+            # recommendation is not actionable without the blast settings that
+            # supply what it demands, and an operator should not have to click
+            # between them to see both. The order below is the order the
+            # decision is made in - what settings does this blend need, then
+            # how do I get the burden there from where it is today.
+            lp_blend_tab, lp_fuel_tab, lp_slag_tab, lp_path_tab = st.tabs(
+                ["🧱 Blend", "🔥 Fuel & coke", "🌋 Slag", "🎛️ Path & controls"]
             )
 
             with lp_blend_tab:
@@ -3940,7 +4023,12 @@ if lp_result is not None or de_result is not None:
                     lp_result, selected_ores, fuel_ash_inputs, flux_inputs
                 )
 
-            with lp_ctrl_tab:
+            with lp_path_tab:
+                # WHAT SETTINGS THIS BLEND NEEDS, first. recommend_controls
+                # solves the blast temperature, oxygen and volume that supply
+                # this blend's energy demand at least fuel cost - so this single
+                # panel answers both halves of the question: what the blend
+                # requires, and what the cheapest way of supplying it is.
                 _render_process_recommendation(
                     lp_result,
                     label="lp",
@@ -3952,8 +4040,10 @@ if lp_result is not None or de_result is not None:
                     fuel_ash_inputs=fuel_ash_inputs,
                 )
                 _render_energy_assumptions()
+                st.divider()
 
-            with lp_path_tab:
+                # THEN how to get the burden there from where it is today.
+                st.markdown("##### Getting there from the current blend")
                 _render_transition_ladder(
                     provider=provider,
                     ores=selected_ores,

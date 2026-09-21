@@ -218,3 +218,123 @@ def test_manual_shares_outside_the_bounds_are_clamped_and_renormalised():
 
     assert sum(ladder.start_shares_pct.values()) == pytest.approx(100.0)
     assert ladder.start_shares_pct["sinter"] <= 70.0 + 1e-6
+
+
+# --- the slag cap ramps with the burden ------------------------------------------
+#
+# SLAG CAP RAMPING. Reported from the plant: with a 1%/rung policy the ladder
+# went from 322 to 290 kg/tHM slag and sinter 62.1% -> 58.0% in a SINGLE step,
+# then spent nine rungs shuffling cheaper ores without moving sinter at all.
+#
+# The cause was that every rung was solved against the operator's FINAL slag
+# target. When the current blend already breaches it - the normal reason to want
+# a transition - rung 1 was infeasible inside the move cap, so the SHARE step was
+# widened until full compliance fitted in one jump. The cliff was the widening.
+#
+# Now the share cap holds at policy and the slag cap is eased to whatever that
+# step can actually reach, tightening each rung until the target is met.
+
+BREACHING_CAP = 560.0     # start blend makes 618.5 MT, so this breaches
+
+
+def _breaching_ladder(move_pct: float = 1.0):
+    lp = {**LP, "target_slag_qty_mt": BREACHING_CAP}
+    return build_transition_ladder(_ores(), MANUAL, max_share_move_pct=move_pct, **lp)
+
+
+def test_a_breaching_slag_cap_is_eased_in_not_demanded_at_once():
+    """Rung 1 must not land on the final target. That was the whole complaint."""
+
+    ladder = _breaching_ladder()
+    first = ladder.rungs[0]
+
+    assert ladder.start_violations, "fixture must start out of bounds"
+    assert first.feasible
+    assert first.blend.slag_mt > BREACHING_CAP + 10.0, (
+        f"rung 1 slag {first.blend.slag_mt:.1f} is at the final cap "
+        f"{BREACHING_CAP} - the cap is being demanded in full at step 1 again"
+    )
+    assert first.blend.slag_mt < ladder.start_blend.slag_mt, "it must still improve"
+
+
+def test_the_share_step_is_never_widened_when_slag_can_ramp():
+    """The step limit is the operator's policy, not a suggestion.
+
+    Previously an out-of-bounds start widened rung 1 to whatever reached full
+    compliance. With the cap ramping instead, policy is honoured throughout.
+    """
+
+    move = 1.0
+    ladder = _breaching_ladder(move)
+
+    assert ladder.diagnostics["recovery_move_pct"] is None
+    previous = dict(ladder.start_shares_pct)
+    for rung in ladder.rungs:
+        if not rung.feasible:
+            continue
+        moved = max(abs(rung.shares_pct[k] - previous.get(k, 0.0))
+                    for k in rung.shares_pct)
+        assert moved <= move + 1e-6, f"rung {rung.index} moved {moved:.3f} > {move}"
+        previous = dict(rung.shares_pct)
+
+
+def test_the_slag_falls_monotonically_toward_the_target():
+    """A ramp, not a cliff followed by a shuffle."""
+
+    ladder = _breaching_ladder()
+    slag = [r.blend.slag_mt for r in ladder.rungs if r.feasible]
+
+    assert len(slag) >= 5
+    for earlier, later in zip(slag, slag[1:]):
+        assert later <= earlier + 1e-6, "slag must not rise while recovering"
+    assert slag[-1] < slag[0], "and it must actually get somewhere"
+
+
+def test_the_eased_cap_is_recorded_while_it_is_still_easing():
+    """An operator has to be able to tell a ramped rung from a final one."""
+
+    ladder = _breaching_ladder()
+    eased = [r for r in ladder.rungs if r.feasible and r.slag_cap_mt is not None]
+
+    assert eased, "no rung recorded an eased cap"
+    for rung in eased:
+        assert rung.slag_cap_mt >= BREACHING_CAP - 1e-6, (
+            "an eased cap is looser than the target, never tighter"
+        )
+
+
+def test_the_cap_stops_easing_once_the_target_is_reachable():
+    """Past the target the ladder must sit on the real limit, not a relaxed one."""
+
+    ladder = _breaching_ladder()
+    at_target = [r for r in ladder.rungs
+                 if r.feasible and r.blend.slag_mt <= BREACHING_CAP + 1e-6]
+
+    assert at_target, "the ladder never reached the target"
+    assert at_target[0].slag_cap_mt is None, (
+        "once the target is reachable the rung must be solved against it"
+    )
+
+
+def test_the_ramp_is_load_bearing():
+    """Mutation, stated as a test: the old rule really was infeasible here.
+
+    Solve rung 1 the old way - final cap, shares bounded to the policy step - and
+    it must fail. If this ever starts passing, the ramp is no longer doing
+    anything and these tests would silently stop guarding it.
+    """
+
+    from utils.bmo.lp_solver import run_lp_baseline
+    from utils.bmo.transition import _clamped_start, _ores_bounded_around
+
+    ores = _ores()
+    start = _clamped_start(ores, MANUAL)
+    blend, _errors = run_lp_baseline(
+        _ores_bounded_around(ores, start, 1.0),
+        **{**LP, "target_slag_qty_mt": BREACHING_CAP},
+    )
+
+    assert blend is None, (
+        "the final cap is reachable within one 1% step, so this fixture no "
+        "longer reproduces the reported problem"
+    )
