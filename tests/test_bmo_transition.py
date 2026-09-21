@@ -338,3 +338,31 @@ def test_the_ramp_is_load_bearing():
         "the final cap is reachable within one 1% step, so this fixture no "
         "longer reproduces the reported problem"
     )
+
+
+def test_no_ore_moves_away_from_its_destination():
+    """Each rung is an independent cost-minimising LP, so without a one-way
+    bound an ore can drift backwards before it ever heads for the answer. The
+    destination is solved once up front and every rung is bounded against it."""
+
+    ladder = _ladder(max_share_move_pct=1.0, target_slag_basicity_max=1.70)
+    destination = ladder.diagnostics.get("destination_shares_pct") or {}
+    if not destination:
+        pytest.skip("destination LP infeasible for this fixture")
+
+    previous = dict(ladder.start_shares_pct)
+    for rung in ladder.rungs:
+        if not rung.feasible:
+            continue
+        for ore_id, now in rung.shares_pct.items():
+            was, target = previous.get(ore_id, 0.0), destination.get(ore_id, now)
+            if target < was - 1e-6:
+                assert now <= was + 1e-6, (
+                    f"rung {rung.index}: {ore_id} rose to {now:.2f} from {was:.2f} "
+                    f"while its destination is {target:.2f}"
+                )
+                assert now >= target - 1e-6, f"{ore_id} overshot past {target:.2f}"
+            elif target > was + 1e-6:
+                assert now >= was - 1e-6, f"rung {rung.index}: {ore_id} fell away"
+                assert now <= target + 1e-6, f"{ore_id} overshot past {target:.2f}"
+        previous = dict(rung.shares_pct)

@@ -4066,6 +4066,33 @@ lp_errors = st.session_state.get("bmo_lp_errors", [])
 de_result = st.session_state.get("bmo_de_result")
 de_errors = st.session_state.get("bmo_de_errors", [])
 
+# THE RESULTS RENDER ON EVERY RERUN, THE OPTIMISER RUNS ON ALMOST NONE.
+#
+# history_df, process_context and bundle_status are bound inside the run block,
+# which only executes when a Run button was clicked. But the result tabs below
+# render from session state on ANY rerun - changing the transition step size,
+# toggling the PCI override, opening a tab. On those reruns the names simply did
+# not exist and the page died with "NameError: name 'history_df' is not
+# defined", which is exactly what an operator hit when they moved the step size
+# to 1%.
+#
+# Rebinding them here costs nothing: _load_fuel_prediction_context is cached, so
+# on a rerun it returns the same objects the run block already built.
+if lp_result is not None or de_result is not None:
+    try:
+        (
+            model_service,
+            process_context,
+            history_df,
+            bundle_status,
+            _rerun_warnings,
+        ) = _load_fuel_prediction_context(provider)
+    except Exception as exc:  # noqa: BLE001 - never let this take the page down
+        log.warning("Could not reload fuel context for result rendering: %s", exc)
+        history_df = locals().get("history_df")
+        process_context = locals().get("process_context")
+        bundle_status = locals().get("bundle_status") or {}
+
 if lp_errors:
     st.error("LP baseline errors:\n- " + "\n- ".join(lp_errors))
 if de_errors:

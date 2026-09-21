@@ -178,24 +178,53 @@ def _clamped_start(
 
 
 def _ores_bounded_around(
-    ores: list[OreInput], shares_pct: dict[str, float], delta_pct: float
+    ores: list[OreInput], shares_pct: dict[str, float], delta_pct: float,
+    destination_pct: dict[str, float] | None = None,
 ) -> list[OreInput]:
     """Tighten every ore's share bounds to within ``delta`` of the last rung.
 
     This is how the move limit reaches the LP: no solver change is needed,
     because the LP already enforces per-ore share bounds.
+
+    WHEN A DESTINATION IS KNOWN, EACH ORE IS ALSO FORBIDDEN TO MOVE AWAY FROM IT.
+
+    Without that, every rung is an independent cost-minimising LP, and the
+    cheapest thing to do next is rarely a step toward the answer. Measured at
+    1%/rung on a three-ore case: the first TEN rungs left sinter untouched at
+    62.11% and shuffled the cheap ore instead, pushing slag UP from 570 to 577
+    kg/tHM, before rung 11 finally began moving sinter. An operator following
+    that ladder would spend ten shifts going nowhere.
+
+    So each ore gets a one-way bound: if its destination is below where it is,
+    it may fall or hold but not rise, and it may not overshoot past the
+    destination. The LP keeps full freedom over HOW FAST each ore moves inside
+    that, so rungs stay cost-optimal and every slag limit is still enforced by a
+    genuine solve - it simply cannot wander backwards any more.
     """
 
     out = []
     for ore in ores:
         here = float(shares_pct.get(ore.ore_id, 0.0) or 0.0)
-        out.append(
-            replace(
-                ore,
-                min_share_pct=max(float(ore.min_share_pct), here - delta_pct),
-                max_share_pct=min(float(ore.max_share_pct), here + delta_pct),
-            )
-        )
+        low = max(float(ore.min_share_pct), here - delta_pct)
+        high = min(float(ore.max_share_pct), here + delta_pct)
+
+        if destination_pct:
+            target = float(destination_pct.get(ore.ore_id, here) or 0.0)
+            if target < here - 1e-9:
+                high = min(high, here)          # may fall or hold, not rise
+                low = max(low, target)          # but never overshoot
+            elif target > here + 1e-9:
+                low = max(low, here)            # may rise or hold, not fall
+                high = min(high, target)
+            else:
+                low = high = here               # already there; hold it
+
+        # A destination outside the ore's own limits can invert the window.
+        # Keeping the ore where it is beats handing the LP an empty range.
+        if low > high:
+            low = high = min(max(here, float(ore.min_share_pct)),
+                             float(ore.max_share_pct))
+        out.append(replace(ore, min_share_pct=low, max_share_pct=high))
     return out
 
 
@@ -382,6 +411,22 @@ def build_transition_ladder(
     # the tightest cap the LP can actually reach within that step is found by
     # bisection, floored at the operator's target. The burden and the constraint
     # then converge together, which is what a transition actually looks like.
+    # WHERE THIS IS GOING, solved once with no move cap. Each rung is then
+    # forbidden to move any ore away from it, which is what stops the ladder
+    # spending its early steps on cost micro-optimisation instead of progress.
+    # When this is infeasible - common when the current blend already breaches a
+    # limit - there is no destination to steer toward and the rungs fall back to
+    # plain cost minimisation, exactly as before.
+    destination_blend, _dest_errors = run_lp_baseline(ores, **lp_kwargs)
+    destination = (
+        {
+            ore.ore_id: float(destination_blend.shares_pct.get(ore.ore_id, 0.0) or 0.0)
+            for ore in ores
+        }
+        if destination_blend is not None
+        else {}
+    )
+
     start_slag_mt = float(getattr(start_blend, "slag_mt", 0.0) or 0.0)
     final_slag_cap = lp_kwargs.get("target_slag_qty_mt")
     ramping_slag = bool(
@@ -390,7 +435,7 @@ def build_transition_ladder(
     )
 
     for index in range(1, int(max_rungs) + 1):
-        stepped_ores = _ores_bounded_around(ores, current, delta)
+        stepped_ores = _ores_bounded_around(ores, current, delta, destination)
         blend, errors = run_lp_baseline(stepped_ores, **lp_kwargs)
         move_used = delta
         rung_slag_cap: float | None = None
@@ -410,7 +455,8 @@ def build_transition_ladder(
             for factor in RECOVERY_WIDENING_FACTORS:
                 widened = min(delta * factor, 100.0)
                 blend, errors = run_lp_baseline(
-                    _ores_bounded_around(ores, current, widened), **lp_kwargs
+                    _ores_bounded_around(ores, current, widened, destination),
+                    **lp_kwargs
                 )
                 if blend is not None:
                     move_used = widened
@@ -464,5 +510,8 @@ def build_transition_ladder(
             # Set only when the first step had to exceed the operator's policy
             # to get back inside the limits.
             "recovery_move_pct": recovery_move_pct,
+            # Empty when the destination LP was infeasible, i.e. the rungs were
+            # not steered and may wander. Worth surfacing rather than assuming.
+            "destination_shares_pct": destination,
         },
     )
