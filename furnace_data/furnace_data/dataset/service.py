@@ -45,6 +45,11 @@ _OFFLINE_FEED_MATERIAL_COLUMNS = "offline_feed.feed_material_columns"
 _OFFLINE_STATIC_ML_TABLE = "offline_feed.historical_static_ml_dataset"
 _OFFLINE_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
 _OFFLINE_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
+_OFFLINE_ANALYSIS_TABLES = {
+    "offline_feed.ash_chemical_analysis": ("material_type", "ash_analysis"),
+    "offline_feed.dust_basic_analysis": ("material_code", "basic_analysis"),
+    "offline_feed.dust_chemical_analysis": ("material_code", "chemical_analysis"),
+}
 _STRENGTH_LOOKBACK_DAYS = 90
 _STRENGTH_PROPERTY_COLUMNS = {
     "ai": "ai",
@@ -338,6 +343,66 @@ class DatasetService:
                 out[target_col] = values.to_numpy()
 
         return out.dropna(how="all")
+
+    @staticmethod
+    def _forward_fill_analysis(
+        times: pd.Index, analysis: pd.DataFrame, material_column: str, namespace: str
+    ) -> pd.DataFrame:
+        """Pivot sparse lab rows by material and carry each result forward."""
+        targets = pd.DatetimeIndex(times).dropna().sort_values().unique()
+        if analysis.empty or targets.empty or material_column not in analysis:
+            return pd.DataFrame()
+
+        source = analysis.dropna(subset=[material_column]).copy()
+        source[material_column] = (
+            source[material_column]
+            .astype(str)
+            .str.lower()
+            .str.replace(r"[^a-z0-9]+", "_", regex=True)
+            .str.strip("_")
+        )
+        values = [
+            column
+            for column in source
+            if column not in {"time", material_column, "id", "created_at", "updated_at"}
+        ]
+        source[values] = source[values].apply(pd.to_numeric, errors="coerce")
+        values = [column for column in values if source[column].notna().any()]
+        if not values:
+            return pd.DataFrame()
+
+        wide = source.pivot_table(
+            index="time", columns=material_column, values=values, aggfunc="last"
+        )
+        wide.columns = [
+            f"{material}_{namespace}_{field}_pct" for field, material in wide.columns
+        ]
+        return (
+            wide.reindex(wide.index.union(targets))
+            .sort_index()
+            .ffill()
+            .reindex(targets)
+            .rename_axis("time")
+            .dropna(how="all")
+        )
+
+    def _fetch_sparse_analyses(
+        self, times: pd.Index, end_dt: datetime
+    ) -> pd.DataFrame:
+        outputs = []
+        for table, (material_column, namespace) in _OFFLINE_ANALYSIS_TABLES.items():
+            analysis = self._table_with_time_column(
+                self._fetch_offline_table(
+                    table, datetime(2000, 1, 1, tzinfo=timezone.utc), end_dt
+                )
+            )
+            outputs.append(
+                self._forward_fill_analysis(
+                    times, analysis, material_column, namespace
+                )
+            )
+        frames = [df for df in outputs if not df.empty]
+        return pd.concat(frames, axis=1) if frames else pd.DataFrame()
 
     @staticmethod
     def _table_with_time_column(df: pd.DataFrame) -> pd.DataFrame:
@@ -703,6 +768,7 @@ class DatasetService:
             start_dt=start_dt,
             end_dt=end_dt,
         )
+        df_analysis = self._fetch_sparse_analyses(df_rm.index, end_dt)
         target_index = (
             df_rm.index
             if df_rm is not None and not df_rm.empty
@@ -712,7 +778,7 @@ class DatasetService:
 
         frames = [
             df
-            for df in [df_rm, df_rm_hm, df_chem]
+            for df in [df_rm, df_rm_hm, df_chem, df_analysis]
             if df is not None and not df.empty
         ]
         if not frames:
@@ -722,7 +788,8 @@ class DatasetService:
         df = df.loc[:, ~df.columns.duplicated()]
         df = self._add_offline_ml_aliases(df)
         if allowed_columns:
-            df = df[df.columns.intersection(allowed_columns.keys())]
+            keep = set(allowed_columns) | set(df_analysis.columns)
+            df = df[[column for column in df if column in keep]]
         return df
 
     # ------------------- STEP 3: HM & SLAG -------------------

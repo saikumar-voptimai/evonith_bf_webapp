@@ -6,6 +6,12 @@ from sqlalchemy.exc import ProgrammingError
 from furnace_data.dataset.fetcher import DatasetFetcher
 from furnace_data.dataset.service import DatasetService
 
+_SPARSE_ANALYSIS_TABLES = {
+    "offline_feed.ash_chemical_analysis",
+    "offline_feed.dust_basic_analysis",
+    "offline_feed.dust_chemical_analysis",
+}
+
 
 def test_dataset_fetcher_routes_interactive_ml_to_offline_db() -> None:
     class FakeService:
@@ -297,7 +303,7 @@ def test_dataset_service_extracts_pellet_chemistry_from_ore_table(monkeypatch) -
             "offline_feed.sinter_chemistry",
             "offline_feed.fuel_chemistry",
             "offline_feed.flux_chemistry",
-        }:
+        } | _SPARSE_ANALYSIS_TABLES:
             return pd.DataFrame()
         raise AssertionError(table_name)
 
@@ -359,7 +365,7 @@ def test_dataset_service_maps_fuel_moisture_to_moisture_and_im(monkeypatch) -> N
             "offline_feed.ore_chemistry",
             "offline_feed.sinter_chemistry",
             "offline_feed.flux_chemistry",
-        }:
+        } | _SPARSE_ANALYSIS_TABLES:
             return pd.DataFrame()
         raise AssertionError(table_name)
 
@@ -419,7 +425,7 @@ def test_dataset_service_uses_latest_prior_coke_strength_sample(monkeypatch) -> 
             "offline_feed.sinter_chemistry",
             "offline_feed.fuel_chemistry",
             "offline_feed.flux_chemistry",
-        }:
+        } | _SPARSE_ANALYSIS_TABLES:
             return pd.DataFrame()
         raise AssertionError(table_name)
 
@@ -544,7 +550,7 @@ def test_dataset_service_offline_rm_fetch_combines_charge_and_rm_hm(monkeypatch)
             "offline_feed.sinter_chemistry",
             "offline_feed.fuel_chemistry",
             "offline_feed.flux_chemistry",
-        }:
+        } | _SPARSE_ANALYSIS_TABLES:
             return pd.DataFrame()
         raise AssertionError(table_name)
 
@@ -568,6 +574,9 @@ def test_dataset_service_offline_rm_fetch_combines_charge_and_rm_hm(monkeypatch)
         "offline_feed.sinter_chemistry",
         "offline_feed.fuel_chemistry",
         "offline_feed.flux_chemistry",
+        "offline_feed.ash_chemical_analysis",
+        "offline_feed.dust_basic_analysis",
+        "offline_feed.dust_chemical_analysis",
     ]
     assert float(df.iloc[0]["sinter_mt"]) == 15.0
     assert float(df.iloc[0]["pci2_mt"]) == 2.0
@@ -631,7 +640,7 @@ def test_dataset_service_offline_weighted_chemistry_uses_latest_before(monkeypat
             "offline_feed.sinter_chemistry",
             "offline_feed.fuel_chemistry",
             "offline_feed.flux_chemistry",
-        }:
+        } | _SPARSE_ANALYSIS_TABLES:
             return pd.DataFrame()
         raise AssertionError(table_name)
 
@@ -650,6 +659,25 @@ def test_dataset_service_offline_weighted_chemistry_uses_latest_before(monkeypat
     assert float(df.iloc[0]["ore_6_mt"]) == 99.0
     assert float(df.iloc[0]["ore_mt"]) == 111.0
     assert float(df.iloc[0]["ore_fe_total_pct"]) == 63.0
+
+
+def test_sparse_analysis_is_forward_filled_per_material() -> None:
+    targets = pd.date_range("2026-01-01", periods=4, freq="D", name="time")
+    analysis = pd.DataFrame(
+        {
+            "time": pd.to_datetime(["2026-01-01", "2026-01-02", "2026-01-03"]),
+            "material_type": ["coke", "pci", "coke"],
+            "sio2": [10.0, 20.0, 30.0],
+        }
+    )
+
+    output = DatasetService._forward_fill_analysis(
+        targets, analysis, "material_type", "ash_analysis"
+    )
+
+    assert output["coke_ash_analysis_sio2_pct"].tolist() == [10.0, 10.0, 30.0, 30.0]
+    assert pd.isna(output.iloc[0]["pci_ash_analysis_sio2_pct"])
+    assert output["pci_ash_analysis_sio2_pct"].iloc[1:].eq(20.0).all()
 
 
 def test_dataset_service_rebuilds_quantities_when_view_access_is_denied(
@@ -697,7 +725,7 @@ def test_dataset_service_rebuilds_quantities_when_view_access_is_denied(
             "offline_feed.sinter_chemistry",
             "offline_feed.fuel_chemistry",
             "offline_feed.flux_chemistry",
-        }:
+        } | _SPARSE_ANALYSIS_TABLES:
             return pd.DataFrame()
         raise AssertionError(table_name)
 

@@ -286,6 +286,27 @@ tables:
       - source_row_number
       - created_at
 
+  offline_feed.ash_chemical_analysis:
+    schema: offline_feed
+    table: ash_chemical_analysis
+    time_column: date
+    supports_aggregation: false
+    allow_all_columns: true
+
+  offline_feed.dust_basic_analysis:
+    schema: offline_feed
+    table: dust_basic_analysis
+    time_column: date
+    supports_aggregation: false
+    allow_all_columns: true
+
+  offline_feed.dust_chemical_analysis:
+    schema: offline_feed
+    table: dust_chemical_analysis
+    time_column: date
+    supports_aggregation: false
+    allow_all_columns: true
+
   offline_feed.material_fines_analysis:
     schema: offline_feed
     table: material_fines_analysis

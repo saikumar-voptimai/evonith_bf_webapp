@@ -103,6 +103,37 @@ def test_cleaner_preserves_high_nan_imputation_skip_columns() -> None:
     assert cleaned["SPARSE_IMPUTE"].notna().all()
 
 
+def test_cleaner_preserves_sparse_analysis_without_imputing_leading_values() -> None:
+    cfg = cleaning.CleaningConfig(
+        columns=cleaning.ColumnGroups(
+            rm_params=(),
+            hm_slag_params=(),
+            bd_params=(),
+            temp_params=(),
+            op_params=(),
+            prcs_params=(),
+            proxy_params=(),
+            extra_keep_columns=("BASE",),
+        ),
+        row_min_non_na_fraction=1.0,
+        col_max_nan_fraction=0.1,
+        add_unit_cost_feature=False,
+    )
+    df = pd.DataFrame(
+        {
+            "BASE": [1.0, 2.0, 3.0],
+            "DUST_1_CHEMICAL_ANALYSIS_SIO2_PCT": [None, 6.0, 6.0],
+        },
+        index=pd.date_range("2026-05-01", periods=3, freq="h"),
+    )
+
+    cleaned = cleaning.DataCleaner(cfg).clean(df)
+
+    assert len(cleaned) == 3
+    assert pd.isna(cleaned.iloc[0]["DUST_1_CHEMICAL_ANALYSIS_SIO2_PCT"])
+    assert cleaned["DUST_1_CHEMICAL_ANALYSIS_SIO2_PCT"].iloc[1:].eq(6.0).all()
+
+
 def test_cleaner_keeps_absent_configured_columns_absent(caplog) -> None:
     cfg = cleaning.CleaningConfig(
         columns=cleaning.ColumnGroups(

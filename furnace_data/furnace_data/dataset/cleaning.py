@@ -209,6 +209,8 @@ class DataCleaner:
             return df
         keep_cols = cfg.columns.keep_columns
         present = [c for c in keep_cols if c in df.columns]
+        present.extend(c for c in df if self._is_sparse_analysis_column(c))
+        present = list(dict.fromkeys(present))
         missing = [c for c in keep_cols if c not in df.columns]
         if missing:
             msg = (f"{len(missing)} configured columns missing: "
@@ -267,13 +269,14 @@ class DataCleaner:
     def _drop_sparse_rows(self, df):
         frac = self.config.row_min_non_na_fraction
         before = len(df)
-        thresh = int(np.ceil(frac * df.shape[1]))
-        df = df.dropna(axis=0, thresh=thresh)
+        required = [c for c in df if not self._is_sparse_analysis_column(c)]
+        thresh = int(np.ceil(frac * len(required)))
+        df = df.dropna(axis=0, thresh=thresh, subset=required) if required else df
         dropped = before - len(df)
         if dropped:
             self.logger.warning(
                 "Dropped %d sparse rows (<%d%% non-NaN values required across %d cols).",
-                dropped, int(frac * 100), df.shape[1],
+                dropped, int(frac * 100), len(required),
             )
         return df
 
@@ -298,7 +301,9 @@ class DataCleaner:
         skip = set(self.config.imputation_plan.skip_columns)
         nan_frac = df.isna().mean()
         candidates = nan_frac[nan_frac > thresh].index.tolist()
-        protected = skip | set(self.config.zero_fill_columns)
+        protected = skip | set(self.config.zero_fill_columns) | {
+            c for c in df if self._is_sparse_analysis_column(c)
+        }
         drop_cols = [col for col in candidates if col not in protected]
         spared = [col for col in candidates if col in protected]
         if drop_cols:
@@ -376,8 +381,11 @@ class DataCleaner:
         return df
 
     def _final_imputation(self, df):
-        num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        non_num  = [c for c in df.columns if c not in num_cols]
+        sparse = {c for c in df if self._is_sparse_analysis_column(c)}
+        num_cols = [
+            c for c in df.select_dtypes(include=[np.number]).columns if c not in sparse
+        ]
+        non_num = [c for c in df.columns if c not in num_cols and c not in sparse]
 
         if num_cols:
             # Columns that are entirely NaN after all filters have no signal;
@@ -420,6 +428,13 @@ class DataCleaner:
                 df[non_num] = pd.DataFrame(imputed_non, index=df.index, columns=non_num)
 
         return df
+
+    @staticmethod
+    def _is_sparse_analysis_column(column: object) -> bool:
+        return isinstance(column, str) and (
+            "_ASH_ANALYSIS_" in column
+            or (column.startswith("DUST_") and "_ANALYSIS_" in column)
+        )
 
 
 # ---------------------------------------------------------------------------
