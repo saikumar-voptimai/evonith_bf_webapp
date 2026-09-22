@@ -22,7 +22,7 @@ import streamlit as st
 
 log = logging.getLogger(__name__)
 
-from config.config_loader import load_config
+from config.config_loader import get_furnace_dataset_url, load_config
 from data.bmo import EvonithBmoContextProvider
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
@@ -182,29 +182,13 @@ def _get_context_provider() -> EvonithBmoContextProvider:
     )
 
 
-_STATIC_DATASET_LINK_KEY = "bmo_static_dataset_use_link"
-_STATIC_DATASET_SOURCE_CHANGED_KEY = "_bmo_static_dataset_source_changed"
-
-
 def _configured_static_dataset_url(bmo_cfg: dict[str, Any]) -> str:
     """Return a BMO-specific URL override or the central DATA_URL."""
     data_sources = bmo_cfg.get("data_sources", {}) or {}
-    override = str(data_sources.get("static_dataset_url", "") or "").strip()
-    if override:
-        return override
-    return str(load_config("setting_ds_dv.yml").get("DATA_URL", "") or "").strip()
-
-
-def _use_static_dataset_link(bmo_cfg: dict[str, Any]) -> bool:
-    source_url = _configured_static_dataset_url(bmo_cfg)
-    return bool(source_url) and bool(
-        st.session_state.get(_STATIC_DATASET_LINK_KEY, True)
-    )
-
-
-def _mark_static_dataset_source_changed() -> None:
-    """Request a full-page rerun after the fragment-scoped toggle rerun."""
-    st.session_state[_STATIC_DATASET_SOURCE_CHANGED_KEY] = True
+    return get_furnace_dataset_url(
+        load_config("setting_ds_dv.yml"),
+        override_url=data_sources.get("static_dataset_url"),
+    ) or ""
 
 
 def _static_dataset_manager(bmo_cfg: dict[str, Any]) -> StaticDatasetManager:
@@ -212,11 +196,7 @@ def _static_dataset_manager(bmo_cfg: dict[str, Any]) -> StaticDatasetManager:
     static_path = data_sources.get(
         "static_dataset_path", "src/assets/data/furnace_dataset.csv"
     )
-    static_url = (
-        _configured_static_dataset_url(bmo_cfg)
-        if _use_static_dataset_link(bmo_cfg)
-        else ""
-    )
+    static_url = _configured_static_dataset_url(bmo_cfg)
     return StaticDatasetManager(static_path, remote_url=static_url or None)
 
 
@@ -486,24 +466,11 @@ def _refresh_static_dataset_if_needed(
 def _render_static_dataset_bar(
     bmo_cfg: dict[str, Any], refresh_result: dict[str, Any] | None = None
 ) -> None:
-    if st.session_state.pop(_STATIC_DATASET_SOURCE_CHANGED_KEY, False):
-        st.rerun()
-
     status = _static_dataset_status(bmo_cfg)
     state = status["state"] if status["exists"] else "missing"
     source_url = _configured_static_dataset_url(bmo_cfg)
+    use_link = bool(source_url)
     with st.expander("Data sources", expanded=False):
-        use_link = st.toggle(
-            "Fetch dataset through DATA_URL",
-            value=_use_static_dataset_link(bmo_cfg),
-            key=_STATIC_DATASET_LINK_KEY,
-            disabled=not bool(source_url),
-            help=(
-                "On: download the published furnace CSV. "
-                "Off: rebuild it through the normal database/code pipeline."
-            ),
-            on_change=_mark_static_dataset_source_changed,
-        )
         st.caption(
             "Selected dataset source: "
             + ("Published link" if use_link else "Normal code pipeline")

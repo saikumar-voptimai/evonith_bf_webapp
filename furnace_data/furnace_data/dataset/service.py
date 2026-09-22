@@ -11,12 +11,15 @@ DatasetService   Dataclass with four fetch methods:
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from sqlalchemy.exc import ProgrammingError
+
 from furnace_data.relational import (
     BurdenHistoryRepository,
     build_relational_engine,
@@ -25,6 +28,8 @@ from furnace_data.relational import (
 
 from furnace_data.config import load_config
 from furnace_data.offline import fetch_offline_data as fetch_database_offline_data
+
+log = logging.getLogger(__name__)
 
 config = load_config("setting_ds_dv.yml")
 
@@ -36,6 +41,7 @@ _OFFLINE_RM_QUANTITY_VIEWS = {
     "charge": "offline_feed.v_charge_material_quantities",
     "dpr": "offline_feed.v_dpr_material_quantities",
 }
+_OFFLINE_FEED_MATERIAL_COLUMNS = "offline_feed.feed_material_columns"
 _OFFLINE_STATIC_ML_TABLE = "offline_feed.historical_static_ml_dataset"
 _OFFLINE_STRENGTH_TABLE = "offline_feed.raw_material_strength_analysis"
 _OFFLINE_HM_SLAG_TABLE = "offline_feed.hot_metal_slag_analysis"
@@ -345,15 +351,121 @@ class DatasetService:
             out["time"] = out["time"].dt.tz_convert(None)
         return out.sort_values("time")
 
-    def _fetch_offline_weighted_chemistry(
+    @staticmethod
+    def _is_insufficient_privilege(exc: ProgrammingError) -> bool:
+        original = getattr(exc, "orig", None)
+        return (
+            getattr(original, "pgcode", None) == "42501"
+            or getattr(original, "sqlstate", None) == "42501"
+        )
+
+    @staticmethod
+    def _material_quantities_from_source(
+        source: pd.DataFrame,
+        mapping: pd.DataFrame,
+        *,
+        mode: str,
+    ) -> pd.DataFrame:
+        """Recreate the quantity-view rows from an already-fetched RM frame."""
+        required_mapping_columns = {
+            "feed_name",
+            "source_column_name",
+            "material_code",
+            "unit_code",
+            "is_active",
+        }
+        if (
+            source.empty
+            or mapping.empty
+            or not required_mapping_columns.issubset(mapping.columns)
+        ):
+            return pd.DataFrame()
+
+        active = (
+            mapping["is_active"]
+            .astype("string")
+            .str.strip()
+            .str.lower()
+            .isin({"true", "1", "yes"})
+        )
+        selected_mapping = mapping.loc[
+            mapping["feed_name"].eq(f"{mode}_data") & active,
+            ["source_column_name", "material_code", "unit_code"],
+        ]
+        value_columns = [
+            column
+            for column in selected_mapping["source_column_name"].dropna().unique()
+            if column in source.columns
+        ]
+        if not value_columns:
+            return pd.DataFrame()
+
+        quantities = (
+            source[value_columns]
+            .rename_axis("time")
+            .reset_index()
+            .melt(
+                id_vars="time",
+                value_vars=value_columns,
+                var_name="source_column_name",
+                value_name="quantity",
+            )
+        )
+        quantities["quantity"] = pd.to_numeric(
+            quantities["quantity"], errors="coerce"
+        )
+        quantities = quantities.loc[
+            quantities["quantity"].notna() & quantities["quantity"].ne(0)
+        ]
+        if quantities.empty:
+            return pd.DataFrame()
+
+        return (
+            quantities.merge(selected_mapping, on="source_column_name", how="inner")
+            .set_index("time")
+            .sort_index()
+        )
+
+    def _fetch_material_quantities(
         self,
         *,
         mode: str,
+        source: pd.DataFrame,
         start_dt: datetime,
         end_dt: datetime,
     ) -> pd.DataFrame:
         quantity_table = _OFFLINE_RM_QUANTITY_VIEWS[mode]
-        quantities = self._fetch_offline_table(quantity_table, start_dt, end_dt)
+        try:
+            return self._fetch_offline_table(quantity_table, start_dt, end_dt)
+        except ProgrammingError as exc:
+            if not self._is_insufficient_privilege(exc):
+                raise
+
+        log.warning(
+            "SELECT denied for %s; rebuilding material quantities from %s.",
+            quantity_table,
+            _OFFLINE_RM_TABLES[mode],
+        )
+        mapping = fetch_database_offline_data(
+            table_name=_OFFLINE_FEED_MATERIAL_COLUMNS,
+            time_range=(start_dt, end_dt),
+        )
+        return self._material_quantities_from_source(source, mapping, mode=mode)
+
+    def _fetch_offline_weighted_chemistry(
+        self,
+        *,
+        mode: str,
+        source: pd.DataFrame,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> pd.DataFrame:
+        quantities = self._fetch_material_quantities(
+            mode=mode,
+            source=source,
+            start_dt=start_dt,
+            end_dt=end_dt,
+        )
         if quantities.empty:
             return pd.DataFrame()
         quantities = self._table_with_time_column(quantities)
@@ -587,6 +699,7 @@ class DatasetService:
         )
         df_chem = self._fetch_offline_weighted_chemistry(
             mode=mode,
+            source=df_rm,
             start_dt=start_dt,
             end_dt=end_dt,
         )
@@ -733,13 +846,12 @@ class DatasetService:
         if snapshots.empty:
             return pd.DataFrame()
 
-        snapshots.index = pd.DatetimeIndex(pd.to_datetime(snapshots.index))
-        if snapshots.index.tz is not None:
-            # Convert to local IST first, then strip tz so the timestamps are
-            # IST-naive and align with the daily_index anchors below.
-            # tz_convert(None) alone would silently shift to UTC-naive (off by
-            # 5h30m), causing burden rows to never forward-fill correctly.
-            snapshots.index = snapshots.index.tz_convert(ZoneInfo(self.local_tz)).tz_localize(None)
+        # Repository rows are UTC, but old imported records can be naive while
+        # newer rows are timezone-aware. Normalise both forms in one pass before
+        # converting to local, naive timestamps for the daily anchors below.
+        snapshots.index = pd.DatetimeIndex(
+            pd.to_datetime(snapshots.index, utc=True)
+        ).tz_convert(ZoneInfo(self.local_tz)).tz_localize(None).normalize()
 
         daily_index = pd.date_range(start=start_date, end=end_date, freq="D")
         snapshots = snapshots[~snapshots.index.duplicated(keep="last")]

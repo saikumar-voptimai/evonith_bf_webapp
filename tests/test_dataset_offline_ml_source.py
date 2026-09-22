@@ -1,6 +1,7 @@
 from datetime import date
 
 import pandas as pd
+from sqlalchemy.exc import ProgrammingError
 
 from furnace_data.dataset.fetcher import DatasetFetcher
 from furnace_data.dataset.service import DatasetService
@@ -648,4 +649,68 @@ def test_dataset_service_offline_weighted_chemistry_uses_latest_before(monkeypat
 
     assert float(df.iloc[0]["ore_6_mt"]) == 99.0
     assert float(df.iloc[0]["ore_mt"]) == 111.0
+    assert float(df.iloc[0]["ore_fe_total_pct"]) == 63.0
+
+
+def test_dataset_service_rebuilds_quantities_when_view_access_is_denied(
+    monkeypatch,
+) -> None:
+    calls: list[str] = []
+
+    class InsufficientPrivilege(Exception):
+        pgcode = "42501"
+
+    def fake_offline_fetch(table_name, time_range):
+        calls.append(table_name)
+        idx = pd.DatetimeIndex(["2026-01-02T00:00:00Z"], name="time")
+        if table_name == "offline_feed.charge_data":
+            return pd.DataFrame(
+                {"ore_1_mt": [4.0], "ore_2_mt": [12.0]},
+                index=idx,
+            )
+        if table_name == "offline_feed.raw_material_strength_analysis":
+            return pd.DataFrame()
+        if table_name == "offline_feed.v_charge_material_quantities":
+            raise ProgrammingError("SELECT", {}, InsufficientPrivilege())
+        if table_name == "offline_feed.feed_material_columns":
+            return pd.DataFrame(
+                {
+                    "feed_name": ["charge_data", "charge_data"],
+                    "source_column_name": ["ore_1_mt", "ore_2_mt"],
+                    "material_code": ["ore_1", "ore_2"],
+                    "unit_code": ["MT", "MT"],
+                    "is_active": [True, True],
+                }
+            )
+        if table_name == "offline_feed.ore_chemistry":
+            return pd.DataFrame(
+                {
+                    "material_code": ["ore_1", "ore_2"],
+                    "fe_t": [60.0, 64.0],
+                },
+                index=pd.DatetimeIndex(
+                    ["2026-01-01T00:00:00Z", "2026-01-01T12:00:00Z"],
+                    name="time",
+                ),
+            )
+        if table_name in {
+            "offline_feed.sinter_chemistry",
+            "offline_feed.fuel_chemistry",
+            "offline_feed.flux_chemistry",
+        }:
+            return pd.DataFrame()
+        raise AssertionError(table_name)
+
+    monkeypatch.setattr(
+        "furnace_data.dataset.service.fetch_database_offline_data",
+        fake_offline_fetch,
+    )
+
+    df = DatasetService().fetch_rm_data(
+        start_date=date(2026, 1, 2),
+        end_date=date(2026, 1, 2),
+        mode="charge",
+    )
+
+    assert "offline_feed.feed_material_columns" in calls
     assert float(df.iloc[0]["ore_fe_total_pct"]) == 63.0

@@ -10,3 +10,5 @@ shift_windows:
   - label: "C"
     start_hour: 22
     end_hour: 6
+
+fetch_url: "false"

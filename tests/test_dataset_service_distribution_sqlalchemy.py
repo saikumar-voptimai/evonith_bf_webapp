@@ -39,6 +39,22 @@ class FakeRepository:
         )
 
 
+class MixedTimezoneRepository(FakeRepository):
+    def fetch_distribution_frame(self, *, start_date, end_date):
+        frame = super().fetch_distribution_frame(
+            start_date=start_date,
+            end_date=end_date,
+        )
+        frame.index = pd.Index(
+            [
+                datetime(2026, 1, 1),
+                pd.Timestamp("2026-01-02T00:00:00Z"),
+            ],
+            name="time",
+        )
+        return frame
+
+
 def test_fetch_distribution_data_returns_expected_windowed_rows(monkeypatch) -> None:
     """DatasetService should expand burden rows from the repository."""
     engine = FakeEngine()
@@ -69,6 +85,30 @@ def test_fetch_distribution_data_returns_expected_windowed_rows(monkeypatch) -> 
     assert str(day["burden_changing_purpose"]) == "stability"
     assert float(day["total_coke_portions"]) == 4.0
     assert float(day["weighted_coke_angle"]) == 35.0
+
+
+def test_fetch_distribution_data_accepts_mixed_timezone_rows(monkeypatch) -> None:
+    engine = FakeEngine()
+    monkeypatch.setattr(DatasetService, "_get_engine", lambda self: engine)
+    monkeypatch.setattr(
+        service_module,
+        "build_relational_session_factory",
+        lambda engine: object(),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "BurdenHistoryRepository",
+        MixedTimezoneRepository,
+    )
+
+    output = DatasetService().fetch_distribution_data(
+        start_date=date(2026, 1, 2),
+        end_date=date(2026, 1, 3),
+    )
+
+    assert engine.disposed is True
+    assert not output.empty
+    assert output.index.tz is None
 
 
 def test_fetch_distribution_data_propagates_engine_errors(monkeypatch) -> None:

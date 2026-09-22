@@ -15,7 +15,7 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import inspect
 
-from config.config_loader import load_config
+from config.config_loader import get_furnace_dataset_url, load_config
 from furnace_data.offline import fetch_offline_data
 from furnace_data.relational.engine import build_relational_engine
 
@@ -232,10 +232,8 @@ def load_static_dataset(
     if not csv_path.exists():
         from data.ml.static_dataset_manager import StaticDatasetManager
 
-        source_url = str(
-            load_config("setting_ds_dv.yml").get("DATA_URL", "") or ""
-        ).strip()
-        manager = StaticDatasetManager(csv_path, remote_url=source_url or None)
+        source_url = get_furnace_dataset_url()
+        manager = StaticDatasetManager(csv_path, remote_url=source_url)
         df = manager.update_static()
         manager.save(df)
         return df.sort_index() if sort_index else df

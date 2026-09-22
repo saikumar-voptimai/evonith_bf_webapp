@@ -7,6 +7,8 @@ import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from config.config_loader import get_furnace_dataset_url
+
 log = logging.getLogger(__name__)
 
 REFRESH_THRESHOLD_HOURS: int = 1
@@ -28,7 +30,7 @@ def maybe_refresh(config: dict, rm_choice: str = "Full") -> bool:
     from data.ml.static_dataset_manager import StaticDatasetManager
 
     static_path = get_static_dataset_path(config.get("DATA"))
-    remote_url = str(config.get("DATA_URL", "") or "").strip() or None
+    remote_url = get_furnace_dataset_url(config)
     meta = StaticDatasetManager(static_path, remote_url=remote_url).get_meta()
 
     if not _is_stale(meta):
