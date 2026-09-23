@@ -645,6 +645,11 @@ bmo:
 
   ui:
     show_manual_compare: true
+    # The Fuel Ash table exists to put fuel ASH into the slag balance, but the
+    # plant was using its nut coke and PCI rate columns to CONTROL those rates.
+    # Hidden so they cannot be: PCI now comes from the live tag and nut coke is
+    # fixed. Turn on only to inspect or debug the ash chemistry.
+    show_fuel_ash_editor: false
     auto_select_active_pellet: true
     default_selected_ores:
       - SINTER (SP-02)

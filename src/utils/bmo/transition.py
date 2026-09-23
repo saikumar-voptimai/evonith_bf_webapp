@@ -48,6 +48,11 @@ CONVERGENCE_TOL_PCT = 0.05
 # of bounds. Recovering feasibility may genuinely need a bigger move than the
 # operator's routine step policy allows, and they need telling how big.
 RECOVERY_WIDENING_FACTORS = (1.5, 2.0, 3.0, 4.0, 6.0, 10.0, 20.0)
+# Below this the starting slag is already at target and there is nothing to ramp.
+SLAG_RAMP_TOL_MT = 1.0
+# Seven halvings take a 60 MT gap to under half a tonne - finer than the slag
+# balance's own uncertainty, so more passes would be false precision.
+SLAG_RAMP_BISECTION_PASSES = 7
 
 
 @dataclass
@@ -66,6 +71,11 @@ class TransitionRung:
     # Move actually required for this rung, which exceeds the operator's chosen
     # step only when recovering feasibility was impossible within it.
     move_used_pct: float | None = None
+    # The slag cap this rung was actually solved against. None means the
+    # operator's final target applied unchanged; a value means the cap was eased
+    # to what the share move could reach, and the ladder is still converging
+    # toward the target rather than sitting on it.
+    slag_cap_mt: float | None = None
 
     @property
     def feasible(self) -> bool:
@@ -168,24 +178,53 @@ def _clamped_start(
 
 
 def _ores_bounded_around(
-    ores: list[OreInput], shares_pct: dict[str, float], delta_pct: float
+    ores: list[OreInput], shares_pct: dict[str, float], delta_pct: float,
+    destination_pct: dict[str, float] | None = None,
 ) -> list[OreInput]:
     """Tighten every ore's share bounds to within ``delta`` of the last rung.
 
     This is how the move limit reaches the LP: no solver change is needed,
     because the LP already enforces per-ore share bounds.
+
+    WHEN A DESTINATION IS KNOWN, EACH ORE IS ALSO FORBIDDEN TO MOVE AWAY FROM IT.
+
+    Without that, every rung is an independent cost-minimising LP, and the
+    cheapest thing to do next is rarely a step toward the answer. Measured at
+    1%/rung on a three-ore case: the first TEN rungs left sinter untouched at
+    62.11% and shuffled the cheap ore instead, pushing slag UP from 570 to 577
+    kg/tHM, before rung 11 finally began moving sinter. An operator following
+    that ladder would spend ten shifts going nowhere.
+
+    So each ore gets a one-way bound: if its destination is below where it is,
+    it may fall or hold but not rise, and it may not overshoot past the
+    destination. The LP keeps full freedom over HOW FAST each ore moves inside
+    that, so rungs stay cost-optimal and every slag limit is still enforced by a
+    genuine solve - it simply cannot wander backwards any more.
     """
 
     out = []
     for ore in ores:
         here = float(shares_pct.get(ore.ore_id, 0.0) or 0.0)
-        out.append(
-            replace(
-                ore,
-                min_share_pct=max(float(ore.min_share_pct), here - delta_pct),
-                max_share_pct=min(float(ore.max_share_pct), here + delta_pct),
-            )
-        )
+        low = max(float(ore.min_share_pct), here - delta_pct)
+        high = min(float(ore.max_share_pct), here + delta_pct)
+
+        if destination_pct:
+            target = float(destination_pct.get(ore.ore_id, here) or 0.0)
+            if target < here - 1e-9:
+                high = min(high, here)          # may fall or hold, not rise
+                low = max(low, target)          # but never overshoot
+            elif target > here + 1e-9:
+                low = max(low, here)            # may rise or hold, not fall
+                high = min(high, target)
+            else:
+                low = high = here               # already there; hold it
+
+        # A destination outside the ore's own limits can invert the window.
+        # Keeping the ore where it is beats handing the LP an empty range.
+        if low > high:
+            low = high = min(max(here, float(ore.min_share_pct)),
+                             float(ore.max_share_pct))
+        out.append(replace(ore, min_share_pct=low, max_share_pct=high))
     return out
 
 
@@ -269,6 +308,44 @@ def _evaluate_start(
     return blend, violations
 
 
+def _tightest_reachable(
+    stepped_ores: list[OreInput],
+    lp_kwargs: dict[str, Any],
+    *,
+    tightest: float,
+    loosest: float,
+    passes: int = SLAG_RAMP_BISECTION_PASSES,
+) -> tuple[BlendEvaluation | None, list[str], float | None]:
+    """The tightest slag cap this rung can actually meet, found by bisection.
+
+    ``tightest`` is the operator's final target and ``loosest`` is where the
+    blend sits today. A HIGHER cap is a looser one, so a feasible probe means we
+    can try tighter and an infeasible probe means we must ease off. What comes
+    back is the lowest cap that still solves within the rung's share move limit
+    - the furthest this step can honestly travel.
+
+    Returning ``None`` means even the starting slag is unreachable, which is not
+    a slag problem at all: something else is binding, and the caller falls back
+    to widening the share step and says so.
+    """
+
+    best: tuple[BlendEvaluation, list[str], float] | None = None
+    low, high = float(tightest), float(loosest)
+    for _ in range(int(passes)):
+        mid = (low + high) / 2.0
+        trial = dict(lp_kwargs)
+        trial["target_slag_qty_mt"] = mid
+        blend, errors = run_lp_baseline(stepped_ores, **trial)
+        if blend is None:
+            low = mid          # too tight to reach - ease the cap upward
+        else:
+            best = (blend, list(errors), mid)
+            high = mid         # reachable - try tighter still
+    if best is None:
+        return None, [], None
+    return best[0], best[1], best[2]
+
+
 def build_transition_ladder(
     ores: list[OreInput],
     manual_shares_pct: dict[str, float],
@@ -320,21 +397,66 @@ def build_transition_ladder(
 
     recovery_move_pct: float | None = None
 
+    # THE SLAG CAP RAMPS WITH THE BURDEN, it is not demanded in full at rung 1.
+    #
+    # This used to apply the operator's FINAL slag target to every rung. When the
+    # current blend already breaches it - which is the normal reason to be
+    # looking at a transition at all - rung 1 was infeasible within the share
+    # move cap, so the cap was widened until the LP could reach FULL compliance
+    # in a single step. Observed: a 1%/rung policy produced a first step of
+    # 322 -> 290 kg/tHM slag and sinter 62.1% -> 58.0%, then nine rungs that
+    # moved sinter not at all. The ladder was a cliff followed by a shuffle.
+    #
+    # Now the share cap is held at policy and the SLAG CAP follows: at each rung
+    # the tightest cap the LP can actually reach within that step is found by
+    # bisection, floored at the operator's target. The burden and the constraint
+    # then converge together, which is what a transition actually looks like.
+    # WHERE THIS IS GOING, solved once with no move cap. Each rung is then
+    # forbidden to move any ore away from it, which is what stops the ladder
+    # spending its early steps on cost micro-optimisation instead of progress.
+    # When this is infeasible - common when the current blend already breaches a
+    # limit - there is no destination to steer toward and the rungs fall back to
+    # plain cost minimisation, exactly as before.
+    destination_blend, _dest_errors = run_lp_baseline(ores, **lp_kwargs)
+    destination = (
+        {
+            ore.ore_id: float(destination_blend.shares_pct.get(ore.ore_id, 0.0) or 0.0)
+            for ore in ores
+        }
+        if destination_blend is not None
+        else {}
+    )
+
+    start_slag_mt = float(getattr(start_blend, "slag_mt", 0.0) or 0.0)
+    final_slag_cap = lp_kwargs.get("target_slag_qty_mt")
+    ramping_slag = bool(
+        final_slag_cap is not None
+        and start_slag_mt > float(final_slag_cap) + SLAG_RAMP_TOL_MT
+    )
+
     for index in range(1, int(max_rungs) + 1):
-        stepped_ores = _ores_bounded_around(ores, current, delta)
+        stepped_ores = _ores_bounded_around(ores, current, delta, destination)
         blend, errors = run_lp_baseline(stepped_ores, **lp_kwargs)
         move_used = delta
+        rung_slag_cap: float | None = None
 
-        # An out-of-bounds starting blend may not be able to get back inside the
-        # limits within the operator's chosen step. Rather than give up - which
-        # leaves them with a violation and no instruction - widen the FIRST step
-        # until recovery is possible, and report how far they actually have to
-        # move. A required step larger than policy is itself the finding.
+        if blend is None and ramping_slag:
+            blend, errors, rung_slag_cap = _tightest_reachable(
+                stepped_ores, lp_kwargs,
+                tightest=float(final_slag_cap),
+                loosest=max(start_slag_mt, float(final_slag_cap)),
+            )
+
+        # Only if the slag cap could not be eased into feasibility at all does
+        # the share step widen - that means something OTHER than slag rate is
+        # binding (a basicity or Al2O3 limit), and a step larger than policy is
+        # then itself the finding rather than something to hide.
         if blend is None and index == 1 and start_violations:
             for factor in RECOVERY_WIDENING_FACTORS:
                 widened = min(delta * factor, 100.0)
                 blend, errors = run_lp_baseline(
-                    _ores_bounded_around(ores, current, widened), **lp_kwargs
+                    _ores_bounded_around(ores, current, widened, destination),
+                    **lp_kwargs
                 )
                 if blend is not None:
                     move_used = widened
@@ -358,6 +480,7 @@ def build_transition_ladder(
                 binding_limits=_binding_limits(blend, targets, ores),
                 is_recovery=bool(index == 1 and start_violations),
                 move_used_pct=move_used,
+                slag_cap_mt=rung_slag_cap,
             )
         )
 
@@ -387,5 +510,8 @@ def build_transition_ladder(
             # Set only when the first step had to exceed the operator's policy
             # to get back inside the limits.
             "recovery_move_pct": recovery_move_pct,
+            # Empty when the destination LP was infeasible, i.e. the rungs were
+            # not steered and may wander. Worth surfacing rather than assuming.
+            "destination_shares_pct": destination,
         },
     )

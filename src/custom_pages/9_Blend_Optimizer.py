@@ -102,6 +102,11 @@ from utils.bmo.calculations import scale_ore_quantities_to_hot_metal
 from utils.bmo.types import oxide_pct_from_basis
 from utils.bmo.si_prediction import SiPredictionService
 from utils.bmo.coke_calibration import load_calibration as load_coke_calibration
+from utils.bmo.pci_anchoring import (
+    ANCHOR_HIGH_PCI,
+    MODEL_PCI_MAX,
+    MODEL_PCI_MIN,
+)
 from utils.bmo.fuel_rates import get_recent_fuel_input_rates
 from utils.session import is_logged_in
 
@@ -699,6 +704,78 @@ def _fuel_ash_cfg_with_recent_rates(
     return rows
 
 
+def _fuel_ash_df_with_pinned_rates(
+    fuel_ash_df: pd.DataFrame, fuel_rates: Mapping[str, Any]
+) -> pd.DataFrame:
+    """Force nut coke to its fixed rate and PCI to the live tag.
+
+    With the editor hidden these two are no longer operator inputs, so they are
+    taken from the sources that actually know them. Nut coke is a fixed charge
+    at this plant; PCI is a live tag. Coke is untouched - it is solved for, not
+    set, and whatever sits in this column is not read by the fuel-cost step.
+    """
+
+    out = fuel_ash_df.copy()
+    if "fuel_id" not in out.columns or "rate_kg_per_thm" not in out.columns:
+        return out
+
+    live_pci = fuel_rates.get("pci_rate_kg_thm")
+    pinned = {"nut_coke": DEFAULT_NUT_COKE_RATE_KG_PER_THM}
+    if live_pci is not None and float(live_pci) > 0.0:
+        pinned["pci"] = float(live_pci)
+
+    ids = out["fuel_id"].astype(str).str.strip().str.lower()
+    for fuel_id, rate in pinned.items():
+        out.loc[ids == fuel_id, "rate_kg_per_thm"] = float(rate)
+    return out
+
+
+def _render_pinned_fuel_rates(
+    fuel_ash_df: pd.DataFrame, fuel_rates: Mapping[str, Any]
+) -> None:
+    """State the fuel rates in force, read-only, so they are not invisible.
+
+    Hiding the editor must not mean hiding the numbers - an operator still has
+    to know what PCI the coke rate was solved against, and where it came from.
+    """
+
+    if "fuel_id" not in fuel_ash_df.columns:
+        return
+    rates = {
+        str(row["fuel_id"]).strip().lower(): float(row.get("rate_kg_per_thm", 0.0) or 0.0)
+        for _, row in fuel_ash_df.iterrows()
+    }
+    live_pci = fuel_rates.get("pci_rate_kg_thm")
+    pci_source = (
+        "live plant tag" if live_pci is not None and float(live_pci) > 0.0
+        else "fallback - LIVE TAG UNAVAILABLE"
+    )
+    st.caption(
+        f"**Fuel rates in force** — PCI **{rates.get('pci', 0.0):,.1f}** kg/THM "
+        f"({pci_source}), nut coke **{rates.get('nut_coke', 0.0):,.1f}** kg/THM "
+        "(fixed). Coke is solved by the energy balance, not set here. Ash "
+        "chemistry still feeds the slag balance from configuration."
+    )
+
+
+def _effective_pci_kg_thm(snapshot: Mapping[str, Any]) -> float:
+    """The PCI the WHOLE page must use: the operator's override, else the tag.
+
+    There is one of these because there used to be three. PCI was read straight
+    off the live tag in the process-recommendation panel and in the energy
+    anchor, and separately off the Fuel Ash table everywhere else. An override
+    that did not reach all three would move the slag and the cost while leaving
+    the coke rate solved against the old figure - the worst possible outcome,
+    because every number on screen would still look self-consistent.
+    """
+
+    if st.session_state.get("bmo_pci_override_on"):
+        override = st.session_state.get("bmo_pci_override_kg")
+        if override is not None:
+            return float(override)
+    return float(snapshot.get("coal_rate_actual_value") or 0.0)
+
+
 def _render_share_pie(blend: Any, selected_ores: list[OreInput], title: str) -> None:
     """Blend shares as a donut, largest first, tonnage in the middle.
 
@@ -892,17 +969,64 @@ def _render_blend_comparison(
         "optimizer, so every option is compared on the same basis."
     )
     start_time, end_time = snapshot.get("start_time"), snapshot.get("end_time")
-    if rows_by_ore and start_time and end_time:
-        st.caption(f"Manual blend seeded from last shift ({start_time} to {end_time}).")
-    elif not rows_by_ore:
+    charged_ids = {
+        ore_id
+        for ore_id, row in rows_by_ore.items()
+        if float(row.get("share_pct", 0.0) or 0.0) > 0.0
+    }
+    selected_charged = charged_ids & {ore.ore_id for ore in compare_ores}
+    if rows_by_ore and selected_charged and start_time and end_time:
+        skipped = [
+            ore.display_name
+            for ore in compare_ores
+            if ore.ore_id not in selected_charged
+        ]
+        st.caption(
+            f"Manual blend seeded from last shift ({start_time} to {end_time})."
+            + (
+                # Named rather than silently zeroed. An operator seeing 0% against
+                # an ore they selected needs to know it reflects the shift record,
+                # not a data gap.
+                f" Not charged last shift, so shown at 0%: {', '.join(skipped)}."
+                if skipped
+                else ""
+            )
+        )
+    elif rows_by_ore and not selected_charged:
+        st.caption(
+            "None of the selected ores were charged last shift, so the manual "
+            "blend is seeded from the optimizer shares instead."
+        )
+    else:
         st.caption(
             "No last-shift manual blend found; seeded from the optimizer shares."
         )
 
+    # A ZERO IN A POPULATED SNAPSHOT IS INFORMATION, NOT A GAP.
+    #
+    # This used to fall back to the optimizer's share per ORE whenever an ore
+    # read zero for the last shift. But an ore reading zero means the plant
+    # chose not to charge it - and substituting the optimizer's own
+    # recommendation there both invents material the furnace never saw and,
+    # because the table is then renormalised to 100%, dilutes every material
+    # that WAS charged.
+    #
+    # Measured on 2026-09-10: true last-shift burden was sinter 60.6%, pellet
+    # 15.1%, Lloyds CLO 14.3%, Geomin CLO 10.0%, NMDC ROM 0.0%. NMDC ROM
+    # inherited the LP's ~20% and the table renormalised, so sinter displayed as
+    # 50.4% - the plant's 60% sinter reading as 50%. Every downstream consumer
+    # inherited that: the manual-vs-optimizer cost comparison, the coke
+    # correction reference, the energy-balance anchor, and the commentary's
+    # idea of "current operation".
+    #
+    # The optimizer is still a reasonable seed when there is NO last-shift data
+    # at all - that case is whole-table, is handled below, and already says so
+    # in its own caption.
+    use_last_shift = bool(selected_charged)
     seed_rows = []
     for ore in compare_ores:
         seed_share = float(rows_by_ore.get(ore.ore_id, {}).get("share_pct", 0.0) or 0.0)
-        if seed_share <= 0:
+        if seed_share <= 0 and not use_last_shift:
             seed_share = float(primary_blend.shares_pct.get(ore.ore_id, 0.0))
         seed_rows.append(
             {
@@ -1693,7 +1817,7 @@ def _render_process_recommendation(
     # on the coke rate at roughly 0.86 kg per kg. Resolved here, before the
     # blend inputs are built, so both the balance and the control baseline see
     # the same figure.
-    live_pci = float(snapshot.get("coal_rate_actual_value") or 0.0)
+    live_pci = _effective_pci_kg_thm(snapshot)
     box_pci = float(fuel_rates.get("pci_rate_kg_thm", 0.0) or 0.0)
     pci_now = live_pci if live_pci > 0.0 else box_pci
     energy_fuel_rates = {**fuel_rates, "pci_rate_kg_thm": pci_now}
@@ -2109,9 +2233,9 @@ def _render_fuel_basis_note(blend: Any) -> None:
         )
     elif anchor is None and str(fuel_rate_anchor_basis) == "energy_balance":
         st.caption(
-            "The energy-balance anchor needs a current burden to solve against. "
-            "Open the **Comparison** tab once (it records what is being charged "
-            "now), then run again."
+            "The energy-balance anchor could not find a current burden to solve "
+            "against — no charge data for the last shift. The coke level falls "
+            "back to the observed rate."
         )
 
 
@@ -2440,15 +2564,72 @@ def _build_coke_correction_reference(
     )
 
 
+def _current_burden_quantities(
+    *,
+    provider: EvonithBmoContextProvider,
+    ores: list[OreInput],
+    target_fe_mt: float,
+    hot_metal_mt: float,
+    fuel_ash_inputs: list[FuelAshInput],
+    flux_inputs: list[FluxInput],
+    dust_inputs: list[DustInput],
+    slag_balance_settings: SlagBalanceSettings,
+    charge_mass_mt: float,
+) -> dict[str, float]:
+    """What the plant charged last shift, scaled onto the target HM basis.
+
+    Runs the last-shift SHARES through the same Fe/material closure the
+    comparison tab uses, rather than scaling the raw shift tonnage. The shift's
+    own production is not the target production, so raw tonnes would put the
+    burden and the hot-metal basis on different footings and the energy balance
+    would then solve for a coke rate that belongs to neither.
+
+    An ore that was not charged stays out. A zero here is the plant's decision,
+    not a gap to be filled - see the note in the manual-blend seeding.
+    """
+
+    try:
+        snapshot = provider.get_recent_manual_blend_snapshot(ores)
+    except Exception as exc:  # noqa: BLE001 - the anchor is optional
+        log.warning("Could not read the last-shift burden: %s", exc)
+        return {}
+
+    shares = {
+        str(row.get("ore_id")): float(row.get("share_pct", 0.0) or 0.0)
+        for row in snapshot.get("rows", [])
+        if float(row.get("share_pct", 0.0) or 0.0) > 0.0
+    }
+    if not shares:
+        return {}
+
+    quantities, _total, _warnings = _target_quantities_from_shares(
+        shares,
+        [ore for ore in ores if ore.ore_id in shares],
+        target_fe_mt,
+        target_hot_metal_mt=hot_metal_mt,
+        fuel_ash_inputs=fuel_ash_inputs,
+        flux_inputs=flux_inputs,
+        dust_inputs=dust_inputs,
+        slag_balance_settings=slag_balance_settings,
+        charge_mass_mt=charge_mass_mt,
+    )
+    return {k: float(v) for k, v in (quantities or {}).items() if float(v) > 0.0}
+
+
 def _resolve_energy_anchor(
     *,
     basis: str,
+    provider: EvonithBmoContextProvider,
     ores: list[OreInput],
     fuel_ash_inputs: list[FuelAshInput],
     flux_inputs: list[FluxInput],
+    dust_inputs: list[DustInput],
+    slag_balance_settings: SlagBalanceSettings,
     hm_chem_values: Mapping[str, float],
     hm_snapshot: Mapping[str, Any],
     hot_metal_mt: float,
+    target_fe_mt: float,
+    charge_mass_mt: float,
     observed_slag_rate_kg_per_thm: float,
 ) -> Any | None:
     """Solve the energy-balance coke anchor for the current operating point.
@@ -2456,6 +2637,14 @@ def _resolve_energy_anchor(
     Returns ``None`` when the page is not configured to use it, so the caller
     can tell "switched off" from "tried and could not" — the second carries
     notes worth showing the operator, the first does not.
+
+    THE BURDEN IS FETCHED HERE, not read out of session state. It used to come
+    from ``bmo_manual_quantities_mt``, which the Comparison tab writes - and
+    that tab renders AFTER this runs. So on the first optimizer run of a session
+    the key was empty and the anchor silently never engaged, leaving the fuel
+    cost on the ML model's near-constant; on later runs it used the PREVIOUS
+    run's burden. Reading the last shift directly makes the anchor independent
+    of which tabs the operator happened to open, and of the order they render in.
     """
 
     if basis != "energy_balance":
@@ -2463,7 +2652,17 @@ def _resolve_energy_anchor(
 
     from utils.bmo.energy_anchor import solve_energy_anchor
 
-    quantities = st.session_state.get("bmo_manual_quantities_mt") or {}
+    quantities = _current_burden_quantities(
+        provider=provider,
+        ores=ores,
+        target_fe_mt=target_fe_mt,
+        hot_metal_mt=hot_metal_mt,
+        fuel_ash_inputs=fuel_ash_inputs,
+        flux_inputs=flux_inputs,
+        dust_inputs=dust_inputs,
+        slag_balance_settings=slag_balance_settings,
+        charge_mass_mt=charge_mass_mt,
+    )
     if not quantities:
         return None
 
@@ -2475,7 +2674,7 @@ def _resolve_energy_anchor(
         str(fuel.fuel_id): float(getattr(fuel, "rate_kg_per_thm", 0.0) or 0.0)
         for fuel in fuel_ash_inputs
     }
-    live_pci = float(snapshot.get("coal_rate_actual_value") or 0.0)
+    live_pci = _effective_pci_kg_thm(snapshot)
 
     return solve_energy_anchor(
         quantities_mt=quantities,
@@ -2615,6 +2814,17 @@ recent_fuel_rates = {
     **_recent_fuel_rates_from_static_csv(static_path, static_mtime_ns),
     **_recent_fuel_rates_live(),
 }
+
+# THE OVERRIDE IS APPLIED HERE, AT SOURCE. Everything downstream - the fuel rows,
+# the slag balance's fuel ash, the re-priced fuel cost - reads recent_fuel_rates,
+# so overriding once here reaches all of them. The control itself renders further
+# down, immediately above the run buttons; Streamlit restores widget state before
+# the script runs, so its value is already available at this point.
+if st.session_state.get("bmo_pci_override_on"):
+    _pci_override = st.session_state.get("bmo_pci_override_kg")
+    if _pci_override is not None:
+        recent_fuel_rates["pci_rate_kg_thm"] = float(_pci_override)
+        recent_fuel_rates["pci_source"] = "operator override"
 
 
 def _optional_target(key: str, fallback: float | None) -> float | None:
@@ -3218,58 +3428,79 @@ if (
 else:
     fuel_ash_editor_source_df = fuel_ash_base_df
 
-with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
-    st.markdown("### Fuel Ash Inputs")
-    st.caption(
-        "**These rows exist to put fuel ash into the slag balance.** The rate and "
-        "ash chemistry of each fuel decide how much ash it charges, and that ash "
-        "is part of the slag the LP constrains. Set a fuel's rate to 0 to drop its "
-        "ash from the slag entirely - nothing else changes."
-    )
-    st.caption(
-        "Two columns are also read by the separate fuel-cost step, which runs "
-        "AFTER the LP and never feeds back into slag: the **prices**, and the "
-        "**nut coke and PCI rates**. Coke rate is not read there at all - it is "
-        "back-solved from the model's predicted cost."
-    )
-    if not fuel_ash_editor_source_df.empty:
-        edited_fuel_ash_candidate_df = render_fuel_ash_editor(fuel_ash_editor_source_df)
+# THE FUEL ASH EDITOR IS HIDDEN BY DEFAULT.
+#
+# These rows exist to put fuel ASH into the slag balance. But two of their
+# columns - the nut coke and PCI rates - are also read by the fuel-cost step,
+# and the plant was using the table to CONTROL those rates. That is not what the
+# table is for, and the caption saying so did not stop it. A number box that is
+# visible will be used.
+#
+# So the table is hidden and the two rates are pinned to their real sources:
+# PCI from the live plant tag, nut coke at its fixed 70 kg/THM. The ash
+# chemistry still reaches the slag balance exactly as before - only the ability
+# to edit it from this page is withdrawn. Set ui.show_fuel_ash_editor: true in
+# setting_bmo.yml to bring the editor back for debugging.
+show_fuel_ash_editor = bool((bmo_cfg.get("ui") or {}).get("show_fuel_ash_editor", False))
+
+if show_fuel_ash_editor:
+    with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
+        st.markdown("### Fuel Ash Inputs")
+        st.caption(
+            "**These rows exist to put fuel ash into the slag balance.** The rate and "
+            "ash chemistry of each fuel decide how much ash it charges, and that ash "
+            "is part of the slag the LP constrains. Set a fuel's rate to 0 to drop its "
+            "ash from the slag entirely - nothing else changes."
+        )
+        st.caption(
+            "Two columns are also read by the separate fuel-cost step, which runs "
+            "AFTER the LP and never feeds back into slag: the **prices**, and the "
+            "**nut coke and PCI rates**. Coke rate is not read there at all - it is "
+            "back-solved from the model's predicted cost."
+        )
+        if not fuel_ash_editor_source_df.empty:
+            edited_fuel_ash_candidate_df = render_fuel_ash_editor(fuel_ash_editor_source_df)
+        else:
+            edited_fuel_ash_candidate_df = fuel_ash_editor_source_df
+        st.caption(
+            "Fuel analysis uses Moisture from fuel_chemistry (TM for coke/nut coke; "
+            "IM for PCI). Ash analysis uses VM from fuel_chemistry. Moisture is "
+            "removed once from the wet fuel; VM is not deducted as moisture."
+        )
+        fuel_apply_col, fuel_save_col = st.columns(2)
+        fuel_ash_inputs_applied = _form_submit_button(
+            fuel_apply_col,
+            "Apply Fuel Ash Inputs",
+            type="primary",
+            width="stretch",
+        )
+        fuel_ash_inputs_saved = _form_submit_button(
+            fuel_save_col,
+            "Save Fuel Ash Inputs for Next Time",
+            type="secondary",
+            width="stretch",
+        )
+    if fuel_ash_inputs_applied or fuel_ash_inputs_saved:
+        edited_fuel_ash_df = edited_fuel_ash_candidate_df.copy()
+        st.session_state["bmo_applied_fuel_ash_editor_df"] = edited_fuel_ash_df
+        _clear_bmo_results()
+        if fuel_ash_inputs_saved:
+            try:
+                saved_path = save_fuel_ash_preferences(
+                    operator_preferences_path, edited_fuel_ash_df
+                )
+                st.success(f"Fuel Ash inputs saved to {saved_path}.")
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not save Fuel Ash inputs: {exc}")
+        else:
+            st.success("Fuel Ash inputs applied.")
     else:
-        edited_fuel_ash_candidate_df = fuel_ash_editor_source_df
-    st.caption(
-        "Fuel analysis uses Moisture from fuel_chemistry (TM for coke/nut coke; "
-        "IM for PCI). Ash analysis uses VM from fuel_chemistry. Moisture is "
-        "removed once from the wet fuel; VM is not deducted as moisture."
-    )
-    fuel_apply_col, fuel_save_col = st.columns(2)
-    fuel_ash_inputs_applied = _form_submit_button(
-        fuel_apply_col,
-        "Apply Fuel Ash Inputs",
-        type="primary",
-        width="stretch",
-    )
-    fuel_ash_inputs_saved = _form_submit_button(
-        fuel_save_col,
-        "Save Fuel Ash Inputs for Next Time",
-        type="secondary",
-        width="stretch",
-    )
-if fuel_ash_inputs_applied or fuel_ash_inputs_saved:
-    edited_fuel_ash_df = edited_fuel_ash_candidate_df.copy()
-    st.session_state["bmo_applied_fuel_ash_editor_df"] = edited_fuel_ash_df
-    _clear_bmo_results()
-    if fuel_ash_inputs_saved:
-        try:
-            saved_path = save_fuel_ash_preferences(
-                operator_preferences_path, edited_fuel_ash_df
-            )
-            st.success(f"Fuel Ash inputs saved to {saved_path}.")
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not save Fuel Ash inputs: {exc}")
-    else:
-        st.success("Fuel Ash inputs applied.")
+        edited_fuel_ash_df = fuel_ash_editor_source_df
 else:
-    edited_fuel_ash_df = fuel_ash_editor_source_df
+    edited_fuel_ash_df = _fuel_ash_df_with_pinned_rates(
+        fuel_ash_editor_source_df, recent_fuel_rates
+    )
+    _render_pinned_fuel_rates(edited_fuel_ash_df, recent_fuel_rates)
 fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
 
 dust_base_df = apply_dust_preferences(
@@ -3359,6 +3590,69 @@ _DE_SEED_LABELS = {
     "random": "Random start (ignore the LP)",
 }
 
+# --- PCI rate, immediately above the buttons that consume it ----------------------
+#
+# PCI used to be set by editing the Fuel Ash chemistry table, which is not what
+# that table is for and is why it has now been hidden. It gets a control of its
+# own here, next to the run buttons, so it is set deliberately.
+_live_pci_tag = float(_live_process_snapshot().get("coal_rate_actual_value") or 0.0)
+with st.container(border=True):
+    st.markdown("##### PCI rate")
+    _toggle_col, _value_col, _basis_col = st.columns([1, 1, 2],
+                                                     vertical_alignment="center")
+    _pci_on = _toggle_col.toggle(
+        "Override",
+        key="bmo_pci_override_on",
+        help=(
+            "Off: the live plant tag is used. On: the rate you type is used "
+            "everywhere - the coke rate, the slag balance and the fuel cost are "
+            "all re-solved against it."
+        ),
+    )
+    if _pci_on:
+        _value_col.number_input(
+            "PCI (kg/THM)",
+            min_value=0.0, max_value=float(ANCHOR_HIGH_PCI), step=5.0,
+            key="bmo_pci_override_kg",
+            help=f"Clamped to 0-{ANCHOR_HIGH_PCI:g}. Outside "
+                 f"{MODEL_PCI_MIN:g}-{MODEL_PCI_MAX:g} the coke rate is "
+                 "interpolated to a fixed operating anchor, not modelled.",
+        )
+        _pci_now = float(st.session_state.get("bmo_pci_override_kg") or 0.0)
+        if _live_pci_tag > 0.0:
+            _basis_col.caption(
+                f"Live tag reads **{_live_pci_tag:,.1f}** kg/THM — "
+                f"overriding by **{_pci_now - _live_pci_tag:+,.1f}**."
+            )
+        # Say which side of the model's data the operator has landed on. Inside
+        # the band the coke rate is modelled; outside it is an interpolation to
+        # an anchor, and that is a materially weaker number.
+        if MODEL_PCI_MIN <= _pci_now <= MODEL_PCI_MAX:
+            _basis_col.caption(
+                f"✓ Inside the modelled band ({MODEL_PCI_MIN:g}–{MODEL_PCI_MAX:g} "
+                "kg/THM) — the coke rate is predicted."
+            )
+        else:
+            _basis_col.warning(
+                f"Outside {MODEL_PCI_MIN:g}–{MODEL_PCI_MAX:g} kg/THM, where the "
+                "model has no data. The coke rate is interpolated toward a fixed "
+                "operating anchor and is weaker than a modelled figure."
+            )
+    else:
+        _value_col.metric("Live tag", f"{_live_pci_tag:,.1f} kg/THM")
+        _basis_col.caption(
+            "Using the live plant tag. Switch the override on to plan a "
+            "different injection rate."
+        )
+
+# Results computed against a different PCI are stale, so drop them rather than
+# letting the operator read a coke rate solved for the previous rate.
+_pci_state = (bool(_pci_on), st.session_state.get("bmo_pci_override_kg"))
+if st.session_state.get("bmo_pci_state_last") != _pci_state:
+    if st.session_state.get("bmo_pci_state_last") is not None:
+        _clear_bmo_results()
+    st.session_state["bmo_pci_state_last"] = _pci_state
+
 run_lp_clicked = False
 run_total_clicked = False
 with st.form("bmo_run_form", clear_on_submit=False):
@@ -3431,12 +3725,17 @@ if requested_lp or requested_total:
         # sensitivity is the correction's job, not the anchor's.
         energy_anchor = _resolve_energy_anchor(
             basis=fuel_rate_anchor_basis,
+            provider=provider,
             ores=selected_ores,
             fuel_ash_inputs=fuel_ash_inputs,
             flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
             hm_chem_values=hm_chem_values,
             hm_snapshot=hm_snapshot,
             hot_metal_mt=target_production_mt,
+            target_fe_mt=target_fe_mt,
+            charge_mass_mt=charge_mass_mt,
             observed_slag_rate_kg_per_thm=observed_slag_rate,
         )
         st.session_state["bmo_energy_anchor"] = energy_anchor
@@ -3767,6 +4066,33 @@ lp_errors = st.session_state.get("bmo_lp_errors", [])
 de_result = st.session_state.get("bmo_de_result")
 de_errors = st.session_state.get("bmo_de_errors", [])
 
+# THE RESULTS RENDER ON EVERY RERUN, THE OPTIMISER RUNS ON ALMOST NONE.
+#
+# history_df, process_context and bundle_status are bound inside the run block,
+# which only executes when a Run button was clicked. But the result tabs below
+# render from session state on ANY rerun - changing the transition step size,
+# toggling the PCI override, opening a tab. On those reruns the names simply did
+# not exist and the page died with "NameError: name 'history_df' is not
+# defined", which is exactly what an operator hit when they moved the step size
+# to 1%.
+#
+# Rebinding them here costs nothing: _load_fuel_prediction_context is cached, so
+# on a rerun it returns the same objects the run block already built.
+if lp_result is not None or de_result is not None:
+    try:
+        (
+            model_service,
+            process_context,
+            history_df,
+            bundle_status,
+            _rerun_warnings,
+        ) = _load_fuel_prediction_context(provider)
+    except Exception as exc:  # noqa: BLE001 - never let this take the page down
+        log.warning("Could not reload fuel context for result rendering: %s", exc)
+        history_df = locals().get("history_df")
+        process_context = locals().get("process_context")
+        bundle_status = locals().get("bundle_status") or {}
+
 if lp_errors:
     st.error("LP baseline errors:\n- " + "\n- ".join(lp_errors))
 if de_errors:
@@ -3789,8 +4115,16 @@ if lp_result is not None or de_result is not None:
                 is_lp_mode=True,
                 charge_mass_mt=charge_mass_mt,
             )
-            lp_blend_tab, lp_fuel_tab, lp_slag_tab, lp_ctrl_tab, lp_path_tab = st.tabs(
-                ["🧱 Blend", "🔥 Fuel & coke", "🌋 Slag", "🎛️ Controls", "🪜 Path there"]
+            # Controls and Path are ONE tab, not two.
+            #
+            # They were split apart in 1d0ac2b and that was a mistake: a blend
+            # recommendation is not actionable without the blast settings that
+            # supply what it demands, and an operator should not have to click
+            # between them to see both. The order below is the order the
+            # decision is made in - what settings does this blend need, then
+            # how do I get the burden there from where it is today.
+            lp_blend_tab, lp_fuel_tab, lp_slag_tab, lp_path_tab = st.tabs(
+                ["🧱 Blend", "🔥 Fuel & coke", "🌋 Slag", "🎛️ Path & controls"]
             )
 
             with lp_blend_tab:
@@ -3813,7 +4147,12 @@ if lp_result is not None or de_result is not None:
                     lp_result, selected_ores, fuel_ash_inputs, flux_inputs
                 )
 
-            with lp_ctrl_tab:
+            with lp_path_tab:
+                # WHAT SETTINGS THIS BLEND NEEDS, first. recommend_controls
+                # solves the blast temperature, oxygen and volume that supply
+                # this blend's energy demand at least fuel cost - so this single
+                # panel answers both halves of the question: what the blend
+                # requires, and what the cheapest way of supplying it is.
                 _render_process_recommendation(
                     lp_result,
                     label="lp",
@@ -3825,8 +4164,10 @@ if lp_result is not None or de_result is not None:
                     fuel_ash_inputs=fuel_ash_inputs,
                 )
                 _render_energy_assumptions()
+                st.divider()
 
-            with lp_path_tab:
+                # THEN how to get the burden there from where it is today.
+                st.markdown("##### Getting there from the current blend")
                 _render_transition_ladder(
                     provider=provider,
                     ores=selected_ores,
