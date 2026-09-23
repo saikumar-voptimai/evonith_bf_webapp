@@ -10,6 +10,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -20,6 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -74,6 +76,66 @@ class UserRoleAssignment(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+JSON_DOCUMENT = JSON().with_variant(JSONB(), "postgresql")
+
+
+class ScheduledTaskDefinitionRecord(Base):
+    """Canonical JSON definition and lightweight UI state for one task."""
+
+    __tablename__ = "scheduled_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_provisioning', 'active', 'paused', "
+            "'provisioning_failed', 'completed', 'execution_failed', 'deleted')",
+            name="ck_automation_scheduled_jobs_status",
+        ),
+        Index("ix_scheduled_jobs_owner_created", "owner_user_id", "created_at"),
+        Index(
+            "ix_scheduled_jobs_owner_status_created",
+            "owner_user_id",
+            "status",
+            "created_at",
+        ),
+        {"schema": "automation"},
+    )
+
+    job_id: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        default=lambda: str(uuid4()),
+    )
+    job_name: Mapped[str] = mapped_column(Text, nullable=False)
+    job_type: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    definition_json: Mapped[dict] = mapped_column(
+        "definition",
+        JSON_DOCUMENT,
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="pending_provisioning",
+    )
+    owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("identity.users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_by_username: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_device_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
     )
 
 
