@@ -264,7 +264,7 @@ _tile(
     _bmo_col,
     "custom_pages/9_Blend_Optimizer.py",
     "🧪",
-    "Blend Optimizer",
+    "Blend Mix Optimiser",
     "LP baseline and nonlinear total-cost optimization for ore blend planning.",
     "#0f766e",
 )

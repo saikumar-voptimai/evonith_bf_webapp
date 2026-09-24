@@ -4322,3 +4322,8 @@ if lp_result is not None or de_result is not None:
     )
 
 render_diagnostics(de_result or lp_result, ore_diagnostics)
+
+# Snapshots. Inside TestBMO this prefix arrives as "testbmo_" (utils/bmo/sandbox.py).
+from ui.bmo.snapshot_panel import render_snapshot_panel  # noqa: E402
+
+render_snapshot_panel(prefix="bmo_", page_vars=globals())
