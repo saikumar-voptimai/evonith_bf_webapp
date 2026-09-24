@@ -1,5 +1,6 @@
 from ui.bmo.components import (
     apply_bmo_styles,
+    apply_fuel_prices,
     build_dust_editor_df,
     build_flux_editor_df,
     build_fuel_ash_editor_df,
@@ -12,6 +13,7 @@ from ui.bmo.components import (
     render_dust_editor,
     render_flux_editor,
     render_fuel_ash_editor,
+    render_fuel_price_inputs,
     render_header,
     render_hot_metal_chemistry,
     render_ore_editor,
@@ -28,6 +30,7 @@ from ui.bmo.model_accuracy import (
 
 __all__ = [
     "apply_bmo_styles",
+    "apply_fuel_prices",
     "build_dust_editor_df",
     "build_flux_editor_df",
     "build_fuel_ash_editor_df",
@@ -43,6 +46,7 @@ __all__ = [
     "render_furnace_commentary",
     "render_header",
     "render_fuel_ash_editor",
+    "render_fuel_price_inputs",
     "render_hot_metal_chemistry",
     "render_model_accuracy_tab",
     "render_ore_editor",

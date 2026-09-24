@@ -292,6 +292,34 @@ def test_model_cost_back_calculation_keeps_operator_nut_coke_at_70():
     )
 
 
+def test_nut_coke_override_rate_is_repriced_at_the_entered_nut_coke_price():
+    blend = _blend(
+        _fuel_ash(
+            30000.0,
+            22000.0,
+            18000.0,
+            nut_rate=85.0,
+            pci_rate=150.0,
+        )
+    )
+
+    rates = blend.diagnostics["fuel_rate_estimate"]
+    expected_coke_rate = (12900.0 - 85.0 * 24.0 - 150.0 * 18.0) / 28.0
+    expected_current_cost = (
+        expected_coke_rate * 30.0 + 85.0 * 22.0 + 150.0 * 18.0
+    )
+
+    assert rates["nut_coke_rate_kg_thm"] == pytest.approx(85.0)
+    assert rates["coke_rate_kg_thm"] == pytest.approx(expected_coke_rate)
+    assert blend.diagnostics["current_fuel_prices_rs_per_kg"][
+        "nut_coke"
+    ] == pytest.approx(22.0)
+    assert blend.diagnostics["adjusted_fuel_cost_per_thm_rs"] == pytest.approx(
+        expected_current_cost
+    )
+    assert blend.fuel_cost_per_thm_rs == pytest.approx(12900.0)
+
+
 def test_history_fallback_dilutes_incomplete_latest_nut_coke_hour():
     # Twenty-three complete 7 MT / 100 THM hours followed by a current partial
     # 3 MT hour. The old single-row division returned 30 kg/THM; the rolling

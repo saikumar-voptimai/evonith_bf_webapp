@@ -64,6 +64,11 @@ INPUT_LABELS: dict[str, tuple[str, str]] = {
     "static_dataset_use_link": ("Dataset via DATA_URL", "{}"),
     "pci_override_on": ("PCI override", "{}"),
     "pci_override_kg": ("PCI override (kg/THM)", "{:,.1f}"),
+    "nut_coke_override_on": ("Nut coke override", "{}"),
+    "nut_coke_override_kg": ("Nut coke override (kg/THM)", "{:,.1f}"),
+    "fuel_price_coke_rs_per_mt": ("Coke price (Rs/MT)", "{:,.0f}"),
+    "fuel_price_nut_coke_rs_per_mt": ("Nut coke price (Rs/MT)", "{:,.0f}"),
+    "fuel_price_pci_rs_per_mt": ("PCI price (Rs/MT)", "{:,.0f}"),
     "transition_move_pct": ("Transition step (%/rung)", "{:.1f}"),
 }
 

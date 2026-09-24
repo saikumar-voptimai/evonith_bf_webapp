@@ -56,6 +56,7 @@ from ui.bmo import (
     render_dust_editor,
     render_flux_editor,
     render_fuel_ash_editor,
+    render_fuel_price_inputs,
     render_furnace_commentary,
     render_header,
     render_hot_metal_chemistry,
@@ -714,22 +715,21 @@ def _fuel_ash_cfg_with_recent_rates(
 def _fuel_ash_df_with_pinned_rates(
     fuel_ash_df: pd.DataFrame, fuel_rates: Mapping[str, Any]
 ) -> pd.DataFrame:
-    """Force nut coke to its fixed rate and PCI to the live tag.
-
-    With the editor hidden these two are no longer operator inputs, so they are
-    taken from the sources that actually know them. Nut coke is a fixed charge
-    at this plant; PCI is a live tag. Coke is untouched - it is solved for, not
-    set, and whatever sits in this column is not read by the fuel-cost step.
-    """
+    """Pin nut coke and PCI to the effective operator/live rates."""
 
     out = fuel_ash_df.copy()
     if "fuel_id" not in out.columns or "rate_kg_per_thm" not in out.columns:
         return out
 
-    live_pci = fuel_rates.get("pci_rate_kg_thm")
-    pinned = {"nut_coke": DEFAULT_NUT_COKE_RATE_KG_PER_THM}
-    if live_pci is not None and float(live_pci) > 0.0:
-        pinned["pci"] = float(live_pci)
+    nut_rate = fuel_rates.get(
+        "nut_coke_rate_kg_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM
+    )
+    pinned = {"nut_coke": max(0.0, float(nut_rate))}
+    pci_rate = fuel_rates.get("pci_rate_kg_thm")
+    if pci_rate is not None and (
+        float(pci_rate) > 0.0 or fuel_rates.get("pci_source") == "operator override"
+    ):
+        pinned["pci"] = max(0.0, float(pci_rate))
 
     ids = out["fuel_id"].astype(str).str.strip().str.lower()
     for fuel_id, rate in pinned.items():
@@ -740,28 +740,27 @@ def _fuel_ash_df_with_pinned_rates(
 def _render_pinned_fuel_rates(
     fuel_ash_df: pd.DataFrame, fuel_rates: Mapping[str, Any]
 ) -> None:
-    """State the fuel rates in force, read-only, so they are not invisible.
-
-    Hiding the editor must not mean hiding the numbers - an operator still has
-    to know what PCI the coke rate was solved against, and where it came from.
-    """
+    """State the effective read-only rates and their source."""
 
     if "fuel_id" not in fuel_ash_df.columns:
         return
     rates = {
-        str(row["fuel_id"]).strip().lower(): float(row.get("rate_kg_per_thm", 0.0) or 0.0)
+        str(row["fuel_id"]).strip().lower(): float(
+            row.get("rate_kg_per_thm", 0.0) or 0.0
+        )
         for _, row in fuel_ash_df.iterrows()
     }
-    live_pci = fuel_rates.get("pci_rate_kg_thm")
-    pci_source = (
-        "live plant tag" if live_pci is not None and float(live_pci) > 0.0
-        else "fallback - LIVE TAG UNAVAILABLE"
+    pci_source = str(
+        fuel_rates.get("pci_source") or "fallback - LIVE TAG UNAVAILABLE"
+    )
+    nut_source = str(
+        fuel_rates.get("nut_coke_source") or "fixed plant set point"
     )
     st.caption(
-        f"**Fuel rates in force** — PCI **{rates.get('pci', 0.0):,.1f}** kg/THM "
+        f"**Fuel rates in force** - PCI **{rates.get('pci', 0.0):,.1f}** kg/THM "
         f"({pci_source}), nut coke **{rates.get('nut_coke', 0.0):,.1f}** kg/THM "
-        "(fixed). Coke is solved by the energy balance, not set here. Ash "
-        "chemistry still feeds the slag balance from configuration."
+        f"({nut_source}). Coke is solved by the energy balance, not set here. "
+        "Ash chemistry still feeds the slag balance from configuration."
     )
 
 
@@ -2832,8 +2831,21 @@ recent_fuel_rates = {
 if st.session_state.get("bmo_pci_override_on"):
     _pci_override = st.session_state.get("bmo_pci_override_kg")
     if _pci_override is not None:
-        recent_fuel_rates["pci_rate_kg_thm"] = float(_pci_override)
+        recent_fuel_rates["pci_rate_kg_thm"] = max(0.0, float(_pci_override))
         recent_fuel_rates["pci_source"] = "operator override"
+
+_nut_coke_override = st.session_state.get("bmo_nut_coke_override_kg")
+if (
+    st.session_state.get("bmo_nut_coke_override_on")
+    and _nut_coke_override is not None
+):
+    recent_fuel_rates["nut_coke_rate_kg_thm"] = max(
+        0.0, float(_nut_coke_override)
+    )
+    recent_fuel_rates["nut_coke_source"] = "operator override"
+else:
+    recent_fuel_rates["nut_coke_rate_kg_thm"] = DEFAULT_NUT_COKE_RATE_KG_PER_THM
+    recent_fuel_rates["nut_coke_source"] = "fixed plant set point"
 
 
 def _optional_target(key: str, fallback: float | None) -> float | None:
@@ -3445,11 +3457,11 @@ else:
 # table is for, and the caption saying so did not stop it. A number box that is
 # visible will be used.
 #
-# So the table is hidden and the two rates are pinned to their real sources:
-# PCI from the live plant tag, nut coke at its fixed 70 kg/THM. The ash
-# chemistry still reaches the slag balance exactly as before - only the ability
-# to edit it from this page is withdrawn. Set ui.show_fuel_ash_editor: true in
-# setting_bmo.yml to bring the editor back for debugging.
+# So the table is hidden and the two rates are pinned to their effective sources:
+# PCI uses the live plant tag unless overridden; nut coke uses 70 kg/THM unless
+# overridden. Prices remain available in the collapsed Fuel prices control. The
+# ash chemistry still reaches the slag balance exactly as before. Set
+# ui.show_fuel_ash_editor: true in setting_bmo.yml for the full debugging editor.
 show_fuel_ash_editor = bool((bmo_cfg.get("ui") or {}).get("show_fuel_ash_editor", False))
 
 if show_fuel_ash_editor:
@@ -3510,6 +3522,27 @@ else:
         fuel_ash_editor_source_df, recent_fuel_rates
     )
     _render_pinned_fuel_rates(edited_fuel_ash_df, recent_fuel_rates)
+if not show_fuel_ash_editor:
+    edited_fuel_ash_df = render_fuel_price_inputs(
+        edited_fuel_ash_df, key_prefix="bmo_"
+    )
+
+_fuel_price_state = tuple(
+    (
+        str(row.get("fuel_id", "")).strip().lower(),
+        float(row.get("price_rs_per_mt", 0.0) or 0.0),
+    )
+    for _, row in edited_fuel_ash_df.iterrows()
+    if (
+        str(row.get("fuel_id", "")).strip().lower()
+        in {"coke", "nut_coke", "pci"}
+    )
+)
+if st.session_state.get("bmo_ui_fuel_price_state_last") != _fuel_price_state:
+    if st.session_state.get("bmo_ui_fuel_price_state_last") is not None:
+        _clear_bmo_results()
+    st.session_state["bmo_ui_fuel_price_state_last"] = _fuel_price_state
+
 fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
 
 dust_base_df = apply_dust_preferences(
@@ -3599,68 +3632,115 @@ _DE_SEED_LABELS = {
     "random": "Random start (ignore the LP)",
 }
 
-# --- PCI rate, immediately above the buttons that consume it ----------------------
-#
-# PCI used to be set by editing the Fuel Ash chemistry table, which is not what
-# that table is for and is why it has now been hidden. It gets a control of its
-# own here, next to the run buttons, so it is set deliberately.
+# --- Fuel-rate overrides, immediately above the buttons that consume them ----------
 _live_pci_tag = float(_live_process_snapshot().get("coal_rate_actual_value") or 0.0)
-with st.container(border=True):
-    st.markdown("##### PCI rate")
-    _toggle_col, _value_col, _basis_col = st.columns([1, 1, 2],
-                                                     vertical_alignment="center")
-    _pci_on = _toggle_col.toggle(
-        "Override",
-        key="bmo_pci_override_on",
-        help=(
-            "Off: the live plant tag is used. On: the rate you type is used "
-            "everywhere - the coke rate, the slag balance and the fuel cost are "
-            "all re-solved against it."
-        ),
+if "bmo_nut_coke_override_kg" not in st.session_state:
+    st.session_state["bmo_nut_coke_override_kg"] = (
+        DEFAULT_NUT_COKE_RATE_KG_PER_THM
     )
-    if _pci_on:
-        _value_col.number_input(
-            "PCI (kg/THM)",
-            min_value=0.0, max_value=float(ANCHOR_HIGH_PCI), step=5.0,
-            key="bmo_pci_override_kg",
-            help=f"Clamped to 0-{ANCHOR_HIGH_PCI:g}. Outside "
-                 f"{MODEL_PCI_MIN:g}-{MODEL_PCI_MAX:g} the coke rate is "
-                 "interpolated to a fixed operating anchor, not modelled.",
+
+with st.container(border=True):
+    st.markdown("##### Fuel rate overrides")
+    _pci_panel, _nut_coke_panel = st.columns(2)
+
+    with _pci_panel:
+        st.markdown("**PCI**")
+        _pci_toggle_col, _pci_value_col = st.columns(
+            [1, 2], vertical_alignment="center"
         )
-        _pci_now = float(st.session_state.get("bmo_pci_override_kg") or 0.0)
-        if _live_pci_tag > 0.0:
-            _basis_col.caption(
-                f"Live tag reads **{_live_pci_tag:,.1f}** kg/THM — "
-                f"overriding by **{_pci_now - _live_pci_tag:+,.1f}**."
+        _pci_on = _pci_toggle_col.toggle(
+            "Override",
+            key="bmo_pci_override_on",
+            help=(
+                "Off: the live plant tag is used. On: the entered rate is used "
+                "for the coke rate, slag balance and fuel cost."
+            ),
+        )
+        if _pci_on:
+            _pci_value_col.number_input(
+                "PCI (kg/THM)",
+                min_value=0.0,
+                max_value=float(ANCHOR_HIGH_PCI),
+                step=5.0,
+                key="bmo_pci_override_kg",
+                help=(
+                    f"Clamped to 0-{ANCHOR_HIGH_PCI:g}. Outside "
+                    f"{MODEL_PCI_MIN:g}-{MODEL_PCI_MAX:g}, the coke rate is "
+                    "interpolated to a fixed operating anchor."
+                ),
             )
-        # Say which side of the model's data the operator has landed on. Inside
-        # the band the coke rate is modelled; outside it is an interpolation to
-        # an anchor, and that is a materially weaker number.
-        if MODEL_PCI_MIN <= _pci_now <= MODEL_PCI_MAX:
-            _basis_col.caption(
-                f"✓ Inside the modelled band ({MODEL_PCI_MIN:g}–{MODEL_PCI_MAX:g} "
-                "kg/THM) — the coke rate is predicted."
+            _pci_now = float(st.session_state.get("bmo_pci_override_kg") or 0.0)
+            if _live_pci_tag > 0.0:
+                st.caption(
+                    f"Live tag: **{_live_pci_tag:,.1f}** kg/THM; override delta: "
+                    f"**{_pci_now - _live_pci_tag:+,.1f}**."
+                )
+            if MODEL_PCI_MIN <= _pci_now <= MODEL_PCI_MAX:
+                st.caption(
+                    f"Inside the modelled band ({MODEL_PCI_MIN:g}-"
+                    f"{MODEL_PCI_MAX:g} kg/THM)."
+                )
+            else:
+                st.warning(
+                    f"Outside {MODEL_PCI_MIN:g}-{MODEL_PCI_MAX:g} kg/THM. "
+                    "The coke-rate estimate uses an operating-anchor "
+                    "interpolation."
+                )
+        else:
+            _pci_value_col.metric("Live tag", f"{_live_pci_tag:,.1f} kg/THM")
+            st.caption("Switch the override on to plan a different injection rate.")
+
+    with _nut_coke_panel:
+        st.markdown("**Nut coke**")
+        _nut_toggle_col, _nut_value_col = st.columns(
+            [1, 2], vertical_alignment="center"
+        )
+        _nut_coke_on = _nut_toggle_col.toggle(
+            "Override",
+            key="bmo_nut_coke_override_on",
+            help=(
+                "Off: use the fixed 70 kg/THM plant set point. On: use the "
+                "entered rate for charging, slag, energy balance and fuel cost."
+            ),
+        )
+        if _nut_coke_on:
+            _nut_value_col.number_input(
+                "Nut coke (kg/THM)",
+                min_value=0.0,
+                step=5.0,
+                key="bmo_nut_coke_override_kg",
+            )
+            _nut_coke_value = st.session_state.get("bmo_nut_coke_override_kg")
+            _nut_coke_now = float(
+                DEFAULT_NUT_COKE_RATE_KG_PER_THM
+                if _nut_coke_value is None
+                else _nut_coke_value
+            )
+            st.caption(
+                f"Fixed set point: **{DEFAULT_NUT_COKE_RATE_KG_PER_THM:,.1f}** "
+                f"kg/THM; override delta: "
+                f"**{_nut_coke_now - DEFAULT_NUT_COKE_RATE_KG_PER_THM:+,.1f}**."
             )
         else:
-            _basis_col.warning(
-                f"Outside {MODEL_PCI_MIN:g}–{MODEL_PCI_MAX:g} kg/THM, where the "
-                "model has no data. The coke rate is interpolated toward a fixed "
-                "operating anchor and is weaker than a modelled figure."
+            _nut_value_col.metric(
+                "Fixed set point",
+                f"{DEFAULT_NUT_COKE_RATE_KG_PER_THM:,.1f} kg/THM",
             )
-    else:
-        _value_col.metric("Live tag", f"{_live_pci_tag:,.1f} kg/THM")
-        _basis_col.caption(
-            "Using the live plant tag. Switch the override on to plan a "
-            "different injection rate."
-        )
+            st.caption(
+                "Switch the override on to plan a different nut-coke rate."
+            )
 
-# Results computed against a different PCI are stale, so drop them rather than
-# letting the operator read a coke rate solved for the previous rate.
-_pci_state = (bool(_pci_on), st.session_state.get("bmo_pci_override_kg"))
-if st.session_state.get("bmo_pci_state_last") != _pci_state:
+# Results computed against different rates are stale, so clear them on a change.
+_fuel_rate_state = (
+    bool(_pci_on),
+    st.session_state.get("bmo_pci_override_kg"),
+    bool(_nut_coke_on),
+    st.session_state.get("bmo_nut_coke_override_kg"),
+)
+if st.session_state.get("bmo_pci_state_last") != _fuel_rate_state:
     if st.session_state.get("bmo_pci_state_last") is not None:
         _clear_bmo_results()
-    st.session_state["bmo_pci_state_last"] = _pci_state
+    st.session_state["bmo_pci_state_last"] = _fuel_rate_state
 
 run_lp_clicked = False
 run_total_clicked = False

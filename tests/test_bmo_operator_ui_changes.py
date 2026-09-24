@@ -652,6 +652,120 @@ def _fuel_ash_df():
     )
 
 
+def test_apply_fuel_prices_changes_only_the_three_price_cells() -> None:
+    original = pd.DataFrame(
+        [
+            {
+                "fuel_id": "coke",
+                "price_rs_per_mt": 28000.0,
+                "rate_kg_per_thm": 340.0,
+                "ash_pct": 11.5,
+            },
+            {
+                "fuel_id": "nut_coke",
+                "price_rs_per_mt": 24000.0,
+                "rate_kg_per_thm": 70.0,
+                "ash_pct": 12.0,
+            },
+            {
+                "fuel_id": "pci",
+                "price_rs_per_mt": 18000.0,
+                "rate_kg_per_thm": 150.0,
+                "ash_pct": 9.0,
+            },
+            {
+                "fuel_id": "other",
+                "price_rs_per_mt": 1.0,
+                "rate_kg_per_thm": 2.0,
+                "ash_pct": 3.0,
+            },
+        ]
+    )
+
+    updated = components.apply_fuel_prices(
+        original,
+        {
+            "coke": 31000.0,
+            "nut_coke": 22500.0,
+            "pci": 19500.0,
+            "other": 999.0,
+        },
+    )
+
+    assert updated["price_rs_per_mt"].tolist() == [
+        31000.0,
+        22500.0,
+        19500.0,
+        1.0,
+    ]
+    pd.testing.assert_frame_equal(
+        updated.drop(columns="price_rs_per_mt"),
+        original.drop(columns="price_rs_per_mt"),
+    )
+    assert original["price_rs_per_mt"].tolist() == [
+        28000.0,
+        24000.0,
+        18000.0,
+        1.0,
+    ]
+
+
+def test_fuel_price_inputs_are_collapsed_and_keyed_for_snapshots(monkeypatch) -> None:
+    captured: dict[str, object] = {"inputs": []}
+    entered = {
+        "bmo_fuel_price_coke_rs_per_mt": 31000.0,
+        "bmo_fuel_price_nut_coke_rs_per_mt": 22500.0,
+        "bmo_fuel_price_pci_rs_per_mt": 19500.0,
+    }
+
+    class FakeColumn:
+        def number_input(self, _label, **kwargs):
+            captured["inputs"].append(kwargs)
+            return entered[kwargs["key"]]
+
+    class FakeStreamlit:
+        def expander(self, label, *, expanded):
+            captured["expander"] = (label, expanded)
+            return _FakeLayout()
+
+        def caption(self, text):
+            captured["caption"] = text
+
+        def columns(self, count):
+            return [FakeColumn() for _ in range(int(count))]
+
+    original = pd.DataFrame(
+        [
+            {
+                "fuel_id": "coke",
+                "price_rs_per_mt": 28000.0,
+                "rate_kg_per_thm": 340.0,
+            },
+            {
+                "fuel_id": "nut_coke",
+                "price_rs_per_mt": 24000.0,
+                "rate_kg_per_thm": 70.0,
+            },
+            {
+                "fuel_id": "pci",
+                "price_rs_per_mt": 18000.0,
+                "rate_kg_per_thm": 150.0,
+            },
+        ]
+    )
+    monkeypatch.setattr(components, "st", FakeStreamlit())
+
+    updated = components.render_fuel_price_inputs(original)
+
+    assert captured["expander"] == ("Fuel prices", False)
+    assert {item["key"] for item in captured["inputs"]} == set(entered)
+    assert updated["price_rs_per_mt"].tolist() == [31000.0, 22500.0, 19500.0]
+    assert (
+        updated["rate_kg_per_thm"].tolist()
+        == original["rate_kg_per_thm"].tolist()
+    )
+
+
 def _dust_df():
     return pd.DataFrame(
         [

@@ -8,7 +8,7 @@ while handling Streamlit API differences across installed versions.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import pandas as pd
 import streamlit as st
@@ -329,6 +329,81 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
             }
         )
     return pd.DataFrame(rows)
+
+
+_FUEL_PRICE_LABELS = {
+    "coke": "Coke",
+    "nut_coke": "Nut coke",
+    "pci": "PCI",
+}
+
+
+def apply_fuel_prices(
+    editor_df: pd.DataFrame, prices_rs_per_mt: Mapping[str, float]
+) -> pd.DataFrame:
+    """Return fuel inputs with only the configured prices updated."""
+
+    out = editor_df.copy()
+    if "fuel_id" not in out.columns or "price_rs_per_mt" not in out.columns:
+        return out
+
+    ids = out["fuel_id"].astype(str).str.strip().str.lower()
+    for fuel_id, raw_price in prices_rs_per_mt.items():
+        normalized_id = str(fuel_id).strip().lower()
+        if normalized_id not in _FUEL_PRICE_LABELS:
+            continue
+        try:
+            price = max(0.0, float(raw_price))
+        except (TypeError, ValueError):
+            continue
+        out.loc[ids == normalized_id, "price_rs_per_mt"] = price
+    return out
+
+
+def render_fuel_price_inputs(
+    editor_df: pd.DataFrame, *, key_prefix: str = "bmo_"
+) -> pd.DataFrame:
+    """Render collapsed operator price controls and apply them to fuel rows."""
+
+    if (
+        editor_df.empty
+        or "fuel_id" not in editor_df.columns
+        or "price_rs_per_mt" not in editor_df.columns
+    ):
+        return editor_df
+
+    ids = editor_df["fuel_id"].astype(str).str.strip().str.lower()
+    defaults: dict[str, float] = {}
+    for fuel_id in _FUEL_PRICE_LABELS:
+        values = pd.to_numeric(
+            editor_df.loc[ids == fuel_id, "price_rs_per_mt"], errors="coerce"
+        ).dropna()
+        fallback = (
+            float(ASSUMED_FUEL_PRICES_RS_PER_KG.get(fuel_id, 0.0)) * 1000.0
+        )
+        defaults[fuel_id] = (
+            max(0.0, float(values.iloc[0])) if not values.empty else fallback
+        )
+
+    entered: dict[str, float] = {}
+    with st.expander("Fuel prices", expanded=False):
+        st.caption(
+            "These prices are used for the operator-facing fuel cost and do not "
+            "change fuel chemistry or the optimizer's trained baseline objective."
+        )
+        columns = st.columns(len(_FUEL_PRICE_LABELS))
+        for column, (fuel_id, label) in zip(columns, _FUEL_PRICE_LABELS.items()):
+            entered[fuel_id] = float(
+                column.number_input(
+                    f"{label} (Rs/MT)",
+                    min_value=0.0,
+                    value=defaults[fuel_id],
+                    step=500.0,
+                    format="%.0f",
+                    key=f"{key_prefix}fuel_price_{fuel_id}_rs_per_mt",
+                )
+            )
+    return apply_fuel_prices(editor_df, entered)
 
 
 def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
