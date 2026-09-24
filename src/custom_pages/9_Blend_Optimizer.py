@@ -114,6 +114,13 @@ if not is_logged_in():
     st.warning("Please log in to access this page.")
     st.stop()
 
+# Live / Sandbox switch. In Sandbox mode this replays a saved snapshot, with the
+# plant data its run used, in a separate copy of this page and stops here.
+from ui.bmo.snapshot_panel import render_mode_gate  # noqa: E402
+from utils.bmo.replay import record_provider  # noqa: E402
+
+render_mode_gate(prefix="bmo_")
+
 
 _resource_cache = st.cache_resource
 _data_cache = st.cache_data
@@ -2774,7 +2781,9 @@ def _selected_ores_from_editor(
 
 apply_bmo_styles()
 bmo_cfg = _get_bmo_config()
-provider = _get_context_provider()
+# Recorded so a snapshot can freeze the plant data each run used; the wrapper
+# returns exactly what the provider returns.
+provider = record_provider(_get_context_provider(), prefix="bmo_")
 model_service = _get_model_service()
 bundle_status = model_service.get_bundle_status()
 st.session_state["bmo_bundle_status"] = bundle_status
