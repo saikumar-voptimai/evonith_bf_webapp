@@ -24,7 +24,7 @@ load_dotenv()
 
 
 # ==========================================================
-# 🔹 LLM CONFIGURATION
+#  LLM CONFIGURATION
 # ==========================================================
 
 
@@ -53,6 +53,34 @@ def normalize_openrouter_reasoning_level(value: str | None) -> str:
     normalized = str(value or "").strip().lower()
     return _REASONING_LEVEL_ALIASES.get(normalized, "Medium")
 
+
+def _parse_int_env(name: str, default: int) -> int:
+    """Return an integer environment value, falling back on invalid input."""
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _parse_float_env(name: str, default: float) -> float:
+    """Return a float environment value, falling back on invalid input."""
+    try:
+        return float(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _parse_bool_env(name: str, default: bool) -> bool:
+    """Return a boolean environment value, falling back on invalid input."""
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return bool(default)
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    return bool(default)
 
 
 def _env_first(*names: str) -> str | None:
@@ -120,7 +148,7 @@ class OpenAILLMConfig:
         base_url:   Optional custom base URL (e.g. for Azure OpenAI).
         model_name: Model identifier (e.g. ``gpt-4o-mini``).
         max_tokens: Maximum completion tokens to request.
-        api_mode:   Which API surface to use — ``"responses"`` or
+        api_mode:   Which API surface to use - ``"responses"`` or
                     ``"chat_completions"``.
     """
 
@@ -136,7 +164,7 @@ class LLMSettings:
     """Top-level LLM provider selection and per-provider config.
 
     Attributes:
-        provider:   Active provider — ``"openrouter"`` or ``"openai"``.
+        provider:   Active provider - ``"openrouter"`` or ``"openai"``.
         openrouter: :class:`OpenRouterLLMConfig` for the OpenRouter gateway.
         openai:     :class:`OpenAILLMConfig` for the OpenAI API.
     """
@@ -151,7 +179,7 @@ class LLMSettings:
 
 
 # ==========================================================
-# 🔹 VECTOR DATABASE CONFIG
+#  VECTOR DATABASE CONFIG
 # ==========================================================
 
 
@@ -175,7 +203,7 @@ class QdrantConfig:
 
 
 # ==========================================================
-# 🔹 APPLICATION CONFIG
+#  APPLICATION CONFIG
 # ==========================================================
 
 
@@ -214,8 +242,146 @@ class SemanticMemoryConfig:
 
 
 # ==========================================================
-# 🔹 SETTINGS LOADER
+#  SETTINGS LOADER
 # ==========================================================
+
+
+_WEB_SEARCH_PROVIDER_ALIASES = {
+    "ddg": "duckduckgo",
+    "duck-duck-go": "duckduckgo",
+    "duck_duck_go": "duckduckgo",
+    "fire_crawl": "firecrawl",
+    "searx": "searxng",
+    "serpent": "serper",
+    "whoogle-search": "whoogle",
+    "whoogle_search": "whoogle",
+}
+
+_WEB_SEARCH_PROVIDER_CONFIG = {
+    "brave": {
+        "endpoint": "https://api.search.brave.com/res/v1/web/search",
+        "endpoint_envs": ("BRAVE_SEARCH_ENDPOINT",),
+        "api_key_envs": ("BRAVE_SEARCH_API_KEY",),
+    },
+    "tavily": {
+        "endpoint": "https://api.tavily.com/search",
+        "endpoint_envs": ("TAVILY_SEARCH_ENDPOINT", "TAVILY_ENDPOINT"),
+        "api_key_envs": ("TAVILY_API_KEY", "TAVILY_SEARCH_API_KEY"),
+    },
+    "exa": {
+        "endpoint": "https://api.exa.ai/search",
+        "endpoint_envs": ("EXA_SEARCH_ENDPOINT", "EXA_ENDPOINT"),
+        "api_key_envs": ("EXA_API_KEY", "EXA_SEARCH_API_KEY"),
+    },
+    "parallel": {
+        "endpoint": "https://api.parallel.ai/v1/search",
+        "endpoint_envs": ("PARALLEL_SEARCH_ENDPOINT", "PARALLEL_ENDPOINT"),
+        "api_key_envs": ("PARALLEL_API_KEY", "PARALLEL_SEARCH_API_KEY"),
+    },
+    "firecrawl": {
+        "endpoint": "https://api.firecrawl.dev/v2/search",
+        "endpoint_envs": ("FIRECRAWL_SEARCH_ENDPOINT", "FIRECRAWL_ENDPOINT"),
+        "api_key_envs": ("FIRECRAWL_API_KEY",),
+    },
+    "serper": {
+        "endpoint": "https://google.serper.dev/search",
+        "endpoint_envs": ("SERPER_SEARCH_ENDPOINT", "SERPER_ENDPOINT"),
+        "api_key_envs": ("SERPER_API_KEY",),
+    },
+    "duckduckgo": {
+        "endpoint": "https://html.duckduckgo.com/html/",
+        "endpoint_envs": ("DUCKDUCKGO_SEARCH_ENDPOINT", "DUCKDUCKGO_ENDPOINT"),
+        "api_key_envs": (),
+    },
+    "searxng": {
+        "endpoint": "",
+        "endpoint_envs": ("SEARXNG_SEARCH_ENDPOINT", "SEARXNG_ENDPOINT"),
+        "api_key_envs": ("SEARXNG_API_KEY",),
+    },
+    "whoogle": {
+        "endpoint": "",
+        "endpoint_envs": ("WHOOGLE_SEARCH_ENDPOINT", "WHOOGLE_ENDPOINT"),
+        "api_key_envs": ("WHOOGLE_API_KEY",),
+    },
+    "yacy": {
+        "endpoint": "",
+        "endpoint_envs": ("YACY_SEARCH_ENDPOINT", "YACY_ENDPOINT"),
+        "api_key_envs": ("YACY_API_KEY",),
+    },
+}
+
+
+def normalize_web_search_provider_name(provider: str | None) -> str:
+    """Return the canonical registry name for a configured search provider."""
+    normalized = str(provider or "").strip().lower()
+    return _WEB_SEARCH_PROVIDER_ALIASES.get(normalized, normalized)
+
+
+def _first_configured_environment_value(names: tuple[str, ...]) -> str | None:
+    """Return the first non-empty value from an ordered env-var list."""
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value.strip():
+            return value.strip()
+    return None
+
+
+@dataclass(frozen=True)
+class WebSearchConfig:
+    """Configuration for the provider-neutral FurnaceMind web search tool.
+
+    Attributes:
+        provider: Canonical search provider name. Supported adapters are Brave,
+            Tavily, Exa, Parallel, Firecrawl, Serper, DuckDuckGo, SearXNG,
+            Whoogle, and YaCy.
+        api_key: Provider API key. The generic ``WEB_SEARCH_API_KEY`` is
+            supported along with provider-specific environment variables.
+        endpoint: Provider web-search endpoint. Hosted providers have defaults;
+            self-hosted SearXNG, Whoogle, and YaCy deployments must configure it.
+        max_results: Maximum results returned to the model per search.
+        timeout_seconds: HTTP timeout for one provider request.
+        max_retries: Number of retry attempts after the initial request fails.
+        max_requests_per_session: Maximum logical searches allowed in one
+            Streamlit browser session.
+    """
+
+    provider: str = "brave"
+    api_key: str | None = None
+    endpoint: str = "https://api.search.brave.com/res/v1/web/search"
+    max_results: int = 5
+    timeout_seconds: float = 10.0
+    max_retries: int = 2
+    max_requests_per_session: int = 5
+
+
+@dataclass(frozen=True)
+class WebScrapeConfig:
+    """Configuration for approved external-page ingestion.
+
+    Search is a chat-time tool and does not persist anything. Scraping is a
+    separate background/admin ingestion path that intentionally adds approved
+    public pages to the shared FurnaceMind knowledge base. Jina Reader converts
+    public pages into readable Markdown before the existing MRAG chunking and
+    embedding pipeline stores them.
+
+    Attributes:
+        provider: Reader provider name. The first implementation supports
+            ``"jina_reader"``.
+        api_key: Optional Jina Reader API key.
+        endpoint: Jina Reader endpoint used to fetch readable page content.
+        timeout_seconds: HTTP timeout for one reader request.
+        max_retries: Number of retry attempts after the initial request fails.
+        max_chars: Maximum characters retained from one scraped page.
+        ingest_enabled: Whether chat/tool-triggered ingestion is allowed.
+    """
+
+    provider: str = "jina_reader"
+    api_key: str | None = None
+    endpoint: str = "https://r.jina.ai"
+    timeout_seconds: float = 20.0
+    max_retries: int = 2
+    max_chars: int = 200_000
+    ingest_enabled: bool = False
 
 
 class Settings:
@@ -227,9 +393,9 @@ class Settings:
 
     Two Qdrant targets are supported:
 
-    * ``qdrant_shift`` — 384-dim local embeddings, shift summary store.
-    * ``qdrant_knowledge`` — 1024-dim cloud embeddings, Knowledge Hub.
-    * ``qdrant_skills`` — 1024-dim cloud embeddings, skill retrieval index.
+    * ``qdrant_shift`` - 384-dim local embeddings, shift summary store.
+    * ``qdrant_knowledge`` - 1024-dim cloud embeddings, Knowledge Hub.
+    * ``qdrant_skills`` - 1024-dim cloud embeddings, skill retrieval index.
 
     The ``qdrant`` attribute is an alias for ``qdrant_shift`` for backward
     compatibility with existing call-sites.
@@ -243,6 +409,10 @@ class Settings:
         app:               :class:`AppConfig` general runtime settings.
         memory_summary_message_window: Number of chat messages per memory summary.
         memory_summary_token_limit:    Maximum requested memory summary tokens.
+        web_search:                    Provider, timeout, retry, and result-limit
+                                       config for external web search.
+        web_scrape:                    Provider, timeout, retry, and size-limit
+                                       config for external knowledge ingestion.
     """
 
     def __init__(self) -> None:
@@ -298,6 +468,8 @@ class Settings:
             os.getenv("MEMORY_SUMMARY_TOKEN_LIMIT", 2000)
         )
         self.semantic_memory = self._load_semantic_memory_config()
+        self.web_search = self._load_web_search_config()
+        self.web_scrape = self._load_web_scrape_config()
         self._validate()
 
     # ------------------------------------------------------
@@ -516,6 +688,85 @@ class Settings:
             search_threshold=threshold,
         )
 
+    @staticmethod
+    def _load_web_search_config() -> WebSearchConfig:
+        """Build web-search settings from environment variables.
+
+        Provider-specific credentials and endpoints take precedence over the
+        generic ``WEB_SEARCH_API_KEY`` and ``WEB_SEARCH_ENDPOINT`` values. A
+        missing key or self-hosted endpoint is allowed at startup because web
+        search is optional; the selected adapter reports a graceful unavailable
+        message if the user later enables it.
+        """
+        configured_provider = os.getenv("WEB_SEARCH_PROVIDER", "brave")
+        provider = normalize_web_search_provider_name(configured_provider) or "brave"
+        generic_endpoint = os.getenv("WEB_SEARCH_ENDPOINT", "").strip()
+        generic_api_key = (os.getenv("WEB_SEARCH_API_KEY") or "").strip() or None
+        provider_config = _WEB_SEARCH_PROVIDER_CONFIG.get(provider, {})
+        endpoint = (
+            _first_configured_environment_value(
+                provider_config.get("endpoint_envs", ())
+            )
+            or generic_endpoint
+            or str(provider_config.get("endpoint", ""))
+        ).strip()
+        api_key = (
+            _first_configured_environment_value(provider_config.get("api_key_envs", ()))
+            or generic_api_key
+        )
+        max_results = _parse_int_env("WEB_SEARCH_MAX_RESULTS", 5)
+        timeout_seconds = _parse_float_env("WEB_SEARCH_TIMEOUT_SECONDS", 10.0)
+        max_retries = _parse_int_env("WEB_SEARCH_MAX_RETRIES", 2)
+        max_requests_per_session = _parse_int_env(
+            "WEB_SEARCH_MAX_REQUESTS_PER_SESSION", 5
+        )
+
+        return WebSearchConfig(
+            provider=provider,
+            api_key=api_key,
+            endpoint=endpoint,
+            max_results=max(1, min(max_results, 10)),
+            timeout_seconds=max(1.0, timeout_seconds),
+            max_retries=max(0, max_retries),
+            max_requests_per_session=max(1, max_requests_per_session),
+        )
+
+    @staticmethod
+    def _load_web_scrape_config() -> WebScrapeConfig:
+        """Build external knowledge scrape settings from environment variables.
+
+        Scrape ingestion uses Jina Reader to convert public pages into Markdown
+        before storing them as shared FurnaceMind knowledge. The API key is
+        optional so local testing can still return graceful unavailable messages
+        instead of failing application startup.
+        """
+        provider = (
+            os.getenv("WEB_SCRAPE_PROVIDER", "jina_reader").strip().lower()
+            or "jina_reader"
+        )
+        endpoint = os.getenv(
+            "JINA_READER_ENDPOINT",
+            os.getenv("WEB_SCRAPE_ENDPOINT", "https://r.jina.ai"),
+        ).strip()
+        api_key = (
+            os.getenv("JINA_READER_API_KEY")
+            or os.getenv("JINA_API_KEY")
+            or os.getenv("WEB_SCRAPE_API_KEY")
+        )
+        timeout_seconds = _parse_float_env("WEB_SCRAPE_TIMEOUT_SECONDS", 20.0)
+        max_retries = _parse_int_env("WEB_SCRAPE_MAX_RETRIES", 2)
+        max_chars = _parse_int_env("WEB_SCRAPE_MAX_CHARS", 200_000)
+        ingest_enabled = _parse_bool_env("WEB_SCRAPE_INGEST_ENABLED", False)
+        return WebScrapeConfig(
+            provider=provider,
+            api_key=api_key,
+            endpoint=endpoint or "https://r.jina.ai",
+            timeout_seconds=max(1.0, timeout_seconds),
+            max_retries=max(0, max_retries),
+            max_chars=max(1_000, max_chars),
+            ingest_enabled=ingest_enabled,
+        )
+
     # ------------------------------------------------------
     # VALIDATION
     # ------------------------------------------------------
@@ -540,7 +791,7 @@ class Settings:
 
 
 # ==========================================================
-# 🔹 SINGLETON INSTANCE
+#  SINGLETON INSTANCE
 # ==========================================================
 
 settings = Settings()
