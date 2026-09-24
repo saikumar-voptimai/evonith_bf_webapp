@@ -62,6 +62,8 @@ PERSISTED_FUEL_ASH_NUMERIC_COLUMNS = (
 
 PERSISTED_FUEL_ASH_TEXT_COLUMNS = ("rate_basis", "mn_basis", "ti_basis")
 
+FUEL_PRICE_IDS = ("coke", "nut_coke", "pci")
+
 PERSISTED_DUST_NUMERIC_COLUMNS = (
     "wet_qty_mt",
     "quantity_kg_per_charge",
@@ -325,6 +327,23 @@ def apply_fuel_ash_preferences(
     return out
 
 
+def build_fuel_price_preferences(editor_df: pd.DataFrame) -> dict[str, Any]:
+    """Build a price-only Fuel Ash preference payload."""
+
+    if editor_df.empty or "fuel_id" not in editor_df.columns:
+        return {"fuel_ash_editor": {"rows": {}}}
+
+    rows: dict[str, dict[str, float]] = {}
+    for _, row in editor_df.iterrows():
+        fuel_id = str(row.get("fuel_id", "")).strip().lower()
+        if fuel_id not in FUEL_PRICE_IDS:
+            continue
+        price = _float_or_none(row.get("price_rs_per_mt"))
+        if price is not None:
+            rows[fuel_id] = {"price_rs_per_mt": max(0.0, price)}
+    return {"fuel_ash_editor": {"rows": rows}}
+
+
 def build_dust_preferences(editor_df: pd.DataFrame) -> dict[str, Any]:
     """Build persisted BF Gas Dust rows keyed by stable dust id."""
 
@@ -423,6 +442,25 @@ def save_fuel_ash_preferences(path: str | Path, fuel_ash_df: pd.DataFrame) -> Pa
     pref_path.parent.mkdir(parents=True, exist_ok=True)
     payload = load_ore_editor_preferences(pref_path)
     payload.update(build_fuel_ash_preferences(fuel_ash_df))
+    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
+        yaml.safe_dump(payload, file, sort_keys=False)
+    return pref_path
+
+
+def save_fuel_price_preferences(path: str | Path, fuel_ash_df: pd.DataFrame) -> Path:
+    """Persist only fuel prices, preserving saved rates and chemistry."""
+
+    pref_path = Path(path)
+    pref_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = load_ore_editor_preferences(pref_path)
+    fuel_section = payload.setdefault("fuel_ash_editor", {})
+    saved_rows = fuel_section.setdefault("rows", {})
+    price_rows = build_fuel_price_preferences(fuel_ash_df)["fuel_ash_editor"][
+        "rows"
+    ]
+    for fuel_id, price_values in price_rows.items():
+        saved_row = saved_rows.setdefault(fuel_id, {})
+        saved_row.update(price_values)
     with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
         yaml.safe_dump(payload, file, sort_keys=False)
     return pref_path

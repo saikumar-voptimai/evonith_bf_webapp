@@ -16,12 +16,14 @@ from data.bmo.ore_editor_preferences import (
     apply_ore_editor_preferences,
     build_dust_preferences,
     build_fuel_ash_preferences,
+    build_fuel_price_preferences,
     build_flux_preferences,
     build_model_input_preferences,
     build_ore_editor_preferences,
     load_ore_editor_preferences,
     save_dust_preferences,
     save_fuel_ash_preferences,
+    save_fuel_price_preferences,
     save_flux_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
@@ -710,7 +712,7 @@ def test_apply_fuel_prices_changes_only_the_three_price_cells() -> None:
     ]
 
 
-def test_fuel_price_inputs_are_collapsed_and_keyed_for_snapshots(monkeypatch) -> None:
+def test_fuel_price_inputs_are_vertical_and_keyed_for_snapshots(monkeypatch) -> None:
     captured: dict[str, object] = {"inputs": []}
     entered = {
         "bmo_fuel_price_coke_rs_per_mt": 31000.0,
@@ -718,21 +720,13 @@ def test_fuel_price_inputs_are_collapsed_and_keyed_for_snapshots(monkeypatch) ->
         "bmo_fuel_price_pci_rs_per_mt": 19500.0,
     }
 
-    class FakeColumn:
-        def number_input(self, _label, **kwargs):
-            captured["inputs"].append(kwargs)
-            return entered[kwargs["key"]]
-
     class FakeStreamlit:
-        def expander(self, label, *, expanded):
-            captured["expander"] = (label, expanded)
-            return _FakeLayout()
-
         def caption(self, text):
             captured["caption"] = text
 
-        def columns(self, count):
-            return [FakeColumn() for _ in range(int(count))]
+        def number_input(self, label, **kwargs):
+            captured["inputs"].append((label, kwargs))
+            return entered[kwargs["key"]]
 
     original = pd.DataFrame(
         [
@@ -757,13 +751,75 @@ def test_fuel_price_inputs_are_collapsed_and_keyed_for_snapshots(monkeypatch) ->
 
     updated = components.render_fuel_price_inputs(original)
 
-    assert captured["expander"] == ("Fuel prices", False)
-    assert {item["key"] for item in captured["inputs"]} == set(entered)
+    labels_and_kwargs = captured["inputs"]
+    assert [label for label, _kwargs in labels_and_kwargs] == [
+        "Coke (Rs/MT)",
+        "Nut coke (Rs/MT)",
+        "PCI (Rs/MT)",
+    ]
+    assert {kwargs["key"] for _label, kwargs in labels_and_kwargs} == set(entered)
     assert updated["price_rs_per_mt"].tolist() == [31000.0, 22500.0, 19500.0]
     assert (
         updated["rate_kg_per_thm"].tolist()
         == original["rate_kg_per_thm"].tolist()
     )
+
+
+def test_fuel_price_preferences_contain_prices_only() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "fuel_id": "coke",
+                "price_rs_per_mt": 31000.0,
+                "rate_kg_per_thm": 340.0,
+                "ash_pct": 11.5,
+            },
+            {
+                "fuel_id": "nut_coke",
+                "price_rs_per_mt": 22500.0,
+                "rate_kg_per_thm": 85.0,
+                "ash_pct": 12.0,
+            },
+            {
+                "fuel_id": "pci",
+                "price_rs_per_mt": 19500.0,
+                "rate_kg_per_thm": 150.0,
+                "ash_pct": 9.0,
+            },
+        ]
+    )
+
+    payload = build_fuel_price_preferences(frame)
+
+    assert payload == {
+        "fuel_ash_editor": {
+            "rows": {
+                "coke": {"price_rs_per_mt": 31000.0},
+                "nut_coke": {"price_rs_per_mt": 22500.0},
+                "pci": {"price_rs_per_mt": 19500.0},
+            }
+        }
+    }
+
+
+def test_fuel_price_save_preserves_rates_chemistry_and_other_sections(tmp_path) -> None:
+    path = tmp_path / "prefs.yml"
+    save_flux_preferences(path, _flux_df())
+    save_fuel_ash_preferences(path, _fuel_ash_df())
+    changed_price = _fuel_ash_df()
+    changed_price.loc[0, "price_rs_per_mt"] = 31500.0
+    changed_price.loc[0, "rate_kg_per_thm"] = 999.0
+    changed_price.loc[0, "ash_pct"] = 99.0
+
+    save_fuel_price_preferences(path, changed_price)
+    loaded = load_ore_editor_preferences(path)
+    coke = loaded["fuel_ash_editor"]["rows"]["coke"]
+
+    assert coke["price_rs_per_mt"] == 31500.0
+    assert coke["rate_kg_per_thm"] == 340.0
+    assert coke["ash_pct"] == 11.5
+    assert coke["vm_pct"] == 0.9
+    assert loaded["flux_editor"]["rows"]["dolomite"]["stock_mt"] == 450.0
 
 
 def _dust_df():

@@ -35,6 +35,7 @@ from data.bmo.ore_editor_preferences import (
     load_ore_editor_preferences,
     save_dust_preferences,
     save_fuel_ash_preferences,
+    save_fuel_price_preferences,
     save_flux_preferences,
     save_hm_chemistry_preferences,
     save_model_input_preferences,
@@ -45,10 +46,12 @@ from domain.optimization_runtime import build_runtime_config
 from ui.streamlit_fragments import fragment, rerun_fragment
 from ui.bmo import (
     apply_bmo_styles,
+    apply_fuel_prices,
     build_dust_editor_df,
     build_flux_editor_df,
     build_fuel_ash_editor_df,
     build_ore_editor_df,
+    fuel_prices_from_editor,
     render_blend_metrics,
     render_blend_table,
     render_coke_correction_breakdown,
@@ -3355,39 +3358,24 @@ else:
     edited_flux_df = flux_editor_source_df
 flux_inputs = flux_inputs_from_editor(edited_flux_df)
 
-with st.expander("Hot Metal Chemistry Assumptions", expanded=False):
-    with st.form("bmo_assumption_input_form", clear_on_submit=False):
-        hm_chem_values = render_hot_metal_chemistry(
-            hm_snapshot,
-            apply_hm_chemistry_preferences(
-                bmo_cfg.get("slag_balance", {}) or {}, operator_preferences
-            ),
+_hm_chem_defaults = apply_hm_chemistry_preferences(
+    bmo_cfg.get("slag_balance", {}) or {}, operator_preferences
+)
+_hm_widget_keys = {
+    "carbon_pct": "bmo_hm_carbon_pct",
+    "silicon_pct": "bmo_hm_silicon_pct",
+    "sulphur_pct": "bmo_hm_sulphur_pct",
+    "other_pct": "bmo_hm_other_pct",
+}
+hm_chem_values: dict[str, float] = {}
+for _hm_field, _hm_widget_key in _hm_widget_keys.items():
+    _hm_default = float(_hm_chem_defaults.get(_hm_field, 0.0) or 0.0)
+    try:
+        hm_chem_values[_hm_field] = float(
+            st.session_state.get(_hm_widget_key, _hm_default)
         )
-        hm_apply_col, hm_save_col = st.columns(2)
-        assumptions_applied = _form_submit_button(
-            hm_apply_col,
-            "Apply Assumptions",
-            type="primary",
-            width="stretch",
-        )
-        assumptions_saved = _form_submit_button(
-            hm_save_col,
-            "Save for Later",
-            type="secondary",
-            width="stretch",
-        )
-if assumptions_applied or assumptions_saved:
-    _clear_bmo_results()
-    if assumptions_saved:
-        try:
-            saved_path = save_hm_chemistry_preferences(
-                operator_preferences_path, hm_chem_values
-            )
-            st.success(f"Hot metal chemistry saved to {saved_path}.")
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not save hot metal chemistry: {exc}")
-    else:
-        st.success("Assumptions applied.")
+    except (TypeError, ValueError):
+        hm_chem_values[_hm_field] = _hm_default
 
 selected_ores = _selected_ores_from_editor(edited_df, ores)
 pellet_input_issues = validate_selected_pellet_inputs(
@@ -3418,13 +3406,6 @@ if visible_data_warnings:
         + "\n- ".join(visible_data_warnings[:5])
     )
 
-_render_data_diagnostics(
-    provider,
-    ore_diagnostics=ore_diagnostics,
-    hm_snapshot=hm_snapshot,
-    edited_ore_df=edited_df,
-    expanded=bool(visible_data_warnings),
-)
 
 fuel_ash_base_df = apply_fuel_ash_preferences(
     build_fuel_ash_editor_df(
@@ -3522,29 +3503,18 @@ else:
         fuel_ash_editor_source_df, recent_fuel_rates
     )
     _render_pinned_fuel_rates(edited_fuel_ash_df, recent_fuel_rates)
-if not show_fuel_ash_editor:
-    edited_fuel_ash_df = render_fuel_price_inputs(
-        edited_fuel_ash_df, key_prefix="bmo_"
+_fuel_price_defaults = fuel_prices_from_editor(edited_fuel_ash_df)
+_fuel_price_values = {
+    fuel_id: float(
+        st.session_state.get(
+            f"bmo_fuel_price_{fuel_id}_rs_per_mt", default_price
+        )
     )
-
-_fuel_price_state = tuple(
-    (
-        str(row.get("fuel_id", "")).strip().lower(),
-        float(row.get("price_rs_per_mt", 0.0) or 0.0),
-    )
-    for _, row in edited_fuel_ash_df.iterrows()
-    if (
-        str(row.get("fuel_id", "")).strip().lower()
-        in {"coke", "nut_coke", "pci"}
-    )
+    for fuel_id, default_price in _fuel_price_defaults.items()
+}
+edited_fuel_ash_df = apply_fuel_prices(
+    edited_fuel_ash_df, _fuel_price_values
 )
-if st.session_state.get("bmo_ui_fuel_price_state_last") != _fuel_price_state:
-    if st.session_state.get("bmo_ui_fuel_price_state_last") is not None:
-        _clear_bmo_results()
-    st.session_state["bmo_ui_fuel_price_state_last"] = _fuel_price_state
-
-fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
-
 dust_base_df = apply_dust_preferences(
     build_dust_editor_df(bmo_cfg.get("dust_inputs", [])), operator_preferences
 )
@@ -3632,28 +3602,31 @@ _DE_SEED_LABELS = {
     "random": "Random start (ignore the LP)",
 }
 
-# --- Fuel-rate overrides, immediately above the buttons that consume them ----------
+# --- Fuel planning controls, immediately above the buttons that consume them --------
 _live_pci_tag = float(_live_process_snapshot().get("coal_rate_actual_value") or 0.0)
 if "bmo_nut_coke_override_kg" not in st.session_state:
     st.session_state["bmo_nut_coke_override_kg"] = (
         DEFAULT_NUT_COKE_RATE_KG_PER_THM
     )
 
-with st.container(border=True):
-    st.markdown("##### Fuel rate overrides")
-    _pci_panel, _nut_coke_panel = st.columns(2)
+fuel_prices_applied = False
+fuel_prices_saved = False
+with st.expander("Fuel rates and prices", expanded=False):
+    _fuel_rate_col, _fuel_price_col = st.columns(
+        [1.15, 0.85], gap="large", vertical_alignment="top"
+    )
 
-    with _pci_panel:
-        st.markdown("**PCI**")
+    with _fuel_rate_col:
+        st.markdown("**Fuel rate overrides**")
         _pci_toggle_col, _pci_value_col = st.columns(
-            [1, 2], vertical_alignment="center"
+            [0.85, 1.4], vertical_alignment="center"
         )
         _pci_on = _pci_toggle_col.toggle(
-            "Override",
+            "PCI override",
             key="bmo_pci_override_on",
             help=(
-                "Off: the live plant tag is used. On: the entered rate is used "
-                "for the coke rate, slag balance and fuel cost."
+                "Off: use the live plant tag. On: use the entered rate for the "
+                "coke rate, slag balance and fuel cost."
             ),
         )
         if _pci_on:
@@ -3664,43 +3637,34 @@ with st.container(border=True):
                 step=5.0,
                 key="bmo_pci_override_kg",
                 help=(
-                    f"Clamped to 0-{ANCHOR_HIGH_PCI:g}. Outside "
-                    f"{MODEL_PCI_MIN:g}-{MODEL_PCI_MAX:g}, the coke rate is "
-                    "interpolated to a fixed operating anchor."
+                    f"Outside {MODEL_PCI_MIN:g}-{MODEL_PCI_MAX:g} kg/THM, "
+                    "the coke rate uses an operating-anchor interpolation."
                 ),
             )
             _pci_now = float(st.session_state.get("bmo_pci_override_kg") or 0.0)
             if _live_pci_tag > 0.0:
                 st.caption(
-                    f"Live tag: **{_live_pci_tag:,.1f}** kg/THM; override delta: "
-                    f"**{_pci_now - _live_pci_tag:+,.1f}**."
+                    f"Live: {_live_pci_tag:,.1f}; delta: "
+                    f"{_pci_now - _live_pci_tag:+,.1f} kg/THM."
                 )
-            if MODEL_PCI_MIN <= _pci_now <= MODEL_PCI_MAX:
-                st.caption(
-                    f"Inside the modelled band ({MODEL_PCI_MIN:g}-"
-                    f"{MODEL_PCI_MAX:g} kg/THM)."
-                )
-            else:
+            if not MODEL_PCI_MIN <= _pci_now <= MODEL_PCI_MAX:
                 st.warning(
-                    f"Outside {MODEL_PCI_MIN:g}-{MODEL_PCI_MAX:g} kg/THM. "
-                    "The coke-rate estimate uses an operating-anchor "
-                    "interpolation."
+                    f"Outside the modelled {MODEL_PCI_MIN:g}-"
+                    f"{MODEL_PCI_MAX:g} kg/THM band."
                 )
         else:
-            _pci_value_col.metric("Live tag", f"{_live_pci_tag:,.1f} kg/THM")
-            st.caption("Switch the override on to plan a different injection rate.")
+            _pci_value_col.metric("Live PCI", f"{_live_pci_tag:,.1f} kg/THM")
 
-    with _nut_coke_panel:
-        st.markdown("**Nut coke**")
+        st.divider()
         _nut_toggle_col, _nut_value_col = st.columns(
-            [1, 2], vertical_alignment="center"
+            [0.85, 1.4], vertical_alignment="center"
         )
         _nut_coke_on = _nut_toggle_col.toggle(
-            "Override",
+            "Nut-coke override",
             key="bmo_nut_coke_override_on",
             help=(
-                "Off: use the fixed 70 kg/THM plant set point. On: use the "
-                "entered rate for charging, slag, energy balance and fuel cost."
+                "Off: use the fixed 70 kg/THM set point. On: use the entered "
+                "rate for charging, slag, energy balance and fuel cost."
             ),
         )
         if _nut_coke_on:
@@ -3717,18 +3681,69 @@ with st.container(border=True):
                 else _nut_coke_value
             )
             st.caption(
-                f"Fixed set point: **{DEFAULT_NUT_COKE_RATE_KG_PER_THM:,.1f}** "
-                f"kg/THM; override delta: "
-                f"**{_nut_coke_now - DEFAULT_NUT_COKE_RATE_KG_PER_THM:+,.1f}**."
+                f"Fixed: {DEFAULT_NUT_COKE_RATE_KG_PER_THM:,.1f}; delta: "
+                f"{_nut_coke_now - DEFAULT_NUT_COKE_RATE_KG_PER_THM:+,.1f} "
+                "kg/THM."
             )
         else:
             _nut_value_col.metric(
-                "Fixed set point",
+                "Fixed nut coke",
                 f"{DEFAULT_NUT_COKE_RATE_KG_PER_THM:,.1f} kg/THM",
             )
-            st.caption(
-                "Switch the override on to plan a different nut-coke rate."
+
+    with _fuel_price_col:
+        st.markdown("**Fuel prices**")
+        with st.form("bmo_fuel_price_form", clear_on_submit=False):
+            edited_fuel_price_candidate_df = render_fuel_price_inputs(
+                edited_fuel_ash_df, key_prefix="bmo_"
             )
+            _price_apply_col, _price_save_col = st.columns(2)
+            fuel_prices_applied = _form_submit_button(
+                _price_apply_col,
+                "Apply",
+                type="primary",
+                width="stretch",
+                key="bmo_ui_apply_fuel_prices",
+                on_click=_clear_bmo_results,
+            )
+            fuel_prices_saved = _form_submit_button(
+                _price_save_col,
+                "Save",
+                type="secondary",
+                width="stretch",
+                key="bmo_ui_save_fuel_prices",
+                on_click=_clear_bmo_results,
+                help="Save these prices as the defaults for future sessions.",
+            )
+
+edited_fuel_ash_df = edited_fuel_price_candidate_df.copy()
+if fuel_prices_applied or fuel_prices_saved:
+    if fuel_prices_saved:
+        try:
+            saved_path = save_fuel_price_preferences(
+                operator_preferences_path, edited_fuel_ash_df
+            )
+            st.success(f"Fuel prices saved to {saved_path}.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not save fuel prices: {exc}")
+    else:
+        st.success("Fuel prices applied.")
+
+_fuel_price_state = tuple(
+    (
+        str(row.get("fuel_id", "")).strip().lower(),
+        float(row.get("price_rs_per_mt", 0.0) or 0.0),
+    )
+    for _, row in edited_fuel_ash_df.iterrows()
+    if (
+        str(row.get("fuel_id", "")).strip().lower()
+        in {"coke", "nut_coke", "pci"}
+    )
+)
+if st.session_state.get("bmo_ui_fuel_price_state_last") != _fuel_price_state:
+    if st.session_state.get("bmo_ui_fuel_price_state_last") is not None:
+        _clear_bmo_results()
+    st.session_state["bmo_ui_fuel_price_state_last"] = _fuel_price_state
 
 # Results computed against different rates are stale, so clear them on a change.
 _fuel_rate_state = (
@@ -3742,6 +3757,7 @@ if st.session_state.get("bmo_pci_state_last") != _fuel_rate_state:
         _clear_bmo_results()
     st.session_state["bmo_pci_state_last"] = _fuel_rate_state
 
+fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
 run_lp_clicked = False
 run_total_clicked = False
 with st.form("bmo_run_form", clear_on_submit=False):
@@ -4410,6 +4426,49 @@ if lp_result is not None or de_result is not None:
         production_target_mt=target_production_mt,
     )
 
+st.markdown("### Diagnostics and assumptions")
+with st.expander("Hot Metal Chemistry Assumptions", expanded=False):
+    with st.form("bmo_assumption_input_form", clear_on_submit=False):
+        rendered_hm_chem_values = render_hot_metal_chemistry(
+            hm_snapshot, _hm_chem_defaults
+        )
+        hm_apply_col, hm_save_col = st.columns(2)
+        assumptions_applied = _form_submit_button(
+            hm_apply_col,
+            "Apply Assumptions",
+            type="primary",
+            width="stretch",
+            key="bmo_ui_apply_hm_assumptions",
+            on_click=_clear_bmo_results,
+        )
+        assumptions_saved = _form_submit_button(
+            hm_save_col,
+            "Save for Later",
+            type="secondary",
+            width="stretch",
+            key="bmo_ui_save_hm_assumptions",
+            on_click=_clear_bmo_results,
+        )
+if assumptions_applied or assumptions_saved:
+    hm_chem_values = rendered_hm_chem_values
+    if assumptions_saved:
+        try:
+            saved_path = save_hm_chemistry_preferences(
+                operator_preferences_path, hm_chem_values
+            )
+            st.success(f"Hot metal chemistry saved to {saved_path}.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not save hot metal chemistry: {exc}")
+    else:
+        st.success("Assumptions applied.")
+
+_render_data_diagnostics(
+    provider,
+    ore_diagnostics=ore_diagnostics,
+    hm_snapshot=hm_snapshot,
+    edited_ore_df=edited_df,
+    expanded=bool(visible_data_warnings),
+)
 render_diagnostics(de_result or lp_result, ore_diagnostics)
 
 # Snapshots. Inside TestBMO this prefix arrives as "testbmo_" (utils/bmo/sandbox.py).

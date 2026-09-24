@@ -360,10 +360,34 @@ def apply_fuel_prices(
     return out
 
 
+def fuel_prices_from_editor(editor_df: pd.DataFrame) -> dict[str, float]:
+    """Return current per-MT prices for the three operator-facing fuels."""
+
+    prices = {
+        fuel_id: float(ASSUMED_FUEL_PRICES_RS_PER_KG.get(fuel_id, 0.0)) * 1000.0
+        for fuel_id in _FUEL_PRICE_LABELS
+    }
+    if (
+        editor_df.empty
+        or "fuel_id" not in editor_df.columns
+        or "price_rs_per_mt" not in editor_df.columns
+    ):
+        return prices
+
+    ids = editor_df["fuel_id"].astype(str).str.strip().str.lower()
+    for fuel_id in _FUEL_PRICE_LABELS:
+        values = pd.to_numeric(
+            editor_df.loc[ids == fuel_id, "price_rs_per_mt"], errors="coerce"
+        ).dropna()
+        if not values.empty:
+            prices[fuel_id] = max(0.0, float(values.iloc[0]))
+    return prices
+
+
 def render_fuel_price_inputs(
     editor_df: pd.DataFrame, *, key_prefix: str = "bmo_"
 ) -> pd.DataFrame:
-    """Render collapsed operator price controls and apply them to fuel rows."""
+    """Render vertically stacked operator prices and apply them to fuel rows."""
 
     if (
         editor_df.empty
@@ -372,37 +396,23 @@ def render_fuel_price_inputs(
     ):
         return editor_df
 
-    ids = editor_df["fuel_id"].astype(str).str.strip().str.lower()
-    defaults: dict[str, float] = {}
-    for fuel_id in _FUEL_PRICE_LABELS:
-        values = pd.to_numeric(
-            editor_df.loc[ids == fuel_id, "price_rs_per_mt"], errors="coerce"
-        ).dropna()
-        fallback = (
-            float(ASSUMED_FUEL_PRICES_RS_PER_KG.get(fuel_id, 0.0)) * 1000.0
-        )
-        defaults[fuel_id] = (
-            max(0.0, float(values.iloc[0])) if not values.empty else fallback
-        )
-
+    defaults = fuel_prices_from_editor(editor_df)
     entered: dict[str, float] = {}
-    with st.expander("Fuel prices", expanded=False):
-        st.caption(
-            "These prices are used for the operator-facing fuel cost and do not "
-            "change fuel chemistry or the optimizer's trained baseline objective."
-        )
-        columns = st.columns(len(_FUEL_PRICE_LABELS))
-        for column, (fuel_id, label) in zip(columns, _FUEL_PRICE_LABELS.items()):
-            entered[fuel_id] = float(
-                column.number_input(
-                    f"{label} (Rs/MT)",
-                    min_value=0.0,
-                    value=defaults[fuel_id],
-                    step=500.0,
-                    format="%.0f",
-                    key=f"{key_prefix}fuel_price_{fuel_id}_rs_per_mt",
-                )
+    st.caption(
+        "Used for the operator-facing fuel cost; the trained optimizer objective "
+        "retains its baseline-price basis."
+    )
+    for fuel_id, label in _FUEL_PRICE_LABELS.items():
+        entered[fuel_id] = float(
+            st.number_input(
+                f"{label} (Rs/MT)",
+                min_value=0.0,
+                value=defaults[fuel_id],
+                step=500.0,
+                format="%.0f",
+                key=f"{key_prefix}fuel_price_{fuel_id}_rs_per_mt",
             )
+        )
     return apply_fuel_prices(editor_df, entered)
 
 
