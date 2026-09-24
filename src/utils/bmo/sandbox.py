@@ -40,13 +40,17 @@ import importlib
 import re
 import types
 from pathlib import Path
+from typing import Any, Mapping
 
 SRC = Path(__file__).resolve().parents[2]
 BMO_PAGE = SRC / "custom_pages" / "9_Blend_Optimizer.py"
 
 LIVE_PREFIX = "bmo_"
 SANDBOX_PREFIX = "testbmo_"
-_KEY_SHAPED = re.compile(r"^bmo_[A-Za-z0-9_]*$")
+# Session keys, widget keys and form ids: ``bmo_...``, and the page's private
+# ``_bmo_...`` keys (its per-session source-data cache among them - left shared,
+# the sandbox would read the live page's cached plant data instead of its own).
+_KEY_SHAPED = re.compile(r"^_?bmo_[A-Za-z0-9_]*$")
 
 # Keys the snapshot panel and the TestBMO loader create for their own widgets.
 # They are UI chrome, not optimiser state, and are never captured or restored.
@@ -61,13 +65,20 @@ NON_WRITABLE_WIDGETS = frozenset({
 })
 
 # Our own modules: they hold prefixes as data, and must never be renamed.
-_OWN_FILES = frozenset({"sandbox.py", "snapshot.py", "snapshot_store.py",
+_OWN_FILES = frozenset({"sandbox.py", "snapshot.py", "snapshot_store.py", "replay.py",
                         "snapshot_report.py", "snapshot_panel.py"})
 _SCANNED_PACKAGES = ("ui", "utils", "data", "domain")
 
 
 def is_key_shaped(text: str) -> bool:
     return bool(_KEY_SHAPED.match(text))
+
+
+def sandbox_name(key: str) -> str:
+    """``bmo_x`` -> ``testbmo_x``; ``_bmo_x`` -> ``_testbmo_x``."""
+
+    lead = "_" if key.startswith("_") else ""
+    return lead + SANDBOX_PREFIX + key[len(lead) + len(LIVE_PREFIX):]
 
 
 class _PrefixRenamer(ast.NodeTransformer):
@@ -79,9 +90,7 @@ class _PrefixRenamer(ast.NodeTransformer):
     def visit_Constant(self, node: ast.Constant) -> ast.AST:  # noqa: N802
         if isinstance(node.value, str) and is_key_shaped(node.value):
             self.renamed += 1
-            return ast.copy_location(
-                ast.Constant(SANDBOX_PREFIX + node.value[len(LIVE_PREFIX):]), node
-            )
+            return ast.copy_location(ast.Constant(sandbox_name(node.value)), node)
         return node
 
 
@@ -210,8 +219,16 @@ def compile_sandbox_page() -> tuple[object, int, tuple[str, ...]]:
     return code, count, swapped
 
 
-def run_sandbox_page() -> None:
-    """Execute the renamed page. Streamlit stop/rerun exceptions propagate as usual."""
+def run_sandbox_page(substitutes: Mapping[str, Any] | None = None) -> None:
+    """Execute the renamed page. Streamlit stop/rerun exceptions propagate as usual.
+
+    Args:
+         - substitutes: Mapping | None - Name -> function(original) -> replacement
+           for top-level names the page defines (``utils/bmo/replay.py``). This is
+           how the frozen plant data of a snapshot replaces the page's live sources.
+    """
+
+    from utils.bmo.replay import PageNamespace
 
     code, sandbox_builtins, _count, _swapped = _sandbox(_stamp())
     namespace = {
@@ -220,7 +237,9 @@ def run_sandbox_page() -> None:
         "__file__": str(BMO_PAGE),
         "__builtins__": sandbox_builtins,
     }
-    exec(code, namespace)  # noqa: S102 - our own page source, see module docstring
+    # Top-level names go through ``PageNamespace`` into ``namespace``, so the
+    # page's functions (whose globals ARE ``namespace``) see the substitutions.
+    exec(code, namespace, PageNamespace(namespace, substitutes or {}))  # noqa: S102
 
 
 # --- which keys may be restored ----------------------------------------------------
