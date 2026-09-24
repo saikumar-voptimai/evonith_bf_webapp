@@ -475,7 +475,12 @@ def test_sandbox_page_has_no_live_keys_left():
     assert "testbmo_lp_result" in strings
     assert "_testbmo_source_cache" in strings  # the page's private source cache too
     assert "testbmo_" in strings  # the panel/gate prefix argument
-    assert swapped == ("ui.bmo.components", "data.bmo.context_provider")
+    assert swapped == (
+        "ui.bmo.commentary",
+        "ui.bmo.components",
+        "ui.bmo.model_accuracy",
+        "data.bmo.context_provider",
+    )
 
 
 def test_file_names_are_not_renamed():
@@ -488,7 +493,9 @@ def test_file_names_are_not_renamed():
 
 def test_helper_modules_found_by_scan():
     assert sandbox.helper_modules_with_keys() == [
+        "ui.bmo.commentary",
         "ui.bmo.components",
+        "ui.bmo.model_accuracy",
         "data.bmo.context_provider",
     ]
 
