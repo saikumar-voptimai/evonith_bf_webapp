@@ -1,28 +1,18 @@
 """Rolling bias correction for the energy balance's coke rate.
 
-WHY THIS EXISTS.
+The calibration target is the plant's measured hourly coke rate: 1,000 times
+``COKE_CALC_MT`` divided by hot-metal tonnes in the same hour, mass-weighted
+across each complete day. A target-basis identifier is persisted with every
+offset so a value fitted to an older definition can never be applied silently.
 
-The energy balance predicts the coke rate with the right SHAPE but the wrong
-LEVEL. Backtested over 239 days (scripts/coke_rate_backtest.py):
+WHY AN OFFSET AND NOT A FITTED MODEL. The offset has one parameter, is directly
+inspectable, and does not introduce feature coefficients that can fight the
+physics it is correcting. It also shrinks to nothing as underlying balance
+defects are fixed.
 
-    physics, untouched              bias +19.7 kg/tHM   MAPE 7.24%   R2 +0.07
-    physics + rolling 90-day offset bias   +0.2         MAPE 3.37%   R2 +0.74
-
-R2 0.07 is barely better than predicting the mean, so the raw figure cannot be
-put in front of an operator. One number fixes it.
-
-WHY AN OFFSET AND NOT A FITTED MODEL. A residual model on nine features scored
-marginally better (MAPE 3.16%), but its coefficients fight the physics - it
-wanted -18.8 kg of coke per % of silicon, against a balance that already carries
-silicon reduction at 24.6 MJ/kg. A correction that argues with the model it is
-correcting is patching, not calibrating. The offset has one parameter, is
-inspectable, and shrinks to nothing as the underlying defects get fixed.
-
-WHY ROLLING AND NOT CONSTANT. The bias drifts - +16.0, +16.9, +22.4, +23.8
-kg/tHM across four quarters - because it is produced by the shell-loss basis and
-the top-gas analyser under-read, both of which move. A fixed offset decays. A
-90-day window tracks the drift while staying long enough to average out daily
-noise; 14 and 30-day windows were also tested and were slightly worse.
+WHY ROLLING AND NOT CONSTANT. The shell-loss basis, burden and analyser state
+all move over time. A 90-day window is long enough to average daily noise while
+allowing the level correction to be refreshed as those conditions change.
 
 WHAT THIS IS NOT. It is a bias correction, not a fix. When the analyser and
 shell-loss questions come back from the plant, the offset should shrink toward
@@ -43,22 +33,14 @@ CALIBRATION_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "coke_rate_calibration.json"
 )
 DEFAULT_WINDOW_DAYS = 90
-# STALENESS IS EXPENSIVE, far more than first assumed. Measured over 281 days
-# (scripts/coke_calibration_cadence.py), holding a calibration without refitting:
-#
-#     held for     MAE   MAPE%      R2
-#         0 d     13.9    4.59   +0.428
-#        30 d     18.9    6.34   +0.054
-#        60 d     27.7    9.29   -0.820
-#        90 d     33.0   11.12   -1.232
-#
-# A month of neglect wipes out almost all the predictive value; a quarter makes
-# the correction worse than useless. The first version of this file said 45 days
-# on an assumed drift of "~2 kg/tHM per quarter" - the real drift is 3.3 kg/tHM
-# per MONTH. Warn early and often.
+ACTUAL_COKE_TARGET_BASIS = "hourly_coke_calc_mt_per_hot_metal_v1"
+LEGACY_COKE_TARGET_BASIS = "legacy_daily_charge_per_dpr_hot_metal"
+# Keep the operational warning conservative. Performance statistics from the
+# former charge-report/DPR target are not evidence for the new measured basis
+# and must not be quoted as though they were.
 STALE_AFTER_DAYS = 14
 # A day whose residual sits this far from the window median is a data problem -
-# a mis-keyed charge report or a blowdown - not a bias to calibrate against.
+# a historian gap or a blowdown - not a bias to calibrate against.
 OUTLIER_SIGMA = 3.0
 
 
@@ -74,13 +56,18 @@ class CokeCalibration:
     first_day: str = ""
     last_day: str = ""
     outliers_dropped: int = 0
+    target_basis: str = ACTUAL_COKE_TARGET_BASIS
     notes: list[str] = field(default_factory=list)
 
     @property
     def is_usable(self) -> bool:
         """Enough days, and a spread that is not itself nonsense."""
 
-        return self.sample_days >= 20 and self.residual_sd_kg_per_thm < 60.0
+        return (
+            self.target_basis == ACTUAL_COKE_TARGET_BASIS
+            and self.sample_days >= 20
+            and self.residual_sd_kg_per_thm < 60.0
+        )
 
     def age_days(self, today: date | None = None) -> int | None:
         """Days since the offset was fitted, or None if it was never fitted."""
@@ -108,8 +95,7 @@ class CokeCalibration:
 NO_CALIBRATION = CokeCalibration(
     offset_kg_per_thm=0.0, sample_days=0, residual_sd_kg_per_thm=0.0,
     window_days=DEFAULT_WINDOW_DAYS,
-    notes=["no calibration on file - the raw energy balance figure is shown, "
-           "and it runs about 20 kg/tHM high"],
+    notes=["no calibration on file for the measured plant coke-rate basis"],
 )
 
 
@@ -128,7 +114,7 @@ def fit_offset(
 
     Args:
          - predicted: Sequence[float] - Energy-balance coke rate per day.
-         - actual: Sequence[float] - Charge-report coke rate for the same days.
+         - actual: Sequence[float] - Measured plant coke rate for the same days.
          - window_days: int - Recorded for provenance; the caller does the
            windowing.
          - days: Sequence[Any] | None - Day labels, used only for reporting.
@@ -197,6 +183,7 @@ def save_calibration(
         "first_day": calibration.first_day,
         "last_day": calibration.last_day,
         "outliers_dropped": calibration.outliers_dropped,
+        "target_basis": calibration.target_basis,
         "notes": list(calibration.notes),
     }
     tmp = target.with_suffix(".tmp")
@@ -220,6 +207,13 @@ def load_calibration(path: Path | str | None = None) -> CokeCalibration:
     except (json.JSONDecodeError, OSError):
         return NO_CALIBRATION
     try:
+        target_basis = str(raw.get("target_basis", LEGACY_COKE_TARGET_BASIS))
+        notes = list(raw.get("notes", []) or [])
+        if target_basis != ACTUAL_COKE_TARGET_BASIS:
+            notes.append(
+                "stored offset used the previous coke-rate definition; refit "
+                "against hourly COKE_CALC_MT per hot-metal tonne"
+            )
         return CokeCalibration(
             offset_kg_per_thm=float(raw["offset_kg_per_thm"]),
             sample_days=int(raw.get("sample_days", 0)),
@@ -229,7 +223,8 @@ def load_calibration(path: Path | str | None = None) -> CokeCalibration:
             first_day=str(raw.get("first_day", "")),
             last_day=str(raw.get("last_day", "")),
             outliers_dropped=int(raw.get("outliers_dropped", 0)),
-            notes=list(raw.get("notes", []) or []),
+            target_basis=target_basis,
+            notes=notes,
         )
     except (KeyError, TypeError, ValueError):
         return NO_CALIBRATION

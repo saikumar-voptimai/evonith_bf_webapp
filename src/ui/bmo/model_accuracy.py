@@ -12,17 +12,9 @@ The retrain control lives here for the same reason. Refitting the offset is
 only sensible when you can see what it is being fitted to, and the effect of a
 refit shows up immediately in the chart beneath it.
 
-WHY REFITTING IS NOT OPTIONAL. Measured over 281 days, letting a calibration
-sit without refitting:
-
-    held for     MAE   MAPE%      R2
-        0 d     13.9    4.59   +0.428
-       30 d     18.9    6.34   +0.054
-       90 d     33.0   11.12   -1.232
-
-At ninety days the correction is worse than applying none at all. The bias drifts
-about 3.3 kg/THM per month, which is why the button warns after fourteen days
-rather than after a quarter.
+The measured target is built from paired hourly COKE_CALC_MT and hot-metal
+production. Only complete days enter the offset; the current partial day is
+still shown by the live BMO rate but cannot distort calibration.
 """
 
 from __future__ import annotations
@@ -190,17 +182,19 @@ def render_retrain_control() -> None:
     left, right = st.columns([3, 1], vertical_alignment="center")
     with left:
         if calib is NO_CALIBRATION or not calib.is_usable:
+            detail = " ".join(calib.notes or [])
             st.warning(
-                "**No usable calibration on file.** The energy balance runs about "
-                "20 kg/THM high uncorrected, so the fuel cost is falling back to "
-                "the observed coke rate. Refit to switch the physics anchor on."
+                "**No usable calibration for the measured plant coke-rate "
+                "basis.** Fuel cost is falling back to the observed coke rate. "
+                "Refit to switch the physics anchor on."
+                + (f" {detail}" if detail else "")
             )
         elif calib.is_stale():
             st.warning(
                 f"**Offset is {calib.offset_kg_per_thm:+,.1f} kg/THM, fitted "
-                f"{age} days ago.** The bias drifts about 3.3 kg/THM a month, so "
-                "this one is past its useful life — refit before trusting the "
-                "coke rate."
+                f"{age} days ago.** It is past the conservative refresh window "
+                "— refit it against the latest measured plant coke rate before "
+                "trusting the correction."
             )
         else:
             st.success(
@@ -214,7 +208,7 @@ def render_retrain_control() -> None:
         clicked = st.button(
             "🔄 Retrain on last 90 days",
             width="stretch",
-            type="primary" if (calib is NO_CALIBRATION or calib.is_stale()) else
+            type="primary" if (not calib.is_usable or calib.is_stale()) else
             "secondary",
             help="Rebuilds the daily history from the plant record and refits "
                  "the bias offset over the trailing 90 days. Takes a minute or "
@@ -291,7 +285,10 @@ def render_coke_accuracy(days: int = HISTORY_DAYS) -> None:
     # The chart shows what the page actually reports, which is the corrected
     # figure. The raw series is kept alongside so the offset's size is visible
     # rather than merely stated.
-    work["corrected"] = work["predicted_coke"] - calib.offset_kg_per_thm
+    work["corrected"] = (
+        work["predicted_coke"] - calib.offset_kg_per_thm
+        if calib.is_usable else work["predicted_coke"]
+    )
     paired = work[["corrected", "actual_coke"]].replace(
         [np.inf, -np.inf], np.nan
     ).dropna()
@@ -302,7 +299,11 @@ def render_coke_accuracy(days: int = HISTORY_DAYS) -> None:
     fig = _paired_chart(
         work.dropna(subset=["corrected", "actual_coke"]),
         predicted_col="corrected", actual_col="actual_coke",
-        title="Coke rate — energy balance + offset vs charge reports",
+        title=(
+            "Coke rate - energy balance + offset vs measured plant rate"
+            if calib.is_usable
+            else "Coke rate - uncorrected energy balance vs measured plant rate"
+        ),
         unit="kg/THM",
         # The band is the error MEASURED ON THIS CHART, not the sd recorded when
         # the calibration was fitted. Those two can differ — the fit drops
@@ -313,13 +314,19 @@ def render_coke_accuracy(days: int = HISTORY_DAYS) -> None:
     st.plotly_chart(fig, width="stretch")
 
     st.caption(
-        "Measured is the coke actually charged, from the daily charge reports — "
-        "not the operator's setpoint, which runs about 4% below it. Predicted is "
-        "the closed energy balance solved at each day's own PCI, nut coke, blast "
-        "and burden, less the bias offset. Both are on the same day, so a gap is "
-        "a real disagreement and not a lag. **The scores above are for this "
-        "window only** and will not match the figures quoted from the 239-day "
-        "backtest; a quiet quarter scores better than a disturbed one."
+        "Measured is 1,000 x hourly COKE_CALC_MT / hourly hot-metal tonnes, "
+        "mass-weighted across each complete day. It is not the operator's "
+        "setpoint. Predicted is the closed energy balance solved at each day's "
+        "own PCI, nut coke, blast and burden, "
+        + (
+            "less the bias offset. "
+            if calib.is_usable
+            else "with no offset because no compatible calibration is active. "
+        )
+        + "Both are on "
+        "the same day, so a gap is a real disagreement and not a lag. **The "
+        "scores above are for this "
+        "window only**; a quiet quarter can score better than a disturbed one."
     )
 
     with st.expander("The raw balance, before the offset", expanded=False):
@@ -375,8 +382,8 @@ def _render_control_context(frame: pd.DataFrame) -> None:
         st.plotly_chart(fig, width="stretch")
         st.caption(
             "The setpoint is the operator's instruction, not a measurement — it "
-            "sits flat for days and then steps. What was actually charged "
-            "(the blue line above) runs about 4% above it."
+            "sits flat for days and then steps. The measured plant coke rate is "
+            "the blue line in the accuracy chart above."
         )
 
 

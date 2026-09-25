@@ -2,14 +2,9 @@
 
 Run:  python scripts/refresh_coke_calibration.py [window_days]
 
-Run this MONTHLY. The bias drifts about 2 kg/tHM per quarter, so a stale
-calibration costs roughly that much in the coke rate shown to operators.
-
-The energy balance predicts the coke rate with the right shape but the wrong
-level - +19.7 kg/tHM over 239 days, drifting quarter to quarter because the
-shell-loss basis and the top-gas analyser under-read both move. A single rolling
-offset takes MAPE from 7.24% to 3.37%. See scripts/coke_rate_backtest.py for the
-full comparison, including the alternatives that were rejected.
+The target is the same measured plant rate used by the BMO accuracy panel:
+1,000 times hourly COKE_CALC_MT divided by paired hourly hot-metal tonnes,
+mass-weighted over each complete day.
 
 WHAT TO WATCH. The offset is a standing measure of how much the balance is still
 missing. When the analyser and shell-loss questions are resolved it should
@@ -24,7 +19,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
@@ -34,39 +28,25 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(REPO / ".env")
 
-import energy_balance_phase0 as eb  # noqa: E402
-from coke_rate_backtest import build_inputs  # noqa: E402
-from energy_balance_day_audit import daily_dust  # noqa: E402
 from utils.bmo.coke_calibration import (  # noqa: E402
     DEFAULT_WINDOW_DAYS,
     fit_offset,
     save_calibration,
 )
-from utils.energy_balance.constants import load_config  # noqa: E402
-from utils.energy_balance.solve import solve_coke_rate_kg_per_thm  # noqa: E402
-
-# The backtest picked this: it reproduces the measured coke rate to +0.7% while
-# the flow-scaled basis overshoots by 11%. See findings doc section 5 - the
-# choice between them is still an open question for the plant.
-SHELL_BASIS = "stave"
+from utils.bmo.coke_history import build_daily_history  # noqa: E402
 
 
 def main() -> None:
     window = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_WINDOW_DAYS
 
-    print(f"building daily history and solving the balance (window {window} days)...")
-    df = eb.build().join(daily_dust(), how="left").sort_index()
-    cfg = load_config()
-
-    predicted = []
-    for _, row in df.iterrows():
-        try:
-            predicted.append(
-                solve_coke_rate_kg_per_thm(build_inputs(row, SHELL_BASIS), cfg)
-            )
-        except Exception:  # noqa: BLE001 - a failed day is simply not usable
-            predicted.append(np.nan)
-    df["predicted"] = predicted
+    print(f"building measured daily history (window {window} days)...")
+    history = build_daily_history(max(120, window + 30))
+    for warning in history.warnings:
+        print(f"  WARNING         {warning}")
+    df = history.frame.rename(columns={
+        "predicted_coke": "predicted",
+        "actual_coke": "coke_rate",
+    })
 
     usable = df[["predicted", "coke_rate"]].replace(
         [np.inf, -np.inf], np.nan
@@ -88,6 +68,7 @@ def main() -> None:
     print(f"  OFFSET          {calibration.offset_kg_per_thm:+.1f} kg/tHM"
           "   <- subtracted from the raw balance figure")
     print(f"  residual sd     {calibration.residual_sd_kg_per_thm:.1f} kg/tHM")
+    print(f"  target basis    {calibration.target_basis}")
     print(f"  usable          {calibration.is_usable}")
     for note in calibration.notes:
         print(f"  NOTE            {note}")
@@ -97,8 +78,7 @@ def main() -> None:
     raw_err = recent["predicted"] - recent["coke_rate"]
     print(f"\n  in-window MAPE  {(raw_err.abs()/recent['coke_rate']).mean()*100:5.2f}%"
           f"  ->  {(err.abs()/recent['coke_rate']).mean()*100:5.2f}%")
-    print("  (in-window, so flattering by construction - the honest forward")
-    print("   number is 3.37% from scripts/coke_rate_backtest.py)")
+    print("  (in-window, so descriptive rather than a forward validation score)")
 
     print("\n  TREND - is the balance getting better or worse?")
     usable = usable.copy()

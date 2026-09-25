@@ -13,9 +13,9 @@ The BMO fuel cost used to start from one of two places, and neither was good:
                  and it carries whatever the operator last typed.
 
 This module supplies a third: solve the closed energy balance at the CURRENT
-controls and the CURRENT burden, then subtract the rolling bias offset. That is
-the methodology backtested in ``coke_calibration.py`` - MAPE 3.4%, R2 0.74
-forward - and it is the level the whole fuel cost then sits on.
+controls and the CURRENT burden, then subtract the rolling bias offset fitted
+against the measured plant coke-rate basis. That is the level the whole fuel
+cost then sits on.
 
 WHAT THIS DOES NOT DO.
 
@@ -75,6 +75,7 @@ class EnergyAnchor:
             "offset_kg_per_thm": self.offset_kg_per_thm,
             "calibration_days": self.calibration.sample_days,
             "calibration_fitted_on": self.calibration.fitted_on,
+            "calibration_target_basis": self.calibration.target_basis,
             "usable": self.usable,
             "notes": list(self.notes),
         }
@@ -188,18 +189,16 @@ def solve_energy_anchor(
 
     notes: list[str] = []
     if not calib.is_usable:
-        # Without an offset the raw balance runs ~20 kg/THM high, which is a
-        # 550 Rs/THM error in the fuel cost. Better to say so and fall back.
         return EnergyAnchor(
             coke_rate_kg_thm=raw, raw_coke_rate_kg_thm=raw, calibration=calib,
             notes=[*calib.notes,
-                   "no usable calibration - the raw balance runs about 20 kg/THM "
-                   "high, so it is not used as the cost anchor"],
+                   "no usable calibration for the measured plant coke-rate "
+                   "basis, so the raw balance is not used as the cost anchor"],
         )
     if calib.is_stale():
         notes.append(
-            f"calibration is {calib.age_days()} days old; the bias drifts about "
-            "3.3 kg/THM per month, so refit it"
+            f"calibration is {calib.age_days()} days old; refit it against the "
+            "latest measured plant coke rate"
         )
 
     return EnergyAnchor(

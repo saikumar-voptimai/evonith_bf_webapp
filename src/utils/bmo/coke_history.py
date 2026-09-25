@@ -15,25 +15,16 @@ WHAT "PREDICTED" MEANS FOR EACH.
 
 Coke rate comes from inverting the energy balance: given the burden actually
 charged, the blast actually blown and the PCI actually injected, what coke rate
-closes the heat balance? It uses NO knowledge of the coke actually charged, so
-comparing it against the charge reports is a fair test.
+closes the heat balance? It uses NO knowledge of the measured plant coke rate,
+so comparing it against COKE_CALC_MT per tonne of hourly hot metal is a fair
+test.
 
 Silicon comes from the shipped Si model bundle, scored on the historical feature
 rows it was trained to consume.
 
-WHY THE CALIBRATION MUST BE REFRESHED OFTEN.
-
-The energy balance has the right shape and the wrong level, and the level drifts
-by about 3.3 kg/tHM per month. Measured over 281 days
-(scripts/coke_calibration_cadence.py):
-
-    held for     MAE   MAPE%      R2
-        0 d     13.9    4.59   +0.428
-       30 d     18.9    6.34   +0.054
-       90 d     33.0   11.12   -1.232
-
-A quarter-old calibration is worse than no calibration at all, which is why the
-page refreshes automatically rather than waiting to be asked.
+The calibration is deliberately refreshable because burden, analyser and heat-
+loss conditions move. Accuracy for the new measured target is shown directly
+on the page rather than inherited from the former charge-report/DPR benchmark.
 """
 
 from __future__ import annotations
@@ -84,6 +75,10 @@ _TOP_TEMP_CANDIDATES = (
     "TOP TEMPERATUREOC", "TOP_TEMP_AVG", "top_temp_avg", "FTG_UPTAKE_TEMP_AVG",
 )
 _DEFAULT_TOP_TEMP_C = 140.0
+# A daily calibration point must represent substantially the whole day. The
+# current partial day and days with long historian gaps are deliberately left
+# out so their low mass totals cannot move the offset.
+MIN_PAIRED_HOURS_PER_DAY = 24
 
 
 @dataclass
@@ -105,6 +100,47 @@ def _window(days: int) -> tuple[datetime, datetime]:
 
     end = datetime.now(timezone.utc)
     return end - timedelta(days=days + 2), end
+
+
+def _daily_measured_coke_rate(frame: pd.DataFrame) -> pd.DataFrame:
+    """Mass-weight the hourly plant coke rate across each complete day.
+
+    The plant measurement is defined on each paired hour as
+    ``1000 * COKE_CALC_MT / PRODUCTIONTONNESPERHR``. Summing both masses before
+    division is the equivalent production-weighted daily aggregation; taking
+    a simple mean of hourly rates would overweight low-production hours.
+    """
+
+    columns = ["COKE_CALC_MT", "PRODUCTIONTONNESPERHR"]
+    if frame.empty or any(column not in frame.columns for column in columns):
+        return pd.DataFrame(columns=["actual_coke", "actual_coke_hours"])
+
+    paired = pd.DataFrame(
+        {
+            "coke_mt": pd.to_numeric(frame["COKE_CALC_MT"], errors="coerce"),
+            "hot_metal_mt": pd.to_numeric(
+                frame["PRODUCTIONTONNESPERHR"], errors="coerce"
+            ),
+        },
+        index=frame.index,
+    ).dropna()
+    paired = paired[(paired["coke_mt"] > 0.0) & (paired["hot_metal_mt"] > 0.0)]
+    if paired.empty:
+        return pd.DataFrame(columns=["actual_coke", "actual_coke_hours"])
+
+    daily = paired.resample("1D").agg(
+        coke_mt=("coke_mt", "sum"),
+        hot_metal_mt=("hot_metal_mt", "sum"),
+        actual_coke_hours=("coke_mt", "count"),
+    )
+    daily["actual_coke"] = (
+        1000.0 * daily["coke_mt"] / daily["hot_metal_mt"]
+    )
+    daily.loc[
+        daily["actual_coke_hours"] < MIN_PAIRED_HOURS_PER_DAY, "actual_coke"
+    ] = np.nan
+    daily.index = pd.to_datetime(daily.index.tz_localize(None).date)
+    return daily[["actual_coke", "actual_coke_hours"]]
 
 
 def _static_daily(days: int) -> tuple[pd.DataFrame, list[str]]:
@@ -147,18 +183,24 @@ def _static_daily(days: int) -> tuple[pd.DataFrame, list[str]]:
             f"top gas temperature absent; assumed {_DEFAULT_TOP_TEMP_C:.0f} C"
         )
 
+    measured = _daily_measured_coke_rate(frame)
+    if measured.empty:
+        warnings.append(
+            "measured coke rate unavailable: COKE_CALC_MT and paired hourly "
+            "hot-metal production are required"
+        )
+    elif measured["actual_coke"].notna().sum() == 0:
+        warnings.append("measured coke rate has no complete paired days")
+
     daily = out.resample("1D").mean(numeric_only=True)
     daily.index = pd.to_datetime(daily.index.date)
+    daily = daily.join(measured, how="left")
     cutoff = daily.index.max() - pd.Timedelta(days=days)
     return daily[daily.index >= cutoff], warnings
 
 
 def _charge_daily(days: int) -> pd.DataFrame:
-    """Charged tonnes per day from the charge reports.
-
-    Charge reports, not DPR: DPR under-reports coke by about 13%, and the static
-    CSV's COKE_CALC_MT correlates only +0.16 with actual dumps.
-    """
+    """Daily burden and fuel tonnes used as inputs to the energy balance."""
 
     from furnace_data.offline import fetch_offline_data
 
@@ -332,7 +374,8 @@ def build_daily_history(days: int = 120) -> HistoryResult:
         rows.append({
             "date": when,
             "predicted_coke": predicted,
-            "actual_coke": f("coke_mt") / hm * 1000.0,
+            "actual_coke": f("actual_coke", np.nan),
+            "actual_coke_hours": f("actual_coke_hours", 0.0),
             "actual_si": f("hm_silicon_pct", np.nan),
             "pci_kg_thm": f("pci_mt") / hm * 1000.0,
             "nut_coke_kg_thm": f("nut_coke_mt") / hm * 1000.0,
@@ -372,5 +415,6 @@ def refit_calibration(days: int = 120, window: int = 90):
         days=[d.date().isoformat() if hasattr(d, "date") else str(d)
               for d in recent.index],
     )
-    save_calibration(calibration)
+    if calibration.is_usable:
+        save_calibration(calibration)
     return calibration, history

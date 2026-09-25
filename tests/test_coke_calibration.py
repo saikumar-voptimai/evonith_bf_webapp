@@ -1,11 +1,8 @@
 """The rolling bias correction on the energy balance's coke rate.
 
-The balance predicts coke with the right shape and the wrong level - +19.7
-kg/tHM over 239 days, MAPE 7.24%, R2 0.07. One rolling offset takes that to
-MAPE 3.37%, R2 0.74 forward. These tests pin the behaviour that makes the
-correction safe to put in front of an operator: it must be inspectable, it must
-degrade to a no-op rather than to a wrong number, and it must never quietly
-hide a growing problem.
+These tests pin the behaviour that makes the correction safe to put in front
+of an operator: it must be tied to the measured target definition, inspectable,
+and degrade to a no-op rather than silently applying an incompatible offset.
 """
 
 from __future__ import annotations
@@ -16,6 +13,8 @@ from datetime import date
 import pytest
 
 from utils.bmo.coke_calibration import (
+    ACTUAL_COKE_TARGET_BASIS,
+    LEGACY_COKE_TARGET_BASIS,
     NO_CALIBRATION,
     CokeCalibration,
     fit_offset,
@@ -162,13 +161,7 @@ def test_a_recent_calibration_is_not_stale():
 
 
 def test_two_weeks_old_is_already_stale():
-    """The threshold is 14 days, and that is evidence-based, not a guess.
-
-    Measured over 281 days: a calibration held 30 days takes R2 from +0.43 to
-    +0.05, and held 90 days to -1.23 - worse than applying no correction. An
-    earlier version of this file warned at 45 days, on an assumed drift of
-    2 kg/tHM per quarter. The real figure is 3.3 kg/tHM per month.
-    """
+    """The conservative refresh warning starts after fourteen days."""
 
     c = CokeCalibration(offset_kg_per_thm=20.0, sample_days=90,
                         residual_sd_kg_per_thm=10.0, window_days=90,
@@ -178,7 +171,7 @@ def test_two_weeks_old_is_already_stale():
 
 
 def test_an_old_calibration_is_stale():
-    """At 3.3 kg/tHM per month of drift, a months-old offset is worse than none."""
+    """A months-old offset must be called out for refresh."""
 
     c = CokeCalibration(offset_kg_per_thm=20.0, sample_days=90,
                         residual_sd_kg_per_thm=10.0, window_days=90,
@@ -208,6 +201,24 @@ def test_it_survives_a_save_and_load(tmp_path):
     assert loaded.offset_kg_per_thm == pytest.approx(original.offset_kg_per_thm)
     assert loaded.sample_days == original.sample_days
     assert loaded.first_day == "2026-05-05"
+    assert loaded.target_basis == ACTUAL_COKE_TARGET_BASIS
+
+
+def test_a_legacy_offset_is_not_applied_to_the_new_measured_basis(tmp_path):
+    path = tmp_path / "calibration.json"
+    path.write_text(json.dumps({
+        "offset_kg_per_thm": 22.0,
+        "sample_days": 90,
+        "residual_sd_kg_per_thm": 10.0,
+        "window_days": 90,
+    }))
+
+    loaded = load_calibration(path)
+
+    assert loaded.target_basis == LEGACY_COKE_TARGET_BASIS
+    assert not loaded.is_usable
+    assert loaded.apply(320.0) == 320.0
+    assert any("refit" in note for note in loaded.notes)
 
 
 def test_the_shipped_calibration_is_sane_if_present():
@@ -216,8 +227,9 @@ def test_the_shipped_calibration_is_sane_if_present():
     c = load_calibration()
     if c is NO_CALIBRATION:
         pytest.skip("no calibration committed")
+    if not c.is_usable:
+        pytest.skip("stored calibration requires refitting on the current basis")
 
-    # The measured bias has run +12 to +25 kg/tHM. Far outside that band means
-    # the refresh picked up bad data.
+    assert c.target_basis == ACTUAL_COKE_TARGET_BASIS
     assert 0.0 < c.offset_kg_per_thm < 60.0
     assert c.sample_days >= 20

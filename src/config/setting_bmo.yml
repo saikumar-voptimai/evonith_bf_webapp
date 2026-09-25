@@ -377,10 +377,9 @@ bmo:
   #
   # energy_balance (current): solve the closed energy balance at the CURRENT
   # controls and burden, then subtract the rolling bias offset fitted on recent
-  # plant history. Backtested over 239 days, that is MAPE 3.37% and R2 +0.74
-  # forward, against 7.24% / +0.07 for the raw balance. It is the only one of
-  # the three that responds to what the furnace is actually being asked to do,
-  # rather than reporting yesterday's number or the model's near-constant.
+  # complete days of hourly COKE_CALC_MT per hot-metal tonne. It is the only one
+  # of the three that responds to what the furnace is actually being asked to
+  # do, rather than reporting yesterday's number or the model's near-constant.
   # Falls back to observed when the live tags, the calibration, or the solve
   # are unavailable — see utils/bmo/energy_anchor.py.
   fuel_rate_anchor_basis: energy_balance
