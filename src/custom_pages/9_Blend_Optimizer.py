@@ -208,6 +208,10 @@ def _get_context_provider() -> EvonithBmoContextProvider:
 _STATIC_DATASET_LINK_KEY = "bmo_static_dataset_use_link"
 _STATIC_DATASET_SOURCE_CHANGED_KEY = "_bmo_static_dataset_source_changed"
 _STATIC_DATASET_FORCE_REFRESH_KEY = "_bmo_static_dataset_force_refresh"
+_COKE_ANCHOR_LABELS = {
+    "Energy balance": "energy_balance",
+    "Data-driven XGBoost": "data_driven",
+}
 
 
 def _configured_static_dataset_url(bmo_cfg: dict[str, Any]) -> str:
@@ -228,6 +232,12 @@ def _use_static_dataset_link(bmo_cfg: dict[str, Any]) -> bool:
 
 def _mark_static_dataset_source_changed() -> None:
     """Request a full-page rerun after the fragment-scoped toggle rerun."""
+    st.session_state[_STATIC_DATASET_SOURCE_CHANGED_KEY] = True
+
+
+def _mark_coke_model_changed() -> None:
+    """Clear stale results and request a full rerun after a model change."""
+    _clear_bmo_results()
     st.session_state[_STATIC_DATASET_SOURCE_CHANGED_KEY] = True
 
 
@@ -577,7 +587,33 @@ def _render_static_dataset_bar(
     status = _static_dataset_status(bmo_cfg)
     state = status["state"] if status["exists"] else "missing"
     source_url = _configured_static_dataset_url(bmo_cfg)
-    with st.expander("Data sources", expanded=False):
+    with st.expander("Data and model sources", expanded=False):
+        configured_anchor = str(
+            bmo_cfg.get("fuel_rate_anchor_basis", "energy_balance")
+        )
+        default_anchor_label = (
+            "Data-driven XGBoost"
+            if configured_anchor == "data_driven"
+            else "Energy balance"
+        )
+        st.segmented_control(
+            "Coke-rate model",
+            options=list(_COKE_ANCHOR_LABELS),
+            default=default_anchor_label,
+            key="bmo_coke_rate_model",
+            on_change=_mark_coke_model_changed,
+            help=(
+                "Select the frozen current-state coke anchor. Both choices use "
+                "the same slag, flux-calcination and hot-metal-silicon corrections "
+                "for candidate blends."
+            ),
+        )
+        st.caption(
+            "The XGBoost option predicts coke directly in kg/THM and is independent "
+            "of fuel prices. Fuel cost is calculated afterward using the saved coke, "
+            "nut-coke and PCI prices."
+        )
+        st.divider()
         use_link = st.toggle(
             "Fetch dataset through DATA_URL",
             value=_use_static_dataset_link(bmo_cfg),
@@ -2917,31 +2953,12 @@ if static_refresh_result.get("error") and not static_refresh_result.get("usable"
 _render_static_dataset_bar(bmo_cfg, static_refresh_result)
 
 _configured_anchor = str(bmo_cfg.get("fuel_rate_anchor_basis", "energy_balance"))
-_anchor_labels = {
-    "Energy balance": "energy_balance",
-    "Data-driven XGBoost": "data_driven",
-}
 _default_anchor_label = (
     "Data-driven XGBoost" if _configured_anchor == "data_driven" else "Energy balance"
 )
-selected_anchor_label = st.segmented_control(
-    "Coke-rate model",
-    options=list(_anchor_labels),
-    default=_default_anchor_label,
-    key="bmo_coke_rate_model",
-    on_change=_clear_bmo_results,
-    help=(
-        "Select the frozen current-state coke anchor. Both choices use the same "
-        "slag, flux-calcination and hot-metal-silicon corrections for candidate blends."
-    ),
-)
-fuel_rate_anchor_basis = _anchor_labels.get(
-    str(selected_anchor_label), "energy_balance"
-)
-st.caption(
-    "The XGBoost option predicts coke directly in kg/THM and is independent of "
-    "fuel prices. Fuel cost is calculated afterward using the saved coke, nut-coke "
-    "and PCI prices."
+fuel_rate_anchor_basis = _COKE_ANCHOR_LABELS.get(
+    str(st.session_state.get("bmo_coke_rate_model", _default_anchor_label)),
+    "energy_balance",
 )
 # Bumped by the "Refresh source data" button; keys the cached offline-source
 # reads so they are fetched once per session and reused until the operator asks
