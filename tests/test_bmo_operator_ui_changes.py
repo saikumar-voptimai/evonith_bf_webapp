@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from unittest.mock import mock_open
 
@@ -31,6 +32,48 @@ from data.bmo.ore_editor_preferences import (
 from ui.bmo.components import build_blend_table_df
 from ui.bmo import components
 from utils.bmo.types import BlendEvaluation, OreChemistry, OreInput
+
+
+def test_data_and_model_sources_share_the_full_page_rerun_scope() -> None:
+    page_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "custom_pages"
+        / "9_Blend_Optimizer.py"
+    )
+    tree = ast.parse(page_path.read_text(encoding="utf-8"))
+    renderer = next(
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "_render_static_dataset_bar"
+    )
+
+    assert not any(
+        isinstance(decorator, ast.Name) and decorator.id == "fragment"
+        for decorator in renderer.decorator_list
+    )
+
+    callbacks: dict[str, str] = {}
+    for call in (node for node in ast.walk(renderer) if isinstance(node, ast.Call)):
+        if not (
+            isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "st"
+            and call.func.attr in {"segmented_control", "toggle"}
+        ):
+            continue
+        on_change = next(
+            (keyword.value for keyword in call.keywords if keyword.arg == "on_change"),
+            None,
+        )
+        if isinstance(on_change, ast.Name):
+            callbacks[call.func.attr] = on_change.id
+
+    assert callbacks == {
+        "segmented_control": "_clear_bmo_results",
+        "toggle": "_clear_bmo_results",
+    }
 
 
 def _ore(

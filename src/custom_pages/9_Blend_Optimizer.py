@@ -206,7 +206,6 @@ def _get_context_provider() -> EvonithBmoContextProvider:
 
 
 _STATIC_DATASET_LINK_KEY = "bmo_static_dataset_use_link"
-_STATIC_DATASET_SOURCE_CHANGED_KEY = "_bmo_static_dataset_source_changed"
 _STATIC_DATASET_FORCE_REFRESH_KEY = "_bmo_static_dataset_force_refresh"
 _COKE_ANCHOR_LABELS = {
     "Energy balance": "energy_balance",
@@ -228,17 +227,6 @@ def _use_static_dataset_link(bmo_cfg: dict[str, Any]) -> bool:
     return bool(source_url) and bool(
         st.session_state.get(_STATIC_DATASET_LINK_KEY, True)
     )
-
-
-def _mark_static_dataset_source_changed() -> None:
-    """Request a full-page rerun after the fragment-scoped toggle rerun."""
-    st.session_state[_STATIC_DATASET_SOURCE_CHANGED_KEY] = True
-
-
-def _mark_coke_model_changed() -> None:
-    """Clear stale results and request a full rerun after a model change."""
-    _clear_bmo_results()
-    st.session_state[_STATIC_DATASET_SOURCE_CHANGED_KEY] = True
 
 
 def _static_dataset_manager(bmo_cfg: dict[str, Any]) -> StaticDatasetManager:
@@ -577,13 +565,9 @@ def _refresh_static_dataset_if_needed(
         }
 
 
-@fragment
 def _render_static_dataset_bar(
     bmo_cfg: dict[str, Any], refresh_result: dict[str, Any] | None = None
 ) -> None:
-    if st.session_state.pop(_STATIC_DATASET_SOURCE_CHANGED_KEY, False):
-        st.rerun()
-
     status = _static_dataset_status(bmo_cfg)
     state = status["state"] if status["exists"] else "missing"
     source_url = _configured_static_dataset_url(bmo_cfg)
@@ -601,7 +585,7 @@ def _render_static_dataset_bar(
             options=list(_COKE_ANCHOR_LABELS),
             default=default_anchor_label,
             key="bmo_coke_rate_model",
-            on_change=_mark_coke_model_changed,
+            on_change=_clear_bmo_results,
             help=(
                 "Select the frozen current-state coke anchor. Both choices use "
                 "the same slag, flux-calcination and hot-metal-silicon corrections "
@@ -623,7 +607,7 @@ def _render_static_dataset_bar(
                 "On: download the published furnace CSV. "
                 "Off: rebuild it through the normal database/code pipeline."
             ),
-            on_change=_mark_static_dataset_source_changed,
+            on_change=_clear_bmo_results,
         )
         st.caption(
             "Selected dataset source: "
