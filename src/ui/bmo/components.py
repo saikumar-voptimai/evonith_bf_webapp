@@ -416,7 +416,12 @@ def render_fuel_price_inputs(
     return apply_fuel_prices(editor_df, entered)
 
 
-def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
+def render_fuel_ash_editor(
+    editor_df: pd.DataFrame,
+    *,
+    show_prices: bool = True,
+    rate_editable: bool = True,
+) -> pd.DataFrame:
     """
     Render the editable fuel ash table and return the user's edited values.
 
@@ -427,6 +432,8 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
 
     Args:
          - editor_df: pd.DataFrame - Fuel ash defaults and editable values.
+         - show_prices: bool - Whether the separate operator fuel-price field is shown.
+         - rate_editable: bool - Whether rates can be edited in this chemistry table.
 
     Returns:
          - return pd.DataFrame - Edited fuel ash rows, or original table as fallback.
@@ -435,11 +442,10 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     if editor_df.empty:
         return editor_df
 
-    visible_columns = (
+    visible_columns = [
         "enabled",
         "fuel_name",
         "rate_kg_per_thm",
-        "price_rs_per_mt",
         "moisture_pct",
         "vm_pct",
         "ash_pct",
@@ -455,7 +461,9 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "k2o_pct",
         "s_pct",
         "p_pct",
-    )
+    ]
+    if show_prices:
+        visible_columns.insert(3, "price_rs_per_mt")
     editor_kwargs: dict[str, Any] = {
         "hide_index": True,
         "column_config": {
@@ -463,7 +471,10 @@ def render_fuel_ash_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "fuel_id": st.column_config.TextColumn("Fuel ID", disabled=True),
             "fuel_name": st.column_config.TextColumn("Fuel", disabled=True),
             "rate_kg_per_thm": _two_decimal_number_column(
-                "Rate (kg/THM)", min_value=0.0, step=1.0
+                "Rate (kg/THM)",
+                min_value=0.0,
+                step=1.0,
+                disabled=not rate_editable,
             ),
             "rate_basis": st.column_config.SelectboxColumn(
                 "Rate basis", options=["wet", "dry"]

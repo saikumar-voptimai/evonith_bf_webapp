@@ -813,7 +813,7 @@ def _render_pinned_fuel_rates(
         f"**Fuel rates in force** - PCI **{rates.get('pci', 0.0):,.1f}** kg/THM "
         f"({pci_source}), nut coke **{rates.get('nut_coke', 0.0):,.1f}** kg/THM "
         f"({nut_source}). Coke comes from the selected coke-rate model, not here. "
-        "Ash chemistry still feeds the slag balance from configuration."
+        "The ash chemistry below feeds the slag balance."
     )
 
 
@@ -3604,83 +3604,13 @@ if (
 else:
     fuel_ash_editor_source_df = fuel_ash_base_df
 
-# THE FUEL ASH EDITOR IS HIDDEN BY DEFAULT.
-#
-# These rows exist to put fuel ASH into the slag balance. But two of their
-# columns - the nut coke and PCI rates - are also read by the fuel-cost step,
-# and the plant was using the table to CONTROL those rates. That is not what the
-# table is for, and the caption saying so did not stop it. A number box that is
-# visible will be used.
-#
-# So the table is hidden and the two rates are pinned to their effective sources:
-# PCI uses the live plant tag unless overridden; nut coke uses 70 kg/THM unless
-# overridden. Prices remain available in the collapsed Fuel prices control. The
-# ash chemistry still reaches the slag balance exactly as before. Set
-# ui.show_fuel_ash_editor: true in setting_bmo.yml for the full debugging editor.
-show_fuel_ash_editor = bool(
-    (bmo_cfg.get("ui") or {}).get("show_fuel_ash_editor", False)
+# The editable ash chemistry is rendered in the collapsed assumptions area at
+# the end of the page. Calculations above it use the last applied/saved table.
+# PCI and nut-coke rates remain authoritative in their dedicated controls, so
+# pin them before this table reaches either slag or fuel-cost calculations.
+edited_fuel_ash_df = _fuel_ash_df_with_pinned_rates(
+    fuel_ash_editor_source_df, recent_fuel_rates
 )
-
-if show_fuel_ash_editor:
-    with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
-        st.markdown("### Fuel Ash Inputs")
-        st.caption(
-            "**These rows exist to put fuel ash into the slag balance.** The rate and "
-            "ash chemistry of each fuel decide how much ash it charges, and that ash "
-            "is part of the slag the LP constrains. Set a fuel's rate to 0 to drop its "
-            "ash from the slag entirely - nothing else changes."
-        )
-        st.caption(
-            "Two columns are also read by the separate fuel-cost step, which runs "
-            "AFTER the LP and never feeds back into slag: the **prices**, and the "
-            "**nut coke and PCI rates**. Coke rate is not read there at all - it is "
-            "back-solved from the model's predicted cost."
-        )
-        if not fuel_ash_editor_source_df.empty:
-            edited_fuel_ash_candidate_df = render_fuel_ash_editor(
-                fuel_ash_editor_source_df
-            )
-        else:
-            edited_fuel_ash_candidate_df = fuel_ash_editor_source_df
-        st.caption(
-            "Fuel analysis uses Moisture from fuel_chemistry (TM for coke/nut coke; "
-            "IM for PCI). Ash analysis uses VM from fuel_chemistry. Moisture is "
-            "removed once from the wet fuel; VM is not deducted as moisture."
-        )
-        fuel_apply_col, fuel_save_col = st.columns(2)
-        fuel_ash_inputs_applied = _form_submit_button(
-            fuel_apply_col,
-            "Apply Fuel Ash Inputs",
-            type="primary",
-            width="stretch",
-        )
-        fuel_ash_inputs_saved = _form_submit_button(
-            fuel_save_col,
-            "Save Fuel Ash Inputs for Next Time",
-            type="secondary",
-            width="stretch",
-        )
-    if fuel_ash_inputs_applied or fuel_ash_inputs_saved:
-        edited_fuel_ash_df = edited_fuel_ash_candidate_df.copy()
-        st.session_state["bmo_applied_fuel_ash_editor_df"] = edited_fuel_ash_df
-        _clear_bmo_results()
-        if fuel_ash_inputs_saved:
-            try:
-                saved_path = save_fuel_ash_preferences(
-                    operator_preferences_path, edited_fuel_ash_df
-                )
-                st.success(f"Fuel Ash inputs saved to {saved_path}.")
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"Could not save Fuel Ash inputs: {exc}")
-        else:
-            st.success("Fuel Ash inputs applied.")
-    else:
-        edited_fuel_ash_df = fuel_ash_editor_source_df
-else:
-    edited_fuel_ash_df = _fuel_ash_df_with_pinned_rates(
-        fuel_ash_editor_source_df, recent_fuel_rates
-    )
-    _render_pinned_fuel_rates(edited_fuel_ash_df, recent_fuel_rates)
 _fuel_price_defaults = fuel_prices_from_editor(edited_fuel_ash_df)
 _fuel_price_values = {
     fuel_id: float(
@@ -4740,6 +4670,77 @@ if assumptions_applied or assumptions_saved:
             st.error(f"Could not save hot metal chemistry: {exc}")
     else:
         st.success("Assumptions applied.")
+
+_fuel_ash_flash = st.session_state.pop("bmo_fuel_ash_flash", None)
+if isinstance(_fuel_ash_flash, tuple) and len(_fuel_ash_flash) == 2:
+    _flash_level, _flash_message = _fuel_ash_flash
+    if _flash_level == "error":
+        st.error(str(_flash_message))
+    else:
+        st.success(str(_flash_message))
+
+fuel_ash_inputs_applied = False
+fuel_ash_inputs_saved = False
+with st.expander("Fuel Ash Inputs", expanded=False):
+    st.caption(
+        "Edit fuel moisture and ash chemistry used by the slag balance. Fuel "
+        "prices remain in **Fuel rates and prices** above and are intentionally "
+        "not repeated here."
+    )
+    _render_pinned_fuel_rates(edited_fuel_ash_df, recent_fuel_rates)
+    st.caption(
+        "Rates are shown for calculation context but are controlled by the "
+        "dedicated PCI and nut-coke controls above."
+    )
+    with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
+        if not edited_fuel_ash_df.empty:
+            edited_fuel_ash_candidate_df = render_fuel_ash_editor(
+                edited_fuel_ash_df,
+                show_prices=False,
+                rate_editable=False,
+            )
+        else:
+            edited_fuel_ash_candidate_df = edited_fuel_ash_df
+        st.caption(
+            "Fuel analysis uses Moisture from fuel_chemistry (TM for coke/nut "
+            "coke; IM for PCI). Ash analysis uses VM from fuel_chemistry. "
+            "Moisture is removed once from wet fuel; VM is not moisture."
+        )
+        fuel_apply_col, fuel_save_col = st.columns(2)
+        fuel_ash_inputs_applied = _form_submit_button(
+            fuel_apply_col,
+            "Apply Fuel Ash Inputs",
+            type="primary",
+            width="stretch",
+        )
+        fuel_ash_inputs_saved = _form_submit_button(
+            fuel_save_col,
+            "Save Fuel Ash Inputs for Next Time",
+            type="secondary",
+            width="stretch",
+        )
+
+if fuel_ash_inputs_applied or fuel_ash_inputs_saved:
+    st.session_state["bmo_applied_fuel_ash_editor_df"] = (
+        edited_fuel_ash_candidate_df.copy()
+    )
+    _clear_bmo_results()
+    _flash_level = "success"
+    _flash_message = "Fuel Ash inputs applied."
+    if fuel_ash_inputs_saved:
+        try:
+            saved_path = save_fuel_ash_preferences(
+                operator_preferences_path, edited_fuel_ash_candidate_df
+            )
+            _flash_message = f"Fuel Ash inputs saved to {saved_path}."
+        except Exception as exc:  # noqa: BLE001
+            _flash_level = "error"
+            _flash_message = f"Could not save Fuel Ash inputs: {exc}"
+    st.session_state["bmo_fuel_ash_flash"] = (_flash_level, _flash_message)
+    # The panel sits after all calculations. Re-run immediately so Apply/Save
+    # recalculates the page from the new ash chemistry instead of leaving the
+    # already-rendered results above it stale for one interaction.
+    st.rerun()
 
 _render_data_diagnostics(
     provider,

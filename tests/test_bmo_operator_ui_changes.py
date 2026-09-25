@@ -110,6 +110,26 @@ def test_operator_model_names_and_data_driven_default() -> None:
     assert "Data-Driven lookback window (hours)" in page_source
 
 
+def test_fuel_ash_panel_is_collapsed_at_page_end_without_prices() -> None:
+    root = Path(__file__).resolve().parents[1]
+    page_source = (root / "src/custom_pages/9_Blend_Optimizer.py").read_text(
+        encoding="utf-8"
+    )
+    config = yaml.safe_load(
+        (root / "src/config/setting_bmo.yml").read_text(encoding="utf-8")
+    )["bmo"]
+
+    panel = 'with st.expander("Fuel Ash Inputs", expanded=False):'
+    panel_pos = page_source.index(panel)
+    assumptions_pos = page_source.index('st.markdown("### Diagnostics and assumptions")')
+    diagnostics_call_pos = page_source.rfind("_render_data_diagnostics(")
+
+    assert assumptions_pos < panel_pos < diagnostics_call_pos
+    assert "show_prices=False" in page_source[panel_pos:diagnostics_call_pos]
+    assert "rate_editable=False" in page_source[panel_pos:diagnostics_call_pos]
+    assert "show_fuel_ash_editor" not in config["ui"]
+
+
 def test_model_input_alignment_step_and_diagnostics_defaults() -> None:
     page_path = (
         Path(__file__).resolve().parents[1]
@@ -1131,6 +1151,35 @@ def test_fuel_ash_editor_labels_moisture_and_adds_vm(monkeypatch) -> None:
         type_config = column_config[field]["type_config"]
         assert type_config["step"] == pytest.approx(0.01)
         assert type_config["format"] == "%.2f"
+
+
+def test_fuel_ash_editor_can_hide_prices_and_lock_rates(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_data_editor(frame: pd.DataFrame, **kwargs):
+        captured.update(kwargs)
+        return frame
+
+    monkeypatch.setattr(components.st, "data_editor", fake_data_editor)
+    editor_df = components.build_fuel_ash_editor_df(
+        [
+            {
+                "fuel_id": "coke",
+                "display_name": "Coke",
+                "rate_kg_per_thm": 300.0,
+                "price_rs_per_mt": 28000.0,
+            }
+        ]
+    )
+
+    returned = components.render_fuel_ash_editor(
+        editor_df, show_prices=False, rate_editable=False
+    )
+
+    assert returned is editor_df
+    assert "price_rs_per_mt" not in tuple(captured["column_order"])
+    assert returned.loc[0, "price_rs_per_mt"] == 28000.0
+    assert captured["column_config"]["rate_kg_per_thm"]["disabled"] is True
 
 
 def test_flux_and_dust_editors_hide_internal_columns_and_accept_two_decimals(
