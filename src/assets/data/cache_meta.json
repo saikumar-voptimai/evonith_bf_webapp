@@ -4,10 +4,10 @@
   "data_start": "2025-04-01",
   "confirmed_end": "2026-09-25",
   "raw_end": "2026-09-25",
-  "last_updated": "2026-09-25T08:58:59",
+  "last_updated": "2026-09-25T15:41:30",
   "offline_lag_days": 0,
-  "rows": 7340,
+  "rows": 7347,
   "columns": 241,
-  "csv_file": "furnace_dataset_20260925_085858_293066.csv",
+  "csv_file": "furnace_dataset_20260925_154126_580906.csv",
   "source_url": ""
 }
