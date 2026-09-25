@@ -215,6 +215,7 @@ def run_nonlinear_optimizer(
     hot_metal_si_pct: float | None = None,
     fuel_rate_anchor_basis: str = "model_cost",
     anchor_coke_rate_kg_thm: float | None = None,
+    anchor_prediction_details: dict[str, Any] | None = None,
     progress_callback: (
         Callable[[int, float, float | None, int, float], bool] | None
     ) = None,
@@ -381,6 +382,7 @@ def run_nonlinear_optimizer(
         hot_metal_si_pct=hot_metal_si_pct,
         fuel_rate_anchor_basis=fuel_rate_anchor_basis,
         anchor_coke_rate_kg_thm=anchor_coke_rate_kg_thm,
+        anchor_prediction_details=anchor_prediction_details,
         charge_mass_mt=charge_mass_mt,
     )
 

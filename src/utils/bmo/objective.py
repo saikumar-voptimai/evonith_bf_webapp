@@ -8,6 +8,7 @@ rich objective diagnostics to the shared optimization runtime.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -91,6 +92,7 @@ class BmoObjectiveEvaluator:
         hot_metal_si_pct: float | None = None,
         fuel_rate_anchor_basis: str = "model_cost",
         anchor_coke_rate_kg_thm: float | None = None,
+        anchor_prediction_details: Mapping[str, Any] | None = None,
         charge_mass_mt: float = 26.4,
     ) -> None:
         """
@@ -201,6 +203,7 @@ class BmoObjectiveEvaluator:
         # objective and the displayed slag use the same physical fuel rates.
         self.fuel_rate_anchor_basis = fuel_rate_anchor_basis
         self.anchor_coke_rate_kg_thm = anchor_coke_rate_kg_thm
+        self.anchor_prediction_details = dict(anchor_prediction_details or {})
         self.charge_mass_mt = float(charge_mass_mt)
         self.penalty_cfg = penalty_cfg
         self.prebuilt_context = prebuilt_context
@@ -275,6 +278,7 @@ class BmoObjectiveEvaluator:
             hot_metal_si_pct=self.hot_metal_si_pct,
             fuel_rate_anchor_basis=self.fuel_rate_anchor_basis,
             anchor_coke_rate_kg_thm=self.anchor_coke_rate_kg_thm,
+            anchor_prediction_details=self.anchor_prediction_details,
             charge_mass_mt=self.charge_mass_mt,
         )
         # Flux cost per THM keeps DE from over-dosing flux (it costs money, like ore).

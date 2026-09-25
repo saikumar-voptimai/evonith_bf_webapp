@@ -20,12 +20,14 @@ still shown by the live BMO rate but cannot distort calibration.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import yaml
 
 log = logging.getLogger(__name__)
 
@@ -78,8 +80,10 @@ def _readable_failure(exc: Exception) -> str:
     """
 
     text = str(exc)
-    if "pg_hba.conf" in text or "could not connect" in text or (
-        "connection to server" in text
+    if (
+        "pg_hba.conf" in text
+        or "could not connect" in text
+        or ("connection to server" in text)
     ):
         return (
             "The offline database is not reachable from this machine. If you are "
@@ -96,9 +100,11 @@ def _readable_failure(exc: Exception) -> str:
 def _scores(predicted: pd.Series, actual: pd.Series) -> dict[str, float]:
     """Bias, MAE, MAPE and R2 for one aligned pair."""
 
-    both = pd.concat([predicted, actual], axis=1).replace(
-        [np.inf, -np.inf], np.nan
-    ).dropna()
+    both = (
+        pd.concat([predicted, actual], axis=1)
+        .replace([np.inf, -np.inf], np.nan)
+        .dropna()
+    )
     if both.empty:
         return {}
     err = both.iloc[:, 0] - both.iloc[:, 1]
@@ -109,7 +115,7 @@ def _scores(predicted: pd.Series, actual: pd.Series) -> dict[str, float]:
         "bias": float(err.mean()),
         "MAE": float(err.abs().mean()),
         "MAPE": float((err.abs() / truth.abs().replace(0, np.nan)).mean() * 100.0),
-        "R2": float(1.0 - float((err ** 2).sum()) / ss_tot) if ss_tot else float("nan"),
+        "R2": float(1.0 - float((err**2).sum()) / ss_tot) if ss_tot else float("nan"),
     }
 
 
@@ -130,26 +136,53 @@ def _paired_chart(
         # so a measured point inside the band is one the model called correctly.
         upper = frame[predicted_col] + band
         lower = frame[predicted_col] - band
-        fig.add_trace(go.Scatter(
-            x=frame.index, y=upper, mode="lines", line=dict(width=0),
-            hoverinfo="skip", showlegend=False, name="",
-        ))
-        fig.add_trace(go.Scatter(
-            x=frame.index, y=lower, mode="lines", line=dict(width=0),
-            fill="tonexty", fillcolor="rgba(242,160,61,0.16)",
-            hoverinfo="skip", name=f"±{band:g} {unit} expected scatter",
-        ))
-    fig.add_trace(go.Scatter(
-        x=frame.index, y=frame[actual_col], mode="lines+markers",
-        name="Measured", line=dict(color=_ACTUAL, width=2), marker=dict(size=4),
-    ))
-    fig.add_trace(go.Scatter(
-        x=frame.index, y=frame[predicted_col], mode="lines",
-        name="Predicted", line=dict(color=_PREDICTED, width=2, dash="solid"),
-    ))
+        fig.add_trace(
+            go.Scatter(
+                x=frame.index,
+                y=upper,
+                mode="lines",
+                line=dict(width=0),
+                hoverinfo="skip",
+                showlegend=False,
+                name="",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=frame.index,
+                y=lower,
+                mode="lines",
+                line=dict(width=0),
+                fill="tonexty",
+                fillcolor="rgba(242,160,61,0.16)",
+                hoverinfo="skip",
+                name=f"±{band:g} {unit} expected scatter",
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=frame.index,
+            y=frame[actual_col],
+            mode="lines+markers",
+            name="Measured",
+            line=dict(color=_ACTUAL, width=2),
+            marker=dict(size=4),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=frame.index,
+            y=frame[predicted_col],
+            mode="lines",
+            name="Predicted",
+            line=dict(color=_PREDICTED, width=2, dash="solid"),
+        )
+    )
     fig.update_layout(
         title=dict(text=title, font=dict(size=14)),
-        yaxis_title=unit, xaxis_title=None, **_LAYOUT,
+        yaxis_title=unit,
+        xaxis_title=None,
+        **_LAYOUT,
     )
     return fig
 
@@ -160,14 +193,22 @@ def _score_row(scores: dict[str, float], unit: str, decimals: int = 1) -> None:
         return
     cols = st.columns(4)
     cols[0].metric("Days scored", f"{scores['n']:,.0f}")
-    cols[1].metric(f"Bias ({unit})", f"{scores['bias']:+,.{decimals}f}",
-                   help="Average over-prediction. Near zero is the whole point "
-                        "of the offset.")
-    cols[2].metric(f"Typical error ({unit})", f"{scores['MAE']:,.{decimals}f}",
-                   help="Mean absolute error — what to expect on any one day.")
-    cols[3].metric("R²", f"{scores['R2']:+.2f}",
-                   help="Share of the day-to-day movement the model tracks. "
-                        "Zero means it does no better than predicting the average.")
+    cols[1].metric(
+        f"Bias ({unit})",
+        f"{scores['bias']:+,.{decimals}f}",
+        help="Average over-prediction. Near zero is the whole point " "of the offset.",
+    )
+    cols[2].metric(
+        f"Typical error ({unit})",
+        f"{scores['MAE']:,.{decimals}f}",
+        help="Mean absolute error — what to expect on any one day.",
+    )
+    cols[3].metric(
+        "R²",
+        f"{scores['R2']:+.2f}",
+        help="Share of the day-to-day movement the model tracks. "
+        "Zero means it does no better than predicting the average.",
+    )
 
 
 def render_retrain_control() -> None:
@@ -208,11 +249,12 @@ def render_retrain_control() -> None:
         clicked = st.button(
             "🔄 Retrain on last 90 days",
             width="stretch",
-            type="primary" if (not calib.is_usable or calib.is_stale()) else
-            "secondary",
+            type=(
+                "primary" if (not calib.is_usable or calib.is_stale()) else "secondary"
+            ),
             help="Rebuilds the daily history from the plant record and refits "
-                 "the bias offset over the trailing 90 days. Takes a minute or "
-                 "two — it queries the offline tables day by day.",
+            "the bias offset over the trailing 90 days. Takes a minute or "
+            "two — it queries the offline tables day by day.",
         )
 
     if clicked:
@@ -287,18 +329,20 @@ def render_coke_accuracy(days: int = HISTORY_DAYS) -> None:
     # rather than merely stated.
     work["corrected"] = (
         work["predicted_coke"] - calib.offset_kg_per_thm
-        if calib.is_usable else work["predicted_coke"]
+        if calib.is_usable
+        else work["predicted_coke"]
     )
-    paired = work[["corrected", "actual_coke"]].replace(
-        [np.inf, -np.inf], np.nan
-    ).dropna()
+    paired = (
+        work[["corrected", "actual_coke"]].replace([np.inf, -np.inf], np.nan).dropna()
+    )
 
     corrected_scores = _scores(paired["corrected"], paired["actual_coke"])
     _score_row(corrected_scores, "kg/THM")
 
     fig = _paired_chart(
         work.dropna(subset=["corrected", "actual_coke"]),
-        predicted_col="corrected", actual_col="actual_coke",
+        predicted_col="corrected",
+        actual_col="actual_coke",
         title=(
             "Coke rate - energy balance + offset vs measured plant rate"
             if calib.is_usable
@@ -335,7 +379,8 @@ def render_coke_accuracy(days: int = HISTORY_DAYS) -> None:
         st.plotly_chart(
             _paired_chart(
                 work.dropna(subset=["predicted_coke", "actual_coke"]),
-                predicted_col="predicted_coke", actual_col="actual_coke",
+                predicted_col="predicted_coke",
+                actual_col="actual_coke",
                 title="Uncorrected energy balance",
                 unit="kg/THM",
             ),
@@ -362,8 +407,11 @@ def _render_control_context(frame: pd.DataFrame) -> None:
     a model failure.
     """
 
-    columns = [c for c in ("pci_kg_thm", "nut_coke_kg_thm", "coke_setpoint_kg_thm")
-               if c in frame.columns]
+    columns = [
+        c
+        for c in ("pci_kg_thm", "nut_coke_kg_thm", "coke_setpoint_kg_thm")
+        if c in frame.columns
+    ]
     if not columns:
         return
 
@@ -375,9 +423,11 @@ def _render_control_context(frame: pd.DataFrame) -> None:
         }
         fig = go.Figure()
         for column in columns:
-            fig.add_trace(go.Scatter(
-                x=frame.index, y=frame[column], mode="lines", name=labels[column]
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=frame.index, y=frame[column], mode="lines", name=labels[column]
+                )
+            )
         fig.update_layout(yaxis_title="kg/THM", xaxis_title=None, **_LAYOUT)
         st.plotly_chart(fig, width="stretch")
         st.caption(
@@ -399,8 +449,7 @@ def render_si_accuracy(days: int = 180) -> None:
 
     if frame.empty:
         st.info(
-            "Silicon history unavailable. "
-            + " ".join(report.get("notes", []) or [])
+            "Silicon history unavailable. " + " ".join(report.get("notes", []) or [])
         )
         return
 
@@ -423,7 +472,9 @@ def render_si_accuracy(days: int = 180) -> None:
     _score_row(_scores(frame["predicted_si"], frame["actual_si"]), "%", decimals=3)
     st.plotly_chart(
         _paired_chart(
-            frame, predicted_col="predicted_si", actual_col="actual_si",
+            frame,
+            predicted_col="predicted_si",
+            actual_col="actual_si",
             title="Hot metal silicon — model vs cast analysis",
             unit="Si %",
         ),
@@ -441,13 +492,208 @@ def render_si_accuracy(days: int = 180) -> None:
         st.caption(note)
 
 
-def render_model_accuracy_tab() -> None:
-    """The whole panel: retrain control, then coke, then silicon."""
+def _direct_coke_settings() -> tuple[dict[str, Any], Path, Path, Path]:
+    repo_root = Path(__file__).resolve().parents[3]
+    settings = yaml.safe_load(
+        (repo_root / "src/config/setting_bmo.yml").read_text(encoding="utf-8")
+    )["bmo"]
+    cfg = dict(settings.get("data_driven_coke", {}) or {})
 
-    st.markdown("##### Is the coke-rate model working?")
-    render_retrain_control()
-    st.divider()
-    render_coke_accuracy()
-    st.divider()
-    st.markdown("##### Hot metal silicon")
-    render_si_accuracy()
+    def resolve(value: str, fallback: str) -> Path:
+        path = Path(str(value or fallback))
+        return path if path.is_absolute() else repo_root / path
+
+    return (
+        cfg,
+        resolve(cfg.get("bundled_model_dir", ""), "src/assets/models/bmo_coke_xgb"),
+        resolve(cfg.get("deployment_dir", ""), "src/storage/bmo_coke_model"),
+        resolve(cfg.get("dataset_path", ""), "src/assets/data/furnace_dataset.csv"),
+    )
+
+
+def _metric_text(metrics: dict[str, Any], name: str, decimals: int = 3) -> str:
+    value = metrics.get(name)
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "Not available"
+    return f"{number:.{decimals}f}" if np.isfinite(number) else "Not available"
+
+
+def render_data_driven_coke_accuracy() -> None:
+    """Active bundle status plus validate-before-deploy retraining control."""
+
+    from utils.bmo.direct_coke_model import (
+        DirectCokeModelService,
+        retrain_and_maybe_deploy,
+    )
+
+    cfg, bundled_dir, deployment_dir, dataset_path = _direct_coke_settings()
+    retrain_cfg = dict(cfg.get("retraining", {}) or {})
+    try:
+        service = DirectCokeModelService(
+            bundled_dir=bundled_dir,
+            deployment_dir=deployment_dir,
+            max_stale_hours=float(cfg.get("max_input_stale_hours", 6.0)),
+            max_source_age_hours=float(cfg.get("max_source_age_hours", 6.0)),
+        )
+        status = service.status()
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Could not load direct coke model")
+        st.error(f"Could not load the direct coke-rate model: {_readable_failure(exc)}")
+        return
+
+    metadata = dict(status.get("metadata", {}) or {})
+    later_metrics = dict(metadata.get("later_time_metrics", {}) or {})
+    random_metrics = dict(metadata.get("random_metrics", {}) or {})
+    if not later_metrics:
+        later_r2 = status.get("later_date_r2")
+        later_metrics = {
+            "r2": later_r2,
+            "mae": (
+                (
+                    (service.schema.get("validation", {}) or {}).get("test", {}) or {}
+                ).get("mae")
+            ),
+            "n": (
+                (
+                    (service.schema.get("validation", {}) or {}).get("test", {}) or {}
+                ).get("n")
+            ),
+        }
+
+    cols = st.columns(4)
+    cols[0].metric("Active deployment", str(status.get("deployment_id", "bundled")))
+    cols[1].metric("Selected features", f"{int(status.get('feature_count', 0))}")
+    cols[2].metric("Later-time R2", _metric_text(later_metrics, "r2"))
+    cols[3].metric("Later-time MAE", _metric_text(later_metrics, "mae", 1))
+
+    if random_metrics:
+        st.caption(
+            f"Deployment validation: random-split R2 "
+            f"{_metric_text(random_metrics, 'r2')}, later-time R2 "
+            f"{_metric_text(later_metrics, 'r2')}; trained on "
+            f"{int(metadata.get('training_rows', status.get('training_rows', 0)) or 0):,} rows."
+        )
+    else:
+        st.caption(
+            "The bundled model predates the in-app retraining gate. Its reported "
+            "later-date test is shown above; the first in-app retrain will also "
+            "record the requested random-split score."
+        )
+
+    current = st.session_state.get("bmo_data_driven_coke_prediction", {}) or {}
+    if current:
+        if current.get("usable"):
+            st.success(
+                f"Current accepted prediction: **{float(current['value_kg_per_thm']):,.1f} "
+                f"kg/THM** at {current.get('origin_utc', '')}."
+            )
+        else:
+            reasons = " ".join(map(str, current.get("reasons", []) or []))
+            st.warning(
+                "Current prediction is rejected by the freshness/input gate. " + reasons
+            )
+            latest_inputs = current.get("latest_input_diagnostics", {}) or {}
+            if latest_inputs:
+                st.caption(
+                    "Latest-row inputs: "
+                    f"burden {float(latest_inputs.get('burden_mt') or 0):,.1f} MT, "
+                    f"production {float(latest_inputs.get('production_mt_per_hr') or 0):,.1f} MT/h."
+                )
+
+    min_random = float(retrain_cfg.get("min_random_r2", 0.70))
+    min_later = float(retrain_cfg.get("min_later_time_r2", 0.65))
+    st.markdown("##### Retrain and conditionally deploy")
+    st.caption(
+        f"The candidate must pass both gates: random-split R2 >= {min_random:.2f} "
+        f"and strict later-time R2 >= {min_later:.2f}. The later-time block is "
+        "never included in its training fit. A failed candidate does not replace "
+        "the active deployment."
+    )
+    clicked = st.button(
+        "Retrain, validate and deploy",
+        key="bmo_retrain_direct_coke",
+        type="primary",
+        width="stretch",
+        help=(
+            "Rebuilds the exact audited coke features from the furnace dataset, "
+            "scores random and later-time holdouts, and atomically activates only "
+            "a model that clears both configured R2 thresholds."
+        ),
+    )
+    if clicked:
+        with st.status(
+            "Rebuilding coke features and validating the candidate...", expanded=True
+        ) as progress:
+            st.write(
+                "Using fixed 300 kg/THM coke in the slag feature to prevent leakage."
+            )
+            try:
+                report = retrain_and_maybe_deploy(
+                    dataset_path,
+                    bundled_dir=bundled_dir,
+                    deployment_dir=deployment_dir,
+                    min_random_r2=min_random,
+                    min_later_time_r2=min_later,
+                    random_test_fraction=float(
+                        retrain_cfg.get("random_test_fraction", 0.20)
+                    ),
+                    later_test_days=int(retrain_cfg.get("later_test_days", 14)),
+                    seed=int(retrain_cfg.get("seed", 20260922)),
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Direct coke model retraining failed")
+                progress.update(label="Retraining failed", state="error")
+                st.error(_readable_failure(exc))
+                return
+
+            st.session_state["bmo_direct_coke_retrain_report"] = report.to_dict()
+            random_r2 = _metric_text(report.random_metrics, "r2")
+            later_r2 = _metric_text(report.later_time_metrics, "r2")
+            if report.deployed:
+                progress.update(
+                    label=(
+                        f"Deployed {report.deployment_id}: random R2 {random_r2}, "
+                        f"later-time R2 {later_r2}"
+                    ),
+                    state="complete",
+                )
+                st.success(
+                    "The validated candidate is now active. Previous versioned "
+                    "deployments were retained for rollback."
+                )
+            else:
+                progress.update(
+                    label="Candidate rejected; active model unchanged", state="error"
+                )
+                st.error(
+                    f"Random-split R2: {random_r2}; later-time R2: {later_r2}. "
+                    + " ".join(report.reasons)
+                )
+
+    with st.expander("Validation meaning and leakage controls", expanded=False):
+        st.markdown(
+            "- Target: `1,000 x COKE_CALC_MT / PRODUCTIONTONNESPERHR`.\n"
+            "- No `COKE_CALC_*`, reported coke-rate, total-fuel-rate or unit-cost "
+            "column is allowed into the features.\n"
+            "- Slag is rebuilt with a fixed 300 kg/THM reference coke.\n"
+            "- Assay features are delayed 24 hours and the chronological split "
+            "uses a 12-hour purge.\n"
+            "- Random split is a secondary diagnostic. Later-time R2 is the "
+            "deployment safeguard. Neither makes the model a causal optimiser; "
+            "it remains a frozen current-state anchor."
+        )
+
+
+def render_model_accuracy_tab() -> None:
+    """Data-driven coke validation first; supporting models remain inspectable."""
+
+    st.markdown("##### Data-driven coke-rate model")
+    render_data_driven_coke_accuracy()
+    with st.expander("Energy-balance calibration and recent accuracy", expanded=False):
+        render_retrain_control()
+        st.divider()
+        render_coke_accuracy()
+    with st.expander("Hot-metal silicon model", expanded=False):
+        render_si_accuracy()

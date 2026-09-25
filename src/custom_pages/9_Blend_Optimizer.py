@@ -102,6 +102,10 @@ from utils.bmo.constraints import (
     check_blend_constraints,
 )
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
+from utils.bmo.direct_coke_model import (
+    DirectCokeModelService,
+    DirectCokePrediction,
+)
 from utils.bmo.calculations import scale_ore_quantities_to_hot_metal
 from utils.bmo.types import oxide_pct_from_basis
 from utils.bmo.si_prediction import SiPredictionService
@@ -203,6 +207,7 @@ def _get_context_provider() -> EvonithBmoContextProvider:
 
 _STATIC_DATASET_LINK_KEY = "bmo_static_dataset_use_link"
 _STATIC_DATASET_SOURCE_CHANGED_KEY = "_bmo_static_dataset_source_changed"
+_STATIC_DATASET_FORCE_REFRESH_KEY = "_bmo_static_dataset_force_refresh"
 
 
 def _configured_static_dataset_url(bmo_cfg: dict[str, Any]) -> str:
@@ -338,14 +343,23 @@ def _live_process_snapshot() -> dict[str, float]:
     """
 
     wanted = (
-        "hot_blast_vol_nm3h", "hot_blast_temp", "hot_blast_press",
-        "oxygen_enrichment_pct", "top_press_avg", "steam_injection",
-        "co_pct", "co2_pct", "h2_pct", "top_temp_avg",
+        "hot_blast_vol_nm3h",
+        "hot_blast_temp",
+        "hot_blast_press",
+        "oxygen_enrichment_pct",
+        "top_press_avg",
+        "steam_injection",
+        "co_pct",
+        "co2_pct",
+        "h2_pct",
+        "top_temp_avg",
         # PCI must come from the live tag, never from the Fuel Ash box. The box
         # is operator-editable and exists for SLAG estimation; the energy
         # balance solves coke around whatever PCI it is given, so a stale figure
         # there lands on the coke rate at roughly 0.86 kg per kg.
-        "coal_rate_actual_value", "oxygen_flow", "production_per_hour",
+        "coal_rate_actual_value",
+        "oxygen_flow",
+        "production_per_hour",
     )
     try:
         from furnace_data.influx.online import fetch_online_df
@@ -507,9 +521,7 @@ def _cached_fuel_analysis_snapshot(
     return _session_cached_source(
         cache_version,
         ("fuel_analysis", mode, window_days),
-        lambda: provider.get_fuel_analysis_snapshot(
-            mode=mode, window_days=window_days
-        ),
+        lambda: provider.get_fuel_analysis_snapshot(mode=mode, window_days=window_days),
     )
 
 
@@ -618,6 +630,10 @@ def _render_static_dataset_bar(
             st.session_state["bmo_source_cache_version"] = (
                 int(st.session_state.get("bmo_source_cache_version", 0)) + 1
             )
+            # Do not merely invalidate this browser session's derived values.
+            # Ask the full rerun below to fetch the published CSV even when its
+            # one-hour metadata TTL still says the local copy is fresh.
+            st.session_state[_STATIC_DATASET_FORCE_REFRESH_KEY] = True
             # Full app rerun (not fragment-only) so the top-level chemistry,
             # stock, HM/slag, flux and pellet calls re-read with the new version.
             st.rerun()
@@ -724,9 +740,7 @@ def _fuel_ash_df_with_pinned_rates(
     if "fuel_id" not in out.columns or "rate_kg_per_thm" not in out.columns:
         return out
 
-    nut_rate = fuel_rates.get(
-        "nut_coke_rate_kg_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM
-    )
+    nut_rate = fuel_rates.get("nut_coke_rate_kg_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM)
     pinned = {"nut_coke": max(0.0, float(nut_rate))}
     pci_rate = fuel_rates.get("pci_rate_kg_thm")
     if pci_rate is not None and (
@@ -748,17 +762,13 @@ def _render_pinned_fuel_rates(
     if "fuel_id" not in fuel_ash_df.columns:
         return
     rates = {
-        str(row["fuel_id"]).strip().lower(): float(
-            row.get("rate_kg_per_thm", 0.0) or 0.0
-        )
+        str(row["fuel_id"])
+        .strip()
+        .lower(): float(row.get("rate_kg_per_thm", 0.0) or 0.0)
         for _, row in fuel_ash_df.iterrows()
     }
-    pci_source = str(
-        fuel_rates.get("pci_source") or "fallback - LIVE TAG UNAVAILABLE"
-    )
-    nut_source = str(
-        fuel_rates.get("nut_coke_source") or "fixed plant set point"
-    )
+    pci_source = str(fuel_rates.get("pci_source") or "fallback - LIVE TAG UNAVAILABLE")
+    nut_source = str(fuel_rates.get("nut_coke_source") or "fixed plant set point")
     st.caption(
         f"**Fuel rates in force** - PCI **{rates.get('pci', 0.0):,.1f}** kg/THM "
         f"({pci_source}), nut coke **{rates.get('nut_coke', 0.0):,.1f}** kg/THM "
@@ -837,15 +847,22 @@ def _render_share_pie(blend: Any, selected_ores: list[OreInput], title: str) -> 
             f"<span style='font-size:19px'><b>{total_mt:,.0f}</b></span>"
             f"<br><span style='font-size:11px'>MT burden</span>"
         ),
-        showarrow=False, font=dict(size=13),
+        showarrow=False,
+        font=dict(size=13),
     )
     fig.update_layout(
         title=dict(text=title, font=dict(size=14)),
         margin=dict(l=8, r=8, t=36, b=8),
         height=330,
         showlegend=True,
-        legend=dict(orientation="v", x=1.0, xanchor="left", y=0.5, yanchor="middle",
-                    font=dict(size=11)),
+        legend=dict(
+            orientation="v",
+            x=1.0,
+            xanchor="left",
+            y=0.5,
+            yanchor="middle",
+            font=dict(size=11),
+        ),
     )
     st.plotly_chart(fig, width="stretch")
 
@@ -1346,6 +1363,7 @@ def _render_blend_comparison(
             "{:,.3f}",
         ),
     ]
+
     def _rows_for(spec_labels: list[str]) -> pd.DataFrame:
         """Format one group of the outcome table."""
 
@@ -1366,19 +1384,37 @@ def _render_blend_comparison(
     # operator asks in order: what does it cost, what fuel does it need, what
     # slag does it make, and how does it get charged.
     groups = {
-        "💰 Cost": ["Total Cost (Rs/THM)", "Ore Cost (Rs/THM)",
-                    "Fuel Cost (Rs/THM)", "Flux Cost (Rs/THM)"],
-        "🔥 Fuel": ["Fuel Rate (kg/THM)", "Coke Rate, uncorrected (kg/THM)",
-                    "Coke Rate, corrected (kg/THM)", "Coke Correction (kg/THM)",
-                    "Hot-Metal Si (%)"],
-        "🌋 Slag": ["Slag Rate (kg/THM)", "Slag Basicity (CaO/SiO2)",
-                    "Slag T-Basicity (CaO+MgO)/SiO2",
-                    "IB4 (CaO+MgO)/(SiO2+Al2O3)", "Slag Al2O3 (%)",
-                    "Slag MgO (%)", "Slag MgO/Al2O3"],
-        "🚚 Charging": ["Production", "Flux Rate (kg/THM)", "Coke in Charges (MT)",
-                        "Nut Coke in Charges (MT)", "PCI in Charges (MT)",
-                        "Required Charges (/hr)",
-                        "Chemical Hotmetal per Charge (MT)"],
+        "💰 Cost": [
+            "Total Cost (Rs/THM)",
+            "Ore Cost (Rs/THM)",
+            "Fuel Cost (Rs/THM)",
+            "Flux Cost (Rs/THM)",
+        ],
+        "🔥 Fuel": [
+            "Fuel Rate (kg/THM)",
+            "Coke Rate, uncorrected (kg/THM)",
+            "Coke Rate, corrected (kg/THM)",
+            "Coke Correction (kg/THM)",
+            "Hot-Metal Si (%)",
+        ],
+        "🌋 Slag": [
+            "Slag Rate (kg/THM)",
+            "Slag Basicity (CaO/SiO2)",
+            "Slag T-Basicity (CaO+MgO)/SiO2",
+            "IB4 (CaO+MgO)/(SiO2+Al2O3)",
+            "Slag Al2O3 (%)",
+            "Slag MgO (%)",
+            "Slag MgO/Al2O3",
+        ],
+        "🚚 Charging": [
+            "Production",
+            "Flux Rate (kg/THM)",
+            "Coke in Charges (MT)",
+            "Nut Coke in Charges (MT)",
+            "PCI in Charges (MT)",
+            "Required Charges (/hr)",
+            "Chemical Hotmetal per Charge (MT)",
+        ],
     }
     # A row that belongs to no group would simply vanish, and nothing on screen
     # would say a metric had gone missing. Cheap to check, so check.
@@ -1408,8 +1444,8 @@ def _render_blend_comparison(
         st.success(
             f"**{saving:+,.0f} Rs/THM** — best optimizer blend against the manual "
             "blend (positive means the optimizer is cheaper)."
-            if saving > 0 else
-            f"**{saving:+,.0f} Rs/THM** — the manual blend is already at or below "
+            if saving > 0
+            else f"**{saving:+,.0f} Rs/THM** — the manual blend is already at or below "
             "the optimizer's cost."
         )
 
@@ -1656,6 +1692,50 @@ def _get_model_service() -> FuelUnitCostModelService:
     )
 
 
+def _direct_coke_config() -> dict[str, Any]:
+    return dict(_get_bmo_config().get("data_driven_coke", {}) or {})
+
+
+def _direct_coke_paths() -> tuple[Path, Path, Path]:
+    cfg = _direct_coke_config()
+    return (
+        _repo_path(str(cfg.get("bundled_model_dir", "src/assets/models/bmo_coke_xgb"))),
+        _repo_path(str(cfg.get("deployment_dir", "src/storage/bmo_coke_model"))),
+        _repo_path(str(cfg.get("dataset_path", "src/assets/data/furnace_dataset.csv"))),
+    )
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_direct_coke_prediction(
+    *,
+    dataset_path: str,
+    dataset_mtime_ns: int,
+    source_cache_version: int,
+    bundled_dir: str,
+    deployment_dir: str,
+    deployment_token: int,
+    pci_kg_per_thm: float,
+    nut_coke_kg_per_thm: float,
+    max_stale_hours: float,
+    max_source_age_hours: float,
+) -> DirectCokePrediction:
+    # mtime/token arguments deliberately key the cache even though the service
+    # only needs the paths. A refreshed CSV or activated model is never hidden by
+    # a previously cached current-state prediction.
+    del dataset_mtime_ns, source_cache_version, deployment_token
+    service = DirectCokeModelService(
+        bundled_dir=bundled_dir,
+        deployment_dir=deployment_dir,
+        max_stale_hours=max_stale_hours,
+        max_source_age_hours=max_source_age_hours,
+    )
+    return service.predict_from_history(
+        dataset_path,
+        pci_kg_per_thm=pci_kg_per_thm,
+        nut_coke_kg_per_thm=nut_coke_kg_per_thm,
+    )
+
+
 @_resource_cache(show_spinner=False)
 def _get_si_service() -> SiPredictionService:
     """
@@ -1712,14 +1792,24 @@ def _render_energy_assumptions() -> None:
 
         frame = pd.DataFrame(rows)
         edited = st.data_editor(
-            frame[["Parameter", "Value", "Unit", "Source", "Default",
-                   "Basis", "Why it matters"]],
+            frame[
+                [
+                    "Parameter",
+                    "Value",
+                    "Unit",
+                    "Source",
+                    "Default",
+                    "Basis",
+                    "Why it matters",
+                ]
+            ],
             hide_index=True,
             use_container_width=True,
             key="energy_assumptions_editor",
             column_config={
                 "Value": st.column_config.NumberColumn(
-                    "Value", help="Your figure. Bounds are enforced on save.",
+                    "Value",
+                    help="Your figure. Bounds are enforced on save.",
                     format="%.3f",
                 ),
                 "Source": st.column_config.TextColumn("Source", disabled=True),
@@ -1796,7 +1886,9 @@ def _render_process_recommendation(
         blend_to_energy_inputs,
         recommend_controls,
     )
-    from utils.energy_balance.assumptions import apply_overrides as apply_energy_overrides
+    from utils.energy_balance.assumptions import (
+        apply_overrides as apply_energy_overrides,
+    )
     from utils.energy_balance.constants import load_config as load_energy_config
 
     st.markdown("##### Recommended process parameters")
@@ -1935,7 +2027,9 @@ def _render_process_recommendation(
         direction = (
             "hotter" if raft_delta > 0 else "colder" if raft_delta < 0 else "unchanged"
         )
-        strength = "within measurement noise" if abs(raft_delta) < 17.0 else "significant"
+        strength = (
+            "within measurement noise" if abs(raft_delta) < 17.0 else "significant"
+        )
         st.caption(
             f"RAFT moves from **{recommendation.current_raft_c:,.0f} °C** to "
             f"**{recommendation.raft_c:,.0f} °C** — raceway runs **{direction}** "
@@ -1966,7 +2060,8 @@ def _render_process_recommendation(
                     f"Offset fitted on {calib.sample_days} recent days"
                     f" ({calib.first_day} → {calib.last_day}), residual sd "
                     f"{calib.residual_sd_kg_per_thm:.0f} kg/THM."
-                    if calib.is_usable else "No calibration on file."
+                    if calib.is_usable
+                    else "No calibration on file."
                 ),
             },
             {
@@ -1975,8 +2070,9 @@ def _render_process_recommendation(
                 "What it is": "The headline figure above.",
             },
         ]
-        st.dataframe(pd.DataFrame(comparison), hide_index=True,
-                     use_container_width=True)
+        st.dataframe(
+            pd.DataFrame(comparison), hide_index=True, use_container_width=True
+        )
         residual = coke_now - plant_coke if plant_coke else None
         st.markdown(
             "**Why an offset at all.** Backtested over 239 days, the raw energy "
@@ -1996,7 +2092,8 @@ def _render_process_recommendation(
                     "leaves, so this blend or these controls are further from "
                     "recent operation than the calibration window covers."
                 )
-                if residual is not None else ""
+                if residual is not None
+                else ""
             )
             + "\n\n**The delta is the more reliable half.** The offset cancels "
             "between the two settings, so the recommended change is unaffected "
@@ -2072,7 +2169,10 @@ def _render_transition_ladder(
     move_col, _ = st.columns([1, 3])
     move_pct = move_col.number_input(
         "Max share change per step (%)",
-        min_value=1.0, max_value=50.0, value=5.0, step=1.0,
+        min_value=1.0,
+        max_value=50.0,
+        value=5.0,
+        step=1.0,
         key="bmo_transition_move_pct",
         help=(
             "Your step-change policy. Smaller steps mean more shifts to reach "
@@ -2094,7 +2194,8 @@ def _render_transition_ladder(
 
     try:
         ladder = build_transition_ladder(
-            ores, manual_shares,
+            ores,
+            manual_shares,
             max_share_move_pct=float(move_pct),
             _slag_rate_cap=slag_rate_cap_kg_per_thm,
             **lp_kwargs,
@@ -2207,6 +2308,17 @@ def _render_fuel_basis_note(blend: Any) -> None:
     source = str(blend.diagnostics.get("fuel_rate_estimate_source", ""))
     anchor = st.session_state.get("bmo_energy_anchor")
 
+    if source == "data_driven_coke_anchor":
+        prediction = st.session_state.get("bmo_data_driven_coke_prediction", {}) or {}
+        st.caption(
+            f"Coke level from the **direct XGBoost coke-rate model** at "
+            f"{prediction.get('origin_utc', 'the current eligible hour')}. "
+            "The model is evaluated once for the run; blend-to-blend differences "
+            "come from the physical correction above. Fuel is priced afterward "
+            "at the saved operator prices."
+        )
+        return
+
     if source == "energy_balance_anchor" and anchor is not None:
         st.caption(
             f"Coke level from the **energy balance** — solved at current controls "
@@ -2224,8 +2336,7 @@ def _render_fuel_basis_note(blend: Any) -> None:
         # rather than letting the observed figure pass for the balance's answer.
         st.warning(
             "**Fuel cost is anchored on the observed coke rate, not the energy "
-            "balance.** "
-            + " ".join(anchor.notes)
+            "balance.** " + " ".join(anchor.notes)
         )
         return
 
@@ -2790,8 +2901,13 @@ model_service = _get_model_service()
 bundle_status = model_service.get_bundle_status()
 st.session_state["bmo_bundle_status"] = bundle_status
 render_header(bundle_status)
+force_static_refresh = bool(
+    st.session_state.pop(_STATIC_DATASET_FORCE_REFRESH_KEY, False)
+)
 with st.spinner("Checking the hourly furnace dataset..."):
-    static_refresh_result = _refresh_static_dataset_if_needed(bmo_cfg)
+    static_refresh_result = _refresh_static_dataset_if_needed(
+        bmo_cfg, force=force_static_refresh
+    )
 if static_refresh_result.get("error") and not static_refresh_result.get("usable"):
     st.error(
         "The hourly furnace CSV could not be fetched and no local fallback exists. "
@@ -2799,6 +2915,34 @@ if static_refresh_result.get("error") and not static_refresh_result.get("usable"
     )
     st.stop()
 _render_static_dataset_bar(bmo_cfg, static_refresh_result)
+
+_configured_anchor = str(bmo_cfg.get("fuel_rate_anchor_basis", "energy_balance"))
+_anchor_labels = {
+    "Energy balance": "energy_balance",
+    "Data-driven XGBoost": "data_driven",
+}
+_default_anchor_label = (
+    "Data-driven XGBoost" if _configured_anchor == "data_driven" else "Energy balance"
+)
+selected_anchor_label = st.segmented_control(
+    "Coke-rate model",
+    options=list(_anchor_labels),
+    default=_default_anchor_label,
+    key="bmo_coke_rate_model",
+    on_change=_clear_bmo_results,
+    help=(
+        "Select the frozen current-state coke anchor. Both choices use the same "
+        "slag, flux-calcination and hot-metal-silicon corrections for candidate blends."
+    ),
+)
+fuel_rate_anchor_basis = _anchor_labels.get(
+    str(selected_anchor_label), "energy_balance"
+)
+st.caption(
+    "The XGBoost option predicts coke directly in kg/THM and is independent of "
+    "fuel prices. Fuel cost is calculated afterward using the saved coke, nut-coke "
+    "and PCI prices."
+)
 # Bumped by the "Refresh source data" button; keys the cached offline-source
 # reads so they are fetched once per session and reused until the operator asks
 # for fresh data.
@@ -2838,13 +2982,8 @@ if st.session_state.get("bmo_pci_override_on"):
         recent_fuel_rates["pci_source"] = "operator override"
 
 _nut_coke_override = st.session_state.get("bmo_nut_coke_override_kg")
-if (
-    st.session_state.get("bmo_nut_coke_override_on")
-    and _nut_coke_override is not None
-):
-    recent_fuel_rates["nut_coke_rate_kg_thm"] = max(
-        0.0, float(_nut_coke_override)
-    )
+if st.session_state.get("bmo_nut_coke_override_on") and _nut_coke_override is not None:
+    recent_fuel_rates["nut_coke_rate_kg_thm"] = max(0.0, float(_nut_coke_override))
     recent_fuel_rates["nut_coke_source"] = "operator override"
 else:
     recent_fuel_rates["nut_coke_rate_kg_thm"] = DEFAULT_NUT_COKE_RATE_KG_PER_THM
@@ -3168,7 +3307,7 @@ if model_to_plant_slag_factor != 1.0:
     )
 feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
 coke_correction_settings = load_coke_correction_settings(bmo_cfg)
-fuel_rate_anchor_basis = str(bmo_cfg.get("fuel_rate_anchor_basis", "model_cost"))
+# Resolved by the model switch directly below the page header.
 
 
 ores, ore_diagnostics = _cached_build_ore_inputs(
@@ -3188,14 +3327,10 @@ nut_coke_moisture_raw = (fuel_analysis.get("nut_coke") or {}).get("moisture_pct"
 if nut_coke_moisture_raw is None:
     nut_coke_moisture_raw = nut_coke_cfg.get("moisture_pct", 0.0)
 try:
-    nut_coke_moisture_pct = min(
-        100.0, max(0.0, float(nut_coke_moisture_raw or 0.0))
-    )
+    nut_coke_moisture_pct = min(100.0, max(0.0, float(nut_coke_moisture_raw or 0.0)))
 except (TypeError, ValueError):
     nut_coke_moisture_pct = 0.0
-nut_coke_charge_moisture_pct = (
-    nut_coke_moisture_pct if nut_coke_add_moisture else 0.0
-)
+nut_coke_charge_moisture_pct = nut_coke_moisture_pct if nut_coke_add_moisture else 0.0
 observed_slag_rate = float(hm_snapshot.get("observed_slag_rate_kg_per_thm", 0.0) or 0.0)
 hm_fe_pct_for_target = float(
     hm_snapshot.get("hm_fe_pct_for_target")
@@ -3443,7 +3578,9 @@ else:
 # overridden. Prices remain available in the collapsed Fuel prices control. The
 # ash chemistry still reaches the slag balance exactly as before. Set
 # ui.show_fuel_ash_editor: true in setting_bmo.yml for the full debugging editor.
-show_fuel_ash_editor = bool((bmo_cfg.get("ui") or {}).get("show_fuel_ash_editor", False))
+show_fuel_ash_editor = bool(
+    (bmo_cfg.get("ui") or {}).get("show_fuel_ash_editor", False)
+)
 
 if show_fuel_ash_editor:
     with st.form("bmo_fuel_ash_input_form", clear_on_submit=False):
@@ -3461,7 +3598,9 @@ if show_fuel_ash_editor:
             "back-solved from the model's predicted cost."
         )
         if not fuel_ash_editor_source_df.empty:
-            edited_fuel_ash_candidate_df = render_fuel_ash_editor(fuel_ash_editor_source_df)
+            edited_fuel_ash_candidate_df = render_fuel_ash_editor(
+                fuel_ash_editor_source_df
+            )
         else:
             edited_fuel_ash_candidate_df = fuel_ash_editor_source_df
         st.caption(
@@ -3506,15 +3645,11 @@ else:
 _fuel_price_defaults = fuel_prices_from_editor(edited_fuel_ash_df)
 _fuel_price_values = {
     fuel_id: float(
-        st.session_state.get(
-            f"bmo_fuel_price_{fuel_id}_rs_per_mt", default_price
-        )
+        st.session_state.get(f"bmo_fuel_price_{fuel_id}_rs_per_mt", default_price)
     )
     for fuel_id, default_price in _fuel_price_defaults.items()
 }
-edited_fuel_ash_df = apply_fuel_prices(
-    edited_fuel_ash_df, _fuel_price_values
-)
+edited_fuel_ash_df = apply_fuel_prices(edited_fuel_ash_df, _fuel_price_values)
 dust_base_df = apply_dust_preferences(
     build_dust_editor_df(bmo_cfg.get("dust_inputs", [])), operator_preferences
 )
@@ -3605,9 +3740,7 @@ _DE_SEED_LABELS = {
 # --- Fuel planning controls, immediately above the buttons that consume them --------
 _live_pci_tag = float(_live_process_snapshot().get("coal_rate_actual_value") or 0.0)
 if "bmo_nut_coke_override_kg" not in st.session_state:
-    st.session_state["bmo_nut_coke_override_kg"] = (
-        DEFAULT_NUT_COKE_RATE_KG_PER_THM
-    )
+    st.session_state["bmo_nut_coke_override_kg"] = DEFAULT_NUT_COKE_RATE_KG_PER_THM
 
 fuel_prices_applied = False
 fuel_prices_saved = False
@@ -3735,10 +3868,7 @@ _fuel_price_state = tuple(
         float(row.get("price_rs_per_mt", 0.0) or 0.0),
     )
     for _, row in edited_fuel_ash_df.iterrows()
-    if (
-        str(row.get("fuel_id", "")).strip().lower()
-        in {"coke", "nut_coke", "pci"}
-    )
+    if (str(row.get("fuel_id", "")).strip().lower() in {"coke", "nut_coke", "pci"})
 )
 if st.session_state.get("bmo_ui_fuel_price_state_last") != _fuel_price_state:
     if st.session_state.get("bmo_ui_fuel_price_state_last") is not None:
@@ -3758,6 +3888,70 @@ if st.session_state.get("bmo_pci_state_last") != _fuel_rate_state:
     st.session_state["bmo_pci_state_last"] = _fuel_rate_state
 
 fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
+data_driven_prediction: DirectCokePrediction | None = None
+if fuel_rate_anchor_basis == "data_driven":
+    direct_cfg = _direct_coke_config()
+    bundled_dir, deployment_dir, direct_dataset_path = _direct_coke_paths()
+    active_pointer = deployment_dir / "active.json"
+    deployment_token = (
+        int(active_pointer.stat().st_mtime_ns) if active_pointer.is_file() else 0
+    )
+    dataset_token = (
+        int(direct_dataset_path.stat().st_mtime_ns)
+        if direct_dataset_path.is_file()
+        else 0
+    )
+    try:
+        with st.spinner("Evaluating the current state with the coke-rate model..."):
+            data_driven_prediction = _cached_direct_coke_prediction(
+                dataset_path=str(direct_dataset_path),
+                dataset_mtime_ns=dataset_token,
+                source_cache_version=source_cache_version,
+                bundled_dir=str(bundled_dir),
+                deployment_dir=str(deployment_dir),
+                deployment_token=deployment_token,
+                pci_kg_per_thm=float(
+                    recent_fuel_rates.get("pci_rate_kg_thm", 0.0) or 0.0
+                ),
+                nut_coke_kg_per_thm=float(
+                    recent_fuel_rates.get(
+                        "nut_coke_rate_kg_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM
+                    )
+                    or 0.0
+                ),
+                max_stale_hours=float(direct_cfg.get("max_input_stale_hours", 6.0)),
+                max_source_age_hours=float(direct_cfg.get("max_source_age_hours", 6.0)),
+            )
+    except Exception as exc:  # noqa: BLE001 - keep energy-balance mode available
+        log.exception("Direct coke-rate prediction failed")
+        st.error(f"The data-driven coke model could not run: {exc}")
+    else:
+        st.session_state["bmo_data_driven_coke_prediction"] = (
+            data_driven_prediction.to_dict()
+        )
+        if data_driven_prediction.usable:
+            st.success(
+                f"Data-driven coke anchor: "
+                f"**{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM** "
+                f"at {data_driven_prediction.origin_utc}."
+            )
+            if data_driven_prediction.outside_training_p01_p99:
+                st.warning(
+                    f"{len(data_driven_prediction.outside_training_p01_p99)} model "
+                    "inputs are outside their training p01-p99 ranges. Review Model accuracy."
+                )
+        else:
+            rejected = (
+                f" The rejected stale estimate was "
+                f"{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM."
+                if data_driven_prediction.value_kg_per_thm is not None
+                else ""
+            )
+            st.error(
+                "The data-driven anchor is unavailable: "
+                + " ".join(data_driven_prediction.reasons)
+                + rejected
+            )
 run_lp_clicked = False
 run_total_clicked = False
 with st.form("bmo_run_form", clear_on_submit=False):
@@ -3799,7 +3993,15 @@ requested_lp = bool(run_lp_clicked)
 requested_total = bool(run_total_clicked)
 
 if requested_lp or requested_total:
-    if not basicity_bounds_valid:
+    if fuel_rate_anchor_basis == "data_driven" and (
+        data_driven_prediction is None or not data_driven_prediction.usable
+    ):
+        st.error(
+            "Optimization was not started because the selected data-driven coke "
+            "anchor has no fresh, eligible current-state prediction. Refresh/fix "
+            "the burden quantities or switch to Energy balance."
+        )
+    elif not basicity_bounds_valid:
         st.error("Correct the slag basicity bounds before running BMO.")
     elif pellet_input_issues and not pellet_input_confirmed:
         st.error(
@@ -3844,11 +4046,28 @@ if requested_lp or requested_total:
             observed_slag_rate_kg_per_thm=observed_slag_rate,
         )
         st.session_state["bmo_energy_anchor"] = energy_anchor
-        anchor_coke_rate = (
-            energy_anchor.coke_rate_kg_thm
-            if energy_anchor is not None and energy_anchor.usable
-            else None
-        )
+        anchor_prediction_details: dict[str, Any] | None = None
+        if fuel_rate_anchor_basis == "data_driven":
+            anchor_coke_rate = (
+                float(data_driven_prediction.value_kg_per_thm)
+                if data_driven_prediction is not None
+                and data_driven_prediction.usable
+                and data_driven_prediction.value_kg_per_thm is not None
+                else None
+            )
+            anchor_prediction_details = (
+                data_driven_prediction.to_dict()
+                if data_driven_prediction is not None
+                else None
+            )
+        else:
+            anchor_coke_rate = (
+                energy_anchor.coke_rate_kg_thm
+                if energy_anchor is not None and energy_anchor.usable
+                else None
+            )
+        st.session_state["bmo_coke_anchor_basis"] = fuel_rate_anchor_basis
+        st.session_state["bmo_coke_anchor_rate_kg_thm"] = anchor_coke_rate
 
         with st.spinner("Running LP baseline..."):
             lp_result, lp_errors = run_lp_baseline(
@@ -3935,6 +4154,7 @@ if requested_lp or requested_total:
                     hot_metal_si_pct=lp_si,
                     fuel_rate_anchor_basis=fuel_rate_anchor_basis,
                     anchor_coke_rate_kg_thm=anchor_coke_rate,
+                    anchor_prediction_details=anchor_prediction_details,
                     charge_mass_mt=charge_mass_mt,
                 )
                 lp_result.diagnostics["lp_flux_quantities_mt"] = lp_solved_flux_mt
@@ -4089,6 +4309,7 @@ if requested_lp or requested_total:
                 hot_metal_si_pct=st.session_state.get("bmo_lp_si"),
                 fuel_rate_anchor_basis=fuel_rate_anchor_basis,
                 anchor_coke_rate_kg_thm=anchor_coke_rate,
+                anchor_prediction_details=anchor_prediction_details,
                 progress_callback=_de_progress,
                 charge_mass_mt=charge_mass_mt,
             )

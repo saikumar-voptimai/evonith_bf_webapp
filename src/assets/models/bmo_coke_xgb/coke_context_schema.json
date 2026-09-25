@@ -1,0 +1,451 @@
+{
+  "task": "coke_context",
+  "features": [
+    "ORE_1_BLEND_SHARE__lag0",
+    "ORE_2_BLEND_SHARE__lag0",
+    "ORE_3_BLEND_SHARE__lag0",
+    "SINTER_BLEND_SHARE__lag0",
+    "TOTAL_PELLET_BLEND_SHARE__lag0",
+    "slag_kg_thm_repo__lag0",
+    "slag_basicity_calc__lag0",
+    "slag_al2o3_pct_calc__lag0",
+    "slag_mgo_pct_calc__lag0",
+    "SINTER_CALC_KG_THM__lag0",
+    "ORE_CALC_KG_THM__lag0",
+    "SINTER_CALC_KG_THM__slope4",
+    "ORE_3_CALC_KG_THM__lag0",
+    "NUTCOKE_CALC_KG_THM__lag0",
+    "ORE_3_CALC_KG_THM__slope4",
+    "ORE_CALC_KG_THM__slope4",
+    "NUTCOKE_CALC_KG_THM__slope4",
+    "SINTER_CALC_KG_THM__mean4",
+    "ORE_2_CALC_KG_THM__lag0",
+    "TOTAL_PELLET_CALC_KG_THM__slope4",
+    "ORE_2_CALC_KG_THM__slope4",
+    "PRODUCTIONTONNESPERHR__lag0",
+    "PRODUCTIONTONNESPERHR__mean4",
+    "DIFFERENTIAL PRESSURETOTALBAR__lag0",
+    "slag_basicity_calc__slope4",
+    "slag_kg_thm_repo__slope4",
+    "HOT BLAST TEMP.OC__lag0",
+    "PCI_ASH%__assay_available",
+    "OXYGENFLOWNM3/HR.__lag0",
+    "DIFFERENTIAL PRESSURETOTALBAR__lag2",
+    "DIFFERENTIAL PRESSURETOTALBAR__mean4",
+    "HOT BLAST PRESSUREBAR__lag0",
+    "OXYGENFLOWNM3/HR.__lag2",
+    "SINTER_BLEND_SHARE__lag12",
+    "SINTER_BLEND_SHARE__mean4",
+    "PCI_CALC_KG_THM__lag0",
+    "PCI_CALC_KG_THM__mean4",
+    "SINTER_MNO%__assay_available",
+    "SINTER_BLEND_SHARE__lag6",
+    "FURNACE TOP GAS ANALYSISH2%__lag0",
+    "SINTER_BLEND_SHARE__lag8",
+    "TOTAL_PELLET_CALC_KG_THM__lag12",
+    "TOTAL_PELLET_BLEND_SHARE__lag12",
+    "TOTAL_PELLET_BLEND_SHARE__mean4",
+    "SINTER_BLEND_SHARE__lag5",
+    "PRODUCTIONTONNESPERHR__lag2",
+    "PCI_CALC_KG_THM__lag2",
+    "FURNACETOPGASANALYSISCO2ETACO__lag0",
+    "SINTER_BLEND_SHARE__lag2",
+    "slag_mgo_pct_calc__slope4",
+    "TOTAL_PELLET_CALC_KG_THM__lag6",
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__mean4",
+    "TOTAL_PELLET_BLEND_SHARE__lag2",
+    "TOTAL_PELLET_BLEND_SHARE__lag5",
+    "ORE_CALC_KG_THM__mean4",
+    "TOTAL_PELLET_BLEND_SHARE__lag6",
+    "TOTAL_PELLET_BLEND_SHARE__lag8",
+    "PCI_CALC_KG_THM__lag6",
+    "OXYGENFLOWNM3/HR.__mean4",
+    "DIFFERENTIAL PRESSURETOTALBAR__lag5",
+    "HOT BLAST PRESSUREBAR__lag2",
+    "FLUX_CALC_KG_THM__slope4",
+    "HOT BLAST TEMP.OC__lag2",
+    "HOT BLAST VOLUMENM3/HR.__lag2",
+    "HOT BLAST VOLUMENM3/HR.__lag0",
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__lag5",
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__lag6",
+    "ORE_NA2O%__assay_available",
+    "FURNACETOPGASANALYSISCO2ETACO__mean4",
+    "FURNACE TOP GAS ANALYSISH2%__mean4",
+    "slag_mgo_pct_calc__mean4",
+    "CHARGES/HRS.__mean4",
+    "TOTAL_PELLET_CALC_KG_THM__lag8",
+    "STOCKRODLEVEL__lag0",
+    "TOTAL_PELLET_CALC_KG_THM__lag5",
+    "FURNACE TOP GAS ANALYSISH2%__lag2",
+    "PRODUCTIONTONNESPERHR__lag5",
+    "FURNACE TOP GAS ANALYSISCO2%__lag0",
+    "SINTER_NA2O%__assay_available",
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__lag8"
+  ],
+  "feature_limits": {
+    "ORE_1_BLEND_SHARE__lag0": [
+      0.0,
+      0.14529700305309556
+    ],
+    "ORE_2_BLEND_SHARE__lag0": [
+      0.0,
+      0.179641169212307
+    ],
+    "ORE_3_BLEND_SHARE__lag0": [
+      0.08437391165999976,
+      0.12029142833737697
+    ],
+    "SINTER_BLEND_SHARE__lag0": [
+      0.5850659093280207,
+      0.6786722050735713
+    ],
+    "TOTAL_PELLET_BLEND_SHARE__lag0": [
+      0.08779820021415241,
+      0.16038977192443674
+    ],
+    "slag_kg_thm_repo__lag0": [
+      325.57331221961465,
+      388.3006507894693
+    ],
+    "slag_basicity_calc__lag0": [
+      0.9133917513276327,
+      1.2494426371863414
+    ],
+    "slag_al2o3_pct_calc__lag0": [
+      16.842924654782326,
+      20.716513356484
+    ],
+    "slag_mgo_pct_calc__lag0": [
+      6.727045409518244,
+      8.212903727817858
+    ],
+    "SINTER_CALC_KG_THM__lag0": [
+      832.8219879494188,
+      1295.654707978034
+    ],
+    "ORE_CALC_KG_THM__lag0": [
+      313.2522487001618,
+      525.4021502250363
+    ],
+    "SINTER_CALC_KG_THM__slope4": [
+      -73.32794227606334,
+      64.43746190958828
+    ],
+    "ORE_3_CALC_KG_THM__lag0": [
+      131.3663108633669,
+      216.226327171851
+    ],
+    "NUTCOKE_CALC_KG_THM__lag0": [
+      55.81017423119147,
+      95.41892778902435
+    ],
+    "ORE_3_CALC_KG_THM__slope4": [
+      -12.942058313168383,
+      12.457478188560266
+    ],
+    "ORE_CALC_KG_THM__slope4": [
+      -34.096496856641494,
+      34.21757389391516
+    ],
+    "NUTCOKE_CALC_KG_THM__slope4": [
+      -6.039279564589271,
+      5.776711506841232
+    ],
+    "SINTER_CALC_KG_THM__mean4": [
+      962.2153131973423,
+      1157.697513757776
+    ],
+    "ORE_2_CALC_KG_THM__lag0": [
+      0.0,
+      325.20930737292935
+    ],
+    "TOTAL_PELLET_CALC_KG_THM__slope4": [
+      -20.52898129835384,
+      21.311524264499408
+    ],
+    "ORE_2_CALC_KG_THM__slope4": [
+      -55.490091984804096,
+      45.876547493633126
+    ],
+    "PRODUCTIONTONNESPERHR__lag0": [
+      82.31965410499983,
+      99.20033101591726
+    ],
+    "PRODUCTIONTONNESPERHR__mean4": [
+      84.95292969943387,
+      96.64908333333355
+    ],
+    "DIFFERENTIAL PRESSURETOTALBAR__lag0": [
+      1.2640682690972214,
+      1.434678341734991
+    ],
+    "slag_basicity_calc__slope4": [
+      -0.04005810550865541,
+      0.040271813784094224
+    ],
+    "slag_kg_thm_repo__slope4": [
+      -8.881820829928362,
+      6.933921978010198
+    ],
+    "HOT BLAST TEMP.OC__lag0": [
+      1153.4019457777786,
+      1206.597142857143
+    ],
+    "PCI_ASH%__assay_available": [
+      8.14,
+      10.18
+    ],
+    "OXYGENFLOWNM3/HR.__lag0": [
+      3841.0900463055546,
+      6519.422635322553
+    ],
+    "DIFFERENTIAL PRESSURETOTALBAR__lag2": [
+      1.2730081533444442,
+      1.4348294031231834
+    ],
+    "DIFFERENTIAL PRESSURETOTALBAR__mean4": [
+      1.291389784557044,
+      1.4245934035256405
+    ],
+    "HOT BLAST PRESSUREBAR__lag0": [
+      2.6313194015833363,
+      2.8513536537954565
+    ],
+    "OXYGENFLOWNM3/HR.__lag2": [
+      4044.860699444445,
+      6519.422635322553
+    ],
+    "SINTER_BLEND_SHARE__lag12": [
+      0.5850346644796971,
+      0.6793995964782708
+    ],
+    "SINTER_BLEND_SHARE__mean4": [
+      0.5879685667945735,
+      0.6733929888475128
+    ],
+    "PCI_CALC_KG_THM__lag0": [
+      128.5038131033333,
+      222.30300413071035
+    ],
+    "PCI_CALC_KG_THM__mean4": [
+      134.50314979166671,
+      211.26634364406783
+    ],
+    "SINTER_MNO%__assay_available": [
+      0.19,
+      0.28
+    ],
+    "SINTER_BLEND_SHARE__lag6": [
+      0.585086402181986,
+      0.67879249285339
+    ],
+    "FURNACE TOP GAS ANALYSISH2%__lag0": [
+      3.5442279091944457,
+      4.775493906444444
+    ],
+    "SINTER_BLEND_SHARE__lag8": [
+      0.5850437036957451,
+      0.6789460036795113
+    ],
+    "TOTAL_PELLET_CALC_KG_THM__lag12": [
+      133.6945063552993,
+      292.84066967527366
+    ],
+    "TOTAL_PELLET_BLEND_SHARE__lag12": [
+      0.08551156704936368,
+      0.15966306824902368
+    ],
+    "TOTAL_PELLET_BLEND_SHARE__mean4": [
+      0.09028622035450684,
+      0.15878776883238913
+    ],
+    "SINTER_BLEND_SHARE__lag5": [
+      0.5850485273866535,
+      0.6787832399472502
+    ],
+    "PRODUCTIONTONNESPERHR__lag2": [
+      82.41900000000064,
+      99.10981934244926
+    ],
+    "PCI_CALC_KG_THM__lag2": [
+      128.789971988889,
+      222.45912694540394
+    ],
+    "FURNACETOPGASANALYSISCO2ETACO__lag0": [
+      40.457475695000014,
+      44.65009624768726
+    ],
+    "SINTER_BLEND_SHARE__lag2": [
+      0.5850554077384447,
+      0.6787392886430856
+    ],
+    "slag_mgo_pct_calc__slope4": [
+      -0.200452512738877,
+      0.19450946689046622
+    ],
+    "TOTAL_PELLET_CALC_KG_THM__lag6": [
+      134.03478793639064,
+      293.93708824911016
+    ],
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__mean4": [
+      24.022171840277778,
+      26.225454548611104
+    ],
+    "TOTAL_PELLET_BLEND_SHARE__lag2": [
+      0.08657114916070117,
+      0.1597070242305605
+    ],
+    "TOTAL_PELLET_BLEND_SHARE__lag5": [
+      0.08585660447407159,
+      0.15962707845779509
+    ],
+    "ORE_CALC_KG_THM__mean4": [
+      367.42827321531536,
+      490.0379324361435
+    ],
+    "TOTAL_PELLET_BLEND_SHARE__lag6": [
+      0.08561584780177994,
+      0.15964649301471678
+    ],
+    "TOTAL_PELLET_BLEND_SHARE__lag8": [
+      0.0855446357376212,
+      0.15965427705271631
+    ],
+    "PCI_CALC_KG_THM__lag6": [
+      128.48665131222202,
+      222.01409900277784
+    ],
+    "OXYGENFLOWNM3/HR.__mean4": [
+      4654.629706318201,
+      6519.422635322553
+    ],
+    "DIFFERENTIAL PRESSURETOTALBAR__lag5": [
+      1.2723890543888885,
+      1.4349283743775163
+    ],
+    "HOT BLAST PRESSUREBAR__lag2": [
+      2.6440429542222237,
+      2.851395875818183
+    ],
+    "FLUX_CALC_KG_THM__slope4": [
+      -2.9104161099416546,
+      2.3879908036668
+    ],
+    "HOT BLAST TEMP.OC__lag2": [
+      1153.6938308888894,
+      1206.597142857143
+    ],
+    "HOT BLAST VOLUMENM3/HR.__lag2": [
+      105371.64709999996,
+      114716.54966666663
+    ],
+    "HOT BLAST VOLUMENM3/HR.__lag0": [
+      104912.72434916659,
+      114712.86183333329
+    ],
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__lag5": [
+      23.843786165277777,
+      26.33203758472222
+    ],
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__lag6": [
+      23.843082077499997,
+      26.33311300583333
+    ],
+    "ORE_NA2O%__assay_available": [
+      0.008290263941055708,
+      0.03817570347948576
+    ],
+    "FURNACETOPGASANALYSISCO2ETACO__mean4": [
+      40.66558744444444,
+      44.3978803665274
+    ],
+    "FURNACE TOP GAS ANALYSISH2%__mean4": [
+      3.6162169604166676,
+      4.712547541308245
+    ],
+    "slag_mgo_pct_calc__mean4": [
+      6.802077120810697,
+      8.178057575547179
+    ],
+    "CHARGES/HRS.__mean4": [
+      5.805084745762712,
+      7.0
+    ],
+    "TOTAL_PELLET_CALC_KG_THM__lag8": [
+      133.93074523289263,
+      293.96310964213586
+    ],
+    "STOCKRODLEVEL__lag0": [
+      0.44736287408555564,
+      1.4900946916138897
+    ],
+    "TOTAL_PELLET_CALC_KG_THM__lag5": [
+      134.1359735802583,
+      293.9278654879659
+    ],
+    "FURNACE TOP GAS ANALYSISH2%__lag2": [
+      3.563923288333333,
+      4.765424722777777
+    ],
+    "PRODUCTIONTONNESPERHR__lag5": [
+      83.08099999999935,
+      99.26550292602944
+    ],
+    "FURNACE TOP GAS ANALYSISCO2%__lag0": [
+      17.432779466111107,
+      19.6441
+    ],
+    "SINTER_NA2O%__assay_available": [
+      0.02,
+      0.034
+    ],
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__lag8": [
+      23.79398754555557,
+      26.33565037666666
+    ]
+  },
+  "parameters": {
+    "window": 60,
+    "family": "process",
+    "depth": 3,
+    "rounds": 300,
+    "top_k": 80,
+    "rolling": true
+  },
+  "units": "kg/tHM",
+  "fit_cutoff": "2026-09-22 07:30:01+00:00",
+  "latest_label_available": "2026-09-21 19:30:00+00:00",
+  "training_rows": 1154,
+  "interpretation": "expected historical coke conditional on supplied same-period burden/process",
+  "slag_coke_basis_kg_thm": 300,
+  "validation": {
+    "task": "coke_context",
+    "status": "evaluated",
+    "chosen": {
+      "window": 60,
+      "family": "process",
+      "depth": 3,
+      "rounds": 300,
+      "top_k": 80,
+      "rolling": true
+    },
+    "test_start": "2026-09-09 00:00:00+00:00",
+    "test_end": "2026-09-23 00:00:00+00:00",
+    "test": {
+      "n": 315,
+      "r2": 0.7672279018708291,
+      "mae": 9.301415807441838,
+      "rmse": 12.608612174610839
+    },
+    "last_value_baseline": {
+      "n": 314,
+      "r2": -1.7042924994086275,
+      "mae": 35.32928095244445,
+      "rmse": 43.03569803232253
+    },
+    "test_coverage": 1.0,
+    "interpretation": "conditional observed coke for supplied burden/process; not future forecast or proven minimum"
+  },
+  "optimisation_validated": false,
+  "residual_baseline_feature": null
+}

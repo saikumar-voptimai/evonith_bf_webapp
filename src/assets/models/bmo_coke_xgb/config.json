@@ -1,0 +1,54 @@
+{
+  "furnace_path": "upload/furnace_dataset_resolved_issues.csv",
+  "raw_lab_path": "upload/offline_feed.hot_metal_slag_analysis.csv",
+  "time_col": "time",
+  "furnace_timezone": "Asia/Kolkata",
+  "lab_timezone": "Asia/Kolkata",
+  "hourly_timestamp": "start",
+  "months": 3,
+  "normal_flag_col": null,
+  "excluded_intervals": [],
+  "recovery_hours": 12,
+  "lab_max_age_hours": 8,
+  "normal_proxy": true,
+  "chemistry_delay_hours": 24,
+  "pellet_fe_basis": "fe2o3",
+  "slag_reference_coke_rate": null,
+  "extra_feature_columns": [],
+  "exclude_feature_columns": [
+    "HEARTH_TEMP_D",
+    "HEARTH_TEMP_AVG",
+    "BOSH_TEMP_A"
+  ],
+  "heatload_units_confirmed": false,
+  "allow_static_slag_assumptions": true,
+  "flux_map": {
+    "dolomite": "FLUX_1_CALC_MT",
+    "quartz": "FLUX_2_CALC_MT",
+    "limestone": "FLUX_3_CALC_MT"
+  },
+  "flux_mapping_confirmed": true,
+  "last_date": null,
+  "horizons": [
+    1,
+    3,
+    8
+  ],
+  "test_days": 14,
+  "validation_days": 7,
+  "thermal_horizons": [
+    0,
+    3,
+    8
+  ],
+  "purge_hours": 12,
+  "min_train_rows": 100,
+  "min_test_rows": 20,
+  "lab_columns": {
+    "observation_time": "observation_time",
+    "available_time": "available_time",
+    "sample_id": "sample_id",
+    "si": "si",
+    "hmt": "hmt"
+  }
+}

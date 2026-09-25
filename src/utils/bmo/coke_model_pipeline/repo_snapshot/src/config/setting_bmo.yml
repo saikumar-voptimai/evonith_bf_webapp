@@ -377,28 +377,13 @@ bmo:
   #
   # energy_balance (current): solve the closed energy balance at the CURRENT
   # controls and burden, then subtract the rolling bias offset fitted on recent
-  # complete days of hourly COKE_CALC_MT per hot-metal tonne. It is the only one
-  # of the three that responds to what the furnace is actually being asked to
-  # do, rather than reporting yesterday's number or the model's near-constant.
+  # plant history. Backtested over 239 days, that is MAPE 3.37% and R2 +0.74
+  # forward, against 7.24% / +0.07 for the raw balance. It is the only one of
+  # the three that responds to what the furnace is actually being asked to do,
+  # rather than reporting yesterday's number or the model's near-constant.
   # Falls back to observed when the live tags, the calibration, or the solve
   # are unavailable — see utils/bmo/energy_anchor.py.
   fuel_rate_anchor_basis: energy_balance
-
-  # Direct price-independent coke-rate model. The page switch chooses this or
-  # the energy balance for the run's frozen coke anchor; the physical correction
-  # below remains the only per-candidate blend response in either mode.
-  data_driven_coke:
-    bundled_model_dir: src/assets/models/bmo_coke_xgb
-    deployment_dir: src/storage/bmo_coke_model
-    dataset_path: src/assets/data/furnace_dataset.csv
-    max_input_stale_hours: 6.0
-    max_source_age_hours: 6.0
-    retraining:
-      random_test_fraction: 0.20
-      later_test_days: 14
-      min_random_r2: 0.70
-      min_later_time_r2: 0.65
-      seed: 20260922
 
   # ---------------------------------------------------------------------------
   # Physics-based coke-rate correction.
@@ -660,11 +645,6 @@ bmo:
 
   ui:
     show_manual_compare: true
-    # The Fuel Ash table exists to put fuel ASH into the slag balance, but the
-    # plant was using its nut coke and PCI rate columns to CONTROL those rates.
-    # Hidden so they cannot be: PCI now comes from the live tag and nut coke is
-    # fixed. Turn on only to inspect or debug the ash chemistry.
-    show_fuel_ash_editor: false
     auto_select_active_pellet: true
     default_selected_ores:
       - SINTER (SP-02)

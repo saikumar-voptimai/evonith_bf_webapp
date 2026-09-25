@@ -33,6 +33,7 @@ from utils.bmo.types import (
     DustInput,
     FluxInput,
     FuelAshInput,
+    ModelPrediction,
     OreInput,
     SlagBalanceSettings,
 )
@@ -84,7 +85,11 @@ def _current_fuel_prices_rs_per_kg(
     return prices
 
 
-def _rebase_fuel_cost_to_anchor(blend: BlendEvaluation, fuel_rates: Any) -> None:
+def _rebase_fuel_cost_to_anchor(
+    blend: BlendEvaluation,
+    fuel_rates: Any,
+    prices_rs_per_kg: Mapping[str, float] | None = None,
+) -> None:
     """Make the blend's fuel cost agree with the fuel rates being reported.
 
     Called only on the observed-anchor path. When the anchor is the model's own
@@ -98,10 +103,11 @@ def _rebase_fuel_cost_to_anchor(blend: BlendEvaluation, fuel_rates: Any) -> None
     shifts the reported cost level without changing which blend wins.
     """
 
+    prices = prices_rs_per_kg or ASSUMED_FUEL_PRICES_RS_PER_KG
     anchor_cost = (
-        fuel_rates.coke_rate_kg_thm * ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
-        + fuel_rates.nut_coke_rate_kg_thm * ASSUMED_FUEL_PRICES_RS_PER_KG["nut_coke"]
-        + fuel_rates.pci_rate_kg_thm * ASSUMED_FUEL_PRICES_RS_PER_KG["pci"]
+        fuel_rates.coke_rate_kg_thm * prices["coke"]
+        + fuel_rates.nut_coke_rate_kg_thm * prices["nut_coke"]
+        + fuel_rates.pci_rate_kg_thm * prices["pci"]
     )
     rebase_delta = float(anchor_cost) - float(blend.fuel_cost_per_thm_rs)
     if rebase_delta == 0.0:
@@ -127,6 +133,7 @@ def _apply_coke_correction(
     settings: CokeCorrectionSettings | None,
     reference: CokeCorrectionReference | None,
     fuel_rate_basis: str,
+    coke_price_rs_per_kg: float | None = None,
 ) -> Any | None:
     """Attach the physics coke-rate correction and return the corrected rates.
 
@@ -177,9 +184,12 @@ def _apply_coke_correction(
     # The optimizer minimises at the model's baseline prices, so the correction
     # must be priced there too. Using the operator's current coke price here
     # would make the LP's linear term and this path optimise different things.
-    cost_delta = (
-        float(result.applied_delta_kg_thm) * ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
+    coke_price = (
+        float(coke_price_rs_per_kg)
+        if coke_price_rs_per_kg is not None
+        else ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
     )
+    cost_delta = float(result.applied_delta_kg_thm) * coke_price
     blend.diagnostics["fuel_cost_per_thm_rs_uncorrected"] = float(
         blend.fuel_cost_per_thm_rs
     )
@@ -209,6 +219,7 @@ def evaluate_blend_with_fuel_prediction(
     fuel_rate_basis: str = "model_cost",
     fuel_rate_anchor_basis: str = "model_cost",
     anchor_coke_rate_kg_thm: float | None = None,
+    anchor_prediction_details: Mapping[str, Any] | None = None,
     coke_correction_settings: CokeCorrectionSettings | None = None,
     coke_correction_reference: CokeCorrectionReference | None = None,
     hot_metal_si_pct: float | None = None,
@@ -288,19 +299,47 @@ def evaluate_blend_with_fuel_prediction(
 
     quantities = {str(ore_id): float(qty) for ore_id, qty in quantities_mt.items()}
     ore_name_by_id = {ore.ore_id: ore.display_name for ore in ores}
-    if prebuilt_context is not None:
-        prediction = model_service.predict_with_prebuilt(
-            prebuilt_context, quantities, history_df
-        )
-    else:
-        feature_payload = build_feature_payload(
-            quantities_mt=quantities,
-            ore_display_name_by_id=ore_name_by_id,
-            process_context=process_context,
-            ores=ores,
-            hot_metal_target_mt=hot_metal_target_mt,
-        )
-        prediction = model_service.predict(feature_payload, history_df)
+    current_prices = _current_fuel_prices_rs_per_kg(fuel_ash_inputs)
+    direct_anchor_rates = None
+    if (
+        fuel_rate_basis != "inputs"
+        and fuel_rate_anchor_basis == "data_driven"
+        and anchor_coke_rate_kg_thm is not None
+    ):
+        observed = estimate_fuel_rates_from_inputs(fuel_ash_inputs)
+        if observed is not None:
+            direct_anchor_rates = with_coke_rate(
+                observed, float(anchor_coke_rate_kg_thm)
+            )
+            direct_cost = (
+                direct_anchor_rates.coke_rate_kg_thm * current_prices["coke"]
+                + direct_anchor_rates.nut_coke_rate_kg_thm * current_prices["nut_coke"]
+                + direct_anchor_rates.pci_rate_kg_thm * current_prices["pci"]
+            )
+            prediction = ModelPrediction(
+                value=float(direct_cost),
+                model_loaded=True,
+                scaler_loaded=True,
+                used_fallback=False,
+                details={
+                    "source": "direct_coke_xgboost",
+                    **dict(anchor_prediction_details or {}),
+                },
+            )
+    if direct_anchor_rates is None:
+        if prebuilt_context is not None:
+            prediction = model_service.predict_with_prebuilt(
+                prebuilt_context, quantities, history_df
+            )
+        else:
+            feature_payload = build_feature_payload(
+                quantities_mt=quantities,
+                ore_display_name_by_id=ore_name_by_id,
+                process_context=process_context,
+                ores=ores,
+                hot_metal_target_mt=hot_metal_target_mt,
+            )
+            prediction = model_service.predict(feature_payload, history_df)
     # Rate basis differs by blend kind (see docstring): manual blends show the
     # realised cost from actual current rates; optimized blends convert the
     # ML-predicted cost so the display stays blend-sensitive.
@@ -315,6 +354,9 @@ def evaluate_blend_with_fuel_prediction(
                 fuel_ash_inputs=fuel_ash_inputs,
             )
             fuel_rate_source = "model_cost_residual"
+    elif direct_anchor_rates is not None:
+        fuel_rates = direct_anchor_rates
+        fuel_rate_source = "data_driven_coke_anchor"
     elif fuel_rate_anchor_basis == "energy_balance" and anchor_coke_rate_kg_thm:
         # The energy balance solved at the CURRENT controls and burden, less the
         # rolling bias offset. This sets the LEVEL the fuel cost sits on; blend
@@ -403,8 +445,13 @@ def evaluate_blend_with_fuel_prediction(
     if fuel_rates is not None and fuel_rate_source in (
         "observed_fuel_ash_inputs",
         "energy_balance_anchor",
+        "data_driven_coke_anchor",
     ):
-        _rebase_fuel_cost_to_anchor(blend, fuel_rates)
+        _rebase_fuel_cost_to_anchor(
+            blend,
+            fuel_rates,
+            current_prices if fuel_rate_source == "data_driven_coke_anchor" else None,
+        )
 
     if fuel_rates is not None:
         # Keep the uncorrected rates alongside the corrected ones. Operators
@@ -424,6 +471,11 @@ def evaluate_blend_with_fuel_prediction(
             settings=coke_correction_settings,
             reference=coke_correction_reference,
             fuel_rate_basis=fuel_rate_basis,
+            coke_price_rs_per_kg=(
+                current_prices["coke"]
+                if fuel_rate_source == "data_driven_coke_anchor"
+                else None
+            ),
         )
         if correction is not None:
             fuel_rates = correction
@@ -479,7 +531,6 @@ def evaluate_blend_with_fuel_prediction(
         # those run inputs are unavailable. Stored in diagnostics only (display
         # use); the optimizer keeps minimising on the model's baseline-price
         # ``objective_rs_per_thm``.
-        current_prices = _current_fuel_prices_rs_per_kg(fuel_ash_inputs)
         adjusted_fuel_cost = (
             fuel_rates.coke_rate_kg_thm * current_prices["coke"]
             + fuel_rates.nut_coke_rate_kg_thm * current_prices["nut_coke"]

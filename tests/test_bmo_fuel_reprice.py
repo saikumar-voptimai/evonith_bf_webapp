@@ -47,6 +47,11 @@ class _FakeModelService:
         return _FakePrediction(self.value)
 
 
+class _ExplodingModelService:
+    def predict(self, feature_payload, history_df):  # noqa: ANN001
+        raise AssertionError("legacy fuel-cost model must not run for direct coke")
+
+
 def _ore(ore_id: str, *, sio2: float, cao: float) -> OreInput:
     return OreInput(
         ore_id=ore_id,
@@ -55,7 +60,9 @@ def _ore(ore_id: str, *, sio2: float, cao: float) -> OreInput:
         price_rs_per_mt=1000.0,
         min_share_pct=0.0,
         max_share_pct=100.0,
-        chemistry=OreChemistry(fe_t_pct=62.0, moisture_pct=3.0, sio2_pct=sio2, cao_pct=cao),
+        chemistry=OreChemistry(
+            fe_t_pct=62.0, moisture_pct=3.0, sio2_pct=sio2, cao_pct=cao
+        ),
     )
 
 
@@ -69,12 +76,30 @@ def _fuel_ash(
     pci_rate: float = 150.0,
 ) -> list[FuelAshInput]:
     return [
-        FuelAshInput(fuel_id="coke", display_name="Coke", price_rs_per_mt=coke_mt,
-                     rate_kg_per_thm=coke_rate, ash_pct=11.0, sio2_pct=55.0),
-        FuelAshInput(fuel_id="nut_coke", display_name="Nut Coke", price_rs_per_mt=nut_mt,
-                     rate_kg_per_thm=nut_rate, ash_pct=11.0, sio2_pct=55.0),
-        FuelAshInput(fuel_id="pci", display_name="PCI", price_rs_per_mt=pci_mt,
-                     rate_kg_per_thm=pci_rate, ash_pct=9.0, sio2_pct=49.0),
+        FuelAshInput(
+            fuel_id="coke",
+            display_name="Coke",
+            price_rs_per_mt=coke_mt,
+            rate_kg_per_thm=coke_rate,
+            ash_pct=11.0,
+            sio2_pct=55.0,
+        ),
+        FuelAshInput(
+            fuel_id="nut_coke",
+            display_name="Nut Coke",
+            price_rs_per_mt=nut_mt,
+            rate_kg_per_thm=nut_rate,
+            ash_pct=11.0,
+            sio2_pct=55.0,
+        ),
+        FuelAshInput(
+            fuel_id="pci",
+            display_name="PCI",
+            price_rs_per_mt=pci_mt,
+            rate_kg_per_thm=pci_rate,
+            ash_pct=9.0,
+            sio2_pct=49.0,
+        ),
     ]
 
 
@@ -101,7 +126,9 @@ def _blend(
 
 def test_decomposition_round_trips_at_assumed_prices():
     # Recovered rates, re-costed at the assumed prices, must reproduce the cost.
-    rates = estimate_fuel_rates_from_cost(fuel_cost_per_thm_rs=12_900.0, process_context=_CTX)
+    rates = estimate_fuel_rates_from_cost(
+        fuel_cost_per_thm_rs=12_900.0, process_context=_CTX
+    )
     assert rates is not None
     assert rates.pci_rate_kg_thm == pytest.approx(150.0)
     assert rates.nut_coke_rate_kg_thm == pytest.approx(20.0)
@@ -171,11 +198,42 @@ def test_default_basis_converts_model_cost_and_stays_blend_sensitive():
     )
 
 
+def test_data_driven_anchor_skips_legacy_cost_model_and_uses_current_prices():
+    fuel_ash = _fuel_ash(
+        31_000.0,
+        25_000.0,
+        19_000.0,
+        coke_rate=340.0,
+        nut_rate=70.0,
+        pci_rate=195.0,
+    )
+    blend = evaluate_blend_with_fuel_prediction(
+        ores=[_ore("ore_a", sio2=8.0, cao=1.0), _ore("ore_b", sio2=7.0, cao=1.5)],
+        quantities_mt={"ore_a": 100.0, "ore_b": 100.0},
+        feo_in_slag_pct=0.0,
+        model_service=_ExplodingModelService(),
+        process_context=_CTX,
+        history_df=None,
+        fuel_ash_inputs=fuel_ash,
+        hot_metal_target_mt=100.0,
+        fuel_rate_anchor_basis="data_driven",
+        anchor_coke_rate_kg_thm=305.0,
+        anchor_prediction_details={"origin_utc": "2026-09-25T10:30:00Z"},
+    )
+
+    expected = 305.0 * 31.0 + 70.0 * 25.0 + 195.0 * 19.0
+    assert blend.diagnostics["fuel_rate_estimate_source"] == "data_driven_coke_anchor"
+    assert blend.diagnostics["fuel_rate_estimate"]["coke_rate_kg_thm"] == 305.0
+    assert blend.fuel_cost_per_thm_rs == pytest.approx(expected)
+    assert blend.diagnostics["adjusted_fuel_cost_per_thm_rs"] == pytest.approx(expected)
+    assert (
+        blend.diagnostics["model_prediction"].details["source"] == "direct_coke_xgboost"
+    )
+
+
 def _fuel_usage(blend) -> dict:
     return {
-        row["fuel_id"]: row
-        for row in blend.diagnostics["fuel_usage"]
-        if row["enabled"]
+        row["fuel_id"]: row for row in blend.diagnostics["fuel_usage"] if row["enabled"]
     }
 
 
@@ -218,9 +276,7 @@ def test_de_still_ties_slag_to_the_displayed_fuel_rates():
     assert used["nut_coke"]["rate_kg_per_thm"] == pytest.approx(
         displayed["nut_coke_rate_kg_thm"]
     )
-    assert used["pci"]["rate_kg_per_thm"] == pytest.approx(
-        displayed["pci_rate_kg_thm"]
-    )
+    assert used["pci"]["rate_kg_per_thm"] == pytest.approx(displayed["pci_rate_kg_thm"])
     assert blend.diagnostics["slag_recomputed_with_corrected_fuel"] is True
 
 
@@ -251,9 +307,7 @@ def test_missing_prices_fall_back_to_assumed_no_change():
     # All prices left at 0 -> assumed prices. With the default model-cost basis
     # and baseline prices, the re-priced cost round-trips to the prediction.
     blend = _blend(_fuel_ash(0.0, 0.0, 0.0))
-    assert blend.diagnostics["adjusted_fuel_cost_per_thm_rs"] == pytest.approx(
-        12_900.0
-    )
+    assert blend.diagnostics["adjusted_fuel_cost_per_thm_rs"] == pytest.approx(12_900.0)
     assert (
         blend.diagnostics["current_fuel_prices_rs_per_kg"]
         == ASSUMED_FUEL_PRICES_RS_PER_KG
@@ -305,9 +359,7 @@ def test_nut_coke_override_rate_is_repriced_at_the_entered_nut_coke_price():
 
     rates = blend.diagnostics["fuel_rate_estimate"]
     expected_coke_rate = (12900.0 - 85.0 * 24.0 - 150.0 * 18.0) / 28.0
-    expected_current_cost = (
-        expected_coke_rate * 30.0 + 85.0 * 22.0 + 150.0 * 18.0
-    )
+    expected_current_cost = expected_coke_rate * 30.0 + 85.0 * 22.0 + 150.0 * 18.0
 
     assert rates["nut_coke_rate_kg_thm"] == pytest.approx(85.0)
     assert rates["coke_rate_kg_thm"] == pytest.approx(expected_coke_rate)
