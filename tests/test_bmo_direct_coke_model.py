@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from utils.bmo import direct_coke_model as module
+from utils.bmo.coke_model_pipeline import pipeline
 from utils.bmo.direct_coke_model import (
     DEFAULT_BUNDLE_DIR,
     DirectCokeModelService,
@@ -48,6 +49,38 @@ def test_fuel_override_changes_only_latest_mass_row():
 
     assert changed.loc[0, "PCI_CALC_MT"] == 15.0
     assert changed.loc[0, "NUTCOKE_CALC_MT"] == 7.0
+    assert changed.loc[1, "PCI_CALC_MT"] == pytest.approx(15.6)
+    assert changed.loc[1, "NUTCOKE_CALC_MT"] == pytest.approx(5.6)
+
+
+def test_direct_model_accepts_iso_and_published_day_first_timestamps():
+    values = pd.Series(["2026-09-24 14:00", "25-09-2026 15:00"])
+
+    parsed = pipeline.utc(values, "Asia/Kolkata")
+
+    assert parsed.notna().all()
+    assert parsed.iloc[0] == pd.Timestamp("2026-09-24 08:30:00Z")
+    assert parsed.iloc[1] == pd.Timestamp("2026-09-25 09:30:00Z")
+
+
+def test_fuel_override_finds_latest_day_first_timestamp():
+    raw = pd.DataFrame(
+        {
+            "time": ["13-09-2026 09:00", "25-09-2026 10:00"],
+            "PRODUCTIONTONNESPERHR": [100.0, 80.0],
+            "PCI_CALC_MT": [15.0, 14.0],
+            "NUTCOKE_CALC_MT": [7.0, 6.0],
+        }
+    )
+
+    changed = _apply_current_fuel_overrides(
+        raw,
+        {"time_col": "time"},
+        pci_kg_per_thm=195.0,
+        nut_coke_kg_per_thm=70.0,
+    )
+
+    assert changed.loc[0, "PCI_CALC_MT"] == 15.0
     assert changed.loc[1, "PCI_CALC_MT"] == pytest.approx(15.6)
     assert changed.loc[1, "NUTCOKE_CALC_MT"] == pytest.approx(5.6)
 

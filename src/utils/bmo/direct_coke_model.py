@@ -142,7 +142,9 @@ def _apply_current_fuel_overrides(
     time_col = str(cfg.get("time_col", "time"))
     if raw.empty or time_col not in raw or "PRODUCTIONTONNESPERHR" not in raw:
         return raw
-    parsed = pd.to_datetime(raw[time_col], errors="coerce")
+    parsed = pd.to_datetime(
+        raw[time_col], errors="coerce", format="mixed", dayfirst=True
+    )
     if parsed.notna().sum() == 0:
         return raw
     row_id = parsed.idxmax()

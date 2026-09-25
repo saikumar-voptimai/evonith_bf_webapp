@@ -29,6 +29,17 @@ _RAW_BURDEN_COLUMN_RE = re.compile(
 )
 
 
+def _parse_furnace_timestamps(values) -> pd.Series | pd.DatetimeIndex:
+    """Parse both published day-first timestamps and legacy ISO timestamps."""
+
+    return pd.to_datetime(
+        values,
+        errors="coerce",
+        format="mixed",
+        dayfirst=True,
+    )
+
+
 def get_static_dataset_path(data_rel_path: str | None = None) -> Path:
     """Resolve the legacy static dataset path inside the webapp repo.
 
@@ -47,11 +58,21 @@ def _normalise_index(df: pd.DataFrame, *, assume_naive_utc: bool) -> pd.DataFram
     if not isinstance(out.index, pd.DatetimeIndex):
         for candidate in ("time", "date_time", "timestamp"):
             if candidate in out.columns:
-                out[candidate] = pd.to_datetime(
-                    out[candidate], errors="coerce", utc=True
-                )
+                out[candidate] = _parse_furnace_timestamps(out[candidate])
                 out = out.set_index(candidate)
                 break
+        else:
+            # URL/local CSV reads commonly place ``time`` in column zero. Pandas
+            # leaves a DD-MM-YYYY index as plain strings when parse_dates cannot
+            # infer one format for the entire column, so normalize the index too.
+            if str(out.index.name or "").strip().lower() in {
+                "time",
+                "date_time",
+                "timestamp",
+            }:
+                parsed_index = _parse_furnace_timestamps(out.index)
+                if parsed_index.notna().any():
+                    out.index = pd.DatetimeIndex(parsed_index)
 
     if isinstance(out.index, pd.DatetimeIndex):
         local_tz = (
@@ -180,7 +201,9 @@ def fetch_static_dataset_from_url(
         df = pd.read_csv(
             BytesIO(payload),
             index_col=0,
-            parse_dates=True,
+            # Parse centrally below. Pandas' CSV-level inference assumes one
+            # format and can leave mixed ISO/day-first exports as string indexes.
+            parse_dates=False,
             low_memory=False,
         )
     except Exception as exc:  # noqa: BLE001 - expose malformed publisher output

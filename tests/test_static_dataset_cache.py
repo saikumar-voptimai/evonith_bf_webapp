@@ -88,6 +88,35 @@ def test_fetch_static_dataset_from_url_validates_published_csv(monkeypatch) -> N
     assert df.index.max() == pd.Timestamp("2026-08-11 15:00:00")
 
 
+def test_fetch_static_dataset_from_url_accepts_published_day_first_time(
+    monkeypatch,
+) -> None:
+    payload = (
+        "time,PCI_KG/THM\n"
+        "24-09-2026 14:00,180.0\n"
+        "25-09-2026 15:00,181.0\n"
+    ).encode("utf-8")
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return payload
+
+    monkeypatch.setattr(static_csv, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    df = static_csv.fetch_static_dataset_from_url(
+        "http://example.test/furnace_dataset.csv"
+    )
+
+    assert df.index.min() == pd.Timestamp("2026-09-24 14:00:00")
+    assert df.index.max() == pd.Timestamp("2026-09-25 15:00:00")
+
+
 def test_static_dataset_manager_uses_remote_publisher_instead_of_database(
     monkeypatch,
     tmp_path,

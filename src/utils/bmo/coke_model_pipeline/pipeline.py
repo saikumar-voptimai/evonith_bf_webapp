@@ -39,7 +39,10 @@ DEFAULT = dict(
 )
 
 def utc(values, zone):
-    v=pd.to_datetime(values, errors='coerce')
+    # The publisher has used both ISO (YYYY-MM-DD) and plant-style day-first
+    # (DD-MM-YYYY) timestamps. ``format='mixed'`` handles both row by row;
+    # dayfirst resolves the otherwise ambiguous plant dates deterministically.
+    v=pd.to_datetime(values, errors='coerce', format='mixed', dayfirst=True)
     if v.dt.tz is None: v=v.dt.tz_localize(zone, ambiguous='NaT', nonexistent='NaT')
     return v.dt.tz_convert('UTC')
 
