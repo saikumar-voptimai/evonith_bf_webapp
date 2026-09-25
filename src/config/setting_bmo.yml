@@ -393,6 +393,9 @@ bmo:
     bundled_model_dir: src/assets/models/bmo_coke_xgb
     deployment_dir: src/storage/bmo_coke_model
     dataset_path: src/assets/data/furnace_dataset.csv
+    # Median of eligible hourly predictions; avoids anchoring the whole run on
+    # one noisy burden/coke-rate hour.
+    lookback_hours: 6
     max_input_stale_hours: 6.0
     max_source_age_hours: 6.0
     retraining:

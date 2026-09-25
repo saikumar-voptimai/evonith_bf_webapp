@@ -585,9 +585,17 @@ def render_data_driven_coke_accuracy() -> None:
     current = st.session_state.get("bmo_data_driven_coke_prediction", {}) or {}
     if current:
         if current.get("usable"):
+            count = int(current.get("hourly_prediction_count", 0) or 0)
+            window_text = (
+                f"median of {count} eligible hourly predictions from "
+                f"{current.get('window_start_utc', '')} to "
+                f"{current.get('window_end_utc', '')}"
+                if count > 1
+                else f"eligible hour at {current.get('origin_utc', '')}"
+            )
             st.success(
                 f"Current accepted prediction: **{float(current['value_kg_per_thm']):,.1f} "
-                f"kg/THM** at {current.get('origin_utc', '')}."
+                f"kg/THM** ({window_text})."
             )
         else:
             reasons = " ".join(map(str, current.get("reasons", []) or []))

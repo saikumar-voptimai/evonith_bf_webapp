@@ -85,6 +85,103 @@ def test_fuel_override_finds_latest_day_first_timestamp():
     assert changed.loc[1, "NUTCOKE_CALC_MT"] == pytest.approx(5.6)
 
 
+def test_fuel_override_skips_trailing_zero_burden_rows():
+    raw = pd.DataFrame(
+        {
+            "time": [
+                "2026-09-25 18:00:00",
+                "2026-09-25 19:00:00",
+                "2026-09-25 20:00:00",
+            ],
+            "PRODUCTIONTONNESPERHR": [90.0, 100.0, 100.0],
+            "ORE_CALC_MT": [30.0, 35.0, 0.0],
+            "SINTER_CALC_MT": [90.0, 100.0, 0.0],
+            "TOTAL_PELLET_CALC_MT": [20.0, 25.0, 0.0],
+            "PCI_CALC_MT": [15.0, 16.0, 17.0],
+            "NUTCOKE_CALC_MT": [6.0, 7.0, 8.0],
+        }
+    )
+
+    changed = _apply_current_fuel_overrides(
+        raw,
+        {"time_col": "time"},
+        pci_kg_per_thm=195.0,
+        nut_coke_kg_per_thm=70.0,
+    )
+
+    assert changed.loc[1, "PCI_CALC_MT"] == pytest.approx(19.5)
+    assert changed.loc[1, "NUTCOKE_CALC_MT"] == pytest.approx(7.0)
+    assert changed.loc[2, "PCI_CALC_MT"] == 17.0
+    assert changed.loc[2, "NUTCOKE_CALC_MT"] == 8.0
+
+
+def test_fuel_override_covers_the_selected_lookback_window():
+    raw = pd.DataFrame(
+        {
+            "time": pd.date_range("2026-09-25 12:00:00", periods=4, freq="h"),
+            "PRODUCTIONTONNESPERHR": [100.0] * 4,
+            "ORE_CALC_MT": [30.0] * 4,
+            "PCI_CALC_MT": [10.0] * 4,
+            "NUTCOKE_CALC_MT": [5.0] * 4,
+        }
+    )
+
+    changed = _apply_current_fuel_overrides(
+        raw,
+        {"time_col": "time"},
+        pci_kg_per_thm=195.0,
+        nut_coke_kg_per_thm=70.0,
+        lookback_hours=2,
+    )
+
+    assert changed["PCI_CALC_MT"].tolist() == [10.0, 10.0, 19.5, 19.5]
+    assert changed["NUTCOKE_CALC_MT"].tolist() == [5.0, 5.0, 7.0, 7.0]
+
+
+class _WindowFakeModel:
+    def predict(self, matrix):
+        values = np.array([290.0, 310.0, 300.0, 350.0, 295.0, 305.0])
+        return values[: matrix.num_row()]
+
+
+def test_inference_uses_median_of_eligible_predictions_in_lookback(
+    monkeypatch, tmp_path
+):
+    service = DirectCokeModelService(deployment_dir=tmp_path / "deploy")
+    service.model = _WindowFakeModel()
+    index = pd.date_range("2026-09-25 03:30:00Z", periods=8, freq="h")
+    cleaned = pd.DataFrame(
+        {
+            "ORE_CALC_MT": [10.0] * 8,
+            "SINTER_CALC_MT": [50.0] * 8,
+            "TOTAL_PELLET_CALC_MT": [10.0] * 8,
+            "PRODUCTIONTONNESPERHR": [90.0] * 8,
+        },
+        index=index,
+    )
+    audit = pd.DataFrame({"normal_eligible": True}, index=index)
+    features = pd.DataFrame(
+        0.0, index=index, columns=service.schema["features"], dtype=float
+    )
+
+    def prepared(*args, **kwargs):
+        assert kwargs["lookback_hours"] == 6
+        return cleaned, audit, features, {}, pd.DataFrame()
+
+    monkeypatch.setattr(module, "_prepare_context", prepared)
+    result = service.predict_from_history(
+        pd.DataFrame(), lookback_hours=6, now=index[-1]
+    )
+
+    assert result.usable is True
+    assert result.value_kg_per_thm == pytest.approx(302.5)
+    assert result.hourly_prediction_count == 6
+    assert result.aggregation == "median"
+    assert result.window_start_utc == str(index[2])
+    assert result.window_end_utc == str(index[-1])
+    assert result.latest_input_diagnostics["burden_mt"] == 70.0
+
+
 def test_inference_rejects_a_prediction_behind_the_dataset(monkeypatch, tmp_path):
     service = DirectCokeModelService(deployment_dir=tmp_path / "deploy")
     index = pd.date_range("2026-09-25 09:30:00Z", periods=2, freq="h")

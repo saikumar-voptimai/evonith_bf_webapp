@@ -102,10 +102,12 @@ def test_operator_model_names_and_data_driven_default() -> None:
         "Data-Driven": "data_driven",
     }
     assert config["fuel_rate_anchor_basis"] == "data_driven"
+    assert config["data_driven_coke"]["lookback_hours"] == 6
     assert "XGBoost" not in page_source
     assert "XGBoost" not in component_source
     assert "Run Non-linear Model" in page_source
     assert '"Non-linear Result"' in page_source
+    assert "Data-Driven lookback window (hours)" in page_source
 
 
 def test_model_input_alignment_step_and_diagnostics_defaults() -> None:

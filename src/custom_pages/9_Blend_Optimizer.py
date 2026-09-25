@@ -602,6 +602,21 @@ def _render_static_dataset_bar(
             "and is independent of fuel prices. Fuel cost is calculated afterward "
             "using the saved coke, nut-coke and PCI prices."
         )
+        direct_cfg = dict(bmo_cfg.get("data_driven_coke", {}) or {})
+        st.number_input(
+            "Data-Driven lookback window (hours)",
+            min_value=1,
+            max_value=72,
+            value=int(direct_cfg.get("lookback_hours", 6)),
+            step=1,
+            key="bmo_data_driven_lookback_hours",
+            on_change=_clear_bmo_results,
+            help=(
+                "The Data-Driven anchor is the median of eligible hourly model "
+                "predictions in this window. Incomplete zero-burden hours are "
+                "excluded."
+            ),
+        )
         st.divider()
         use_link = st.toggle(
             "Fetch dataset through DATA_URL",
@@ -1746,6 +1761,7 @@ def _cached_direct_coke_prediction(
     deployment_token: int,
     pci_kg_per_thm: float,
     nut_coke_kg_per_thm: float,
+    lookback_hours: int,
     max_stale_hours: float,
     max_source_age_hours: float,
 ) -> DirectCokePrediction:
@@ -1763,6 +1779,7 @@ def _cached_direct_coke_prediction(
         dataset_path,
         pci_kg_per_thm=pci_kg_per_thm,
         nut_coke_kg_per_thm=nut_coke_kg_per_thm,
+        lookback_hours=lookback_hours,
     )
 
 
@@ -2343,9 +2360,17 @@ def _render_fuel_basis_note(blend: Any) -> None:
 
     if source == "data_driven_coke_anchor":
         prediction = st.session_state.get("bmo_data_driven_coke_prediction", {}) or {}
+        count = int(prediction.get("hourly_prediction_count", 0) or 0)
+        window_text = (
+            f"the median of {count} eligible hourly predictions from "
+            f"{prediction.get('window_start_utc', '')} to "
+            f"{prediction.get('window_end_utc', '')}"
+            if count > 1
+            else f"the eligible hour at {prediction.get('origin_utc', '')}"
+        )
         st.caption(
-            f"Coke level from the **Data-Driven Non-linear model** at "
-            f"{prediction.get('origin_utc', 'the current eligible hour')}. "
+            f"Coke level from the **Data-Driven Non-linear model**, using "
+            f"{window_text}. "
             "The model is evaluated once for the run; blend-to-blend differences "
             "come from the physical correction above. Fuel is priced afterward "
             "at the saved operator prices."
@@ -3934,6 +3959,12 @@ if fuel_rate_anchor_basis == "data_driven":
                     )
                     or 0.0
                 ),
+                lookback_hours=int(
+                    st.session_state.get(
+                        "bmo_data_driven_lookback_hours",
+                        direct_cfg.get("lookback_hours", 6),
+                    )
+                ),
                 max_stale_hours=float(direct_cfg.get("max_input_stale_hours", 6.0)),
                 max_source_age_hours=float(direct_cfg.get("max_source_age_hours", 6.0)),
             )
@@ -3945,10 +3976,18 @@ if fuel_rate_anchor_basis == "data_driven":
             data_driven_prediction.to_dict()
         )
         if data_driven_prediction.usable:
+            prediction_window = (
+                f"median of {data_driven_prediction.hourly_prediction_count} "
+                f"eligible hourly predictions from "
+                f"{data_driven_prediction.window_start_utc} to "
+                f"{data_driven_prediction.window_end_utc}"
+                if data_driven_prediction.hourly_prediction_count > 1
+                else f"eligible hour at {data_driven_prediction.origin_utc}"
+            )
             st.success(
                 f"Data-Driven coke anchor: "
                 f"**{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM** "
-                f"at {data_driven_prediction.origin_utc}."
+                f"({prediction_window})."
             )
             if data_driven_prediction.outside_training_p01_p99:
                 st.warning(

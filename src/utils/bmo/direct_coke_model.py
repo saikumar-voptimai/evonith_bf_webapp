@@ -41,6 +41,11 @@ class DirectCokePrediction:
     value_kg_per_thm: float | None
     usable: bool
     origin_utc: str = ""
+    window_start_utc: str = ""
+    window_end_utc: str = ""
+    lookback_hours: float = 1.0
+    hourly_prediction_count: int = 0
+    aggregation: str = "single_hour"
     latest_source_origin_utc: str = ""
     stale_hours: float | None = None
     source_age_hours: float | None = None
@@ -130,11 +135,16 @@ def _apply_current_fuel_overrides(
     *,
     pci_kg_per_thm: float | None,
     nut_coke_kg_per_thm: float | None,
+    lookback_hours: float = 1.0,
 ) -> pd.DataFrame:
-    """Overlay only the newest hour's operator fuel rates before engineering.
+    """Overlay operator fuel rates across the newest usable lookback window.
 
-    Historical lags remain observed.  Rebuilding features after this overlay
-    updates lag0, the four-hour mean, and the four-hour slope coherently.
+    Trailing source rows can have production but zero burden while the current
+    hour is still being assembled. Those rows are not valid model origins, so
+    applying an override to the raw maximum timestamp silently missed the row
+    that inference actually selected. Restricting the overlay to positive-
+    burden rows keeps operator settings aligned with eligible inference rows.
+    Rebuilding features afterward updates lag0, rolling means, and slopes.
     """
 
     if pci_kg_per_thm is None and nut_coke_kg_per_thm is None:
@@ -147,20 +157,39 @@ def _apply_current_fuel_overrides(
     )
     if parsed.notna().sum() == 0:
         return raw
-    row_id = parsed.idxmax()
-    production = pd.to_numeric(
-        pd.Series([raw.at[row_id, "PRODUCTIONTONNESPERHR"]]), errors="coerce"
-    ).iloc[0]
-    if not np.isfinite(production) or production <= 0:
+    production = pd.to_numeric(raw["PRODUCTIONTONNESPERHR"], errors="coerce")
+    eligible = parsed.notna() & production.gt(0.0)
+    burden_columns = [
+        column
+        for column in ("ORE_CALC_MT", "SINTER_CALC_MT", "TOTAL_PELLET_CALC_MT")
+        if column in raw
+    ]
+    if burden_columns:
+        burden = sum(
+            (
+                pd.to_numeric(raw[column], errors="coerce").fillna(0.0)
+                for column in burden_columns
+            ),
+            start=pd.Series(0.0, index=raw.index),
+        )
+        eligible &= burden.gt(0.0)
+    if not eligible.any():
         return raw
+
+    newest = parsed.loc[eligible].max()
+    hours = max(1.0, float(lookback_hours))
+    selected = eligible & parsed.gt(newest - pd.Timedelta(hours=hours))
+    selected &= parsed.le(newest)
     out = raw.copy()
     if pci_kg_per_thm is not None:
-        out.at[row_id, "PCI_CALC_MT"] = (
-            max(0.0, float(pci_kg_per_thm)) * float(production) / 1000.0
+        out.loc[selected, "PCI_CALC_MT"] = (
+            max(0.0, float(pci_kg_per_thm)) * production.loc[selected] / 1000.0
         )
     if nut_coke_kg_per_thm is not None:
-        out.at[row_id, "NUTCOKE_CALC_MT"] = (
-            max(0.0, float(nut_coke_kg_per_thm)) * float(production) / 1000.0
+        out.loc[selected, "NUTCOKE_CALC_MT"] = (
+            max(0.0, float(nut_coke_kg_per_thm))
+            * production.loc[selected]
+            / 1000.0
         )
     return out
 
@@ -171,6 +200,7 @@ def _prepare_context(
     *,
     pci_kg_per_thm: float | None = None,
     nut_coke_kg_per_thm: float | None = None,
+    lookback_hours: float = 1.0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any], pd.DataFrame]:
     cfg = {**pipeline.DEFAULT, **config}
     raw = _apply_current_fuel_overrides(
@@ -178,6 +208,7 @@ def _prepare_context(
         cfg,
         pci_kg_per_thm=pci_kg_per_thm,
         nut_coke_kg_per_thm=nut_coke_kg_per_thm,
+        lookback_hours=lookback_hours,
     )
     cleaned, audit, _ = pipeline.clean_furnace(raw, cfg)
     labs = _canonical_empty_labs(cleaned.index)
@@ -253,13 +284,16 @@ class DirectCokeModelService:
         *,
         pci_kg_per_thm: float | None = None,
         nut_coke_kg_per_thm: float | None = None,
+        lookback_hours: float = 1.0,
         now: datetime | pd.Timestamp | None = None,
     ) -> DirectCokePrediction:
+        hours = max(1.0, float(lookback_hours))
         cleaned, audit, features, _cfg, _errors = _prepare_context(
             hourly_frame,
             self.config,
             pci_kg_per_thm=pci_kg_per_thm,
             nut_coke_kg_per_thm=nut_coke_kg_per_thm,
+            lookback_hours=hours,
         )
         latest = cleaned.index.max()
         eligible = audit["normal_eligible"].fillna(False)
@@ -274,6 +308,9 @@ class DirectCokeModelService:
             )
 
         at = cleaned.index[eligible][-1]
+        window_start = at - pd.Timedelta(hours=hours)
+        origins = cleaned.index[eligible & (cleaned.index > window_start)]
+        origins = origins[origins <= at]
         stale_hours = float((latest - at) / pd.Timedelta(hours=1))
         current_time = pd.Timestamp(now or datetime.now(timezone.utc))
         if current_time.tzinfo is None:
@@ -285,23 +322,36 @@ class DirectCokeModelService:
         )
 
         columns = [str(item) for item in self.schema.get("features", [])]
-        row = features.loc[at].reindex(columns).replace([np.inf, -np.inf], np.nan)
-        missing_fraction = float(row.isna().mean()) if columns else 1.0
+        rows = features.loc[origins].reindex(columns=columns)
+        rows = rows.replace([np.inf, -np.inf], np.nan)
+        missing_by_row = (
+            rows.isna().mean(axis=1)
+            if columns
+            else pd.Series(1.0, index=origins)
+        )
+        missing_fraction = float(missing_by_row.loc[at]) if len(origins) else 1.0
+        usable_origins = missing_by_row.index[missing_by_row.le(0.5)]
         outside: list[str] = []
         limits = self.schema.get("feature_limits", {}) or {}
-        for name, value in row.items():
+        for name in columns:
             bounds = limits.get(name)
-            if (
-                bounds
-                and pd.notna(value)
-                and (float(value) < float(bounds[0]) or float(value) > float(bounds[1]))
-            ):
+            if not bounds or usable_origins.empty:
+                continue
+            values = rows.loc[usable_origins, name].dropna()
+            if ((values < float(bounds[0])) | (values > float(bounds[1]))).any():
                 outside.append(str(name))
 
         value: float | None = None
-        if columns and missing_fraction <= 0.5:
-            matrix = xgb.DMatrix(row.to_numpy(dtype=np.float32)[None, :], nthread=2)
-            value = float(self.model.predict(matrix)[0])
+        hourly_prediction_count = 0
+        if columns and not usable_origins.empty:
+            matrix = xgb.DMatrix(
+                rows.loc[usable_origins].to_numpy(dtype=np.float32), nthread=2
+            )
+            hourly_predictions = self.model.predict(matrix)
+            finite_predictions = hourly_predictions[np.isfinite(hourly_predictions)]
+            hourly_prediction_count = int(len(finite_predictions))
+            if hourly_prediction_count:
+                value = float(np.median(finite_predictions))
 
         reasons: list[str] = []
         if stale_hours > self.max_stale_hours:
@@ -313,22 +363,22 @@ class DirectCokeModelService:
             reasons.append(
                 f"Dataset source is {source_age_hours:.1f} hours old ({latest})."
             )
-        if missing_fraction > 0.5:
+        if usable_origins.empty:
             reasons.append(
-                f"{missing_fraction:.0%} of selected model features are unavailable."
+                "No row in the selected lookback has enough model features available."
             )
         if value is None or not np.isfinite(value):
             reasons.append("The model did not produce a finite coke-rate prediction.")
 
-        latest_row = cleaned.loc[latest]
+        selected_row = cleaned.loc[at]
         burden = sum(
-            float(latest_row.get(column, 0.0) or 0.0)
+            float(selected_row.get(column, 0.0) or 0.0)
             for column in (
                 "ORE_CALC_MT",
                 "SINTER_CALC_MT",
                 "TOTAL_PELLET_CALC_MT",
             )
-            if pd.notna(latest_row.get(column))
+            if pd.notna(selected_row.get(column))
         )
         validation = self.schema.get("validation", {}) or {}
         later_validation = (
@@ -338,6 +388,11 @@ class DirectCokeModelService:
             value_kg_per_thm=value,
             usable=not reasons,
             origin_utc=str(at),
+            window_start_utc=str(origins.min()) if len(origins) else "",
+            window_end_utc=str(at),
+            lookback_hours=hours,
+            hourly_prediction_count=hourly_prediction_count,
+            aggregation="median" if hourly_prediction_count > 1 else "single_hour",
             latest_source_origin_utc=str(latest),
             stale_hours=stale_hours,
             source_age_hours=source_age_hours,
@@ -350,11 +405,13 @@ class DirectCokeModelService:
             latest_input_diagnostics={
                 "burden_mt": burden,
                 "production_mt_per_hr": _float_or_none(
-                    latest_row.get("PRODUCTIONTONNESPERHR")
+                    selected_row.get("PRODUCTIONTONNESPERHR")
                 ),
-                "ore_mt": _float_or_none(latest_row.get("ORE_CALC_MT")),
-                "sinter_mt": _float_or_none(latest_row.get("SINTER_CALC_MT")),
-                "pellet_mt": _float_or_none(latest_row.get("TOTAL_PELLET_CALC_MT")),
+                "ore_mt": _float_or_none(selected_row.get("ORE_CALC_MT")),
+                "sinter_mt": _float_or_none(selected_row.get("SINTER_CALC_MT")),
+                "pellet_mt": _float_or_none(
+                    selected_row.get("TOTAL_PELLET_CALC_MT")
+                ),
             },
         )
 
