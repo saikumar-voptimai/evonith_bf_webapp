@@ -208,8 +208,8 @@ def _get_context_provider() -> EvonithBmoContextProvider:
 _STATIC_DATASET_LINK_KEY = "bmo_static_dataset_use_link"
 _STATIC_DATASET_FORCE_REFRESH_KEY = "_bmo_static_dataset_force_refresh"
 _COKE_ANCHOR_LABELS = {
-    "Energy balance": "energy_balance",
-    "Data-driven XGBoost": "data_driven",
+    "Physics-Driven": "energy_balance",
+    "Data-Driven": "data_driven",
 }
 
 
@@ -573,18 +573,23 @@ def _render_static_dataset_bar(
     source_url = _configured_static_dataset_url(bmo_cfg)
     with st.expander("Data and model sources", expanded=False):
         configured_anchor = str(
-            bmo_cfg.get("fuel_rate_anchor_basis", "energy_balance")
+            bmo_cfg.get("fuel_rate_anchor_basis", "data_driven")
         )
         default_anchor_label = (
-            "Data-driven XGBoost"
+            "Data-Driven"
             if configured_anchor == "data_driven"
-            else "Energy balance"
+            else "Physics-Driven"
         )
+        model_widget_key = "bmo_coke_rate_model"
+        if str(st.session_state.get(model_widget_key, default_anchor_label)) not in (
+            _COKE_ANCHOR_LABELS
+        ):
+            st.session_state.pop(model_widget_key, None)
         st.segmented_control(
             "Coke-rate model",
             options=list(_COKE_ANCHOR_LABELS),
             default=default_anchor_label,
-            key="bmo_coke_rate_model",
+            key=model_widget_key,
             on_change=_clear_bmo_results,
             help=(
                 "Select the frozen current-state coke anchor. Both choices use "
@@ -593,9 +598,9 @@ def _render_static_dataset_bar(
             ),
         )
         st.caption(
-            "The XGBoost option predicts coke directly in kg/THM and is independent "
-            "of fuel prices. Fuel cost is calculated afterward using the saved coke, "
-            "nut-coke and PCI prices."
+            "The Data-Driven Non-linear model predicts coke directly in kg/THM "
+            "and is independent of fuel prices. Fuel cost is calculated afterward "
+            "using the saved coke, nut-coke and PCI prices."
         )
         st.divider()
         use_link = st.toggle(
@@ -792,7 +797,7 @@ def _render_pinned_fuel_rates(
     st.caption(
         f"**Fuel rates in force** - PCI **{rates.get('pci', 0.0):,.1f}** kg/THM "
         f"({pci_source}), nut coke **{rates.get('nut_coke', 0.0):,.1f}** kg/THM "
-        f"({nut_source}). Coke is solved by the energy balance, not set here. "
+        f"({nut_source}). Coke comes from the selected coke-rate model, not here. "
         "Ash chemistry still feeds the slag balance from configuration."
     )
 
@@ -1013,6 +1018,11 @@ def _render_blend_comparison(
         "Edit the manual Share (%) to try any burden split. Shares are normalised to "
         "100% and scaled through the same all-source Fe/material closure as the "
         "optimizer, so every option is compared on the same basis."
+    )
+    st.caption(
+        "Cost basis: Manual, LP Baseline and Non-linear all use the currently "
+        "applied ore prices from Ore Selection. Fuel costs are then shown at the "
+        "currently applied fuel prices."
     )
     start_time, end_time = snapshot.get("start_time"), snapshot.get("end_time")
     charged_ids = {
@@ -1498,7 +1508,8 @@ def _render_blend_comparison(
                         help=(
                             "Manual Fuel Cost is the realised cost: actual "
                             "current coke/nut-coke/PCI rates at current prices. "
-                            "LP/DE Fuel Cost is that blend's predicted fuel cost "
+                            "LP/Non-linear Fuel Cost is that blend's predicted fuel "
+                            "cost "
                             "converted to current prices; the optimizer itself "
                             "still minimises the model's baseline-price "
                             "objective. Fuel Rate is the physical rate basis "
@@ -1516,9 +1527,8 @@ def _render_data_diagnostics(
     ore_diagnostics: dict[str, Any],
     hm_snapshot: dict[str, Any],
     edited_ore_df: pd.DataFrame,
-    expanded: bool,
 ) -> None:
-    with st.expander("Data Diagnostics", expanded=expanded):
+    with st.expander("Data Diagnostics", expanded=False):
         if st.button("Load diagnostics", key="bmo_load_diagnostics"):
             st.session_state["bmo_diagnostics_loaded"] = True
         if st.button("Refresh diagnostics", key="bmo_refresh_diagnostics"):
@@ -1686,7 +1696,7 @@ def _get_model_service() -> FuelUnitCostModelService:
     """
     Create or return the cached BMO fuel-cost model service.
 
-    Loading the XGBoost model, scaler, and selected feature list is relatively
+    Loading the non-linear model, scaler, and selected feature list is relatively
     expensive. Caching the service keeps model artifacts warm while allowing
     each candidate blend to request fresh predictions.
 
@@ -1797,7 +1807,7 @@ def _render_energy_assumptions() -> None:
     with st.expander("Plant assumptions — operator input", expanded=False):
         st.caption(
             "Values the plant has not measured. Anything you enter here is used "
-            "by the energy balance and the process recommendation, and is "
+            "by the Physics-Driven model and the process recommendation, and is "
             "remembered between sessions. Leave a row alone to keep the shipped "
             "default."
         )
@@ -1922,7 +1932,9 @@ def _render_process_recommendation(
 
     fuel_rates = blend.diagnostics.get("fuel_rate_estimate") or {}
     if not fuel_rates:
-        st.info("Fuel-rate estimate unavailable; cannot run the energy balance.")
+        st.info(
+            "Fuel-rate estimate unavailable; cannot run the Physics-Driven model."
+        )
         return
 
     flux_mt = sum(
@@ -2017,7 +2029,8 @@ def _render_process_recommendation(
         delta=f"{coke_shown - coke_now:+,.1f}",
         delta_color="inverse",
         help=(
-            "Energy balance, corrected by a rolling bias offset fitted on recent "
+            "Physics-Driven energy balance, corrected by a rolling bias offset "
+            "fitted on recent "
             "plant history. Forward-tested MAPE 3.4%. The CHANGE is the more "
             "reliable half - it is unaffected by the offset, which cancels "
             "between the two settings. See the breakdown below."
@@ -2067,7 +2080,7 @@ def _render_process_recommendation(
                 "What it is": "What the furnace is actually being charged.",
             },
             {
-                "Figure": "Energy balance, RAW at current controls",
+                "Figure": "Physics-Driven, raw at current controls",
                 "kg/THM": round(recommendation.current_coke_rate_kg_per_thm, 1),
                 "What it is": (
                     "Uncorrected. Runs high — the balance has a known bias."
@@ -2119,8 +2132,8 @@ def _render_process_recommendation(
             "between the two settings, so the recommended change is unaffected "
             "by any of this."
             + "\n\nThe **ML fuel-cost model** is a third, separate estimate. It "
-            "is trained on plant history and is blend-blind; the energy balance "
-            "is physics and responds to the blend. They will not agree, and are "
+            "is trained on plant history and is blend-blind; the Physics-Driven "
+            "energy balance responds to the blend. They will not agree, and are "
             "not meant to."
         )
         if calib.is_stale():
@@ -2191,7 +2204,7 @@ def _render_transition_ladder(
         "Max share change per step (%)",
         min_value=1.0,
         max_value=50.0,
-        value=5.0,
+        value=2.0,
         step=1.0,
         key="bmo_transition_move_pct",
         help=(
@@ -2331,7 +2344,7 @@ def _render_fuel_basis_note(blend: Any) -> None:
     if source == "data_driven_coke_anchor":
         prediction = st.session_state.get("bmo_data_driven_coke_prediction", {}) or {}
         st.caption(
-            f"Coke level from the **direct XGBoost coke-rate model** at "
+            f"Coke level from the **Data-Driven Non-linear model** at "
             f"{prediction.get('origin_utc', 'the current eligible hour')}. "
             "The model is evaluated once for the run; blend-to-blend differences "
             "come from the physical correction above. Fuel is priced afterward "
@@ -2341,7 +2354,8 @@ def _render_fuel_basis_note(blend: Any) -> None:
 
     if source == "energy_balance_anchor" and anchor is not None:
         st.caption(
-            f"Coke level from the **energy balance** — solved at current controls "
+            f"Coke level from the **Physics-Driven energy balance** - solved at "
+            "current controls "
             f"({anchor.raw_coke_rate_kg_thm:,.1f} kg/THM), less the "
             f"{anchor.offset_kg_per_thm:+,.1f} kg/THM bias offset fitted on "
             f"{anchor.calibration.sample_days} recent days. Blend-to-blend "
@@ -2557,7 +2571,7 @@ def _render_de_exploration(
     else:
         st.info(
             "Blend-combination columns are unavailable for this run — re-run "
-            "the Total Cost optimizer to record ore shares and flux additions "
+            "the Non-linear model to record ore shares and flux additions "
             "per candidate. (After a code update, restart the app so the "
             "optimizer module reloads.)"
         )
@@ -2936,13 +2950,13 @@ if static_refresh_result.get("error") and not static_refresh_result.get("usable"
     st.stop()
 _render_static_dataset_bar(bmo_cfg, static_refresh_result)
 
-_configured_anchor = str(bmo_cfg.get("fuel_rate_anchor_basis", "energy_balance"))
+_configured_anchor = str(bmo_cfg.get("fuel_rate_anchor_basis", "data_driven"))
 _default_anchor_label = (
-    "Data-driven XGBoost" if _configured_anchor == "data_driven" else "Energy balance"
+    "Data-Driven" if _configured_anchor == "data_driven" else "Physics-Driven"
 )
 fuel_rate_anchor_basis = _COKE_ANCHOR_LABELS.get(
     str(st.session_state.get("bmo_coke_rate_model", _default_anchor_label)),
-    "energy_balance",
+    "data_driven",
 )
 # Bumped by the "Refresh source data" button; keys the cached offline-source
 # reads so they are fetched once per session and reused until the operator asks
@@ -3117,11 +3131,10 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
             value=float(model_input_defaults["target_slag_rate_kg_per_thm"]),
             step=5.0,
             key="bmo_target_slag_rate_kg_per_thm",
-            help=(
-                "Plant basis: the slag rate the plant would measure. The model's own "
-                "calculated slag runs above that, so the cap is divided by "
-                f"{model_to_plant_slag_factor:.3f} before the optimizer sees it."
-            ),
+        )
+        layout_col4.caption(
+            "Plant basis. The model's calculated slag runs higher, so the cap is "
+            f"divided by {model_to_plant_slag_factor:.3f} before optimization."
         )
 
     with st.expander("Slag chemistry window", expanded=False):
@@ -3734,7 +3747,7 @@ if _dust_entered and not slag_balance_settings.enabled:
 
 _DE_SEED_LABELS = {
     "lp_else_random": "LP seed, random fallback (recommended)",
-    "lp": "LP seed only (skip DE if LP is infeasible)",
+    "lp": "LP seed only (skip Non-linear if LP is infeasible)",
     "random": "Random start (ignore the LP)",
 }
 
@@ -3798,7 +3811,8 @@ with st.expander("Fuel rates and prices", expanded=False):
             key="bmo_nut_coke_override_on",
             help=(
                 "Off: use the fixed 70 kg/THM set point. On: use the entered "
-                "rate for charging, slag, energy balance and fuel cost."
+                "rate for charging, slag, the selected coke-rate model and fuel "
+                "cost."
             ),
         )
         if _nut_coke_on:
@@ -3925,14 +3939,14 @@ if fuel_rate_anchor_basis == "data_driven":
             )
     except Exception as exc:  # noqa: BLE001 - keep energy-balance mode available
         log.exception("Direct coke-rate prediction failed")
-        st.error(f"The data-driven coke model could not run: {exc}")
+        st.error(f"The Data-Driven coke model could not run: {exc}")
     else:
         st.session_state["bmo_data_driven_coke_prediction"] = (
             data_driven_prediction.to_dict()
         )
         if data_driven_prediction.usable:
             st.success(
-                f"Data-driven coke anchor: "
+                f"Data-Driven coke anchor: "
                 f"**{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM** "
                 f"at {data_driven_prediction.origin_utc}."
             )
@@ -3949,7 +3963,7 @@ if fuel_rate_anchor_basis == "data_driven":
                 else ""
             )
             st.error(
-                "The data-driven anchor is unavailable: "
+                "The Data-Driven anchor is unavailable: "
                 + " ".join(data_driven_prediction.reasons)
                 + rejected
             )
@@ -3959,7 +3973,7 @@ with st.form("bmo_run_form", clear_on_submit=False):
     seed_options = list(_DE_SEED_LABELS)
     configured_seed = str(opt_cfg.get("initial_solution", "lp_else_random")).lower()
     de_seed_choice = st.selectbox(
-        "Total-cost optimizer start point",
+        "Non-linear model start point",
         options=seed_options,
         index=(
             seed_options.index(configured_seed)
@@ -3968,7 +3982,8 @@ with st.form("bmo_run_form", clear_on_submit=False):
         ),
         format_func=lambda key: _DE_SEED_LABELS[key],
         help=(
-            "The optimizer normally starts from the LP baseline. When the LP is "
+            "The Non-linear model normally starts from the LP baseline. When the "
+            "LP is "
             "infeasible that used to stop it running at all, even though an "
             "infeasible LP only means the *linearised* slag and basicity model "
             "found no solution. A random start searches the whole share range "
@@ -3985,7 +4000,7 @@ with st.form("bmo_run_form", clear_on_submit=False):
     )
     run_total_clicked = _form_submit_button(
         run_col2,
-        "Run Total Cost Optimizer",
+        "Run Non-linear Model",
         type="primary",
         width="stretch",
     )
@@ -3998,9 +4013,9 @@ if requested_lp or requested_total:
         data_driven_prediction is None or not data_driven_prediction.usable
     ):
         st.error(
-            "Optimization was not started because the selected data-driven coke "
+            "Optimization was not started because the selected Data-Driven coke "
             "anchor has no fresh, eligible current-state prediction. Refresh/fix "
-            "the burden quantities or switch to Energy balance."
+            "the burden quantities or switch to Physics-Driven."
         )
     elif not basicity_bounds_valid:
         st.error("Correct the slag basicity bounds before running BMO.")
@@ -4191,7 +4206,7 @@ if requested_lp or requested_total:
         st.session_state["bmo_lp_errors"] = lp_errors
 
         if requested_total:
-            de_status = st.status("Total Cost Optimizer (DE) running…", expanded=True)
+            de_status = st.status("Non-linear model running...", expanded=True)
             # Live "thinking" line, refreshed every generation so the operator
             # watches the solver churn through thousands of candidate blends.
             de_thinking_ph = de_status.empty()
@@ -4336,10 +4351,10 @@ if requested_lp or requested_total:
                 )
             de_status.update(
                 label=(
-                    f"DE finished — {final_iter} generations · "
+                    f"Non-linear finished - {final_iter} generations, "
                     f"{final_nfev:,} blend evaluations"
                     if final_iter
-                    else "DE finished"
+                    else "Non-linear finished"
                 ),
                 state="complete",
             )
@@ -4423,11 +4438,11 @@ if lp_result is not None or de_result is not None:
 if lp_errors:
     st.error("LP baseline errors:\n- " + "\n- ".join(lp_errors))
 if de_errors:
-    st.error("Total cost optimizer errors:\n- " + "\n- ".join(de_errors))
+    st.error("Non-linear model errors:\n- " + "\n- ".join(de_errors))
 
 if lp_result is not None or de_result is not None:
     tab_lp, tab_de, tab_cmp, tab_acc = st.tabs(
-        ["LP Baseline", "Total Cost (DE)", "Comparison", "Model accuracy"]
+        ["LP Baseline", "Non-linear", "Comparison", "Model accuracy"]
     )
 
     with tab_lp:
@@ -4532,7 +4547,7 @@ if lp_result is not None or de_result is not None:
         if de_result is not None:
             if de_result.diagnostics.get("de_fell_back_to_lp"):
                 st.info(
-                    "The total-cost optimizer did not improve on the LP baseline "
+                    "The Non-linear model did not improve on the LP baseline "
                     "(it can hit its iteration/time budget). Showing the LP "
                     "baseline blend as the best available solution."
                 )
@@ -4557,7 +4572,7 @@ if lp_result is not None or de_result is not None:
                         for _reason in _lp_reasons:
                             st.markdown(f"- {_reason}")
             render_blend_metrics(
-                "DE Total-Cost Result",
+                "Non-linear Result",
                 de_result,
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 charge_mass_mt=charge_mass_mt,
@@ -4573,7 +4588,9 @@ if lp_result is not None or de_result is not None:
                         de_result, selected_ores, charge_mass_mt=charge_mass_mt
                     )
                 with donut_col:
-                    _render_share_pie(de_result, selected_ores, "DE share of burden")
+                    _render_share_pie(
+                        de_result, selected_ores, "Non-linear share of burden"
+                    )
                 _render_lp_flux_additions(de_result)
 
             with de_fuel_tab:
@@ -4596,7 +4613,7 @@ if lp_result is not None or de_result is not None:
                     st.session_state.get("bmo_de_candidates"), selected_ores
                 )
         else:
-            st.info("Run total-cost optimizer to see ore + fuel optimized blend.")
+            st.info("Run the Non-linear model to see the optimized blend.")
 
     with tab_cmp:
         # Operator-focused comparison: the manual blend against each optimizer
@@ -4609,7 +4626,7 @@ if lp_result is not None or de_result is not None:
             )
         if de_result is not None:
             optimizer_candidates.append(
-                ("DE Total-Cost", de_result, st.session_state.get("bmo_de_si"))
+                ("Non-linear", de_result, st.session_state.get("bmo_de_si"))
             )
         if optimizer_candidates:
             _render_blend_comparison(
@@ -4628,7 +4645,8 @@ if lp_result is not None or de_result is not None:
             )
         else:
             st.info(
-                "Run LP or DE to compare the suggested blend with the last manual shift."
+                "Run LP or Non-linear to compare the suggested blend with the "
+                "last manual shift."
             )
 
     with tab_acc:
@@ -4689,7 +4707,6 @@ _render_data_diagnostics(
     ore_diagnostics=ore_diagnostics,
     hm_snapshot=hm_snapshot,
     edited_ore_df=edited_df,
-    expanded=bool(visible_data_warnings),
 )
 render_diagnostics(de_result or lp_result, ore_diagnostics)
 

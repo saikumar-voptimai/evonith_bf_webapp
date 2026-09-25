@@ -687,9 +687,9 @@ def render_data_driven_coke_accuracy() -> None:
 
 
 def render_model_accuracy_tab() -> None:
-    """Data-driven coke validation first; supporting models remain inspectable."""
+    """Data-Driven coke validation first; supporting models remain inspectable."""
 
-    st.markdown("##### Data-driven coke-rate model")
+    st.markdown("##### Data-Driven coke-rate model")
     render_data_driven_coke_accuracy()
     with st.expander("Energy-balance calibration and recent accuracy", expanded=False):
         render_retrain_control()

@@ -76,6 +76,176 @@ def test_data_and_model_sources_share_the_full_page_rerun_scope() -> None:
     }
 
 
+def test_operator_model_names_and_data_driven_default() -> None:
+    root = Path(__file__).resolve().parents[1]
+    page_source = (root / "src/custom_pages/9_Blend_Optimizer.py").read_text(
+        encoding="utf-8"
+    )
+    component_source = Path(components.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(page_source)
+    label_assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "_COKE_ANCHOR_LABELS"
+            for target in node.targets
+        )
+    )
+    labels = ast.literal_eval(label_assignment.value)
+    config = yaml.safe_load(
+        (root / "src/config/setting_bmo.yml").read_text(encoding="utf-8")
+    )["bmo"]
+
+    assert labels == {
+        "Physics-Driven": "energy_balance",
+        "Data-Driven": "data_driven",
+    }
+    assert config["fuel_rate_anchor_basis"] == "data_driven"
+    assert "XGBoost" not in page_source
+    assert "XGBoost" not in component_source
+    assert "Run Non-linear Model" in page_source
+    assert '"Non-linear Result"' in page_source
+
+
+def test_model_input_alignment_step_and_diagnostics_defaults() -> None:
+    page_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "custom_pages"
+        / "9_Blend_Optimizer.py"
+    )
+    tree = ast.parse(page_path.read_text(encoding="utf-8"))
+
+    max_slag_call = next(
+        call
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "number_input"
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+        and call.args[0].value == "Max Slag Rate (kg/THM)"
+    )
+    assert not any(keyword.arg == "help" for keyword in max_slag_call.keywords)
+    assert any(
+        isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "layout_col4"
+        and call.func.attr == "caption"
+        for call in ast.walk(tree)
+    )
+
+    transition = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_render_transition_ladder"
+    )
+    step_call = next(
+        call
+        for call in ast.walk(transition)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "number_input"
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+        and call.args[0].value == "Max share change per step (%)"
+    )
+    step_default = next(
+        keyword.value for keyword in step_call.keywords if keyword.arg == "value"
+    )
+    assert isinstance(step_default, ast.Constant)
+    assert step_default.value == 2.0
+
+    diagnostics = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_render_data_diagnostics"
+    )
+    diagnostics_expander = next(
+        call
+        for call in ast.walk(diagnostics)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "expander"
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+        and call.args[0].value == "Data Diagnostics"
+    )
+    expanded = next(
+        keyword.value
+        for keyword in diagnostics_expander.keywords
+        if keyword.arg == "expanded"
+    )
+    assert isinstance(expanded, ast.Constant)
+    assert expanded.value is False
+
+
+def test_comparison_uses_currently_applied_ore_prices() -> None:
+    page_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "custom_pages"
+        / "9_Blend_Optimizer.py"
+    )
+    source = page_path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    selector = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_selected_ores_from_editor"
+    )
+    price_keyword = next(
+        keyword
+        for call in ast.walk(selector)
+        if isinstance(call, ast.Call)
+        for keyword in call.keywords
+        if keyword.arg == "price_rs_per_mt"
+    )
+    assert isinstance(price_keyword.value, ast.Call)
+    assert isinstance(price_keyword.value.args[0], ast.Subscript)
+    assert price_keyword.value.args[0].slice.value == "price_rs_per_mt"
+
+    comparison = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_render_blend_comparison"
+    )
+    assert any(
+        isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "compare_ores"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "selected_ores"
+        for node in ast.walk(comparison)
+    )
+    manual_evaluation = next(
+        call
+        for call in ast.walk(comparison)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "evaluate_blend_with_fuel_prediction"
+    )
+    ores_keyword = next(
+        keyword for keyword in manual_evaluation.keywords if keyword.arg == "ores"
+    )
+    assert isinstance(ores_keyword.value, ast.Name)
+    assert ores_keyword.value.id == "compare_ores"
+    assert any(
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and "currently applied ore prices from Ore Selection" in node.value
+        for node in ast.walk(comparison)
+    )
+
+
 def _ore(
     ore_id: str,
     name: str,

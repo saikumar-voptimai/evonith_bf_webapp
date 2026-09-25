@@ -375,14 +375,16 @@ bmo:
   # are constant across blends, so the difference is an offset, not a gradient.
   # It changes the reported level only.
   #
-  # energy_balance (current): solve the closed energy balance at the CURRENT
+  # energy_balance: solve the closed energy balance at the CURRENT
   # controls and burden, then subtract the rolling bias offset fitted on recent
   # complete days of hourly COKE_CALC_MT per hot-metal tonne. It is the only one
   # of the three that responds to what the furnace is actually being asked to
   # do, rather than reporting yesterday's number or the model's near-constant.
   # Falls back to observed when the live tags, the calibration, or the solve
   # are unavailable — see utils/bmo/energy_anchor.py.
-  fuel_rate_anchor_basis: energy_balance
+  # data_driven (current): use the validated, price-independent direct coke-rate
+  # model for the frozen current-state anchor.
+  fuel_rate_anchor_basis: data_driven
 
   # Direct price-independent coke-rate model. The page switch chooses this or
   # the energy balance for the run's frozen coke anchor; the physical correction

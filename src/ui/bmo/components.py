@@ -128,7 +128,7 @@ def render_header(bundle_status: dict[str, Any]) -> None:
         f"""
         <div class="bmo-header">
           <h2>Blend Mix Optimizer (BMO)</h2>
-          <p>LP baseline + nonlinear total-cost optimization for ore blend planning.</p>
+          <p>LP baseline + Non-linear model for total-cost ore blend planning.</p>
         </div>
         <div class="bmo-subtle">
           Model: <span class="{status_class}">{model_status}</span>
@@ -1206,7 +1206,7 @@ def _render_cost_group(
                 "correction, subject to Fe target, slag cap, share bounds and "
                 "stock bounds."
                 if is_lp_mode
-                else "DE jointly minimises ore + fuel cost."
+                else "The Non-linear model jointly minimises ore + fuel cost."
             ),
         )
         c_fuel.metric(
@@ -1216,7 +1216,7 @@ def _render_cost_group(
             delta_color="off",
             help=(
                 (
-                    "Fallback formula in use — the XGBoost model was unavailable "
+                    "Fallback formula in use - the Non-linear model was unavailable "
                     "or rejected the prediction. Treat this as a placeholder. "
                     if fuel_used_fallback
                     else ""
@@ -1550,7 +1550,7 @@ def render_blend_metrics(
         reason = (getattr(model_prediction, "details", {}) or {}).get("reason")
         st.caption(
             "⚠️ Fuel cost above came from the deterministic fallback formula, "
-            "not the BMO XGBoost model."
+            "not the BMO Non-linear model."
             + (f" Reason: {reason}." if reason else "")
         )
 
