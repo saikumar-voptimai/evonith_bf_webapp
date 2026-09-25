@@ -7,19 +7,19 @@ ore_editor:
   - lloyds_pellet
   rows:
     sinter_sp_02:
-      price_rs_per_mt: 7789.0
-      min_share_pct: 58.0
+      price_rs_per_mt: 8981.0
+      min_share_pct: 57.5
       max_share_pct: 70.0
     geomin_clo:
-      price_rs_per_mt: 3827.0
+      price_rs_per_mt: 4150.0
       min_share_pct: 0.0
       max_share_pct: 20.0
     lloyds_clo:
-      price_rs_per_mt: 8051.0
+      price_rs_per_mt: 9685.0
       min_share_pct: 0.0
       max_share_pct: 30.0
     nmdc_donimalai:
-      price_rs_per_mt: 5684.0
+      price_rs_per_mt: 5750.0
       min_share_pct: 0.0
       max_share_pct: 15.0
     gomti_clo:
@@ -43,9 +43,9 @@ ore_editor:
       min_share_pct: 0.0
       max_share_pct: 3.0
     nmdc_rom:
-      price_rs_per_mt: 8739.0
+      price_rs_per_mt: 10590.0
       min_share_pct: 0.0
-      max_share_pct: 20.0
+      max_share_pct: 10.0
     lloyds_oversize_clo:
       price_rs_per_mt: 6162.0
       min_share_pct: 0.0
@@ -55,9 +55,9 @@ ore_editor:
       min_share_pct: 0.0
       max_share_pct: 10.0
     lloyds_pellet:
-      price_rs_per_mt: 9650.0
-      min_share_pct: 10.0
-      max_share_pct: 10.0
+      price_rs_per_mt: 11100.0
+      min_share_pct: 15.0
+      max_share_pct: 15.0
     sarda_pellet:
       price_rs_per_mt: 9650.0
       min_share_pct: 0.0
@@ -65,17 +65,24 @@ ore_editor:
 flux_editor:
   rows:
     quartz:
-      price_rs_per_mt: 4000.0
+      price_rs_per_mt: 1796.0
       stock_mt: 2000.0
     limestone:
-      price_rs_per_mt: 5000.0
+      price_rs_per_mt: 1500.0
       stock_mt: 5000.0
     dolomite:
-      price_rs_per_mt: 6000.0
+      price_rs_per_mt: 1183.0
       stock_mt: 2000.0
 model_inputs:
   target_slag_basicity_min: 1.05
   target_slag_basicity_max: 1.15
+  target_slag_t_basicity_min: 0.0
+  target_slag_t_basicity_max: 0.0
+  target_slag_rate_kg_per_thm: 320.0
+  target_slag_al2o3_max_pct: 20.0
+  target_slag_mgo_min_pct: 6.5
+  target_slag_mgo_al2o3_ratio_min: 0.345
+  max_charges_per_hour: 6.5
   charge_mass_mt: 26.45927
 dust_editor:
   rows:
@@ -99,3 +106,11 @@ dust_editor:
       na2o_pct: 0.0
       k2o_pct: 0.0
       caf2_pct: 0.0
+fuel_ash_editor:
+  rows:
+    coke:
+      price_rs_per_mt: 31992.0
+    nut_coke:
+      price_rs_per_mt: 26074.0
+    pci:
+      price_rs_per_mt: 22120.0
