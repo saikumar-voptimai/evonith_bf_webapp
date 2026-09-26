@@ -177,8 +177,9 @@ class StaticDatasetManager:
                 df_raw = df_raw.drop(columns=dropped)
 
             # Resample outer-joined multi-granularity data to a regular hourly cadence.
-            # Material quantities are hourly totals; lab/process context is averaged and
-            # forward-filled because a lab sample remains valid until the next sample.
+            # Material quantities are totals for the hour ending at the row timestamp;
+            # lab/process context is averaged and forward-filled because a lab sample
+            # remains valid until the next sample.
             df_raw = self._resample_local_delta_hourly(df_raw)
 
             # Derive PCI_CALC_MT from online process params when the charge-system
@@ -269,18 +270,39 @@ class StaticDatasetManager:
 
     @staticmethod
     def _resample_local_delta_hourly(df: pd.DataFrame) -> pd.DataFrame:
-        quantity_cols = [
+        charge_quantity_cols = [
+            col
+            for col in df.columns
+            if StaticDatasetManager._is_charge_quantity_column(col)
+        ]
+        other_quantity_cols = [
             col
             for col in df.columns
             if StaticDatasetManager._is_hourly_quantity_column(col)
+            and not StaticDatasetManager._is_charge_quantity_column(col)
         ]
-        context_cols = [col for col in df.columns if col not in quantity_cols]
+        context_cols = [
+            col
+            for col in df.columns
+            if not StaticDatasetManager._is_hourly_quantity_column(col)
+        ]
 
         frames: list[pd.DataFrame] = []
         if context_cols:
             frames.append(df[context_cols].resample("1h").mean().ffill(limit=24))
-        if quantity_cols:
-            frames.append(df[quantity_cols].resample("1h").sum(min_count=1))
+        if other_quantity_cols:
+            frames.append(
+                df[other_quantity_cols].resample("1h").sum(min_count=1)
+            )
+        if charge_quantity_cols:
+            # Label charge totals by the end of their interval: values from
+            # [11:00, 12:00) belong to 12:00, and [23:00, 00:00) to 00:00.
+            # Native resampling keeps this vectorized and handles day boundaries.
+            frames.append(
+                df[charge_quantity_cols]
+                .resample("1h", closed="left", label="right")
+                .sum(min_count=1)
+            )
 
         if not frames:
             return df.resample("1h").mean()
@@ -289,6 +311,13 @@ class StaticDatasetManager:
     @staticmethod
     def _is_hourly_quantity_column(column: object) -> bool:
         return isinstance(column, str) and column.endswith("_CALC_MT")
+
+    @staticmethod
+    def _is_charge_quantity_column(column: object) -> bool:
+        return (
+            StaticDatasetManager._is_hourly_quantity_column(column)
+            and column != "PCI_CALC_MT"
+        )
 
     @staticmethod
     def _repair_material_quantity_totals(df: pd.DataFrame) -> pd.DataFrame:
