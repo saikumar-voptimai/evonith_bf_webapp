@@ -103,7 +103,7 @@ def run_nonlinear_optimizer(
     if blend is None:
         msg = (
             optimization_result.diagnostics.get("de_result", {}).get("message")
-            or "DE failed."
+            or "Intensive Optimizer failed."
         )
         return None, [f"Nonlinear optimizer failed: {msg}"]
 

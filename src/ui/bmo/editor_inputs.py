@@ -74,9 +74,7 @@ def fuel_ash_inputs_from_editor(editor_df: pd.DataFrame) -> list[FuelAshInput]:
                 enabled=bool(row.get("enabled", True)),
                 rate_kg_per_thm=float_from_row(row, "rate_kg_per_thm"),
                 rate_basis=str(row.get("rate_basis", "wet") or "wet").lower(),
-                add_moisture_to_rate=bool(
-                    row.get("add_moisture_to_rate", False)
-                ),
+                add_moisture_to_rate=bool(row.get("add_moisture_to_rate", False)),
                 price_rs_per_mt=float_from_row(row, "price_rs_per_mt"),
                 moisture_pct=float_from_row(row, "moisture_pct"),
                 vm_pct=float_from_row(row, "vm_pct"),
@@ -211,6 +209,12 @@ def flux_inputs_from_editor(editor_df: pd.DataFrame) -> list[FluxInput]:
                 loi_pct=float_from_row(row, "loi_pct"),
                 price_rs_per_mt=float_from_row(row, "price_rs_per_mt"),
                 stock_mt=float_from_row(row, "stock_mt"),
+                min_qty_mt=float_from_row(row, "min_qty_mt"),
+                max_qty_mt=(
+                    float_from_row(row, "max_qty_mt")
+                    if "max_qty_mt" in row and not pd.isna(row.get("max_qty_mt"))
+                    else None
+                ),
                 optimizable=bool(row.get("optimizable", False)),
             )
         )

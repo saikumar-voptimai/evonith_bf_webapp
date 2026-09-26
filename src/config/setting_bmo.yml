@@ -5,7 +5,7 @@ bmo:
   chemistry_window_days: 30
 
   target:
-    target_production_mt: 2350.0
+    target_production_mt: 2270.0
     # Slag is capped by RATE, not by an absolute tonnage: the tonnage then
     # re-scales with the operator's HM target instead of silently tightening
     # when the target moves. target_slag_qty_mt is the fallback for callers that
@@ -93,7 +93,7 @@ bmo:
   burden_capacity:
     enabled: true
     # Observed charges/hr: median 6.38, p95 6.75, p99 7.02, max 7.25.
-    max_charges_per_hour: 7.5
+    max_charges_per_hour: 6.35
     # Workbook BURDEN-case total charge mass. The operator can override it on
     # the page when the current skip-car condition or burden bulk density differs.
     charge_mass_mt: 26.45927
@@ -184,6 +184,8 @@ bmo:
       optimizable: true
       price_rs_per_mt: 2000.0
       stock_mt: 500.0
+      min_qty_mt: 0.0
+      max_qty_mt: 500.0
       moisture_pct: 0.1
       sio2_pct: 96.5
       al2o3_pct: 0.4
@@ -206,6 +208,8 @@ bmo:
       optimizable: true
       price_rs_per_mt: 1800.0
       stock_mt: 500.0
+      min_qty_mt: 0.0
+      max_qty_mt: 500.0
       moisture_pct: 0.2
       sio2_pct: 4.0
       al2o3_pct: 1.2
@@ -228,6 +232,8 @@ bmo:
       optimizable: true
       price_rs_per_mt: 3000.0
       stock_mt: 500.0
+      min_qty_mt: 0.0
+      max_qty_mt: 500.0
       moisture_pct: 0.2
       sio2_pct: 1.7
       al2o3_pct: 0.24

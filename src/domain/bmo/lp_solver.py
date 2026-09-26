@@ -93,8 +93,8 @@ def run_lp_baseline(
     )
 
     if not result.success or result.x is None:
-        err = result.message or "LP solver failed."
-        return None, [f"LP infeasible or failed: {err}"]
+        err = result.message or "Balanced Optimizer failed."
+        return None, [f"Balanced Optimizer infeasible or failed: {err}"]
 
     quantities = {ore.ore_id: float(result.x[idx]) for idx, ore in enumerate(ores)}
     blend = evaluate_blend(

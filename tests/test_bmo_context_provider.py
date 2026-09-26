@@ -389,6 +389,59 @@ def test_recent_manual_blend_snapshot_includes_pellet_in_share_denominator(
     assert rows.loc["sinter", "share_pct"] < 65.0
 
 
+def test_manual_blend_lookback_uses_median_hourly_furnace_dataset_shares(
+    tmp_path,
+) -> None:
+    settings_path, mapping_path = _write_bmo_files(tmp_path)
+    dataset_path = tmp_path / "furnace_dataset.csv"
+    pd.DataFrame(
+        {
+            "time": pd.date_range("2026-09-26T00:00:00Z", periods=4, freq="h"),
+            "SINTER_CALC_MT": [999.0, 60.0, 50.0, 70.0],
+            "ORE_1_CALC_MT": [1.0, 40.0, 50.0, 30.0],
+        }
+    ).set_index("time").to_csv(dataset_path)
+
+    provider = EvonithBmoContextProvider(
+        setting_path=str(settings_path),
+        mapping_path=str(mapping_path),
+    )
+    provider._dataset_service.static_dataset_path = dataset_path
+    ores = [
+        OreInput(
+            ore_id="sinter",
+            display_name="SINTER",
+            stock_mt=1000.0,
+            price_rs_per_mt=1.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=55.0),
+            metadata={"material_key": "sinter_3"},
+        ),
+        OreInput(
+            ore_id="ore1",
+            display_name="ORE 1",
+            stock_mt=1000.0,
+            price_rs_per_mt=1.0,
+            min_share_pct=0.0,
+            max_share_pct=100.0,
+            chemistry=OreChemistry(fe_t_pct=62.0),
+            metadata={"material_key": "ore_1"},
+        ),
+    ]
+
+    snapshot = provider.get_recent_manual_blend_snapshot(ores, lookback_hours=3)
+
+    rows = pd.DataFrame(snapshot["rows"]).set_index("ore_id")
+    assert snapshot["source"] == "static_furnace_dataset"
+    assert snapshot["aggregation"] == "median_hourly_share"
+    assert snapshot["rows_used"] == 3
+    assert rows.loc["sinter", "share_pct"] == pytest.approx(60.0)
+    assert rows.loc["ore1", "share_pct"] == pytest.approx(40.0)
+    assert snapshot["start_time"].startswith("2026-09-26T01:00:00")
+    assert snapshot["end_time"].startswith("2026-09-26T03:00:00")
+
+
 def test_bmo_pellet_database_smoke_check_when_database_url_available() -> None:
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
@@ -398,8 +451,7 @@ def test_bmo_pellet_database_smoke_check_when_database_url_available() -> None:
     conn = psycopg2.connect(database_url)
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 select
                     count(*) filter (
                         where coalesce(pellet_1_mt, 0) + coalesce(pellet_2_mt, 0) > 0
@@ -408,26 +460,21 @@ def test_bmo_pellet_database_smoke_check_when_database_url_available() -> None:
                     coalesce(sum(coalesce(pellet_2_mt, 0)), 0) as pellet_2_mt
                 from offline_feed.charge_data
                 where date_time >= now() - interval '30 days'
-                """
-            )
+                """)
             charge_rows, pellet_1_mt, pellet_2_mt = cur.fetchone()
-            cur.execute(
-                """
+            cur.execute("""
                 select material_code, max(date_time)
                 from offline_feed.ore_chemistry
                 where material_code in ('pellet_1', 'pellet_2')
                 group by material_code
-                """
-            )
+                """)
             chemistry_rows = cur.fetchall()
-            cur.execute(
-                """
+            cur.execute("""
                 select material_code, max(date_time)
                 from offline_feed.raw_material_stock
                 where material_code in ('pellet_1', 'pellet_2')
                 group by material_code
-                """
-            )
+                """)
             stock_rows = cur.fetchall()
     finally:
         conn.close()
@@ -560,6 +607,28 @@ def test_average_chemistry_snapshot_ignores_zero_values(tmp_path, monkeypatch) -
     assert ore_row["source"] == "offline_db_avg_non_zero"
 
 
+def test_fallback_chemistry_warning_names_each_material(tmp_path, monkeypatch) -> None:
+    settings_path, mapping_path = _write_bmo_files(tmp_path)
+    monkeypatch.setattr(
+        context_module,
+        "_fetch_offline_data",
+        lambda **_kwargs: pd.DataFrame(),
+    )
+    provider = EvonithBmoContextProvider(
+        setting_path=str(settings_path), mapping_path=str(mapping_path)
+    )
+
+    _chemistry_map, warnings = provider.get_chemistry_snapshot(
+        mode="latest", window_days=30
+    )
+
+    fallback_warning = next(
+        warning for warning in warnings if warning.startswith("Chemistry unavailable")
+    )
+    assert "SINTER" in fallback_warning
+    assert "ORE 1" in fallback_warning
+
+
 def test_fuel_analysis_averages_latest_moisture_and_vm_by_family(
     tmp_path, monkeypatch
 ) -> None:
@@ -610,16 +679,11 @@ def test_fuel_analysis_averages_latest_moisture_and_vm_by_family(
         "pci": {"moisture_pct": 1.3, "vm_pct": 20.0},
     }
     rows = provider.get_data_diagnostics()["fuel_analysis"]["rows"]
-    rows_by_field = {
-        (row["fuel_id"], row["analysis_field"]): row for row in rows
-    }
+    rows_by_field = {(row["fuel_id"], row["analysis_field"]): row for row in rows}
     assert rows_by_field[("coke", "moisture_pct")]["source_column"] == "tm"
     assert rows_by_field[("pci", "moisture_pct")]["source_column"] == "moisture"
     assert rows_by_field[("coke", "vm_pct")]["source_column"] == "vm"
-    assert (
-        rows_by_field[("coke", "moisture_pct")]["material_code"]
-        == "coke_1, coke_2"
-    )
+    assert rows_by_field[("coke", "moisture_pct")]["material_code"] == "coke_1, coke_2"
     assert rows_by_field[("coke", "moisture_pct")]["rows_used"] == 2
     assert rows_by_field[("coke", "vm_pct")]["rows_used"] == 2
     assert rows_by_field[("nut_coke", "moisture_pct")]["rows_used"] == 2

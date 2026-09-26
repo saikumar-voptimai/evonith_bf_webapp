@@ -43,7 +43,6 @@ from utils.bmo.sandbox import (
 )
 from utils.bmo.snapshot import (
     capture,
-
     frozen_state,
     restorable_state,
     results_state,
@@ -84,9 +83,8 @@ def _when(iso: str | None) -> str:
 
 
 def _label(row: Mapping[str, Any]) -> str:
-    return (
-        f"{_when(row['created_at'])} · {row['source']}"
-        + (f" · {row['label']}" if row["label"] else "")
+    return f"{_when(row['created_at'])} · {row['source']}" + (
+        f" · {row['label']}" if row["label"] else ""
     )
 
 
@@ -94,24 +92,28 @@ def _table(rows: list[dict[str, Any]]) -> pd.DataFrame:
     def blend(shares: Mapping[str, float]) -> str:
         return ", ".join(f"{k} {v:.1f}%" for k, v in list(shares.items())[:5])
 
-    return pd.DataFrame([
-        {
-            "Taken at": _when(r["created_at"]),
-            "Page": r["source"],
-            "Label": r["label"],
-            "Blend": blend(r["summary"].get("blend_pct") or {}),
-            "Fuel rate": r["summary"].get("fuel_rate_kg_thm"),
-            "Coke rate": r["summary"].get("coke_rate_kg_thm"),
-            "Slag rate": r["summary"].get("slag_rate_kg_thm"),
-            "B2": r["summary"].get("basicity_b2"),
-            "T-basicity": r["summary"].get("t_basicity"),
-            "Production": r["summary"].get("production_mt"),
-            "Total cost": r["summary"].get("total_cost_rs_thm"),
-            "Result": r["summary"].get("result") or "inputs only",
-            "Plant data": "frozen" if r["summary"].get("frozen_context") else "not saved",
-        }
-        for r in rows
-    ])
+    return pd.DataFrame(
+        [
+            {
+                "Taken at": _when(r["created_at"]),
+                "Page": r["source"],
+                "Label": r["label"],
+                "Blend": blend(r["summary"].get("blend_pct") or {}),
+                "Fuel rate": r["summary"].get("fuel_rate_kg_thm"),
+                "Coke rate": r["summary"].get("coke_rate_kg_thm"),
+                "Slag rate": r["summary"].get("slag_rate_kg_thm"),
+                "B2": r["summary"].get("basicity_b2"),
+                "T-basicity": r["summary"].get("t_basicity"),
+                "Production": r["summary"].get("production_mt"),
+                "Total cost": r["summary"].get("total_cost_rs_thm"),
+                "Result": r["summary"].get("result") or "inputs only",
+                "Plant data": (
+                    "frozen" if r["summary"].get("frozen_context") else "not saved"
+                ),
+            }
+            for r in rows
+        ]
+    )
 
 
 _TABLE_CONFIG = {
@@ -135,7 +137,10 @@ def _clear_sandbox(state: Any) -> None:
     """
 
     keep = (
-        f"{SB_UI}saved_choice", f"{SB_UI}upload", f"{SB_UI}label", f"{SB_UI}choice",
+        f"{SB_UI}saved_choice",
+        f"{SB_UI}upload",
+        f"{SB_UI}label",
+        f"{SB_UI}choice",
     )
     for key in [str(k) for k in list(state.keys())]:
         if key in keep:
@@ -172,7 +177,7 @@ def apply_to_sandbox(snapshot: Mapping[str, Any]) -> None:
         state[f"{SANDBOX_PREFIX}{K_RECORD}"] = {
             "at": (snapshot.get("run") or {}).get("at") or snapshot.get("created_at"),
             "marker": results_marker(state, SANDBOX_PREFIX),
-            "inputs": {k[len(SANDBOX_PREFIX):]: v for k, v in inputs.items()},
+            "inputs": {k[len(SANDBOX_PREFIX) :]: v for k, v in inputs.items()},
             "page": dict(frozen["page"]),
             "provider_calls": dict(frozen["provider_calls"]),
             "session_at_run": dict(frozen.get("session_at_run") or {}),
@@ -191,7 +196,9 @@ def apply_to_sandbox(snapshot: Mapping[str, Any]) -> None:
         "model_check": (snapshot.get("frozen") or {}).get("model_check"),
         "not_restorable": list(snapshot.get("not_restorable") or []),
     }
-    state[f"{SB_UI}json_text"] = json.dumps({"inputs": snapshot.get("inputs") or {}}, indent=1)
+    state[f"{SB_UI}json_text"] = json.dumps(
+        {"inputs": snapshot.get("inputs") or {}}, indent=1
+    )
     state.pop(LOAD_ERROR_KEY, None)
 
 
@@ -249,7 +256,7 @@ def _preserve(state: Any, prefix: str) -> None:
     for key in [str(k) for k in list(state.keys())]:
         if not key.startswith(prefix):
             continue
-        suffix = key[len(prefix):]
+        suffix = key[len(prefix) :]
         if suffix.startswith(UI_SUFFIX) or not is_writable_suffix(suffix):
             continue
         try:
@@ -316,7 +323,8 @@ def _render_loader(state: Any) -> None:
             lines.append(
                 "Plant data is **frozen as saved** — ore stock and chemistry, HM/slag, "
                 "fuel analysis, process history for the coke-rate and Si models, live "
-                "fuel rates and configuration. Run LP/DE to reproduce the saved result."
+                "fuel rates and configuration. Run either optimizer to reproduce "
+                "the saved result."
             )
         else:
             lines.append(
@@ -347,17 +355,26 @@ def _render_loader(state: Any) -> None:
     pick_col, load_col, reset_col = st.columns([4, 1, 1], vertical_alignment="bottom")
     if by_id:
         pick_col.selectbox(
-            "Snapshot to replay", list(by_id), key=f"{SB_UI}saved_choice",
+            "Snapshot to replay",
+            list(by_id),
+            key=f"{SB_UI}saved_choice",
             format_func=lambda sid: _label(by_id[sid]),
         )
         load_col.button(
-            "Load", type="primary", width="stretch", key=f"{SB_UI}load_saved",
-            on_click=_load_saved_cb, args=(f"{SB_UI}saved_choice",),
+            "Load",
+            type="primary",
+            width="stretch",
+            key=f"{SB_UI}load_saved",
+            on_click=_load_saved_cb,
+            args=(f"{SB_UI}saved_choice",),
         )
     else:
         pick_col.caption("No snapshots saved yet — take one in Live mode.")
     reset_col.button(
-        "↺ Reset", width="stretch", key=f"{SB_UI}reset", on_click=_reset_cb,
+        "↺ Reset",
+        width="stretch",
+        key=f"{SB_UI}reset",
+        on_click=_reset_cb,
         help="Clear every sandbox input, result and frozen data.",
     )
 
@@ -365,7 +382,11 @@ def _render_loader(state: Any) -> None:
         upload_tab, edit_tab = st.tabs(["Upload JSON", "Edit JSON"])
         with upload_tab:
             st.file_uploader("Snapshot JSON", type=["json"], key=f"{SB_UI}upload")
-            st.button("Load uploaded JSON", key=f"{SB_UI}load_upload", on_click=_load_upload_cb)
+            st.button(
+                "Load uploaded JSON",
+                key=f"{SB_UI}load_upload",
+                on_click=_load_upload_cb,
+            )
         with edit_tab:
             st.caption(
                 'Any JSON with an "inputs" object works. Keys are written WITHOUT the '
@@ -374,7 +395,9 @@ def _render_loader(state: Any) -> None:
             )
             state.setdefault(f"{SB_UI}json_text", json.dumps({"inputs": {}}, indent=1))
             st.text_area("Inputs JSON", height=260, key=f"{SB_UI}json_text")
-            st.button("Apply edited JSON", key=f"{SB_UI}load_edit", on_click=_load_edited_cb)
+            st.button(
+                "Apply edited JSON", key=f"{SB_UI}load_edit", on_click=_load_edited_cb
+            )
     st.divider()
 
 
@@ -416,7 +439,7 @@ def render_snapshot_panel(
     st.divider()
     st.markdown("### 📸 Snapshots")
     st.caption(
-        "A snapshot records the last run: every input, the LP/DE results, and the "
+        "A snapshot records the last run: every input, both optimizer results, and the "
         "plant data the run read (chemistry, stock, HM/slag, process history for the "
         "coke-rate and Si models, live fuel rates, configuration). Download it as a "
         "report, or open it in Sandbox to replay it exactly."
@@ -424,21 +447,27 @@ def render_snapshot_panel(
 
     label_col, button_col = st.columns([3, 1], vertical_alignment="bottom")
     label = label_col.text_input(
-        "Label (optional)", key=f"{ui}label",
+        "Label (optional)",
+        key=f"{ui}label",
         placeholder="e.g. Shift B — trial with 12% pellet",
     )
-    if button_col.button("📸 Take Snapshot", type="primary", width="stretch",
-                         key=f"{ui}take"):
+    if button_col.button(
+        "📸 Take Snapshot", type="primary", width="stretch", key=f"{ui}take"
+    ):
         try:
             snapshot = capture(state, prefix=prefix, page_vars=page_vars, label=label)
             path = save(snapshot)
             st.success(f"Snapshot **{snapshot['id']}** saved — {path.name}")
             run = snapshot.get("run") or {}
             if not snapshot["results"]:
-                st.info("No optimiser result was on the page, so this snapshot holds "
-                        "inputs only. Run LP or DE first for a full report.")
+                st.info(
+                    "No optimiser result was on the page, so this snapshot holds "
+                    "inputs only. Run an optimizer first for a full report."
+                )
             elif run.get("pinned"):
-                st.caption(f"Recorded the run of {_when(run.get('at'))} with its plant data.")
+                st.caption(
+                    f"Recorded the run of {_when(run.get('at'))} with its plant data."
+                )
             if run.get("inputs_changed_after_run"):
                 st.warning(
                     "Inputs were changed after the last run. The snapshot holds the "
@@ -458,18 +487,23 @@ def render_snapshot_panel(
 
     rows, broken = list_snapshots()
     if broken:
-        st.caption(f"⚠️ {len(broken)} snapshot file(s) could not be read: "
-                   + ", ".join(broken[:5]))
+        st.caption(
+            f"⚠️ {len(broken)} snapshot file(s) could not be read: "
+            + ", ".join(broken[:5])
+        )
     if not rows:
         st.info("No snapshots yet.")
         return
 
-    st.dataframe(_table(rows), hide_index=True, width="stretch",
-                 column_config=_TABLE_CONFIG)
+    st.dataframe(
+        _table(rows), hide_index=True, width="stretch", column_config=_TABLE_CONFIG
+    )
 
     by_id = {r["id"]: r for r in rows}
     choice = st.selectbox(
-        "Snapshot", list(by_id), key=f"{ui}choice",
+        "Snapshot",
+        list(by_id),
+        key=f"{ui}choice",
         format_func=lambda sid: _label(by_id[sid]),
     )
     row = by_id[choice]
@@ -477,9 +511,12 @@ def render_snapshot_panel(
     try:
         report = _docx_bytes(choice, row["path"], _mtime(row["path"]))
         cols[0].download_button(
-            "⬇️ Download Snapshot (.docx)", data=report,
-            file_name=f"BMO_snapshot_{choice}.docx", mime=DOCX_MIME,
-            width="stretch", key=f"{ui}download_docx",
+            "⬇️ Download Snapshot (.docx)",
+            data=report,
+            file_name=f"BMO_snapshot_{choice}.docx",
+            mime=DOCX_MIME,
+            width="stretch",
+            key=f"{ui}download_docx",
         )
     except Exception as exc:  # noqa: BLE001
         log.exception("Report build failed")
@@ -487,16 +524,22 @@ def render_snapshot_panel(
     try:
         with open(row["path"], "rb") as handle:
             cols[1].download_button(
-                "⬇️ Download JSON", data=handle.read(),
-                file_name=f"BMO_snapshot_{choice}.json", mime="application/json",
-                width="stretch", key=f"{ui}download_json",
+                "⬇️ Download JSON",
+                data=handle.read(),
+                file_name=f"BMO_snapshot_{choice}.json",
+                mime="application/json",
+                width="stretch",
+                key=f"{ui}download_json",
             )
     except OSError as exc:
         cols[1].error(str(exc))
     if not in_sandbox:
         cols[2].button(
-            "🧪 Open in Sandbox", width="stretch", key=f"{ui}open_sandbox",
-            on_click=_open_in_sandbox_cb, args=(choice,),
+            "🧪 Open in Sandbox",
+            width="stretch",
+            key=f"{ui}open_sandbox",
+            on_click=_open_in_sandbox_cb,
+            args=(choice,),
         )
     if cols[-1].button("🗑️ Delete", width="stretch", key=f"{ui}delete"):
         delete(choice)

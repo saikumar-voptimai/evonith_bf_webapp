@@ -67,12 +67,18 @@ flux_editor:
     quartz:
       price_rs_per_mt: 1796.0
       stock_mt: 2000.0
+      min_qty_mt: 0.0
+      max_qty_mt: 2000.0
     limestone:
       price_rs_per_mt: 1500.0
       stock_mt: 5000.0
+      min_qty_mt: 0.0
+      max_qty_mt: 5000.0
     dolomite:
       price_rs_per_mt: 1183.0
       stock_mt: 2000.0
+      min_qty_mt: 0.0
+      max_qty_mt: 2000.0
 model_inputs:
   target_slag_basicity_min: 1.05
   target_slag_basicity_max: 1.15
@@ -82,7 +88,7 @@ model_inputs:
   target_slag_al2o3_max_pct: 20.0
   target_slag_mgo_min_pct: 6.5
   target_slag_mgo_al2o3_ratio_min: 0.345
-  max_charges_per_hour: 6.5
+  max_charges_per_hour: 6.35
   charge_mass_mt: 26.45927
 dust_editor:
   rows:

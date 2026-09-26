@@ -128,7 +128,7 @@ def render_header(bundle_status: dict[str, Any]) -> None:
         f"""
         <div class="bmo-header">
           <h2>Blend Mix Optimizer (BMO)</h2>
-          <p>LP baseline + Non-linear model for total-cost ore blend planning.</p>
+          <p>Balanced and intensive optimization for total-cost ore blend planning.</p>
         </div>
         <div class="bmo-subtle">
           Model: <span class="{status_class}">{model_status}</span>
@@ -298,9 +298,7 @@ def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame
                 "fuel_name": str(item.get("display_name", item.get("fuel_id", ""))),
                 "rate_kg_per_thm": float(item.get("rate_kg_per_thm", 0.0) or 0.0),
                 "rate_basis": str(item.get("rate_basis", "wet") or "wet").lower(),
-                "add_moisture_to_rate": bool(
-                    item.get("add_moisture_to_rate", False)
-                ),
+                "add_moisture_to_rate": bool(item.get("add_moisture_to_rate", False)),
                 "price_rs_per_mt": float(item.get("price_rs_per_mt", 0.0) or 0.0),
                 "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
                 "vm_pct": float(item.get("vm_pct", 0.0) or 0.0),
@@ -584,6 +582,10 @@ def build_flux_editor_df(flux_cfg: list[dict[str, Any]]) -> pd.DataFrame:
                 "wet_qty_mt": float(item.get("wet_qty_mt", 0.0) or 0.0),
                 "price_rs_per_mt": float(item.get("price_rs_per_mt", 0.0) or 0.0),
                 "stock_mt": float(item.get("stock_mt", 0.0) or 0.0),
+                "min_qty_mt": float(item.get("min_qty_mt", 0.0) or 0.0),
+                "max_qty_mt": float(
+                    item.get("max_qty_mt", item.get("stock_mt", 0.0)) or 0.0
+                ),
                 "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
                 "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
                 "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
@@ -634,6 +636,8 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
         "optimizable",
         "price_rs_per_mt",
         "stock_mt",
+        "min_qty_mt",
+        "max_qty_mt",
         "moisture_pct",
         "sio2_pct",
         "al2o3_pct",
@@ -657,18 +661,20 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
             "flux_id": st.column_config.TextColumn("Flux ID", disabled=True),
             "flux_name": st.column_config.TextColumn("Flux", disabled=True),
             "optimizable": st.column_config.CheckboxColumn(
-                "LP auto",
+                "Optimizer",
                 disabled=True,
-                help=(
-                    "When ticked, the optimizer decides this flux's quantity "
-                    "(0..stock) to hold slag basicity within bounds."
-                ),
             ),
             "price_rs_per_mt": _two_decimal_number_column(
                 "Price (Rs/MT)", min_value=0.0, step=50.0
             ),
             "stock_mt": _two_decimal_number_column(
                 "Stock (MT)", min_value=0.0, step=10.0
+            ),
+            "min_qty_mt": _two_decimal_number_column(
+                "Min Qty (MT)", min_value=0.0, step=1.0
+            ),
+            "max_qty_mt": _two_decimal_number_column(
+                "Max Qty (MT)", min_value=0.0, step=1.0
             ),
             "moisture_pct": _two_decimal_number_column(
                 "Moisture/TM (%)", min_value=0.0, max_value=100.0, step=0.1
@@ -911,15 +917,6 @@ def render_hot_metal_chemistry(
     """
 
     st.markdown("### Hot Metal Chemistry")
-    st.caption(
-        "Slag-side only. These four values set the pig-iron closure and the SiO2 "
-        "consumed by Si reduction in the slag balance. They are HELD at the "
-        "operating point rather than tracking the latest cast, because a single "
-        "cast's Si swings far more than the true operating point does and that "
-        "swing would move calculated slag and basicity for reasons unrelated to "
-        "the blend being compared. The Si prediction and the coke-correction Si "
-        "term are unaffected - both still use live / model Si."
-    )
 
     def _default(key: str) -> float:
         try:
@@ -1065,33 +1062,23 @@ def render_slag_balance_settings(
         value=bool(settings_cfg.get("enabled", True)),
     )
 
-    c1, c2, c3, c4 = st.columns(4)
-    values["slag_correction_factor"] = c1.number_input(
-        "Slag Correction Factor",
-        min_value=0.0,
-        max_value=2.0,
-        value=float(settings_cfg.get("slag_correction_factor", 1.0)),
-        step=0.001,
-        help=(
-            "Leave at 1.0. The HM-driven slag balance already subtracts SiO2/Fe/Mn/S "
-            "into pig iron; this empirical factor exists only for legacy calibration."
-        ),
-    )
-    values["pi_loss_pct"] = c2.number_input(
+    values["slag_correction_factor"] = 1.0
+    c1, c2, c3 = st.columns(3)
+    values["pi_loss_pct"] = c1.number_input(
         "PI Loss (%)",
         min_value=0.0,
         max_value=99.0,
         value=float(settings_cfg.get("pi_loss_pct", 0.2)),
         step=0.01,
     )
-    values["fe_to_pig_iron_fraction"] = c3.number_input(
+    values["fe_to_pig_iron_fraction"] = c2.number_input(
         "Fe to PI Fraction",
         min_value=0.0,
         max_value=1.0,
         value=float(settings_cfg.get("fe_to_pig_iron_fraction", 0.999)),
         step=0.001,
     )
-    values["mn_recovery_pct"] = c4.number_input(
+    values["mn_recovery_pct"] = c3.number_input(
         "Mn/Ti Recovery (%)",
         min_value=0.0,
         max_value=100.0,
@@ -1196,64 +1183,18 @@ def _render_cost_group(
     )
     total_display = base_total + flux_cost_display
 
-    correction_delta_kg = blend.diagnostics.get("coke_correction_delta_kg_thm")
-    correction_cost = None
-    if correction_delta_kg:
-        correction_cost = float(correction_delta_kg) * float(
-            (blend.diagnostics.get("current_fuel_prices_rs_per_kg") or {}).get(
-                "coke", ASSUMED_FUEL_PRICES_RS_PER_KG["coke"]
-            )
-        )
-
     with st.container(border=True):
-        st.markdown("###### 💰 &nbsp;Cost &nbsp;<small>Rs / THM</small>",
-                    unsafe_allow_html=True)
-        c_ore, c_fuel, c_flux, c_total = st.columns(4)
-        c_ore.metric(
-            "Ore",
-            _fmt(blend.ore_cost_per_thm_rs),
-            help=(
-                "LP minimises ore cost plus flux cost plus the physics coke-rate "
-                "correction, subject to Fe target, slag cap, share bounds and "
-                "stock bounds."
-                if is_lp_mode
-                else "The Non-linear model jointly minimises ore + fuel cost."
-            ),
+        st.markdown(
+            "###### 💰 &nbsp;Cost &nbsp;<small>Rs / THM</small>", unsafe_allow_html=True
         )
+        c_ore, c_fuel, c_flux, c_total = st.columns(4)
+        c_ore.metric("Ore", _fmt(blend.ore_cost_per_thm_rs))
         c_fuel.metric(
             "Fuel" + (" (fallback)" if fuel_used_fallback else ""),
             _fmt(fuel_cost_display),
-            delta=(f"{correction_cost:+,.0f} physics" if correction_cost else None),
-            delta_color="off",
-            help=(
-                (
-                    "Fallback formula in use - the Non-linear model was unavailable "
-                    "or rejected the prediction. Treat this as a placeholder. "
-                    if fuel_used_fallback
-                    else ""
-                )
-                + (
-                    "Re-priced to the operator's current fuel prices; the model's "
-                    f"baseline-price value is Rs {blend.fuel_cost_per_thm_rs:,.0f}."
-                    if adjusted_fuel is not None
-                    else ""
-                )
-            )
-            or None,
         )
-        c_flux.metric(
-            "Flux",
-            _fmt(flux_cost_display),
-            help=(
-                "Flux (dolomite/quartz/limestone) the optimizer added to hold "
-                "slag basicity in bounds. Included in the total."
-            ),
-        )
-        c_total.metric(
-            "**Total**",
-            _fmt(total_display),
-            help="Ore + fuel + optimizer-added flux, all at current prices.",
-        )
+        c_flux.metric("Flux", _fmt(flux_cost_display))
+        c_total.metric("**Total**", _fmt(total_display))
     return total_display
 
 
@@ -1261,12 +1202,12 @@ def _render_fuel_group(blend: BlendEvaluation) -> None:
     """Coke, nut coke, PCI and the total they sum to."""
 
     estimate = blend.diagnostics.get("fuel_rate_estimate")
-    anchor = blend.diagnostics.get("fuel_rate_estimate_anchor")
-    correction_delta = blend.diagnostics.get("coke_correction_delta_kg_thm")
 
     with st.container(border=True):
-        st.markdown("###### 🔥 &nbsp;Fuel rates &nbsp;<small>kg / THM</small>",
-                    unsafe_allow_html=True)
+        st.markdown(
+            "###### 🔥 &nbsp;Fuel rates &nbsp;<small>kg / THM</small>",
+            unsafe_allow_html=True,
+        )
         if not isinstance(estimate, dict):
             st.caption(
                 "Fuel-rate estimate unavailable because the latest PCI rate is "
@@ -1274,50 +1215,19 @@ def _render_fuel_group(blend: BlendEvaluation) -> None:
             )
             return
 
-        coke_help = None
-        total_help = None
-        if isinstance(anchor, dict) and correction_delta:
-            # Name the uncorrected value the correction moved away from, so the
-            # operator never has to take the corrected number on faith.
-            coke_help = (
-                "Uncorrected: "
-                f"{float(anchor.get('coke_rate_kg_thm', 0.0)):,.1f} kg/THM. "
-                "The physics correction is shown as the delta."
-            )
-            total_help = (
-                "Uncorrected: "
-                f"{float(anchor.get('total_fuel_rate_kg_thm', 0.0)):,.1f} kg/THM. "
-                "Only coke moves — nut coke and PCI are operator run inputs."
-            )
-
         f1, f2, f3, f4 = st.columns(4)
-        f1.metric(
-            "Coke",
-            _fmt(estimate.get("coke_rate_kg_thm"), ",.1f"),
-            delta=(
-                f"{float(correction_delta):+,.1f} physics" if correction_delta else None
-            ),
-            delta_color="off",
-            help=coke_help,
-        )
+        f1.metric("Coke", _fmt(estimate.get("coke_rate_kg_thm"), ",.1f"))
         f2.metric(
             "Nut coke",
             _fmt(estimate.get("nut_coke_rate_kg_thm"), ",.1f"),
-            help=f"Source: {estimate.get('nut_coke_source', 'unknown')}",
         )
         f3.metric(
             "PCI",
             _fmt(estimate.get("pci_rate_kg_thm"), ",.1f"),
-            help=f"Source: {estimate.get('pci_source', 'unknown')}",
         )
         f4.metric(
             "**Total fuel**",
             _fmt(estimate.get("total_fuel_rate_kg_thm"), ",.1f"),
-            delta=(
-                f"{float(correction_delta):+,.1f} physics" if correction_delta else None
-            ),
-            delta_color="off",
-            help=total_help,
         )
 
 
@@ -1353,18 +1263,6 @@ def _render_slag_group(
         if hm_basis_mt <= 0:
             # Undefined rather than zero: 0.00 kg/THM would read as clean iron.
             s1.metric("Rate (kg/THM)", "n/a")
-        elif observed_slag_rate_kg_per_thm and observed_slag_rate_kg_per_thm > 0:
-            delta = blend.slag_rate_kg_per_thm - float(observed_slag_rate_kg_per_thm)
-            s1.metric(
-                "Rate (kg/THM)",
-                _fmt(blend.slag_rate_kg_per_thm),
-                delta=(
-                    f"{delta:+.1f} vs observed "
-                    f"{observed_slag_rate_kg_per_thm:,.1f}"
-                ),
-                delta_color="off",
-                help="Observed = plant DPR slag/HM over the chemistry window.",
-            )
         else:
             s1.metric("Rate (kg/THM)", _fmt(blend.slag_rate_kg_per_thm))
         s2.metric("Quantity (MT)", _fmt(blend.slag_mt))
@@ -1381,15 +1279,29 @@ def _render_slag_group(
         )
         r1, r2, r3, r4 = st.columns(4)
         for column, key, label, value, helptext in (
-            (r1, "b2", "B2 &nbsp;CaO/SiO₂", blend.slag_basicity,
-             "Display only. Not constrained by the optimizer."),
-            (r2, "t_basicity", "T-Basicity &nbsp;(CaO+MgO)/SiO₂",
-             blend.slag_t_basicity,
-             "This is the ratio the optimizer constrains, via the Min/Max "
-             "T Basicity inputs."),
-            (r3, "ib4", "IB4 &nbsp;(CaO+MgO)/(SiO₂+Al₂O₃)", blend.slag_ib4,
-             "Display only. Reads much lower than T-Basicity because Al₂O₃ is "
-             "in the denominator — ~0.84 is normal, not a fault."),
+            (
+                r1,
+                "b2",
+                "B2 &nbsp;CaO/SiO₂",
+                blend.slag_basicity,
+                "Display only. Not constrained by the optimizer.",
+            ),
+            (
+                r2,
+                "t_basicity",
+                "T-Basicity &nbsp;(CaO+MgO)/SiO₂",
+                blend.slag_t_basicity,
+                "This is the ratio the optimizer constrains, via the Min/Max "
+                "T Basicity inputs.",
+            ),
+            (
+                r3,
+                "ib4",
+                "IB4 &nbsp;(CaO+MgO)/(SiO₂+Al₂O₃)",
+                blend.slag_ib4,
+                "Display only. Reads much lower than T-Basicity because Al₂O₃ is "
+                "in the denominator — ~0.84 is normal, not a fault.",
+            ),
         ):
             available = denominators[key] > 0
             shown = float(value) if available else None
@@ -1534,15 +1446,24 @@ def render_blend_metrics(
         _fmt(headline_total, ",.0f"),
         help="Ore + fuel + optimizer-added flux, at the operator's current prices.",
     )
-    o2.metric("Production (MT)", _fmt(hm_basis_mt, ",.1f"),
-              help="Target hot metal / pig iron entered in Model Inputs.")
+    o2.metric(
+        "Production (MT)",
+        _fmt(hm_basis_mt, ",.1f"),
+        help="Target hot metal / pig iron entered in Model Inputs.",
+    )
     o3.metric("Final Fe (%)", _fmt(blend.fe_t_pct))
     if blend.violations:
-        o4.metric("Status", f"⚠ {len(blend.violations)}",
-                  help="Constraint violations — listed below.")
+        o4.metric(
+            "Status",
+            f"⚠ {len(blend.violations)}",
+            help="Constraint violations — listed below.",
+        )
     else:
-        o4.metric("Status", "✓ feasible",
-                  help="Every constraint the optimizer was given is satisfied.")
+        o4.metric(
+            "Status",
+            "✓ feasible",
+            help="Every constraint the optimizer was given is satisfied.",
+        )
 
     # --- Level 2: detail, in process order --------------------------------------
     _render_cost_group(
@@ -1561,8 +1482,7 @@ def render_blend_metrics(
         reason = (getattr(model_prediction, "details", {}) or {}).get("reason")
         st.caption(
             "⚠️ Fuel cost above came from the deterministic fallback formula, "
-            "not the BMO Non-linear model."
-            + (f" Reason: {reason}." if reason else "")
+            "not the Intensive Optimizer." + (f" Reason: {reason}." if reason else "")
         )
 
     dust_usage = [
@@ -1683,14 +1603,6 @@ def render_coke_correction_breakdown(blend: BlendEvaluation) -> None:
 
         for warning in warnings:
             st.warning(str(warning))
-
-        lp_terms = blend.diagnostics.get("lp_coke_correction_linear_terms")
-        if isinstance(lp_terms, dict):
-            st.caption(
-                "The LP priced this correction linearly, so its signal is not "
-                "clamped; the value above is. Large gaps between the two are "
-                "reported as warnings."
-            )
 
 
 def build_blend_table_df(

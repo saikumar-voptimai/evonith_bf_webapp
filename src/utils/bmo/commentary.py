@@ -232,11 +232,14 @@ def describe_blend(blend: Any, label: str, ores: Sequence[Any] | None) -> str:
     diagnostics = getattr(blend, "diagnostics", {}) or {}
     rates = diagnostics.get("fuel_rate_estimate") or {}
     flux_cost = float(diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0)
-    total = float(
-        diagnostics.get("adjusted_objective_rs_per_thm")
-        if diagnostics.get("adjusted_objective_rs_per_thm") is not None
-        else getattr(blend, "objective_rs_per_thm", 0.0)
-    ) + flux_cost
+    total = (
+        float(
+            diagnostics.get("adjusted_objective_rs_per_thm")
+            if diagnostics.get("adjusted_objective_rs_per_thm") is not None
+            else getattr(blend, "objective_rs_per_thm", 0.0)
+        )
+        + flux_cost
+    )
 
     lines = [
         f"Blend: {', '.join(shares) if shares else 'n/a'}",
@@ -323,7 +326,7 @@ def build_commentary_context(
     lp_blend: Any = None,
     de_blend: Any = None,
     manual_blend: Any = None,
-    recommended_label: str = "LP baseline",
+    recommended_label: str = "Balanced Optimizer",
     calibration: Any = None,
     energy_anchor: Any = None,
     production_target_mt: float | None = None,
@@ -363,8 +366,8 @@ def build_commentary_context(
         summarise_recent_days(recent_frame, days=recent_days),
         describe_stock(ores),
         describe_blend(manual_blend, "CURRENT BLEND (what the plant is running)", ores),
-        describe_blend(lp_blend, "RECOMMENDED BLEND - LP baseline", ores),
-        describe_blend(de_blend, "RECOMMENDED BLEND - DE total cost", ores),
+        describe_blend(lp_blend, "RECOMMENDED BLEND - Balanced Optimizer", ores),
+        describe_blend(de_blend, "RECOMMENDED BLEND - Intensive Optimizer", ores),
         describe_known_limitations(calibration, energy_anchor),
     ]
     if missing:

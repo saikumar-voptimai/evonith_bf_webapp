@@ -51,6 +51,7 @@ class DirectCokePrediction:
     source_age_hours: float | None = None
     missing_fraction: float | None = None
     outside_training_p01_p99: tuple[str, ...] = ()
+    outside_training_details: tuple[dict[str, Any], ...] = ()
     reasons: tuple[str, ...] = ()
     deployment_id: str = "bundled"
     model_path: str = ""
@@ -187,9 +188,7 @@ def _apply_current_fuel_overrides(
         )
     if nut_coke_kg_per_thm is not None:
         out.loc[selected, "NUTCOKE_CALC_MT"] = (
-            max(0.0, float(nut_coke_kg_per_thm))
-            * production.loc[selected]
-            / 1000.0
+            max(0.0, float(nut_coke_kg_per_thm)) * production.loc[selected] / 1000.0
         )
     return out
 
@@ -325,21 +324,34 @@ class DirectCokeModelService:
         rows = features.loc[origins].reindex(columns=columns)
         rows = rows.replace([np.inf, -np.inf], np.nan)
         missing_by_row = (
-            rows.isna().mean(axis=1)
-            if columns
-            else pd.Series(1.0, index=origins)
+            rows.isna().mean(axis=1) if columns else pd.Series(1.0, index=origins)
         )
         missing_fraction = float(missing_by_row.loc[at]) if len(origins) else 1.0
         usable_origins = missing_by_row.index[missing_by_row.le(0.5)]
         outside: list[str] = []
+        outside_details: list[dict[str, Any]] = []
         limits = self.schema.get("feature_limits", {}) or {}
         for name in columns:
             bounds = limits.get(name)
             if not bounds or usable_origins.empty:
                 continue
             values = rows.loc[usable_origins, name].dropna()
-            if ((values < float(bounds[0])) | (values > float(bounds[1]))).any():
+            lower, upper = float(bounds[0]), float(bounds[1])
+            if ((values < lower) | (values > upper)).any():
                 outside.append(str(name))
+                received = (
+                    _float_or_none(rows.loc[at, name]) if at in rows.index else None
+                )
+                outside_details.append(
+                    {
+                        "feature": str(name),
+                        "expected_p01": lower,
+                        "expected_p99": upper,
+                        "received": received,
+                        "lookback_min": _float_or_none(values.min()),
+                        "lookback_max": _float_or_none(values.max()),
+                    }
+                )
 
         value: float | None = None
         hourly_prediction_count = 0
@@ -398,6 +410,7 @@ class DirectCokeModelService:
             source_age_hours=source_age_hours,
             missing_fraction=missing_fraction,
             outside_training_p01_p99=tuple(outside),
+            outside_training_details=tuple(outside_details),
             reasons=tuple(reasons),
             deployment_id=self.deployment_id,
             model_path=str(self.model_path),
@@ -409,9 +422,7 @@ class DirectCokeModelService:
                 ),
                 "ore_mt": _float_or_none(selected_row.get("ORE_CALC_MT")),
                 "sinter_mt": _float_or_none(selected_row.get("SINTER_CALC_MT")),
-                "pellet_mt": _float_or_none(
-                    selected_row.get("TOTAL_PELLET_CALC_MT")
-                ),
+                "pellet_mt": _float_or_none(selected_row.get("TOTAL_PELLET_CALC_MT")),
             },
         )
 

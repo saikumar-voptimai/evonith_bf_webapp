@@ -44,10 +44,15 @@ class _FakeModelService:
 
 def _ore(ore_id, *, fe, sio2, cao, price, lo=0.0, hi=100.0):
     return OreInput(
-        ore_id=ore_id, display_name=ore_id.upper(), stock_mt=8000.0,
-        price_rs_per_mt=price, min_share_pct=lo, max_share_pct=hi,
-        chemistry=OreChemistry(fe_t_pct=fe, moisture_pct=3.0, sio2_pct=sio2,
-                               cao_pct=cao, al2o3_pct=2.0),
+        ore_id=ore_id,
+        display_name=ore_id.upper(),
+        stock_mt=8000.0,
+        price_rs_per_mt=price,
+        min_share_pct=lo,
+        max_share_pct=hi,
+        chemistry=OreChemistry(
+            fe_t_pct=fe, moisture_pct=3.0, sio2_pct=sio2, cao_pct=cao, al2o3_pct=2.0
+        ),
     )
 
 
@@ -60,8 +65,11 @@ def _ores():
 
 
 _COMMON = dict(
-    target_production_mt=2220.0, target_slag_qty_mt=5000.0, feo_in_slag_pct=0.4,
-    hot_metal_target_mt=2350.0, flux_inputs=None,
+    target_production_mt=2220.0,
+    target_slag_qty_mt=5000.0,
+    feo_in_slag_pct=0.4,
+    hot_metal_target_mt=2350.0,
+    flux_inputs=None,
 )
 # A basicity floor no blend of these ores can reach.
 _UNREACHABLE = dict(target_slag_basicity_min=2.60, target_slag_basicity_max=None)
@@ -70,8 +78,13 @@ _UNREACHABLE = dict(target_slag_basicity_min=2.60, target_slag_basicity_max=None
 def _run(strategy, **kwargs):
     cfg = {"maxiter": 10, "popsize": 5, "seed": 3, "initial_solution": strategy}
     return run_nonlinear_optimizer(
-        _ores(), model_service=_FakeModelService(), process_context=_CTX,
-        history_df=None, de_cfg=cfg, **_COMMON, **kwargs,
+        _ores(),
+        model_service=_FakeModelService(),
+        process_context=_CTX,
+        history_df=None,
+        de_cfg=cfg,
+        **_COMMON,
+        **kwargs,
     )
 
 
@@ -214,23 +227,36 @@ def test_random_flux_population_includes_the_zero_flux_row():
     assert np.all(pop >= -1e-9)
 
 
-def test_random_start_respects_flux_stock():
+def test_random_start_respects_flux_minimum_and_maximum():
     limestone = FluxInput(
-        flux_id="limestone", display_name="Limestone", enabled=True,
-        wet_qty_mt=0.0, moisture_pct=0.2, sio2_pct=4.0, cao_pct=47.7,
-        mgo_pct=5.1, loi_pct=40.8, price_rs_per_mt=1800.0,
-        stock_mt=40.0, optimizable=True,
+        flux_id="limestone",
+        display_name="Limestone",
+        enabled=True,
+        wet_qty_mt=0.0,
+        moisture_pct=0.2,
+        sio2_pct=4.0,
+        cao_pct=47.7,
+        mgo_pct=5.1,
+        loi_pct=40.8,
+        price_rs_per_mt=1800.0,
+        stock_mt=40.0,
+        min_qty_mt=7.0,
+        max_qty_mt=18.0,
+        optimizable=True,
     )
     cfg = {"maxiter": 8, "popsize": 5, "seed": 3, "initial_solution": "random"}
     blend, _ = run_nonlinear_optimizer(
-        _ores(), model_service=_FakeModelService(), process_context=_CTX,
-        history_df=None, de_cfg=cfg,
+        _ores(),
+        model_service=_FakeModelService(),
+        process_context=_CTX,
+        history_df=None,
+        de_cfg=cfg,
         **{**_COMMON, "flux_inputs": [limestone]},
     )
 
     assert blend is not None
     solved = blend.diagnostics["lp_flux_quantities_mt"]["limestone"]
-    assert 0.0 - 1e-6 <= solved <= 40.0 + 1e-6
+    assert 7.0 - 1e-6 <= solved <= 18.0 + 1e-6
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -163,6 +163,9 @@ def test_inference_uses_median_of_eligible_predictions_in_lookback(
     features = pd.DataFrame(
         0.0, index=index, columns=service.schema["features"], dtype=float
     )
+    ranged_feature = service.schema["features"][0]
+    service.schema["feature_limits"] = {ranged_feature: [-1.0, 1.0]}
+    features.loc[index[-1], ranged_feature] = 2.0
 
     def prepared(*args, **kwargs):
         assert kwargs["lookback_hours"] == 6
@@ -180,6 +183,14 @@ def test_inference_uses_median_of_eligible_predictions_in_lookback(
     assert result.window_start_utc == str(index[2])
     assert result.window_end_utc == str(index[-1])
     assert result.latest_input_diagnostics["burden_mt"] == 70.0
+    detail = next(
+        item
+        for item in result.outside_training_details
+        if item["feature"] == ranged_feature
+    )
+    assert detail["expected_p01"] == -1.0
+    assert detail["expected_p99"] == 1.0
+    assert detail["received"] == 2.0
 
 
 def test_inference_rejects_a_prediction_behind_the_dataset(monkeypatch, tmp_path):

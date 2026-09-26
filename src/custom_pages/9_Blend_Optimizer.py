@@ -95,9 +95,7 @@ from ui.bmo.editor_inputs import (
     slag_balance_settings_from_editor,
 )
 from utils.bmo.constraints import (
-    CHARGING_HOURS_PER_DAY,
     DEFAULT_NUT_COKE_RATE_KG_PER_THM,
-    calculate_wet_nut_coke_mt,
     max_ibrm_flux_capacity_mt,
     check_blend_constraints,
 )
@@ -572,13 +570,9 @@ def _render_static_dataset_bar(
     state = status["state"] if status["exists"] else "missing"
     source_url = _configured_static_dataset_url(bmo_cfg)
     with st.expander("Data and model sources", expanded=False):
-        configured_anchor = str(
-            bmo_cfg.get("fuel_rate_anchor_basis", "data_driven")
-        )
+        configured_anchor = str(bmo_cfg.get("fuel_rate_anchor_basis", "data_driven"))
         default_anchor_label = (
-            "Data-Driven"
-            if configured_anchor == "data_driven"
-            else "Physics-Driven"
+            "Data-Driven" if configured_anchor == "data_driven" else "Physics-Driven"
         )
         model_widget_key = "bmo_coke_rate_model"
         if str(st.session_state.get(model_widget_key, default_anchor_label)) not in (
@@ -591,30 +585,19 @@ def _render_static_dataset_bar(
             default=default_anchor_label,
             key=model_widget_key,
             on_change=_clear_bmo_results,
-            help=(
-                "Select the frozen current-state coke anchor. Both choices use "
-                "the same slag, flux-calcination and hot-metal-silicon corrections "
-                "for candidate blends."
-            ),
-        )
-        st.caption(
-            "The Data-Driven Non-linear model predicts coke directly in kg/THM "
-            "and is independent of fuel prices. Fuel cost is calculated afterward "
-            "using the saved coke, nut-coke and PCI prices."
         )
         direct_cfg = dict(bmo_cfg.get("data_driven_coke", {}) or {})
         st.number_input(
-            "Data-Driven lookback window (hours)",
+            "Operating lookback window (hours)",
             min_value=1,
             max_value=72,
             value=int(direct_cfg.get("lookback_hours", 6)),
             step=1,
-            key="bmo_data_driven_lookback_hours",
+            key="bmo_operating_lookback_hours",
             on_change=_clear_bmo_results,
             help=(
-                "The Data-Driven anchor is the median of eligible hourly model "
-                "predictions in this window. Incomplete zero-burden hours are "
-                "excluded."
+                "Sets the median Data-Driven coke anchor and the furnace-dataset "
+                "manual blend used as the current operating point."
             ),
         )
         st.divider()
@@ -986,7 +969,7 @@ def _render_blend_comparison(
     dust_inputs: list[DustInput],
     slag_balance_settings: SlagBalanceSettings,
     charge_mass_mt: float,
-    manual_ores: list[OreInput] | None = None,
+    lookback_hours: float,
 ) -> None:
     """Operator-focused comparison of the manual blend vs the optimizer blends.
 
@@ -1009,7 +992,6 @@ def _render_blend_comparison(
          - fuel_ash_inputs / flux_inputs / dust_inputs / slag_balance_settings - Slag-balance inputs.
          - charge_mass_mt: float - Tonnes carried by one furnace charge. Charging
            runs 24 h, so that is a constant rather than an argument.
-         - manual_ores: list[OreInput] | None - Materials available for the manual blend.
 
     Returns:
          - return None - Renders the comparison tables to Streamlit.
@@ -1020,10 +1002,8 @@ def _render_blend_comparison(
     # Prefer the last candidate (DE over LP) to seed the manual editor.
     primary_blend = optimizer_candidates[-1][1]
 
-    manual_ores_by_id = {ore.ore_id: ore for ore in (manual_ores or selected_ores)}
-    manual_ores_by_id.update({ore.ore_id: ore for ore in selected_ores})
     snapshot = provider.get_recent_manual_blend_snapshot(
-        list(manual_ores_by_id.values())
+        selected_ores, lookback_hours=lookback_hours
     )
     rows_by_ore = {str(row.get("ore_id")): row for row in snapshot.get("rows", [])}
     compare_ores = selected_ores
@@ -1035,7 +1015,7 @@ def _render_blend_comparison(
         "optimizer, so every option is compared on the same basis."
     )
     st.caption(
-        "Cost basis: Manual, LP Baseline and Non-linear all use the currently "
+        "Cost basis: Manual, Balanced Optimizer and Intensive Optimizer all use the currently "
         "applied ore prices from Ore Selection. Fuel costs are then shown at the "
         "currently applied fuel prices."
     )
@@ -1053,24 +1033,25 @@ def _render_blend_comparison(
             if ore.ore_id not in selected_charged
         ]
         st.caption(
-            f"Manual blend seeded from last shift ({start_time} to {end_time})."
+            f"Manual blend seeded from the {lookback_hours:g}-hour furnace dataset "
+            f"window ({start_time} to {end_time})."
             + (
                 # Named rather than silently zeroed. An operator seeing 0% against
                 # an ore they selected needs to know it reflects the shift record,
                 # not a data gap.
-                f" Not charged last shift, so shown at 0%: {', '.join(skipped)}."
+                f" Not charged in this window, so shown at 0%: {', '.join(skipped)}."
                 if skipped
                 else ""
             )
         )
     elif rows_by_ore and not selected_charged:
         st.caption(
-            "None of the selected ores were charged last shift, so the manual "
+            "None of the selected ores were charged in this window, so the manual "
             "blend is seeded from the optimizer shares instead."
         )
     else:
         st.caption(
-            "No last-shift manual blend found; seeded from the optimizer shares."
+            "No furnace-dataset manual blend found; seeded from the optimizer shares."
         )
 
     # A ZERO IN A POPULATED SNAPSHOT IS INFORMATION, NOT A GAP.
@@ -1471,14 +1452,11 @@ def _render_blend_comparison(
 
     # Headline FIRST. The cheapest option and the saving are the decision; the
     # detail below is the justification, and reading order should match.
-    cheapest_label = min(options, key=lambda option: _display_total(option[1]))[0]
     cols = st.columns(len(options))
     for col, (label, blend, _) in zip(cols, options):
         col.metric(
             f"{label} (Rs/THM)",
             f"{_display_total(blend):,.0f}",
-            delta="cheapest" if label == cheapest_label else None,
-            delta_color="normal" if label == cheapest_label else "off",
         )
     if manual_blend is not None:
         best_optimizer = min(
@@ -1518,19 +1496,7 @@ def _render_blend_comparison(
                 hide_index=True,
                 width="stretch",
                 column_config={
-                    "Outcome": st.column_config.Column(
-                        "Outcome",
-                        help=(
-                            "Manual Fuel Cost is the realised cost: actual "
-                            "current coke/nut-coke/PCI rates at current prices. "
-                            "LP/Non-linear Fuel Cost is that blend's predicted fuel "
-                            "cost "
-                            "converted to current prices; the optimizer itself "
-                            "still minimises the model's baseline-price "
-                            "objective. Fuel Rate is the physical rate basis "
-                            "behind each display."
-                        ),
-                    ),
+                    "Outcome": st.column_config.Column("Outcome"),
                 },
             )
 
@@ -1949,9 +1915,7 @@ def _render_process_recommendation(
 
     fuel_rates = blend.diagnostics.get("fuel_rate_estimate") or {}
     if not fuel_rates:
-        st.info(
-            "Fuel-rate estimate unavailable; cannot run the Physics-Driven model."
-        )
+        st.info("Fuel-rate estimate unavailable; cannot run the Physics-Driven model.")
         return
 
     flux_mt = sum(
@@ -2043,35 +2007,15 @@ def _render_process_recommendation(
     c1.metric(
         "Coke Rate (kg/THM)",
         f"{coke_shown:,.1f}",
-        delta=f"{coke_shown - coke_now:+,.1f}",
-        delta_color="inverse",
-        help=(
-            "Physics-Driven energy balance, corrected by a rolling bias offset "
-            "fitted on recent "
-            "plant history. Forward-tested MAPE 3.4%. The CHANGE is the more "
-            "reliable half - it is unaffected by the offset, which cancels "
-            "between the two settings. See the breakdown below."
-        ),
     )
     c2.metric(
         "Fuel Cost (Rs/THM)",
         f"{recommendation.fuel_cost_rs_per_thm:,.0f}",
-        delta=f"{-recommendation.fuel_cost_saving_rs_per_thm:+,.0f}",
-        delta_color="inverse",
     )
     raft_delta = recommendation.raft_delta_c
     c3.metric(
         "RAFT (C)",
         f"{recommendation.raft_c:,.0f}" if recommendation.raft_c else "n/a",
-        delta=(f"{raft_delta:+,.0f}" if raft_delta is not None else None),
-        delta_color="off",
-        help=(
-            "Computed directly from the recommended controls: blast temperature, "
-            "oxygen enrichment, blast moisture + steam, and PCI as a "
-            "concentration in the blast. Forward-validated against body_raft, "
-            "MAE 17 C and R2 0.63 - so a change smaller than about 17 C is "
-            "not meaningful."
-        ),
     )
     if raft_delta is not None and recommendation.current_raft_c:
         direction = (
@@ -2203,6 +2147,7 @@ def _render_transition_ladder(
     ores: list[Any],
     lp_kwargs: dict[str, Any],
     slag_rate_cap_kg_per_thm: float | None,
+    lookback_hours: float,
 ) -> None:
     """The path from what the plant is charging today to the LP optimum.
 
@@ -2230,7 +2175,9 @@ def _render_transition_ladder(
         ),
     )
 
-    snapshot = provider.get_recent_manual_blend_snapshot(ores)
+    snapshot = provider.get_recent_manual_blend_snapshot(
+        ores, lookback_hours=lookback_hours
+    )
     manual_shares = {
         str(row.get("ore_id")): float(row.get("share_pct", 0.0) or 0.0)
         for row in snapshot.get("rows", [])
@@ -2359,22 +2306,6 @@ def _render_fuel_basis_note(blend: Any) -> None:
     anchor = st.session_state.get("bmo_energy_anchor")
 
     if source == "data_driven_coke_anchor":
-        prediction = st.session_state.get("bmo_data_driven_coke_prediction", {}) or {}
-        count = int(prediction.get("hourly_prediction_count", 0) or 0)
-        window_text = (
-            f"the median of {count} eligible hourly predictions from "
-            f"{prediction.get('window_start_utc', '')} to "
-            f"{prediction.get('window_end_utc', '')}"
-            if count > 1
-            else f"the eligible hour at {prediction.get('origin_utc', '')}"
-        )
-        st.caption(
-            f"Coke level from the **Data-Driven Non-linear model**, using "
-            f"{window_text}. "
-            "The model is evaluated once for the run; blend-to-blend differences "
-            "come from the physical correction above. Fuel is priced afterward "
-            "at the saved operator prices."
-        )
         return
 
     if source == "energy_balance_anchor" and anchor is not None:
@@ -2596,7 +2527,7 @@ def _render_de_exploration(
     else:
         st.info(
             "Blend-combination columns are unavailable for this run — re-run "
-            "the Non-linear model to record ore shares and flux additions "
+            "the Intensive Optimizer to record ore shares and flux additions "
             "per candidate. (After a code update, restart the app so the "
             "optimizer module reloads.)"
         )
@@ -2754,6 +2685,7 @@ def _current_burden_quantities(
     dust_inputs: list[DustInput],
     slag_balance_settings: SlagBalanceSettings,
     charge_mass_mt: float,
+    lookback_hours: float,
 ) -> dict[str, float]:
     """What the plant charged last shift, scaled onto the target HM basis.
 
@@ -2768,7 +2700,9 @@ def _current_burden_quantities(
     """
 
     try:
-        snapshot = provider.get_recent_manual_blend_snapshot(ores)
+        snapshot = provider.get_recent_manual_blend_snapshot(
+            ores, lookback_hours=lookback_hours
+        )
     except Exception as exc:  # noqa: BLE001 - the anchor is optional
         log.warning("Could not read the last-shift burden: %s", exc)
         return {}
@@ -2810,6 +2744,7 @@ def _resolve_energy_anchor(
     target_fe_mt: float,
     charge_mass_mt: float,
     observed_slag_rate_kg_per_thm: float,
+    lookback_hours: float,
 ) -> Any | None:
     """Solve the energy-balance coke anchor for the current operating point.
 
@@ -2841,6 +2776,7 @@ def _resolve_energy_anchor(
         dust_inputs=dust_inputs,
         slag_balance_settings=slag_balance_settings,
         charge_mass_mt=charge_mass_mt,
+        lookback_hours=lookback_hours,
     )
     if not quantities:
         return None
@@ -2983,6 +2919,12 @@ fuel_rate_anchor_basis = _COKE_ANCHOR_LABELS.get(
     str(st.session_state.get("bmo_coke_rate_model", _default_anchor_label)),
     "data_driven",
 )
+operating_lookback_hours = int(
+    st.session_state.get(
+        "bmo_operating_lookback_hours",
+        (bmo_cfg.get("data_driven_coke", {}) or {}).get("lookback_hours", 6),
+    )
+)
 # Bumped by the "Refresh source data" button; keys the cached offline-source
 # reads so they are fetched once per session and reused until the operator asks
 # for fresh data.
@@ -3085,7 +3027,7 @@ burden_capacity_cfg = bmo_cfg.get("burden_capacity", {}) or {}
 model_input_defaults.update(
     {
         "max_charges_per_hour": float(
-            burden_capacity_cfg.get("max_charges_per_hour", 7.5) or 7.5
+            burden_capacity_cfg.get("max_charges_per_hour", 6.35) or 6.35
         ),
         "charge_mass_mt": float(
             burden_capacity_cfg.get("charge_mass_mt", 26.4) or 26.4
@@ -3146,7 +3088,7 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
         target_production_mt = layout_col3.number_input(
             "Target HM / Pig Iron (MT)",
             min_value=0.0,
-            value=float(target_cfg.get("target_production_mt", 2350.0)),
+            value=float(target_cfg.get("target_production_mt", 2270.0)),
             step=5.0,
             key="bmo_target_production_mt",
         )
@@ -3157,19 +3099,8 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
             step=5.0,
             key="bmo_target_slag_rate_kg_per_thm",
         )
-        layout_col4.caption(
-            "Plant basis. The model's calculated slag runs higher, so the cap is "
-            f"divided by {model_to_plant_slag_factor:.3f} before optimization."
-        )
-
     with st.expander("Slag chemistry window", expanded=False):
-        st.caption(
-            "Set any limit to 0 to switch it off. Al2O3 and MgO are inert, so their "
-            "masses are fixed by what is charged and their percentages move "
-            "inversely with total slag: cutting the slag rate pushes Al2O3 up "
-            "towards its cap. MgO/Al2O3 is a mass ratio, so it does not move with "
-            "slag rate at all and constrains the burden alone."
-        )
+        st.caption("Set any limit to 0 to switch it off.")
         basicity_col1, basicity_col2, basicity_col3, basicity_col4 = st.columns(4)
         target_slag_basicity_min = basicity_col1.number_input(
             "Min Basicity CaO/SiO2",
@@ -3401,29 +3332,7 @@ if burden_capacity_enabled:
         nut_coke_rate_kg_per_thm=nut_coke_rate_kg_per_thm,
         nut_coke_moisture_pct=nut_coke_charge_moisture_pct,
     )
-    daily_charge_capacity_mt = (
-        charge_mass_mt * max_charges_per_hour * CHARGING_HOURS_PER_DAY
-    )
-    nut_coke_mt = calculate_wet_nut_coke_mt(
-        nut_coke_rate_kg_per_thm,
-        target_production_mt,
-        nut_coke_charge_moisture_pct,
-    )
-    nut_coke_wet_rate_kg_per_thm = nut_coke_rate_kg_per_thm * (
-        1.0 + nut_coke_charge_moisture_pct / 100.0
-    )
-    if max_burden_qty_mt > 0.0:
-        st.caption(
-            f"Charging capacity: {max_charges_per_hour:,.2f} charges/hr x "
-            f"{charge_mass_mt:,.2f} MT x 24 h = {daily_charge_capacity_mt:,.0f} MT/day, "
-            f"less {nut_coke_mt:,.1f} MT wet nut coke "
-            f"({nut_coke_rate_kg_per_thm:,.1f} kg/THM base + "
-            f"{nut_coke_charge_moisture_pct:,.2f}% moisture = "
-            f"{nut_coke_wet_rate_kg_per_thm:,.2f} kg/THM wet) "
-            f"= IBRM + flux limited to {max_burden_qty_mt:,.0f} MT. "
-            "Blends needing more tonnes than this are rejected."
-        )
-    else:
+    if max_burden_qty_mt <= 0.0:
         max_burden_qty_mt = None
         st.warning(
             "Charging capacity works out to zero or less - nut coke alone fills "
@@ -3701,9 +3610,9 @@ if _dust_entered and not slag_balance_settings.enabled:
     )
 
 _DE_SEED_LABELS = {
-    "lp_else_random": "LP seed, random fallback (recommended)",
-    "lp": "LP seed only (skip Non-linear if LP is infeasible)",
-    "random": "Random start (ignore the LP)",
+    "lp_else_random": "Balanced Optimizer seed, random fallback (recommended)",
+    "lp": "Balanced Optimizer seed only",
+    "random": "Random start",
 }
 
 # --- Fuel planning controls, immediately above the buttons that consume them --------
@@ -3889,12 +3798,7 @@ if fuel_rate_anchor_basis == "data_driven":
                     )
                     or 0.0
                 ),
-                lookback_hours=int(
-                    st.session_state.get(
-                        "bmo_data_driven_lookback_hours",
-                        direct_cfg.get("lookback_hours", 6),
-                    )
-                ),
+                lookback_hours=operating_lookback_hours,
                 max_stale_hours=float(direct_cfg.get("max_input_stale_hours", 6.0)),
                 max_source_age_hours=float(direct_cfg.get("max_source_age_hours", 6.0)),
             )
@@ -3922,8 +3826,27 @@ if fuel_rate_anchor_basis == "data_driven":
             if data_driven_prediction.outside_training_p01_p99:
                 st.warning(
                     f"{len(data_driven_prediction.outside_training_p01_p99)} model "
-                    "inputs are outside their training p01-p99 ranges. Review Model accuracy."
+                    "inputs are outside their training p01-p99 ranges."
                 )
+                with st.expander("Model input range details", expanded=False):
+                    range_rows = [
+                        {
+                            "Model input": str(item.get("feature", "")).replace(
+                                "_", " "
+                            ),
+                            "Expected p01": item.get("expected_p01"),
+                            "Expected p99": item.get("expected_p99"),
+                            "Received": item.get("received"),
+                            "Lookback min": item.get("lookback_min"),
+                            "Lookback max": item.get("lookback_max"),
+                        }
+                        for item in data_driven_prediction.outside_training_details
+                    ]
+                    st.dataframe(
+                        pd.DataFrame(range_rows),
+                        hide_index=True,
+                        width="stretch",
+                    )
         else:
             rejected = (
                 f" The rejected stale estimate was "
@@ -3942,7 +3865,7 @@ with st.form("bmo_run_form", clear_on_submit=False):
     seed_options = list(_DE_SEED_LABELS)
     configured_seed = str(opt_cfg.get("initial_solution", "lp_else_random")).lower()
     de_seed_choice = st.selectbox(
-        "Non-linear model start point",
+        "Intensive Optimizer start point",
         options=seed_options,
         index=(
             seed_options.index(configured_seed)
@@ -3950,26 +3873,17 @@ with st.form("bmo_run_form", clear_on_submit=False):
             else 0
         ),
         format_func=lambda key: _DE_SEED_LABELS[key],
-        help=(
-            "The Non-linear model normally starts from the LP baseline. When the "
-            "LP is "
-            "infeasible that used to stop it running at all, even though an "
-            "infeasible LP only means the *linearised* slag and basicity model "
-            "found no solution. A random start searches the whole share range "
-            "instead and returns the best blend it can reach, with any "
-            "constraint violations listed on the result."
-        ),
     )
     run_col1, run_col2 = st.columns(2)
     run_lp_clicked = _form_submit_button(
         run_col1,
-        "Run LP Baseline",
+        "Run Balanced Optimizer",
         type="secondary",
         width="stretch",
     )
     run_total_clicked = _form_submit_button(
         run_col2,
-        "Run Non-linear Model",
+        "Run Intensive Optimizer",
         type="primary",
         width="stretch",
     )
@@ -3996,6 +3910,18 @@ if requested_lp or requested_total:
         st.error("Select at least two ores before running optimization.")
     else:
         fuel_context = None
+        current_operating_quantities = _current_burden_quantities(
+            provider=provider,
+            ores=selected_ores,
+            target_fe_mt=target_fe_mt,
+            hot_metal_mt=target_production_mt,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            charge_mass_mt=charge_mass_mt,
+            lookback_hours=operating_lookback_hours,
+        )
 
         # Resolved once for the whole run and reused by the LP, DE, and every DE
         # candidate, so both solvers optimise one identical objective.
@@ -4004,7 +3930,10 @@ if requested_lp or requested_total:
             observed_slag_rate_kg_per_thm=observed_slag_rate,
             flux_inputs=flux_inputs,
             hot_metal_target_mt=target_production_mt,
-            current_quantities_mt=st.session_state.get("bmo_manual_quantities_mt"),
+            current_quantities_mt=(
+                current_operating_quantities
+                or st.session_state.get("bmo_manual_quantities_mt")
+            ),
             ores=selected_ores,
             current_si_pct=st.session_state.get("bmo_manual_si"),
         )
@@ -4029,6 +3958,7 @@ if requested_lp or requested_total:
             target_fe_mt=target_fe_mt,
             charge_mass_mt=charge_mass_mt,
             observed_slag_rate_kg_per_thm=observed_slag_rate,
+            lookback_hours=operating_lookback_hours,
         )
         st.session_state["bmo_energy_anchor"] = energy_anchor
         anchor_prediction_details: dict[str, Any] | None = None
@@ -4054,7 +3984,7 @@ if requested_lp or requested_total:
         st.session_state["bmo_coke_anchor_basis"] = fuel_rate_anchor_basis
         st.session_state["bmo_coke_anchor_rate_kg_thm"] = anchor_coke_rate
 
-        with st.spinner("Running LP baseline..."):
+        with st.spinner("Running Balanced Optimizer..."):
             lp_result, lp_errors = run_lp_baseline(
                 selected_ores,
                 target_production_mt=target_fe_mt,
@@ -4175,7 +4105,7 @@ if requested_lp or requested_total:
         st.session_state["bmo_lp_errors"] = lp_errors
 
         if requested_total:
-            de_status = st.status("Non-linear model running...", expanded=True)
+            de_status = st.status("Intensive Optimizer running...", expanded=True)
             # Live "thinking" line, refreshed every generation so the operator
             # watches the solver churn through thousands of candidate blends.
             de_thinking_ph = de_status.empty()
@@ -4320,10 +4250,10 @@ if requested_lp or requested_total:
                 )
             de_status.update(
                 label=(
-                    f"Non-linear finished - {final_iter} generations, "
+                    f"Intensive Optimizer finished - {final_iter} generations, "
                     f"{final_nfev:,} blend evaluations"
                     if final_iter
-                    else "Non-linear finished"
+                    else "Intensive Optimizer finished"
                 ),
                 state="complete",
             )
@@ -4405,13 +4335,13 @@ if lp_result is not None or de_result is not None:
         bundle_status = locals().get("bundle_status") or {}
 
 if lp_errors:
-    st.error("LP baseline errors:\n- " + "\n- ".join(lp_errors))
+    st.error("Balanced Optimizer errors:\n- " + "\n- ".join(lp_errors))
 if de_errors:
-    st.error("Non-linear model errors:\n- " + "\n- ".join(de_errors))
+    st.error("Intensive Optimizer errors:\n- " + "\n- ".join(de_errors))
 
 if lp_result is not None or de_result is not None:
     tab_lp, tab_de, tab_cmp, tab_acc = st.tabs(
-        ["LP Baseline", "Non-linear", "Comparison", "Model accuracy"]
+        ["Balanced Optimizer", "Intensive Optimizer", "Comparison", "Model accuracy"]
     )
 
     with tab_lp:
@@ -4420,7 +4350,7 @@ if lp_result is not None or de_result is not None:
             # feasibility are what the operator checks first, and burying them
             # one click deep would mean every tab needs its own copy.
             render_blend_metrics(
-                "LP Baseline Result",
+                "Balanced Optimizer Result",
                 lp_result,
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 is_lp_mode=True,
@@ -4445,7 +4375,9 @@ if lp_result is not None or de_result is not None:
                         lp_result, selected_ores, charge_mass_mt=charge_mass_mt
                     )
                 with donut_col:
-                    _render_share_pie(lp_result, selected_ores, "LP share of burden")
+                    _render_share_pie(
+                        lp_result, selected_ores, "Balanced Optimizer share of burden"
+                    )
                 _render_lp_flux_additions(lp_result)
 
             with lp_fuel_tab:
@@ -4482,6 +4414,7 @@ if lp_result is not None or de_result is not None:
                 _render_transition_ladder(
                     provider=provider,
                     ores=selected_ores,
+                    lookback_hours=operating_lookback_hours,
                     lp_kwargs=dict(
                         target_production_mt=target_fe_mt,
                         target_slag_qty_mt=target_slag_qty_mt,
@@ -4510,15 +4443,15 @@ if lp_result is not None or de_result is not None:
                     ),
                 )
         else:
-            st.info("Run LP baseline to see deterministic cost-minimized blend.")
+            st.info("Run the Balanced Optimizer to see its recommended blend.")
 
     with tab_de:
         if de_result is not None:
             if de_result.diagnostics.get("de_fell_back_to_lp"):
                 st.info(
-                    "The Non-linear model did not improve on the LP baseline "
-                    "(it can hit its iteration/time budget). Showing the LP "
-                    "baseline blend as the best available solution."
+                    "The Intensive Optimizer did not improve on the Balanced "
+                    "Optimizer within its iteration/time budget. Showing the "
+                    "Balanced Optimizer blend as the best available solution."
                 )
             _de_seed = de_result.diagnostics.get("de_seed") or {}
             if _de_seed.get("strategy_used") == "random":
@@ -4526,10 +4459,10 @@ if lp_result is not None or de_result is not None:
                 # LP-seeded one, and the LP's reasons for failing would be lost.
                 _lp_reasons = _de_seed.get("lp_seed_errors") or []
                 st.warning(
-                    "This result came from a **random start**, not the LP "
-                    "baseline"
+                    "This result came from a **random start**, not the Balanced "
+                    "Optimizer seed"
                     + (
-                        " — the LP was infeasible."
+                        " - the Balanced Optimizer was infeasible."
                         if not _de_seed.get("lp_seed_available")
                         else "."
                     )
@@ -4537,11 +4470,13 @@ if lp_result is not None or de_result is not None:
                     "constraint violations below before acting on it."
                 )
                 if _lp_reasons:
-                    with st.expander("Why the LP could not solve", expanded=False):
+                    with st.expander(
+                        "Why the Balanced Optimizer could not solve", expanded=False
+                    ):
                         for _reason in _lp_reasons:
                             st.markdown(f"- {_reason}")
             render_blend_metrics(
-                "Non-linear Result",
+                "Intensive Optimizer Result",
                 de_result,
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 charge_mass_mt=charge_mass_mt,
@@ -4558,7 +4493,9 @@ if lp_result is not None or de_result is not None:
                     )
                 with donut_col:
                     _render_share_pie(
-                        de_result, selected_ores, "Non-linear share of burden"
+                        de_result,
+                        selected_ores,
+                        "Intensive Optimizer share of burden",
                     )
                 _render_lp_flux_additions(de_result)
 
@@ -4582,7 +4519,7 @@ if lp_result is not None or de_result is not None:
                     st.session_state.get("bmo_de_candidates"), selected_ores
                 )
         else:
-            st.info("Run the Non-linear model to see the optimized blend.")
+            st.info("Run the Intensive Optimizer to see its recommended blend.")
 
     with tab_cmp:
         # Operator-focused comparison: the manual blend against each optimizer
@@ -4591,11 +4528,11 @@ if lp_result is not None or de_result is not None:
         optimizer_candidates: list[tuple[str, Any, float | None]] = []
         if lp_result is not None:
             optimizer_candidates.append(
-                ("LP Baseline", lp_result, st.session_state.get("bmo_lp_si"))
+                ("Balanced Optimizer", lp_result, st.session_state.get("bmo_lp_si"))
             )
         if de_result is not None:
             optimizer_candidates.append(
-                ("Non-linear", de_result, st.session_state.get("bmo_de_si"))
+                ("Intensive Optimizer", de_result, st.session_state.get("bmo_de_si"))
             )
         if optimizer_candidates:
             _render_blend_comparison(
@@ -4610,12 +4547,12 @@ if lp_result is not None or de_result is not None:
                 dust_inputs=dust_inputs,
                 slag_balance_settings=slag_balance_settings,
                 charge_mass_mt=charge_mass_mt,
-                manual_ores=ores,
+                lookback_hours=operating_lookback_hours,
             )
         else:
             st.info(
-                "Run LP or Non-linear to compare the suggested blend with the "
-                "last manual shift."
+                "Run either optimizer to compare its suggested blend with the "
+                "current manual blend."
             )
 
     with tab_acc:

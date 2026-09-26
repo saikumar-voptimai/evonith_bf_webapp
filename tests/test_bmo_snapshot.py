@@ -75,20 +75,34 @@ def _evaluation(*, fell_back: bool = False, cost: float = 9000.0) -> BlendEvalua
             "fuel_rate_estimate_anchor": {"coke_rate_kg_thm": 398.0},
             "coke_correction": {
                 "anchor_coke_rate_kg_thm": 398.0,
-                "terms": [{"label": "Slag heat", "enabled": True, "delta_kg_thm": -3.0,
-                           "x_blend": 320.5, "x_reference": 334.0}],
+                "terms": [
+                    {
+                        "label": "Slag heat",
+                        "enabled": True,
+                        "delta_kg_thm": -3.0,
+                        "x_blend": 320.5,
+                        "x_reference": 334.0,
+                    }
+                ],
             },
             "coke_correction_delta_kg_thm": -3.0,
-            "model_prediction": ModelPrediction(value=13507.34, model_loaded=True,
-                                                scaler_loaded=True, used_fallback=False),
+            "model_prediction": ModelPrediction(
+                value=13507.34,
+                model_loaded=True,
+                scaler_loaded=True,
+                used_fallback=False,
+            ),
             "flux_cost_per_thm_rs": 100.0,
             "dry_weight_mt_by_ore": {"ore_a": 1700.0, "sinter": 1190.0},
             "fe_contribution_mt_by_ore": {"ore_a": 1000.0, "sinter": 750.0},
             "slag_contribution_mt_by_ore": {"ore_a": 400.0, "sinter": 240.0},
             "charge_count": 150.0,
             "total_burden_qty_mt": 3000.0,
-            "slag_basicity_sio2_mt": 200.0, "slag_basicity_cao_mt": 224.0,
-            "ore_slag_mt": 500.0, "flux_slag_mt": 60.0, "fuel_ash_slag_mt": 80.0,
+            "slag_basicity_sio2_mt": 200.0,
+            "slag_basicity_cao_mt": 224.0,
+            "ore_slag_mt": 500.0,
+            "flux_slag_mt": 60.0,
+            "fuel_ash_slag_mt": 80.0,
             "shape": (2, 3),
             "missing": float("nan"),
             "when": pd.Timestamp("2026-09-24 10:00", tz="UTC"),
@@ -97,13 +111,15 @@ def _evaluation(*, fell_back: bool = False, cost: float = 9000.0) -> BlendEvalua
 
 
 def _ore_table() -> pd.DataFrame:
-    return pd.DataFrame({
-        "selected": [True, True],
-        "ore_id": ["ore_a", "sinter"],
-        "ore_name": ["NMDC Lump", "Sinter"],
-        "price_rs_per_mt": np.array([5200.5, 4100.0]),
-        "stock_mt": np.array([900, 1500], dtype="int64"),
-    })
+    return pd.DataFrame(
+        {
+            "selected": [True, True],
+            "ore_id": ["ore_a", "sinter"],
+            "ore_name": ["NMDC Lump", "Sinter"],
+            "price_rs_per_mt": np.array([5200.5, 4100.0]),
+            "stock_mt": np.array([900, 1500], dtype="int64"),
+        }
+    )
 
 
 def _state() -> dict:
@@ -112,10 +128,10 @@ def _state() -> dict:
         "bmo_slag_cap": np.float64(330.0),
         "bmo_lp_result": _evaluation(cost=9100.0),
         "bmo_de_result": _evaluation(cost=9000.0),
-        "bmo_source_cache_version": 3,          # internal: skipped
-        "bmo_ui_label": "note",                 # panel widget: skipped
-        "bmo_refresh_source_data": True,        # a button: not restorable
-        "testbmo_target_production_mt": 1.0,    # the other namespace: ignored
+        "bmo_source_cache_version": 3,  # internal: skipped
+        "bmo_ui_label": "note",  # panel widget: skipped
+        "bmo_refresh_source_data": True,  # a button: not restorable
+        "testbmo_target_production_mt": 1.0,  # the other namespace: ignored
         "other_key": 1,
     }
 
@@ -125,13 +141,18 @@ def _history(n: int = 1000) -> pd.DataFrame:
 
     rng = np.random.default_rng(3)
     index = pd.date_range("2026-01-01", periods=n, freq="h", tz="UTC")
-    frame = pd.DataFrame({
-        "PRODUCTIONTONNESPERHR": rng.uniform(90, 110, n),
-        "PCI_CALC_MT": rng.uniform(15, 20, n),
-        "COKE_ASH%": np.nan,
-        "COUNT": np.arange(n, dtype="int64"),
-    }, index=index)
-    frame.iloc[::37, frame.columns.get_loc("COKE_ASH%")] = rng.uniform(10, 12, len(frame.iloc[::37]))
+    frame = pd.DataFrame(
+        {
+            "PRODUCTIONTONNESPERHR": rng.uniform(90, 110, n),
+            "PCI_CALC_MT": rng.uniform(15, 20, n),
+            "COKE_ASH%": np.nan,
+            "COUNT": np.arange(n, dtype="int64"),
+        },
+        index=index,
+    )
+    frame.iloc[::37, frame.columns.get_loc("COKE_ASH%")] = rng.uniform(
+        10, 12, len(frame.iloc[::37])
+    )
     # Recent PCI MT missing: the latest joint rows lie outside the plain tail.
     frame.iloc[-150:, frame.columns.get_loc("PCI_CALC_MT")] = np.nan
     return frame
@@ -143,13 +164,23 @@ def _history(n: int = 1000) -> pd.DataFrame:
 def test_round_trip_is_exact_for_frames_numbers_and_types():
     frame = _ore_table()
     frame["missing"] = [np.nan, 1.0 / 3.0]
-    value = {"t": frame, "n": np.int64(4), "x": np.nan, "tup": (1, "a"),
-             "ts": pd.Timestamp("2026-09-24 10:00:00.123", tz="Asia/Kolkata"),
-             "f": 0.1 + 0.2, "keys": {1: "one"}}
+    value = {
+        "t": frame,
+        "n": np.int64(4),
+        "x": np.nan,
+        "tup": (1, "a"),
+        "ts": pd.Timestamp("2026-09-24 10:00:00.123", tz="Asia/Kolkata"),
+        "f": 0.1 + 0.2,
+        "keys": {1: "one"},
+    }
     back = decode(json.loads(json.dumps(encode(value))))
     pd.testing.assert_frame_equal(back["t"], frame)
     assert back["n"] == 4 and np.isnan(back["x"]) and back["tup"] == (1, "a")
-    assert back["ts"] == value["ts"] and back["f"] == 0.1 + 0.2 and back["keys"] == {1: "one"}
+    assert (
+        back["ts"] == value["ts"]
+        and back["f"] == 0.1 + 0.2
+        and back["keys"] == {1: "one"}
+    )
 
 
 def test_datetime_index_frame_round_trip():
@@ -180,7 +211,10 @@ def test_unencodable_value_becomes_repr_not_failure():
 
 
 def test_compacted_history_answers_every_model_lookup():
-    from utils.bmo.feature_builder import _derived_thm_history_lookup, _temporal_feature_value
+    from utils.bmo.feature_builder import (
+        _derived_thm_history_lookup,
+        _temporal_feature_value,
+    )
     from utils.bmo.fuel_rates import _pick_from_history
 
     full = _history()
@@ -190,14 +224,23 @@ def test_compacted_history_answers_every_model_lookup():
     assert len(rebuilt) == len(full)
     assert verify_compact(full, rebuilt, 24) == []
     for lag in range(5):
-        assert _derived_thm_history_lookup(rebuilt, "PCI_CALC_THM", lag_steps=lag) == \
-            _derived_thm_history_lookup(full, "PCI_CALC_THM", lag_steps=lag)
-    assert _temporal_feature_value("trend_index", rebuilt) == _temporal_feature_value("trend_index", full)
-    assert _temporal_feature_value("day_of_year", rebuilt) == _temporal_feature_value("day_of_year", full)
-    assert _pick_from_history(("COKE_ASH%",), history_df=rebuilt, require_positive=True) == \
-        _pick_from_history(("COKE_ASH%",), history_df=full, require_positive=True)
-    pd.testing.assert_series_equal(rebuilt.iloc[-1], full.iloc[-1].astype(rebuilt.iloc[-1].dtype),
-                                   check_dtype=False)
+        assert _derived_thm_history_lookup(
+            rebuilt, "PCI_CALC_THM", lag_steps=lag
+        ) == _derived_thm_history_lookup(full, "PCI_CALC_THM", lag_steps=lag)
+    assert _temporal_feature_value("trend_index", rebuilt) == _temporal_feature_value(
+        "trend_index", full
+    )
+    assert _temporal_feature_value("day_of_year", rebuilt) == _temporal_feature_value(
+        "day_of_year", full
+    )
+    assert _pick_from_history(
+        ("COKE_ASH%",), history_df=rebuilt, require_positive=True
+    ) == _pick_from_history(("COKE_ASH%",), history_df=full, require_positive=True)
+    pd.testing.assert_series_equal(
+        rebuilt.iloc[-1],
+        full.iloc[-1].astype(rebuilt.iloc[-1].dtype),
+        check_dtype=False,
+    )
 
 
 def test_capture_compacts_history_and_reports_it():
@@ -220,13 +263,20 @@ def test_capture_compacts_history_and_reports_it():
 
 
 def test_capture_classifies_keys():
-    snap = capture(_state(), prefix="bmo_", page_vars={"edited_df": _ore_table()},
-                   label=" trial ", now=datetime(2026, 9, 24, 10, 0, tzinfo=IST))
+    snap = capture(
+        _state(),
+        prefix="bmo_",
+        page_vars={"edited_df": _ore_table()},
+        label=" trial ",
+        now=datetime(2026, 9, 24, 10, 0, tzinfo=IST),
+    )
     assert snap["schema"] == "bmo-snapshot/2"
     assert snap["created_at"] == "2026-09-24T10:00:00+05:30"
     assert snap["source"] == "Blend Mix Optimiser" and snap["label"] == "trial"
     assert set(snap["results"]) == {"lp_result", "de_result"}
-    assert {"target_production_mt", "slag_cap", "applied_ore_editor_df"} <= set(snap["inputs"])
+    assert {"target_production_mt", "slag_cap", "applied_ore_editor_df"} <= set(
+        snap["inputs"]
+    )
     assert "source_cache_version" not in snap["inputs"]
     assert not any(k.startswith("ui_") for k in snap["inputs"])
     assert "refresh_source_data" in snap["not_restorable"]
@@ -244,7 +294,7 @@ def test_page_tables_override_session_state():
 def test_summary_prefers_de_unless_it_fell_back():
     snap = capture(_state(), page_vars={"edited_df": _ore_table()})
     s = snap["summary"]
-    assert s["result"] == "DE total cost"
+    assert s["result"] == "Intensive Optimizer"
     assert s["total_cost_rs_thm"] == pytest.approx(9100.0)  # 9000 + 100 flux
     assert s["coke_rate_kg_thm"] == 395.0 and s["fuel_rate_kg_thm"] == 635.0
     assert s["slag_rate_kg_thm"] == 320.5 and s["basicity_b2"] == 1.12
@@ -253,7 +303,7 @@ def test_summary_prefers_de_unless_it_fell_back():
 
     state = _state()
     state["bmo_de_result"] = _evaluation(fell_back=True)
-    assert capture(state)["summary"]["result"] == "LP baseline"
+    assert capture(state)["summary"]["result"] == "Balanced Optimizer"
 
 
 def test_summary_of_inputs_only_snapshot_is_empty_not_error():
@@ -274,20 +324,25 @@ class _FakeProvider:
     def get_history_frame(self, online_lag_hours=0):
         return pd.DataFrame({"a": range(self.history_rows)}), []
 
+    def get_recent_manual_blend_snapshot(self, ores, lookback_hours=None):
+        return {"source": "live", "ores": ores, "lookback_hours": lookback_hours}
+
 
 def test_run_pins_the_history_read_before_the_results_changed():
     state: dict = {"bmo_manual_quantities_mt": None}
     fake = _FakeProvider()
-    provider = RecordingProvider(fake, state, "bmo_")      # rerun with the LP click
+    provider = RecordingProvider(fake, state, "bmo_")  # rerun with the LP click
     provider.build_ore_inputs(mode="latest", window_days=30)
-    provider.get_history_frame(online_lag_hours=4)          # the LP reads 10 rows
-    state["bmo_lp_result"] = _evaluation()                   # results stored
-    state["bmo_manual_quantities_mt"] = {"x": 1.0}           # comparison writes after the run
+    provider.get_history_frame(online_lag_hours=4)  # the LP reads 10 rows
+    state["bmo_lp_result"] = _evaluation()  # results stored
+    state["bmo_manual_quantities_mt"] = {"x": 1.0}  # comparison writes after the run
     fake.history_rows = 12
-    provider.get_history_frame(online_lag_hours=4)          # comparison re-reads 12 rows
+    provider.get_history_frame(online_lag_hours=4)  # comparison re-reads 12 rows
     assert finalize_run(state, "bmo_", {"bmo_cfg": {"a": 1}})
     record = state[f"bmo_{K_RECORD}"]
-    assert len(record["provider_calls"]["get_history_frame(online_lag_hours=4)"][0]) == 10
+    assert (
+        len(record["provider_calls"]["get_history_frame(online_lag_hours=4)"][0]) == 10
+    )
     assert record["session_at_run"] == {"manual_quantities_mt": None, "manual_si": None}
     assert record["page"] == {"bmo_cfg": {"a": 1}}
 
@@ -307,24 +362,49 @@ def test_replay_answers_from_the_snapshot_and_lists_live_fallbacks():
     assert fallbacks == ["build_ore_inputs(mode='avg', window_days=30)"]
 
 
+def test_replay_uses_legacy_manual_blend_call_when_lookback_is_new():
+    fallbacks: list[str] = []
+    ores = ["selected-ore"]
+    legacy_key = call_key("get_recent_manual_blend_snapshot", (ores,), {})
+    replay = ReplayProvider(
+        _FakeProvider(),
+        {legacy_key: {"source": "frozen-legacy"}},
+        fallbacks,
+    )
+
+    result = replay.get_recent_manual_blend_snapshot(ores, lookback_hours=6)
+
+    assert result == {"source": "frozen-legacy"}
+    assert fallbacks == []
+
+
 def test_frozen_config_folds_in_keyless_widget_values():
-    cfg = frozen_config({
-        "bmo_cfg": {"slag_balance": {"enabled": True, "pi_loss_pct": 0.2}, "optimization": {"seed": 42}},
-        "slag_settings_values": {"pi_loss_pct": 0.5},
-        "de_seed_choice": "random",
-    })
+    cfg = frozen_config(
+        {
+            "bmo_cfg": {
+                "slag_balance": {"enabled": True, "pi_loss_pct": 0.2},
+                "optimization": {"seed": 42},
+            },
+            "slag_settings_values": {"pi_loss_pct": 0.5},
+            "de_seed_choice": "random",
+        }
+    )
     assert cfg["slag_balance"] == {"enabled": True, "pi_loss_pct": 0.5}
     assert cfg["optimization"] == {"seed": 42, "initial_solution": "random"}
 
 
 def test_page_namespace_substitutes_and_refuses_preference_saves():
-    frozen = {"page": {"recent_fuel_rates": {"pci_rate_kg_thm": 168.4}}, "provider_calls": {}}
+    frozen = {
+        "page": {"recent_fuel_rates": {"pci_rate_kg_thm": 168.4}},
+        "provider_calls": {},
+    }
     code = compile(
         "def _recent_fuel_rates_live():\n    return {'pci_rate_kg_thm': 999.0}\n"
         "def save_new_thing_preferences(*a):\n    return 'written'\n"
         "rates = _recent_fuel_rates_live()\n"
         "def use():\n    return rates\n",
-        "<page>", "exec",
+        "<page>",
+        "exec",
     )
     g: dict = {}
     exec(code, g, PageNamespace(g, page_substitutes(frozen, [])))
@@ -334,7 +414,9 @@ def test_page_namespace_substitutes_and_refuses_preference_saves():
 
 
 def test_restore_writes_inputs_results_and_run_start_values():
-    snap = json.loads(json.dumps(capture(_state(), page_vars={"edited_df": _ore_table()})))
+    snap = json.loads(
+        json.dumps(capture(_state(), page_vars={"edited_df": _ore_table()}))
+    )
     writes = restorable_state(snap)
     assert writes["testbmo_target_production_mt"] == 2400.0
     assert isinstance(writes["testbmo_applied_ore_editor_df"], pd.DataFrame)
@@ -348,9 +430,16 @@ def test_restore_writes_inputs_results_and_run_start_values():
 
 
 def test_restore_drops_non_writable_keys_even_if_hand_edited_in():
-    writes = restorable_state({"inputs": {
-        "refresh_source_data": True, "ui_label": "x", "slag_cap": 300.0, "lp_result": 1,
-    }})
+    writes = restorable_state(
+        {
+            "inputs": {
+                "refresh_source_data": True,
+                "ui_label": "x",
+                "slag_cap": 300.0,
+                "lp_result": 1,
+            }
+        }
+    )
     assert writes == {"testbmo_slag_cap": 300.0}
 
 
@@ -390,13 +479,22 @@ def _docx(data: bytes):
 
 
 def _report_snapshot() -> dict:
-    return json.loads(json.dumps(capture(
-        _state(),
-        page_vars={"edited_df": _ore_table(), "target_slag_qty_mt": 700.0,
-                   "target_slag_basicity_min": 1.05, "target_slag_basicity_max": 1.15,
-                   "max_burden_qty_mt": 3100.0, "target_fe_mt": 1700.0},
-        label="Shift B",
-    )))
+    return json.loads(
+        json.dumps(
+            capture(
+                _state(),
+                page_vars={
+                    "edited_df": _ore_table(),
+                    "target_slag_qty_mt": 700.0,
+                    "target_slag_basicity_min": 1.05,
+                    "target_slag_basicity_max": 1.15,
+                    "max_burden_qty_mt": 3100.0,
+                    "target_fe_mt": 1700.0,
+                },
+                label="Shift B",
+            )
+        )
+    )
 
 
 def test_report_has_sections_charts_and_constraint_status():
@@ -404,8 +502,15 @@ def test_report_has_sections_charts_and_constraint_status():
     assert doc.core_properties.title == "Blend Mix Optimiser Snapshot Report"
     assert doc.core_properties.author == "Evonith Steel BF2"
     headings = [p.text for p in doc.paragraphs if p.style.name == "Heading 1"]
-    for needle in ("Executive summary", "Recommended blend", "Constraint check",
-                   "Fuel and coke", "Slag", "Cost and options compared", "Plant data"):
+    for needle in (
+        "Executive summary",
+        "Recommended blend",
+        "Constraint check",
+        "Fuel and coke",
+        "Slag",
+        "Cost and options compared",
+        "Plant data",
+    ):
         assert any(needle in h for h in headings), needle
     numbers = [int(h.split(".")[0]) for h in headings]
     assert numbers == list(range(1, len(numbers) + 1))
@@ -425,28 +530,47 @@ def test_report_has_sections_charts_and_constraint_status():
         assert tbl_w is not None and tbl_w.get(qn("w:type")) == "dxa"
         assert int(tbl_w.get(qn("w:w"))) == sum(grid)
         for row in table.rows:
-            cell_widths = [int(cell._tc.get_or_add_tcPr().tcW.get(qn("w:w"))) for cell in row.cells]
+            cell_widths = [
+                int(cell._tc.get_or_add_tcPr().tcW.get(qn("w:w"))) for cell in row.cells
+            ]
             assert cell_widths == grid
             assert row._tr.get_or_add_trPr().find(qn("w:cantSplit")) is not None
         if len(table.rows) > 1:
-            assert table.rows[0]._tr.get_or_add_trPr().find(qn("w:tblHeader")) is not None
+            assert (
+                table.rows[0]._tr.get_or_add_trPr().find(qn("w:tblHeader")) is not None
+            )
 
 
-@pytest.mark.parametrize("state", [
-    {"bmo_lp_result": _evaluation()},
-    {"bmo_target_production_mt": 2400.0},
-])
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"bmo_lp_result": _evaluation()},
+        {"bmo_target_production_mt": 2400.0},
+    ],
+)
 def test_report_handles_partial_snapshots(state):
     assert build_docx(json.loads(json.dumps(capture(state))))[:2] == b"PK"
 
 
 def test_report_reads_schema_1_snapshots():
     v1 = {
-        "schema": "bmo-snapshot/1", "id": "old", "created_at": "2026-09-24T17:05:18+05:30",
-        "inputs": {"applied_ore_editor_df": {"__type__": "dataframe", "data": json.loads(
-            _ore_table().to_json(orient="split")), "dtypes": {}}},
-        "results": {"lp_result": {"__type__": "dataclass", "class": "x.Y",
-                                  "data": {"shares_pct": {"ore_a": 60.0, "sinter": 40.0}}}},
+        "schema": "bmo-snapshot/1",
+        "id": "old",
+        "created_at": "2026-09-24T17:05:18+05:30",
+        "inputs": {
+            "applied_ore_editor_df": {
+                "__type__": "dataframe",
+                "data": json.loads(_ore_table().to_json(orient="split")),
+                "dtypes": {},
+            }
+        },
+        "results": {
+            "lp_result": {
+                "__type__": "dataclass",
+                "class": "x.Y",
+                "data": {"shares_pct": {"ore_a": 60.0, "sinter": 40.0}},
+            }
+        },
     }
     v1["summary"] = summarise(v1)
     assert build_docx(v1)[:2] == b"PK"
@@ -510,7 +634,9 @@ def test_swapped_helper_is_a_copy_and_real_module_untouched():
     copy = imp("ui.bmo.components", {}, {}, ("render_header",), 0)
     via_package = imp("ui.bmo", {}, {}, ("render_header",), 0)
     assert copy is not real and copy.__name__.endswith("__testbmo")
-    assert "testbmo_hm_carbon_pct" in _constants(copy.render_hot_metal_chemistry.__code__)
+    assert "testbmo_hm_carbon_pct" in _constants(
+        copy.render_hot_metal_chemistry.__code__
+    )
     assert "bmo_hm_carbon_pct" in _constants(real.render_hot_metal_chemistry.__code__)
     assert via_package.render_hot_metal_chemistry is copy.render_hot_metal_chemistry
     assert sys.modules["ui.bmo.components"] is real

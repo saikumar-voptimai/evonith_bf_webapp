@@ -74,32 +74,62 @@ PAGE_INPUT_TABLES = {
 
 # Derived on the page, not restorable, but needed to read the report correctly.
 PAGE_CONTEXT_VARS = (
-    "hm_chem_values", "target_fe_mt", "target_slag_qty_mt", "observed_slag_rate",
-    "feo_in_slag_pct", "max_burden_qty_mt", "model_to_plant_slag_factor",
-    "hm_snapshot", "slag_settings_values", "de_seed_choice",
-    "target_slag_basicity_min", "target_slag_basicity_max",
-    "target_slag_t_basicity_min", "target_slag_t_basicity_max",
-    "target_slag_al2o3_max_pct", "target_slag_mgo_min_pct",
-    "target_slag_mgo_al2o3_ratio_min", "target_slag_rate_kg_per_thm",
-    "recent_fuel_rates", "chemistry_mode", "chemistry_window_days",
+    "hm_chem_values",
+    "target_fe_mt",
+    "target_slag_qty_mt",
+    "observed_slag_rate",
+    "feo_in_slag_pct",
+    "max_burden_qty_mt",
+    "model_to_plant_slag_factor",
+    "hm_snapshot",
+    "slag_settings_values",
+    "de_seed_choice",
+    "target_slag_basicity_min",
+    "target_slag_basicity_max",
+    "target_slag_t_basicity_min",
+    "target_slag_t_basicity_max",
+    "target_slag_al2o3_max_pct",
+    "target_slag_mgo_min_pct",
+    "target_slag_mgo_al2o3_ratio_min",
+    "target_slag_rate_kg_per_thm",
+    "recent_fuel_rates",
+    "chemistry_mode",
+    "chemistry_window_days",
 )
 
-RESULT_SUFFIXES = frozenset({
-    "lp_result", "de_result", "lp_si", "de_si", "manual_si", "lp_errors",
-    "de_errors", "manual_quantities_mt", "manual_blend", "energy_anchor",
-    "commentary", "commentary_context",
-})
+RESULT_SUFFIXES = frozenset(
+    {
+        "lp_result",
+        "de_result",
+        "lp_si",
+        "de_si",
+        "manual_si",
+        "lp_errors",
+        "de_errors",
+        "manual_quantities_mt",
+        "manual_blend",
+        "energy_anchor",
+        "commentary",
+        "commentary_context",
+    }
+)
 # Counters, caches and bulky intermediates that say nothing about the state.
-SKIPPED_SUFFIXES = frozenset({
-    "source_cache_version", "diagnostics_loaded", "bundle_status",
-    "pci_state_last", "calibration_bust", "de_candidates",
-})
+SKIPPED_SUFFIXES = frozenset(
+    {
+        "source_cache_version",
+        "diagnostics_loaded",
+        "bundle_status",
+        "pci_state_last",
+        "calibration_bust",
+        "de_candidates",
+    }
+)
 
 # Frames longer than this inside the frozen plant data are the process history
 # (thousands of hourly rows); only the rows the models can reach are kept.
 COMPACT_OVER_ROWS = 400
-HISTORY_TAIL_ROWS = 96       # every column, last 4 days: rolling windows, lags
-HISTORY_PER_COLUMN = 24      # plus each column's last 24 non-null values
+HISTORY_TAIL_ROWS = 96  # every column, last 4 days: rolling windows, lags
+HISTORY_PER_COLUMN = 24  # plus each column's last 24 non-null values
 
 # Only our own dataclasses are rebuilt from JSON - an uploaded file must not be
 # able to name an arbitrary class to construct.
@@ -123,12 +153,21 @@ def _float(value: float) -> Any:
     number = float(value)
     if math.isfinite(number):
         return number
-    return {"__type__": "float", "v": "nan" if math.isnan(number) else ("inf" if number > 0 else "-inf")}
+    return {
+        "__type__": "float",
+        "v": "nan" if math.isnan(number) else ("inf" if number > 0 else "-inf"),
+    }
 
 
 def _encode_index(index: pd.Index) -> dict[str, Any]:
     if isinstance(index, pd.RangeIndex):
-        return {"kind": "range", "start": index.start, "stop": index.stop, "step": index.step, "name": encode(index.name)}
+        return {
+            "kind": "range",
+            "start": index.start,
+            "stop": index.stop,
+            "step": index.step,
+            "name": encode(index.name),
+        }
     if isinstance(index, pd.DatetimeIndex):
         return {
             "kind": "datetime",
@@ -137,7 +176,11 @@ def _encode_index(index: pd.Index) -> dict[str, Any]:
             "values": [None if pd.isna(v) else v.isoformat() for v in index],
             "name": index.name,
         }
-    return {"kind": "values", "values": [encode(v) for v in index], "name": encode(index.name)}
+    return {
+        "kind": "values",
+        "values": [encode(v) for v in index],
+        "name": encode(index.name),
+    }
 
 
 def _decode_index(spec: Mapping[str, Any]) -> pd.Index:
@@ -147,7 +190,9 @@ def _decode_index(spec: Mapping[str, Any]) -> pd.Index:
             spec["start"], spec["stop"], spec["step"], name=decode(spec.get("name"))
         )
     if kind == "datetime":
-        idx = pd.DatetimeIndex(pd.to_datetime(spec["values"], utc=True, format="ISO8601"))
+        idx = pd.DatetimeIndex(
+            pd.to_datetime(spec["values"], utc=True, format="ISO8601")
+        )
         idx = idx.tz_convert(spec["tz"]) if spec.get("tz") else idx.tz_localize(None)
         freq = spec.get("freq")
         if freq:
@@ -156,7 +201,9 @@ def _decode_index(spec: Mapping[str, Any]) -> pd.Index:
             except ValueError:
                 pass
         return idx.rename(spec.get("name"))
-    return pd.Index([decode(v) for v in spec.get("values", [])], name=decode(spec.get("name")))
+    return pd.Index(
+        [decode(v) for v in spec.get("values", [])], name=decode(spec.get("name"))
+    )
 
 
 def _encode_column(series: pd.Series) -> list[Any]:
@@ -164,8 +211,13 @@ def _encode_column(series: pd.Series) -> list[Any]:
         return [None if pd.isna(v) else pd.Timestamp(v).isoformat() for v in series]
     if pd.api.types.is_float_dtype(series.dtype):
         return [None if pd.isna(v) else _float(v) for v in series.to_numpy()]
-    if pd.api.types.is_integer_dtype(series.dtype) or pd.api.types.is_bool_dtype(series.dtype):
-        return [None if pd.isna(v) else v.item() if hasattr(v, "item") else v for v in series]
+    if pd.api.types.is_integer_dtype(series.dtype) or pd.api.types.is_bool_dtype(
+        series.dtype
+    ):
+        return [
+            None if pd.isna(v) else v.item() if hasattr(v, "item") else v
+            for v in series
+        ]
     return [encode(v) for v in series]
 
 
@@ -173,7 +225,9 @@ def _decode_column(values: list[Any], dtype: str) -> pd.Series:
     if dtype.startswith("datetime64"):
         series = pd.Series(pd.to_datetime(values, utc="," in dtype, format="ISO8601"))
     elif dtype.startswith("float"):
-        series = pd.Series([np.nan if v is None else decode(v) for v in values], dtype="float64")
+        series = pd.Series(
+            [np.nan if v is None else decode(v) for v in values], dtype="float64"
+        )
     else:
         series = pd.Series([decode(v) for v in values], dtype="object")
     try:
@@ -248,7 +302,9 @@ def _decode_compact_frame(doc: Mapping[str, Any]) -> pd.DataFrame:
     data = {}
     for col_pos in range(kept.shape[1]):
         column = kept.iloc[:, col_pos]
-        if pd.api.types.is_numeric_dtype(column.dtype) and not pd.api.types.is_bool_dtype(column.dtype):
+        if pd.api.types.is_numeric_dtype(
+            column.dtype
+        ) and not pd.api.types.is_bool_dtype(column.dtype):
             values = np.full(n, np.nan)
             values[positions] = column.to_numpy(dtype=float, na_value=np.nan)
             if pd.api.types.is_float_dtype(column.dtype):
@@ -275,14 +331,19 @@ def _decode_compact_frame(doc: Mapping[str, Any]) -> pd.DataFrame:
     return frame
 
 
-def verify_compact(full: pd.DataFrame, rebuilt: pd.DataFrame, per_column: int) -> list[str]:
+def verify_compact(
+    full: pd.DataFrame, rebuilt: pd.DataFrame, per_column: int
+) -> list[str]:
     """Columns whose reachable values differ between the full and rebuilt frame."""
 
     bad = []
     if len(full) != len(rebuilt):
         return ["<row count>"]
-    if len(full) and not (pd.isna(full.index[-1]) and pd.isna(rebuilt.index[-1])) \
-            and full.index[-1] != rebuilt.index[-1]:
+    if (
+        len(full)
+        and not (pd.isna(full.index[-1]) and pd.isna(rebuilt.index[-1]))
+        and full.index[-1] != rebuilt.index[-1]
+    ):
         bad.append("<last timestamp>")
     for col_pos in range(full.shape[1]):
         a = full.iloc[:, col_pos].dropna().tail(per_column)
@@ -322,12 +383,16 @@ def encode(value: Any, _depth: int = 0, _compact: list | None = None) -> Any:
         if _compact is not None and len(value) > COMPACT_OVER_ROWS:
             doc = compact_frame(value)
             rebuilt = _decode_compact_frame(doc)
-            _compact.append({
-                "rows": len(value),
-                "kept_rows": len(doc["positions"]),
-                "columns": value.shape[1],
-                "mismatched_columns": verify_compact(value, rebuilt, HISTORY_PER_COLUMN),
-            })
+            _compact.append(
+                {
+                    "rows": len(value),
+                    "kept_rows": len(doc["positions"]),
+                    "columns": value.shape[1],
+                    "mismatched_columns": verify_compact(
+                        value, rebuilt, HISTORY_PER_COLUMN
+                    ),
+                }
+            )
             return doc
         return _encode_frame(value)
     if isinstance(value, pd.Series):
@@ -339,8 +404,11 @@ def encode(value: Any, _depth: int = 0, _compact: list | None = None) -> Any:
             "data": _encode_column(value),
         }
     if isinstance(value, np.ndarray):
-        return {"__type__": "ndarray", "dtype": str(value.dtype),
-                "data": encode(value.tolist(), _depth + 1, _compact)}
+        return {
+            "__type__": "ndarray",
+            "dtype": str(value.dtype),
+            "data": encode(value.tolist(), _depth + 1, _compact),
+        }
     if value is pd.NaT:
         return {"__type__": "nat"}
     if isinstance(value, pd.Timestamp):
@@ -352,25 +420,40 @@ def encode(value: Any, _depth: int = 0, _compact: list | None = None) -> Any:
     if isinstance(value, (timedelta, pd.Timedelta)):
         return {"__type__": "timedelta", "s": pd.Timedelta(value).total_seconds()}
     if isinstance(value, enum.Enum):
-        return {"__type__": "enum", "class": f"{type(value).__module__}.{type(value).__qualname__}",
-                "value": encode(value.value, _depth + 1, _compact)}
+        return {
+            "__type__": "enum",
+            "class": f"{type(value).__module__}.{type(value).__qualname__}",
+            "value": encode(value.value, _depth + 1, _compact),
+        }
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {
             "__type__": "dataclass",
             "class": f"{type(value).__module__}.{type(value).__qualname__}",
-            "data": {f.name: encode(getattr(value, f.name), _depth + 1, _compact)
-                     for f in dataclasses.fields(value)},
+            "data": {
+                f.name: encode(getattr(value, f.name), _depth + 1, _compact)
+                for f in dataclasses.fields(value)
+            },
         }
     if isinstance(value, Mapping):
         if all(isinstance(k, str) for k in value) and "__type__" not in value:
             return {k: encode(v, _depth + 1, _compact) for k, v in value.items()}
-        return {"__type__": "dict", "items": [
-            [encode(k, _depth + 1, _compact), encode(v, _depth + 1, _compact)]
-            for k, v in value.items()]}
+        return {
+            "__type__": "dict",
+            "items": [
+                [encode(k, _depth + 1, _compact), encode(v, _depth + 1, _compact)]
+                for k, v in value.items()
+            ],
+        }
     if isinstance(value, tuple):
-        return {"__type__": "tuple", "items": [encode(v, _depth + 1, _compact) for v in value]}
+        return {
+            "__type__": "tuple",
+            "items": [encode(v, _depth + 1, _compact) for v in value],
+        }
     if isinstance(value, (set, frozenset)):
-        return {"__type__": "set", "items": [encode(v, _depth + 1, _compact) for v in value]}
+        return {
+            "__type__": "set",
+            "items": [encode(v, _depth + 1, _compact) for v in value],
+        }
     if isinstance(value, list):
         return [encode(v, _depth + 1, _compact) for v in value]
     if isinstance(value, Path):
@@ -439,7 +522,9 @@ def decode(value: Any, *, typed: bool = True) -> Any:
         series.name = decode(value.get("name"), typed=typed)
         return series
     if kind == "ndarray":
-        return np.array(decode(value["data"], typed=typed), dtype=value.get("dtype") or None)
+        return np.array(
+            decode(value["data"], typed=typed), dtype=value.get("dtype") or None
+        )
     if kind == "nat":
         return pd.NaT
     if kind == "timestamp":
@@ -455,7 +540,10 @@ def decode(value: Any, *, typed: bool = True) -> Any:
     if kind == "set":
         return set(decode(v, typed=typed) for v in value["items"])
     if kind == "dict":
-        return {_hashable(decode(k, typed=typed)): decode(v, typed=typed) for k, v in value["items"]}
+        return {
+            _hashable(decode(k, typed=typed)): decode(v, typed=typed)
+            for k, v in value["items"]
+        }
     if kind == "enum":
         cls = _resolve_class(value["class"]) if typed else None
         raw = decode(value["value"], typed=typed)
@@ -488,11 +576,16 @@ def _git_provenance() -> dict[str, str]:
     """Branch and commit the snapshot was taken on. Best effort; empty when no git."""
 
     out: dict[str, str] = {}
-    for key, args in (("branch", ["rev-parse", "--abbrev-ref", "HEAD"]),
-                      ("commit", ["rev-parse", "--short", "HEAD"])):
+    for key, args in (
+        ("branch", ["rev-parse", "--abbrev-ref", "HEAD"]),
+        ("commit", ["rev-parse", "--short", "HEAD"]),
+    ):
         try:
             out[key] = subprocess.run(
-                ["git", *args], capture_output=True, text=True, timeout=3,
+                ["git", *args],
+                capture_output=True,
+                text=True,
+                timeout=3,
                 cwd=Path(__file__).resolve().parent,
             ).stdout.strip()
         except Exception:  # noqa: BLE001
@@ -501,8 +594,10 @@ def _git_provenance() -> dict[str, str]:
 
 
 def _prediction_check(
-    page_vars: Mapping[str, Any], results: Mapping[str, Any],
-    calls: Mapping[str, Any], rebuilt: Mapping[str, Any],
+    page_vars: Mapping[str, Any],
+    results: Mapping[str, Any],
+    calls: Mapping[str, Any],
+    rebuilt: Mapping[str, Any],
 ) -> dict[str, Any] | None:
     """Re-run the fuel model on the recommended blend with the full and the saved history.
 
@@ -533,8 +628,11 @@ def _prediction_check(
         )
         full = float(model_service.predict(dict(payload), full_history).value)
         saved = float(model_service.predict(dict(payload), saved_history).value)
-        return {"model_output_full_history": full, "model_output_saved_history": saved,
-                "identical": full == saved}
+        return {
+            "model_output_full_history": full,
+            "model_output_saved_history": saved,
+            "identical": full == saved,
+        }
     except Exception:  # noqa: BLE001 - a check, never a reason to fail the snapshot
         return None
 
@@ -575,17 +673,22 @@ def capture(
     if not pinned:
         record = current
 
-    inputs = {s: encode(v) for s, v in record["inputs"].items() if is_writable_suffix(s)}
+    inputs = {
+        s: encode(v) for s, v in record["inputs"].items() if is_writable_suffix(s)
+    }
     not_restorable = sorted(s for s in record["inputs"] if not is_writable_suffix(s))
-    inputs_changed = pinned and json.dumps(inputs, sort_keys=True, default=str) != json.dumps(
+    inputs_changed = pinned and json.dumps(
+        inputs, sort_keys=True, default=str
+    ) != json.dumps(
         {s: encode(v) for s, v in current["inputs"].items() if is_writable_suffix(s)},
-        sort_keys=True, default=str,
+        sort_keys=True,
+        default=str,
     )
 
     raw_results = {}
     for key in sorted(str(k) for k in state.keys()):
-        if key.startswith(prefix) and classify_suffix(key[len(prefix):]) == "results":
-            raw_results[key[len(prefix):]] = state[key]
+        if key.startswith(prefix) and classify_suffix(key[len(prefix) :]) == "results":
+            raw_results[key[len(prefix) :]] = state[key]
     results = {s: encode(v) for s, v in raw_results.items()}
 
     checks: list[dict[str, Any]] = []
@@ -601,12 +704,20 @@ def capture(
         "history_checks": checks,
     }
     if checks:
-        rebuilt = {k: decode(v) for k, v in provider_calls.items() if k.startswith("get_history_frame(")}
-        verdict = _prediction_check(page_vars, raw_results, record["provider_calls"], rebuilt)
+        rebuilt = {
+            k: decode(v)
+            for k, v in provider_calls.items()
+            if k.startswith("get_history_frame(")
+        }
+        verdict = _prediction_check(
+            page_vars, raw_results, record["provider_calls"], rebuilt
+        )
         if verdict is not None:
             frozen["model_check"] = verdict
 
-    context = {name: encode(page_vars[name]) for name in PAGE_CONTEXT_VARS if name in page_vars}
+    context = {
+        name: encode(page_vars[name]) for name in PAGE_CONTEXT_VARS if name in page_vars
+    }
     taken = (now or datetime.now(IST)).astimezone(IST)
     snapshot = {
         "schema": SCHEMA,
@@ -634,7 +745,10 @@ def capture(
 
 
 def _fields(encoded_result: Any) -> dict[str, Any]:
-    if isinstance(encoded_result, dict) and encoded_result.get("__type__") == "dataclass":
+    if (
+        isinstance(encoded_result, dict)
+        and encoded_result.get("__type__") == "dataclass"
+    ):
         return encoded_result.get("data") or {}
     return encoded_result if isinstance(encoded_result, dict) else {}
 
@@ -668,7 +782,11 @@ def ore_names(snapshot: Mapping[str, Any]) -> dict[str, str]:
     """ore_id -> display name, from the recorded ore table where available."""
 
     rows = _frame_rows((snapshot.get("inputs") or {}).get("applied_ore_editor_df"))
-    return {str(r["ore_id"]): str(r.get("ore_name", r["ore_id"])) for r in rows if "ore_id" in r}
+    return {
+        str(r["ore_id"]): str(r.get("ore_name", r["ore_id"]))
+        for r in rows
+        if "ore_id" in r
+    }
 
 
 def recommended_result(snapshot: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -681,9 +799,9 @@ def recommended_result(snapshot: Mapping[str, Any]) -> tuple[str, dict[str, Any]
     results = snapshot.get("results") or {}
     de, lp = _fields(results.get("de_result")), _fields(results.get("lp_result"))
     if de and not (de.get("diagnostics") or {}).get("de_fell_back_to_lp"):
-        return "DE total cost", de
+        return "Intensive Optimizer", de
     if lp:
-        return "LP baseline", lp
+        return "Balanced Optimizer", lp
     return "", {}
 
 
@@ -783,9 +901,13 @@ def frozen_state(snapshot: Mapping[str, Any]) -> dict[str, Any] | None:
     if not frozen.get("provider_calls") and not frozen.get("page"):
         return None
     return {
-        "provider_calls": {k: decode(v) for k, v in (frozen.get("provider_calls") or {}).items()},
+        "provider_calls": {
+            k: decode(v) for k, v in (frozen.get("provider_calls") or {}).items()
+        },
         "page": {k: decode(v) for k, v in (frozen.get("page") or {}).items()},
-        "session_at_run": {k: decode(v) for k, v in (frozen.get("session_at_run") or {}).items()},
+        "session_at_run": {
+            k: decode(v) for k, v in (frozen.get("session_at_run") or {}).items()
+        },
     }
 
 
