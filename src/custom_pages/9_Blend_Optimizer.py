@@ -587,18 +587,30 @@ def _render_static_dataset_bar(
             on_change=_clear_bmo_results,
         )
         direct_cfg = dict(bmo_cfg.get("data_driven_coke", {}) or {})
-        st.number_input(
-            "Operating lookback window (hours)",
+        legacy_lookback = int(
+            st.session_state.get(
+                "bmo_operating_lookback_hours",
+                direct_cfg.get("lookback_hours", 6),
+            )
+        )
+        lookback_cols = st.columns(2)
+        lookback_cols[0].number_input(
+            "Coke-rate anchor lookback (hours)",
             min_value=1,
             max_value=72,
-            value=int(direct_cfg.get("lookback_hours", 6)),
+            value=legacy_lookback,
             step=1,
-            key="bmo_operating_lookback_hours",
+            key="bmo_coke_anchor_lookback_hours",
             on_change=_clear_bmo_results,
-            help=(
-                "Sets the median Data-Driven coke anchor and the furnace-dataset "
-                "manual blend used as the current operating point."
-            ),
+        )
+        lookback_cols[1].number_input(
+            "Manual blend lookback (hours)",
+            min_value=1,
+            max_value=72,
+            value=int(direct_cfg.get("manual_blend_lookback_hours", 6)),
+            step=1,
+            key="bmo_manual_blend_lookback_hours",
+            on_change=_clear_bmo_results,
         )
         st.divider()
         use_link = st.toggle(
@@ -2919,10 +2931,18 @@ fuel_rate_anchor_basis = _COKE_ANCHOR_LABELS.get(
     str(st.session_state.get("bmo_coke_rate_model", _default_anchor_label)),
     "data_driven",
 )
-operating_lookback_hours = int(
+coke_anchor_lookback_hours = int(
     st.session_state.get(
-        "bmo_operating_lookback_hours",
+        "bmo_coke_anchor_lookback_hours",
         (bmo_cfg.get("data_driven_coke", {}) or {}).get("lookback_hours", 6),
+    )
+)
+manual_blend_lookback_hours = int(
+    st.session_state.get(
+        "bmo_manual_blend_lookback_hours",
+        (bmo_cfg.get("data_driven_coke", {}) or {}).get(
+            "manual_blend_lookback_hours", 6
+        ),
     )
 )
 # Bumped by the "Refresh source data" button; keys the cached offline-source
@@ -3163,14 +3183,6 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
         )
 
     with st.expander("Charging capacity", expanded=False):
-        st.caption(
-            "Charges per hour and tonnes per charge are the only two numbers that "
-            "set the throughput ceiling - charging runs 24 h, and nut coke is a "
-            "held set point so its tonnage follows from the HM target and is "
-            "deducted off the top. What is left is the daily room for IBRM plus "
-            "flux. Without this cap the optimizer can answer a low-Fe burden by "
-            "simply charging more of it, which the plant cannot do at capacity."
-        )
         # Same 4-column grid as the slag window above so every input in the form
         # sits on one consistent line width.
         charge_col1, charge_col2, charge_col3, _charge_spacer = st.columns(4)
@@ -3798,7 +3810,7 @@ if fuel_rate_anchor_basis == "data_driven":
                     )
                     or 0.0
                 ),
-                lookback_hours=operating_lookback_hours,
+                lookback_hours=coke_anchor_lookback_hours,
                 max_stale_hours=float(direct_cfg.get("max_input_stale_hours", 6.0)),
                 max_source_age_hours=float(direct_cfg.get("max_source_age_hours", 6.0)),
             )
@@ -3810,18 +3822,21 @@ if fuel_rate_anchor_basis == "data_driven":
             data_driven_prediction.to_dict()
         )
         if data_driven_prediction.usable:
-            prediction_window = (
-                f"median of {data_driven_prediction.hourly_prediction_count} "
-                f"eligible hourly predictions from "
-                f"{data_driven_prediction.window_start_utc} to "
-                f"{data_driven_prediction.window_end_utc}"
-                if data_driven_prediction.hourly_prediction_count > 1
-                else f"eligible hour at {data_driven_prediction.origin_utc}"
-            )
             st.success(
-                f"Data-Driven coke anchor: "
-                f"**{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM** "
-                f"({prediction_window})."
+                f"Measured coke anchor: "
+                f"**{data_driven_prediction.measured_coke_rate_kg_per_thm:,.1f} "
+                f"kg/THM** "
+                f"(sum of {data_driven_prediction.measured_coke_mt:,.1f} MT coke "
+                f"/ {data_driven_prediction.measured_hot_metal_mt:,.1f} MT hot "
+                f"metal across {data_driven_prediction.measured_hour_count} eligible "
+                f"hours, {data_driven_prediction.window_start_utc} to "
+                f"{data_driven_prediction.window_end_utc})."
+            )
+            st.caption(
+                f"Raw Non-linear model over the same window: "
+                f"{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM "
+                f"(median of {data_driven_prediction.hourly_prediction_count} "
+                "hourly predictions)."
             )
             if data_driven_prediction.outside_training_p01_p99:
                 st.warning(
@@ -3855,7 +3870,7 @@ if fuel_rate_anchor_basis == "data_driven":
                 else ""
             )
             st.error(
-                "The Data-Driven anchor is unavailable: "
+                "The measured coke anchor is unavailable: "
                 + " ".join(data_driven_prediction.reasons)
                 + rejected
             )
@@ -3920,7 +3935,7 @@ if requested_lp or requested_total:
             dust_inputs=dust_inputs,
             slag_balance_settings=slag_balance_settings,
             charge_mass_mt=charge_mass_mt,
-            lookback_hours=operating_lookback_hours,
+            lookback_hours=manual_blend_lookback_hours,
         )
 
         # Resolved once for the whole run and reused by the LP, DE, and every DE
@@ -3958,16 +3973,16 @@ if requested_lp or requested_total:
             target_fe_mt=target_fe_mt,
             charge_mass_mt=charge_mass_mt,
             observed_slag_rate_kg_per_thm=observed_slag_rate,
-            lookback_hours=operating_lookback_hours,
+            lookback_hours=manual_blend_lookback_hours,
         )
         st.session_state["bmo_energy_anchor"] = energy_anchor
         anchor_prediction_details: dict[str, Any] | None = None
         if fuel_rate_anchor_basis == "data_driven":
             anchor_coke_rate = (
-                float(data_driven_prediction.value_kg_per_thm)
+                float(data_driven_prediction.measured_coke_rate_kg_per_thm)
                 if data_driven_prediction is not None
                 and data_driven_prediction.usable
-                and data_driven_prediction.value_kg_per_thm is not None
+                and data_driven_prediction.measured_coke_rate_kg_per_thm is not None
                 else None
             )
             anchor_prediction_details = (
@@ -4414,7 +4429,7 @@ if lp_result is not None or de_result is not None:
                 _render_transition_ladder(
                     provider=provider,
                     ores=selected_ores,
-                    lookback_hours=operating_lookback_hours,
+                    lookback_hours=manual_blend_lookback_hours,
                     lp_kwargs=dict(
                         target_production_mt=target_fe_mt,
                         target_slag_qty_mt=target_slag_qty_mt,
@@ -4547,7 +4562,7 @@ if lp_result is not None or de_result is not None:
                 dust_inputs=dust_inputs,
                 slag_balance_settings=slag_balance_settings,
                 charge_mass_mt=charge_mass_mt,
-                lookback_hours=operating_lookback_hours,
+                lookback_hours=manual_blend_lookback_hours,
             )
         else:
             st.info(
@@ -4691,3 +4706,23 @@ render_diagnostics(de_result or lp_result, ore_diagnostics)
 from ui.bmo.snapshot_panel import render_snapshot_panel  # noqa: E402
 
 render_snapshot_panel(prefix="bmo_", page_vars=globals())
+
+# SBFE is intentionally a separate product surface after commentary,
+# diagnostics, and snapshots. Its controls and results do not mutate the main
+# BMO run state.
+from ui.bmo.production_frontier import render_production_frontier  # noqa: E402
+
+render_production_frontier(
+    selected_ores=selected_ores,
+    fuel_ash_inputs=fuel_ash_inputs,
+    flux_inputs=flux_inputs,
+    dust_inputs=dust_inputs,
+    slag_balance_settings=slag_balance_settings,
+    hm_fe_pct=hm_fe_pct_for_target,
+    feo_in_slag_pct=feo_in_slag_pct,
+    model_to_plant_slag_factor=model_to_plant_slag_factor,
+    default_max_charges_per_hour=max_charges_per_hour,
+    default_charge_mass_mt=charge_mass_mt,
+    default_nut_coke_rate_kg_per_thm=nut_coke_rate_kg_per_thm,
+    default_nut_coke_moisture_pct=nut_coke_charge_moisture_pct,
+)

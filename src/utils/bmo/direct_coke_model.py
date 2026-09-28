@@ -1,8 +1,8 @@
-"""Direct, price-independent coke-rate XGBoost inference and retraining.
+"""Direct, price-independent coke-rate model inference and retraining.
 
-The deployed model predicts the observed coke rate in kg/THM for the current
-burden/process state.  It is an anchor, not a candidate-by-candidate causal
-response model; BMO's explicit coke-correction layer supplies blend deltas.
+The deployed model predicts coke rate in kg/THM for monitoring the current
+burden/process state. BMO anchors the optimisation level on the measured
+coke/hot-metal mass ratio; its explicit correction layer supplies blend deltas.
 
 Retraining uses the same frozen preprocessing contract as the audited artifact.
 A candidate is deployed only when both a random development split and a strict
@@ -40,6 +40,10 @@ class DirectCokePrediction:
 
     value_kg_per_thm: float | None
     usable: bool
+    measured_coke_rate_kg_per_thm: float | None = None
+    measured_coke_mt: float | None = None
+    measured_hot_metal_mt: float | None = None
+    measured_hour_count: int = 0
     origin_utc: str = ""
     window_start_utc: str = ""
     window_end_utc: str = ""
@@ -223,6 +227,12 @@ def _float_or_none(value: Any) -> float | None:
     return result if np.isfinite(result) else None
 
 
+def _numeric_column(frame: pd.DataFrame, name: str) -> pd.Series:
+    if name not in frame:
+        return pd.Series(np.nan, index=frame.index, dtype=float)
+    return pd.to_numeric(frame[name], errors="coerce")
+
+
 class DirectCokeModelService:
     """Load the active direct-coke bundle and perform guarded inference."""
 
@@ -276,6 +286,99 @@ class DirectCokeModelService:
             "fit_cutoff": str(self.schema.get("fit_cutoff", "")),
             "metadata": metadata,
         }
+
+    def prediction_history(
+        self,
+        hourly_frame: pd.DataFrame | str | Path,
+        *,
+        bias_window_hours: float = 24.0,
+        bias_min_periods: int = 6,
+        history_days: int | None = None,
+    ) -> pd.DataFrame:
+        """Return leakage-safe hourly raw, corrected, and measured coke rates.
+
+        The correction at hour t is the median raw-model residual from strictly
+        earlier observations in the configured trailing window. The actual
+        value at t therefore cannot correct its own prediction.
+        """
+
+        source = _load_hourly(hourly_frame)
+        if history_days is not None and not source.empty:
+            time_col = str(self.config.get("time_col", "time"))
+            if time_col in source:
+                timestamps = pd.to_datetime(
+                    source[time_col],
+                    errors="coerce",
+                    format="mixed",
+                    dayfirst=True,
+                )
+                latest = timestamps.max()
+                if pd.notna(latest):
+                    warmup_hours = max(72.0, float(bias_window_hours) + 24.0)
+                    start = latest - pd.Timedelta(
+                        days=max(1, int(history_days)),
+                        hours=warmup_hours,
+                    )
+                    source = source.loc[timestamps.ge(start)].copy()
+
+        cleaned, audit, features, _cfg, _errors = _prepare_context(
+            source,
+            self.config,
+        )
+        columns = [str(item) for item in self.schema.get("features", [])]
+        rows = features.reindex(columns=columns).replace([np.inf, -np.inf], np.nan)
+        feature_usable = (
+            rows.isna().mean(axis=1).le(0.5)
+            if columns
+            else pd.Series(False, index=rows.index)
+        )
+        coke_mt = _numeric_column(cleaned, "COKE_CALC_MT")
+        hot_metal_mt = _numeric_column(cleaned, "PRODUCTIONTONNESPERHR")
+        actual = coke_mt.mul(1000.0).div(hot_metal_mt.where(hot_metal_mt.gt(0.0)))
+        eligible = audit["normal_eligible"].fillna(False)
+        usable = eligible & feature_usable & actual.notna() & np.isfinite(actual)
+        origins = rows.index[usable]
+        if origins.empty:
+            return pd.DataFrame(
+                columns=[
+                    "raw_predicted_coke_kg_per_thm",
+                    "corrected_predicted_coke_kg_per_thm",
+                    "actual_coke_kg_per_thm",
+                    "prior_bias_correction_kg_per_thm",
+                    "coke_calc_mt",
+                    "hot_metal_mt",
+                ]
+            )
+
+        matrix = xgb.DMatrix(rows.loc[origins].to_numpy(dtype=np.float32), nthread=2)
+        raw = pd.Series(self.model.predict(matrix), index=origins, dtype=float)
+        result = pd.DataFrame(
+            {
+                "raw_predicted_coke_kg_per_thm": raw,
+                "actual_coke_kg_per_thm": actual.loc[origins].astype(float),
+                "coke_calc_mt": coke_mt.loc[origins].astype(float),
+                "hot_metal_mt": hot_metal_mt.loc[origins].astype(float),
+            }
+        ).sort_index()
+        residual = (
+            result["actual_coke_kg_per_thm"]
+            - result["raw_predicted_coke_kg_per_thm"]
+        )
+        prior_residual = residual.shift(1)
+        correction = prior_residual.rolling(
+            f"{max(1.0, float(bias_window_hours)):g}h",
+            min_periods=max(1, int(bias_min_periods)),
+        ).median()
+        result["prior_bias_correction_kg_per_thm"] = correction
+        result["corrected_predicted_coke_kg_per_thm"] = (
+            result["raw_predicted_coke_kg_per_thm"] + correction
+        )
+        if history_days is not None:
+            cutoff = result.index.max() - pd.Timedelta(
+                days=max(1, int(history_days))
+            )
+            result = result.loc[result.index >= cutoff]
+        return result
 
     def predict_from_history(
         self,
@@ -365,6 +468,28 @@ class DirectCokeModelService:
             if hourly_prediction_count:
                 value = float(np.median(finite_predictions))
 
+        measured_coke_rate: float | None = None
+        measured_coke_mt: float | None = None
+        measured_hot_metal_mt: float | None = None
+        measured_hour_count = 0
+        window = cleaned.loc[origins]
+        coke_mt = _numeric_column(window, "COKE_CALC_MT")
+        hot_metal_mt = _numeric_column(window, "PRODUCTIONTONNESPERHR")
+        measured_rows = (
+            coke_mt.notna()
+            & hot_metal_mt.notna()
+            & coke_mt.ge(0.0)
+            & hot_metal_mt.gt(0.0)
+        )
+        if measured_rows.any():
+            measured_coke_mt = float(coke_mt.loc[measured_rows].sum())
+            measured_hot_metal_mt = float(hot_metal_mt.loc[measured_rows].sum())
+            measured_hour_count = int(measured_rows.sum())
+            if measured_hot_metal_mt > 0.0:
+                measured_coke_rate = (
+                    measured_coke_mt * 1000.0 / measured_hot_metal_mt
+                )
+
         reasons: list[str] = []
         if stale_hours > self.max_stale_hours:
             reasons.append(
@@ -381,6 +506,10 @@ class DirectCokeModelService:
             )
         if value is None or not np.isfinite(value):
             reasons.append("The model did not produce a finite coke-rate prediction.")
+        if measured_coke_rate is None or not np.isfinite(measured_coke_rate):
+            reasons.append(
+                "The selected lookback has no valid coke mass and hot-metal mass pair."
+            )
 
         selected_row = cleaned.loc[at]
         burden = sum(
@@ -399,6 +528,10 @@ class DirectCokeModelService:
         return DirectCokePrediction(
             value_kg_per_thm=value,
             usable=not reasons,
+            measured_coke_rate_kg_per_thm=measured_coke_rate,
+            measured_coke_mt=measured_coke_mt,
+            measured_hot_metal_mt=measured_hot_metal_mt,
+            measured_hour_count=measured_hour_count,
             origin_utc=str(at),
             window_start_utc=str(origins.min()) if len(origins) else "",
             window_end_utc=str(at),

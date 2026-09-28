@@ -603,6 +603,7 @@ def test_sandbox_page_has_no_live_keys_left():
         "ui.bmo.commentary",
         "ui.bmo.components",
         "ui.bmo.model_accuracy",
+        "ui.bmo.production_frontier",
         "data.bmo.context_provider",
     )
 
@@ -620,6 +621,7 @@ def test_helper_modules_found_by_scan():
         "ui.bmo.commentary",
         "ui.bmo.components",
         "ui.bmo.model_accuracy",
+        "ui.bmo.production_frontier",
         "data.bmo.context_provider",
     ]
 

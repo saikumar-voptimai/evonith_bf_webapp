@@ -42,6 +42,10 @@ _LAYOUT = dict(
 )
 _PREDICTED = "#f2a03d"
 _ACTUAL = "#2f6fd0"
+TRACKING_DISPLAY_DAYS = 3
+_TRACKING_TEAL = "#07827f"
+_TRACKING_TEAL_LIGHT = "#79bdbb"
+_TRACKING_NAVY = "#25344b"
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -511,6 +515,122 @@ def _direct_coke_settings() -> tuple[dict[str, Any], Path, Path, Path]:
     )
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _data_driven_coke_history(
+    *,
+    dataset_path: str,
+    dataset_mtime_ns: int,
+    bundled_dir: str,
+    deployment_dir: str,
+    deployment_mtime_ns: int,
+    bias_window_hours: float,
+    bias_min_periods: int,
+    history_days: int,
+) -> pd.DataFrame:
+    from utils.bmo.direct_coke_model import DirectCokeModelService
+
+    del dataset_mtime_ns, deployment_mtime_ns
+    service = DirectCokeModelService(
+        bundled_dir=bundled_dir,
+        deployment_dir=deployment_dir,
+    )
+    return service.prediction_history(
+        dataset_path,
+        bias_window_hours=bias_window_hours,
+        bias_min_periods=bias_min_periods,
+        history_days=history_days,
+    )
+
+
+def _prediction_error(
+    frame: pd.DataFrame, prediction_column: str
+) -> tuple[float | None, float | None, int]:
+    paired = frame[[prediction_column, "actual_coke_kg_per_thm"]].dropna()
+    if paired.empty:
+        return None, None, 0
+    error = paired[prediction_column] - paired["actual_coke_kg_per_thm"]
+    return float(error.abs().mean()), float(error.mean()), int(len(error))
+
+
+def _recent_tracking_window(
+    history: pd.DataFrame, days: int = TRACKING_DISPLAY_DAYS
+) -> pd.DataFrame:
+    """Return only the requested trailing time span for tracking and scores."""
+
+    if history.empty:
+        return history.copy()
+    latest = history.index.max()
+    cutoff = latest - pd.Timedelta(days=max(1, int(days)))
+    return history.loc[history.index >= cutoff].copy()
+
+
+def _coke_tracking_figure(plotted: pd.DataFrame) -> go.Figure:
+    """Build a compact three-series chart with a dedicated legend row."""
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=plotted.index,
+            y=plotted["raw_predicted_coke_kg_per_thm"],
+            name="Raw prediction",
+            mode="lines",
+            line=dict(color=_TRACKING_TEAL_LIGHT, width=1.5, dash="dot"),
+            opacity=0.85,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=plotted.index,
+            y=plotted["corrected_predicted_coke_kg_per_thm"],
+            name="Corrected prediction",
+            mode="lines",
+            line=dict(color=_TRACKING_TEAL, width=2.8),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=plotted.index,
+            y=plotted["actual_coke_kg_per_thm"],
+            name="Actual",
+            mode="markers",
+            marker=dict(
+                color=_TRACKING_NAVY,
+                size=7,
+                line=dict(color="rgba(255,255,255,0.9)", width=1),
+            ),
+        )
+    )
+    fig.update_layout(
+        height=390,
+        margin=dict(l=10, r=10, t=62, b=10),
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.04,
+            xanchor="left",
+            x=0,
+            font=dict(size=12),
+            bgcolor="rgba(0,0,0,0)",
+            itemsizing="constant",
+        ),
+        xaxis=dict(
+            title=None,
+            showgrid=False,
+            tickformat="%d %b<br>%H:%M",
+            nticks=7,
+        ),
+        yaxis=dict(
+            title="Coke rate (kg/THM)",
+            gridcolor="rgba(120,130,145,0.18)",
+            zeroline=False,
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig
+
+
 def _metric_text(metrics: dict[str, Any], name: str, decimals: int = 3) -> str:
     value = metrics.get(name)
     try:
@@ -582,21 +702,101 @@ def render_data_driven_coke_accuracy() -> None:
             "record the requested random-split score."
         )
 
+    bias_window_hours = float(cfg.get("bias_correction_window_hours", 24.0))
+    bias_min_periods = int(cfg.get("bias_correction_min_periods", 6))
+    history_days = int(cfg.get("accuracy_history_days", 14))
+    active_pointer = deployment_dir / "active.json"
+    try:
+        history = _data_driven_coke_history(
+            dataset_path=str(dataset_path),
+            dataset_mtime_ns=(
+                int(dataset_path.stat().st_mtime_ns) if dataset_path.is_file() else 0
+            ),
+            bundled_dir=str(bundled_dir),
+            deployment_dir=str(deployment_dir),
+            deployment_mtime_ns=(
+                int(active_pointer.stat().st_mtime_ns)
+                if active_pointer.is_file()
+                else 0
+            ),
+            bias_window_hours=bias_window_hours,
+            bias_min_periods=bias_min_periods,
+            history_days=history_days,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Could not build direct coke prediction history")
+        st.warning(
+            "Could not build the recent predicted-vs-actual coke chart: "
+            f"{_readable_failure(exc)}"
+        )
+    else:
+        if history.empty:
+            st.info("No eligible paired model prediction and coke-mass rows are available.")
+        else:
+            plotted = _recent_tracking_window(history)
+            st.markdown("#### Coke-rate tracking")
+            st.caption(
+                "Hourly raw, bias-corrected, and measured coke rate · "
+                f"latest {TRACKING_DISPLAY_DAYS * 24} hours"
+            )
+            st.plotly_chart(_coke_tracking_figure(plotted), width="stretch")
+
+            raw_mae, raw_bias, raw_n = _prediction_error(
+                plotted, "raw_predicted_coke_kg_per_thm"
+            )
+            corrected_mae, corrected_bias, corrected_n = _prediction_error(
+                plotted, "corrected_predicted_coke_kg_per_thm"
+            )
+            metric_cols = st.columns(4)
+            metric_cols[0].metric(
+                "Raw MAE",
+                f"{raw_mae:,.1f} kg/THM" if raw_mae is not None else "Not available",
+            )
+            metric_cols[1].metric(
+                "Raw bias",
+                f"{raw_bias:+,.1f} kg/THM" if raw_bias is not None else "Not available",
+            )
+            metric_cols[2].metric(
+                "Corrected MAE",
+                (
+                    f"{corrected_mae:,.1f} kg/THM"
+                    if corrected_mae is not None
+                    else "Not available"
+                ),
+            )
+            metric_cols[3].metric(
+                "Corrected bias",
+                (
+                    f"{corrected_bias:+,.1f} kg/THM"
+                    if corrected_bias is not None
+                    else "Not available"
+                ),
+            )
+            st.caption(
+                "Actual = 1,000 x COKE_CALC_MT / hourly hot metal. Corrected = "
+                f"raw prediction plus the median residual from only prior hours "
+                f"in a {bias_window_hours:g}-hour window (minimum "
+                f"{bias_min_periods} observations). Paired points: raw {raw_n:,}; "
+                f"corrected {corrected_n:,}."
+            )
+
     current = st.session_state.get("bmo_data_driven_coke_prediction", {}) or {}
     if current:
         if current.get("usable"):
-            count = int(current.get("hourly_prediction_count", 0) or 0)
-            window_text = (
-                f"median of {count} eligible hourly predictions from "
-                f"{current.get('window_start_utc', '')} to "
-                f"{current.get('window_end_utc', '')}"
-                if count > 1
-                else f"eligible hour at {current.get('origin_utc', '')}"
-            )
-            st.success(
-                f"Current accepted prediction: **{float(current['value_kg_per_thm']):,.1f} "
-                f"kg/THM** ({window_text})."
-            )
+            measured = current.get("measured_coke_rate_kg_per_thm")
+            if measured is not None:
+                st.success(
+                    f"Current measured anchor: **{float(measured):,.1f} kg/THM** "
+                    f"from {int(current.get('measured_hour_count', 0) or 0)} hours "
+                    f"({current.get('window_start_utc', '')} to "
+                    f"{current.get('window_end_utc', '')})."
+                )
+            raw_value = current.get("value_kg_per_thm")
+            if raw_value is not None:
+                st.caption(
+                    f"Raw model prediction over that window: "
+                    f"{float(raw_value):,.1f} kg/THM."
+                )
         else:
             reasons = " ".join(map(str, current.get("reasons", []) or []))
             st.warning(
@@ -689,8 +889,7 @@ def render_data_driven_coke_accuracy() -> None:
             "- Assay features are delayed 24 hours and the chronological split "
             "uses a 12-hour purge.\n"
             "- Random split is a secondary diagnostic. Later-time R2 is the "
-            "deployment safeguard. Neither makes the model a causal optimiser; "
-            "it remains a frozen current-state anchor."
+            "deployment safeguard. Neither makes the model a causal optimiser."
         )
 
 

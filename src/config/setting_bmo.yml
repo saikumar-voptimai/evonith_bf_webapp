@@ -388,20 +388,24 @@ bmo:
   # do, rather than reporting yesterday's number or the model's near-constant.
   # Falls back to observed when the live tags, the calibration, or the solve
   # are unavailable — see utils/bmo/energy_anchor.py.
-  # data_driven (current): use the validated, price-independent direct coke-rate
-  # model for the frozen current-state anchor.
+  # data_driven (current): use the measured coke/hot-metal mass ratio for the
+  # frozen current-state anchor and monitor it against the direct coke model.
   fuel_rate_anchor_basis: data_driven
 
-  # Direct price-independent coke-rate model. The page switch chooses this or
-  # the energy balance for the run's frozen coke anchor; the physical correction
-  # below remains the only per-candidate blend response in either mode.
+  # Direct price-independent coke-rate model and measured-anchor settings. The
+  # physical correction below remains the per-candidate blend response.
   data_driven_coke:
     bundled_model_dir: src/assets/models/bmo_coke_xgb
     deployment_dir: src/storage/bmo_coke_model
     dataset_path: src/assets/data/furnace_dataset.csv
-    # Median of eligible hourly predictions; avoids anchoring the whole run on
-    # one noisy burden/coke-rate hour.
+    # The optimizer anchor is the aggregate plant mass ratio over this window:
+    # 1,000 x sum(COKE_CALC_MT) / sum(PRODUCTIONTONNESPERHR).
     lookback_hours: 6
+    manual_blend_lookback_hours: 6
+    # Accuracy-chart correction uses only residuals from earlier timestamps.
+    bias_correction_window_hours: 24
+    bias_correction_min_periods: 6
+    accuracy_history_days: 14
     max_input_stale_hours: 6.0
     max_source_age_hours: 6.0
     retraining:
