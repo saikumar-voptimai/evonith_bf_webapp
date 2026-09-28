@@ -227,7 +227,8 @@ def test_data_driven_anchor_skips_legacy_cost_model_and_uses_current_prices():
     assert blend.fuel_cost_per_thm_rs == pytest.approx(expected)
     assert blend.diagnostics["adjusted_fuel_cost_per_thm_rs"] == pytest.approx(expected)
     assert (
-        blend.diagnostics["model_prediction"].details["source"] == "direct_coke_xgboost"
+        blend.diagnostics["model_prediction"].details["source"]
+        == "measured_coke_mass_ratio"
     )
 
 

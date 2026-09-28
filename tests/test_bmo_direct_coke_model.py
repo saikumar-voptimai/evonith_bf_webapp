@@ -156,6 +156,7 @@ def test_inference_uses_median_of_eligible_predictions_in_lookback(
             "SINTER_CALC_MT": [50.0] * 8,
             "TOTAL_PELLET_CALC_MT": [10.0] * 8,
             "PRODUCTIONTONNESPERHR": [90.0] * 8,
+            "COKE_CALC_MT": [27.0] * 8,
         },
         index=index,
     )
@@ -163,6 +164,9 @@ def test_inference_uses_median_of_eligible_predictions_in_lookback(
     features = pd.DataFrame(
         0.0, index=index, columns=service.schema["features"], dtype=float
     )
+    ranged_feature = service.schema["features"][0]
+    service.schema["feature_limits"] = {ranged_feature: [-1.0, 1.0]}
+    features.loc[index[-1], ranged_feature] = 2.0
 
     def prepared(*args, **kwargs):
         assert kwargs["lookback_hours"] == 6
@@ -177,9 +181,21 @@ def test_inference_uses_median_of_eligible_predictions_in_lookback(
     assert result.value_kg_per_thm == pytest.approx(302.5)
     assert result.hourly_prediction_count == 6
     assert result.aggregation == "median"
+    assert result.measured_coke_rate_kg_per_thm == pytest.approx(300.0)
+    assert result.measured_coke_mt == pytest.approx(162.0)
+    assert result.measured_hot_metal_mt == pytest.approx(540.0)
+    assert result.measured_hour_count == 6
     assert result.window_start_utc == str(index[2])
     assert result.window_end_utc == str(index[-1])
     assert result.latest_input_diagnostics["burden_mt"] == 70.0
+    detail = next(
+        item
+        for item in result.outside_training_details
+        if item["feature"] == ranged_feature
+    )
+    assert detail["expected_p01"] == -1.0
+    assert detail["expected_p99"] == 1.0
+    assert detail["received"] == 2.0
 
 
 def test_inference_rejects_a_prediction_behind_the_dataset(monkeypatch, tmp_path):
@@ -191,6 +207,7 @@ def test_inference_rejects_a_prediction_behind_the_dataset(monkeypatch, tmp_path
             "SINTER_CALC_MT": [50.0, 0.0],
             "TOTAL_PELLET_CALC_MT": [10.0, 0.0],
             "PRODUCTIONTONNESPERHR": [90.0, 90.0],
+            "COKE_CALC_MT": [27.0, 0.0],
         },
         index=index,
     )
@@ -211,6 +228,78 @@ def test_inference_rejects_a_prediction_behind_the_dataset(monkeypatch, tmp_path
     assert result.usable is False
     assert result.stale_hours == 1.0
     assert "behind the dataset" in " ".join(result.reasons)
+
+
+def test_anchor_is_ratio_of_summed_coke_and_hot_metal_masses(
+    monkeypatch, tmp_path
+):
+    service = DirectCokeModelService(deployment_dir=tmp_path / "deploy")
+    service.model = _WindowFakeModel()
+    index = pd.date_range("2026-09-25 09:30:00Z", periods=2, freq="h")
+    cleaned = pd.DataFrame(
+        {
+            "ORE_CALC_MT": [10.0, 10.0],
+            "SINTER_CALC_MT": [50.0, 50.0],
+            "TOTAL_PELLET_CALC_MT": [10.0, 10.0],
+            "PRODUCTIONTONNESPERHR": [100.0, 50.0],
+            "COKE_CALC_MT": [30.0, 20.0],
+        },
+        index=index,
+    )
+    audit = pd.DataFrame({"normal_eligible": True}, index=index)
+    features = pd.DataFrame(
+        0.0, index=index, columns=service.schema["features"], dtype=float
+    )
+    monkeypatch.setattr(
+        module,
+        "_prepare_context",
+        lambda *args, **kwargs: (cleaned, audit, features, {}, pd.DataFrame()),
+    )
+
+    result = service.predict_from_history(
+        pd.DataFrame(), lookback_hours=2, now=index[-1]
+    )
+
+    assert result.usable is True
+    assert result.measured_coke_rate_kg_per_thm == pytest.approx(1000.0 / 3.0)
+    assert result.measured_coke_rate_kg_per_thm != pytest.approx(350.0)
+
+
+class _ConstantFakeModel:
+    def predict(self, matrix):
+        return np.full(matrix.num_row(), 280.0)
+
+
+def test_corrected_history_uses_only_prior_residuals(monkeypatch, tmp_path):
+    service = DirectCokeModelService(deployment_dir=tmp_path / "deploy")
+    service.model = _ConstantFakeModel()
+    index = pd.date_range("2026-09-25 09:30:00Z", periods=4, freq="h")
+    cleaned = pd.DataFrame(
+        {
+            "PRODUCTIONTONNESPERHR": [100.0] * 4,
+            "COKE_CALC_MT": [30.0, 31.0, 29.0, 30.0],
+        },
+        index=index,
+    )
+    audit = pd.DataFrame({"normal_eligible": True}, index=index)
+    features = pd.DataFrame(
+        0.0, index=index, columns=service.schema["features"], dtype=float
+    )
+    monkeypatch.setattr(
+        module,
+        "_prepare_context",
+        lambda *args, **kwargs: (cleaned, audit, features, {}, pd.DataFrame()),
+    )
+
+    history = service.prediction_history(
+        pd.DataFrame(), bias_window_hours=24, bias_min_periods=2
+    )
+
+    corrected = history["corrected_predicted_coke_kg_per_thm"]
+    assert pd.isna(corrected.iloc[0])
+    assert pd.isna(corrected.iloc[1])
+    assert corrected.iloc[2] == pytest.approx(305.0)
+    assert corrected.iloc[3] == pytest.approx(300.0)
 
 
 class _SavedFakeModel:

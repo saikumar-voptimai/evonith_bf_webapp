@@ -141,7 +141,7 @@ class TestLpFluxBasicity:
 
         assert blend is None
         assert any("Max Slag cap is lifted" in error for error in errors)
-        assert any("LP would add dolomite" in error for error in errors)
+        assert any("Balanced Optimizer would add dolomite" in error for error in errors)
 
     def test_low_basicity_picks_cheapest_cao_source_by_price(self):
         # Both limestone and dolomite can raise basicity; the LP should pick the
@@ -197,6 +197,85 @@ class TestLpFluxBasicity:
         flux_qty = blend.diagnostics["lp_flux_quantities_mt"]
         assert flux_qty["dolomite"] == pytest.approx(0.0, abs=1e-6)
         assert flux_qty["quartz"] == pytest.approx(0.0, abs=1e-6)
+
+    def test_operator_flux_minimum_is_a_hard_bound(self):
+        ores = [_ore("ore_a", sio2=5.0, cao=5.0), _ore("ore_b", sio2=5.0, cao=5.0)]
+        dolomite = _dolomite()
+        dolomite.min_qty_mt = 25.0
+        dolomite.max_qty_mt = 40.0
+
+        blend, errors = run_lp_baseline(
+            ores,
+            target_production_mt=100.0,
+            target_slag_qty_mt=2000.0,
+            feo_in_slag_pct=0.0,
+            target_slag_basicity_min=0.0,
+            target_slag_basicity_max=3.0,
+            flux_inputs=[dolomite],
+        )
+
+        assert errors == []
+        assert blend is not None
+        assert blend.diagnostics["lp_flux_quantities_mt"]["dolomite"] == pytest.approx(
+            25.0
+        )
+
+    def test_operator_flux_maximum_can_make_basicity_infeasible(self):
+        ores = [_ore("ore_a", sio2=8.0, cao=1.0), _ore("ore_b", sio2=7.0, cao=1.5)]
+        dolomite = _dolomite()
+        dolomite.max_qty_mt = 1.0
+
+        blend, errors = run_lp_baseline(
+            ores,
+            target_production_mt=100.0,
+            target_slag_qty_mt=2000.0,
+            feo_in_slag_pct=0.0,
+            target_slag_basicity_min=0.8,
+            target_slag_basicity_max=3.0,
+            flux_inputs=[dolomite],
+            _explain=False,
+        )
+
+        assert blend is None
+        assert errors
+
+    def test_zero_flux_maximum_overrides_a_previous_fixed_quantity(self):
+        ores = [_ore("ore_a", sio2=5.0, cao=5.0), _ore("ore_b", sio2=5.0, cao=5.0)]
+        dolomite = _dolomite()
+        dolomite.wet_qty_mt = 30.0
+        dolomite.max_qty_mt = 0.0
+
+        blend, errors = run_lp_baseline(
+            ores,
+            target_production_mt=100.0,
+            target_slag_qty_mt=2000.0,
+            feo_in_slag_pct=0.0,
+            target_slag_basicity_min=0.0,
+            target_slag_basicity_max=3.0,
+            flux_inputs=[dolomite],
+        )
+
+        assert errors == []
+        assert blend is not None
+        assert blend.diagnostics["lp_flux_quantities_mt"]["dolomite"] == pytest.approx(
+            0.0
+        )
+
+    def test_invalid_operator_flux_range_is_rejected(self):
+        dolomite = _dolomite()
+        dolomite.min_qty_mt = 50.0
+        dolomite.max_qty_mt = 40.0
+
+        blend, errors = run_lp_baseline(
+            [_ore("ore_a", sio2=5.0, cao=5.0), _ore("ore_b", sio2=5.0, cao=5.0)],
+            target_production_mt=100.0,
+            target_slag_qty_mt=2000.0,
+            feo_in_slag_pct=0.0,
+            flux_inputs=[dolomite],
+        )
+
+        assert blend is None
+        assert any("minimum flux quantity" in error for error in errors)
 
 
 if __name__ == "__main__":  # pragma: no cover

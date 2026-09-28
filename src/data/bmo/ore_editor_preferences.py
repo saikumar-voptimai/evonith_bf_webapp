@@ -30,11 +30,13 @@ PERSISTED_MODEL_INPUT_COLUMNS = (
     "charge_mass_mt",
 )
 
-# Flux price/stock are operator inputs (like ore price/bounds), so they persist
+# Flux price/stock/bounds are operator inputs (like ore price/bounds), so they persist
 # across sessions. Chemistry and the optimizable flag stay driven by config.
 PERSISTED_FLUX_COLUMNS = (
     "price_rs_per_mt",
     "stock_mt",
+    "min_qty_mt",
+    "max_qty_mt",
 )
 
 # Every editable Fuel Ash value is an operator input. Persist the complete row
@@ -455,9 +457,7 @@ def save_fuel_price_preferences(path: str | Path, fuel_ash_df: pd.DataFrame) -> 
     payload = load_ore_editor_preferences(pref_path)
     fuel_section = payload.setdefault("fuel_ash_editor", {})
     saved_rows = fuel_section.setdefault("rows", {})
-    price_rows = build_fuel_price_preferences(fuel_ash_df)["fuel_ash_editor"][
-        "rows"
-    ]
+    price_rows = build_fuel_price_preferences(fuel_ash_df)["fuel_ash_editor"]["rows"]
     for fuel_id, price_values in price_rows.items():
         saved_row = saved_rows.setdefault(fuel_id, {})
         saved_row.update(price_values)

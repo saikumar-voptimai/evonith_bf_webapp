@@ -74,11 +74,11 @@ PAGE_FROZEN_VARS = (
 
 # Session keys (after the prefix) used by this module. All sit under ``ui_`` so
 # they are never captured as inputs nor restored as widget values.
-K_LATEST = f"{UI_SUFFIX}ctx_latest"        # call key -> latest result
-K_RERUN = f"{UI_SUFFIX}ctx_rerun"          # this rerun's calls
-K_RECORD = f"{UI_SUFFIX}run_record"        # the pinned context of the last run
-K_FROZEN = f"{UI_SUFFIX}frozen"            # decoded frozen context being replayed
-K_PENDING = f"{UI_SUFFIX}replay_pending"   # run-start session values to replay
+K_LATEST = f"{UI_SUFFIX}ctx_latest"  # call key -> latest result
+K_RERUN = f"{UI_SUFFIX}ctx_rerun"  # this rerun's calls
+K_RECORD = f"{UI_SUFFIX}run_record"  # the pinned context of the last run
+K_FROZEN = f"{UI_SUFFIX}frozen"  # decoded frozen context being replayed
+K_PENDING = f"{UI_SUFFIX}replay_pending"  # run-start session values to replay
 K_FALLBACKS = f"{UI_SUFFIX}replay_fallbacks"  # calls answered live in the sandbox
 
 
@@ -95,7 +95,11 @@ def results_marker(state: Mapping[str, Any], prefix: str) -> tuple:
 def _norm_arg(value: Any) -> str:
     if isinstance(value, pd.DataFrame):
         return "<frame>"
-    if isinstance(value, (list, tuple)) and value and all(hasattr(v, "ore_id") for v in value):
+    if (
+        isinstance(value, (list, tuple))
+        and value
+        and all(hasattr(v, "ore_id") for v in value)
+    ):
         return "ores:" + ",".join(sorted(str(v.ore_id) for v in value))
     if value is None or isinstance(value, (str, int, float, bool)):
         return repr(value)
@@ -116,7 +120,9 @@ def call_key(name: str, args: tuple, kwargs: Mapping[str, Any]) -> str:
 class RecordingProvider:
     """Pass-through wrapper that remembers what every public provider call returned."""
 
-    def __init__(self, inner: Any, state: MutableMapping[str, Any], prefix: str) -> None:
+    def __init__(
+        self, inner: Any, state: MutableMapping[str, Any], prefix: str
+    ) -> None:
         self._inner = inner
         self._state = state
         self._prefix = prefix
@@ -142,12 +148,14 @@ class RecordingProvider:
             result = attr(*args, **kwargs)
             key = call_key(name, args, kwargs)
             self._latest[key] = result
-            self._rerun["calls"].append({
-                "key": key,
-                "result": result,
-                "before_run": results_marker(self._state, self._prefix)
-                == self._rerun["start_marker"],
-            })
+            self._rerun["calls"].append(
+                {
+                    "key": key,
+                    "result": result,
+                    "before_run": results_marker(self._state, self._prefix)
+                    == self._rerun["start_marker"],
+                }
+            )
             return result
 
         return recorded
@@ -199,7 +207,9 @@ def finalize_run(
             calls[call["key"]] = call["result"]
 
     state[f"{prefix}{K_RECORD}"] = build_record(
-        state, prefix, page_vars,
+        state,
+        prefix,
+        page_vars,
         provider_calls=calls,
         session_at_run=dict(rerun["start_session"]),
         marker=marker,
@@ -230,7 +240,7 @@ def build_record(
         key = str(key)
         if not key.startswith(prefix):
             continue
-        suffix = key[len(prefix):]
+        suffix = key[len(prefix) :]
         if classify_suffix(suffix) == "inputs":
             inputs[suffix] = state[key]
     for var, suffix in PAGE_INPUT_TABLES.items():
@@ -266,7 +276,9 @@ def build_record(
 class ReplayProvider:
     """Answers provider calls from a snapshot; falls back to live data, and says so."""
 
-    def __init__(self, inner: Any, calls: Mapping[str, Any], fallbacks: list[str]) -> None:
+    def __init__(
+        self, inner: Any, calls: Mapping[str, Any], fallbacks: list[str]
+    ) -> None:
         self._inner = inner
         self._calls = calls
         self._fallbacks = fallbacks
@@ -280,6 +292,19 @@ class ReplayProvider:
             key = call_key(name, args, kwargs)
             if key in self._calls:
                 return copy.deepcopy(self._calls[key])
+            # Snapshots created before the operating lookback was shared with
+            # the manual-blend lookup do not have this keyword in their key.
+            # Reuse the frozen legacy result rather than leaking live plant
+            # data into a supposedly reproducible sandbox run.
+            if (
+                name == "get_recent_manual_blend_snapshot"
+                and "lookback_hours" in kwargs
+            ):
+                legacy_kwargs = dict(kwargs)
+                legacy_kwargs.pop("lookback_hours")
+                legacy_key = call_key(name, args, legacy_kwargs)
+                if legacy_key in self._calls:
+                    return copy.deepcopy(self._calls[legacy_key])
             if key not in self._fallbacks:
                 self._fallbacks.append(key)
             return attr(*args, **kwargs)
@@ -313,7 +338,10 @@ def frozen_config(page: Mapping[str, Any]) -> dict[str, Any] | None:
             runtime["optimizer"] = {**runtime_optimizer, "initial_solution": seed}
             cfg["optimization_runtime"] = runtime
         else:
-            cfg["optimization"] = {**(cfg.get("optimization") or {}), "initial_solution": seed}
+            cfg["optimization"] = {
+                **(cfg.get("optimization") or {}),
+                "initial_solution": seed,
+            }
     return cfg
 
 
@@ -338,9 +366,12 @@ def page_substitutes(
 
     subs: dict[str, Callable[[Any], Any]] = {}
     for name in (
-        "save_model_input_preferences", "save_ore_editor_preferences",
-        "save_flux_preferences", "save_fuel_ash_preferences",
-        "save_dust_preferences", "save_hm_chemistry_preferences",
+        "save_model_input_preferences",
+        "save_ore_editor_preferences",
+        "save_flux_preferences",
+        "save_fuel_ash_preferences",
+        "save_dust_preferences",
+        "save_hm_chemistry_preferences",
     ):
         subs[name] = lambda _orig: _refuse_save
 
@@ -365,7 +396,9 @@ def page_substitutes(
         subs["_get_bmo_config"] = lambda _orig: (lambda: copy.deepcopy(cfg))
     if "recent_fuel_rates" in page:
         rates = dict(page["recent_fuel_rates"] or {})
-        subs["_recent_fuel_rates_from_static_csv"] = lambda _orig: (lambda *a, **k: dict(rates))
+        subs["_recent_fuel_rates_from_static_csv"] = lambda _orig: (
+            lambda *a, **k: dict(rates)
+        )
         subs["_recent_fuel_rates_live"] = lambda _orig: (lambda *a, **k: {})
     if "operator_preferences" in page:
         prefs = page["operator_preferences"]
@@ -388,7 +421,9 @@ class PageNamespace(MutableMapping):
     page's functions see it), after any substitution for that name.
     """
 
-    def __init__(self, globals_: dict[str, Any], substitutes: Mapping[str, Callable]) -> None:
+    def __init__(
+        self, globals_: dict[str, Any], substitutes: Mapping[str, Callable]
+    ) -> None:
         self._g = globals_
         self._subs = dict(substitutes)
 
@@ -402,7 +437,9 @@ class PageNamespace(MutableMapping):
         if sub is not None:
             try:
                 value = sub(value)
-            except Exception:  # noqa: BLE001 - a broken substitute must not break the page
+            except (
+                Exception
+            ):  # noqa: BLE001 - a broken substitute must not break the page
                 log.exception("Sandbox substitute for %s failed", key)
         self._g[key] = value
 

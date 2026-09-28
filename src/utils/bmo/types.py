@@ -216,9 +216,12 @@ class FluxInput:
          - zn_pct: float - Zinc percentage on dry flux basis.
          - loi_pct: float - LOI percentage retained for diagnostics.
          - price_rs_per_mt: float - Flux price, used when the LP optimises flux quantity.
-         - stock_mt: float - Available flux stock; upper bound when the LP optimises flux.
-         - optimizable: bool - If True, the LP decides this flux's quantity (0..stock)
-           to satisfy the slag basicity bounds; otherwise it is a fixed addition.
+         - stock_mt: float - Available flux stock; absolute upper bound.
+         - min_qty_mt: float - Minimum quantity when the flux is optimised.
+         - max_qty_mt: float | None - Operator maximum when the flux is optimised;
+           None uses the available stock.
+         - optimizable: bool - If True, the optimizers decide this flux's quantity
+           within the operator bounds; otherwise it is a fixed addition.
 
     Returns:
          - return FluxInput - Flux record used by blend calculations.
@@ -245,6 +248,8 @@ class FluxInput:
     loi_pct: float = 0.0
     price_rs_per_mt: float = 0.0
     stock_mt: float = 0.0
+    min_qty_mt: float = 0.0
+    max_qty_mt: float | None = None
     optimizable: bool = False
 
 

@@ -96,8 +96,9 @@ def render_furnace_commentary(
         (getattr(de_blend, "diagnostics", {}) or {}).get("de_fell_back_to_lp")
     )
     recommended_label = (
-        "DE total cost" if de_blend is not None and not de_is_fallback
-        else "LP baseline"
+        "Intensive Optimizer"
+        if de_blend is not None and not de_is_fallback
+        else "Balanced Optimizer"
     )
 
     context = build_commentary_context(
@@ -118,7 +119,8 @@ def render_furnace_commentary(
     with left:
         if context.missing:
             st.caption(
-                "⚠️ Not available for this run: " + ", ".join(context.missing)
+                "⚠️ Not available for this run: "
+                + ", ".join(context.missing)
                 + ". The commentary will say so rather than guess."
             )
     with right:

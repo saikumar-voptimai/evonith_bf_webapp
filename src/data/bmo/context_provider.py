@@ -26,7 +26,6 @@ from furnace_data.offline import (
     fetch_offline_report as _fetch_offline_report,
 )
 
-
 HM_FE_COLUMN = "chem_pct_fe"
 HM_PI_CHEM_COLUMNS = ("chem_pct_c", "chem_pct_si", "chem_pct_s")
 HM_OTHER_CHEM_COLUMNS = ("chem_pct_mn", "chem_pct_p", "chem_pct_ti", "chem_pct_cr")
@@ -300,8 +299,7 @@ class EvonithBmoContextProvider:
         groups = config.get("charge_columns", {}) or {}
         wanted = ("coke", "nut_coke", "sinter", "ore", "pellet", "flux")
         return {
-            group: [str(column) for column in groups.get(group, [])]
-            for group in wanted
+            group: [str(column) for column in groups.get(group, [])] for group in wanted
         }
 
     def _recent_context_window(
@@ -352,7 +350,9 @@ class EvonithBmoContextProvider:
             frames.append(frame)
 
         if issues:
-            warnings.extend([f"Online model context issue: {issue}" for issue in issues])
+            warnings.extend(
+                [f"Online model context issue: {issue}" for issue in issues]
+            )
 
         if not frames:
             self._last_online_context_diagnostics = {
@@ -383,12 +383,16 @@ class EvonithBmoContextProvider:
             "source": "online_influx",
             "enabled": True,
             "max_lag_hours": int(max_lag_hours),
-            "start_time": self._iso(online_df.index.min())
-            if not online_df.empty
-            else self._iso(start_local),
-            "end_time": self._iso(online_df.index.max())
-            if not online_df.empty
-            else self._iso(end_local),
+            "start_time": (
+                self._iso(online_df.index.min())
+                if not online_df.empty
+                else self._iso(start_local)
+            ),
+            "end_time": (
+                self._iso(online_df.index.max())
+                if not online_df.empty
+                else self._iso(end_local)
+            ),
             "rows": int(len(online_df)),
             "columns": int(len(online_df.columns)),
             "column_names": list(map(str, online_df.columns)),
@@ -414,11 +418,7 @@ class EvonithBmoContextProvider:
         fetch_end_utc = end_utc + pd.Timedelta(hours=1)
         columns_by_group = self._charge_columns_by_group()
         all_columns = sorted(
-            {
-                column
-                for columns in columns_by_group.values()
-                for column in columns
-            }
+            {column for columns in columns_by_group.values() for column in columns}
         )
         if not all_columns:
             self._last_charge_context_diagnostics = {
@@ -452,7 +452,9 @@ class EvonithBmoContextProvider:
             return pd.DataFrame(), warnings
 
         charge_df = self._frame_with_time_column(df)
-        present_columns = [column for column in all_columns if column in charge_df.columns]
+        present_columns = [
+            column for column in all_columns if column in charge_df.columns
+        ]
         if charge_df.empty or not present_columns:
             self._last_charge_context_diagnostics = {
                 "source": "offline_feed.charge_data",
@@ -486,7 +488,9 @@ class EvonithBmoContextProvider:
         out = hourly.rename(columns=rename_dict)
 
         def group_sum(group: str) -> pd.Series | None:
-            cols = [col for col in columns_by_group.get(group, []) if col in hourly.columns]
+            cols = [
+                col for col in columns_by_group.get(group, []) if col in hourly.columns
+            ]
             if not cols:
                 return None
             return hourly[cols].sum(axis=1)
@@ -591,11 +595,7 @@ class EvonithBmoContextProvider:
     def get_charge_mix_snapshot(self) -> dict[str, Any]:
         columns_by_group = self._charge_columns_by_group()
         all_columns = sorted(
-            {
-                column
-                for columns in columns_by_group.values()
-                for column in columns
-            }
+            {column for columns in columns_by_group.values() for column in columns}
         )
         if not all_columns:
             self._last_charge_mix_diagnostics = {"rows": [], "warnings": []}
@@ -656,7 +656,8 @@ class EvonithBmoContextProvider:
                     present = [column for column in columns if column in frame.columns]
                     if present:
                         group_totals[group] = float(
-                            frame[present].apply(pd.to_numeric, errors="coerce")
+                            frame[present]
+                            .apply(pd.to_numeric, errors="coerce")
                             .fillna(0.0)
                             .sum()
                             .sum()
@@ -670,9 +671,9 @@ class EvonithBmoContextProvider:
                             "window": window_name,
                             "group": group,
                             "quantity_mt": total,
-                            "share_pct": (total / total_mt * 100.0)
-                            if total_mt > 0.0
-                            else 0.0,
+                            "share_pct": (
+                                (total / total_mt * 100.0) if total_mt > 0.0 else 0.0
+                            ),
                             "rows": int(len(frame)),
                             "anchor_time": self._iso(latest_utc),
                         }
@@ -687,9 +688,127 @@ class EvonithBmoContextProvider:
         }
         return self._last_charge_mix_diagnostics
 
-    def get_recent_manual_blend_snapshot(
-        self, selected_ores: list[OreInput]
+    def _manual_blend_from_static_dataset(
+        self,
+        selected_ores: list[OreInput],
+        *,
+        lookback_hours: float,
     ) -> dict[str, Any]:
+        """Return median hourly burden shares from the furnace dataset."""
+
+        hours = max(1.0, float(lookback_hours))
+        warnings: list[str] = []
+        try:
+            path = self._dataset_service.resolve_static_path()
+            frame = pd.read_csv(path, index_col=0)
+            frame.index = pd.to_datetime(frame.index, errors="coerce", utc=True)
+            frame = frame[~frame.index.isna()].sort_index()
+        except Exception as exc:
+            frame = pd.DataFrame()
+            warnings.append(f"Could not read the furnace dataset manual blend: {exc}")
+
+        rename_dict = self._dataset_rename_dict()
+        material_codes = [
+            str(ore.metadata.get("material_key", "")).strip() for ore in selected_ores
+        ]
+        sinter_count = sum(code.startswith("sinter") for code in material_codes)
+        pellet_count = sum(code.startswith("pellet") for code in material_codes)
+        columns_by_ore: dict[str, str] = {}
+        missing_names: list[str] = []
+        available = set(map(str, frame.columns))
+        for ore, material_code in zip(selected_ores, material_codes):
+            column = rename_dict.get(f"{material_code}_mt", "")
+            if (
+                column not in available
+                and material_code.startswith("sinter")
+                and sinter_count == 1
+            ):
+                column = "SINTER_CALC_MT"
+            if (
+                column not in available
+                and material_code.startswith("pellet")
+                and pellet_count == 1
+            ):
+                column = "TOTAL_PELLET_CALC_MT"
+            if column in available:
+                columns_by_ore[ore.ore_id] = column
+            else:
+                missing_names.append(ore.display_name)
+
+        rows: list[dict[str, Any]] = []
+        window = pd.DataFrame()
+        if not frame.empty and columns_by_ore:
+            latest = frame.index.max()
+            window = frame[
+                (frame.index > latest - pd.Timedelta(hours=hours))
+                & (frame.index <= latest)
+            ]
+            quantities = pd.DataFrame(index=window.index)
+            for ore in selected_ores:
+                column = columns_by_ore.get(ore.ore_id)
+                quantities[ore.ore_id] = (
+                    pd.to_numeric(window[column], errors="coerce").fillna(0.0)
+                    if column
+                    else 0.0
+                )
+            totals = quantities.sum(axis=1)
+            quantities = quantities.loc[totals > 0.0]
+            totals = totals.loc[quantities.index]
+            window = window.loc[quantities.index]
+            if not quantities.empty:
+                median_shares = quantities.div(totals, axis=0).mul(100.0).median()
+                share_total = float(median_shares.sum())
+                if share_total > 0.0:
+                    median_shares = median_shares.mul(100.0 / share_total)
+                median_quantities = quantities.median()
+                for ore in selected_ores:
+                    rows.append(
+                        {
+                            "ore_id": ore.ore_id,
+                            "ore_name": ore.display_name,
+                            "material_code": str(
+                                ore.metadata.get("material_key", "")
+                            ).strip(),
+                            "charge_column": columns_by_ore.get(ore.ore_id, ""),
+                            "quantity_mt": float(
+                                median_quantities.get(ore.ore_id, 0.0)
+                            ),
+                            "share_pct": float(median_shares.get(ore.ore_id, 0.0)),
+                        }
+                    )
+
+        if missing_names:
+            warnings.append(
+                "Furnace dataset has no separate burden column for: "
+                + ", ".join(missing_names)
+                + "."
+            )
+        if not rows:
+            warnings.append(
+                f"No positive selected-material burden was found in the last {hours:g} hours."
+            )
+        self._last_manual_blend_diagnostics = {
+            "source": "static_furnace_dataset",
+            "aggregation": "median_hourly_share",
+            "lookback_hours": hours,
+            "start_time": self._iso(window.index.min()) if not window.empty else "",
+            "end_time": self._iso(window.index.max()) if not window.empty else "",
+            "rows_used": int(len(window)),
+            "rows": rows,
+            "warnings": warnings,
+        }
+        return self._last_manual_blend_diagnostics
+
+    def get_recent_manual_blend_snapshot(
+        self,
+        selected_ores: list[OreInput],
+        lookback_hours: float | None = None,
+    ) -> dict[str, Any]:
+        if lookback_hours is not None:
+            return self._manual_blend_from_static_dataset(
+                selected_ores, lookback_hours=lookback_hours
+            )
+
         columns_by_ore = {
             ore.ore_id: self._material_charge_column(
                 str(ore.metadata.get("material_key", "")).strip()
@@ -770,7 +889,9 @@ class EvonithBmoContextProvider:
                     }
                 )
             if total_mt <= 0:
-                warnings.append("Last completed shift has zero selected-material charge.")
+                warnings.append(
+                    "Last completed shift has zero selected-material charge."
+                )
 
         self._last_manual_blend_diagnostics = {
             "source": "offline_feed.charge_data",
@@ -926,11 +1047,19 @@ class EvonithBmoContextProvider:
                 columns=columns,
             )
         except Exception as exc:
-            return {}, rows, [f"Charge usage query failed for chemistry latest mode: {exc}"]
+            return (
+                {},
+                rows,
+                [f"Charge usage query failed for chemistry latest mode: {exc}"],
+            )
 
         charge_df = self._frame_with_time_column(df)
         if charge_df.empty:
-            return {}, rows, ["No charge rows returned for chemistry latest usage lookup."]
+            return (
+                {},
+                rows,
+                ["No charge rows returned for chemistry latest usage lookup."],
+            )
 
         for material_code, column in columns_by_material.items():
             if column not in charge_df.columns:
@@ -1047,12 +1176,16 @@ class EvonithBmoContextProvider:
                     "table": table_name,
                     "returned_rows": int(len(chem_df)),
                     "materials_requested": ", ".join(sorted(material_codes)),
-                    "start_time": self._iso(chem_df["time"].min())
-                    if "time" in chem_df.columns and not chem_df.empty
-                    else "",
-                    "end_time": self._iso(chem_df["time"].max())
-                    if "time" in chem_df.columns and not chem_df.empty
-                    else "",
+                    "start_time": (
+                        self._iso(chem_df["time"].min())
+                        if "time" in chem_df.columns and not chem_df.empty
+                        else ""
+                    ),
+                    "end_time": (
+                        self._iso(chem_df["time"].max())
+                        if "time" in chem_df.columns and not chem_df.empty
+                        else ""
+                    ),
                 }
             )
             if chem_df.empty:
@@ -1090,19 +1223,26 @@ class EvonithBmoContextProvider:
                     "source": source,
                     "table": table_name,
                     "rows_used": int(len(source_group)),
-                    "start_time": self._iso(source_group["time"].min())
-                    if "time" in source_group.columns and not source_group.empty
-                    else "",
-                    "end_time": self._iso(source_group["time"].max())
-                    if "time" in source_group.columns and not source_group.empty
-                    else "",
-                    "sample_timestamp": self._iso(source_group["time"].max())
-                    if "time" in source_group.columns and not source_group.empty
-                    else "",
+                    "start_time": (
+                        self._iso(source_group["time"].min())
+                        if "time" in source_group.columns and not source_group.empty
+                        else ""
+                    ),
+                    "end_time": (
+                        self._iso(source_group["time"].max())
+                        if "time" in source_group.columns and not source_group.empty
+                        else ""
+                    ),
+                    "sample_timestamp": (
+                        self._iso(source_group["time"].max())
+                        if "time" in source_group.columns and not source_group.empty
+                        else ""
+                    ),
                     "latest_used_time": self._iso(latest_used_time),
                 }
 
         fallback_count = 0
+        fallback_names: list[str] = []
         material_rows: list[dict[str, Any]] = []
         for ore_cfg in self._ores_cfg:
             ore_id = str(ore_cfg.get("id"))
@@ -1112,6 +1252,7 @@ class EvonithBmoContextProvider:
             snapshot = snapshots.get(material_key, pd.Series(dtype=float))
             if snapshot.empty:
                 fallback_count += 1
+                fallback_names.append(str(ore_cfg.get("display_name", ore_id)))
                 meta = {
                     "source": "fallback",
                     "table": self._chemistry_table_for(material_key),
@@ -1153,16 +1294,14 @@ class EvonithBmoContextProvider:
                     "display_name": str(ore_cfg.get("display_name", ore_id)),
                     "material_code": material_key,
                     **meta,
-                    **{
-                        key: float(value)
-                        for key, value in chem_values.items()
-                    },
+                    **{key: float(value) for key, value in chem_values.items()},
                 }
             )
 
         if fallback_count:
             warnings.append(
-                f"Chemistry unavailable for {fallback_count} material(s); using configured fallback chemistry."
+                f"Chemistry unavailable for {fallback_count} materials "
+                f"({', '.join(fallback_names)}); using configured fallback chemistry."
             )
 
         self._last_chemistry_diagnostics = {
@@ -1171,9 +1310,9 @@ class EvonithBmoContextProvider:
             "start_time": self._iso(time_range[0]),
             "end_time": self._iso(time_range[1]),
             "fallback_count": fallback_count,
-            "latest_usage_lookback_days": latest_usage_lookback_days
-            if mode == "latest"
-            else None,
+            "latest_usage_lookback_days": (
+                latest_usage_lookback_days if mode == "latest" else None
+            ),
             "tables": table_rows,
             "usage_rows": usage_rows,
             "material_rows": material_rows,
@@ -1240,7 +1379,9 @@ class EvonithBmoContextProvider:
             material_codes = pd.Series("", index=fuel_df.index, dtype="string")
 
         for fuel_id, (material_prefix, source_columns) in FUEL_MOISTURE_FIELDS.items():
-            family = fuel_df[material_codes.str.startswith(material_prefix, na=False)].copy()
+            family = fuel_df[
+                material_codes.str.startswith(material_prefix, na=False)
+            ].copy()
             for analysis_field, candidate_columns in (
                 ("moisture_pct", source_columns),
                 ("vm_pct", ("vm",)),
@@ -1250,9 +1391,7 @@ class EvonithBmoContextProvider:
                         column
                         for column in candidate_columns
                         if column in family.columns
-                        and pd.to_numeric(family[column], errors="coerce")
-                        .notna()
-                        .any()
+                        and pd.to_numeric(family[column], errors="coerce").notna().any()
                     ),
                     None,
                 )
@@ -1277,9 +1416,7 @@ class EvonithBmoContextProvider:
 
                 field_family = family.copy()
                 numeric = pd.to_numeric(field_family[selected_column], errors="coerce")
-                valid = numeric.notna() & numeric.between(
-                    0.0, 100.0, inclusive="both"
-                )
+                valid = numeric.notna() & numeric.between(0.0, 100.0, inclusive="both")
                 if mode == "avg":
                     # Lab exports use zero as an empty placeholder in averaged
                     # chemistry windows, consistent with the ore chemistry path.
@@ -1492,9 +1629,11 @@ class EvonithBmoContextProvider:
             "source": f"static_dataset_{mode}",
             "n_rows_used": int(len(df)),
             "observed_slag_rate_kg_per_thm": 0.0,
-            "sample_timestamp": self._iso(df.index.max())
-            if isinstance(df.index, pd.DatetimeIndex)
-            else "",
+            "sample_timestamp": (
+                self._iso(df.index.max())
+                if isinstance(df.index, pd.DatetimeIndex)
+                else ""
+            ),
         }
         for col in HM_ALL_CHEM_COLUMNS:
             static_col = col.upper()
@@ -1522,12 +1661,16 @@ class EvonithBmoContextProvider:
         self._last_hm_slag_diagnostics = {
             "source": snapshot.get("source"),
             "sample_timestamp": snapshot.get("sample_timestamp", ""),
-            "start_time": self._iso(df.index.min())
-            if isinstance(df.index, pd.DatetimeIndex)
-            else "",
-            "end_time": self._iso(df.index.max())
-            if isinstance(df.index, pd.DatetimeIndex)
-            else "",
+            "start_time": (
+                self._iso(df.index.min())
+                if isinstance(df.index, pd.DatetimeIndex)
+                else ""
+            ),
+            "end_time": (
+                self._iso(df.index.max())
+                if isinstance(df.index, pd.DatetimeIndex)
+                else ""
+            ),
             "n_rows_used": snapshot.get("n_rows_used", 0),
             "hm_fe_pct_for_target": snapshot.get("hm_fe_pct_for_target", 0.0),
             "observed_slag_rate_kg_per_thm": 0.0,
@@ -1602,12 +1745,16 @@ class EvonithBmoContextProvider:
         if hm_total <= 0:
             self._last_dpr_diagnostics = {
                 "source": "offline_db",
-                "start_time": self._iso(dpr_df.index.min())
-                if isinstance(dpr_df.index, pd.DatetimeIndex)
-                else self._iso(start),
-                "end_time": self._iso(dpr_df.index.max())
-                if isinstance(dpr_df.index, pd.DatetimeIndex)
-                else self._iso(end),
+                "start_time": (
+                    self._iso(dpr_df.index.min())
+                    if isinstance(dpr_df.index, pd.DatetimeIndex)
+                    else self._iso(start)
+                ),
+                "end_time": (
+                    self._iso(dpr_df.index.max())
+                    if isinstance(dpr_df.index, pd.DatetimeIndex)
+                    else self._iso(end)
+                ),
                 "row_count": int(len(dpr_df)),
                 "slag_generation_mt": slag_total,
                 "total_hot_metal_mt": hm_total,
@@ -1617,12 +1764,16 @@ class EvonithBmoContextProvider:
         rate = slag_total / hm_total * 1000.0
         self._last_dpr_diagnostics = {
             "source": "offline_db",
-            "start_time": self._iso(dpr_df.index.min())
-            if isinstance(dpr_df.index, pd.DatetimeIndex)
-            else self._iso(start),
-            "end_time": self._iso(dpr_df.index.max())
-            if isinstance(dpr_df.index, pd.DatetimeIndex)
-            else self._iso(end),
+            "start_time": (
+                self._iso(dpr_df.index.min())
+                if isinstance(dpr_df.index, pd.DatetimeIndex)
+                else self._iso(start)
+            ),
+            "end_time": (
+                self._iso(dpr_df.index.max())
+                if isinstance(dpr_df.index, pd.DatetimeIndex)
+                else self._iso(end)
+            ),
             "row_count": int(len(dpr_df)),
             "slag_generation_mt": slag_total,
             "total_hot_metal_mt": hm_total,
@@ -1692,9 +1843,9 @@ class EvonithBmoContextProvider:
                 "online_lag_hours": int(online_lag_hours),
                 "online_rows": int(len(online_df)),
                 "charge_context_rows": int(len(charge_df)),
-                "live_context_cap": self._iso(live_context_end)
-                if live_context_end is not None
-                else "",
+                "live_context_cap": (
+                    self._iso(live_context_end) if live_context_end is not None else ""
+                ),
                 "warnings": list(warnings),
             }
             return df, warnings
@@ -1773,13 +1924,22 @@ class EvonithBmoContextProvider:
                 query_type="raw",
                 columns=[
                     "material_code",
-                    "property_1", "property_2", "property_3", "property_4",
-                    "property_1_name", "property_2_name",
-                    "property_3_name", "property_4_name",
+                    "property_1",
+                    "property_2",
+                    "property_3",
+                    "property_4",
+                    "property_1_name",
+                    "property_2_name",
+                    "property_3_name",
+                    "property_4_name",
                 ],
             )
         except Exception as exc:  # noqa: BLE001 - diagnostics, never break inference
-            self._last_coke_strength_diagnostics = {"source": "error", "error": str(exc), "values": {}}
+            self._last_coke_strength_diagnostics = {
+                "source": "error",
+                "error": str(exc),
+                "values": {},
+            }
             return out
 
         if df is None or df.empty or "material_code" not in df.columns:
@@ -1788,7 +1948,10 @@ class EvonithBmoContextProvider:
 
         coke = df[df["material_code"].astype(str).str.lower().str.startswith("coke")]
         if coke.empty:
-            self._last_coke_strength_diagnostics = {"source": "no_coke_rows", "values": {}}
+            self._last_coke_strength_diagnostics = {
+                "source": "no_coke_rows",
+                "values": {},
+            }
             return out
 
         latest = coke.sort_index().iloc[-1]
@@ -1807,8 +1970,11 @@ class EvonithBmoContextProvider:
 
         self._last_coke_strength_diagnostics = {
             "source": "raw_material_strength_analysis",
-            "latest_timestamp": self._iso(coke.index.max())
-            if isinstance(coke.index, pd.DatetimeIndex) else "",
+            "latest_timestamp": (
+                self._iso(coke.index.max())
+                if isinstance(coke.index, pd.DatetimeIndex)
+                else ""
+            ),
             "material_code": str(latest.get("material_code")),
             "values": dict(out),
         }
@@ -1861,9 +2027,11 @@ class EvonithBmoContextProvider:
         for feature, value in coke_strength.items():
             process_context.setdefault(feature, value)
         self._last_process_diagnostics = {
-            "source": "static_csv+online_influx"
-            if self._last_online_context_diagnostics.get("rows", 0)
-            else "static_csv",
+            "source": (
+                "static_csv+online_influx"
+                if self._last_online_context_diagnostics.get("rows", 0)
+                else "static_csv"
+            ),
             "latest_timestamp": self._iso(history_df.index.max()),
             "field_count": int(len(process_context)),
             "values": dict(process_context),
@@ -1923,7 +2091,9 @@ class EvonithBmoContextProvider:
                     row = charge_df.loc[valid].iloc[-1]
                     charge_timestamp = self._iso(row.get("time"))
                     for column in present:
-                        value = pd.to_numeric(pd.Series([row.get(column)]), errors="coerce").iloc[0]
+                        value = pd.to_numeric(
+                            pd.Series([row.get(column)]), errors="coerce"
+                        ).iloc[0]
                         if pd.notna(value) and float(value) != 0.0:
                             quantity_by_code[
                                 self._material_code_from_quantity_column(column)
@@ -1967,8 +2137,12 @@ class EvonithBmoContextProvider:
 
             if not chem_df.empty and "material_code" in chem_df.columns:
                 chem_df = chem_df[chem_df["material_code"].isin(material_codes)]
-                for material_code, group in chem_df.groupby("material_code", sort=False):
-                    group = group.sort_values("time") if "time" in group.columns else group
+                for material_code, group in chem_df.groupby(
+                    "material_code", sort=False
+                ):
+                    group = (
+                        group.sort_values("time") if "time" in group.columns else group
+                    )
                     source_group = group
                     if mode == "avg":
                         snapshot = self._average_non_zero(source_group)
@@ -1995,9 +2169,11 @@ class EvonithBmoContextProvider:
                         "source": source,
                         "table": "offline_feed.flux_chemistry",
                         "rows_used": int(len(source_group)),
-                        "sample_timestamp": self._iso(source_group["time"].max())
-                        if "time" in source_group.columns and not source_group.empty
-                        else "",
+                        "sample_timestamp": (
+                            self._iso(source_group["time"].max())
+                            if "time" in source_group.columns and not source_group.empty
+                            else ""
+                        ),
                     }
 
         inputs: list[FluxInput] = []

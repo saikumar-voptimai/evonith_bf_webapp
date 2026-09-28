@@ -106,6 +106,8 @@ class TestFluxInputsFromEditor:
                     "flux_name": "Limestone",
                     "enabled": True,
                     "wet_qty_mt": 12.0,
+                    "min_qty_mt": 5.0,
+                    "max_qty_mt": 20.0,
                     "cao_pct": 47.7,
                     "loi_pct": 40.8,
                 }
@@ -116,6 +118,8 @@ class TestFluxInputsFromEditor:
         assert out[0].flux_id == "limestone"
         assert out[0].display_name == "Limestone"
         assert out[0].wet_qty_mt == 12.0
+        assert out[0].min_qty_mt == 5.0
+        assert out[0].max_qty_mt == 20.0
         assert out[0].cao_pct == 47.7
         assert out[0].loi_pct == 40.8
 
@@ -124,6 +128,24 @@ class TestFluxInputsFromEditor:
         out = flux_inputs_from_editor(df)
         assert out[0].enabled is False
         assert out[0].display_name == "quartz"  # falls back to id when no name
+
+    def test_legacy_editor_without_maximum_remains_unbounded(self):
+        df = pd.DataFrame(
+            [
+                {
+                    "flux_id": "dolomite",
+                    "flux_name": "Dolomite",
+                    "wet_qty_mt": 12.0,
+                    "stock_mt": 80.0,
+                    "optimizable": True,
+                }
+            ]
+        )
+
+        flux = flux_inputs_from_editor(df)[0]
+
+        assert flux.min_qty_mt == 0.0
+        assert flux.max_qty_mt is None
 
 
 class TestDustInputsFromEditor:

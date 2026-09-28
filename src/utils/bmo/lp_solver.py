@@ -616,7 +616,7 @@ def _explain_lp_infeasibility(
                 flux_text = ""
                 if added_flux:
                     flux_text = (
-                        " LP would add "
+                        " Balanced Optimizer would add "
                         + ", ".join(
                             f"{flux_id} {qty:,.0f} MT"
                             for flux_id, qty in added_flux.items()
@@ -625,7 +625,7 @@ def _explain_lp_infeasibility(
                     )
                 reasons.append(
                     "The blend can meet the slag basicity limits only if the "
-                    "Max Slag cap is lifted. With LP-added flux it reaches "
+                    "Max Slag cap is lifted. With optimizer-added flux it reaches "
                     f"CaO/SiO2 ~ {with_basicity_without_slag_cap.slag_basicity:.2f} "
                     f"but slag rises to about {with_basicity_without_slag_cap.slag_mt:,.0f} MT "
                     f"versus the {float(target_slag_qty_mt):,.0f} MT cap."
@@ -742,6 +742,21 @@ def run_lp_baseline(
         pre_errors.append(
             "Min slag T Basicity cannot be greater than max slag T Basicity."
         )
+    for flux in flux_inputs or []:
+        if not flux.enabled or not flux.optimizable:
+            continue
+        minimum = max(0.0, float(flux.min_qty_mt))
+        configured_maximum = (
+            float(flux.stock_mt)
+            if flux.max_qty_mt is None
+            else max(0.0, float(flux.max_qty_mt))
+        )
+        maximum = min(max(0.0, float(flux.stock_mt)), configured_maximum)
+        if minimum > maximum:
+            pre_errors.append(
+                f"{flux.display_name}: minimum flux quantity {minimum:,.2f} MT "
+                f"cannot exceed its effective maximum {maximum:,.2f} MT."
+            )
     if pre_errors:
         return None, pre_errors
 
@@ -750,11 +765,7 @@ def run_lp_baseline(
     # variables so the solver can add just enough flux to hold slag basicity
     # within bounds; all other fluxes are fixed additions folded into the base.
     all_fluxes = list(flux_inputs or [])
-    variable_fluxes = [
-        flux
-        for flux in all_fluxes
-        if flux.optimizable and flux.enabled and float(flux.stock_mt) > 0.0
-    ]
+    variable_fluxes = [flux for flux in all_fluxes if flux.optimizable and flux.enabled]
     variable_flux_ids = {flux.flux_id for flux in variable_fluxes}
     fixed_fluxes = [
         flux for flux in all_fluxes if flux.flux_id not in variable_flux_ids
@@ -975,7 +986,17 @@ def run_lp_baseline(
     for ore in ores:
         bounds.append((0.0, max(0.0, float(ore.stock_mt))))
     for flux in variable_fluxes:
-        bounds.append((0.0, max(0.0, float(flux.stock_mt))))
+        configured_maximum = (
+            float(flux.stock_mt)
+            if flux.max_qty_mt is None
+            else max(0.0, float(flux.max_qty_mt))
+        )
+        bounds.append(
+            (
+                max(0.0, float(flux.min_qty_mt)),
+                min(max(0.0, float(flux.stock_mt)), configured_maximum),
+            )
+        )
 
     slag_tightening_mt = 0.0
     last_slag_mt: float | None = None
@@ -992,12 +1013,13 @@ def run_lp_baseline(
         )
 
         if not result.success or result.x is None:
-            err = result.message or "LP solver failed."
+            err = result.message or "Balanced Optimizer failed."
             if attempt > 0:
                 return None, [
-                    "LP infeasible or failed after exact slag tightening: " f"{err}"
+                    "Balanced Optimizer infeasible or failed after exact slag "
+                    f"tightening: {err}"
                 ]
-            messages = [f"LP infeasible or failed: {err}"]
+            messages = [f"Balanced Optimizer infeasible or failed: {err}"]
             if _explain:
                 messages.extend(
                     _explain_lp_infeasibility(
@@ -1102,12 +1124,12 @@ def run_lp_baseline(
         slag_excess_mt = last_slag_mt - float(target_slag_qty_mt)
         if slag_excess_mt <= LP_EXACT_SLAG_TOLERANCE_MT:
             return None, [
-                "LP solved the linear model but failed final exact validation: "
-                + "; ".join(violations)
+                "Balanced Optimizer solved its planning model but failed final "
+                "exact validation: " + "; ".join(violations)
             ]
         slag_tightening_mt += slag_excess_mt + LP_EXACT_SLAG_TOLERANCE_MT
 
     return None, [
-        "LP could not satisfy the exact slag cap after tightening "
+        "Balanced Optimizer could not satisfy the exact slag cap after tightening "
         f"({last_slag_mt:.2f} > {float(target_slag_qty_mt):.2f} MT)."
     ]

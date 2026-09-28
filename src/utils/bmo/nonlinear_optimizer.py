@@ -269,6 +269,21 @@ def run_nonlinear_optimizer(
     """
 
     pre_errors = validate_ore_bounds(ores)
+    for flux in flux_inputs or []:
+        if not flux.enabled or not flux.optimizable:
+            continue
+        minimum = max(0.0, float(flux.min_qty_mt))
+        configured_maximum = (
+            float(flux.stock_mt)
+            if flux.max_qty_mt is None
+            else max(0.0, float(flux.max_qty_mt))
+        )
+        maximum = min(max(0.0, float(flux.stock_mt)), configured_maximum)
+        if minimum > maximum:
+            pre_errors.append(
+                f"{flux.display_name}: minimum flux quantity {minimum:,.2f} MT "
+                f"cannot exceed its effective maximum {maximum:,.2f} MT."
+            )
     if pre_errors:
         return None, pre_errors
 
@@ -323,7 +338,8 @@ def run_nonlinear_optimizer(
         )
     if lp_blend is None and seed_strategy == "lp":
         return None, [
-            "Total-cost optimizer skipped because hard LP constraints are infeasible.",
+            "Intensive Optimizer skipped because the Balanced Optimizer's hard "
+            "constraints are infeasible.",
             *lp_errors,
         ]
 
@@ -337,12 +353,23 @@ def run_nonlinear_optimizer(
     # 0..stock) so DE can add flux to satisfy basicity, just like the LP.
     n_ore = len(ores)
     variable_fluxes = [
-        flux
-        for flux in (flux_inputs or [])
-        if flux.optimizable and flux.enabled and float(flux.stock_mt) > 0.0
+        flux for flux in (flux_inputs or []) if flux.optimizable and flux.enabled
     ]
     n_flux = len(variable_fluxes)
-    flux_bounds = [(0.0, max(0.0, float(flux.stock_mt))) for flux in variable_fluxes]
+    flux_bounds = [
+        (
+            max(0.0, float(flux.min_qty_mt)),
+            min(
+                max(0.0, float(flux.stock_mt)),
+                (
+                    max(0.0, float(flux.max_qty_mt))
+                    if flux.max_qty_mt is not None
+                    else max(0.0, float(flux.stock_mt))
+                ),
+            ),
+        )
+        for flux in variable_fluxes
+    ]
     bounds = [
         (float(lo), float(hi)) for lo, hi in zip(min_shares, max_shares)
     ] + flux_bounds
@@ -549,7 +576,7 @@ def run_nonlinear_optimizer(
     if blend is None:
         msg = (
             optimization_result.diagnostics.get("de_result", {}).get("message")
-            or "DE failed."
+            or "Intensive Optimizer failed."
         )
         return None, [f"Nonlinear optimizer failed: {msg}"]
 

@@ -322,7 +322,7 @@ def evaluate_blend_with_fuel_prediction(
                 scaler_loaded=True,
                 used_fallback=False,
                 details={
-                    "source": "direct_coke_xgboost",
+                    "source": "measured_coke_mass_ratio",
                     **dict(anchor_prediction_details or {}),
                 },
             )

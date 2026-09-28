@@ -103,11 +103,19 @@ def test_operator_model_names_and_data_driven_default() -> None:
     }
     assert config["fuel_rate_anchor_basis"] == "data_driven"
     assert config["data_driven_coke"]["lookback_hours"] == 6
+    assert config["data_driven_coke"]["manual_blend_lookback_hours"] == 6
     assert "XGBoost" not in page_source
     assert "XGBoost" not in component_source
-    assert "Run Non-linear Model" in page_source
-    assert '"Non-linear Result"' in page_source
-    assert "Data-Driven lookback window (hours)" in page_source
+    assert "Run Balanced Optimizer" in page_source
+    assert "Run Intensive Optimizer" in page_source
+    assert '"Intensive Optimizer Result"' in page_source
+    assert "Coke-rate anchor lookback (hours)" in page_source
+    assert "Manual blend lookback (hours)" in page_source
+    assert config["target"]["target_production_mt"] == pytest.approx(2270.0)
+    assert config["burden_capacity"]["max_charges_per_hour"] == pytest.approx(6.35)
+    assert "Slag Correction Factor" not in component_source
+    assert "delta=" not in page_source
+    assert "delta=" not in component_source
 
 
 def test_fuel_ash_panel_is_collapsed_at_page_end_without_prices() -> None:
@@ -121,7 +129,9 @@ def test_fuel_ash_panel_is_collapsed_at_page_end_without_prices() -> None:
 
     panel = 'with st.expander("Fuel Ash Inputs", expanded=False):'
     panel_pos = page_source.index(panel)
-    assumptions_pos = page_source.index('st.markdown("### Diagnostics and assumptions")')
+    assumptions_pos = page_source.index(
+        'st.markdown("### Diagnostics and assumptions")'
+    )
     diagnostics_call_pos = page_source.rfind("_render_data_diagnostics(")
 
     assert assumptions_pos < panel_pos < diagnostics_call_pos
@@ -150,7 +160,7 @@ def test_model_input_alignment_step_and_diagnostics_defaults() -> None:
         and call.args[0].value == "Max Slag Rate (kg/THM)"
     )
     assert not any(keyword.arg == "help" for keyword in max_slag_call.keywords)
-    assert any(
+    assert not any(
         isinstance(call, ast.Call)
         and isinstance(call.func, ast.Attribute)
         and isinstance(call.func.value, ast.Name)
@@ -184,8 +194,7 @@ def test_model_input_alignment_step_and_diagnostics_defaults() -> None:
     diagnostics = next(
         node
         for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name == "_render_data_diagnostics"
+        if isinstance(node, ast.FunctionDef) and node.name == "_render_data_diagnostics"
     )
     diagnostics_expander = next(
         call
@@ -235,8 +244,7 @@ def test_comparison_uses_currently_applied_ore_prices() -> None:
     comparison = next(
         node
         for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name == "_render_blend_comparison"
+        if isinstance(node, ast.FunctionDef) and node.name == "_render_blend_comparison"
     )
     assert any(
         isinstance(node, ast.Assign)
@@ -346,7 +354,9 @@ def test_ore_editor_keeps_share_bounds_beside_price(monkeypatch) -> None:
         assert type_config["format"] == "%.2f"
 
 
-def test_ore_editor_preferences_persist_operator_defaults_but_not_stock_or_chemistry() -> None:
+def test_ore_editor_preferences_persist_operator_defaults_but_not_stock_or_chemistry() -> (
+    None
+):
     edited = pd.DataFrame(
         [
             {
@@ -770,7 +780,9 @@ def test_main_metrics_hide_hot_metal_removal_section(monkeypatch) -> None:
     assert "Alkali -> Gas" not in rendered
 
 
-def test_main_metrics_show_production_and_requested_charging_values(monkeypatch) -> None:
+def test_main_metrics_show_production_and_requested_charging_values(
+    monkeypatch,
+) -> None:
     captured: dict[str, str] = {}
 
     class FakeColumn:
@@ -840,9 +852,9 @@ def test_main_metrics_show_production_and_requested_charging_values(monkeypatch)
     # optimizer constraint driven by the Min/Max T Basicity inputs. Hiding it
     # left the optimizer enforcing a limit the operator could not see - and IB4
     # took its display slot, so a tile expected to read ~1.31 read ~0.85.
-    assert any("T-Basicity" in key or "T Basicity" in key for key in captured), (
-        f"T Basicity tile is missing; captured: {sorted(captured)}"
-    )
+    assert any(
+        "T-Basicity" in key or "T Basicity" in key for key in captured
+    ), f"T Basicity tile is missing; captured: {sorted(captured)}"
     assert any("IB4" in key for key in captured)
 
 
@@ -855,6 +867,8 @@ def _flux_df():
                 "optimizable": True,
                 "price_rs_per_mt": 3100.0,
                 "stock_mt": 450.0,
+                "min_qty_mt": 8.0,
+                "max_qty_mt": 125.0,
                 "cao_pct": 30.2,
                 "sio2_pct": 1.7,
             },
@@ -864,6 +878,8 @@ def _flux_df():
                 "optimizable": True,
                 "price_rs_per_mt": 2100.0,
                 "stock_mt": 600.0,
+                "min_qty_mt": 0.0,
+                "max_qty_mt": 80.0,
                 "cao_pct": 0.0,
                 "sio2_pct": 96.5,
             },
@@ -994,10 +1010,7 @@ def test_fuel_price_inputs_are_vertical_and_keyed_for_snapshots(monkeypatch) -> 
     ]
     assert {kwargs["key"] for _label, kwargs in labels_and_kwargs} == set(entered)
     assert updated["price_rs_per_mt"].tolist() == [31000.0, 22500.0, 19500.0]
-    assert (
-        updated["rate_kg_per_thm"].tolist()
-        == original["rate_kg_per_thm"].tolist()
-    )
+    assert updated["rate_kg_per_thm"].tolist() == original["rate_kg_per_thm"].tolist()
 
 
 def test_fuel_price_preferences_contain_prices_only() -> None:
@@ -1252,10 +1265,15 @@ def test_fuel_ash_save_preserves_other_preferences(tmp_path) -> None:
     assert loaded["fuel_ash_editor"]["rows"]["coke"]["vm_pct"] == 0.9
 
 
-def test_flux_preferences_persist_only_price_and_stock() -> None:
+def test_flux_preferences_persist_price_stock_and_quantity_bounds() -> None:
     prefs = build_flux_preferences(_flux_df())
     rows = prefs["flux_editor"]["rows"]
-    assert rows["dolomite"] == {"price_rs_per_mt": 3100.0, "stock_mt": 450.0}
+    assert rows["dolomite"] == {
+        "price_rs_per_mt": 3100.0,
+        "stock_mt": 450.0,
+        "min_qty_mt": 8.0,
+        "max_qty_mt": 125.0,
+    }
     # Chemistry / optimizable flag are config-driven, not persisted.
     assert "cao_pct" not in rows["dolomite"]
     assert "optimizable" not in rows["dolomite"]
@@ -1276,7 +1294,11 @@ def test_flux_preferences_apply_overlays_price_stock_only() -> None:
             }
         ]
     )
-    prefs = {"flux_editor": {"rows": {"dolomite": {"price_rs_per_mt": 3100.0, "stock_mt": 450.0}}}}
+    prefs = {
+        "flux_editor": {
+            "rows": {"dolomite": {"price_rs_per_mt": 3100.0, "stock_mt": 450.0}}
+        }
+    }
     applied = apply_flux_preferences(fresh, prefs)
     row = applied.iloc[0]
     assert row["price_rs_per_mt"] == 3100.0
@@ -1306,3 +1328,5 @@ def test_flux_save_preserves_ore_preferences(tmp_path) -> None:
     assert loaded["ore_editor"]["rows"]["ore_a"]["price_rs_per_mt"] == 111.0
     assert loaded["flux_editor"]["rows"]["quartz"]["price_rs_per_mt"] == 2100.0
     assert loaded["flux_editor"]["rows"]["quartz"]["stock_mt"] == 600.0
+    assert loaded["flux_editor"]["rows"]["quartz"]["min_qty_mt"] == 0.0
+    assert loaded["flux_editor"]["rows"]["quartz"]["max_qty_mt"] == 80.0

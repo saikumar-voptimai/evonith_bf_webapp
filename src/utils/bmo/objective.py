@@ -176,9 +176,7 @@ class BmoObjectiveEvaluator:
         # solver can add flux to satisfy basicity; the rest are fixed additions.
         _all_fluxes = list(flux_inputs or [])
         self.variable_fluxes = [
-            flux
-            for flux in _all_fluxes
-            if flux.optimizable and flux.enabled and float(flux.stock_mt) > 0.0
+            flux for flux in _all_fluxes if flux.optimizable and flux.enabled
         ]
         _variable_flux_ids = {flux.flux_id for flux in self.variable_fluxes}
         self.fixed_fluxes = [
