@@ -19,6 +19,7 @@ still shown by the live BMO rate but cannot distort calibration.
 
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 from pathlib import Path
 from typing import Any
@@ -33,29 +34,30 @@ log = logging.getLogger(__name__)
 
 HISTORY_DAYS = 120
 CALIBRATION_WINDOW_DAYS = 90
-# Plotly template that reads on both themes without hard-coding a background.
-_LAYOUT = dict(
-    margin=dict(l=10, r=10, t=34, b=10),
-    height=340,
-    hovermode="x unified",
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
-)
-_PREDICTED = "#f2a03d"
-_ACTUAL = "#2f6fd0"
 TRACKING_DISPLAY_DAYS = 3
+# One palette for every accuracy chart on this tab: model in teal, plant
+# measurement in navy, the model's typical error as a pale teal band.
 _TRACKING_TEAL = "#07827f"
-_TRACKING_TEAL_LIGHT = "#79bdbb"
 _TRACKING_NAVY = "#25344b"
+_BAND_FILL = "rgba(7,130,127,0.14)"
+_CONTEXT_AMBER = "#c77d2a"
+# Plant users read time in IST; the model and dataset work in UTC.
+_PLANT_TZ = "Asia/Kolkata"
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def _coke_history(days: int, cache_bust: int) -> tuple[pd.DataFrame, list[str]]:
-    """Daily predicted-vs-realised coke. ``cache_bust`` forces a refetch."""
+def _coke_history(
+    days: int, cache_bust: int
+) -> tuple[pd.DataFrame, list[str], pd.DataFrame]:
+    """Daily predicted-vs-realised coke and the days that could not be scored.
+
+    ``cache_bust`` forces a refetch.
+    """
 
     from utils.bmo.coke_history import build_daily_history
 
     result = build_daily_history(days)
-    return result.frame, list(result.warnings)
+    return result.frame, list(result.warnings), result.excluded
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -128,91 +130,57 @@ def _paired_chart(
     *,
     predicted_col: str,
     actual_col: str,
-    title: str,
     unit: str,
+    predicted_name: str = "Predicted",
+    actual_name: str = "Measured",
     band: float | None = None,
+    decimals: int = 1,
 ) -> go.Figure:
-    """Predicted over measured, with the residual band the model is good to."""
+    """Daily predicted over measured, with the band the model is good to."""
 
-    fig = go.Figure()
-    if band:
-        # The scatter the model is expected to leave. Drawn from the PREDICTION,
-        # so a measured point inside the band is one the model called correctly.
-        upper = frame[predicted_col] + band
-        lower = frame[predicted_col] - band
-        fig.add_trace(
-            go.Scatter(
-                x=frame.index,
-                y=upper,
-                mode="lines",
-                line=dict(width=0),
-                hoverinfo="skip",
-                showlegend=False,
-                name="",
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=frame.index,
-                y=lower,
-                mode="lines",
-                line=dict(width=0),
-                fill="tonexty",
-                fillcolor="rgba(242,160,61,0.16)",
-                hoverinfo="skip",
-                name=f"±{band:g} {unit} expected scatter",
-            )
-        )
-    fig.add_trace(
-        go.Scatter(
-            x=frame.index,
-            y=frame[actual_col],
-            mode="lines+markers",
-            name="Measured",
-            line=dict(color=_ACTUAL, width=2),
-            marker=dict(size=4),
-        )
+    return _prediction_figure(
+        frame,
+        predicted_col=predicted_col,
+        actual_col=actual_col,
+        unit=unit,
+        predicted_name=predicted_name,
+        actual_name=actual_name,
+        band=band,
+        band_label=(
+            f"±{band:,.{decimals}f} {unit} typical error" if band else None
+        ),
+        decimals=decimals,
     )
-    fig.add_trace(
-        go.Scatter(
-            x=frame.index,
-            y=frame[predicted_col],
-            mode="lines",
-            name="Predicted",
-            line=dict(color=_PREDICTED, width=2, dash="solid"),
-        )
-    )
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=14)),
-        yaxis_title=unit,
-        xaxis_title=None,
-        **_LAYOUT,
-    )
-    return fig
 
 
 def _score_row(scores: dict[str, float], unit: str, decimals: int = 1) -> None:
     if not scores:
         st.caption("Not enough paired days to score.")
         return
-    cols = st.columns(4)
-    cols[0].metric("Days scored", f"{scores['n']:,.0f}")
-    cols[1].metric(
-        f"Bias ({unit})",
-        f"{scores['bias']:+,.{decimals}f}",
-        help="Average over-prediction. Near zero is the whole point " "of the offset.",
-    )
-    cols[2].metric(
-        f"Typical error ({unit})",
-        f"{scores['MAE']:,.{decimals}f}",
-        help="Mean absolute error — what to expect on any one day.",
-    )
-    cols[3].metric(
-        "R²",
-        f"{scores['R2']:+.2f}",
-        help="Share of the day-to-day movement the model tracks. "
-        "Zero means it does no better than predicting the average.",
-    )
+    with st.container(border=True):
+        cols = st.columns(4)
+        cols[0].metric(
+            "Days scored",
+            f"{scores['n']:,.0f}",
+            help="Days with both a prediction and a plant measurement in this window.",
+        )
+        cols[1].metric(
+            "Average offset",
+            f"{scores['bias']:+,.{decimals}f} {unit}",
+            help="Predicted minus measured, averaged. Near zero means no "
+            "systematic over- or under-prediction.",
+        )
+        cols[2].metric(
+            "Typical error",
+            f"{scores['MAE']:,.{decimals}f} {unit}",
+            help="Mean absolute error: what to expect on any one day.",
+        )
+        cols[3].metric(
+            "R²",
+            f"{scores['R2']:+.2f}",
+            help="Share of the day-to-day movement the model tracks. "
+            "Zero means it does no better than predicting the average.",
+        )
 
 
 def render_retrain_control() -> None:
@@ -224,42 +192,52 @@ def render_retrain_control() -> None:
     calib = load_calibration()
     age = calib.age_days()
 
-    left, right = st.columns([3, 1], vertical_alignment="center")
-    with left:
-        if calib is NO_CALIBRATION or not calib.is_usable:
-            detail = " ".join(calib.notes or [])
-            st.warning(
-                "**No usable calibration for the measured plant coke-rate "
-                "basis.** Fuel cost is falling back to the observed coke rate. "
-                "Refit to switch the physics anchor on."
-                + (f" {detail}" if detail else "")
+    needs_refit = calib is NO_CALIBRATION or not calib.is_usable or calib.is_stale()
+    with st.container(border=True):
+        left, right = st.columns([4, 1], vertical_alignment="center")
+        with left:
+            st.markdown("**Energy-balance offset**")
+            if calib is NO_CALIBRATION or not calib.is_usable:
+                detail = " ".join(calib.notes or [])
+                st.badge(
+                    "No usable calibration", icon=":material/warning:", color="orange"
+                )
+                st.caption(
+                    "Fuel cost is falling back to the observed coke rate. Refit to "
+                    "switch the physics anchor on." + (f" {detail}" if detail else "")
+                )
+            elif calib.is_stale():
+                st.badge(
+                    f"Offset {calib.offset_kg_per_thm:+,.1f} kg/THM · {age} days old",
+                    icon=":material/warning:",
+                    color="orange",
+                )
+                st.caption(
+                    "Past the conservative refresh window. Refit it against the "
+                    "latest measured plant coke rate before trusting the correction."
+                )
+            else:
+                st.badge(
+                    f"Offset {calib.offset_kg_per_thm:+,.1f} kg/THM",
+                    icon=":material/check_circle:",
+                    color="green",
+                )
+                st.caption(
+                    f"Fitted {'today' if age == 0 else f'{age} days ago'} on "
+                    f"{calib.sample_days} days ({calib.first_day} to "
+                    f"{calib.last_day}); day-to-day scatter "
+                    f"±{calib.residual_sd_kg_per_thm:,.0f} kg/THM."
+                )
+        with right:
+            clicked = st.button(
+                "Refit on last 90 days",
+                icon=":material/refresh:",
+                width="stretch",
+                type="primary" if needs_refit else "secondary",
+                help="Rebuilds the daily history from the plant record and refits "
+                "the bias offset over the trailing 90 days. Takes a minute or "
+                "two: it queries the offline tables day by day.",
             )
-        elif calib.is_stale():
-            st.warning(
-                f"**Offset is {calib.offset_kg_per_thm:+,.1f} kg/THM, fitted "
-                f"{age} days ago.** It is past the conservative refresh window "
-                "— refit it against the latest measured plant coke rate before "
-                "trusting the correction."
-            )
-        else:
-            st.success(
-                f"**Offset {calib.offset_kg_per_thm:+,.1f} kg/THM**, fitted "
-                f"{'today' if age == 0 else f'{age} days ago'} on "
-                f"{calib.sample_days} days "
-                f"({calib.first_day} → {calib.last_day}). Day-to-day scatter "
-                f"±{calib.residual_sd_kg_per_thm:,.0f} kg/THM."
-            )
-    with right:
-        clicked = st.button(
-            "🔄 Retrain on last 90 days",
-            width="stretch",
-            type=(
-                "primary" if (not calib.is_usable or calib.is_stale()) else "secondary"
-            ),
-            help="Rebuilds the daily history from the plant record and refits "
-            "the bias offset over the trailing 90 days. Takes a minute or "
-            "two — it queries the offline tables day by day.",
-        )
 
     if clicked:
         with st.status("Refitting the coke-rate offset…", expanded=True) as status:
@@ -316,7 +294,7 @@ def render_coke_accuracy(days: int = HISTORY_DAYS) -> None:
 
     bust = int(st.session_state.get("bmo_calibration_bust", 0))
     try:
-        frame, warnings = _coke_history(days, bust)
+        frame, warnings, excluded = _coke_history(days, bust)
     except Exception as exc:  # noqa: BLE001
         log.exception("Coke history failed")
         st.error(f"Could not build the coke history: {exc}")
@@ -341,64 +319,100 @@ def render_coke_accuracy(days: int = HISTORY_DAYS) -> None:
     )
 
     corrected_scores = _scores(paired["corrected"], paired["actual_coke"])
-    _score_row(corrected_scores, "kg/THM")
-
-    fig = _paired_chart(
-        work.dropna(subset=["corrected", "actual_coke"]),
-        predicted_col="corrected",
-        actual_col="actual_coke",
-        title=(
-            "Coke rate - energy balance + offset vs measured plant rate"
-            if calib.is_usable
-            else "Coke rate - uncorrected energy balance vs measured plant rate"
-        ),
-        unit="kg/THM",
-        # The band is the error MEASURED ON THIS CHART, not the sd recorded when
-        # the calibration was fitted. Those two can differ — the fit drops
-        # outlier days and this does not — and a band that disagrees with the
-        # points drawn inside it is worse than no band.
-        band=round(corrected_scores["MAE"]) if corrected_scores else None,
+    st.markdown(
+        "#### Energy balance vs measured coke rate"
+        if calib.is_usable
+        else "#### Uncorrected energy balance vs measured coke rate"
     )
-    st.plotly_chart(fig, width="stretch")
-
     st.caption(
-        "Measured is 1,000 x hourly COKE_CALC_MT / hourly hot-metal tonnes, "
-        "mass-weighted across each complete day. It is not the operator's "
-        "setpoint. Predicted is the closed energy balance solved at each day's "
-        "own PCI, nut coke, blast and burden, "
+        "Daily. Predicted is the closed energy balance solved at each day's own "
+        "PCI, nut coke, blast and burden, "
         + (
             "less the bias offset. "
             if calib.is_usable
-            else "with no offset because no compatible calibration is active. "
+            else "with no offset, because no compatible calibration is active. "
         )
-        + "Both are on "
-        "the same day, so a gap is a real disagreement and not a lag. **The "
-        "scores above are for this "
-        "window only**; a quiet quarter can score better than a disturbed one."
+        + "Measured is 1,000 x COKE_CALC_MT / hot-metal tonnes, mass-weighted "
+        "over each complete day (not the operator's set point). Both are the same "
+        "day, so a gap is a real disagreement and not a lag. The band is this "
+        "window's typical error; scores are for this window only. A prediction "
+        "without a measured point is a day the balance solved but the plant "
+        "record could not score."
     )
+    _score_row(corrected_scores, "kg/THM")
+    st.plotly_chart(
+        _paired_chart(
+            # Every solved day, measured or not: dropping unmeasured days here
+            # used to leave holes that looked like the model had stopped.
+            work.dropna(subset=["corrected"]),
+            predicted_col="corrected",
+            actual_col="actual_coke",
+            unit="kg/THM",
+            predicted_name=(
+                "Energy balance + offset" if calib.is_usable else "Energy balance"
+            ),
+            actual_name="Measured plant rate",
+            # The band is the error MEASURED ON THIS CHART, not the sd recorded
+            # when the calibration was fitted. Those two can differ (the fit
+            # drops outlier days and this does not), and a band that disagrees
+            # with the points drawn inside it is worse than no band.
+            band=round(corrected_scores["MAE"]) if corrected_scores else None,
+        ),
+        width="stretch",
+    )
+    _render_unscored_days(excluded)
 
     with st.expander("The raw balance, before the offset", expanded=False):
         raw_scores = _scores(work["predicted_coke"], work["actual_coke"])
         _score_row(raw_scores, "kg/THM")
         st.plotly_chart(
             _paired_chart(
-                work.dropna(subset=["predicted_coke", "actual_coke"]),
+                work.dropna(subset=["predicted_coke"]),
                 predicted_col="predicted_coke",
                 actual_col="actual_coke",
-                title="Uncorrected energy balance",
                 unit="kg/THM",
+                predicted_name="Uncorrected energy balance",
+                actual_name="Measured plant rate",
             ),
             width="stretch",
         )
-        st.markdown(
-            "The shape is right and the level is not — which is exactly what "
-            "one offset can fix and a fitted residual model cannot improve on "
-            "without arguing with the physics it is correcting."
+        st.caption(
+            "The shape is right and the level is not, which is exactly what one "
+            "offset can fix and a fitted residual model cannot improve on without "
+            "arguing with the physics it is correcting."
         )
 
     _render_control_context(work)
     for warning in warnings:
         st.caption(f"⚠️ {warning}")
+
+
+def _render_unscored_days(excluded: pd.DataFrame) -> None:
+    """Say why days are missing, so the chart's gaps read as record gaps."""
+
+    if excluded is None or excluded.empty:
+        return
+    counts = excluded["reason"].value_counts()
+    st.caption(
+        f"**{len(excluded)} days in this window could not be scored:** "
+        + "; ".join(
+            f"{reason[:1].lower()}{reason[1:]} ({count})"
+            for reason, count in counts.items()
+        )
+        + ". These are gaps in the plant record, not in the model."
+    )
+    with st.expander("Days not scored and why", expanded=False):
+        table = excluded.reset_index().rename(
+            columns={"date": "Day", "reason": "Reason", "detail": "Detail"}
+        )
+        st.dataframe(
+            table,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Day": st.column_config.DateColumn("Day", format="DD MMM YYYY"),
+            },
+        )
 
 
 def _render_control_context(frame: pd.DataFrame) -> None:
@@ -420,24 +434,34 @@ def _render_control_context(frame: pd.DataFrame) -> None:
         return
 
     with st.expander("What PCI and nut coke were doing", expanded=False):
-        labels = {
-            "pci_kg_thm": "PCI (kg/THM)",
-            "nut_coke_kg_thm": "Nut coke (kg/THM)",
-            "coke_setpoint_kg_thm": "Coke setpoint (kg/THM)",
+        styles = {
+            "pci_kg_thm": ("PCI", dict(color=_TRACKING_TEAL, width=2.2)),
+            "nut_coke_kg_thm": ("Nut coke", dict(color=_CONTEXT_AMBER, width=2.2)),
+            "coke_setpoint_kg_thm": (
+                "Coke set point",
+                dict(color=_TRACKING_NAVY, width=1.8, dash="dot"),
+            ),
         }
+        plotted = _break_gaps(frame[columns])
         fig = go.Figure()
         for column in columns:
+            name, line = styles[column]
             fig.add_trace(
                 go.Scatter(
-                    x=frame.index, y=frame[column], mode="lines", name=labels[column]
+                    x=plotted.index,
+                    y=plotted[column],
+                    mode="lines",
+                    name=name,
+                    line=line,
+                    hovertemplate=f"%{{y:,.1f}} kg/THM<extra>{name}</extra>",
                 )
             )
-        fig.update_layout(yaxis_title="kg/THM", xaxis_title=None, **_LAYOUT)
+        _style_figure(fig, unit="kg/THM", hourly=False, height=300)
         st.plotly_chart(fig, width="stretch")
         st.caption(
-            "The setpoint is the operator's instruction, not a measurement — it "
+            "The set point is the operator's instruction, not a measurement: it "
             "sits flat for days and then steps. The measured plant coke rate is "
-            "the blue line in the accuracy chart above."
+            "the navy points in the chart above."
         )
 
 
@@ -473,14 +497,20 @@ def render_si_accuracy(days: int = 180) -> None:
             st.write(report.get("filled_names") or [])
         return
 
-    _score_row(_scores(frame["predicted_si"], frame["actual_si"]), "%", decimals=3)
+    st.markdown("#### Hot-metal silicon: model vs cast analysis")
+    si_scores = _scores(frame["predicted_si"], frame["actual_si"])
+    _score_row(si_scores, "%", decimals=3)
     st.plotly_chart(
         _paired_chart(
             frame,
             predicted_col="predicted_si",
             actual_col="actual_si",
-            title="Hot metal silicon — model vs cast analysis",
             unit="Si %",
+            actual_name="Cast analysis",
+            # Same rule as the coke chart: the band is the typical error measured
+            # on this window, so the points drawn inside it agree with it.
+            band=round(si_scores["MAE"], 3) if si_scores else None,
+            decimals=3,
         ),
         width="stretch",
     )
@@ -509,7 +539,7 @@ def _direct_coke_settings() -> tuple[dict[str, Any], Path, Path, Path]:
 
     return (
         cfg,
-        resolve(cfg.get("bundled_model_dir", ""), "src/assets/models/bmo_coke_xgb"),
+        resolve(cfg.get("bundled_model_dir", ""), "src/assets/models/bmo_coke_robust"),
         resolve(cfg.get("deployment_dir", ""), "src/storage/bmo_coke_model"),
         resolve(cfg.get("dataset_path", ""), "src/assets/data/furnace_dataset.csv"),
     )
@@ -564,44 +594,40 @@ def _recent_tracking_window(
     return history.loc[history.index >= cutoff].copy()
 
 
-def _coke_tracking_figure(plotted: pd.DataFrame) -> go.Figure:
-    """Build a compact three-series chart with a dedicated legend row."""
+def _plant_time(index: pd.Index) -> pd.Index:
+    """Show UTC hours in IST. Plain calendar days are left as they are."""
 
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=plotted.index,
-            y=plotted["raw_predicted_coke_kg_per_thm"],
-            name="Raw prediction",
-            mode="lines",
-            line=dict(color=_TRACKING_TEAL_LIGHT, width=1.5, dash="dot"),
-            opacity=0.85,
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=plotted.index,
-            y=plotted["corrected_predicted_coke_kg_per_thm"],
-            name="Corrected prediction",
-            mode="lines",
-            line=dict(color=_TRACKING_TEAL, width=2.8),
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=plotted.index,
-            y=plotted["actual_coke_kg_per_thm"],
-            name="Actual",
-            mode="markers",
-            marker=dict(
-                color=_TRACKING_NAVY,
-                size=7,
-                line=dict(color="rgba(255,255,255,0.9)", width=1),
-            ),
-        )
-    )
+    if not isinstance(index, pd.DatetimeIndex) or index.tz is None:
+        return index
+    return index.tz_convert(_PLANT_TZ).tz_localize(None)
+
+
+def _break_gaps(frame: pd.DataFrame) -> pd.DataFrame:
+    """Put missing periods back as empty rows so lines break instead of bridging.
+
+    Without this a fortnight with no paired days is drawn as one confident
+    straight line, which reads as data.
+    """
+
+    if not isinstance(frame.index, pd.DatetimeIndex) or len(frame) < 3:
+        return frame
+    step = frame.index.to_series().diff().median()
+    if pd.isna(step) or step <= pd.Timedelta(0):
+        return frame
+    grid = pd.date_range(frame.index.min(), frame.index.max(), freq=step)
+    # Only an index that genuinely sits on a regular grid is filled; the cap
+    # guards the browser against a mis-inferred, very fine step.
+    if len(grid) > 20_000 or not frame.index.isin(grid).all():
+        return frame
+    return frame.reindex(grid)
+
+
+def _style_figure(fig: go.Figure, *, unit: str, hourly: bool, height: int = 360) -> None:
+    """Shared layout: legend on its own row (no Plotly title to collide with),
+    transparent background for both themes, units on the axis and in hovers."""
+
     fig.update_layout(
-        height=390,
+        height=height,
         margin=dict(l=10, r=10, t=62, b=10),
         hovermode="x unified",
         legend=dict(
@@ -617,39 +643,276 @@ def _coke_tracking_figure(plotted: pd.DataFrame) -> go.Figure:
         xaxis=dict(
             title=None,
             showgrid=False,
-            tickformat="%d %b<br>%H:%M",
-            nticks=7,
+            tickformat="%d %b<br>%H:%M" if hourly else "%d %b<br>%Y",
+            hoverformat="%d %b %Y, %H:%M IST" if hourly else "%d %b %Y",
+            nticks=8,
         ),
         yaxis=dict(
-            title="Coke rate (kg/THM)",
+            title=unit,
             gridcolor="rgba(120,130,145,0.18)",
             zeroline=False,
+            ticksuffix=" ",
         ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
+
+
+def _prediction_figure(
+    frame: pd.DataFrame,
+    *,
+    predicted_col: str,
+    actual_col: str,
+    unit: str,
+    predicted_name: str = "Prediction",
+    actual_name: str = "Actual",
+    band: float | None = None,
+    band_label: str | None = None,
+    decimals: int = 1,
+    hourly: bool = False,
+) -> go.Figure:
+    """Model line over measured points, with an optional typical-error band.
+
+    The band is drawn around the PREDICTION, so a measured point inside it is
+    one the model called within its usual error.
+    """
+
+    plotted = _break_gaps(frame[[predicted_col, actual_col]])
+    x = _plant_time(plotted.index)
+    hover = f"%{{y:,.{decimals}f}} {unit}"
+    fig = go.Figure()
+    if band:
+        band_x, band_y = _band_outline(x, plotted[predicted_col], band)
+        # One closed shape per unbroken run of predictions. A between-traces fill
+        # would bridge every gap in the record with a wedge.
+        fig.add_trace(
+            go.Scatter(
+                x=band_x,
+                y=band_y,
+                mode="lines",
+                line=dict(width=0),
+                fill="toself",
+                fillcolor=_BAND_FILL,
+                hoverinfo="skip",
+                legendrank=3,
+                name=band_label or f"±{band:,.{decimals}f} {unit} typical error",
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=plotted[predicted_col],
+            name=predicted_name,
+            # Dashed line through the prediction points: the eye reads the gap
+            # between each teal point and its navy measurement directly, and a
+            # day with no neighbours still shows as a point.
+            mode="lines+markers",
+            line=dict(color=_TRACKING_TEAL, width=1.8, dash="dash"),
+            marker=dict(color=_TRACKING_TEAL, size=5 if hourly else 6),
+            legendrank=1,
+            hovertemplate=f"{hover}<extra>{predicted_name}</extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=plotted[actual_col],
+            name=actual_name,
+            mode="markers",
+            marker=dict(
+                color=_TRACKING_NAVY,
+                size=6,
+                opacity=0.85,
+                line=dict(color="rgba(255,255,255,0.9)", width=1),
+            ),
+            legendrank=2,
+            hovertemplate=f"{hover}<extra>{actual_name}</extra>",
+        )
+    )
+    _style_figure(fig, unit=unit, hourly=hourly)
+    fig.update_layout(legend_traceorder="normal")
     return fig
 
 
-def _metric_text(metrics: dict[str, Any], name: str, decimals: int = 3) -> str:
-    value = metrics.get(name)
+def _band_outline(
+    x: pd.Index, centre: pd.Series, band: float
+) -> tuple[list[Any], list[Any]]:
+    """Closed outline of centre ± band for each run without gaps, None-separated."""
+
+    xs: list[Any] = []
+    ys: list[Any] = []
+    values = centre.to_numpy(dtype=float)
+    positions = list(x)
+    run: list[int] = []
+    for i, value in enumerate([*values, np.nan]):
+        if np.isfinite(value):
+            run.append(i)
+            continue
+        if run:
+            forward = [positions[j] for j in run]
+            xs.extend([*forward, *forward[::-1], forward[0], None])
+            ys.extend(
+                [
+                    *(values[j] + band for j in run),
+                    *(values[j] - band for j in run[::-1]),
+                    values[run[0]] + band,
+                    None,
+                ]
+            )
+            run = []
+    return xs, ys
+
+
+def _coke_tracking_figure(
+    plotted: pd.DataFrame, band: float | None = None
+) -> go.Figure:
+    """Hourly Data-Driven prediction against the robust target, in IST."""
+
+    return _prediction_figure(
+        plotted,
+        predicted_col="raw_predicted_coke_kg_per_thm",
+        actual_col="actual_coke_kg_per_thm",
+        unit="kg/THM",
+        band=band,
+        band_label=(
+            f"±{band:,.1f} kg/THM typical error on unseen days" if band else None
+        ),
+        hourly=True,
+    )
+
+
+def _ist_text(value: Any, fmt: str = "%d %b %Y, %H:%M IST") -> str | None:
+    """Plant-time text from an ISO timestamp or a ``YYYYmmddTHHMMSSffffffZ`` id."""
+
+    if value in (None, ""):
+        return None
+    text = str(value)
     try:
-        number = float(value)
+        stamp = pd.Timestamp(datetime.strptime(text, "%Y%m%dT%H%M%S%fZ"), tz="UTC")
+    except ValueError:
+        try:
+            stamp = pd.Timestamp(text)
+        except (TypeError, ValueError):
+            return None
+        if pd.isna(stamp):
+            return None
+        stamp = stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp
+    return stamp.tz_convert(_PLANT_TZ).strftime(fmt)
+
+
+def _finite(metrics: dict[str, Any], name: str) -> float | None:
+    try:
+        number = float(metrics.get(name))
     except (TypeError, ValueError):
-        return "Not available"
-    return f"{number:.{decimals}f}" if np.isfinite(number) else "Not available"
+        return None
+    return number if np.isfinite(number) else None
+
+
+def _kg_text(value: float | None, *, signed: bool = False) -> str:
+    if value is None:
+        return "—"
+    return f"{value:+,.1f} kg/THM" if signed else f"{value:,.1f} kg/THM"
+
+
+def _deployment_checks(
+    validation: dict[str, Any], gates: dict[str, Any]
+) -> list[tuple[bool | None, str, str]]:
+    """The four deployment gates as (passed, badge label, explanation).
+
+    ``passed`` is None when the active model predates the gate and never
+    recorded that score.
+    """
+
+    random_day = dict(validation.get("random_day", {}) or {})
+    later = dict(validation.get("later_time", {}) or {})
+    fuel = dict(validation.get("fuel_response", {}) or {})
+    r2 = _finite(random_day, "r2")
+    mae = _finite(later, "mae")
+    skill = _finite(later, "skill_vs_last_week_level")
+    replacement = _finite(fuel, "pci_replacement_kg_per_kg")
+    low, high = gates["pci_replacement_range"]
+    held_days = int(random_day.get("held_out_days", 0) or 0)
+
+    if skill is None:
+        skill_label = "Compared with last week's level"
+    elif skill >= 0:
+        skill_label = f"{skill:.0%} better than last week's level"
+    else:
+        skill_label = f"{-skill:.0%} worse than last week's level"
+    return [
+        (
+            None if r2 is None else r2 >= gates["min_random_r2"],
+            f"R² {r2:.2f} on unseen days" if r2 is not None else "R² on unseen days",
+            f"Share of the day-to-day movement explained on {held_days} whole days "
+            f"held out at random. Needs at least {gates['min_random_r2']:.2f}.",
+        ),
+        (
+            None if mae is None else mae <= gates["max_later_time_mae"],
+            f"{mae:.1f} kg/THM typical error, latest 14 days"
+            if mae is not None
+            else "Latest 14 days",
+            "Typical error on the most recent 14 days, which the model was not "
+            f"trained on. Needs at most {gates['max_later_time_mae']:.1f} kg/THM.",
+        ),
+        (
+            None if skill is None else skill >= gates["min_later_time_skill"],
+            skill_label,
+            "Error on the latest 14 days compared with simply assuming last week's "
+            "average coke rate carries on. The model must do at least as well.",
+        ),
+        (
+            None if replacement is None else low <= replacement <= high,
+            f"{replacement:.2f} kg coke per kg PCI"
+            if replacement is not None
+            else "PCI response",
+            "Coke rise when PCI is cut, averaged over recent operating states. It "
+            f"must lie between {low:.2f} and {high:.2f}; within-month plant data "
+            "gives 0.65-0.95.",
+        ),
+    ]
+
+
+def _render_check_badges(checks: list[tuple[bool | None, str, str]]) -> None:
+    with st.container(horizontal=True, gap="small"):
+        for passed, label, explanation in checks:
+            if passed is None:
+                st.badge(
+                    f"{label}: not recorded",
+                    icon=":material/help:",
+                    color="gray",
+                    help=explanation,
+                )
+            elif passed:
+                st.badge(
+                    label, icon=":material/check_circle:", color="green", help=explanation
+                )
+            else:
+                st.badge(label, icon=":material/cancel:", color="red", help=explanation)
+
+
+def _auto_retrain_text(state: dict[str, Any]) -> str:
+    when = _ist_text(state.get("last_attempt_utc")) or "unknown time"
+    if state.get("error"):
+        return f"Last automatic run {when}: failed ({state['error']}); the live version was kept."
+    if state.get("deployed"):
+        return f"Last automatic run {when}: new version passed every check and went live."
+    reasons = " ".join(map(str, state.get("reasons") or []))
+    return f"Last automatic run {when}: the live version was kept. {reasons}".rstrip()
 
 
 def render_data_driven_coke_accuracy() -> None:
-    """Active bundle status plus validate-before-deploy retraining control."""
+    """Live model status, accuracy on unseen days, tracking, and retraining."""
 
     from utils.bmo.direct_coke_model import (
         DirectCokeModelService,
+        auto_retrain_state,
         retrain_and_maybe_deploy,
+        retrain_kwargs_from_config,
     )
 
     cfg, bundled_dir, deployment_dir, dataset_path = _direct_coke_settings()
     retrain_cfg = dict(cfg.get("retraining", {}) or {})
+    gates = retrain_kwargs_from_config(retrain_cfg)
     try:
         service = DirectCokeModelService(
             bundled_dir=bundled_dir,
@@ -663,44 +926,109 @@ def render_data_driven_coke_accuracy() -> None:
         st.error(f"Could not load the direct coke-rate model: {_readable_failure(exc)}")
         return
 
-    metadata = dict(status.get("metadata", {}) or {})
-    later_metrics = dict(metadata.get("later_time_metrics", {}) or {})
-    random_metrics = dict(metadata.get("random_metrics", {}) or {})
-    if not later_metrics:
-        later_r2 = status.get("later_date_r2")
-        later_metrics = {
-            "r2": later_r2,
-            "mae": (
-                (
-                    (service.schema.get("validation", {}) or {}).get("test", {}) or {}
-                ).get("mae")
-            ),
-            "n": (
-                (
-                    (service.schema.get("validation", {}) or {}).get("test", {}) or {}
-                ).get("n")
-            ),
-        }
+    validation = dict(status.get("validation", {}) or {})
+    later_metrics = dict(validation.get("later_time", {}) or validation.get("test", {}) or {})
+    random_metrics = dict(validation.get("random_day", {}) or {})
+    fuel_response = dict(validation.get("fuel_response", {}) or {})
+    window_hours = status.get("target_window_hours")
+    checks = _deployment_checks(validation, gates)
+    deployment_id = str(status.get("deployment_id", "bundled"))
+    current = st.session_state.get("bmo_data_driven_coke_prediction", {}) or {}
+    current_value = (
+        _finite(current, "value_kg_per_thm") if current.get("usable") else None
+    )
 
-    cols = st.columns(4)
-    cols[0].metric("Active deployment", str(status.get("deployment_id", "bundled")))
-    cols[1].metric("Selected features", f"{int(status.get('feature_count', 0))}")
-    cols[2].metric("Later-time R2", _metric_text(later_metrics, "r2"))
-    cols[3].metric("Later-time MAE", _metric_text(later_metrics, "mae", 1))
+    with st.container(border=True):
+        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+            if not window_hours:
+                st.badge(
+                    "Earlier hourly-target model",
+                    icon=":material/warning:",
+                    color="orange",
+                )
+            elif all(passed for passed, _label, _help in checks):
+                st.badge(
+                    "Live · passed every check", icon=":material/verified:", color="green"
+                )
+            else:
+                st.badge(
+                    "Live · a check is not met", icon=":material/warning:", color="orange"
+                )
+            trained = _ist_text(deployment_id) if deployment_id != "bundled" else None
+            data_end = _ist_text(status.get("fit_cutoff"), "%d %b %Y")
+            months = int(service.config.get("months", 12) or 12)
+            st.caption(
+                (f"Version of {trained}" if trained else "Shipped version")
+                + f" · trained on {months} months of plant data"
+                + (f" up to {data_end}" if data_end else "")
+                + (f" · {int(window_hours)}-hour coke rate" if window_hours else ""),
+                help=f"Deployment id: {deployment_id}",
+            )
 
-    if random_metrics:
-        st.caption(
-            f"Deployment validation: random-split R2 "
-            f"{_metric_text(random_metrics, 'r2')}, later-time R2 "
-            f"{_metric_text(later_metrics, 'r2')}; trained on "
-            f"{int(metadata.get('training_rows', status.get('training_rows', 0)) or 0):,} rows."
+        cols = st.columns(4)
+        cols[0].metric(
+            "Current prediction",
+            _kg_text(current_value),
+            help=(
+                "The coke rate the optimiser is using now, for the operator's "
+                "current PCI and nut coke rates"
+                + (
+                    f", windows ending {_ist_text(current.get('window_end_utc'))}."
+                    if current_value is not None
+                    else ". Shown once the optimiser has evaluated the current state."
+                )
+            ),
         )
-    else:
-        st.caption(
-            "The bundled model predates the in-app retraining gate. Its reported "
-            "later-date test is shown above; the first in-app retrain will also "
-            "record the requested random-split score."
+        cols[1].metric(
+            "Typical error, unseen days",
+            _kg_text(_finite(random_metrics, "mae")),
+            help=(
+                "Mean absolute error on whole days held out at random from training"
+                + (
+                    f" (R² {_finite(random_metrics, 'r2'):.2f})."
+                    if _finite(random_metrics, "r2") is not None
+                    else "."
+                )
+            ),
         )
+        cols[2].metric(
+            "Typical error, latest 14 days",
+            _kg_text(_finite(later_metrics, "mae")),
+            help=(
+                "Mean absolute error on the most recent 14 days, predicted by a model "
+                "trained only on earlier data"
+                + (
+                    f"; average offset {_finite(later_metrics, 'bias'):+.1f} kg/THM."
+                    if _finite(later_metrics, "bias") is not None
+                    else "."
+                )
+            ),
+        )
+        cols[3].metric(
+            "Coke rise if PCI falls 40 kg/THM",
+            _kg_text(_finite(fuel_response, "coke_change_for_pci_minus_40"), signed=True),
+            help=(
+                "Predicted coke-rate change for 40 kg/THM less PCI, averaged over "
+                "recent operating states. Nut coke 10 kg/THM lower: "
+                + _kg_text(
+                    _finite(fuel_response, "coke_change_for_nut_coke_minus_10"),
+                    signed=True,
+                )
+                + "."
+            ),
+        )
+        _render_check_badges(checks)
+
+    if current and not current.get("usable"):
+        reasons = " ".join(map(str, current.get("reasons", []) or []))
+        st.warning("The current prediction is on hold: " + reasons)
+        latest_inputs = current.get("latest_input_diagnostics", {}) or {}
+        if latest_inputs:
+            st.caption(
+                "Latest-row inputs: "
+                f"burden {float(latest_inputs.get('burden_mt') or 0):,.1f} MT, "
+                f"production {float(latest_inputs.get('production_mt_per_hr') or 0):,.1f} MT/h."
+            )
 
     bias_window_hours = float(cfg.get("bias_correction_window_hours", 24.0))
     bias_min_periods = int(cfg.get("bias_correction_min_periods", 6))
@@ -734,121 +1062,62 @@ def render_data_driven_coke_accuracy() -> None:
             st.info("No eligible paired model prediction and coke-mass rows are available.")
         else:
             plotted = _recent_tracking_window(history)
-            st.markdown("#### Coke-rate tracking")
-            st.caption(
-                "Hourly raw, bias-corrected, and measured coke rate · "
-                f"latest {TRACKING_DISPLAY_DAYS * 24} hours"
-            )
-            st.plotly_chart(_coke_tracking_figure(plotted), width="stretch")
-
-            raw_mae, raw_bias, raw_n = _prediction_error(
+            mae, _bias, _paired_n = _prediction_error(
                 plotted, "raw_predicted_coke_kg_per_thm"
             )
-            corrected_mae, corrected_bias, corrected_n = _prediction_error(
-                plotted, "corrected_predicted_coke_kg_per_thm"
+            st.markdown("#### Predicted vs actual coke rate")
+            basis = (
+                f"{int(window_hours)}-hour coke rate"
+                if window_hours
+                else "Hourly coke rate"
             )
-            metric_cols = st.columns(4)
-            metric_cols[0].metric(
-                "Raw MAE",
-                f"{raw_mae:,.1f} kg/THM" if raw_mae is not None else "Not available",
-            )
-            metric_cols[1].metric(
-                "Raw bias",
-                f"{raw_bias:+,.1f} kg/THM" if raw_bias is not None else "Not available",
-            )
-            metric_cols[2].metric(
-                "Corrected MAE",
-                (
-                    f"{corrected_mae:,.1f} kg/THM"
-                    if corrected_mae is not None
-                    else "Not available"
-                ),
-            )
-            metric_cols[3].metric(
-                "Corrected bias",
-                (
-                    f"{corrected_bias:+,.1f} kg/THM"
-                    if corrected_bias is not None
-                    else "Not available"
-                ),
-            )
+            unseen_mae = _finite(random_metrics, "mae")
             st.caption(
-                "Actual = 1,000 x COKE_CALC_MT / hourly hot metal. Corrected = "
-                f"raw prediction plus the median residual from only prior hours "
-                f"in a {bias_window_hours:g}-hour window (minimum "
-                f"{bias_min_periods} observations). Paired points: raw {raw_n:,}; "
-                f"corrected {corrected_n:,}."
+                f"{basis}, last {TRACKING_DISPLAY_DAYS * 24} hours, IST. These hours "
+                "are part of the live model's training data, so a close fit is "
+                "expected"
+                + (f" (average gap {mae:.1f} kg/THM)" if mae is not None else "")
+                + (
+                    f". The band is ±{unseen_mae:.1f} kg/THM, the model's typical "
+                    "error on days it had not seen: expect new days to land inside it."
+                    if unseen_mae is not None
+                    else "; the error figures above are measured on days it had not seen."
+                )
+            )
+            st.plotly_chart(
+                _coke_tracking_figure(plotted, band=unseen_mae), width="stretch"
             )
 
-    current = st.session_state.get("bmo_data_driven_coke_prediction", {}) or {}
-    if current:
-        if current.get("usable"):
-            measured = current.get("measured_coke_rate_kg_per_thm")
-            if measured is not None:
-                st.success(
-                    f"Current measured anchor: **{float(measured):,.1f} kg/THM** "
-                    f"from {int(current.get('measured_hour_count', 0) or 0)} hours "
-                    f"({current.get('window_start_utc', '')} to "
-                    f"{current.get('window_end_utc', '')})."
-                )
-            raw_value = current.get("value_kg_per_thm")
-            if raw_value is not None:
-                st.caption(
-                    f"Raw model prediction over that window: "
-                    f"{float(raw_value):,.1f} kg/THM."
-                )
-        else:
-            reasons = " ".join(map(str, current.get("reasons", []) or []))
-            st.warning(
-                "Current prediction is rejected by the freshness/input gate. " + reasons
+    with st.container(border=True):
+        left, right = st.columns([4, 1], vertical_alignment="center")
+        with left:
+            st.markdown("**Model updates**")
+            auto = auto_retrain_state(deployment_dir)
+            st.caption(
+                "Retrains automatically once a day when new plant data arrives. A new "
+                "version goes live only if it passes all four checks above; the "
+                "last 30 versions are kept for rollback."
+                + (f" {_auto_retrain_text(auto)}" if auto else "")
             )
-            latest_inputs = current.get("latest_input_diagnostics", {}) or {}
-            if latest_inputs:
-                st.caption(
-                    "Latest-row inputs: "
-                    f"burden {float(latest_inputs.get('burden_mt') or 0):,.1f} MT, "
-                    f"production {float(latest_inputs.get('production_mt_per_hr') or 0):,.1f} MT/h."
-                )
-
-    min_random = float(retrain_cfg.get("min_random_r2", 0.70))
-    min_later = float(retrain_cfg.get("min_later_time_r2", 0.65))
-    st.markdown("##### Retrain and conditionally deploy")
-    st.caption(
-        f"The candidate must pass both gates: random-split R2 >= {min_random:.2f} "
-        f"and strict later-time R2 >= {min_later:.2f}. The later-time block is "
-        "never included in its training fit. A failed candidate does not replace "
-        "the active deployment."
-    )
-    clicked = st.button(
-        "Retrain, validate and deploy",
-        key="bmo_retrain_direct_coke",
-        type="primary",
-        width="stretch",
-        help=(
-            "Rebuilds the exact audited coke features from the furnace dataset, "
-            "scores random and later-time holdouts, and atomically activates only "
-            "a model that clears both configured R2 thresholds."
-        ),
-    )
+        clicked = right.button(
+            "Retrain now",
+            key="bmo_retrain_direct_coke",
+            icon=":material/refresh:",
+            width="stretch",
+            help=(
+                "Rebuilds the 24-hour coke target and features from the furnace "
+                "dataset, re-runs all four checks, and puts the new version live "
+                "only if it passes every one."
+            ),
+        )
     if clicked:
-        with st.status(
-            "Rebuilding coke features and validating the candidate...", expanded=True
-        ) as progress:
-            st.write(
-                "Using fixed 300 kg/THM coke in the slag feature to prevent leakage."
-            )
+        with st.status("Training and checking a new version...", expanded=True) as progress:
             try:
                 report = retrain_and_maybe_deploy(
                     dataset_path,
                     bundled_dir=bundled_dir,
                     deployment_dir=deployment_dir,
-                    min_random_r2=min_random,
-                    min_later_time_r2=min_later,
-                    random_test_fraction=float(
-                        retrain_cfg.get("random_test_fraction", 0.20)
-                    ),
-                    later_test_days=int(retrain_cfg.get("later_test_days", 14)),
-                    seed=int(retrain_cfg.get("seed", 20260922)),
+                    **gates,
                 )
             except Exception as exc:  # noqa: BLE001
                 log.exception("Direct coke model retraining failed")
@@ -857,39 +1126,53 @@ def render_data_driven_coke_accuracy() -> None:
                 return
 
             st.session_state["bmo_direct_coke_retrain_report"] = report.to_dict()
-            random_r2 = _metric_text(report.random_metrics, "r2")
-            later_r2 = _metric_text(report.later_time_metrics, "r2")
+            summary = (
+                f"error on unseen days {_kg_text(_finite(report.random_metrics, 'mae'))}, "
+                f"latest 14 days {_kg_text(_finite(report.later_time_metrics, 'mae'))}, "
+                "PCI -40 "
+                + _kg_text(
+                    _finite(report.fuel_response, "coke_change_for_pci_minus_40"),
+                    signed=True,
+                )
+            )
             if report.deployed:
                 progress.update(
-                    label=(
-                        f"Deployed {report.deployment_id}: random R2 {random_r2}, "
-                        f"later-time R2 {later_r2}"
-                    ),
-                    state="complete",
+                    label=f"New version is live: {summary}", state="complete"
                 )
                 st.success(
-                    "The validated candidate is now active. Previous versioned "
-                    "deployments were retained for rollback."
+                    "The new version passed every check and is now live. Earlier "
+                    "versions are kept for rollback."
                 )
             else:
                 progress.update(
-                    label="Candidate rejected; active model unchanged", state="error"
+                    label="New version not deployed; the live version is unchanged",
+                    state="error",
                 )
-                st.error(
-                    f"Random-split R2: {random_r2}; later-time R2: {later_r2}. "
-                    + " ".join(report.reasons)
-                )
+                st.error(f"{summary[0].upper()}{summary[1:]}. " + " ".join(report.reasons))
 
-    with st.expander("Validation meaning and leakage controls", expanded=False):
+    with st.expander("How the model is built and checked", expanded=False):
+        later_r2 = _finite(later_metrics, "r2")
         st.markdown(
-            "- Target: `1,000 x COKE_CALC_MT / PRODUCTIONTONNESPERHR`.\n"
-            "- No `COKE_CALC_*`, reported coke-rate, total-fuel-rate or unit-cost "
-            "column is allowed into the features.\n"
-            "- Slag is rebuilt with a fixed 300 kg/THM reference coke.\n"
-            "- Assay features are delayed 24 hours and the chronological split "
-            "uses a 12-hour purge.\n"
-            "- Random split is a secondary diagnostic. Later-time R2 is the "
-            "deployment safeguard. Neither makes the model a causal optimiser."
+            "- **What it predicts:** the coke rate over the last 24 hours, as coke "
+            "charged per tonne of Fe charged × Fe per tonne of hot metal (over a "
+            "week). Coke and ore are counted on the same charges, so charge-to-"
+            "charge counting cancels; hourly `COKE_CALC_MT / production` does not.\n"
+            "- **Data it ignores:** days whose coke mass disagrees with the set "
+            "point by more than -20% / +25% (e.g. the Nov 2025 undercount) and "
+            "single-hour weighing spikes.\n"
+            "- **Inputs:** 24-hour PCI, nut coke, flux, burden shares and grade, "
+            "slag, blast, top gas, burden distribution and key raw-material "
+            "analyses. No coke mass, reported coke rate, fuel rate or unit cost.\n"
+            "- **Physics guard:** more PCI or nut coke can only lower the predicted "
+            "coke; the plant data sets by how much.\n"
+            "- **Checks:** whole days held out at random, and the latest 14 days "
+            "held out entirely. R² is not used on the latest 14 days"
+            + (f" (it is {later_r2:.2f})" if later_r2 is not None else "")
+            + ": a quiet fortnight moves only a few kg/THM, so R² there measures "
+            "the fortnight rather than the model. The error in kg/THM and the "
+            "comparison with last week's level are used instead.\n"
+            "- The model estimates the coke rate for given conditions. It does not "
+            "prove a lower coke rate is achievable."
         )
 
 
@@ -900,7 +1183,6 @@ def render_model_accuracy_tab() -> None:
     render_data_driven_coke_accuracy()
     with st.expander("Energy-balance calibration and recent accuracy", expanded=False):
         render_retrain_control()
-        st.divider()
         render_coke_accuracy()
     with st.expander("Hot-metal silicon model", expanded=False):
         render_si_accuracy()

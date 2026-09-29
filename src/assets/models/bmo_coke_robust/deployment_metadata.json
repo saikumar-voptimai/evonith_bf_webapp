@@ -1,0 +1,42 @@
+{
+  "deployment_id": "20260928T152023182060Z",
+  "trained_at_utc": "2026-09-28T15:20:23.182060+00:00",
+  "dataset_path": "E:\\Personal\\MarketResearch\\EvonithSteel\\BlastFurnaceProject\\PythonBlastFurnace\\evonith_webapp\\src\\assets\\data\\furnace_dataset.csv",
+  "dataset_sha256": "ae61d431f2b76cfb08cee8c3bb704b479e1b3042b687fa49800481367b8ef29a",
+  "random_metrics": {
+    "n": 981,
+    "r2": 0.7750623535482,
+    "mae": 5.466570713949734,
+    "rmse": 7.21723921975042,
+    "bias": 1.675727346852426,
+    "held_out_days": 45
+  },
+  "later_time_metrics": {
+    "n": 347,
+    "r2": -0.28425897860488036,
+    "mae": 6.8449056201621525,
+    "rmse": 8.927151200360962,
+    "bias": -6.259570988914845,
+    "last_week_level_mae": 14.891083363836966,
+    "skill_vs_last_week_level": 0.5403352830066734,
+    "test_start": "2026-09-14 00:00:00+00:00",
+    "test_end": "2026-09-28 14:30:00+00:00"
+  },
+  "fuel_response": {
+    "coke_change_for_pci_minus_40": 30.20181655883789,
+    "pci_replacement_kg_per_kg": 0.7550454139709473,
+    "coke_change_for_nut_coke_minus_10": 3.2887487411499023
+  },
+  "thresholds": {
+    "random_r2": 0.7,
+    "later_time_mae": 10.0,
+    "later_time_skill": 0.0,
+    "pci_replacement_range": [
+      0.2,
+      1.5
+    ]
+  },
+  "training_rows": 5124,
+  "features": 50,
+  "xgboost_version": "3.3.0"
+}

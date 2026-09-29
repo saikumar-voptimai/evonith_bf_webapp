@@ -1,14 +1,19 @@
 """Direct, price-independent coke-rate model inference and retraining.
 
-The deployed model predicts coke rate in kg/THM for monitoring the current
-burden/process state. BMO anchors the optimisation level on the measured
-coke/hot-metal mass ratio; its explicit correction layer supplies blend deltas.
+The deployed model predicts the robust window coke rate in kg/THM (see
+``utils.bmo.robust_coke_target``) for the current burden/process state, with PCI
+and nut coke constrained to lower it. In Data-Driven mode BMO prices fuel on
+that prediction; its explicit correction layer supplies blend deltas.
 
-Retraining uses the same frozen preprocessing contract as the audited artifact.
-A candidate is deployed only when both a random development split and a strict
-later-time holdout clear configured R2 gates.  Deployment is an atomic pointer
-swap to a versioned bundle, so an interrupted write cannot corrupt the active
-model and every previous deployment remains available for rollback.
+A candidate is deployed only when it clears a random whole-day holdout, a strict
+later-time holdout (MAE and skill over last week's level), and a PCI-response
+check. Deployment is an atomic pointer swap to a versioned bundle, so an
+interrupted write cannot corrupt the active model and every previous deployment
+remains available for rollback. ``maybe_retrain_in_background`` repeats this
+automatically once the dataset has moved on.
+
+Bundles without a ``robust_target`` config are the earlier hourly-target model
+and still load, on its lag features.
 """
 
 from __future__ import annotations
@@ -17,8 +22,10 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
+import threading
 from typing import Any
 
 import numpy as np
@@ -27,11 +34,28 @@ import xgboost as xgb
 
 from utils.bmo.coke_model_pipeline import pipeline
 from utils.bmo.coke_model_pipeline.context_model import context_features
+from utils.bmo.robust_coke_target import (
+    MONOTONE_CONSTRAINTS,
+    NUT_COKE_FEATURE,
+    PCI_FEATURE,
+    TARGET_COLUMN,
+    TASK_NAME,
+    RobustCokeSettings,
+    is_robust_config,
+    monotone_constraint_string,
+    robust_coke_target,
+    training_columns,
+    window_coverage,
+    window_features,
+)
+
+log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_BUNDLE_DIR = REPO_ROOT / "src/assets/models/bmo_coke_xgb"
+DEFAULT_BUNDLE_DIR = REPO_ROOT / "src/assets/models/bmo_coke_robust"
 DEFAULT_DEPLOYMENT_DIR = REPO_ROOT / "src/storage/bmo_coke_model"
 DEFAULT_DATASET_PATH = REPO_ROOT / "src/assets/data/furnace_dataset.csv"
+AUTO_RETRAIN_STATE = "auto_retrain.json"
 
 
 @dataclass(frozen=True)
@@ -40,10 +64,6 @@ class DirectCokePrediction:
 
     value_kg_per_thm: float | None
     usable: bool
-    measured_coke_rate_kg_per_thm: float | None = None
-    measured_coke_mt: float | None = None
-    measured_hot_metal_mt: float | None = None
-    measured_hour_count: int = 0
     origin_utc: str = ""
     window_start_utc: str = ""
     window_end_utc: str = ""
@@ -60,6 +80,7 @@ class DirectCokePrediction:
     deployment_id: str = "bundled"
     model_path: str = ""
     later_date_r2: float | None = None
+    target_window_hours: int | None = None
     latest_input_diagnostics: dict[str, float | str | None] = field(
         default_factory=dict
     )
@@ -77,7 +98,8 @@ class RetrainReport:
     deployment_id: str = ""
     random_metrics: dict[str, float | int | None] = field(default_factory=dict)
     later_time_metrics: dict[str, float | int | None] = field(default_factory=dict)
-    thresholds: dict[str, float] = field(default_factory=dict)
+    fuel_response: dict[str, float | None] = field(default_factory=dict)
+    thresholds: dict[str, Any] = field(default_factory=dict)
     training_rows: int = 0
     feature_count: int = 0
     first_origin_utc: str = ""
@@ -197,6 +219,19 @@ def _apply_current_fuel_overrides(
     return out
 
 
+def _trim_to_recent(raw: pd.DataFrame, cfg: dict[str, Any], hours: float) -> pd.DataFrame:
+    """Keep only the newest ``hours`` of source rows (inference needs no more)."""
+
+    time_col = str(cfg.get("time_col", "time"))
+    if raw.empty or time_col not in raw:
+        return raw
+    parsed = pd.to_datetime(raw[time_col], errors="coerce", format="mixed", dayfirst=True)
+    latest = parsed.max()
+    if pd.isna(latest):
+        return raw
+    return raw.loc[parsed.ge(latest - pd.Timedelta(hours=float(hours)))].copy()
+
+
 def _prepare_context(
     hourly_frame: pd.DataFrame | str | Path,
     config: dict[str, Any],
@@ -204,16 +239,35 @@ def _prepare_context(
     pci_kg_per_thm: float | None = None,
     nut_coke_kg_per_thm: float | None = None,
     lookback_hours: float = 1.0,
+    recent_hours: float | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any], pd.DataFrame]:
     cfg = {**pipeline.DEFAULT, **config}
+    raw = _load_hourly(hourly_frame)
+    if recent_hours is not None:
+        raw = _trim_to_recent(raw, cfg, recent_hours)
+    override_hours = float(lookback_hours)
+    if is_robust_config(cfg):
+        # Every origin in the lookback describes its own trailing window, so an
+        # operator rate must cover all of those windows to be seen in full.
+        override_hours += RobustCokeSettings.from_config(cfg).window_hours - 1
     raw = _apply_current_fuel_overrides(
-        _load_hourly(hourly_frame),
+        raw,
         cfg,
         pci_kg_per_thm=pci_kg_per_thm,
         nut_coke_kg_per_thm=nut_coke_kg_per_thm,
-        lookback_hours=lookback_hours,
+        lookback_hours=override_hours,
     )
     cleaned, audit, _ = pipeline.clean_furnace(raw, cfg)
+    if is_robust_config(cfg):
+        # Same fixed 300 kg/THM reference coke as the earlier model, so the
+        # target cannot reach the slag features through coke ash.
+        slag, slag_errors = pipeline.slag_features(
+            cleaned, {**cfg, "slag_reference_coke_rate": 300.0}
+        )
+        features = window_features(
+            cleaned, slag, audit, RobustCokeSettings.from_config(cfg)
+        )
+        return cleaned, audit, features, cfg, slag_errors
     labs = _canonical_empty_labs(cleaned.index)
     features, _slag, slag_errors = context_features(cleaned, labs, cfg)
     return cleaned, audit, features, cfg, slag_errors
@@ -253,6 +307,30 @@ class DirectCokeModelService:
         self.schema = _read_json(self.bundle_dir / "coke_context_schema.json")
         self.model_path = self.bundle_dir / "coke_context.json"
         self.model = xgb.Booster(model_file=str(self.model_path))
+        self.target_settings = (
+            RobustCokeSettings.from_config(self.config)
+            if is_robust_config(self.config)
+            else None
+        )
+
+    def _inference_history_hours(self, lookback_hours: float) -> float | None:
+        """Source history a current-state prediction needs, or None for all.
+
+        The window features need the lookback plus one window; the 24-h assay
+        delay and the stop-recovery flags need a little more. A week covers it
+        and keeps the per-row slag balance off the full year on every page load.
+        """
+
+        if self.target_settings is None:
+            return None
+        settings = self.target_settings
+        needed = (
+            float(lookback_hours)
+            + 2 * settings.window_hours
+            + settings.assay_delay_hours
+            + 48
+        )
+        return max(168.0, needed)
 
     def _resolve_active_bundle(self) -> tuple[Path, str]:
         pointer = self.deployment_dir / "active.json"
@@ -280,10 +358,15 @@ class DirectCokeModelService:
             "loaded": True,
             "deployment_id": self.deployment_id,
             "bundle_dir": str(self.bundle_dir),
+            "task": str(self.schema.get("task", "")),
+            "target_window_hours": (
+                self.target_settings.window_hours if self.target_settings else None
+            ),
             "feature_count": len(self.schema.get("features", [])),
             "later_date_r2": _float_or_none(test.get("r2")),
             "training_rows": int(self.schema.get("training_rows", 0) or 0),
             "fit_cutoff": str(self.schema.get("fit_cutoff", "")),
+            "validation": validation,
             "metadata": metadata,
         }
 
@@ -295,8 +378,10 @@ class DirectCokeModelService:
         bias_min_periods: int = 6,
         history_days: int | None = None,
     ) -> pd.DataFrame:
-        """Return leakage-safe hourly raw, corrected, and measured coke rates.
+        """Return leakage-safe hourly raw, corrected, and actual coke rates.
 
+        For a robust-target model "actual" is the robust window coke rate the
+        model was trained on; for the earlier model it is the hourly mass ratio.
         The correction at hour t is the median raw-model residual from strictly
         earlier observations in the configured trailing window. The actual
         value at t therefore cannot correct its own prediction.
@@ -315,6 +400,16 @@ class DirectCokeModelService:
                 latest = timestamps.max()
                 if pd.notna(latest):
                     warmup_hours = max(72.0, float(bias_window_hours) + 24.0)
+                    if self.target_settings is not None:
+                        # The target's week-long Fe levelling and outlier
+                        # screen are centred, so they need half a week either side.
+                        warmup_hours = max(
+                            warmup_hours,
+                            float(
+                                self.target_settings.window_hours
+                                + self.target_settings.fe_level_hours
+                            ),
+                        )
                     start = latest - pd.Timedelta(
                         days=max(1, int(history_days)),
                         hours=warmup_hours,
@@ -334,7 +429,12 @@ class DirectCokeModelService:
         )
         coke_mt = _numeric_column(cleaned, "COKE_CALC_MT")
         hot_metal_mt = _numeric_column(cleaned, "PRODUCTIONTONNESPERHR")
-        actual = coke_mt.mul(1000.0).div(hot_metal_mt.where(hot_metal_mt.gt(0.0)))
+        if self.target_settings is not None:
+            actual = robust_coke_target(cleaned, audit, self.target_settings)[
+                TARGET_COLUMN
+            ]
+        else:
+            actual = coke_mt.mul(1000.0).div(hot_metal_mt.where(hot_metal_mt.gt(0.0)))
         eligible = audit["normal_eligible"].fillna(False)
         usable = eligible & feature_usable & actual.notna() & np.isfinite(actual)
         origins = rows.index[usable]
@@ -396,17 +496,32 @@ class DirectCokeModelService:
             pci_kg_per_thm=pci_kg_per_thm,
             nut_coke_kg_per_thm=nut_coke_kg_per_thm,
             lookback_hours=hours,
+            recent_hours=self._inference_history_hours(hours),
         )
         latest = cleaned.index.max()
         eligible = audit["normal_eligible"].fillna(False)
+        window_hours = None
+        if self.target_settings is not None:
+            window_hours = int(self.target_settings.window_hours)
+            eligible &= window_coverage(cleaned, audit, self.target_settings).ge(
+                float(self.target_settings.min_window_coverage)
+            )
         if not eligible.any():
             return DirectCokePrediction(
                 value_kg_per_thm=None,
                 usable=False,
                 latest_source_origin_utc=str(latest),
-                reasons=("No eligible normal-operation row with positive burden.",),
+                reasons=(
+                    "No eligible normal-operation row with positive burden"
+                    + (
+                        f" and {window_hours}-hour window coverage."
+                        if window_hours
+                        else "."
+                    ),
+                ),
                 deployment_id=self.deployment_id,
                 model_path=str(self.model_path),
+                target_window_hours=window_hours,
             )
 
         at = cleaned.index[eligible][-1]
@@ -468,28 +583,6 @@ class DirectCokeModelService:
             if hourly_prediction_count:
                 value = float(np.median(finite_predictions))
 
-        measured_coke_rate: float | None = None
-        measured_coke_mt: float | None = None
-        measured_hot_metal_mt: float | None = None
-        measured_hour_count = 0
-        window = cleaned.loc[origins]
-        coke_mt = _numeric_column(window, "COKE_CALC_MT")
-        hot_metal_mt = _numeric_column(window, "PRODUCTIONTONNESPERHR")
-        measured_rows = (
-            coke_mt.notna()
-            & hot_metal_mt.notna()
-            & coke_mt.ge(0.0)
-            & hot_metal_mt.gt(0.0)
-        )
-        if measured_rows.any():
-            measured_coke_mt = float(coke_mt.loc[measured_rows].sum())
-            measured_hot_metal_mt = float(hot_metal_mt.loc[measured_rows].sum())
-            measured_hour_count = int(measured_rows.sum())
-            if measured_hot_metal_mt > 0.0:
-                measured_coke_rate = (
-                    measured_coke_mt * 1000.0 / measured_hot_metal_mt
-                )
-
         reasons: list[str] = []
         if stale_hours > self.max_stale_hours:
             reasons.append(
@@ -506,10 +599,6 @@ class DirectCokeModelService:
             )
         if value is None or not np.isfinite(value):
             reasons.append("The model did not produce a finite coke-rate prediction.")
-        if measured_coke_rate is None or not np.isfinite(measured_coke_rate):
-            reasons.append(
-                "The selected lookback has no valid coke mass and hot-metal mass pair."
-            )
 
         selected_row = cleaned.loc[at]
         burden = sum(
@@ -528,10 +617,6 @@ class DirectCokeModelService:
         return DirectCokePrediction(
             value_kg_per_thm=value,
             usable=not reasons,
-            measured_coke_rate_kg_per_thm=measured_coke_rate,
-            measured_coke_mt=measured_coke_mt,
-            measured_hot_metal_mt=measured_hot_metal_mt,
-            measured_hour_count=measured_hour_count,
             origin_utc=str(at),
             window_start_utc=str(origins.min()) if len(origins) else "",
             window_end_utc=str(at),
@@ -548,6 +633,7 @@ class DirectCokeModelService:
             deployment_id=self.deployment_id,
             model_path=str(self.model_path),
             later_date_r2=_float_or_none(later_validation.get("r2")),
+            target_window_hours=window_hours,
             latest_input_diagnostics={
                 "burden_mt": burden,
                 "production_mt_per_hr": _float_or_none(
@@ -560,22 +646,9 @@ class DirectCokeModelService:
         )
 
 
-def _select_features(
-    features: pd.DataFrame,
-    target: pd.Series,
-    *,
-    family: str,
-    top_k: int,
-) -> list[str]:
-    local = features.reset_index(drop=True)
-    mask = pd.Series(True, index=local.index)
-    return pipeline.chosen_columns(
-        local,
-        mask,
-        family,
-        int(top_k),
-        target.reset_index(drop=True),
-    )
+def _select_features(features: pd.DataFrame, target: pd.Series) -> list[str]:
+    del target  # every usable window feature is kept; see training_columns
+    return training_columns(features)
 
 
 def _train_model(
@@ -599,6 +672,8 @@ def _train_model(
         "colsample_bytree": 0.85,
         "seed": int(seed),
         "nthread": 2,
+        # PCI and nut coke may only lower coke; the model sets the size.
+        "monotone_constraints": monotone_constraint_string(columns),
     }
     matrix = xgb.DMatrix(
         features.loc[:, columns].to_numpy(dtype=np.float32),
@@ -616,7 +691,101 @@ def _predict_model(
 
 
 def _metrics(target: pd.Series, prediction: np.ndarray) -> dict[str, Any]:
-    return pipeline.metrics(target.to_numpy(dtype=float), prediction)
+    result = pipeline.metrics(target.to_numpy(dtype=float), prediction)
+    error = np.asarray(prediction, dtype=float) - target.to_numpy(dtype=float)
+    result["bias"] = float(np.nanmean(error)) if len(error) else None
+    return result
+
+
+def _training_target(
+    cleaned: pd.DataFrame, audit: pd.DataFrame, cfg: dict[str, Any]
+) -> pd.Series:
+    settings = RobustCokeSettings.from_config(cfg)
+    return robust_coke_target(cleaned, audit, settings)[TARGET_COLUMN]
+
+
+def _random_day_split(
+    origins: pd.DatetimeIndex, *, fraction: float, seed: int, purge_hours: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Hold out whole random days; drop training rows whose window touches one.
+
+    Neighbouring hours share most of a trailing window, so a random-row split
+    would score a row against its own near-duplicate.
+    """
+
+    days = origins.floor("D")
+    unique = pd.DatetimeIndex(days.unique())
+    rng = np.random.default_rng(int(seed))
+    count = min(len(unique), max(1, int(round(len(unique) * float(fraction)))))
+    held = unique[rng.choice(len(unique), size=count, replace=False)]
+    is_test = np.asarray(days.isin(held))
+    flags = pd.Series(is_test.astype(float), index=origins)
+    # Origins keep the IST half-hour offset, so the purge runs on their own
+    # hourly lattice rather than on clock-hour bins.
+    lattice = pd.date_range(origins.min(), origins.max(), freq="h")
+    grid = flags.reindex(lattice).fillna(0.0)
+    span = int(purge_hours) + 1
+    near = (
+        grid.rolling(span, min_periods=1).max()
+        + grid[::-1].rolling(span, min_periods=1).max()[::-1]
+    )
+    touching = near.reindex(origins).fillna(0.0).to_numpy() > 0.0
+    return np.flatnonzero(~touching), np.flatnonzero(is_test)
+
+
+def _fuel_response(
+    model: Any, features: pd.DataFrame, columns: list[str], name: str, delta: float
+) -> float | None:
+    """Mean change in predicted coke when one fuel feature moves by ``delta``."""
+
+    if name not in columns or features.empty:
+        return None
+    shifted = features.copy()
+    shifted[name] = shifted[name] + float(delta)
+    change = _predict_model(model, shifted, columns) - _predict_model(
+        model, features, columns
+    )
+    return float(np.mean(change))
+
+
+def _prune_versions(deployment_dir: Path, *, keep: int, active_id: str) -> None:
+    """Keep the newest ``keep`` versions and the active one; retraining is daily."""
+
+    versions_dir = deployment_dir / "versions"
+    if keep <= 0 or not versions_dir.is_dir():
+        return
+    versions = sorted(
+        (path for path in versions_dir.iterdir() if path.is_dir()),
+        key=lambda path: path.name,
+        reverse=True,
+    )
+    for path in versions[keep:]:
+        if path.name == active_id:
+            continue
+        for item in path.iterdir():
+            item.unlink()
+        path.rmdir()
+
+
+def _rejected(reason: str, **values: Any) -> RetrainReport:
+    return RetrainReport(passed=False, deployed=False, reasons=(reason,), **values)
+
+
+def retrain_kwargs_from_config(retraining: dict[str, Any] | None) -> dict[str, Any]:
+    """Gate and split settings for ``retrain_and_maybe_deploy`` from YAML."""
+
+    cfg = dict(retraining or {})
+    low, high = cfg.get("pci_replacement_range", (0.2, 1.5))
+    return {
+        "min_random_r2": float(cfg.get("min_random_r2", 0.70)),
+        "max_later_time_mae": float(cfg.get("max_later_time_mae", 10.0)),
+        "min_later_time_skill": float(cfg.get("min_later_time_skill", 0.0)),
+        "pci_replacement_range": (float(low), float(high)),
+        "random_test_fraction": float(cfg.get("random_test_fraction", 0.20)),
+        "later_test_days": int(cfg.get("later_test_days", 14)),
+        "seed": int(cfg.get("seed", 20260922)),
+        "keep_versions": int(cfg.get("keep_versions", 30)),
+    }
 
 
 def retrain_and_maybe_deploy(
@@ -625,100 +794,126 @@ def retrain_and_maybe_deploy(
     bundled_dir: str | Path = DEFAULT_BUNDLE_DIR,
     deployment_dir: str | Path = DEFAULT_DEPLOYMENT_DIR,
     min_random_r2: float = 0.70,
-    min_later_time_r2: float = 0.65,
+    max_later_time_mae: float = 10.0,
+    min_later_time_skill: float = 0.0,
+    pci_replacement_range: tuple[float, float] = (0.2, 1.5),
     random_test_fraction: float = 0.20,
     later_test_days: int = 14,
     seed: int = 20260922,
     rounds_override: int | None = None,
+    keep_versions: int = 30,
 ) -> RetrainReport:
-    """Retrain and atomically activate only a twice-validated candidate."""
+    """Retrain on the robust coke target and activate only a validated candidate.
+
+    Gates, all required:
+
+    - Random whole-day holdout R2 >= ``min_random_r2``.
+    - Strict later-time holdout MAE <= ``max_later_time_mae`` kg/THM. Later-time
+      R2 is reported but not gated: a quiet fortnight has a standard deviation
+      near 8 kg/THM, so R2 there measures the fortnight, not the model.
+    - Later-time skill >= ``min_later_time_skill``: 1 - MAE / MAE of simply
+      carrying the last week's average level forward.
+    - PCI replacement within ``pci_replacement_range`` kg coke per kg PCI on the
+      later-time rows, so a candidate that has stopped responding to PCI is
+      never deployed.
+
+    Args:
+        dataset_path: Hourly furnace dataset CSV.
+        bundled_dir: Bundle whose ``config.json`` defines cleaning and target.
+        deployment_dir: Versioned deployments and the ``active.json`` pointer.
+        min_random_r2: Random whole-day holdout gate.
+        max_later_time_mae: Later-time MAE gate, kg/THM.
+        min_later_time_skill: Later-time skill gate over the last-week level.
+        pci_replacement_range: Allowed kg coke per kg PCI (inclusive).
+        random_test_fraction: Share of development days held out at random.
+        later_test_days: Length of the strict later-time holdout.
+        seed: Random seed for the day split and XGBoost.
+        rounds_override: Boosting rounds instead of the configured value.
+        keep_versions: Deployed versions retained for rollback (0 keeps all).
+
+    Returns:
+        The validation and deployment outcome.
+    """
 
     dataset_path = Path(dataset_path)
     bundled_dir = Path(bundled_dir)
     deployment_dir = Path(deployment_dir)
     config = _read_json(bundled_dir / "config.json")
-    base_schema = _read_json(bundled_dir / "coke_context_schema.json")
+    config.setdefault("robust_target", {})
     cleaned, audit, all_features, cfg, _errors = _prepare_context(dataset_path, config)
+    settings = RobustCokeSettings.from_config(cfg)
+    target = _training_target(cleaned, audit, cfg)
+    thresholds: dict[str, Any] = {
+        "random_r2": float(min_random_r2),
+        "later_time_mae": float(max_later_time_mae),
+        "later_time_skill": float(min_later_time_skill),
+        "pci_replacement_range": [float(v) for v in pci_replacement_range],
+    }
+    dataset_sha = _dataset_hash(dataset_path)
+
     eligible = (
         audit["normal_eligible"].fillna(False)
         & audit["in_requested_window"].fillna(False)
-        & cleaned["COKE_CALC_KG_THM"].notna()
+        & target.notna()
     )
     origins = cleaned.index[eligible]
-    if len(origins) < max(int(cfg.get("min_train_rows", 100)) + 20, 150):
-        return RetrainReport(
-            passed=False,
-            deployed=False,
-            thresholds={
-                "random_r2": float(min_random_r2),
-                "later_time_r2": float(min_later_time_r2),
-            },
+    min_train_rows = int(cfg.get("min_train_rows", 100))
+    if len(origins) < max(min_train_rows + 20, 150):
+        return _rejected(
+            "Not enough eligible rows with a trusted coke window to retrain.",
+            thresholds=thresholds,
             training_rows=int(len(origins)),
-            dataset_sha256=_dataset_hash(dataset_path),
-            reasons=("Not enough eligible normal-operation rows to retrain.",),
+            dataset_sha256=dataset_sha,
         )
 
-    recipe = dict(base_schema.get("parameters", {}) or {})
-    window_days = int(recipe.get("window") or 60)
-    family = str(recipe.get("family", "process"))
-    top_k = int(recipe.get("top_k", 80))
-    depth = int(recipe.get("depth", 3))
-    rounds = int(rounds_override or recipe.get("rounds", 300))
-    purge_hours = int(cfg.get("purge_hours", 12))
+    xgb_cfg = dict(cfg.get("xgboost", {}) or {})
+    depth = int(xgb_cfg.get("depth", 3))
+    rounds = int(rounds_override or xgb_cfg.get("rounds", 300))
+    # Labels are trailing windows: a gap shorter than one window would let a
+    # training label share hours with a test label.
+    purge_hours = max(int(cfg.get("purge_hours", 12)), int(settings.window_hours))
 
     X = all_features.loc[eligible].copy()
-    y = cleaned.loc[eligible, "COKE_CALC_KG_THM"].astype(float)
+    y = target.loc[eligible].astype(float)
     last_origin = origins.max()
     later_start = last_origin.floor("D") - pd.Timedelta(days=max(1, later_test_days))
-    later_train_mask = (origins < later_start - pd.Timedelta(hours=purge_hours)) & (
-        origins >= later_start - pd.Timedelta(days=window_days)
-    )
+    later_train_mask = origins < later_start - pd.Timedelta(hours=purge_hours)
     later_test_mask = origins >= later_start
-    if later_train_mask.sum() < int(cfg.get("min_train_rows", 100)):
-        return RetrainReport(
-            passed=False,
-            deployed=False,
-            thresholds={
-                "random_r2": float(min_random_r2),
-                "later_time_r2": float(min_later_time_r2),
-            },
+    if later_train_mask.sum() < min_train_rows:
+        return _rejected(
+            "Later-time split leaves too few training rows.",
+            thresholds=thresholds,
             training_rows=int(len(origins)),
-            dataset_sha256=_dataset_hash(dataset_path),
-            reasons=("Later-time split leaves too few training rows.",),
+            dataset_sha256=dataset_sha,
         )
     if later_test_mask.sum() < int(cfg.get("min_test_rows", 20)):
-        return RetrainReport(
-            passed=False,
-            deployed=False,
-            thresholds={
-                "random_r2": float(min_random_r2),
-                "later_time_r2": float(min_later_time_r2),
-            },
+        return _rejected(
+            "Later-time holdout has too few eligible rows.",
+            thresholds=thresholds,
             training_rows=int(len(origins)),
-            dataset_sha256=_dataset_hash(dataset_path),
-            reasons=("Later-time holdout has too few eligible rows.",),
+            dataset_sha256=dataset_sha,
         )
 
     development_positions = np.flatnonzero(later_train_mask)
-    rng = np.random.default_rng(int(seed))
-    shuffled = rng.permutation(development_positions)
-    random_test_count = max(20, int(round(len(shuffled) * random_test_fraction)))
-    random_test_positions = shuffled[:random_test_count]
-    random_train_positions = shuffled[random_test_count:]
-    if len(random_train_positions) < int(cfg.get("min_train_rows", 100)):
-        return RetrainReport(
-            passed=False,
-            deployed=False,
+    development = origins[development_positions]
+    random_train_local, random_test_local = _random_day_split(
+        development,
+        fraction=random_test_fraction,
+        seed=seed,
+        purge_hours=purge_hours,
+    )
+    random_train_positions = development_positions[random_train_local]
+    random_test_positions = development_positions[random_test_local]
+    if len(random_train_positions) < min_train_rows or len(random_test_positions) < 2:
+        return _rejected(
+            "Random-day split leaves too few rows.",
+            thresholds=thresholds,
             training_rows=int(len(origins)),
-            dataset_sha256=_dataset_hash(dataset_path),
-            reasons=("Random split leaves too few training rows.",),
+            dataset_sha256=dataset_sha,
         )
 
     random_columns = _select_features(
-        X.iloc[random_train_positions],
-        y.iloc[random_train_positions],
-        family=family,
-        top_k=top_k,
+        X.iloc[random_train_positions], y.iloc[random_train_positions]
     )
     random_model = _train_model(
         X.iloc[random_train_positions],
@@ -728,18 +923,18 @@ def retrain_and_maybe_deploy(
         rounds=rounds,
         seed=seed,
     )
-    random_prediction = _predict_model(
-        random_model, X.iloc[random_test_positions], random_columns
+    random_metrics = _metrics(
+        y.iloc[random_test_positions],
+        _predict_model(random_model, X.iloc[random_test_positions], random_columns),
     )
-    random_metrics = _metrics(y.iloc[random_test_positions], random_prediction)
+    random_metrics["held_out_days"] = int(
+        pd.DatetimeIndex(origins[random_test_positions]).floor("D").nunique()
+    )
 
     later_train_positions = np.flatnonzero(later_train_mask)
     later_test_positions = np.flatnonzero(later_test_mask)
     later_columns = _select_features(
-        X.iloc[later_train_positions],
-        y.iloc[later_train_positions],
-        family=family,
-        top_k=top_k,
+        X.iloc[later_train_positions], y.iloc[later_train_positions]
     )
     later_model = _train_model(
         X.iloc[later_train_positions],
@@ -749,29 +944,72 @@ def retrain_and_maybe_deploy(
         rounds=rounds,
         seed=seed,
     )
-    later_prediction = _predict_model(
-        later_model, X.iloc[later_test_positions], later_columns
+    later_test_frame = X.iloc[later_test_positions]
+    later_test_target = y.iloc[later_test_positions]
+    later_metrics = _metrics(
+        later_test_target,
+        _predict_model(later_model, later_test_frame, later_columns),
     )
-    later_metrics = _metrics(y.iloc[later_test_positions], later_prediction)
+    cutoff = later_start - pd.Timedelta(hours=purge_hours)
+    last_week = y.loc[(y.index < cutoff) & (y.index >= cutoff - pd.Timedelta(days=7))]
+    baseline_mae = (
+        float(np.mean(np.abs(later_test_target.to_numpy() - float(last_week.mean()))))
+        if not last_week.empty
+        else None
+    )
+    later_mae = _float_or_none(later_metrics.get("mae"))
+    skill = (
+        1.0 - later_mae / baseline_mae
+        if later_mae is not None and baseline_mae
+        else None
+    )
+    later_metrics.update(
+        {
+            "last_week_level_mae": baseline_mae,
+            "skill_vs_last_week_level": skill,
+            "test_start": str(later_start),
+            "test_end": str(last_origin),
+        }
+    )
+
+    pci_change = _fuel_response(
+        later_model, later_test_frame, later_columns, PCI_FEATURE, -40.0
+    )
+    nut_change = _fuel_response(
+        later_model, later_test_frame, later_columns, NUT_COKE_FEATURE, -10.0
+    )
+    fuel_response = {
+        "coke_change_for_pci_minus_40": pci_change,
+        "pci_replacement_kg_per_kg": None if pci_change is None else pci_change / 40.0,
+        "coke_change_for_nut_coke_minus_10": nut_change,
+    }
 
     random_r2 = _float_or_none(random_metrics.get("r2"))
-    later_r2 = _float_or_none(later_metrics.get("r2"))
+    replacement = fuel_response["pci_replacement_kg_per_kg"]
     reasons: list[str] = []
     if random_r2 is None or random_r2 < float(min_random_r2):
-        reasons.append(f"Random-split R2 {random_r2!s} is below {min_random_r2:.2f}.")
-    if later_r2 is None or later_r2 < float(min_later_time_r2):
-        reasons.append(f"Later-time R2 {later_r2!s} is below {min_later_time_r2:.2f}.")
-    thresholds = {
-        "random_r2": float(min_random_r2),
-        "later_time_r2": float(min_later_time_r2),
-    }
-    dataset_sha = _dataset_hash(dataset_path)
+        reasons.append(f"Random-day R2 {random_r2!s} is below {min_random_r2:.2f}.")
+    if later_mae is None or later_mae > float(max_later_time_mae):
+        reasons.append(
+            f"Later-time MAE {later_mae!s} kg/THM is above {max_later_time_mae:.1f}."
+        )
+    if skill is None or skill < float(min_later_time_skill):
+        reasons.append(
+            f"Later-time skill {skill!s} over the last-week level is below "
+            f"{min_later_time_skill:.2f}."
+        )
+    low, high = (float(v) for v in pci_replacement_range)
+    if replacement is None or not low <= replacement <= high:
+        reasons.append(
+            f"PCI replacement {replacement!s} kg/kg is outside {low:.2f}-{high:.2f}."
+        )
     if reasons:
         return RetrainReport(
             passed=False,
             deployed=False,
             random_metrics=random_metrics,
             later_time_metrics=later_metrics,
+            fuel_response=fuel_response,
             thresholds=thresholds,
             training_rows=int(len(origins)),
             feature_count=len(later_columns),
@@ -781,24 +1019,10 @@ def retrain_and_maybe_deploy(
             reasons=tuple(reasons),
         )
 
-    final_cutoff = cleaned.index.max() + pd.Timedelta(seconds=1)
-    final_mask = (origins < final_cutoff - pd.Timedelta(hours=purge_hours)) & (
-        origins >= final_cutoff - pd.Timedelta(days=window_days)
-    )
-    final_positions = np.flatnonzero(final_mask)
-    final_columns = _select_features(
-        X.iloc[final_positions],
-        y.iloc[final_positions],
-        family=family,
-        top_k=top_k,
-    )
+    # The deployed model learns from every trusted window, newest included.
+    final_columns = _select_features(X, y)
     final_model = _train_model(
-        X.iloc[final_positions],
-        y.iloc[final_positions],
-        final_columns,
-        depth=depth,
-        rounds=rounds,
-        seed=seed,
+        X, y, final_columns, depth=depth, rounds=rounds, seed=seed
     )
 
     trained_at = datetime.now(timezone.utc)
@@ -807,9 +1031,8 @@ def retrain_and_maybe_deploy(
     version_dir.mkdir(parents=True, exist_ok=False)
     final_model.save_model(str(version_dir / "coke_context.json"))
     feature_limits: dict[str, list[float]] = {}
-    final_training = X.iloc[final_positions]
     for column in final_columns:
-        quantiles = final_training[column].quantile([0.01, 0.99])
+        quantiles = X[column].quantile([0.01, 0.99])
         if quantiles.notna().all():
             feature_limits[column] = [
                 float(quantiles.iloc[0]),
@@ -817,24 +1040,33 @@ def retrain_and_maybe_deploy(
             ]
 
     schema = {
-        **base_schema,
+        "task": TASK_NAME,
+        "units": "kg/tHM",
+        "target": (
+            "1,000 x trailing-window coke / Fe charged x week Fe charged / "
+            "production; see utils.bmo.robust_coke_target"
+        ),
+        "target_settings": asdict(settings),
         "features": final_columns,
+        "monotone_constraints": {
+            name: sign
+            for name, sign in MONOTONE_CONSTRAINTS.items()
+            if name in final_columns
+        },
         "feature_limits": feature_limits,
-        "fit_cutoff": str(final_cutoff),
-        "latest_label_available": str(origins[final_mask].max()),
-        "training_rows": int(final_mask.sum()),
-        "parameters": {**recipe, "rounds": rounds, "rolling": False},
+        "fit_cutoff": str(cleaned.index.max()),
+        "latest_label_available": str(last_origin),
+        "training_rows": int(len(origins)),
+        "parameters": {"depth": depth, "rounds": rounds, "seed": int(seed)},
+        "slag_coke_basis_kg_thm": 300,
         "validation": {
-            "random_split": random_metrics,
-            "later_time": {
-                **later_metrics,
-                "test_start": str(later_start),
-                "test_end": str(last_origin),
-            },
+            "random_day": random_metrics,
+            "later_time": later_metrics,
+            "fuel_response": fuel_response,
         },
         "deployment_gate_passed": True,
-        # This remains false: predictive validation is not causal optimisation
-        # validation.  BMO uses the model only as a frozen current-state anchor.
+        # Predictive validation is not causal optimisation validation. BMO uses
+        # the model only for the current state and the operator's fuel rates.
         "optimisation_validated": False,
     }
     _write_json(version_dir / "coke_context_schema.json", schema)
@@ -846,8 +1078,9 @@ def retrain_and_maybe_deploy(
         "dataset_sha256": dataset_sha,
         "random_metrics": random_metrics,
         "later_time_metrics": later_metrics,
+        "fuel_response": fuel_response,
         "thresholds": thresholds,
-        "training_rows": int(final_mask.sum()),
+        "training_rows": int(len(origins)),
         "features": len(final_columns),
         "xgboost_version": xgb.__version__,
     }
@@ -857,6 +1090,10 @@ def retrain_and_maybe_deploy(
     pointer_tmp = deployment_dir / "active.tmp.json"
     _write_json(pointer_tmp, {"deployment_id": deployment_id})
     os.replace(pointer_tmp, deployment_dir / "active.json")
+    try:
+        _prune_versions(deployment_dir, keep=int(keep_versions), active_id=deployment_id)
+    except OSError:  # a locked old file must not undo a good deployment
+        log.warning("Could not prune old coke-model versions", exc_info=True)
 
     return RetrainReport(
         passed=True,
@@ -864,11 +1101,145 @@ def retrain_and_maybe_deploy(
         deployment_id=deployment_id,
         random_metrics=random_metrics,
         later_time_metrics=later_metrics,
+        fuel_response=fuel_response,
         thresholds=thresholds,
-        training_rows=int(final_mask.sum()),
+        training_rows=int(len(origins)),
         feature_count=len(final_columns),
-        first_origin_utc=str(origins[final_mask].min()),
-        last_origin_utc=str(origins[final_mask].max()),
+        first_origin_utc=str(origins.min()),
+        last_origin_utc=str(origins.max()),
         dataset_sha256=dataset_sha,
         deployed_path=str(version_dir),
     )
+
+
+_auto_retrain_lock = threading.Lock()
+
+
+def auto_retrain_state(deployment_dir: str | Path = DEFAULT_DEPLOYMENT_DIR) -> dict[str, Any]:
+    """Outcome of the last automatic retrain attempt, or an empty dict."""
+
+    path = Path(deployment_dir) / AUTO_RETRAIN_STATE
+    try:
+        return _read_json(path)
+    except (OSError, ValueError):
+        return {}
+
+
+def auto_retrain_due(
+    *,
+    dataset_path: str | Path,
+    deployment_dir: str | Path,
+    every_hours: float,
+    now: datetime | None = None,
+) -> bool:
+    """Whether the dataset has changed and the last attempt is old enough.
+
+    A failed attempt counts as an attempt, so a candidate that keeps missing a
+    gate is retried once per interval rather than on every page load.
+    """
+
+    dataset_path = Path(dataset_path)
+    if not dataset_path.is_file():
+        return False
+    state = auto_retrain_state(deployment_dir)
+    if not state:
+        return True
+    if int(state.get("dataset_mtime_ns", -1)) == int(dataset_path.stat().st_mtime_ns):
+        return False
+    try:
+        last = datetime.fromisoformat(str(state.get("last_attempt_utc")))
+    except ValueError:
+        return True
+    current = now or datetime.now(timezone.utc)
+    return (current - last).total_seconds() >= float(every_hours) * 3600.0
+
+
+def _auto_retrain_worker(
+    dataset_path: Path,
+    bundled_dir: Path,
+    deployment_dir: Path,
+    retrain_kwargs: dict[str, Any],
+) -> None:
+    started = datetime.now(timezone.utc)
+    state: dict[str, Any] = {
+        "last_attempt_utc": started.isoformat(),
+        "dataset_mtime_ns": int(dataset_path.stat().st_mtime_ns),
+    }
+    try:
+        report = retrain_and_maybe_deploy(
+            dataset_path,
+            bundled_dir=bundled_dir,
+            deployment_dir=deployment_dir,
+            **retrain_kwargs,
+        )
+        state.update(
+            {
+                "deployed": bool(report.deployed),
+                "deployment_id": report.deployment_id,
+                "reasons": list(report.reasons),
+                "later_time_mae": report.later_time_metrics.get("mae"),
+                "random_day_r2": report.random_metrics.get("r2"),
+                "pci_replacement_kg_per_kg": report.fuel_response.get(
+                    "pci_replacement_kg_per_kg"
+                ),
+            }
+        )
+        log.info(
+            "Automatic coke-model retrain finished: deployed=%s %s",
+            report.deployed,
+            "; ".join(report.reasons),
+        )
+    except Exception as exc:  # noqa: BLE001 - recorded, never raised into the app
+        log.exception("Automatic coke-model retrain failed")
+        state.update({"deployed": False, "error": str(exc)})
+    finally:
+        state["finished_utc"] = datetime.now(timezone.utc).isoformat()
+        try:
+            deployment_dir.mkdir(parents=True, exist_ok=True)
+            tmp = deployment_dir / (AUTO_RETRAIN_STATE + ".tmp")
+            _write_json(tmp, state)
+            os.replace(tmp, deployment_dir / AUTO_RETRAIN_STATE)
+        finally:
+            _auto_retrain_lock.release()
+
+
+def maybe_retrain_in_background(
+    *,
+    dataset_path: str | Path = DEFAULT_DATASET_PATH,
+    bundled_dir: str | Path = DEFAULT_BUNDLE_DIR,
+    deployment_dir: str | Path = DEFAULT_DEPLOYMENT_DIR,
+    every_hours: float = 24.0,
+    retrain_kwargs: dict[str, Any] | None = None,
+) -> bool:
+    """Start one background retrain when it is due; return whether one is running.
+
+    Called on page load. The retrain is the same gated routine as the manual
+    button, so an automatic run can only replace the active model with one that
+    passes every gate; the page picks it up through the ``active.json`` token.
+    """
+
+    if not auto_retrain_due(
+        dataset_path=dataset_path,
+        deployment_dir=deployment_dir,
+        every_hours=every_hours,
+    ):
+        return _auto_retrain_lock.locked()
+    if not _auto_retrain_lock.acquire(blocking=False):
+        return True
+    threading.Thread(
+        target=_auto_retrain_worker,
+        args=(
+            Path(dataset_path),
+            Path(bundled_dir),
+            Path(deployment_dir),
+            dict(retrain_kwargs or {}),
+        ),
+        name="bmo-coke-retrain",
+        daemon=True,
+    ).start()
+    return True
+
+
+if __name__ == "__main__":
+    # Manual / scheduled use: python -m utils.bmo.direct_coke_model (from src/)
+    print(json.dumps(retrain_and_maybe_deploy().to_dict(), indent=2, default=str))

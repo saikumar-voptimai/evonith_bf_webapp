@@ -109,7 +109,7 @@ def test_operator_model_names_and_data_driven_default() -> None:
     assert "Run Balanced Optimizer" in page_source
     assert "Run Intensive Optimizer" in page_source
     assert '"Intensive Optimizer Result"' in page_source
-    assert "Coke-rate anchor lookback (hours)" in page_source
+    assert "Coke-rate prediction window (hours)" in page_source
     assert "Manual blend lookback (hours)" in page_source
     assert config["target"]["target_production_mt"] == pytest.approx(2270.0)
     assert config["burden_capacity"]["max_charges_per_hour"] == pytest.approx(6.35)

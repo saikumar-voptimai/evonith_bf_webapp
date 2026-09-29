@@ -30,7 +30,7 @@ on the page rather than inherited from the former charge-report/DPR benchmark.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -83,10 +83,18 @@ MIN_PAIRED_HOURS_PER_DAY = 24
 
 @dataclass
 class HistoryResult:
-    """Daily history plus a note on anything that had to be defaulted."""
+    """Daily history plus a note on anything that had to be defaulted.
+
+    ``excluded`` lists every day in the window that could not be scored, with
+    the first check it failed (``reason``) and the figure behind it
+    (``detail``). It is a diagnostic only; nothing downstream consumes it.
+    """
 
     frame: pd.DataFrame
     warnings: list[str]
+    excluded: pd.DataFrame = field(
+        default_factory=lambda: pd.DataFrame(columns=["reason", "detail"])
+    )
 
     @property
     def usable_days(self) -> int:
@@ -384,7 +392,49 @@ def build_daily_history(days: int = 120) -> HistoryResult:
 
     out = pd.DataFrame(rows).set_index("date").sort_index()
     out["residual"] = out["predicted_coke"] - out["actual_coke"]
-    return HistoryResult(out, warnings)
+    return HistoryResult(
+        out, warnings, excluded=_exclusion_reasons(static, charge, dpr, out)
+    )
+
+
+def _exclusion_reasons(
+    static: pd.DataFrame,
+    charge: pd.DataFrame,
+    dpr: pd.DataFrame,
+    scored: pd.DataFrame,
+) -> pd.DataFrame:
+    """Why each day in the window has no predicted-vs-measured pair.
+
+    Checks run in the order the history applies them, and a day is reported
+    against the first one it fails. The chart breaks its lines at these days,
+    so without this the gaps look like a model problem when they are record gaps.
+    """
+
+    rows = []
+    for day in static.index:
+        if day not in charge.index:
+            reason, detail = "Charge reports incomplete", "outside 120-190 charges"
+        elif day not in dpr.index:
+            reason, detail = (
+                "No usable daily production report (DPR)",
+                "missing, or hot metal outside 1,200-3,200 t",
+            )
+        elif day not in scored.index:
+            reason, detail = "Energy balance not run", ""
+        elif pd.isna(scored.at[day, "actual_coke"]):
+            hours = int(static["actual_coke_hours"].get(day, 0) or 0)
+            reason, detail = (
+                f"Coke measured on fewer than {MIN_PAIRED_HOURS_PER_DAY} hours",
+                f"{hours} paired hours",
+            )
+        elif pd.isna(scored.at[day, "predicted_coke"]):
+            reason, detail = "Energy balance did not solve", ""
+        else:
+            continue
+        rows.append({"date": day, "reason": reason, "detail": detail})
+    if not rows:
+        return pd.DataFrame(columns=["reason", "detail"])
+    return pd.DataFrame(rows).set_index("date")
 
 
 def refit_calibration(days: int = 120, window: int = 90):

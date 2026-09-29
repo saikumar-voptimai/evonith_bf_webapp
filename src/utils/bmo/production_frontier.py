@@ -32,7 +32,7 @@ class FrontierSettings:
 
     production_min_mt: float = 1700.0
     production_max_mt: float = 2500.0
-    production_step_mt: float = 10.0
+    production_step_mt: float = 5.0
     max_slag_rate_kg_per_thm: float = 375.0
     basicity_min: float = 1.0
     basicity_max: float = 1.2
@@ -56,6 +56,12 @@ class FrontierSettings:
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
+
+# Largest run the form may request. The default 1,700-2,500 MT range at a 5 MT
+# step has 161 targets, so the 1,000-scenario maximum needs 161,161 solves; at a
+# few ms per LP that is minutes, and the progress panel shows the ETA.
+MAX_VARIATION_SCENARIOS = 1000
+MAX_TOTAL_SOLVES = 200_000
 
 
 def production_targets(settings: FrontierSettings) -> np.ndarray:
@@ -101,13 +107,18 @@ def validate_frontier_inputs(
             "Minimum total basicity cannot be greater than maximum total basicity."
         )
     total_solves = len(targets) * (int(settings.variation_scenarios) + 1)
-    if total_solves > 5000:
+    if total_solves > MAX_TOTAL_SOLVES:
         errors.append(
             f"This setup requests {total_solves:,} LP solves; reduce the range, "
-            "scenario count, or use a larger production step (maximum 5,000)."
+            "scenario count, or use a larger production step "
+            f"(maximum {MAX_TOTAL_SOLVES:,})."
         )
     if int(settings.variation_scenarios) < 0:
         errors.append("Variation scenario count cannot be negative.")
+    if int(settings.variation_scenarios) > MAX_VARIATION_SCENARIOS:
+        errors.append(
+            f"Variation scenario count cannot exceed {MAX_VARIATION_SCENARIOS:,}."
+        )
     return errors
 
 
@@ -179,12 +190,118 @@ def _scenario_ores(
     }
 
 
+def identify_knee_candidates(
+    curve: pd.DataFrame,
+    *,
+    relative_strength_threshold: float = 0.30,
+    maximum_candidates: int = 4,
+) -> list[dict[str, float | str]]:
+    """Return distinct economic/physical knees on a feasible frontier.
+
+    Curvature peaks identify changes in the unit-cost slope. The first point
+    where charging capacity binds is included as a physical knee even when its
+    numerical curvature is modest.
+    """
+
+    feasible = curve.loc[curve["feasible"]].sort_values("production_mt").copy()
+    if feasible.empty:
+        return []
+    x = feasible["production_mt"].to_numpy(dtype=float)
+    y = feasible["unit_cost_rs_per_thm"].to_numpy(dtype=float)
+    candidates: list[dict[str, float | str]] = []
+
+    if len(feasible) >= 5 and float(np.ptp(x)) > 0.0:
+        slope = np.gradient(y, x)
+        curvature = np.gradient(slope, x)
+        interior_start = 2 if len(curvature) >= 7 else 1
+        interior_stop = len(curvature) - interior_start
+        interior = np.arange(interior_start, interior_stop)
+        if len(interior):
+            magnitude = np.abs(curvature)
+            maximum = float(np.max(magnitude[interior]))
+            threshold = maximum * max(
+                0.0, min(1.0, float(relative_strength_threshold))
+            )
+            peaks: list[int] = []
+            for index in interior:
+                value = float(magnitude[index])
+                if value + 1.0e-12 < threshold:
+                    continue
+                if value + 1.0e-12 < float(magnitude[index - 1]):
+                    continue
+                if value + 1.0e-12 < float(magnitude[index + 1]):
+                    continue
+                if peaks and index - peaks[-1] <= 1:
+                    previous = peaks[-1]
+                    if (
+                        value > float(magnitude[previous]) + 1.0e-12
+                        or (
+                            abs(value - float(magnitude[previous])) <= 1.0e-12
+                            and y[index] < y[previous]
+                        )
+                    ):
+                        peaks[-1] = int(index)
+                    continue
+                peaks.append(int(index))
+            if not peaks:
+                peaks = [int(interior[int(np.argmax(magnitude[interior]))])]
+            strongest = sorted(
+                peaks,
+                key=lambda index: float(magnitude[index]),
+                reverse=True,
+            )[: max(1, int(maximum_candidates))]
+            candidates.extend(
+                {
+                    "production_mt": float(x[index]),
+                    "unit_cost_rs_per_thm": float(y[index]),
+                    "curvature_strength": float(magnitude[index]),
+                    "reason": "cost curvature",
+                }
+                for index in strongest
+            )
+
+    capacity_rows = feasible.loc[feasible["charging_utilization_pct"] >= 99.9]
+    if not capacity_rows.empty:
+        capacity_row = capacity_rows.iloc[0]
+        production = float(capacity_row["production_mt"])
+        typical_step = (
+            float(np.median(np.diff(x))) if len(x) > 1 else 0.0
+        )
+        if not any(
+            abs(float(item["production_mt"]) - production)
+            <= max(1.0e-9, typical_step * 0.5)
+            for item in candidates
+        ):
+            candidates.append(
+                {
+                    "production_mt": production,
+                    "unit_cost_rs_per_thm": float(
+                        capacity_row["unit_cost_rs_per_thm"]
+                    ),
+                    "curvature_strength": 0.0,
+                    "reason": "charging capacity onset",
+                }
+            )
+
+    if not candidates:
+        fallback = capacity_rows.iloc[0] if not capacity_rows.empty else feasible.iloc[-1]
+        candidates.append(
+            {
+                "production_mt": float(fallback["production_mt"]),
+                "unit_cost_rs_per_thm": float(fallback["unit_cost_rs_per_thm"]),
+                "curvature_strength": 0.0,
+                "reason": "feasible frontier endpoint",
+            }
+        )
+    return sorted(candidates, key=lambda item: float(item["production_mt"]))
+
+
 def identify_knee(
     curve: pd.DataFrame,
     *,
     tolerance_rs_per_thm: float,
-) -> dict[str, float | None]:
-    """Locate the strongest interior unit-cost curvature on a feasible curve."""
+) -> dict[str, Any]:
+    """Locate all knees and choose the lowest-cost one as the default."""
 
     feasible = curve.loc[curve["feasible"]].sort_values("production_mt").copy()
     if feasible.empty:
@@ -196,6 +313,7 @@ def identify_knee(
             "minimum_unit_cost_rs_per_thm": None,
             "knee_unit_cost_rs_per_thm": None,
             "curvature_strength": None,
+            "knee_candidates": [],
         }
 
     x = feasible["production_mt"].to_numpy(dtype=float)
@@ -206,34 +324,17 @@ def identify_knee(
         <= minimum + max(0.0, float(tolerance_rs_per_thm))
     ]
     capacity_rows = feasible.loc[feasible["charging_utilization_pct"] >= 99.9]
-    knee: float | None = None
-    knee_cost: float | None = None
-    strength: float | None = None
-    if len(feasible) >= 5 and float(np.ptp(x)) > 0.0:
-        slope = np.gradient(y, x)
-        curvature = np.gradient(slope, x)
-        # Two edge cells are excluded where numerical gradients are one-sided.
-        interior_start = 2 if len(curvature) >= 7 else 1
-        interior_stop = len(curvature) - interior_start
-        candidates = np.arange(interior_start, interior_stop)
-        if len(candidates):
-            magnitudes = np.abs(curvature[candidates])
-            maximum = float(np.max(magnitudes))
-            # Active-set changes can produce an equally curved run of points.
-            # Choose the first point where that bend is established rather than
-            # an arbitrary later point selected by floating-point noise.
-            near_maximum = candidates[
-                magnitudes >= maximum - max(1.0e-12, maximum * 1.0e-7)
-            ]
-            local = int(near_maximum[0])
-            knee = float(x[local])
-            knee_cost = float(y[local])
-            strength = float(abs(curvature[local]))
-    if knee is None:
-        # A short or nearly empty curve still has a useful physical breakpoint.
-        row = capacity_rows.iloc[0] if not capacity_rows.empty else feasible.iloc[-1]
-        knee = float(row["production_mt"])
-        knee_cost = float(row["unit_cost_rs_per_thm"])
+    knee_candidates = identify_knee_candidates(feasible)
+    primary = min(
+        knee_candidates,
+        key=lambda item: (
+            float(item["unit_cost_rs_per_thm"]),
+            float(item["production_mt"]),
+        ),
+    )
+    knee = float(primary["production_mt"])
+    knee_cost = float(primary["unit_cost_rs_per_thm"])
+    strength = float(primary["curvature_strength"])
 
     return {
         "knee_production_mt": knee,
@@ -247,6 +348,7 @@ def identify_knee(
         "minimum_unit_cost_rs_per_thm": minimum,
         "knee_unit_cost_rs_per_thm": knee_cost,
         "curvature_strength": strength,
+        "knee_candidates": knee_candidates,
     }
 
 
@@ -399,9 +501,21 @@ def run_frontier_simulation(
                 "feasible": result is not None,
                 "unit_cost_rs_per_thm": np.nan,
                 "total_cost_rs": np.nan,
+                "ore_cost_total_rs": np.nan,
+                "ore_cost_per_thm_rs": np.nan,
+                "flux_cost_total_rs": np.nan,
+                "flux_cost_per_thm_rs": np.nan,
+                "total_ore_qty_mt": np.nan,
+                "total_burden_qty_mt": np.nan,
+                "max_burden_qty_mt": max_burden_mt,
                 "charging_utilization_pct": np.nan,
+                "slag_mt": np.nan,
                 "slag_rate_kg_per_thm": np.nan,
                 "slag_basicity": np.nan,
+                "slag_t_basicity": np.nan,
+                "slag_al2o3_pct": np.nan,
+                "slag_mgo_pct": np.nan,
+                "slag_mgo_al2o3_ratio": np.nan,
                 "blend": "",
                 "solve_error": " | ".join(map(str, solve_errors[:2])),
             }
@@ -429,13 +543,30 @@ def run_frontier_simulation(
                     {
                         "unit_cost_rs_per_thm": total_cost / float(production_mt),
                         "total_cost_rs": total_cost,
+                        "ore_cost_total_rs": float(result.ore_cost_total_rs),
+                        "ore_cost_per_thm_rs": (
+                            float(result.ore_cost_total_rs) / float(production_mt)
+                        ),
+                        "flux_cost_total_rs": (
+                            flux_cost_per_thm * float(production_mt)
+                        ),
+                        "flux_cost_per_thm_rs": flux_cost_per_thm,
+                        "total_ore_qty_mt": float(result.total_qty_mt),
+                        "total_burden_qty_mt": total_burden_mt,
                         "charging_utilization_pct": (
                             total_burden_mt / max_burden_mt * 100.0
                             if max_burden_mt and max_burden_mt > 0.0
                             else 0.0
                         ),
+                        "slag_mt": float(result.slag_mt),
                         "slag_rate_kg_per_thm": float(result.slag_rate_kg_per_thm),
                         "slag_basicity": float(result.slag_basicity),
+                        "slag_t_basicity": float(result.slag_t_basicity),
+                        "slag_al2o3_pct": float(result.slag_al2o3_pct),
+                        "slag_mgo_pct": float(result.slag_mgo_pct),
+                        "slag_mgo_al2o3_ratio": float(
+                            result.slag_mgo_al2o3_ratio
+                        ),
                         "blend": " | ".join(
                             f"{ore.display_name}: {result.shares_pct.get(ore.ore_id, 0.0):.2f}%"
                             for ore in scenario_ores
@@ -448,6 +579,9 @@ def run_frontier_simulation(
                     row[f"share_pct__{ore.ore_id}"] = float(
                         result.shares_pct.get(ore.ore_id, 0.0)
                     )
+                    row[f"quantity_mt__{ore.ore_id}"] = float(
+                        result.quantities_mt.get(ore.ore_id, 0.0)
+                    )
                 for flux_id, quantity in (
                     result.diagnostics.get("lp_flux_quantities_mt", {}) or {}
                 ).items():
@@ -455,6 +589,7 @@ def run_frontier_simulation(
             scenario_curve.append(row)
             all_rows.append(row)
             completed += 1
+            # import time; time.sleep(0.5)  # Simulate a small delay for demonstration purposes
             if progress_callback is not None:
                 progress_callback(
                     {
@@ -523,13 +658,24 @@ def run_frontier_simulation(
         "drivers": drivers,
         "settings": settings,
         "material_names": {ore.ore_id: ore.display_name for ore in ores},
+        "flux_names": {
+            flux.flux_id: flux.display_name for flux in (flux_inputs or [])
+        },
+        "base_knees": (
+            list(scenario_rows[0].get("knee_candidates", []))
+            if scenario_rows
+            else []
+        ),
         "solve_count": total_solves,
     }
 
 
 __all__ = [
+    "MAX_TOTAL_SOLVES",
+    "MAX_VARIATION_SCENARIOS",
     "FrontierSettings",
     "identify_knee",
+    "identify_knee_candidates",
     "production_targets",
     "run_frontier_simulation",
     "validate_frontier_inputs",

@@ -1,0 +1,324 @@
+{
+  "task": "coke_robust_window",
+  "units": "kg/tHM",
+  "target": "1,000 x trailing-window coke / Fe charged x week Fe charged / production; see utils.bmo.robust_coke_target",
+  "target_settings": {
+    "window_hours": 24,
+    "fe_level_hours": 168,
+    "min_window_coverage": 0.75,
+    "outlier_mad_multiple": 6.0,
+    "setpoint_column": "COKE RATE KG/THM",
+    "setpoint_ratio_min": 0.8,
+    "setpoint_ratio_max": 1.25,
+    "assay_delay_hours": 24,
+    "assay_columns": [
+      "COKE_ASH%",
+      "COKE_MOIST%",
+      "COKE_VM%",
+      "NUTCOKE_ASH%",
+      "PCI_ASH%",
+      "PCI_VM%",
+      "PCI_IM%",
+      "ORE_FE(T)%",
+      "SINTER_FE(T)%",
+      "SINTER_FEO%",
+      "ORE_AL2O3%",
+      "SINTER_AL2O3%"
+    ]
+  },
+  "features": [
+    "PCI_KG_THM__win",
+    "NUTCOKE_KG_THM__win",
+    "slag_kg_thm_repo__win",
+    "FLUX_KG_THM__win",
+    "ORE_1_SHARE__win",
+    "ORE_2_SHARE__win",
+    "ORE_3_SHARE__win",
+    "ORE_5_SHARE__win",
+    "ORE_6_SHARE__win",
+    "ORE_9_SHARE__win",
+    "ORE_10_SHARE__win",
+    "ORE_11_SHARE__win",
+    "SINTER_SHARE__win",
+    "TOTAL_PELLET_SHARE__win",
+    "BURDEN_PER_FE__win",
+    "HOT BLAST VOLUMENM3/HR.__win",
+    "HOT BLAST TEMP.OC__win",
+    "HOT BLAST PRESSUREBAR__win",
+    "OXYGENFLOWNM3/HR.__win",
+    "O2 ENRICHMENT %__win",
+    "TOPPRESSUREBAR__win",
+    "DIFFERENTIAL PRESSURETOTALBAR__win",
+    "PRODUCTIONTONNESPERHR__win",
+    "CHARGES/HRS.__win",
+    "STOCKRODLEVEL__win",
+    "COKE_DISCHARGE_TIME__win",
+    "WEIGHTED_COKE_ANGLE__win",
+    "TOTAL_COKE_PORTIONS__win",
+    "NON_COKE_DISCHARGE_TIME__win",
+    "WEIGHTED_NON_COKE_ANGLE__win",
+    "TOTAL_NON_COKE_PORTIONS__win",
+    "FURNACE TOP GAS ANALYSISCO2%__win",
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__win",
+    "FURNACE TOP GAS ANALYSISH2%__win",
+    "FURNACETOPGASANALYSISCO2ETACO__win",
+    "slag_basicity_calc__win",
+    "slag_al2o3_pct_calc__win",
+    "slag_mgo_pct_calc__win",
+    "COKE_ASH%__assay",
+    "COKE_MOIST%__assay",
+    "COKE_VM%__assay",
+    "NUTCOKE_ASH%__assay",
+    "PCI_ASH%__assay",
+    "PCI_VM%__assay",
+    "PCI_IM%__assay",
+    "ORE_FE(T)%__assay",
+    "SINTER_FE(T)%__assay",
+    "SINTER_FEO%__assay",
+    "ORE_AL2O3%__assay",
+    "SINTER_AL2O3%__assay"
+  ],
+  "monotone_constraints": {
+    "PCI_KG_THM__win": -1,
+    "NUTCOKE_KG_THM__win": -1
+  },
+  "feature_limits": {
+    "PCI_KG_THM__win": [
+      122.39304328819765,
+      206.74010072644643
+    ],
+    "NUTCOKE_KG_THM__win": [
+      54.44103020809635,
+      81.42452764474655
+    ],
+    "slag_kg_thm_repo__win": [
+      311.18401804093685,
+      367.1401880853885
+    ],
+    "FLUX_KG_THM__win": [
+      0.0,
+      22.040708678556907
+    ],
+    "ORE_1_SHARE__win": [
+      0.0,
+      0.09199619175441975
+    ],
+    "ORE_2_SHARE__win": [
+      0.0,
+      0.24964770751459817
+    ],
+    "ORE_3_SHARE__win": [
+      0.0,
+      0.13324002879553826
+    ],
+    "ORE_5_SHARE__win": [
+      0.0,
+      0.21955999095834308
+    ],
+    "ORE_6_SHARE__win": [
+      0.0,
+      0.14253916097245534
+    ],
+    "ORE_9_SHARE__win": [
+      0.0,
+      0.0
+    ],
+    "ORE_10_SHARE__win": [
+      0.0,
+      0.07334522724270405
+    ],
+    "ORE_11_SHARE__win": [
+      0.0,
+      0.0639941311328096
+    ],
+    "SINTER_SHARE__win": [
+      0.5921582014488544,
+      1.0
+    ],
+    "TOTAL_PELLET_SHARE__win": [
+      0.0,
+      0.15619192795120174
+    ],
+    "BURDEN_PER_FE__win": [
+      1.3434959320689317,
+      1.896917579961474
+    ],
+    "HOT BLAST VOLUMENM3/HR.__win": [
+      98535.65583405587,
+      113155.18937204116
+    ],
+    "HOT BLAST TEMP.OC__win": [
+      1116.39187030375,
+      1229.217414864042
+    ],
+    "HOT BLAST PRESSUREBAR__win": [
+      2.575616195334615,
+      2.8309437191210596
+    ],
+    "OXYGENFLOWNM3/HR.__win": [
+      3953.3581108357894,
+      6915.402040113792
+    ],
+    "O2 ENRICHMENT %__win": [
+      3.033721659551742,
+      5.452763367436563
+    ],
+    "TOPPRESSUREBAR__win": [
+      1.2943138817370263,
+      1.498672146012259
+    ],
+    "DIFFERENTIAL PRESSURETOTALBAR__win": [
+      1.2388793596986105,
+      1.459421074305105
+    ],
+    "PRODUCTIONTONNESPERHR__win": [
+      85.81930012706961,
+      97.02916256662085
+    ],
+    "CHARGES/HRS.__win": [
+      5.856052122567483,
+      7.0
+    ],
+    "STOCKRODLEVEL__win": [
+      0.16256502034666667,
+      1.3212703446534495
+    ],
+    "COKE_DISCHARGE_TIME__win": [
+      75.0,
+      105.0
+    ],
+    "WEIGHTED_COKE_ANGLE__win": [
+      24.27272727,
+      30.100000000000005
+    ],
+    "TOTAL_COKE_PORTIONS__win": [
+      10.0,
+      14.0
+    ],
+    "NON_COKE_DISCHARGE_TIME__win": [
+      60.0,
+      75.0
+    ],
+    "WEIGHTED_NON_COKE_ANGLE__win": [
+      25.2,
+      29.400000000000002
+    ],
+    "TOTAL_NON_COKE_PORTIONS__win": [
+      8.0,
+      10.0
+    ],
+    "FURNACE TOP GAS ANALYSISCO2%__win": [
+      16.789926889439332,
+      19.34004004187972
+    ],
+    "FURNACE TOP GAS ANALYSISONLINE (ANALYZER)CO%__win": [
+      23.3606541502215,
+      26.53999882804947
+    ],
+    "FURNACE TOP GAS ANALYSISH2%__win": [
+      2.873005062325397,
+      4.517476026623896
+    ],
+    "FURNACETOPGASANALYSISCO2ETACO__win": [
+      39.87023060809753,
+      44.59662700706113
+    ],
+    "slag_basicity_calc__win": [
+      0.9659386217900666,
+      1.244282277970794
+    ],
+    "slag_al2o3_pct_calc__win": [
+      16.82528360112468,
+      22.11071893957287
+    ],
+    "slag_mgo_pct_calc__win": [
+      7.022005324722346,
+      8.555905561821127
+    ],
+    "COKE_ASH%__assay": [
+      8.2073489141,
+      12.801983977944204
+    ],
+    "COKE_MOIST%__assay": [
+      0.32,
+      2.2693339566600024
+    ],
+    "COKE_VM%__assay": [
+      0.7043742121000001,
+      1.0470671205075137
+    ],
+    "NUTCOKE_ASH%__assay": [
+      11.37,
+      13.01
+    ],
+    "PCI_ASH%__assay": [
+      7.5798,
+      11.507000000000007
+    ],
+    "PCI_VM%__assay": [
+      16.56,
+      21.6334
+    ],
+    "PCI_IM%__assay": [
+      0.93,
+      1.98
+    ],
+    "ORE_FE(T)%__assay": [
+      54.505452649681615,
+      64.02703674505253
+    ],
+    "SINTER_FE(T)%__assay": [
+      53.53,
+      55.64
+    ],
+    "SINTER_FEO%__assay": [
+      8.04,
+      9.865
+    ],
+    "ORE_AL2O3%__assay": [
+      1.593308472144734,
+      5.850187480809566
+    ],
+    "SINTER_AL2O3%__assay": [
+      2.1,
+      2.91
+    ]
+  },
+  "fit_cutoff": "2026-09-28 14:30:00+00:00",
+  "latest_label_available": "2026-09-28 14:30:00+00:00",
+  "training_rows": 5124,
+  "parameters": {
+    "depth": 3,
+    "rounds": 300,
+    "seed": 20260922
+  },
+  "slag_coke_basis_kg_thm": 300,
+  "validation": {
+    "random_day": {
+      "n": 981,
+      "r2": 0.7750623535482,
+      "mae": 5.466570713949734,
+      "rmse": 7.21723921975042,
+      "bias": 1.675727346852426,
+      "held_out_days": 45
+    },
+    "later_time": {
+      "n": 347,
+      "r2": -0.28425897860488036,
+      "mae": 6.8449056201621525,
+      "rmse": 8.927151200360962,
+      "bias": -6.259570988914845,
+      "last_week_level_mae": 14.891083363836966,
+      "skill_vs_last_week_level": 0.5403352830066734,
+      "test_start": "2026-09-14 00:00:00+00:00",
+      "test_end": "2026-09-28 14:30:00+00:00"
+    },
+    "fuel_response": {
+      "coke_change_for_pci_minus_40": 30.20181655883789,
+      "pci_replacement_kg_per_kg": 0.7550454139709473,
+      "coke_change_for_nut_coke_minus_10": 3.2887487411499023
+    }
+  },
+  "deployment_gate_passed": true,
+  "optimisation_validated": false
+}

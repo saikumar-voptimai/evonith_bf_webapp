@@ -388,18 +388,20 @@ bmo:
   # do, rather than reporting yesterday's number or the model's near-constant.
   # Falls back to observed when the live tags, the calibration, or the solve
   # are unavailable — see utils/bmo/energy_anchor.py.
-  # data_driven (current): use the measured coke/hot-metal mass ratio for the
-  # frozen current-state anchor and monitor it against the direct coke model.
+  # data_driven (current): the direct coke-rate model's prediction for the
+  # current state and the operator's PCI / nut coke rates.
   fuel_rate_anchor_basis: data_driven
 
-  # Direct price-independent coke-rate model and measured-anchor settings. The
-  # physical correction below remains the per-candidate blend response.
+  # Direct price-independent coke-rate model. The physical correction below
+  # remains the per-candidate blend response.
   data_driven_coke:
-    bundled_model_dir: src/assets/models/bmo_coke_xgb
+    # Robust 24-h target: coke per tonne Fe charged x Fe per THM, so charge
+    # counting cancels. Window, quality limits and assays live in the bundle's
+    # config.json; see utils/bmo/robust_coke_target.py for why.
+    bundled_model_dir: src/assets/models/bmo_coke_robust
     deployment_dir: src/storage/bmo_coke_model
     dataset_path: src/assets/data/furnace_dataset.csv
-    # The optimizer anchor is the aggregate plant mass ratio over this window:
-    # 1,000 x sum(COKE_CALC_MT) / sum(PRODUCTIONTONNESPERHR).
+    # Median of this many hourly predictions (each one a 24-h window).
     lookback_hours: 6
     manual_blend_lookback_hours: 6
     # Accuracy-chart correction uses only residuals from earlier timestamps.
@@ -409,11 +411,26 @@ bmo:
     max_input_stale_hours: 6.0
     max_source_age_hours: 6.0
     retraining:
+      # Share of development DAYS held out at random (whole days, purged).
       random_test_fraction: 0.20
       later_test_days: 14
       min_random_r2: 0.70
-      min_later_time_r2: 0.65
+      # Later-time R2 is reported, not gated: a quiet fortnight has a standard
+      # deviation near 8 kg/THM, so R2 there measures the fortnight.
+      max_later_time_mae: 10.0
+      # 1 - MAE / MAE of carrying last week's level forward.
+      min_later_time_skill: 0.0
+      # kg coke per kg PCI on the later-time rows; within-month plant data
+      # gives 0.65-0.95.
+      pci_replacement_range: [0.2, 1.5]
       seed: 20260922
+      # Deployed versions kept for rollback; older ones are deleted.
+      keep_versions: 30
+    auto_retrain:
+      # Retrain in the background from the BMO page once the dataset has
+      # changed and the last attempt is this old. Same gates as the button.
+      enabled: true
+      every_hours: 24
 
   # ---------------------------------------------------------------------------
   # Physics-based coke-rate correction.

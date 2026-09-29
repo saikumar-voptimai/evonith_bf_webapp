@@ -65,3 +65,28 @@ def test_missing_plant_measurement_columns_return_no_target():
 
     assert result.empty
     assert list(result.columns) == ["actual_coke", "actual_coke_hours"]
+
+
+def test_every_unscored_day_gets_the_first_check_it_failed():
+    from utils.bmo.coke_history import _exclusion_reasons
+
+    days = pd.date_range("2026-08-24", periods=5, freq="D")
+    static = pd.DataFrame({"actual_coke_hours": [24, 24, 24, 21, 24]}, index=days)
+    charge = pd.DataFrame(index=days.delete(1))
+    dpr = pd.DataFrame(index=days.delete([0, 1]))
+    scored = pd.DataFrame(
+        {"predicted_coke": [300.0, float("nan"), 305.0],
+         "actual_coke": [float("nan"), 301.0, 299.0]},
+        index=days[2:],
+    )
+    scored.loc[days[3], "actual_coke"] = float("nan")
+    scored.loc[days[2], "actual_coke"] = 301.0
+    scored.loc[days[2], "predicted_coke"] = float("nan")
+
+    reasons = _exclusion_reasons(static, charge, dpr, scored)
+
+    assert reasons.loc[days[0], "reason"].startswith("No usable daily production report")
+    assert reasons.loc[days[1], "reason"] == "Charge reports incomplete"
+    assert reasons.loc[days[2], "reason"] == "Energy balance did not solve"
+    assert reasons.loc[days[3], "detail"] == "21 paired hours"
+    assert days[4] not in reasons.index

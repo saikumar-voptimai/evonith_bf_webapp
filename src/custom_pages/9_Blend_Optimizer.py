@@ -15,6 +15,7 @@ from pathlib import Path
 from collections.abc import Mapping
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -103,6 +104,8 @@ from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
 from utils.bmo.direct_coke_model import (
     DirectCokeModelService,
     DirectCokePrediction,
+    maybe_retrain_in_background,
+    retrain_kwargs_from_config,
 )
 from utils.bmo.calculations import scale_ore_quantities_to_hot_metal
 from utils.bmo.types import oxide_pct_from_basis
@@ -595,7 +598,7 @@ def _render_static_dataset_bar(
         )
         lookback_cols = st.columns(2)
         lookback_cols[0].number_input(
-            "Coke-rate anchor lookback (hours)",
+            "Coke-rate prediction window (hours)",
             min_value=1,
             max_value=72,
             value=legacy_lookback,
@@ -968,6 +971,26 @@ def _target_quantities_from_shares(
     return quantities, total_share, []
 
 
+def _plant_window_text(start: Any, end: Any) -> str:
+    """'29 Sep, 15:30-20:30 IST' for a UTC window; the raw values if unparseable."""
+
+    try:
+        first, last = pd.Timestamp(start), pd.Timestamp(end)
+    except (TypeError, ValueError):
+        return f"{start} to {end}"
+    if pd.isna(first) or pd.isna(last):
+        return f"{start} to {end}"
+    first, last = (
+        (stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp).tz_convert(
+            "Asia/Kolkata"
+        )
+        for stamp in (first, last)
+    )
+    if first.date() == last.date():
+        return f"{first:%d %b}, {first:%H:%M}-{last:%H:%M} IST"
+    return f"{first:%d %b %H:%M} to {last:%d %b %H:%M} IST"
+
+
 def _render_blend_comparison(
     provider: EvonithBmoContextProvider,
     *,
@@ -1022,14 +1045,11 @@ def _render_blend_comparison(
 
     st.markdown("##### Manual blend vs optimizer")
     st.caption(
-        "Edit the manual Share (%) to try any burden split. Shares are normalised to "
-        "100% and scaled through the same all-source Fe/material closure as the "
-        "optimizer, so every option is compared on the same basis."
-    )
-    st.caption(
-        "Cost basis: Manual, Balanced Optimizer and Intensive Optimizer all use the currently "
-        "applied ore prices from Ore Selection. Fuel costs are then shown at the "
-        "currently applied fuel prices."
+        "Edit a share to try any burden split. Shares are normalised to 100% and go "
+        "through the same all-source Fe/material closure as the optimizer, so every "
+        "option is compared on the same basis. Manual, Balanced Optimizer and "
+        "Intensive Optimizer all use the currently applied ore prices from Ore Selection; "
+        "fuel is shown at the currently applied fuel prices."
     )
     start_time, end_time = snapshot.get("start_time"), snapshot.get("end_time")
     charged_ids = {
@@ -1038,15 +1058,17 @@ def _render_blend_comparison(
         if float(row.get("share_pct", 0.0) or 0.0) > 0.0
     }
     selected_charged = charged_ids & {ore.ore_id for ore in compare_ores}
+    # Editor on the left, the cost verdict beside it; both are filled below.
+    editor_col, result_col = st.columns([2, 3], gap="large")
     if rows_by_ore and selected_charged and start_time and end_time:
         skipped = [
             ore.display_name
             for ore in compare_ores
             if ore.ore_id not in selected_charged
         ]
-        st.caption(
-            f"Manual blend seeded from the {lookback_hours:g}-hour furnace dataset "
-            f"window ({start_time} to {end_time})."
+        seed_note = (
+            f"Seeded from the last {lookback_hours:g} hours of furnace data "
+            f"({_plant_window_text(start_time, end_time)})."
             + (
                 # Named rather than silently zeroed. An operator seeing 0% against
                 # an ore they selected needs to know it reflects the shift record,
@@ -1057,12 +1079,12 @@ def _render_blend_comparison(
             )
         )
     elif rows_by_ore and not selected_charged:
-        st.caption(
+        seed_note = (
             "None of the selected ores were charged in this window, so the manual "
             "blend is seeded from the optimizer shares instead."
         )
     else:
-        st.caption(
+        seed_note = (
             "No furnace-dataset manual blend found; seeded from the optimizer shares."
         )
 
@@ -1110,20 +1132,30 @@ def _render_blend_comparison(
             row["manual_share_pct"] = round(
                 row["manual_share_pct"] / _seed_total * 100.0, 1
             )
-    edited_share_df = st.data_editor(
-        pd.DataFrame(seed_rows),
-        hide_index=True,
-        width="stretch",
-        key="bmo_manual_share_editor",
-        column_order=("ore_name", "manual_share_pct"),
-        column_config={
-            "ore_id": None,
-            "ore_name": st.column_config.TextColumn("Ore", disabled=True),
-            "manual_share_pct": st.column_config.NumberColumn(
-                "Manual Share (%)", min_value=0.0, max_value=100.0, step=0.5
-            ),
-        },
-    )
+    with editor_col:
+        st.markdown("**Manual burden**")
+        edited_share_df = st.data_editor(
+            pd.DataFrame(seed_rows),
+            hide_index=True,
+            width="stretch",
+            key="bmo_manual_share_editor",
+            column_order=("ore_name", "manual_share_pct"),
+            column_config={
+                "ore_id": None,
+                "ore_name": st.column_config.TextColumn(
+                    "Ore", disabled=True, width="medium"
+                ),
+                "manual_share_pct": st.column_config.NumberColumn(
+                    "Share (%)",
+                    min_value=0.0,
+                    max_value=100.0,
+                    step=0.5,
+                    format="%.1f %%",
+                    width="small",
+                    help="Edit to try another split. Shares are normalised to 100%.",
+                ),
+            },
+        )
     manual_shares_pct = {
         str(row["ore_id"]): float(row["manual_share_pct"] or 0.0)
         for _, row in edited_share_df.iterrows()
@@ -1141,12 +1173,16 @@ def _render_blend_comparison(
             charge_mass_mt=charge_mass_mt,
         )
     )
-    if normalized_total > 0:
-        st.caption(
-            f"Entered manual shares sum to {normalized_total:,.1f}% (normalised to 100%)."
-        )
-    for warning in scale_warnings:
-        st.warning(warning)
+    with editor_col:
+        if normalized_total > 0:
+            st.caption(
+                f"Shares entered total {normalized_total:,.1f}%, normalised to 100%. "
+                + seed_note
+            )
+        else:
+            st.caption(seed_note)
+        for warning in scale_warnings:
+            st.warning(warning)
 
     manual_blend = None
     manual_si: float | None = None
@@ -1402,21 +1438,54 @@ def _render_blend_comparison(
         ),
     ]
 
-    def _rows_for(spec_labels: list[str]) -> pd.DataFrame:
-        """Format one group of the outcome table."""
+    # Rows where the smaller number is plainly the better outcome, so the
+    # cheapest option can be picked out. Other rows are specs, not scores.
+    lower_is_better = {
+        "Total Cost (Rs/THM)",
+        "Ore Cost (Rs/THM)",
+        "Fuel Cost (Rs/THM)",
+        "Flux Cost (Rs/THM)",
+    }
 
-        rows = []
+    def _rows_for(spec_labels: list[str]) -> Any:
+        """One group of the outcome table: numbers kept numeric (so they align
+        right), each row in its own format, the cheapest cost highlighted."""
+
+        rows, formats = [], []
         for row_label, accessor, fmt in metric_specs:
             if row_label not in spec_labels:
                 continue
-            row = {"Outcome": row_label}
+            row: dict[str, Any] = {"Outcome": row_label}
             for label, blend, si in options:
                 value = accessor(blend, si)
-                row[label] = (
-                    fmt.format(value) if isinstance(value, (int, float)) else "n/a"
-                )
+                row[label] = float(value) if isinstance(value, (int, float)) else np.nan
             rows.append(row)
-        return pd.DataFrame(rows)
+            formats.append(fmt)
+        frame = pd.DataFrame(rows)
+        if frame.empty:
+            return frame
+        styler = frame.style
+        for position, fmt in enumerate(formats):
+            styler = styler.format(
+                fmt, subset=pd.IndexSlice[[position], labels], na_rep="n/a"
+            )
+
+        def _highlight_best(row: pd.Series) -> list[str]:
+            styles = [""] * len(row)
+            if row["Outcome"] not in lower_is_better:
+                return styles
+            values = pd.to_numeric(row[labels], errors="coerce")
+            if values.notna().sum() < 2 or np.isclose(values.max(), values.min()):
+                return styles
+            best = values.min()
+            for position, column in enumerate(row.index):
+                if column in labels and np.isclose(row[column], best):
+                    styles[position] = (
+                        "background-color: rgba(18,184,134,0.16); font-weight: 600"
+                    )
+            return styles
+
+        return styler.apply(_highlight_best, axis=1)
 
     # Grouped rather than one 25-row wall. The groups are the questions an
     # operator asks in order: what does it cost, what fuel does it need, what
@@ -1464,24 +1533,44 @@ def _render_blend_comparison(
 
     # Headline FIRST. The cheapest option and the saving are the decision; the
     # detail below is the justification, and reading order should match.
-    cols = st.columns(len(options))
-    for col, (label, blend, _) in zip(cols, options):
-        col.metric(
-            f"{label} (Rs/THM)",
-            f"{_display_total(blend):,.0f}",
-        )
-    if manual_blend is not None:
-        best_optimizer = min(
-            (blend for _, blend, _ in optimizer_candidates),
-            key=_display_total,
-        )
-        saving = _display_total(manual_blend) - _display_total(best_optimizer)
-        st.success(
-            f"**{saving:+,.0f} Rs/THM** — best optimizer blend against the manual "
-            "blend (positive means the optimizer is cheaper)."
-            if saving > 0
-            else f"**{saving:+,.0f} Rs/THM** — the manual blend is already at or below "
-            "the optimizer's cost."
+    with result_col:
+        st.markdown("**Total cost per tonne of hot metal**")
+        with st.container(border=True):
+            cols = st.columns(len(options))
+            for col, (label, blend, _) in zip(cols, options):
+                col.metric(
+                    f"{label} (Rs/THM)",
+                    f"{_display_total(blend):,.0f}",
+                    help="Ore + fuel at the currently applied prices + any flux "
+                    "the optimizer added.",
+                )
+            if manual_blend is not None:
+                best_label, best_optimizer = min(
+                    ((label, blend) for label, blend, _ in optimizer_candidates),
+                    key=lambda item: _display_total(item[1]),
+                )
+                saving = _display_total(manual_blend) - _display_total(best_optimizer)
+                if saving > 0:
+                    st.badge(
+                        f"{best_label} saves {saving:,.0f} Rs/THM against the manual blend",
+                        icon=":material/savings:",
+                        color="green",
+                    )
+                elif saving < 0:
+                    st.badge(
+                        f"Manual blend is {-saving:,.0f} Rs/THM cheaper than the "
+                        f"best optimizer blend ({best_label})",
+                        icon=":material/check_circle:",
+                        color="blue",
+                    )
+                else:
+                    st.badge(
+                        "Manual blend matches the best optimizer cost",
+                        icon=":material/drag_handle:",
+                        color="gray",
+                    )
+        st.caption(
+            "Details by topic below; the lowest cost in each cost row is highlighted."
         )
 
     st.markdown("###### Key outcomes")
@@ -1492,15 +1581,18 @@ def _render_blend_comparison(
             hide_index=True,
             width="stretch",
             column_config={
-                label: st.column_config.NumberColumn(label, format="%.1f")
-                for label in labels
+                "Ore": st.column_config.TextColumn("Ore", width="medium"),
+                **{
+                    label: st.column_config.NumberColumn(label, format="%.1f %%")
+                    for label in labels
+                },
             },
         )
-        st.caption("Share of the burden, per cent, for each option.")
+        st.caption("Share of the burden for each option.")
     for tab, (group_name, spec_labels) in zip(outcome_tabs, groups.items()):
         with tab:
             frame = _rows_for(spec_labels)
-            if frame.empty:
+            if len(frame.index) == 0:
                 st.caption("Nothing to show for this group.")
                 continue
             st.dataframe(
@@ -1508,7 +1600,7 @@ def _render_blend_comparison(
                 hide_index=True,
                 width="stretch",
                 column_config={
-                    "Outcome": st.column_config.Column("Outcome"),
+                    "Outcome": st.column_config.TextColumn("Outcome", width="medium"),
                 },
             )
 
@@ -1722,7 +1814,7 @@ def _direct_coke_config() -> dict[str, Any]:
 def _direct_coke_paths() -> tuple[Path, Path, Path]:
     cfg = _direct_coke_config()
     return (
-        _repo_path(str(cfg.get("bundled_model_dir", "src/assets/models/bmo_coke_xgb"))),
+        _repo_path(str(cfg.get("bundled_model_dir", "src/assets/models/bmo_coke_robust"))),
         _repo_path(str(cfg.get("deployment_dir", "src/storage/bmo_coke_model"))),
         _repo_path(str(cfg.get("dataset_path", "src/assets/data/furnace_dataset.csv"))),
     )
@@ -3783,6 +3875,23 @@ data_driven_prediction: DirectCokePrediction | None = None
 if fuel_rate_anchor_basis == "data_driven":
     direct_cfg = _direct_coke_config()
     bundled_dir, deployment_dir, direct_dataset_path = _direct_coke_paths()
+    auto_retrain_cfg = dict(direct_cfg.get("auto_retrain", {}) or {})
+    if auto_retrain_cfg.get("enabled", False):
+        # Non-blocking: a gated retrain runs in a background thread once the
+        # dataset has moved on. A deployment it makes changes active.json, whose
+        # mtime keys the prediction cache below, so the next rerun uses it.
+        try:
+            maybe_retrain_in_background(
+                dataset_path=direct_dataset_path,
+                bundled_dir=bundled_dir,
+                deployment_dir=deployment_dir,
+                every_hours=float(auto_retrain_cfg.get("every_hours", 24.0)),
+                retrain_kwargs=retrain_kwargs_from_config(
+                    direct_cfg.get("retraining", {})
+                ),
+            )
+        except Exception:  # noqa: BLE001 - never block the page on retraining
+            log.exception("Could not start the automatic coke-model retrain")
     active_pointer = deployment_dir / "active.json"
     deployment_token = (
         int(active_pointer.stat().st_mtime_ns) if active_pointer.is_file() else 0
@@ -3822,21 +3931,21 @@ if fuel_rate_anchor_basis == "data_driven":
             data_driven_prediction.to_dict()
         )
         if data_driven_prediction.usable:
-            st.success(
-                f"Measured coke anchor: "
-                f"**{data_driven_prediction.measured_coke_rate_kg_per_thm:,.1f} "
-                f"kg/THM** "
-                f"(sum of {data_driven_prediction.measured_coke_mt:,.1f} MT coke "
-                f"/ {data_driven_prediction.measured_hot_metal_mt:,.1f} MT hot "
-                f"metal across {data_driven_prediction.measured_hour_count} eligible "
-                f"hours, {data_driven_prediction.window_start_utc} to "
-                f"{data_driven_prediction.window_end_utc})."
+            window_text = (
+                f"{data_driven_prediction.target_window_hours}-hour basis, "
+                if data_driven_prediction.target_window_hours
+                else ""
             )
-            st.caption(
-                f"Raw Non-linear model over the same window: "
-                f"{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM "
-                f"(median of {data_driven_prediction.hourly_prediction_count} "
-                "hourly predictions)."
+            st.success(
+                f"Coke-rate model prediction: "
+                f"**{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM** "
+                f"({window_text}PCI "
+                f"{float(recent_fuel_rates.get('pci_rate_kg_thm', 0.0) or 0.0):,.0f} "
+                f"and nut coke "
+                f"{float(recent_fuel_rates.get('nut_coke_rate_kg_thm', 0.0) or 0.0):,.0f} "
+                f"kg/THM; median of {data_driven_prediction.hourly_prediction_count} "
+                f"hourly predictions, {data_driven_prediction.window_start_utc} "
+                f"to {data_driven_prediction.window_end_utc})."
             )
             if data_driven_prediction.outside_training_p01_p99:
                 st.warning(
@@ -3870,7 +3979,7 @@ if fuel_rate_anchor_basis == "data_driven":
                 else ""
             )
             st.error(
-                "The measured coke anchor is unavailable: "
+                "The coke-rate model prediction is unavailable: "
                 + " ".join(data_driven_prediction.reasons)
                 + rejected
             )
@@ -3911,9 +4020,9 @@ if requested_lp or requested_total:
         data_driven_prediction is None or not data_driven_prediction.usable
     ):
         st.error(
-            "Optimization was not started because the selected Data-Driven coke "
-            "anchor has no fresh, eligible current-state prediction. Refresh/fix "
-            "the burden quantities or switch to Physics-Driven."
+            "Optimization was not started because the Data-Driven coke-rate model "
+            "has no fresh, eligible current-state prediction. Refresh/fix the "
+            "burden quantities or switch to Physics-Driven."
         )
     elif not basicity_bounds_valid:
         st.error("Correct the slag basicity bounds before running BMO.")
@@ -3979,10 +4088,10 @@ if requested_lp or requested_total:
         anchor_prediction_details: dict[str, Any] | None = None
         if fuel_rate_anchor_basis == "data_driven":
             anchor_coke_rate = (
-                float(data_driven_prediction.measured_coke_rate_kg_per_thm)
+                float(data_driven_prediction.value_kg_per_thm)
                 if data_driven_prediction is not None
                 and data_driven_prediction.usable
-                and data_driven_prediction.measured_coke_rate_kg_per_thm is not None
+                and data_driven_prediction.value_kg_per_thm is not None
                 else None
             )
             anchor_prediction_details = (

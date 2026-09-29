@@ -275,13 +275,16 @@ def evaluate_blend_with_fuel_prediction(
            applied. ``"energy_balance"`` uses ``anchor_coke_rate_kg_thm`` - the
            closed energy balance solved at current controls, less the rolling
            bias offset - and falls back to ``"observed"`` when that is absent.
+           ``"data_driven"`` uses ``anchor_coke_rate_kg_thm`` as the direct
+           coke-rate model's prediction and skips the legacy cost model.
            Ignored when ``fuel_rate_basis="inputs"``, which already uses the
            observed rates.
-         - anchor_coke_rate_kg_thm: float | None - Calibrated energy-balance coke
-           rate for the current operating point, from
-           ``utils.bmo.energy_anchor.solve_energy_anchor``. ONE value for the
-           whole run, identical for every candidate: it sets the level, while the
-           physics coke correction supplies the per-blend shape.
+         - anchor_coke_rate_kg_thm: float | None - Coke rate for the current
+           operating point: the calibrated energy balance from
+           ``utils.bmo.energy_anchor.solve_energy_anchor``, or the direct
+           coke-rate model's prediction. ONE value for the whole run, identical
+           for every candidate: it sets the level, while the physics coke
+           correction supplies the per-blend shape.
          - coke_correction_settings: CokeCorrectionSettings | None - Physics
            coke-rate correction settings. ``None`` disables it entirely, which
            keeps every pre-existing caller byte-identical.
@@ -322,7 +325,7 @@ def evaluate_blend_with_fuel_prediction(
                 scaler_loaded=True,
                 used_fallback=False,
                 details={
-                    "source": "measured_coke_mass_ratio",
+                    "source": "direct_coke_model",
                     **dict(anchor_prediction_details or {}),
                 },
             )
