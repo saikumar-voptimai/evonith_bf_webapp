@@ -61,6 +61,19 @@ class StaticDatasetManager:
 
     _MAX_VERSIONED_FILES: int = 3
 
+    # Hour-ending convention: a row stamped HH:00 summarises [HH-1:00, HH:00), so
+    # [23:00, 00:00) is stamped 00:00 of the next day.  It covers RM lab chemistry,
+    # online InfluxDB columns, charge ``*_CALC_MT`` quantities and PCI_CALC_MT;
+    # HM/slag and burden distribution keep their own labels.
+    # PCI_CALC_MT is a lance quantity, not a charge one, so it is named explicitly.
+    _PCI_QUANTITY_COLUMN: str = "PCI_CALC_MT"
+
+    # LEGACY ALIGNMENT ONLY - not part of normal resampling.  Rows of the
+    # historical DB table from this IST timestamp onward carry hour-BEGINNING
+    # labels for the chemistry/online/PCI columns, so they are moved one hour
+    # forward by ``_align_legacy_hour_beginning_labels``.
+    _LEGACY_HOUR_ENDING_START: pd.Timestamp = pd.Timestamp("2025-06-01 00:00:00")
+
     def __init__(
         self,
         static_path: str | Path | None = None,
@@ -86,6 +99,9 @@ class StaticDatasetManager:
         Loads the cleaned base from ``historical_static_ml_dataset`` in the offline DB,
         then appends a post-cutoff delta (Steps 2-5) from the base end date
         to today without writing back to the database.
+
+        The base is first relabelled from hour-beginning to hour-ending (see
+        ``_align_legacy_hour_beginning_labels``); the delta is built hour-ending.
         """
         _ = start_date  # legacy compat
 
@@ -98,6 +114,10 @@ class StaticDatasetManager:
             )
 
         df_base = fetch_static_dataset_from_database()
+        # Must precede cleaning: the cleaner filters and imputes rows, so shifting
+        # afterwards would leave NaN holes next to every dropped row.  The delta
+        # below is already hour-ending and must NOT go through this correction.
+        df_base = self._align_legacy_hour_beginning_labels(df_base)
         df_base = self._clean_dataset(df_base)
         df_base = self._clip_to_current_hour(df_base)
         cutoff_value = (
@@ -157,8 +177,14 @@ class StaticDatasetManager:
             from dataclasses import replace as dc_replace
             from furnace_data.dataset.fetcher import DatasetFetcher
 
+            # Hour-ending labels: the first requested row (00:00) summarises
+            # [23:00, 24:00) of the previous day, so fetch one extra day and trim
+            # back to ``start`` after resampling.  Without it that row would be
+            # empty and dropped as sparse, leaving a gap at the base/delta seam.
             fetcher = DatasetFetcher()
-            df_raw = fetcher.build_local_delta(start, end, rm_mode, raise_on_error=True)
+            df_raw = fetcher.build_local_delta(
+                start - timedelta(days=1), end, rm_mode, raise_on_error=True
+            )
             if df_raw.empty:
                 return df_raw
 
@@ -177,16 +203,25 @@ class StaticDatasetManager:
                 df_raw = df_raw.drop(columns=dropped)
 
             # Resample outer-joined multi-granularity data to a regular hourly cadence.
-            # Material quantities are totals for the hour ending at the row timestamp;
-            # lab/process context is averaged and forward-filled because a lab sample
-            # remains valid until the next sample.
+            # Material quantities, RM chemistry and online columns are labelled by
+            # the END of their hour; remaining context (HM/slag, burden distribution)
+            # keeps its hour-beginning label.  Context is averaged and forward-filled
+            # because a lab sample remains valid until the next sample.
             df_raw = self._resample_local_delta_hourly(df_raw)
+            # Right-labelling turns the in-progress hour into a future-stamped
+            # bucket, and the lookback day precedes ``start``; drop both here so
+            # neither reaches the cleaner.
+            df_raw = self._clip_to_current_hour(
+                df_raw.loc[df_raw.index >= pd.Timestamp(start)]
+            )
 
             # Derive PCI_CALC_MT from online process params when the charge-system
             # column is absent or all-NaN (PCI is injected via lances, not charged
             # through hoppers so it never appears in charge_data).
             # Formula: PCI rate (kg/tHM) x production (t/hr) / 1000 = PCI mass (MT/hr).
-            pci_col = "PCI_CALC_MT"
+            # Both inputs were hour-ending labelled by the resample above, so the
+            # derived value already sits on the right row and must not be shifted.
+            pci_col = self._PCI_QUANTITY_COLUMN
             if (
                 "PCI_KG/THM" in df_raw.columns
                 and "PRODUCTIONTONNESPERHR" in df_raw.columns
@@ -268,38 +303,47 @@ class StaticDatasetManager:
             return df
         return df.loc[df.index <= cls._current_local_hour()]
 
-    @staticmethod
-    def _resample_local_delta_hourly(df: pd.DataFrame) -> pd.DataFrame:
-        charge_quantity_cols = [
-            col
-            for col in df.columns
-            if StaticDatasetManager._is_charge_quantity_column(col)
+    @classmethod
+    def _resample_local_delta_hourly(cls, df: pd.DataFrame) -> pd.DataFrame:
+        hour_ending = cls._hour_ending_context_columns()
+        quantity_cols = [
+            col for col in df.columns if cls._is_hourly_quantity_column(col)
         ]
-        other_quantity_cols = [
+        hour_ending_context_cols = [
             col
             for col in df.columns
-            if StaticDatasetManager._is_hourly_quantity_column(col)
-            and not StaticDatasetManager._is_charge_quantity_column(col)
+            if not cls._is_hourly_quantity_column(col)
+            and str(col).upper() in hour_ending
         ]
-        context_cols = [
+        # HM/slag, burden distribution, lab ash/dust analyses: unchanged behaviour.
+        other_context_cols = [
             col
             for col in df.columns
-            if not StaticDatasetManager._is_hourly_quantity_column(col)
+            if not cls._is_hourly_quantity_column(col)
+            and str(col).upper() not in hour_ending
         ]
 
+        # Every group below that is hour-ending uses closed="left", label="right":
+        # values from [11:00, 12:00) belong to 12:00, and [23:00, 00:00) to 00:00.
+        # Native resampling keeps this vectorized and handles day boundaries.
+        # Forward-fill only after labelling so it cannot pull data back an hour.
         frames: list[pd.DataFrame] = []
-        if context_cols:
-            frames.append(df[context_cols].resample("1h").mean().ffill(limit=24))
-        if other_quantity_cols:
+        if other_context_cols:
             frames.append(
-                df[other_quantity_cols].resample("1h").sum(min_count=1)
+                df[other_context_cols].resample("1h").mean().ffill(limit=24)
             )
-        if charge_quantity_cols:
-            # Label charge totals by the end of their interval: values from
-            # [11:00, 12:00) belong to 12:00, and [23:00, 00:00) to 00:00.
-            # Native resampling keeps this vectorized and handles day boundaries.
+        if hour_ending_context_cols:
             frames.append(
-                df[charge_quantity_cols]
+                df[hour_ending_context_cols]
+                .resample("1h", closed="left", label="right")
+                .mean()
+                .ffill(limit=24)
+            )
+        if quantity_cols:
+            # Charge materials and PCI_CALC_MT share one convention: summed per
+            # hour and labelled by the hour end.
+            frames.append(
+                df[quantity_cols]
                 .resample("1h", closed="left", label="right")
                 .sum(min_count=1)
             )
@@ -313,11 +357,85 @@ class StaticDatasetManager:
         return isinstance(column, str) and column.endswith("_CALC_MT")
 
     @staticmethod
-    def _is_charge_quantity_column(column: object) -> bool:
-        return (
-            StaticDatasetManager._is_hourly_quantity_column(column)
-            and column != "PCI_CALC_MT"
+    def _hour_ending_context_columns() -> frozenset[str]:
+        """Upper-cased ML names of the non-quantity columns labelled by hour end.
+
+        Derived from ``setting_ds_dv.yml`` (through ``rename_dict``) so a newly
+        configured source is picked up without editing a column list here:
+
+        * online InfluxDB columns: process params, temperature profile, total
+          heat load and miscellaneous params;
+        * RM lab columns of ``cleaning.column_groups.rm_params`` (weighted
+          ORE/pellet/SINTER/COKE/NUTCOKE/FLUX/PCI chemistry and strength), minus
+          the ``*_mt`` quantities and keys the cleaner discards.
+        """
+        cfg = load_config("setting_ds_dv.yml")
+        rename = cfg.get("rename_dict") or {}
+        ml = cfg.get("ml_dataset") or {}
+        cleaning = cfg.get("cleaning") or {}
+        groups = cleaning.get("column_groups") or {}
+
+        def ml_names(keys) -> set[str]:
+            return {str(rename.get(key, key)).upper() for key in keys}
+
+        online = (
+            ml_names((ml.get("online_params") or {}).values())
+            | ml_names((ml.get("temperature_params") or {}).values())
+            | ml_names((ml.get("misc_params") or {}).values())
+            | ml_names(groups.get("temp_params") or [])
         )
+        rm_lab = (
+            ml_names(
+                key
+                for key in groups.get("rm_params") or []
+                if not str(key).endswith("_mt")
+            )
+            - ml_names(cleaning.get("unnecessary_alias_keys") or [])
+        )
+        return frozenset(online | rm_lab)
+
+    @classmethod
+    def _align_legacy_hour_beginning_labels(cls, df: pd.DataFrame) -> pd.DataFrame:
+        """Relabel the historical DB columns from hour-beginning to hour-ending.
+
+        LEGACY CORRECTION, not resampling.  From ``_LEGACY_HOUR_ENDING_START``
+        the historical table stamped RM chemistry, online columns and
+        ``PCI_CALC_MT`` with the START of their hour.  Each such value moves to
+        the row one hour later, e.g. 2025-06-01 23:00 -> 2025-06-02 00:00, and
+        2025-05-31 23:00 feeds 2025-06-01 00:00.  Rows before the start, and
+        all other columns (HM/slag, burden distribution, charge ``*_CALC_MT``,
+        which are already hour-ending), are left untouched; the index itself is
+        never shifted.
+
+        Run on the base only: the post-cutoff delta is hour-ending from the
+        start, so applying this to it would shift it twice.
+        """
+        hour_ending = cls._hour_ending_context_columns()
+        cols = [
+            col
+            for col in df.columns
+            if str(col).upper() in hour_ending
+            or str(col).upper() == cls._PCI_QUANTITY_COLUMN
+        ]
+        if df.empty or not cols or not isinstance(df.index, pd.DatetimeIndex):
+            return df
+
+        # The raw table has duplicate and sub-hourly rows (the cleaner only
+        # floors and averages them afterwards), so build one value per source
+        # hour first.  Mean matches the cleaner's duplicate-timestamp strategy.
+        row_hour = df.index.floor("h")
+        values = df[cols].apply(pd.to_numeric, errors="coerce").astype("float64")
+        # Source hour h (hour-beginning) -> destination hour h + 1h (hour-ending);
+        # a destination whose source hour has no data stays NaN for the cleaner.
+        shifted = values.groupby(row_hour).mean().shift(freq="1h")
+
+        corrected = row_hour >= cls._LEGACY_HOUR_ENDING_START
+        values.loc[corrected] = shifted.reindex(row_hour[corrected]).to_numpy()
+
+        out = df.copy()
+        # Positional assignment: the raw index may hold duplicate labels.
+        out[cols] = values.to_numpy()
+        return out
 
     @staticmethod
     def _repair_material_quantity_totals(df: pd.DataFrame) -> pd.DataFrame:
