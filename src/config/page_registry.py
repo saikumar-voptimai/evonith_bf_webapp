@@ -13,6 +13,7 @@ class AppPageDescriptor:
     title: str
     icon: str
     include_in_feedback: bool = True
+    visibility: str = "visible"  # "hidden" = routable but not listed in navigation
 
 
 PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
@@ -49,6 +50,13 @@ PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
         icon=":material/science:",
     ),
     AppPageDescriptor("custom_pages/8_Feedback.py", title="Feedback", icon="📮"),
+    AppPageDescriptor(
+        "custom_pages/10_Key_Parameter_Trend.py",
+        title="Key Parameter Trend",
+        icon="📈",
+        include_in_feedback=False,
+        visibility="hidden",
+    ),
 )
 
 

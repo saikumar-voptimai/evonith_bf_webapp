@@ -47,7 +47,12 @@ if not is_logged_in():
 # PAGE REGISTRATION
 # ------------------------------------------------------
 pages = [
-    st.Page(descriptor.file_path, title=descriptor.title, icon=descriptor.icon)
+    st.Page(
+        descriptor.file_path,
+        title=descriptor.title,
+        icon=descriptor.icon,
+        visibility=descriptor.visibility,
+    )
     for descriptor in get_navigation_pages()
 ]
 

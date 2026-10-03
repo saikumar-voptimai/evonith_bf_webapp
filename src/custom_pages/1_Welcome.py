@@ -19,8 +19,11 @@ st.markdown(
     """
     <style>
     .stApp, [data-testid="stAppViewContainer"] { background: #f1f5f9 !important; }
-    [data-testid="stSidebar"],
-    [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+    /* Sidebar only hidden on wide screens; narrow screens use it as the Key Parameters drawer */
+    @media (min-width: 768px) {
+        [data-testid="stSidebar"],
+        [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+    }
     .block-container {
         max-width: 1120px !important;
         padding-top: 1.2rem !important;
@@ -84,6 +87,11 @@ with _top_btn:
     if st.button("🚪 Logout", key="top_logout"):
         logout_user()
         st.stop()
+
+# ── Key Parameters panel (fixed right on desktop, sidebar drawer on mobile) ──
+from ui.key_parameters import render_key_parameters
+
+render_key_parameters()
 
 # ── Hero banner ───────────────────────────────────────────────────────────────
 def _b64_file(path: str) -> str:
