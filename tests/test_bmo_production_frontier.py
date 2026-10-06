@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import ui.bmo.production_frontier as frontier_ui
 from utils.bmo.production_frontier import (
@@ -14,7 +15,7 @@ from utils.bmo.production_frontier import (
     run_frontier_simulation,
     validate_frontier_inputs,
 )
-from utils.bmo.types import BlendEvaluation, OreChemistry, OreInput
+from utils.bmo.types import BlendEvaluation, FluxInput, OreChemistry, OreInput
 from ui.bmo.production_frontier import (
     _default_selected_production,
     _duration_text,
@@ -448,3 +449,173 @@ def test_variation_summary_and_knee_counts_use_the_production_grid() -> None:
         _variation_result([2240.0] * 6, [100.0] * 5)
     )
     assert [a.text for a in same.layout.annotations] == ["P10 / Median / P90 2,240"]
+
+
+def _single_target(production_mt: float, **overrides) -> FrontierSettings:
+    values = dict(
+        production_min_mt=production_mt,
+        production_max_mt=production_mt,
+        production_step_mt=10.0,
+        max_slag_rate_kg_per_thm=1000.0,
+        basicity_min=0.0,
+        basicity_max=5.0,
+        enforce_charging_capacity=False,
+        variation_scenarios=0,
+    )
+    values.update(overrides)
+    return FrontierSettings(**values)
+
+
+def test_a_fixed_flux_is_priced_not_free() -> None:
+    # The LP costs only the flux it decides. A fixed flux used to enter the
+    # slag balance at zero cost, so the frontier read as if it were free.
+    limestone = FluxInput(
+        flux_id="limestone",
+        display_name="Limestone",
+        wet_qty_mt=60.0,
+        cao_pct=50.0,
+        sio2_pct=2.0,
+        price_rs_per_mt=1500.0,
+        stock_mt=5000.0,
+        optimizable=False,
+    )
+
+    result = run_frontier_simulation(
+        _ores(),
+        settings=_single_target(1700.0),
+        hm_fe_pct=94.5,
+        feo_in_slag_pct=0.4,
+        model_to_plant_slag_factor=1.0,
+        flux_inputs=[limestone],
+    )
+    row = result["frontier"].iloc[0]
+
+    assert bool(row["feasible"])
+    assert row["flux_mt__limestone"] == pytest.approx(60.0)
+    assert row["flux_cost_per_thm_rs"] == pytest.approx(60.0 * 1500.0 / 1700.0)
+    assert row["unit_cost_rs_per_thm"] == pytest.approx(
+        row["ore_cost_per_thm_rs"] + row["flux_cost_per_thm_rs"]
+    )
+
+
+def test_flux_the_slag_limits_need_is_bought_and_scales_with_production() -> None:
+    # Ores without CaO cannot reach basicity 1.0, so limestone is required and
+    # its tonnage must follow the production target.
+    fluxes = [
+        FluxInput(
+            flux_id="limestone",
+            display_name="Limestone",
+            cao_pct=50.0,
+            sio2_pct=2.0,
+            price_rs_per_mt=1500.0,
+            stock_mt=5000.0,
+            max_qty_mt=2000.0,
+            optimizable=True,
+        ),
+        FluxInput(
+            flux_id="dolomite",
+            display_name="Dolomite",
+            enabled=False,
+            cao_pct=30.0,
+            mgo_pct=20.0,
+            price_rs_per_mt=1000.0,
+            stock_mt=5000.0,
+            optimizable=True,
+        ),
+    ]
+    settings = _single_target(
+        1700.0, production_max_mt=1720.0, basicity_min=1.0, basicity_max=1.2
+    )
+
+    result = run_frontier_simulation(
+        _ores(),
+        settings=settings,
+        hm_fe_pct=94.5,
+        feo_in_slag_pct=0.4,
+        model_to_plant_slag_factor=1.0,
+        flux_inputs=fluxes,
+    )
+    frontier = result["frontier"]
+
+    assert frontier["feasible"].all()
+    assert (frontier["flux_cost_per_thm_rs"] > 0.0).all()
+    assert frontier["flux_mt__limestone"].is_monotonic_increasing
+    # A disabled flux is not offered, so it has no column to report.
+    assert result["flux_names"] == {"limestone": "Limestone"}
+    assert result["flux_prices"] == {"limestone": 1500.0}
+
+
+def test_sbfe_lists_every_material_and_flux() -> None:
+    materials = frontier_ui._material_editor_frame(_ores(), {"b"})
+    assert materials.set_index("ore_id")["Use"].to_dict() == {"a": False, "b": True}
+
+    fluxes = [
+        FluxInput(
+            "quartz", "Quartz", optimizable=True, stock_mt=500.0, max_qty_mt=100.0
+        ),
+        FluxInput(
+            "limestone", "Limestone", optimizable=False, wet_qty_mt=40.0, stock_mt=5000.0
+        ),
+        FluxInput(
+            "dolomite", "Dolomite", enabled=False, optimizable=True, stock_mt=2000.0
+        ),
+    ]
+    editor = frontier_ui._flux_editor_frame(fluxes)
+
+    # Non-optimisable fluxes are listed too; they used to be hidden.
+    assert list(editor["Flux"]) == ["Quartz", "Limestone", "Dolomite"]
+    assert list(editor["Use"]) == [True, True, False]
+    limestone = editor.set_index("flux_id").loc["limestone"]
+    assert (limestone["Min MT"], limestone["Max MT"]) == (40.0, 40.0)
+
+    solved = frontier_ui._fluxes_from_editor(editor, fluxes)
+    assert all(flux.optimizable for flux in solved)
+    assert [flux.enabled for flux in solved] == [True, True, False]
+    assert (solved[1].min_qty_mt, solved[1].max_qty_mt) == (40.0, 40.0)
+    assert solved[1].wet_qty_mt == 0.0
+
+
+def test_sbfe_slag_limits_follow_the_main_page(monkeypatch) -> None:
+    state: dict = {}
+    monkeypatch.setattr(frontier_ui.st, "session_state", state)
+    limits = {
+        "max_slag_rate_kg_per_thm": 340.0,
+        "basicity_min": 1.05,
+        "basicity_max": 1.15,
+        "t_basicity_min": None,
+        "t_basicity_max": None,
+        "al2o3_max_pct": 20.0,
+        "mgo_min_pct": 6.5,
+        "mgo_al2o3_min": 0.345,
+    }
+
+    frontier_ui._seed_from_page(frontier_ui._slag_limit_defaults(limits))
+    assert state["bmo_frontier_max_slag_rate"] == 340.0
+    assert state["bmo_frontier_basicity_min"] == 1.05
+    assert state["bmo_frontier_mgo_min"] == 6.5
+    assert state["bmo_frontier_mgo_al2o3_min"] == 0.345
+    assert state["bmo_frontier_t_basicity_min"] == 0.0  # None = off
+
+    # An SBFE-only edit survives a rerun while the page limits are unchanged...
+    state["bmo_frontier_mgo_min"] = 7.0
+    frontier_ui._seed_from_page(frontier_ui._slag_limit_defaults(limits))
+    assert state["bmo_frontier_mgo_min"] == 7.0
+
+    # ...and a change on the main page still reaches SBFE.
+    frontier_ui._seed_from_page(
+        frontier_ui._slag_limit_defaults({**limits, "mgo_min_pct": 6.0})
+    )
+    assert state["bmo_frontier_mgo_min"] == 6.0
+
+
+def test_page_gives_sbfe_the_whole_yard_and_its_slag_limits() -> None:
+    root = Path(__file__).resolve().parents[1]
+    page = (root / "src/custom_pages/9_Blend_Optimizer.py").read_text(
+        encoding="utf-8"
+    )
+    call = page[page.index("render_production_frontier(") :]
+
+    assert "edited_df.assign(selected=True)" in call
+    assert "selected_ore_ids=" in call
+    assert '"mgo_min_pct": target_slag_mgo_min_pct' in call
+    assert '"basicity_min": target_slag_basicity_min' in call

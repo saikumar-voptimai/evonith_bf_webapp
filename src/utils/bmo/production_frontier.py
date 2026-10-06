@@ -418,6 +418,49 @@ def _material_metrics(ores: list[OreInput]) -> dict[str, float]:
     }
 
 
+def sbfe_flux_bounds(flux: FluxInput) -> tuple[float, float]:
+    """Daily MT bounds a flux enters the SBFE solves with.
+
+    A flux the main page charges at a fixed quantity is locked at that
+    quantity; any other flux keeps its own minimum and maximum.
+    """
+
+    maximum = float(flux.stock_mt if flux.max_qty_mt is None else flux.max_qty_mt)
+    fixed_qty = max(0.0, float(flux.wet_qty_mt or 0.0))
+    if not flux.optimizable and fixed_qty > 0.0:
+        return fixed_qty, fixed_qty
+    return max(0.0, float(flux.min_qty_mt)), max(0.0, maximum)
+
+
+def as_priced_fluxes(fluxes: list[FluxInput] | None) -> list[FluxInput]:
+    """Every enabled flux as an LP decision variable, so the LP prices it.
+
+    ``run_lp_baseline`` costs only the flux it decides. A fixed flux enters the
+    slag balance and the charging budget but never the objective or
+    ``flux_cost_per_thm_rs``, so a frontier built on it would read as if that
+    flux were free and its tonnage would not follow the production target. As
+    a decision bounded by ``sbfe_flux_bounds`` it is bought, and paid for, only
+    as the slag limits require.
+    """
+
+    priced: list[FluxInput] = []
+    for flux in fluxes or []:
+        if flux.optimizable or not flux.enabled:
+            priced.append(flux)
+            continue
+        minimum, maximum = sbfe_flux_bounds(flux)
+        priced.append(
+            replace(
+                flux,
+                optimizable=True,
+                wet_qty_mt=0.0,
+                min_qty_mt=minimum,
+                max_qty_mt=maximum,
+            )
+        )
+    return priced
+
+
 def run_frontier_simulation(
     ores: list[OreInput],
     *,
@@ -436,6 +479,7 @@ def run_frontier_simulation(
     errors = validate_frontier_inputs(ores, settings)
     if errors:
         raise ValueError(" ".join(errors))
+    flux_inputs = as_priced_fluxes(flux_inputs)
     targets = production_targets(settings)
     scenario_count = int(settings.variation_scenarios) + 1
     total_solves = int(len(targets) * scenario_count)
@@ -658,8 +702,16 @@ def run_frontier_simulation(
         "drivers": drivers,
         "settings": settings,
         "material_names": {ore.ore_id: ore.display_name for ore in ores},
+        # Only the fluxes the LP could buy: a disabled one has no column to show.
         "flux_names": {
-            flux.flux_id: flux.display_name for flux in (flux_inputs or [])
+            flux.flux_id: flux.display_name
+            for flux in (flux_inputs or [])
+            if flux.enabled
+        },
+        "flux_prices": {
+            flux.flux_id: float(flux.price_rs_per_mt)
+            for flux in (flux_inputs or [])
+            if flux.enabled
         },
         "base_knees": (
             list(scenario_rows[0].get("knee_candidates", []))
@@ -674,9 +726,11 @@ __all__ = [
     "MAX_TOTAL_SOLVES",
     "MAX_VARIATION_SCENARIOS",
     "FrontierSettings",
+    "as_priced_fluxes",
     "identify_knee",
     "identify_knee_candidates",
     "production_targets",
     "run_frontier_simulation",
+    "sbfe_flux_bounds",
     "validate_frontier_inputs",
 ]

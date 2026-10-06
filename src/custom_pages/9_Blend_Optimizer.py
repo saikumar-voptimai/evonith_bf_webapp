@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import logging
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from collections.abc import Mapping
 from typing import Any
@@ -108,8 +108,9 @@ from utils.bmo.direct_coke_model import (
     retrain_kwargs_from_config,
 )
 from utils.bmo.calculations import scale_ore_quantities_to_hot_metal
+from utils.bmo.shift_production import production_change_pct
 from utils.bmo.types import oxide_pct_from_basis
-from utils.bmo.si_prediction import SiPredictionService
+from utils.bmo.si_prediction import SiPredictionService, latest_cast_si
 from utils.bmo.coke_calibration import load_calibration as load_coke_calibration
 from utils.bmo.pci_anchoring import (
     ANCHOR_HIGH_PCI,
@@ -435,6 +436,69 @@ def _recent_fuel_rates_live() -> dict[str, float | str]:
         prefix = rate_key.removesuffix("_rate_kg_thm")
         rates[f"{prefix}_source"] = f"influx_1h_avg.{field}"
     return rates
+
+
+@_data_cache(show_spinner=False, ttl=600)
+def _last_shift_production(static_path: str, static_mtime_ns: int) -> dict[str, Any]:
+    """Daily production of the last complete plant shift, as a plain dict.
+
+    Live ``process_params`` tags first (15-minute averages, so the window lines
+    up with the shift boundaries); the furnace dataset is the fallback when
+    InfluxDB is unreachable. The baseline every "change vs last shift" figure on
+    this page is measured against. Empty dict when neither source has a usable
+    shift.
+    """
+
+    from utils.bmo.shift_production import shift_production
+
+    now = datetime.now(timezone.utc)
+    try:
+        from furnace_data.influx.online import fetch_online_df
+
+        live = fetch_online_df(
+            selected_measurements=["process_params"],
+            time_range="last 1 week",
+            request_type="windowed-average",
+            window_by="15 minutes",
+            start_time_override=now - timedelta(hours=34),
+            end_time_override=now,
+            column_naming="field",
+        )
+        result = shift_production(
+            live, now=now, timestamps="stop", source="live plant tags"
+        )
+        if result.usable:
+            return result.to_dict()
+    except Exception as exc:  # noqa: BLE001 - fall back to the furnace dataset
+        log.warning("Live shift production unavailable; trying the dataset: %s", exc)
+
+    path = Path(static_path)
+    if static_mtime_ns <= 0 or not path.exists():
+        return {}
+    try:
+        frame = pd.read_csv(
+            path, usecols=["time", "PRODUCTIONTONNESPERHR", "CHARGES/HRS."]
+        )
+    except (ValueError, OSError) as exc:
+        log.warning("Furnace dataset has no charging columns: %s", exc)
+        return {}
+    stamps = pd.to_datetime(frame["time"], errors="coerce", format="mixed", dayfirst=True)
+    frame = frame.assign(time=stamps).dropna(subset=["time"]).set_index("time")
+    # Dataset rows are IST hour starts; the dataset lags, so its own newest hour
+    # decides which shift is the last complete one.
+    frame.index = frame.index.tz_localize("Asia/Kolkata")
+    production = pd.to_numeric(frame["PRODUCTIONTONNESPERHR"], errors="coerce")
+    charges = pd.to_numeric(frame["CHARGES/HRS."], errors="coerce")
+    frame["hm_per_charge"] = production / charges.where(charges > 0)
+    result = shift_production(
+        frame,
+        now=frame.index.max() + pd.Timedelta(hours=1),
+        charges_col="CHARGES/HRS.",
+        hm_col="hm_per_charge",
+        timestamps="start",
+        source="furnace dataset",
+    )
+    return result.to_dict() if result.usable else {}
 
 
 @_data_cache(show_spinner=False, ttl=600)
@@ -1005,6 +1069,7 @@ def _render_blend_comparison(
     slag_balance_settings: SlagBalanceSettings,
     charge_mass_mt: float,
     lookback_hours: float,
+    shift_baseline: dict[str, Any] | None = None,
 ) -> None:
     """Operator-focused comparison of the manual blend vs the optimizer blends.
 
@@ -1273,14 +1338,62 @@ def _render_blend_comparison(
         value = charging_by_blend_id[id(blend)].get(key)
         return float(value) if value is not None else None
 
-    # ---- Inputs: suggested blend mix (Share %), LP and DE side by side ----
+    # Current production is what the furnace made over the last complete
+    # shift; each optimizer's production is its target. Every "vs last shift"
+    # figure on this tab is measured against the former.
+    baseline = dict(shift_baseline or {})
+    baseline_mt = baseline.get("daily_production_mt")
+
+    def _production_of(blend: Any) -> float:
+        if blend is manual_blend and baseline_mt is not None:
+            return float(baseline_mt)
+        return float(blend.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0)
+
+    def _production_change(blend: Any) -> float | None:
+        if blend is manual_blend:
+            return None
+        return production_change_pct(_production_of(blend), baseline_mt)
+
+    def _production_delta_mt(blend: Any) -> float | None:
+        if blend is manual_blend or _production_change(blend) is None:
+            return None
+        return _production_of(blend) - float(baseline_mt)
+
+    # ---- Inputs: blend mix as share and tonnage, side by side ----
+    # Manual tonnage is what was actually charged (the snapshot's hourly rate x
+    # 24) whenever the snapshot came from the plant record; the optimizer
+    # tonnage is each solution's wet charge per day at its target production.
+    manual_actual_t_per_day = (
+        {
+            ore_id: float(row.get("quantity_mt", 0.0) or 0.0) * 24.0
+            for ore_id, row in rows_by_ore.items()
+        }
+        if use_last_shift
+        else None
+    )
+
+    def _tonnage_column(label: str, blend: Any) -> tuple[str, dict[str, float]]:
+        if blend is manual_blend and manual_actual_t_per_day is not None:
+            return f"{label} actual (t/day)", manual_actual_t_per_day
+        return f"{label} (t/day)", {
+            str(ore_id): float(qty) for ore_id, qty in blend.quantities_mt.items()
+        }
+
+    tonnage_columns = [_tonnage_column(label, blend) for label, blend, _ in options]
     mix_frame = pd.DataFrame(
         [
             {
                 "Ore": ore.display_name,
                 **{
-                    label: float(blend.shares_pct.get(ore.ore_id, 0.0))
-                    for label, blend, _ in options
+                    key: value
+                    for (label, blend, _), (tonnage_label, tonnage) in zip(
+                        options, tonnage_columns
+                    )
+                    for key, value in (
+                        (f"{label} (%)", float(blend.shares_pct.get(ore.ore_id, 0.0))),
+                        # Whole tonnes: a daily tonnage to the kilogram is noise.
+                        (tonnage_label, round(float(tonnage.get(ore.ore_id, 0.0)))),
+                    )
                 },
             }
             for ore in compare_ores
@@ -1329,10 +1442,16 @@ def _render_blend_comparison(
 
     # (row label, accessor(blend, si) -> value | None, format string)
     metric_specs = [
+        ("Production (MT/day)", lambda b, si: _production_of(b), "{:,.1f}"),
         (
-            "Production",
-            lambda b, si: float(b.diagnostics.get("hot_metal_target_mt", 0.0) or 0.0),
-            "{:,.1f} MT",
+            "Δ Production vs last shift (MT/day)",
+            lambda b, si: _production_delta_mt(b),
+            "{:+,.0f}",
+        ),
+        (
+            "Δ Production vs last shift (%)",
+            lambda b, si: _production_change(b),
+            "{:+.1f}%",
         ),
         ("Total Cost (Rs/THM)", lambda b, si: _display_total(b), "{:,.0f}"),
         ("Ore Cost (Rs/THM)", lambda b, si: b.ore_cost_per_thm_rs, "{:,.0f}"),
@@ -1448,44 +1567,51 @@ def _render_blend_comparison(
     }
 
     def _rows_for(spec_labels: list[str]) -> Any:
-        """One group of the outcome table: numbers kept numeric (so they align
-        right), each row in its own format, the cheapest cost highlighted."""
+        """One group of the outcome table, each row in its own format, with the
+        cheapest cost highlighted.
 
-        rows, formats = [], []
+        Cells are pre-formatted text (right-aligned by the column config): a
+        missing number must read "n/a", and Streamlit draws an empty numeric
+        cell as a grey "None" whatever the Styler says.
+        """
+
+        rows, raw_rows = [], []
         for row_label, accessor, fmt in metric_specs:
             if row_label not in spec_labels:
                 continue
             row: dict[str, Any] = {"Outcome": row_label}
+            raw: dict[str, float] = {}
             for label, blend, si in options:
                 value = accessor(blend, si)
-                row[label] = float(value) if isinstance(value, (int, float)) else np.nan
+                if isinstance(value, (int, float)) and np.isfinite(value):
+                    row[label] = fmt.format(value)
+                    raw[label] = float(value)
+                elif row_label.startswith("Δ Production") and blend is manual_blend:
+                    row[label] = "—"  # Manual IS the last shift.
+                else:
+                    row[label] = "n/a"
             rows.append(row)
-            formats.append(fmt)
+            raw_rows.append(raw)
         frame = pd.DataFrame(rows)
         if frame.empty:
             return frame
-        styler = frame.style
-        for position, fmt in enumerate(formats):
-            styler = styler.format(
-                fmt, subset=pd.IndexSlice[[position], labels], na_rep="n/a"
-            )
 
         def _highlight_best(row: pd.Series) -> list[str]:
             styles = [""] * len(row)
             if row["Outcome"] not in lower_is_better:
                 return styles
-            values = pd.to_numeric(row[labels], errors="coerce")
-            if values.notna().sum() < 2 or np.isclose(values.max(), values.min()):
+            values = raw_rows[row.name]
+            if len(values) < 2 or np.isclose(max(values.values()), min(values.values())):
                 return styles
-            best = values.min()
+            best = min(values.values())
             for position, column in enumerate(row.index):
-                if column in labels and np.isclose(row[column], best):
+                if column in values and np.isclose(values[column], best):
                     styles[position] = (
                         "background-color: rgba(18,184,134,0.16); font-weight: 600"
                     )
             return styles
 
-        return styler.apply(_highlight_best, axis=1)
+        return frame.style.apply(_highlight_best, axis=1)
 
     # Grouped rather than one 25-row wall. The groups are the questions an
     # operator asks in order: what does it cost, what fuel does it need, what
@@ -1514,7 +1640,9 @@ def _render_blend_comparison(
             "Slag MgO/Al2O3",
         ],
         "🚚 Charging": [
-            "Production",
+            "Production (MT/day)",
+            "Δ Production vs last shift (MT/day)",
+            "Δ Production vs last shift (%)",
             "Flux Rate (kg/THM)",
             "Coke in Charges (MT)",
             "Nut Coke in Charges (MT)",
@@ -1534,7 +1662,7 @@ def _render_blend_comparison(
     # Headline FIRST. The cheapest option and the saving are the decision; the
     # detail below is the justification, and reading order should match.
     with result_col:
-        st.markdown("**Total cost per tonne of hot metal**")
+        st.markdown("**Total cost per tonne of hot metal, and production**")
         with st.container(border=True):
             cols = st.columns(len(options))
             for col, (label, blend, _) in zip(cols, options):
@@ -1543,6 +1671,37 @@ def _render_blend_comparison(
                     f"{_display_total(blend):,.0f}",
                     help="Ore + fuel at the currently applied prices + any flux "
                     "the optimizer added.",
+                )
+                change = _production_change(blend)
+                if blend is manual_blend and baseline_mt is not None:
+                    col.caption(f"{_production_of(blend):,.0f} MT/day · last shift")
+                elif change is not None:
+                    col.caption(
+                        f"{_production_of(blend):,.0f} MT/day · Δ Production "
+                        f"{_production_delta_mt(blend):+,.0f} MT/day ({change:+.1f}%)"
+                    )
+                else:
+                    col.caption(f"{_production_of(blend):,.0f} MT/day")
+            for label, blend, _ in optimizer_candidates:
+                change = _production_change(blend)
+                if change is None:
+                    continue
+                st.badge(
+                    f"{label}: Δ Production {_production_delta_mt(blend):+,.0f} MT/day "
+                    f"({change:+.1f}%) vs last shift, {float(baseline_mt):,.0f} to "
+                    f"{_production_of(blend):,.0f} MT/day",
+                    icon=(
+                        ":material/trending_up:"
+                        if change >= 0
+                        else ":material/trending_down:"
+                    ),
+                    color="green" if change >= 0 else "orange",
+                    help=(
+                        f"Last shift is {baseline.get('description', '')}: "
+                        f"{float(baseline.get('charges_per_hour') or 0):,.2f} charges/hr "
+                        f"x {float(baseline.get('hm_per_charge_mt') or 0):,.2f} t hot "
+                        f"metal per charge x 24 ({baseline.get('source', '')})."
+                    ),
                 )
             if manual_blend is not None:
                 best_label, best_optimizer = min(
@@ -1583,14 +1742,35 @@ def _render_blend_comparison(
             column_config={
                 "Ore": st.column_config.TextColumn("Ore", width="medium"),
                 **{
-                    label: st.column_config.NumberColumn(label, format="%.1f %%")
-                    for label in labels
+                    column: st.column_config.NumberColumn(
+                        column,
+                        format="%.1f %%" if column.endswith("(%)") else "localized",
+                    )
+                    for column in mix_frame.columns
+                    if column != "Ore"
                 },
             },
         )
-        st.caption("Share of the burden for each option.")
+        st.caption(
+            "Share of the burden and wet tonnes per day for each option. "
+            + (
+                "Manual tonnage is what was actually charged over the last "
+                f"{lookback_hours:g} hours, as a daily rate; "
+                if manual_actual_t_per_day is not None
+                else ""
+            )
+            + "optimizer tonnage is each solution's charge per day at its target "
+            "production."
+        )
     for tab, (group_name, spec_labels) in zip(outcome_tabs, groups.items()):
         with tab:
+            if group_name == "🚚 Charging" and baseline_mt is not None:
+                st.caption(
+                    f"Manual production is the last complete shift's rate "
+                    f"({baseline.get('description', '')}, charges/hr x hot metal "
+                    "per charge x 24). The other Manual rows are evaluated at the "
+                    "target production, like the optimizer columns."
+                )
             frame = _rows_for(spec_labels)
             if len(frame.index) == 0:
                 st.caption("Nothing to show for this group.")
@@ -1601,6 +1781,10 @@ def _render_blend_comparison(
                 width="stretch",
                 column_config={
                     "Outcome": st.column_config.TextColumn("Outcome", width="medium"),
+                    **{
+                        label: st.column_config.TextColumn(label, alignment="right")
+                        for label in labels
+                    },
                 },
             )
 
@@ -2385,18 +2569,6 @@ def _render_transition_ladder(
         )
 
 
-def _render_si_metric(si_value: float | None) -> None:
-    """Render the display-only predicted hot-metal Si for a blend."""
-
-    if si_value is None:
-        return
-    st.metric("Predicted Hot-Metal Si", f"{si_value:.3f} %")
-    st.caption(
-        "Advisory only - standalone Si model; not an optimization objective or "
-        "constraint and does not affect the blend decision."
-    )
-
-
 def _render_fuel_basis_note(blend: Any) -> None:
     """Say which of the three coke rates this blend's fuel cost was built on.
 
@@ -2638,19 +2810,6 @@ def _render_de_exploration(
     st.dataframe(table, use_container_width=True, hide_index=True)
 
 
-def _latest_si_from_history(history_df: pd.DataFrame | None) -> float | None:
-    """Return the most recent measured hot-metal Si from the history frame, if any."""
-
-    if history_df is None or history_df.empty:
-        return None
-    for col in ("CHEM_PCT_SI", "chem_pct_si"):
-        if col in history_df.columns:
-            series = pd.to_numeric(history_df[col], errors="coerce").dropna()
-            if not series.empty:
-                return float(series.iloc[-1])
-    return None
-
-
 def _predict_blend_si(
     *,
     ores: list[OreInput],
@@ -2662,22 +2821,43 @@ def _predict_blend_si(
     """
     Predict display-only hot-metal Si for one solved blend.
 
+    The previous-cast input is the freshest cast analysis available, from the
+    history frame or the latest HM/slag report, whichever is later. The cast it
+    came from and the model's horizon are kept in ``bmo_si_basis`` so the result
+    card can say which cast the prediction is for.
+
     Failures never interrupt the optimizer flow; a None result simply hides the
     Si metric for that blend.
     """
 
     try:
         si_service = _get_si_service()
+        prev_si, prev_si_at = latest_cast_si(
+            history_df, st.session_state.get("bmo_latest_cast")
+        )
+        st.session_state["bmo_si_basis"] = {
+            "last_cast_si_pct": prev_si,
+            "last_cast_at": prev_si_at.isoformat() if prev_si_at is not None else None,
+            "horizon_hours": si_service.horizon_hours,
+        }
         return si_service.predict_blend_si(
             ores=ores,
             quantities_mt=quantities_mt,
             process_context=process_context,
-            prev_si=_latest_si_from_history(history_df),
+            prev_si=prev_si,
             hot_metal_target_mt=hot_metal_target_mt,
         )
     except Exception as exc:  # noqa: BLE001 - Si is advisory; never break the run
         log.warning("Si prediction failed: %s", exc)
         return None
+
+
+def _si_forecast(si_pct: float | None) -> dict[str, Any] | None:
+    """Si for one blend with the cast it is predicted for, for the result card."""
+
+    if si_pct is None:
+        return None
+    return {"si_pct": float(si_pct), **(st.session_state.get("bmo_si_basis") or {})}
 
 
 def _load_fuel_prediction_context(
@@ -3393,6 +3573,19 @@ hm_snapshot = _cached_hm_slag_snapshot(
     provider, chemistry_mode, chemistry_window_days, source_cache_version
 )
 ore_diagnostics["warnings"].extend(hm_snapshot.get("warnings", []))
+# The Si model's strongest input is the previous cast, so it always gets the
+# single latest cast - even when the chemistry above is a window average.
+_latest_cast_snapshot = (
+    hm_snapshot
+    if chemistry_mode == "latest"
+    else _cached_hm_slag_snapshot(
+        provider, "latest", chemistry_window_days, source_cache_version
+    )
+)
+st.session_state["bmo_latest_cast"] = {
+    "chem_pct_si": _latest_cast_snapshot.get("chem_pct_si"),
+    "sample_timestamp": _latest_cast_snapshot.get("sample_timestamp"),
+}
 fuel_analysis, fuel_analysis_warnings = _cached_fuel_analysis_snapshot(
     provider, chemistry_mode, chemistry_window_days, source_cache_version
 )
@@ -4464,6 +4657,13 @@ if de_errors:
     st.error("Intensive Optimizer errors:\n- " + "\n- ".join(de_errors))
 
 if lp_result is not None or de_result is not None:
+    # What the furnace produced over the last complete shift: the baseline for
+    # every "change vs last shift" figure in the result cards and Comparison.
+    try:
+        shift_baseline = _last_shift_production(static_path, static_mtime_ns)
+    except Exception:  # noqa: BLE001 - a missing baseline hides one tile, no more
+        log.exception("Could not compute last-shift production")
+        shift_baseline = {}
     tab_lp, tab_de, tab_cmp, tab_acc = st.tabs(
         ["Balanced Optimizer", "Intensive Optimizer", "Comparison", "Model accuracy"]
     )
@@ -4479,6 +4679,8 @@ if lp_result is not None or de_result is not None:
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 is_lp_mode=True,
                 charge_mass_mt=charge_mass_mt,
+                shift_baseline=shift_baseline,
+                si_forecast=_si_forecast(st.session_state.get("bmo_lp_si")),
             )
             # Controls and Path are ONE tab, not two.
             #
@@ -4505,7 +4707,6 @@ if lp_result is not None or de_result is not None:
                 _render_lp_flux_additions(lp_result)
 
             with lp_fuel_tab:
-                _render_si_metric(st.session_state.get("bmo_lp_si"))
                 render_coke_correction_breakdown(lp_result)
                 _render_fuel_basis_note(lp_result)
 
@@ -4604,6 +4805,8 @@ if lp_result is not None or de_result is not None:
                 de_result,
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 charge_mass_mt=charge_mass_mt,
+                shift_baseline=shift_baseline,
+                si_forecast=_si_forecast(st.session_state.get("bmo_de_si")),
             )
             de_blend_tab, de_fuel_tab, de_slag_tab, de_search_tab = st.tabs(
                 ["🧱 Blend", "🔥 Fuel & coke", "🌋 Slag", "🔎 Search"]
@@ -4624,7 +4827,6 @@ if lp_result is not None or de_result is not None:
                 _render_lp_flux_additions(de_result)
 
             with de_fuel_tab:
-                _render_si_metric(st.session_state.get("bmo_de_si"))
                 render_coke_correction_breakdown(de_result)
                 _render_fuel_basis_note(de_result)
                 if not bundle_status.get("model_loaded"):
@@ -4672,6 +4874,7 @@ if lp_result is not None or de_result is not None:
                 slag_balance_settings=slag_balance_settings,
                 charge_mass_mt=charge_mass_mt,
                 lookback_hours=manual_blend_lookback_hours,
+                shift_baseline=shift_baseline,
             )
         else:
             st.info(
@@ -4822,7 +5025,20 @@ render_snapshot_panel(prefix="bmo_", page_vars=globals())
 from ui.bmo.production_frontier import render_production_frontier  # noqa: E402
 
 render_production_frontier(
-    selected_ores=selected_ores,
+    # The whole yard, with the operator's edits to price, bounds and chemistry;
+    # the main selection only decides which materials start ticked.
+    ores=_selected_ores_from_editor(edited_df.assign(selected=True), ores),
+    selected_ore_ids={ore.ore_id for ore in selected_ores},
+    slag_limits={
+        "max_slag_rate_kg_per_thm": target_slag_rate_kg_per_thm,
+        "basicity_min": target_slag_basicity_min,
+        "basicity_max": target_slag_basicity_max,
+        "t_basicity_min": target_slag_t_basicity_min,
+        "t_basicity_max": target_slag_t_basicity_max,
+        "al2o3_max_pct": target_slag_al2o3_max_pct,
+        "mgo_min_pct": target_slag_mgo_min_pct,
+        "mgo_al2o3_min": target_slag_mgo_al2o3_ratio_min,
+    },
     fuel_ash_inputs=fuel_ash_inputs,
     flux_inputs=flux_inputs,
     dust_inputs=dust_inputs,

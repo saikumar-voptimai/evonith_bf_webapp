@@ -19,6 +19,7 @@ from utils.bmo.production_frontier import (
     MAX_VARIATION_SCENARIOS,
     FrontierSettings,
     run_frontier_simulation,
+    sbfe_flux_bounds,
     validate_frontier_inputs,
 )
 from utils.bmo.types import (
@@ -66,10 +67,13 @@ def _duration_text(seconds: float) -> str:
     return f"{secs:d}s"
 
 
-def _input_fingerprint(ores: list[OreInput]) -> str:
+def _input_fingerprint(
+    ores: list[OreInput], selected_ids: set[str] | None = None
+) -> str:
     payload = [
         {
             "id": ore.ore_id,
+            "use": ore.ore_id in (selected_ids or set()),
             "stock": ore.stock_mt,
             "price": ore.price_rs_per_mt,
             "min": ore.min_share_pct,
@@ -84,11 +88,23 @@ def _input_fingerprint(ores: list[OreInput]) -> str:
     return hashlib.sha256(raw).hexdigest()[:10]
 
 
-def _material_editor_frame(ores: list[OreInput]) -> pd.DataFrame:
+def _material_editor_frame(
+    ores: list[OreInput], selected_ids: set[str] | None = None
+) -> pd.DataFrame:
+    """Every available material, ticked where the main BMO selection uses it.
+
+    SBFE asks what the furnace could do, so it offers the whole yard rather
+    than only today's selection; the main selection is just the starting tick.
+    """
+
     return pd.DataFrame(
         [
             {
-                "Use": float(ore.max_share_pct) > 0.0,
+                "Use": (
+                    ore.ore_id in selected_ids
+                    if selected_ids is not None
+                    else float(ore.max_share_pct) > 0.0
+                ),
                 "ore_id": ore.ore_id,
                 "Material": ore.display_name,
                 "Stock MT": float(ore.stock_mt),
@@ -138,28 +154,34 @@ def _ores_from_editor(editor: pd.DataFrame, ores: list[OreInput]) -> list[OreInp
 
 
 def _flux_editor_frame(fluxes: list[FluxInput]) -> pd.DataFrame:
-    return pd.DataFrame(
-        [
+    """Every flux, so each one SBFE uses is a priced decision of the LP."""
+
+    rows = []
+    for flux in fluxes:
+        minimum, maximum = sbfe_flux_bounds(flux)
+        rows.append(
             {
                 "flux_id": flux.flux_id,
+                "Use": bool(flux.enabled),
                 "Flux": flux.display_name,
-                "Enabled": bool(flux.enabled),
-                "Min MT": float(flux.min_qty_mt),
-                "Max MT": float(
-                    flux.stock_mt if flux.max_qty_mt is None else flux.max_qty_mt
-                ),
+                "Min MT": minimum,
+                "Max MT": maximum,
                 "Stock MT": float(flux.stock_mt),
                 "Price Rs/MT": float(flux.price_rs_per_mt),
             }
-            for flux in fluxes
-            if flux.optimizable
-        ]
-    )
+        )
+    return pd.DataFrame(rows)
 
 
 def _fluxes_from_editor(
     editor: pd.DataFrame, fluxes: list[FluxInput]
 ) -> list[FluxInput]:
+    """Fluxes for the SBFE solves, every used one an LP decision variable.
+
+    The LP prices only the flux it decides (see ``as_priced_fluxes``), so
+    each ticked flux becomes a decision bounded by its editor row.
+    """
+
     by_id = {flux.flux_id: flux for flux in fluxes}
     overrides: dict[str, FluxInput] = {}
     for _, row in editor.iterrows():
@@ -167,11 +189,14 @@ def _fluxes_from_editor(
         base = by_id.get(flux_id)
         if base is None:
             continue
+        minimum, maximum = sbfe_flux_bounds(base)
         overrides[flux_id] = replace(
             base,
-            enabled=bool(row.get("Enabled", base.enabled)),
-            min_qty_mt=float(row.get("Min MT", base.min_qty_mt) or 0.0),
-            max_qty_mt=float(row.get("Max MT", base.max_qty_mt) or 0.0),
+            enabled=bool(row.get("Use", base.enabled)),
+            optimizable=True,
+            wet_qty_mt=0.0,
+            min_qty_mt=float(row.get("Min MT", minimum) or 0.0),
+            max_qty_mt=float(row.get("Max MT", maximum) or 0.0),
             stock_mt=float(row.get("Stock MT", base.stock_mt) or 0.0),
             price_rs_per_mt=float(
                 row.get("Price Rs/MT", base.price_rs_per_mt) or 0.0
@@ -794,11 +819,24 @@ def _render_selected_solution(
                     "Share (%)": share,
                 }
             )
+    # Every flux the LP could buy, zeros included: "0 MT" says the slag limits
+    # did not need it here, where a missing row would leave that unclear.
     flux_rows = []
+    flux_prices = result.get("flux_prices", {}) or {}
+    production = float(production_mt)
     for flux_id, name in (result.get("flux_names", {}) or {}).items():
         quantity = float(row.get(f"flux_mt__{flux_id}", 0.0) or 0.0)
-        if quantity > 0.005:
-            flux_rows.append({"Flux": name, "Quantity (MT)": quantity})
+        price = flux_prices.get(flux_id)
+        flux_rows.append(
+            {
+                "Flux": name,
+                "Quantity (MT/day)": quantity,
+                "Rate (kg/THM)": quantity * 1000.0 / production,
+                "Cost (Rs/THM)": (
+                    quantity * float(price) / production if price is not None else None
+                ),
+            }
+        )
 
     blend_tab, calculation_tab = st.tabs(["Blend and pricing", "Calculation details"])
     with blend_tab:
@@ -821,9 +859,19 @@ def _render_selected_solution(
                     hide_index=True,
                     width="stretch",
                     column_config={
-                        "Quantity (MT)": st.column_config.NumberColumn(format="%.1f")
+                        "Quantity (MT/day)": st.column_config.NumberColumn(
+                            format="%.1f"
+                        ),
+                        "Rate (kg/THM)": st.column_config.NumberColumn(
+                            format="%.1f"
+                        ),
+                        "Cost (Rs/THM)": st.column_config.NumberColumn(
+                            format="%.1f"
+                        ),
                     },
                 )
+            else:
+                st.caption("No flux was enabled for this run.")
         with right:
             pricing = pd.DataFrame(
                 [
@@ -844,6 +892,10 @@ def _render_selected_solution(
                     },
                 ]
             )
+            # Rupees per tonne to one decimal and per day to the rupee: the
+            # LP's float noise beyond that is not a cost anyone can act on.
+            pricing["Rs/THM"] = pd.to_numeric(pricing["Rs/THM"], errors="coerce").round(1)
+            pricing["Rs/day"] = pd.to_numeric(pricing["Rs/day"], errors="coerce").round(0)
             st.dataframe(
                 pricing,
                 hide_index=True,
@@ -1071,9 +1123,54 @@ def _render_result(result: dict[str, Any]) -> None:
         )
 
 
+def _seed_from_page(defaults: Mapping[str, float]) -> None:
+    """Start SBFE widgets from the main page's values, and follow them.
+
+    A widget value is written only when the page value it was seeded from has
+    changed, so an operator's SBFE-only edit survives reruns but a change on
+    the main page still reaches SBFE.
+    """
+
+    for key, value in defaults.items():
+        marker = f"_{key}__seeded_from"
+        if st.session_state.get(marker) != value or key not in st.session_state:
+            st.session_state[key] = value
+            st.session_state[marker] = value
+
+
+def _slag_limit_defaults(
+    slag_limits: Mapping[str, float | None] | None,
+) -> dict[str, float]:
+    """SBFE slag widgets keyed by widget key, from the main page's limits.
+
+    SBFE must solve the problem the main optimizer solves. With looser limits
+    (MgO and MgO/Al2O3 off, a wider basicity band) the cheapest blend never
+    needs flux, so every frontier point reads as a flux-free burden the main
+    page would reject.
+    """
+
+    limits = dict(slag_limits or {})
+
+    def value(name: str, fallback: float) -> float:
+        raw = limits.get(name, fallback)
+        return float(raw) if raw is not None else 0.0
+
+    return {
+        "bmo_frontier_max_slag_rate": value("max_slag_rate_kg_per_thm", 375.0),
+        "bmo_frontier_basicity_min": value("basicity_min", 1.0),
+        "bmo_frontier_basicity_max": value("basicity_max", 1.2),
+        "bmo_frontier_t_basicity_min": value("t_basicity_min", 0.0),
+        "bmo_frontier_t_basicity_max": value("t_basicity_max", 0.0),
+        "bmo_frontier_al2o3_max": value("al2o3_max_pct", 0.0),
+        "bmo_frontier_mgo_min": value("mgo_min_pct", 0.0),
+        "bmo_frontier_mgo_al2o3_min": value("mgo_al2o3_min", 0.0),
+    }
+
+
 def render_production_frontier(
     *,
-    selected_ores: list[OreInput],
+    ores: list[OreInput],
+    selected_ore_ids: set[str],
     fuel_ash_inputs: list[FuelAshInput],
     flux_inputs: list[FluxInput],
     dust_inputs: list[DustInput],
@@ -1085,8 +1182,20 @@ def render_production_frontier(
     default_charge_mass_mt: float,
     default_nut_coke_rate_kg_per_thm: float,
     default_nut_coke_moisture_pct: float,
+    slag_limits: Mapping[str, float | None] | None = None,
 ) -> None:
-    """Render the isolated SBFE product at the bottom of the BMO page."""
+    """Render the isolated SBFE product at the bottom of the BMO page.
+
+    Args:
+         - ores: list[OreInput] - Every available material, with the main
+           page's edits to price, bounds and chemistry applied.
+         - selected_ore_ids: set[str] - Materials the main BMO selection uses;
+           they start ticked in SBFE.
+         - slag_limits: Mapping | None - The main page's slag limits
+           (``max_slag_rate_kg_per_thm``, ``basicity_min``/``max``,
+           ``t_basicity_min``/``max``, ``al2o3_max_pct``, ``mgo_min_pct``,
+           ``mgo_al2o3_min``; None = off). SBFE starts from them.
+    """
 
     st.divider()
     with st.container(border=True):
@@ -1097,7 +1206,8 @@ def render_production_frontier(
             "This simulation does not change the main BMO inputs or results."
         )
 
-        fingerprint = _input_fingerprint(selected_ores)
+        fingerprint = _input_fingerprint(ores, selected_ore_ids)
+        _seed_from_page(_slag_limit_defaults(slag_limits))
         with st.expander("Simulation constraints and daily variation", expanded=False):
             with st.form("bmo_sbfe_form", clear_on_submit=False):
                 st.markdown("#### Production and furnace envelope")
@@ -1126,7 +1236,6 @@ def render_production_frontier(
                 max_slag_rate = p4.number_input(
                     "Maximum slag rate (kg/THM)",
                     min_value=0.0,
-                    value=375.0,
                     step=5.0,
                     key="bmo_frontier_max_slag_rate",
                 )
@@ -1135,7 +1244,6 @@ def render_production_frontier(
                 basicity_min = q1.number_input(
                     "Minimum basicity",
                     min_value=0.0,
-                    value=1.0,
                     step=0.01,
                     format="%.3f",
                     key="bmo_frontier_basicity_min",
@@ -1143,7 +1251,6 @@ def render_production_frontier(
                 basicity_max = q2.number_input(
                     "Maximum basicity",
                     min_value=0.0,
-                    value=1.2,
                     step=0.01,
                     format="%.3f",
                     key="bmo_frontier_basicity_max",
@@ -1166,41 +1273,40 @@ def render_production_frontier(
                 )
 
                 with st.expander("Additional slag-quality limits", expanded=False):
-                    st.caption("Set a limit to 0 to switch it off.")
+                    st.caption(
+                        "Seeded from the main page's Model Inputs, so SBFE solves "
+                        "the same slag problem. Set a limit to 0 to switch it off."
+                    )
                     s1, s2, s3, s4, s5 = st.columns(5)
                     t_basicity_min = s1.number_input(
                         "Min total basicity",
                         min_value=0.0,
-                        value=0.0,
                         step=0.01,
                         key="bmo_frontier_t_basicity_min",
                     )
                     t_basicity_max = s2.number_input(
                         "Max total basicity",
                         min_value=0.0,
-                        value=0.0,
                         step=0.01,
                         key="bmo_frontier_t_basicity_max",
                     )
                     al2o3_max = s3.number_input(
                         "Max Al2O3 (%)",
                         min_value=0.0,
-                        value=0.0,
                         step=0.25,
                         key="bmo_frontier_al2o3_max",
                     )
                     mgo_min = s4.number_input(
                         "Min MgO (%)",
                         min_value=0.0,
-                        value=0.0,
                         step=0.25,
                         key="bmo_frontier_mgo_min",
                     )
                     mgo_al2o3_min = s5.number_input(
                         "Min MgO/Al2O3",
                         min_value=0.0,
-                        value=0.0,
                         step=0.01,
+                        format="%.3f",
                         key="bmo_frontier_mgo_al2o3_min",
                     )
 
@@ -1227,8 +1333,12 @@ def render_production_frontier(
                 )
 
                 st.markdown("#### Product-only material bounds and basis")
+                st.caption(
+                    "Every material in the yard is listed; those in the main BMO "
+                    "selection start ticked."
+                )
                 material_editor = st.data_editor(
-                    _material_editor_frame(selected_ores),
+                    _material_editor_frame(ores, selected_ore_ids),
                     hide_index=True,
                     width="stretch",
                     key=f"bmo_frontier_materials_{fingerprint}",
@@ -1272,13 +1382,18 @@ def render_production_frontier(
                 editable_fluxes = _flux_editor_frame(flux_inputs)
                 if not editable_fluxes.empty:
                     st.markdown("#### Product-only flux bounds")
+                    st.caption(
+                        "Each ticked flux is an LP decision, bought only when the "
+                        "slag limits need it and priced into every frontier point. "
+                        "Set Min = Max to charge a fixed quantity."
+                    )
                     flux_editor = st.data_editor(
                         editable_fluxes,
                         hide_index=True,
                         width="stretch",
                         key=f"bmo_frontier_fluxes_{fingerprint}",
                         column_order=(
-                            "Enabled",
+                            "Use",
                             "Flux",
                             "Min MT",
                             "Max MT",
@@ -1374,7 +1489,7 @@ def render_production_frontier(
                 )
 
         if submitted:
-            simulation_ores = _ores_from_editor(material_editor, selected_ores)
+            simulation_ores = _ores_from_editor(material_editor, ores)
             simulation_fluxes = _fluxes_from_editor(flux_editor, flux_inputs)
             settings = FrontierSettings(
                 production_min_mt=float(production_min),

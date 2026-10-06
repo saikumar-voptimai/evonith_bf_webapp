@@ -16,6 +16,7 @@ import streamlit as st
 from utils.bmo.calculations import compute_charging_requirements
 from utils.bmo.constraints import CHARGING_HOURS_PER_DAY
 from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
+from utils.bmo.shift_production import production_change_pct
 from utils.bmo.types import (
     MN_IN_MNO_FRACTION,
     TI_IN_TIO2_FRACTION,
@@ -1376,12 +1377,65 @@ def _render_charging_group(
         )
 
 
+def _ist_stamp(stamp: pd.Timestamp, now: pd.Timestamp) -> str:
+    """'17:29' for today, '03 Oct 17:29' otherwise."""
+
+    return f"{stamp:%H:%M}" if stamp.date() == now.date() else f"{stamp:%d %b %H:%M}"
+
+
+def _render_si_tile(column: Any, forecast: dict[str, Any]) -> None:
+    """Predicted hot-metal Si, with the cast it is predicted for beneath it.
+
+    A Si figure means little without its horizon: the model reads the latest
+    cast analysis and predicts the cast ``horizon_hours`` later, so the tile
+    names that cast. When the latest analysis is old the subscript says so,
+    because the prediction is then anchored to a furnace state that has passed.
+    """
+
+    horizon = forecast.get("horizon_hours")
+    last_si = forecast.get("last_cast_si_pct")
+    last_at = None
+    if forecast.get("last_cast_at"):
+        try:
+            last_at = pd.Timestamp(forecast["last_cast_at"]).tz_convert("Asia/Kolkata")
+        except (TypeError, ValueError):
+            last_at = None
+    now = pd.Timestamp.now(tz="Asia/Kolkata")
+
+    help_text = (
+        "Advisory only: the standalone Si model's estimate for this blend. It is "
+        "not an optimizer objective or constraint and does not change the blend."
+    )
+    if horizon and last_at is not None and last_si is not None:
+        help_text += (
+            f" The model reads the latest cast analysis (Si {float(last_si):.2f}% "
+            f"at {last_at:%d %b %H:%M} IST) and predicts the cast {int(horizon)} h "
+            "after it."
+        )
+    column.metric(
+        "Predicted HM Si (%)", _fmt(forecast.get("si_pct"), ".2f"), help=help_text
+    )
+    if horizon and last_at is not None:
+        target = last_at + pd.Timedelta(hours=int(horizon))
+        column.caption(
+            f"Horizon {int(horizon)} h: cast ≈ {_ist_stamp(target, now)} IST "
+            f"(from the {_ist_stamp(last_at, now)} analysis)"
+        )
+        age_hours = (now - last_at) / pd.Timedelta(hours=1)
+        if age_hours > 12:
+            column.caption(f"⚠️ Latest cast analysis is {age_hours:,.0f} h old.")
+    elif horizon:
+        column.caption(f"Horizon {int(horizon)} h after the latest cast analysis")
+
+
 def render_blend_metrics(
     title: str,
     blend: BlendEvaluation,
     observed_slag_rate_kg_per_thm: float | None = None,
     is_lp_mode: bool = False,
     charge_mass_mt: float = 26.4,
+    shift_baseline: dict[str, Any] | None = None,
+    si_forecast: dict[str, Any] | None = None,
 ) -> None:
     """
     Render summary metrics and constraint warnings for a blend result.
@@ -1407,12 +1461,27 @@ def render_blend_metrics(
            DE minimises ore + fuel.
          - charge_mass_mt: float - Tonnes carried by one furnace charge. Charging
            runs 24 h (``CHARGING_HOURS_PER_DAY``), so that is not an argument.
+         - shift_baseline: dict | None - The last complete shift's production
+           (``utils.bmo.shift_production.ShiftProduction.to_dict``); drives the
+           "change vs last shift" tile.
+         - si_forecast: dict | None - Predicted hot-metal Si for this blend
+           (``si_pct``) with the cast it was anchored to (``last_cast_si_pct``,
+           ``last_cast_at``) and the model's ``horizon_hours``. None hides the
+           Si tile.
 
     Returns:
          - return None - Writes metrics and warnings to the Streamlit page.
     """
 
-    st.markdown(f"#### {title}")
+    # Feasibility sits beside the title so it is never lost, leaving the four
+    # overview tiles for the figures a decision is made on.
+    status_badge = (
+        f":red-badge[:material/error: {len(blend.violations)} constraint "
+        f"violation{'s' if len(blend.violations) != 1 else ''}]"
+        if blend.violations
+        else ":green-badge[:material/check_circle: Feasible]"
+    )
+    st.markdown(f"#### {title} {status_badge}")
 
     model_prediction = blend.diagnostics.get("model_prediction")
     fuel_used_fallback = bool(
@@ -1429,9 +1498,9 @@ def render_blend_metrics(
 
     # --- Level 1: the overview strip -------------------------------------------
     #
-    # Everything a decision turns on, above the fold, before any detail. The
-    # status tile is the only place colour is used unconditionally, and it is
-    # the one thing that must never be missed.
+    # Everything a decision turns on, above the fold, before any detail: what
+    # the ore costs, what it produces, the iron it carries, and how that
+    # production compares with what the furnace made last shift.
     adjusted_total = blend.diagnostics.get("adjusted_objective_rs_per_thm")
     flux_cost = float(blend.diagnostics.get("flux_cost_per_thm_rs", 0.0) or 0.0)
     headline_total = (
@@ -1439,31 +1508,48 @@ def render_blend_metrics(
         if adjusted_total is not None
         else float(blend.objective_rs_per_thm)
     ) + flux_cost
+    baseline = dict(shift_baseline or {})
+    baseline_mt = baseline.get("daily_production_mt")
+    change_pct = production_change_pct(hm_basis_mt, baseline_mt)
 
-    o1, o2, o3, o4 = st.columns(4)
+    si_pct = (si_forecast or {}).get("si_pct")
+    o1, o2, o3, o4, *o5 = st.columns(5 if si_pct is not None else 4)
     o1.metric(
-        "Total cost (Rs/THM)",
-        _fmt(headline_total, ",.0f"),
-        help="Ore + fuel + optimizer-added flux, at the operator's current prices.",
+        "Ore cost (Rs/THM)",
+        _fmt(blend.ore_cost_per_thm_rs, ",.0f"),
+        help="Ore only, at the currently applied ore prices. With fuel at "
+        f"current prices and any flux the optimizer added, the total is "
+        f"Rs {_fmt(headline_total, ',.0f')}/THM (cost panel below).",
     )
     o2.metric(
-        "Production (MT)",
+        "Production (MT/day)",
         _fmt(hm_basis_mt, ",.1f"),
-        help="Target hot metal / pig iron entered in Model Inputs.",
+        help="Hot metal this blend makes per day: the target entered in Model "
+        "Inputs, within the charging capacity.",
     )
     o3.metric("Final Fe (%)", _fmt(blend.fe_t_pct))
-    if blend.violations:
-        o4.metric(
-            "Status",
-            f"⚠ {len(blend.violations)}",
-            help="Constraint violations — listed below.",
+    o4.metric(
+        "Δ Production vs last shift",
+        f"{change_pct:+.1f}%" if change_pct is not None else "—",
+        help=(
+            f"Against {baseline.get('description', 'the last complete shift')}: "
+            f"{_fmt(baseline.get('charges_per_hour'), ',.2f')} charges/hr x "
+            f"{_fmt(baseline.get('hm_per_charge_mt'), ',.2f')} t hot metal per "
+            f"charge x 24 = {_fmt(baseline_mt, ',.0f')} MT/day "
+            f"({baseline.get('source', '')})."
+            if change_pct is not None
+            else "Last-shift production is unavailable from the live plant tags "
+            "and the furnace dataset."
+        ),
+    )
+    if change_pct is not None:
+        # The same change in tonnes, as a subscript under the percentage.
+        o4.caption(
+            f"{hm_basis_mt - float(baseline_mt):+,.0f} MT/day "
+            f"({float(baseline_mt):,.0f} to {hm_basis_mt:,.0f})"
         )
-    else:
-        o4.metric(
-            "Status",
-            "✓ feasible",
-            help="Every constraint the optimizer was given is satisfied.",
-        )
+    if o5:
+        _render_si_tile(o5[0], dict(si_forecast or {}))
 
     # --- Level 2: detail, in process order --------------------------------------
     _render_cost_group(

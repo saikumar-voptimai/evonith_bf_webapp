@@ -44,6 +44,90 @@ def _base_feature_name(feature: str) -> str:
     return feature
 
 
+def si_horizon_hours(features: list[str]) -> int | None:
+    """
+    How far ahead of the latest cast analysis the Si model predicts.
+
+    The model's newest measured silicon input is ``CHEM_PCT_SI__lag3h``: it was
+    trained to predict the cast three hours after the last analysis it reads.
+    In service that analysis is the latest cast, so the prediction is for the
+    cast that many hours later. Read from the feature list rather than assumed,
+    so a retrained model with a different lag reports its own horizon.
+
+    Args:
+         - features: list[str] - The Si model's feature columns.
+
+    Returns:
+         - return int | None - Smallest previous-Si lag in hours, or None when the
+           model reads no measured silicon.
+    """
+
+    lags = []
+    for feature in features:
+        if _base_feature_name(feature) != _PREV_SI_BASE:
+            continue
+        match = re.search(r"lag(\d+)", feature)
+        if match:
+            lags.append(int(match.group(1)))
+    return min(lags) if lags else None
+
+
+def _utc(value: Any) -> pd.Timestamp | None:
+    try:
+        stamp = pd.Timestamp(value)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(stamp):
+        return None
+    return stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp.tz_convert("UTC")
+
+
+def latest_cast_si(
+    history_df: pd.DataFrame | None,
+    latest_cast: Mapping[str, Any] | None = None,
+) -> tuple[float | None, pd.Timestamp | None]:
+    """
+    The most recent measured hot-metal Si and when it was sampled.
+
+    Two sources can carry it: the hourly history frame, which is built from the
+    static dataset and can trail the plant by days, and the latest HM/slag
+    report row. Whichever was sampled later wins, because the Si model reads
+    the previous cast as its strongest input and a stale one moves the
+    prediction as well as its horizon.
+
+    Args:
+         - history_df: pd.DataFrame | None - Hourly history; a naive index is UTC.
+         - latest_cast: Mapping[str, Any] | None - Latest HM/slag row with
+           ``chem_pct_si`` and ``sample_timestamp``.
+
+    Returns:
+         - return tuple[float | None, pd.Timestamp | None] - Si % and its UTC time.
+    """
+
+    candidates: list[tuple[float, pd.Timestamp | None]] = []
+    if history_df is not None and not history_df.empty:
+        for col in ("CHEM_PCT_SI", "chem_pct_si"):
+            if col not in history_df.columns:
+                continue
+            series = pd.to_numeric(history_df[col], errors="coerce")
+            series = series[series > 0].dropna()
+            if not series.empty:
+                candidates.append((float(series.iloc[-1]), _utc(series.index[-1])))
+            break
+    if latest_cast:
+        value = pd.to_numeric(latest_cast.get("chem_pct_si"), errors="coerce")
+        if pd.notna(value) and float(value) > 0:
+            candidates.append(
+                (float(value), _utc(latest_cast.get("sample_timestamp")))
+            )
+    if not candidates:
+        return None, None
+    timed = [item for item in candidates if item[1] is not None]
+    if timed:
+        return max(timed, key=lambda item: item[1])
+    return candidates[0]
+
+
 class SiPredictionService:
     """
     Predict hot-metal Si for a solved blend using the standalone Si model bundle.
@@ -75,6 +159,13 @@ class SiPredictionService:
                 feature: float(scaler.mean_[idx])
                 for idx, feature in enumerate(self._features)
             }
+
+    @property
+    def horizon_hours(self) -> int | None:
+        """Hours between the latest cast analysis and the cast predicted."""
+
+        self._ensure_loaded()
+        return si_horizon_hours(self._features)
 
     def get_status(self) -> dict[str, Any]:
         """Return load status for the page header/diagnostics."""

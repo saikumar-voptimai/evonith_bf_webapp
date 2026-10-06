@@ -834,7 +834,7 @@ def test_main_metrics_show_production_and_requested_charging_values(
         assert len(matches) == 1, f"{token!r} matched several tiles: {matches}"
         return captured[matches[0]]
 
-    assert tile("Production") == "100.0"
+    assert tile("Production (MT/day)") == "100.0"
     assert tile("Coke (MT)") == "40.0"
     assert tile("PCI (MT)") == "15.0"
     assert tile("Hot metal per charge") == "13.200"
@@ -1330,3 +1330,146 @@ def test_flux_save_preserves_ore_preferences(tmp_path) -> None:
     assert loaded["flux_editor"]["rows"]["quartz"]["stock_mt"] == 600.0
     assert loaded["flux_editor"]["rows"]["quartz"]["min_qty_mt"] == 0.0
     assert loaded["flux_editor"]["rows"]["quartz"]["max_qty_mt"] == 80.0
+
+
+def test_overview_strip_shows_ore_cost_production_fe_and_change_vs_last_shift(
+    monkeypatch,
+) -> None:
+    captured: dict[str, str] = {}
+    helps: dict[str, str] = {}
+    titles: list[str] = []
+
+    subscripts: list[str] = []
+
+    class FakeColumn:
+        def metric(self, label, value, **kwargs):
+            captured[str(label)] = str(value)
+            helps[str(label)] = str(kwargs.get("help", ""))
+
+        def markdown(self, _text, **_kwargs):
+            pass
+
+        def caption(self, text, **_kwargs):
+            subscripts.append(str(text))
+
+    class FakeStreamlit(_FakeLayoutMixin):
+        def markdown(self, text, **_kwargs):
+            titles.append(str(text))
+
+        def columns(self, count):
+            return [FakeColumn() for _ in range(int(count))]
+
+        def caption(self, _text):
+            pass
+
+        def warning(self, _text):
+            pass
+
+    monkeypatch.setattr(components, "st", FakeStreamlit())
+    baseline = {
+        "daily_production_mt": 80.0,
+        "charges_per_hour": 6.0,
+        "hm_per_charge_mt": 0.5556,
+        "description": "Shift B, 29 Sep 14:00-22:00 IST",
+        "source": "live plant tags",
+    }
+
+    components.render_blend_metrics(
+        "Balanced Optimizer Result", _blend(), shift_baseline=baseline
+    )
+
+    overview = list(captured)[:4]
+    assert overview == [
+        "Ore cost (Rs/THM)",
+        "Production (MT/day)",
+        "Final Fe (%)",
+        "Δ Production vs last shift",
+    ]
+    assert captured["Ore cost (Rs/THM)"] == "125"
+    assert captured["Production (MT/day)"] == "100.0"
+    assert captured["Δ Production vs last shift"] == "+25.0%"  # 100 vs 80 MT/day
+    # The same change in tonnes sits under the percentage.
+    assert subscripts[0] == "+20 MT/day (80 to 100)"
+    assert "Shift B" in helps["Δ Production vs last shift"]
+    # Feasibility moved beside the title rather than disappearing.
+    assert ":green-badge[" in titles[0] and "Feasible" in titles[0]
+
+    captured.clear()
+    subscripts.clear()
+    components.render_blend_metrics("Balanced Optimizer Result", _blend())
+    assert captured["Δ Production vs last shift"] == "—"
+    assert subscripts == []
+
+
+def test_overview_strip_shows_predicted_si_with_its_horizon(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+    helps: dict[str, str] = {}
+    subscripts: list[str] = []
+
+    class FakeColumn:
+        def metric(self, label, value, **kwargs):
+            captured[str(label)] = str(value)
+            helps[str(label)] = str(kwargs.get("help", ""))
+
+        def markdown(self, _text, **_kwargs):
+            pass
+
+        def caption(self, text, **_kwargs):
+            subscripts.append(str(text))
+
+    class FakeStreamlit(_FakeLayoutMixin):
+        def markdown(self, _text, **_kwargs):
+            pass
+
+        def columns(self, count):
+            return [FakeColumn() for _ in range(int(count))]
+
+        def caption(self, _text):
+            pass
+
+        def warning(self, _text):
+            pass
+
+    monkeypatch.setattr(components, "st", FakeStreamlit())
+    last_cast = pd.Timestamp.now(tz="Asia/Kolkata").floor("min") - pd.Timedelta(hours=1)
+    forecast = {
+        "si_pct": 0.4812,
+        "last_cast_si_pct": 0.91,
+        "last_cast_at": last_cast.tz_convert("UTC").isoformat(),
+        "horizon_hours": 3,
+    }
+
+    components.render_blend_metrics(
+        "Balanced Optimizer Result", _blend(), si_forecast=forecast
+    )
+
+    assert list(captured)[:5] == [
+        "Ore cost (Rs/THM)",
+        "Production (MT/day)",
+        "Final Fe (%)",
+        "Δ Production vs last shift",
+        "Predicted HM Si (%)",
+    ]
+    assert captured["Predicted HM Si (%)"] == "0.48"
+    target = last_cast + pd.Timedelta(hours=3)
+    horizon = [text for text in subscripts if text.startswith("Horizon")]
+    assert len(horizon) == 1
+    assert "Horizon 3 h" in horizon[0]
+    assert f"{target:%H:%M}" in horizon[0] or f"{target:%d %b %H:%M}" in horizon[0]
+    assert "Advisory only" in helps["Predicted HM Si (%)"]
+    assert "0.91%" in helps["Predicted HM Si (%)"]
+    # A fresh cast carries no staleness warning.
+    assert not any("old" in text for text in subscripts)
+
+    # A stale analysis says so, because the prediction is anchored to it.
+    subscripts.clear()
+    stale = {**forecast, "last_cast_at": (last_cast - pd.Timedelta(days=3)).isoformat()}
+    components.render_blend_metrics(
+        "Balanced Optimizer Result", _blend(), si_forecast=stale
+    )
+    assert any("h old" in text for text in subscripts)
+
+    # No Si model output: the strip keeps its four tiles.
+    captured.clear()
+    components.render_blend_metrics("Balanced Optimizer Result", _blend())
+    assert "Predicted HM Si (%)" not in captured
