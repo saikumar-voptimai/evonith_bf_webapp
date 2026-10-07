@@ -566,6 +566,7 @@ Each is a no-op function or null yml field today:
 | Page | File | Purpose |
 |---|---|---|
 | Welcome | `1_Welcome.py` | Dashboard landing |
+| Furnace Status | `10_Furnace_Status.py` | Live BF2 status board (34 parameters) with per-parameter trend view |
 | Data Explorer | `2_Data_Explorer.py` | Browse InfluxDB data; build/manage ML dataset |
 | Data Visualisation | `3_Data_Visualisation.py` | Temperature + heatload contour plots |
 | V-OptimAIse | `4_Recommendations.py` | ML optimizer for blast parameters |
@@ -789,6 +790,19 @@ format: ResponseFormat          # json (default) or csv
 ### FurnaceMind Tool Integration
 
 `fetch_offline_data` tool in `src/agents/furnace_tools.py` routes through `furnace_data.neon_db.offline` (`_fetch_neon_table_df`, `_fetch_neon_report_df`). The `RAW_MATERIAL_COMPOSITION` alias is mapped to `RM_COMPOSITION` internally.
+
+---
+
+## 11. Furnace Status Page
+
+**Files:** `src/custom_pages/10_Furnace_Status.py` (thin entry) · `src/data/furnace_status.py` (catalogue, value resolution, ranges, cached fetchers; no Streamlit calls in the logic) · `src/ui/furnace_status_page.py` (rendering) · `src/assets/css/furnace_status.css` · tests `tests/test_furnace_status.py`, `tests/test_furnace_status_page.py`.
+
+- **One registered page, two full-page views** selected by validated query params: `?view=status` / `?view=trend&parameter=<key>`. The key is only ever looked up in `PARAMETERS_BY_KEY` (never echoed into HTML or a query); unknown keys fall back to status.
+- **Declarative catalogue:** `ParameterSpec` tuple `PARAMETERS` in display order. Specs with no confirmed live source stay visible as `Not available` with an `unavailable_reason` (Steam Bypass Flow, Slag Rate); never substitute a different field (e.g. DPR slag ≠ live slag rate). A spec may declare `setpoint_field` (PCI: `coal_rate_set_value` vs actual `coal_rate_actual_value`): the row shows `<SP> / <actual>`, each side independently `Not available`, and the trend overlays the setpoint as a dashed line from the same request. A spec may instead declare `components` (Total Heat Load = all 20 `heat_load_r{6..10}_q{1..4}`; Q1–Q4 = R6–R10 of one quadrant): its value is their sum — on the dashboard only when every component is fresh, in trends per time bin with NaN if any component is missing (never a partial sum). `aggregate="mean"` gives an average instead (Hearth Temp Avg = mean of pads A–D, which use the `ml_dataset.temperature_params` mapping `temp_4373_a`/`temp_5411_b`/`temp_5757_c`/`temp_6103_d`). The hearth panel sits under the furnace picture; below 1100px only the picture is hidden.
+- **Data:** all live data via `furnace_data.influx.online.fetch_online_df(column_naming="field")`, one fetch per measurement per render (status: last 15 min, 1-min windows, cached 60 s). Trends pass UTC `start_time_override`/`end_time_override`; the global `TIMEDELTAS` is not touched. A fetch failure voids only its own measurement. Fields must exist in `setting_ds_dv.yml → data_mapping` or the query builder will not select them.
+- **Plant ring = telemetry availability** (live ≤ 5 min and ≥ 70 % of source-backed parameters reporting; partial ≤ 15 min; else offline). It is not a safety or process-health state.
+- **Rows are clickable via an invisible `st.button` laid over each HTML row** (keyed containers → `st-key-*` classes), so a click updates `st.query_params` without a full reload (which would drop the session). `st.html` strips inline `<svg>`; the furnace schematic is an `<img>` data URI and row icons are CSS masks.
+- **Orientation:** the portrait hint is CSS-only (media queries); the fullscreen/landscape-lock control is a small `st.iframe` (falls back to `components.v1.html`, which is deprecated in Streamlit ≥ 1.5x and shows a visible warning). Browsers usually refuse `screen.orientation.lock` outside fullscreen / without a user gesture and iOS Safari supports neither, so the lock is best-effort and every call is wrapped.
 
 ---
 

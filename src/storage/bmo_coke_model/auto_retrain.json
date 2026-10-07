@@ -1,0 +1,11 @@
+{
+  "last_attempt_utc": "2026-10-05T10:38:43.233007+00:00",
+  "dataset_mtime_ns": 1791194299186951000,
+  "deployed": true,
+  "deployment_id": "20261005T103855333649Z",
+  "reasons": [],
+  "later_time_mae": 5.681238788334428,
+  "random_day_r2": 0.7337435945675557,
+  "pci_replacement_kg_per_kg": 0.6607431888580322,
+  "finished_utc": "2026-10-05T10:38:55.388570+00:00"
+}

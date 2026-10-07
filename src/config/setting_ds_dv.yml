@@ -394,6 +394,7 @@ data_mapping: # Using InfluxDB Measurement or Table names as keys
     BF2_STEAM INJECTION: steam_injection
     BF2_CHARGES PER HR: charges_per_hour
     BF2_COAL RATE PER THM: coal_rate_actual_value
+    PCI RATE -SP: coal_rate_set_value
     BF2_COKE RATE PER THM: coke_rate
     BF2_NUT COKE RATE PER THM: nut_coke_rate
     BF2_FUEL RATE PER THM: fuel_rate
