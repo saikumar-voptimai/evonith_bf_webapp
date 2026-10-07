@@ -18,11 +18,6 @@ class AppPageDescriptor:
 PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
     AppPageDescriptor("custom_pages/1_Welcome.py", title="Welcome", icon="🏭"),
     AppPageDescriptor(
-        "custom_pages/10_Furnace_Status.py",
-        title="Furnace Status",
-        icon="🔥",
-    ),
-    AppPageDescriptor(
         "custom_pages/2_Data_Explorer.py",
         title="Data Explorer",
         icon="📓",
@@ -55,7 +50,6 @@ PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
     ),
     AppPageDescriptor("custom_pages/8_Feedback.py", title="Feedback", icon="📮"),
 )
-
 
 
 def get_navigation_pages() -> tuple[AppPageDescriptor, ...]:

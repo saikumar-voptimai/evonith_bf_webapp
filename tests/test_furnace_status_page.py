@@ -1,4 +1,4 @@
-"""Tests for the Furnace Status UI helpers and a smoke run of the real page.
+"""Tests for Furnace Status UI helpers and the integrated V-Board section.
 
 The helpers are exercised without a Streamlit runtime; the smoke test runs the
 actual page script under ``streamlit.testing.v1.AppTest`` with
@@ -17,12 +17,34 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
-from data import furnace_status as fs
+from domain import furnace_status as fs
 from ui import furnace_status_page as page
+from ui import furnace_status_orchestration as fs_data
+from ui import vboard_sections
+from ui.vboard_sections import (
+    FURNACE_STATUS,
+    VBOARD_NAV_KEY,
+    VBOARD_SECTIONS,
+    VISUALISATIONS,
+)
 
 REPO = Path(__file__).resolve().parents[1]
-PAGE_FILE = REPO / "src" / "custom_pages" / "10_Furnace_Status.py"
+PAGE_FILE = REPO / "src" / "custom_pages" / "3_Data_Visualisation.py"
 NOW = datetime(2026, 10, 5, 9, 30, tzinfo=timezone.utc)
+
+
+def test_vboard_sections_are_ordered_with_visualisations_default(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_segmented_control(label, options, *, default, key):
+        captured.update(label=label, options=options, default=default, key=key)
+        return default
+
+    monkeypatch.setattr(vboard_sections.st, "segmented_control", fake_segmented_control)
+    assert vboard_sections.select_vboard_section() == VISUALISATIONS
+    assert VBOARD_SECTIONS == (VISUALISATIONS, FURNACE_STATUS)
+    assert captured["default"] == VISUALISATIONS
+    assert captured["key"] == VBOARD_NAV_KEY
 
 
 # ── Pure helpers ─────────────────────────────────────────────────────────────
@@ -244,10 +266,10 @@ def patched_fetch(monkeypatch):
             )
         return frame
 
-    monkeypatch.setattr(fs, "fetch_online_df", fake)
-    fs.clear_furnace_status_caches()
+    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
+    fs_data.clear_furnace_status_caches()
     yield calls, state
-    fs.clear_furnace_status_caches()
+    fs_data.clear_furnace_status_caches()
 
 
 def _html_text(at: AppTest) -> str:
@@ -257,12 +279,38 @@ def _html_text(at: AppTest) -> str:
 
 def _app() -> AppTest:
     at = AppTest.from_file(str(PAGE_FILE), default_timeout=60)
-    at.session_state["auth_user"] = "tester"
-    at.session_state["role"] = "admin"
+    at.session_state[VBOARD_NAV_KEY] = FURNACE_STATUS
     return at
 
 
-def test_page_renders_every_parameter_with_two_fetches(patched_fetch) -> None:
+def test_default_visualisations_does_not_fetch_furnace_status(monkeypatch) -> None:
+    from ui import vboard_visualisations
+
+    calls: list[object] = []
+
+    def fail_if_called(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("Furnace Status fetch ran while Visualisations was active")
+
+    monkeypatch.setattr(fs_data, "fetch_online_df", fail_if_called)
+    monkeypatch.setattr(
+        vboard_visualisations,
+        "render_visualisations",
+        lambda: st.write("visualisations-rendered"),
+    )
+    fs_data.clear_furnace_status_caches()
+
+    at = AppTest.from_file(str(PAGE_FILE), default_timeout=60).run()
+
+    assert not at.exception
+    assert calls == []
+    assert any("visualisations-rendered" in item.value for item in at.markdown)
+    assert "BF2 blast furnace status" not in _html_text(at)
+
+
+def test_vboard_furnace_status_renders_every_parameter_with_grouped_fetches(
+    patched_fetch,
+) -> None:
     calls, _ = patched_fetch
     at = _app().run()
 
@@ -270,6 +318,7 @@ def test_page_renders_every_parameter_with_two_fetches(patched_fetch) -> None:
     labels = [b.label for b in at.button if b.label.endswith("Open trend")]
     assert len(labels) == len(fs.PARAMETERS) == 34
     assert calls == list(fs.measurements_for())  # one fetch per measurement
+    assert not at.sidebar.selectbox  # Visualisations-only controls stay inactive
 
     # The mocked fields are identical, so the strips are flat and the quadrants
     # tie: both are stated, with no invented winner.
@@ -280,14 +329,43 @@ def test_page_renders_every_parameter_with_two_fetches(patched_fetch) -> None:
     assert "Spread <b>0</b>" in html
 
 
-def test_clicking_a_row_opens_the_trend_view_and_back_returns(patched_fetch) -> None:
+def test_switching_to_visualisations_does_not_render_or_refetch_stale_trend(
+    patched_fetch, monkeypatch
+) -> None:
+    from ui import vboard_visualisations
+
+    calls, _ = patched_fetch
     at = _app().run()
+    next(b for b in at.button if b.label.startswith("Fuel Rate")).click()
+    at.run()
+    calls_before_switch = list(calls)
+
+    monkeypatch.setattr(
+        vboard_visualisations,
+        "render_visualisations",
+        lambda: st.write("visualisations-rendered"),
+    )
+    at.session_state[VBOARD_NAV_KEY] = VISUALISATIONS
+    at.run()
+
+    assert calls == calls_before_switch
+    assert "fs-dashboard" not in _html_text(at)
+    assert "Fuel Rate" not in _html_text(at)
+    assert any("visualisations-rendered" in item.value for item in at.markdown)
+
+
+def test_clicking_a_row_opens_the_trend_view_and_back_returns(patched_fetch) -> None:
+    at = _app()
+    at.query_params["ticket"] = "TKT-42"
+    at.run()
     next(b for b in at.button if b.label.startswith("Fuel Rate")).click()
     at.run()
 
     assert not at.exception
-    assert at.query_params["view"] == ["trend"]
-    assert at.query_params["parameter"] == ["fuel_rate"]
+    assert at.query_params[fs.VIEW_QUERY_KEY] == ["trend"]
+    assert at.query_params[fs.PARAMETER_QUERY_KEY] == ["fuel_rate"]
+    assert at.query_params["ticket"] == ["TKT-42"]
+    assert at.session_state[VBOARD_NAV_KEY] == FURNACE_STATUS
     html = _html_text(at)
     assert "Fuel Rate" in html and "fs-dashboard" not in html
     assert not [
@@ -296,20 +374,21 @@ def test_clicking_a_row_opens_the_trend_view_and_back_returns(patched_fetch) -> 
 
     next(b for b in at.button if "Back to Furnace Status" in b.label).click()
     at.run()
+    assert at.query_params["ticket"] == ["TKT-42"]
     assert len([b for b in at.button if b.label.endswith("Open trend")]) == len(
         fs.PARAMETERS
     )
 
     next(b for b in at.button if b.label.startswith("T2:")).click()  # a strip tile
     at.run()
-    assert at.query_params["parameter"] == ["uptake_t2"]
+    assert at.query_params[fs.PARAMETER_QUERY_KEY] == ["uptake_t2"]
     assert "Uptake Temperature T2" in _html_text(at)
 
 
 def test_unknown_parameter_in_url_falls_back_to_status(patched_fetch) -> None:
     at = _app()
-    at.query_params["view"] = "trend"
-    at.query_params["parameter"] = "<script>alert(1)</script>"
+    at.query_params[fs.VIEW_QUERY_KEY] = "trend"
+    at.query_params[fs.PARAMETER_QUERY_KEY] = "<script>alert(1)</script>"
     at.run()
 
     assert not at.exception
@@ -321,8 +400,8 @@ def test_unknown_parameter_in_url_falls_back_to_status(patched_fetch) -> None:
 def test_unavailable_parameter_trend_explains_itself(patched_fetch) -> None:
     calls, _ = patched_fetch
     at = _app()
-    at.query_params["view"] = "trend"
-    at.query_params["parameter"] = "slag_rate"
+    at.query_params[fs.VIEW_QUERY_KEY] = "trend"
+    at.query_params[fs.PARAMETER_QUERY_KEY] = "slag_rate"
     at.run()
 
     assert not at.exception

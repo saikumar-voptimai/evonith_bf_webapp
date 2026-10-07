@@ -255,7 +255,7 @@ _TILES = [
         "custom_pages/3_Data_Visualisation.py",
         "📈",
         "V-Board",
-        "Real-time 2D heat load contours and furnace body temperature profiles.",
+        "Furnace visualisations, heat-load profiles, and live furnace status in one board.",
         "#7c3aed",
     ),
     (

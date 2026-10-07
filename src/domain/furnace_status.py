@@ -1,16 +1,14 @@
-"""Data layer for the Furnace Status page.
+"""Pure business rules for the V-Board Furnace Status section.
 
-Holds the declarative parameter catalogue, value resolution, time-range helpers
-and the cached fetchers.  Everything except the two ``st.cache_data`` wrappers at
-the bottom is plain Python, so it can be unit-tested without a Streamlit
-runtime or a live InfluxDB.  All live data goes through the existing
-:func:`furnace_data.influx.online.fetch_online_df`; this module never talks to
-InfluxDB itself.
+This module owns the parameter catalogue, value resolution, derived values,
+formatting, availability classification, view-state validation, range rules,
+and trend transformations. It intentionally has no Streamlit, InfluxDB, query,
+or network dependencies; live-data orchestration stays at the UI feature
+boundary.
 
 Conventions
 -----------
-* Displayed timestamps are Asia/Kolkata (IST); values handed to the fetcher's
-  ``start_time_override`` / ``end_time_override`` are UTC.
+* Displayed timestamps are Asia/Kolkata (IST); trend boundaries resolve to UTC.
 * A value that cannot be shown honestly is ``None`` and renders as
   :data:`NOT_AVAILABLE`.  Zero is a legitimate value and is never treated as
   missing.
@@ -19,7 +17,7 @@ Conventions
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -27,25 +25,13 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
-import streamlit as st
-
-from furnace_data.influx.online import fetch_online_df
-from utils.logger import get_logger
-
-log = get_logger(__name__)
 
 IST = ZoneInfo("Asia/Kolkata")
 
 NOT_AVAILABLE = "Not available"
 
-# ── Fetch / freshness policy ──────────────────────────────────────────────────
-STATUS_LOOKBACK = "last 15 minutes"
-STATUS_WINDOW = "1 minute"
-CACHE_TTL_SECONDS = 60
-
-#: A value older than this is treated as missing.  Equal to the status lookback,
-#: so anything the fetch returns is eligible; the ring (below) is what tells the
-#: operator the data is getting old.
+# ── Freshness policy ──────────────────────────────────────────────────────────
+#: A value older than this is treated as missing.
 STALE_AFTER = timedelta(minutes=15)
 #: Telemetry no older than this counts as "live".
 LIVE_MAX_AGE = timedelta(minutes=5)
@@ -76,11 +62,6 @@ _WINDOW_BY_DURATION: tuple[tuple[timedelta, str], ...] = (
     (timedelta(hours=72), "30 minutes"),
 )
 _WIDEST_WINDOW = "1 hour"
-
-#: ``fetch_online_df`` requires ``time_range`` positionally but ignores it once
-#: ``start_time_override`` is given.
-_IGNORED_TIME_RANGE = "last 1 hour"
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Parameter catalogue
@@ -443,16 +424,18 @@ def measurements_for(specs: Sequence[ParameterSpec] = PARAMETERS) -> tuple[str, 
 
 VIEW_STATUS = "status"
 VIEW_TREND = "trend"
+VIEW_QUERY_KEY = "vboard_fs_view"
+PARAMETER_QUERY_KEY = "vboard_fs_parameter"
 
 
 @dataclass(frozen=True)
 class ViewState:
-    """Which full-page view to render, resolved from the query string."""
+    """Which nested Furnace Status view to render from the query string."""
 
     view: Literal["status", "trend"]
     spec: ParameterSpec | None = None
     #: The query string was malformed or named an unknown parameter and should
-    #: be rewritten to ``?view=status``.
+    #: be rewritten to the namespaced dashboard state.
     needs_reset: bool = False
 
 
@@ -464,14 +447,14 @@ def _single_value(raw: object) -> str | None:
 
 
 def parse_view_state(params: Mapping[str, object]) -> ViewState:
-    """Validate ``?view=...&parameter=...`` against the catalogue.
+    """Validate the namespaced view and parameter values against the catalogue.
 
     The parameter key is only ever *looked up* in :data:`PARAMETERS_BY_KEY`; the
     raw string is never returned, so nothing user-supplied reaches HTML or a
     query.  Anything unrecognised falls back to the status view.
     """
-    view = _single_value(params.get("view"))
-    key = _single_value(params.get("parameter"))
+    view = _single_value(params.get(VIEW_QUERY_KEY))
+    key = _single_value(params.get(PARAMETER_QUERY_KEY))
 
     if view == VIEW_TREND:
         spec = PARAMETERS_BY_KEY.get(key) if key is not None else None
@@ -760,122 +743,10 @@ def default_custom_range(now: datetime) -> tuple[datetime, datetime]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Fetching (uncached) — all live data goes through fetch_online_df
+# Trend transformations
 # ══════════════════════════════════════════════════════════════════════════════
-
-
-def fetch_status_frame(
-    measurement: str,
-    time_range: str = STATUS_LOOKBACK,
-    window_by: str = STATUS_WINDOW,
-) -> pd.DataFrame:
-    """Fetch one measurement's recent window with canonical field names."""
-    return fetch_online_df(
-        selected_measurements=[measurement],
-        time_range=time_range,
-        request_type="windowed-average",
-        window_by=window_by,
-        column_naming="field",
-    )
-
-
-def fetch_trend_frame(
-    measurement: str,
-    fields: tuple[str, ...],
-    start_utc: datetime,
-    end_utc: datetime,
-    window_by: str,
-) -> pd.DataFrame:
-    """Fetch one measurement over an explicit UTC range; keep only ``fields``.
-
-    Returns an empty frame when none of the fields is in the response.
-    """
-    frame = fetch_online_df(
-        selected_measurements=[measurement],
-        time_range=_IGNORED_TIME_RANGE,
-        request_type="windowed-average",
-        window_by=window_by,
-        start_time_override=start_utc,
-        end_time_override=end_utc,
-        column_naming="field",
-    )
-    if frame is None or frame.empty:
-        return pd.DataFrame()
-    present = [f for f in fields if f in frame.columns]
-    return frame[present] if present else pd.DataFrame()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Cached wrappers — keys carry measurement, range and window explicitly
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
-def cached_status_frame(
-    measurement: str, time_range: str, window_by: str
-) -> pd.DataFrame:
-    """Cached :func:`fetch_status_frame` (failures raise and are not cached)."""
-    return fetch_status_frame(measurement, time_range, window_by)
-
-
-@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
-def cached_trend_frame(
-    measurement: str,
-    fields: tuple[str, ...],
-    start_utc: datetime,
-    end_utc: datetime,
-    window_by: str,
-) -> pd.DataFrame:
-    """Cached :func:`fetch_trend_frame` (failures raise and are not cached)."""
-    return fetch_trend_frame(measurement, fields, start_utc, end_utc, window_by)
-
-
-def clear_furnace_status_caches() -> None:
-    """Clear only this page's caches; unrelated application caches are untouched."""
-    cached_status_frame.clear()
-    cached_trend_frame.clear()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Orchestration
-# ══════════════════════════════════════════════════════════════════════════════
-
-StatusFetcher = Callable[[str, str, str], pd.DataFrame]
-
-
-def collect_status_frames(
-    specs: Sequence[ParameterSpec] = PARAMETERS,
-    fetch: StatusFetcher = cached_status_frame,
-) -> dict[str, pd.DataFrame | None]:
-    """Fetch each source measurement once; a failure only voids that measurement.
-
-    Exceptions are logged server-side and never surfaced to the UI.
-    """
-    frames: dict[str, pd.DataFrame | None] = {}
-    for measurement in measurements_for(specs):
-        try:
-            frames[measurement] = fetch(measurement, STATUS_LOOKBACK, STATUS_WINDOW)
-        except Exception:  # noqa: BLE001 - one bad source must not blank the page
-            log.exception("Furnace Status: fetch failed for %s", measurement)
-            frames[measurement] = None
-    return frames
-
-
-def load_status_snapshot(
-    now: datetime | None = None,
-    specs: Sequence[ParameterSpec] = PARAMETERS,
-    fetch: StatusFetcher = cached_status_frame,
-) -> StatusSnapshot:
-    """Fetch (cached) and resolve the full dashboard snapshot."""
-    now = now or datetime.now(timezone.utc)
-    return build_status_snapshot(collect_status_frames(specs, fetch), now, specs)
-
-
-# ── Trend ─────────────────────────────────────────────────────────────────────
 
 TrendStatus = Literal["ok", "no_source", "no_data", "error"]
-
-TrendFetcher = Callable[[str, tuple[str, ...], datetime, datetime, str], pd.DataFrame]
 
 
 @dataclass(frozen=True)
@@ -921,29 +792,12 @@ def with_derived_column(frame: pd.DataFrame, spec: ParameterSpec) -> pd.DataFram
     return frame.assign(**{spec.field: total})
 
 
-def load_trend(
-    spec: ParameterSpec,
-    start_utc: datetime,
-    end_utc: datetime,
-    window_by: str,
-    fetch: TrendFetcher = cached_trend_frame,
-) -> TrendData:
-    """Load and scale one parameter's trend (and setpoint) over a UTC range."""
+def build_trend_data(spec: ParameterSpec, frame: pd.DataFrame | None) -> TrendData:
+    """Transform one fetched measurement frame into a parameter trend."""
     if not spec.has_source:
         return TrendData(spec, "no_source", None, spec.unavailable_reason)
-
-    try:
-        frame = fetch(
-            spec.measurement, spec.source_fields, start_utc, end_utc, window_by
-        )
-    except Exception:  # noqa: BLE001 - never expose connection details
-        log.exception(
-            "Furnace Status: trend fetch failed for %s.%s", spec.measurement, spec.field
-        )
-        return TrendData(
-            spec, "error", None, "The data source could not be reached. Try Refresh."
-        )
-
+    if frame is None:
+        frame = pd.DataFrame()
     frame = with_derived_column(frame, spec)
     if finite_series(frame, spec.field) is None:
         return TrendData(

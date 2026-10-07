@@ -50,7 +50,7 @@ The Streamlit app serves 8 pages, each tackling a distinct operational concern:
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Streamlit App (src/)                        │
 │                                                                  │
-│  custom_pages/         ← 8 page entry points                    │
+│  custom_pages/         ← 9 page entry points                    │
 │  │                                                               │
 │  ├── agents/           ← FurnaceMind subsystem (all AI code)      │
 │  │   ├── furnacemind/  ← Agent loop, skills, context, prompts    │
@@ -285,16 +285,19 @@ Interactive browser for all InfluxDB data and the ML dataset pipeline.
 
 ---
 
-### Page 3 — Data Visualisation (`3_📈_Data_Visualisation.py`)
+### Page 3 — V-Board (`3_Data_Visualisation.py`)
 
-Interactive contour visualisations of the physical furnace.
+V-Board conditionally renders either furnace visualisations (the default) or
+the live 34-parameter Furnace Status dashboard with nested parameter trends.
 
 **Chart types:**
 - **Circumferential temperature** — ring-by-ring sensor heatmap at each elevation level
 - **Longitudinal temperature** — axial temperature profile (elevation vs time)
 - **Heatload contours** — stave-level heat loads across R6–R10
 
-**Dependencies:** `plotters/`, `data/fetchers/`, `geometries/furnace_gen.py`
+**Dependencies:** `ui/vboard_sections.py`, `ui/vboard_visualisations.py`,
+`domain/furnace_status.py`, `ui/furnace_status_orchestration.py`, `plotters/`,
+`data/fetchers/`, `geometries/furnace_gen.py`
 
 ---
 

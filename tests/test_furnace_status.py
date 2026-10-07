@@ -1,22 +1,29 @@
-"""Unit tests for the Furnace Status data layer (no live InfluxDB needed).
-
-``fetch_online_df`` is monkeypatched everywhere; the uncached fetchers are
-exercised directly so Streamlit's cache never leaks state between tests.
-"""
+"""Unit tests for Furnace Status domain rules and feature orchestration."""
 
 from __future__ import annotations
 
 import html
+import ast
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from data import furnace_status as fs
+from domain import furnace_status as fs
 from furnace_data.influx.query import influx_fields
+from ui import furnace_status_orchestration as fs_data
 
 NOW = datetime(2026, 10, 5, 9, 30, 45, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _clear_feature_caches():
+    fs_data.clear_furnace_status_caches()
+    yield
+    fs_data.clear_furnace_status_caches()
+
 
 EXPECTED_LABELS = [
     "Production (Theor.)",
@@ -225,26 +232,15 @@ def test_heat_load_sum_is_as_old_as_its_oldest_component() -> None:
     assert reading.issue == "stale"
 
 
-def test_heat_load_trend_sums_per_bin_and_keeps_gaps(monkeypatch) -> None:
+def test_heat_load_trend_sums_per_bin_and_keeps_gaps() -> None:
     frame = _quadrant_frame({1: [0.5, 0.6, 0.7]})
     frame.loc[frame.index[1], "heat_load_r9_q1"] = np.nan
-    fake = FakeFetch({"heatload_delta_t": frame})
-    monkeypatch.setattr(fs, "fetch_online_df", fake)
-    start, end = fs.resolve_fixed_range("1h", NOW)
-
-    trend = fs.load_trend(
-        fs.PARAMETERS_BY_KEY["heat_load_q1"],
-        start,
-        end,
-        "1 minute",
-        fetch=fs.fetch_trend_frame,
-    )
+    trend = fs.build_trend_data(fs.PARAMETERS_BY_KEY["heat_load_q1"], frame)
 
     assert trend.status == "ok"
     assert trend.series.iloc[0] == pytest.approx(2.5)
     assert np.isnan(trend.series.iloc[1])  # one row missing -> gap, not a smaller sum
     assert trend.series.iloc[2] == pytest.approx(3.5)
-    assert len(fake.calls) == 1
 
 
 def test_hearth_pads_use_the_ml_dataset_mapping() -> None:
@@ -278,7 +274,7 @@ def test_hearth_average_is_the_mean_of_all_four_pads() -> None:
     assert fs.format_reading(partial) == "Not available"  # no average of 3 pads
 
 
-def test_hearth_average_trend_is_per_bin_mean_with_gaps(monkeypatch) -> None:
+def test_hearth_average_trend_is_per_bin_mean_with_gaps() -> None:
     frame = make_frame(
         {
             "temp_4373_a": [500.0, np.nan],
@@ -287,18 +283,7 @@ def test_hearth_average_trend_is_per_bin_mean_with_gaps(monkeypatch) -> None:
             "temp_6103_d": [530.0, 530.0],
         }
     )
-    monkeypatch.setattr(
-        fs, "fetch_online_df", FakeFetch({"temperature_profile": frame})
-    )
-    start, end = fs.resolve_fixed_range("1h", NOW)
-
-    trend = fs.load_trend(
-        fs.PARAMETERS_BY_KEY["hearth_temp_avg"],
-        start,
-        end,
-        "1 minute",
-        fetch=fs.fetch_trend_frame,
-    )
+    trend = fs.build_trend_data(fs.PARAMETERS_BY_KEY["hearth_temp_avg"], frame)
 
     assert trend.series.iloc[0] == pytest.approx(515.0)
     assert np.isnan(trend.series.iloc[1])
@@ -534,9 +519,9 @@ def test_one_failing_measurement_does_not_discard_the_other(monkeypatch) -> None
             "temperature_profile": _full_frames(0)["temperature_profile"],
         }
     )
-    monkeypatch.setattr(fs, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
 
-    snapshot = fs.load_status_snapshot(NOW, fetch=fs.fetch_status_frame)
+    snapshot = fs_data.load_status_snapshot(NOW)
 
     by_key = {r.spec.key: r for r in snapshot.readings}
     assert by_key["fuel_rate"].value == 505.0
@@ -556,9 +541,9 @@ def test_status_fetch_uses_one_request_per_measurement(monkeypatch) -> None:
             "temperature_profile": _full_frames(0)["temperature_profile"],
         }
     )
-    monkeypatch.setattr(fs, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
 
-    fs.load_status_snapshot(NOW, fetch=fs.fetch_status_frame)
+    fs_data.load_status_snapshot(NOW)
 
     assert [c["measurement"] for c in fake.calls] == [
         "process_params",
@@ -582,9 +567,9 @@ def test_failure_details_never_reach_the_snapshot(monkeypatch) -> None:
             "temperature_profile": RuntimeError("SECRET"),
         }
     )
-    monkeypatch.setattr(fs, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
 
-    snapshot = fs.load_status_snapshot(NOW, fetch=fs.fetch_status_frame)
+    snapshot = fs_data.load_status_snapshot(NOW)
 
     assert all(r.value is None for r in snapshot.readings)
     assert snapshot.status.level == "offline"
@@ -595,13 +580,11 @@ def test_trend_fetch_passes_utc_overrides_and_field_naming(monkeypatch) -> None:
     fake = FakeFetch(
         {"process_params": make_frame({"hot_blast_vol_nm3h": [98000.0, 99000.0]})}
     )
-    monkeypatch.setattr(fs, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
     spec = fs.PARAMETERS_BY_KEY["hot_blast_volume"]
     start, end = fs.resolve_fixed_range("4h", NOW)
 
-    trend = fs.load_trend(
-        spec, start, end, fs.choose_window(end - start), fetch=fs.fetch_trend_frame
-    )
+    trend = fs_data.load_trend(spec, start, end, fs.choose_window(end - start))
 
     (call,) = fake.calls
     assert call["start_time_override"] == start and call["end_time_override"] == end
@@ -625,24 +608,22 @@ def test_trend_applies_scale_and_pci_charts_setpoint_too(monkeypatch) -> None:
             )
         }
     )
-    monkeypatch.setattr(fs, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
-    steam = fs.load_trend(
+    steam = fs_data.load_trend(
         fs.PARAMETERS_BY_KEY["steam_injection"],
         start,
         end,
         "1 minute",
-        fetch=fs.fetch_trend_frame,
     )
     assert list(steam.series) == [10.0, 12.0]
 
-    pci = fs.load_trend(
+    pci = fs_data.load_trend(
         fs.PARAMETERS_BY_KEY["pci_rate"],
         start,
         end,
         "1 minute",
-        fetch=fs.fetch_trend_frame,
     )
     assert list(pci.series) == [140.0, 150.0]
     assert list(pci.setpoint) == [145.0, 145.0]
@@ -655,15 +636,14 @@ def test_trend_preserves_gaps(monkeypatch) -> None:
     fake = FakeFetch(
         {"process_params": make_frame({"fuel_rate": [500.0, np.nan, 520.0]})}
     )
-    monkeypatch.setattr(fs, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
-    trend = fs.load_trend(
+    trend = fs_data.load_trend(
         fs.PARAMETERS_BY_KEY["fuel_rate"],
         start,
         end,
         "1 minute",
-        fetch=fs.fetch_trend_frame,
     )
 
     assert len(trend.series) == 3 and np.isnan(trend.series.iloc[1])
@@ -678,15 +658,14 @@ def test_trend_preserves_gaps(monkeypatch) -> None:
 
 def test_trend_without_source_never_calls_the_fetcher(monkeypatch) -> None:
     fake = FakeFetch({})
-    monkeypatch.setattr(fs, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
-    trend = fs.load_trend(
+    trend = fs_data.load_trend(
         fs.PARAMETERS_BY_KEY["slag_rate"],
         start,
         end,
         "1 minute",
-        fetch=fs.fetch_trend_frame,
     )
 
     assert trend.status == "no_source" and trend.series is None
@@ -699,17 +678,15 @@ def test_trend_empty_and_failed_requests_are_handled(monkeypatch) -> None:
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     monkeypatch.setattr(
-        fs, "fetch_online_df", FakeFetch({"process_params": pd.DataFrame()})
+        fs_data, "fetch_online_df", FakeFetch({"process_params": pd.DataFrame()})
     )
-    assert (
-        fs.load_trend(spec, start, end, "1 minute", fetch=fs.fetch_trend_frame).status
-        == "no_data"
-    )
+    assert fs_data.load_trend(spec, start, end, "1 minute").status == "no_data"
 
     monkeypatch.setattr(
-        fs, "fetch_online_df", FakeFetch({"process_params": RuntimeError("boom")})
+        fs_data, "fetch_online_df", FakeFetch({"process_params": RuntimeError("boom")})
     )
-    failed = fs.load_trend(spec, start, end, "1 minute", fetch=fs.fetch_trend_frame)
+    fs_data.clear_furnace_status_caches()
+    failed = fs_data.load_trend(spec, start, end, "1 minute")
     assert failed.status == "error" and "boom" not in failed.message
 
 
@@ -719,7 +696,7 @@ def test_compute_trend_stats_empty() -> None:
 
 
 def test_clear_caches_is_safe_without_a_runtime() -> None:
-    fs.clear_furnace_status_caches()
+    fs_data.clear_furnace_status_caches()
 
 
 # ── Plant status ─────────────────────────────────────────────────────────────
@@ -770,7 +747,9 @@ def test_plant_status_live_partial_offline() -> None:
 
 
 def test_view_state_accepts_known_parameter() -> None:
-    state = fs.parse_view_state({"view": "trend", "parameter": "fuel_rate"})
+    state = fs.parse_view_state(
+        {fs.VIEW_QUERY_KEY: "trend", fs.PARAMETER_QUERY_KEY: "fuel_rate"}
+    )
     assert state.view == "trend"
     assert state.spec is fs.PARAMETERS_BY_KEY["fuel_rate"]
     assert not state.needs_reset
@@ -784,15 +763,18 @@ def test_view_state_defaults_to_status() -> None:
 @pytest.mark.parametrize(
     "params",
     [
-        {"view": "trend", "parameter": "does_not_exist"},
-        {"view": "trend", "parameter": "<script>alert(1)</script>"},
-        {"view": "trend", "parameter": "fuel_rate' OR 1=1 --"},
-        {"view": "trend", "parameter": "../../etc/passwd"},
-        {"view": "trend", "parameter": ""},
-        {"view": "trend", "parameter": 7},
-        {"view": "trend"},
-        {"view": "bogus", "parameter": "fuel_rate"},
-        {"view": ["trend"], "parameter": []},
+        {fs.VIEW_QUERY_KEY: "trend", fs.PARAMETER_QUERY_KEY: "does_not_exist"},
+        {
+            fs.VIEW_QUERY_KEY: "trend",
+            fs.PARAMETER_QUERY_KEY: "<script>alert(1)</script>",
+        },
+        {fs.VIEW_QUERY_KEY: "trend", fs.PARAMETER_QUERY_KEY: "fuel_rate' OR 1=1 --"},
+        {fs.VIEW_QUERY_KEY: "trend", fs.PARAMETER_QUERY_KEY: "../../etc/passwd"},
+        {fs.VIEW_QUERY_KEY: "trend", fs.PARAMETER_QUERY_KEY: ""},
+        {fs.VIEW_QUERY_KEY: "trend", fs.PARAMETER_QUERY_KEY: 7},
+        {fs.VIEW_QUERY_KEY: "trend"},
+        {fs.VIEW_QUERY_KEY: "bogus", fs.PARAMETER_QUERY_KEY: "fuel_rate"},
+        {fs.VIEW_QUERY_KEY: ["trend"], fs.PARAMETER_QUERY_KEY: []},
     ],
 )
 def test_unknown_or_malformed_parameters_fall_back_to_status(params) -> None:
@@ -804,7 +786,10 @@ def test_unknown_or_malformed_parameters_fall_back_to_status(params) -> None:
 
 def test_view_state_takes_last_value_of_repeated_parameters() -> None:
     state = fs.parse_view_state(
-        {"view": ["status", "trend"], "parameter": ["x", "raft"]}
+        {
+            fs.VIEW_QUERY_KEY: ["status", "trend"],
+            fs.PARAMETER_QUERY_KEY: ["x", "raft"],
+        }
     )
     assert state.view == "trend" and state.spec.key == "raft"
 
@@ -813,3 +798,40 @@ def test_catalogue_text_is_html_safe_to_escape() -> None:
     """Labels are escaped before rendering; they must survive a round trip."""
     for spec in fs.PARAMETERS:
         assert html.unescape(html.escape(spec.label)) == spec.label
+
+
+def test_domain_is_pure_and_deleted_fetch_wrappers_are_not_recreated() -> None:
+    repo = Path(__file__).resolve().parents[1]
+    domain_path = repo / "src" / "domain" / "furnace_status.py"
+    source = domain_path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported_roots = {
+        node.module.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    } | {
+        alias.name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    assert not {"streamlit", "furnace_data", "influxdb_client_3"} & imported_roots
+    for removed in (
+        "fetch_status_frame",
+        "fetch_trend_frame",
+        "cached_status_frame",
+        "cached_trend_frame",
+    ):
+        assert f"def {removed}(" not in source
+
+    feature_source = "\n".join(
+        (repo / path).read_text(encoding="utf-8")
+        for path in (
+            "src/ui/furnace_status_page.py",
+            "src/ui/furnace_status_orchestration.py",
+            "src/custom_pages/3_Data_Visualisation.py",
+        )
+    )
+    assert "InfluxDBClient3" not in feature_source
+    assert "BaseDataFetcher" not in feature_source
+    assert not (repo / "src" / "data" / "furnace_status.py").exists()

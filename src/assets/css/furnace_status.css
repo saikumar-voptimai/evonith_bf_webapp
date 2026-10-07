@@ -1,4 +1,4 @@
-/* Furnace Status page — compact status board in the app's light theme.
+/* V-Board Furnace Status section — compact status board in the app's light theme.
    Injected by ui/furnace_status_page.py via st.markdown (st.html is sandboxed).
    Streamlit keyed containers expose their key as an `st-key-<key>` class.  Every
    selector hangs off the page root (.st-key-fs-page), another fs- keyed

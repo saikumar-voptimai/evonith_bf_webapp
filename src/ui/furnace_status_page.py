@@ -1,12 +1,10 @@
-"""Rendering for the Furnace Status page (status board + per-parameter trend).
+"""Render the V-Board Furnace Status section and its parameter trends.
 
-The page entry point (``custom_pages/10_Furnace_Status.py``) only calls
-:func:`render_furnace_status_page`.  Data fetching, value resolution and
-formatting live in :mod:`data.furnace_status`; this module turns those plain
-results into Streamlit elements and HTML.
+Value resolution and formatting live in :mod:`domain.furnace_status`; live
+fetching is isolated in :mod:`ui.furnace_status_orchestration`. This module
+turns those results into Streamlit elements and HTML.
 
-Navigation is one registered page with two full-page views selected by
-validated query parameters (``?view=status`` / ``?view=trend&parameter=<key>``).
+Nested views use validated, V-Board-namespaced query parameters.
 Each parameter row or temperature tile is a normal Streamlit button laid
 invisibly over its visible HTML, so a click updates ``st.query_params`` and
 reruns without a full browser reload (which would drop the session) and the
@@ -14,7 +12,7 @@ whole row/tile is the target.
 
 The status board has three columns: panels | uptake strip, furnace schematic,
 hearth strip | panels.  Everything on it comes from one
-:class:`~data.furnace_status.StatusSnapshot` per render; the strips, the
+:class:`~domain.furnace_status.StatusSnapshot` per render; the strips, the
 schematic callouts and the heat-load ring only re-present those readings.
 """
 
@@ -33,7 +31,8 @@ from typing import Literal
 import plotly.graph_objects as go
 import streamlit as st
 
-from data import furnace_status as fs
+from domain import furnace_status as fs
+from ui import furnace_status_orchestration as fs_data
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -245,15 +244,26 @@ def _selected_zone() -> str | None:
 
 
 def _open_trend(key: str) -> None:
-    st.query_params.from_dict({"view": fs.VIEW_TREND, "parameter": key})
+    _set_view_query(fs.VIEW_TREND, key)
 
 
 def _go_status() -> None:
-    st.query_params.from_dict({"view": fs.VIEW_STATUS})
+    _set_view_query(fs.VIEW_STATUS)
 
 
 def _refresh() -> None:
-    fs.clear_furnace_status_caches()
+    fs_data.clear_furnace_status_caches()
+
+
+def _set_view_query(view: str, parameter: str | None = None) -> None:
+    """Update only Furnace Status query keys and preserve unrelated parameters."""
+    params = st.query_params.to_dict()
+    params.pop(fs.VIEW_QUERY_KEY, None)
+    params.pop(fs.PARAMETER_QUERY_KEY, None)
+    params[fs.VIEW_QUERY_KEY] = view
+    if parameter is not None:
+        params[fs.PARAMETER_QUERY_KEY] = parameter
+    st.query_params.from_dict(params)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1144,7 +1154,6 @@ def _status_html(snapshot: fs.StatusSnapshot) -> str:
         f'<span class="fs-status__label">{_h(status.label)}</span>'
         '<span class="fs-status__kind" title="Live, Partial and Offline describe '
         'telemetry availability, not furnace safety or operating health.">'
-
         f'<div class="fs-status__time">Last updated: {_h(fs.format_ist(snapshot.last_updated))}</div>'
         "</div></div>"
     )
@@ -1173,7 +1182,7 @@ def _render_header(snapshot: fs.StatusSnapshot) -> None:
 
 def _render_status_view() -> None:
     now = datetime.now(timezone.utc)
-    snapshot = fs.load_status_snapshot(now)  # the only data load of this render
+    snapshot = fs_data.load_status_snapshot(now)  # the only data load of this render
     readings = {r.spec.key: r for r in snapshot.readings}
     zone = _selected_zone()
 
@@ -1430,7 +1439,7 @@ def _render_trend_view(spec: fs.ParameterSpec) -> None:
     start_utc, end_utc = window
     bucket = fs.choose_window(end_utc - start_utc)
     with st.spinner("Loading trend…"):
-        trend = fs.load_trend(spec, start_utc, end_utc, bucket)
+        trend = fs_data.load_trend(spec, start_utc, end_utc, bucket)
     stats = fs.compute_trend_stats(trend.series)
 
     if trend.status != "ok" or stats is None:
@@ -1486,12 +1495,12 @@ def _render_trend_view(spec: fs.ParameterSpec) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def render_furnace_status_page() -> None:
-    """Render whichever full-page view the query string selects."""
+def render_furnace_status() -> None:
+    """Render the selected nested view within V-Board's Furnace Status section."""
     _inject_css()
     state = fs.parse_view_state(st.query_params)
     if state.needs_reset:
-        st.query_params.from_dict({"view": fs.VIEW_STATUS})
+        _set_view_query(fs.VIEW_STATUS)
 
     # Page root: every page-specific style hangs off this container's class.
     with st.container(key="fs-page"):
