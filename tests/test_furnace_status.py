@@ -222,14 +222,14 @@ def test_heat_load_never_shows_a_partial_sum() -> None:
     assert fs.format_reading(reading) == "Not available"
 
 
-def test_heat_load_sum_is_as_old_as_its_oldest_component() -> None:
+def test_heat_load_current_never_mixes_component_timestamps() -> None:
     fresh = _quadrant_frame({1: [0.5]})
     old = make_frame({"heat_load_r6_q1": [0.5]}, age_minutes=20)
     frame = pd.concat([old, fresh.drop(columns="heat_load_r6_q1")])
     reading = fs.resolve_reading(
         fs.PARAMETERS_BY_KEY["heat_load_q1"], {"heatload_delta_t": frame}, NOW
     )
-    assert reading.issue == "stale"
+    assert reading.issue == "no_data"
 
 
 def test_heat_load_trend_sums_per_bin_and_keeps_gaps() -> None:
@@ -490,26 +490,72 @@ def test_fixed_intervals_use_the_documented_windows() -> None:
 # ── Fetching through the existing data layer ─────────────────────────────────
 
 
-class FakeFetch:
-    """Stand-in for ``fetch_online_df`` that records its calls."""
+class _FakeMeasurementFetcher:
+    def __init__(self, owner: "FakeFetcherFactory", measurement: str) -> None:
+        self.owner = owner
+        self.measurement = measurement
 
-    def __init__(self, frames: dict[str, pd.DataFrame | Exception]) -> None:
+    def fetch_data(
+        self,
+        time_interval,
+        start_time,
+        end_time,
+        *,
+        request_type,
+        window_by,
+        fields,
+    ):
+        call = {
+            "measurement": self.measurement,
+            "time_interval": time_interval,
+            "start_time": start_time,
+            "end_time": end_time,
+            "request_type": request_type,
+            "window_by": window_by,
+            "fields": fields,
+        }
+        self.owner.calls.append(call)
+        key = (self.measurement, request_type)
+        result = self.owner.frames.get(key, self.owner.frames.get(self.measurement))
+        if isinstance(result, Exception):
+            raise result
+        if result is None:
+            raise AssertionError(f"No fake frame configured for {key!r}")
+        return result.copy()
+
+
+class FakeFetcherFactory:
+    """Stand-in for the generic ``TimeSeriesDataFetcher`` boundary."""
+
+    def __init__(self, frames: dict[object, pd.DataFrame | Exception]) -> None:
         self.frames = frames
         self.calls: list[dict] = []
 
-    def __call__(self, selected_measurements, time_range, **kwargs):
-        (measurement,) = selected_measurements
-        self.calls.append(
-            {"measurement": measurement, "time_range": time_range, **kwargs}
-        )
-        result = self.frames[measurement]
-        if isinstance(result, Exception):
-            raise result
-        return result
+    def __call__(self, measurement, *, debug, source):
+        assert debug is False and source == "historical"
+        return _FakeMeasurementFetcher(self, measurement)
+
+
+def test_transport_adapter_preserves_raw_values_and_canonical_fields() -> None:
+    frame = pd.DataFrame(
+        {
+            "time": ["2026-10-05T09:30:00Z", "2026-10-05T09:29:00Z"],
+            "fuel_rate": [200.0, 100.0],
+            "table": [1, 1],
+            "result": ["_result", "_result"],
+        }
+    )
+
+    result = fs_data._normalise_frame(frame, ("fuel_rate",))
+
+    assert list(result.columns) == ["fuel_rate"]
+    assert list(result["fuel_rate"]) == [100.0, 200.0]
+    assert result.index.is_monotonic_increasing
+    assert str(result.index.tz) == "Asia/Kolkata"
 
 
 def test_one_failing_measurement_does_not_discard_the_other(monkeypatch) -> None:
-    fake = FakeFetch(
+    fake = FakeFetcherFactory(
         {
             "process_params": make_frame(
                 {"fuel_rate": [505.0], "production_per_hour": [180.0]}
@@ -519,7 +565,7 @@ def test_one_failing_measurement_does_not_discard_the_other(monkeypatch) -> None
             "temperature_profile": _full_frames(0)["temperature_profile"],
         }
     )
-    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
 
     snapshot = fs_data.load_status_snapshot(NOW)
 
@@ -533,7 +579,7 @@ def test_one_failing_measurement_does_not_discard_the_other(monkeypatch) -> None
 
 
 def test_status_fetch_uses_one_request_per_measurement(monkeypatch) -> None:
-    fake = FakeFetch(
+    fake = FakeFetcherFactory(
         {
             "process_params": make_frame({"fuel_rate": [505.0]}),
             "miscellaneous": make_frame({"stock_rod_radar_level": [4.2]}),
@@ -541,7 +587,7 @@ def test_status_fetch_uses_one_request_per_measurement(monkeypatch) -> None:
             "temperature_profile": _full_frames(0)["temperature_profile"],
         }
     )
-    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
 
     fs_data.load_status_snapshot(NOW)
 
@@ -552,14 +598,14 @@ def test_status_fetch_uses_one_request_per_measurement(monkeypatch) -> None:
         "temperature_profile",
     ]
     for call in fake.calls:
-        assert call["time_range"] == "last 15 minutes"
-        assert call["request_type"] == "windowed-average"
-        assert call["window_by"] == "1 minute"
-        assert call["column_naming"] == "field"
+        assert call["time_interval"] == "last 15 minutes"
+        assert call["request_type"] == "ts"
+        assert call["window_by"] is None
+        assert call["fields"] == fs.source_fields_for_measurement(call["measurement"])
 
 
 def test_failure_details_never_reach_the_snapshot(monkeypatch) -> None:
-    fake = FakeFetch(
+    fake = FakeFetcherFactory(
         {
             "process_params": RuntimeError("postgres://user:SECRET@host"),
             "miscellaneous": RuntimeError("token=SECRET"),
@@ -567,7 +613,7 @@ def test_failure_details_never_reach_the_snapshot(monkeypatch) -> None:
             "temperature_profile": RuntimeError("SECRET"),
         }
     )
-    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
 
     snapshot = fs_data.load_status_snapshot(NOW)
 
@@ -577,27 +623,29 @@ def test_failure_details_never_reach_the_snapshot(monkeypatch) -> None:
 
 
 def test_trend_fetch_passes_utc_overrides_and_field_naming(monkeypatch) -> None:
-    fake = FakeFetch(
+    fake = FakeFetcherFactory(
         {"process_params": make_frame({"hot_blast_vol_nm3h": [98000.0, 99000.0]})}
     )
-    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
     spec = fs.PARAMETERS_BY_KEY["hot_blast_volume"]
     start, end = fs.resolve_fixed_range("4h", NOW)
 
     trend = fs_data.load_trend(spec, start, end, fs.choose_window(end - start))
 
     (call,) = fake.calls
-    assert call["start_time_override"] == start and call["end_time_override"] == end
-    assert call["start_time_override"].utcoffset() == timedelta(0)
+    assert call["start_time"] == start and call["end_time"] == end
+    assert call["start_time"].utcoffset() == timedelta(0)
+    assert call["time_interval"] == "over selected range"
+    assert call["request_type"] == "windowed-average"
     assert call["window_by"] == "5 minutes"
-    assert call["column_naming"] == "field"
+    assert call["fields"] == spec.source_fields
     assert trend.status == "ok"
     assert list(trend.series) == [98000.0, 99000.0]
     assert str(trend.series.index.tz) == "Asia/Kolkata"
 
 
 def test_trend_applies_scale_and_pci_charts_setpoint_too(monkeypatch) -> None:
-    fake = FakeFetch(
+    fake = FakeFetcherFactory(
         {
             "process_params": make_frame(
                 {
@@ -608,7 +656,7 @@ def test_trend_applies_scale_and_pci_charts_setpoint_too(monkeypatch) -> None:
             )
         }
     )
-    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     steam = fs_data.load_trend(
@@ -632,11 +680,32 @@ def test_trend_applies_scale_and_pci_charts_setpoint_too(monkeypatch) -> None:
     assert len(fake.calls) == 2
 
 
+def test_derived_trend_fetches_every_component_in_one_request(monkeypatch) -> None:
+    spec = fs.PARAMETERS_BY_KEY["heat_load_total"]
+    fake = FakeFetcherFactory(
+        {
+            "heatload_delta_t": make_frame(
+                {field: [1.0, 2.0] for field in spec.source_fields}
+            )
+        }
+    )
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
+    start, end = fs.resolve_fixed_range("1h", NOW)
+
+    trend = fs_data.load_trend(spec, start, end, "1 minute")
+
+    assert trend.status == "ok"
+    assert list(trend.series) == [20.0, 40.0]
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["measurement"] == "heatload_delta_t"
+    assert fake.calls[0]["fields"] == spec.source_fields
+
+
 def test_trend_preserves_gaps(monkeypatch) -> None:
-    fake = FakeFetch(
+    fake = FakeFetcherFactory(
         {"process_params": make_frame({"fuel_rate": [500.0, np.nan, 520.0]})}
     )
-    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     trend = fs_data.load_trend(
@@ -648,17 +717,12 @@ def test_trend_preserves_gaps(monkeypatch) -> None:
 
     assert len(trend.series) == 3 and np.isnan(trend.series.iloc[1])
     stats = fs.compute_trend_stats(trend.series)
-    assert (stats.current, stats.minimum, stats.maximum, stats.mean) == (
-        520.0,
-        500.0,
-        520.0,
-        510.0,
-    )
+    assert (stats.minimum, stats.maximum, stats.mean) == (500.0, 520.0, 510.0)
 
 
 def test_trend_without_source_never_calls_the_fetcher(monkeypatch) -> None:
-    fake = FakeFetch({})
-    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
+    fake = FakeFetcherFactory({})
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     trend = fs_data.load_trend(
@@ -678,16 +742,178 @@ def test_trend_empty_and_failed_requests_are_handled(monkeypatch) -> None:
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     monkeypatch.setattr(
-        fs_data, "fetch_online_df", FakeFetch({"process_params": pd.DataFrame()})
+        fs_data,
+        "TimeSeriesDataFetcher",
+        FakeFetcherFactory({"process_params": pd.DataFrame()}),
     )
     assert fs_data.load_trend(spec, start, end, "1 minute").status == "no_data"
 
     monkeypatch.setattr(
-        fs_data, "fetch_online_df", FakeFetch({"process_params": RuntimeError("boom")})
+        fs_data,
+        "TimeSeriesDataFetcher",
+        FakeFetcherFactory({"process_params": RuntimeError("boom")}),
     )
     fs_data.clear_furnace_status_caches()
     failed = fs_data.load_trend(spec, start, end, "1 minute")
     assert failed.status == "error" and "boom" not in failed.message
+
+
+def test_raw_current_differs_from_final_average_bucket(monkeypatch) -> None:
+    """Current/Last data use the final raw point, never the final chart bucket."""
+    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    start, end = fs.resolve_fixed_range("1h", NOW)
+    raw_times = pd.DatetimeIndex(
+        [end - timedelta(seconds=40), end - timedelta(seconds=20), end],
+        name="time",
+    )
+    raw = pd.DataFrame(
+        {
+            "time": raw_times,
+            "fuel_rate": [100.0, 120.0, 200.0],
+            "table": [0, 0, 0],
+        }
+    )
+    averaged = pd.DataFrame(
+        {"fuel_rate": [140.0]},
+        index=pd.DatetimeIndex([end], name="time"),
+    )
+    fake = FakeFetcherFactory(
+        {
+            ("process_params", "ts"): raw,
+            ("process_params", "windowed-average"): averaged,
+        }
+    )
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
+
+    result = fs_data.load_trend_view(
+        spec, start, end, "1 minute", use_live_current=True
+    )
+
+    assert result.current.value == 200.0
+    assert result.current.timestamp == pd.Timestamp(end).tz_convert(fs.IST)
+    assert result.trend.series.iloc[-1] == 140.0
+    assert result.stats.mean == 140.0
+    assert [call["request_type"] for call in fake.calls] == [
+        "ts",
+        "windowed-average",
+    ]
+
+
+@pytest.mark.parametrize("interval", ["1h", "4h", "8h", "16h", "24h"])
+def test_every_fixed_interval_uses_latest_raw_current(monkeypatch, interval) -> None:
+    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    start, end = fs.resolve_fixed_range(interval, NOW)
+    raw = pd.DataFrame(
+        {"fuel_rate": [100.0, 200.0]},
+        index=pd.DatetimeIndex([end - timedelta(minutes=1), end], name="time"),
+    )
+    averaged = pd.DataFrame(
+        {"fuel_rate": [150.0]}, index=pd.DatetimeIndex([end], name="time")
+    )
+    fake = FakeFetcherFactory(
+        {
+            ("process_params", "ts"): raw,
+            ("process_params", "windowed-average"): averaged,
+        }
+    )
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
+
+    result = fs_data.load_trend_view(
+        spec,
+        start,
+        end,
+        fs.choose_window(end - start),
+        use_live_current=True,
+    )
+
+    assert result.current.value == 200.0
+    assert result.trend.series.iloc[-1] == 150.0
+
+
+def test_custom_historical_current_is_bounded_to_selected_range(monkeypatch) -> None:
+    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    end = NOW - timedelta(days=2)
+    start = end - timedelta(hours=1)
+    raw = pd.DataFrame(
+        {"fuel_rate": [190.0, 999.0]},
+        index=pd.DatetimeIndex(
+            [end - timedelta(minutes=1), end + timedelta(seconds=1)], name="time"
+        ),
+    )
+    averaged = pd.DataFrame(
+        {"fuel_rate": [150.0]}, index=pd.DatetimeIndex([end], name="time")
+    )
+    fake = FakeFetcherFactory(
+        {
+            ("process_params", "ts"): raw,
+            ("process_params", "windowed-average"): averaged,
+        }
+    )
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
+
+    result = fs_data.load_trend_view(
+        spec, start, end, "1 minute", use_live_current=False
+    )
+
+    assert result.current.value == 190.0
+    raw_call = next(call for call in fake.calls if call["request_type"] == "ts")
+    assert raw_call["start_time"] == end - fs.STALE_AFTER
+    assert raw_call["end_time"] == end
+    assert raw_call["window_by"] is None
+
+
+def test_derived_current_uses_newest_complete_raw_row() -> None:
+    spec = fs.PARAMETERS_BY_KEY["heat_load_q1"]
+    fields = list(spec.components)
+    index = pd.date_range(end=NOW, periods=3, freq="1min", tz="UTC")
+    frame = pd.DataFrame({field: [1.0, 2.0, 3.0] for field in fields}, index=index)
+    frame.loc[index[-1], fields[-1]] = np.nan
+
+    reading = fs.resolve_reading(spec, {spec.measurement: frame}, NOW)
+
+    assert reading.value == 10.0  # complete middle row: 5 fields × 2
+    assert reading.timestamp == index[-2].tz_convert(fs.IST)
+
+
+def test_current_and_trend_fail_independently(monkeypatch) -> None:
+    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    start, end = fs.resolve_fixed_range("1h", NOW)
+    averaged = pd.DataFrame(
+        {"fuel_rate": [500.0, 520.0]},
+        index=pd.date_range(end=end, periods=2, freq="1min"),
+    )
+    fake = FakeFetcherFactory(
+        {
+            ("process_params", "ts"): RuntimeError("raw token=SECRET"),
+            ("process_params", "windowed-average"): averaged,
+        }
+    )
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
+
+    result = fs_data.load_trend_view(
+        spec, start, end, "1 minute", use_live_current=True
+    )
+    assert result.current.issue == "fetch_failed"
+    assert result.trend.status == "ok" and result.stats.mean == 510.0
+
+    fs_data.clear_furnace_status_caches()
+    raw = pd.DataFrame(
+        {"fuel_rate": [530.0]}, index=pd.DatetimeIndex([end], name="time")
+    )
+    fake = FakeFetcherFactory(
+        {
+            ("process_params", "ts"): raw,
+            ("process_params", "windowed-average"): RuntimeError("trend token=SECRET"),
+        }
+    )
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fake)
+
+    result = fs_data.load_trend_view(
+        spec, start, end, "1 minute", use_live_current=True
+    )
+    assert result.current.value == 530.0
+    assert result.trend.status == "error" and result.stats is None
+    assert "SECRET" not in result.trend.message
 
 
 def test_compute_trend_stats_empty() -> None:
@@ -833,5 +1059,16 @@ def test_domain_is_pure_and_deleted_fetch_wrappers_are_not_recreated() -> None:
         )
     )
     assert "InfluxDBClient3" not in feature_source
-    assert "BaseDataFetcher" not in feature_source
+    assert "fetch_online_df" not in feature_source
+    orchestration_tree = ast.parse(
+        (repo / "src/ui/furnace_status_orchestration.py").read_text(encoding="utf-8")
+    )
+    orchestration_imports = {
+        node.module
+        for node in ast.walk(orchestration_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert "furnace_data.influx.online" not in orchestration_imports
+    assert "furnace_data.influx.base" not in orchestration_imports
+    assert "furnace_data.influx.query" not in orchestration_imports
     assert not (repo / "src" / "data" / "furnace_status.py").exists()

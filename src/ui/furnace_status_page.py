@@ -1439,55 +1439,79 @@ def _render_trend_view(spec: fs.ParameterSpec) -> None:
     start_utc, end_utc = window
     bucket = fs.choose_window(end_utc - start_utc)
     with st.spinner("Loading trend…"):
-        trend = fs_data.load_trend(spec, start_utc, end_utc, bucket)
-    stats = fs.compute_trend_stats(trend.series)
-
-    if trend.status != "ok" or stats is None:
-        with head:
-            st.html(_head_html(spec))
-        st.html(_unavailable_html(trend.message or "No data was returned."))
-        return
+        view_data = fs_data.load_trend_view(
+            spec,
+            start_utc,
+            end_utc,
+            bucket,
+            use_live_current=interval != fs.CUSTOM_INTERVAL,
+        )
+    current = view_data.current
+    trend = view_data.trend
+    stats = view_data.stats
 
     def fmt(value: float) -> str:
         return fs.format_value(value, spec.decimals)
 
+    current_timestamp = (
+        current.timestamp
+        if current.timestamp is not None
+        else current.setpoint_timestamp
+    )
     with head:
         st.html(
             _head_html(
                 spec,
-                last_data=fs.format_ist(stats.current_at),
-                current_text=fmt(stats.current),
+                last_data=(
+                    fs.format_ist(current_timestamp)
+                    if current_timestamp is not None
+                    else None
+                ),
+                current_text=fs.format_reading(current),
             )
         )
 
-    if interval == fs.CUSTOM_INTERVAL:
-        revision = f"{spec.key}|{interval}|{start_utc:%Y%m%d%H%M}|{end_utc:%Y%m%d%H%M}"
-    else:
-        revision = f"{spec.key}|{interval}"  # fixed ranges slide each minute; keep zoom
-    fig = build_trend_figure(
-        trend, (_naive_ist(start_utc), _naive_ist(end_utc)), revision
-    )
-    with st.container(key="fs-chart"):
-        st.plotly_chart(
-            fig,
-            width="stretch",
-            theme=None,
-            key=f"fs-trend-{spec.key}",
-            config=_PLOT_CONFIG,
+    if trend.status == "ok" and stats is not None:
+        if interval == fs.CUSTOM_INTERVAL:
+            revision = (
+                f"{spec.key}|{interval}|{start_utc:%Y%m%d%H%M}|" f"{end_utc:%Y%m%d%H%M}"
+            )
+        else:
+            revision = (
+                f"{spec.key}|{interval}"  # fixed ranges slide each minute; keep zoom
+            )
+        fig = build_trend_figure(
+            trend, (_naive_ist(start_utc), _naive_ist(end_utc)), revision
         )
+        with st.container(key="fs-chart"):
+            st.plotly_chart(
+                fig,
+                width="stretch",
+                theme=None,
+                key=f"fs-trend-{spec.key}",
+                config=_PLOT_CONFIG,
+            )
+    else:
+        st.html(_unavailable_html(trend.message or "No data was returned."))
 
     unit = spec.unit
+    minimum = fmt(stats.minimum) if stats is not None else fs.NOT_AVAILABLE
+    maximum = fmt(stats.maximum) if stats is not None else fs.NOT_AVAILABLE
+    average = fmt(stats.mean) if stats is not None else fs.NOT_AVAILABLE
+    current_unit = unit if fs.has_display_value(current) else ""
+    range_unit = unit if stats is not None else ""
     st.html(
         '<div class="fs-stats">'
-        + _stat_tile("Current", fmt(stats.current), unit)
-        + _stat_tile("Minimum", fmt(stats.minimum), unit)
-        + _stat_tile("Maximum", fmt(stats.maximum), unit)
-        + _stat_tile("Average", fmt(stats.mean), unit)
+        + _stat_tile("Current", fs.format_reading(current), current_unit)
+        + _stat_tile("Minimum", minimum, range_unit)
+        + _stat_tile("Maximum", maximum, range_unit)
+        + _stat_tile("Average", average, range_unit)
         + "</div>"
     )
-    st.caption(
-        f"{bucket} average · {fs.format_ist(start_utc)} → {fs.format_ist(end_utc)}"
-    )
+    if trend.status == "ok" and stats is not None:
+        st.caption(
+            f"{bucket} average · {fs.format_ist(start_utc)} → {fs.format_ist(end_utc)}"
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 import certifi
 import pandas as pd
@@ -86,6 +86,7 @@ class BaseDataFetcher:
         end_time: Optional[datetime] = None,
         request_type: str = "ts",
         window_by: Optional[str] = "1h",
+        fields: Optional[Sequence[str]] = None,
     ) -> pd.DataFrame:
         """Fetch data from InfluxDB for the requested time window.
 
@@ -98,6 +99,8 @@ class BaseDataFetcher:
             end_time:    UTC-aware end time (required for ``"over selected range"``).
             request_type: InfluxQL query type; see :func:`~furnace_data.influx.query.query_builder`.
             window_by:   Aggregation window for ``"windowed-average"`` type.
+            fields:      Optional configured canonical fields to select. The
+                default keeps the historical all-field behaviour.
 
         Returns:
             :class:`pandas.DataFrame` with a ``"time"`` column (UTC-aware).
@@ -130,6 +133,7 @@ class BaseDataFetcher:
             end_time,
             type=request_type,
             window_by=window_by,
+            fields=fields,
         )
 
         client = InfluxDBClient3(

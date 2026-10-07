@@ -289,6 +289,10 @@ Interactive browser for all InfluxDB data and the ML dataset pipeline.
 
 V-Board conditionally renders either furnace visualisations (the default) or
 the live 34-parameter Furnace Status dashboard with nested parameter trends.
+Furnace Status reads canonical raw fields through the generic V-Board
+`TimeSeriesDataFetcher`; Current and Last data use the latest finite raw sample,
+while trend charts and their minimum/maximum/average statistics use windowed
+data independently.
 
 **Chart types:**
 - **Circumferential temperature** — ring-by-ring sensor heatmap at each elevation level

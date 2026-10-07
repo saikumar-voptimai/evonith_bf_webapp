@@ -418,6 +418,21 @@ def measurements_for(specs: Sequence[ParameterSpec] = PARAMETERS) -> tuple[str, 
     return tuple(dict.fromkeys(p.measurement for p in specs if p.measurement))
 
 
+def source_fields_for_measurement(
+    measurement: str,
+    specs: Sequence[ParameterSpec] = PARAMETERS,
+) -> tuple[str, ...]:
+    """Return the ordered union of catalogue fields needed from a measurement."""
+    return tuple(
+        dict.fromkeys(
+            field
+            for spec in specs
+            if spec.measurement == measurement
+            for field in spec.source_fields
+        )
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # View state (query parameters)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -479,7 +494,19 @@ def _to_ist(ts: pd.Timestamp) -> pd.Timestamp:
     return ts.tz_localize(IST) if ts.tzinfo is None else ts.tz_convert(IST)
 
 
-def finite_series(frame: pd.DataFrame | None, column: str | None) -> pd.Series | None:
+def _normalise_time_index(index: pd.Index) -> pd.DatetimeIndex:
+    """Return a timezone-aware IST index for domain comparisons and display."""
+    result = pd.DatetimeIndex(index)
+    return result.tz_localize(IST) if result.tz is None else result.tz_convert(IST)
+
+
+def finite_series(
+    frame: pd.DataFrame | None,
+    column: str | None,
+    *,
+    start: datetime | pd.Timestamp | None = None,
+    end: datetime | pd.Timestamp | None = None,
+) -> pd.Series | None:
     """Return ``frame[column]`` as float with non-finite values dropped.
 
     ``None`` when the frame/column is absent or nothing finite remains.  Zero is
@@ -488,22 +515,59 @@ def finite_series(frame: pd.DataFrame | None, column: str | None) -> pd.Series |
     if frame is None or column is None or frame.empty or column not in frame.columns:
         return None
     series = pd.to_numeric(frame[column], errors="coerce").astype("float64")
+    series.index = _normalise_time_index(series.index)
+    if start is not None:
+        series = series[series.index >= _to_ist(pd.Timestamp(start))]
+    if end is not None:
+        series = series[series.index <= _to_ist(pd.Timestamp(end))]
     series = series[np.isfinite(series)].sort_index()
     return series if not series.empty else None
 
 
 def latest_finite_point(
-    frame: pd.DataFrame | None, column: str | None
+    frame: pd.DataFrame | None,
+    column: str | None,
+    *,
+    start: datetime | pd.Timestamp | None = None,
+    end: datetime | pd.Timestamp | None = None,
 ) -> tuple[float, pd.Timestamp] | None:
     """Return ``(value, IST timestamp)`` of the newest finite sample, or ``None``.
 
     No forward-fill: if the newest samples are null, the newest *real* sample is
     returned together with its own (older) timestamp.
     """
-    series = finite_series(frame, column)
+    series = finite_series(frame, column, start=start, end=end)
     if series is None:
         return None
     return float(series.iloc[-1]), _to_ist(series.index[-1])
+
+
+def latest_complete_point(
+    frame: pd.DataFrame | None,
+    columns: Sequence[str],
+    aggregate: Literal["sum", "mean"],
+    *,
+    start: datetime | pd.Timestamp | None = None,
+    end: datetime | pd.Timestamp | None = None,
+) -> tuple[float, pd.Timestamp] | None:
+    """Return the newest same-row aggregate with every component finite.
+
+    Components are never forward-filled or combined across timestamps.
+    """
+    if frame is None or frame.empty or not set(columns) <= set(frame.columns):
+        return None
+    parts = frame[list(columns)].apply(pd.to_numeric, errors="coerce")
+    parts = parts.where(np.isfinite(parts))
+    parts.index = _normalise_time_index(parts.index)
+    if start is not None:
+        parts = parts[parts.index >= _to_ist(pd.Timestamp(start))]
+    if end is not None:
+        parts = parts[parts.index <= _to_ist(pd.Timestamp(end))]
+    complete = parts.dropna(how="any").sort_index()
+    if complete.empty:
+        return None
+    values = complete.mean(axis=1) if aggregate == "mean" else complete.sum(axis=1)
+    return float(values.iloc[-1]), _to_ist(values.index[-1])
 
 
 @dataclass(frozen=True)
@@ -516,6 +580,8 @@ class ParameterReading:
     issue: ReadingIssue | None = None
     #: Scaled setpoint, when the spec has one and it is fresh.
     setpoint: float | None = None
+    #: Timestamp of the independent raw setpoint sample, when available.
+    setpoint_timestamp: pd.Timestamp | None = None
 
 
 def resolve_reading(
@@ -523,6 +589,7 @@ def resolve_reading(
     frames: Mapping[str, pd.DataFrame | None],
     now: datetime,
     *,
+    range_start: datetime | None = None,
     stale_after: timedelta = STALE_AFTER,
 ) -> ParameterReading:
     """Resolve one parameter from the per-measurement status frames.
@@ -537,35 +604,61 @@ def resolve_reading(
     if frame is None:
         return ParameterReading(spec, issue="fetch_failed")
 
+    endpoint = _to_ist(pd.Timestamp(now))
+
     def fresh(field: str | None) -> tuple[float, pd.Timestamp] | ReadingIssue:
-        point = latest_finite_point(frame, field)
+        point = latest_finite_point(
+            frame,
+            field,
+            start=range_start,
+            end=endpoint,
+        )
         if point is None:
             return "no_data"
         raw, ts = point
-        if now - ts.to_pydatetime() > stale_after:
+        if endpoint.to_pydatetime() - ts.to_pydatetime() > stale_after:
             return "stale"
         return raw * spec.scale, ts
 
     if spec.components:
-        parts = [fresh(f) for f in spec.components]
-        missing = next((p for p in parts if not isinstance(p, tuple)), None)
-        if missing is not None:  # never show a partial sum/average
-            return ParameterReading(spec, issue=missing)
-        total = sum(v for v, _ in parts)
+        point = latest_complete_point(
+            frame,
+            spec.components,
+            spec.aggregate,
+            start=range_start,
+            end=endpoint,
+        )
+        if point is None:
+            return ParameterReading(spec, issue="no_data")
+        raw, ts = point
+        if endpoint.to_pydatetime() - ts.to_pydatetime() > stale_after:
+            return ParameterReading(spec, issue="stale")
         return ParameterReading(
             spec,
-            value=total / len(parts) if spec.aggregate == "mean" else total,
-            timestamp=min(ts for _, ts in parts),  # as old as its oldest input
+            value=raw * spec.scale,
+            timestamp=ts,
         )
 
     sp = fresh(spec.setpoint_field) if spec.setpoint_field else None
     setpoint = sp[0] if isinstance(sp, tuple) else None
+    setpoint_timestamp = sp[1] if isinstance(sp, tuple) else None
 
     actual = fresh(spec.field)
     if not isinstance(actual, tuple):
-        return ParameterReading(spec, issue=actual, setpoint=setpoint)
+        return ParameterReading(
+            spec,
+            issue=actual,
+            setpoint=setpoint,
+            setpoint_timestamp=setpoint_timestamp,
+        )
     value, ts = actual
-    return ParameterReading(spec, value=value, timestamp=ts, setpoint=setpoint)
+    return ParameterReading(
+        spec,
+        value=value,
+        timestamp=ts,
+        setpoint=setpoint,
+        setpoint_timestamp=setpoint_timestamp,
+    )
 
 
 @dataclass(frozen=True)
@@ -625,7 +718,12 @@ def build_status_snapshot(
 ) -> StatusSnapshot:
     """Resolve every parameter and the plant status from fetched frames."""
     readings = tuple(resolve_reading(spec, frames, now) for spec in specs)
-    stamps = [r.timestamp for r in readings if r.timestamp is not None]
+    stamps = [
+        timestamp
+        for reading in readings
+        for timestamp in (reading.timestamp, reading.setpoint_timestamp)
+        if timestamp is not None
+    ]
     failed = tuple(m for m in measurements_for(specs) if frames.get(m) is None)
     return StatusSnapshot(
         readings=readings,
@@ -813,24 +911,31 @@ def build_trend_data(spec: ParameterSpec, frame: pd.DataFrame | None) -> TrendDa
 
 @dataclass(frozen=True)
 class TrendStats:
-    current: float
-    current_at: pd.Timestamp
+    """Aggregate statistics calculated only from the windowed trend series."""
+
     minimum: float
     maximum: float
     mean: float
 
 
 def compute_trend_stats(series: pd.Series | None) -> TrendStats | None:
-    """Current / min / max / mean over the finite points, or ``None`` if none."""
+    """Range min / max / mean over finite trend points, or ``None`` if none."""
     if series is None:
         return None
     finite = series[np.isfinite(series)]
     if finite.empty:
         return None
     return TrendStats(
-        current=float(finite.iloc[-1]),
-        current_at=_to_ist(finite.index[-1]),
         minimum=float(finite.min()),
         maximum=float(finite.max()),
         mean=float(finite.mean()),
     )
+
+
+@dataclass(frozen=True)
+class TrendViewData:
+    """Independent raw Current reading and aggregated trend result for the UI."""
+
+    current: ParameterReading
+    trend: TrendData
+    stats: TrendStats | None

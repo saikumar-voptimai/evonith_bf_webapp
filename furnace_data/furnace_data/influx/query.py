@@ -9,6 +9,7 @@ query_builder Build an InfluxQL SELECT statement for a given measurement.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 
 from furnace_data.config import load_config
@@ -21,33 +22,33 @@ _config = load_config("setting_ds_dv.yml")
 # ---------------------------------------------------------------------------
 
 TIMEDELTAS: dict[str, timedelta] = {
-    "last 1 minute":  timedelta(minutes=1),
+    "last 1 minute": timedelta(minutes=1),
     "last 5 minutes": timedelta(minutes=5),
     "last 15 minutes": timedelta(minutes=15),
     "last 30 minutes": timedelta(minutes=30),
-    "last 1 hour":    timedelta(hours=1),
-    "last 6 hours":   timedelta(hours=6),
-    "last 8 hours":   timedelta(hours=8),
-    "last 12 hours":  timedelta(hours=12),
-    "last 1 day":     timedelta(days=1),
-    "last 3 days":    timedelta(days=3),
-    "last 1 week":    timedelta(weeks=1),
-    "last 2 weeks":   timedelta(weeks=2),
-    "last 1 month":   timedelta(days=30),
-    "last 2 months":  timedelta(days=60),
-    "last 3 months":  timedelta(days=90),
+    "last 1 hour": timedelta(hours=1),
+    "last 6 hours": timedelta(hours=6),
+    "last 8 hours": timedelta(hours=8),
+    "last 12 hours": timedelta(hours=12),
+    "last 1 day": timedelta(days=1),
+    "last 3 days": timedelta(days=3),
+    "last 1 week": timedelta(weeks=1),
+    "last 2 weeks": timedelta(weeks=2),
+    "last 1 month": timedelta(days=30),
+    "last 2 months": timedelta(days=60),
+    "last 3 months": timedelta(days=90),
 }
 
 WINDOWING: dict[str, str] = {
-    "1 minute":  "1m",
+    "1 minute": "1m",
     "5 minutes": "5m",
     "10 minutes": "10m",
     "15 minutes": "15m",
     "30 minutes": "30m",
-    "1 hour":    "1h",
-    "6 hours":   "6h",
-    "12 hours":  "12h",
-    "1 day":     "1d",
+    "1 hour": "1h",
+    "6 hours": "6h",
+    "12 hours": "12h",
+    "1 day": "1d",
 }
 
 
@@ -149,6 +150,7 @@ def query_builder(
     stop: datetime,
     type: str = "average",
     window_by: str | None = "1h",
+    fields: Sequence[str] | None = None,
 ) -> str:
     """Build an InfluxQL SELECT query for *measurement* over [start, stop].
 
@@ -162,12 +164,17 @@ def query_builder(
                      Accepts human-readable strings (``"15 minutes"``) or
                      InfluxQL strings (``"15m"``).  Pass ``None`` to fall
                      back to ``"ts"`` automatically.
+        fields:      Optional canonical Influx field names to select. Every
+                     requested name must exist in the measurement's configured
+                     mapping. The default preserves the existing all-field
+                     behaviour.
 
     Returns:
         InfluxQL query string.
 
     Raises:
-        ValueError: If *type* is not recognised.
+        ValueError: If *type* is not recognised or *fields* contains an
+            unconfigured field name.
     """
     # Normalise window_by
     if window_by is not None:
@@ -182,15 +189,27 @@ def query_builder(
     start_iso = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     end_iso = stop.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
-    fields = influx_fields(measurement)
+    configured_fields = influx_fields(measurement)
+    if fields is None:
+        selected_fields = configured_fields
+    else:
+        selected_fields = list(dict.fromkeys(fields))
+        if not selected_fields:
+            raise ValueError("fields must contain at least one configured field")
+        unknown = [field for field in selected_fields if field not in configured_fields]
+        if unknown:
+            raise ValueError(
+                f"Unconfigured field(s) for {measurement!r}: {', '.join(unknown)}"
+            )
 
     if type == "ts":
+        projection = "*" if fields is None else ", ".join(selected_fields)
         return (
-            f"SELECT * FROM {measurement} "
+            f"SELECT {projection} FROM {measurement} "
             f"WHERE time >= '{start_iso}' AND time <= '{end_iso}'"
         )
     elif type == "average":
-        avg_str = [f"MEAN({col}) AS {col}" for col in fields]
+        avg_str = [f"MEAN({col}) AS {col}" for col in selected_fields]
         return (
             f"SELECT {', '.join(avg_str)} FROM {measurement} "
             f"WHERE time >= '{start_iso}' AND time < '{end_iso}'"
@@ -198,14 +217,14 @@ def query_builder(
     elif type == "avg-min-max":
         parts = [
             f'MEAN({col}) AS "{col}_mean", MIN({col}) AS "{col}_min", MAX({col}) AS "{col}_max"'
-            for col in fields
+            for col in selected_fields
         ]
         return (
             f"SELECT {', '.join(parts)} FROM {measurement} "
             f"WHERE time >= '{start_iso}' AND time < '{end_iso}'"
         )
     elif type == "windowed-average":
-        avg_str = [f"MEAN({col}) AS {col}" for col in fields]
+        avg_str = [f"MEAN({col}) AS {col}" for col in selected_fields]
         return (
             f"SELECT {', '.join(avg_str)} FROM {measurement} "
             f"WHERE time >= '{start_iso}' AND time < '{end_iso}' "

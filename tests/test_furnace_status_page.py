@@ -2,7 +2,7 @@
 
 The helpers are exercised without a Streamlit runtime; the smoke test runs the
 actual page script under ``streamlit.testing.v1.AppTest`` with
-``fetch_online_df`` monkeypatched (no InfluxDB).
+``TimeSeriesDataFetcher`` monkeypatched (no InfluxDB).
 """
 
 from __future__ import annotations
@@ -240,33 +240,46 @@ def _live_frame(columns: list[str]) -> pd.DataFrame:
 
 @pytest.fixture
 def patched_fetch(monkeypatch):
-    calls: list[str] = []
+    calls: list[dict[str, object]] = []
     state = {"fail": set()}
 
-    def fake(selected_measurements, time_range, **kwargs):
-        (measurement,) = selected_measurements
-        calls.append(measurement)
-        if measurement in state["fail"]:
-            raise RuntimeError("boom token=SECRET")
-        fields = [
-            f
-            for p in fs.PARAMETERS
-            if p.measurement == measurement
-            for f in p.source_fields
-        ]
-        frame = _live_frame(fields)
-        start = kwargs.get("start_time_override")
-        if start is not None:  # trend request
-            end = kwargs["end_time_override"]
-            index = pd.date_range(start, end, freq="5min", tz="UTC").tz_convert(
+    class FakeTimeSeriesDataFetcher:
+        def __init__(self, measurement, *, debug, source):
+            self.measurement = measurement
+            assert debug is False and source == "historical"
+
+        def fetch_data(
+            self,
+            time_interval,
+            start_time,
+            end_time,
+            *,
+            request_type,
+            window_by,
+            fields,
+        ):
+            calls.append(
+                {
+                    "measurement": self.measurement,
+                    "time_interval": time_interval,
+                    "request_type": request_type,
+                    "window_by": window_by,
+                    "fields": fields,
+                }
+            )
+            if self.measurement in state["fail"]:
+                raise RuntimeError("boom token=SECRET")
+            if start_time is None:
+                return _live_frame(list(fields))
+            index = pd.date_range(start_time, end_time, freq="5min").tz_convert(
                 "Asia/Kolkata"
             )
-            frame = pd.DataFrame(
-                {c: np.linspace(1.0, 2.0, len(index)) for c in fields}, index=index
+            return pd.DataFrame(
+                {field: np.linspace(1.0, 2.0, len(index)) for field in fields},
+                index=index,
             )
-        return frame
 
-    monkeypatch.setattr(fs_data, "fetch_online_df", fake)
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", FakeTimeSeriesDataFetcher)
     fs_data.clear_furnace_status_caches()
     yield calls, state
     fs_data.clear_furnace_status_caches()
@@ -292,7 +305,7 @@ def test_default_visualisations_does_not_fetch_furnace_status(monkeypatch) -> No
         calls.append((args, kwargs))
         raise AssertionError("Furnace Status fetch ran while Visualisations was active")
 
-    monkeypatch.setattr(fs_data, "fetch_online_df", fail_if_called)
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", fail_if_called)
     monkeypatch.setattr(
         vboard_visualisations,
         "render_visualisations",
@@ -317,7 +330,9 @@ def test_vboard_furnace_status_renders_every_parameter_with_grouped_fetches(
     assert not at.exception
     labels = [b.label for b in at.button if b.label.endswith("Open trend")]
     assert len(labels) == len(fs.PARAMETERS) == 34
-    assert calls == list(fs.measurements_for())  # one fetch per measurement
+    assert [call["measurement"] for call in calls] == list(
+        fs.measurements_for()
+    )  # one fetch per measurement
     assert not at.sidebar.selectbox  # Visualisations-only controls stay inactive
 
     # The mocked fields are identical, so the strips are flat and the quadrants
@@ -385,6 +400,56 @@ def test_clicking_a_row_opens_the_trend_view_and_back_returns(patched_fetch) -> 
     assert "Uptake Temperature T2" in _html_text(at)
 
 
+def test_trend_ui_uses_raw_current_not_final_bucket_average(monkeypatch) -> None:
+    class RawVersusAverageFetcher:
+        def __init__(self, measurement, *, debug, source):
+            self.measurement = measurement
+
+        def fetch_data(
+            self,
+            time_interval,
+            start_time,
+            end_time,
+            *,
+            request_type,
+            window_by,
+            fields,
+        ):
+            if request_type == "ts":
+                endpoint = pd.Timestamp(datetime.now(timezone.utc)).floor("min")
+                return pd.DataFrame(
+                    {
+                        "time": [
+                            endpoint - timedelta(seconds=40),
+                            endpoint - timedelta(seconds=20),
+                            endpoint,
+                        ],
+                        "fuel_rate": [100.0, 120.0, 200.0],
+                    }
+                )
+            return pd.DataFrame(
+                {"fuel_rate": [140.0]},
+                index=pd.DatetimeIndex([end_time], name="time"),
+            )
+
+    monkeypatch.setattr(fs_data, "TimeSeriesDataFetcher", RawVersusAverageFetcher)
+    fs_data.clear_furnace_status_caches()
+    at = _app()
+    at.query_params[fs.VIEW_QUERY_KEY] = "trend"
+    at.query_params[fs.PARAMETER_QUERY_KEY] = "fuel_rate"
+    at.run()
+
+    assert not at.exception
+    stats_html = next(
+        element.proto.body
+        for element in at.get("html")
+        if 'class="fs-stats"' in element.proto.body
+    )
+    assert 'Current</div><div class="fs-stat__value">200' in stats_html
+    assert 'Average</div><div class="fs-stat__value">140' in stats_html
+    assert at.get("plotly_chart")
+
+
 def test_unknown_parameter_in_url_falls_back_to_status(patched_fetch) -> None:
     at = _app()
     at.query_params[fs.VIEW_QUERY_KEY] = "trend"
@@ -442,14 +507,14 @@ def test_refresh_clears_only_this_pages_caches(patched_fetch) -> None:
     unrelated_cache(1)
 
     at = _app().run()
-    assert calls == list(fs.measurements_for())
+    assert [call["measurement"] for call in calls] == list(fs.measurements_for())
 
     at.run()  # second render within the TTL: served from cache
-    assert calls == list(fs.measurements_for())
+    assert [call["measurement"] for call in calls] == list(fs.measurements_for())
 
     next(b for b in at.button if b.label == "Refresh").click()
     at.run()
-    assert calls == list(fs.measurements_for()) * 2  # status caches cleared
+    assert [call["measurement"] for call in calls] == list(fs.measurements_for()) * 2
 
     unrelated_cache(1)
     assert unrelated_runs == [1]  # an unrelated cache was left alone
