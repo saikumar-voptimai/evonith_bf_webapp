@@ -1,0 +1,257 @@
+[
+  {
+    "source_display_column": "Cooling Water - BF2_BFBD Furnace Body Cooling Water Bosh and Belly Flow",
+    "measurement": "cooling_water",
+    "field": "cw_bosh_belly_flow_m3h"
+  },
+  {
+    "source_display_column": "Cooling Water - BF2_BFBD Furnace Body Cooling Water Upper Shaft Flow",
+    "measurement": "cooling_water",
+    "field": "cw_upper_shaft_flow_m3h"
+  },
+  {
+    "source_display_column": "Delta T - Delta T avg of Row 9",
+    "measurement": "delta_t",
+    "field": "delta_t_avg_row9"
+  },
+  {
+    "source_display_column": "Delta T - R9 Delta T of Stave No 13 and 14",
+    "measurement": "delta_t",
+    "field": "delta_t_r9_stave_13_14"
+  },
+  {
+    "source_display_column": "Delta T - R9 Delta T of Stave No 23 and 24",
+    "measurement": "delta_t",
+    "field": "delta_t_r9_stave_23_24"
+  },
+  {
+    "source_display_column": "Delta T - R9 Delta T of Stave No 25 and 26",
+    "measurement": "delta_t",
+    "field": "delta_t_r9_stave_25_26"
+  },
+  {
+    "source_display_column": "Delta T - R9 Delta T of Stave No 3 and4",
+    "measurement": "delta_t",
+    "field": "delta_t_r9_stave_3_4"
+  },
+  {
+    "source_display_column": "Heatload Delta T - Heat load R9 Q4(Stave No 25-32)",
+    "measurement": "heatload_delta_t",
+    "field": "heat_load_r9_q4"
+  },
+  {
+    "source_display_column": "Heatload Delta T - Heat load Row 9",
+    "measurement": "heatload_delta_t",
+    "field": "heat_load_row_9"
+  },
+  {
+    "source_display_column": "Process Params - BF2_BODY_BOTTOM DP",
+    "measurement": "process_params",
+    "field": "body_dp_bottom"
+  },
+  {
+    "source_display_column": "Process Params - BF2_BODY_TOTAL DP",
+    "measurement": "process_params",
+    "field": "body_dp_total"
+  },
+  {
+    "source_display_column": "Process Params - BF2_CHARGES PER HR",
+    "measurement": "process_params",
+    "field": "charges_per_hour"
+  },
+  {
+    "source_display_column": "Process Params - BF2_COAL RATE PER THM",
+    "measurement": "process_params",
+    "field": "coal_rate_actual_value"
+  },
+  {
+    "source_display_column": "Process Params - BF2_PROC Hot Blast Volume",
+    "measurement": "process_params",
+    "field": "hot_blast_vol_nm3h"
+  },
+  {
+    "source_display_column": "Process Params - BF2_PROC Top Temp 1",
+    "measurement": "process_params",
+    "field": "top_temp_1"
+  },
+  {
+    "source_display_column": "Process Params - BF2_PROC Top Temp 2",
+    "measurement": "process_params",
+    "field": "top_temp_2"
+  },
+  {
+    "source_display_column": "Process Params - BF2_PROC Top Temp 3",
+    "measurement": "process_params",
+    "field": "top_temp_3"
+  },
+  {
+    "source_display_column": "Process Params - BF2_PROC Top Temp 4",
+    "measurement": "process_params",
+    "field": "top_temp_4"
+  },
+  {
+    "source_display_column": "Process Params - BF2_PROC Top Temp Average",
+    "measurement": "process_params",
+    "field": "top_temp_avg"
+  },
+  {
+    "source_display_column": "Process Params - BF2_PRODUCTION TONNES PER HR",
+    "measurement": "process_params",
+    "field": "production_per_hour"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 5757mm Temp L",
+    "measurement": "temperature_profile",
+    "field": "temp_5757_l"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6103mm Temp L",
+    "measurement": "temperature_profile",
+    "field": "temp_6103_l"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6103mm Temp M",
+    "measurement": "temperature_profile",
+    "field": "temp_6103_m"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp A",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_a"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp B",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_b"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp C",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_c"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp D",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_d"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp E",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_e"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp F",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_f"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp G",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_g"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp H",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_h"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp I",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_i"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp J",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_j"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp K",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_k"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp L",
+    "measurement": "temperature_profile",
+    "field": "temp_6795_l"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp A",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_a"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp B",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_b"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp C",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_c"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp D",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_d"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp E",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_e"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp F",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_f"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp G",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_g"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp H",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_h"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp I",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_i"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp J",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_j"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp K",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_k"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp L",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_l"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp M",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_m"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp N",
+    "measurement": "temperature_profile",
+    "field": "temp_8335_n"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 9105mm Temp E",
+    "measurement": "temperature_profile",
+    "field": "temp_9105_e"
+  },
+  {
+    "source_display_column": "Temperature Profile - BF2_BFBD Furnace Body 9105mm Temp F",
+    "measurement": "temperature_profile",
+    "field": "temp_9105_f"
+  }
+]

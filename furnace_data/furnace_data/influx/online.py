@@ -54,6 +54,7 @@ def fetch_online_df(
     start_time_override: Optional[datetime] = None,
     end_time_override: Optional[datetime] = None,
     column_naming: ColumnNaming = "display",
+    fields_by_measurement: Optional[Dict[str, List[str]]] = None,
 ) -> pd.DataFrame:
     """Fetch and merge online (real-time) measurements from InfluxDB.
 
@@ -85,6 +86,10 @@ def fetch_online_df(
             ``"display"`` keeps the legacy ``"<Measurement> - <Label>"`` shape,
             ``"field"`` returns canonical InfluxDB fields, and
             ``"prefixed_field"`` returns ``"<Measurement> - <field>"``.
+        fields_by_measurement: Optional measurement -> canonical field list.
+            When omitted, every configured field is fetched (the legacy
+            behaviour). Use this for a versioned model contract that must not
+            silently expand when unrelated telemetry is added to a measurement.
 
     Returns:
         IST-indexed :class:`pandas.DataFrame` with deduplicated columns, or an
@@ -120,6 +125,7 @@ def fetch_online_df(
             end_time=end_time,
             request_type=request_type,
             window_by=window_by,
+            fields=(fields_by_measurement or {}).get(meas),
         )
 
         if df_meas is None or df_meas.empty:

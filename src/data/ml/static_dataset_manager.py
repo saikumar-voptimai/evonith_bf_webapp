@@ -42,6 +42,8 @@ class CacheMeta:
     columns: int = 0
     csv_file: str = ""
     source_url: str = ""
+    # The publisher's Last-Modified header: when the file was built.
+    source_last_modified: str = ""
 
     @property
     def confirmed_end_date(self) -> date | None:
@@ -90,12 +92,13 @@ class StaticDatasetManager:
         _ = start_date  # legacy compat
 
         if self.remote_url:
-            return self._clip_to_current_hour(
-                fetch_static_dataset_from_url(
-                    self.remote_url,
-                    timeout_seconds=self.remote_timeout_seconds,
-                )
+            fetched = fetch_static_dataset_from_url(
+                self.remote_url,
+                timeout_seconds=self.remote_timeout_seconds,
             )
+            clipped = self._clip_to_current_hour(fetched)
+            clipped.attrs.update(fetched.attrs)
+            return clipped
 
         df_base = fetch_static_dataset_from_database()
         df_base = self._clean_dataset(df_base)
@@ -421,6 +424,7 @@ class StaticDatasetManager:
             columns=len(df.columns),
             csv_file=saved_path.name,
             source_url=self.remote_url,
+            source_last_modified=str(df.attrs.get("source_last_modified", "") or ""),
         )
 
     def _save_meta(self, meta: CacheMeta) -> None:

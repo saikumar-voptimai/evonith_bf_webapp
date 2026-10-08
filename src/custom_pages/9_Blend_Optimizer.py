@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 
 from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
+from data.bmo.si_forecast_context import LiveSiliconForecastSource
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.ore_editor_preferences import (
     apply_dust_preferences,
@@ -101,16 +102,24 @@ from utils.bmo.constraints import (
     check_blend_constraints,
 )
 from utils.bmo.fuel_prediction import evaluate_blend_with_fuel_prediction
-from utils.bmo.direct_coke_model import (
-    DirectCokeModelService,
-    DirectCokePrediction,
-    maybe_retrain_in_background,
-    retrain_kwargs_from_config,
+from utils.bmo.calculations import evaluate_blend, scale_ore_quantities_to_hot_metal
+from utils.bmo.charged_coke.bmo import (
+    ChargedCokePrediction,
+    charged_coke_prediction,
+    response_settings as charged_response_settings,
 )
-from utils.bmo.calculations import scale_ore_quantities_to_hot_metal
+from utils.bmo.charged_coke.deployments import active_bundle as active_charged_bundle
+from utils.bmo.charged_coke.service import ChargedCokeEngine
+from ui.bmo.charged_coke import render_panel as render_charged_panel
+from ui.bmo.si_forecast import render_forecast as render_si_furnace_forecast
 from utils.bmo.shift_production import production_change_pct
 from utils.bmo.types import oxide_pct_from_basis
-from utils.bmo.si_prediction import SiPredictionService, latest_cast_si
+from utils.bmo.si_forecast.deployments import active_bundle as active_si_bundle
+from utils.bmo.si_forecast.service import (
+    SiliconForecastService,
+    forecast_horizons,
+    forecast_origin as si_forecast_origin,
+)
 from utils.bmo.coke_calibration import load_calibration as load_coke_calibration
 from utils.bmo.pci_anchoring import (
     ANCHOR_HIGH_PCI,
@@ -118,7 +127,7 @@ from utils.bmo.pci_anchoring import (
     MODEL_PCI_MIN,
 )
 from utils.bmo.fuel_rates import get_recent_fuel_input_rates
-from utils.session import is_logged_in
+from utils.session import is_admin, is_logged_in, is_supervisor
 
 if not is_logged_in():
     st.warning("Please log in to access this page.")
@@ -646,39 +655,74 @@ def _render_static_dataset_bar(
             _COKE_ANCHOR_LABELS
         ):
             st.session_state.pop(model_widget_key, None)
-        st.segmented_control(
-            "Coke-rate model",
-            options=list(_COKE_ANCHOR_LABELS),
-            default=default_anchor_label,
-            key=model_widget_key,
-            on_change=_clear_bmo_results,
-        )
         direct_cfg = dict(bmo_cfg.get("data_driven_coke", {}) or {})
-        legacy_lookback = int(
-            st.session_state.get(
-                "bmo_operating_lookback_hours",
-                direct_cfg.get("lookback_hours", 6),
+        charged_cfg = dict(direct_cfg.get("charged_4h", {}) or {})
+        setting_cols = st.columns([1.25, 1.0, 1.0, 0.9], gap="medium")
+        with setting_cols[0]:
+            selected_model = st.segmented_control(
+                "Coke model",
+                options=list(_COKE_ANCHOR_LABELS),
+                default=default_anchor_label,
+                key=model_widget_key,
+                on_change=_clear_bmo_results,
+                help=(
+                    "Data-Driven uses the charged-coke forecast for the next five "
+                    "hours. Physics-Driven uses the furnace heat balance."
+                ),
             )
-        )
-        lookback_cols = st.columns(2)
-        lookback_cols[0].number_input(
-            "Coke-rate prediction window (hours)",
-            min_value=1,
-            max_value=72,
-            value=legacy_lookback,
-            step=1,
-            key="bmo_coke_anchor_lookback_hours",
-            on_change=_clear_bmo_results,
-        )
-        lookback_cols[1].number_input(
-            "Manual blend lookback (hours)",
-            min_value=1,
-            max_value=72,
-            value=int(direct_cfg.get("manual_blend_lookback_hours", 6)),
-            step=1,
-            key="bmo_manual_blend_lookback_hours",
-            on_change=_clear_bmo_results,
-        )
+        with setting_cols[1]:
+            st.number_input(
+                "Blend response",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(
+                    charged_cfg.get(
+                        "blend_response_kg_coke_per_kg_slag", 0.10
+                    )
+                ),
+                step=0.01,
+                format="%.2f",
+                key="bmo_blend_response_kg_coke_per_kg_slag",
+                disabled=not is_admin(),
+                on_change=_clear_bmo_results,
+                help=(
+                    "Extra kg coke/THM for each 1 kg/THM increase in candidate "
+                    "slag versus the current burden. The forecast already sees "
+                    "raw-material composition. Default 0.10 while plant testing "
+                    "continues; only an admin can change it."
+                ),
+            )
+        with setting_cols[2]:
+            st.number_input(
+                "Blend history (h)",
+                min_value=1,
+                max_value=72,
+                value=int(direct_cfg.get("manual_blend_lookback_hours", 6)),
+                step=1,
+                key="bmo_manual_blend_lookback_hours",
+                on_change=_clear_bmo_results,
+                help=(
+                    "Hours of recent charging used to build the manual-blend "
+                    "comparison and transition path."
+                ),
+            )
+        with setting_cols[3]:
+            st.radio(
+                "Force-predict",
+                options=[False, True],
+                index=0,
+                format_func=lambda enabled: "On" if enabled else "Off",
+                horizontal=True,
+                key="bmo_force_predict",
+                disabled=selected_model != "Data-Driven",
+                on_change=_clear_bmo_results,
+                help=(
+                    "Data-Driven only. Shows the model's raw prediction even "
+                    "when an operating parameter is outside its validated "
+                    "range. The exact violations remain visible and no "
+                    "validated error range is claimed."
+                ),
+            )
         st.divider()
         use_link = st.toggle(
             "Fetch dataset through DATA_URL",
@@ -1069,6 +1113,7 @@ def _render_blend_comparison(
     slag_balance_settings: SlagBalanceSettings,
     charge_mass_mt: float,
     lookback_hours: float,
+    furnace_si_pct: float | None = None,
     shift_baseline: dict[str, Any] | None = None,
 ) -> None:
     """Operator-focused comparison of the manual blend vs the optimizer blends.
@@ -1079,12 +1124,13 @@ def _render_blend_comparison(
       * **Inputs** - the suggested blend mix (ore share %) for each option, so the
         LP and DE mixes are read side by side against the editable manual blend.
       * **Outputs** - the outcomes that drive the decision: total / ore / fuel
-        cost, fuel rate, hot-metal Si, slag basicity / T-basicity, and slag rate.
+        cost, fuel rate, slag basicity / T-basicity, and slag rate.
 
     Args:
          - provider: EvonithBmoContextProvider - Source for the last-shift manual blend + fuel context.
          - optimizer_candidates: list[tuple[str, BlendEvaluation, float | None]] -
-           (label, blend, predicted Si) per optimizer result (LP, DE), in display order.
+           Optimizer results in display order. The third value is the common
+           furnace-state Si input retained by the fuel-evaluation contract.
          - selected_ores: list[OreInput] - Ores the optimizer chose between.
          - target_fe_mt: float - Initial Fe-only scale used to seed the full closure.
          - target_production_mt: float - HM basis for cost / slag / model fields.
@@ -1092,6 +1138,8 @@ def _render_blend_comparison(
          - fuel_ash_inputs / flux_inputs / dust_inputs / slag_balance_settings - Slag-balance inputs.
          - charge_mass_mt: float - Tonnes carried by one furnace charge. Charging
            runs 24 h, so that is a constant rather than an argument.
+         - furnace_si_pct: float | None - Current production Si forecast. It is
+           not interpreted as a candidate-blend response.
 
     Returns:
          - return None - Renders the comparison tables to Streamlit.
@@ -1250,7 +1298,7 @@ def _render_blend_comparison(
             st.warning(warning)
 
     manual_blend = None
-    manual_si: float | None = None
+    manual_si = furnace_si_pct
     if manual_quantities:
         try:
             (
@@ -1260,19 +1308,10 @@ def _render_blend_comparison(
                 _bundle_status,
                 fuel_warnings,
             ) = _load_fuel_prediction_context(provider)
-            manual_si = _predict_blend_si(
-                ores=compare_ores,
-                quantities_mt=manual_quantities,
-                process_context=process_context,
-                history_df=history_df,
-                hot_metal_target_mt=target_production_mt,
-            )
-            # The manual blend describes current operation, so it is also the
-            # best available "current burden" for the correction's reference.
-            # Persisting it lets the next optimizer run anchor the oxygen and Si
-            # terms to a real burden instead of switching them off.
+            # The live furnace forecast is independent of candidate burden. If
+            # the optional Si correction is ever enabled, using the same causal
+            # furnace value on both sides gives the honest zero blend response.
             st.session_state["bmo_manual_quantities_mt"] = dict(manual_quantities)
-            st.session_state["bmo_manual_si"] = manual_si
             manual_blend = evaluate_blend_with_fuel_prediction(
                 ores=compare_ores,
                 quantities_mt=manual_quantities,
@@ -1304,6 +1343,11 @@ def _render_blend_comparison(
                     current_quantities_mt=manual_quantities,
                     ores=compare_ores,
                     current_si_pct=manual_si,
+                    current_slag_rate_kg_per_thm=(
+                        _burden_slag_rate(compare_ores, manual_quantities)
+                        if use_charged_engine
+                        else None
+                    ),
                 ),
                 hot_metal_si_pct=manual_si,
                 charge_mass_mt=charge_mass_mt,
@@ -1514,7 +1558,6 @@ def _render_blend_comparison(
             ),
             "{:+,.1f}",
         ),
-        ("Hot-Metal Si (%)", lambda b, si: si, "{:,.3f}"),
         (
             "Slag Basicity (CaO/SiO2)",
             lambda b, si: _basicity(b, "slag_basicity_denominator_mt", "slag_basicity"),
@@ -1628,7 +1671,6 @@ def _render_blend_comparison(
             "Coke Rate, uncorrected (kg/THM)",
             "Coke Rate, corrected (kg/THM)",
             "Coke Correction (kg/THM)",
-            "Hot-Metal Si (%)",
         ],
         "🌋 Slag": [
             "Slag Rate (kg/THM)",
@@ -1991,67 +2033,315 @@ def _get_model_service() -> FuelUnitCostModelService:
     )
 
 
-def _direct_coke_config() -> dict[str, Any]:
+def _data_driven_coke_config() -> dict[str, Any]:
     return dict(_get_bmo_config().get("data_driven_coke", {}) or {})
 
 
-def _direct_coke_paths() -> tuple[Path, Path, Path]:
-    cfg = _direct_coke_config()
-    return (
-        _repo_path(str(cfg.get("bundled_model_dir", "src/assets/models/bmo_coke_robust"))),
-        _repo_path(str(cfg.get("deployment_dir", "src/storage/bmo_coke_model"))),
-        _repo_path(str(cfg.get("dataset_path", "src/assets/data/furnace_dataset.csv"))),
+def _charged_dataset_path() -> Path:
+    return _repo_path(
+        str(
+            _data_driven_coke_config().get(
+                "dataset_path", "src/assets/data/furnace_dataset.csv"
+            )
+        )
     )
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def _cached_direct_coke_prediction(
-    *,
-    dataset_path: str,
-    dataset_mtime_ns: int,
-    source_cache_version: int,
-    bundled_dir: str,
-    deployment_dir: str,
-    deployment_token: int,
-    pci_kg_per_thm: float,
-    nut_coke_kg_per_thm: float,
-    lookback_hours: int,
-    max_stale_hours: float,
-    max_source_age_hours: float,
-) -> DirectCokePrediction:
-    # mtime/token arguments deliberately key the cache even though the service
-    # only needs the paths. A refreshed CSV or activated model is never hidden by
-    # a previously cached current-state prediction.
-    del dataset_mtime_ns, source_cache_version, deployment_token
-    service = DirectCokeModelService(
-        bundled_dir=bundled_dir,
-        deployment_dir=deployment_dir,
-        max_stale_hours=max_stale_hours,
-        max_source_age_hours=max_source_age_hours,
-    )
-    return service.predict_from_history(
-        dataset_path,
-        pci_kg_per_thm=pci_kg_per_thm,
-        nut_coke_kg_per_thm=nut_coke_kg_per_thm,
-        lookback_hours=lookback_hours,
-    )
+def _charged_cfg() -> dict[str, Any]:
+    return dict(_data_driven_coke_config().get("charged_4h", {}) or {})
+
+
+def _charged_storage() -> Path:
+    return _repo_path(str(_charged_cfg().get("storage_dir", "src/storage/bmo_charged_coke")))
+
+
+def _charged_default_bundle() -> Path:
+    return _repo_path(str(_charged_cfg().get("bundle_dir", "src/assets/models/bmo_charged_coke/20261007_0400")))
 
 
 @_resource_cache(show_spinner=False)
-def _get_si_service() -> SiPredictionService:
-    """
-    Create or return the cached hot-metal Si prediction service.
+def _load_charged_engine(bundle_path: str) -> ChargedCokeEngine:
+    """One model, policy and physics per bundle directory, loaded once."""
 
-    Si is predicted for the baseline and DE blends as a display-only signal and
-    is never used as an optimization objective or constraint. Caching keeps the
-    Si model artifacts warm across reruns.
+    return ChargedCokeEngine.load(bundle_path)
 
-    Returns:
-         - return SiPredictionService - Cached Si prediction service.
-    """
 
-    bmo_cfg = _get_bmo_config()
-    return SiPredictionService(bundle_cfg=bmo_cfg.get("si_model_bundle", {}))
+def _get_charged_engine() -> ChargedCokeEngine:
+    """The accepted charged-coke model, or the one shipped with the app."""
+
+    return _load_charged_engine(str(active_charged_bundle(_charged_storage(), _charged_default_bundle())))
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _charged_recent(dataset_path: str, dataset_mtime_ns: int, bundle_path: str, end_row: str) -> pd.DataFrame:
+    """The active model's last 7 days, replayed hour by hour (cached per data/model version)."""
+
+    from utils.bmo.charged_coke.service import recent_forecasts
+
+    source = _charged_source_frame(dataset_path, dataset_mtime_ns)
+    return recent_forecasts(source, _load_charged_engine(bundle_path), end=pd.Timestamp(end_row), days=7)
+
+
+@_resource_cache(show_spinner=False)
+def _charged_source_frame(dataset_path: str, dataset_mtime_ns: int) -> pd.DataFrame:
+    """The published hourly dataset, read once per file version."""
+
+    del dataset_mtime_ns
+    return pd.read_csv(dataset_path, parse_dates=["time"]).set_index("time")
+
+
+def _charged_prediction_for_page(
+    *,
+    pci_override: float | None,
+    nut_override: float | None,
+    slag_response_coefficient: float,
+    force_predict: bool,
+) -> tuple[ChargedCokePrediction, dict[str, Any]]:
+    """Issue (once per completed hour) the charged forecast for the BMO level."""
+
+    from utils.bmo.charged_coke.bmo import _built_at
+
+    dataset_path = _charged_dataset_path()
+    mtime = int(dataset_path.stat().st_mtime_ns) if dataset_path.is_file() else 0
+    source = _charged_source_frame(str(dataset_path), mtime)
+    built_at = _built_at(dataset_path.parent / "cache_meta.json")
+    storage = _charged_storage()
+    return charged_coke_prediction(
+        source,
+        _get_charged_engine(),
+        now=pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None),
+        storage_dir=storage,
+        mode="fitted",
+        slag_response_coefficient=slag_response_coefficient,
+        built_at=built_at,
+        pci_override=pci_override,
+        nut_override=nut_override,
+        force_predict=force_predict,
+    )
+
+
+def _si_furnace_paths(
+    bmo_cfg: Mapping[str, Any],
+) -> tuple[str, Path, Path, Path]:
+    """Independent production-forecast mode and paths (never legacy Si paths)."""
+
+    cfg = dict(bmo_cfg.get("si_forecast", {}) or {})
+    mode = str(cfg.get("mode", "forecast")).strip().lower()
+    if mode not in {"legacy", "shadow", "forecast"}:
+        mode = "forecast"
+    default_bundle = _repo_path(
+        str(
+            cfg.get(
+                "default_bundle_dir",
+                "src/assets/models/bmo_si_forecast/20260924_initial",
+            )
+        )
+    )
+    storage_dir = _repo_path(
+        str(cfg.get("storage_dir", "src/storage/bmo_si_forecast"))
+    )
+    static_dataset = _repo_path(
+        str(
+            cfg.get(
+                "static_dataset_path",
+                (bmo_cfg.get("data_sources", {}) or {}).get(
+                    "static_dataset_path", "src/assets/data/furnace_dataset.csv"
+                ),
+            )
+        )
+    )
+    return mode, default_bundle, storage_dir, static_dataset
+
+
+@_resource_cache(show_spinner=False)
+def _get_si_furnace_service(
+    bundle_path: str,
+    storage_path: str,
+    forest_mtime_ns: int,
+) -> SiliconForecastService:
+    del forest_mtime_ns
+    return SiliconForecastService(
+        bundle_dir=bundle_path,
+        storage_dir=storage_path,
+        furnace_id="BF2",
+    )
+
+
+@_data_cache(ttl=300, show_spinner=False)
+def _issue_si_furnace_forecast(
+    *,
+    mode: str,
+    bundle_path: str,
+    storage_path: str,
+    static_dataset_path: str,
+    origin_at: str,
+    source_cache_version: int,
+    forest_mtime_ns: int,
+) -> dict[str, Any]:
+    """Fetch/issue once per origin, active version and explicit refresh token."""
+
+    del source_cache_version
+    origin = pd.Timestamp(origin_at)
+    service = _get_si_furnace_service(
+        bundle_path, storage_path, forest_mtime_ns
+    )
+    try:
+        source = LiveSiliconForecastSource(
+            bundle_dir=bundle_path,
+            static_dataset_path=static_dataset_path,
+        )
+        feeds = source.fetch(origin)
+        return service.issue(feeds, origin=origin, mode=mode)
+    except Exception as exc:  # noqa: BLE001 - Si must never stop BMO/coke
+        log.exception("Production HM Si forecast failed")
+        target_start = origin
+        return {
+            "schema_version": "bf2-si-forecast/2",
+            "furnace_id": "BF2",
+            "status": "insufficient_data",
+            "reason_codes": ["source_fetch_failed"],
+            "reasons": [str(exc)],
+            "si_pct": None,
+            "origin_at": origin.isoformat(),
+            "issued_at": pd.Timestamp.now(tz="UTC").isoformat(),
+            "target_start": target_start.isoformat(),
+            "target_end": (target_start + pd.Timedelta(minutes=5)).isoformat(),
+            "interval": None,
+            "horizons": [],
+        }
+
+
+@_data_cache(ttl=600, show_spinner=False)
+def _replay_si_furnace_history(
+    *,
+    bundle_path: str,
+    storage_path: str,
+    static_dataset_path: str,
+    history_end_at: str,
+    source_cache_version: int,
+    forest_mtime_ns: int,
+) -> dict[str, Any]:
+    """Causally replay the active model for the trend; never write live issues."""
+
+    del source_cache_version
+    end = pd.Timestamp(history_end_at)
+    start = end - pd.Timedelta(days=7)
+    service = _get_si_furnace_service(
+        bundle_path, storage_path, forest_mtime_ns
+    )
+    try:
+        source = LiveSiliconForecastSource(
+            bundle_dir=bundle_path,
+            static_dataset_path=static_dataset_path,
+        )
+        feeds = source.fetch_range(
+            origin_start=start,
+            origin_end=end,
+            lab_end=end,
+        )
+        replay = service.replay_history(
+            feeds,
+            origin_start=start,
+            origin_end=end,
+            available_by=feeds.fetched_at,
+        )
+        return {
+            "forecasts": replay.forecasts,
+            "actuals": replay.actuals,
+            "scored": replay.scored,
+            "error": None,
+        }
+    except Exception as exc:  # noqa: BLE001 - history cannot block live BMO
+        log.exception("Historical HM Si replay failed")
+        return {
+            "forecasts": pd.DataFrame(),
+            "actuals": pd.DataFrame(),
+            "scored": pd.DataFrame(),
+            "error": str(exc),
+        }
+
+
+def _si_furnace_forecast_for_page(
+    bmo_cfg: Mapping[str, Any], *, source_cache_version: int
+) -> tuple[str, dict[str, Any] | None]:
+    """Return the global production forecast without touching blend Si state."""
+
+    mode, default_bundle, storage_dir, static_dataset = _si_furnace_paths(bmo_cfg)
+    if mode == "legacy":
+        return mode, None
+    # TestBMO rewrites this key to testbmo_ui_frozen. A loaded sandbox must show
+    # the archived result and must never query today's production feeds.
+    if st.session_state.get("bmo_ui_frozen") is not None:
+        return mode, st.session_state.get("bmo_si_furnace_forecast")
+    active = active_si_bundle(storage_dir, default_bundle)
+    try:
+        model_mtime = int((active / "manifest.json").stat().st_mtime_ns)
+    except OSError:
+        model_mtime = 0
+    cadence = 60 if (active / "forest.npz").is_file() else 5
+    origin = si_forecast_origin(
+        pd.Timestamp.now(tz="Asia/Kolkata"), cadence_minutes=cadence
+    )
+    record = _issue_si_furnace_forecast(
+        mode=mode,
+        bundle_path=str(active),
+        storage_path=str(storage_dir),
+        static_dataset_path=str(static_dataset),
+        origin_at=origin.isoformat(),
+        source_cache_version=int(source_cache_version),
+        forest_mtime_ns=model_mtime,
+    )
+    st.session_state["bmo_si_furnace_forecast"] = record
+    return mode, record
+
+
+@st.fragment(run_every=300)
+def _render_live_si_furnace_panel(
+    bmo_cfg: Mapping[str, Any], *, source_cache_version: int
+) -> None:
+    """Refresh only the advisory Si panel every five minutes."""
+
+    mode, record = _si_furnace_forecast_for_page(
+        bmo_cfg, source_cache_version=source_cache_version
+    )
+    if mode == "legacy" or record is None:
+        return
+    _mode, default_bundle, storage_dir, static_dataset = _si_furnace_paths(bmo_cfg)
+    history: dict[str, Any] = {
+        "forecasts": pd.DataFrame(),
+        "actuals": pd.DataFrame(),
+        "scored": pd.DataFrame(),
+        "error": None,
+    }
+    # A sandbox snapshot must never reach into today's production databases.
+    if st.session_state.get("bmo_ui_frozen") is None:
+        active = active_si_bundle(storage_dir, default_bundle)
+        try:
+            model_mtime = int((active / "manifest.json").stat().st_mtime_ns)
+        except OSError:
+            model_mtime = 0
+        history_end = pd.Timestamp.now(tz="Asia/Kolkata").floor("10min")
+        history = _replay_si_furnace_history(
+            bundle_path=str(active),
+            storage_path=str(storage_dir),
+            static_dataset_path=str(static_dataset),
+            history_end_at=history_end.isoformat(),
+            source_cache_version=int(source_cache_version),
+            forest_mtime_ns=model_mtime,
+        )
+    render_si_furnace_forecast(
+        record,
+        storage_dir=storage_dir,
+        default_bundle=default_bundle,
+        static_dataset_path=static_dataset,
+        can_manage=bool(is_admin() or is_supervisor()),
+        user=str(st.session_state.get("auth_user") or "unknown"),
+        on_change=_clear_bmo_results,
+        replay_forecasts=history["forecasts"],
+        raw_actuals=history["actuals"],
+        replay_scored=history["scored"],
+        history_error=history["error"],
+    )
 
 
 def _render_energy_assumptions() -> None:
@@ -2810,54 +3100,38 @@ def _render_de_exploration(
     st.dataframe(table, use_container_width=True, hide_index=True)
 
 
-def _predict_blend_si(
-    *,
-    ores: list[OreInput],
-    quantities_mt: Mapping[str, float],
-    process_context: Mapping[str, Any] | None,
-    history_df: pd.DataFrame | None,
-    hot_metal_target_mt: float | None,
-) -> float | None:
-    """
-    Predict display-only hot-metal Si for one solved blend.
+def _live_si_result_tile(record: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Build the compact optimiser tile from the independent furnace forecast."""
 
-    The previous-cast input is the freshest cast analysis available, from the
-    history frame or the latest HM/slag report, whichever is later. The cast it
-    came from and the model's horizon are kept in ``bmo_si_basis`` so the result
-    card can say which cast the prediction is for.
-
-    Failures never interrupt the optimizer flow; a None result simply hides the
-    Si metric for that blend.
-    """
-
-    try:
-        si_service = _get_si_service()
-        prev_si, prev_si_at = latest_cast_si(
-            history_df, st.session_state.get("bmo_latest_cast")
-        )
-        st.session_state["bmo_si_basis"] = {
-            "last_cast_si_pct": prev_si,
-            "last_cast_at": prev_si_at.isoformat() if prev_si_at is not None else None,
-            "horizon_hours": si_service.horizon_hours,
-        }
-        return si_service.predict_blend_si(
-            ores=ores,
-            quantities_mt=quantities_mt,
-            process_context=process_context,
-            prev_si=prev_si,
-            hot_metal_target_mt=hot_metal_target_mt,
-        )
-    except Exception as exc:  # noqa: BLE001 - Si is advisory; never break the run
-        log.warning("Si prediction failed: %s", exc)
+    if not record:
         return None
-
-
-def _si_forecast(si_pct: float | None) -> dict[str, Any] | None:
-    """Si for one blend with the cast it is predicted for, for the result card."""
-
-    if si_pct is None:
+    usable = [
+        row
+        for row in forecast_horizons(record)
+        if row.get("si_pct") is not None
+    ]
+    if not usable:
         return None
-    return {"si_pct": float(si_pct), **(st.session_state.get("bmo_si_basis") or {})}
+    headline = usable[0]
+    horizon_minutes = int(headline.get("horizon_minutes") or 0)
+    label = (
+        "HM Si if sampled now"
+        if horizon_minutes == 0
+        else f"HM Si forecast (+{horizon_minutes / 60:g} h)"
+    )
+    return {
+        "si_pct": float(headline["si_pct"]),
+        "horizon_minutes": horizon_minutes,
+        "metric_label": label,
+        "target_at": headline.get("target_start"),
+        "issued_at": record.get("issued_at") or record.get("origin_at"),
+        "last_cast_at": record.get("last_sample_at"),
+        "last_cast_si_pct": record.get("last_sample_si_pct"),
+        "model_version": record.get("model_version") or record.get("model_id"),
+        "warnings": list(record.get("reasons") or [])
+        if str(record.get("status") or "ok") != "ok"
+        else [],
+    }
 
 
 def _load_fuel_prediction_context(
@@ -2897,6 +3171,32 @@ def _load_fuel_prediction_context(
     return model_service, process_context, history_df, bundle_status, warnings
 
 
+def _burden_slag_rate(
+    ores: list[OreInput], quantities_mt: Mapping[str, float] | None
+) -> float | None:
+    """Modelled slag rate of a burden on the BMO basis, or None."""
+
+    if not ores or not quantities_mt:
+        return None
+    try:
+        blend = evaluate_blend(
+            ores=ores,
+            quantities_mt={str(k): float(v) for k, v in quantities_mt.items()},
+            feo_in_slag_pct=feo_in_slag_pct,
+            fuel_ash_inputs=fuel_ash_inputs,
+            flux_inputs=flux_inputs,
+            dust_inputs=dust_inputs,
+            slag_balance_settings=slag_balance_settings,
+            hot_metal_target_mt=target_production_mt,
+            charge_mass_mt=charge_mass_mt,
+        )
+    except Exception:  # noqa: BLE001 - an unknown reference disables the term
+        log.exception("Could not evaluate the current burden's slag rate")
+        return None
+    value = float(blend.slag_rate_kg_per_thm or 0.0)
+    return value if value > 0 else None
+
+
 def _build_coke_correction_reference(
     *,
     settings: CokeCorrectionSettings,
@@ -2907,6 +3207,7 @@ def _build_coke_correction_reference(
     current_quantities_mt: Mapping[str, float] | None = None,
     ores: list[OreInput] | None = None,
     current_si_pct: float | None = None,
+    current_slag_rate_kg_per_thm: float | None = None,
 ) -> CokeCorrectionReference:
     """
     Resolve the operating point the coke correction is anchored to.
@@ -2943,7 +3244,9 @@ def _build_coke_correction_reference(
         )
 
     current_drivers = CokeCorrectionDrivers(
-        slag_rate_kg_per_thm=None,
+        # Only a model_current slag reference reads this (the charged engine's
+        # response); the physics correction measures slag from observed DPR.
+        slag_rate_kg_per_thm=current_slag_rate_kg_per_thm,
         flux_co2_kg_per_thm=compute_flux_co2_kg_per_thm(
             flux_inputs=flux_inputs, hot_metal_mt=hot_metal_target_mt
         ),
@@ -3109,6 +3412,44 @@ def _resolve_energy_anchor(
     )
 
 
+def _render_physics_coke_prediction(anchor: Any | None) -> None:
+    """Compact current coke-rate prediction from the energy balance."""
+
+    st.markdown("### Coke-rate prediction")
+    st.markdown("**Physics-Driven energy balance**")
+    if anchor is None:
+        st.warning(
+            "The Physics-Driven coke rate could not be calculated because a "
+            "current burden was not available."
+        )
+        return
+    if not anchor.usable:
+        notes = [str(note) for note in (anchor.notes or []) if note]
+        message = "The Physics-Driven coke rate is not available."
+        if notes:
+            message += "\n\n" + "\n".join(f"- {note}" for note in notes)
+        st.warning(message)
+        return
+
+    value_col, raw_col, adjustment_col = st.columns(3)
+    value_col.caption("Predicted coke rate")
+    value_col.markdown(f"**{anchor.coke_rate_kg_thm:,.1f} kg/THM**")
+    raw_col.caption("Raw energy balance")
+    raw_col.markdown(f"**{anchor.raw_coke_rate_kg_thm:,.1f} kg/THM**")
+    adjustment_col.caption("Calibration adjustment")
+    adjustment_col.markdown(
+        f"**{anchor.coke_rate_kg_thm - anchor.raw_coke_rate_kg_thm:+,.1f} kg/THM**"
+    )
+    st.caption(
+        "Calculated for the current burden, blast and fuel settings. This is "
+        "the coke-rate level used by the Physics-Driven optimiser."
+    )
+    if anchor.notes:
+        with st.popover("Prediction details"):
+            for note in anchor.notes:
+                st.caption(f"- {note}")
+
+
 def _selected_ores_from_editor(
     editor_df: pd.DataFrame, base_ores: list[OreInput]
 ) -> list[OreInput]:
@@ -3203,11 +3544,17 @@ fuel_rate_anchor_basis = _COKE_ANCHOR_LABELS.get(
     str(st.session_state.get("bmo_coke_rate_model", _default_anchor_label)),
     "data_driven",
 )
-coke_anchor_lookback_hours = int(
+_direct_cfg_top = dict(bmo_cfg.get("data_driven_coke", {}) or {})
+_charged_cfg_top = dict(_direct_cfg_top.get("charged_4h", {}) or {})
+blend_response_kg_coke_per_kg_slag = float(
     st.session_state.get(
-        "bmo_coke_anchor_lookback_hours",
-        (bmo_cfg.get("data_driven_coke", {}) or {}).get("lookback_hours", 6),
+        "bmo_blend_response_kg_coke_per_kg_slag",
+        _charged_cfg_top.get("blend_response_kg_coke_per_kg_slag", 0.10),
     )
+)
+use_charged_engine = fuel_rate_anchor_basis == "data_driven"
+force_data_driven_prediction = bool(
+    use_charged_engine and st.session_state.get("bmo_force_predict", False)
 )
 manual_blend_lookback_hours = int(
     st.session_state.get(
@@ -3221,6 +3568,15 @@ manual_blend_lookback_hours = int(
 # reads so they are fetched once per session and reused until the operator asks
 # for fresh data.
 source_cache_version = int(st.session_state.get("bmo_source_cache_version", 0))
+_si_forecast_mode, si_furnace_forecast = _si_furnace_forecast_for_page(
+    bmo_cfg, source_cache_version=source_cache_version
+)
+live_si_result_tile = _live_si_result_tile(si_furnace_forecast)
+live_si_pct = (
+    float(live_si_result_tile["si_pct"])
+    if live_si_result_tile is not None
+    else None
+)
 
 ui_cfg = bmo_cfg.get("ui", {})
 target_cfg = bmo_cfg.get("target", {})
@@ -3561,6 +3917,13 @@ if model_to_plant_slag_factor != 1.0:
     )
 feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
 coke_correction_settings = load_coke_correction_settings(bmo_cfg)
+if use_charged_engine:
+    # The charged engine's blend response replaces the physics correction:
+    # one linear slag term from the current burden, applied once.
+    coke_correction_settings = charged_response_settings(
+        coke_correction_settings,
+        coefficient=blend_response_kg_coke_per_kg_slag,
+    )
 # Resolved by the model switch directly below the page header.
 
 
@@ -4064,118 +4427,86 @@ if st.session_state.get("bmo_pci_state_last") != _fuel_rate_state:
     st.session_state["bmo_pci_state_last"] = _fuel_rate_state
 
 fuel_ash_inputs = fuel_ash_inputs_from_editor(edited_fuel_ash_df)
-data_driven_prediction: DirectCokePrediction | None = None
-if fuel_rate_anchor_basis == "data_driven":
-    direct_cfg = _direct_coke_config()
-    bundled_dir, deployment_dir, direct_dataset_path = _direct_coke_paths()
-    auto_retrain_cfg = dict(direct_cfg.get("auto_retrain", {}) or {})
-    if auto_retrain_cfg.get("enabled", False):
-        # Non-blocking: a gated retrain runs in a background thread once the
-        # dataset has moved on. A deployment it makes changes active.json, whose
-        # mtime keys the prediction cache below, so the next rerun uses it.
-        try:
-            maybe_retrain_in_background(
-                dataset_path=direct_dataset_path,
-                bundled_dir=bundled_dir,
-                deployment_dir=deployment_dir,
-                every_hours=float(auto_retrain_cfg.get("every_hours", 24.0)),
-                retrain_kwargs=retrain_kwargs_from_config(
-                    direct_cfg.get("retraining", {})
-                ),
-            )
-        except Exception:  # noqa: BLE001 - never block the page on retraining
-            log.exception("Could not start the automatic coke-model retrain")
-    active_pointer = deployment_dir / "active.json"
-    deployment_token = (
-        int(active_pointer.stat().st_mtime_ns) if active_pointer.is_file() else 0
-    )
-    dataset_token = (
-        int(direct_dataset_path.stat().st_mtime_ns)
-        if direct_dataset_path.is_file()
-        else 0
-    )
+data_driven_prediction: ChargedCokePrediction | None = None
+_charged_panel_payload: dict[str, Any] | None = None
+physics_prediction: Any | None = None
+if not use_charged_engine:
     try:
-        with st.spinner("Evaluating the current state with the coke-rate model..."):
-            data_driven_prediction = _cached_direct_coke_prediction(
-                dataset_path=str(direct_dataset_path),
-                dataset_mtime_ns=dataset_token,
-                source_cache_version=source_cache_version,
-                bundled_dir=str(bundled_dir),
-                deployment_dir=str(deployment_dir),
-                deployment_token=deployment_token,
-                pci_kg_per_thm=float(
-                    recent_fuel_rates.get("pci_rate_kg_thm", 0.0) or 0.0
-                ),
-                nut_coke_kg_per_thm=float(
-                    recent_fuel_rates.get(
-                        "nut_coke_rate_kg_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM
-                    )
-                    or 0.0
-                ),
-                lookback_hours=coke_anchor_lookback_hours,
-                max_stale_hours=float(direct_cfg.get("max_input_stale_hours", 6.0)),
-                max_source_age_hours=float(direct_cfg.get("max_source_age_hours", 6.0)),
+        with st.spinner("Calculating the Physics-Driven coke rate..."):
+            physics_prediction = _resolve_energy_anchor(
+                basis=fuel_rate_anchor_basis,
+                provider=provider,
+                ores=selected_ores,
+                fuel_ash_inputs=fuel_ash_inputs,
+                flux_inputs=flux_inputs,
+                dust_inputs=dust_inputs,
+                slag_balance_settings=slag_balance_settings,
+                hm_chem_values=hm_chem_values,
+                hm_snapshot=hm_snapshot,
+                hot_metal_mt=target_production_mt,
+                target_fe_mt=target_fe_mt,
+                charge_mass_mt=charge_mass_mt,
+                observed_slag_rate_kg_per_thm=observed_slag_rate,
+                lookback_hours=manual_blend_lookback_hours,
             )
-    except Exception as exc:  # noqa: BLE001 - keep energy-balance mode available
-        log.exception("Direct coke-rate prediction failed")
-        st.error(f"The Data-Driven coke model could not run: {exc}")
-    else:
-        st.session_state["bmo_data_driven_coke_prediction"] = (
-            data_driven_prediction.to_dict()
+    except Exception as exc:  # noqa: BLE001 - keep the optimiser page available
+        log.exception("Physics-Driven coke prediction failed")
+        st.error(f"The Physics-Driven coke rate could not be calculated: {exc}")
+    st.session_state["bmo_energy_anchor"] = physics_prediction
+# Always issue the charged-coke forecast as an advisory production signal.  The
+# switch above still decides which coke level the optimiser uses; Physics-Driven
+# therefore remains fully physics-anchored while operators can see and snapshot
+# the independent Data-Driven forecast and its accuracy.
+try:
+    with st.spinner("Issuing the charged-coke forecast for the latest complete hour..."):
+        data_driven_prediction, _charged_detail = _charged_prediction_for_page(
+            pci_override=(
+                float(recent_fuel_rates.get("pci_rate_kg_thm", 0.0) or 0.0)
+                if st.session_state.get("bmo_pci_override_on")
+                else None
+            ),
+            nut_override=(
+                float(recent_fuel_rates.get("nut_coke_rate_kg_thm", 0.0) or 0.0)
+                if st.session_state.get("bmo_nut_coke_override_on")
+                else None
+            ),
+            slag_response_coefficient=blend_response_kg_coke_per_kg_slag,
+            force_predict=force_data_driven_prediction,
         )
-        if data_driven_prediction.usable:
-            window_text = (
-                f"{data_driven_prediction.target_window_hours}-hour basis, "
-                if data_driven_prediction.target_window_hours
-                else ""
+except Exception as exc:  # noqa: BLE001 - keep Physics-Driven available
+    log.exception("Charged-coke forecast failed")
+    st.error(f"The charged-coke forecast could not run: {exc}")
+else:
+    st.session_state["bmo_data_driven_coke_prediction"] = data_driven_prediction.to_dict()
+    st.session_state["bmo_charged_coke_record"] = _charged_detail.get("record")
+    _record = _charged_detail.get("record") or {}
+    _dataset_path = _charged_dataset_path()
+    _bundle = str(active_charged_bundle(_charged_storage(), _charged_default_bundle()))
+    _recent = None
+    if _record.get("data_row"):
+        try:
+            _recent = _charged_recent(
+                str(_dataset_path),
+                int(_dataset_path.stat().st_mtime_ns) if _dataset_path.is_file() else 0,
+                _bundle,
+                str(_record["data_row"]),
             )
-            st.success(
-                f"Coke-rate model prediction: "
-                f"**{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM** "
-                f"({window_text}PCI "
-                f"{float(recent_fuel_rates.get('pci_rate_kg_thm', 0.0) or 0.0):,.0f} "
-                f"and nut coke "
-                f"{float(recent_fuel_rates.get('nut_coke_rate_kg_thm', 0.0) or 0.0):,.0f} "
-                f"kg/THM; median of {data_driven_prediction.hourly_prediction_count} "
-                f"hourly predictions, {data_driven_prediction.window_start_utc} "
-                f"to {data_driven_prediction.window_end_utc})."
-            )
-            if data_driven_prediction.outside_training_p01_p99:
-                st.warning(
-                    f"{len(data_driven_prediction.outside_training_p01_p99)} model "
-                    "inputs are outside their training p01-p99 ranges."
-                )
-                with st.expander("Model input range details", expanded=False):
-                    range_rows = [
-                        {
-                            "Model input": str(item.get("feature", "")).replace(
-                                "_", " "
-                            ),
-                            "Expected p01": item.get("expected_p01"),
-                            "Expected p99": item.get("expected_p99"),
-                            "Received": item.get("received"),
-                            "Lookback min": item.get("lookback_min"),
-                            "Lookback max": item.get("lookback_max"),
-                        }
-                        for item in data_driven_prediction.outside_training_details
-                    ]
-                    st.dataframe(
-                        pd.DataFrame(range_rows),
-                        hide_index=True,
-                        width="stretch",
-                    )
-        else:
-            rejected = (
-                f" The rejected stale estimate was "
-                f"{data_driven_prediction.value_kg_per_thm:,.1f} kg/THM."
-                if data_driven_prediction.value_kg_per_thm is not None
-                else ""
-            )
-            st.error(
-                "The coke-rate model prediction is unavailable: "
-                + " ".join(data_driven_prediction.reasons)
-                + rejected
-            )
+        except Exception:  # noqa: BLE001 - the trust chart must not block the page
+            log.exception("Could not replay the last 7 days")
+    _charged_panel_payload = {
+        "prediction": data_driven_prediction,
+        "detail": _charged_detail,
+        "recent": _recent,
+        "retrain": {
+            "storage_dir": _charged_storage(),
+            "dataset_path": _dataset_path,
+            "base_bundle": _charged_default_bundle(),
+            "data_end": pd.Timestamp(_record["data_row"]) if _record.get("data_row") else None,
+            "can_manage": bool(is_admin() or is_supervisor()),
+            "user": str(st.session_state.get("auth_user") or "unknown"),
+            "on_change": _clear_bmo_results,
+        },
+    }
 run_lp_clicked = False
 run_total_clicked = False
 with st.form("bmo_run_form", clear_on_submit=False):
@@ -4252,7 +4583,16 @@ if requested_lp or requested_total:
                 or st.session_state.get("bmo_manual_quantities_mt")
             ),
             ores=selected_ores,
-            current_si_pct=st.session_state.get("bmo_manual_si"),
+            current_si_pct=live_si_pct,
+            current_slag_rate_kg_per_thm=(
+                _burden_slag_rate(
+                    selected_ores,
+                    current_operating_quantities
+                    or st.session_state.get("bmo_manual_quantities_mt"),
+                )
+                if use_charged_engine
+                else None
+            ),
         )
 
         # The LEVEL the whole fuel cost sits on: the closed energy balance
@@ -4261,22 +4601,7 @@ if requested_lp or requested_total:
         # correction reference is - one number, identical for LP, DE, and every
         # DE candidate, so the objective is a single fixed function. Blend
         # sensitivity is the correction's job, not the anchor's.
-        energy_anchor = _resolve_energy_anchor(
-            basis=fuel_rate_anchor_basis,
-            provider=provider,
-            ores=selected_ores,
-            fuel_ash_inputs=fuel_ash_inputs,
-            flux_inputs=flux_inputs,
-            dust_inputs=dust_inputs,
-            slag_balance_settings=slag_balance_settings,
-            hm_chem_values=hm_chem_values,
-            hm_snapshot=hm_snapshot,
-            hot_metal_mt=target_production_mt,
-            target_fe_mt=target_fe_mt,
-            charge_mass_mt=charge_mass_mt,
-            observed_slag_rate_kg_per_thm=observed_slag_rate,
-            lookback_hours=manual_blend_lookback_hours,
-        )
+        energy_anchor = physics_prediction
         st.session_state["bmo_energy_anchor"] = energy_anchor
         anchor_prediction_details: dict[str, Any] | None = None
         if fuel_rate_anchor_basis == "data_driven":
@@ -4360,15 +4685,6 @@ if requested_lp or requested_total:
                     )
                     for flux in flux_inputs
                 ]
-                # Si is predicted before the fuel re-evaluation, not after, so the
-                # correction's Si term sees this blend's own Si instead of nothing.
-                lp_si = _predict_blend_si(
-                    ores=selected_ores,
-                    quantities_mt=lp_physical_result.quantities_mt,
-                    process_context=process_context,
-                    history_df=history_df,
-                    hot_metal_target_mt=target_production_mt,
-                )
                 lp_result = evaluate_blend_with_fuel_prediction(
                     ores=selected_ores,
                     quantities_mt=lp_physical_result.quantities_mt,
@@ -4383,7 +4699,7 @@ if requested_lp or requested_total:
                     hot_metal_target_mt=target_production_mt,
                     coke_correction_settings=coke_correction_settings,
                     coke_correction_reference=coke_correction_reference,
-                    hot_metal_si_pct=lp_si,
+                    hot_metal_si_pct=live_si_pct,
                     fuel_rate_anchor_basis=fuel_rate_anchor_basis,
                     anchor_coke_rate_kg_thm=anchor_coke_rate,
                     anchor_prediction_details=anchor_prediction_details,
@@ -4413,7 +4729,6 @@ if requested_lp or requested_total:
                     max_burden_qty_mt=max_burden_qty_mt,
                 )
                 lp_result.feasible = len(lp_result.violations) == 0
-                st.session_state["bmo_lp_si"] = lp_si
         # LP always runs in this rerun and shares DE's fuel-prediction context, so
         # always persist it. This keeps the LP tab and the LP-vs-DE comparison on
         # the SAME live snapshot DE used, avoiding a stale LP (from an earlier,
@@ -4534,11 +4849,9 @@ if requested_lp or requested_total:
                 hot_metal_target_mt=target_production_mt,
                 coke_correction_settings=coke_correction_settings,
                 coke_correction_reference=coke_correction_reference,
-                # Constant across candidates on purpose: the Si model is
-                # blend-flat, so calling it per candidate would buy thousands of
-                # inferences for a fraction of a kg/THM. A fixed offset applies
-                # equally to every candidate and cannot distort the search.
-                hot_metal_si_pct=st.session_state.get("bmo_lp_si"),
+                # This is the independent live furnace forecast, not a proposed-
+                # blend response. It is constant across candidates by design.
+                hot_metal_si_pct=live_si_pct,
                 fuel_rate_anchor_basis=fuel_rate_anchor_basis,
                 anchor_coke_rate_kg_thm=anchor_coke_rate,
                 anchor_prediction_details=anchor_prediction_details,
@@ -4602,21 +4915,8 @@ if requested_lp or requested_total:
                 de_result = copy.deepcopy(lp_result)
                 de_result.diagnostics = dict(de_result.diagnostics)
                 de_result.diagnostics["de_fell_back_to_lp"] = True
-                de_si = st.session_state.get("bmo_lp_si")
-            elif de_result is not None:
-                # Display-only Si prediction for the DE blend (Si is not optimized).
-                de_si = _predict_blend_si(
-                    ores=selected_ores,
-                    quantities_mt=de_result.quantities_mt,
-                    process_context=process_context,
-                    history_df=history_df,
-                    hot_metal_target_mt=target_production_mt,
-                )
-            else:
-                de_si = None
             st.session_state["bmo_de_result"] = de_result
             st.session_state["bmo_de_errors"] = de_errors
-            st.session_state["bmo_de_si"] = de_si
 
 
 lp_result = st.session_state.get("bmo_lp_result")
@@ -4665,7 +4965,12 @@ if lp_result is not None or de_result is not None:
         log.exception("Could not compute last-shift production")
         shift_baseline = {}
     tab_lp, tab_de, tab_cmp, tab_acc = st.tabs(
-        ["Balanced Optimizer", "Intensive Optimizer", "Comparison", "Model accuracy"]
+        [
+            "Balanced Optimizer",
+            "Intensive Optimizer",
+            "Comparison",
+            "Model accuracy",
+        ]
     )
 
     with tab_lp:
@@ -4680,7 +4985,7 @@ if lp_result is not None or de_result is not None:
                 is_lp_mode=True,
                 charge_mass_mt=charge_mass_mt,
                 shift_baseline=shift_baseline,
-                si_forecast=_si_forecast(st.session_state.get("bmo_lp_si")),
+                si_forecast=live_si_result_tile,
             )
             # Controls and Path are ONE tab, not two.
             #
@@ -4806,7 +5111,7 @@ if lp_result is not None or de_result is not None:
                 observed_slag_rate_kg_per_thm=observed_slag_rate,
                 charge_mass_mt=charge_mass_mt,
                 shift_baseline=shift_baseline,
-                si_forecast=_si_forecast(st.session_state.get("bmo_de_si")),
+                si_forecast=live_si_result_tile,
             )
             de_blend_tab, de_fuel_tab, de_slag_tab, de_search_tab = st.tabs(
                 ["🧱 Blend", "🔥 Fuel & coke", "🌋 Slag", "🔎 Search"]
@@ -4850,15 +5155,15 @@ if lp_result is not None or de_result is not None:
     with tab_cmp:
         # Operator-focused comparison: the manual blend against each optimizer
         # blend (LP + DE) shown side by side -- inputs (blend mix) and outputs
-        # (cost, fuel rate, Si, basicity, slag rate) on the same target-Fe basis.
+        # (cost, fuel rate, basicity, slag rate) on the same target-Fe basis.
         optimizer_candidates: list[tuple[str, Any, float | None]] = []
         if lp_result is not None:
             optimizer_candidates.append(
-                ("Balanced Optimizer", lp_result, st.session_state.get("bmo_lp_si"))
+                ("Balanced Optimizer", lp_result, live_si_pct)
             )
         if de_result is not None:
             optimizer_candidates.append(
-                ("Intensive Optimizer", de_result, st.session_state.get("bmo_de_si"))
+                ("Intensive Optimizer", de_result, live_si_pct)
             )
         if optimizer_candidates:
             _render_blend_comparison(
@@ -4874,6 +5179,7 @@ if lp_result is not None or de_result is not None:
                 slag_balance_settings=slag_balance_settings,
                 charge_mass_mt=charge_mass_mt,
                 lookback_hours=manual_blend_lookback_hours,
+                furnace_si_pct=live_si_pct,
                 shift_baseline=shift_baseline,
             )
         else:
@@ -4885,8 +5191,21 @@ if lp_result is not None or de_result is not None:
     with tab_acc:
         render_model_accuracy_tab()
 
-    # Below every number it describes, never above. The commentary is a reading
-    # of the results, so it must not be the first thing an operator sees.
+    if si_furnace_forecast is not None:
+        st.divider()
+        _render_live_si_furnace_panel(
+            bmo_cfg, source_cache_version=source_cache_version
+        )
+
+    # The operating trend belongs after the recommendations it supports and
+    # immediately before the commentary that interprets those recommendations.
+    if not use_charged_engine:
+        st.divider()
+        _render_physics_coke_prediction(physics_prediction)
+    if _charged_panel_payload is not None:
+        st.divider()
+        render_charged_panel(**_charged_panel_payload)
+
     st.divider()
     render_furnace_commentary(
         live_snapshot=_live_process_snapshot(),
@@ -4898,6 +5217,27 @@ if lp_result is not None or de_result is not None:
         energy_anchor=st.session_state.get("bmo_energy_anchor"),
         production_target_mt=target_production_mt,
     )
+
+elif si_furnace_forecast is not None:
+    st.divider()
+    _render_live_si_furnace_panel(
+        bmo_cfg, source_cache_version=source_cache_version
+    )
+    if not use_charged_engine:
+        st.divider()
+        _render_physics_coke_prediction(physics_prediction)
+    if _charged_panel_payload is not None:
+        st.divider()
+        render_charged_panel(**_charged_panel_payload)
+elif _charged_panel_payload is not None or not use_charged_engine:
+    # Before the first optimiser run there are no results or commentary yet;
+    # keep both independent coke estimates available below the run controls.
+    if not use_charged_engine:
+        st.divider()
+        _render_physics_coke_prediction(physics_prediction)
+    if _charged_panel_payload is not None:
+        st.divider()
+        render_charged_panel(**_charged_panel_payload)
 
 st.markdown("### Diagnostics and assumptions")
 with st.expander("Hot Metal Chemistry Assumptions", expanded=False):

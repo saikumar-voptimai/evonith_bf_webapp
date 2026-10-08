@@ -86,6 +86,7 @@ class BaseDataFetcher:
         end_time: Optional[datetime] = None,
         request_type: str = "ts",
         window_by: Optional[str] = "1h",
+        fields: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """Fetch data from InfluxDB for the requested time window.
 
@@ -130,6 +131,7 @@ class BaseDataFetcher:
             end_time,
             type=request_type,
             window_by=window_by,
+            fields=fields,
         )
 
         client = InfluxDBClient3(

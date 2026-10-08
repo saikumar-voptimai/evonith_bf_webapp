@@ -1,0 +1,96 @@
+{
+  "version": "20260915",
+  "name": "Structured_fitted_mix",
+  "frozen_at": "2026-09-15T00:00:00",
+  "last_training_target": "2026-09-14T23:00:00",
+  "target": {
+    "definition": "1000 * sum(COKE_CALC_MT[t+2..t+5]) / sum(PRODUCTIONTONNESPERHR[t+2..t+5])",
+    "rows_ahead": [
+      2,
+      5
+    ],
+    "plain": "Charged coke over the 4-hour block starting 1 h and ending 5 h after the latest complete hour.",
+    "unit": "kg/THM"
+  },
+  "anchor": "1000 * sum(COKE_CALC_MT[t-3..t]) / sum(PRODUCTIONTONNESPERHR[t-3..t])",
+  "features": [
+    "charge4",
+    "charge24",
+    "eta",
+    "wind",
+    "blast",
+    "raft",
+    "oxygen",
+    "pressure",
+    "top_temp",
+    "hm_si",
+    "hm_ti",
+    "hm_temp",
+    "ore_fe",
+    "sinter_fe",
+    "coke_ash",
+    "pci_ash",
+    "csr",
+    "cri",
+    "sinter_share",
+    "pellet_share"
+  ],
+  "sequence_hours": 12,
+  "delta_scale": 15.0,
+  "mix": {
+    "linear": 0.5,
+    "attention": 0.5
+  },
+  "attention": [
+    {
+      "seed": 7,
+      "epochs": 38,
+      "dim": 10,
+      "relative": true,
+      "skip": true
+    },
+    {
+      "seed": 17,
+      "epochs": 39,
+      "dim": 10,
+      "relative": true,
+      "skip": true
+    },
+    {
+      "seed": 37,
+      "epochs": 45,
+      "dim": 10,
+      "relative": true,
+      "skip": true
+    }
+  ],
+  "controls": {
+    "order": [
+      "pci",
+      "nut",
+      "slag"
+    ],
+    "reference_hours": 24,
+    "reference_min_periods": 12,
+    "clip_lower": [
+      -40.0,
+      -20.0,
+      -60.0
+    ],
+    "clip_upper": [
+      40.0,
+      20.0,
+      60.0
+    ],
+    "coefficients_kg_coke_per_kg": [
+      -0.4516221253302809,
+      -0.21893900003601516,
+      0.02045182450401985
+    ]
+  },
+  "source": {
+    "model_pickle_sha256": "f05ba9b13f114a85514c0783940f660d8980750a1d5cefcac7d4b6556756d94d",
+    "policy_support_sha256": "5530053c3ecce0f6fde010278c32b4ea8afae1354efa4eebb00174449eb8cc7a",
+    "package": "BF02_All_Conditions_Research_Package.zip"
+  }
+}

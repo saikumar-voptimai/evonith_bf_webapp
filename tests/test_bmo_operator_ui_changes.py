@@ -102,15 +102,22 @@ def test_operator_model_names_and_data_driven_default() -> None:
         "Data-Driven": "data_driven",
     }
     assert config["fuel_rate_anchor_basis"] == "data_driven"
-    assert config["data_driven_coke"]["lookback_hours"] == 6
     assert config["data_driven_coke"]["manual_blend_lookback_hours"] == 6
     assert "XGBoost" not in page_source
     assert "XGBoost" not in component_source
     assert "Run Balanced Optimizer" in page_source
     assert "Run Intensive Optimizer" in page_source
     assert '"Intensive Optimizer Result"' in page_source
-    assert "Coke-rate prediction window (hours)" in page_source
-    assert "Manual blend lookback (hours)" in page_source
+    assert "Coke-rate prediction window (hours)" not in page_source
+    assert '"Coke model"' in page_source
+    assert '"Blend response"' in page_source
+    assert '"Blend history (h)"' in page_source
+    assert (
+        config["data_driven_coke"]["charged_4h"][
+            "blend_response_kg_coke_per_kg_slag"
+        ]
+        == pytest.approx(0.10)
+    )
     assert config["target"]["target_production_mt"] == pytest.approx(2270.0)
     assert config["burden_capacity"]["max_charges_per_hour"] == pytest.approx(6.35)
     assert "Slag Correction Factor" not in component_source
@@ -138,6 +145,53 @@ def test_fuel_ash_panel_is_collapsed_at_page_end_without_prices() -> None:
     assert "show_prices=False" in page_source[panel_pos:diagnostics_call_pos]
     assert "rate_editable=False" in page_source[panel_pos:diagnostics_call_pos]
     assert "show_fuel_ash_editor" not in config["ui"]
+
+
+def test_charged_coke_trend_sits_between_results_and_commentary() -> None:
+    root = Path(__file__).resolve().parents[1]
+    page_source = (root / "src/custom_pages/9_Blend_Optimizer.py").read_text(
+        encoding="utf-8"
+    )
+    charged_ui = (root / "src/ui/bmo/charged_coke.py").read_text(encoding="utf-8")
+
+    results_pos = page_source.index("tab_lp, tab_de, tab_cmp, tab_acc = st.tabs")
+    trend_pos = page_source.index(
+        "render_charged_panel(**_charged_panel_payload", results_pos
+    )
+    commentary_pos = page_source.index("render_furnace_commentary(", trend_pos)
+    physics_pos = page_source.index(
+        "_render_physics_coke_prediction(physics_prediction)", results_pos
+    )
+    issue_block = page_source[
+        page_source.index("data_driven_prediction: ChargedCokePrediction") :
+        page_source.index("run_lp_clicked = False")
+    ]
+
+    assert results_pos < trend_pos < commentary_pos
+    assert results_pos < physics_pos < commentary_pos
+    assert "render_model_accuracy_tab(" in page_source
+    assert '"Model accuracy"' in page_source
+    assert '"Force-predict"' in page_source
+    assert 'key="bmo_force_predict"' in page_source
+    assert "force_predict=force_data_driven_prediction" in page_source
+    assert "if use_charged_engine:" not in issue_block
+    assert "Always issue the charged-coke forecast as an advisory" in issue_block
+    assert "render_charged_status" not in page_source
+    assert "show_status=False" not in page_source
+    assert charged_ui.index('st.markdown("### Charged coke trend")') < charged_ui.index(
+        "render_status(prediction, detail)"
+    )
+    assert '.metric(' not in charged_ui
+    assert "Charged coke is the coke physically charged into the furnace" in charged_ui
+    assert "**Force predict is ON.**" in charged_ui
+    assert 'with st.popover("Forecast details")' in charged_ui
+
+    accuracy_ui = (root / "src/ui/bmo/model_accuracy.py").read_text(
+        encoding="utf-8"
+    )
+    active_accuracy = accuracy_ui[accuracy_ui.index("def render_model_accuracy_tab") :]
+    assert "render_model_report" in active_accuracy
+    assert "render_data_driven_coke_accuracy()" not in active_accuracy
 
 
 def test_model_input_alignment_step_and_diagnostics_defaults() -> None:
@@ -1437,6 +1491,8 @@ def test_overview_strip_shows_predicted_si_with_its_horizon(monkeypatch) -> None
         "last_cast_si_pct": 0.91,
         "last_cast_at": last_cast.tz_convert("UTC").isoformat(),
         "horizon_hours": 3,
+        "issued_at": last_cast.tz_convert("UTC").isoformat(),
+        "model_version": "20261008_test",
     }
 
     components.render_blend_metrics(
@@ -1448,28 +1504,26 @@ def test_overview_strip_shows_predicted_si_with_its_horizon(monkeypatch) -> None
         "Production (MT/day)",
         "Final Fe (%)",
         "Δ Production vs last shift",
-        "Predicted HM Si (%)",
+        "HM Si forecast (+3 h)",
     ]
-    assert captured["Predicted HM Si (%)"] == "0.48"
+    assert captured["HM Si forecast (+3 h)"] == "0.48%"
     target = last_cast + pd.Timedelta(hours=3)
-    horizon = [text for text in subscripts if text.startswith("Horizon")]
-    assert len(horizon) == 1
-    assert "Horizon 3 h" in horizon[0]
-    assert f"{target:%H:%M}" in horizon[0] or f"{target:%d %b %H:%M}" in horizon[0]
-    assert "Advisory only" in helps["Predicted HM Si (%)"]
-    assert "0.91%" in helps["Predicted HM Si (%)"]
-    # A fresh cast carries no staleness warning.
-    assert not any("old" in text for text in subscripts)
+    help_text = helps["HM Si forecast (+3 h)"]
+    assert f"{target:%d %b %H:%M} IST" in help_text
+    assert "Advisory furnace forecast" in help_text
+    assert "0.91%" in help_text
+    assert "20261008_test" in help_text
+    assert subscripts == []
 
-    # A stale analysis says so, because the prediction is anchored to it.
-    subscripts.clear()
-    stale = {**forecast, "last_cast_at": (last_cast - pd.Timedelta(days=3)).isoformat()}
+    # Data warnings stay behind Help instead of taking over the result strip.
+    warned = {**forecast, "warnings": ["The latest raw Si sample is 73 hours old."]}
     components.render_blend_metrics(
-        "Balanced Optimizer Result", _blend(), si_forecast=stale
+        "Balanced Optimizer Result", _blend(), si_forecast=warned
     )
-    assert any("h old" in text for text in subscripts)
+    assert "73 hours old" in helps["HM Si forecast (+3 h)"]
+    assert subscripts == []
 
     # No Si model output: the strip keeps its four tiles.
     captured.clear()
     components.render_blend_metrics("Balanced Optimizer Result", _blend())
-    assert "Predicted HM Si (%)" not in captured
+    assert "HM Si forecast (+3 h)" not in captured

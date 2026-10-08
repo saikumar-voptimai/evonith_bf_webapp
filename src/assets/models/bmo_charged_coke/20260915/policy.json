@@ -1,0 +1,162 @@
+{
+  "parameters": {
+    "cutoff": "2026-09-15 00:00:00",
+    "features": [
+      "wind",
+      "pci",
+      "eta",
+      "blast",
+      "prod",
+      "raft",
+      "dp",
+      "wind_cv4",
+      "prod_cv4",
+      "pci_cv4",
+      "blast_range4",
+      "eta_range4",
+      "slag",
+      "nut"
+    ],
+    "novelty_warn": 1.31440031636271,
+    "novelty_stop": 1.8858765165150222,
+    "spread_warn": 3.6218989358526055,
+    "spread_stop": 6.007074027576214,
+    "bins": {
+      "cruise": {
+        "radius": 16.068509428312495,
+        "n": 766,
+        "days": 120,
+        "mae": 7.997815499755173,
+        "rmse": 11.05428533866017,
+        "p90_abs_error": 16.026126180267227,
+        "max_abs_error": 60.32250681145581,
+        "bias": 0.5094353138533624,
+        "naive_mae": 8.869885195493353,
+        "change_r2": 0.09793104774294503,
+        "level_r2": 0.3951640200661479
+      },
+      "mild": {
+        "radius": 17.885870244666194,
+        "n": 1506,
+        "days": 144,
+        "mae": 8.997396944600228,
+        "rmse": 13.196440534325706,
+        "p90_abs_error": 17.787617998662682,
+        "max_abs_error": 147.89573186578565,
+        "bias": -0.18932909694059535,
+        "naive_mae": 9.793519665800419,
+        "change_r2": 0.12164480001611011,
+        "level_r2": 0.3346936546428835
+      },
+      "moderate": {
+        "radius": 21.550767371940708,
+        "n": 555,
+        "days": 97,
+        "mae": 10.709477202328648,
+        "rmse": 14.079846302667123,
+        "p90_abs_error": 21.528063488162093,
+        "max_abs_error": 75.73213159502967,
+        "bias": 1.5646546394693894,
+        "naive_mae": 11.324100473684961,
+        "change_r2": 0.1193751418344432,
+        "level_r2": 0.2902324395400905
+      }
+    },
+    "unusual_radius": 23.86771783941407,
+    "unusual_n": 227,
+    "display_width_cap": 35.0,
+    "minimum_calibration_hours": 50,
+    "minimum_calibration_days": 10,
+    "recovery_updates": 2,
+    "interpretation": "Empirical 90% error ranges, not Gaussian variance or guaranteed conditional coverage. Thresholds use pre-Sep15 OOF data; policy is designed retrospectively."
+  },
+  "thresholds": {
+    "core": {
+      "wind": [
+        105000,
+        150000
+      ],
+      "blast": [
+        1150,
+        1350
+      ],
+      "prod": [
+        80,
+        110
+      ],
+      "pci": [
+        150,
+        250
+      ],
+      "eta": [
+        41.0000001,
+        65
+      ],
+      "raft": [
+        2100,
+        2450
+      ],
+      "gas_sum": [
+        38,
+        47
+      ]
+    },
+    "extended": {
+      "wind": [
+        95000,
+        120000
+      ],
+      "blast": [
+        1100,
+        1300
+      ],
+      "prod": [
+        75,
+        110
+      ],
+      "pci": [
+        120,
+        250
+      ],
+      "eta": [
+        39.5,
+        46
+      ],
+      "raft": [
+        2050,
+        2450
+      ],
+      "gas_sum": [
+        36,
+        49
+      ]
+    },
+    "variability": {
+      "wind_cv4": [
+        0.02,
+        0.05
+      ],
+      "prod_cv4": [
+        0.03,
+        0.08
+      ],
+      "pci_cv4": [
+        0.08,
+        0.2
+      ],
+      "blast_range4": [
+        40,
+        80
+      ],
+      "eta_range4": [
+        1.5,
+        3
+      ]
+    },
+    "minimum_history": 9,
+    "minimum_reference": 12,
+    "large_charge_cv": 0.25,
+    "mild_charge_cv": 0.1,
+    "note": "Proposed model display limits, not equipment protection limits. Fixed before scoring this replay; retrospectively designed."
+  }
+}

@@ -21,3 +21,15 @@ nul
 neonctl
 src/storage/furnacemind/mrag_images/
 src/assets/tmp
+
+# BMO runtime records and approved/retrained deployments. Production bundles
+# are versioned under src/assets/models instead.
+src/storage/bmo_charged_coke/
+src/storage/bmo_coke_model/
+src/storage/bmo_si_forecast/
+
+# Local integration packages, replays, browser logs and test output.
+tmp/
+
+# Unreferenced local backup retained outside the production bundle path.
+src/assets/models/old_bmo_16_09_26/

@@ -187,6 +187,10 @@ def fetch_static_dataset_from_url(
     try:
         with urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response:
             payload = response.read()
+            # When the publisher built the file. The newest row is the hour in
+            # progress, so which rows are complete depends on this, not on when
+            # the app downloaded it.
+            last_modified = response.headers.get("Last-Modified", "") or ""
     except (HTTPError, URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(
             f"Could not fetch static furnace dataset from {source_url}: {exc}"
@@ -213,6 +217,7 @@ def fetch_static_dataset_from_url(
 
     df = _normalise_index(df, assume_naive_utc=False)
     df = _rename_columns_for_app(df)
+    df.attrs["source_last_modified"] = last_modified
     if df.empty:
         raise RuntimeError(f"Static furnace dataset URL returned 0 rows: {source_url}")
     if not isinstance(df.index, pd.DatetimeIndex) or df.index.isna().any():
