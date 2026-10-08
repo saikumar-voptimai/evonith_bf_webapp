@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -14,20 +15,22 @@ class TimeSeriesDataFetcher(BaseDataFetcher):
     def fetch_data(
         self,
         time_interval: str,
-        start_time: datetime,
-        end_time: datetime,
+        start_time: datetime | None,
+        end_time: datetime | None,
         request_type: str = "ts",
         window_by: str = None,
-    ) -> dict:
+        fields: Sequence[str] | None = None,
+    ) -> pd.DataFrame | dict:
         """
         Fetch raw time-series data for plotting.
 
         Args:
             start_time (datetime): Start of the time range.
             end_time (datetime): End of the time range.
+            fields: Optional configured canonical fields to request.
 
         Returns:
-            dict: Time-series data for each variable (timestamps and values).
+            DataFrame of fetched values, or a dummy-data mapping in debug mode.
         """
         if self.debug:
             return self._get_dummy_data()
@@ -38,6 +41,7 @@ class TimeSeriesDataFetcher(BaseDataFetcher):
             end_time,
             request_type=request_type,
             window_by=window_by,
+            fields=fields,
         )
         raw_df = raw_df.select_dtypes(exclude=["object"])
         return raw_df
