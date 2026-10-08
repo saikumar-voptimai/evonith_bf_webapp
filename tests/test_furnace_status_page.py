@@ -19,7 +19,7 @@ from streamlit.testing.v1 import AppTest
 
 from domain import furnace_status as fs
 from ui import furnace_status_page as page
-from ui import furnace_status_orchestration as fs_data
+from data import furnace_status_service as fs_data
 from ui import vboard_sections
 from ui.vboard_sections import (
     FURNACE_STATUS,

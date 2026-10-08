@@ -293,6 +293,9 @@ Furnace Status reads canonical raw fields through the generic V-Board
 `TimeSeriesDataFetcher`; Current and Last data use the latest finite raw sample,
 while trend charts and their minimum/maximum/average statistics use windowed
 data independently.
+`src/data/furnace_status_service.py` is the Furnace Status data service
+responsible for feature-local caching, shared `TimeSeriesDataFetcher` calls,
+normalization, and domain-result construction.
 
 **Chart types:**
 - **Circumferential temperature** — ring-by-ring sensor heatmap at each elevation level
@@ -300,8 +303,8 @@ data independently.
 - **Heatload contours** — stave-level heat loads across R6–R10
 
 **Dependencies:** `ui/vboard_sections.py`, `ui/vboard_visualisations.py`,
-`domain/furnace_status.py`, `ui/furnace_status_orchestration.py`, `plotters/`,
-`data/fetchers/`, `geometries/furnace_gen.py`
+`domain/furnace_status.py`, `src/data/furnace_status_service.py`,
+`plotters/`, `data/fetchers/`, `geometries/furnace_gen.py`
 
 ---
 

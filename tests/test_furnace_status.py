@@ -13,7 +13,7 @@ import pytest
 
 from domain import furnace_status as fs
 from furnace_data.influx.query import influx_fields
-from ui import furnace_status_orchestration as fs_data
+from data import furnace_status_service as fs_data
 
 NOW = datetime(2026, 10, 5, 9, 30, 45, tzinfo=timezone.utc)
 
@@ -1050,25 +1050,28 @@ def test_domain_is_pure_and_deleted_fetch_wrappers_are_not_recreated() -> None:
     ):
         assert f"def {removed}(" not in source
 
+    service_path = repo / "src" / "data" / "furnace_status_service.py"
+    old_orchestration_path = repo / "src" / "ui" / "furnace_status_orchestration.py"
+    assert service_path.exists()
+    assert not old_orchestration_path.exists()
+
     feature_source = "\n".join(
         (repo / path).read_text(encoding="utf-8")
         for path in (
             "src/ui/furnace_status_page.py",
-            "src/ui/furnace_status_orchestration.py",
+            "src/data/furnace_status_service.py",
             "src/custom_pages/3_Data_Visualisation.py",
         )
     )
     assert "InfluxDBClient3" not in feature_source
     assert "fetch_online_df" not in feature_source
-    orchestration_tree = ast.parse(
-        (repo / "src/ui/furnace_status_orchestration.py").read_text(encoding="utf-8")
-    )
-    orchestration_imports = {
+    service_tree = ast.parse(service_path.read_text(encoding="utf-8"))
+    service_imports = {
         node.module
-        for node in ast.walk(orchestration_tree)
+        for node in ast.walk(service_tree)
         if isinstance(node, ast.ImportFrom) and node.module
     }
-    assert "furnace_data.influx.online" not in orchestration_imports
-    assert "furnace_data.influx.base" not in orchestration_imports
-    assert "furnace_data.influx.query" not in orchestration_imports
+    assert "furnace_data.influx.online" not in service_imports
+    assert "furnace_data.influx.base" not in service_imports
+    assert "furnace_data.influx.query" not in service_imports
     assert not (repo / "src" / "data" / "furnace_status.py").exists()

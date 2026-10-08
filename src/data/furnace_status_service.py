@@ -1,9 +1,8 @@
-"""Thin data coordinator for the V-Board Furnace Status section.
+"""Data service for the V-Board Furnace Status feature.
 
-All reads use the existing generic V-Board chain:
-``TimeSeriesDataFetcher.fetch_data`` → ``BaseDataFetcher.fetch_averaged_data``
-→ the shared Influx query builder. Business rules stay in
-``domain.furnace_status``.
+Coordinates cached measurement reads through ``TimeSeriesDataFetcher`` and
+delegates business rules and result construction to
+``domain.furnace_status``. This module performs no UI rendering.
 """
 
 from __future__ import annotations

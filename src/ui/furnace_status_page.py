@@ -1,7 +1,7 @@
 """Render the V-Board Furnace Status section and its parameter trends.
 
 Value resolution and formatting live in :mod:`domain.furnace_status`; live
-fetching is isolated in :mod:`ui.furnace_status_orchestration`. This module
+fetching is isolated in :mod:`data.furnace_status_service`. This module
 turns those results into Streamlit elements and HTML.
 
 Nested views use validated, V-Board-namespaced query parameters.
@@ -31,8 +31,8 @@ from typing import Literal
 import plotly.graph_objects as go
 import streamlit as st
 
+from data import furnace_status_service as fs_data
 from domain import furnace_status as fs
-from ui import furnace_status_orchestration as fs_data
 from utils.logger import get_logger
 
 log = get_logger(__name__)

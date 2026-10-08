@@ -3,7 +3,7 @@
 This module owns the parameter catalogue, value resolution, derived values,
 formatting, availability classification, view-state validation, range rules,
 and trend transformations. It intentionally has no Streamlit, InfluxDB, query,
-or network dependencies; live-data orchestration stays at the UI feature
+or network dependencies; live-data orchestration stays at the data service
 boundary.
 
 Conventions
