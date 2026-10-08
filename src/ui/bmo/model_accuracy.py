@@ -1,20 +1,8 @@
-"""Does the coke-rate model actually work? Shown, not asserted.
+"""Accuracy and governed deployment for BMO production models.
 
-Two predictions on this page cannot be checked by eye — the coke rate the fuel
-cost is built on, and the silicon that drives the correction's thermal term. An
-operator has no way to tell a good one from a bad one at the moment it is shown.
-
-So this panel puts both against what the plant actually measured, day by day,
-over the recent record. Not a summary statistic: the whole series, so a run of
-days where the model drifted is visible as a run rather than averaged away.
-
-The retrain control lives here for the same reason. Refitting the offset is
-only sensible when you can see what it is being fitted to, and the effect of a
-refit shows up immediately in the chart beneath it.
-
-The measured target is built from paired hourly COKE_CALC_MT and hot-metal
-production. Only complete days enter the offset; the current partial day is
-still shown by the live BMO rate but cannot distort calibration.
+The operator page reports the active charged-coke forecast, the physics balance
+and the production HM Si forecast. The retired proposed-blend Si model is not
+loaded or displayed here.
 """
 
 from __future__ import annotations
@@ -58,22 +46,6 @@ def _coke_history(
 
     result = build_daily_history(days)
     return result.frame, list(result.warnings), result.excluded
-
-
-@st.cache_data(ttl=1800, show_spinner=False)
-def _si_history(days: int) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """Daily predicted-vs-realised silicon, with the rebuild's own report."""
-
-    from utils.bmo.si_history import build_si_history
-
-    result = build_si_history(days)
-    return result.frame, {
-        "derived": result.derived,
-        "filled": result.filled,
-        "filled_names": list(result.filled_names),
-        "trustworthy": result.is_trustworthy,
-        "notes": list(result.notes),
-    }
 
 
 def _readable_failure(exc: Exception) -> str:
@@ -465,67 +437,6 @@ def _render_control_context(frame: pd.DataFrame) -> None:
         )
 
 
-def render_si_accuracy(days: int = 180) -> None:
-    """Predicted vs measured hot-metal silicon, from the shipped Si model."""
-
-    try:
-        frame, report = _si_history(days)
-    except Exception as exc:  # noqa: BLE001
-        log.exception("Si history failed")
-        st.error(f"Could not build the silicon history: {exc}")
-        return
-
-    if frame.empty:
-        st.info(
-            "Silicon history unavailable. " + " ".join(report.get("notes", []) or [])
-        )
-        return
-
-    if not report.get("trustworthy", False):
-        # The Si model wants 194 features and the static dataset carries 112.
-        # The rest are rebuilt here. If too many had to be filled with medians,
-        # the chart would be drawing the fill rather than the model — and it
-        # would look perfectly reasonable while doing so.
-        st.warning(
-            f"**Not showing this chart.** The Si model needs "
-            f"{report['derived'] + report['filled']} inputs and "
-            f"{report['filled']} of them could not be rebuilt from the stored "
-            "dataset, so they were filled with typical values. A chart drawn "
-            "from that would be measuring the fill, not the model."
-        )
-        with st.expander("Which inputs are missing", expanded=False):
-            st.write(report.get("filled_names") or [])
-        return
-
-    st.markdown("#### Hot-metal silicon: model vs cast analysis")
-    si_scores = _scores(frame["predicted_si"], frame["actual_si"])
-    _score_row(si_scores, "%", decimals=3)
-    st.plotly_chart(
-        _paired_chart(
-            frame,
-            predicted_col="predicted_si",
-            actual_col="actual_si",
-            unit="Si %",
-            actual_name="Cast analysis",
-            # Same rule as the coke chart: the band is the typical error measured
-            # on this window, so the points drawn inside it agree with it.
-            band=round(si_scores["MAE"], 3) if si_scores else None,
-            decimals=3,
-        ),
-        width="stretch",
-    )
-    st.caption(
-        "Measured is the silicon in the cast analysis, averaged over the day. "
-        "**Read the level with care:** among the model's inputs are earlier "
-        "silicon readings, so part of what looks like skill here is simply "
-        "yesterday's cast carried forward. It is a fair reflection of what the "
-        "model does in service — an operator does know the last cast — but it "
-        "is not evidence that the burden chemistry terms are doing the work."
-    )
-    for note in report.get("notes", []) or []:
-        st.caption(note)
-
-
 def _direct_coke_settings() -> tuple[dict[str, Any], Path, Path, Path]:
     repo_root = Path(__file__).resolve().parents[3]
     settings = yaml.safe_load(
@@ -542,6 +453,30 @@ def _direct_coke_settings() -> tuple[dict[str, Any], Path, Path, Path]:
         resolve(cfg.get("bundled_model_dir", ""), "src/assets/models/bmo_coke_robust"),
         resolve(cfg.get("deployment_dir", ""), "src/storage/bmo_coke_model"),
         resolve(cfg.get("dataset_path", ""), "src/assets/data/furnace_dataset.csv"),
+    )
+
+
+def _charged_coke_settings() -> tuple[Path, Path]:
+    """Storage and shipped bundle for the active five-hour coke model."""
+
+    repo_root = Path(__file__).resolve().parents[3]
+    settings = yaml.safe_load(
+        (repo_root / "src/config/setting_bmo.yml").read_text(encoding="utf-8")
+    )["bmo"]
+    charged = dict(
+        (settings.get("data_driven_coke", {}) or {}).get("charged_4h", {}) or {}
+    )
+
+    def resolve(value: str, fallback: str) -> Path:
+        path = Path(str(value or fallback))
+        return path if path.is_absolute() else repo_root / path
+
+    return (
+        resolve(charged.get("storage_dir", ""), "src/storage/bmo_charged_coke"),
+        resolve(
+            charged.get("bundle_dir", ""),
+            "src/assets/models/bmo_charged_coke/20261007_0400",
+        ),
     )
 
 
@@ -1176,13 +1111,61 @@ def render_data_driven_coke_accuracy() -> None:
         )
 
 
-def render_model_accuracy_tab() -> None:
-    """Data-Driven coke validation first; supporting models remain inspectable."""
+def _si_forecast_settings() -> tuple[Path, Path, Path]:
+    """Production Si storage, initial bundle and the hourly gate dataset."""
 
-    st.markdown("##### Data-Driven coke-rate model")
-    render_data_driven_coke_accuracy()
-    with st.expander("Energy-balance calibration and recent accuracy", expanded=False):
+    config_path = Path(__file__).resolve().parents[2] / "config/setting_bmo.yml"
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    bmo = config.get("bmo", {}) or {}
+    si = bmo.get("si_forecast", {}) or {}
+    repo = Path(__file__).resolve().parents[3]
+
+    def resolve(value: str, fallback: str) -> Path:
+        path = Path(str(value or fallback))
+        return path if path.is_absolute() else repo / path
+
+    data_sources = bmo.get("data_sources", {}) or {}
+    return (
+        resolve(si.get("storage_dir"), "src/storage/bmo_si_forecast"),
+        resolve(
+            si.get("default_bundle_dir"),
+            "src/assets/models/bmo_si_forecast/20260924_initial",
+        ),
+        resolve(
+            si.get("static_dataset_path")
+            or data_sources.get("static_dataset_path"),
+            "src/assets/data/furnace_dataset.csv",
+        ),
+    )
+
+
+def render_model_accuracy_tab() -> None:
+    """Accuracy for the live charged-coke, energy-balance and silicon models."""
+
+    from ui.bmo.charged_coke import render_model_report
+
+    st.markdown("##### Data-Driven charged-coke model")
+    try:
+        storage_dir, base_bundle = _charged_coke_settings()
+        render_model_report(storage_dir=storage_dir, base_bundle=base_bundle)
+    except Exception as exc:  # noqa: BLE001 - keep the other reports available
+        log.exception("Could not render charged-coke accuracy")
+        st.warning(f"Charged-coke accuracy is unavailable: {_readable_failure(exc)}")
+
+    st.markdown("##### Production HM silicon forecast")
+    try:
+        from ui.bmo.si_forecast import render_accuracy
+
+        si_storage, si_bundle, _si_dataset = _si_forecast_settings()
+        render_accuracy(storage_dir=si_storage, default_bundle=si_bundle)
+        st.caption("Retraining, candidate review and rollback are in the HM Si trend's Model tab.")
+    except Exception as exc:  # noqa: BLE001 - preserve the other model reports
+        log.exception("Could not render production silicon accuracy")
+        st.warning(f"Production Si accuracy is unavailable: {_readable_failure(exc)}")
+
+    with st.expander(
+        "Physics-Driven energy balance: calibration and recent accuracy",
+        expanded=False,
+    ):
         render_retrain_control()
         render_coke_accuracy()
-    with st.expander("Hot-metal silicon model", expanded=False):
-        render_si_accuracy()

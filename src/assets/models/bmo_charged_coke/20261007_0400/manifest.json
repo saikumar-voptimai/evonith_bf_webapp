@@ -1,0 +1,117 @@
+{
+  "version": "20261007_0400",
+  "name": "Structured_fitted_mix_hourly_path",
+  "trained_until": "2026-09-30 04:00:00",
+  "horizons": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "target": {
+    "definition": "4-h charged coke rate at row t+h: 1000*sum(COKE_CALC_MT[t+h-3..t+h])/sum(production[t+h-3..t+h])",
+    "rows_ahead": [
+      1,
+      5
+    ],
+    "unit": "kg/THM"
+  },
+  "features": [
+    "charge4",
+    "charge24",
+    "eta",
+    "wind",
+    "blast",
+    "raft",
+    "oxygen",
+    "pressure",
+    "top_temp",
+    "hm_si",
+    "hm_ti",
+    "hm_temp",
+    "ore_fe",
+    "sinter_fe",
+    "coke_ash",
+    "pci_ash",
+    "csr",
+    "cri",
+    "sinter_share",
+    "pellet_share"
+  ],
+  "sequence_hours": 12,
+  "delta_scale": 15.0,
+  "mix": {
+    "linear": 0.5,
+    "attention": 0.5
+  },
+  "attention": [
+    {
+      "seed": 7,
+      "epochs": 24,
+      "dim": 10,
+      "relative": true,
+      "skip": true
+    },
+    {
+      "seed": 17,
+      "epochs": 15,
+      "dim": 10,
+      "relative": true,
+      "skip": true
+    },
+    {
+      "seed": 37,
+      "epochs": 12,
+      "dim": 10,
+      "relative": true,
+      "skip": true
+    }
+  ],
+  "controls": {
+    "order": [
+      "pci",
+      "nut",
+      "slag"
+    ],
+    "reference_hours": 24,
+    "reference_min_periods": 12,
+    "clip_lower": [
+      -40.0,
+      -20.0,
+      -60.0
+    ],
+    "clip_upper": [
+      40.0,
+      20.0,
+      60.0
+    ],
+    "coefficients_kg_coke_per_kg": [
+      [
+        -0.4286742458603555,
+        -0.08803159049914974,
+        0.06121566524066793
+      ],
+      [
+        -0.44282888553740085,
+        -0.09437389271010632,
+        0.05168126176589294
+      ],
+      [
+        -0.40405258176523856,
+        -0.10463755710240823,
+        0.03370308829034891
+      ],
+      [
+        -0.431820487031194,
+        -0.21765843160477819,
+        2.4458728306552817e-21
+      ],
+      [
+        -0.4241069795852515,
+        -0.15402062986114504,
+        0.007124199247624074
+      ]
+    ]
+  }
+}

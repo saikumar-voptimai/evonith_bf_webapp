@@ -249,7 +249,7 @@ def test_shipped_slag_coefficient_is_the_empirically_anchored_value():
     assert 11.0 <= slag.k_config_value <= 30.0
 
 
-def test_shipped_config_is_enabled_and_priced_into_the_objective():
+def test_shipped_config_uses_only_validated_correction_terms():
     settings = _shipped_settings()
 
     assert settings.enabled is True
@@ -257,7 +257,9 @@ def test_shipped_config_is_enabled_and_priced_into_the_objective():
     # The manual blend is the realised-cost reference and must stay untouched.
     assert settings.apply_to_manual_blend is False
     assert settings.term(TERM_FLUX_CALCINATION).enabled is True
-    assert settings.term(TERM_HOT_METAL_SI).enabled is True
+    # The production Si forecast describes furnace state, not candidate-blend
+    # response, so it must not create a synthetic Si correction.
+    assert settings.term(TERM_HOT_METAL_SI).enabled is False
     # Modest and unvalidated; stays off until the two main terms are trusted.
     assert settings.term(TERM_BURDEN_OXYGEN).enabled is False
 

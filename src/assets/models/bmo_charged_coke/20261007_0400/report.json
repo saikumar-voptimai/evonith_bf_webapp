@@ -1,0 +1,161 @@
+{
+  "trained_until": "2026-09-30 04:00:00",
+  "data_end": "2026-10-07 04:00:00",
+  "holdout": [
+    "2026-09-30 04:00:00",
+    "2026-10-07 04:00:00"
+  ],
+  "train_hours": 3483,
+  "train_start": "2026-01-01 08:00:00",
+  "per_horizon": [
+    {
+      "horizon": 1,
+      "n": 146,
+      "mae": 6.638073361958487,
+      "rmse": 8.672238777443956,
+      "bias": 1.4958096732395993,
+      "persistence_mae": 6.993513922152552,
+      "skill_vs_persistence": 0.05082431580899227,
+      "range_coverage": 0.8972602739726028
+    },
+    {
+      "horizon": 2,
+      "n": 143,
+      "mae": 7.059108010220555,
+      "rmse": 9.402996808876846,
+      "bias": 2.0730963198893395,
+      "persistence_mae": 7.713447823515583,
+      "skill_vs_persistence": 0.08483104161282795,
+      "range_coverage": 0.8671328671328671
+    },
+    {
+      "horizon": 3,
+      "n": 140,
+      "mae": 7.995031835058671,
+      "rmse": 10.475848081057123,
+      "bias": 1.7268613724706252,
+      "persistence_mae": 8.809363917580606,
+      "skill_vs_persistence": 0.09243937361888244,
+      "range_coverage": 0.8571428571428571
+    },
+    {
+      "horizon": 4,
+      "n": 137,
+      "mae": 8.451486425440294,
+      "rmse": 11.100046102431152,
+      "bias": 1.623901628681621,
+      "persistence_mae": 10.946324270007134,
+      "skill_vs_persistence": 0.22791557997260148,
+      "range_coverage": 0.8321167883211679
+    },
+    {
+      "horizon": 5,
+      "n": 136,
+      "mae": 8.619179285866355,
+      "rmse": 11.281590308967637,
+      "bias": 0.7894871033393187,
+      "persistence_mae": 10.524387821805606,
+      "skill_vs_persistence": 0.18102796744071192,
+      "range_coverage": 0.8676470588235294
+    }
+  ],
+  "by_state": [
+    {
+      "state": "cruise",
+      "n": 16,
+      "mae": 4.473156531617317,
+      "persistence_mae": 7.248036400686413
+    },
+    {
+      "state": "off_cruise",
+      "n": 56,
+      "mae": 10.609393803768667,
+      "persistence_mae": 12.174120488259167
+    },
+    {
+      "state": "unsettled",
+      "n": 64,
+      "mae": 7.914247271264094,
+      "persistence_mae": 9.89995959393854
+    }
+  ],
+  "availability": {
+    "hours": 168,
+    "shown": 148,
+    "by_state": {
+      "unsettled": 75,
+      "off_cruise": 57,
+      "cruise": 16,
+      "recovering": 6,
+      "data_hold": 6,
+      "large_hold": 3,
+      "data_missing": 2,
+      "novel_hold": 2,
+      "uncertainty_hold": 1
+    }
+  },
+  "beta": [
+    {
+      "horizon": 1,
+      "pci": -0.4286742458603555,
+      "nut": -0.08803159049914974,
+      "slag": 0.06121566524066793
+    },
+    {
+      "horizon": 2,
+      "pci": -0.44282888553740085,
+      "nut": -0.09437389271010632,
+      "slag": 0.05168126176589294
+    },
+    {
+      "horizon": 3,
+      "pci": -0.40405258176523856,
+      "nut": -0.10463755710240823,
+      "slag": 0.03370308829034891
+    },
+    {
+      "horizon": 4,
+      "pci": -0.431820487031194,
+      "nut": -0.21765843160477819,
+      "slag": 2.4458728306552817e-21
+    },
+    {
+      "horizon": 5,
+      "pci": -0.4241069795852515,
+      "nut": -0.15402062986114504,
+      "slag": 0.007124199247624074
+    }
+  ],
+  "checks": {
+    "Beats persistence at every horizon": true,
+    "PCI and nut coke lower coke, slag raises it (every horizon)": true,
+    "Ranges cover 80-98% of the holdout": true,
+    "At least 60% of holdout hours shown": true,
+    "+5 h error at most 10 kg/THM": true
+  },
+  "settings": {
+    "horizons": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "train_start": "2026-01-01",
+    "train_days": 400,
+    "fold_days": 7,
+    "folds": 4,
+    "seeds": [
+      7,
+      17,
+      37
+    ],
+    "ridge_alpha": 1000.0,
+    "signed_alpha": 20.0,
+    "attention_epochs": 75,
+    "minimum_train_rows": 500,
+    "display_width_cap": 35.0,
+    "minimum_calibration_hours": 50,
+    "minimum_calibration_days": 10
+  }
+}

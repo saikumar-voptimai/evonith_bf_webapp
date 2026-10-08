@@ -1,0 +1,165 @@
+{
+  "parameters": {
+    "cutoff": "2026-09-15 00:00:00",
+    "features": [
+      "wind",
+      "pci",
+      "eta",
+      "blast",
+      "prod",
+      "raft",
+      "dp",
+      "wind_cv4",
+      "prod_cv4",
+      "pci_cv4",
+      "blast_range4",
+      "eta_range4",
+      "slag",
+      "nut"
+    ],
+    "novelty_warn": 1.29576180724924,
+    "novelty_stop": 1.6503215891290286,
+    "spread_warn": 2.5862006144884946,
+    "spread_stop": 3.7338160891433207,
+    "display_width_cap": 35.0,
+    "minimum_calibration_hours": 50,
+    "minimum_calibration_days": 10,
+    "recovery_updates": 2,
+    "interpretation": "Empirical 90% error ranges from out-of-fold predictions; not a guaranteed coverage.",
+    "bins": {
+      "cruise": {
+        "radius": 10.799411088208785,
+        "radius_by_horizon": {
+          "1": 12.296159451355948,
+          "2": 10.549496126614997,
+          "3": 11.831762537160671,
+          "4": 12.73677056796754,
+          "5": 10.799411088208785
+        },
+        "n": 174,
+        "days": 23
+      },
+      "mild": {
+        "radius": 14.20501327285092,
+        "radius_by_horizon": {
+          "1": 13.809035129804897,
+          "2": 14.063158089484944,
+          "3": 14.916141801139872,
+          "4": 14.148001205781156,
+          "5": 14.20501327285092
+        },
+        "n": 350,
+        "days": 28
+      },
+      "moderate": {
+        "radius": 20.533712677806022,
+        "radius_by_horizon": {
+          "1": 15.817737733095555,
+          "2": 14.737373622890402,
+          "3": 19.469069587203933,
+          "4": 20.470652336962416,
+          "5": 20.533712677806022
+        },
+        "n": 88,
+        "days": 19
+      }
+    },
+    "unusual_radius": 20.533712677806022,
+    "unusual_radius_by_horizon": {
+      "1": 15.877646478303234,
+      "2": 17.011837456119736,
+      "3": 19.469069587203933,
+      "4": 20.470652336962416,
+      "5": 20.533712677806022
+    }
+  },
+  "thresholds": {
+    "core": {
+      "wind": [
+        105000,
+        150000
+      ],
+      "blast": [
+        1150,
+        1350
+      ],
+      "prod": [
+        80,
+        110
+      ],
+      "pci": [
+        150,
+        250
+      ],
+      "eta": [
+        41.0000001,
+        65
+      ],
+      "raft": [
+        2100,
+        2450
+      ],
+      "gas_sum": [
+        38,
+        47
+      ]
+    },
+    "extended": {
+      "wind": [
+        95000,
+        120000
+      ],
+      "blast": [
+        1100,
+        1300
+      ],
+      "prod": [
+        75,
+        110
+      ],
+      "pci": [
+        120,
+        250
+      ],
+      "eta": [
+        39.5,
+        46
+      ],
+      "raft": [
+        2050,
+        2450
+      ],
+      "gas_sum": [
+        36,
+        49
+      ]
+    },
+    "variability": {
+      "wind_cv4": [
+        0.02,
+        0.05
+      ],
+      "prod_cv4": [
+        0.03,
+        0.08
+      ],
+      "pci_cv4": [
+        0.08,
+        0.2
+      ],
+      "blast_range4": [
+        40,
+        80
+      ],
+      "eta_range4": [
+        1.5,
+        3
+      ]
+    },
+    "minimum_history": 9,
+    "minimum_reference": 12,
+    "large_charge_cv": 0.25,
+    "mild_charge_cv": 0.1,
+    "note": "Proposed model display limits, not equipment protection limits. Fixed before scoring this replay; retrospectively designed."
+  }
+}
