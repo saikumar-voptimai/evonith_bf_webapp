@@ -284,6 +284,90 @@ def test_capture_classifies_keys():
     json.dumps(snap)  # fully serialisable
 
 
+def test_snapshot_saves_and_reports_both_production_forecasts():
+    state = _state()
+    state["bmo_si_furnace_forecast"] = {
+        "status": "ok",
+        "si_pct": 0.43,
+        "model_version": "si-v1",
+        "origin_at": "2026-10-08T10:30:00+00:00",
+        "issued_at": "2026-10-08T10:56:00+00:00",
+        "target_start": "2026-10-08T10:30:00+00:00",
+        "target_end": "2026-10-08T10:35:00+00:00",
+        "last_sample_si_pct": 0.29,
+        "last_sample_at": "2026-10-08T07:19:00+00:00",
+        "last_sample_available_at": "2026-10-08T09:44:00+00:00",
+        "horizons": [
+            {
+                "horizon_minutes": horizon,
+                "label": "Now" if horizon == 0 else f"+{horizon // 60} h",
+                "target_start": (
+                    pd.Timestamp("2026-10-08T10:30:00+00:00")
+                    + pd.Timedelta(minutes=horizon)
+                ).isoformat(),
+                "target_end": (
+                    pd.Timestamp("2026-10-08T10:35:00+00:00")
+                    + pd.Timedelta(minutes=horizon)
+                ).isoformat(),
+                "si_pct": 0.43 + horizon / 6000,
+                "lower_pct": 0.31 + horizon / 6000,
+                "upper_pct": 0.55 + horizon / 6000,
+            }
+            for horizon in (0, 60, 120, 180)
+        ],
+    }
+    state["bmo_data_driven_coke_prediction"] = {
+        "value_kg_per_thm": 401.2,
+        "usable": True,
+        "origin_utc": "2026-10-08T10:30:00+00:00",
+        "deployment_id": "charged_4h/coke-v1",
+    }
+    state["bmo_charged_coke_record"] = {
+        "state": "cruise",
+        "shown": True,
+        "prediction_kg_thm": 401.2,
+        "lower_kg_thm": 389.0,
+        "upper_kg_thm": 413.0,
+        "data_row": "2026-10-08T10:30:00+00:00",
+        "issued_at": "2026-10-08T11:36:00+00:00",
+        "model_version": "coke-v1",
+        "path": [
+            {
+                "horizon": 5,
+                "at": "2026-10-08T15:30:00+00:00",
+                "prediction_kg_thm": 401.2,
+                "lower_kg_thm": 389.0,
+                "upper_kg_thm": 413.0,
+            }
+        ],
+    }
+    snap = capture(state)
+    assert {
+        "si_furnace_forecast",
+        "data_driven_coke_prediction",
+        "charged_coke_record",
+    } <= set(snap["results"])
+    assert "charged_coke_record" not in snap["inputs"]
+
+    snap["frozen"]["provider_calls"] = {"dummy()": encode({})}
+    restored = results_state(snap)
+    assert restored["testbmo_si_furnace_forecast"]["si_pct"] == pytest.approx(0.43)
+    assert len(restored["testbmo_si_furnace_forecast"]["horizons"]) == 4
+    assert restored["testbmo_charged_coke_record"]["prediction_kg_thm"] == pytest.approx(
+        401.2
+    )
+
+    doc = _docx(build_docx(snap))
+    headings = [p.text for p in doc.paragraphs if p.style.name == "Heading 1"]
+    assert any("HM Si forecast" in heading for heading in headings)
+    assert any("Charged coke forecast" in heading for heading in headings)
+    cells = "\n".join(c.text for table in doc.tables for row in table.rows for c in row.cells)
+    assert "HM Si if sampled now" in cells
+    assert "+3 h" in cells
+    assert "401.2" in cells
+    assert "08 Oct 2026, 16:00 IST" in cells
+
+
 def test_page_tables_override_session_state():
     state = _state()
     state["bmo_applied_ore_editor_df"] = _ore_table().iloc[:1]
@@ -600,10 +684,12 @@ def test_sandbox_page_has_no_live_keys_left():
     assert "_testbmo_source_cache" in strings  # the page's private source cache too
     assert "testbmo_" in strings  # the panel/gate prefix argument
     assert swapped == (
+        "ui.bmo.charged_coke",
         "ui.bmo.commentary",
         "ui.bmo.components",
         "ui.bmo.model_accuracy",
         "ui.bmo.production_frontier",
+        "ui.bmo.si_forecast",
         "data.bmo.context_provider",
     )
 
@@ -618,10 +704,12 @@ def test_file_names_are_not_renamed():
 
 def test_helper_modules_found_by_scan():
     assert sandbox.helper_modules_with_keys() == [
+        "ui.bmo.charged_coke",
         "ui.bmo.commentary",
         "ui.bmo.components",
         "ui.bmo.model_accuracy",
         "ui.bmo.production_frontier",
+        "ui.bmo.si_forecast",
         "data.bmo.context_provider",
     ]
 

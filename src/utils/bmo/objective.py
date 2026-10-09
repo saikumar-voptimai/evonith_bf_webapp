@@ -192,10 +192,9 @@ class BmoObjectiveEvaluator:
         # the search never chases a moving cost surface.
         self.coke_correction_settings = coke_correction_settings
         self.coke_correction_reference = coke_correction_reference
-        # Constant across candidates by design. The Si model is blend-flat, and
-        # calling it per candidate would cost thousands of XGBoost inferences to
-        # move the objective by a fraction of a kg/THM; a constant offset does
-        # not distort the search at all.
+        # Constant across candidates by design. The production Si forecast
+        # describes furnace state; it is not a proposed-blend response and
+        # therefore cannot distort the candidate search.
         self.hot_metal_si_pct = hot_metal_si_pct
         # The chosen anchor is propagated into the final fuel-ash ledger, so the
         # objective and the displayed slag use the same physical fuel rates.

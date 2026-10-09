@@ -1,12 +1,12 @@
 {
-  "offset_kg_per_thm": 17.69719102928733,
-  "sample_days": 68,
-  "residual_sd_kg_per_thm": 11.050557028025793,
+  "offset_kg_per_thm": 16.419783298788193,
+  "sample_days": 65,
+  "residual_sd_kg_per_thm": 10.183445657344794,
   "window_days": 90,
-  "fitted_on": "2026-09-25",
-  "first_day": "2026-05-28",
-  "last_day": "2026-09-22",
-  "outliers_dropped": 0,
+  "fitted_on": "2026-10-07",
+  "first_day": "2026-06-09",
+  "last_day": "2026-10-05",
+  "outliers_dropped": 1,
   "target_basis": "hourly_coke_calc_mt_per_hot_metal_v1",
   "notes": []
 }

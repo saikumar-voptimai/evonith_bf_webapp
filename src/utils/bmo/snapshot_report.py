@@ -26,6 +26,7 @@ import io
 import math
 from datetime import datetime
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo
 
 from utils.bmo.snapshot import _frame_rows, decode, ore_names, recommended_result
 
@@ -198,8 +199,13 @@ def _when(iso: Any) -> str:
     if not iso:
         return "—"
     try:
-        return datetime.fromisoformat(str(iso)).strftime("%d %b %Y, %H:%M IST")
-    except ValueError:
+        stamp = datetime.fromisoformat(str(iso))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=ZoneInfo("Asia/Kolkata"))
+        else:
+            stamp = stamp.astimezone(ZoneInfo("Asia/Kolkata"))
+        return stamp.strftime("%d %b %Y, %H:%M IST")
+    except (TypeError, ValueError):
         return str(iso)
 
 
@@ -884,7 +890,31 @@ def build_docx(snapshot: Mapping[str, Any]) -> bytes:
     intensive_basis = basis.startswith(("DE", "Intensive"))
     rec = de if intensive_basis else lp
     rec_m = _metrics(rec) if rec else {}
-    rec_si = results.get("de_si") if intensive_basis else results.get("lp_si")
+    furnace_si = results.get("si_furnace_forecast") or {}
+    furnace_si_path = list(furnace_si.get("horizons") or [])
+    if not furnace_si_path and furnace_si.get("target_start"):
+        furnace_si_path = [
+            {
+                "label": "Legacy 2-3 h",
+                "horizon_minutes": 120,
+                "target_start": furnace_si.get("target_start"),
+                "target_end": furnace_si.get("target_end"),
+                "si_pct": furnace_si.get("si_pct"),
+                "lower_pct": None,
+                "upper_pct": None,
+            }
+        ]
+    furnace_si_headline = next(
+        (
+            row
+            for row in furnace_si_path
+            if int(row.get("horizon_minutes", -1)) == 0
+        ),
+        furnace_si_path[0] if furnace_si_path else {},
+    )
+    rec_si = furnace_si_headline.get("si_pct", furnace_si.get("si_pct"))
+    charged_level = results.get("data_driven_coke_prediction") or {}
+    charged_record = results.get("charged_coke_record") or {}
     manual_blend = _as_fields(results.get("manual_blend"))
     manual_q = results.get("manual_quantities_mt") or {}
     snapshot_id = str(snapshot.get("id") or "(unsaved)")
@@ -1032,6 +1062,149 @@ def build_docx(snapshot: Mapping[str, Any]) -> bytes:
             "Inputs were edited after this run; the report shows the inputs the run used."
         )
     d.bullets(points)
+
+    # The actual-operation forecast is a separate production record. It must
+    # never be presented as the Si response of the recommended ore blend.
+    if furnace_si:
+        d.section("HM Si forecast - actual furnace operation")
+        status = str(furnace_si.get("status") or "unavailable")
+        path = furnace_si_path
+        headline = furnace_si_headline
+        if furnace_si.get("si_pct") is not None:
+            lower = headline.get("lower_pct")
+            upper = headline.get("upper_pct")
+            d.kpi_tiles(
+                [
+                    (
+                        _fmt(furnace_si.get("si_pct"), "{:.3f}"),
+                        "HM Si if sampled now, %",
+                        "Advisory furnace forecast",
+                    ),
+                    (
+                        _fmt(furnace_si.get("last_sample_si_pct"), "{:.3f}"),
+                        "Latest HM Si used, %",
+                        _when(furnace_si.get("last_sample_at")),
+                    ),
+                    (
+                        (
+                            f"{float(lower):.3f}-{float(upper):.3f}"
+                            if lower is not None and upper is not None
+                            else "Not validated"
+                        ),
+                        "90% range, %",
+                        "Horizon-specific" if lower is not None else "Legacy point model",
+                    ),
+                ]
+            )
+        if path:
+            d.table(
+                ["Horizon", "Target time", "Forecast, %", "90% lower", "90% upper"],
+                [
+                    [
+                        row.get("label")
+                        or (
+                            "Now"
+                            if int(row.get("horizon_minutes", 0)) == 0
+                            else f"+{int(row.get('horizon_minutes', 0)) // 60} h"
+                        ),
+                        _when(row.get("target_start")),
+                        _fmt(row.get("si_pct"), "{:.3f}"),
+                        _fmt(row.get("lower_pct"), "{:.3f}"),
+                        _fmt(row.get("upper_pct"), "{:.3f}"),
+                    ]
+                    for row in path
+                ],
+                widths=[1.0, 1.8, 1.2, 1.2, 1.2],
+                numeric_from=2,
+            )
+        d.kv(
+            [
+                ("Status", status.replace("_", " ").title()),
+                ("Model version", str(furnace_si.get("model_version") or "???")),
+                ("Origin", _when(furnace_si.get("origin_at"))),
+                ("Issued", _when(furnace_si.get("issued_at"))),
+                ("Latest Si sample used", _when(furnace_si.get("last_sample_at"))),
+                (
+                    "Result entered database",
+                    _when(furnace_si.get("last_sample_available_at")),
+                ),
+            ],
+            columns=2,
+        )
+        reasons = furnace_si.get("reasons") or []
+        if reasons:
+            d.note("; ".join(str(reason) for reason in reasons))
+
+    if charged_level or charged_record:
+        d.section("Charged coke forecast")
+        value = charged_level.get("value_kg_per_thm")
+        if value is None:
+            value = charged_record.get("prediction_kg_thm")
+        d.kpi_tiles(
+            [
+                (
+                    _fmt(value, "{:.1f}"),
+                    "Charged coke, kg/THM",
+                    "+5 h production forecast",
+                ),
+                (
+                    _fmt(charged_record.get("lower_kg_thm"), "{:.1f}"),
+                    "90% range lower",
+                    "kg/THM",
+                ),
+                (
+                    _fmt(charged_record.get("upper_kg_thm"), "{:.1f}"),
+                    "90% range upper",
+                    "kg/THM",
+                ),
+            ]
+        )
+        d.kv(
+            [
+                (
+                    "Status",
+                    str(charged_record.get("state") or "unavailable")
+                    .replace("_", " ")
+                    .title(),
+                ),
+                (
+                    "Model version",
+                    str(
+                        charged_record.get("model_version")
+                        or charged_level.get("deployment_id")
+                        or "unavailable"
+                    ),
+                ),
+                (
+                    "Data hour",
+                    _when(
+                        charged_record.get("data_row")
+                        or charged_level.get("origin_utc")
+                    ),
+                ),
+                ("Issued", _when(charged_record.get("issued_at"))),
+            ],
+            columns=2,
+        )
+        path = list(charged_record.get("path") or [])
+        if path:
+            d.table(
+                ["Horizon", "Forecast, kg/THM", "Lower", "Upper", "At"],
+                [
+                    [
+                        f"+{point.get('horizon')} h",
+                        _fmt(point.get("prediction_kg_thm"), "{:.1f}"),
+                        _fmt(point.get("lower_kg_thm"), "{:.1f}"),
+                        _fmt(point.get("upper_kg_thm"), "{:.1f}"),
+                        _when(point.get("at")),
+                    ]
+                    for point in path
+                ],
+                widths=[0.8, 1.25, 0.8, 0.8, 1.8],
+            )
+        reasons = charged_record.get("reasons") or charged_level.get("reasons") or []
+        if reasons:
+            d.note("; ".join(str(reason) for reason in reasons))
 
     # --- recommended blend ----------------------------------------------------------------
     if rec:
@@ -1480,9 +1653,6 @@ def build_docx(snapshot: Mapping[str, Any]) -> bytes:
             [label] + [_fmt(m.get(key), spec) for _, m, _ in options]
             for label, key, spec in metric_rows
         ]
-        table_rows.append(
-            ["Predicted HM Si (%)"] + [_fmt(si, "{:.3f}") for _, _, si in options]
-        )
         table_rows.append(
             ["Feasible"] + [_fmt(m.get("feasible")) for _, m, _ in options]
         )

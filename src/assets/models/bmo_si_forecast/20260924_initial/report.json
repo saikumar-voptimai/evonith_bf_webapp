@@ -1,0 +1,35 @@
+{
+  "version": "20260924_initial",
+  "model_family": "ExtraTreesRegressor",
+  "target": "Raw HM Si sample in [origin+2h, origin+3h)",
+  "train_start": null,
+  "trained_until": "2026-09-24T00:00:00+05:30",
+  "holdout": ["2026-09-24T00:00:00+05:30", "2026-10-07T00:00:00+05:30"],
+  "data_end": "2026-10-07T00:00:00+05:30",
+  "train_casts": null,
+  "holdout_casts": 149,
+  "feature_count": 40,
+  "validation_note": "The initial version's 149-cast recent benchmark was reused during model selection. Future app retrains use a locked last-7-day holdout.",
+  "metrics": {
+    "extra_trees": {
+      "n": 149,
+      "mae": 0.1329065796127006,
+      "rmse": 0.1834736089858978,
+      "r2": -0.0612892452132169,
+      "bias": -0.0565801952566065,
+      "within_005": 0.2214765100671141,
+      "within_010": 0.5637583892617449
+    }
+  },
+  "checks": [],
+  "all_checks_passed": null,
+  "parameters": {
+    "history_days": 60,
+    "holdout_days": 7,
+    "n_estimators": 240,
+    "min_samples_leaf": 10,
+    "max_features": 0.8,
+    "random_state": 42,
+    "clip_quantiles": [0.005, 0.995]
+  }
+}

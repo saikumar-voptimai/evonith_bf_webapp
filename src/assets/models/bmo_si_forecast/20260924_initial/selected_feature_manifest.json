@@ -1,0 +1,390 @@
+[
+  {
+    "feature": "si_last",
+    "family": "si_last",
+    "group": "si",
+    "provenance": "raw earlier lab; sample_time < origin; created_at <= origin",
+    "raw_online_dependencies": []
+  },
+  {
+    "feature": "si_age_h",
+    "family": "si_age_h",
+    "group": "si",
+    "provenance": "raw earlier lab; sample_time < origin; created_at <= origin",
+    "raw_online_dependencies": []
+  },
+  {
+    "feature": "si_prev2",
+    "family": "si_prev2",
+    "group": "si",
+    "provenance": "raw earlier lab; sample_time < origin; created_at <= origin",
+    "raw_online_dependencies": []
+  },
+  {
+    "feature": "si_mean3",
+    "family": "si_mean3",
+    "group": "si",
+    "provenance": "raw earlier lab; sample_time < origin; created_at <= origin",
+    "raw_online_dependencies": []
+  },
+  {
+    "feature": "sensor124__mean_0_1h",
+    "family": "sensor124",
+    "group": "online",
+    "provenance": "Process Params - BF2_PROC Top Temp 3",
+    "raw_online_dependencies": [
+      "Process Params - BF2_PROC Top Temp 3"
+    ]
+  },
+  {
+    "feature": "sensor123__mean_0_1h",
+    "family": "sensor123",
+    "group": "online",
+    "provenance": "Process Params - BF2_PROC Top Temp 2",
+    "raw_online_dependencies": [
+      "Process Params - BF2_PROC Top Temp 2"
+    ]
+  },
+  {
+    "feature": "sensor129__mean_3_6h",
+    "family": "sensor129",
+    "group": "online",
+    "provenance": "Process Params - BF2_BODY_TOTAL DP",
+    "raw_online_dependencies": [
+      "Process Params - BF2_BODY_TOTAL DP"
+    ]
+  },
+  {
+    "feature": "sensor125__delta4h",
+    "family": "sensor125_change",
+    "group": "online",
+    "provenance": "Process Params - BF2_PROC Top Temp 4",
+    "raw_online_dependencies": [
+      "Process Params - BF2_PROC Top Temp 4"
+    ]
+  },
+  {
+    "feature": "sensor278__mean_3_6h",
+    "family": "sensor278",
+    "group": "online",
+    "provenance": "derived__zone_8335_median",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp A",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp B",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp C",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp D",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp E",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp F",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp G",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp H",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp I",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp J",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp K",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp L",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp M",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp N"
+    ]
+  },
+  {
+    "feature": "sensor126__mean_0_1h",
+    "family": "sensor126",
+    "group": "online",
+    "provenance": "Process Params - BF2_PROC Top Temp Average",
+    "raw_online_dependencies": [
+      "Process Params - BF2_PROC Top Temp Average"
+    ]
+  },
+  {
+    "feature": "sensor054__mean_3_6h",
+    "family": "sensor054",
+    "group": "online",
+    "provenance": "Delta T - R9 Delta T of Stave No 3 and4",
+    "raw_online_dependencies": [
+      "Delta T - R9 Delta T of Stave No 3 and4"
+    ]
+  },
+  {
+    "feature": "sensor126__delta4h",
+    "family": "sensor126_change",
+    "group": "online",
+    "provenance": "Process Params - BF2_PROC Top Temp Average",
+    "raw_online_dependencies": [
+      "Process Params - BF2_PROC Top Temp Average"
+    ]
+  },
+  {
+    "feature": "sensor051__mean_6_12h",
+    "family": "sensor051",
+    "group": "online",
+    "provenance": "Delta T - R9 Delta T of Stave No 25 and 26",
+    "raw_online_dependencies": [
+      "Delta T - R9 Delta T of Stave No 25 and 26"
+    ]
+  },
+  {
+    "feature": "sensor124__delta4h",
+    "family": "sensor124_change",
+    "group": "online",
+    "provenance": "Process Params - BF2_PROC Top Temp 3",
+    "raw_online_dependencies": [
+      "Process Params - BF2_PROC Top Temp 3"
+    ]
+  },
+  {
+    "feature": "sensor127__mean_3_6h",
+    "family": "sensor127",
+    "group": "online",
+    "provenance": "Process Params - BF2_BODY_BOTTOM DP",
+    "raw_online_dependencies": [
+      "Process Params - BF2_BODY_BOTTOM DP"
+    ]
+  },
+  {
+    "feature": "sensor046__mean_6_12h",
+    "family": "sensor046",
+    "group": "online",
+    "provenance": "Delta T - R9 Delta T of Stave No 13 and 14",
+    "raw_online_dependencies": [
+      "Delta T - R9 Delta T of Stave No 13 and 14"
+    ]
+  },
+  {
+    "feature": "sensor083__mean_3_6h",
+    "family": "sensor083",
+    "group": "online",
+    "provenance": "Heatload Delta T - Heat load R9 Q4(Stave No 25-32)",
+    "raw_online_dependencies": [
+      "Heatload Delta T - Heat load R9 Q4(Stave No 25-32)"
+    ]
+  },
+  {
+    "feature": "sensor274__mean_3_6h",
+    "family": "sensor274",
+    "group": "online",
+    "provenance": "derived__zone_6795_median",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp A",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp B",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp C",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp D",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp E",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp F",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp G",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp H",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp I",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp J",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp K",
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp L"
+    ]
+  },
+  {
+    "feature": "sensor122__delta4h",
+    "family": "sensor122_change",
+    "group": "online",
+    "provenance": "Process Params - BF2_PROC Top Temp 1",
+    "raw_online_dependencies": [
+      "Process Params - BF2_PROC Top Temp 1"
+    ]
+  },
+  {
+    "feature": "sensor202__mean_3_6h",
+    "family": "sensor202",
+    "group": "online",
+    "provenance": "Temperature Profile - BF2_BFBD Furnace Body 6103mm Temp L",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 6103mm Temp L"
+    ]
+  },
+  {
+    "feature": "sensor043__mean_6_12h",
+    "family": "sensor043",
+    "group": "online",
+    "provenance": "Delta T - R9 Delta T of Stave No 23 and 24",
+    "raw_online_dependencies": [
+      "Delta T - R9 Delta T of Stave No 23 and 24"
+    ]
+  },
+  {
+    "feature": "sensor140__mean_0_1h",
+    "family": "sensor140",
+    "group": "online",
+    "provenance": "Process Params - BF2_CHARGES PER HR",
+    "raw_online_dependencies": [
+      "Process Params - BF2_CHARGES PER HR"
+    ]
+  },
+  {
+    "feature": "charge_1_3h_ore_coke_ratio",
+    "family": "charge_ore_coke_ratio",
+    "group": "charge",
+    "provenance": "raw event mass sums/ratios; event_time < origin; created_at <= origin",
+    "raw_online_dependencies": []
+  },
+  {
+    "feature": "sensor062__mean_6_12h",
+    "family": "sensor062",
+    "group": "online",
+    "provenance": "Heatload Delta T - Heat load Row 9",
+    "raw_online_dependencies": [
+      "Heatload Delta T - Heat load Row 9"
+    ]
+  },
+  {
+    "feature": "sensor025__mean_6_12h",
+    "family": "sensor025",
+    "group": "online",
+    "provenance": "Delta T - Delta T avg of Row 9",
+    "raw_online_dependencies": [
+      "Delta T - Delta T avg of Row 9"
+    ]
+  },
+  {
+    "feature": "sensor000__mean_3_6h",
+    "family": "sensor000",
+    "group": "online",
+    "provenance": "Cooling Water - BF2_BFBD Furnace Body Cooling Water Bosh and Belly Flow",
+    "raw_online_dependencies": [
+      "Cooling Water - BF2_BFBD Furnace Body Cooling Water Bosh and Belly Flow"
+    ]
+  },
+  {
+    "feature": "sensor203__mean_3_6h",
+    "family": "sensor203",
+    "group": "online",
+    "provenance": "Temperature Profile - BF2_BFBD Furnace Body 6103mm Temp M",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 6103mm Temp M"
+    ]
+  },
+  {
+    "feature": "sensor282__delta4h",
+    "family": "sensor282_change",
+    "group": "online",
+    "provenance": "derived__top_temperature_range",
+    "raw_online_dependencies": [
+      "Process Params - BF2_PROC Top Temp 1",
+      "Process Params - BF2_PROC Top Temp 2",
+      "Process Params - BF2_PROC Top Temp 3",
+      "Process Params - BF2_PROC Top Temp 4"
+    ]
+  },
+  {
+    "feature": "sensor211__mean_6_12h",
+    "family": "sensor211",
+    "group": "online",
+    "provenance": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp H",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp H"
+    ]
+  },
+  {
+    "feature": "sensor189__mean_0_1h",
+    "family": "sensor189",
+    "group": "online",
+    "provenance": "Temperature Profile - BF2_BFBD Furnace Body 5757mm Temp L",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 5757mm Temp L"
+    ]
+  },
+  {
+    "feature": "sensor248__mean_3_6h",
+    "family": "sensor248",
+    "group": "online",
+    "provenance": "Temperature Profile - BF2_BFBD Furnace Body 9105mm Temp E",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 9105mm Temp E"
+    ]
+  },
+  {
+    "feature": "sensor210__mean_6_12h",
+    "family": "sensor210",
+    "group": "online",
+    "provenance": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp G",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp G"
+    ]
+  },
+  {
+    "feature": "sensor141__mean_6_12h",
+    "family": "sensor141",
+    "group": "online",
+    "provenance": "Process Params - BF2_COAL RATE PER THM",
+    "raw_online_dependencies": [
+      "Process Params - BF2_COAL RATE PER THM"
+    ]
+  },
+  {
+    "feature": "sensor004__mean_6_12h",
+    "family": "sensor004",
+    "group": "online",
+    "provenance": "Cooling Water - BF2_BFBD Furnace Body Cooling Water Upper Shaft Flow",
+    "raw_online_dependencies": [
+      "Cooling Water - BF2_BFBD Furnace Body Cooling Water Upper Shaft Flow"
+    ]
+  },
+  {
+    "feature": "sensor215__mean_0_1h",
+    "family": "sensor215",
+    "group": "online",
+    "provenance": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp L",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp L"
+    ]
+  },
+  {
+    "feature": "sensor134__mean_0_1h",
+    "family": "sensor134",
+    "group": "online",
+    "provenance": "Process Params - BF2_PRODUCTION TONNES PER HR",
+    "raw_online_dependencies": [
+      "Process Params - BF2_PRODUCTION TONNES PER HR"
+    ]
+  },
+  {
+    "feature": "charge_1_3h_pellet_mtph",
+    "family": "charge_pellet_mtph",
+    "group": "charge",
+    "provenance": "raw event mass sums/ratios; event_time < origin; created_at <= origin",
+    "raw_online_dependencies": []
+  },
+  {
+    "feature": "sensor214__mean_3_6h",
+    "family": "sensor214",
+    "group": "online",
+    "provenance": "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp K",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 6795mm Temp K"
+    ]
+  },
+  {
+    "feature": "sensor249__mean_3_6h",
+    "family": "sensor249",
+    "group": "online",
+    "provenance": "Temperature Profile - BF2_BFBD Furnace Body 9105mm Temp F",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 9105mm Temp F"
+    ]
+  },
+  {
+    "feature": "sensor279__mean_6_12h",
+    "family": "sensor279",
+    "group": "online",
+    "provenance": "derived__zone_8335_range",
+    "raw_online_dependencies": [
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp A",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp B",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp C",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp D",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp E",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp F",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp G",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp H",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp I",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp J",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp K",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp L",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp M",
+      "Temperature Profile - BF2_BFBD Furnace Body 8335mm Temp N"
+    ]
+  }
+]

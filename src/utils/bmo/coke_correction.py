@@ -6,8 +6,7 @@ The deployed fuel unit-cost model (``unitcost_fuel_model.json``, 256 features) i
 functionally blind to the burden. Measured by direct sweep: doubling
 ``ORE_CALC_THM`` (0.515 -> 1.03) moves the prediction 1.6 Rs/THM out of 13,364
 (0.012%), an implied coke change of 0.06 kg/THM; flux x8 gives -5 Rs/THM;
-``TOTAL_CLO_THM`` x1.5 gives +1.2 Rs/THM. ``hm_si_model.json`` is likewise
-blend-flat (0.371 -> 0.384 %Si at 2x sinter).
+``TOTAL_CLO_THM`` x1.5 gives +1.2 Rs/THM.
 
 The plant history cannot supply the missing sensitivity either. Across 6,219
 hourly rows and 477 DPR days the slag coefficient bounces from -35 to +0.3 kg
@@ -821,10 +820,10 @@ def build_reference(
 
     si_reference = current_drivers.hot_metal_si_pct if current_drivers else None
     if si_reference is not None:
-        # Deliberately the Si model's own prediction for the current burden, not
-        # the measured cast Si: using measured Si would turn the model's constant
-        # offset into a blend-independent bias, which is pure noise.
-        sources[TERM_HOT_METAL_SI] = "model_current.si_model_prediction"
+        # The production Si forecast is furnace-state advice, not a candidate-
+        # blend response. Supplying it on both sides keeps this optional term at
+        # zero until a separately validated causal response model exists.
+        sources[TERM_HOT_METAL_SI] = "live_furnace.si_forecast"
 
     hm_temperature = _context_float(process_context, _HM_TEMPERATURE_KEYS)
     if hm_temperature is not None:

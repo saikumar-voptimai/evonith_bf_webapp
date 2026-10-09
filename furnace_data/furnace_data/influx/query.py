@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from typing import Iterable
 
 from furnace_data.config import load_config
 
@@ -150,7 +151,7 @@ def query_builder(
     stop: datetime,
     type: str = "average",
     window_by: str | None = "1h",
-    fields: Sequence[str] | None = None,
+    fields: Iterable[str] | None = None,
 ) -> str:
     """Build an InfluxQL SELECT query for *measurement* over [start, stop].
 
@@ -164,9 +165,8 @@ def query_builder(
                      Accepts human-readable strings (``"15 minutes"``) or
                      InfluxQL strings (``"15m"``).  Pass ``None`` to fall
                      back to ``"ts"`` automatically.
-        fields:      Optional canonical Influx field names to select. Every
-                     requested name must be configured for the measurement.
-                     The default preserves the existing all-field behaviour.
+        fields: Optional canonical field subset. Omit to preserve the legacy
+            all-fields query.
 
     Returns:
         InfluxQL query string.
@@ -192,24 +192,19 @@ def query_builder(
     if fields is None:
         selected_fields = configured_fields
     else:
-        if isinstance(fields, (str, bytes)):
-            raise ValueError("fields must be a sequence of configured field names")
-        requested_fields = list(fields)
-        if any(not isinstance(field, str) for field in requested_fields):
-            raise ValueError("fields must be a sequence of configured field names")
-        selected_fields = list(dict.fromkeys(requested_fields))
-        if not selected_fields:
-            raise ValueError("fields must contain at least one configured field")
-        unknown = [field for field in selected_fields if field not in configured_fields]
+        selected_fields = list(dict.fromkeys(str(field) for field in fields))
+        unknown = sorted(set(selected_fields) - set(configured_fields))
         if unknown:
             raise ValueError(
-                f"Unconfigured field(s) for {measurement!r}: {', '.join(unknown)}"
+                f"Unknown field(s) for Influx measurement {measurement!r}: {unknown}"
             )
+        if not selected_fields:
+            raise ValueError("At least one Influx field must be selected.")
 
     if type == "ts":
-        projection = "*" if fields is None else ", ".join(selected_fields)
+        selection = "*" if fields is None else ", ".join(selected_fields)
         return (
-            f"SELECT {projection} FROM {measurement} "
+            f"SELECT {selection} FROM {measurement} "
             f"WHERE time >= '{start_iso}' AND time <= '{end_iso}'"
         )
     elif type == "average":

@@ -1377,55 +1377,57 @@ def _render_charging_group(
         )
 
 
-def _ist_stamp(stamp: pd.Timestamp, now: pd.Timestamp) -> str:
-    """'17:29' for today, '03 Oct 17:29' otherwise."""
-
-    return f"{stamp:%H:%M}" if stamp.date() == now.date() else f"{stamp:%d %b %H:%M}"
-
-
 def _render_si_tile(column: Any, forecast: dict[str, Any]) -> None:
-    """Predicted hot-metal Si, with the cast it is predicted for beneath it.
+    """Compact advisory Si tile; timing and provenance live behind Help."""
 
-    A Si figure means little without its horizon: the model reads the latest
-    cast analysis and predicts the cast ``horizon_hours`` later, so the tile
-    names that cast. When the latest analysis is old the subscript says so,
-    because the prediction is then anchored to a furnace state that has passed.
-    """
-
-    horizon = forecast.get("horizon_hours")
-    last_si = forecast.get("last_cast_si_pct")
-    last_at = None
-    if forecast.get("last_cast_at"):
+    def plant_stamp(value: Any) -> pd.Timestamp | None:
+        if value in (None, ""):
+            return None
         try:
-            last_at = pd.Timestamp(forecast["last_cast_at"]).tz_convert("Asia/Kolkata")
+            stamp = pd.Timestamp(value)
+            if stamp.tzinfo is None:
+                stamp = stamp.tz_localize("Asia/Kolkata")
+            return stamp.tz_convert("Asia/Kolkata")
         except (TypeError, ValueError):
-            last_at = None
-    now = pd.Timestamp.now(tz="Asia/Kolkata")
+            return None
 
-    help_text = (
-        "Advisory only: the standalone Si model's estimate for this blend. It is "
-        "not an optimizer objective or constraint and does not change the blend."
-    )
-    if horizon and last_at is not None and last_si is not None:
-        help_text += (
-            f" The model reads the latest cast analysis (Si {float(last_si):.2f}% "
-            f"at {last_at:%d %b %H:%M} IST) and predicts the cast {int(horizon)} h "
-            "after it."
+    value = forecast.get("si_pct")
+    horizon_minutes = forecast.get("horizon_minutes")
+    if horizon_minutes is None and forecast.get("horizon_hours") is not None:
+        horizon_minutes = int(forecast["horizon_hours"]) * 60
+    label = forecast.get("metric_label")
+    if not label:
+        label = (
+            "HM Si if sampled now"
+            if int(horizon_minutes or 0) == 0
+            else f"HM Si forecast (+{float(horizon_minutes) / 60:g} h)"
         )
-    column.metric(
-        "Predicted HM Si (%)", _fmt(forecast.get("si_pct"), ".2f"), help=help_text
-    )
-    if horizon and last_at is not None:
-        target = last_at + pd.Timedelta(hours=int(horizon))
-        column.caption(
-            f"Horizon {int(horizon)} h: cast ≈ {_ist_stamp(target, now)} IST "
-            f"(from the {_ist_stamp(last_at, now)} analysis)"
+
+    target_at = plant_stamp(forecast.get("target_at"))
+    last_at = plant_stamp(forecast.get("last_cast_at"))
+    if target_at is None and last_at is not None and horizon_minutes is not None:
+        target_at = last_at + pd.Timedelta(minutes=int(horizon_minutes))
+    issued_at = plant_stamp(forecast.get("issued_at"))
+
+    help_parts = [
+        "Advisory furnace forecast; it is not an optimiser objective or constraint."
+    ]
+    if target_at is not None:
+        help_parts.append(f"Forecast time: {target_at:%d %b %H:%M} IST.")
+    if issued_at is not None:
+        help_parts.append(f"Calculated: {issued_at:%d %b %H:%M} IST.")
+    if last_at is not None:
+        last_si = forecast.get("last_cast_si_pct")
+        sample = f"Si {float(last_si):.2f}% " if last_si is not None else ""
+        help_parts.append(
+            f"Latest lab input: {sample}at {last_at:%d %b %H:%M} IST."
         )
-        age_hours = (now - last_at) / pd.Timedelta(hours=1)
-        if age_hours > 12:
-            column.caption(f"⚠️ Latest cast analysis is {age_hours:,.0f} h old.")
-    elif horizon:
-        column.caption(f"Horizon {int(horizon)} h after the latest cast analysis")
+    if forecast.get("model_version"):
+        help_parts.append(f"Model: {forecast['model_version']}.")
+    help_parts.extend(str(warning) for warning in forecast.get("warnings") or [])
+
+    shown = f"{float(value):.2f}%" if value is not None else "n/a"
+    column.metric(str(label), shown, help=" ".join(help_parts))
 
 
 def render_blend_metrics(
@@ -1464,10 +1466,9 @@ def render_blend_metrics(
          - shift_baseline: dict | None - The last complete shift's production
            (``utils.bmo.shift_production.ShiftProduction.to_dict``); drives the
            "change vs last shift" tile.
-         - si_forecast: dict | None - Predicted hot-metal Si for this blend
-           (``si_pct``) with the cast it was anchored to (``last_cast_si_pct``,
-           ``last_cast_at``) and the model's ``horizon_hours``. None hides the
-           Si tile.
+         - si_forecast: dict | None - Independent advisory furnace Si forecast
+           (``si_pct``) and optional horizon, timing, model and warning details.
+           None hides the Si tile.
 
     Returns:
          - return None - Writes metrics and warnings to the Streamlit page.

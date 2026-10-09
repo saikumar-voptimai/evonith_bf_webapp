@@ -26,7 +26,6 @@ from ui.bmo.model_accuracy import (
     render_coke_accuracy,
     render_model_accuracy_tab,
     render_retrain_control,
-    render_si_accuracy,
 )
 
 __all__ = [
@@ -53,7 +52,6 @@ __all__ = [
     "render_model_accuracy_tab",
     "render_ore_editor",
     "render_retrain_control",
-    "render_si_accuracy",
     "render_slag_balance_details",
     "render_slag_balance_settings",
 ]
