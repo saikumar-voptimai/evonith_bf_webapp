@@ -13,12 +13,11 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 import certifi
 import pandas as pd
 import pytz
-
 from influxdb_client_3 import InfluxDBClient3, flight_client_options
 
 from furnace_data.influx.query import (
@@ -99,6 +98,8 @@ class BaseDataFetcher:
             end_time:    UTC-aware end time (required for ``"over selected range"``).
             request_type: InfluxQL query type; see :func:`~furnace_data.influx.query.query_builder`.
             window_by:   Aggregation window for ``"windowed-average"`` type.
+            fields:      Optional configured canonical fields to select. The
+                default preserves the existing all-field behaviour.
 
         Returns:
             :class:`pandas.DataFrame` with a ``"time"`` column (UTC-aware).
