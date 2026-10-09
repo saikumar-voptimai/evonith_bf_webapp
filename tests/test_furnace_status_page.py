@@ -19,6 +19,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from data import furnace_status as fs
+from data.furnace_status import repository as fs_repository
 from ui import furnace_status_page as page
 
 REPO = Path(__file__).resolve().parents[1]
@@ -282,7 +283,9 @@ def patched_fetch(monkeypatch):
                 index=index,
             )
 
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", FakeTimeSeriesDataFetcher)
+    monkeypatch.setattr(
+        fs_repository, "TimeSeriesDataFetcher", FakeTimeSeriesDataFetcher
+    )
     fs.clear_cache()
     yield calls, state
     fs.clear_cache()
@@ -307,7 +310,7 @@ def test_default_visualisations_does_not_fetch_furnace_status(monkeypatch) -> No
         calls.append((args, kwargs))
         raise AssertionError("Furnace Status fetch ran while Visualisations was active")
 
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fail_if_called)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fail_if_called)
     monkeypatch.setattr(st, "segmented_control", lambda *a, **k: VISUALISATIONS)
     fs.clear_cache()
     namespace = runpy.run_path(str(PAGE_FILE), run_name="vboard_test")
@@ -424,7 +427,7 @@ def test_trend_ui_uses_raw_current_not_final_bucket_average(monkeypatch) -> None
                 index=pd.DatetimeIndex([end_time], name="time"),
             )
 
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", RawVersusAverageFetcher)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", RawVersusAverageFetcher)
     fs.clear_cache()
     at = _app()
     at.query_params[fs.VIEW_QUERY_KEY] = "trend"

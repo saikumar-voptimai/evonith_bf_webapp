@@ -426,7 +426,7 @@ def main(
 
     if section == FURNACE_STATUS:
         if furnace_status_renderer is None:
-            from ui.furnace_status_page import render_furnace_status
+            from ui.furnace_status import render_furnace_status
 
             furnace_status_renderer = render_furnace_status
 

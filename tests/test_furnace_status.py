@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from data import furnace_status as fs
+from data.furnace_status import repository as fs_repository
 from furnace_data.influx.query import influx_fields
 
 NOW = datetime(2026, 10, 5, 9, 30, 45, tzinfo=timezone.utc)
@@ -566,7 +567,7 @@ def test_one_failing_measurement_does_not_discard_the_other(monkeypatch) -> None
             "temperature_profile": _full_frames(0)["temperature_profile"],
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
     snapshot = fs.load_status_snapshot(NOW)
 
@@ -588,7 +589,7 @@ def test_status_fetch_uses_one_request_per_measurement(monkeypatch) -> None:
             "temperature_profile": _full_frames(0)["temperature_profile"],
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
     fs.load_status_snapshot(NOW)
 
@@ -614,7 +615,7 @@ def test_failure_details_never_reach_the_snapshot(monkeypatch) -> None:
             "temperature_profile": RuntimeError("SECRET"),
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
     snapshot = fs.load_status_snapshot(NOW)
 
@@ -627,7 +628,7 @@ def test_trend_fetch_passes_utc_overrides_and_field_naming(monkeypatch) -> None:
     fake = FakeFetcherFactory(
         {"process_params": make_frame({"hot_blast_vol_nm3h": [98000.0, 99000.0]})}
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
     spec = fs.PARAMETERS_BY_KEY["hot_blast_volume"]
     start, end = fs.resolve_fixed_range("4h", NOW)
 
@@ -657,7 +658,7 @@ def test_trend_applies_scale_and_pci_charts_setpoint_too(monkeypatch) -> None:
             )
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     steam = fs._trend_result(
@@ -690,7 +691,7 @@ def test_derived_trend_fetches_every_component_in_one_request(monkeypatch) -> No
             )
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     trend = fs._trend_result(spec, start, end, "1 minute")
@@ -706,7 +707,7 @@ def test_trend_preserves_gaps(monkeypatch) -> None:
     fake = FakeFetcherFactory(
         {"process_params": make_frame({"fuel_rate": [500.0, np.nan, 520.0]})}
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     trend = fs._trend_result(
@@ -723,7 +724,7 @@ def test_trend_preserves_gaps(monkeypatch) -> None:
 
 def test_trend_without_source_never_calls_the_fetcher(monkeypatch) -> None:
     fake = FakeFetcherFactory({})
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     trend = fs._trend_result(
@@ -743,14 +744,14 @@ def test_trend_empty_and_failed_requests_are_handled(monkeypatch) -> None:
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     monkeypatch.setattr(
-        fs,
+        fs_repository,
         "TimeSeriesDataFetcher",
         FakeFetcherFactory({"process_params": pd.DataFrame()}),
     )
     assert fs._trend_result(spec, start, end, "1 minute").status == "no_data"
 
     monkeypatch.setattr(
-        fs,
+        fs_repository,
         "TimeSeriesDataFetcher",
         FakeFetcherFactory({"process_params": RuntimeError("boom")}),
     )
@@ -784,7 +785,7 @@ def test_raw_current_differs_from_final_average_bucket(monkeypatch) -> None:
             ("process_params", "windowed-average"): averaged,
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
     result = fs.load_trend_view(spec, start, end, "1 minute", use_live_current=True)
 
@@ -815,7 +816,7 @@ def test_every_fixed_interval_uses_latest_raw_current(monkeypatch, interval) -> 
             ("process_params", "windowed-average"): averaged,
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
     result = fs.load_trend_view(
         spec,
@@ -848,7 +849,7 @@ def test_custom_historical_current_is_bounded_to_selected_range(monkeypatch) -> 
             ("process_params", "windowed-average"): averaged,
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
     result = fs.load_trend_view(spec, start, end, "1 minute", use_live_current=False)
 
@@ -885,7 +886,7 @@ def test_current_and_trend_fail_independently(monkeypatch) -> None:
             ("process_params", "windowed-average"): averaged,
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
     result = fs.load_trend_view(spec, start, end, "1 minute", use_live_current=True)
     assert result.current.issue == "fetch_failed"
@@ -901,7 +902,7 @@ def test_current_and_trend_fail_independently(monkeypatch) -> None:
             ("process_params", "windowed-average"): RuntimeError("trend token=SECRET"),
         }
     )
-    monkeypatch.setattr(fs, "TimeSeriesDataFetcher", fake)
+    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
     result = fs.load_trend_view(spec, start, end, "1 minute", use_live_current=True)
     assert result.current.value == 530.0
@@ -1019,35 +1020,39 @@ def test_catalogue_text_is_html_safe_to_escape() -> None:
         assert html.unescape(html.escape(spec.label)) == spec.label
 
 
-def test_feature_uses_the_requested_two_module_architecture() -> None:
+def test_influx_access_is_isolated_to_the_repository_boundary() -> None:
     repo = Path(__file__).resolve().parents[1]
-    data_path = repo / "src" / "data" / "furnace_status.py"
-    source = data_path.read_text(encoding="utf-8")
-    tree = ast.parse(source)
+    repository_path = repo / "src" / "data" / "furnace_status" / "repository.py"
+    repository_source = repository_path.read_text(encoding="utf-8")
+    tree = ast.parse(repository_source)
     cached_fetches = [
         node
         for node in tree.body
         if isinstance(node, ast.FunctionDef) and node.name == "_fetch_cached"
     ]
     assert len(cached_fetches) == 1
-
-    feature_source = "\n".join(
-        (repo / path).read_text(encoding="utf-8")
-        for path in (
-            "src/ui/furnace_status_page.py",
-            "src/data/furnace_status.py",
-            "src/custom_pages/3_Data_Visualisation.py",
-        )
+    assert "from data.fetchers.ts_data_fetcher import TimeSeriesDataFetcher" in (
+        repository_source
     )
-    assert "InfluxDBClient3" not in feature_source
-    assert "fetch_online_df" not in feature_source
-    assert "from data.fetchers.ts_data_fetcher import TimeSeriesDataFetcher" in source
-    for unwanted in (
-        "src/domain/furnace_status.py",
-        "src/data/furnace_status_service.py",
-        "src/ui/furnace_status_orchestration.py",
-        "src/ui/vboard_sections.py",
-        "src/ui/vboard_visualisations.py",
-        "src/custom_pages/10_Furnace_Status.py",
-    ):
-        assert not (repo / unwanted).exists()
+
+    domain_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (repo / "src" / "domain" / "furnace_status").glob("*.py")
+    )
+    ui_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (repo / "src" / "ui" / "furnace_status").glob("*.py")
+    )
+    assert "TimeSeriesDataFetcher" not in domain_source
+    assert "streamlit" not in domain_source
+    assert "TimeSeriesDataFetcher" not in ui_source
+    assert "InfluxDBClient3" not in ui_source
+    assert "fetch_online_df" not in ui_source
+
+
+def test_page_entry_points_are_small_orchestrators() -> None:
+    repo = Path(__file__).resolve().parents[1]
+    compatibility = repo / "src" / "ui" / "furnace_status_page.py"
+    entry = repo / "src" / "ui" / "furnace_status" / "page.py"
+    assert len(compatibility.read_text(encoding="utf-8").splitlines()) < 50
+    assert len(entry.read_text(encoding="utf-8").splitlines()) < 75
