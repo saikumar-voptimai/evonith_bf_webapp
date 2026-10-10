@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import streamlit as st
 
+from agents.furnacemind.web_ingestion import ingest_external_knowledge_url
 from agents.multimodal.ingestion import process_file
 from utils.furnacemind.skill_ui import (
     build_skill_context_preview,
@@ -33,6 +34,7 @@ from utils.furnacemind.skill_ui import (
     store_skill_markdown,
     unique_skill_slug,
 )
+from utils.settings import settings
 
 if TYPE_CHECKING:
     from agents.furnacemind.skill_registry import SkillDefinition, SkillRegistry
@@ -1072,6 +1074,9 @@ def render_knowledge_sidebar(
         st.caption("PDF, images, PPTX, Excel, CSV, DOCX, TXT, and Markdown")
         upload_message = st.session_state.pop("fm_knowledge_upload_result", None)
         remove_message = st.session_state.pop("fm_knowledge_remove_result", None)
+        web_source_message = st.session_state.pop(
+            "fm_knowledge_web_source_result", None
+        )
         memory_warning = st.session_state.pop(
             "fm_knowledge_memory_cleanup_warning", None
         )
@@ -1079,6 +1084,8 @@ def render_knowledge_sidebar(
             st.success(upload_message)
         if remove_message:
             st.success(remove_message)
+        if web_source_message:
+            st.success(web_source_message)
         if memory_warning:
             st.warning(memory_warning)
 
@@ -1133,12 +1140,93 @@ def render_knowledge_sidebar(
                 upload_status.warning(
                     f"Skipped unsupported or empty files: {', '.join(skipped_files)}"
                 )
+        _render_web_source_ingestion(
+            knowledge_store=knowledge_store,
+            embedding_client=embedding_client,
+            user_id=user_id,
+            document_repository=document_repository,
+            chunk_repository=chunk_repository,
+        )
         _render_knowledge_documents(
             knowledge_store=knowledge_store,
             user_id=user_id,
             document_repository=document_repository,
             semantic_memory_service=semantic_memory_service,
         )
+
+
+def _render_web_source_ingestion(
+    *,
+    knowledge_store: Any,
+    embedding_client: Any,
+    user_id: str | None,
+    document_repository: Any | None,
+    chunk_repository: Any | None,
+) -> None:
+    """Render URL-based external knowledge ingestion controls.
+
+    This control is the UI equivalent of the ``web_scrape_ingest`` tool. It
+    scrapes a user-provided URL through the configured reader provider, stores
+    the scraped Markdown bytes on the SQL ``memory_documents`` row, and indexes
+    the resulting chunks into the shared FurnaceMind knowledge vector store.
+    The control is deliberately disabled unless URL ingestion is explicitly
+    enabled and SQL document persistence is available.
+    """
+    st.caption("Add web source")
+    ingestion_enabled = bool(settings.web_scrape.ingest_enabled)
+    persistence_ready = bool(user_id and document_repository is not None)
+    disabled_reason = ""
+    if not ingestion_enabled:
+        disabled_reason = "Set WEB_SCRAPE_INGEST_ENABLED=true to enable URL ingestion."
+    elif not persistence_ready:
+        disabled_reason = "SQL document storage is unavailable for web sources."
+
+    with st.form("fm_web_source_ingest_form", clear_on_submit=True):
+        source_url = st.text_input(
+            "Source URL",
+            placeholder="https://example.com/blast-furnace-reference",
+            help="Scrape this public page and add it to shared FurnaceMind knowledge.",
+        )
+        submitted = st.form_submit_button(
+            "Scrape & Index URL",
+            use_container_width=True,
+            disabled=bool(disabled_reason),
+        )
+
+    if disabled_reason:
+        st.caption(disabled_reason)
+        return
+    if not submitted:
+        return
+
+    clean_url = str(source_url or "").strip()
+    if not clean_url:
+        st.warning("Paste a URL before indexing.")
+        return
+
+    with st.spinner("Scraping and indexing web source..."):
+        result = ingest_external_knowledge_url(
+            clean_url,
+            knowledge_store=knowledge_store,
+            embedding_client=embedding_client,
+            user_id=user_id,
+            document_repository=document_repository,
+            chunk_repository=chunk_repository,
+        )
+
+    if result.status == "indexed":
+        st.session_state["fm_knowledge_web_source_result"] = (
+            f"Indexed web source {result.filename or result.url}, "
+            f"{result.chunk_count} searchable part(s)."
+        )
+        st.rerun()
+    if result.status == "already_indexed":
+        st.session_state["fm_knowledge_web_source_result"] = (
+            f"Web source already indexed: {result.filename or result.url}."
+        )
+        st.rerun()
+
+    st.warning(result.error or f"Web source ingestion returned status: {result.status}")
 
 
 def _document_metadata(document: Any) -> dict[str, Any]:

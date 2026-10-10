@@ -46,6 +46,8 @@ _TOOL_LABELS: dict[str, str] = {
     "load_static_shift_data": "Loading shift data...",
     "search_shift_history": "Searching shift history...",
     "search_knowledge_docs": "Searching knowledge docs...",
+    "web_search": "Searching web...",
+    "web_scrape_ingest": "Indexing web source...",
     "execute_python_plot": "Generating plot...",
 }
 
