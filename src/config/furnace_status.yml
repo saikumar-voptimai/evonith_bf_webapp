@@ -1,0 +1,372 @@
+settings:
+  timezone: Asia/Kolkata
+  status_lookback: last 15 minutes
+  selected_range_label: over selected range
+  cache_ttl_seconds: 60
+  stale_after_minutes: 15
+  live_max_age_minutes: 5
+  live_min_coverage: 0.70
+  trend:
+    fixed_intervals:
+      1h: 1
+      4h: 4
+      8h: 8
+      16h: 16
+      24h: 24
+    custom_interval: Custom
+    default_interval: 8h
+    max_custom_range_days: 90
+    aggregation_windows:
+      - max_duration_hours: 1
+        window: 1 minute
+      - max_duration_hours: 8
+        window: 5 minutes
+      - max_duration_hours: 16
+        window: 10 minutes
+      - max_duration_hours: 24
+        window: 15 minutes
+      - max_duration_hours: 72
+        window: 30 minutes
+    widest_window: 1 hour
+
+sections:
+  - Production
+  - Blast and Gas
+  - Uptake Temperatures
+  - Steam and O₂
+  - Furnace Performance
+  - Total Heat Load
+  - Hearth Temperatures
+
+# Order is the dashboard display order. Do not sort this list.
+parameters:
+  - key: production_theoretical
+    label: Production (Theor.)
+    section: Production
+    measurement: process_params
+    field: theoretical_production_per_day
+    unit: t/day
+    decimals: 0
+
+  - key: production_rate
+    label: Production Rate
+    section: Production
+    measurement: process_params
+    field: production_per_hour
+    unit: TPH
+    decimals: 1
+
+  - key: hot_blast_volume
+    label: Hot Blast Volume
+    section: Blast and Gas
+    measurement: process_params
+    field: hot_blast_vol_nm3h
+    unit: Nm³/h
+    decimals: 0
+
+  - key: blast_pressure
+    label: Blast Pressure
+    section: Blast and Gas
+    measurement: process_params
+    field: hot_blast_press
+    unit: bar
+    decimals: 2
+
+  - key: top_pressure
+    label: Top Pressure
+    section: Blast and Gas
+    measurement: process_params
+    field: top_press_avg
+    unit: bar
+    decimals: 2
+
+  - key: co_utilization
+    label: CO Utilization
+    section: Blast and Gas
+    measurement: process_params
+    field: body_etaco
+    unit: ""
+    decimals: 5
+    source_note: ETA CO as stored; the raw scale is preserved, not converted to %.
+
+  - key: top_gas_h2
+    label: Top Gas H₂
+    section: Blast and Gas
+    measurement: process_params
+    field: h2_pct
+    unit: "%"
+    decimals: 2
+
+  - key: hbt
+    label: HBT
+    section: Blast and Gas
+    measurement: process_params
+    field: hot_blast_temp
+    unit: °C
+    decimals: 0
+
+  - key: raft
+    label: RAFT
+    section: Blast and Gas
+    measurement: process_params
+    field: body_raft
+    unit: °C
+    decimals: 0
+
+  - key: uptake_t1
+    label: T1
+    section: Uptake Temperatures
+    measurement: process_params
+    field: top_temp_1
+    unit: °C
+    decimals: 0
+    trend_label: Uptake Temperature T1
+
+  - key: uptake_t2
+    label: T2
+    section: Uptake Temperatures
+    measurement: process_params
+    field: top_temp_2
+    unit: °C
+    decimals: 0
+    trend_label: Uptake Temperature T2
+
+  - key: uptake_t3
+    label: T3
+    section: Uptake Temperatures
+    measurement: process_params
+    field: top_temp_3
+    unit: °C
+    decimals: 0
+    trend_label: Uptake Temperature T3
+
+  - key: uptake_t4
+    label: T4
+    section: Uptake Temperatures
+    measurement: process_params
+    field: top_temp_4
+    unit: °C
+    decimals: 0
+    trend_label: Uptake Temperature T4
+
+  - key: uptake_avg
+    label: T Avg
+    section: Uptake Temperatures
+    measurement: process_params
+    field: top_temp_avg
+    unit: °C
+    decimals: 0
+    trend_label: Uptake Temperature Average
+
+  - key: steam_injection
+    label: Steam Injection
+    section: Steam and O₂
+    measurement: process_params
+    field: steam_injection
+    unit: TPH
+    decimals: 2
+    scale: 0.001
+    source_note: Source field is in kg/h; shown in TPH (÷ 1000).
+
+  - key: steam_bypass_flow
+    label: Steam Bypass Flow
+    section: Steam and O₂
+    unavailable_reason: No confirmed live source is configured for steam bypass flow.
+
+  - key: o2_injection
+    label: O₂ Injection
+    section: Steam and O₂
+    measurement: process_params
+    field: oxygen_enrichment_pct
+    unit: "%"
+    decimals: 2
+    source_note: Represents oxygen enrichment (%) of the blast.
+
+  - key: oxygen_flow
+    label: Oxygen Flow
+    section: Steam and O₂
+    measurement: process_params
+    field: oxygen_flow
+    unit: Nm³/h
+    decimals: 0
+
+  - key: fuel_rate
+    label: Fuel Rate
+    section: Furnace Performance
+    measurement: process_params
+    field: fuel_rate
+    unit: kg/THM
+    decimals: 0
+
+  - key: pci_rate
+    label: PCI Rate (SP/ACT.)
+    section: Furnace Performance
+    measurement: process_params
+    field: coal_rate_actual_value
+    unit: kg/THM
+    decimals: 0
+    trend_label: PCI Rate (SP / Actual)
+    setpoint_field: coal_rate_set_value
+
+  - key: slag_rate
+    label: Slag Rate
+    section: Furnace Performance
+    unavailable_reason: >-
+      Slag rate exists only in the daily production report. There is no
+      high-frequency live field, so no 1–24 hour trend can be built.
+
+  - key: permeability
+    label: Permeability
+    section: Furnace Performance
+    measurement: process_params
+    field: body_perm
+    unit: ""
+    decimals: 1
+    source_note: Unit not confirmed in the application, so none is shown.
+
+  - key: tuyere_velocity
+    label: Tuyere Velocity
+    section: Furnace Performance
+    measurement: process_params
+    field: tuyere_velocity
+    unit: m/s
+    decimals: 1
+
+  - key: furnace_level
+    label: Furnace Level
+    section: Furnace Performance
+    measurement: miscellaneous
+    field: stock_rod_radar_level
+    unit: m
+    decimals: 2
+
+  - key: heat_load_total
+    label: Total Heat Load
+    section: Total Heat Load
+    measurement: heatload_delta_t
+    field: heat_load_total_sum
+    unit: MW
+    decimals: 2
+    components:
+      - heat_load_r6_q1
+      - heat_load_r7_q1
+      - heat_load_r8_q1
+      - heat_load_r9_q1
+      - heat_load_r10_q1
+      - heat_load_r6_q2
+      - heat_load_r7_q2
+      - heat_load_r8_q2
+      - heat_load_r9_q2
+      - heat_load_r10_q2
+      - heat_load_r6_q3
+      - heat_load_r7_q3
+      - heat_load_r8_q3
+      - heat_load_r9_q3
+      - heat_load_r10_q3
+      - heat_load_r6_q4
+      - heat_load_r7_q4
+      - heat_load_r8_q4
+      - heat_load_r9_q4
+      - heat_load_r10_q4
+    aggregate: sum
+    source_note: Q1 + Q2 + Q3 + Q4 (rows R6–R10).
+
+  - key: heat_load_q1
+    label: Q1 (Staves 1–8)
+    section: Total Heat Load
+    measurement: heatload_delta_t
+    field: heat_load_q1_sum
+    unit: MW
+    decimals: 2
+    trend_label: Heat Load Q1 (Staves 1–8, R6–R10)
+    components: [heat_load_r6_q1, heat_load_r7_q1, heat_load_r8_q1, heat_load_r9_q1, heat_load_r10_q1]
+    aggregate: sum
+    source_note: Sum of rows R6–R10, staves 1–8.
+
+  - key: heat_load_q2
+    label: Q2 (Staves 9–16)
+    section: Total Heat Load
+    measurement: heatload_delta_t
+    field: heat_load_q2_sum
+    unit: MW
+    decimals: 2
+    trend_label: Heat Load Q2 (Staves 9–16, R6–R10)
+    components: [heat_load_r6_q2, heat_load_r7_q2, heat_load_r8_q2, heat_load_r9_q2, heat_load_r10_q2]
+    aggregate: sum
+    source_note: Sum of rows R6–R10, staves 9–16.
+
+  - key: heat_load_q3
+    label: Q3 (Staves 17–24)
+    section: Total Heat Load
+    measurement: heatload_delta_t
+    field: heat_load_q3_sum
+    unit: MW
+    decimals: 2
+    trend_label: Heat Load Q3 (Staves 17–24, R6–R10)
+    components: [heat_load_r6_q3, heat_load_r7_q3, heat_load_r8_q3, heat_load_r9_q3, heat_load_r10_q3]
+    aggregate: sum
+    source_note: Sum of rows R6–R10, staves 17–24.
+
+  - key: heat_load_q4
+    label: Q4 (Staves 25–32)
+    section: Total Heat Load
+    measurement: heatload_delta_t
+    field: heat_load_q4_sum
+    unit: MW
+    decimals: 2
+    trend_label: Heat Load Q4 (Staves 25–32, R6–R10)
+    components: [heat_load_r6_q4, heat_load_r7_q4, heat_load_r8_q4, heat_load_r9_q4, heat_load_r10_q4]
+    aggregate: sum
+    source_note: Sum of rows R6–R10, staves 25–32.
+
+  - key: hearth_temp_a
+    label: Pad A
+    section: Hearth Temperatures
+    measurement: temperature_profile
+    field: temp_4373_a
+    unit: °C
+    decimals: 0
+    trend_label: Hearth Temp A
+    source_note: Hearth pad A (HEARTH_TEMP_A).
+
+  - key: hearth_temp_b
+    label: Pad B
+    section: Hearth Temperatures
+    measurement: temperature_profile
+    field: temp_5411_b
+    unit: °C
+    decimals: 0
+    trend_label: Hearth Temp B
+    source_note: Hearth pad B (HEARTH_TEMP_B).
+
+  - key: hearth_temp_c
+    label: Pad C
+    section: Hearth Temperatures
+    measurement: temperature_profile
+    field: temp_5757_c
+    unit: °C
+    decimals: 0
+    trend_label: Hearth Temp C
+    source_note: Hearth pad C (HEARTH_TEMP_C).
+
+  - key: hearth_temp_d
+    label: Pad D
+    section: Hearth Temperatures
+    measurement: temperature_profile
+    field: temp_6103_d
+    unit: °C
+    decimals: 0
+    trend_label: Hearth Temp D
+    source_note: Hearth pad D (HEARTH_TEMP_D).
+
+  - key: hearth_temp_avg
+    label: Pad Avg
+    section: Hearth Temperatures
+    measurement: temperature_profile
+    field: hearth_temp_avg
+    unit: °C
+    decimals: 0
+    trend_label: Hearth Temp Avg
+    components: [temp_4373_a, temp_5411_b, temp_5757_c, temp_6103_d]
+    aggregate: mean
+    source_note: Mean of hearth pads A–D (HEARTH_TEMP_AVG).
