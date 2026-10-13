@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
@@ -16,7 +17,32 @@ from domain.furnace_status.types import ParameterSpec
 from furnace_data.influx.query import influx_fields
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "furnace_status.yml"
-_AGGREGATES = frozenset({"sum", "mean"})
+_AGGREGATES = frozenset({"sum", "mean", "std"})
+_COLOUR_KEYS = (
+    "surface",
+    "inset",
+    "hover",
+    "grid",
+    "border",
+    "segment",
+    "text_muted",
+    "text",
+    "accent",
+    "warm",
+    "warm_text",
+    "glow",
+    "outline",
+    "leader",
+    "body_top",
+    "body_upper",
+    "body_mid",
+    "body_lower",
+    "body_bottom",
+    "lining",
+    "zone_divider",
+    "live",
+    "partial",
+)
 
 
 class CatalogueError(ValueError):
@@ -35,6 +61,8 @@ class FurnaceStatusSettings:
     status_lookback: str
     selected_range_label: str
     cache_ttl_seconds: int
+    refresh_choices: tuple[tuple[str, int], ...]
+    refresh_default: str
     stale_after: timedelta
     live_max_age: timedelta
     live_min_coverage: float
@@ -51,10 +79,25 @@ class FurnaceStatusSettings:
 
 
 @dataclass(frozen=True)
+class FurnaceZone:
+    name: str
+    lower_m: float
+    upper_m: float
+    readings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class FurnaceStatusUI:
+    colours: tuple[tuple[str, str], ...]
+    zones: tuple[FurnaceZone, ...]
+
+
+@dataclass(frozen=True)
 class FurnaceStatusConfig:
     settings: FurnaceStatusSettings
     sections: tuple[str, ...]
     parameters: tuple[ParameterSpec, ...]
+    ui: FurnaceStatusUI
 
 
 def _mapping(value: object, location: str) -> Mapping[str, Any]:
@@ -72,10 +115,26 @@ def _positive_number(value: object, location: str) -> float:
     return result
 
 
+def _finite_number(value: object, location: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise CatalogueError(f"{location} must be a finite number")
+    result = float(value)
+    if not math.isfinite(result):
+        raise CatalogueError(f"{location} must be a finite number")
+    return result
+
+
 def _nonempty_string(value: object, location: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CatalogueError(f"{location} must be a non-empty string")
     return value
+
+
+def _hex_colour(value: object, location: str) -> str:
+    colour = _nonempty_string(value, location)
+    if re.fullmatch(r"#[0-9A-Fa-f]{6}", colour) is None:
+        raise CatalogueError(f"{location} must be a six-digit hex colour")
+    return colour
 
 
 def _load_settings(raw: object) -> FurnaceStatusSettings:
@@ -125,6 +184,23 @@ def _load_settings(raw: object) -> FurnaceStatusSettings:
     cache_ttl = settings.get("cache_ttl_seconds")
     if isinstance(cache_ttl, bool) or not isinstance(cache_ttl, int) or cache_ttl <= 0:
         raise CatalogueError("cache_ttl_seconds must be a positive integer")
+    refresh = _mapping(settings.get("refresh"), "settings.refresh")
+    raw_refresh_choices = _mapping(
+        refresh.get("choices"), "settings.refresh.choices"
+    )
+    refresh_choices: list[tuple[str, int]] = []
+    for label, seconds in raw_refresh_choices.items():
+        name = _nonempty_string(label, "refresh choice label")
+        if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0:
+            raise CatalogueError("refresh choice seconds must be positive integers")
+        refresh_choices.append((name, seconds))
+    if not refresh_choices:
+        raise CatalogueError("settings.refresh.choices must not be empty")
+    refresh_default = _nonempty_string(
+        refresh.get("default"), "settings.refresh.default"
+    )
+    if refresh_default not in dict(refresh_choices):
+        raise CatalogueError("settings.refresh.default must name a refresh choice")
     coverage = settings.get("live_min_coverage")
     if isinstance(coverage, bool) or not isinstance(coverage, (int, float)):
         raise CatalogueError("live_min_coverage must be numeric")
@@ -141,6 +217,8 @@ def _load_settings(raw: object) -> FurnaceStatusSettings:
             settings.get("selected_range_label"), "selected_range_label"
         ),
         cache_ttl_seconds=cache_ttl,
+        refresh_choices=tuple(refresh_choices),
+        refresh_default=refresh_default,
         stale_after=timedelta(
             minutes=_positive_number(settings.get("stale_after_minutes"), "stale_after")
         ),
@@ -264,6 +342,52 @@ def _load_parameter(raw_value: object, sections: frozenset[str]) -> ParameterSpe
     return spec
 
 
+def _load_ui(raw_value: object, parameter_keys: frozenset[str]) -> FurnaceStatusUI:
+    raw = _mapping(raw_value, "ui")
+    raw_colours = _mapping(raw.get("colours"), "ui.colours")
+    if set(raw_colours) != set(_COLOUR_KEYS):
+        raise CatalogueError(
+            f"ui.colours must define exactly: {', '.join(_COLOUR_KEYS)}"
+        )
+    colours = tuple(
+        (key, _hex_colour(raw_colours[key], f"ui.colours.{key}"))
+        for key in _COLOUR_KEYS
+    )
+
+    raw_zones = raw.get("zones")
+    if not isinstance(raw_zones, list) or not raw_zones:
+        raise CatalogueError("ui.zones must be a non-empty list")
+    zones: list[FurnaceZone] = []
+    for index, raw_zone in enumerate(raw_zones):
+        zone = _mapping(raw_zone, f"ui.zones[{index}]")
+        name = _nonempty_string(zone.get("name"), f"ui.zones[{index}].name")
+        bounds = zone.get("range_m")
+        if not isinstance(bounds, list) or len(bounds) != 2:
+            raise CatalogueError(f"zone {name!r} range_m must contain two numbers")
+        lower = _finite_number(bounds[0], f"zone {name!r} lower bound")
+        upper = _finite_number(bounds[1], f"zone {name!r} upper bound")
+        if lower < 0 or lower >= upper:
+            raise CatalogueError(f"zone {name!r} must have 0 <= lower < upper")
+        readings = zone.get("readings")
+        if not isinstance(readings, list) or not readings or not all(
+            isinstance(key, str) and key for key in readings
+        ):
+            raise CatalogueError(f"zone {name!r} readings must be a non-empty list")
+        if len(readings) != len(set(readings)):
+            raise CatalogueError(f"zone {name!r} has duplicate readings")
+        unknown = sorted(set(readings) - parameter_keys)
+        if unknown:
+            raise CatalogueError(f"zone {name!r} uses unknown parameters: {unknown}")
+        zones.append(FurnaceZone(name, lower, upper, tuple(readings)))
+
+    if len({zone.name for zone in zones}) != len(zones):
+        raise CatalogueError("ui.zones names must be unique")
+    for upper_zone, lower_zone in zip(zones, zones[1:], strict=False):
+        if not math.isclose(upper_zone.lower_m, lower_zone.upper_m):
+            raise CatalogueError("ui.zones must be ordered and contiguous")
+    return FurnaceStatusUI(colours, tuple(zones))
+
+
 def load_catalogue(path: str | Path = CONFIG_PATH) -> FurnaceStatusConfig:
     """Load and fully validate a Furnace Status YAML file."""
     config_path = Path(path)
@@ -288,7 +412,10 @@ def load_catalogue(path: str | Path = CONFIG_PATH) -> FurnaceStatusConfig:
         duplicates = sorted({key for key in keys if keys.count(key) > 1})
         raise CatalogueError(f"duplicate parameter keys: {duplicates}")
     return FurnaceStatusConfig(
-        _load_settings(root.get("settings")), sections, parameters
+        _load_settings(root.get("settings")),
+        sections,
+        parameters,
+        _load_ui(root.get("ui"), frozenset(keys)),
     )
 
 
@@ -297,6 +424,7 @@ SETTINGS = CONFIG.settings
 SECTIONS = CONFIG.sections
 PARAMETERS = CONFIG.parameters
 PARAMETERS_BY_KEY = {spec.key: spec for spec in PARAMETERS}
+UI = CONFIG.ui
 
 (
     SECTION_PRODUCTION,

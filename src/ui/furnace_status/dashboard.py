@@ -9,7 +9,6 @@ import streamlit as st
 from data import furnace_status as fs
 from ui.furnace_status.components import (
     h,
-    refresh,
     render_heat_load_panel,
     render_panel,
     render_strip,
@@ -22,6 +21,11 @@ from ui.furnace_status.layout import (
 )
 from ui.furnace_status.responsive import render_fullscreen_control
 from ui.furnace_status.schematic import render_furnace
+from ui.streamlit_fragments import fragment
+
+REFRESH_CHOICES = dict(fs.SETTINGS.refresh_choices)
+if fs.CACHE_TTL_SECONDS >= min(REFRESH_CHOICES.values()):
+    raise ValueError("Furnace Status cache TTL must be below its refresh intervals")
 
 
 def _selected_zone() -> str | None:
@@ -43,7 +47,7 @@ def _status_html(snapshot: fs.StatusSnapshot) -> str:
     )
 
 
-def _render_header(snapshot: fs.StatusSnapshot) -> None:
+def _render_header():
     with st.container(
         key="fs-header", horizontal=True, vertical_alignment="center", gap="medium"
     ):
@@ -52,22 +56,28 @@ def _render_header(snapshot: fs.StatusSnapshot) -> None:
             "BF2 blast furnace status</div>"
             f'<div class="fs-subtitle">{h(INSTRUCTIONS)}</div></div>'
         )
-        st.html(_status_html(snapshot), width="content")
+        badge = st.empty()
         render_fullscreen_control()
-        st.button(
-            "Refresh",
+        choice = st.selectbox(
+            "Auto-refresh interval",
+            REFRESH_CHOICES,
+            index=list(REFRESH_CHOICES).index(fs.SETTINGS.refresh_default),
             key="fs-refresh",
-            icon=":material/refresh:",
-            help="Reload live values",
-            on_click=refresh,
+            format_func=lambda label: f"↻ {label}",
+            help="Refreshes live values only; the page stays in place.",
+            label_visibility="collapsed",
+            width=124,
         )
+    return badge, REFRESH_CHOICES[choice]
 
 
-def render_status_view() -> None:
+def _live_dashboard(badge) -> None:
+    if fs.parse_view_state(st.query_params).view != fs.VIEW_STATUS:
+        st.rerun()
     snapshot = fs.load_status_snapshot(datetime.now(timezone.utc))
+    badge.html(_status_html(snapshot), width="content")
     readings = {reading.spec.key: reading for reading in snapshot.readings}
     zone = _selected_zone()
-    _render_header(snapshot)
     if snapshot.failed_measurements:
         names = ", ".join(snapshot.failed_measurements)
         st.html(
@@ -89,3 +99,8 @@ def render_status_view() -> None:
                     render_heat_load_panel(readings, zone)
                 else:
                     render_panel(section, readings, zone)
+
+
+def render_status_view() -> None:
+    badge, seconds = _render_header()
+    fragment(_live_dashboard, run_every=seconds)(badge)

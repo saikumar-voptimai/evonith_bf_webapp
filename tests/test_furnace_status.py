@@ -28,10 +28,13 @@ def _clear_feature_caches():
 EXPECTED_LABELS = [
     "Production (Theor.)",
     "Production Rate",
+    "Charges Per Hour",
     "Hot Blast Volume",
     "Blast Pressure",
     "Top Pressure",
-    "CO Utilization",
+    "Total DP",
+    "Bottom Pressure",
+    "Eta CO",
     "Top Gas H₂",
     "HBT",
     "RAFT",
@@ -39,9 +42,8 @@ EXPECTED_LABELS = [
     "T2",
     "T3",
     "T4",
-    "T Avg",
+    "Std Dev",
     "Steam Injection",
-    "Steam Bypass Flow",
     "O₂ Injection",
     "Oxygen Flow",
     "Fuel Rate",
@@ -49,17 +51,18 @@ EXPECTED_LABELS = [
     "Slag Rate",
     "Permeability",
     "Tuyere Velocity",
-    "Furnace Level",
+    "Radar Level",
+    "Stock Rod Position 1",
+    "Stock Rod Position 2",
     "Total Heat Load",
     "Q1 (Staves 1–8)",
     "Q2 (Staves 9–16)",
     "Q3 (Staves 17–24)",
     "Q4 (Staves 25–32)",
-    "Pad A",
-    "Pad B",
-    "Pad C",
-    "Pad D",
-    "Pad Avg",
+    "4.3 m",
+    "5.4 m",
+    "5.7 m",
+    "6.1 m",
 ]
 
 
@@ -87,7 +90,7 @@ def test_all_reference_labels_present_in_order() -> None:
 
 def test_every_parameter_belongs_to_a_known_section() -> None:
     assert {p.section for p in fs.PARAMETERS} <= set(fs.SECTIONS)
-    assert sum(len(fs.parameters_in_section(s)) for s in fs.SECTIONS) == 34
+    assert sum(len(fs.parameters_in_section(s)) for s in fs.SECTIONS) == 37
 
 
 def test_source_backed_fields_are_actually_queried() -> None:
@@ -243,50 +246,17 @@ def test_heat_load_trend_sums_per_bin_and_keeps_gaps() -> None:
     assert trend.series.iloc[2] == pytest.approx(3.5)
 
 
-def test_hearth_pads_use_the_ml_dataset_mapping() -> None:
-    from furnace_data.config import load_config
-
-    mapping = load_config("setting_ds_dv.yml")["ml_dataset"]["temperature_params"]
-    for pad in "abcd":
+def test_hearth_pads_use_the_configured_sensor_fields() -> None:
+    expected = {
+        "a": "temp_4373_b",
+        "b": "temp_5411_c",
+        "c": "temp_5757_c",
+        "d": "temp_6103_b",
+    }
+    for pad, field in expected.items():
         spec = fs.PARAMETERS_BY_KEY[f"hearth_temp_{pad}"]
-        assert spec.measurement == "temperature_profile"
+        assert (spec.measurement, spec.field) == ("temperature_profile", field)
         assert spec.title == f"Hearth Temp {pad.upper()}"
-        assert mapping[spec.field] == f"hearth_pad_{pad}_c"
-
-
-def test_hearth_average_is_the_mean_of_all_four_pads() -> None:
-    spec = fs.PARAMETERS_BY_KEY["hearth_temp_avg"]
-    frame = make_frame(
-        {
-            "temp_4373_a": [500.0],
-            "temp_5411_b": [510.0],
-            "temp_5757_c": [520.0],
-            "temp_6103_d": [530.0],
-        }
-    )
-    reading = fs.resolve_reading(spec, {"temperature_profile": frame}, NOW)
-    assert reading.value == pytest.approx(515.0)
-    assert fs.format_reading(reading) == "515"
-
-    partial = fs.resolve_reading(
-        spec, {"temperature_profile": frame.drop(columns="temp_6103_d")}, NOW
-    )
-    assert fs.format_reading(partial) == "Not available"  # no average of 3 pads
-
-
-def test_hearth_average_trend_is_per_bin_mean_with_gaps() -> None:
-    frame = make_frame(
-        {
-            "temp_4373_a": [500.0, np.nan],
-            "temp_5411_b": [510.0, 510.0],
-            "temp_5757_c": [520.0, 520.0],
-            "temp_6103_d": [530.0, 530.0],
-        }
-    )
-    trend = fs.build_trend_data(fs.PARAMETERS_BY_KEY["hearth_temp_avg"], frame)
-
-    assert trend.series.iloc[0] == pytest.approx(515.0)
-    assert np.isnan(trend.series.iloc[1])
 
 
 def test_uptake_temperatures_read_top_temp_fields() -> None:
@@ -296,9 +266,29 @@ def test_uptake_temperatures_read_top_temp_fields() -> None:
         "top_temp_2",
         "top_temp_3",
         "top_temp_4",
-        "top_temp_avg",
+        "top_temp_std",
     ]
     assert all(s.unit == "°C" for s in specs)
+
+
+def test_uptake_standard_deviation_is_derived_per_timestamp() -> None:
+    spec = fs.PARAMETERS_BY_KEY["uptake_std"]
+    frame = make_frame(
+        {
+            "top_temp_1": [100.0, 100.0],
+            "top_temp_2": [110.0, 110.0],
+            "top_temp_3": [120.0, np.nan],
+            "top_temp_4": [130.0, 130.0],
+        }
+    )
+
+    reading = fs.resolve_reading(spec, {"process_params": frame}, NOW)
+    trend = fs.build_trend_data(spec, frame)
+
+    assert reading.value == pytest.approx(np.std([100.0, 110.0, 120.0, 130.0]))
+    assert fs.format_reading(reading) == "11.2"
+    assert trend.series.iloc[0] == pytest.approx(reading.value)
+    assert np.isnan(trend.series.iloc[1])
 
 
 # ── Formatting ───────────────────────────────────────────────────────────────
@@ -339,7 +329,7 @@ def test_co_utilization_keeps_raw_scale() -> None:
     spec = fs.PARAMETERS_BY_KEY["co_utilization"]
     frame = make_frame({"body_etaco": [0.48123456]})
     reading = fs.resolve_reading(spec, {"process_params": frame}, NOW)
-    assert fs.format_reading(reading) == "0.48123"
+    assert fs.format_reading(reading) == "0.5"
     assert spec.unit == ""
 
 

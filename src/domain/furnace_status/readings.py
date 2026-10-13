@@ -76,9 +76,12 @@ def series_for_spec(
             pd.to_numeric, errors="coerce"
         )
         parts = parts.where(np.isfinite(parts))
-        series = parts.sum(axis=1, min_count=len(components))
-        if spec.aggregate == "mean":
-            series = series / len(components)
+        if spec.aggregate == "std":
+            series = parts.std(axis=1, ddof=0).where(parts.notna().all(axis=1))
+        else:
+            series = parts.sum(axis=1, min_count=len(components))
+            if spec.aggregate == "mean":
+                series = series / len(components)
     else:
         series = _field_series(normalized, field or spec.field)
         if series is None:

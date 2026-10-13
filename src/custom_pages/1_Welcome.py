@@ -306,7 +306,14 @@ def _tile(col, page_path: str, icon: str, title: str, desc: str, color: str):
             </p>
         </div>
         """)
-        st.page_link(page_path, label=f"Open {title}  →", width="stretch")
+        st.page_link(
+            page_path,
+            label=f"Open {title}  →",
+            width="stretch",
+            query_params=(
+                {"section": "furnace-status"} if title == "V-Board" else None
+            ),
+        )
 
 
 for i in range(0, len(_TILES), 3):

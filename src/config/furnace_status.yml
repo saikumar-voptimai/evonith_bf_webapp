@@ -2,7 +2,14 @@ settings:
   timezone: Asia/Kolkata
   status_lookback: last 15 minutes
   selected_range_label: over selected range
-  cache_ttl_seconds: 60
+  cache_ttl_seconds: 5
+  refresh:
+    choices:
+      10 s: 10
+      30 s: 30
+      1 min: 60
+      5 min: 300
+    default: 10 s
   stale_after_minutes: 15
   live_max_age_minutes: 5
   live_min_coverage: 0.70
@@ -28,6 +35,94 @@ settings:
       - max_duration_hours: 72
         window: 30 minutes
     widest_window: 1 hour
+
+ui:
+  colours:
+    surface: "#FFFFFF"
+    inset: "#F8FAFC"
+    hover: "#F1F5F9"
+    grid: "#E3EAF1"
+    border: "#DBE3EC"
+    segment: "#94A3B8"
+    text_muted: "#64748B"
+    text: "#0F172A"
+    accent: "#1F6FB2"
+    warm: "#EA580C"
+    warm_text: "#C2410C"
+    glow: "#FB923C"
+    outline: "#4B6584"
+    leader: "#94A3B8"
+    body_top: "#EEF3F8"
+    body_upper: "#E6EDF4"
+    body_mid: "#EBE6E3"
+    body_lower: "#F4D8C3"
+    body_bottom: "#F0BF98"
+    lining: "#C3D0DD"
+    zone_divider: "#9FB3C8"
+    live: "#16A34A"
+    partial: "#D97706"
+  zones:
+    - name: Stack
+      range_m: [15.0, 20.0]
+      readings:
+        - uptake_t1
+        - uptake_t2
+        - uptake_t3
+        - uptake_t4
+        - uptake_std
+        - top_pressure
+        - body_dp_total
+        - furnace_level
+        - charges_per_hr
+        - stock_rod1_pos
+        - stock_rod2_pos
+        - co_utilization
+        - top_gas_h2
+    - name: Belly
+      range_m: [12.9, 15.0]
+      readings:
+        - permeability
+        - body_dp_total
+        - heat_load_total
+        - heat_load_q1
+        - heat_load_q2
+        - heat_load_q3
+        - heat_load_q4
+    - name: Bosh
+      range_m: [10.5, 12.9]
+      readings:
+        - permeability
+        - body_dp_total
+        - heat_load_total
+        - heat_load_q1
+        - heat_load_q2
+        - heat_load_q3
+        - heat_load_q4
+    - name: Tuyere
+      range_m: [5.5, 10.5]
+      readings:
+        - body_dp_total
+        - body_dp_bottom
+        - hot_blast_volume
+        - blast_pressure
+        - hbt
+        - raft
+        - tuyere_velocity
+        - pci_rate
+        - steam_injection
+        - o2_injection
+        - oxygen_flow
+    - name: Hearth
+      range_m: [0.0, 5.5]
+      readings:
+        - body_dp_total
+        - hearth_temp_a
+        - hearth_temp_b
+        - hearth_temp_c
+        - hearth_temp_d
+        - production_theoretical
+        - production_rate
+        - slag_rate
 
 sections:
   - Production
@@ -56,6 +151,14 @@ parameters:
     unit: TPH
     decimals: 1
 
+  - key: charges_per_hr
+    label: Charges Per Hour
+    section: Production
+    measurement: process_params
+    field: charges_per_hour
+    unit: charges/h
+    decimals: 2
+
   - key: hot_blast_volume
     label: Hot Blast Volume
     section: Blast and Gas
@@ -80,13 +183,29 @@ parameters:
     unit: bar
     decimals: 2
 
+  - key: body_dp_total
+    label: Total DP
+    section: Blast and Gas
+    measurement: process_params
+    field: body_dp_total
+    unit: bar
+    decimals: 2
+
+  - key: body_dp_bottom
+    label: Bottom Pressure
+    section: Blast and Gas
+    measurement: process_params
+    field: body_dp_bottom
+    unit: bar
+    decimals: 2
+
   - key: co_utilization
-    label: CO Utilization
+    label: Eta CO
     section: Blast and Gas
     measurement: process_params
     field: body_etaco
     unit: ""
-    decimals: 5
+    decimals: 1
     source_note: ETA CO as stored; the raw scale is preserved, not converted to %.
 
   - key: top_gas_h2
@@ -149,14 +268,17 @@ parameters:
     decimals: 0
     trend_label: Uptake Temperature T4
 
-  - key: uptake_avg
-    label: T Avg
+  - key: uptake_std
+    label: Std Dev
     section: Uptake Temperatures
     measurement: process_params
-    field: top_temp_avg
+    field: top_temp_std
     unit: °C
-    decimals: 0
-    trend_label: Uptake Temperature Average
+    decimals: 1
+    trend_label: Uptake Temperature Standard Deviation
+    components: [top_temp_1, top_temp_2, top_temp_3, top_temp_4]
+    aggregate: std
+    source_note: Population standard deviation of T1–T4.
 
   - key: steam_injection
     label: Steam Injection
@@ -167,11 +289,6 @@ parameters:
     decimals: 2
     scale: 0.001
     source_note: Source field is in kg/h; shown in TPH (÷ 1000).
-
-  - key: steam_bypass_flow
-    label: Steam Bypass Flow
-    section: Steam and O₂
-    unavailable_reason: No confirmed live source is configured for steam bypass flow.
 
   - key: o2_injection
     label: O₂ Injection
@@ -233,10 +350,26 @@ parameters:
     decimals: 1
 
   - key: furnace_level
-    label: Furnace Level
+    label: Radar Level
     section: Furnace Performance
     measurement: miscellaneous
     field: stock_rod_radar_level
+    unit: m
+    decimals: 2
+
+  - key: stock_rod1_pos
+    label: Stock Rod Position 1
+    section: Furnace Performance
+    measurement: miscellaneous
+    field: stock_rod1_pos
+    unit: m
+    decimals: 2
+
+  - key: stock_rod2_pos
+    label: Stock Rod Position 2
+    section: Furnace Performance
+    measurement: miscellaneous
+    field: stock_rod2_pos
     unit: m
     decimals: 2
 
@@ -320,27 +453,27 @@ parameters:
     source_note: Sum of rows R6–R10, staves 25–32.
 
   - key: hearth_temp_a
-    label: Pad A
+    label: 4.3 m
     section: Hearth Temperatures
     measurement: temperature_profile
-    field: temp_4373_a
+    field: temp_4373_b
     unit: °C
     decimals: 0
     trend_label: Hearth Temp A
     source_note: Hearth pad A (HEARTH_TEMP_A).
 
   - key: hearth_temp_b
-    label: Pad B
+    label: 5.4 m
     section: Hearth Temperatures
     measurement: temperature_profile
-    field: temp_5411_b
+    field: temp_5411_c
     unit: °C
     decimals: 0
     trend_label: Hearth Temp B
     source_note: Hearth pad B (HEARTH_TEMP_B).
 
   - key: hearth_temp_c
-    label: Pad C
+    label: 5.7 m
     section: Hearth Temperatures
     measurement: temperature_profile
     field: temp_5757_c
@@ -350,23 +483,11 @@ parameters:
     source_note: Hearth pad C (HEARTH_TEMP_C).
 
   - key: hearth_temp_d
-    label: Pad D
+    label: 6.1 m
     section: Hearth Temperatures
     measurement: temperature_profile
-    field: temp_6103_d
+    field: temp_6103_b
     unit: °C
     decimals: 0
     trend_label: Hearth Temp D
     source_note: Hearth pad D (HEARTH_TEMP_D).
-
-  - key: hearth_temp_avg
-    label: Pad Avg
-    section: Hearth Temperatures
-    measurement: temperature_profile
-    field: hearth_temp_avg
-    unit: °C
-    decimals: 0
-    trend_label: Hearth Temp Avg
-    components: [temp_4373_a, temp_5411_b, temp_5757_c, temp_6103_d]
-    aggregate: mean
-    source_note: Mean of hearth pads A–D (HEARTH_TEMP_AVG).
