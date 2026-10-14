@@ -5,6 +5,7 @@ bmo:
   chemistry_window_days: 30
 
   target:
+    min_target_production_mt: 2100.0
     target_production_mt: 2350.0
     # Slag is capped by RATE, not by an absolute tonnage: the tonnage then
     # re-scales with the operator's HM target instead of silently tightening
@@ -92,6 +93,7 @@ bmo:
   # overrides what is here.
   burden_capacity:
     enabled: true
+    min_charges_per_hour: 6.0
     # Observed charges/hr: median 6.38, p95 6.75, p99 7.02, max 7.25.
     max_charges_per_hour: 7.5
     # Workbook BURDEN-case total charge mass. The operator can override it on
