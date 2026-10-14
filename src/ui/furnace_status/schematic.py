@@ -13,14 +13,21 @@ import streamlit as st
 from data import furnace_status as fs
 from ui.furnace_status.components import h, is_linked, na_markup, zones_attr
 from ui.furnace_status.layout import (
+    BODY_BOTTOM,
+    BODY_LOWER,
+    BODY_MID,
+    BODY_TOP,
+    BODY_UPPER,
     FALLBACK_PROFILE,
     GLOW,
     HEAT_TOTAL_KEY,
     LEADER,
+    LINING,
     OUTLINE,
     TEXT_MUTED,
     WARM,
     WARM_TEXT,
+    ZONE_DIVIDER,
     ZONE_READINGS,
     ZONE_WIDGET_KEY,
     ZONES,
@@ -74,7 +81,7 @@ CALLOUTS: tuple[Callout, ...] = (
     Callout("furnace_level", 1, 96.0, "wall", 19.0),
     Callout(HEAT_TOTAL_KEY, 1, 206.0, "wall", 12.5),
     Callout("blast_pressure", 1, 284.0, "blast"),
-    Callout("hearth_temp_avg", 1, 442.0, "wall", 4.4),
+    Callout("hearth_temp_d", 1, 442.0, "wall", 4.4),
 )
 validate_parameter_references(callout.key for callout in CALLOUTS)
 
@@ -140,11 +147,11 @@ def build_furnace_svg(profile: tuple[tuple[float, float], ...]) -> str:
         (
             "<defs>"
             '<linearGradient id="fsBody" x1="0" y1="0" x2="0" y2="1">'
-            '<stop offset="0" stop-color="#eef3f8"/>'
-            '<stop offset="0.45" stop-color="#e6edf4"/>'
-            '<stop offset="0.7" stop-color="#ebe6e3"/>'
-            '<stop offset="0.86" stop-color="#f4d8c3"/>'
-            '<stop offset="1" stop-color="#f0bf98"/></linearGradient>'
+            f'<stop offset="0" stop-color="{BODY_TOP}"/>'
+            f'<stop offset="0.45" stop-color="{BODY_UPPER}"/>'
+            f'<stop offset="0.7" stop-color="{BODY_MID}"/>'
+            f'<stop offset="0.86" stop-color="{BODY_LOWER}"/>'
+            f'<stop offset="1" stop-color="{BODY_BOTTOM}"/></linearGradient>'
             '<radialGradient id="fsGlow">'
             f'<stop offset="0" stop-color="{GLOW}" stop-opacity="0.7"/>'
             f'<stop offset="0.45" stop-color="{WARM}" stop-opacity="0.3"/>'
@@ -161,7 +168,7 @@ def build_furnace_svg(profile: tuple[tuple[float, float], ...]) -> str:
     for side in (-1, 1):
         points = " ".join(f"{_sx(side * r):.1f},{_sy(y):.1f}" for r, y in lining)
         parts.append(
-            f'<polyline points="{points}" fill="none" stroke="#c3d0dd" stroke-width="1" stroke-linejoin="round"/>'
+            f'<polyline points="{points}" fill="none" stroke="{LINING}" stroke-width="1" stroke-linejoin="round"/>'
         )
     for elevation in (15.9, 16.9, 17.9, 18.9):
         radius = _half_width(profile, elevation) - LINING_M - 0.1
@@ -174,7 +181,7 @@ def build_furnace_svg(profile: tuple[tuple[float, float], ...]) -> str:
             continue
         radius = _half_width(profile, lower)
         parts.append(
-            f'<line x1="{_sx(-radius):.1f}" y1="{_sy(lower):.1f}" x2="{_sx(radius):.1f}" y2="{_sy(lower):.1f}" stroke="#9fb3c8" stroke-width="1" stroke-dasharray="3 4"/>'
+            f'<line x1="{_sx(-radius):.1f}" y1="{_sy(lower):.1f}" x2="{_sx(radius):.1f}" y2="{_sy(lower):.1f}" stroke="{ZONE_DIVIDER}" stroke-width="1" stroke-dasharray="3 4"/>'
         )
     radius = _half_width(profile, BLAST_M)
     y_blast = _sy(BLAST_M)

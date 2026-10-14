@@ -21,14 +21,19 @@ PANEL_COLUMNS: tuple[tuple[str, ...], tuple[str, ...]] = (
     (fs.SECTION_PERFORMANCE, fs.SECTION_HEAT_LOAD),
 )
 
-STRIPS: dict[str, tuple[tuple[str, ...], str]] = {
+STRIPS: dict[str, tuple[str, ...]] = {
     fs.SECTION_UPTAKE: (
-        ("uptake_t1", "uptake_t2", "uptake_t3", "uptake_t4"),
-        "uptake_avg",
+        "uptake_t1",
+        "uptake_t2",
+        "uptake_t3",
+        "uptake_t4",
+        "uptake_std",
     ),
     fs.SECTION_HEARTH: (
-        ("hearth_temp_a", "hearth_temp_b", "hearth_temp_c", "hearth_temp_d"),
-        "hearth_temp_avg",
+        "hearth_temp_a",
+        "hearth_temp_b",
+        "hearth_temp_c",
+        "hearth_temp_d",
     ),
 }
 
@@ -44,17 +49,25 @@ INSTRUCTIONS = (
     "under the diagram, to highlight its related readings."
 )
 
-SURFACE = "#FFFFFF"
-GRID = "#E3EAF1"
-BORDER = "#DBE3EC"
-TEXT_MUTED = "#64748B"
-TEXT = "#0F172A"
-ACCENT = "#1F6FB2"
-WARM = "#EA580C"
-WARM_TEXT = "#C2410C"
-GLOW = "#FB923C"
-OUTLINE = "#4B6584"
-LEADER = "#94A3B8"
+_COLOURS = dict(fs.UI.colours)
+SURFACE = _COLOURS["surface"]
+GRID = _COLOURS["grid"]
+BORDER = _COLOURS["border"]
+TEXT_MUTED = _COLOURS["text_muted"]
+TEXT = _COLOURS["text"]
+ACCENT = _COLOURS["accent"]
+WARM = _COLOURS["warm"]
+WARM_TEXT = _COLOURS["warm_text"]
+GLOW = _COLOURS["glow"]
+OUTLINE = _COLOURS["outline"]
+LEADER = _COLOURS["leader"]
+BODY_TOP = _COLOURS["body_top"]
+BODY_UPPER = _COLOURS["body_upper"]
+BODY_MID = _COLOURS["body_mid"]
+BODY_LOWER = _COLOURS["body_lower"]
+BODY_BOTTOM = _COLOURS["body_bottom"]
+LINING = _COLOURS["lining"]
+ZONE_DIVIDER = _COLOURS["zone_divider"]
 
 FALLBACK_PROFILE: tuple[tuple[float, float], ...] = (
     (-2.8, 4.374),
@@ -65,50 +78,8 @@ FALLBACK_PROFILE: tuple[tuple[float, float], ...] = (
     (-3.65, 15.89),
     (-2.898, 20.0),
 )
-ZONES = (
-    ("Stack", 15.0, 20.0),
-    ("Belly", 12.9, 15.0),
-    ("Bosh", 10.5, 12.9),
-    ("Tuyere", 5.5, 10.5),
-    ("Hearth", 0.0, 5.5),
-)
-ZONE_READINGS: dict[str, tuple[str, ...]] = {
-    "Stack": (
-        "uptake_t1",
-        "uptake_t2",
-        "uptake_t3",
-        "uptake_t4",
-        "uptake_avg",
-        "top_pressure",
-        "furnace_level",
-        "co_utilization",
-        "top_gas_h2",
-    ),
-    "Belly": ("permeability", HEAT_TOTAL_KEY, *HEAT_QUADRANT_KEYS),
-    "Bosh": ("permeability", HEAT_TOTAL_KEY, *HEAT_QUADRANT_KEYS),
-    "Tuyere": (
-        "hot_blast_volume",
-        "blast_pressure",
-        "hbt",
-        "raft",
-        "tuyere_velocity",
-        "pci_rate",
-        "steam_injection",
-        "steam_bypass_flow",
-        "o2_injection",
-        "oxygen_flow",
-    ),
-    "Hearth": (
-        "hearth_temp_a",
-        "hearth_temp_b",
-        "hearth_temp_c",
-        "hearth_temp_d",
-        "hearth_temp_avg",
-        "production_theoretical",
-        "production_rate",
-        "slag_rate",
-    ),
-}
+ZONES = tuple((zone.name, zone.lower_m, zone.upper_m) for zone in fs.UI.zones)
+ZONE_READINGS = {zone.name: zone.readings for zone in fs.UI.zones}
 ZONE_WIDGET_KEY = "fs-zone"
 
 
@@ -117,7 +88,7 @@ def validate_parameter_references(extra_keys: Iterable[str] = ()) -> None:
     referenced = {
         HEAT_TOTAL_KEY,
         *HEAT_QUADRANT_KEYS,
-        *(key for keys, average in STRIPS.values() for key in (*keys, average)),
+        *(key for keys in STRIPS.values() for key in keys),
         *(key for keys in ZONE_READINGS.values() for key in keys),
         *extra_keys,
     }

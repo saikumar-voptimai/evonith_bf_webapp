@@ -43,8 +43,9 @@ TIMEZONE = pytz.timezone("Asia/Kolkata")  # GMT+5:30
 
 VISUALISATIONS = "📈 Visualisations"
 FURNACE_STATUS = "🔥 Furnace Status"
-VBOARD_SECTIONS = (VISUALISATIONS, FURNACE_STATUS)
+VBOARD_SECTIONS = (FURNACE_STATUS, VISUALISATIONS)
 VBOARD_NAV_KEY = "vboard_section_nav"
+VBOARD_SECTION_QUERY_KEY = "section"
 
 
 def render_visualisations() -> None:
@@ -416,13 +417,22 @@ def main(
     furnace_status_renderer=None,
 ) -> None:
     """Render only the selected V-Board section."""
+    if st.query_params.get(VBOARD_SECTION_QUERY_KEY) == "furnace-status":
+        st.session_state[VBOARD_NAV_KEY] = FURNACE_STATUS
+        del st.query_params[VBOARD_SECTION_QUERY_KEY]
+
+    initial = (
+        {"default": FURNACE_STATUS}
+        if VBOARD_NAV_KEY not in st.session_state
+        else {}
+    )
     selected = st.segmented_control(
         "V-Board section",
         VBOARD_SECTIONS,
-        default=VISUALISATIONS,
         key=VBOARD_NAV_KEY,
+        **initial,
     )
-    section = selected or VISUALISATIONS
+    section = selected or FURNACE_STATUS
 
     if section == FURNACE_STATUS:
         if furnace_status_renderer is None:

@@ -21,17 +21,18 @@ from streamlit.testing.v1 import AppTest
 from data import furnace_status as fs
 from data.furnace_status import repository as fs_repository
 from ui import furnace_status_page as page
+from ui.furnace_status import components, dashboard
 
 REPO = Path(__file__).resolve().parents[1]
 VISUALISATIONS = "\U0001f4c8 Visualisations"
 FURNACE_STATUS = "\U0001f525 Furnace Status"
-VBOARD_SECTIONS = (VISUALISATIONS, FURNACE_STATUS)
+VBOARD_SECTIONS = (FURNACE_STATUS, VISUALISATIONS)
 VBOARD_NAV_KEY = "vboard_section_nav"
 PAGE_FILE = REPO / "src" / "custom_pages" / "3_Data_Visualisation.py"
 NOW = datetime(2026, 10, 5, 9, 30, tzinfo=timezone.utc)
 
 
-def test_vboard_sections_are_ordered_with_visualisations_default(monkeypatch) -> None:
+def test_vboard_sections_are_ordered_with_furnace_status_default(monkeypatch) -> None:
     captured: dict[str, object] = {}
     rendered: list[str] = []
 
@@ -45,10 +46,36 @@ def test_vboard_sections_are_ordered_with_visualisations_default(monkeypatch) ->
         visualisations_renderer=lambda: rendered.append("visualisations"),
         furnace_status_renderer=lambda: rendered.append("furnace"),
     )
-    assert VBOARD_SECTIONS == (VISUALISATIONS, FURNACE_STATUS)
-    assert captured["default"] == VISUALISATIONS
+    assert VBOARD_SECTIONS == (FURNACE_STATUS, VISUALISATIONS)
+    assert captured["default"] == FURNACE_STATUS
     assert captured["key"] == VBOARD_NAV_KEY
-    assert rendered == ["visualisations"]
+    assert rendered == ["furnace"]
+
+
+def test_vboard_link_overrides_a_previous_visualisations_selection(monkeypatch) -> None:
+    rendered: list[str] = []
+    captured: dict[str, object] = {}
+    query_params = {"section": "furnace-status"}
+    session_state = {VBOARD_NAV_KEY: VISUALISATIONS}
+
+    def fake_segmented_control(label, options, *, key, **kwargs):
+        captured.update(label=label, options=options, key=key, **kwargs)
+        return session_state.get(key, kwargs.get("default"))
+
+    monkeypatch.setattr(st, "query_params", query_params)
+    monkeypatch.setattr(st, "session_state", session_state)
+    monkeypatch.setattr(st, "segmented_control", fake_segmented_control)
+
+    namespace = runpy.run_path(str(PAGE_FILE), run_name="vboard_test")
+    namespace["main"](
+        visualisations_renderer=lambda: rendered.append("visualisations"),
+        furnace_status_renderer=lambda: rendered.append("furnace"),
+    )
+
+    assert query_params == {}
+    assert session_state[VBOARD_NAV_KEY] == FURNACE_STATUS
+    assert "default" not in captured
+    assert rendered == ["furnace"]
 
 
 # ── Pure helpers ─────────────────────────────────────────────────────────────
@@ -104,7 +131,7 @@ def test_unitless_parameter_has_plain_y_axis_title() -> None:
     fig = page.build_trend_figure(
         trend, (page._naive_ist(start), page._naive_ist(end)), "rev"
     )
-    assert fig.layout.yaxis.title.text == "CO Utilization"
+    assert fig.layout.yaxis.title.text == fs.PARAMETERS_BY_KEY["co_utilization"].title
 
 
 def test_plot_config_is_responsive_and_hides_the_logo() -> None:
@@ -178,6 +205,19 @@ def test_button_label_carries_name_value_and_unit() -> None:
     assert page._button_label(na) == "Slag Rate: Not available. Open trend"
 
 
+def test_stack_zone_links_charging_and_stock_rod_readings() -> None:
+    for key in ("charges_per_hr", "stock_rod1_pos", "stock_rod2_pos"):
+        assert components.is_linked(key, "Stack")
+        assert components.zones_attr(key) == ' data-zones="stack"'
+
+
+def test_pressure_readings_link_to_their_furnace_zones() -> None:
+    assert components.zones_attr("body_dp_bottom") == ' data-zones="tuyere"'
+    assert components.zones_attr("body_dp_total") == (
+        ' data-zones="stack belly bosh tuyere hearth"'
+    )
+
+
 def test_furnace_svg_is_valid_and_labels_every_zone() -> None:
     svg = page.build_furnace_svg(page._FALLBACK_PROFILE)
     root = ET.fromstring(svg)  # raises if malformed
@@ -188,15 +228,20 @@ def test_furnace_svg_is_valid_and_labels_every_zone() -> None:
     readings["top_pressure"] = fs.ParameterReading(
         fs.PARAMETERS_BY_KEY["top_pressure"], value=0.0
     )
+    readings["hearth_temp_d"] = fs.ParameterReading(
+        fs.PARAMETERS_BY_KEY["hearth_temp_d"], value=530.0
+    )
     overlay = page._schematic_html(readings)
     for label in ("Stack", "Belly", "Bosh", "Tuyere", "Hearth", "Hot blast", "Top gas"):
         assert f">{label}<" in overlay
     assert "Hot metal &amp; slag" in overlay
     # Missing readings stay "Not available"; zero is a real reading.
     assert overlay.count('<span class="fs-na">Not available</span>') == (
-        len(page._CALLOUTS) - 1
+        len(page._CALLOUTS) - 2
     )
-    assert ">0.00<span" in overlay
+    assert f">{fs.PARAMETERS_BY_KEY['hearth_temp_d'].label}<" in overlay
+    assert "Pad Avg" not in overlay
+    assert ">0.00<span" in overlay and ">530<span" in overlay
 
 
 def test_furnace_profile_comes_from_the_shared_config() -> None:
@@ -212,6 +257,9 @@ def test_stylesheet_ships_orientation_and_touch_rules() -> None:
     assert "orientation: portrait" in css and "orientation: landscape" in css
     assert "pointer: coarse" in css
     assert "prefers-reduced-motion" in css
+    assert "fs-tile__track" not in css and "fs-tile__avg" not in css
+    assert ".fs-strip__note" in css and "font-size: 0.7rem" in css
+    assert "padding: 0 10px 10px" in css
     # Background, header and sidebar follow the app theme, as on the other
     # pages: the stylesheet never restyles them.
     for shared in ('[data-testid="stSidebar"]', '[data-testid="stHeader"]', ".stApp"):
@@ -331,17 +379,17 @@ def test_vboard_furnace_status_renders_every_parameter_with_grouped_fetches(
 
     assert not at.exception
     labels = [b.label for b in at.button if b.label.endswith("Open trend")]
-    assert len(labels) == len(fs.PARAMETERS) == 34
+    assert len(labels) == len(fs.PARAMETERS) == 37
     assert [call["measurement"] for call in calls] == list(
         fs.measurements_for()
     )  # one fetch per measurement
     assert not at.sidebar.selectbox  # Visualisations-only controls stay inactive
 
-    # The mocked fields are identical, so the strips are flat and the quadrants
-    # tie: both are stated, with no invented winner.
+    # The mocked heat-load fields are identical, so no winner is invented.
     html = _html_text(at)
     assert "BF2 blast furnace status" in html
-    assert "All shown readings are equal" in html
+    assert "fs-tile__track" not in html and "Markers span" not in html
+    assert "Pad Avg" not in html
     assert "All quadrants equal (25.0% each)" in html and "is-peak" not in html
     assert "Spread <b>0</b>" in html
 
@@ -389,10 +437,11 @@ def test_clicking_a_row_opens_the_trend_view_and_back_returns(patched_fetch) -> 
         fs.PARAMETERS
     )
 
-    next(b for b in at.button if b.label.startswith("T2:")).click()  # a strip tile
+    next(b for b in at.button if b.label.startswith("Std Dev:")).click()
     at.run()
-    assert at.query_params[fs.PARAMETER_QUERY_KEY] == ["uptake_t2"]
-    assert "Uptake Temperature T2" in _html_text(at)
+    assert at.query_params[fs.PARAMETER_QUERY_KEY] == ["uptake_std"]
+    assert calls[-1]["fields"] == fs.PARAMETERS_BY_KEY["uptake_std"].source_fields
+    assert "Uptake Temperature Standard Deviation" in _html_text(at)
 
 
 def test_trend_ui_uses_raw_current_not_final_bucket_average(monkeypatch) -> None:
@@ -479,7 +528,11 @@ def test_failing_source_is_contained_and_not_leaked(patched_fetch) -> None:
     html = _html_text(at)
     assert "Data source unavailable: miscellaneous" in html
     assert "SECRET" not in html
-    level = next(b for b in at.button if b.label.startswith("Furnace Level"))
+    level = next(
+        b
+        for b in at.button
+        if b.label.startswith(fs.PARAMETERS_BY_KEY["furnace_level"].label)
+    )
     assert "Not available" in level.label
     assert any(b.label.startswith("Fuel Rate: 12") for b in at.button)
     # No quadrant data: the ring stays neutral instead of inventing shares.
@@ -489,31 +542,31 @@ def test_failing_source_is_contained_and_not_leaked(patched_fetch) -> None:
     assert "Not available" in total.label
 
 
-def test_refresh_clears_only_this_pages_caches(patched_fetch) -> None:
+def test_auto_refresh_uses_selected_interval_and_cached_fetches(
+    patched_fetch, monkeypatch
+) -> None:
     calls, _ = patched_fetch
-    unrelated_runs: list[int] = []
+    intervals: list[int] = []
 
-    @st.cache_data
-    def unrelated_cache(x: int) -> int:
-        unrelated_runs.append(x)
-        return x
+    def fragment_spy(func, *, run_every):
+        intervals.append(run_every)
+        return func
 
-    unrelated_cache.clear()
-    unrelated_cache(1)
+    monkeypatch.setattr(dashboard, "fragment", fragment_spy)
 
     at = _app().run()
+    refresh = at.selectbox[0]
+    assert refresh.value == "10 s"
+    assert min(dashboard.REFRESH_CHOICES.values()) == 10
+    assert intervals == [10]
+    assert not [button for button in at.button if button.label == "Refresh"]
     assert [call["measurement"] for call in calls] == list(fs.measurements_for())
 
-    at.run()  # second render within the TTL: served from cache
+    refresh.select("30 s").run()
+    assert intervals[-1] == 30
+    at.selectbox[0].select("10 s").run()
+    assert intervals[-1] == 10
     assert [call["measurement"] for call in calls] == list(fs.measurements_for())
-
-    next(b for b in at.button if b.label == "Refresh").click()
-    at.run()
-    assert [call["measurement"] for call in calls] == list(fs.measurements_for()) * 2
-
-    unrelated_cache(1)
-    assert unrelated_runs == [1]  # an unrelated cache was left alone
-    unrelated_cache.clear()
 
 
 def test_status_snapshot_age_logic_is_wall_clock_independent() -> None:

@@ -8,7 +8,7 @@ from typing import Literal
 
 import pandas as pd
 
-Aggregate = Literal["sum", "mean"]
+Aggregate = Literal["sum", "mean", "std"]
 ReadingIssue = Literal["no_source", "fetch_failed", "no_data", "stale"]
 TrendStatus = Literal["ok", "no_source", "no_data", "error"]
 

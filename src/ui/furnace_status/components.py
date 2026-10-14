@@ -24,6 +24,20 @@ from utils.logger import get_logger
 
 log = get_logger(__name__)
 CSS_PATH = Path(__file__).resolve().parents[2] / "assets" / "css" / "furnace_status.css"
+_CSS_COLOUR_TOKENS = {
+    "surface": "surface",
+    "inset": "inset",
+    "hover": "hover",
+    "border": "border",
+    "segment": "segment",
+    "text_muted": "text-2",
+    "text": "text",
+    "accent": "accent",
+    "warm": "warm",
+    "warm_text": "warm-text",
+    "live": "live",
+    "partial": "partial",
+}
 
 
 def h(text: object) -> str:
@@ -35,13 +49,21 @@ def _read_css(path: str, mtime_ns: int) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
+def _palette_css() -> str:
+    colours = dict(fs.UI.colours)
+    tokens = ";".join(
+        f"--fs-{token}:{colours[name]}" for name, token in _CSS_COLOUR_TOKENS.items()
+    )
+    return f".st-key-fs-page{{{tokens}}}"
+
+
 def inject_css() -> None:
     try:
         css = _read_css(str(CSS_PATH), CSS_PATH.stat().st_mtime_ns)
     except OSError:
         log.warning("Furnace Status stylesheet missing: %s", CSS_PATH)
         return
-    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{_palette_css()}{css}</style>", unsafe_allow_html=True)
 
 
 def _reading_zones() -> dict[str, tuple[str, ...]]:
@@ -80,10 +102,6 @@ def open_trend(key: str) -> None:
 
 def go_status() -> None:
     set_view_query(fs.VIEW_STATUS)
-
-
-def refresh() -> None:
-    fs.clear_cache()
 
 
 def na_markup(text: str) -> str:
@@ -204,24 +222,6 @@ def _finite(value: float | None) -> bool:
     return value is not None and math.isfinite(value)
 
 
-@dataclass(frozen=True)
-class StripScale:
-    low: float
-    high: float
-
-    @property
-    def flat(self) -> bool:
-        return math.isclose(self.low, self.high, rel_tol=1e-9, abs_tol=1e-9)
-
-    def position(self, value: float) -> float:
-        return 50.0 if self.flat else (value - self.low) / (self.high - self.low) * 100
-
-
-def strip_scale(values: Sequence[float | None]) -> StripScale | None:
-    finite = [value for value in values if _finite(value)]
-    return StripScale(min(finite), max(finite)) if len(finite) >= 2 else None
-
-
 def strip_spread(values: Sequence[float | None]) -> float | None:
     if len(values) != 4 or not all(_finite(value) for value in values):
         return None
@@ -279,44 +279,13 @@ def _share_summary(shares: QuadrantShares) -> str:
     return f"Highest share: {names[0]} ({percentage})"
 
 
-def _tile_track_html(
-    value: float | None,
-    scale: StripScale | None,
-    average: float | None,
-    *,
-    is_average: bool,
-) -> str:
-    if scale is None or not _finite(value):
-        return '<span class="fs-tile__track fs-tile__track--off"></span>'
-    marks = []
-    average_position = scale.position(average) if _finite(average) else None
-    if not is_average:
-        position = scale.position(value)  # type: ignore[arg-type]
-        if average_position is not None and not scale.flat:
-            low, high = sorted((average_position, position))
-            marks.append(
-                f'<span class="fs-tile__bar" style="left:{low:.1f}%;width:{high - low:.1f}%"></span>'
-            )
-        marks.append(f'<span class="fs-tile__dot" style="left:{position:.1f}%"></span>')
-    if average_position is not None:
-        marks.append(
-            f'<span class="fs-tile__avg" style="left:{average_position:.1f}%"></span>'
-        )
-    return f'<span class="fs-tile__track">{"".join(marks)}</span>'
-
-
 def _tile_html(
     reading: fs.ParameterReading,
-    scale: StripScale | None,
-    average: float | None,
     *,
-    is_average: bool = False,
     linked: bool = False,
 ) -> str:
     spec = reading.spec
     classes = ["fs-tile"]
-    if is_average:
-        classes.append("fs-tile--avg")
     if reading.value is None:
         classes.append("fs-tile--na")
     if linked:
@@ -326,31 +295,12 @@ def _tile_html(
         if reading.value is not None and spec.unit
         else ""
     )
-    track = _tile_track_html(reading.value, scale, average, is_average=is_average)
     return (
         f'<div class="{" ".join(classes)}"{zones_attr(spec.key)} aria-hidden="true">'
         f'<span class="fs-tile__label">{h(spec.label)}</span>'
         f'<span class="fs-tile__value">{na_markup(fs.format_reading(reading))}{unit}</span>'
-        f"{track}</div>"
+        "</div>"
     )
-
-
-def _strip_note(
-    scale: StripScale | None, average: float | None, spec: fs.ParameterSpec
-) -> str:
-    if scale is None:
-        return "Too few readings for a comparison scale."
-    low = fs.format_value(scale.low, spec.decimals)
-    high = fs.format_value(scale.high, spec.decimals)
-    if scale.flat:
-        return f"All shown readings are equal ({low} {spec.unit})."
-    if low == high:
-        low = fs.format_value(scale.low, spec.decimals + 1)
-        high = fs.format_value(scale.high, spec.decimals + 1)
-    note = f"Markers span {low}–{high} {spec.unit} (lowest to highest shown)"
-    if not _finite(average):
-        return f"{note}; average not available. Relative aid, not limits."
-    return f"{note}; bars run from the average tick. Relative aid, not limits."
 
 
 def render_strip(
@@ -358,12 +308,10 @@ def render_strip(
     readings: dict[str, fs.ParameterReading],
     zone: str | None = None,
 ) -> None:
-    keys, average_key = STRIPS[section]
-    members = [readings[key] for key in keys]
-    average = readings[average_key]
-    scale = strip_scale([reading.value for reading in (*members, average)])
-    spread = strip_spread([reading.value for reading in members])
-    first, last = members[0].spec, members[-1].spec
+    members = [readings[key] for key in STRIPS[section]]
+    primary = members[:4]
+    spread = strip_spread([reading.value for reading in primary])
+    first, last = primary[0].spec, primary[-1].spec
     meta = ""
     if spread is not None:
         meta = (
@@ -374,22 +322,15 @@ def render_strip(
     with st.container(key=f"fs-panel-{SECTION_SLUGS[section]}"):
         st.html(panel_title_html(section, meta))
         with st.container(key=f"fs-tilegrid-{SECTION_SLUGS[section]}"):
-            for reading in (*members, average):
-                is_average = reading is average
+            for reading in members:
                 render_clickable(
                     reading,
                     _tile_html(
                         reading,
-                        scale,
-                        average.value,
-                        is_average=is_average,
                         linked=is_linked(reading.spec.key, zone),
                     ),
                     kind="tile",
                 )
-        st.html(
-            f'<div class="fs-strip__note">{h(_strip_note(scale, average.value, first))}</div>'
-        )
 
 
 def _heat_ring_html(

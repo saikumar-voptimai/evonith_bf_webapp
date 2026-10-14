@@ -10,14 +10,18 @@ import yaml
 from data import furnace_status as fs
 from data.furnace_status.catalogue import CatalogueError, load_catalogue
 from furnace_data.influx.query import influx_fields
+from ui.furnace_status import components
 from ui.furnace_status.layout import validate_parameter_references
 
 EXPECTED_KEYS = [
     "production_theoretical",
     "production_rate",
+    "charges_per_hr",
     "hot_blast_volume",
     "blast_pressure",
     "top_pressure",
+    "body_dp_total",
+    "body_dp_bottom",
     "co_utilization",
     "top_gas_h2",
     "hbt",
@@ -26,9 +30,8 @@ EXPECTED_KEYS = [
     "uptake_t2",
     "uptake_t3",
     "uptake_t4",
-    "uptake_avg",
+    "uptake_std",
     "steam_injection",
-    "steam_bypass_flow",
     "o2_injection",
     "oxygen_flow",
     "fuel_rate",
@@ -37,6 +40,8 @@ EXPECTED_KEYS = [
     "permeability",
     "tuyere_velocity",
     "furnace_level",
+    "stock_rod1_pos",
+    "stock_rod2_pos",
     "heat_load_total",
     "heat_load_q1",
     "heat_load_q2",
@@ -46,16 +51,15 @@ EXPECTED_KEYS = [
     "hearth_temp_b",
     "hearth_temp_c",
     "hearth_temp_d",
-    "hearth_temp_avg",
 ]
 
 
 def test_real_yaml_is_the_ordered_single_source_of_truth() -> None:
     loaded = load_catalogue(fs.CONFIG_PATH)
     assert loaded == fs.CONFIG
-    assert len(loaded.parameters) == 34
+    assert len(loaded.parameters) == 37
     assert [spec.key for spec in loaded.parameters] == EXPECTED_KEYS
-    assert len({spec.key for spec in loaded.parameters}) == 34
+    assert len({spec.key for spec in loaded.parameters}) == 37
     assert all(spec.section in loaded.sections for spec in loaded.parameters)
     assert all(isinstance(spec.components, tuple) for spec in loaded.parameters)
 
@@ -80,23 +84,48 @@ def test_real_yaml_sources_and_derived_definitions_are_valid() -> None:
         for quadrant in range(1, 5)
         for row in range(6, 11)
     )
-    hearth = fs.PARAMETERS_BY_KEY["hearth_temp_avg"]
-    assert hearth.aggregate == "mean"
-    assert hearth.components == (
-        "temp_4373_a",
-        "temp_5411_b",
-        "temp_5757_c",
-        "temp_6103_d",
+    uptake = fs.PARAMETERS_BY_KEY["uptake_std"]
+    assert uptake.aggregate == "std"
+    assert uptake.components == (
+        "top_temp_1",
+        "top_temp_2",
+        "top_temp_3",
+        "top_temp_4",
     )
 
 
 def test_yaml_settings_drive_runtime_policy() -> None:
     assert fs.SETTINGS.timezone_name == "Asia/Kolkata"
     assert fs.STATUS_LOOKBACK == "last 15 minutes"
-    assert fs.CACHE_TTL_SECONDS == 60
+    assert fs.CACHE_TTL_SECONDS == 5
+    assert dict(fs.SETTINGS.refresh_choices) == {
+        "10 s": 10,
+        "30 s": 30,
+        "1 min": 60,
+        "5 min": 300,
+    }
+    assert fs.SETTINGS.refresh_default == "10 s"
     assert fs.DEFAULT_INTERVAL == "8h"
     assert fs.MAX_CUSTOM_RANGE.days == 90
     assert fs.choose_window(fs.FIXED_INTERVALS["24h"]) == "15 minutes"
+
+
+def test_yaml_owns_the_palette_and_zone_mapping() -> None:
+    colours = dict(fs.UI.colours)
+    assert colours["accent"] == "#1F6FB2"
+    assert colours["body_bottom"] == "#F0BF98"
+    assert "--fs-accent:#1F6FB2" in components._palette_css()
+    assert [zone.name for zone in fs.UI.zones] == [
+        "Stack",
+        "Belly",
+        "Bosh",
+        "Tuyere",
+        "Hearth",
+    ]
+    assert fs.UI.zones[-1].lower_m == 0.0
+    assert "body_dp_bottom" in next(
+        zone.readings for zone in fs.UI.zones if zone.name == "Tuyere"
+    )
 
 
 def _raw_config() -> dict:
@@ -120,8 +149,21 @@ def _write_config(tmp_path, config: dict):
             components=["production_per_hour"]
         ),
         lambda config: config["parameters"][0].update(field="does_not_exist"),
-        lambda config: config["parameters"][15].update(setpoint_field="bad"),
-        lambda config: config["parameters"][15].pop("unavailable_reason"),
+        lambda config: config["ui"]["colours"].pop("accent"),
+        lambda config: config["ui"]["colours"].update(accent="orange"),
+        lambda config: config["ui"]["zones"][0]["readings"].append(
+            "does_not_exist"
+        ),
+        lambda config: next(
+            item
+            for item in config["parameters"]
+
+        ).update(setpoint_field="bad"),
+        lambda config: next(
+            item
+            for item in config["parameters"]
+            if "unavailable_reason" in item
+        ).pop("unavailable_reason"),
     ],
 )
 def test_loader_rejects_invalid_catalogues(tmp_path, mutation) -> None:
