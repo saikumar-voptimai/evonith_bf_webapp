@@ -3735,7 +3735,7 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
         )
         target_production_mt = layout_col3.number_input(
             "Target HM / Pig Iron (MT)",
-            min_value=0.0,
+            min_value=float(target_cfg.get("min_production_mt", 2100.0)),
             value=float(target_cfg.get("target_production_mt", 2270.0)),
             step=5.0,
             key="bmo_target_production_mt",
@@ -3816,7 +3816,7 @@ with st.form("bmo_model_input_form", clear_on_submit=False):
         charge_col1, charge_col2, charge_col3, _charge_spacer = st.columns(4)
         max_charges_per_hour = charge_col1.number_input(
             "Max charges per hour",
-            min_value=0.0,
+            min_value=float(burden_capacity_cfg.get("min_charges_per_hour", 6.0)),
             value=float(model_input_defaults["max_charges_per_hour"]),
             step=0.05,
             format="%.2f",
