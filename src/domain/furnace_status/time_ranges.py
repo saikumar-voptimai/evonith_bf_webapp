@@ -1,4 +1,4 @@
-"""Fixed/custom trend ranges and aggregation-window selection."""
+"""Fixed and custom trend-range selection."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def floor_to_minute(moment: datetime) -> datetime:
 def resolve_fixed_range(interval: str, now: datetime) -> tuple[datetime, datetime]:
     if interval not in FIXED_INTERVALS:
         raise RangeError(f"Unknown interval: {interval!r}")
-    end = floor_to_minute(now.astimezone(timezone.utc))
+    end = now.astimezone(timezone.utc)
     return end - FIXED_INTERVALS[interval], end
 
 
@@ -46,13 +46,6 @@ def resolve_custom_range(
             f"Range is too large; choose at most {MAX_CUSTOM_RANGE.days} days."
         )
     return start, end
-
-
-def choose_window(duration: timedelta) -> str:
-    for item in SETTINGS.aggregation_windows:
-        if duration <= item.max_duration:
-            return item.window
-    return SETTINGS.widest_window
 
 
 def default_custom_range(now: datetime) -> tuple[datetime, datetime]:

@@ -27,6 +27,7 @@ STRIPS: dict[str, tuple[str, ...]] = {
         "uptake_t2",
         "uptake_t3",
         "uptake_t4",
+        "uptake_avg",
         "uptake_std",
     ),
     fs.SECTION_HEARTH: (

@@ -28,7 +28,8 @@
     container: fs-page / inline-size;   /* layout follows the content width */
     gap: 12px !important;
 }
-.st-key-fs-page:has(.st-key-fs-dashboard) [data-stale="true"] {
+.st-key-fs-page:has(.st-key-fs-dashboard) [data-stale="true"],
+.st-key-fs-page:has(.st-key-fs-toolbar) [data-stale="true"] {
     opacity: 1 !important;
     transition: none !important;
 }
@@ -361,7 +362,7 @@
 
 [class*="st-key-fs-tilegrid-"] {
     display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.15fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr)) repeat(2, minmax(0, 1.15fr));
     gap: 6px !important;
     padding: 0 10px 10px;
 }
@@ -418,10 +419,12 @@
     line-height: 1.35;
     color: var(--fs-text-2);
 }
-/* Narrow strip: four readings in a row, with the uptake summary below. */
+/* Narrow strip: four probes in a row, with both uptake summaries below. */
 @container fs-strip (max-width: 400px) {
     [class*="st-key-fs-tilegrid-"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .st-key-fs-tilegrid-uptake > [data-testid="stLayoutWrapper"]:last-child { grid-column: 1 / -1; }
+    .st-key-fs-tilegrid-uptake > [data-testid="stLayoutWrapper"]:nth-last-child(-n + 2) {
+        grid-column: span 2;
+    }
     .fs-tile { min-height: 3.6rem; padding: 6px 6px 5px; }
     .fs-tile__value { font-size: 1.12rem; }
 }
@@ -726,6 +729,13 @@
     .fs-trend-current__value { font-size: 1.5rem; }
     .fs-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .st-key-fs-chart [data-testid="stPlotlyChart"] { height: 20rem; }
+    .st-key-fs-toolbar [data-testid="stHorizontalBlock"] {
+        display: grid;
+        grid-template-columns: minmax(124px, 1fr) auto;
+    }
+    .st-key-fs-toolbar [data-testid="stColumn"] { width: auto !important; }
+    .st-key-fs-toolbar [data-testid="stColumn"]:nth-child(1),
+    .st-key-fs-toolbar [data-testid="stColumn"]:nth-child(2) { grid-column: 1 / -1; }
 }
 @media (pointer: coarse) {
     .fs-row { min-height: 2.75rem; }                /* ≥ 44px touch target */
@@ -747,4 +757,199 @@
 @media (prefers-reduced-motion: reduce) {
     .st-key-fs-page *,
     .st-key-fs-page *::before { transition: none !important; }
+}
+
+/* â”€â”€ Full-viewport desktop board (3-column layout only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+@media (hover: hover) and (pointer: fine) and (min-width: 1040px) and (min-height: 680px) {
+    .block-container:has(.st-key-fs-page) {
+        padding-top: 3.25rem;
+        padding-bottom: 0;
+    }
+    .block-container:has(.st-key-fs-page) > [data-testid="stVerticalBlock"] {
+        gap: clamp(4px, calc(1.15vh - 4px), 8px) !important;
+    }
+    .st-key-vboard_section_nav [data-testid="stWidgetLabel"] {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        margin: -1px !important;
+        padding: 0 !important;
+        clip-path: inset(50%) !important;
+        white-space: nowrap !important;
+    }
+    .st-key-vboard_section_nav { min-height: 2.5rem; }
+
+    @container fs-page (min-width: 1040px) {
+        .st-key-fs-header {
+            flex: 0 0 auto;
+            row-gap: clamp(4px, 1vh, 10px) !important;
+            padding: clamp(6px, calc(1.7vh - 6px), 12px) 16px;
+        }
+        .fs-status { padding-block: clamp(4px, calc(1.2vh - 3px), 6px); }
+
+        .st-key-fs-page .st-key-fs-dashboard {
+            --fs-gap: clamp(6px, calc(2.5vh - 11px), 16px);
+            height: calc(100dvh - 9.55rem - 5.1vh);
+            max-height: calc(100dvh - 9.55rem - 5.1vh);
+            min-height: calc(100dvh - 9.55rem - 5.1vh);
+            grid-template-rows: minmax(0, 1fr);
+            align-items: stretch;
+        }
+        .st-key-fs-page > [data-testid="stLayoutWrapper"]:has(> .st-key-fs-dashboard) {
+            flex: 0 0 auto;
+            height: calc(100dvh - 9.55rem - 5.1vh);
+            max-height: calc(100dvh - 9.55rem - 5.1vh);
+            min-height: calc(100dvh - 9.55rem - 5.1vh);
+        }
+        .st-key-fs-page:has(.fs-warning) .fs-warning {
+            padding-block: clamp(3px, 0.6vh, 7px);
+        }
+        .st-key-fs-page:has(.fs-warning) .st-key-fs-dashboard,
+        .st-key-fs-page:has(.fs-warning) > [data-testid="stLayoutWrapper"]:has(> .st-key-fs-dashboard) {
+            height: calc(100dvh - 11.85rem - 6.6vh);
+            max-height: calc(100dvh - 11.85rem - 6.6vh);
+            min-height: calc(100dvh - 11.85rem - 6.6vh);
+        }
+        .st-key-fs-dashboard > [data-testid="stLayoutWrapper"] {
+            height: 100%;
+            min-height: 0;
+        }
+        [class*="st-key-fs-col-"] {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 0;
+        }
+        [class*="st-key-fs-col-"] > [data-testid="stLayoutWrapper"] {
+            flex: 0 0 auto;
+            min-height: 0;
+        }
+
+        .fs-panel__title {
+            padding: clamp(4px, calc(1.5vh - 7px), 9px) 12px
+                clamp(4px, calc(1.35vh - 6px), 8px);
+        }
+        .fs-row {
+            height: clamp(1.35rem, calc(5vh - 1.05rem), 2.3rem);
+            min-height: 0;
+            padding-block: 2px;
+            line-height: 1.2;
+        }
+        .fs-row:has(.fs-row__value--dual) {
+            height: clamp(1.35rem, calc(5vh - 1.05rem), 2.3rem);
+        }
+        .fs-row__value--dual {
+            flex-direction: row;
+            align-items: baseline;
+            gap: clamp(3px, 0.5vh, 6px);
+        }
+        [class*="st-key-fs-tilegrid-"] {
+            gap: clamp(3px, 0.6vh, 6px) !important;
+            padding-bottom: clamp(5px, 1vh, 10px);
+        }
+        .fs-tile {
+            height: clamp(2.8rem, calc(9vh - 1.9rem), 3.8rem);
+            max-height: clamp(2.8rem, calc(9vh - 1.9rem), 3.8rem);
+            min-height: clamp(2.8rem, calc(8vh - 1.6rem), 3.8rem);
+            gap: clamp(0px, calc(2vh - 15px), 2px);
+            padding: clamp(2px, calc(2vh - 13px), 7px) 8px
+                clamp(2px, calc(2vh - 13px), 6px);
+        }
+        .fs-strip__note {
+            padding-block: clamp(2px, calc(1.5vh - 9px), 9px);
+            line-height: 1.15;
+        }
+
+        .st-key-fs-col-centre > [data-testid="stLayoutWrapper"]:has(> .st-key-fs-furnace) {
+            flex: 1 1 0;
+        }
+        .st-key-fs-furnace {
+            display: flex;
+            flex: 1 1 0;
+            flex-direction: column;
+            height: 100%;
+            min-height: 0;
+            gap: clamp(3px, 0.8vh, 8px) !important;
+            padding: clamp(5px, 1.2vh, 12px) 12px clamp(5px, 1vh, 10px);
+        }
+        .st-key-fs-furnace > [data-testid="stElementContainer"]:has(.fs-schematic) {
+            container: fs-schematic-slot / size;
+            display: flex;
+            flex: 1 1 0;
+            align-items: center;
+            min-height: 0;
+        }
+        .fs-schematic {
+            width: min(100%, 560px, calc(100cqh * 1.05263158));
+            max-width: none;
+        }
+        .fs-callout {
+            gap: clamp(0px, calc(1vh - 8px), 1px);
+            padding-inline: 4px;
+            padding-block: clamp(0px, calc(1.5vh - 11px), 4px);
+        }
+        .fs-callout__label { line-height: 1; white-space: nowrap; }
+        .fs-callout__value { line-height: 1; }
+        .st-key-fs-page:has(.fs-warning) .fs-callout--right[data-zones="belly bosh"] {
+            transform: translateY(calc(-50% - 4px));
+        }
+        .st-key-fs-page:has(.fs-warning) .fs-callout--right[data-zones="tuyere"] {
+            transform: translateY(calc(-50% + 4px));
+        }
+        .st-key-fs-zone button {
+            min-height: clamp(2rem, calc(2vh + 1rem), 2.5rem);
+            padding-block: 2px;
+        }
+        .fs-note { line-height: 1.25; }
+
+        .fs-heat {
+            gap: clamp(8px, 1.2vh, 14px);
+            padding: clamp(5px, 1vh, 10px) 12px;
+        }
+        .fs-ring {
+            width: clamp(6.5rem, calc(20vh - 4.25rem), 9.25rem);
+        }
+
+        .st-key-fs-page:has(.st-key-fs-toolbar) > [data-testid="stLayoutWrapper"]:has(> .st-key-fs-chart) {
+            flex: 0 0 auto;
+            height: min(40rem, calc(100dvh - 20.9rem - 3.85vh));
+            min-height: 12rem;
+        }
+        .st-key-fs-page:has(.st-key-fs-controls) > [data-testid="stLayoutWrapper"]:has(> .st-key-fs-chart) {
+            height: min(40rem, calc(100dvh - 25.9rem - 3.85vh));
+        }
+        .st-key-fs-toolbar { padding-block: clamp(5px, 0.8vh, 8px); }
+        .st-key-fs-chart {
+            display: flex;
+            height: 100%;
+            min-height: 0;
+            padding: clamp(3px, 0.6vh, 6px);
+        }
+        .st-key-fs-chart [data-testid="stPlotlyChart"] { height: 100%; }
+        .st-key-fs-chart > [data-testid="stLayoutWrapper"],
+        .st-key-fs-chart [data-testid="stElementContainer"]:has([data-testid="stPlotlyChart"]) {
+            height: 100% !important;
+            min-height: 0;
+        }
+        .st-key-fs-chart [data-testid="stPlotlyChart"] {
+            height: 100% !important;
+            max-height: 100% !important;
+            min-height: 0;
+        }
+        .st-key-fs-chart > [data-testid="stElementContainer"],
+        .st-key-fs-chart [data-testid="stFullScreenFrame"] {
+            height: 100% !important;
+            max-height: 100% !important;
+            min-height: 0;
+        }
+        .st-key-fs-chart [class*="st-key-fs-trend-"],
+        .st-key-fs-chart .js-plotly-plot,
+        .st-key-fs-chart .plot-container,
+        .st-key-fs-chart .svg-container {
+            height: 100% !important;
+            max-height: 100% !important;
+            min-height: 0 !important;
+        }
+        .fs-stat { padding-block: clamp(4px, 0.65vh, 7px); }
+    }
 }

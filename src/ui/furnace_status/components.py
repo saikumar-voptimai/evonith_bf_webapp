@@ -24,6 +24,9 @@ from utils.logger import get_logger
 
 log = get_logger(__name__)
 CSS_PATH = Path(__file__).resolve().parents[2] / "assets" / "css" / "furnace_status.css"
+REFRESH_WIDGET_KEY = "fs-refresh"
+REFRESH_PREF_KEY = "fs-refresh-pref"
+REFRESH_CHOICES = dict(fs.SETTINGS.refresh_choices)
 _CSS_COLOUR_TOKENS = {
     "surface": "surface",
     "inset": "inset",
@@ -38,6 +41,39 @@ _CSS_COLOUR_TOKENS = {
     "live": "live",
     "partial": "partial",
 }
+
+
+def _remember_refresh_preference() -> None:
+    choice = st.session_state.get(REFRESH_WIDGET_KEY)
+    if choice in REFRESH_CHOICES:
+        st.session_state[REFRESH_PREF_KEY] = choice
+
+
+def refresh_preference() -> str:
+    choice = st.session_state.get(REFRESH_PREF_KEY)
+    if choice not in REFRESH_CHOICES:
+        choice = fs.SETTINGS.refresh_default
+        st.session_state[REFRESH_PREF_KEY] = choice
+    return choice
+
+
+def render_refresh_control() -> tuple[str, int]:
+    """Render the cross-view refresh preference and return label plus seconds."""
+    labels = tuple(REFRESH_CHOICES)
+    preferred = refresh_preference()
+    choice = st.selectbox(
+        "Auto-refresh interval",
+        labels,
+        index=labels.index(preferred),
+        key=REFRESH_WIDGET_KEY,
+        format_func=lambda label: f"↻ {label}",
+        help="Refreshes live values only; the page stays in place.",
+        label_visibility="collapsed",
+        width=124,
+        on_change=_remember_refresh_preference,
+    )
+    st.session_state[REFRESH_PREF_KEY] = choice
+    return choice, REFRESH_CHOICES[choice]
 
 
 def h(text: object) -> str:

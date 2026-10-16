@@ -8,9 +8,11 @@ import streamlit as st
 
 from data import furnace_status as fs
 from ui.furnace_status.components import (
+    REFRESH_CHOICES,
     h,
     render_heat_load_panel,
     render_panel,
+    render_refresh_control,
     render_strip,
 )
 from ui.furnace_status.layout import (
@@ -23,7 +25,6 @@ from ui.furnace_status.responsive import render_fullscreen_control
 from ui.furnace_status.schematic import render_furnace
 from ui.streamlit_fragments import fragment
 
-REFRESH_CHOICES = dict(fs.SETTINGS.refresh_choices)
 if fs.CACHE_TTL_SECONDS >= min(REFRESH_CHOICES.values()):
     raise ValueError("Furnace Status cache TTL must be below its refresh intervals")
 
@@ -58,17 +59,8 @@ def _render_header():
         )
         badge = st.empty()
         render_fullscreen_control()
-        choice = st.selectbox(
-            "Auto-refresh interval",
-            REFRESH_CHOICES,
-            index=list(REFRESH_CHOICES).index(fs.SETTINGS.refresh_default),
-            key="fs-refresh",
-            format_func=lambda label: f"↻ {label}",
-            help="Refreshes live values only; the page stays in place.",
-            label_visibility="collapsed",
-            width=124,
-        )
-    return badge, REFRESH_CHOICES[choice]
+        _, seconds = render_refresh_control()
+    return badge, seconds
 
 
 def _live_dashboard(badge) -> None:

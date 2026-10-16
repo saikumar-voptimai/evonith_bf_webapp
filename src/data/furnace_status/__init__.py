@@ -55,7 +55,6 @@ from domain.furnace_status.time_ranges import (
     INTERVAL_OPTIONS,
     MAX_CUSTOM_RANGE,
     RangeError,
-    choose_window,
     default_custom_range,
     floor_to_minute,
     resolve_custom_range,

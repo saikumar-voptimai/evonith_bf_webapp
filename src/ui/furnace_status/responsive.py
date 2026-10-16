@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import streamlit as st
 
 ORIENTATION_HTML = """<!doctype html>
@@ -83,6 +85,94 @@ def _embed_html(markup: str, height: int) -> None:
     components.html(markup, height=height)
 
 
+def _plotly_state_bridge(state_key: str) -> str:
+    """Keep interactive Plotly state when a fragment replaces chart markup."""
+    token = json.dumps(state_key)
+    return f"""<script>
+(function () {{
+  "use strict";
+  var host = window;
+  try {{ if (window.parent && window.parent.document) {{ host = window.parent; }} }} catch (e) {{ return; }}
+  var token = {token};
+  var states = host.__fsTrendPlotStates || (host.__fsTrendPlotStates = {{}});
+  var pending = false;
+  function state() {{ return states[token] || (states[token] = {{}}); }}
+  function sameRange(left, right) {{
+    return left && right && left.length === 2 && right.length === 2 &&
+      String(left[0]) === String(right[0]) && String(left[1]) === String(right[1]);
+  }}
+  function rememberVisibility(graph) {{
+    if (graph.__fsTrendStateKey !== token) return;
+    state().visible = graph.data.map(function (trace) {{
+      return trace.visible === undefined ? true : trace.visible;
+    }});
+  }}
+  function restore(graph) {{
+    if (!host.Plotly || graph.__fsApplyingTrendState) return;
+    var saved = state();
+    var tasks = [];
+    var currentRange = graph.layout && graph.layout.xaxis && graph.layout.xaxis.range;
+    if (saved.range && !sameRange(currentRange, saved.range)) {{
+      tasks.push(host.Plotly.relayout(graph, {{
+        "xaxis.range": saved.range,
+        "xaxis.autorange": false
+      }}));
+    }}
+    if (saved.visible && saved.visible.length === graph.data.length) {{
+      var currentVisible = graph.data.map(function (trace) {{
+        return trace.visible === undefined ? true : trace.visible;
+      }});
+      if (JSON.stringify(currentVisible) !== JSON.stringify(saved.visible)) {{
+        tasks.push(host.Plotly.restyle(graph, {{visible: saved.visible}}));
+      }}
+    }}
+    if (tasks.length) {{
+      graph.__fsApplyingTrendState = true;
+      Promise.all(tasks).finally(function () {{
+        window.setTimeout(function () {{ graph.__fsApplyingTrendState = false; }}, 0);
+      }});
+    }}
+  }}
+  function attach() {{
+    pending = false;
+    var graph = host.document.querySelector(".st-key-fs-chart .js-plotly-plot");
+    if (!graph || typeof graph.on !== "function") return;
+    if (graph.__fsTrendStateKey !== token) {{
+      graph.__fsTrendStateKey = token;
+      graph.addEventListener("pointerdown", function () {{ graph.__fsPointerAt = Date.now(); }});
+      graph.on("plotly_relayout", function (event) {{
+        if (graph.__fsTrendStateKey !== token || graph.__fsApplyingTrendState) return;
+        if (event["xaxis.autorange"] === true) {{
+          if (Date.now() - (graph.__fsPointerAt || 0) < 1500) delete state().range;
+          return;
+        }}
+        var range = event["xaxis.range"] || [
+          event["xaxis.range[0]"], event["xaxis.range[1]"]
+        ];
+        if (range[0] !== undefined && range[1] !== undefined) {{
+          state().range = [range[0], range[1]];
+        }}
+      }});
+      graph.on("plotly_legendclick", function () {{
+        window.setTimeout(function () {{ rememberVisibility(graph); }}, 50);
+      }});
+      graph.on("plotly_legenddoubleclick", function () {{
+        window.setTimeout(function () {{ rememberVisibility(graph); }}, 50);
+      }});
+    }}
+    restore(graph);
+  }}
+  function schedule() {{
+    if (pending) return;
+    pending = true;
+    window.setTimeout(attach, 0);
+  }}
+  new MutationObserver(schedule).observe(host.document.body, {{subtree: true, childList: true}});
+  schedule();
+}})();
+</script>"""
+
+
 def render_rotate_hint() -> None:
     """Rotate your device for the best view."""
     with st.container(key="fs-rotate"):
@@ -93,6 +183,9 @@ def render_rotate_hint() -> None:
         )
 
 
-def render_fullscreen_control() -> None:
+def render_fullscreen_control(plot_state_key: str | None = None) -> None:
     with st.container(key="fs-fullscreen"):
-        _embed_html(ORIENTATION_HTML, height=48)
+        markup = ORIENTATION_HTML
+        if plot_state_key is not None:
+            markup = markup.replace("</body>", _plotly_state_bridge(plot_state_key) + "</body>")
+        _embed_html(markup, height=48)

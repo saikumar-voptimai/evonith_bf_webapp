@@ -22,19 +22,8 @@ settings:
       24h: 24
     custom_interval: Custom
     default_interval: 8h
-    max_custom_range_days: 90
-    aggregation_windows:
-      - max_duration_hours: 1
-        window: 1 minute
-      - max_duration_hours: 8
-        window: 5 minutes
-      - max_duration_hours: 16
-        window: 10 minutes
-      - max_duration_hours: 24
-        window: 15 minutes
-      - max_duration_hours: 72
-        window: 30 minutes
-    widest_window: 1 hour
+    max_custom_range_days: 7
+    raw_gap_break_seconds: 120
 
 ui:
   colours:
@@ -69,6 +58,7 @@ ui:
         - uptake_t2
         - uptake_t3
         - uptake_t4
+        - uptake_avg
         - uptake_std
         - top_pressure
         - body_dp_total
@@ -268,6 +258,15 @@ parameters:
     decimals: 0
     trend_label: Uptake Temperature T4
 
+  - key: uptake_avg
+    label: T Avg
+    section: Uptake Temperatures
+    measurement: process_params
+    field: top_temp_avg
+    unit: °C
+    decimals: 0
+    trend_label: Uptake Temperature Average
+
   - key: uptake_std
     label: Std Dev
     section: Uptake Temperatures
@@ -307,11 +306,50 @@ parameters:
     unit: Nm³/h
     decimals: 0
 
+  - key: flare_bypass_press
+    label: Flare Stack Bypass Pressure
+    section: Steam and O₂
+    measurement: miscellaneous
+    field: flare_bypass_press
+    unit: ""
+    decimals: 2
+    source_note: Pressure unit is not confirmed in the application, so none is shown.
+
+  - key: flare_press
+    label: Flare Stack Pressure
+    section: Steam and O₂
+    measurement: miscellaneous
+    field: flare_press
+    unit: ""
+    decimals: 2
+    source_note: Pressure unit is not confirmed in the application, so none is shown.
+
   - key: fuel_rate
-    label: Fuel Rate
+    label: Fuel Rate (SP/ACT)
     section: Furnace Performance
     measurement: process_params
     field: fuel_rate
+    unit: kg/THM
+    decimals: 0
+    trend_label: Fuel Rate (SP / Actual)
+    setpoint_field: fuel_rate
+    components: [coal_rate_actual_value, coke_rate, nut_coke_rate]
+    aggregate: sum
+    source_note: Actual is PCI actual + coke rate + nut coke rate.
+
+  - key: coke_rate
+    label: Coke Rate
+    section: Furnace Performance
+    measurement: process_params
+    field: coke_rate
+    unit: kg/THM
+    decimals: 0
+
+  - key: nut_coke_rate
+    label: Nut Coke Rate
+    section: Furnace Performance
+    measurement: process_params
+    field: nut_coke_rate
     unit: kg/THM
     decimals: 0
 

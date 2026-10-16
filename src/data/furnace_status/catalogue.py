@@ -50,12 +50,6 @@ class CatalogueError(ValueError):
 
 
 @dataclass(frozen=True)
-class AggregationWindow:
-    max_duration: timedelta
-    window: str
-
-
-@dataclass(frozen=True)
 class FurnaceStatusSettings:
     timezone_name: str
     status_lookback: str
@@ -70,8 +64,7 @@ class FurnaceStatusSettings:
     custom_interval: str
     default_interval: str
     max_custom_range: timedelta
-    aggregation_windows: tuple[AggregationWindow, ...]
-    widest_window: str
+    raw_gap_break_seconds: float
 
     @property
     def timezone(self) -> ZoneInfo:
@@ -152,29 +145,6 @@ def _load_settings(raw: object) -> FurnaceStatusSettings:
     if default not in {label for label, _ in fixed}:
         raise CatalogueError("default_interval must name a fixed interval")
 
-    raw_windows = trend.get("aggregation_windows")
-    if not isinstance(raw_windows, list) or not raw_windows:
-        raise CatalogueError("aggregation_windows must be a non-empty list")
-    windows = tuple(
-        AggregationWindow(
-            timedelta(
-                hours=_positive_number(
-                    _mapping(item, "aggregation window").get("max_duration_hours"),
-                    "aggregation max_duration_hours",
-                )
-            ),
-            _nonempty_string(
-                _mapping(item, "aggregation window").get("window"),
-                "aggregation window name",
-            ),
-        )
-        for item in raw_windows
-    )
-    if tuple(item.max_duration for item in windows) != tuple(
-        sorted(item.max_duration for item in windows)
-    ):
-        raise CatalogueError("aggregation_windows must be ordered by duration")
-
     timezone_name = _nonempty_string(settings.get("timezone"), "timezone")
     try:
         ZoneInfo(timezone_name)
@@ -238,8 +208,9 @@ def _load_settings(raw: object) -> FurnaceStatusSettings:
                 trend.get("max_custom_range_days"), "max_custom_range"
             )
         ),
-        aggregation_windows=windows,
-        widest_window=_nonempty_string(trend.get("widest_window"), "widest_window"),
+        raw_gap_break_seconds=_positive_number(
+            trend.get("raw_gap_break_seconds", 120), "raw_gap_break_seconds"
+        ),
     )
 
 
