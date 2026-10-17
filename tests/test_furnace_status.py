@@ -1027,6 +1027,31 @@ def test_plant_status_live_partial_offline() -> None:
     assert gone.last_updated is None
 
 
+@pytest.mark.parametrize(
+    ("value", "level", "label"),
+    [
+        (25000.0, "normal", "Normal"),
+        (24999.9, "abnormal", "Abnormal"),
+        (None, "unknown", "Unknown"),
+    ],
+)
+def test_operating_state_uses_unrounded_hot_blast_volume_boundary(
+    value, level, label
+) -> None:
+    spec = fs.PARAMETERS_BY_KEY["hot_blast_volume"]
+    state = fs.compute_operating_state((fs.ParameterReading(spec, value=value),))
+
+    assert (state.level, state.label) == (level, label)
+    assert "Hot Blast Volume ≥ 25,000 Nm³/h" in state.detail
+
+
+def test_stale_hot_blast_volume_makes_operating_state_unknown() -> None:
+    snapshot = fs.build_status_snapshot(_full_frames(16), NOW)
+
+    assert snapshot.operating_state.level == "unknown"
+    assert "no fresh value" in snapshot.operating_state.detail
+
+
 # ── Query-parameter validation ───────────────────────────────────────────────
 
 

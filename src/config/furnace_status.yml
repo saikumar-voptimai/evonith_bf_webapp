@@ -13,6 +13,9 @@ settings:
   stale_after_minutes: 15
   live_max_age_minutes: 5
   live_min_coverage: 0.70
+  operating_state:
+    parameter: hot_blast_volume
+    normal_min: 25000
   trend:
     fixed_intervals:
       1h: 1
@@ -50,6 +53,7 @@ ui:
     zone_divider: "#9FB3C8"
     live: "#16A34A"
     partial: "#D97706"
+    abnormal: "#DC2626"
   zones:
     - name: Stack
       range_m: [15.0, 20.0]

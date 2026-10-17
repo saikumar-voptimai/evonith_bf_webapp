@@ -63,7 +63,7 @@ def render_visualisations() -> None:
     div[data-testid="stPlotlyChart"] { margin: 0 !important; padding: 0 !important; }
 
     /* Page padding */
-    .block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
+    .block-container { padding-top: 4.25rem !important; padding-bottom: 0rem !important; }
     .block-container h1:first-of-type {
         margin-bottom: 1rem !important;
     }

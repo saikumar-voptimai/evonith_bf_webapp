@@ -125,13 +125,17 @@ def test_yaml_settings_drive_runtime_policy() -> None:
     assert fs.DEFAULT_INTERVAL == "8h"
     assert fs.MAX_CUSTOM_RANGE.days == 7
     assert fs.SETTINGS.raw_gap_break_seconds == 120
+    assert fs.SETTINGS.operating_state.parameter == "hot_blast_volume"
+    assert fs.SETTINGS.operating_state.normal_min == 25000
 
 
 def test_yaml_owns_the_palette_and_zone_mapping() -> None:
     colours = dict(fs.UI.colours)
     assert colours["accent"] == "#1F6FB2"
     assert colours["body_bottom"] == "#F0BF98"
+    assert colours["abnormal"] == "#DC2626"
     assert "--fs-accent:#1F6FB2" in components._palette_css()
+    assert "--fs-abnormal:#DC2626" in components._palette_css()
     assert [zone.name for zone in fs.UI.zones] == [
         "Stack",
         "Belly",
@@ -170,6 +174,15 @@ def _write_config(tmp_path, config: dict):
         lambda config: config["ui"]["colours"].update(accent="orange"),
         lambda config: config["settings"]["trend"].update(
             raw_gap_break_seconds=0
+        ),
+        lambda config: config["settings"]["operating_state"].update(
+            parameter="does_not_exist"
+        ),
+        lambda config: config["settings"]["operating_state"].update(
+            parameter="slag_rate"
+        ),
+        lambda config: config["settings"]["operating_state"].update(
+            normal_min="twenty-five thousand"
         ),
         lambda config: config["ui"]["zones"][0]["readings"].append(
             "does_not_exist"

@@ -70,9 +70,19 @@ class PlantStatus:
 
 
 @dataclass(frozen=True)
+class OperatingState:
+    """Furnace operating state derived from a configured process reading."""
+
+    level: Literal["normal", "abnormal", "unknown"]
+    label: str
+    detail: str
+
+
+@dataclass(frozen=True)
 class StatusSnapshot:
     readings: tuple[ParameterReading, ...]
     status: PlantStatus
+    operating_state: OperatingState
     last_updated: pd.Timestamp | None
     failed_measurements: tuple[str, ...]
 

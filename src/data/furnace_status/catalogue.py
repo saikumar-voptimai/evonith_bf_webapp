@@ -42,11 +42,18 @@ _COLOUR_KEYS = (
     "zone_divider",
     "live",
     "partial",
+    "abnormal",
 )
 
 
 class CatalogueError(ValueError):
     """The Furnace Status configuration is internally inconsistent."""
+
+
+@dataclass(frozen=True)
+class OperatingStateSettings:
+    parameter: str
+    normal_min: float
 
 
 @dataclass(frozen=True)
@@ -60,6 +67,7 @@ class FurnaceStatusSettings:
     stale_after: timedelta
     live_max_age: timedelta
     live_min_coverage: float
+    operating_state: OperatingStateSettings
     fixed_intervals: tuple[tuple[str, timedelta], ...]
     custom_interval: str
     default_interval: str
@@ -132,6 +140,19 @@ def _hex_colour(value: object, location: str) -> str:
 
 def _load_settings(raw: object) -> FurnaceStatusSettings:
     settings = _mapping(raw, "settings")
+    raw_operating_state = _mapping(
+        settings.get("operating_state"), "settings.operating_state"
+    )
+    operating_state = OperatingStateSettings(
+        parameter=_nonempty_string(
+            raw_operating_state.get("parameter"),
+            "settings.operating_state.parameter",
+        ),
+        normal_min=_finite_number(
+            raw_operating_state.get("normal_min"),
+            "settings.operating_state.normal_min",
+        ),
+    )
     trend = _mapping(settings.get("trend"), "settings.trend")
     raw_fixed = _mapping(trend.get("fixed_intervals"), "fixed_intervals")
     fixed = tuple(
@@ -198,6 +219,7 @@ def _load_settings(raw: object) -> FurnaceStatusSettings:
             )
         ),
         live_min_coverage=coverage,
+        operating_state=operating_state,
         fixed_intervals=fixed,
         custom_interval=_nonempty_string(
             trend.get("custom_interval"), "custom_interval"
@@ -382,8 +404,25 @@ def load_catalogue(path: str | Path = CONFIG_PATH) -> FurnaceStatusConfig:
     if len(keys) != len(set(keys)):
         duplicates = sorted({key for key in keys if keys.count(key) > 1})
         raise CatalogueError(f"duplicate parameter keys: {duplicates}")
+    settings = _load_settings(root.get("settings"))
+    operating_spec = next(
+        (
+            spec
+            for spec in parameters
+            if spec.key == settings.operating_state.parameter
+        ),
+        None,
+    )
+    if operating_spec is None:
+        raise CatalogueError(
+            "settings.operating_state.parameter must name a configured parameter"
+        )
+    if not operating_spec.has_source:
+        raise CatalogueError(
+            "settings.operating_state.parameter must name a sourced parameter"
+        )
     return FurnaceStatusConfig(
-        _load_settings(root.get("settings")),
+        settings,
         sections,
         parameters,
         _load_ui(root.get("ui"), frozenset(keys)),

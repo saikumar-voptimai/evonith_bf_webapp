@@ -95,6 +95,10 @@ def _plotly_state_bridge(state_key: str) -> str:
   try {{ if (window.parent && window.parent.document) {{ host = window.parent; }} }} catch (e) {{ return; }}
   var token = {token};
   var states = host.__fsTrendPlotStates || (host.__fsTrendPlotStates = {{}});
+  var parameter = token.split("|")[0];
+  Object.keys(states).forEach(function (key) {{
+    if (key !== token && key.split("|")[0] === parameter) delete states[key];
+  }});
   var pending = false;
   function state() {{ return states[token] || (states[token] = {{}}); }}
   function sameRange(left, right) {{

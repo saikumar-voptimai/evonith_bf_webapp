@@ -10,7 +10,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from data import furnace_status as fs
-from ui.furnace_status.components import go_status, h, render_refresh_control
+from ui.furnace_status.components import (
+    go_status,
+    h,
+    render_refresh_control,
+    trend_plot_state_key,
+)
 from ui.furnace_status.layout import (
     ACCENT,
     BORDER,
@@ -31,6 +36,7 @@ _TREND_GOOD_PREFIX = "fs-trend-good:"
 
 @dataclass(frozen=True)
 class _TrendDisplay:
+    token: str
     view_data: fs.TrendViewData
     start_utc: datetime
     end_utc: datetime
@@ -127,6 +133,8 @@ def build_trend_figure(
             **axis_style,
             "title": {"text": "Time (IST)", "font": {"color": TEXT_MUTED}},
             "type": "date",
+            "range": list(x_range),
+            "autorange": False,
             "hoverformat": "%d %b %Y, %H:%M:%S",
             "zeroline": False,
         },
@@ -249,6 +257,17 @@ def _trend_state_token(
     return token
 
 
+def _prune_legacy_trend_entries(parameter: str) -> None:
+    """Remove token-keyed entries created by older dashboard sessions."""
+    legacy_prefixes = tuple(
+        prefix + parameter + "|"
+        for prefix in (_TREND_LOADED_PREFIX, _TREND_GOOD_PREFIX)
+    )
+    for key in tuple(st.session_state):
+        if isinstance(key, str) and key.startswith(legacy_prefixes):
+            del st.session_state[key]
+
+
 def _tick_time(moment: datetime) -> str:
     return moment.astimezone(fs.IST).strftime("%H:%M:%S IST")
 
@@ -347,10 +366,11 @@ def _live_trend(
         else fs.resolve_fixed_range(interval, now)
     )
     token = _trend_state_token(spec, interval, custom_window)
-    loaded_key = _TREND_LOADED_PREFIX + token
-    good_key = _TREND_GOOD_PREFIX + token
-    first_load = not bool(st.session_state.get(loaded_key))
-    st.session_state[loaded_key] = True
+    _prune_legacy_trend_entries(spec.key)
+    loaded_key = _TREND_LOADED_PREFIX + spec.key
+    good_key = _TREND_GOOD_PREFIX + spec.key
+    first_load = st.session_state.get(loaded_key) != token
+    st.session_state[loaded_key] = token
     failure_note = None
     view_data = None
     try:
@@ -367,11 +387,15 @@ def _live_trend(
 
     failed = view_data is None or view_data.trend.status == "error"
     previous = st.session_state.get(good_key)
-    if failed and isinstance(previous, _TrendDisplay):
+    if (
+        failed
+        and isinstance(previous, _TrendDisplay)
+        and previous.token == token
+    ):
         display = previous
         failure_note = f"Refresh failed at {_tick_time(now)} — showing last data"
     elif view_data is not None:
-        display = _TrendDisplay(view_data, start_utc, end_utc, now)
+        display = _TrendDisplay(token, view_data, start_utc, end_utc, now)
         if not failed and view_data.trend.status == "ok" and view_data.stats is not None:
             st.session_state[good_key] = display
     else:
@@ -423,7 +447,7 @@ def render_trend_view(spec: fs.ParameterSpec) -> None:
         with refresh:
             refresh_label, seconds = render_refresh_control()
         with fullscreen:
-            render_fullscreen_control(f"{spec.key}|{interval_state}")
+            render_fullscreen_control(trend_plot_state_key(spec.key, interval_state))
     if not spec.has_source:
         title.html(_head_html(spec), width="stretch")
         st.html(_unavailable_html(spec.unavailable_reason))

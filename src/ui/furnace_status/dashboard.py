@@ -42,9 +42,19 @@ def _status_html(snapshot: fs.StatusSnapshot) -> str:
         '<div class="fs-status__text"><div class="fs-status__line">'
         f'<span class="fs-status__label">{h(status.label)}</span>'
         '<span class="fs-status__kind" title="Live, Partial and Offline describe '
-        'telemetry availability, not furnace safety or operating health.">'
+        'telemetry availability, not furnace safety or operating health."></span>'
         f'<div class="fs-status__time">Last updated: {h(fs.format_ist(snapshot.last_updated))}</div>'
-        "</div></div>"
+        "</div></div></div>"
+    )
+
+
+def _operating_state_html(state: fs.OperatingState) -> str:
+    icons = {"normal": "✓", "abnormal": "!", "unknown": "?"}
+    return (
+        f'<div class="fs-operating fs-operating--{state.level}" role="status" '
+        f'title="{h(state.detail)}">'
+        f'<span class="fs-operating__icon" aria-hidden="true">{icons[state.level]}</span>'
+        f'<span>Furnace: <strong>{h(state.label)}</strong></span></div>'
     )
 
 
@@ -57,17 +67,21 @@ def _render_header():
             "BF2 blast furnace status</div>"
             f'<div class="fs-subtitle">{h(INSTRUCTIONS)}</div></div>'
         )
+        operating_badge = st.empty()
         badge = st.empty()
         render_fullscreen_control()
         _, seconds = render_refresh_control()
-    return badge, seconds
+    return badge, operating_badge, seconds
 
 
-def _live_dashboard(badge) -> None:
+def _live_dashboard(badge, operating_badge) -> None:
     if fs.parse_view_state(st.query_params).view != fs.VIEW_STATUS:
         st.rerun()
     snapshot = fs.load_status_snapshot(datetime.now(timezone.utc))
     badge.html(_status_html(snapshot), width="content")
+    operating_badge.html(
+        _operating_state_html(snapshot.operating_state), width="content"
+    )
     readings = {reading.spec.key: reading for reading in snapshot.readings}
     zone = _selected_zone()
     if snapshot.failed_measurements:
@@ -94,5 +108,5 @@ def _live_dashboard(badge) -> None:
 
 
 def render_status_view() -> None:
-    badge, seconds = _render_header()
-    fragment(_live_dashboard, run_every=seconds)(badge)
+    badge, operating_badge, seconds = _render_header()
+    fragment(_live_dashboard, run_every=seconds)(badge, operating_badge)

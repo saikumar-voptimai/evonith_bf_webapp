@@ -7,11 +7,13 @@ actual page script under ``streamlit.testing.v1.AppTest`` with
 
 from __future__ import annotations
 
+import re
 import runpy
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -123,7 +125,11 @@ def test_trend_figure_x_axis_shows_ist_wall_clock() -> None:
     assert pd.Timestamp(fig.data[0].x[-1]) == pd.Timestamp(
         "2026-10-05 15:00:00"
     )  # 09:30Z + 5:30
-    assert fig.layout.xaxis.range is None
+    assert tuple(pd.Timestamp(value) for value in fig.layout.xaxis.range) == (
+        pd.Timestamp(page._naive_ist(start)),
+        pd.Timestamp(page._naive_ist(end)),
+    )
+    assert fig.layout.xaxis.autorange is False
     assert pd.Timestamp(fig.data[0].x[-1]) == pd.Timestamp(
         "2026-10-05 15:00:00"
     )
@@ -207,6 +213,62 @@ def test_button_label_carries_name_value_and_unit() -> None:
     assert page._button_label(reading) == "Hot Blast Volume: 98,250 Nm³/h. Open trend"
     na = fs.ParameterReading(fs.PARAMETERS_BY_KEY["slag_rate"], issue="no_source")
     assert page._button_label(na) == "Slag Rate: Not available. Open trend"
+
+
+def test_heat_ring_places_quadrants_and_peak_in_required_corners() -> None:
+    total = fs.ParameterReading(fs.PARAMETERS_BY_KEY["heat_load_total"], value=10.0)
+    shares = components.QuadrantShares((0.1, 0.2, 0.3, 0.4), (3,))
+
+    markup = components._heat_ring_html(total, shares)
+
+    for quadrant, corner in ((1, "ne"), (2, "nw"), (3, "sw"), (4, "se")):
+        assert re.search(
+            rf'fs-ring__q--{corner}[^\"]*\"><b>Q{quadrant}</b>', markup
+        )
+    assert 'fs-ring__q--se is-peak"><b>Q4</b>' in markup
+
+
+def test_heat_ring_css_runs_clockwise_q1_q4_q3_q2() -> None:
+    css = (REPO / "src" / "assets" / "css" / "furnace_status.css").read_text(
+        encoding="utf-8"
+    )
+    gradient = css[css.index("background: conic-gradient(") :]
+    gradient = gradient[: gradient.index(");")]
+
+    assert [
+        gradient.index(f"var(--fs-q{quadrant})")
+        for quadrant in (1, 4, 3, 2)
+    ] == sorted(
+        gradient.index(f"var(--fs-q{quadrant})")
+        for quadrant in (1, 4, 3, 2)
+    )
+
+
+def test_desktop_spacing_uses_shared_header_clearance() -> None:
+    css = (REPO / "src" / "assets" / "css" / "furnace_status.css").read_text(
+        encoding="utf-8"
+    )
+    visualisations = PAGE_FILE.read_text(encoding="utf-8")
+
+    assert "--fs-top-clear: 4.25rem" in css
+    assert "padding-top: var(--fs-top-clear)" in css
+    for remainder in ("6.3rem", "8.6rem", "18.4rem", "23.4rem"):
+        assert f"var(--fs-top-clear) - {remainder}" in css
+    assert "padding-top: 4.25rem !important" in visualisations
+
+
+def test_plot_state_key_changes_on_interval_and_reopen(monkeypatch) -> None:
+    session_state: dict[str, object] = {}
+    monkeypatch.setattr(components.st, "session_state", session_state)
+    monkeypatch.setattr(components, "set_view_query", lambda *args: None)
+
+    first = components.trend_plot_state_key("hbt", "8h")
+    assert components.trend_plot_state_key("hbt", "8h") == first
+    changed_interval = components.trend_plot_state_key("hbt", "4h")
+    assert changed_interval != first
+    components.open_trend("hbt")
+    reopened = components.trend_plot_state_key("hbt", "4h")
+    assert reopened != changed_interval
 
 
 def test_stack_zone_links_charging_and_stock_rod_readings() -> None:
@@ -299,7 +361,7 @@ def _live_frame(columns: list[str]) -> pd.DataFrame:
 @pytest.fixture
 def patched_fetch(monkeypatch):
     calls: list[dict[str, object]] = []
-    state = {"fail": set()}
+    state = {"fail": set(), "values": {}}
 
     class FakeTimeSeriesDataFetcher:
         def __init__(self, measurement, *, debug, source):
@@ -330,7 +392,11 @@ def patched_fetch(monkeypatch):
             if self.measurement in state["fail"]:
                 raise RuntimeError("boom token=SECRET")
             if start_time is None:
-                return _live_frame(list(fields))
+                frame = _live_frame(list(fields))
+                for field, value in state["values"].items():
+                    if field in frame:
+                        frame[field] = value
+                return frame
             index = pd.date_range(start_time, end_time, freq="5min").tz_convert(
                 "Asia/Kolkata"
             )
@@ -400,6 +466,36 @@ def test_vboard_furnace_status_renders_every_parameter_with_grouped_fetches(
     assert "Pad Avg" not in html
     assert "All quadrants equal (25.0% each)" in html and "is-peak" not in html
     assert "Spread <b>0</b>" in html
+
+
+def test_operating_state_pill_updates_with_fragment_data(patched_fetch) -> None:
+    _, state = patched_fetch
+    state["values"]["hot_blast_vol_nm3h"] = 26000.0
+    at = _app().run()
+
+    html = _html_text(at)
+    assert "Furnace: <strong>Normal</strong>" in html
+    assert "fs-operating--normal" in html
+    assert "now 26,000 Nm³/h" in html
+
+    state["values"]["hot_blast_vol_nm3h"] = 24000.0
+    fs.clear_cache()
+    at.run()
+    html = _html_text(at)
+    assert "Furnace: <strong>Abnormal</strong>" in html
+    assert "fs-operating--abnormal" in html
+    assert "now 24,000 Nm³/h" in html
+
+
+def test_status_kind_span_is_closed() -> None:
+    snapshot = SimpleNamespace(
+        status=fs.PlantStatus("live", "Live", "all reporting", 1.0, timedelta()),
+        last_updated=None,
+    )
+    markup = dashboard._status_html(snapshot)
+
+    assert 'operating health."></span>' in markup
+    assert markup.count("<div") == markup.count("</div>")
 
 
 def test_switching_to_visualisations_does_not_render_or_refetch_stale_trend(
@@ -737,6 +833,35 @@ def test_spinner_is_only_used_for_the_first_trend_load(
     at.run()
 
     assert spinner_calls == ["Loading trend…"]
+
+
+def test_trend_session_memory_keeps_one_entry_per_parameter(patched_fetch) -> None:
+    at = _app()
+    at.query_params[fs.VIEW_QUERY_KEY] = "trend"
+    at.query_params[fs.PARAMETER_QUERY_KEY] = "hbt"
+    at.run()
+    interval_control = next(
+        control for control in at.button_group if control.key == "fs-interval-choice"
+    )
+    interval_control.select("1h").run()
+
+    assert at.session_state["fs-trend-loaded:hbt"] == "hbt|1h"
+    assert at.session_state["fs-trend-good:hbt"].token == "hbt|1h"
+    with pytest.raises(KeyError):
+        _ = at.session_state["fs-trend-good:hbt|8h"]
+
+
+def test_legacy_token_keyed_trend_entries_are_pruned(monkeypatch) -> None:
+    session_state = {
+        "fs-trend-loaded:hbt|8h": True,
+        "fs-trend-good:hbt|8h": object(),
+        "fs-trend-good:raft|8h": object(),
+    }
+    monkeypatch.setattr(trends.st, "session_state", session_state)
+
+    trends._prune_legacy_trend_entries("hbt")
+
+    assert set(session_state) == {"fs-trend-good:raft|8h"}
 
 
 def test_status_snapshot_age_logic_is_wall_clock_independent() -> None:

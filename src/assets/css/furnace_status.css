@@ -55,6 +55,7 @@
 }
 .st-key-fs-header > .stElementContainer:first-child { flex: 1 1 18rem; min-width: 0; }
 .st-key-fs-header > .stElementContainer:has(.fs-status) { flex: 0 1 auto; min-width: 0; }
+.st-key-fs-header > .stElementContainer:has(.fs-operating) { flex: 0 1 auto; min-width: 0; }
 .st-key-fs-header > .st-key-fs-refresh { flex: 0 0 auto; min-width: 124px; }
 .st-key-fs-refresh [data-baseweb="select"] > div {
     min-height: 2.25rem;
@@ -123,6 +124,36 @@
     color: var(--fs-text);
     font-variant-numeric: tabular-nums;
 }
+
+.fs-operating {
+    --fs-operating-colour: var(--fs-text-2);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 2.25rem;
+    padding: 6px 11px;
+    color: var(--fs-text);
+    background: var(--fs-inset);
+    border: 1px solid var(--fs-border);
+    border-radius: 999px;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+.fs-operating--normal { --fs-operating-colour: var(--fs-live); }
+.fs-operating--abnormal { --fs-operating-colour: var(--fs-abnormal); }
+.fs-operating__icon {
+    display: inline-grid;
+    width: 1.2rem;
+    height: 1.2rem;
+    place-items: center;
+    color: #fff;
+    background: var(--fs-operating-colour);
+    border-radius: 50%;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1;
+}
+.fs-operating--unknown .fs-operating__icon { color: var(--fs-surface); }
 
 .fs-warning {
     padding: 7px 12px;
@@ -545,9 +576,9 @@
     border-radius: 50%;
     background: conic-gradient(
         transparent 0deg 3deg, var(--fs-q1) 3deg 87deg,
-        transparent 87deg 93deg, var(--fs-q2) 93deg 177deg,
+        transparent 87deg 93deg, var(--fs-q4) 93deg 177deg,
         transparent 177deg 183deg, var(--fs-q3) 183deg 267deg,
-        transparent 267deg 273deg, var(--fs-q4) 273deg 357deg,
+        transparent 267deg 273deg, var(--fs-q2) 273deg 357deg,
         transparent 357deg
     );
     -webkit-mask: radial-gradient(farthest-side, transparent 67%, #000 68%);
@@ -759,10 +790,11 @@
     .st-key-fs-page *::before { transition: none !important; }
 }
 
-/* â”€â”€ Full-viewport desktop board (3-column layout only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* Full-viewport desktop board (3-column layout only) */
 @media (hover: hover) and (pointer: fine) and (min-width: 1040px) and (min-height: 680px) {
     .block-container:has(.st-key-fs-page) {
-        padding-top: 3.25rem;
+        --fs-top-clear: 4.25rem;
+        padding-top: var(--fs-top-clear);
         padding-bottom: 0;
     }
     .block-container:has(.st-key-fs-page) > [data-testid="stVerticalBlock"] {
@@ -782,6 +814,7 @@
     @container fs-page (min-width: 1040px) {
         .st-key-fs-header {
             flex: 0 0 auto;
+            flex-wrap: nowrap !important;
             row-gap: clamp(4px, 1vh, 10px) !important;
             padding: clamp(6px, calc(1.7vh - 6px), 12px) 16px;
         }
@@ -789,26 +822,39 @@
 
         .st-key-fs-page .st-key-fs-dashboard {
             --fs-gap: clamp(6px, calc(2.5vh - 11px), 16px);
-            height: calc(100dvh - 9.55rem - 5.1vh);
-            max-height: calc(100dvh - 9.55rem - 5.1vh);
-            min-height: calc(100dvh - 9.55rem - 5.1vh);
+            height: calc(100dvh - var(--fs-top-clear) - 6.3rem - 5.1vh);
+            max-height: calc(100dvh - var(--fs-top-clear) - 6.3rem - 5.1vh);
+            min-height: calc(100dvh - var(--fs-top-clear) - 6.3rem - 5.1vh);
             grid-template-rows: minmax(0, 1fr);
             align-items: stretch;
         }
         .st-key-fs-page > [data-testid="stLayoutWrapper"]:has(> .st-key-fs-dashboard) {
             flex: 0 0 auto;
-            height: calc(100dvh - 9.55rem - 5.1vh);
-            max-height: calc(100dvh - 9.55rem - 5.1vh);
-            min-height: calc(100dvh - 9.55rem - 5.1vh);
+            height: calc(100dvh - var(--fs-top-clear) - 6.3rem - 5.1vh);
+            max-height: calc(100dvh - var(--fs-top-clear) - 6.3rem - 5.1vh);
+            min-height: calc(100dvh - var(--fs-top-clear) - 6.3rem - 5.1vh);
         }
         .st-key-fs-page:has(.fs-warning) .fs-warning {
             padding-block: clamp(3px, 0.6vh, 7px);
         }
         .st-key-fs-page:has(.fs-warning) .st-key-fs-dashboard,
         .st-key-fs-page:has(.fs-warning) > [data-testid="stLayoutWrapper"]:has(> .st-key-fs-dashboard) {
-            height: calc(100dvh - 11.85rem - 6.6vh);
-            max-height: calc(100dvh - 11.85rem - 6.6vh);
-            min-height: calc(100dvh - 11.85rem - 6.6vh);
+            height: calc(100dvh - var(--fs-top-clear) - 8.6rem - 6.6vh);
+            max-height: calc(100dvh - var(--fs-top-clear) - 8.6rem - 6.6vh);
+            min-height: calc(100dvh - var(--fs-top-clear) - 8.6rem - 6.6vh);
+        }
+        .st-key-fs-page:has(.fs-warning) .st-key-fs-dashboard {
+            --fs-gap: 4px;
+        }
+        .st-key-fs-page:has(.fs-warning) .fs-panel__title {
+            padding-block: clamp(3px, calc(1.4vh - 7px), 8px);
+        }
+        .st-key-fs-page:has(.fs-warning) .fs-row,
+        .st-key-fs-page:has(.fs-warning) .fs-row:has(.fs-row__value--dual) {
+            height: clamp(1.15rem, calc(5vh - 1.175rem), 2.175rem);
+        }
+        .st-key-fs-page:has(.fs-warning) .fs-heat {
+            padding-block: clamp(4px, 0.8vh, 8px);
         }
         .st-key-fs-dashboard > [data-testid="stLayoutWrapper"] {
             height: 100%;
@@ -907,16 +953,19 @@
             padding: clamp(5px, 1vh, 10px) 12px;
         }
         .fs-ring {
-            width: clamp(6.5rem, calc(20vh - 4.25rem), 9.25rem);
+            width: clamp(6rem, calc(20vh - 4.25rem), 9.25rem);
+        }
+        .st-key-fs-page:has(.fs-warning) .fs-ring {
+            width: clamp(5.25rem, calc(20vh - 4.25rem), 8.75rem);
         }
 
         .st-key-fs-page:has(.st-key-fs-toolbar) > [data-testid="stLayoutWrapper"]:has(> .st-key-fs-chart) {
             flex: 0 0 auto;
-            height: min(40rem, calc(100dvh - 20.9rem - 3.85vh));
+            height: min(40rem, calc(100dvh - var(--fs-top-clear) - 18.4rem - 3.85vh));
             min-height: 12rem;
         }
         .st-key-fs-page:has(.st-key-fs-controls) > [data-testid="stLayoutWrapper"]:has(> .st-key-fs-chart) {
-            height: min(40rem, calc(100dvh - 25.9rem - 3.85vh));
+            height: min(40rem, calc(100dvh - var(--fs-top-clear) - 23.4rem - 3.85vh));
         }
         .st-key-fs-toolbar { padding-block: clamp(5px, 0.8vh, 8px); }
         .st-key-fs-chart {

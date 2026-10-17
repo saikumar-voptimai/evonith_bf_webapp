@@ -20,6 +20,7 @@ from data.furnace_status.catalogue import (
     FurnaceStatusSettings,
     FurnaceStatusUI,
     FurnaceZone,
+    OperatingStateSettings,
     load_catalogue,
     measurements_for,
     parameters_in_section,
@@ -47,7 +48,11 @@ from domain.furnace_status.readings import (
     resolve_reading,
     series_for_spec,
 )
-from domain.furnace_status.status import build_status_snapshot, compute_plant_status
+from domain.furnace_status.status import (
+    build_status_snapshot,
+    compute_operating_state,
+    compute_plant_status,
+)
 from domain.furnace_status.time_ranges import (
     CUSTOM_INTERVAL,
     DEFAULT_INTERVAL,
@@ -62,6 +67,7 @@ from domain.furnace_status.time_ranges import (
 )
 from domain.furnace_status.trends import build_trend_data, compute_trend_stats
 from domain.furnace_status.types import (
+    OperatingState,
     ParameterReading,
     ParameterSpec,
     PlantStatus,
