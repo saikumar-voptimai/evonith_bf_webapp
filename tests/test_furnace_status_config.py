@@ -30,11 +30,16 @@ EXPECTED_KEYS = [
     "uptake_t2",
     "uptake_t3",
     "uptake_t4",
+    "uptake_avg",
     "uptake_std",
     "steam_injection",
     "o2_injection",
     "oxygen_flow",
+    "flare_bypass_press",
+    "flare_press",
     "fuel_rate",
+    "coke_rate",
+    "nut_coke_rate",
     "pci_rate",
     "slag_rate",
     "permeability",
@@ -57,9 +62,9 @@ EXPECTED_KEYS = [
 def test_real_yaml_is_the_ordered_single_source_of_truth() -> None:
     loaded = load_catalogue(fs.CONFIG_PATH)
     assert loaded == fs.CONFIG
-    assert len(loaded.parameters) == 37
+    assert len(loaded.parameters) == 42
     assert [spec.key for spec in loaded.parameters] == EXPECTED_KEYS
-    assert len({spec.key for spec in loaded.parameters}) == 37
+    assert len({spec.key for spec in loaded.parameters}) == 42
     assert all(spec.section in loaded.sections for spec in loaded.parameters)
     assert all(isinstance(spec.components, tuple) for spec in loaded.parameters)
 
@@ -92,6 +97,18 @@ def test_real_yaml_sources_and_derived_definitions_are_valid() -> None:
         "top_temp_3",
         "top_temp_4",
     )
+    uptake_avg = fs.PARAMETERS_BY_KEY["uptake_avg"]
+    assert (uptake_avg.measurement, uptake_avg.field) == (
+        "process_params",
+        "top_temp_avg",
+    )
+    fuel = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    assert fuel.components == (
+        "coal_rate_actual_value",
+        "coke_rate",
+        "nut_coke_rate",
+    )
+    assert fuel.setpoint_field == "fuel_rate"
 
 
 def test_yaml_settings_drive_runtime_policy() -> None:
@@ -106,15 +123,19 @@ def test_yaml_settings_drive_runtime_policy() -> None:
     }
     assert fs.SETTINGS.refresh_default == "10 s"
     assert fs.DEFAULT_INTERVAL == "8h"
-    assert fs.MAX_CUSTOM_RANGE.days == 90
-    assert fs.choose_window(fs.FIXED_INTERVALS["24h"]) == "15 minutes"
+    assert fs.MAX_CUSTOM_RANGE.days == 7
+    assert fs.SETTINGS.raw_gap_break_seconds == 120
+    assert fs.SETTINGS.operating_state.parameter == "hot_blast_volume"
+    assert fs.SETTINGS.operating_state.normal_min == 25000
 
 
 def test_yaml_owns_the_palette_and_zone_mapping() -> None:
     colours = dict(fs.UI.colours)
     assert colours["accent"] == "#1F6FB2"
     assert colours["body_bottom"] == "#F0BF98"
+    assert colours["abnormal"] == "#DC2626"
     assert "--fs-accent:#1F6FB2" in components._palette_css()
+    assert "--fs-abnormal:#DC2626" in components._palette_css()
     assert [zone.name for zone in fs.UI.zones] == [
         "Stack",
         "Belly",
@@ -151,6 +172,18 @@ def _write_config(tmp_path, config: dict):
         lambda config: config["parameters"][0].update(field="does_not_exist"),
         lambda config: config["ui"]["colours"].pop("accent"),
         lambda config: config["ui"]["colours"].update(accent="orange"),
+        lambda config: config["settings"]["trend"].update(
+            raw_gap_break_seconds=0
+        ),
+        lambda config: config["settings"]["operating_state"].update(
+            parameter="does_not_exist"
+        ),
+        lambda config: config["settings"]["operating_state"].update(
+            parameter="slag_rate"
+        ),
+        lambda config: config["settings"]["operating_state"].update(
+            normal_min="twenty-five thousand"
+        ),
         lambda config: config["ui"]["zones"][0]["readings"].append(
             "does_not_exist"
         ),

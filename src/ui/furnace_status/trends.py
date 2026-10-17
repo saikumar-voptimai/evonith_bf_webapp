@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import plotly.graph_objects as go
 import streamlit as st
 
 from data import furnace_status as fs
-from ui.furnace_status.components import go_status, h
+from ui.furnace_status.components import (
+    go_status,
+    h,
+    render_refresh_control,
+    trend_plot_state_key,
+)
 from ui.furnace_status.layout import (
     ACCENT,
     BORDER,
@@ -19,6 +26,22 @@ from ui.furnace_status.layout import (
     WARM_TEXT,
 )
 from ui.furnace_status.responsive import render_fullscreen_control
+from ui.streamlit_fragments import fragment
+from utils.logger import get_logger
+
+log = get_logger(__name__)
+_TREND_LOADED_PREFIX = "fs-trend-loaded:"
+_TREND_GOOD_PREFIX = "fs-trend-good:"
+
+
+@dataclass(frozen=True)
+class _TrendDisplay:
+    token: str
+    view_data: fs.TrendViewData
+    start_utc: datetime
+    end_utc: datetime
+    updated_at: datetime
+
 
 PLOT_CONFIG = {
     "responsive": True,
@@ -55,7 +78,7 @@ def build_trend_figure(
         lines.append((trend.setpoint, "Setpoint", "dash"))
     figure = go.Figure(
         [
-            go.Scatter(
+            go.Scattergl(
                 x=series.index.tz_localize(None),
                 y=series.to_numpy(),
                 mode="lines",
@@ -110,8 +133,9 @@ def build_trend_figure(
             **axis_style,
             "title": {"text": "Time (IST)", "font": {"color": TEXT_MUTED}},
             "type": "date",
-            "range": [x_range[0], x_range[1]],
-            "hoverformat": "%d %b %Y, %H:%M",
+            "range": list(x_range),
+            "autorange": False,
+            "hoverformat": "%d %b %Y, %H:%M:%S",
             "zeroline": False,
         },
         yaxis={
@@ -177,7 +201,6 @@ def _head_html(
 
 
 def _render_interval_selector() -> tuple[str, tuple[datetime, datetime] | None]:
-    now = datetime.now(timezone.utc)
     with st.container(key="fs-interval"):
         choice = st.segmented_control(
             "Interval",
@@ -188,7 +211,8 @@ def _render_interval_selector() -> tuple[str, tuple[datetime, datetime] | None]:
         )
     interval = choice or fs.DEFAULT_INTERVAL
     if interval != fs.CUSTOM_INTERVAL:
-        return interval, fs.resolve_fixed_range(interval, now)
+        return interval, None
+    now = datetime.now(timezone.utc)
     default_start, default_end = fs.default_custom_range(now)
     with st.container(key="fs-controls"):
         c1, c2, c3, c4 = st.columns(4)
@@ -221,85 +245,80 @@ def _render_interval_selector() -> tuple[str, tuple[datetime, datetime] | None]:
         return interval, None
 
 
-def render_trend_view(spec: fs.ParameterSpec) -> None:
-    with st.container(key="fs-toolbar"):
-        back, head, fullscreen = st.columns([3, 6, 2], vertical_alignment="center")
-        with back:
-            st.button(
-                "← Back to Furnace Status",
-                key="fs-back",
-                on_click=go_status,
-                width="stretch",
-            )
-        with fullscreen:
-            render_fullscreen_control()
-    if not spec.has_source:
-        with head:
-            st.html(_head_html(spec))
-        st.html(_unavailable_html(spec.unavailable_reason))
-        return
-    interval, window = _render_interval_selector()
-    if window is None:
-        with head:
-            st.html(_head_html(spec))
-        return
-    start_utc, end_utc = window
-    bucket = fs.choose_window(end_utc - start_utc)
-    with st.spinner("Loading trend…"):
-        view_data = fs.load_trend_view(
-            spec,
-            start_utc,
-            end_utc,
-            bucket,
-            use_live_current=interval != fs.CUSTOM_INTERVAL,
-        )
+def _trend_state_token(
+    spec: fs.ParameterSpec,
+    interval: str,
+    custom_window: tuple[datetime, datetime] | None,
+) -> str:
+    token = f"{spec.key}|{interval}"
+    if custom_window is not None:
+        start, end = custom_window
+        token += f"|{start.isoformat()}|{end.isoformat()}"
+    return token
+
+
+def _prune_legacy_trend_entries(parameter: str) -> None:
+    """Remove token-keyed entries created by older dashboard sessions."""
+    legacy_prefixes = tuple(
+        prefix + parameter + "|"
+        for prefix in (_TREND_LOADED_PREFIX, _TREND_GOOD_PREFIX)
+    )
+    for key in tuple(st.session_state):
+        if isinstance(key, str) and key.startswith(legacy_prefixes):
+            del st.session_state[key]
+
+
+def _tick_time(moment: datetime) -> str:
+    return moment.astimezone(fs.IST).strftime("%H:%M:%S IST")
+
+
+def _render_trend_body(
+    display: _TrendDisplay,
+    chart,
+    *,
+    interval: str,
+    refresh_label: str,
+    failure_note: str | None,
+) -> None:
+    view_data = display.view_data
+    start_utc, end_utc = display.start_utc, display.end_utc
     current, trend, stats = view_data.current, view_data.trend, view_data.stats
-    timestamp = current.timestamp
-    if timestamp is None:
-        timestamp = current.setpoint_timestamp
-    with head:
-        st.html(
-            _head_html(
-                spec,
-                last_data=fs.format_ist(timestamp) if timestamp is not None else None,
-                current_text=fs.format_reading(current),
-            )
-        )
     if trend.status == "ok" and stats is not None:
         revision = (
-            f"{spec.key}|{interval}|{start_utc:%Y%m%d%H%M}|{end_utc:%Y%m%d%H%M}"
+            f"{trend.spec.key}|{interval}|{start_utc:%Y%m%d%H%M}|{end_utc:%Y%m%d%H%M}"
             if interval == fs.CUSTOM_INTERVAL
-            else f"{spec.key}|{interval}"
+            else f"{trend.spec.key}|{interval}"
         )
-        with st.container(key="fs-chart"):
+        with chart.container(key="fs-chart"):
             st.plotly_chart(
                 build_trend_figure(
                     trend, (naive_ist(start_utc), naive_ist(end_utc)), revision
                 ),
                 width="stretch",
                 theme=None,
-                key=f"fs-trend-{spec.key}",
+                key=f"fs-trend-{trend.spec.key}",
                 config=PLOT_CONFIG,
             )
     else:
-        st.html(_unavailable_html(trend.message or "No data was returned."))
+        with chart.container(key="fs-chart"):
+            st.html(_unavailable_html(trend.message or "No data was returned."))
     minimum = (
-        fs.format_value(stats.minimum, spec.decimals)
+        fs.format_value(stats.minimum, trend.spec.decimals)
         if stats is not None
         else fs.NOT_AVAILABLE
     )
     maximum = (
-        fs.format_value(stats.maximum, spec.decimals)
+        fs.format_value(stats.maximum, trend.spec.decimals)
         if stats is not None
         else fs.NOT_AVAILABLE
     )
     average = (
-        fs.format_value(stats.mean, spec.decimals)
+        fs.format_value(stats.mean, trend.spec.decimals)
         if stats is not None
         else fs.NOT_AVAILABLE
     )
-    current_unit = spec.unit if fs.has_display_value(current) else ""
-    range_unit = spec.unit if stats is not None else ""
+    current_unit = trend.spec.unit if fs.has_display_value(current) else ""
+    range_unit = trend.spec.unit if stats is not None else ""
     st.html(
         '<div class="fs-stats">'
         + _stat_tile("Current", fs.format_reading(current), current_unit)
@@ -309,6 +328,141 @@ def render_trend_view(spec: fs.ParameterSpec) -> None:
         + "</div>"
     )
     if trend.status == "ok" and stats is not None:
-        st.caption(
-            f"{bucket} average · {fs.format_ist(start_utc)} → {fs.format_ist(end_utc)}"
+        sample_count = int(trend.series.notna().sum())
+        suffix = (
+            " · Auto-refresh off for custom range"
+            if interval == fs.CUSTOM_INTERVAL
+            else f" · auto-refresh {refresh_label} · updated {_tick_time(display.updated_at)}"
         )
+        st.caption(
+            f"Raw data · {sample_count:,} samples · "
+            f"{fs.format_ist(start_utc)} → {fs.format_ist(end_utc)}{suffix}"
+        )
+    if failure_note:
+        st.caption(failure_note)
+
+
+def _live_trend(
+    title,
+    chart,
+    spec: fs.ParameterSpec,
+    interval: str,
+    custom_window: tuple[datetime, datetime] | None,
+    refresh_label: str,
+) -> None:
+    state = fs.parse_view_state(st.query_params)
+    if (
+        state.view != fs.VIEW_TREND
+        or state.spec is None
+        or state.spec.key != spec.key
+    ):
+        st.rerun()
+        return
+
+    now = datetime.now(timezone.utc)
+    start_utc, end_utc = (
+        custom_window
+        if custom_window is not None
+        else fs.resolve_fixed_range(interval, now)
+    )
+    token = _trend_state_token(spec, interval, custom_window)
+    _prune_legacy_trend_entries(spec.key)
+    loaded_key = _TREND_LOADED_PREFIX + spec.key
+    good_key = _TREND_GOOD_PREFIX + spec.key
+    first_load = st.session_state.get(loaded_key) != token
+    st.session_state[loaded_key] = token
+    failure_note = None
+    view_data = None
+    try:
+        context = st.spinner("Loading trend…") if first_load else nullcontext()
+        with context:
+            view_data = fs.load_trend_view(
+                spec,
+                start_utc,
+                end_utc,
+                use_live_current=interval != fs.CUSTOM_INTERVAL,
+            )
+    except Exception:  # noqa: BLE001 - details stay in server logs
+        log.exception("Furnace Status: trend refresh failed for %s", spec.key)
+
+    failed = view_data is None or view_data.trend.status == "error"
+    previous = st.session_state.get(good_key)
+    if (
+        failed
+        and isinstance(previous, _TrendDisplay)
+        and previous.token == token
+    ):
+        display = previous
+        failure_note = f"Refresh failed at {_tick_time(now)} — showing last data"
+    elif view_data is not None:
+        display = _TrendDisplay(token, view_data, start_utc, end_utc, now)
+        if not failed and view_data.trend.status == "ok" and view_data.stats is not None:
+            st.session_state[good_key] = display
+    else:
+        title.html(_head_html(spec, current_text=fs.NOT_AVAILABLE), width="stretch")
+        with chart.container(key="fs-chart"):
+            st.html(_unavailable_html("The data source could not be reached. Try again."))
+        return
+
+    current = display.view_data.current
+    timestamp = (
+        current.timestamp
+        if current.timestamp is not None
+        else current.setpoint_timestamp
+    )
+    title.html(
+        _head_html(
+            spec,
+            last_data=fs.format_ist(timestamp) if timestamp is not None else None,
+            current_text=fs.format_reading(current),
+        ),
+        width="stretch",
+    )
+    _render_trend_body(
+        display,
+        chart,
+        interval=interval,
+        refresh_label=refresh_label,
+        failure_note=failure_note,
+    )
+
+
+def render_trend_view(spec: fs.ParameterSpec) -> None:
+    interval_state = st.session_state.get("fs-interval-choice", fs.DEFAULT_INTERVAL)
+    if interval_state not in fs.INTERVAL_OPTIONS:
+        interval_state = fs.DEFAULT_INTERVAL
+    with st.container(key="fs-toolbar"):
+        back, head, refresh, fullscreen = st.columns(
+            [3, 6, 2.4, 1.2], vertical_alignment="center"
+        )
+        with back:
+            st.button(
+                "← Back to Furnace Status",
+                key="fs-back",
+                on_click=go_status,
+                width="stretch",
+            )
+        with head:
+            title = st.empty()
+        with refresh:
+            refresh_label, seconds = render_refresh_control()
+        with fullscreen:
+            render_fullscreen_control(trend_plot_state_key(spec.key, interval_state))
+    if not spec.has_source:
+        title.html(_head_html(spec), width="stretch")
+        st.html(_unavailable_html(spec.unavailable_reason))
+        return
+    interval, custom_window = _render_interval_selector()
+    if interval == fs.CUSTOM_INTERVAL and custom_window is None:
+        title.html(_head_html(spec), width="stretch")
+        return
+    chart = st.empty()
+    run_every = None if interval == fs.CUSTOM_INTERVAL else seconds
+    fragment(_live_trend, run_every=run_every)(
+        title,
+        chart,
+        spec,
+        interval,
+        custom_window,
+        refresh_label,
+    )

@@ -74,7 +74,6 @@ def trend_frame(
     spec: ParameterSpec,
     start_utc: datetime,
     end_utc: datetime,
-    window_by: str,
 ) -> pd.DataFrame:
     return _fetch_cached(
         spec.measurement,
@@ -82,8 +81,8 @@ def trend_frame(
         SETTINGS.selected_range_label,
         start_utc,
         end_utc,
-        "windowed-average",
-        window_by,
+        "ts",
+        None,
     )
 
 

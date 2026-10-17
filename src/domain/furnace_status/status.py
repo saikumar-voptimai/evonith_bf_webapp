@@ -8,13 +8,47 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from data.furnace_status.catalogue import PARAMETERS, SETTINGS, measurements_for
+from domain.furnace_status.formatting import format_value
 from domain.furnace_status.readings import resolve_reading
 from domain.furnace_status.types import (
+    OperatingState,
     ParameterReading,
     ParameterSpec,
     PlantStatus,
     StatusSnapshot,
 )
+
+
+def compute_operating_state(
+    readings: Sequence[ParameterReading],
+) -> OperatingState:
+    """Classify furnace operation from the configured unrounded live value."""
+    policy = SETTINGS.operating_state
+    reading = next(
+        (item for item in readings if item.spec.key == policy.parameter), None
+    )
+    if reading is None:
+        return OperatingState(
+            "unknown", "Unknown", "Operating-state parameter is unavailable."
+        )
+
+    spec = reading.spec
+    unit = f" {spec.unit}" if spec.unit else ""
+    threshold = format_value(policy.normal_min, spec.decimals)
+    rule = f"Normal when {spec.label} ≥ {threshold}{unit}"
+    if reading.value is None:
+        return OperatingState(
+            "unknown", "Unknown", f"{rule} · now no fresh value"
+        )
+
+    current = format_value(reading.value, spec.decimals)
+    if reading.value >= policy.normal_min:
+        return OperatingState(
+            "normal", "Normal", f"{rule} · now {current}{unit}"
+        )
+    return OperatingState(
+        "abnormal", "Abnormal", f"{rule} · now {current}{unit}"
+    )
 
 
 def compute_plant_status(
@@ -57,6 +91,7 @@ def build_status_snapshot(
     return StatusSnapshot(
         readings=readings,
         status=compute_plant_status(readings, now),
+        operating_state=compute_operating_state(readings),
         last_updated=max(timestamps) if timestamps else None,
         failed_measurements=failed,
     )

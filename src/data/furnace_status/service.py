@@ -35,12 +35,11 @@ def _trend_result(
     spec: ParameterSpec,
     start_utc: datetime,
     end_utc: datetime,
-    window_by: str,
 ) -> TrendData:
     if not spec.has_source:
         return TrendData(spec, "no_source", None, spec.unavailable_reason)
     try:
-        frame = repository.trend_frame(spec, start_utc, end_utc, window_by)
+        frame = repository.trend_frame(spec, start_utc, end_utc)
     except Exception:  # noqa: BLE001 - details belong in server logs only
         log.exception(
             "Furnace Status: trend fetch failed for %s.%s",
@@ -87,7 +86,6 @@ def load_trend_view(
     spec: ParameterSpec,
     start_utc: datetime,
     end_utc: datetime,
-    window_by: str,
     *,
     use_live_current: bool,
 ) -> TrendViewData:
@@ -97,7 +95,7 @@ def load_trend_view(
         end_utc,
         use_live_cache=use_live_current,
     )
-    trend = _trend_result(spec, start_utc, end_utc, window_by)
+    trend = _trend_result(spec, start_utc, end_utc)
     return TrendViewData(current, trend, compute_trend_stats(trend.series))
 
 

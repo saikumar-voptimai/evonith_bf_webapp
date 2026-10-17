@@ -24,6 +24,11 @@ from utils.logger import get_logger
 
 log = get_logger(__name__)
 CSS_PATH = Path(__file__).resolve().parents[2] / "assets" / "css" / "furnace_status.css"
+REFRESH_WIDGET_KEY = "fs-refresh"
+REFRESH_PREF_KEY = "fs-refresh-pref"
+_TREND_PLOT_GENERATION_KEY = "fs-trend-plot-generation"
+_TREND_PLOT_CONTEXT_KEY = "fs-trend-plot-context"
+REFRESH_CHOICES = dict(fs.SETTINGS.refresh_choices)
 _CSS_COLOUR_TOKENS = {
     "surface": "surface",
     "inset": "inset",
@@ -37,7 +42,41 @@ _CSS_COLOUR_TOKENS = {
     "warm_text": "warm-text",
     "live": "live",
     "partial": "partial",
+    "abnormal": "abnormal",
 }
+
+
+def _remember_refresh_preference() -> None:
+    choice = st.session_state.get(REFRESH_WIDGET_KEY)
+    if choice in REFRESH_CHOICES:
+        st.session_state[REFRESH_PREF_KEY] = choice
+
+
+def refresh_preference() -> str:
+    choice = st.session_state.get(REFRESH_PREF_KEY)
+    if choice not in REFRESH_CHOICES:
+        choice = fs.SETTINGS.refresh_default
+        st.session_state[REFRESH_PREF_KEY] = choice
+    return choice
+
+
+def render_refresh_control() -> tuple[str, int]:
+    """Render the cross-view refresh preference and return label plus seconds."""
+    labels = tuple(REFRESH_CHOICES)
+    preferred = refresh_preference()
+    choice = st.selectbox(
+        "Auto-refresh interval",
+        labels,
+        index=labels.index(preferred),
+        key=REFRESH_WIDGET_KEY,
+        format_func=lambda label: f"↻ {label}",
+        help="Refreshes live values only; the page stays in place.",
+        label_visibility="collapsed",
+        width=124,
+        on_change=_remember_refresh_preference,
+    )
+    st.session_state[REFRESH_PREF_KEY] = choice
+    return choice, REFRESH_CHOICES[choice]
 
 
 def h(text: object) -> str:
@@ -97,11 +136,29 @@ def set_view_query(view: str, parameter: str | None = None) -> None:
 
 
 def open_trend(key: str) -> None:
+    _advance_trend_plot_generation()
+    st.session_state[_TREND_PLOT_CONTEXT_KEY] = None
     set_view_query(fs.VIEW_TREND, key)
 
 
 def go_status() -> None:
     set_view_query(fs.VIEW_STATUS)
+
+
+def _advance_trend_plot_generation() -> int:
+    generation = int(st.session_state.get(_TREND_PLOT_GENERATION_KEY, 0)) + 1
+    st.session_state[_TREND_PLOT_GENERATION_KEY] = generation
+    return generation
+
+
+def trend_plot_state_key(parameter: str, interval: str) -> str:
+    """Return a state key stable only within one parameter/interval visit."""
+    context = f"{parameter}|{interval}"
+    if st.session_state.get(_TREND_PLOT_CONTEXT_KEY) != context:
+        _advance_trend_plot_generation()
+        st.session_state[_TREND_PLOT_CONTEXT_KEY] = context
+    generation = int(st.session_state.get(_TREND_PLOT_GENERATION_KEY, 0))
+    return f"{context}|{generation}"
 
 
 def na_markup(text: str) -> str:
@@ -341,7 +398,7 @@ def _heat_ring_html(
 ) -> str:
     peaks = _peak_quadrants(shares)
     colours, labels = [], []
-    for index, corner in enumerate(("ne", "se", "sw", "nw")):
+    for index, corner in enumerate(("ne", "nw", "sw", "se")):
         if shares.shares is None:
             colour, share = "var(--fs-border)", "–"
         else:

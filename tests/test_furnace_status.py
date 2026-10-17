@@ -42,11 +42,16 @@ EXPECTED_LABELS = [
     "T2",
     "T3",
     "T4",
+    "T Avg",
     "Std Dev",
     "Steam Injection",
     "O₂ Injection",
     "Oxygen Flow",
-    "Fuel Rate",
+    "Flare Stack Bypass Pressure",
+    "Flare Stack Pressure",
+    "Fuel Rate (SP/ACT)",
+    "Coke Rate",
+    "Nut Coke Rate",
     "PCI Rate (SP/ACT.)",
     "Slag Rate",
     "Permeability",
@@ -90,7 +95,7 @@ def test_all_reference_labels_present_in_order() -> None:
 
 def test_every_parameter_belongs_to_a_known_section() -> None:
     assert {p.section for p in fs.PARAMETERS} <= set(fs.SECTIONS)
-    assert sum(len(fs.parameters_in_section(s)) for s in fs.SECTIONS) == 37
+    assert sum(len(fs.parameters_in_section(s)) for s in fs.SECTIONS) == 42
 
 
 def test_source_backed_fields_are_actually_queried() -> None:
@@ -152,16 +157,16 @@ def test_missing_column_and_all_null_series_return_none() -> None:
 
 
 def test_stale_value_is_not_available() -> None:
-    frame = make_frame({"fuel_rate": [500.0]}, age_minutes=16)
-    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    frame = make_frame({"coke_rate": [500.0]}, age_minutes=16)
+    spec = fs.PARAMETERS_BY_KEY["coke_rate"]
     reading = fs.resolve_reading(spec, {"process_params": frame}, NOW)
     assert reading.value is None
     assert reading.issue == "stale"
 
 
 def test_missing_values_are_not_forward_filled_across_columns() -> None:
-    frame = make_frame({"fuel_rate": [500.0, np.nan, np.nan]})
-    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    frame = make_frame({"coke_rate": [500.0, np.nan, np.nan]})
+    spec = fs.PARAMETERS_BY_KEY["coke_rate"]
     reading = fs.resolve_reading(spec, {"process_params": frame}, NOW)
     assert reading.value == 500.0
     assert reading.timestamp == frame.index[0]  # its own, older timestamp
@@ -235,14 +240,14 @@ def test_heat_load_current_never_mixes_component_timestamps() -> None:
     assert reading.issue == "no_data"
 
 
-def test_heat_load_trend_sums_per_bin_and_keeps_gaps() -> None:
+def test_heat_load_trend_aligns_a_missing_component_to_prior_raw_sample() -> None:
     frame = _quadrant_frame({1: [0.5, 0.6, 0.7]})
     frame.loc[frame.index[1], "heat_load_r9_q1"] = np.nan
     trend = fs.build_trend_data(fs.PARAMETERS_BY_KEY["heat_load_q1"], frame)
 
     assert trend.status == "ok"
     assert trend.series.iloc[0] == pytest.approx(2.5)
-    assert np.isnan(trend.series.iloc[1])  # one row missing -> gap, not a smaller sum
+    assert trend.series.iloc[1] == pytest.approx(2.9)  # 4 Ã— 0.6 + prior 0.5
     assert trend.series.iloc[2] == pytest.approx(3.5)
 
 
@@ -266,9 +271,20 @@ def test_uptake_temperatures_read_top_temp_fields() -> None:
         "top_temp_2",
         "top_temp_3",
         "top_temp_4",
+        "top_temp_avg",
         "top_temp_std",
     ]
     assert all(s.unit == "°C" for s in specs)
+
+
+def test_uptake_average_reads_the_configured_live_average() -> None:
+    spec = fs.PARAMETERS_BY_KEY["uptake_avg"]
+    frame = make_frame({"top_temp_avg": [201.6]})
+
+    reading = fs.resolve_reading(spec, {"process_params": frame}, NOW)
+
+    assert reading.value == pytest.approx(201.6)
+    assert fs.format_reading(reading) == "202"
 
 
 def test_uptake_standard_deviation_is_derived_per_timestamp() -> None:
@@ -288,7 +304,7 @@ def test_uptake_standard_deviation_is_derived_per_timestamp() -> None:
     assert reading.value == pytest.approx(np.std([100.0, 110.0, 120.0, 130.0]))
     assert fs.format_reading(reading) == "11.2"
     assert trend.series.iloc[0] == pytest.approx(reading.value)
-    assert np.isnan(trend.series.iloc[1])
+    assert trend.series.iloc[1] == pytest.approx(reading.value)
 
 
 # ── Formatting ───────────────────────────────────────────────────────────────
@@ -355,6 +371,45 @@ def test_pci_shows_setpoint_and_actual() -> None:
     assert fs.format_reading(reading) == "145 / 142"
 
 
+def test_fuel_rate_shows_stored_setpoint_and_summed_actual() -> None:
+    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    assert spec.source_fields == (
+        "coal_rate_actual_value",
+        "coke_rate",
+        "nut_coke_rate",
+        "fuel_rate",
+    )
+    frame = make_frame(
+        {
+            "coal_rate_actual_value": [141.6],
+            "coke_rate": [302.4],
+            "nut_coke_rate": [61.0],
+            "fuel_rate": [510.0],
+        }
+    )
+
+    reading = fs.resolve_reading(spec, {"process_params": frame}, NOW)
+
+    assert (reading.setpoint, reading.value) == (510.0, 505.0)
+    assert fs.format_reading(reading) == "510 / 505"
+
+
+def test_fuel_rate_actual_requires_all_three_components() -> None:
+    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    frame = make_frame(
+        {
+            "coal_rate_actual_value": [141.6],
+            "coke_rate": [302.4],
+            "fuel_rate": [510.0],
+        }
+    )
+
+    reading = fs.resolve_reading(spec, {"process_params": frame}, NOW)
+
+    assert reading.value is None and reading.issue == "no_data"
+    assert reading.setpoint == 510.0
+
+
 def test_pci_with_missing_setpoint_and_available_actual() -> None:
     spec = fs.PARAMETERS_BY_KEY["pci_rate"]
     frame = make_frame(
@@ -399,7 +454,7 @@ def test_pci_without_actual_is_plain_not_available() -> None:
 )
 def test_fixed_ranges_resolve_in_utc(label: str, hours: int) -> None:
     start, end = fs.resolve_fixed_range(label, NOW)
-    assert end == datetime(2026, 10, 5, 9, 30, tzinfo=timezone.utc)  # minute-floored
+    assert end == NOW  # fixed live windows retain seconds so every tick can advance
     assert end - start == timedelta(hours=hours)
     assert start.utcoffset() == timedelta(0) and end.utcoffset() == timedelta(0)
 
@@ -448,33 +503,11 @@ def test_default_custom_range_is_previous_eight_hours_in_ist() -> None:
     assert end.utcoffset() == timedelta(hours=5, minutes=30)
 
 
-@pytest.mark.parametrize(
-    "duration,expected",
-    [
-        (timedelta(minutes=10), "1 minute"),
-        (timedelta(hours=1), "1 minute"),
-        (timedelta(hours=4), "5 minutes"),
-        (timedelta(hours=8), "5 minutes"),
-        (timedelta(hours=16), "10 minutes"),
-        (timedelta(hours=24), "15 minutes"),
-        (timedelta(hours=48), "30 minutes"),
-        (timedelta(days=7), "1 hour"),
-        (timedelta(days=90), "1 hour"),
-    ],
-)
-def test_choose_window(duration: timedelta, expected: str) -> None:
-    assert fs.choose_window(duration) == expected
-
-
-def test_fixed_intervals_use_the_documented_windows() -> None:
-    expected = {
-        "1h": "1 minute",
-        "4h": "5 minutes",
-        "8h": "5 minutes",
-        "16h": "10 minutes",
-        "24h": "15 minutes",
-    }
-    assert {k: fs.choose_window(v) for k, v in fs.FIXED_INTERVALS.items()} == expected
+def test_custom_range_rejects_more_than_seven_days() -> None:
+    with pytest.raises(fs.RangeError, match="at most 7 days"):
+        fs.resolve_custom_range(
+            datetime(2026, 9, 27, 12), datetime(2026, 10, 5, 12), NOW
+        )
 
 
 # ── Fetching through the existing data layer ─────────────────────────────────
@@ -550,7 +583,13 @@ def test_one_failing_measurement_does_not_discard_the_other(monkeypatch) -> None
     fake = FakeFetcherFactory(
         {
             "process_params": make_frame(
-                {"fuel_rate": [505.0], "production_per_hour": [180.0]}
+                {
+                    "fuel_rate": [505.0],
+                    "coal_rate_actual_value": [140.0],
+                    "coke_rate": [300.0],
+                    "nut_coke_rate": [60.0],
+                    "production_per_hour": [180.0],
+                }
             ),
             "miscellaneous": RuntimeError("influx exploded: token=SECRET"),
             "heatload_delta_t": _full_frames(0)["heatload_delta_t"],
@@ -562,7 +601,8 @@ def test_one_failing_measurement_does_not_discard_the_other(monkeypatch) -> None
     snapshot = fs.load_status_snapshot(NOW)
 
     by_key = {r.spec.key: r for r in snapshot.readings}
-    assert by_key["fuel_rate"].value == 505.0
+    assert by_key["fuel_rate"].value == 500.0
+    assert by_key["fuel_rate"].setpoint == 505.0
     assert by_key["production_rate"].value == 180.0
     assert by_key["furnace_level"].value is None
     assert by_key["furnace_level"].issue == "fetch_failed"
@@ -614,7 +654,7 @@ def test_failure_details_never_reach_the_snapshot(monkeypatch) -> None:
     assert "SECRET" not in repr(snapshot)
 
 
-def test_trend_fetch_passes_utc_overrides_and_field_naming(monkeypatch) -> None:
+def test_trend_fetch_uses_raw_samples_and_utc_overrides(monkeypatch) -> None:
     fake = FakeFetcherFactory(
         {"process_params": make_frame({"hot_blast_vol_nm3h": [98000.0, 99000.0]})}
     )
@@ -622,14 +662,14 @@ def test_trend_fetch_passes_utc_overrides_and_field_naming(monkeypatch) -> None:
     spec = fs.PARAMETERS_BY_KEY["hot_blast_volume"]
     start, end = fs.resolve_fixed_range("4h", NOW)
 
-    trend = fs._trend_result(spec, start, end, fs.choose_window(end - start))
+    trend = fs._trend_result(spec, start, end)
 
     (call,) = fake.calls
     assert call["start_time"] == start and call["end_time"] == end
     assert call["start_time"].utcoffset() == timedelta(0)
     assert call["time_interval"] == "over selected range"
-    assert call["request_type"] == "windowed-average"
-    assert call["window_by"] == "5 minutes"
+    assert call["request_type"] == "ts"
+    assert call["window_by"] is None
     assert call["fields"] == spec.source_fields
     assert trend.status == "ok"
     assert list(trend.series) == [98000.0, 99000.0]
@@ -655,7 +695,6 @@ def test_trend_applies_scale_and_pci_charts_setpoint_too(monkeypatch) -> None:
         fs.PARAMETERS_BY_KEY["steam_injection"],
         start,
         end,
-        "1 minute",
     )
     assert list(steam.series) == [10.0, 12.0]
 
@@ -663,7 +702,6 @@ def test_trend_applies_scale_and_pci_charts_setpoint_too(monkeypatch) -> None:
         fs.PARAMETERS_BY_KEY["pci_rate"],
         start,
         end,
-        "1 minute",
     )
     assert list(pci.series) == [140.0, 150.0]
     assert list(pci.setpoint) == [145.0, 145.0]
@@ -684,7 +722,7 @@ def test_derived_trend_fetches_every_component_in_one_request(monkeypatch) -> No
     monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
-    trend = fs._trend_result(spec, start, end, "1 minute")
+    trend = fs._trend_result(spec, start, end)
 
     assert trend.status == "ok"
     assert list(trend.series) == [20.0, 40.0]
@@ -693,21 +731,88 @@ def test_derived_trend_fetches_every_component_in_one_request(monkeypatch) -> No
     assert fake.calls[0]["fields"] == spec.source_fields
 
 
-def test_trend_preserves_gaps(monkeypatch) -> None:
+def test_derived_trend_aligns_async_components_backward_within_sixty_seconds() -> None:
+    spec = fs.ParameterSpec(
+        "derived",
+        "Derived",
+        fs.SECTION_UPTAKE,
+        "process_params",
+        "derived",
+        components=("a", "b"),
+        aggregate="sum",
+    )
+    index = pd.date_range(end=NOW, periods=3, freq="30s", tz="UTC")
+    frame = pd.DataFrame(
+        {"a": [1.0, 2.0, np.nan], "b": [10.0, np.nan, 20.0]}, index=index
+    )
+
+    trend = fs.build_trend_data(spec, frame)
+
+    assert list(trend.series) == [11.0, 12.0, 22.0]
+
+
+def test_derived_trend_preserves_its_setpoint_series_when_components_align() -> None:
+    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    index = pd.date_range(end=NOW, periods=3, freq="30s", tz="UTC")
+    frame = pd.DataFrame(
+        {
+            "coal_rate_actual_value": [140.0, 141.0, np.nan],
+            "coke_rate": [300.0, np.nan, 302.0],
+            "nut_coke_rate": [60.0, 61.0, 62.0],
+            "fuel_rate": [500.0, 501.0, 502.0],
+        },
+        index=index,
+    )
+
+    trend = fs.build_trend_data(spec, frame)
+
+    assert list(trend.series) == [500.0, 502.0, 505.0]
+    assert list(trend.setpoint) == [500.0, 501.0, 502.0]
+
+
+@pytest.mark.parametrize("seconds,expected_count", [(60, 61), (10, 361)])
+def test_raw_sample_density_preserves_every_value(seconds, expected_count) -> None:
+    spec = fs.PARAMETERS_BY_KEY["coke_rate"]
+    index = pd.date_range(end=NOW, periods=expected_count, freq=f"{seconds}s", tz="UTC")
+    values = np.linspace(400.0, 500.0, expected_count)
+
+    trend = fs.build_trend_data(spec, pd.DataFrame({spec.field: values}, index=index))
+
+    assert len(trend.series) == expected_count
+    np.testing.assert_array_equal(trend.series.to_numpy(), values)
+
+
+@pytest.mark.parametrize("gap_seconds,expected_breaks", [(120, 0), (121, 1)])
+def test_raw_gap_threshold_inserts_exactly_one_break(gap_seconds, expected_breaks) -> None:
+    spec = fs.PARAMETERS_BY_KEY["coke_rate"]
+    start = pd.Timestamp(NOW).tz_convert("UTC")
+    frame = pd.DataFrame(
+        {spec.field: [510.0, 530.0]},
+        index=pd.DatetimeIndex([start, start + timedelta(seconds=gap_seconds)]),
+    )
+
+    trend = fs.build_trend_data(spec, frame)
+    stats = fs.compute_trend_stats(trend.series)
+
+    assert int(trend.series.isna().sum()) == expected_breaks
+    assert int(trend.series.notna().sum()) == 2
+    assert (stats.minimum, stats.maximum, stats.mean) == (510.0, 530.0, 520.0)
+
+
+def test_trend_drops_nan_samples(monkeypatch) -> None:
     fake = FakeFetcherFactory(
-        {"process_params": make_frame({"fuel_rate": [500.0, np.nan, 520.0]})}
+        {"process_params": make_frame({"coke_rate": [500.0, np.nan, 520.0]})}
     )
     monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
     start, end = fs.resolve_fixed_range("1h", NOW)
 
     trend = fs._trend_result(
-        fs.PARAMETERS_BY_KEY["fuel_rate"],
+        fs.PARAMETERS_BY_KEY["coke_rate"],
         start,
         end,
-        "1 minute",
     )
 
-    assert len(trend.series) == 3 and np.isnan(trend.series.iloc[1])
+    assert list(trend.series) == [500.0, 520.0]
     stats = fs.compute_trend_stats(trend.series)
     assert (stats.minimum, stats.maximum, stats.mean) == (500.0, 520.0, 510.0)
 
@@ -721,7 +826,6 @@ def test_trend_without_source_never_calls_the_fetcher(monkeypatch) -> None:
         fs.PARAMETERS_BY_KEY["slag_rate"],
         start,
         end,
-        "1 minute",
     )
 
     assert trend.status == "no_source" and trend.series is None
@@ -738,7 +842,7 @@ def test_trend_empty_and_failed_requests_are_handled(monkeypatch) -> None:
         "TimeSeriesDataFetcher",
         FakeFetcherFactory({"process_params": pd.DataFrame()}),
     )
-    assert fs._trend_result(spec, start, end, "1 minute").status == "no_data"
+    assert fs._trend_result(spec, start, end).status == "no_data"
 
     monkeypatch.setattr(
         fs_repository,
@@ -746,13 +850,12 @@ def test_trend_empty_and_failed_requests_are_handled(monkeypatch) -> None:
         FakeFetcherFactory({"process_params": RuntimeError("boom")}),
     )
     fs.clear_cache()
-    failed = fs._trend_result(spec, start, end, "1 minute")
+    failed = fs._trend_result(spec, start, end)
     assert failed.status == "error" and "boom" not in failed.message
 
 
-def test_raw_current_differs_from_final_average_bucket(monkeypatch) -> None:
-    """Current/Last data use the final raw point, never the final chart bucket."""
-    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+def test_current_and_trend_both_use_raw_samples(monkeypatch) -> None:
+    spec = fs.PARAMETERS_BY_KEY["coke_rate"]
     start, end = fs.resolve_fixed_range("1h", NOW)
     raw_times = pd.DatetimeIndex(
         [end - timedelta(seconds=40), end - timedelta(seconds=20), end],
@@ -761,87 +864,58 @@ def test_raw_current_differs_from_final_average_bucket(monkeypatch) -> None:
     raw = pd.DataFrame(
         {
             "time": raw_times,
-            "fuel_rate": [100.0, 120.0, 200.0],
+            "coke_rate": [100.0, 120.0, 200.0],
             "table": [0, 0, 0],
         }
     )
-    averaged = pd.DataFrame(
-        {"fuel_rate": [140.0]},
-        index=pd.DatetimeIndex([end], name="time"),
-    )
-    fake = FakeFetcherFactory(
-        {
-            ("process_params", "ts"): raw,
-            ("process_params", "windowed-average"): averaged,
-        }
-    )
+    fake = FakeFetcherFactory({"process_params": raw})
     monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
-    result = fs.load_trend_view(spec, start, end, "1 minute", use_live_current=True)
+    result = fs.load_trend_view(spec, start, end, use_live_current=True)
 
     assert result.current.value == 200.0
     assert result.current.timestamp == pd.Timestamp(end).tz_convert(fs.IST)
-    assert result.trend.series.iloc[-1] == 140.0
+    assert result.trend.series.iloc[-1] == 200.0
     assert result.stats.mean == 140.0
-    assert [call["request_type"] for call in fake.calls] == [
-        "ts",
-        "windowed-average",
-    ]
+    assert [call["request_type"] for call in fake.calls] == ["ts", "ts"]
 
 
 @pytest.mark.parametrize("interval", ["1h", "4h", "8h", "16h", "24h"])
 def test_every_fixed_interval_uses_latest_raw_current(monkeypatch, interval) -> None:
-    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    spec = fs.PARAMETERS_BY_KEY["coke_rate"]
     start, end = fs.resolve_fixed_range(interval, NOW)
     raw = pd.DataFrame(
-        {"fuel_rate": [100.0, 200.0]},
+        {"coke_rate": [100.0, 200.0]},
         index=pd.DatetimeIndex([end - timedelta(minutes=1), end], name="time"),
     )
-    averaged = pd.DataFrame(
-        {"fuel_rate": [150.0]}, index=pd.DatetimeIndex([end], name="time")
-    )
-    fake = FakeFetcherFactory(
-        {
-            ("process_params", "ts"): raw,
-            ("process_params", "windowed-average"): averaged,
-        }
-    )
+    fake = FakeFetcherFactory({"process_params": raw})
     monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
     result = fs.load_trend_view(
         spec,
         start,
         end,
-        fs.choose_window(end - start),
         use_live_current=True,
     )
 
     assert result.current.value == 200.0
-    assert result.trend.series.iloc[-1] == 150.0
+    assert result.trend.series.iloc[-1] == 200.0
 
 
 def test_custom_historical_current_is_bounded_to_selected_range(monkeypatch) -> None:
-    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    spec = fs.PARAMETERS_BY_KEY["coke_rate"]
     end = NOW - timedelta(days=2)
     start = end - timedelta(hours=1)
     raw = pd.DataFrame(
-        {"fuel_rate": [190.0, 999.0]},
+        {"coke_rate": [190.0, 999.0]},
         index=pd.DatetimeIndex(
             [end - timedelta(minutes=1), end + timedelta(seconds=1)], name="time"
         ),
     )
-    averaged = pd.DataFrame(
-        {"fuel_rate": [150.0]}, index=pd.DatetimeIndex([end], name="time")
-    )
-    fake = FakeFetcherFactory(
-        {
-            ("process_params", "ts"): raw,
-            ("process_params", "windowed-average"): averaged,
-        }
-    )
+    fake = FakeFetcherFactory({"process_params": raw})
     monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
-    result = fs.load_trend_view(spec, start, end, "1 minute", use_live_current=False)
+    result = fs.load_trend_view(spec, start, end, use_live_current=False)
 
     assert result.current.value == 190.0
     raw_call = next(call for call in fake.calls if call["request_type"] == "ts")
@@ -864,37 +938,37 @@ def test_derived_current_uses_newest_complete_raw_row() -> None:
 
 
 def test_current_and_trend_fail_independently(monkeypatch) -> None:
-    spec = fs.PARAMETERS_BY_KEY["fuel_rate"]
+    spec = fs.PARAMETERS_BY_KEY["coke_rate"]
     start, end = fs.resolve_fixed_range("1h", NOW)
-    averaged = pd.DataFrame(
-        {"fuel_rate": [500.0, 520.0]},
+    raw_trend = pd.DataFrame(
+        {"coke_rate": [500.0, 520.0]},
         index=pd.date_range(end=end, periods=2, freq="1min"),
     )
-    fake = FakeFetcherFactory(
-        {
-            ("process_params", "ts"): RuntimeError("raw token=SECRET"),
-            ("process_params", "windowed-average"): averaged,
-        }
-    )
-    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
-    result = fs.load_trend_view(spec, start, end, "1 minute", use_live_current=True)
+    def current_failure(*args, **kwargs):
+        raise RuntimeError("raw token=SECRET")
+
+    monkeypatch.setattr(fs_repository, "current_frame", current_failure)
+    monkeypatch.setattr(
+        fs_repository, "trend_frame", lambda spec, start, end: raw_trend
+    )
+
+    result = fs.load_trend_view(spec, start, end, use_live_current=True)
     assert result.current.issue == "fetch_failed"
     assert result.trend.status == "ok" and result.stats.mean == 510.0
 
-    fs.clear_cache()
     raw = pd.DataFrame(
-        {"fuel_rate": [530.0]}, index=pd.DatetimeIndex([end], name="time")
+        {"coke_rate": [530.0]}, index=pd.DatetimeIndex([end], name="time")
     )
-    fake = FakeFetcherFactory(
-        {
-            ("process_params", "ts"): raw,
-            ("process_params", "windowed-average"): RuntimeError("trend token=SECRET"),
-        }
-    )
-    monkeypatch.setattr(fs_repository, "TimeSeriesDataFetcher", fake)
 
-    result = fs.load_trend_view(spec, start, end, "1 minute", use_live_current=True)
+    monkeypatch.setattr(fs_repository, "current_frame", lambda *args, **kwargs: raw)
+
+    def trend_failure(*args, **kwargs):
+        raise RuntimeError("trend token=SECRET")
+
+    monkeypatch.setattr(fs_repository, "trend_frame", trend_failure)
+
+    result = fs.load_trend_view(spec, start, end, use_live_current=True)
     assert result.current.value == 530.0
     assert result.trend.status == "error" and result.stats is None
     assert "SECRET" not in result.trend.message
@@ -938,7 +1012,7 @@ def test_plant_status_live_partial_offline() -> None:
 
     # Fresh but <70 % of mapped parameters report -> partial.
     sparse = fs.build_status_snapshot(
-        {"process_params": make_frame({"fuel_rate": [1.0]}), "miscellaneous": None}, NOW
+        {"process_params": make_frame({"coke_rate": [1.0]}), "miscellaneous": None}, NOW
     )
     assert sparse.status.level == "partial"
 
@@ -951,6 +1025,31 @@ def test_plant_status_live_partial_offline() -> None:
     )
     assert gone.status.level == "offline"
     assert gone.last_updated is None
+
+
+@pytest.mark.parametrize(
+    ("value", "level", "label"),
+    [
+        (25000.0, "normal", "Normal"),
+        (24999.9, "abnormal", "Abnormal"),
+        (None, "unknown", "Unknown"),
+    ],
+)
+def test_operating_state_uses_unrounded_hot_blast_volume_boundary(
+    value, level, label
+) -> None:
+    spec = fs.PARAMETERS_BY_KEY["hot_blast_volume"]
+    state = fs.compute_operating_state((fs.ParameterReading(spec, value=value),))
+
+    assert (state.level, state.label) == (level, label)
+    assert "Hot Blast Volume ≥ 25,000 Nm³/h" in state.detail
+
+
+def test_stale_hot_blast_volume_makes_operating_state_unknown() -> None:
+    snapshot = fs.build_status_snapshot(_full_frames(16), NOW)
+
+    assert snapshot.operating_state.level == "unknown"
+    assert "no fresh value" in snapshot.operating_state.detail
 
 
 # ── Query-parameter validation ───────────────────────────────────────────────

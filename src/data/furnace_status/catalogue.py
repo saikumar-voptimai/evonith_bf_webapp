@@ -42,6 +42,7 @@ _COLOUR_KEYS = (
     "zone_divider",
     "live",
     "partial",
+    "abnormal",
 )
 
 
@@ -50,9 +51,9 @@ class CatalogueError(ValueError):
 
 
 @dataclass(frozen=True)
-class AggregationWindow:
-    max_duration: timedelta
-    window: str
+class OperatingStateSettings:
+    parameter: str
+    normal_min: float
 
 
 @dataclass(frozen=True)
@@ -66,12 +67,12 @@ class FurnaceStatusSettings:
     stale_after: timedelta
     live_max_age: timedelta
     live_min_coverage: float
+    operating_state: OperatingStateSettings
     fixed_intervals: tuple[tuple[str, timedelta], ...]
     custom_interval: str
     default_interval: str
     max_custom_range: timedelta
-    aggregation_windows: tuple[AggregationWindow, ...]
-    widest_window: str
+    raw_gap_break_seconds: float
 
     @property
     def timezone(self) -> ZoneInfo:
@@ -139,6 +140,19 @@ def _hex_colour(value: object, location: str) -> str:
 
 def _load_settings(raw: object) -> FurnaceStatusSettings:
     settings = _mapping(raw, "settings")
+    raw_operating_state = _mapping(
+        settings.get("operating_state"), "settings.operating_state"
+    )
+    operating_state = OperatingStateSettings(
+        parameter=_nonempty_string(
+            raw_operating_state.get("parameter"),
+            "settings.operating_state.parameter",
+        ),
+        normal_min=_finite_number(
+            raw_operating_state.get("normal_min"),
+            "settings.operating_state.normal_min",
+        ),
+    )
     trend = _mapping(settings.get("trend"), "settings.trend")
     raw_fixed = _mapping(trend.get("fixed_intervals"), "fixed_intervals")
     fixed = tuple(
@@ -151,29 +165,6 @@ def _load_settings(raw: object) -> FurnaceStatusSettings:
     default = _nonempty_string(trend.get("default_interval"), "default_interval")
     if default not in {label for label, _ in fixed}:
         raise CatalogueError("default_interval must name a fixed interval")
-
-    raw_windows = trend.get("aggregation_windows")
-    if not isinstance(raw_windows, list) or not raw_windows:
-        raise CatalogueError("aggregation_windows must be a non-empty list")
-    windows = tuple(
-        AggregationWindow(
-            timedelta(
-                hours=_positive_number(
-                    _mapping(item, "aggregation window").get("max_duration_hours"),
-                    "aggregation max_duration_hours",
-                )
-            ),
-            _nonempty_string(
-                _mapping(item, "aggregation window").get("window"),
-                "aggregation window name",
-            ),
-        )
-        for item in raw_windows
-    )
-    if tuple(item.max_duration for item in windows) != tuple(
-        sorted(item.max_duration for item in windows)
-    ):
-        raise CatalogueError("aggregation_windows must be ordered by duration")
 
     timezone_name = _nonempty_string(settings.get("timezone"), "timezone")
     try:
@@ -228,6 +219,7 @@ def _load_settings(raw: object) -> FurnaceStatusSettings:
             )
         ),
         live_min_coverage=coverage,
+        operating_state=operating_state,
         fixed_intervals=fixed,
         custom_interval=_nonempty_string(
             trend.get("custom_interval"), "custom_interval"
@@ -238,8 +230,9 @@ def _load_settings(raw: object) -> FurnaceStatusSettings:
                 trend.get("max_custom_range_days"), "max_custom_range"
             )
         ),
-        aggregation_windows=windows,
-        widest_window=_nonempty_string(trend.get("widest_window"), "widest_window"),
+        raw_gap_break_seconds=_positive_number(
+            trend.get("raw_gap_break_seconds", 120), "raw_gap_break_seconds"
+        ),
     )
 
 
@@ -411,8 +404,25 @@ def load_catalogue(path: str | Path = CONFIG_PATH) -> FurnaceStatusConfig:
     if len(keys) != len(set(keys)):
         duplicates = sorted({key for key in keys if keys.count(key) > 1})
         raise CatalogueError(f"duplicate parameter keys: {duplicates}")
+    settings = _load_settings(root.get("settings"))
+    operating_spec = next(
+        (
+            spec
+            for spec in parameters
+            if spec.key == settings.operating_state.parameter
+        ),
+        None,
+    )
+    if operating_spec is None:
+        raise CatalogueError(
+            "settings.operating_state.parameter must name a configured parameter"
+        )
+    if not operating_spec.has_source:
+        raise CatalogueError(
+            "settings.operating_state.parameter must name a sourced parameter"
+        )
     return FurnaceStatusConfig(
-        _load_settings(root.get("settings")),
+        settings,
         sections,
         parameters,
         _load_ui(root.get("ui"), frozenset(keys)),
