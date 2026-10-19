@@ -48,6 +48,11 @@ PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
         title="Blend Mix Optimiser",
         icon=":material/science:",
     ),
+    AppPageDescriptor(
+        "custom_pages/10_Coke_Energy.py",
+        title="Coke Energy Model",
+        icon=":material/local_fire_department:",
+    ),
     AppPageDescriptor("custom_pages/8_Feedback.py", title="Feedback", icon="📮"),
 )
 
