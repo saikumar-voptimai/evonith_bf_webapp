@@ -53,6 +53,11 @@ PAGE_REGISTRY: tuple[AppPageDescriptor, ...] = (
         title="Coke Energy Model",
         icon=":material/local_fire_department:",
     ),
+    AppPageDescriptor(
+        "custom_pages/11_Burden_Fuel_Optimiser.py",
+        title="Burden & Fuel Optimiser",
+        icon=":material/tune:",
+    ),
     AppPageDescriptor("custom_pages/8_Feedback.py", title="Feedback", icon="📮"),
 )
 

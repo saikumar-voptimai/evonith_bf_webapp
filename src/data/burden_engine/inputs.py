@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
-from utils.bmo.types import FluxInput, OreChemistry, OreInput
+if TYPE_CHECKING:  # the BMO package init is heavy; the records are only read by attribute here
+    from utils.bmo.types import FluxInput, OreChemistry, OreInput
 
 logger = logging.getLogger(__name__)
 
