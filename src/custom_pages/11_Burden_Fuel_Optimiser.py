@@ -33,10 +33,12 @@ import json
 
 from data.burden_engine.inputs import build_engine_inputs
 import ui.burden_optimiser.loaders as loaders
-from ui.burden_optimiser.sections import (plan_sentence, render_controls, render_facts, render_frontier, render_kpis,
-                                          render_limits, render_model_check, render_plan_tabs, render_problems,
-                                          render_status, render_thermal, render_yard_editor)
+from ui.burden_optimiser.sections import (plan_sentence, render_controls, render_facts, render_frontier, render_limits,
+                                          render_model_check, render_plan_summary, render_plan_tabs, render_status,
+                                          render_thermal, render_yard_editor)
+from ui.burden_optimiser.commentary import render_furnace_commentary
 from utils.burden_engine import BandError, Engine, Infeasible, load_register
+from utils.burden_engine.commentary import build_context, load_notes
 from utils.burden_engine.scenarios import limit_labels, limits_from, settings_from_regime
 from utils.coke_energy.bf_thermo import HUMIDITY_G_NM3
 
@@ -73,7 +75,7 @@ render_status(yard_source, yard_msg, info, reg, _refresh)
 regime = info.regime
 
 # ── Model check: the model against the furnace, before any plan ──────
-render_model_check(getattr(getattr(_ce, "result", None), "shifts", None), cfg.get("model_check", {}), reg)
+model_shown = render_model_check(getattr(getattr(_ce, "result", None), "shifts", None), cfg.get("model_check", {}), reg)
 
 st.divider()
 st.subheader("Optimise")
@@ -163,24 +165,24 @@ except Infeasible as exc:
 eng = loaders.engine(json.loads(args[1]), json.loads(args[2]))
 st.divider()
 flux_ids = [v.id for v in eng.flux]
+today_t_day = (regime or {}).get("prod_th") * 24 if (regime or {}).get("prod_th") else None
+today, r0, window = None, None, ""
 if res["mode"] == "fixed":
     r, r0, today = res["with_fuel"], res["ore_only"], res.get("today")
-    st.subheader(f"Cheapest blend at {r['P_tday']:,.0f} t/d")
-    kind, line = plan_sentence(r, names, flux_ids, today)
-    (st.success if kind == "saving" else st.info)(line)
     window = (f"from {today_blend['window'][0]} to {today_blend['window'][1]} IST" if today is not None
               else "over the last 24 h")
+    render_plan_summary(r, f"Cheapest blend at {r['P_tday']:,.0f} t/d", flux_ids=flux_ids, today=today,
+                        lead=plan_sentence(r, names, flux_ids, today), other=r0, other_label="ore + flux only")
     if today_blend.get("unmapped"):
         st.caption("Today's blend leaves out materials without lab chemistry in the window: "
                    + ", ".join(f"{k} {v:.1f} %" for k, v in today_blend["unmapped"].items()) + ".")
     elif yard_source == "live" and today is None:
         st.caption("Today's charged blend is not available"
                    + (f" ({today_blend['error']})" if today_blend.get("error") else "") + ", so there is no comparison.")
-    render_problems(r)
-    render_kpis(r, r0, "ore + flux only", today=today)
     render_plan_tabs(eng, r, "fixed", other=r0, value_of_limits=res.get("value_of_limits"), today=today,
                      names=names, prices=prices, today_window=window)
-    final = r
+    final, plan_label = r, f"fixed production {r['P_tday']:,.0f} t/d"
+
 elif res["mode"] == "cheapest":
     if res["best"] is None:
         st.error("No production level meets every limit at these settings.")
@@ -189,20 +191,37 @@ elif res["mode"] == "cheapest":
     render_frontier(res)
     which = st.radio("Plan shown below", ["Cheapest output", "Highest output"], horizontal=True, key="bfo_which")
     final = res["best"] if which == "Cheapest output" or res["top"] is None else res["top"]
-    render_problems(final)
-    render_kpis(final)
+    render_plan_summary(final, f"{which}: {final['P_tday']:,.0f} t/d", flux_ids=flux_ids, today_t_day=today_t_day)
     render_plan_tabs(eng, final, "cheapest", names=names, prices=prices)
+    plan_label = f"{which.lower()} on the Step 1 frontier, {final['P_tday']:,.0f} t/d"
 else:
     final = res["result"]
     if final is None:
         st.error("No production level meets every limit at these settings.")
         st.stop()
-    st.subheader(f"Maximum production: {final['P_tday']:,.0f} t/d")
-    st.caption("Limited by: " + (limit_labels(final.get("binding", []), names) or "–") + ". Controls at their limits; "
-               "oxygen searched within its flow and enrichment limits, least oxygen among equal outputs.")
-    render_problems(final)
-    render_kpis(final)
+    render_plan_summary(final, f"Maximum production: {final['P_tday']:,.0f} t/d", flux_ids=flux_ids,
+                        today_t_day=today_t_day,
+                        lead=("plain", "Limited by: " + (limit_labels(final.get("binding", []), names) or "–")
+                              + ". Controls at their limits; oxygen searched within its flow and enrichment limits, "
+                              "least oxygen among equal outputs."))
     render_plan_tabs(eng, final, "max", names=names, prices=prices)
+    plan_label = f"maximum production {final['P_tday']:,.0f} t/d"
+
+# ── Furnace commentary ────────────────────────────────────────────────
+st.divider()
+_cal = info.cal
+context = build_context(
+    notes=load_notes(), reg=reg, mode=MODES[res["mode"]], plan=final, plan_label=plan_label, names=names,
+    flux_ids=flux_ids, settings=final["settings"], limits=final["limits"], yard_source=yard_source,
+    calibration=dict(source=info.source, window=(f"{info.window[0]} to {info.window[1]}" if info.source == "live"
+                                                 else " to ".join(_cal.get("period", ["", ""]))),
+                     omega=_cal.get("omega"), Q_LZ_GJh=_cal.get("Q_LZ_GJh"), Q_UZ_GJh=_cal.get("Q_UZ_GJh"),
+                     message=info.message if info.source != "live" else ""),
+    regime=regime, target_t_day=float(args[5]) if res["mode"] == "fixed" else None, model_check=model_shown,
+    today=today, today_window=window, ore_only=r0, value_of_limits=res.get("value_of_limits"),
+    frontier=res if res["mode"] == "cheapest" else None,
+    materials=materials + [m for m in yard["materials"] if not m.get("carried", True)], fluxes=fluxes, fuel=fuel)
+render_furnace_commentary(context, key="bfo")
 
 with st.expander("Facts this result rests on"):
     render_facts(reg, final)

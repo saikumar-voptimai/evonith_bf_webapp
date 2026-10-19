@@ -21,6 +21,11 @@ default period are in `burden_optimiser.yml → model_check`. The numbers are th
 (`PipelineResult.shifts`: `K_burnt`, `K_energy`, `K_obal`), the same result the optimiser calibrates on; the page
 does no physics of its own here (`utils/burden_engine/model_check.py`).
 
+The model check has a second tab, **Burnt against charged coke** (`utils/coke_energy/transit.py`): Lin's concordance
+(CCC) and Bland–Altman per averaging window, the part of the spread that does not average out, and the lag
+correlation. On 610 shifts: CCC 0.86 per shift, 0.88 per day, 0.93 per week, no level or scale gap, burnt follows
+charged. Method, results and limits: `docs/burnt_vs_charged_coke.md`.
+
 **Then the plan:**
 
 | Mode | Question | Engine call | Typical time |
@@ -38,6 +43,21 @@ tables show *Today* next to *Plan*. On the Neon export of 19 Oct 2026 (shipped c
 60.8 / Lloyds CLO 14.1 / Geomin 9.7 / NMDC ROM 5.3 / pellet 10.1 %) costs Rs 30,357/tHM at 2,270 t/d; the plan
 (sinter 58 / Lloyds CLO 19 / Geomin 13 / pellet 10 %, limestone 8 kg) Rs 30,144, Rs 214/tHM (Rs 4.9 lakh/day) less
 for 1.6 kg/tHM more coke. Charged materials without lab chemistry in the window are listed and left out.
+
+**Layout (as page 9).** Each plan opens with its title and a feasibility badge, an overview strip (ore + flux + fuel,
+production, burden Fe, saving against today's blend in Rs lakh/day or the change of production against today), then
+four bordered panels in process order: 💰 Cost (ore, flux, fuel, total), 🔥 Fuel rates (coke dry, nut coke, PCI, total),
+🌋 Slag (rate, t/d, Al₂O₃, MgO; CaO/SiO₂, T-basicity and IB4 against the plant's own p5–p95 bands, MgO/Al₂O₃) and
+🚚 Charging (coke, nut coke and PCI t/d, charges/h, hot metal per charge, flux rate). With today's blend the panels
+show the change from it. The 🧱 Blend tab is the comparison table beside a donut of the ferrous charge (Plan / Today,
+one colour per material). The plant bands are shared with page 9 (`utils/slag_bands.py`).
+
+**Furnace commentary.** Below the plan, *Generate commentary* sends the model the optimiser notes
+(`src/assets/burden_engine/optimiser_notes.md`: how every number is made, validated and where it is weak), the fact
+register as a table, and the run (set-up, model check, burnt against charged coke, the plan in the panel grouping,
+today's blend and the ore + flux answer side by side, binding limits and shadow prices, value of limits, frontier,
+yard). Context assembly is pure (`utils/burden_engine/commentary.py`, no LLM inside, unit-tested); the call uses the
+app's LLM client (`ui/burden_optimiser/commentary.py`). The full context is shown and can be downloaded.
 
 Every plan shows: blend (wet % of ferrous, kg/tHM, t/d), fuel & cost split, slag (rate, CaO/SiO₂, Al₂O₃, MgO,
 MgO/Al₂O₃ against the limits), process (fuel rate, ηCO, top gas, blast, O₂, enrichment tag, RAFT, pressure needed,
@@ -83,6 +103,10 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 | `src/custom_pages/11_Burden_Fuel_Optimiser.py` | Page (UI orchestration only) |
 | `src/ui/burden_optimiser/` | `sections.py` (renderers), `loaders.py` (cached yard / calibration / today's blend / runs), `figures.py` (frontier, model check) |
 | `src/utils/burden_engine/model_check.py` | Model check: scored shifts, window, accuracy and verdict |
+| `src/utils/coke_energy/transit.py` | Burnt against charged coke: concordance, window agreement, spread split, lag scan, closure |
+| `src/utils/burden_engine/commentary.py`, `src/ui/burden_optimiser/commentary.py` | Commentary context (pure) and panel |
+| `src/assets/burden_engine/optimiser_notes.md` | Optimiser notes: the commentary's static context |
+| `src/utils/slag_bands.py` | Plant p5–p95 slag bands, shared with page 9 |
 | `src/utils/burden_engine/engine.py` | `Engine`, `Settings`, `Limits`, `value_in_use`, `summary` |
 | `src/utils/burden_engine/hydraulics.py` | Packed-bed limit, enrichment tag, per-tonne RAFT |
 | `src/utils/burden_engine/facts.py` | Fact register loader (guarded access) |
@@ -95,7 +119,8 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 | `src/assets/burden_engine/` | Reference yard (16 Oct 2026 UAT) and Jul–Oct 2026 calibration |
 | `scripts/compare_bmo_vs_burden_engine.py` | Page-9 LP against the engine (ore + flux objective) |
 | `scripts/replay_slag_vs_lab.py` | Both slag calculations on each day's actual charge against the lab's slag analysis |
-| `tests/test_burden_engine*.py`, `tests/test_burden_optimiser_model_check.py` | Engine, inputs, calibration, scenario, model-check and today's-blend tests |
+| `scripts/burnt_vs_charged_coke.py` | Burnt against charged coke from a shift table |
+| `tests/test_burden_engine*.py`, `tests/test_burden_optimiser_*.py` | Engine, inputs, calibration, scenario, model-check and today's-blend tests |
 
 Also changed on page 9 for this work (all checked against the lab, below):
 * `OreChemistry.loi_pct` (default 0; read from the same lab row, so page 9 picks the same rows).
@@ -204,13 +229,16 @@ mean slag analysis (`docs/slag_replay_vs_lab.md`). 284 days, Sep 2025 – Oct 20
 1. **Status line**: yard source (live / reference), calibration window and shaft efficiency, register version.
 2. **Model check**: compare the latest shift's burnt coke with the energy-balance figure (same HMT and Si). *On track*
    over the period means the plan's coke figures can be trusted; *Check before trusting the plan* names the bias or
-   scatter that is out. Switch the period to 7 or 30 days; click *Charged coke* in the legend to add it.
+   scatter that is out. Switch the period to 7 or 30 days; click *Charged coke* in the legend to add it. The second
+   tab shows burnt and charged coke converging as the window grows: compare them over a day or more.
 3. **Step 1**: open *Day limits* and set today's caps (e.g. blast 105,000 Nm³/h on a blower-limited day). Optimise.
    Read the cheapest output, the highest output, the cost of each extra tonne between them, and what binds.
    Switch *Plan shown below* to see either plan's blend and controls.
 4. **Step 2**: enter the target t/d (default: today's production). Optimise. Read the plan line (charge, cost, saving
    against today's blend), the *Today* columns, then *Value of limits* for the cheapest limit to relax.
-5. **Warnings** mean a rule is extrapolated (pellet > 16.6 %, Gomti > 11.6 %) or RAFT is outside its band; an error
+5. **Commentary**: press *Generate commentary* for the model's reading of the run; open *What the model is given*
+   to audit it, or download the context.
+6. **Warnings** mean a rule is extrapolated (pellet > 16.6 %, Gomti > 11.6 %) or RAFT is outside its band; an error
    names the limit that blocks the plan.
 
 ## What the engine does not see

@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.bmo.calculations import compute_charging_requirements
+from utils.slag_bands import PLANT_SLAG_BANDS, band_note
 from utils.bmo.constraints import CHARGING_HOURS_PER_DAY
 from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
 from utils.bmo.shift_production import production_change_pct
@@ -1131,35 +1132,10 @@ def _fmt(value: Any, spec: str = ",.2f", unavailable: str = "n/a") -> str:
     return format(number, spec)
 
 
-def _band_note(value: float | None, low: float, high: float) -> tuple[str, bool]:
-    """Where a value sits against the plant's own operating band.
-
-    ISA-101 high-performance HMI practice is that a bare number carries no
-    situational awareness - the operator needs the normal range beside it to
-    know whether to act. These bands are the plant's measured p5-p95 over 6,515
-    hours of HM_SLAG analysis, not textbook figures, so "outside" means outside
-    what THIS furnace actually does.
-
-    Returns:
-         - return tuple[str, bool] - Caption text, and whether it is in band.
-    """
-
-    if value is None:
-        return f"plant {low:g}–{high:g}", True
-    inside = low <= float(value) <= high
-    marker = "✓" if inside else "⚠"
-    return f"{marker} plant {low:g}–{high:g}", inside
-
-
-# Plant p5-p95 over 6,515 hours of HM_SLAG analysis. B2 and IB4 are display-only;
-# T Basicity is the one the optimizer actually constrains. IB4 reads far lower
-# than T Basicity purely because Al2O3 (~18.7% of slag) joins its denominator -
-# a ~0.85 IB4 is normal, not a fault.
-_PLANT_SLAG_BANDS: dict[str, tuple[float, float]] = {
-    "b2": (1.005, 1.155),
-    "t_basicity": (1.216, 1.403),
-    "ib4": (0.793, 0.902),
-}
+# The bands and the band note live in utils.slag_bands (shared with page 11); the
+# names below are kept so the rest of this module and its callers read as before.
+_band_note = band_note
+_PLANT_SLAG_BANDS = PLANT_SLAG_BANDS
 
 
 def _render_cost_group(

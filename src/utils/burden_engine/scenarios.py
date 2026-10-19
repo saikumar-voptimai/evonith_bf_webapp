@@ -215,6 +215,35 @@ def flux_compare_table(r: Mapping[str, Any], others: Sequence[tuple[str, Mapping
     return pd.DataFrame(rows)
 
 
+def plan_tiles(r: Mapping[str, Any], flux_ids: Sequence[str] = ()) -> dict[str, dict[str, float]]:
+    """The figures of the page-9-style result panels, grouped as the furnace runs: cost (Rs/tHM), fuel (kg/tHM),
+    slag (rate, t/d, chemistry and the three basicity ratios) and charging (t/d, charges/h, hot metal per charge,
+    flux kg/tHM). Coke, nut coke and PCI tonnages are as charged (wet coke, the operator's nut coke and PCI)."""
+
+    o, c, s = r["out"], r["cost"], r["settings"]
+    P_t = float(r["P_tday"])
+    ox = {k: float(o.get(k, 0.0) or 0.0) for k in ("CaO", "SiO2", "MgO", "Al2O3")}
+    ratio = lambda num, den: num / den if den else math.nan  # noqa: E731
+    flux_kg = sum(float(r["wet_kg"].get(i, 0.0)) for i in flux_ids)
+    cph = float(r.get("charges_per_h") or 0.0)
+    return dict(
+        overview=dict(total=float(c["total"]), P_tday=P_t, P_th=float(r["P_th"]), fe_wet_pct=float(r["fe_wet_pct"]),
+                      ferrous_kg=float(r["ferrous_wet"])),
+        cost=dict(ore=float(c["ore"]), flux=float(c["flux"]), fuel=float(c["fuel"]), coke=float(c["coke"]),
+                  nut=float(c["nut"]), pci=float(c["pci"]), total=float(c["total"])),
+        fuel=dict(coke_dry=float(o["K"]), coke_wet=float(o.get("K_wet", o["K"])), nut=float(s["nut_plant"]),
+                  pci=float(s["pci_plant"]), total=float(o["fuel_rate"])),
+        slag=dict(rate=float(o["slag"]), t_day=float(o["slag"]) * P_t / 1000.0, Al2O3_pct=float(o["Al2O3_pct"]),
+                  MgO_pct=float(o["MgO_pct"]), b2=ratio(ox["CaO"], ox["SiO2"]),
+                  t_basicity=ratio(ox["CaO"] + ox["MgO"], ox["SiO2"]),
+                  ib4=ratio(ox["CaO"] + ox["MgO"], ox["SiO2"] + ox["Al2O3"]), mgo_al2o3=ratio(ox["MgO"], ox["Al2O3"])),
+        charging=dict(coke_t=float(o.get("K_wet", o["K"])) * P_t / 1000.0, nut_t=float(s["nut_plant"]) * P_t / 1000.0,
+                      pci_t=float(s["pci_plant"]) * P_t / 1000.0, ferrous_t=float(r["ferrous_wet"]) * P_t / 1000.0,
+                      charges_per_h=cph, hm_per_charge=float(r["P_th"]) / cph if cph else math.nan,
+                      flux_kg=flux_kg),
+    )
+
+
 def cost_table(r: Mapping[str, Any]) -> pd.DataFrame:
     c, o, s = r["cost"], r["out"], r["settings"]
     rows = [("Ore", c["ore"], ""), ("Flux", c["flux"], ""),

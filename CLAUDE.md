@@ -808,7 +808,12 @@ day's limits. Coke for every candidate blend comes from the two-zone (Rist) bala
 - **Model check** (top of the page): latest shift's burnt coke next to the energy- and oxygen-balance predictions at
   its HMT / Si, the window record and a trend (`utils/burden_engine/model_check.py`, from the Coke Energy pipeline's
   `shifts` table; thresholds in `burden_optimiser.yml → model_check`). Step 2 also prices today's charged blend
-  (`run_today`, last 24 h of `charge_data`) and shows the saving against it.
+  (`run_today`, last 24 h of `charge_data`) and shows the saving against it. A second tab compares burnt with charged
+  coke per averaging window (`utils/coke_energy/transit.py`, CCC and Bland–Altman; `docs/burnt_vs_charged_coke.md`).
+- **Layout and commentary:** results follow page 9 (overview strip, Cost / Fuel / Slag / Charging panels with the plant
+  bands from `utils/slag_bands.py`, blend table beside a donut). *Generate commentary* sends the optimiser notes
+  (`src/assets/burden_engine/optimiser_notes.md`), the fact register as a table and the run to the LLM; context is
+  built in `utils/burden_engine/commentary.py` (pure, tested), the panel is `ui/burden_optimiser/commentary.py`.
 - **Engine:** `src/utils/burden_engine/` — pure numerical (no Streamlit). Sequential LP (HiGHS) re-linearising the
   balance; blast limit (Pb² − Pt²) = K·V^1.8 with burden-resistance rules; RAFT from `utils.energy_balance.raft`.
 - **Fact register:** `src/config/facts_register.json` (schema in `config/schemas/`). Every coefficient outside the

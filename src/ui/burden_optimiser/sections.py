@@ -9,12 +9,15 @@ import pandas as pd
 import streamlit as st
 
 from data.burden_engine.calibration import CalibrationInfo
-from ui.burden_optimiser.figures import frontier_figure, model_check_figure
+from ui.burden_optimiser.figures import (blend_donut, frontier_figure, material_colours, model_check_figure,
+                                         transit_lag_figure, transit_window_figure)
 from utils.burden_engine.engine import Engine, Limits
 from utils.burden_engine import model_check as mc
 from utils.burden_engine.facts import ENGINE_FACTS, FactRegister
+from utils.coke_energy import transit as tr
 from utils.burden_engine.scenarios import (binding_table, blend_compare_table, cost_table, flux_compare_table,
-                                           limit_label, limit_labels, process_table, slag_table, viu_table)
+                                           limit_label, limit_labels, plan_tiles, process_table, slag_table, viu_table)
+from utils.slag_bands import PLANT_SLAG_BANDS, band_note
 
 RS = "Rs/tHM"
 
@@ -75,9 +78,11 @@ def _shift_name(skey: str) -> str:
         return str(skey)
 
 
-def render_model_check(T: pd.DataFrame | None, cfg: Mapping[str, Any], reg: FactRegister) -> None:
-    """Is the energy model right on today's furnace? Latest shift's burnt coke against both balances at that shift's
-    HMT and Si, the model's record over recent days, and the trend. Shown before the optimisation."""
+def render_model_check(T: pd.DataFrame | None, cfg: Mapping[str, Any], reg: FactRegister) -> dict[str, Any]:
+    """Is the energy model right on today's furnace? Two tabs: the latest shift's burnt coke against both balances
+    at that shift's HMT and Si, with the model's record and trend; and burnt against charged coke (the same coke,
+    a descent time apart). Shown before the optimisation. Returns what was shown, for the commentary."""
+
     th = mc.Thresholds.from_config(cfg)
     scored = mc.scored_shifts(T)
     st.subheader("Model check · does the energy model match the furnace?")
@@ -85,17 +90,28 @@ def render_model_check(T: pd.DataFrame | None, cfg: Mapping[str, Any], reg: Fact
         basis = reg["DATA-06"].basis if "DATA-06" in reg else ""
         st.info("The model check needs the shift results of the Coke Energy Model page (InfluxDB and Neon), which are "
                 f"not available here. The model's validated record against burnt coke (register DATA-06): {basis}.")
-        return
+        return {}
     row = mc.latest(scored)
     age = mc.age_days(row, today=pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize())
-    st.caption(
-        f"Latest shift with a prediction: **{_shift_name(row.name)}**. Burnt coke is what the blast actually burnt; the "
-        "two balances predict it for that shift's HMT, Si, blast and burden, calibrated only on the 14 days before "
-        "(out of sample). The energy balance is the model the optimiser uses.")
     if age is not None and age > int(cfg.get("stale_after_days", 2)):
         st.warning(f"The latest scored shift is {age} days old: the Coke Energy pipeline has no newer shift with burnt "
                    "coke and a prediction (data gap, or no stable shift since). The check below is for that period.",
                    icon="🕒")
+    tab_model, tab_transit = st.tabs(["Energy model against burnt coke", "Burnt against charged coke"])
+    with tab_model:
+        shown = _render_model_vs_burnt(scored, row, cfg, th)
+    with tab_transit:
+        shown["transit"] = render_transit(T, cfg)
+    shown.update(age_days=age)
+    return shown
+
+
+def _render_model_vs_burnt(scored: pd.DataFrame, row: pd.Series, cfg: Mapping[str, Any],
+                           th: mc.Thresholds) -> dict[str, Any]:
+    st.caption(
+        f"Latest shift with a prediction: **{_shift_name(row.name)}**. Burnt coke is what the blast actually burnt; the "
+        "two balances predict it for that shift's HMT, Si, blast and burden, calibrated only on the 14 days before "
+        "(out of sample). The energy balance is the model the optimiser uses.")
     burnt = row.get("K_burnt")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Burnt coke, kg/tHM", _num(burnt, ".1f"),
@@ -138,6 +154,79 @@ def render_model_check(T: pd.DataFrame | None, cfg: Mapping[str, Any], reg: Fact
     st.caption(f"Stable shifts are filled points; hollow points failed the stability filter and are not scored. "
                f"On track = bias within ±{th.bias_kgthm:.0f} and typical error within ±{th.sd_kgthm:.0f} kg/tHM "
                "(validated record: ±7.7 per shift, register DATA-06). Full analysis on the Coke Energy Model page.")
+    return dict(latest=row, latest_name=_shift_name(row.name), period=span, energy=e, oxygen=o, state=state,
+                reason=reason)
+
+
+def render_transit(T: pd.DataFrame | None, cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Burnt against charged coke: agreement per averaging window, what does not average out, and the direction of
+    the lag. Returns the transit summary (empty when the table has no charged coke)."""
+
+    descent = float(cfg.get("descent_time_h", 6.5))
+    S = tr.summary(T) if T is not None and "K_charged" in T else None
+    tab = None if S is None else S["table"].set_index("window")
+    if tab is None or tab["n"].fillna(0).max() < 3:
+        st.info("Charged coke per shift is not in the Coke Energy results here, so burnt and charged coke cannot be "
+                "compared.")
+        return {}
+    st.caption(
+        f"Coke tipped at the stockline reaches the tuyeres one burden-descent time later (about {descent:.1f} h on "
+        "BF-02). In any window the coke the blast burnt and the coke charged differ by the change in coke in transit "
+        "plus measurement error. If they are the same coke the difference must average out as the window grows, with "
+        "no bias, and the burnt coke must follow the charged coke, not lead it.")
+    shift, day, week = (tab.loc[k] if k in tab.index else None for k in ("Shift (8 h)", "1 day", "1 week"))
+    split = S["split"]
+    scan = S["scan"].set_index("lag_shifts")
+    m = st.columns(4)
+    for col, label, r in ((m[0], "Agreement per shift", shift), (m[1], "Per day", day), (m[2], "Per week", week)):
+        if r is None or not np.isfinite(r["ccc"]):
+            col.metric(label, "–")
+            continue
+        col.metric(f"{label} (CCC)", f"{r['ccc']:.2f}",
+                   help="Lin's concordance correlation coefficient: 1 only when the two series are identical "
+                        "(scatter and level). It is Pearson's r times a level-and-scale factor C_b.")
+        col.caption(f"bias {r['bias']:+.1f} · 95 % band ±{1.96 * r['sd']:.0f} kg/tHM · {int(r['n'])} windows")
+    floor = split.get("floor_sd")
+    m[3].metric("Left after averaging", f"±{1.96 * floor:.0f} kg/tHM" if np.isfinite(floor) else "–",
+                help="Fit of the window spread: SD² = A/W² (coke in transit) + B/W (random error) + C (floor). The "
+                     "floor is what would be a real difference between the two figures or a drifting instrument.")
+    if np.isfinite(floor):
+        m[3].caption(f"95 % band of the part that does not average out; random part ±{split['random_sd']:.0f} per "
+                     "shift")
+    left, right = st.columns([3, 2], gap="medium")
+    with left:
+        st.plotly_chart(transit_window_figure(S["table"], split), width="stretch", key="bfo_tr_win",
+                        config={"displaylogo": False})
+    with right:
+        st.plotly_chart(transit_lag_figure(S["scan"]), width="stretch", key="bfo_tr_lag",
+                        config={"displaylogo": False})
+    r_after = scan["r"].get(1, np.nan)
+    r_before = scan["r"].get(-1, np.nan)
+    if np.isfinite(r_after) and np.isfinite(r_before):
+        st.caption(
+            f"Shift-to-shift movements (deviations from a 7-day mean): burnt coke correlates {r_after:.2f} with the "
+            f"charged coke one shift earlier and {r_before:.2f} with the charged coke one shift later, so burnt follows "
+            f"charged. The peak sits inside the same shift (about {S['peak_lag_h']:.0f} h by interpolation): 8-hour "
+            f"shifts that share one production figure cannot resolve a {descent:.1f} h descent; that needs the "
+            "charge-dump times hour by hour.")
+    clo = S.get("closure")
+    if clo and clo.get("n"):
+        st.caption(f"Mass closure over {clo['n']} shifts: raw burnt coke (before the 14-day offset) totals "
+                   f"{100 * clo['ratio']:.1f} % of the coke charged ({clo['burnt_t']:,.0f} t against "
+                   f"{clo['charged_t']:,.0f} t). The offset carries the blast meter's scale error.")
+    with st.expander("Window table"):
+        show = S["table"][["window", "n", "bias", "sd", "loa_lo", "loa_hi", "r", "ccc", "slope"]].rename(columns={
+            "window": "Window", "n": "Windows", "bias": "Bias, kg/tHM", "sd": "SD, kg/tHM", "loa_lo": "95 % low",
+            "loa_hi": "95 % high", "r": "r", "ccc": "CCC", "slope": "Slope (Deming)"})
+        num = st.column_config.NumberColumn
+        st.dataframe(show, width="stretch", hide_index=True, column_config={
+            **{c: num(c, format="%+.1f") for c in ("Bias, kg/tHM", "95 % low", "95 % high")},
+            "SD, kg/tHM": num("SD, kg/tHM", format="%.1f"), "r": num("r", format="%.3f"),
+            "CCC": num("CCC", format="%.3f"), "Slope (Deming)": num("Slope (Deming)", format="%.2f")})
+        st.caption("Production-weighted means over non-overlapping windows of the full shift grid (a window needs "
+                   "two thirds of its shifts). Burnt coke here carries the 14-day charged − burnt offset, so the bias "
+                   "is near zero by construction; the spread, its decay and the lag are independent of the offset.")
+    return S
 
 
 # ---------------------------------------------------------------------------------------------- inputs
@@ -326,33 +415,112 @@ def render_problems(r: Mapping[str, Any]) -> None:
         st.warning(w)
 
 
-def render_kpis(r: Mapping[str, Any], other: Mapping[str, Any] | None = None, other_label: str = "",
-                today: Mapping[str, Any] | None = None) -> None:
-    """Six KPIs. With ``today`` (today's blend at the same production and targets) the cost, coke and slag show the
-    change from it; otherwise the cost shows the change from ``other``."""
-    o, c = r["out"], r["cost"]
-    k = st.columns(6)
-    ref, ref_label = (today, "today's blend") if today is not None else (other, other_label)
-    diff = None if ref is None else c["total"] - ref["cost"]["total"]
-    delta = None if diff is None or abs(diff) < 0.5 else f"{diff:+,.0f} vs {ref_label}"
-    k[0].metric(f"Ore + flux + fuel, {RS}", _num(c["total"]), delta, delta_color="inverse")
+def _badge(r: Mapping[str, Any]) -> str:
+    bad = [k for k, v in r.get("viol", {}).items() if v > 1e-3]
+    if r.get("feasible", True) and not bad:
+        return ":green-badge[:material/check_circle: Meets every limit]"
+    return f":red-badge[:material/error: {len(bad)} limit{'s' if len(bad) != 1 else ''} broken]"
+
+
+def _delta(v: float | None, fmt: str, suffix: str = " vs today", tol: float = 0.05) -> str | None:
+    return None if v is None or not np.isfinite(v) or abs(v) < tol else f"{v:{fmt}}{suffix}"
+
+
+def render_plan_summary(r: Mapping[str, Any], title: str, *, flux_ids: list[str], today: Mapping[str, Any] | None = None,
+                        lead: tuple[str, str] | None = None, today_t_day: float | None = None,
+                        other: Mapping[str, Any] | None = None, other_label: str = "") -> None:
+    """A plan laid out the way page 9 lays out a blend: title with the feasibility badge, an overview strip, then
+    the material through the process in four panels - cost, fuel, slag, charging. With ``today`` (today's charged
+    blend at the same output and targets) the panels show the change from it."""
+
+    P, T0 = plan_tiles(r, flux_ids), (plan_tiles(today, flux_ids) if today is not None else None)
+    d = (lambda grp, k: P[grp][k] - T0[grp][k]) if T0 is not None else (lambda grp, k: None)  # noqa: E731
+    st.markdown(f"#### {title} {_badge(r)}")
+    if lead is not None:
+        (st.success if lead[0] == "saving" else st.info)(lead[1])
+
+    ov = P["overview"]
+    o1, o2, o3, o4 = st.columns(4)
+    o1.metric("Ore + flux + fuel (Rs/tHM)", _num(ov["total"]), _delta(d("cost", "total"), "+,.0f", tol=0.5),
+              delta_color="inverse", help="Ore, flux and fuel at the prices in the yard editor.")
     if other is not None:
-        d0 = c["total"] - other["cost"]["total"]
-        k[0].caption(f"Same blend as the {other_label} answer" if abs(d0) < 0.5
-                     else f"{other_label}: Rs {other['cost']['total']:,.0f}/tHM")
-    k[1].metric("Hot metal, t/d", f"{r['P_tday']:,.0f}")
-    dk = None if today is None else o["K"] - today["out"]["K"]
-    k[2].metric("Coke dry, kg/tHM", f"{o['K']:.1f}", None if dk is None or abs(dk) < 0.05 else f"{dk:+.1f} vs today",
-                delta_color="inverse")
-    df_ = None if today is None else o["fuel_rate"] - today["out"]["fuel_rate"]
-    k[3].metric("Fuel rate, kg/tHM", f"{o['fuel_rate']:.0f}",
-                None if df_ is None or abs(df_) < 0.5 else f"{df_:+.0f} vs today", delta_color="inverse",
-                help="Coke wet + nut coke + PCI (BAND-01: 520-600)")
-    ds = None if today is None else o["slag"] - today["out"]["slag"]
-    k[4].metric("Slag, kg/tHM", f"{o['slag']:.0f}", None if ds is None or abs(ds) < 0.5 else f"{ds:+.0f} vs today",
-                delta_color="off")
-    k[5].metric("ηCO, %", f"{o['eta']:.1f}", help="Output of the two-zone model at the calibrated shaft efficiency")
-    k[5].caption(f"Top gas {o['T_top']:.0f} °C")
+        d0 = ov["total"] - other["cost"]["total"]
+        o1.caption(f"Same blend as the {other_label} answer" if abs(d0) < 0.5
+                   else f"{other_label}: Rs {other['cost']['total']:,.0f}/tHM")
+    o2.metric("Production (t/d)", _num(ov["P_tday"]), help=f"{ov['P_th']:.1f} t/h of hot metal.")
+    o3.metric("Burden Fe (%)", _num(ov["fe_wet_pct"], ".1f"),
+              help=f"Fe of the ferrous charge, wet; {ov['ferrous_kg']:,.0f} kg ferrous per tHM.")
+    if T0 is not None:
+        saving = (T0["cost"]["total"] - ov["total"]) * ov["P_tday"] / 1e5
+        o4.metric("Against today's blend (Rs lakh/day)", f"{saving:+,.1f}",
+                  help="Today's charged blend priced at this output, HMT / Si target and controls; positive = the "
+                       "plan saves.")
+        o4.caption(f"{T0['cost']['total'] - ov['total']:+,.0f} Rs/tHM at {ov['P_tday']:,.0f} t/d")
+    elif today_t_day:
+        o4.metric("Δ Production vs today", f"{100 * (ov['P_tday'] / today_t_day - 1):+.1f}%",
+                  help="Against today's production (median of the regime window).")
+        o4.caption(f"{ov['P_tday'] - today_t_day:+,.0f} t/d ({today_t_day:,.0f} to {ov['P_tday']:,.0f})")
+    else:
+        o4.metric("Coke, dry (kg/tHM)", _num(P["fuel"]["coke_dry"], ".1f"))
+
+    c = P["cost"]
+    with st.container(border=True):
+        st.markdown("###### 💰 &nbsp;Cost &nbsp;<small>Rs / tHM</small>", unsafe_allow_html=True)
+        k = st.columns(4)
+        for col, label, key in ((k[0], "Ore", "ore"), (k[1], "Flux", "flux"), (k[2], "Fuel", "fuel"),
+                                (k[3], "**Total**", "total")):
+            col.metric(label, _num(c[key]), _delta(d("cost", key), "+,.0f", tol=0.5), delta_color="inverse")
+        st.caption(f"Fuel = coke Rs {c['coke']:,.0f} + nut coke Rs {c['nut']:,.0f} + PCI Rs {c['pci']:,.0f}.")
+
+    f = P["fuel"]
+    with st.container(border=True):
+        st.markdown("###### 🔥 &nbsp;Fuel rates &nbsp;<small>kg / tHM</small>", unsafe_allow_html=True)
+        k = st.columns(4)
+        k[0].metric("Coke (dry)", _num(f["coke_dry"], ".1f"), _delta(d("fuel", "coke_dry"), "+.1f"),
+                    delta_color="inverse", help=f"From the two-zone energy balance; {f['coke_wet']:.1f} kg/tHM wet.")
+        k[1].metric("Nut coke", _num(f["nut"], ".0f"), help="Fixed input, as charged.")
+        k[2].metric("PCI", _num(f["pci"], ".0f"), help="Fixed input, as injected.")
+        k[3].metric("**Total fuel**", _num(f["total"], ".0f"), _delta(d("fuel", "total"), "+.0f", tol=0.5),
+                    delta_color="inverse", help="Coke wet + nut coke + PCI (BAND-01: 520–600).")
+
+    s = P["slag"]
+    L = r["limits"]
+    with st.container(border=True):
+        st.markdown("###### 🌋 &nbsp;Slag", unsafe_allow_html=True)
+        k = st.columns(4)
+        k[0].metric("Rate (kg/tHM)", _num(s["rate"]), _delta(d("slag", "rate"), "+.0f", tol=0.5), delta_color="off",
+                    help=f"Limit ≤ {L['slag_max']:.0f}.")
+        k[1].metric("Quantity (t/d)", _num(s["t_day"]))
+        k[2].metric("Al₂O₃ (%)", _num(s["Al2O3_pct"], ".2f"), help=f"Limit ≤ {L['Al2O3_max']:.1f}.")
+        k[3].metric("MgO (%)", _num(s["MgO_pct"], ".2f"), help=f"Limit ≥ {L['MgO_min']:.1f}.")
+        st.markdown("<div style='font-size:0.85em;opacity:0.75;margin-top:2px'>Basicity ratios — against this plant's "
+                    "own p5–p95 band</div>", unsafe_allow_html=True)
+        k = st.columns(4)
+        for col, key, label, helptext in (
+                (k[0], "b2", "B2  CaO/SiO₂", f"The ratio this page constrains: {L['B2_min']:.2f}–{L['B2_max']:.2f}."),
+                (k[1], "t_basicity", "T-Basicity  (CaO+MgO)/SiO₂", "Display only here (page 9 constrains it)."),
+                (k[2], "ib4", "IB4  (CaO+MgO)/(SiO₂+Al₂O₃)",
+                 "Display only. Reads lower than T-Basicity because Al₂O₃ is in the denominator.")):
+            low, high = PLANT_SLAG_BANDS[key]
+            note, inside = band_note(s[key] if np.isfinite(s[key]) else None, low, high)
+            col.metric(label, _num(s[key], ".3f"), help=helptext)
+            col.markdown(f"<div style='margin-top:-10px;font-size:11px;"
+                         f"{'opacity:0.7' if inside else 'color:#b26a00;font-weight:600'}'>{note}</div>",
+                         unsafe_allow_html=True)
+        k[3].metric("MgO/Al₂O₃", _num(s["mgo_al2o3"], ".3f"), help=f"Mass ratio; limit ≥ {L['MgO_Al2O3_min']:.3f}.")
+
+    g = P["charging"]
+    with st.container(border=True):
+        st.markdown("###### 🚚 &nbsp;Charging", unsafe_allow_html=True)
+        k = st.columns(5)
+        k[0].metric("Coke (t/d)", _num(g["coke_t"], ",.1f"), help="Coke rate wet × production.")
+        k[1].metric("Nut coke (t/d)", _num(g["nut_t"], ",.1f"), help="Nut coke (as charged) × production.")
+        k[2].metric("PCI (t/d)", _num(g["pci_t"], ",.1f"), help="PCI × production.")
+        k[3].metric("Charges (/h)", _num(g["charges_per_h"], ".2f"),
+                    help=f"Non-coke burden over {L['charge_t']:.2f} t per charge; limit ≤ {L['charges_per_h']:.2f}/h.")
+        k[4].metric("Hot metal per charge (t)", _num(g["hm_per_charge"], ".3f"))
+        st.caption(f"Ferrous **{g['ferrous_t']:,.0f} t/d** wet · flux rate **{g['flux_kg']:,.1f} kg/tHM**.")
+    render_problems(r)
 
 
 def plan_sentence(r: Mapping[str, Any], names: Mapping[str, str], flux_ids: list[str],
@@ -382,9 +550,9 @@ def render_plan_tabs(eng: Engine, r: Mapping[str, Any], key: str, other: Mapping
                      prices: Mapping[str, float] | None = None, today_window: str = "over the last 24 h") -> None:
     names = {**{v.id: v.name for v in eng.vars}, **(names or {})}
     prices = {**{v.id: v.price for v in eng.vars}, **(prices or {})}
-    tabs_ = ["Blend", "Fuel & cost", "Slag", "Process", "What limits the plan", "Value in use"]
+    tabs_ = ["🧱 Blend", "🔥 Fuel & cost", "🌋 Slag", "🎛️ Process", "🔒 What limits the plan", "💎 Value in use"]
     if value_of_limits is not None:
-        tabs_.append("Value of limits")
+        tabs_.append("📈 Value of limits")
     tabs = st.tabs(tabs_)
     others = []
     if today is not None:
@@ -393,17 +561,32 @@ def render_plan_tabs(eng: Engine, r: Mapping[str, Any], key: str, other: Mapping
         others.append((other_label.capitalize(), other))
     num = st.column_config.NumberColumn
     with tabs[0]:
-        B = blend_compare_table(r, others, names, prices)
-        cfg = {c: num(c, format="%.1f") for c in B.columns if c.endswith("wet %")}
-        cfg.update({c: num(c, format="%,.1f") for c in B.columns if c.endswith("kg/tHM")})
-        cfg.update({"Plan, t/d": num("Plan, t/d", format="%,.0f"), "Price, Rs/t": num("Price, Rs/t", format="%,.0f")})
-        st.dataframe(B, width="stretch", hide_index=True, column_config=cfg)
-        F = flux_compare_table(r, others, names, [v.id for v in eng.flux])
-        if F.empty:
-            st.caption("No flux needed: the ferrous blend meets the basicity band on its own.")
-        else:
-            st.dataframe(F, width="stretch", hide_index=True,
-                         column_config={c: num(c, format="%.1f") for c in F.columns if c.endswith("kg/tHM")})
+        table_col, donut_col = st.columns([3, 2], gap="medium")
+        with table_col:
+            B = blend_compare_table(r, others, names, prices)
+            cfg = {c: num(c, format="%.1f") for c in B.columns if c.endswith("wet %")}
+            cfg.update({c: num(c, format="%,.1f") for c in B.columns if c.endswith("kg/tHM")})
+            cfg.update({"Plan, t/d": num("Plan, t/d", format="%,.0f"),
+                        "Price, Rs/t": num("Price, Rs/t", format="%,.0f")})
+            st.dataframe(B, width="stretch", hide_index=True, column_config=cfg)
+            F = flux_compare_table(r, others, names, [v.id for v in eng.flux])
+            if F.empty:
+                st.caption("No flux needed: the ferrous blend meets the basicity band on its own.")
+            else:
+                st.dataframe(F, width="stretch", hide_index=True,
+                             column_config={c: num(c, format="%.1f") for c in F.columns if c.endswith("kg/tHM")})
+        with donut_col:
+            colours = material_colours([v.id for v in eng.vars if v.kind != "flux"])
+            which = "Plan"
+            if today is not None:
+                which = st.segmented_control("Blend shown", ["Plan", "Today"], default="Plan", required=True,
+                                             key=f"bfo_donut_{key}", label_visibility="collapsed") or "Plan"
+            res = today if which == "Today" and today is not None else r
+            ferrous_t = res["ferrous_wet"] * res["P_tday"] / 1000.0
+            st.plotly_chart(blend_donut(res["share_wet"], res["t_day"], names, colours,
+                                        "Today's charged blend" if res is today else "Plan: share of the ferrous charge",
+                                        f"{ferrous_t:,.0f}", "t/d ferrous"),
+                            width="stretch", key=f"bfo_donut_fig_{key}", config={"displaylogo": False})
         st.caption(f"Ferrous {r['ferrous_wet']:,.0f} kg/tHM wet at {r['fe_wet_pct']:.1f} % Fe; sized so the Fe balance "
                    "closes (hot metal, slag, dust)."
                    + (f" Today = the ferrous blend charged {today_window}, modelled at this plan's output, "
