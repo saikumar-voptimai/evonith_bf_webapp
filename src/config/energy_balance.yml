@@ -206,12 +206,15 @@ energy_balance:
 
   # ---- shell losses --------------------------------------------------------
   shell_loss:
-    # Stave heat-load tags read in MW. x3.6 gives GJ/hr (median 16.8, matching
-    # the operator's expected 15-20). The "GW.hr -> GJ" conversion of x3600 is
-    # 1000x too large - check any production code that applies it.
-    heatload_mw_to_gj_per_hr: 3.6
-    # Sensor dropouts read 0 and spikes reach 236 MW. This window keeps ~90%.
-    valid_range_mw: [2.0, 12.0]
+    # Stave heat-load tags are already GJ/hr - plant confirmation, 15 Oct 2026
+    # (each row tag is the exact sum of its four quadrant tags). They were read
+    # as MW and multiplied by 3.6 until then, which overstated the stave loss
+    # 3.6-fold (about 24 GJ/hr instead of about 7). Documents the factor the
+    # code applies (none) - utils/bmo/coke_history.py and the BMO page sum the
+    # quadrant tags directly.
+    heatload_tag_to_gj_per_hr: 1.0
+    # Sensor dropouts read 0 and spikes reach 236. This window keeps ~90%.
+    valid_range_gj_per_hr: [2.0, 12.0]
     # Stave rows 6-10 cover bosh, belly and lower stack only. Hearth, bottom,
     # tuyere nose and upper shaft are missing, so the measured figure is scaled
     # by the ratio of total cooling-water flow to the flow through those zones.

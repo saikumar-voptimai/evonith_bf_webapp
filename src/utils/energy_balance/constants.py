@@ -57,8 +57,8 @@ DEFAULTS: dict[str, Any] = {
     },
     "blast_moisture_g_per_nm3": 15.0,
     "shell_loss": {
-        "heatload_mw_to_gj_per_hr": 3.6,
-        "valid_range_mw": [2.0, 12.0],
+        "heatload_tag_to_gj_per_hr": 1.0,
+        "valid_range_gj_per_hr": [2.0, 12.0],
         "scale_to_all_circuits": True,
     },
     "closure": {"green_range": [0.97, 1.03], "amber_range": [0.93, 1.07]},

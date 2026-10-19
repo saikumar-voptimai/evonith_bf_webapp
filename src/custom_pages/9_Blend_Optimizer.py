@@ -392,14 +392,14 @@ def _live_process_snapshot() -> dict[str, float]:
             if pd.notna(value):
                 out[field] = float(value)
 
-    # Stave heat load: the tags read in MW, so x3.6 gives GJ/hr. The x3600
-    # "GW.hr" conversion is 1000x too large - see energy_balance.yml.
+    # Stave heat load: the tags are already GJ/hr (plant confirmation, 15 Oct
+    # 2026), so they are summed with no conversion - see energy_balance.yml.
     quad = [f"heat_load_r{r}_q{q}" for r in range(6, 11) for q in range(1, 5)]
     have = [c for c in quad if c in df.columns]
     if have:
-        total_mw = df[have].apply(pd.to_numeric, errors="coerce").sum(axis=1).mean()
-        if pd.notna(total_mw) and 2.0 <= float(total_mw) <= 12.0:
-            out["shell_loss_gj_per_hr"] = float(total_mw) * 3.6
+        total_gj = df[have].apply(pd.to_numeric, errors="coerce").sum(axis=1).mean()
+        if pd.notna(total_gj) and 2.0 <= float(total_gj) <= 12.0:
+            out["shell_loss_gj_per_hr"] = float(total_gj)
     return out
 
 
