@@ -7,8 +7,8 @@ import json
 import pytest
 import yaml
 
-from data.burden_engine.inputs import (build_engine_inputs, flux_rows, fuel_prices, kind_for, repo_path, saved_charging,
-                                       slag_limits, yard_rows)
+from data.burden_engine.inputs import (MN_IN_MNO, build_engine_inputs, catalogue_fluxes, flux_rows, fuel_prices,
+                                       kind_for, load_yard, repo_path, saved_charging, slag_limits, yard_rows)
 from utils.bmo.types import FluxInput, OreChemistry, OreInput
 from utils.burden_engine import Engine
 from utils.burden_engine.engine import REFERENCE_INPUTS_PATH
@@ -83,3 +83,29 @@ def test_stock_caps_and_zero_stock(inputs):
     inp = build_engine_inputs(mats, fl, inputs["fuel"])
     r = Engine(inp).min_cost(prod_t_day=2270, fuel=True)
     assert r["t_day"]["geomin_clo"] <= geomin_cap + 1e-6
+
+
+def test_flux_catalogue_is_page_9s():
+    """Fluxes are page 9's catalogue, not the last charge's flux (codes flux_1.., no price): limestone is offered
+    even on a day it was not charged, with the operator's price."""
+    cfg = yaml.safe_load(open(repo_path("src/config/setting_bmo.yml"), encoding="utf-8"))["bmo"]["flux_inputs"]
+    rows = {r["id"]: r for r in flux_rows(catalogue_fluxes(cfg), PREFS)}
+    assert {"limestone", "dolomite", "quartz"} <= set(rows)
+    assert rows["limestone"]["price"] == PREFS["flux_editor"]["rows"]["limestone"]["price_rs_per_mt"]
+    assert rows["dolomite"]["loi_type"] == "CO2" and rows["quartz"]["loi_type"] == "H2O"
+    extra = [dict(flux_id="hid", hidden_by_default=True, optimizable=True),
+             dict(flux_id="fixed", optimizable=False, cao_pct=50.0),
+             dict(flux_id="mn", optimizable=True, mn_basis="mn", mn_pct=7.745)]
+    got = {f.flux_id: f for f in catalogue_fluxes(extra)}
+    assert "hid" not in got and not got["fixed"].enabled
+    assert got["mn"].mno_pct == pytest.approx(7.745 / MN_IN_MNO)
+
+
+def test_load_yard_takes_fluxes_from_the_catalogue():
+    class Provider:  # ores only: load_yard must not ask the provider for fluxes
+        def build_ore_inputs(self, mode, window_days):
+            return [_ore(m) for m in REF["materials"]], {"warnings": []}
+
+    y = load_yard({"yard": {}}, provider=Provider())
+    assert {f["id"] for f in y["fluxes"]} == {"limestone", "dolomite", "quartz"}
+    assert all(f["price"] > 0 for f in y["fluxes"])

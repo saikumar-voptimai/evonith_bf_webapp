@@ -88,6 +88,38 @@ def yard_rows(ores: Iterable[OreInput], prefs: Mapping[str, Any] | None = None, 
     return rows
 
 
+MN_IN_MNO = 54.938 / 70.937
+TI_IN_TIO2 = 0.599341397
+
+
+def catalogue_fluxes(flux_cfg: Iterable[Mapping[str, Any]]) -> list[Any]:
+    """The flux catalogue page 9 offers its LP (``setting_bmo.yml`` ``bmo.flux_inputs``), as flux records.
+
+    Same rules as the Blend Mix Optimiser's flux editor: hidden rows are skipped, Mn / Ti given on an element
+    basis are converted to MnO / TiO2, only optimizable rows are carried. (The context provider's
+    ``get_flux_inputs`` is the flux charged in the last charge, keyed by material code and without prices, so it
+    is not a catalogue.)"""
+    from types import SimpleNamespace
+
+    out = []
+    for item in flux_cfg or []:
+        if bool(item.get("hidden_by_default", False)):
+            continue
+        g = lambda k: float(item.get(k, 0.0) or 0.0)  # noqa: E731
+        mno = g("mn_pct") / MN_IN_MNO if str(item.get("mn_basis", "mno")).lower() == "mn" else g("mno_pct")
+        tio2 = g("ti_pct") / TI_IN_TIO2 if str(item.get("ti_basis", "tio2")).lower() == "ti" else g("tio2_pct")
+        fid = str(item.get("flux_id", ""))
+        out.append(SimpleNamespace(
+            flux_id=fid, display_name=str(item.get("display_name", fid)),
+            enabled=bool(item.get("enabled", True)) and bool(item.get("optimizable", False)),
+            price_rs_per_mt=g("price_rs_per_mt"), stock_mt=g("stock_mt"),
+            max_qty_mt=(float(item["max_qty_mt"]) if item.get("max_qty_mt") is not None else None),
+            moisture_pct=g("moisture_pct"), sio2_pct=g("sio2_pct"), al2o3_pct=g("al2o3_pct"), cao_pct=g("cao_pct"),
+            mgo_pct=g("mgo_pct"), fe2o3_pct=g("fe2o3_pct"), mno_pct=mno, tio2_pct=tio2, p_pct=g("p_pct"),
+            loi_pct=g("loi_pct")))
+    return out
+
+
 def flux_rows(fluxes: Iterable[FluxInput], prefs: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     saved = _saved(prefs, "flux_editor", "rows")
     rows = []
@@ -175,10 +207,14 @@ def build_engine_inputs(materials: Iterable[Mapping[str, Any]], fluxes: Iterable
 
 
 def load_yard(cfg: Mapping[str, Any], *, prefs_path: str | Path = "src/config/bmo_operator_inputs.yml",
-              provider: Any = None) -> dict[str, Any]:
+              bmo_settings_path: str | Path = "src/config/setting_bmo.yml", provider: Any = None) -> dict[str, Any]:
     """Live yard from the BMO context provider (Neon chemistry + stock) and the operator's saved inputs.
 
+    Fluxes are page 9's catalogue (``setting_bmo.yml``) with the operator's saved prices and limits.
+
     Returns dict(materials=[...], fluxes=[...], fuel={...}, slag={...}, charging_saved={...}, warnings=[...])."""
+    import yaml
+
     from data.bmo.ore_editor_preferences import load_ore_editor_preferences
 
     yard_cfg = dict(cfg.get("yard", {}))
@@ -189,8 +225,11 @@ def load_yard(cfg: Mapping[str, Any], *, prefs_path: str | Path = "src/config/bm
     mode = str(yard_cfg.get("chemistry_mode", "avg"))
     days = int(yard_cfg.get("chemistry_window_days", 30))
     ores, diag = provider.build_ore_inputs(mode=mode, window_days=days)
-    fluxes, flux_warn = provider.get_flux_inputs(mode=mode, window_days=days)
-    warnings = list(diag.get("warnings", []) if isinstance(diag, Mapping) else []) + list(flux_warn or [])
+    bmo_cfg = (yaml.safe_load(repo_path(bmo_settings_path).read_text(encoding="utf-8")) or {}).get("bmo", {})
+    fluxes = catalogue_fluxes(bmo_cfg.get("flux_inputs", []))
+    warnings = list(diag.get("warnings", []) if isinstance(diag, Mapping) else [])
+    if not any(f.enabled for f in fluxes):
+        warnings.append("No optimizable flux in setting_bmo.yml flux_inputs.")
     return dict(
         materials=yard_rows(ores, prefs, exclude_fallback=bool(yard_cfg.get("exclude_fallback_chemistry", True)),
                             k_rules=yard_cfg.get("k_rules")),

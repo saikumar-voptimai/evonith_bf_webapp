@@ -70,6 +70,7 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 | `src/config/facts_register.json` + `schemas/facts_register.schema.json` | Fact register v1.2 |
 | `src/assets/burden_engine/` | Reference yard (16 Oct 2026 UAT) and Jul–Oct 2026 calibration |
 | `scripts/compare_bmo_vs_burden_engine.py` | Page-9 LP against the engine (ore + flux objective) |
+| `scripts/replay_slag_vs_lab.py` | Both slag calculations on each day's actual charge against the lab's slag analysis |
 | `tests/test_burden_engine*.py` | Engine, inputs, calibration and scenario tests |
 
 Also changed for this page: `OreChemistry.loi_pct` (default 0; read from the same lab row, so page 9 is unaffected),
@@ -93,8 +94,13 @@ PCI 190, nut coke 70, HMT 1,470 °C, Jul–Oct 2026 calibration. `pytest tests/t
 - [x] Retired facts refused; engine coefficients equal the register's
 - [x] Live calibration reproduces the window's actual coke at its own operating point; falls back below 10 shifts
 - [x] Page opens without Neon / InfluxDB (reference yard + shipped calibration, labelled)
-- [ ] On UAT with live data: yard chemistry dates and stock shown; calibration window = last 14 days; Step 2 at today's
-      production within a few kg/tHM of the Coke Energy page's energy-model coke for the current blend
+- [x] Live yard (Neon export of 19 Oct 2026, read through the app's own loaders): chemistry date and stock shown per
+      material; fluxes are page 9's catalogue with saved prices (fixed: they came from the last charge, keyed
+      flux_1/2, unpriced, limestone missing). Step 2 at 2,270 t/d: Rs 30,138/tHM, coke 304.7 kg/tHM dry. Step 1:
+      cheapest 2,303 t/d at Rs 29,930/tHM, highest 2,407 t/d (shipped calibration; InfluxDB not reachable)
+- [x] Slag against 284 days of lab analyses (`scripts/replay_slag_vs_lab.py`, below)
+- [ ] On UAT with live data: calibration window = last 14 days; Step 2 at today's production within a few kg/tHM of
+      the Coke Energy page's energy-model coke for the current blend
 - [ ] Operator walk-through (below) signed off
 
 ## Comparison with the Blend Mix Optimiser LP
@@ -131,8 +137,31 @@ ferrous, half from the Geomin → Lloyds CLO swap).
   lower, which is why it buys dolomite.
 * The engine's minor allowance is a flat 1.2 % of slag; page 9 builds it from the S and alkali analyses (fuel S and
   alkali from the `setting_bmo.yml` fuel rows). They differ by 0.3 kg/tHM here.
-* To settle the dust row on plant data: run both slag calculations on each day's actual charge and compare with the
-  day's slag analysis (needs the Neon tables; #258).
+
+## Slag against the lab: daily replay
+
+`python scripts/replay_slag_vs_lab.py` runs both slag calculations on each day's actual charge (Neon `charge_data`,
+lab chemistry per material, DPR hot metal / PCI / dust, the day's hot-metal analysis) and compares them with the day's
+mean slag analysis (`docs/slag_replay_vs_lab.md`). 284 days, Sep 2025 – Oct 2026, model minus lab:
+
+| | Engine | Page 9, TiO₂ in | Page 9, workbook basis | Page 9, TiO₂ in, engine's dust |
+|---|---:|---:|---:|---:|
+| Al₂O₃, % pt | +0.02 | +0.04 | +0.24 | −0.03 |
+| MgO, % pt | +0.00 | −0.36 | −0.28 | −0.02 |
+| TiO₂, % pt | −0.10 | −0.09 | **−1.13** | −0.09 |
+| CaO/SiO₂ | −0.015 | −0.037 | −0.037 | −0.017 |
+| Slag, kg/tHM | 338 | 336 | 333 | 339 |
+
+* **TiO₂ belongs in the slag total.** The lab's slag carries 1.13 % TiO₂ on average; the workbook basis puts none in,
+  every month (−0.8 to −1.4 pt), and its Al₂O₃ reads 0.24 pt high. Counted, both models land within 0.1 pt.
+* **The engine's slag matches the lab with no material bias** (MAE: Al₂O₃ 0.53 pt, MgO 0.35 pt, CaO/SiO₂ 0.041), and
+  its slag rate equals the Al₂O₃-tracer estimate (338 kg/tHM).
+* **Page 9's dust row removes too much CaO and MgO.** With its saved row (530 kg per charge, CaO 5.63 %, MgO 3.57 %,
+  from the plant BURDEN workbook) page 9 reads MgO 0.36 pt and CaO/SiO₂ 0.037 low on average; the dust row's part of
+  that (about 0.35 pt MgO, 0.02 CaO/SiO₂) is the same every month. With the DPR dust mass at the engine's composition
+  (CaO 2.0 %, MgO 0) page 9 agrees with the engine and the lab. Fixing the
+  row (or replacing it with the dust analyses) would stop page 9 buying dolomite to hold MgO/Al₂O₃. Not changed here:
+  it is the operator's saved input.
 
 ## Operator walk-through
 

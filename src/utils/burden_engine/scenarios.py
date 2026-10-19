@@ -166,7 +166,7 @@ def process_table(r: Mapping[str, Any]) -> pd.DataFrame:
         ("RAFT (plant workbook)", f"{r['raft']:.0f} °C at {s['humidity_g']:.0f} g/Nm³", f"{L['RAFT_min']:.0f}-{L['RAFT_max']:.0f}"),
         ("Hot-blast pressure needed", f"{r['Pb_needed']:.2f} bar g at top {s['Pt']:.2f}", f"<= {L['Pb_max']:.2f}" if L["process"] else ""),
         ("Pressure drop", f"{r['dP_needed']:.2f} bar", f"<= {L['dP_max']:.2f}" if L["process"] else ""),
-        ("Blast the pressures allow", f"{r['V_ceiling']:,.0f} Nm³/h", ""),
+        ("Blast at the set hot-blast pressure", f"{r['V_ceiling']:,.0f} Nm³/h at {s['Pb']:.2f} bar g", ""),
         ("Charging", f"{r['charges_per_h']:.2f} charges/h · {r['charging_th']:.0f} t/h",
          f"<= {L['charges_per_h']:.2f} × {L['charge_t']:.2f} t"),
     ]

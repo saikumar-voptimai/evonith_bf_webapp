@@ -25,7 +25,8 @@ for p in (ROOT / "src", ROOT / "furnace_data"):
 
 import yaml  # noqa: E402
 
-from data.burden_engine.inputs import build_engine_inputs, flux_rows, fuel_prices, yard_rows  # noqa: E402
+from data.burden_engine.inputs import (  # noqa: E402
+    build_engine_inputs, catalogue_fluxes, flux_rows, fuel_prices, yard_rows)
 from utils.bmo.lp_solver import run_lp_baseline  # noqa: E402
 from utils.bmo.types import DustInput, FluxInput, FuelAshInput, OreChemistry, OreInput, SlagBalanceSettings  # noqa: E402
 from utils.burden_engine import Engine, Limits, Settings  # noqa: E402
@@ -51,6 +52,23 @@ def reference_records(prefs: dict) -> tuple[list[OreInput], list[FluxInput]]:
                                 cao_pct=c["CaO"], mgo_pct=c["MgO"], fe2o3_pct=c["Fe"] * FE2O3_PER_FE, loi_pct=c["LOI"],
                                 price_rs_per_mt=f["price"], stock_mt=1e6, max_qty_mt=f["max_t_day"], optimizable=True))
     return ores, fluxes
+
+
+def live_fluxes(prefs: dict) -> list[FluxInput]:
+    """Page 9's flux catalogue (setting_bmo.yml) with the operator's saved price / stock / limit, as page 9 offers it."""
+    bmo = yaml.safe_load(open(ROOT / "src/config/setting_bmo.yml", encoding="utf-8"))["bmo"]
+    saved = (prefs.get("flux_editor", {}) or {}).get("rows", {}) or {}
+    out = []
+    for r in catalogue_fluxes(bmo.get("flux_inputs", [])):
+        sv = saved.get(r.flux_id, {}) or {}
+        mx = sv.get("max_qty_mt", r.max_qty_mt)
+        out.append(FluxInput(r.flux_id, r.display_name, enabled=r.enabled, moisture_pct=r.moisture_pct,
+                             sio2_pct=r.sio2_pct, al2o3_pct=r.al2o3_pct, cao_pct=r.cao_pct, mgo_pct=r.mgo_pct,
+                             fe2o3_pct=r.fe2o3_pct, mno_pct=r.mno_pct, tio2_pct=r.tio2_pct, p_pct=r.p_pct,
+                             loi_pct=r.loi_pct, price_rs_per_mt=float(sv.get("price_rs_per_mt", r.price_rs_per_mt)),
+                             stock_mt=float(sv.get("stock_mt", r.stock_mt)), max_qty_mt=None if mx is None else float(mx),
+                             optimizable=r.enabled))
+    return out
 
 
 def fuel_ash(cal: dict, K_wet: float, s: Settings) -> list[FuelAshInput]:
@@ -96,9 +114,7 @@ def main() -> None:
         from data.bmo.context_provider import EvonithBmoContextProvider
         prov = EvonithBmoContextProvider()
         ores, _ = prov.build_ore_inputs(mode="avg", window_days=30)
-        fluxes, _ = prov.get_flux_inputs(mode="avg", window_days=30)
-        for f in fluxes:
-            f.optimizable = True
+        fluxes = live_fluxes(prefs)
     else:
         ores, fluxes = reference_records(prefs)
     mats = yard_rows(ores, prefs, k_rules=dict(gomti_clo="gomti", lloyds_oversize_clo="oversize"))
@@ -164,8 +180,9 @@ def main() -> None:
                   "Same blend through both slag calculations: see docs/burden_fuel_optimiser.md. Both count TiO2, "
                   "alkalis and sulphur in the slag total (page 9 from its analyses, the engine as a 1.2 % allowance). "
                   "What still differs is the dust row and the Fe sizing: page 9's dust removes about 2.0 kg CaO and "
-                  "1.3 kg MgO per tHM (the engine's 0.65 kg CaO, no MgO), so page 9 needs dolomite and a little Geomin "
-                  "swapped for Lloyds CLO to hold MgO/Al2O3; and it charges a few kg/tHM more ferrous."]
+                  "1.3 kg MgO per tHM (the engine's 0.65 kg CaO, no MgO), so page 9 buys more flux and swaps a little "
+                  "Geomin for Lloyds CLO to hold basicity and MgO/Al2O3; and it charges a few kg/tHM more ferrous. "
+                  "The daily replay against the lab (docs/slag_replay_vs_lab.md) favours the engine's dust row."]
     text = "\n".join(lines) + "\n"
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8")
