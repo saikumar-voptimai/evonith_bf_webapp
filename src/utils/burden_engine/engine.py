@@ -155,6 +155,10 @@ class Engine:
         self.cal = _load(cal if cal is not None else DEFAULT_CAL_PATH)
         self.facts = facts or load_register()
         self.th = self.facts.thumb_rules()
+        # A live calibration carries its own packed-bed anchor (same shifts as omega and the losses); the shipped
+        # Jul-Oct 2026 calibration uses the register's base point (FLOW-01).
+        anchor = (self.cal.get("anchor") or {}) if isinstance(self.cal, Mapping) else {}
+        self.th["base"] = {**self.th["base"], **{k: float(v) for k, v in anchor.items()}}
         self.hy = Hydraulics.from_rules(self.th)
         self.band_hmt = self.facts.band("BAND-02")
         self.band_si = self.facts.band("BAND-03")
@@ -187,7 +191,8 @@ class Engine:
         self.fe_dust = du["dc_kg"] * du["dc_Fe_pct"] / 100 + du["gcp_kg"] * du["gcp_Fe_pct"] / 100
         # Hot-blast meter vs model: at the calibration point the model's blast + O2 per tHM x production reproduces the
         # meter's average to ~1 % (DATA-01); this factor removes the remainder.
-        self.c_hb = self.hy.base["V"] / (c["case"]["prod_th"] * c["hb_per_t_model_cal"])
+        hb_meter = c.get("hb_meter_nm3h") or self.hy.base["V"]
+        self.c_hb = hb_meter / (c["case"]["prod_th"] * c["hb_per_t_model_cal"])
         self.K_base = c["coke_model_cal"]
         self._x0 = (c["K"], c["V"], c["y_d"])
         self.fe_wet = np.array([v.chem["Fe"] / 100 * (1 - v.moist / 100) for v in self.vars])
