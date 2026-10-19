@@ -47,6 +47,9 @@ burden_optimiser:
     ok_sd_kgthm: 12.0
     min_shifts: 6
     stale_after_days: 2    # warn when the latest scored shift is older than this
+    # Burden descent time, stockline to tuyeres: the lag at which the thermal state answers a fuel change, 6-7 h
+    # (docs/bmo_fuel_slag_si_findings.md). Used in the burnt-against-charged-coke tab's text only.
+    descent_time_h: 6.5
 
   calibration:
     # Two-zone calibration (shaft efficiency, lower/upper-zone losses, r_H): medians over the stable shifts of the
