@@ -573,6 +573,9 @@ Each is a no-op function or null yml field today:
 | Material Balance | `6_Material_Balance.py` | Per-element daily mass balance (12 elements, Sankey + bars + closure table) |
 | FurnaceMind | `7_FurnaceMind.py` | Custom tool-calling agent with 9 data/plot tools |
 | Feedback | `8_Feedback.py` | Feedback ticket board (SQLAlchemy, SQLite/PostgreSQL) |
+| Blend Mix Optimiser | `9_Blend_Optimizer.py` | Ore + flux LP blend at a fixed production (BMO) |
+| Coke Energy Model | `10_Coke_Energy.py` | Two-zone (Rist) energy balance per shift; coke burnt vs charged vs modelled |
+| Burden & Fuel Optimiser | `11_Burden_Fuel_Optimiser.py` | Ore + flux + fuel blend and production level on the energy model (section 11) |
 
 ### Key Supporting Modules
 
@@ -789,6 +792,31 @@ format: ResponseFormat          # json (default) or csv
 ### FurnaceMind Tool Integration
 
 `fetch_offline_data` tool in `src/agents/furnace_tools.py` routes through `furnace_data.neon_db.offline` (`_fetch_neon_table_df`, `_fetch_neon_report_df`). The `RAW_MATERIAL_COMPOSITION` alias is mapped to `RM_COMPOSITION` internally.
+
+---
+
+## 11. Burden & Fuel Optimiser (Page 11)
+
+**File:** `src/custom_pages/11_Burden_Fuel_Optimiser.py` · full guide `docs/burden_fuel_optimiser.md` · epic #260
+
+Optimises the ferrous blend and flux for **ore + flux + fuel** cost per tHM and the **production level** under the
+day's limits. Coke for every candidate blend comes from the two-zone (Rist) balance in `utils/coke_energy`
+(page 10's model, unchanged), calibrated on the last 14 days of stable shifts. PCI and nut coke are fixed inputs.
+
+- **Modes:** Step 1 cheapest production level (`Engine.min_total_cost` + frontier), Step 2 fixed production
+  (`min_cost(fuel=True)` next to `fuel=False`, the page-9 objective), maximum production (`max_production`).
+- **Engine:** `src/utils/burden_engine/` — pure numerical (no Streamlit). Sequential LP (HiGHS) re-linearising the
+  balance; blast limit (Pb² − Pt²) = K·V^1.8 with burden-resistance rules; RAFT from `utils.energy_balance.raft`.
+- **Fact register:** `src/config/facts_register.json` (schema in `config/schemas/`). Every coefficient outside the
+  balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
+  Change values there, not in code; retired facts are refused by `FactRegister.active()`.
+- **Adapters:** `src/data/burden_engine/inputs.py` (yard from `EvonithBmoContextProvider` + `bmo_operator_inputs.yml`),
+  `src/data/burden_engine/calibration.py` (live calibration from the Coke Energy pipeline result, fallback to
+  `src/assets/burden_engine/cal_2z_jul_oct_2026.json`).
+- **UI:** `src/ui/burden_optimiser/` (sections, cached loaders, frontier figure). Config `src/config/burden_optimiser.yml`.
+- **Offline:** without Neon / InfluxDB the page uses the reference yard (16 Oct 2026) and the shipped calibration, labelled.
+- **Tests:** `pytest tests/test_burden_engine*.py` reproduce the 16 Oct 2026 case report; `BURDEN_ENGINE_FAST=1` skips
+  the slow production cases.
 
 ---
 
