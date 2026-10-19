@@ -478,6 +478,26 @@ def save_dust_preferences(path: str | Path, dust_df: pd.DataFrame) -> Path:
     return pref_path
 
 
+def clear_dust_preferences(path: str | Path) -> Path:
+    """Drop the saved dust rows so the page goes back to the DPR and the dust analyses."""
+
+    pref_path = Path(path)
+    payload = load_ore_editor_preferences(pref_path)
+    if "dust_editor" in payload:
+        payload.pop("dust_editor")
+        pref_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
+            yaml.safe_dump(payload, file, sort_keys=False)
+    return pref_path
+
+
+def saved_dust_ids(preferences: dict[str, Any] | None) -> list[str]:
+    """Dust ids with saved operator values (these override the DPR on the page)."""
+
+    rows = ((preferences or {}).get("dust_editor", {}) or {}).get("rows", {}) or {}
+    return [str(k) for k in rows]
+
+
 def save_model_input_preferences(path: str | Path, values: dict[str, Any]) -> Path:
     """Persist BMO model input preferences and return the written path."""
 

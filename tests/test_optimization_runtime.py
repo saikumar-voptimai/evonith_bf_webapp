@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import json
 import sys
 from datetime import datetime, timezone
@@ -453,7 +455,23 @@ def test_full_slag_balance_uses_new_burden_pig_iron_split():
     assert result.actual_pig_iron_mt == pytest.approx(expected_actual_pi_mt)
     assert result.slag_components_mt["feo"] == pytest.approx(expected_feo_mt)
     assert result.slag_components_mt["mno"] == pytest.approx(expected_mno_mt)
-    assert result.total_slag_mt == pytest.approx(expected_feo_mt + expected_mno_mt)
+    # Ti not taken by the pig iron reports to slag as TiO2 (tio2_to_slag, default on).
+    expected_tio2_mt = (10.0 - expected_ti_pi_mt) / ti_from_tio2_factor
+    assert result.slag_components_mt["tio2"] == pytest.approx(expected_tio2_mt)
+    assert result.total_slag_mt == pytest.approx(
+        expected_feo_mt + expected_mno_mt + expected_tio2_mt
+    )
+
+    workbook = calculate_full_slag_balance(
+        ores=ores,
+        quantities_mt={"ore_a": 100.0},
+        hot_metal_mt=60.0,
+        settings=replace(settings, tio2_to_slag=False),
+    )
+    assert workbook.total_slag_mt == pytest.approx(expected_feo_mt + expected_mno_mt)
+    assert workbook.diagnostics["tio2_unaccounted_mt"] == pytest.approx(
+        (10.0 - expected_ti_pi_mt) / ti_from_tio2_factor
+    )
 
 
 def test_full_slag_balance_treats_fuel_s_and_p_on_dry_fuel_basis():

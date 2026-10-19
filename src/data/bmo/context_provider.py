@@ -18,10 +18,12 @@ import pandas as pd
 import yaml
 
 from domain.optimization_runtime import DatasetContextService, build_runtime_config
+from data.bmo.dust_inputs import DPR_HM_COLUMN, DUST_STREAMS, dpr_dust_rates
 from utils.bmo.types import FluxInput, OreChemistry, OreInput
 from furnace_data.dataset.service import DatasetService as OnlineDatasetService
 
 from furnace_data.offline import (
+    OFFLINE_TABLES as _OFFLINE_TABLES,
     fetch_offline_data as _fetch_offline_data,
     fetch_offline_report as _fetch_offline_report,
 )
@@ -147,6 +149,7 @@ class EvonithBmoContextProvider:
         self._last_fuel_analysis_diagnostics: dict[str, Any] = {}
         self._last_hm_slag_diagnostics: dict[str, Any] = {}
         self._last_dpr_diagnostics: dict[str, Any] = {}
+        self._last_dust_diagnostics: dict[str, Any] = {}
         self._last_history_diagnostics: dict[str, Any] = {}
         self._last_process_diagnostics: dict[str, Any] = {}
         self._last_flux_diagnostics: dict[str, Any] = {}
@@ -264,6 +267,17 @@ class EvonithBmoContextProvider:
     @staticmethod
     def _material_charge_column(material_code: str) -> str:
         return f"{material_code}_mt"
+
+    @staticmethod
+    def _charge_table_columns(columns: list[str]) -> list[str]:
+        """Only the charge_data columns the table has. A material without a
+        charge column (e.g. ore_13, Titani, in the plant master but not on the
+        charge sheet) must not fail the whole query; callers treat a missing
+        column as "not charged"."""
+        allowed = _OFFLINE_TABLES.get("offline_feed.charge_data")
+        if not allowed:
+            return list(columns)
+        return [column for column in columns if column in allowed]
 
     @staticmethod
     def _material_code_from_quantity_column(column_name: str) -> str:
@@ -840,7 +854,9 @@ class EvonithBmoContextProvider:
                 table_name="offline_feed.charge_data",
                 time_range=(start_time, end_time),
                 query_type="raw",
-                columns=["date_time", *sorted(set(columns_by_ore.values()))],
+                columns=self._charge_table_columns(
+                    ["date_time", *sorted(set(columns_by_ore.values()))]
+                ),
             )
             charge_df = self._frame_with_time_column(df)
         except Exception as exc:
@@ -1044,7 +1060,9 @@ class EvonithBmoContextProvider:
             for material_code in material_codes
             if material_code
         }
-        columns = ["date_time", *sorted(set(columns_by_material.values()))]
+        columns = self._charge_table_columns(
+            ["date_time", *sorted(set(columns_by_material.values()))]
+        )
         end_time = datetime.now(timezone.utc)
         time_range = (end_time - timedelta(days=max(1, lookback_days)), end_time)
         warnings: list[str] = []
@@ -1794,6 +1812,71 @@ class EvonithBmoContextProvider:
         }
         return rate
 
+    def get_dpr_dust_rates(
+        self, window_days: int = 30, min_charges_per_day: int = 100
+    ) -> tuple[dict[str, dict[str, Any]], list[str]]:
+        """
+        Top-gas dust per stream (dust catcher, GCP) from the DPR over the window.
+
+        The DPR's daily dust is pooled over the charges ``charge_data`` counts on
+        the same IST days, giving kg per charge (and kg/tHM for display). Days
+        with fewer than ``min_charges_per_day`` charges are left out. Failures
+        are non-blocking: the page falls back to the configured dust rows.
+
+        Args:
+             - window_days: int - Days of DPR to use, ending now.
+             - min_charges_per_day: int - Minimum charges for a day to count.
+
+        Returns:
+             - return tuple[dict, list[str]] - Rates keyed by dust id, warnings.
+        """
+
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=int(window_days))
+        warnings: list[str] = []
+        try:
+            dpr = _fetch_offline_data(
+                table_name="offline_feed.dpr_data",
+                time_range=(start, end),
+                query_type="raw",
+                columns=["date_time", DPR_HM_COLUMN, *[s.dpr_column for s in DUST_STREAMS]],
+            )
+            # One row per charge; only its timestamp (the frame's index) is needed.
+            charges = _fetch_offline_data(
+                table_name="offline_feed.charge_data",
+                time_range=(start, end),
+                query_type="raw",
+                columns=["date_time"],
+            )
+        except Exception as exc:  # noqa: BLE001 - non-blocking, configured rows remain
+            warnings.append(f"DPR dust query failed: {exc}")
+            self._last_dust_diagnostics = {
+                "source": "offline_db", "start_time": self._iso(start), "end_time": self._iso(end), "error": str(exc),
+            }
+            return {}, warnings
+        charge_times = (
+            charges.index
+            if isinstance(getattr(charges, "index", None), pd.DatetimeIndex)
+            else pd.DatetimeIndex([])
+        )
+        rates = dpr_dust_rates(dpr, charge_times, min_charges=int(min_charges_per_day))
+        missing = [s.name for s in DUST_STREAMS if s.dust_id not in rates]
+        if missing:
+            warnings.append(
+                "No DPR dust in the last %d days for %s; using the configured quantity."
+                % (int(window_days), ", ".join(missing))
+            )
+        self._last_dust_diagnostics = {
+            "source": "offline_feed.dpr_data+offline_feed.charge_data",
+            "start_time": self._iso(start),
+            "end_time": self._iso(end),
+            "dpr_rows": int(len(dpr)) if dpr is not None else 0,
+            "charges": int(len(charge_times)),
+            "rows": [{"dust_id": k, **v} for k, v in rates.items()],
+            "warnings": list(warnings),
+        }
+        return rates, warnings
+
     def get_history_frame(
         self, online_lag_hours: int = 0
     ) -> tuple[pd.DataFrame, list[str]]:
@@ -2238,6 +2321,7 @@ class EvonithBmoContextProvider:
             "fuel_analysis": dict(self._last_fuel_analysis_diagnostics),
             "hm_slag": dict(self._last_hm_slag_diagnostics),
             "dpr": dict(self._last_dpr_diagnostics),
+            "dust": dict(self._last_dust_diagnostics),
             "history": dict(self._last_history_diagnostics),
             "process": dict(self._last_process_diagnostics),
             "flux": dict(self._last_flux_diagnostics),

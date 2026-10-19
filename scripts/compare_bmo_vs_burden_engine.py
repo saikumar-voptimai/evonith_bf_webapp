@@ -27,6 +27,7 @@ import yaml  # noqa: E402
 
 from data.burden_engine.inputs import (  # noqa: E402
     build_engine_inputs, catalogue_fluxes, flux_rows, fuel_prices, yard_rows)
+from data.bmo.dust_inputs import dust_cfg_with_live  # noqa: E402
 from utils.bmo.lp_solver import run_lp_baseline  # noqa: E402
 from utils.bmo.types import DustInput, FluxInput, FuelAshInput, OreChemistry, OreInput, SlagBalanceSettings  # noqa: E402
 from utils.burden_engine import Engine, Limits, Settings  # noqa: E402
@@ -89,18 +90,16 @@ def fuel_ash(cal: dict, K_wet: float, s: Settings) -> list[FuelAshInput]:
     return out
 
 
-def dust_from_prefs(prefs: dict) -> list[DustInput]:
-    """The Blend Mix Optimiser's saved dust rows (page 9 deducts them from the slag)."""
+def page9_dust(prefs: dict, rates: dict | None = None) -> list[DustInput]:
+    """Page 9's top-gas dust rows: setting_bmo.yml dust_inputs, the DPR quantity laid over them when given (--live),
+    then any saved operator values, as the page builds them."""
+    bmo = yaml.safe_load(open(ROOT / "src/config/setting_bmo.yml", encoding="utf-8"))["bmo"]
+    saved = (prefs.get("dust_editor", {}) or {}).get("rows", {}) or {}
     out = []
-    for did, d in (prefs.get("dust_editor", {}).get("rows", {}) or {}).items():
-        out.append(DustInput(did, did, enabled=bool(d.get("enabled", True)), rate_basis=d.get("rate_basis", "mt_per_day"),
-                             wet_qty_mt=float(d.get("wet_qty_mt", 0.0)), quantity_kg_per_charge=float(d.get("quantity_kg_per_charge", 0.0)),
-                             moisture_pct=float(d.get("moisture_pct", 0.0)), sio2_pct=float(d.get("sio2_pct", 0.0)),
-                             al2o3_pct=float(d.get("al2o3_pct", 0.0)), cao_pct=float(d.get("cao_pct", 0.0)),
-                             mgo_pct=float(d.get("mgo_pct", 0.0)), fe_pct=float(d.get("fe_pct", 0.0)), p_pct=float(d.get("p_pct", 0.0)),
-                             s_pct=float(d.get("s_pct", 0.0))))
+    for row in dust_cfg_with_live(bmo.get("dust_inputs", []), rates, None):
+        row = {**row, **(saved.get(row["dust_id"]) or {})}
+        out.append(DustInput(**{k: v for k, v in row.items() if k in DustInput.__dataclass_fields__}))
     return out
-
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -114,9 +113,11 @@ def main() -> None:
         from data.bmo.context_provider import EvonithBmoContextProvider
         prov = EvonithBmoContextProvider()
         ores, _ = prov.build_ore_inputs(mode="avg", window_days=30)
+        dust_rows = page9_dust(prefs, prov.get_dpr_dust_rates(window_days=30)[0])
         fluxes = live_fluxes(prefs)
     else:
         ores, fluxes = reference_records(prefs)
+        dust_rows = page9_dust(prefs)
     mats = yard_rows(ores, prefs, k_rules=dict(gomti_clo="gomti", lloyds_oversize_clo="oversize"))
     fl = flux_rows(fluxes, prefs)
     inputs = build_engine_inputs(mats, fl, fuel_prices(prefs), use_stock=a.live)
@@ -140,7 +141,7 @@ def main() -> None:
         target_slag_basicity_max=L.B2_max, target_slag_al2o3_max_pct=L.Al2O3_max, target_slag_mgo_min_pct=L.MgO_min,
         target_slag_mgo_al2o3_ratio_min=L.MgO_Al2O3_min,
         max_burden_qty_mt=L.charge_t * L.charges_per_h * 24 - s.nut_plant * a.target / 1000.0,
-        fuel_ash_inputs=fuel_ash(cal, r["out"]["K_wet"], s), flux_inputs=fluxes, dust_inputs=dust_from_prefs(prefs),
+        fuel_ash_inputs=fuel_ash(cal, r["out"]["K_wet"], s), flux_inputs=fluxes, dust_inputs=dust_rows,
         slag_balance_settings=SlagBalanceSettings(enabled=True, carbon_pct=hm["C"], silicon_pct=s.hm_Si,
                                                   sulphur_pct=hm["S"], mn_pct=hm["Mn"], ti_pct=hm["Ti"]),
         hot_metal_target_mt=a.target, charge_mass_mt=L.charge_t, _explain=True)
@@ -178,11 +179,10 @@ def main() -> None:
         lines += [f"Binding in the engine: {', '.join(binds_en) or '-'}. Slag-quality limits at their bound in the "
                   f"page-9 LP: {', '.join(binds_lp) or 'none'}.", "",
                   "Same blend through both slag calculations: see docs/burden_fuel_optimiser.md. Both count TiO2, "
-                  "alkalis and sulphur in the slag total (page 9 from its analyses, the engine as a 1.2 % allowance). "
-                  "What still differs is the dust row and the Fe sizing: page 9's dust removes about 2.0 kg CaO and "
-                  "1.3 kg MgO per tHM (the engine's 0.65 kg CaO, no MgO), so page 9 buys more flux and swaps a little "
-                  "Geomin for Lloyds CLO to hold basicity and MgO/Al2O3; and it charges a few kg/tHM more ferrous. "
-                  "The daily replay against the lab (docs/slag_replay_vs_lab.md) favours the engine's dust row."]
+                  "alkalis and sulphur in the slag total (page 9 from its analyses, the engine as a 1.2 % allowance), "
+                  "and both take the top-gas dust from the DPR with the plant's dust analyses (page 9 per stream, the "
+                  "engine pooled and without MgO). What remains is the Fe sizing and the dust MgO (page 9 removes "
+                  "about 0.2 kg MgO/tHM more, so its MgO/Al2O3 limit binds a little earlier)."]
     text = "\n".join(lines) + "\n"
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8")

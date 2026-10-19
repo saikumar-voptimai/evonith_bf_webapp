@@ -292,27 +292,67 @@ bmo:
       zn_pct: 0.0
       loi_pct: 0.0
 
+  # Top-gas dust deducted from the slag balance (it was charged but never reached
+  # the slag). Two streams, as the DPR records them; cast-house and stock-house
+  # dust do not leave through the top and are not deducted.
+  #
+  # On the page these rows are only the FALLBACK. Each session the quantity comes
+  # from the DPR (dust over the charges counted on the same days, last
+  # data_sources.dust_window_days) and the chemistry from the plant's dust
+  # analyses in the hourly furnace dataset (DUST_1 = dust catcher, DUST_2 = GCP,
+  # last dust_analysis_window_days). Both stay editable.
+  #
+  # Defaults below: DPR Sep 2025 - Oct 2026 pooled (dust catcher 229, GCP 235 kg
+  # per charge, i.e. 15.9 and 16.3 kg/tHM) and the 180-day mean analyses to
+  # 15 Oct 2026. Mn, P, S, Ti, Zn are elements (MnO, P2O5, SO3, TiO2, ZnO
+  # converted); Fe is the basic analysis' total Fe.
+  #
+  # Replaces the single "BF Gas Dust" row from the plant BURDEN workbook (530 kg
+  # per charge, CaO 5.63 %, MgO 3.57 %). Against 284 days of lab slag analyses
+  # that row read slag MgO 0.36 pt and CaO/SiO2 0.037 low; the measured dust
+  # carries CaO ~2 % and MgO ~0.5-0.8 % (docs/slag_replay_vs_lab.md).
   dust_inputs:
-    - dust_id: bf_gas_dust
-      display_name: BF Gas Dust
+    - dust_id: dust_catcher
+      display_name: Dust catcher
       enabled: true
       rate_basis: kg_per_charge
       wet_qty_mt: 0.0
-      quantity_kg_per_charge: 530.0
-      source: BF-2 Burden (2).xlsx/BURDEN
+      quantity_kg_per_charge: 229.0
+      source: configured (DPR Sep 2025 - Oct 2026; DUST_1 analyses)
       moisture_pct: 0.0
-      sio2_pct: 4.5
-      al2o3_pct: 4.86
-      cao_pct: 5.63
-      mgo_pct: 3.57
-      fe_pct: 33.5
-      mn_pct: 0.0
-      p_pct: 0.054
-      s_pct: 0.1
-      ti_pct: 0.0
-      zn_pct: 0.0
-      na2o_pct: 0.0
-      k2o_pct: 0.0
+      sio2_pct: 7.96
+      al2o3_pct: 5.12
+      cao_pct: 2.04
+      mgo_pct: 0.47
+      fe_pct: 37.4
+      mn_pct: 0.05
+      p_pct: 0.084
+      s_pct: 0.059
+      ti_pct: 0.257
+      zn_pct: 1.55
+      na2o_pct: 0.15
+      k2o_pct: 0.23
+      caf2_pct: 0.0
+    - dust_id: gcp_dust
+      display_name: GCP dust
+      enabled: true
+      rate_basis: kg_per_charge
+      wet_qty_mt: 0.0
+      quantity_kg_per_charge: 235.0
+      source: configured (DPR Sep 2025 - Oct 2026; DUST_2 analyses)
+      moisture_pct: 0.0
+      sio2_pct: 7.20
+      al2o3_pct: 4.90
+      cao_pct: 2.11
+      mgo_pct: 0.76
+      fe_pct: 24.2
+      mn_pct: 0.063
+      p_pct: 0.068
+      s_pct: 0.058
+      ti_pct: 0.166
+      zn_pct: 3.74
+      na2o_pct: 0.78
+      k2o_pct: 0.35
       caf2_pct: 0.0
 
   slag_balance:
@@ -673,6 +713,11 @@ bmo:
     pellet_auto_select_lookback_days: 30
     pellet_chemistry_max_age_days: 30
     static_refresh_max_age_minutes: 60
+    # Top-gas dust (dust_inputs above): DPR window for the quantity, minimum
+    # charges for a day to count, and the window of dust analyses averaged.
+    dust_window_days: 30
+    dust_min_charges_per_day: 100
+    dust_analysis_window_days: 60
 
   ui:
     show_manual_compare: true

@@ -4,8 +4,9 @@ For every day with a full charge record, the day's charged masses (``charge_data
 chemistry of each material (trailing window), the day's hot metal (DPR), PCI (DPR), dust (DPR) and the day's mean
 hot-metal analysis go through
 
-* page 9's slag balance (``utils.bmo.slag_balance.calculate_full_slag_balance``), TiO2 in the slag total (default)
-  and on the plant-workbook basis (``tio2_to_slag=False``), with page 9's saved dust rows and fuel S / alkali;
+* page 9's slag balance (``utils.bmo.slag_balance.calculate_full_slag_balance``) as it is now (TiO2 in the slag
+  total, dust catcher and GCP dust from the DPR with the plant's dust analyses) and with what it had before (the
+  single workbook dust row, and TiO2 left out), with page 9's fuel S / alkali;
 * the burden engine's slag (``utils.coke_energy.bf_balance.slag_and_flux``, the two-zone model's oxide balance),
   with the DPR dust masses and the calibration's dust composition.
 
@@ -153,9 +154,15 @@ def _fuel_props(c: dict | None, fallback: dict) -> dict:
     return dict(FC=100 * fc / s, ash=100 * ash / s, VM=100 * vm / s, moist_pct=moist)
 
 
-def page9(D: dict, cal: dict, bmo: dict, prefs: dict, tio2_to_slag: bool, dust_basis: str = "saved") -> dict:
-    """Page 9's slag balance on the day. ``dust_basis``: "saved" = page 9's saved dust rows; "engine" = the day's DPR
-    dust mass with the engine's dust composition (calibration case, SiO2 7.6 / Al2O3 5.1 / CaO 2.0 / MgO 0 %)."""
+# The single dust row page 9 used until Oct 2026 (plant BURDEN workbook), kept for the comparison.
+WORKBOOK_DUST = dict(quantity_kg_per_charge=530.0, sio2_pct=4.5, al2o3_pct=4.86, cao_pct=5.63, mgo_pct=3.57,
+                     fe_pct=33.5, p_pct=0.054, s_pct=0.1)
+
+
+def page9(D: dict, cal: dict, bmo: dict, tio2_to_slag: bool = True, dust_basis: str = "dpr") -> dict:
+    """Page 9's slag balance on the day. ``dust_basis``: "dpr" = page 9's dust streams (``setting_bmo.yml``
+    dust_inputs: dust catcher, GCP) with the day's DPR masses, as the page now takes them; "workbook" = the old
+    single workbook row (530 kg per charge, CaO 5.63 %, MgO 3.57 %)."""
     hm_t = D["hm_t"]
     ores, qty = [], {}
     for code, q in D["ferrous"].items():
@@ -187,20 +194,15 @@ def page9(D: dict, cal: dict, bmo: dict, prefs: dict, tio2_to_slag: bool, dust_b
                                cao_pct=a.get("CaO", 0), mgo_pct=a.get("MgO", 0), fe2o3_pct=a.get("Fe2O3", 0),
                                tio2_pct=a.get("TiO2", 0), alkali_pct=float(c.get("alkali_pct", 0)),
                                s_pct=float(c.get("s_pct", 0)), p_pct=float(c.get("p_pct", 0))))
-    dust = []
-    for did, d in (prefs.get("dust_editor", {}).get("rows", {}) or {}).items():
-        dust.append(DustInput(did, did, enabled=bool(d.get("enabled", True)), rate_basis=d.get("rate_basis", "mt_per_day"),
-                              wet_qty_mt=float(d.get("wet_qty_mt", 0)), quantity_kg_per_charge=float(d.get("quantity_kg_per_charge", 0)),
-                              moisture_pct=float(d.get("moisture_pct", 0)), sio2_pct=float(d.get("sio2_pct", 0)),
-                              al2o3_pct=float(d.get("al2o3_pct", 0)), cao_pct=float(d.get("cao_pct", 0)),
-                              mgo_pct=float(d.get("mgo_pct", 0)), fe_pct=float(d.get("fe_pct", 0)),
-                              p_pct=float(d.get("p_pct", 0)), s_pct=float(d.get("s_pct", 0))))
-    if dust_basis == "engine":
-        du = cal["case"]["dust"]
-        fe = (du["dc_kg"] * du["dc_Fe_pct"] + du["gcp_kg"] * du["gcp_Fe_pct"]) / (du["dc_kg"] + du["gcp_kg"])
-        dust = [DustInput("dpr_dust", "DPR dust", wet_qty_mt=D["dc_t"] + D["gcp_t"], rate_basis="mt_per_day",
-                          sio2_pct=du.get("SiO2_pct", 7.6), al2o3_pct=du.get("Al2O3_pct", 5.1),
-                          cao_pct=du.get("CaO_pct", 2.0), mgo_pct=du.get("MgO_pct", 0.0), fe_pct=fe)]
+    if dust_basis == "workbook":
+        dust = [DustInput("bf_gas_dust", "BF gas dust (workbook)", rate_basis="kg_per_charge", **WORKBOOK_DUST)]
+    else:
+        day_t = {"dust_catcher": D["dc_t"], "gcp_dust": D["gcp_t"]}
+        dust = []
+        for row in bmo.get("dust_inputs", []):
+            r = {k: v for k, v in row.items() if k in DustInput.__dataclass_fields__}
+            r.update(rate_basis="mt_per_day", wet_qty_mt=float(day_t.get(row["dust_id"], 0.0)))
+            dust.append(DustInput(**r))
     dust_res, _ = resolve_dust_inputs(dust, charge_count=D["charges"])
     sb = {k: v for k, v in bmo["slag_balance"].items() if k in SlagBalanceSettings.__dataclass_fields__}
     h = D["hm"]
@@ -255,7 +257,6 @@ def replay(start: str, end: str, window: int = 7, min_hm: float = 1800.0, min_ch
     T = load(s, e)
     cal = json.load(open(DEFAULT_CAL_PATH, encoding="utf-8"))
     bmo = yaml.safe_load(open(ROOT / "src/config/setting_bmo.yml", encoding="utf-8"))["bmo"]
-    prefs = yaml.safe_load(open(ROOT / "src/config/bmo_operator_inputs.yml", encoding="utf-8"))
     rows = []
     for day in pd.date_range(s.date(), e.date(), freq="D").date:
         D = day_inputs(T, day, window)
@@ -271,9 +272,9 @@ def replay(start: str, end: str, window: int = 7, min_hm: float = 1800.0, min_ch
         row["lab_b2"] = D["lab"]["cao"] / D["lab"]["sio2"]
         row["lab_sum"] = sum(v for v in D["lab"].values() if np.isfinite(v))
         if row["ok"]:
-            for tag, res in (("eng", engine(D, cal)), ("p9", page9(D, cal, bmo, prefs, True)),
-                             ("p9wb", page9(D, cal, bmo, prefs, False)),
-                             ("p9ed", page9(D, cal, bmo, prefs, True, dust_basis="engine"))):
+            for tag, res in (("eng", engine(D, cal)), ("p9", page9(D, cal, bmo)),
+                             ("p9old", page9(D, cal, bmo, dust_basis="workbook")),
+                             ("p9wb", page9(D, cal, bmo, tio2_to_slag=False, dust_basis="workbook"))):
                 for k2, v in res.items():
                     row[f"{tag}_{k2}"] = v
                 row[f"{tag}_tracer_kg"] = 100 * res["al2o3_kg"] / D["lab"]["al2o3"]
@@ -281,8 +282,8 @@ def replay(start: str, end: str, window: int = 7, min_hm: float = 1800.0, min_ch
     return pd.DataFrame(rows)
 
 
-MODELS = (("eng", "Engine (two-zone)"), ("p9", "Page 9, TiO2 in slag"), ("p9wb", "Page 9, workbook basis"),
-          ("p9ed", "Page 9, TiO2 in, engine's dust"))
+MODELS = (("eng", "Engine (two-zone)"), ("p9", "Page 9 now (TiO2 in, DPR dust)"),
+          ("p9old", "Page 9, workbook dust row"), ("p9wb", "Page 9 before (workbook dust, no TiO2)"))
 
 
 def summary(df: pd.DataFrame) -> str:
@@ -317,9 +318,10 @@ def summary(df: pd.DataFrame) -> str:
               "Basis: charged masses by material from `charge_data`, each material's lab chemistry averaged over the "
               "7 days to the day, PCI / dust / hot metal from the DPR, the day's mean hot-metal analysis for both "
               "models (page 9 normally holds its configured HM chemistry). Fuel ash oxides are not in Neon: both use "
-              "the calibration's coke / nut / PCI ash analysis. Page 9's dust: its saved row (530 kg per charge, CaO "
-              "5.63 %, MgO 3.57 %, from the plant BURDEN workbook); the engine's: the DPR dust mass with SiO2 7.6, "
-              "Al2O3 5.1, CaO 2.0, MgO 0 %. The Al2O3-tracer slag is each model's Al2O3 mass over the lab's Al2O3 %.",
+              "the calibration's coke / nut / PCI ash analysis. Page 9's dust now: the day's DPR dust-catcher and GCP masses "
+              "with the analyses in setting_bmo.yml (CaO ~2.1 %, MgO 0.5-0.8 %); before: the workbook row (530 kg per "
+              "charge, CaO 5.63 %, MgO 3.57 %). The engine's: the DPR dust mass with SiO2 7.6, Al2O3 5.1, CaO 2.0, "
+              "MgO 0 %. The Al2O3-tracer slag is each model's Al2O3 mass over the lab's Al2O3 %.",
               "", "`python scripts/replay_slag_vs_lab.py --start 2025-09-01 --out docs/slag_replay_vs_lab.md`", ""]
     return "\n".join(lines) + "\n"
 

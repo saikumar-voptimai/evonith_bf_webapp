@@ -73,9 +73,17 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 | `scripts/replay_slag_vs_lab.py` | Both slag calculations on each day's actual charge against the lab's slag analysis |
 | `tests/test_burden_engine*.py` | Engine, inputs, calibration and scenario tests |
 
-Also changed for this page: `OreChemistry.loi_pct` (default 0; read from the same lab row, so page 9 is unaffected),
-Titani ferrous CLO mapped to `ore_13` (was `ore_11`, the Donimalai oversize return), and page 9's slag total now
-includes TiO₂ (`SlagBalanceSettings.tio2_to_slag`, `setting_bmo.yml`; see the comparison below).
+Also changed on page 9 for this work (all checked against the lab, below):
+* `OreChemistry.loi_pct` (default 0; read from the same lab row, so page 9 picks the same rows).
+* Titani ferrous CLO mapped to `ore_13` (was `ore_11`, the Donimalai oversize return). `charge_data` has no
+  `ore_13_mt` column, so the provider now skips charge columns the table does not have instead of failing the query.
+* The slag total includes TiO₂ (`SlagBalanceSettings.tio2_to_slag`, `setting_bmo.yml`).
+* **Top-gas dust from the DPR.** The single "BF Gas Dust" row from the plant BURDEN workbook (530 kg per charge,
+  CaO 5.63 %, MgO 3.57 %) is replaced by the two streams the DPR records, dust catcher and GCP dust
+  (`data/bmo/dust_inputs.py`). Quantity: the DPR's dust over the charges `charge_data` counts on the same days, last
+  30 days, as kg per charge. Chemistry: the plant's dust analyses (`DUST_1_*`, `DUST_2_*` in the hourly dataset),
+  last 60 days. Both are editable under *Advanced Slag Balance Inputs*; Save pins the operator's values, *Use DPR
+  values* drops them. The `setting_bmo.yml` rows (Sep 2025 – Oct 2026 averages) are the fallback.
 
 ## Acceptance checklist
 
@@ -106,37 +114,37 @@ PCI 190, nut coke 70, HMT 1,470 °C, Jul–Oct 2026 calibration. `pytest tests/t
 ## Comparison with the Blend Mix Optimiser LP
 
 `python scripts/compare_bmo_vs_burden_engine.py [--live] [--target 2270]` runs both on the same yard, prices, bounds,
-slag limits, page-9 dust rows and page-9 fuel S / alkali, with fuel left out of the objective (`docs/burden_fuel_optimiser_vs_bmo.md`).
+slag limits, page-9 dust rows and page-9 fuel S / alkali, with fuel left out of the objective
+(`docs/burden_fuel_optimiser_vs_bmo.md`).
 
-Page 9's slag total now counts TiO₂ (setting `tio2_to_slag`, default on; the workbook golden test and frozen
-charged-coke bundles keep the workbook basis, which left it out). Alkalis (80 % to slag), sulphur (ore, flux and fuel),
-MnO, FeO and CaF₂ were already counted from the analyses; phosphorus goes to the hot metal.
+Page 9's slag total counts TiO₂, alkalis (80 % to slag), sulphur (ore, flux and fuel), MnO, FeO and CaF₂ from the
+analyses; phosphorus goes to the hot metal. Its dust is the DPR's two streams with the measured dust chemistry.
 
-On the reference yard at 2,270 t/d the two blends now agree within 0.7 pt (sinter 58.0 / 58.0, Geomin 13.4 / 12.7,
-Lloyds CLO 18.6 / 19.3, pellet 10.0 / 10.0 %). Page 9 binds on MgO/Al₂O₃ ≥ 0.345, buys 3.7 kg/tHM dolomite and
-0.7 kg more limestone, charges 7 kg/tHM more ferrous, and costs Rs 111/tHM more in ore (about half from the extra
-ferrous, half from the Geomin → Lloyds CLO swap).
+At 2,270 t/d the two blends agree within 0.3 pt:
 
-**One blend through both slag calculations** (engine's ore + flux blend, kg/tHM):
+| | Reference yard (16 Oct) | Live yard (Neon, 19 Oct) |
+|---|---|---|
+| Engine | sinter 58.0 / Geomin 13.4 / Lloyds CLO 18.6 / pellet 10.0 %, limestone 13.7 kg | 58.0 / 13.0 / 19.0 / 10.0 %, limestone 7.6 kg |
+| Page-9 LP | 58.0 / 13.3 / 18.7 / 10.0 %, limestone 13.5 kg | 58.0 / 12.7 / 19.3 / 10.0 %, limestone 7.0 kg |
+| Ore cost, page 9 − engine | +Rs 46/tHM | +Rs 54/tHM |
 
-| | Engine | Page 9 (with its dust) |
-|---|---:|---:|
-| SiO₂ / Al₂O₃ / CaO / MgO | 116.9 / 67.1 / 122.7 / 23.4 | 117.8 / 67.0 / 121.4 / 22.1 |
-| TiO₂ | 4.2 | 4.2 |
-| MnO + FeO | 1.7 | 1.8 |
-| S + K₂O + Na₂O | 4.1 (flat 1.2 % of slag) | 3.8 (from analyses) |
-| **Slag total** | **340.0** | **337.9** |
-| **Al₂O₃ %** | **19.74** | **19.83** |
-| MgO % | 6.87 | 6.53 |
-| CaO/SiO₂ | 1.050 | 1.030 |
+The cost gap is page 9 charging 4 kg/tHM more ferrous (its Fe balance sizes the dust Fe and pig iron differently). On
+the reference yard page 9 still sits on MgO/Al₂O₃ ≥ 0.345 (engine 0.348): its dust takes out about 0.2 kg/tHM MgO that
+the engine's MgO-free dust leaves in. Before the dust and TiO₂ changes, page 9 moved about 4 pt from Lloyds CLO to
+sinter, Geomin and NMDC ROM and bought 3.7 kg/tHM dolomite.
 
-* The Al₂O₃ mass agrees and the slag totals are within 2 kg/tHM; Al₂O₃ % is within 0.1 pt. Before TiO₂ was counted, page 9's total was
-  about 10 kg/tHM lighter (330) and its Al₂O₃ read 20.31 %, so the 20 % cap bit about 0.6 pt early.
-* What still differs is the **dust row**: page 9's (530 kg per charge) removes about 2.0 kg CaO and 1.3 kg MgO per tHM,
-  the engine's only 0.65 kg CaO and no MgO. Page 9's basicity therefore reads about 0.02 lower and its MgO about 0.3 pt
-  lower, which is why it buys dolomite.
-* The engine's minor allowance is a flat 1.2 % of slag; page 9 builds it from the S and alkali analyses (fuel S and
-  alkali from the `setting_bmo.yml` fuel rows). They differ by 0.3 kg/tHM here.
+**One blend through both slag calculations** (engine's ore + flux blend on the reference yard, kg/tHM):
+
+| | Engine | Page 9 now | Page 9 before (workbook dust, no TiO₂) |
+|---|---:|---:|---:|
+| SiO₂ / Al₂O₃ / CaO / MgO | 116.9 / 67.1 / 122.7 / 23.4 | 117.0 / 67.2 / 122.7 / 23.2 | 117.8 / 67.0 / 121.4 / 22.1 |
+| TiO₂ | 4.2 | 4.1 | 0 |
+| MnO + FeO | 1.7 | 1.7 | 1.8 |
+| S + K₂O + Na₂O | 4.1 (flat 1.2 % of slag) | 3.6 (from analyses) | 3.8 |
+| **Slag total** | **340.0** | **339.5** | **333.7** |
+| **Al₂O₃ %** | **19.74** | **19.79** | **20.08** |
+| MgO % | 6.87 | 6.82 | 6.61 |
+| CaO/SiO₂ | 1.050 | 1.049 | 1.030 |
 
 ## Slag against the lab: daily replay
 
@@ -144,24 +152,20 @@ ferrous, half from the Geomin → Lloyds CLO swap).
 lab chemistry per material, DPR hot metal / PCI / dust, the day's hot-metal analysis) and compares them with the day's
 mean slag analysis (`docs/slag_replay_vs_lab.md`). 284 days, Sep 2025 – Oct 2026, model minus lab:
 
-| | Engine | Page 9, TiO₂ in | Page 9, workbook basis | Page 9, TiO₂ in, engine's dust |
+| | Engine | Page 9 now | Page 9, workbook dust row | Page 9 before (workbook dust, no TiO₂) |
 |---|---:|---:|---:|---:|
-| Al₂O₃, % pt | +0.02 | +0.04 | +0.24 | −0.03 |
-| MgO, % pt | +0.00 | −0.36 | −0.28 | −0.02 |
-| TiO₂, % pt | −0.10 | −0.09 | **−1.13** | −0.09 |
-| CaO/SiO₂ | −0.015 | −0.037 | −0.037 | −0.017 |
-| Slag, kg/tHM | 338 | 336 | 333 | 339 |
+| Al₂O₃, % pt | +0.02 | +0.01 | +0.04 | +0.24 |
+| MgO, % pt | +0.00 | −0.06 | −0.36 | −0.28 |
+| TiO₂, % pt | −0.10 | −0.13 | −0.09 | **−1.13** |
+| CaO/SiO₂ | −0.015 | −0.017 | −0.037 | −0.037 |
+| Slag, kg/tHM | 338 | 338 | 336 | 333 |
 
-* **TiO₂ belongs in the slag total.** The lab's slag carries 1.13 % TiO₂ on average; the workbook basis puts none in,
-  every month (−0.8 to −1.4 pt), and its Al₂O₃ reads 0.24 pt high. Counted, both models land within 0.1 pt.
-* **The engine's slag matches the lab with no material bias** (MAE: Al₂O₃ 0.53 pt, MgO 0.35 pt, CaO/SiO₂ 0.041), and
-  its slag rate equals the Al₂O₃-tracer estimate (338 kg/tHM).
-* **Page 9's dust row removes too much CaO and MgO.** With its saved row (530 kg per charge, CaO 5.63 %, MgO 3.57 %,
-  from the plant BURDEN workbook) page 9 reads MgO 0.36 pt and CaO/SiO₂ 0.037 low on average; the dust row's part of
-  that (about 0.35 pt MgO, 0.02 CaO/SiO₂) is the same every month. With the DPR dust mass at the engine's composition
-  (CaO 2.0 %, MgO 0) page 9 agrees with the engine and the lab. Fixing the
-  row (or replacing it with the dust analyses) would stop page 9 buying dolomite to hold MgO/Al₂O₃. Not changed here:
-  it is the operator's saved input.
+* **TiO₂ belongs in the slag total.** The lab's slag carries 1.13 % TiO₂ on average; leaving it out under-reads it every
+  month (−0.8 to −1.4 pt) and puts Al₂O₃ 0.24 pt high.
+* **The workbook dust row removed too much CaO and MgO** (MgO −0.36 pt, CaO/SiO₂ −0.037, the same offset every month).
+  The DPR quantities with the measured dust chemistry (CaO ~2 %, MgO 0.5–0.8 %) remove it.
+* **Page 9 and the engine now match the lab and each other**, with no material bias (MAE: Al₂O₃ 0.54 pt, MgO 0.35 pt,
+  CaO/SiO₂ 0.041), and their slag rate equals the Al₂O₃-tracer estimate (338 kg/tHM).
 
 ## Operator walk-through
 
