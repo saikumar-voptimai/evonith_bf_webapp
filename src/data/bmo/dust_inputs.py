@@ -10,9 +10,10 @@ Cast-house dust (leaves at the cast house) and stock-house dust (a handling loss
 
 Quantities are kg per charge over a recent window: the DPR's daily dust over the charges counted in
 ``charge_data`` on the same days, so the deduction follows the charging rate of the blend being evaluated.
-Composition is the dataset's analyses averaged over a recent window, converted to the page's fields (Fe, Mn, P,
-S, Ti, Zn as elements). Everything stays editable on the page; the configured rows in ``setting_bmo.yml`` are the
-fallback when a source is unavailable. Only :func:`load_dataset_dust_analysis` does I/O.
+Composition is configured (``setting_bmo.yml`` dust_inputs) unless ``data_sources.dust_chemistry_source`` is
+"dataset": then the hourly dataset's analyses averaged over a recent window, converted to the page's fields (Fe, Mn,
+P, S, Ti, Zn as elements). Those analyses are sparse (the dust catcher's: 1-3 samples since Jun 2026). Everything
+stays editable on the page. Only :func:`load_dataset_dust_analysis` does I/O.
 """
 
 from __future__ import annotations
@@ -201,6 +202,6 @@ def dust_caption(rates: Mapping[str, Mapping[str, Any]] | None, analysis: Mappin
              f"{r['kg_per_charge']:.0f} kg/charge ({r['days']} days to {r['last_day']})" if r else
              "DPR unavailable, configured quantity")
         c = (f"CaO {a.get('cao_pct', 0):.2f} %, MgO {a.get('mgo_pct', 0):.2f} %, analysis {a.get('sample_time', '')}"
-             if a else "configured chemistry")
+             if a else "chemistry as configured")
         parts.append(f"**{s.name}**: {q}; {c}" + (" · *saved values in use*" if s.dust_id in saved else ""))
     return "  \n".join(parts)

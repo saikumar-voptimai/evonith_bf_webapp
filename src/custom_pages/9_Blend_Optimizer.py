@@ -4006,8 +4006,14 @@ dpr_dust_rates, _dpr_dust_warnings = _cached_dpr_dust_rates(
     source_cache_version,
 )
 ore_diagnostics["warnings"].extend(_dpr_dust_warnings)
-dust_analysis = _dust_analysis_from_static_csv(
-    static_path, static_mtime_ns, int(_ds_cfg.get("dust_analysis_window_days", 60))
+# Dust chemistry is the configured values unless the config opts in to the
+# dataset's DUST_1 / DUST_2 analyses (sparse: see setting_bmo.yml).
+dust_analysis = (
+    _dust_analysis_from_static_csv(
+        static_path, static_mtime_ns, int(_ds_cfg.get("dust_analysis_window_days", 60))
+    )
+    if str(_ds_cfg.get("dust_chemistry_source", "configured")).lower() == "dataset"
+    else {}
 )
 nut_coke_moisture_raw = (fuel_analysis.get("nut_coke") or {}).get("moisture_pct")
 if nut_coke_moisture_raw is None:
@@ -4279,10 +4285,10 @@ with st.expander("Advanced Slag Balance Inputs", expanded=False):
             dust_status_slot = st.empty()
             st.caption(
                 "Quantities come from the DPR (dust over the charges counted on "
-                "the same days) and chemistry from the dust-catcher and GCP "
-                "analyses. Edit and Apply for this session; Save keeps your "
-                "values for next time (they then override the DPR); Use DPR "
-                "values drops saved values."
+                "the same days); chemistry is configured in setting_bmo.yml. "
+                "Edit and Apply for this session; Save keeps your values for "
+                "next time (they then override the DPR); Use DPR values drops "
+                "saved values."
             )
             dust_apply_col, dust_save_col, dust_reset_col = st.columns(3)
             dust_inputs_applied = _form_submit_button(

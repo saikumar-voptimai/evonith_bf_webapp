@@ -107,6 +107,8 @@ def test_configured_dust_is_the_measured_dust_not_the_workbook_row():
         assert r["rate_basis"] == "kg_per_charge" and 100 < r["quantity_kg_per_charge"] < 400
         assert r["cao_pct"] < 3.0 and r["mgo_pct"] < 1.5
     assert cfg["data_sources"]["dust_window_days"] > 0
+    # chemistry is the configured values unless the config opts in to the dataset's sparse analyses
+    assert cfg["data_sources"]["dust_chemistry_source"] == "configured"
 
 
 def test_saved_dust_values_can_be_dropped(tmp_path):
