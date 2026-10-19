@@ -134,7 +134,8 @@ ores:
       k2o_pct: 0.0
   - id: titani_ferrous_clo
     display_name: TITANI FERROUS CLO
-    material_key: ore_11
+    # Plant master: ore_13 is Titani ferrous CLO; ore_11 is Donimalai oversize return (#253).
+    material_key: ore_13
     price_rs_per_mt: 4939.0
     min_share_pct: 0.0
     max_share_pct: 3.0

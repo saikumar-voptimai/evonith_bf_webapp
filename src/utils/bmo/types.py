@@ -66,6 +66,9 @@ class OreChemistry:
          - zn_pct: float - Zinc percentage on dry basis.
          - na2o_pct: float - Na2O percentage on dry basis.
          - k2o_pct: float - K2O percentage on dry basis.
+         - loi_pct: float - Loss on ignition (combined water / carbonate), dry
+           basis. Not used by the page-9 slag balance; the burden engine needs it
+           for the upper-zone heat check.
 
     Returns:
          - return OreChemistry - Chemistry record used by blend calculations.
@@ -85,6 +88,7 @@ class OreChemistry:
     zn_pct: float = 0.0
     na2o_pct: float = 0.0
     k2o_pct: float = 0.0
+    loi_pct: float = 0.0
 
 
 @dataclass

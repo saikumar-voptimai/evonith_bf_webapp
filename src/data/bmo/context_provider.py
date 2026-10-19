@@ -232,6 +232,18 @@ class EvonithBmoContextProvider:
         return numeric.loc[valid].iloc[-1].dropna()
 
     @staticmethod
+    def _loi_from_snapshot(snapshot: pd.Series, fallback: dict[str, Any]) -> float:
+        """LOI from the same lab row as the rest of the chemistry. Read outside
+        ``chemistry_field_map`` so a missing LOI never changes which row is used."""
+        val = snapshot.get("loi", None) if snapshot is not None else None
+        if val is None or pd.isna(val):
+            val = fallback.get("loi_pct", 0.0)
+        try:
+            return max(0.0, float(val))
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
     def _average_non_null(row_group: pd.DataFrame) -> pd.Series:
         numeric = row_group.drop(
             columns=["time", "material_code", "source_table"], errors="ignore"
@@ -1287,6 +1299,7 @@ class EvonithBmoContextProvider:
                 p_pct=float(chem_values.get("p_pct", 0.0)),
                 na2o_pct=float(chem_values.get("na2o_pct", 0.0)),
                 k2o_pct=float(chem_values.get("k2o_pct", 0.0)),
+                loi_pct=self._loi_from_snapshot(snapshot, fallback),
             )
             material_rows.append(
                 {

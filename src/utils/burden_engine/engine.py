@@ -120,7 +120,7 @@ class Var:
     moist: float
     lo: float = 0.0                      # wet % of ferrous (ferrous only)
     hi: float = 100.0
-    max_t_day: float | None = None       # flux only
+    max_t_day: float | None = None       # wet t/day available (stock over the plan horizon); None = no cap
     k_rule: str | None = None            # burden-resistance rule: 'gomti' (FLOW-03) or 'oversize' (FLOW-04)
     loi_type: str = "H2O"                # what the LOI leaves as: combined water or carbonate CO2
 
@@ -167,7 +167,8 @@ class Engine:
             price = (prices or {}).get(mid, m["price"])
             lo, hi = (bounds or {}).get(mid, (m["lo"], m["hi"]))
             self.fer.append(Var(m["id"], m.get("name", mid), m["kind"], float(price), m["chem"], float(m["moist"]),
-                                float(lo), float(hi), k_rule=_k_rule(m), loi_type=m.get("loi_type", "H2O")))
+                                float(lo), float(hi), max_t_day=m.get("max_t_day"), k_rule=_k_rule(m),
+                                loi_type=m.get("loi_type", "H2O")))
         if not self.fer:
             raise ValueError("no ferrous materials selected")
         self.flux = [Var(f["id"], f.get("name", f["id"]), "flux", float((prices or {}).get(f["id"], f["price"])), f["chem"],
@@ -302,8 +303,16 @@ class Engine:
         return dict(ore=ore, flux=flx, coke=coke, nut=nut, pci=pci, fuel=coke + nut + pci,
                     total=ore + flx + coke + nut + pci, objective=obj)
 
-    def flux_cap(self, P):
-        return np.array([v.max_t_day * 1000 / (P * 24) if v.max_t_day is not None else np.inf for v in self.flux])
+    def var_cap(self, P):
+        """Upper bound on each variable in wet kg/tHM from its t/day cap (stock, flux limit) at production P t/h."""
+        return np.array([v.max_t_day * 1000 / (P * 24) if v.max_t_day is not None else np.inf for v in self.vars])
+
+    def _try(self, *args, **kw):
+        """slp() that returns None when the LP itself has no solution (e.g. stock caps against share minimums)."""
+        try:
+            return self.slp(*args, **kw)
+        except Infeasible:
+            return None
 
     def start_point(self, s, P):
         lo = np.array([v.lo for v in self.fer]); hi = np.array([v.hi for v in self.fer])
@@ -396,7 +405,7 @@ class Engine:
         self.check_settings(s)
         M = 1e5
         z0 = self.start_point(s, P) if z0 is None else np.array(z0, float)
-        fcap = self.flux_cap(P)
+        vcap = self.var_cap(P)
         dmax = np.r_[np.full(self.nf, 400.0), np.full(self.nx, 40.0)]
         delta = dmax.copy()
         Phi0, o0 = self.phi(z0, s, P)
@@ -429,7 +438,7 @@ class Engine:
                 row[self.n + len(soft_ub) + 2 * k] = 1.0; row[self.n + len(soft_ub) + 2 * k + 1] = -1.0
                 A_eq.append(row); b_eq.append(b)
             lo = np.maximum(0.0, z0 - delta); hi = z0 + delta
-            hi[self.nf:] = np.minimum(hi[self.nf:], fcap)
+            hi = np.minimum(hi, vcap)
             lo = np.minimum(lo, hi)
             bounds = [(l, h) for l, h in zip(lo, hi)] + [(0, None)] * n_s
             lp = linprog(c, A_ub=np.array(A_ub), b_ub=np.array(b_ub), A_eq=np.array(A_eq), b_eq=np.array(b_eq),
@@ -529,14 +538,14 @@ class Engine:
 
     def max_prod_at(self, s: Settings, L: Limits, fuel=True, lo=80.0, hi=115.0, tol=0.01, ore6_on=False, z0=None):
         """Highest production (t/h) with a feasible blend at controls s. Bisection on production."""
-        r = self.slp(s, lo, L, fuel, z0=z0, ore6_on=ore6_on)
-        if not r["feasible"]:
+        r = self._try(s, lo, L, fuel, z0=z0, ore6_on=ore6_on)
+        if r is None or not r["feasible"]:
             return None
         best = r; z0 = r["z"]
         while hi - lo > tol:
             mid = 0.5 * (lo + hi)
-            r = self.slp(s, mid, L, fuel, z0=z0, ore6_on=ore6_on)
-            if r["feasible"]:
+            r = self._try(s, mid, L, fuel, z0=z0, ore6_on=ore6_on)
+            if r is not None and r["feasible"]:
                 lo, best, z0 = mid, r, r["z"]
             else:
                 hi = mid
@@ -579,7 +588,9 @@ class Engine:
     def frontier(self, s: Settings, L: Limits, P_list, fuel=True, ore6_on=False):
         rows = []; z0 = None
         for P in P_list:
-            r = self.slp(s, P, L, fuel, z0=z0, ore6_on=ore6_on)
+            r = self._try(s, P, L, fuel, z0=z0, ore6_on=ore6_on)
+            if r is None:
+                r = dict(P_th=P, P_tday=P * 24, feasible=False, cost=dict(total=np.inf), lp_failed=True)
             rows.append(r)
             if r["feasible"]:
                 z0 = r["z"]
@@ -614,7 +625,7 @@ class Engine:
                     return None
                 tops[key] = top["P_th"]
                 seen = [top]
-                f = lambda P: seen.append(self.slp(s_r, P, L, True, z0=top["z"], ore6_on=on6)) or seen[-1]
+                f = lambda P: seen.append(self._try(s_r, P, L, True, z0=top["z"], ore6_on=on6)) or seen[-1]
                 a, b = P_lo, top["P_th"]
                 c, d = b - gr * (b - a), a + gr * (b - a)
                 fc, fd = f(c), f(d)
@@ -623,7 +634,7 @@ class Engine:
                         b, d, fd = d, c, fc; c = b - gr * (b - a); fc = f(c)
                     else:
                         a, c, fc = c, d, fd; d = a + gr * (b - a); fd = f(d)
-                res = min(seen, key=cost)
+                res = min([x for x in seen if x is not None], key=cost)
                 memo[key] = res if np.isfinite(cost(res)) else None
                 return memo[key]
 
