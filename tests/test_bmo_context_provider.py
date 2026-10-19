@@ -904,3 +904,31 @@ def test_flux_inputs_use_charge_quantities_and_flux_chemistry(
     )
     assert diagnostics["rows"][0]["rows_used"] == 1
     assert diagnostics["rows"][0]["sample_timestamp"] == "2026-05-01T00:00:00+00:00"
+
+
+def test_material_without_a_charge_column_does_not_fail_the_usage_query(
+    tmp_path, monkeypatch
+) -> None:
+    """ore_13 (Titani) is in the plant master but has no charge_data column; the
+    query must still run for the other materials."""
+    settings_path, mapping_path = _write_bmo_files(tmp_path)
+    seen: list[list[str]] = []
+
+    def fake_fetch(**kwargs):
+        seen.append(list(kwargs["columns"]))
+        return pd.DataFrame(
+            {
+                "date_time": pd.to_datetime(["2026-10-18T00:00:00Z"]),
+                "ore_2_mt": [5.0],
+            }
+        ).set_index("date_time")
+
+    monkeypatch.setattr(context_module, "_fetch_offline_data", fake_fetch)
+    provider = EvonithBmoContextProvider(
+        setting_path=str(settings_path), mapping_path=str(mapping_path)
+    )
+    latest, rows, warnings = provider._latest_usage_by_material({"ore_2", "ore_13"}, 30)
+
+    assert "ore_13_mt" not in seen[0] and "ore_2_mt" in seen[0]
+    assert "ore_2" in latest and warnings == []
+    assert {r["material_code"]: r["rows_used"] for r in rows}["ore_13"] == 0

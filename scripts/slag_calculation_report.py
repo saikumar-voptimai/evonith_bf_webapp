@@ -70,7 +70,8 @@ def ores() -> list[OreInput]:
 
 
 def fuel_ash() -> list[FuelAshInput]:
-    return [FuelAshInput(**row) for row in CFG["fuel_ash_inputs"]]
+    valid = FuelAshInput.__dataclass_fields__.keys()
+    return [FuelAshInput(**{k: v for k, v in row.items() if k in valid}) for row in CFG["fuel_ash_inputs"]]
 
 
 def slag_settings(si_pct: float, mn_pct: float, ti_pct: float) -> SlagBalanceSettings:
@@ -198,6 +199,7 @@ def report(name: str, shares_pct: dict[str, float], flux_rows: list[FluxInput],
         "s": "S in - S to PI - S to gas",
         "alkali": f"alkali in x {SET.alkali_to_slag_fraction}",
         "caf2": "CaF2 in, all of it",
+        "tio2": "Ti left (after HM Ti) as TiO2",
     }
     tot = d["raw_total_slag_mt"]
     for k, v in raw.items():
@@ -225,8 +227,10 @@ def report(name: str, shares_pct: dict[str, float], flux_rows: list[FluxInput],
     plant_alk = PLANT_SLAG_PCT["na2o"] + PLANT_SLAG_PCT["k2o"]
     print(f"  {'alkali':<10}{alk_pct:>10.2f}{plant_alk:>10.2f}{alk_pct-plant_alk:>+9.2f}"
           f"{raw['alkali']:>11,.1f}{raw['alkali']/plant_alk*100:>13,.0f}")
-    print(f"  {'tio2':<10}{0.0:>10.2f}{PLANT_SLAG_PCT['tio2']:>10.2f}"
-          f"{-PLANT_SLAG_PCT['tio2']:>+9.2f}{0.0:>11,.1f}{'n/a':>13}")
+    tio2_calc = raw.get("tio2", 0.0)
+    print(f"  {'tio2':<10}{tio2_calc/tot*100:>10.2f}{PLANT_SLAG_PCT['tio2']:>10.2f}"
+          f"{tio2_calc/tot*100-PLANT_SLAG_PCT['tio2']:>+9.2f}{tio2_calc:>11,.1f}"
+          f"{tio2_calc/PLANT_SLAG_PCT['tio2']*100 if tio2_calc else float('nan'):>13,.0f}")
     print()
     print("  'implied MT' = calculated mass of that component / the plant's % for it.")
     print("  If the model and the plant agreed, every row would imply the same total.")
@@ -245,18 +249,21 @@ def report(name: str, shares_pct: dict[str, float], flux_rows: list[FluxInput],
     ti_missing = d["tio2_unaccounted_mt"]
     mno_expected = tot * PLANT_SLAG_PCT["mno"] / 100.0
     tio2_expected = tot * PLANT_SLAG_PCT["tio2"] / 100.0
-    print(f"  TiO2   model puts 0.00 MT into slag. calculate_full_slag_balance builds")
-    print(f"         raw_slag_components with no 'tio2' key, so Ti that did not go to")
-    print(f"         hot metal is dropped: {ti_missing:,.2f} MT of TiO2 unaccounted.")
-    print(f"         At the plant's {PLANT_SLAG_PCT['tio2']:.2f}% this slag should carry "
-          f"~{tio2_expected:,.1f} MT.")
+    if d.get("tio2_to_slag", False):
+        print(f"  TiO2   counted in the slag (tio2_to_slag): {tio2_calc:,.2f} MT; at the plant's "
+              f"{PLANT_SLAG_PCT['tio2']:.2f}% this slag would carry ~{tio2_expected:,.1f} MT.")
+    else:
+        print(f"  TiO2   left out (tio2_to_slag false, workbook basis): Ti that did not go to")
+        print(f"         hot metal is dropped: {ti_missing:,.2f} MT of TiO2 unaccounted.")
+        print(f"         At the plant's {PLANT_SLAG_PCT['tio2']:.2f}% this slag should carry "
+              f"~{tio2_expected:,.1f} MT.")
     print(f"  MnO    model puts {raw['mno']:,.2f} MT into slag, because all Mn was assigned")
     print(f"         to pig iron (HM Mn {SET.mn_pct:.2f}% x {bal.actual_pig_iron_mt:,.0f} MT PI"
           f" = {bal.actual_pig_iron_mt*SET.mn_pct/100:,.2f} MT capacity vs "
           f"{bal.net_into_bf_mt['mn']:,.2f} MT available).")
     print(f"         At the plant's {PLANT_SLAG_PCT['mno']:.2f}% this slag should carry "
           f"~{mno_expected:,.1f} MT.")
-    understated = (tio2_expected - 0.0) + (mno_expected - raw["mno"])
+    understated = (tio2_expected - tio2_calc) + (mno_expected - raw["mno"])
     print(f"  Net effect: slag understated by ~{understated:,.1f} MT "
           f"({understated/tot*100:.1f}% of the total).")
     print()

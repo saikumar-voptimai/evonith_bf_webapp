@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BF-02 process fact register",
+  "type": "object",
+  "required": ["name", "version", "date", "statuses", "facts", "revision_log"],
+  "properties": {
+    "name": {"type": "string"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "source": {"type": "string"},
+    "statuses": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "grades": {"type": "object", "additionalProperties": {"type": "string"}},
+    "revision_log": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["version", "date", "change"],
+        "properties": {
+          "version": {"type": "string"},
+          "date": {"type": "string"},
+          "change": {"type": "string"}
+        }
+      }
+    },
+    "facts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "group", "statement", "value", "status", "grade", "version", "date"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^(COKE|GAS|FLOW|DATA|BAND|ASM)-[0-9]{2}$"},
+          "group": {"enum": ["COKE", "GAS", "FLOW", "DATA", "BAND", "ASM"]},
+          "statement": {"type": "string", "minLength": 1},
+          "value": {"type": ["number", "null"]},
+          "unit": {"type": "string"},
+          "se": {"type": "number", "minimum": 0},
+          "range": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+          "status": {"type": "string"},
+          "grade": {"type": "string"},
+          "basis": {"type": "string"},
+          "literature": {"type": "string"},
+          "validity_window": {"type": "string"},
+          "next_test": {"type": "string"},
+          "version": {"type": "string"},
+          "date": {"type": "string"},
+          "note": {"type": "string"},
+          "params": {"type": "object"}
+        }
+      }
+    }
+  }
+}

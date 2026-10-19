@@ -1,0 +1,303 @@
+{
+ "source": "webapp UAT config (bmo_operator_inputs.yml, bmo_ore_mapping.yml) + plant lab medians",
+ "materials": [
+  {
+   "id": "sinter_sp_02",
+   "name": "SINTER (SP-02)",
+   "code": "sinter_3",
+   "kind": "sinter",
+   "price": 8724.0,
+   "lo": 58.0,
+   "hi": 70.0,
+   "selected_in_uat": true,
+   "chem": {
+    "Fe": 54.46,
+    "FeO": 9.0,
+    "SiO2": 5.4,
+    "Al2O3": 2.285,
+    "CaO": 11.24,
+    "MgO": 2.19,
+    "MnO": 0.22,
+    "TiO2": 0.15,
+    "P": 0.059,
+    "LOI": 0.0
+   },
+   "moist": 0.0,
+   "chem_samples": 312,
+   "chem_period": "Jul-Oct 2026"
+  },
+  {
+   "id": "geomin_clo",
+   "name": "GEOMIN CLO",
+   "code": "ore_3",
+   "kind": "ore",
+   "price": 4284.0,
+   "lo": 0.0,
+   "hi": 20.0,
+   "selected_in_uat": true,
+   "chem": {
+    "Fe": 51.21,
+    "SiO2": 9.84,
+    "Al2O3": 7.89,
+    "CaO": 0.12,
+    "MgO": 0.07,
+    "MnO": 0.13,
+    "TiO2": 0.883,
+    "P": 0.098,
+    "LOI": 7.37,
+    "FeO": 0.0
+   },
+   "moist": 4.3,
+   "chem_samples": 151,
+   "chem_period": "Jul-Oct 2026"
+  },
+  {
+   "id": "lloyds_clo",
+   "name": "LLOYDS CLO",
+   "code": "ore_2",
+   "kind": "ore",
+   "price": 8802.0,
+   "lo": 0.0,
+   "hi": 20.0,
+   "selected_in_uat": true,
+   "chem": {
+    "Fe": 63.52,
+    "SiO2": 3.124,
+    "Al2O3": 2.34,
+    "CaO": 0.067,
+    "MgO": 0.034,
+    "MnO": 0.035,
+    "TiO2": 0.132,
+    "P": 0.058,
+    "LOI": 3.04,
+    "FeO": 0.0
+   },
+   "moist": 4.6,
+   "chem_samples": 154,
+   "chem_period": "Jul-Oct 2026"
+  },
+  {
+   "id": "nmdc_rom",
+   "name": "NMDC ROM",
+   "code": "ore_5",
+   "kind": "ore",
+   "price": 10241.0,
+   "lo": 0.0,
+   "hi": 20.0,
+   "selected_in_uat": true,
+   "chem": {
+    "Fe": 65.64,
+    "SiO2": 3.04,
+    "Al2O3": 0.82,
+    "CaO": 0.12,
+    "MgO": 0.12,
+    "MnO": 0.02,
+    "TiO2": 0.03,
+    "P": 0.023,
+    "LOI": 1.66,
+    "FeO": 0.0
+   },
+   "moist": 1.6,
+   "chem_samples": 27,
+   "chem_period": "Jul-Oct 2026"
+  },
+  {
+   "id": "lloyds_pellet",
+   "name": "LLOYDS PELLET",
+   "code": "pellet_1",
+   "kind": "pellet",
+   "price": 10350.0,
+   "lo": 10.0,
+   "hi": 20.0,
+   "selected_in_uat": true,
+   "chem": {
+    "Fe": 63.795,
+    "SiO2": 4.09,
+    "Al2O3": 2.45,
+    "CaO": 1.045,
+    "MgO": 0.04,
+    "MnO": 0.025,
+    "TiO2": 0.1645,
+    "P": 0.056,
+    "LOI": 0.51,
+    "FeO": 0.0
+   },
+   "moist": 1.0,
+   "chem_samples": 152,
+   "chem_period": "Jul-Oct 2026"
+  },
+  {
+   "id": "nmdc_donimalai",
+   "name": "NMDC DONIMALAI",
+   "code": "ore_1",
+   "kind": "ore",
+   "price": 5750.0,
+   "lo": 0.0,
+   "hi": 15.0,
+   "selected_in_uat": false,
+   "chem": {
+    "Fe": 55.9,
+    "SiO2": 14.96,
+    "Al2O3": 1.995,
+    "CaO": 0.075,
+    "MgO": 0.065,
+    "MnO": 0.16,
+    "TiO2": 0.1795,
+    "P": 0.0525,
+    "LOI": 1.855,
+    "FeO": 0.0
+   },
+   "moist": 1.1,
+   "chem_samples": 30,
+   "chem_period": "Jul-Oct 2026"
+  },
+  {
+   "id": "gomti_clo",
+   "name": "GOMTI CLO",
+   "code": "ore_10",
+   "kind": "ore",
+   "price": 5349.0,
+   "lo": 0.0,
+   "hi": 30.0,
+   "selected_in_uat": false,
+   "chem": {
+    "Fe": 56.6,
+    "SiO2": 7.4,
+    "Al2O3": 1.96,
+    "CaO": 0.45,
+    "MgO": 0.05,
+    "MnO": 0.355,
+    "TiO2": 0.056,
+    "P": 0.086,
+    "LOI": 7.89,
+    "FeO": 0.0
+   },
+   "moist": 2.3,
+   "chem_samples": 24,
+   "chem_period": "Jan-2026 to May-2026 (no Jul-Oct samples)"
+  },
+  {
+   "id": "lloyds_oversize_clo",
+   "name": "LLOYDS OVERSIZE CLO",
+   "code": "ore_6",
+   "kind": "ore",
+   "price": 6162.0,
+   "lo": 0.0,
+   "hi": 10.0,
+   "selected_in_uat": false,
+   "chem": {
+    "Fe": 63.42,
+    "SiO2": 3.7,
+    "Al2O3": 2.45,
+    "CaO": 0.05,
+    "MgO": 0.04,
+    "MnO": 0.04,
+    "TiO2": 0.121,
+    "P": 0.047,
+    "LOI": 2.36,
+    "FeO": 0.0
+   },
+   "moist": 3.6,
+   "chem_samples": 229,
+   "chem_period": "Aug-2025 to Jun-2026 (no Jul-Oct samples)"
+  }
+ ],
+ "fluxes": [
+  {
+   "id": "limestone",
+   "name": "Limestone",
+   "code": "flux_3",
+   "kind": "flux",
+   "price": 1500.0,
+   "max_t_day": 100.0,
+   "chem": {
+    "Fe": 0.3567,
+    "FeO": 0.0,
+    "SiO2": 2.92,
+    "Al2O3": 0.75,
+    "CaO": 51.24,
+    "MgO": 2.81,
+    "MnO": 0.0,
+    "TiO2": 0.0,
+    "P": 0.0,
+    "LOI": 41.19
+   },
+   "moist": 0.2
+  },
+  {
+   "id": "dolomite",
+   "name": "Dolomite",
+   "code": "flux_1",
+   "kind": "flux",
+   "price": 1183.0,
+   "max_t_day": 100.0,
+   "chem": {
+    "Fe": 0.086,
+    "FeO": 0.0,
+    "SiO2": 1.81,
+    "Al2O3": 0.19,
+    "CaO": 30.23,
+    "MgO": 22.25,
+    "MnO": 0.0,
+    "TiO2": 0.0,
+    "P": 0.0,
+    "LOI": 45.18
+   },
+   "moist": 0.3
+  },
+  {
+   "id": "quartz",
+   "name": "Quartz",
+   "code": "flux_2",
+   "kind": "flux",
+   "price": 1796.0,
+   "max_t_day": 100.0,
+   "chem": {
+    "Fe": 0.7694,
+    "FeO": 0.0,
+    "SiO2": 96.08,
+    "Al2O3": 0.68,
+    "CaO": 0.0,
+    "MgO": 0.0,
+    "MnO": 0.0,
+    "TiO2": 0.0,
+    "P": 0.0,
+    "LOI": 1.12
+   },
+   "moist": 0.3
+  }
+ ],
+ "not_carried": {
+  "jrs_ventures": "no lab chemistry (ore_4)",
+  "jayaswal_neco": "only 5 lab samples, last Jan-2026, TiO2 4.5 % looks mis-coded (ore_9)",
+  "titani_ferrous_clo": "no lab chemistry; webapp maps it to ore_11, plant master says ore_13",
+  "acore_ind_pvt_ltd": "manganese ore, no lab chemistry (ore_8)",
+  "bacheli_fines_over_size": "only 4 lab samples, Nov-2025 (ore_7)",
+  "sarda_pellet": "no lab chemistry (pellet_2)"
+ },
+ "fuel": {
+  "coke_price": 31992.0,
+  "nut_price": 26074.0,
+  "pci_price": 22120.0,
+  "pci_kg_thm": 190.0,
+  "nut_kg_thm": 70.0
+ },
+ "slag": {
+  "B2_min": 1.05,
+  "B2_max": 1.15,
+  "slag_max": 340.0,
+  "Al2O3_max": 20.0,
+  "MgO_min": 6.5,
+  "MgO_Al2O3_min": 0.345
+ },
+ "charging": {
+  "charge_t": 26.46,
+  "charges_per_h": 6.5,
+  "uat_charge_t": 26.45927,
+  "uat_charges_per_h": 6.35
+ },
+ "target_prod_t_day": 2270.0,
+ "hot_metal": {
+  "HMT": 1470.0
+ }
+}

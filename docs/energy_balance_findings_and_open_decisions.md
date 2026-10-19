@@ -348,6 +348,23 @@ tidied away.
 of energy-balance-driven fuel estimation in BMO. It does not block the structure
 of that integration.
 
+> **Update 2026-10-15: the stave tags are GJ/hr, not MW.**
+>
+> - **Confirmation.** The plant confirmed the unit. The data agree: each row tag
+>   (`heat_load_row_6..10`) is the exact sum of its four quadrant tags.
+> - **Fix.** The ×3.6 "MW → GJ/hr" factor was removed from
+>   `utils/bmo/coke_history._shell_loss_daily` and from the BMO page's live
+>   snapshot.
+> - **Effect on the stave loss.** Rows 6–10 now read a median 4.9 GJ/hr over the
+>   last 120 days, against 17.6 before. That is about 55 MJ/tHM; all figures above
+>   in this section are on the old ×3.6 basis.
+> - **Calibration refit.** The coke-rate bias offset was refitted the same day:
+>   16.4 → 7.3 kg/tHM, with the daily residual SD 10.2 → 9.2. The corrected raw
+>   balance sits closer to the measured coke rate.
+> - **Still open.** The flow-scaled question (stave-only vs all circuits) and the
+>   reference-day fixture (`shell_loss_gj_per_hr=28.29` in the energy-balance
+>   tests is the old ×3.6 value) are unchanged.
+
 ---
 
 ## 6. Open items and plant actions

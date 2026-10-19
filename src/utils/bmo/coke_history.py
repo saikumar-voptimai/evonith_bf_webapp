@@ -270,11 +270,11 @@ def _dpr_daily(days: int) -> pd.DataFrame:
 def _shell_loss_daily(days: int) -> pd.Series:
     """Stave heat load in GJ/hr, rows 6-10.
 
-    The tags read in MW, so x3.6 gives GJ/hr. The x3600 "GW.hr" conversion that
-    appears elsewhere is a thousand times too large.
+    The heat-load tags are already GJ/hr (plant confirmation, 15 Oct 2026; each
+    row tag is the exact sum of its four quadrant tags), so they are summed with
+    no conversion. Until then they were read as MW and multiplied by 3.6.
 
-    NOTE this is the stave-only figure, not scaled to all cooling circuits. Which
-    basis is correct is an open question worth 11% on the coke rate - see
+    NOTE this is the stave-only figure, not scaled to all cooling circuits - see
     docs/energy_balance_findings_and_open_decisions.md section 5.
     """
 
@@ -299,9 +299,9 @@ def _shell_loss_daily(days: int) -> pd.Series:
     have = [c for c in quads if c in raw.columns]
     if not have:
         return pd.Series(dtype=float)
-    total_mw = raw[have].apply(pd.to_numeric, errors="coerce").sum(axis=1)
-    total_mw = total_mw.where(total_mw.between(2.0, 12.0))
-    daily = (total_mw * 3.6).resample("1D").mean()
+    total_gj = raw[have].apply(pd.to_numeric, errors="coerce").sum(axis=1)
+    total_gj = total_gj.where(total_gj.between(2.0, 12.0))
+    daily = total_gj.resample("1D").mean()
     daily.index = pd.to_datetime(daily.index.tz_localize(None).date)
     return daily
 

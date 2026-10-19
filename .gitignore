@@ -27,6 +27,11 @@ src/assets/tmp
 src/storage/bmo_charged_coke/
 src/storage/bmo_coke_model/
 src/storage/bmo_si_forecast/
+src/storage/bmo_coke_charged_10min/
+src/storage/bmo_coke_setpoint/
+
+# Coke Energy Model: monthly 10-min InfluxDB cache (re-fetched on demand).
+src/storage/coke_energy/
 
 # Local integration packages, replays, browser logs and test output.
 tmp/

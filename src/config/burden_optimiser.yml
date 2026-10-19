@@ -1,0 +1,65 @@
+# Burden & Fuel Optimiser page (custom_pages/11_Burden_Fuel_Optimiser.py) - epic #260.
+#
+# The engine (src/utils/burden_engine) takes its physics from the two-zone (Rist) model in src/utils/coke_energy and its
+# rules of thumb, plausibility bands and default limits from src/config/facts_register.json. This file only sets where
+# the page's inputs come from and the defaults the operator starts from.
+
+burden_optimiser:
+  yard:
+    # Raw-material chemistry: average of the lab samples over this many days (same provider as the Blend Mix Optimiser).
+    chemistry_mode: avg
+    chemistry_window_days: 30
+    # Stock caps each material's t/day: stock / horizon. 1 day = the Blend Mix Optimiser's rule (t/day <= stock).
+    stock_horizon_days: 1.0
+    # Materials whose chemistry fell back to bmo_ore_mapping.yml defaults are left out unless the operator adds them.
+    exclude_fallback_chemistry: true
+    # Burden-resistance rule tags (fact register FLOW-03, FLOW-04).
+    k_rules:
+      gomti_clo: gomti
+      lloyds_oversize_clo: oversize
+
+  charging:
+    # Operator figure (Oct 2026): 26.46 t non-coke per charge, at most 6.5 charges/h (FLOW-12). The Blend Mix
+    # Optimiser's saved UAT value is 6.35/h; the page shows both and uses the one the operator picks.
+    charge_t: 26.46
+    charges_per_h: 6.5
+
+  thermal:
+    # Client basis (ASM-08). PCI and nut coke are fixed inputs; HMT and Si are band-checked (BAND-02/03).
+    HMT: 1470.0
+    hm_Si: 0.38
+    pci_kg_thm: 190.0
+    nut_kg_thm: 70.0
+
+  production:
+    default_target_t_day: 2270.0
+    frontier_lo_t_h: 84.0
+    frontier_step_t_h: 1.0
+    o2_levels: 9               # oxygen grid from today's enrichment up to the enrichment limit
+
+  model_check:
+    # The model against the furnace, shown before the optimisation: burnt coke per shift against the energy-balance
+    # (the optimiser's model) and oxygen-balance predictions from the Coke Energy pipeline. "On track" when, over the
+    # stable shifts of the period, the energy model's bias is within ok_bias_kgthm and its SD within ok_sd_kgthm
+    # (~1.5 x the validated shift SD of 7.7 kg/tHM, register DATA-06).
+    default_days: 14
+    ok_bias_kgthm: 8.0
+    ok_sd_kgthm: 12.0
+    min_shifts: 6
+    stale_after_days: 2    # warn when the latest scored shift is older than this
+    # Burden descent time, stockline to tuyeres: the lag at which the thermal state answers a fuel change, 6-7 h
+    # (docs/bmo_fuel_slag_si_findings.md). Used in the burnt-against-charged-coke tab's text only.
+    descent_time_h: 6.5
+
+  calibration:
+    # Two-zone calibration (shaft efficiency, lower/upper-zone losses, r_H): medians over the stable shifts of the
+    # previous N days from the Coke Energy pipeline; the shipped Jul-Oct 2026 calibration when there are too few.
+    window_days: 14
+    min_shifts: 10
+    fallback_path: src/assets/burden_engine/cal_2z_jul_oct_2026.json
+    # Operating regime (today's controls): medians of the 10-min data over the previous N days.
+    regime_window_days: 14
+
+  # Blast moisture (DATA-04: not measured; no steam added): the default is the month's typical ambient value from the
+  # Coke Energy model (utils.coke_energy.bf_thermo.HUMIDITY_G_NM3), so both pages use one table. The operator can
+  # override it on the page.

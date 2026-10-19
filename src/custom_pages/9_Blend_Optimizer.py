@@ -27,8 +27,11 @@ from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
 from data.bmo.si_forecast_context import LiveSiliconForecastSource
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
+from data.bmo.dust_inputs import dust_caption, dust_cfg_with_live, load_dataset_dust_analysis
 from data.bmo.ore_editor_preferences import (
     apply_dust_preferences,
+    clear_dust_preferences,
+    saved_dust_ids,
     apply_fuel_ash_preferences,
     apply_flux_preferences,
     apply_hm_chemistry_preferences,
@@ -310,6 +313,19 @@ def _static_dataset_cache_token(bmo_cfg: dict[str, Any]) -> tuple[str, int]:
 
 
 @_data_cache(show_spinner=False, ttl=600)
+def _dust_analysis_from_static_csv(
+    static_path: str, mtime_ns: int, window_days: int
+) -> dict[str, dict[str, Any]]:
+    """Dust-catcher and GCP dust analyses (DUST_1 / DUST_2) from the hourly dataset."""
+    if mtime_ns <= 0:
+        return {}
+    try:
+        return load_dataset_dust_analysis(static_path, window_days=window_days)
+    except Exception:  # noqa: BLE001 - the configured chemistry remains
+        return {}
+
+
+@_data_cache(show_spinner=False, ttl=600)
 def _recent_fuel_rates_from_static_csv(
     static_path: str, mtime_ns: int
 ) -> dict[str, float | str]:
@@ -392,14 +408,14 @@ def _live_process_snapshot() -> dict[str, float]:
             if pd.notna(value):
                 out[field] = float(value)
 
-    # Stave heat load: the tags read in MW, so x3.6 gives GJ/hr. The x3600
-    # "GW.hr" conversion is 1000x too large - see energy_balance.yml.
+    # Stave heat load: the tags are already GJ/hr (plant confirmation, 15 Oct
+    # 2026), so they are summed with no conversion - see energy_balance.yml.
     quad = [f"heat_load_r{r}_q{q}" for r in range(6, 11) for q in range(1, 5)]
     have = [c for c in quad if c in df.columns]
     if have:
-        total_mw = df[have].apply(pd.to_numeric, errors="coerce").sum(axis=1).mean()
-        if pd.notna(total_mw) and 2.0 <= float(total_mw) <= 12.0:
-            out["shell_loss_gj_per_hr"] = float(total_mw) * 3.6
+        total_gj = df[have].apply(pd.to_numeric, errors="coerce").sum(axis=1).mean()
+        if pd.notna(total_gj) and 2.0 <= float(total_gj) <= 12.0:
+            out["shell_loss_gj_per_hr"] = float(total_gj)
     return out
 
 
@@ -581,6 +597,21 @@ def _cached_hm_slag_snapshot(
         cache_version,
         ("hm_slag", mode, window_days),
         lambda: provider.get_hm_slag_snapshot(mode=mode, window_days=window_days),
+    )
+
+
+def _cached_dpr_dust_rates(
+    provider: EvonithBmoContextProvider,
+    window_days: int,
+    min_charges_per_day: int,
+    cache_version: int,
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    return _session_cached_source(
+        cache_version,
+        ("dpr_dust", window_days, min_charges_per_day),
+        lambda: provider.get_dpr_dust_rates(
+            window_days=window_days, min_charges_per_day=min_charges_per_day
+        ),
     )
 
 
@@ -1880,6 +1911,7 @@ def _render_data_diagnostics(
         fuel_analysis = diagnostics.get("fuel_analysis", {})
         hm = diagnostics.get("hm_slag", {})
         dpr = diagnostics.get("dpr", {})
+        dust = diagnostics.get("dust", {})
         history = diagnostics.get("history", {})
         process = diagnostics.get("process", {})
         flux = diagnostics.get("flux", {})
@@ -1927,6 +1959,18 @@ def _render_data_diagnostics(
                     "timestamp/window": f"{dpr.get('start_time', '')} -> {dpr.get('end_time', '')}",
                     "rows": dpr.get("row_count", 0),
                     "note": f"slag={dpr.get('slag_generation_mt', 0.0):.1f} MT, HM={dpr.get('total_hot_metal_mt', 0.0):.1f} MT",
+                },
+                {
+                    "area": "dpr_top_gas_dust",
+                    "source": dust.get("source", "offline_feed.dpr_data"),
+                    "timestamp/window": f"{dust.get('start_time', '')} -> {dust.get('end_time', '')}",
+                    "rows": dust.get("dpr_rows", 0),
+                    "note": ", ".join(
+                        f"{r.get('dust_id')} {float(r.get('kg_per_charge', 0.0)):.0f} kg/charge "
+                        f"over {r.get('days', 0)} d"
+                        for r in dust.get("rows", [])
+                    )
+                    or dust.get("error", "no DPR dust; configured rows"),
                 },
                 {
                     "area": "static_ml_dataset",
@@ -3953,6 +3997,24 @@ fuel_analysis, fuel_analysis_warnings = _cached_fuel_analysis_snapshot(
     provider, chemistry_mode, chemistry_window_days, source_cache_version
 )
 ore_diagnostics["warnings"].extend(fuel_analysis_warnings)
+# Top-gas dust for the slag balance: DPR quantity and the plant's dust analyses.
+_ds_cfg = bmo_cfg.get("data_sources", {})
+dpr_dust_rates, _dpr_dust_warnings = _cached_dpr_dust_rates(
+    provider,
+    int(_ds_cfg.get("dust_window_days", 30)),
+    int(_ds_cfg.get("dust_min_charges_per_day", 100)),
+    source_cache_version,
+)
+ore_diagnostics["warnings"].extend(_dpr_dust_warnings)
+# Dust chemistry is the configured values unless the config opts in to the
+# dataset's DUST_1 / DUST_2 analyses (sparse: see setting_bmo.yml).
+dust_analysis = (
+    _dust_analysis_from_static_csv(
+        static_path, static_mtime_ns, int(_ds_cfg.get("dust_analysis_window_days", 60))
+    )
+    if str(_ds_cfg.get("dust_chemistry_source", "configured")).lower() == "dataset"
+    else {}
+)
 nut_coke_moisture_raw = (fuel_analysis.get("nut_coke") or {}).get("moisture_pct")
 if nut_coke_moisture_raw is None:
     nut_coke_moisture_raw = nut_coke_cfg.get("moisture_pct", 0.0)
@@ -4188,16 +4250,22 @@ _fuel_price_values = {
     for fuel_id, default_price in _fuel_price_defaults.items()
 }
 edited_fuel_ash_df = apply_fuel_prices(edited_fuel_ash_df, _fuel_price_values)
+# Top-gas dust: quantity from the DPR (kg per charge over the window), chemistry
+# from the plant's dust analyses in the hourly dataset, the configured rows as
+# fallback; saved operator values override both until "Use DPR values".
 dust_base_df = apply_dust_preferences(
-    build_dust_editor_df(bmo_cfg.get("dust_inputs", [])), operator_preferences
+    build_dust_editor_df(
+        dust_cfg_with_live(bmo_cfg.get("dust_inputs", []), dpr_dust_rates, dust_analysis)
+    ),
+    operator_preferences,
 )
 stored_dust_df = st.session_state.get("bmo_applied_dust_editor_df")
+# An applied (or snapshot-restored) table wins for the session, even when its
+# rows differ from today's configuration, so an older snapshot replays as run.
 if (
     isinstance(stored_dust_df, pd.DataFrame)
-    and not dust_base_df.empty
+    and not stored_dust_df.empty
     and "dust_id" in stored_dust_df.columns
-    and set(stored_dust_df["dust_id"].astype(str))
-    == set(dust_base_df["dust_id"].astype(str))
 ):
     dust_editor_source_df = stored_dust_df
 else:
@@ -4205,32 +4273,59 @@ else:
 
 dust_inputs_applied = False
 dust_inputs_saved = False
+dust_inputs_reset = False
 with st.expander("Advanced Slag Balance Inputs", expanded=False):
     slag_settings_values = render_slag_balance_settings(bmo_cfg.get("slag_balance", {}))
     if not dust_editor_source_df.empty:
-        st.markdown("##### BF Gas Dust")
+        st.markdown("##### Top-gas dust (deducted from the slag)")
         with st.form("bmo_dust_input_form", clear_on_submit=False):
             edited_dust_candidate_df = render_dust_editor(dust_editor_source_df)
+            # Filled after the buttons are handled, so it reflects a save or reset
+            # made in this rerun.
+            dust_status_slot = st.empty()
             st.caption(
-                "Save keeps the BF Gas Dust quantity, moisture, enabled state, "
-                "and chemistry values for the next session."
+                "Quantities come from the DPR (dust over the charges counted on "
+                "the same days); chemistry is configured in setting_bmo.yml. "
+                "Edit and Apply for this session; Save keeps your values for "
+                "next time (they then override the DPR); Use DPR values drops "
+                "saved values."
             )
-            dust_apply_col, dust_save_col = st.columns(2)
+            dust_apply_col, dust_save_col, dust_reset_col = st.columns(3)
             dust_inputs_applied = _form_submit_button(
                 dust_apply_col,
-                "Apply BF Gas Dust Inputs",
+                "Apply dust inputs",
                 type="primary",
                 width="stretch",
             )
             dust_inputs_saved = _form_submit_button(
                 dust_save_col,
-                "Save BF Gas Dust Inputs for Next Time",
+                "Save dust inputs for next time",
+                type="secondary",
+                width="stretch",
+            )
+            dust_inputs_reset = _form_submit_button(
+                dust_reset_col,
+                "Use DPR values",
                 type="secondary",
                 width="stretch",
             )
     else:
         edited_dust_candidate_df = dust_editor_source_df
-if dust_inputs_applied or dust_inputs_saved:
+        dust_status_slot = None
+_dust_saved_ids = saved_dust_ids(operator_preferences)
+if dust_inputs_reset:
+    st.session_state.pop("bmo_applied_dust_editor_df", None)
+    _clear_bmo_results()
+    try:
+        clear_dust_preferences(operator_preferences_path)
+        _dust_saved_ids = []
+        st.success("Saved dust inputs removed: using the DPR and the dust analyses.")
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Could not remove the saved dust inputs: {exc}")
+    edited_dust_df = build_dust_editor_df(
+        dust_cfg_with_live(bmo_cfg.get("dust_inputs", []), dpr_dust_rates, dust_analysis)
+    )
+elif dust_inputs_applied or dust_inputs_saved:
     edited_dust_df = edited_dust_candidate_df.copy()
     st.session_state["bmo_applied_dust_editor_df"] = edited_dust_df
     _clear_bmo_results()
@@ -4239,13 +4334,21 @@ if dust_inputs_applied or dust_inputs_saved:
             saved_path = save_dust_preferences(
                 operator_preferences_path, edited_dust_df
             )
-            st.success(f"BF Gas Dust inputs saved to {saved_path}.")
+            _dust_saved_ids = list(edited_dust_df["dust_id"].astype(str))
+            st.success(f"Dust inputs saved to {saved_path}.")
         except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not save BF Gas Dust inputs: {exc}")
+            st.error(f"Could not save dust inputs: {exc}")
     else:
-        st.success("BF Gas Dust inputs applied.")
+        st.success("Dust inputs applied.")
 else:
     edited_dust_df = dust_editor_source_df
+if dust_status_slot is not None:
+    _dust_status = dust_caption(dpr_dust_rates, dust_analysis, _dust_saved_ids)
+    if not dust_inputs_reset and isinstance(
+        st.session_state.get("bmo_applied_dust_editor_df"), pd.DataFrame
+    ):
+        _dust_status += "  \n*The table holds values applied in this session.*"
+    dust_status_slot.caption(_dust_status)
 dust_inputs = dust_inputs_from_editor(edited_dust_df)
 slag_balance_settings = slag_balance_settings_from_editor(
     slag_settings_values, hm_chem_values, hm_snapshot
@@ -4264,7 +4367,7 @@ _dust_entered = any(
 )
 if _dust_entered and not slag_balance_settings.enabled:
     st.warning(
-        "BF gas dust is entered but "
+        "Top-gas dust is entered but "
         "'Use full slag balance' is unchecked - dust will NOT be deducted "
         "from the slag balance."
     )

@@ -573,6 +573,9 @@ Each is a no-op function or null yml field today:
 | Material Balance | `6_Material_Balance.py` | Per-element daily mass balance (12 elements, Sankey + bars + closure table) |
 | FurnaceMind | `7_FurnaceMind.py` | Custom tool-calling agent with 9 data/plot tools |
 | Feedback | `8_Feedback.py` | Feedback ticket board (SQLAlchemy, SQLite/PostgreSQL) |
+| Blend Mix Optimiser | `9_Blend_Optimizer.py` | Ore + flux LP blend at a fixed production (BMO) |
+| Coke Energy Model | `10_Coke_Energy.py` | Two-zone (Rist) energy balance per shift; coke burnt vs charged vs modelled |
+| Burden & Fuel Optimiser | `11_Burden_Fuel_Optimiser.py` | Ore + flux + fuel blend and production level on the energy model (section 11) |
 
 ### Key Supporting Modules
 
@@ -789,6 +792,40 @@ format: ResponseFormat          # json (default) or csv
 ### FurnaceMind Tool Integration
 
 `fetch_offline_data` tool in `src/agents/furnace_tools.py` routes through `furnace_data.neon_db.offline` (`_fetch_neon_table_df`, `_fetch_neon_report_df`). The `RAW_MATERIAL_COMPOSITION` alias is mapped to `RM_COMPOSITION` internally.
+
+---
+
+## 11. Burden & Fuel Optimiser (Page 11)
+
+**File:** `src/custom_pages/11_Burden_Fuel_Optimiser.py` · full guide `docs/burden_fuel_optimiser.md` · epic #260
+
+Optimises the ferrous blend and flux for **ore + flux + fuel** cost per tHM and the **production level** under the
+day's limits. Coke for every candidate blend comes from the two-zone (Rist) balance in `utils/coke_energy`
+(page 10's model, unchanged), calibrated on the last 14 days of stable shifts. PCI and nut coke are fixed inputs.
+
+- **Modes:** Step 1 cheapest production level (`Engine.min_total_cost` + frontier), Step 2 fixed production
+  (`min_cost(fuel=True)` next to `fuel=False`, the page-9 objective), maximum production (`max_production`).
+- **Model check** (top of the page): latest shift's burnt coke next to the energy- and oxygen-balance predictions at
+  its HMT / Si, the window record and a trend (`utils/burden_engine/model_check.py`, from the Coke Energy pipeline's
+  `shifts` table; thresholds in `burden_optimiser.yml → model_check`). Step 2 also prices today's charged blend
+  (`run_today`, last 24 h of `charge_data`) and shows the saving against it. A second tab compares burnt with charged
+  coke per averaging window (`utils/coke_energy/transit.py`, CCC and Bland–Altman; `docs/burnt_vs_charged_coke.md`).
+- **Layout and commentary:** results follow page 9 (overview strip, Cost / Fuel / Slag / Charging panels with the plant
+  bands from `utils/slag_bands.py`, blend table beside a donut). *Generate commentary* sends the optimiser notes
+  (`src/assets/burden_engine/optimiser_notes.md`), the fact register as a table and the run to the LLM; context is
+  built in `utils/burden_engine/commentary.py` (pure, tested), the panel is `ui/burden_optimiser/commentary.py`.
+- **Engine:** `src/utils/burden_engine/` — pure numerical (no Streamlit). Sequential LP (HiGHS) re-linearising the
+  balance; blast limit (Pb² − Pt²) = K·V^1.8 with burden-resistance rules; RAFT from `utils.energy_balance.raft`.
+- **Fact register:** `src/config/facts_register.json` (schema in `config/schemas/`). Every coefficient outside the
+  balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
+  Change values there, not in code; retired facts are refused by `FactRegister.active()`.
+- **Adapters:** `src/data/burden_engine/inputs.py` (yard from `EvonithBmoContextProvider` + `bmo_operator_inputs.yml`),
+  `src/data/burden_engine/calibration.py` (live calibration from the Coke Energy pipeline result, fallback to
+  `src/assets/burden_engine/cal_2z_jul_oct_2026.json`).
+- **UI:** `src/ui/burden_optimiser/` (sections, cached loaders, frontier figure). Config `src/config/burden_optimiser.yml`.
+- **Offline:** without Neon / InfluxDB the page uses the reference yard (16 Oct 2026) and the shipped calibration, labelled.
+- **Tests:** `pytest tests/test_burden_engine*.py` reproduce the 16 Oct 2026 case report; `BURDEN_ENGINE_FAST=1` skips
+  the slow production cases.
 
 ---
 

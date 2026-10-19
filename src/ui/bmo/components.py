@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.bmo.calculations import compute_charging_requirements
+from utils.slag_bands import PLANT_SLAG_BANDS, band_note
 from utils.bmo.constraints import CHARGING_HOURS_PER_DAY
 from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
 from utils.bmo.shift_production import production_change_pct
@@ -1131,35 +1132,10 @@ def _fmt(value: Any, spec: str = ",.2f", unavailable: str = "n/a") -> str:
     return format(number, spec)
 
 
-def _band_note(value: float | None, low: float, high: float) -> tuple[str, bool]:
-    """Where a value sits against the plant's own operating band.
-
-    ISA-101 high-performance HMI practice is that a bare number carries no
-    situational awareness - the operator needs the normal range beside it to
-    know whether to act. These bands are the plant's measured p5-p95 over 6,515
-    hours of HM_SLAG analysis, not textbook figures, so "outside" means outside
-    what THIS furnace actually does.
-
-    Returns:
-         - return tuple[str, bool] - Caption text, and whether it is in band.
-    """
-
-    if value is None:
-        return f"plant {low:g}–{high:g}", True
-    inside = low <= float(value) <= high
-    marker = "✓" if inside else "⚠"
-    return f"{marker} plant {low:g}–{high:g}", inside
-
-
-# Plant p5-p95 over 6,515 hours of HM_SLAG analysis. B2 and IB4 are display-only;
-# T Basicity is the one the optimizer actually constrains. IB4 reads far lower
-# than T Basicity purely because Al2O3 (~18.7% of slag) joins its denominator -
-# a ~0.85 IB4 is normal, not a fault.
-_PLANT_SLAG_BANDS: dict[str, tuple[float, float]] = {
-    "b2": (1.005, 1.155),
-    "t_basicity": (1.216, 1.403),
-    "ib4": (0.793, 0.902),
-}
+# The bands and the band note live in utils.slag_bands (shared with page 11); the
+# names below are kept so the rest of this module and its callers read as before.
+_band_note = band_note
+_PLANT_SLAG_BANDS = PLANT_SLAG_BANDS
 
 
 def _render_cost_group(
@@ -1950,8 +1926,10 @@ def render_slag_balance_details(
                 "in_final_slag_mt": mno_slag,
             }
         )
-        # Ti (element) -> TiO2 (per spec NOT in slag; all "removed")
+        # Ti (element) -> TiO2: what HM does not take goes to slag (tio2_to_slag);
+        # on the workbook basis (tio2_to_slag false) slag carries none.
         ti_input = float(net_into_bf.get("ti", 0.0))
+        tio2_slag = float(slag_components.get("tio2", 0.0))
         oxide_rows.append(
             {
                 "oxide": "Ti -> TiO2",
@@ -1959,8 +1937,8 @@ def render_slag_balance_details(
                 "from_fuel_ash_mt": float(fuel_components.get("ti", 0.0)) * ti_factor,
                 "from_flux_mt": float(flux_components.get("ti", 0.0)) * ti_factor,
                 "input_after_dust_mt": ti_input * ti_factor,
-                "removed_by_hm_mt": ti_input * ti_factor,
-                "in_final_slag_mt": 0.0,
+                "removed_by_hm_mt": max(0.0, ti_input * ti_factor - tio2_slag),
+                "in_final_slag_mt": tio2_slag,
             }
         )
         # S (element) split
@@ -2036,10 +2014,17 @@ def render_slag_balance_details(
                 "value_mt": round(alkali_input * (1 - alkali_fraction), 3),
             },
             {
-                "removal": "TiO2 lost (not in slag per spec)",
-                "formula": f"Ti_remaining x 1.668 (Ti_remaining = input - Ti_to_HM)",
+                "removal": (
+                    "TiO2 to slag"
+                    if fb_diag.get("tio2_to_slag", True)
+                    else "TiO2 left out of slag (workbook basis)"
+                ),
+                "formula": "Ti_remaining x 1.668 (Ti_remaining = input - Ti_to_HM)",
                 "value_mt": round(
-                    float(blend.diagnostics.get("tio2_unaccounted_mt", 0.0)), 2
+                    float(fb_diag.get("tio2_slag_mt", 0.0))
+                    if fb_diag.get("tio2_to_slag", True)
+                    else float(blend.diagnostics.get("tio2_unaccounted_mt", 0.0)),
+                    2,
                 ),
             },
         ]

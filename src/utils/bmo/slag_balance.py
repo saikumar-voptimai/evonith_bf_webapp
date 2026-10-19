@@ -406,9 +406,10 @@ def _attribute_per_source_slag(
 
     Each input component (sio2, al2o3, cao, mgo, alkali, caf2, s) has a
     retention ratio = raw final slag mass / net input mass after dust deduction.
-    Fe and Mn change form on the way out: their retention converts element mass
-    to FeO/MnO mass via the residual fraction and stoichiometric factor.
-    Ti/P/Zn report to pig iron and have zero slag retention. Dust is applied
+    Fe, Mn and Ti change form on the way out: their retention converts element
+    mass to FeO/MnO/TiO2 mass via the residual fraction and stoichiometric factor
+    (Ti only when ``tio2_to_slag``). P/Zn report to pig iron and have zero slag
+    retention. Dust is applied
     pro-rata to each source by the (net/total) ratio per component so the per-
     source contributions sum to the pre-correction total slag.
 
@@ -438,6 +439,10 @@ def _attribute_per_source_slag(
     net_mn = _safe_float(net_into_bf.get("mn", 0.0))
     mno_slag = _safe_float(raw_slag_components.get("mno", 0.0))
     retention["mn"] = (mno_slag / net_mn) if net_mn > 0 else 0.0
+
+    net_ti = _safe_float(net_into_bf.get("ti", 0.0))
+    tio2_slag = _safe_float(raw_slag_components.get("tio2", 0.0))
+    retention["ti"] = (tio2_slag / net_ti) if net_ti > 0 else 0.0
 
     def _source_total(source_components: Mapping[str, float]) -> float:
         total = 0.0
@@ -582,6 +587,13 @@ def calculate_full_slag_balance(
     alkali_fraction = min(max(_safe_float(settings.alkali_to_slag_fraction), 0.0), 1.0)
     alkali_slag_mt = net_into_bf["alkali"] * alkali_fraction
 
+    # Ti not reduced to hot metal reports to slag as TiO2. The slag analyses count
+    # it in their total (TiO2 median 1.0 % at BF-02, Apr 2026), so leaving it out made every
+    # slag percentage read high (Al2O3 by ~0.6 pt). ``tio2_to_slag=False``
+    # reproduces the plant BURDEN workbook, which leaves it out.
+    tio2_to_slag = bool(getattr(settings, "tio2_to_slag", True))
+    tio2_slag_mt = ti_remaining_mt / TI_FROM_TIO2_FACTOR if tio2_to_slag else 0.0
+
     raw_slag_components = {
         "alkali": float(alkali_slag_mt),
         "sio2": float(sio2_slag_mt),
@@ -590,6 +602,7 @@ def calculate_full_slag_balance(
         "mgo": float(net_into_bf["mgo"]),
         "feo": float(feo_slag_mt),
         "mno": float(mno_slag_mt),
+        "tio2": float(tio2_slag_mt),
         "s": float(sulphur_slag_mt),
         "caf2": float(net_into_bf["caf2"]),
     }
@@ -617,11 +630,11 @@ def calculate_full_slag_balance(
     ti_to_tio2_factor = 1.0 / TI_FROM_TIO2_FACTOR  # element Ti -> TiO2 mass
     hm_reduction_sio2_mt = float(sio2_consumed_mt)
     hm_reduction_mno_mt = float(mn_pi_mt * mn_to_mno_factor)
-    # Only the Ti that actually went to HM is counted here. The remaining Ti
-    # (not added to slag per spec) is exposed as a separate diagnostic so the
-    # imbalance is transparent.
+    # Only the Ti that actually went to HM is counted here. The remaining Ti is
+    # TiO2 in slag; with ``tio2_to_slag=False`` (plant workbook) it is left out
+    # and exposed as ``tio2_unaccounted_mt`` so the imbalance stays visible.
     hm_reduction_tio2_mt = float(ti_pi_mt * ti_to_tio2_factor)
-    tio2_unaccounted_mt = float(ti_remaining_mt * ti_to_tio2_factor)
+    tio2_unaccounted_mt = 0.0 if tio2_to_slag else float(ti_remaining_mt * ti_to_tio2_factor)
     hm_reduction_s_mt = float(sulphur_pi_mt + sulphur_gas_mt)
     hm_reduction_alkali_mt = float(
         max(0.0, _safe_float(net_into_bf.get("alkali", 0.0))) * (1.0 - alkali_fraction)
@@ -661,6 +674,8 @@ def calculate_full_slag_balance(
             "mn_remaining_mt": float(mn_remaining_mt),
             "ti_to_pig_iron_mt": float(ti_pi_mt),
             "ti_remaining_mt": float(ti_remaining_mt),
+            "tio2_to_slag": bool(tio2_to_slag),
+            "tio2_slag_mt": float(tio2_slag_mt),
             "sulphur_to_pig_iron_mt": float(sulphur_pi_mt),
             "sulphur_to_gas_mt": float(sulphur_gas_mt),
             "alkali_to_slag_fraction": float(alkali_fraction),

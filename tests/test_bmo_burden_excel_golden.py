@@ -274,6 +274,9 @@ def _golden_case():
         fe_to_feo_factor=72.0 / 56.0,
         mn_to_mno_factor=1.291,
         slag_correction_factor=1.0,
+        # The BURDEN workbook leaves TiO2 out of the slag total; the app counts it
+        # (tio2_to_slag defaults to True). Reproduce the workbook here.
+        tio2_to_slag=False,
     )
     return ores, quantities, fuels, fluxes, dust, settings
 
@@ -369,3 +372,30 @@ def test_fuel_wet_and_dry_rate_bases_apply_moisture_once() -> None:
 
     assert fuel_quantities_mt(wet, 1.0) == pytest.approx((1.105, 1.011075))
     assert fuel_quantities_mt(dry, 1.0) == pytest.approx((1.105, 1.011075))
+
+
+def test_default_counts_tio2_in_slag_on_top_of_the_workbook() -> None:
+    """Default settings add the TiO2 not reduced to hot metal to the slag total - and nothing else changes."""
+
+    ores, quantities, fuels, fluxes, dust, workbook = _golden_case()
+    kwargs = dict(ores=ores, quantities_mt=quantities, feo_in_slag_pct=0.4, fuel_ash_inputs=fuels, flux_inputs=fluxes,
+                  dust_inputs=dust, hot_metal_target_mt=EXCEL_ACTUAL_PI_MT, charge_mass_mt=26.45927)
+    wb = evaluate_blend(slag_balance_settings=workbook, **kwargs)
+    full = evaluate_blend(slag_balance_settings=replace(workbook, tio2_to_slag=True), **kwargs)
+    fb_wb = wb.diagnostics["full_slag_balance"]
+    fb = full.diagnostics["full_slag_balance"]
+    tio2 = fb["slag_components_mt"]["tio2"]
+    ti_left = fb["diagnostics"]["ti_remaining_mt"]
+    assert tio2 > 0.0
+    assert tio2 == pytest.approx(ti_left * 79.866 / 47.867, rel=1e-3)
+    assert full.slag_mt == pytest.approx(wb.slag_mt + tio2, abs=1e-9)
+    assert fb_wb["diagnostics"]["tio2_unaccounted_mt"] == pytest.approx(tio2, rel=1e-9)
+    assert fb["diagnostics"]["tio2_unaccounted_mt"] == 0.0
+    for key in ("sio2", "al2o3", "cao", "mgo", "feo", "mno", "s", "alkali"):
+        assert fb["slag_components_mt"][key] == pytest.approx(fb_wb["slag_components_mt"][key], abs=1e-12)
+    # percentages are on the fuller total, so they read lower
+    assert full.slag_al2o3_pct < wb.slag_al2o3_pct
+    # per-source attribution still sums to the (uncorrected) total
+    d = fb["diagnostics"]
+    assert d["ore_slag_in_final_mt"] + d["flux_slag_in_final_mt"] + d["fuel_ash_slag_in_final_mt"] == pytest.approx(
+        d["raw_total_slag_mt"], rel=1e-6)

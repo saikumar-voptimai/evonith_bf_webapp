@@ -1,0 +1,116 @@
+# Coke Energy Model page (BF-02 mass + energy balance, fixed-eta CO and two-zone Rist models).
+#
+# The model code in src/utils/coke_energy/ is the Claude-web model (BF02_model_code.zip, 15 Oct 2026) kept almost
+# unchanged. These settings only drive WHERE the data comes from and the rolling-window choices the web scripts
+# hard-coded; the defaults are the web values, so the page reproduces the validated figures.
+# Plan and status: docs/coke_energy_model_plan.md
+
+coke_energy:
+  # First shift date the shift table is built from, and the first date predictions are shown for. Before Dec 2025 the
+  # coke / nut coke / PCI ash analyses are not in the dataset (the web model fills them with medians).
+  history_start: "2025-08-01"
+  predict_from: "2025-12-01"
+
+  # Out-of-sample calibration: medians over the stable shifts of the previous N days (dates strictly before the shift's
+  # date). Used for the heat-loss allowance U (oxygen-balance model), for omega / Q_LZ / Q_UZ / r_H (energy model) and
+  # for the burnt-coke offset (charged - burnt).
+  rolling_window_days: 14
+  rolling_min_shifts: 10
+
+  # Shifts excluded from predictions. The web model excluded 2026-10-07_C (ORE_TM% = 129.7 %, a data error); the
+  # moisture rule catches the same error class generally.
+  bad_shifts: ["2026-10-07_C"]
+  max_ore_moisture_pct: 15.0
+
+  # Slag temperature above hot metal (plant practice, 15 Oct 2026): about 30 degC for a low-Al2O3 slag (~16 %), rising
+  # with Al2O3 to about 60 degC. Linear between the two points, flat outside them; each shift uses its measured slag
+  # Al2O3. The high point is at 21 % (the 95th percentile of tap analyses since Aug 2025 is 20.6 %). The web model used
+  # a constant 40 degC: set slag_superheat: null to go back to it.
+  slag_superheat:
+    low: {al2o3_pct: 16.0, superheat_c: 30.0}
+    high: {al2o3_pct: 21.0, superheat_c: 60.0}
+
+  # Freshness: when a value rests on a data point older than this - measured to the end of the shift shown, or to
+  # now for the status line - the page says so and names the last valid data point. Plant limits (15 Oct 2026):
+  # HM/slag 3 h; raw-material chemistry, size analysis, strength and DPR 1 day; ash 15 days; burden distribution
+  # 1 month. The rest are this page's choice.
+  freshness_limits:
+    hm_slag: 3h
+    rm_chemistry: 1D
+    fines: 1D
+    rm_strength: 1D
+    dpr: 1D
+    ash_chemistry: 15D
+    burden_distribution: 30D
+    dust_basic: 1D
+    dust_chemistry: 15D
+    online_10min: 30min
+    hourly_dataset: 3h
+    charge_data: 2h
+
+  data_sources:
+    # Hourly charge + raw-material composition (same file the web model used, furnace_dataset_*.csv).
+    static_dataset_path: src/assets/data/furnace_dataset.csv
+    static_dataset_url: http://125.23.100.62:8081/furnace_dataset.csv
+    static_refresh_max_age_minutes: 60
+    # 10-min online data from InfluxDB, cached per calendar month. Completed months are fetched once; the running
+    # month is re-fetched when its cache is older than this.
+    influx_cache_dir: src/storage/coke_energy/influx_10min
+    influx_current_month_refresh_minutes: 30
+    # Neon (HM/slag taps, DPR dust) is re-read at most this often.
+    neon_cache_minutes: 30
+
+  # 10-min fields the shift builder reads (versioned contract: adding telemetry to a measurement must not change
+  # what the model sees). Names are the canonical InfluxDB field names from setting_ds_dv.yml.
+  influx_fields:
+    process_params:
+      - hot_blast_vol_nm3h
+      - hot_blast_temp
+      - hot_blast_press
+      - top_press_avg
+      - top_temp_avg
+      - co_pct
+      - co2_pct
+      - h2_pct
+      - oxygen_flow
+      - body_dp_total
+      - body_perm
+      - body_raft
+      - tuyere_velocity
+    heatload_delta_t:
+      - heat_load_row_6
+      - heat_load_row_7
+      - heat_load_row_8
+      - heat_load_row_9
+      - heat_load_row_10
+    delta_t:
+      - delta_t_avg_row6
+      - delta_t_avg_row7
+      - delta_t_avg_row8
+      - delta_t_avg_row9
+      - delta_t_avg_row10
+    cooling_water:
+      - cw_bosh_belly_flow_m3h
+      - cw_bottom_flow_m3h
+      - cw_hearth_flow_m3h
+      - cw_lower_stack_flow_m3h
+      - cw_upper_shaft_flow_m3h
+      - cw_hp_mains_press_bar
+      - cw_pressure_pump_flow_m3h
+      - cw_tuyere_nose_flow_m3h
+      - cw_bosh_belly_press_bar
+      - cw_bottom_press_bar
+      - cw_hearth_press_bar
+      - cw_lower_stack_press_bar
+      - cw_upper_shaft_press_bar
+      - cw_mains_press_bar
+      - cw_tuyere_nose_press_bar
+      - cw_hp_mains_temp_c
+      - cw_tuyere_nose_temp_c
+      - cw_mains_temp_c
+
+  ui:
+    # Rist animation: default look-back for the slider (stable shifts only).
+    rist_default_days: 14
+    # Prediction vs burnt coke: default look-back.
+    timeline_default_days: 30

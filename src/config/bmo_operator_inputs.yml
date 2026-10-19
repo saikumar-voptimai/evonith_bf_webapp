@@ -90,28 +90,6 @@ model_inputs:
   target_slag_mgo_al2o3_ratio_min: 0.345
   max_charges_per_hour: 6.35
   charge_mass_mt: 26.45927
-dust_editor:
-  rows:
-    bf_gas_dust:
-      enabled: true
-      rate_basis: kg_per_charge
-      wet_qty_mt: 0.0
-      quantity_kg_per_charge: 530.0
-      source: BF-2 Burden (2).xlsx/BURDEN
-      moisture_pct: 0.0
-      sio2_pct: 4.5
-      al2o3_pct: 4.86
-      cao_pct: 5.63
-      mgo_pct: 3.57
-      fe_pct: 33.5
-      mn_pct: 0.0
-      p_pct: 0.054
-      s_pct: 0.1
-      ti_pct: 0.0
-      zn_pct: 0.0
-      na2o_pct: 0.0
-      k2o_pct: 0.0
-      caf2_pct: 0.0
 fuel_ash_editor:
   rows:
     coke:
