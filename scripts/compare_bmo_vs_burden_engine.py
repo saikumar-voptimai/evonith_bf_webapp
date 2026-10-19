@@ -54,14 +54,20 @@ def reference_records(prefs: dict) -> tuple[list[OreInput], list[FluxInput]]:
 
 
 def fuel_ash(cal: dict, K_wet: float, s: Settings) -> list[FuelAshInput]:
+    """Fuel rows as page 9 builds them: ash oxides from the calibration's analyses (the engine's), sulphur,
+    phosphorus and alkali from page 9's configured fuel rows (setting_bmo.yml), which the engine has no field for."""
+    bmo = yaml.safe_load(open(ROOT / "src/config/setting_bmo.yml", encoding="utf-8"))["bmo"]
+    cfg = {r["fuel_id"]: r for r in bmo.get("fuel_ash_inputs", [])}
     out = []
     for fid, name, rate, key in (("coke", "Coke", K_wet, "coke"), ("nut_coke", "Nut coke", s.nut_plant, "nut"),
                                  ("pci", "PCI", s.pci_plant, "pci")):
-        f = cal["case"][key]; a = f["ash_comp"]
+        f = cal["case"][key]; a = f["ash_comp"]; c = cfg.get(fid, {})
         out.append(FuelAshInput(fid, name, rate_kg_per_thm=rate, rate_basis="wet", moisture_pct=f["moist_pct"],
                                 vm_pct=f.get("VM", 0.0), ash_pct=f["ash"], sio2_pct=a.get("SiO2", 0.0),
                                 al2o3_pct=a.get("Al2O3", 0.0), cao_pct=a.get("CaO", 0.0), mgo_pct=a.get("MgO", 0.0),
-                                fe2o3_pct=a.get("Fe2O3", 0.0), tio2_pct=a.get("TiO2", 0.0)))
+                                fe2o3_pct=a.get("Fe2O3", 0.0), tio2_pct=a.get("TiO2", 0.0),
+                                alkali_pct=float(c.get("alkali_pct", 0.0)), s_pct=float(c.get("s_pct", 0.0)),
+                                p_pct=float(c.get("p_pct", 0.0))))
     return out
 
 
@@ -145,6 +151,8 @@ def main() -> None:
                   f"| Al2O3, % | {r['out']['Al2O3_pct']:.2f} | {float(lp.slag_al2o3_pct):.2f} |",
                   f"| MgO, % | {r['out']['MgO_pct']:.2f} | {float(lp.slag_mgo_pct):.2f} |",
                   f"| MgO/Al2O3 | {r['out']['MgO'] / r['out']['Al2O3']:.3f} | {float(lp.slag_mgo_al2o3_ratio):.3f} |",
+                  f"| Ferrous charged, kg/tHM wet | {sum(r['wet_kg'][v.id] for v in eng.fer):,.0f} | "
+                  f"{1000 * sum(qty.get(v.id, 0.0) for v in eng.fer) / a.target:,.0f} |",
                   f"| Ore cost, Rs/tHM | {r['cost']['ore']:,.0f} | {float(lp.ore_cost_per_thm_rs):,.0f} |",
                   ""]
         binds_lp = [k for k, ok in (("Al2O3 max", float(lp.slag_al2o3_pct) >= L.Al2O3_max - 0.01),
@@ -153,12 +161,11 @@ def main() -> None:
         binds_en = [b for b in r["binding"] if not b.startswith(("min share", "max share"))]
         lines += [f"Binding in the engine: {', '.join(binds_en) or '-'}. Slag-quality limits at their bound in the "
                   f"page-9 LP: {', '.join(binds_lp) or 'none'}.", "",
-                  "Why the slag numbers differ for the same blend (see docs/burden_fuel_optimiser.md): the Al2O3 mass is "
-                  "the same in both, but the page-9 slag total leaves out TiO2 (about 4 kg/tHM; 'not added to slag per "
-                  "spec') and has no allowance for K2O + Na2O + S + P2O5, so it is about 10 kg/tHM lighter and its "
-                  "Al2O3 % reads about 0.6 pt higher. Its dust row also removes about 2 kg CaO and 1.3 kg MgO per tHM, "
-                  "so its basicity reads about 0.02 lower. The lab slag analyses include TiO2 (1.1-1.3 %) and alkalis "
-                  "+ S (about 1 %), as the engine does."]
+                  "Same blend through both slag calculations: see docs/burden_fuel_optimiser.md. Both count TiO2, "
+                  "alkalis and sulphur in the slag total (page 9 from its analyses, the engine as a 1.2 % allowance). "
+                  "What still differs is the dust row and the Fe sizing: page 9's dust removes about 2.0 kg CaO and "
+                  "1.3 kg MgO per tHM (the engine's 0.65 kg CaO, no MgO), so page 9 needs dolomite and a little Geomin "
+                  "swapped for Lloyds CLO to hold MgO/Al2O3; and it charges a few kg/tHM more ferrous."]
     text = "\n".join(lines) + "\n"
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8")

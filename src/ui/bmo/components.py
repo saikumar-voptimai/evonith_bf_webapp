@@ -1950,8 +1950,10 @@ def render_slag_balance_details(
                 "in_final_slag_mt": mno_slag,
             }
         )
-        # Ti (element) -> TiO2 (per spec NOT in slag; all "removed")
+        # Ti (element) -> TiO2: what HM does not take goes to slag (tio2_to_slag);
+        # on the workbook basis (tio2_to_slag false) slag carries none.
         ti_input = float(net_into_bf.get("ti", 0.0))
+        tio2_slag = float(slag_components.get("tio2", 0.0))
         oxide_rows.append(
             {
                 "oxide": "Ti -> TiO2",
@@ -1959,8 +1961,8 @@ def render_slag_balance_details(
                 "from_fuel_ash_mt": float(fuel_components.get("ti", 0.0)) * ti_factor,
                 "from_flux_mt": float(flux_components.get("ti", 0.0)) * ti_factor,
                 "input_after_dust_mt": ti_input * ti_factor,
-                "removed_by_hm_mt": ti_input * ti_factor,
-                "in_final_slag_mt": 0.0,
+                "removed_by_hm_mt": max(0.0, ti_input * ti_factor - tio2_slag),
+                "in_final_slag_mt": tio2_slag,
             }
         )
         # S (element) split
@@ -2036,10 +2038,17 @@ def render_slag_balance_details(
                 "value_mt": round(alkali_input * (1 - alkali_fraction), 3),
             },
             {
-                "removal": "TiO2 lost (not in slag per spec)",
-                "formula": f"Ti_remaining x 1.668 (Ti_remaining = input - Ti_to_HM)",
+                "removal": (
+                    "TiO2 to slag"
+                    if fb_diag.get("tio2_to_slag", True)
+                    else "TiO2 left out of slag (workbook basis)"
+                ),
+                "formula": "Ti_remaining x 1.668 (Ti_remaining = input - Ti_to_HM)",
                 "value_mt": round(
-                    float(blend.diagnostics.get("tio2_unaccounted_mt", 0.0)), 2
+                    float(fb_diag.get("tio2_slag_mt", 0.0))
+                    if fb_diag.get("tio2_to_slag", True)
+                    else float(blend.diagnostics.get("tio2_unaccounted_mt", 0.0)),
+                    2,
                 ),
             },
         ]

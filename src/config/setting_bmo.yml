@@ -348,6 +348,10 @@ bmo:
     # With HM-driven PI chemistry the slag balance is self-consistent;
     # leave correction at 1.0 unless empirical calibration is still needed.
     slag_correction_factor: 1.0
+    # Ti not reduced to hot metal counts in the slag total as TiO2, as in the
+    # lab's slag analysis (TiO2 median 1.0 %, 0.4-1.2 %, Apr 2026 daily
+    # analyses). false = the plant BURDEN workbook.
+    tio2_to_slag: true
 
   # What LP and DE anchor their reported fuel rates to, before the coke-rate
   # correction below is applied.

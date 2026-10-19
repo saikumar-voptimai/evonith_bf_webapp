@@ -268,4 +268,5 @@ def slag_balance_settings_from_editor(
         slag_correction_factor=float(
             settings_values.get("slag_correction_factor", 1.0)
         ),
+        tio2_to_slag=bool(settings_values.get("tio2_to_slag", True)),
     )

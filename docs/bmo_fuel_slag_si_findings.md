@@ -128,6 +128,13 @@ Found while tracing the calculation:
 Combined the model understates slag by ~6.5 MT, about **0.8%** — small beside the
 flux effect, but systematic and one-directional.
 
+> **Update, Oct 2026:** item 1 is fixed. TiO₂ not reduced to hot metal now counts in
+> the slag total (`SlagBalanceSettings.tio2_to_slag`, default on in `setting_bmo.yml`);
+> `false` keeps the plant workbook's basis, used by the workbook golden test and the
+> frozen charged-coke bundles. The daily slag analyses of Apr 2026
+> (`scripts/slag_validation_results.csv`) show TiO₂ at a median 1.0 %. Item 2 (MnO)
+> is unchanged.
+
 ---
 
 ## 1. The deployed fuel model cannot see the burden

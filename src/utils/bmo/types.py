@@ -343,6 +343,10 @@ class SlagBalanceSettings:
          - fe_to_feo_factor: float - Conversion factor from remaining Fe to FeO.
          - mn_to_mno_factor: float - Conversion factor from remaining Mn to MnO.
          - slag_correction_factor: float - Empirical factor applied to final slag.
+         - tio2_to_slag: bool - Count the TiO2 not reduced to hot metal as slag.
+           True (default): the slag total is a full oxide sum, as the lab's slag
+           analysis is (TiO2 median 1.0 % at BF-02, Apr 2026). False reproduces the plant
+           BURDEN workbook, which leaves TiO2 out of the slag total.
 
     Returns:
          - return SlagBalanceSettings - Full slag balance configuration.
@@ -364,6 +368,7 @@ class SlagBalanceSettings:
     fe_to_feo_factor: float = 72.0 / 56.0
     mn_to_mno_factor: float = 1.291
     slag_correction_factor: float = 1.0
+    tio2_to_slag: bool = True
 
 
 @dataclass

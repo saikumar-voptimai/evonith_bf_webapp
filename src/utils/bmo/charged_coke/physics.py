@@ -138,7 +138,12 @@ def expected_slag(
         ores=ores,
         quantities_mt=quantities,
         hot_metal_mt=hm,
-        settings=SlagBalanceSettings(**_allowed(SlagBalanceSettings, config["slag_balance"])),
+        # A frozen bundle keeps the slag basis it was trained on. Bundles from before
+        # 19 Oct 2026 have no ``tio2_to_slag`` key and were trained with TiO2 left
+        # out of the slag total; a retrained bundle records the key explicitly.
+        settings=SlagBalanceSettings(
+            **_allowed(SlagBalanceSettings, {"tio2_to_slag": False, **config["slag_balance"]})
+        ),
         fuel_ash_inputs=fuels,
         flux_inputs=[FluxInput(**flux)],
         dust_inputs=dust,
