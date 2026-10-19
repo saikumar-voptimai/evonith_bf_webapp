@@ -27,7 +27,7 @@ import yaml  # noqa: E402
 
 from data.burden_engine.inputs import build_engine_inputs, flux_rows, fuel_prices, yard_rows  # noqa: E402
 from utils.bmo.lp_solver import run_lp_baseline  # noqa: E402
-from utils.bmo.types import FluxInput, FuelAshInput, OreChemistry, OreInput, SlagBalanceSettings  # noqa: E402
+from utils.bmo.types import DustInput, FluxInput, FuelAshInput, OreChemistry, OreInput, SlagBalanceSettings  # noqa: E402
 from utils.burden_engine import Engine, Limits, Settings  # noqa: E402
 from utils.burden_engine.engine import DEFAULT_CAL_PATH, REFERENCE_INPUTS_PATH  # noqa: E402
 
@@ -62,6 +62,19 @@ def fuel_ash(cal: dict, K_wet: float, s: Settings) -> list[FuelAshInput]:
                                 vm_pct=f.get("VM", 0.0), ash_pct=f["ash"], sio2_pct=a.get("SiO2", 0.0),
                                 al2o3_pct=a.get("Al2O3", 0.0), cao_pct=a.get("CaO", 0.0), mgo_pct=a.get("MgO", 0.0),
                                 fe2o3_pct=a.get("Fe2O3", 0.0), tio2_pct=a.get("TiO2", 0.0)))
+    return out
+
+
+def dust_from_prefs(prefs: dict) -> list[DustInput]:
+    """The Blend Mix Optimiser's saved dust rows (page 9 deducts them from the slag)."""
+    out = []
+    for did, d in (prefs.get("dust_editor", {}).get("rows", {}) or {}).items():
+        out.append(DustInput(did, did, enabled=bool(d.get("enabled", True)), rate_basis=d.get("rate_basis", "mt_per_day"),
+                             wet_qty_mt=float(d.get("wet_qty_mt", 0.0)), quantity_kg_per_charge=float(d.get("quantity_kg_per_charge", 0.0)),
+                             moisture_pct=float(d.get("moisture_pct", 0.0)), sio2_pct=float(d.get("sio2_pct", 0.0)),
+                             al2o3_pct=float(d.get("al2o3_pct", 0.0)), cao_pct=float(d.get("cao_pct", 0.0)),
+                             mgo_pct=float(d.get("mgo_pct", 0.0)), fe_pct=float(d.get("fe_pct", 0.0)), p_pct=float(d.get("p_pct", 0.0)),
+                             s_pct=float(d.get("s_pct", 0.0))))
     return out
 
 
@@ -105,7 +118,7 @@ def main() -> None:
         target_slag_basicity_max=L.B2_max, target_slag_al2o3_max_pct=L.Al2O3_max, target_slag_mgo_min_pct=L.MgO_min,
         target_slag_mgo_al2o3_ratio_min=L.MgO_Al2O3_min,
         max_burden_qty_mt=L.charge_t * L.charges_per_h * 24 - s.nut_plant * a.target / 1000.0,
-        fuel_ash_inputs=fuel_ash(cal, r["out"]["K_wet"], s), flux_inputs=fluxes,
+        fuel_ash_inputs=fuel_ash(cal, r["out"]["K_wet"], s), flux_inputs=fluxes, dust_inputs=dust_from_prefs(prefs),
         slag_balance_settings=SlagBalanceSettings(enabled=True, carbon_pct=hm["C"], silicon_pct=s.hm_Si,
                                                   sulphur_pct=hm["S"], mn_pct=hm["Mn"], ti_pct=hm["Ti"]),
         hot_metal_target_mt=a.target, charge_mass_mt=L.charge_t, _explain=True)
@@ -140,11 +153,12 @@ def main() -> None:
         binds_en = [b for b in r["binding"] if not b.startswith(("min share", "max share"))]
         lines += [f"Binding in the engine: {', '.join(binds_en) or '-'}. Slag-quality limits at their bound in the "
                   f"page-9 LP: {', '.join(binds_lp) or 'none'}.", "",
-                  "The engine's slag is the two-zone balance's own (fuel ash at the solved coke rate, dust, Si/Mn/Ti to "
-                  "hot metal); the LP's is utils.bmo.slag_balance with fixed fuel rates. Where the two slag models put a "
-                  "different Al2O3 / MgO on the same blend, the LP and the engine buy different flux (dolomite dilutes "
-                  "Al2O3; limestone only lifts basicity). Check both against the measured slag (register DATA-09: Jul-Oct "
-                  "Al2O3 18.9 %, MgO 7.18 %, MgO/Al2O3 0.381)."]
+                  "Why the slag numbers differ for the same blend (see docs/burden_fuel_optimiser.md): the Al2O3 mass is "
+                  "the same in both, but the page-9 slag total leaves out TiO2 (about 4 kg/tHM; 'not added to slag per "
+                  "spec') and has no allowance for K2O + Na2O + S + P2O5, so it is about 10 kg/tHM lighter and its "
+                  "Al2O3 % reads about 0.6 pt higher. Its dust row also removes about 2 kg CaO and 1.3 kg MgO per tHM, "
+                  "so its basicity reads about 0.02 lower. The lab slag analyses include TiO2 (1.1-1.3 %) and alkalis "
+                  "+ S (about 1 %), as the engine does."]
     text = "\n".join(lines) + "\n"
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8")

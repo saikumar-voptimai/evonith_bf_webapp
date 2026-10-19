@@ -98,13 +98,34 @@ PCI 190, nut coke 70, HMT 1,470 °C, Jul–Oct 2026 calibration. `pytest tests/t
 
 ## Comparison with the Blend Mix Optimiser LP
 
-`python scripts/compare_bmo_vs_burden_engine.py [--live] [--target 2270]` runs both on the same yard with fuel left out
-of the objective. On the reference yard (`docs/burden_fuel_optimiser_vs_bmo.md`) the ferrous blends agree to within
-0.4 points (sinter and pellet on their floors; Geomin 13.4 vs 13.0 %). The fluxes differ: the page-9 slag balance puts
-more Al₂O₃ in the slag for the same blend (20.0 % vs 19.7 %), so its LP sits on the Al₂O₃ cap and buys dolomite to
-dilute it (21.5 kg dolomite + 4.5 kg limestone), while the engine sits below the cap and only lifts basicity
-(13.7 kg limestone). Both should be checked against the measured slag (register DATA-09: Jul–Oct Al₂O₃ 18.9 %,
-MgO 7.18 %).
+`python scripts/compare_bmo_vs_burden_engine.py [--live] [--target 2270]` runs both on the same yard, prices, bounds,
+slag limits and page-9 dust rows, with fuel left out of the objective (`docs/burden_fuel_optimiser_vs_bmo.md`).
+
+On the reference yard at 2,270 t/d the page-9 LP binds on Al₂O₃ ≤ 20 % and MgO/Al₂O₃ ≥ 0.345, the engine does not; the
+page-9 blend moves about 4 points from Lloyds CLO to sinter, Geomin and NMDC ROM and costs Rs 81/tHM more in ore.
+
+**Why, with one blend through both slag calculations** (engine's ore + flux blend, kg/tHM):
+
+| | Engine | Page 9 (with its dust) |
+|---|---:|---:|
+| Al₂O₃ | 67.1 | 67.0 |
+| SiO₂ / CaO / MgO | 116.9 / 122.7 / 23.4 | 117.8 / 121.4 / 22.1 |
+| TiO₂ | 4.2 | 0 (left out "per spec") |
+| K₂O + Na₂O + S + P₂O₅ allowance | 4.1 (1.2 % of slag) | 0 |
+| **Slag total** | **340.0** | **330.0** |
+| **Al₂O₃ %** | **19.74** | **20.31** |
+| CaO/SiO₂ | 1.050 | 1.030 |
+
+* Not the 20 % limit (both use the operator's 20 %) and not averaging (both divide total Al₂O₃ by total slag).
+  The Al₂O₃ mass agrees; the **slag total** differs. Page 9's total excludes TiO₂ and has no allowance for alkalis,
+  sulphur and P₂O₅, so it is about 10 kg/tHM lighter and every percentage in it reads higher: the 20 % cap bites
+  about 0.6 pt earlier.
+* Page 9's dust row (530 kg per charge) also removes about 2.0 kg CaO and 1.3 kg MgO per tHM; the engine's dust removes
+  only CaO 0.65 kg and no MgO. So page 9's basicity reads about 0.02 lower and it needs more flux.
+* The lab slag analyses include TiO₂ (1.1–1.3 %) and K₂O + Na₂O + S (about 1 %) in their total, as the engine does
+  (its TiO₂ share, 1.23 %, matches). On that basis page 9 overstates slag Al₂O₃ % and understates basicity.
+* To settle it on plant data: run both slag calculations on each day's actual charge and compare with the day's slag
+  analysis (needs the Neon tables; #258).
 
 ## Operator walk-through
 
