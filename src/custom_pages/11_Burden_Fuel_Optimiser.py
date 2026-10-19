@@ -6,6 +6,7 @@ blend it is the coke the two-zone (Rist) heat and mass balance needs for the tar
 model, calibrated on recent stable shifts). The blast limit comes from BF-02's burden-resistance rules; every rule,
 band and default limit is in the fact register.
 
+    Model check                          burnt coke against the energy and oxygen balances on recent shifts
     Step 1 · cheapest production level   ore + flux + fuel per tHM against output under the day's limits
     Step 2 · fixed production            cheapest blend at a target, next to the ore + flux-only answer
     Maximum production                   blend and controls at the production ceiling
@@ -32,11 +33,11 @@ import json
 
 from data.burden_engine.inputs import build_engine_inputs
 import ui.burden_optimiser.loaders as loaders
-from ui.burden_optimiser.sections import (render_controls, render_facts, render_frontier, render_kpis,
-                                          render_limits, render_plan_tabs, render_problems, render_status,
-                                          render_thermal, render_yard_editor)
-from utils.burden_engine import BandError, Engine, Infeasible, Settings, load_register
-from utils.burden_engine.scenarios import limits_from, settings_from_regime
+from ui.burden_optimiser.sections import (plan_sentence, render_controls, render_facts, render_frontier, render_kpis,
+                                          render_limits, render_model_check, render_plan_tabs, render_problems,
+                                          render_status, render_thermal, render_yard_editor)
+from utils.burden_engine import BandError, Engine, Infeasible, load_register
+from utils.burden_engine.scenarios import limit_labels, limits_from, settings_from_regime
 from utils.coke_energy.bf_thermo import HUMIDITY_G_NM3
 
 MODES = {
@@ -71,8 +72,22 @@ with st.spinner("Calibrating on recent stable shifts (shared with the Coke Energ
 render_status(yard_source, yard_msg, info, reg, _refresh)
 regime = info.regime
 
+# ── Model check: the model against the furnace, before any plan ──────
+render_model_check(getattr(getattr(_ce, "result", None), "shifts", None), cfg.get("model_check", {}), reg)
+
+st.divider()
+st.subheader("Optimise")
 mode = st.radio("What to optimise", list(MODES), format_func=MODES.get, horizontal=True, key="bfo_mode")
 process = mode in ("cheapest", "max")
+prod_cfg = dict(cfg.get("production", {}))
+if mode == "fixed":
+    today_t_day = (regime or {}).get("prod_th")
+    default_target = round(today_t_day * 24, -1) if today_t_day else float(prod_cfg.get("default_target_t_day", 2270.0))
+    target = st.columns(4)[0].number_input("Hot metal target, t/d", min_value=1500.0, max_value=3000.0, step=10.0,
+                                           value=float(default_target), format="%.0f", key="bfo_target",
+                                           help="Default: today's production (median of the regime window)")
+else:
+    target = float(prod_cfg.get("default_target_t_day", 2270.0))
 
 # ── Inputs ────────────────────────────────────────────────────────────
 with st.expander("Yard, prices and stock", expanded=False):
@@ -99,18 +114,10 @@ with st.expander("Day limits", expanded=False):
 
 s0 = settings_from_regime(regime, cfg.get("thermal", {}), info.cal)
 s0_d = dict(s0.__dict__, **thermal)
-prod_cfg = dict(cfg.get("production", {}))
 if mode == "fixed":
     with st.expander("Controls held for the plan (start: today's medians)", expanded=False):
         hy_eng = Engine(cal=info.cal)          # only for the enrichment-tag conversion
         s0_d.update(render_controls(s0_d, hy_eng.hy.enrich_tag, hy_eng.hy.o2_per_air_from_tag, regime, "bfo_ctl"))
-    today_t_day = (regime or {}).get("prod_th")
-    default_target = round(today_t_day * 24, -1) if today_t_day else float(prod_cfg.get("default_target_t_day", 2270.0))
-    target = st.columns(4)[0].number_input("Hot metal target, t/d", min_value=1500.0, max_value=3000.0, step=10.0,
-                                           value=float(default_target), format="%.0f", key="bfo_target",
-                                           help="Default: today's production (median of the regime window)")
-else:
-    target = float(prod_cfg.get("default_target_t_day", 2270.0))
 
 try:
     inputs = build_engine_inputs(materials, fluxes, fuel,
@@ -118,14 +125,21 @@ try:
 except ValueError as exc:
     st.error(f"Cannot build the yard for the optimiser: {exc}")
     st.stop()
-if inputs["not_carried"]:
-    st.caption("Not offered to the optimiser: " + "; ".join(f"{k} ({v})" for k, v in inputs["not_carried"].items()))
+names = {m["id"]: m.get("name", m["id"]) for m in inputs["materials"]} | {f["id"]: f.get("name", f["id"])
+                                                                           for f in inputs["fluxes"]}
+prices = {m["id"]: m["price"] for m in inputs["materials"]} | {f["id"]: f["price"] for f in inputs["fluxes"]}
+zero_stock = [names.get(k, k) for k, v in inputs["not_carried"].items() if v == "zero stock"]
+if zero_stock:
+    st.caption("Selected but out of stock, so not offered: " + ", ".join(zero_stock) + ".")
+# Today's charged blend (last 24 h): the reference Step 2 is compared against. Live yard only.
+today_blend = loaders.charged_blend(loaders.as_json(yard["materials"]), nonce) if yard_source == "live" else {}
+today_shares = dict(today_blend.get("shares") or {})
 
 # ── Run ───────────────────────────────────────────────────────────────
 run = st.button("Optimise", type="primary", key="bfo_run")
 args = (mode, loaders.as_json(inputs), loaders.as_json(info.cal), s0_d, L.__dict__ | {"process": process}, float(target),
         bool(search_o2), int(prod_cfg.get("o2_levels", 9)), float(prod_cfg.get("frontier_lo_t_h", 84.0)),
-        float(prod_cfg.get("frontier_step_t_h", 1.0)))
+        float(prod_cfg.get("frontier_step_t_h", 1.0)), loaders.as_json(today_shares if mode == "fixed" else {}))
 if run:
     st.session_state["bfo_args"] = args
 if st.session_state.get("bfo_args") is None:
@@ -148,12 +162,24 @@ except Infeasible as exc:
 
 eng = loaders.engine(json.loads(args[1]), json.loads(args[2]))
 st.divider()
+flux_ids = [v.id for v in eng.flux]
 if res["mode"] == "fixed":
-    r, r0 = res["with_fuel"], res["ore_only"]
+    r, r0, today = res["with_fuel"], res["ore_only"], res.get("today")
     st.subheader(f"Cheapest blend at {r['P_tday']:,.0f} t/d")
+    kind, line = plan_sentence(r, names, flux_ids, today)
+    (st.success if kind == "saving" else st.info)(line)
+    window = (f"from {today_blend['window'][0]} to {today_blend['window'][1]} IST" if today is not None
+              else "over the last 24 h")
+    if today_blend.get("unmapped"):
+        st.caption("Today's blend leaves out materials without lab chemistry in the window: "
+                   + ", ".join(f"{k} {v:.1f} %" for k, v in today_blend["unmapped"].items()) + ".")
+    elif yard_source == "live" and today is None:
+        st.caption("Today's charged blend is not available"
+                   + (f" ({today_blend['error']})" if today_blend.get("error") else "") + ", so there is no comparison.")
     render_problems(r)
-    render_kpis(r, r0, "ore + flux only")
-    render_plan_tabs(eng, r, "fixed", other=r0, value_of_limits=res.get("value_of_limits"))
+    render_kpis(r, r0, "ore + flux only", today=today)
+    render_plan_tabs(eng, r, "fixed", other=r0, value_of_limits=res.get("value_of_limits"), today=today,
+                     names=names, prices=prices, today_window=window)
     final = r
 elif res["mode"] == "cheapest":
     if res["best"] is None:
@@ -165,19 +191,18 @@ elif res["mode"] == "cheapest":
     final = res["best"] if which == "Cheapest output" or res["top"] is None else res["top"]
     render_problems(final)
     render_kpis(final)
-    render_plan_tabs(eng, final, "cheapest")
+    render_plan_tabs(eng, final, "cheapest", names=names, prices=prices)
 else:
     final = res["result"]
     if final is None:
         st.error("No production level meets every limit at these settings.")
         st.stop()
     st.subheader(f"Maximum production: {final['P_tday']:,.0f} t/d")
-    binds = [b for b in final.get("binding", []) if not b.startswith(("min share", "max share"))]
-    st.caption("Binding: " + (", ".join(binds) or "–") + ". Controls at their limits; oxygen searched within its "
-               "flow and enrichment limits, least oxygen among equal outputs.")
+    st.caption("Limited by: " + (limit_labels(final.get("binding", []), names) or "–") + ". Controls at their limits; "
+               "oxygen searched within its flow and enrichment limits, least oxygen among equal outputs.")
     render_problems(final)
     render_kpis(final)
-    render_plan_tabs(eng, final, "max")
+    render_plan_tabs(eng, final, "max", names=names, prices=prices)
 
 with st.expander("Facts this result rests on"):
     render_facts(reg, final)

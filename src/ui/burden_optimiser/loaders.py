@@ -17,9 +17,9 @@ import streamlit as st
 
 from config.config_loader import load_config
 from data.burden_engine.calibration import CalibrationInfo, fallback_calibration, live_calibration
-from data.burden_engine.inputs import load_yard
+from data.burden_engine.inputs import load_charged_blend, load_yard
 from utils.burden_engine.engine import REFERENCE_INPUTS_PATH, Engine, Limits, Settings
-from utils.burden_engine.scenarios import run_cheapest_level, run_fixed, run_max, value_of_limits
+from utils.burden_engine.scenarios import run_cheapest_level, run_fixed, run_max, run_today, value_of_limits
 
 
 @st.cache_data(show_spinner=False)
@@ -98,14 +98,26 @@ def engine(inputs: Mapping[str, Any], cal: Mapping[str, Any]) -> Engine:
     return store[key]
 
 
+@st.cache_data(show_spinner="Reading today's charged blend…", ttl=900)
+def charged_blend(materials_json: str, nonce: int) -> dict[str, Any]:
+    """Ferrous blend charged over the last 24 h (Neon charge_data); empty with the reason when unavailable."""
+    try:
+        return load_charged_blend(json.loads(materials_json))
+    except Exception as exc:  # noqa: BLE001 - the plan still runs without the comparison
+        return dict(shares={}, unmapped={}, charges=0, window=("", ""), error=f"{type(exc).__name__}: {exc}")
+
+
 @st.cache_data(show_spinner=False, max_entries=16)
 def run_mode(mode: str, inputs_json: str, cal_json: str, settings: dict, limits: dict, prod_t_day: float,
-             search_o2: bool, n_o2: int, P_lo: float, step: float) -> dict[str, Any]:
+             search_o2: bool, n_o2: int, P_lo: float, step: float, today_json: str = "{}") -> dict[str, Any]:
     eng = Engine(json.loads(inputs_json), json.loads(cal_json))
     s, L = Settings(**settings), Limits(**limits)
     if mode == "fixed":
         out = run_fixed(eng, prod_t_day, s, L)
         out["value_of_limits"] = value_of_limits(eng, prod_t_day, s, L, out["with_fuel"])
+        shares = json.loads(today_json or "{}")
+        out["today"] = run_today(json.loads(inputs_json), json.loads(cal_json), shares, prod_t_day, s, L) if shares \
+            else None
         return out
     if mode == "cheapest":
         return run_cheapest_level(eng, s, L, search_o2=search_o2, n_o2=n_o2, P_lo=P_lo, step=step)
@@ -118,6 +130,7 @@ def as_json(obj: Any) -> str:
 
 def clear() -> None:
     yard.clear()
+    charged_blend.clear()
     run_mode.clear()
     for k in ("bfo_cal_memo", "bfo_engine"):
         st.session_state.pop(k, None)

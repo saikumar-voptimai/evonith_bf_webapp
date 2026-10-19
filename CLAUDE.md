@@ -805,6 +805,10 @@ day's limits. Coke for every candidate blend comes from the two-zone (Rist) bala
 
 - **Modes:** Step 1 cheapest production level (`Engine.min_total_cost` + frontier), Step 2 fixed production
   (`min_cost(fuel=True)` next to `fuel=False`, the page-9 objective), maximum production (`max_production`).
+- **Model check** (top of the page): latest shift's burnt coke next to the energy- and oxygen-balance predictions at
+  its HMT / Si, the window record and a trend (`utils/burden_engine/model_check.py`, from the Coke Energy pipeline's
+  `shifts` table; thresholds in `burden_optimiser.yml → model_check`). Step 2 also prices today's charged blend
+  (`run_today`, last 24 h of `charge_data`) and shows the saving against it.
 - **Engine:** `src/utils/burden_engine/` — pure numerical (no Streamlit). Sequential LP (HiGHS) re-linearising the
   balance; blast limit (Pb² − Pt²) = K·V^1.8 with burden-resistance rules; RAFT from `utils.energy_balance.raft`.
 - **Fact register:** `src/config/facts_register.json` (schema in `config/schemas/`). Every coefficient outside the

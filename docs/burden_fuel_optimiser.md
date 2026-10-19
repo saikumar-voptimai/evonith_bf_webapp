@@ -10,11 +10,34 @@ model, page 10, unchanged). PCI and nut coke are fixed inputs.
 
 ## What the operator gets
 
+**First, the model check** (top of the page, before any plan): is the energy model right on today's furnace? For the
+latest scored shift it shows the coke the blast actually burnt next to what the energy balance (the optimiser's model)
+and the oxygen balance predict for that shift's HMT, Si, blast and burden, both out of sample (calibrated only on the
+14 days before the shift). Below that, the model's record over the last 7 / 14 / 30 days on stable shifts and a trend
+of burnt coke against both predictions per shift. *On track* when the energy model's bias is within ±8 kg/tHM and its
+typical error within ±12 (about 1.5 × the validated ±7.7, register DATA-06); otherwise *Check before trusting the
+plan*, with the reason. A warning appears when the latest scored shift is more than 2 days old. Thresholds and the
+default period are in `burden_optimiser.yml → model_check`. The numbers are the Coke Energy pipeline's shift table
+(`PipelineResult.shifts`: `K_burnt`, `K_energy`, `K_obal`), the same result the optimiser calibrates on; the page
+does no physics of its own here (`utils/burden_engine/model_check.py`).
+
+**Then the plan:**
+
 | Mode | Question | Engine call | Typical time |
 |---|---|---|---|
 | Step 1 · Cheapest production level | Under today's limits (blast, O₂, pressures, HBT, charging, yard, slag), what output is cheapest per tHM, how far can output go, and what does each extra tonne cost? | `min_total_cost` (+ frontier) | ~50 s |
 | Step 2 · Fixed production | For a target t/d, which blend minimises ore + flux + fuel, and how does it differ from the ore + flux answer? What is relaxing each limit worth? | `min_cost(fuel=True)` and `min_cost(fuel=False)` | ~1 s |
 | Maximum production | The ceiling for the day, the blend and controls that reach it, and what binds | `max_production` | ~10 s |
+
+**Step 2 against today's blend.** With the live yard, Step 2 also prices the ferrous blend actually charged in the
+last 24 h (`charge_data`, `load_charged_blend`) at the same production, HMT / Si target and controls
+(`run_today`: shares pinned, flux chosen to the same basicity band, slag-quality, charging and stock limits lifted
+because that blend did run). The plan opens with one line an operator can act on: what to charge, the cost, and how
+much less (or more) it costs than today's blend in Rs/tHM and Rs lakh/day. The KPIs, blend, flux, cost and slag
+tables show *Today* next to *Plan*. On the Neon export of 19 Oct 2026 (shipped calibration): today's blend (sinter
+60.8 / Lloyds CLO 14.1 / Geomin 9.7 / NMDC ROM 5.3 / pellet 10.1 %) costs Rs 30,357/tHM at 2,270 t/d; the plan
+(sinter 58 / Lloyds CLO 19 / Geomin 13 / pellet 10 %, limestone 8 kg) Rs 30,144, Rs 214/tHM (Rs 4.9 lakh/day) less
+for 1.6 kg/tHM more coke. Charged materials without lab chemistry in the window are listed and left out.
 
 Every plan shows: blend (wet % of ferrous, kg/tHM, t/d), fuel & cost split, slag (rate, CaO/SiO₂, Al₂O₃, MgO,
 MgO/Al₂O₃ against the limits), process (fuel rate, ηCO, top gas, blast, O₂, enrichment tag, RAFT, pressure needed,
@@ -58,20 +81,21 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 | Path | Role |
 |---|---|
 | `src/custom_pages/11_Burden_Fuel_Optimiser.py` | Page (UI orchestration only) |
-| `src/ui/burden_optimiser/` | `sections.py` (renderers), `loaders.py` (cached yard / calibration / runs), `figures.py` (frontier) |
+| `src/ui/burden_optimiser/` | `sections.py` (renderers), `loaders.py` (cached yard / calibration / today's blend / runs), `figures.py` (frontier, model check) |
+| `src/utils/burden_engine/model_check.py` | Model check: scored shifts, window, accuracy and verdict |
 | `src/utils/burden_engine/engine.py` | `Engine`, `Settings`, `Limits`, `value_in_use`, `summary` |
 | `src/utils/burden_engine/hydraulics.py` | Packed-bed limit, enrichment tag, per-tonne RAFT |
 | `src/utils/burden_engine/facts.py` | Fact register loader (guarded access) |
 | `src/utils/burden_engine/calibration.py` | Two-zone calibration and regime from pipeline frames |
-| `src/utils/burden_engine/scenarios.py` | Mode runs and result tables |
-| `src/data/burden_engine/inputs.py` | Yard / prices / limits from the BMO provider and `bmo_operator_inputs.yml` |
+| `src/utils/burden_engine/scenarios.py` | Mode runs (incl. `run_today`), result and comparison tables, operator labels of the limit rows |
+| `src/data/burden_engine/inputs.py` | Yard / prices / limits from the BMO provider and `bmo_operator_inputs.yml`; today's charged blend |
 | `src/data/burden_engine/calibration.py` | Live calibration over the window, with fallback |
-| `src/config/burden_optimiser.yml` | Page config (yard window, charging, thermal basis, frontier grid, calibration window) |
+| `src/config/burden_optimiser.yml` | Page config (yard window, charging, thermal basis, frontier grid, calibration window, model check) |
 | `src/config/facts_register.json` + `schemas/facts_register.schema.json` | Fact register v1.2 |
 | `src/assets/burden_engine/` | Reference yard (16 Oct 2026 UAT) and Jul–Oct 2026 calibration |
 | `scripts/compare_bmo_vs_burden_engine.py` | Page-9 LP against the engine (ore + flux objective) |
 | `scripts/replay_slag_vs_lab.py` | Both slag calculations on each day's actual charge against the lab's slag analysis |
-| `tests/test_burden_engine*.py` | Engine, inputs, calibration and scenario tests |
+| `tests/test_burden_engine*.py`, `tests/test_burden_optimiser_model_check.py` | Engine, inputs, calibration, scenario, model-check and today's-blend tests |
 
 Also changed on page 9 for this work (all checked against the lab, below):
 * `OreChemistry.loi_pct` (default 0; read from the same lab row, so page 9 picks the same rows).
@@ -81,9 +105,12 @@ Also changed on page 9 for this work (all checked against the lab, below):
 * **Top-gas dust from the DPR.** The single "BF Gas Dust" row from the plant BURDEN workbook (530 kg per charge,
   CaO 5.63 %, MgO 3.57 %) is replaced by the two streams the DPR records, dust catcher and GCP dust
   (`data/bmo/dust_inputs.py`). Quantity: the DPR's dust over the charges `charge_data` counts on the same days, last
-  30 days, as kg per charge. Chemistry: the plant's dust analyses (`DUST_1_*`, `DUST_2_*` in the hourly dataset),
-  last 60 days. Both are editable under *Advanced Slag Balance Inputs*; Save pins the operator's values, *Use DPR
-  values* drops them. The `setting_bmo.yml` rows (Sep 2025 – Oct 2026 averages) are the fallback.
+  30 days, as kg per charge (DPR `flue_dust_mt` = dust catcher, `gcp_dust_mt` = GCP). Chemistry is configured in
+  `setting_bmo.yml → dust_inputs` (default `data_sources.dust_chemistry_source: configured`): the means of the
+  plant's dust analyses in the hourly dataset `furnace_dataset.csv` (`DUST_1_*` dust catcher, `DUST_2_*` GCP,
+  180 days to Oct 2026). `DUST_1` has only a few samples since mid-June (last 23 Jun), so the page does not read
+  the dataset by default; set `dust_chemistry_source: dataset` to use its last 60 days. Quantities and chemistry are
+  editable under *Advanced Slag Balance Inputs*; Save pins the operator's values, *Use DPR values* drops them.
 
 ## Acceptance checklist
 
@@ -107,8 +134,13 @@ PCI 190, nut coke 70, HMT 1,470 °C, Jul–Oct 2026 calibration. `pytest tests/t
       flux_1/2, unpriced, limestone missing). Step 2 at 2,270 t/d: Rs 30,138/tHM, coke 304.7 kg/tHM dry. Step 1:
       cheapest 2,303 t/d at Rs 29,930/tHM, highest 2,407 t/d (shipped calibration; InfluxDB not reachable)
 - [x] Slag against 284 days of lab analyses (`scripts/replay_slag_vs_lab.py`, below)
-- [ ] On UAT with live data: calibration window = last 14 days; Step 2 at today's production within a few kg/tHM of
-      the Coke Energy page's energy-model coke for the current blend
+- [x] Model check (shift results of the Coke Energy validation workbook to 8 Oct; InfluxDB not reachable here):
+      energy model bias −0.4 kg/tHM, typical error ±3.9 over 40 stable shifts of the last 14 days → *On track*;
+      oxygen balance +2.8 / ±4.2
+- [x] Step 2 against today's charged blend (Neon export, 19 Oct): Rs 214/tHM less, coke +1.6 kg/tHM
+- [ ] On UAT with live data: calibration window = last 14 days; the model check reads the live pipeline (latest shift
+      within a day); Step 2 at today's production within a few kg/tHM of the Coke Energy page's energy-model coke
+      for the current blend
 - [ ] Operator walk-through (below) signed off
 
 ## Comparison with the Blend Mix Optimiser LP
@@ -170,12 +202,15 @@ mean slag analysis (`docs/slag_replay_vs_lab.md`). 284 days, Sep 2025 – Oct 20
 ## Operator walk-through
 
 1. **Status line**: yard source (live / reference), calibration window and shaft efficiency, register version.
-2. **Step 1**: open *Day limits* and set today's caps (e.g. blast 105,000 Nm³/h on a blower-limited day). Optimise.
+2. **Model check**: compare the latest shift's burnt coke with the energy-balance figure (same HMT and Si). *On track*
+   over the period means the plan's coke figures can be trusted; *Check before trusting the plan* names the bias or
+   scatter that is out. Switch the period to 7 or 30 days; click *Charged coke* in the legend to add it.
+3. **Step 1**: open *Day limits* and set today's caps (e.g. blast 105,000 Nm³/h on a blower-limited day). Optimise.
    Read the cheapest output, the highest output, the cost of each extra tonne between them, and what binds.
    Switch *Plan shown below* to see either plan's blend and controls.
-3. **Step 2**: enter the target t/d. Optimise. Compare the fuel-aware blend with the ore + flux answer (the KPI delta),
-   then *Value of limits* for the cheapest limit to relax.
-4. **Warnings** mean a rule is extrapolated (pellet > 16.6 %, Gomti > 11.6 %) or RAFT is outside its band; an error
+4. **Step 2**: enter the target t/d (default: today's production). Optimise. Read the plan line (charge, cost, saving
+   against today's blend), the *Today* columns, then *Value of limits* for the cheapest limit to relax.
+5. **Warnings** mean a rule is extrapolated (pellet > 16.6 %, Gomti > 11.6 %) or RAFT is outside its band; an error
    names the limit that blocks the plan.
 
 ## What the engine does not see

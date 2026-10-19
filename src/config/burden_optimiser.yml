@@ -37,6 +37,17 @@ burden_optimiser:
     frontier_step_t_h: 1.0
     o2_levels: 9               # oxygen grid from today's enrichment up to the enrichment limit
 
+  model_check:
+    # The model against the furnace, shown before the optimisation: burnt coke per shift against the energy-balance
+    # (the optimiser's model) and oxygen-balance predictions from the Coke Energy pipeline. "On track" when, over the
+    # stable shifts of the period, the energy model's bias is within ok_bias_kgthm and its SD within ok_sd_kgthm
+    # (~1.5 x the validated shift SD of 7.7 kg/tHM, register DATA-06).
+    default_days: 14
+    ok_bias_kgthm: 8.0
+    ok_sd_kgthm: 12.0
+    min_shifts: 6
+    stale_after_days: 2    # warn when the latest scored shift is older than this
+
   calibration:
     # Two-zone calibration (shaft efficiency, lower/upper-zone losses, r_H): medians over the stable shifts of the
     # previous N days from the Coke Energy pipeline; the shipped Jul-Oct 2026 calibration when there are too few.

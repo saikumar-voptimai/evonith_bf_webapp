@@ -16,6 +16,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
+import pandas as pd
+
 if TYPE_CHECKING:  # the BMO package init is heavy; the records are only read by attribute here
     from utils.bmo.types import FluxInput, OreChemistry, OreInput
 
@@ -204,6 +206,58 @@ def build_engine_inputs(materials: Iterable[Mapping[str, Any]], fluxes: Iterable
         raise ValueError("no ferrous material is selected, carried and in stock")
     return dict(source="Blend Mix Optimiser yard (context provider + bmo_operator_inputs.yml)", materials=mats,
                 fluxes=fl, not_carried=left_out, fuel={k: float(v) for k, v in fuel.items()})
+
+
+FERROUS_PREFIX = ("sinter_", "ore_", "pellet_")
+
+
+def charged_blend(charges: pd.DataFrame, materials: Iterable[Mapping[str, Any]], *, hours: float = 24.0) -> dict[str, Any]:
+    """Today's ferrous blend: wet shares of what was charged in the last ``hours`` before the latest charge.
+
+    ``charges``: ``charge_data`` rows (DatetimeIndex, ``<code>_mt`` columns). Shares are of all ferrous charged; a
+    ferrous code with no yard material (or none with lab chemistry) is reported under ``unmapped`` and left out of
+    ``shares``, which are then the carried materials' shares of the ferrous total (they sum to 100 - unmapped %)."""
+    out: dict[str, Any] = dict(shares={}, unmapped={}, charges=0, window=("", ""))
+    if charges is None or charges.empty or not isinstance(charges.index, pd.DatetimeIndex):
+        return out
+    if charges.index.tz is None:                     # Neon timestamps are UTC
+        charges = charges.tz_localize("UTC")
+    end = charges.index.max()
+    frame = charges[charges.index > end - pd.Timedelta(hours=float(hours))]
+    totals = {c[:-3]: float(pd.to_numeric(frame[c], errors="coerce").fillna(0.0).sum())
+              for c in frame.columns if c.endswith("_mt") and c.startswith(FERROUS_PREFIX)}
+    ferrous = sum(totals.values())
+    if ferrous <= 0:
+        return out
+    by_code = {str(m.get("code", "")): m for m in materials if m.get("code")}
+    for code, t in totals.items():
+        if t <= 0:
+            continue
+        m = by_code.get(code)
+        pct = 100.0 * t / ferrous
+        if m is not None and m.get("carried", True):
+            out["shares"][m["id"]] = out["shares"].get(m["id"], 0.0) + pct
+        else:
+            out["unmapped"][(m or {}).get("name", code)] = pct
+    out.update(charges=int(len(frame)), ferrous_t=ferrous,
+               window=(str(frame.index.min().tz_convert("Asia/Kolkata").strftime("%d %b %H:%M")),
+                       str(end.tz_convert("Asia/Kolkata").strftime("%d %b %H:%M"))))
+    return out
+
+
+def load_charged_blend(materials: Iterable[Mapping[str, Any]], *, hours: float = 24.0) -> dict[str, Any]:
+    """:func:`charged_blend` on ``offline_feed.charge_data`` (Neon), for the materials' codes the table has."""
+    from datetime import datetime, timedelta, timezone
+
+    from furnace_data.offline import OFFLINE_TABLES, fetch_offline_data
+
+    mats = list(materials)
+    allowed = OFFLINE_TABLES.get("offline_feed.charge_data") or set()
+    cols = sorted(c for c in allowed if c.endswith("_mt") and c.startswith(FERROUS_PREFIX))
+    end = datetime.now(timezone.utc)
+    df = fetch_offline_data("offline_feed.charge_data", (end - timedelta(days=3), end), query_type="raw",
+                            columns=["date_time", *cols])
+    return charged_blend(df, mats, hours=hours)
 
 
 def load_yard(cfg: Mapping[str, Any], *, prefs_path: str | Path = "src/config/bmo_operator_inputs.yml",

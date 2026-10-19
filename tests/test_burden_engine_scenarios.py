@@ -59,7 +59,7 @@ def test_value_of_limits_matches_case_report(eng, fixed):
     V = value_of_limits(eng, 2270.0, s, limits_from(load_register()), res["with_fuel"]).set_index("change")
     assert V.loc["Slag cap +10 kg/tHM", "saving_rs_thm"] == pytest.approx(53, abs=3)
     assert V.loc["LLOYDS PELLET floor −2 pt", "saving_rs_thm"] == pytest.approx(44, abs=3)
-    assert V.loc["CaO/SiO2 floor −0.01", "saving_rs_thm"] == pytest.approx(27, abs=3)
+    assert V.loc["CaO/SiO₂ floor −0.01", "saving_rs_thm"] == pytest.approx(27, abs=3)
     assert V.loc["Charges per hour +0.1", "saving_rs_thm"] == pytest.approx(0, abs=0.5)
 
 

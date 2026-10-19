@@ -14,7 +14,7 @@ Modes
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, replace
+from dataclasses import replace
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -69,6 +69,27 @@ def run_fixed(eng: Engine, prod_t_day: float, s: Settings, L: Limits) -> dict[st
     with_fuel = eng.min_cost(prod_t_day=prod_t_day, s=s, L=L, fuel=True)
     ore_only = eng.min_cost(prod_t_day=prod_t_day, s=s, L=L, fuel=False, z0=with_fuel["z"])
     return dict(mode="fixed", with_fuel=with_fuel, ore_only=ore_only)
+
+
+def run_today(inputs: Mapping[str, Any], cal: Mapping[str, Any], shares_wet: Mapping[str, float], prod_t_day: float,
+              s: Settings, L: Limits, facts: FactRegister | None = None, tol_pct: float = 0.05) -> dict[str, Any] | None:
+    """Today's charged blend, priced and modelled at the plan's production, targets and controls.
+
+    The ferrous shares are pinned to today's (renormalised over the materials the engine carries); flux is chosen to
+    the same basicity band; slag-quality, charging and stock limits are lifted, because today's blend did run - the
+    result reports its slag rather than refusing it. None when the shares are empty or the LP fails."""
+    ids = [m["id"] for m in inputs["materials"] if shares_wet.get(m["id"], 0.0) > 0]
+    total = sum(shares_wet[i] for i in ids)
+    if not ids or total <= 0:
+        return None
+    bounds = {i: (max(0.0, 100 * shares_wet[i] / total - tol_pct), min(100.0, 100 * shares_wet[i] / total + tol_pct))
+              for i in ids}
+    inp = dict(inputs, materials=[dict(m, max_t_day=None) for m in inputs["materials"]],
+               fluxes=[dict(f, max_t_day=None) for f in inputs["fluxes"]])
+    eng = Engine(inp, cal, facts=facts, materials=ids, bounds=bounds)
+    Lt = replace(L, slag_max=1000.0, Al2O3_max=100.0, MgO_min=0.0, MgO_Al2O3_min=0.0, charges_per_h=99.0,
+                 process=False)
+    return eng._try(s, prod_t_day / 24, Lt, True)
 
 
 def run_cheapest_level(eng: Engine, s: Settings, L: Limits, *, search_o2: bool = True, n_o2: int = 9,
@@ -133,6 +154,67 @@ def blend_table(eng: Engine, r: Mapping[str, Any], other: Mapping[str, Any] | No
     return pd.DataFrame(rows)
 
 
+# Operator names for the LP's limit rows (the engine's row names stay as they are).
+LIMIT_LABELS = {
+    "slag cap": "slag rate cap", "basicity min": "CaO/SiO₂ floor", "basicity max": "CaO/SiO₂ ceiling",
+    "Al2O3 max": "Al₂O₃ cap", "MgO min": "MgO floor", "MgO/Al2O3 min": "MgO/Al₂O₃ floor",
+    "top gas temp min": "top-gas temperature floor", "fuel rate max": "fuel-rate ceiling (600)",
+    "charging": "charging rate", "blast pressure": "blast pressure", "blast volume": "hot-blast volume",
+    "oxygen flow": "oxygen flow", "enrichment": "enrichment tag",
+}
+
+
+def limit_label(name: str, names: Mapping[str, str] | None = None) -> str:
+    """'min share lloyds_pellet' -> 'LLOYDS PELLET share floor'; 'basicity min' -> 'CaO/SiO₂ floor'."""
+    for prefix, word in (("min share ", "share floor"), ("max share ", "share cap")):
+        if name.startswith(prefix):
+            mid = name[len(prefix):]
+            return f"{(names or {}).get(mid, mid)} {word}"
+    return LIMIT_LABELS.get(name, name)
+
+
+def limit_labels(names_: Sequence[str], names: Mapping[str, str] | None = None, *, shares: bool = False) -> str:
+    """Comma-joined operator names of binding rows (share bounds left out unless ``shares``)."""
+    keep = [n for n in names_ if shares or not n.startswith(("min share", "max share"))]
+    return ", ".join(limit_label(n, names) for n in keep)
+
+
+TRACE_KG = 0.5          # flux below this (kg/tHM) is left out of the comparison tables
+
+
+def blend_compare_table(r: Mapping[str, Any], others: Sequence[tuple[str, Mapping[str, Any] | None]] = (),
+                        names: Mapping[str, str] | None = None, prices: Mapping[str, float] | None = None) -> pd.DataFrame:
+    """Ferrous materials: wet % of ferrous and kg/tHM for the plan and each other plan (today's blend, ore + flux
+    only), the plan's t/day and price. Rows: materials used by any of them, plan's order first."""
+    results = [("Plan", r), *[(lbl, o) for lbl, o in others if o is not None]]
+    ids: list[str] = []
+    for _, res in results:
+        ids += [i for i, sh in res["share_wet"].items() if sh > 0.05 and i not in ids]
+    rows = []
+    for i in ids:
+        row = {"Material": (names or {}).get(i, i)}
+        for lbl, res in results:
+            row[f"{lbl}, wet %"] = float(res["share_wet"].get(i, 0.0))
+        for lbl, res in results:
+            row[f"{lbl}, kg/tHM"] = float(res["wet_kg"].get(i, 0.0))
+        row["Plan, t/d"] = float(r["t_day"].get(i, 0.0))
+        row["Price, Rs/t"] = float((prices or {}).get(i, float("nan")))
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def flux_compare_table(r: Mapping[str, Any], others: Sequence[tuple[str, Mapping[str, Any] | None]] = (),
+                       names: Mapping[str, str] | None = None, flux_ids: Sequence[str] = ()) -> pd.DataFrame:
+    """Fluxes used (>= TRACE_KG kg/tHM in any plan), kg/tHM wet per plan."""
+    results = [("Plan", r), *[(lbl, o) for lbl, o in others if o is not None]]
+    rows = []
+    for i in flux_ids:
+        kg = {lbl: float(res["wet_kg"].get(i, 0.0)) for lbl, res in results}
+        if max(kg.values()) >= TRACE_KG:
+            rows.append({"Flux": (names or {}).get(i, i), **{f"{lbl}, kg/tHM": v for lbl, v in kg.items()}})
+    return pd.DataFrame(rows)
+
+
 def cost_table(r: Mapping[str, Any]) -> pd.DataFrame:
     c, o, s = r["cost"], r["out"], r["settings"]
     rows = [("Ore", c["ore"], ""), ("Flux", c["flux"], ""),
@@ -144,11 +226,11 @@ def cost_table(r: Mapping[str, Any]) -> pd.DataFrame:
 
 def slag_table(r: Mapping[str, Any]) -> pd.DataFrame:
     o, L = r["out"], r["limits"]
-    rows = [("Slag rate, kg/tHM", o["slag"], f"<= {L['slag_max']:.0f}"),
-            ("CaO/SiO2", o["B2"], f"{L['B2_min']:.2f}-{L['B2_max']:.2f}"),
-            ("Al2O3, %", o["Al2O3_pct"], f"<= {L['Al2O3_max']:.1f}"),
-            ("MgO, %", o["MgO_pct"], f">= {L['MgO_min']:.1f}"),
-            ("MgO/Al2O3", o["MgO"] / o["Al2O3"] if o["Al2O3"] else math.nan, f">= {L['MgO_Al2O3_min']:.3f}")]
+    rows = [("Slag rate, kg/tHM", o["slag"], f"≤ {L['slag_max']:.0f}"),
+            ("CaO/SiO₂", o["B2"], f"{L['B2_min']:.2f} – {L['B2_max']:.2f}"),
+            ("Al₂O₃, %", o["Al2O3_pct"], f"≤ {L['Al2O3_max']:.1f}"),
+            ("MgO, %", o["MgO_pct"], f"≥ {L['MgO_min']:.1f}"),
+            ("MgO/Al₂O₃", o["MgO"] / o["Al2O3"] if o["Al2O3"] else math.nan, f"≥ {L['MgO_Al2O3_min']:.3f}")]
     return pd.DataFrame(rows, columns=["quantity", "value", "limit"])
 
 
@@ -156,19 +238,20 @@ def process_table(r: Mapping[str, Any]) -> pd.DataFrame:
     o, s, L = r["out"], r["settings"], r["limits"]
     rows = [
         ("Production", f"{r['P_th']:.1f} t/h · {r['P_tday']:,.0f} t/d", ""),
-        ("Fuel rate (coke wet + nut + PCI)", f"{o['fuel_rate']:.1f} kg/tHM", f"{L['fuel_min']:.0f}-{L['fuel_max']:.0f} (BAND-01)"),
-        ("ηCO / top gas", f"{o['eta']:.1f} % · {o['T_top']:.0f} °C", f"top gas >= {L['T_top_min']:.0f} °C"),
+        ("Fuel rate (coke wet + nut + PCI)", f"{o['fuel_rate']:.1f} kg/tHM", f"{L['fuel_min']:.0f} – {L['fuel_max']:.0f} (BAND-01)"),
+        ("ηCO / top gas", f"{o['eta']:.1f} % · {o['T_top']:.0f} °C", f"top gas ≥ {L['T_top_min']:.0f} °C"),
         ("Shaft efficiency ω", f"{o['omega']:.3f}", "held at the calibration"),
-        ("Hot blast temperature", f"{s['HBT']:.0f} °C", f"<= {L['HBT_max']:.0f}"),
-        ("Hot blast (meter basis)", f"{r['blast_nm3h']:,.0f} Nm³/h", f"<= {L['V_max']:,.0f}" if L["process"] else ""),
+        ("Hot blast temperature", f"{s['HBT']:,.0f} °C", f"≤ {L['HBT_max']:,.0f}"),
+        ("Hot blast (meter basis)", f"{r['blast_nm3h']:,.0f} Nm³/h", f"≤ {L['V_max']:,.0f}" if L["process"] else ""),
         ("Oxygen / enrichment tag", f"{r['O2_nm3h']:,.0f} Nm³/h · {r['enrich_tag']:.2f} %",
-         f"<= {L['O2_flow_max']:,.0f} · <= {L['enrich_max']:.1f}" if L["process"] else ""),
-        ("RAFT (plant workbook)", f"{r['raft']:.0f} °C at {s['humidity_g']:.0f} g/Nm³", f"{L['RAFT_min']:.0f}-{L['RAFT_max']:.0f}"),
-        ("Hot-blast pressure needed", f"{r['Pb_needed']:.2f} bar g at top {s['Pt']:.2f}", f"<= {L['Pb_max']:.2f}" if L["process"] else ""),
-        ("Pressure drop", f"{r['dP_needed']:.2f} bar", f"<= {L['dP_max']:.2f}" if L["process"] else ""),
+         f"≤ {L['O2_flow_max']:,.0f} · ≤ {L['enrich_max']:.1f}" if L["process"] else ""),
+        ("RAFT (plant workbook)", f"{r['raft']:,.0f} °C at {s['humidity_g']:.0f} g/Nm³",
+         f"{L['RAFT_min']:,.0f} – {L['RAFT_max']:,.0f}"),
+        ("Hot-blast pressure needed", f"{r['Pb_needed']:.2f} bar g at top {s['Pt']:.2f}", f"≤ {L['Pb_max']:.2f}" if L["process"] else ""),
+        ("Pressure drop", f"{r['dP_needed']:.2f} bar", f"≤ {L['dP_max']:.2f}" if L["process"] else ""),
         ("Blast at the set hot-blast pressure", f"{r['V_ceiling']:,.0f} Nm³/h at {s['Pb']:.2f} bar g", ""),
         ("Charging", f"{r['charges_per_h']:.2f} charges/h · {r['charging_th']:.0f} t/h",
-         f"<= {L['charges_per_h']:.2f} × {L['charge_t']:.2f} t"),
+         f"≤ {L['charges_per_h']:.2f} × {L['charge_t']:.2f} t"),
     ]
     return pd.DataFrame(rows, columns=["quantity", "value", "limit"])
 
@@ -206,7 +289,7 @@ def relax_steps(eng: Engine, L: Limits, s: Settings) -> list[tuple[str, dict[str
     """One-step relaxations of the limits the case report priced (Limits / Settings / bounds overrides)."""
     steps: list[tuple[str, dict[str, Any]]] = [
         ("Slag cap +10 kg/tHM", dict(L=dict(slag_max=L.slag_max + 10))),
-        ("CaO/SiO2 floor −0.01", dict(L=dict(B2_min=L.B2_min - 0.01))),
+        ("CaO/SiO₂ floor −0.01", dict(L=dict(B2_min=L.B2_min - 0.01))),
         ("Charges per hour +0.1", dict(L=dict(charges_per_h=L.charges_per_h + 0.1))),
         ("Charge mass +0.5 t", dict(L=dict(charge_t=L.charge_t + 0.5))),
         ("Hot blast +40 °C", dict(S=dict(HBT=s.HBT + 40.0))),
