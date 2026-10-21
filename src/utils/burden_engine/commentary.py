@@ -262,9 +262,9 @@ def describe_plan(r: Mapping[str, Any], label: str, names: Mapping[str, str], fl
     om = r.get("omega") or {}
     if om.get("mode") == "blend":
         lines.append(
-            f"Shaft efficiency (blend-dependent, GAS-13..18): {_f(om.get('value'), '.3f')} against the calibration "
-            f"{_f(om.get('omega_cal'), '.3f')}; parts: blend {_f(om.get('d_blend'), '+.4f')}, class correction "
-            f"{_f(om.get('d_disc'), '+.4f')}, operation {_f(om.get('d_oper'), '+.4f')}, gas quantity {_f(om.get('d_R'), '+.4f')}; "
+            f"Shaft efficiency (blend-dependent, OMEGA v1.1, GAS-13..20): {_f(om.get('value'), '.3f')} against the calibration "
+            f"{_f(om.get('omega_cal'), '.3f')}; parts: blend {_f(om.get('d_blend'), '+.4f')}, per-group scale correction "
+            f"{_f(om.get('d_disc'), '+.4f')}, operation {_f(om.get('d_oper'), '+.4f')}, blast moisture {_f(om.get('d_moist'), '+.4f')}; "
             f"sigma(coke) +/-{_f(om.get('sigma_K'), '.1f')} kg/tHM, sigma(cost) +/-{_f(r['cost'].get('sigma'), ',.0f')} "
             f"Rs/tHM; certainty {om.get('certainty')}"
             + (f"; outside what BF-2 ran: {'; '.join(om.get('outside') or [])}" if om.get("outside") else "")

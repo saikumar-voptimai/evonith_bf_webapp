@@ -818,10 +818,14 @@ day's limits. Coke for every candidate blend comes from the two-zone (Rist) bala
   balance; blast limit (Pb² − Pt²) = K·V^1.8 with burden-resistance rules; RAFT from `utils.energy_balance.raft`.
 - **Shaft efficiency:** held at the calibration (ASM-01, `Settings.omega_mode="fixed"`, the engine default) or
   blend-dependent (ASM-18, page default): `utils/burden_engine/omega_model.py` + `assets/burden_engine/omega_model.json`
-  (BF-02 gas-flow model ring counter-current, scaled by plant data), solved inside the balance via
-  `rist.solve_2z(omega_fn=)`. Blend mode adds σ(coke), certainty classes (GAS-18), a certainty filter
-  (`Settings.certainty`), risk aversion (`Settings.risk_k`) and auto mode (`scenarios.run_candidates` +
-  `auto_review.py`: fixed rule picks, the LLM only reviews).
+  (OMEGA v1.1: BF-02 gas-flow model ring counter-current; plant-data scales for pellet and lump ore, operating
+  channel and blast-moisture term from an out-of-sample-tested AR(1) posterior, GAS-13..20; gas-capacity channel
+  retired), solved inside the balance via `rist.solve_2z(omega_fn=)`. Blend mode adds σ(coke), certainty classes
+  (GAS-18), a certainty filter (`Settings.certainty`), risk aversion (`Settings.risk_k`) and auto mode
+  (`scenarios.run_candidates` + `auto_review.py`: fixed rule picks, the LLM only reviews).
+- **Blast moisture:** the Wardha daily weather record (`utils/coke_energy/weather.py`, DATA-11;
+  `config/coke_energy.yml → blast_moisture.source: weather_file | table`), monthly table outside the record. Used by
+  the Coke Energy pipeline (`run_shifts.case_from_shift`), the engine calibration and the page default.
 - **Fact register:** `src/config/facts_register.json` (schema in `config/schemas/`). Every coefficient outside the
   balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
   Change values there, not in code; retired facts are refused by `FactRegister.active()`.

@@ -29,9 +29,10 @@ def render_omega_settings(key: str = "bfo_om") -> dict[str, Any]:
     """Model choice, certainty filter and risk aversion. Returns Settings fields plus ``auto``."""
     c1, c2, c3 = st.columns([2, 2, 2])
     blend = c1.toggle("Blend-dependent shaft efficiency", value=True, key=f"{key}_mode",
-                      help="On: ω responds to the blend's reducibility and size, where the burden puts ore and coke, "
-                           "residence time and gas quantity (BF-02 gas-flow model, scaled by the plant data; GAS-13..18). "
-                           "Off: ω held at the calibration for every blend (ASM-01), as before.")
+                      help="On: ω responds to the blend's reducibility and size, residence time in the thermal reserve "
+                           "zone, the coke layers, production, oxygen and blast moisture (BF-02 gas-flow model, scaled by "
+                           "the plant data and tested out of sample; OMEGA v1.1, GAS-13..20). Off: ω held at the "
+                           "calibration for every blend (ASM-01), as before.")
     if not blend:
         c2.caption("ω held at the calibration: a blend changes coke through its chemistry only.")
         return dict(omega_mode="fixed", certainty="any", risk_k=0.0, auto=False)
@@ -60,8 +61,8 @@ def render_omega_result(eng: Any, r: Mapping[str, Any], today: Mapping[str, Any]
         k[0].metric("ω (plan)", f"{om['value']:.3f}", f"{om['value'] - om['omega_cal']:+.3f} vs calibration",
                     delta_color="normal", help=f"Calibration ω {om['omega_cal']:.3f}.")
         k[1].metric("σ coke (kg/tHM)", f"± {om['sigma_K']:.1f}",
-                    help="1 sigma of the plan's coke relative to the calibration state: data posterior, operating and "
-                         "gas-capacity terms, surrogate. "
+                    help="1 sigma of the plan's coke relative to the calibration state: blend scales (data posterior), "
+                         "operating scale, blast-moisture coefficient, surrogate. "
                          + ", ".join(f"{p} {v:.1f}" for p, v in om["sigma_parts_K"].items()) + " kg/tHM.")
         k[2].metric("σ cost (Rs/tHM)", f"± {r['cost'].get('sigma', 0.0):,.0f}")
         if today is not None and (today.get("omega") or {}).get("mode") == "blend":
@@ -75,19 +76,20 @@ def render_omega_result(eng: Any, r: Mapping[str, Any], today: Mapping[str, Any]
         else:
             k[3].metric("Day-to-day spread (kg/tHM)", f"± {om['day_sd_K']:.1f}",
                         help="Daily scatter of ω around the model, as coke; it averages out over days.")
-        parts = pd.DataFrame([
-            ("Blend: reducibility, size, burden volume (data-scaled)", om["d_blend"]),
-            ("Blend: class correction from the plant data", om["d_disc"]),
-            ("Operation: coke layers, production (residence), oxygen", om["d_oper"]),
-            ("Gas quantity (capacity ratio R)", om["d_R"]),
-        ], columns=["Part of Δω against the calibration", "Δω"])
+        rows = [("Blend: reducibility, size, burden volume (model)", om["d_blend"]),
+                ("Blend: plant-data scale (pellet, lump ore)", om["d_disc"]),
+                ("Operation: coke layers, production (residence), oxygen", om["d_oper"]),
+                ("Blast moisture (weather record)", om.get("d_moist", 0.0))]
+        if abs(om.get("d_R", 0.0)) > 0:
+            rows.append(("Gas quantity (capacity ratio R)", om["d_R"]))
+        parts = pd.DataFrame(rows, columns=["Part of Δω against the calibration", "Δω"])
         parts["Coke, kg/tHM dry"] = parts["Δω"] * om["dK_domega"]
         st.dataframe(parts, hide_index=True, width="stretch", column_config={
             "Δω": st.column_config.NumberColumn(format="%+.4f"),
             "Coke, kg/tHM dry": st.column_config.NumberColumn(format="%+.1f")})
         st.caption(f"Capacity ratio R {om['R']:.3f}; blend reduction rate {om['k_blend']:.3f} (sinter at the test size = 1); "
                    f"gas in rings with surplus gas {100 * om['gas_in_excess']:.1f} %; wall ring gas {100 * om['wall_gas_share']:.1f} %. "
-                   f"dK/dω {om['dK_domega']:.0f} kg/tHM per unit ω including the gas-quantity loop. Not in σ: the "
+                   f"dK/dω {om['dK_domega']:.0f} kg/tHM per unit ω including the coke-layer loop. Not in σ: the "
                    f"calibration's own error (± {om['cal_se_K']:.1f} kg/tHM, common to every plan) and the day-to-day "
                    f"spread (± {om['day_sd_K']:.1f}). Model {om['version']}.")
         if om["outside"]:

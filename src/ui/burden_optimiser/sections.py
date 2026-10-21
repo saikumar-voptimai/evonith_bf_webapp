@@ -695,5 +695,5 @@ def render_facts(reg: FactRegister, r: Mapping[str, Any] | None) -> None:
     rows = pd.DataFrame(reg.table(ids))
     st.dataframe(rows, width="stretch", hide_index=True)
     st.caption(f"Fact register v{reg.version} ({reg.date}). Statuses: Model = follows from the balance; Supported = "
-               "BF-02 data agree; Assumed = literature or judgement. Retired facts (COKE-17 webapp hand coefficients, "
-               "DATA-10 regressed RAFT) are never used.")
+               "BF-02 data agree; Validated = tested out of sample; Assumed = literature or judgement. Retired facts "
+               "(COKE-17 webapp hand coefficients, DATA-10 regressed RAFT, GAS-17 gas-capacity channel) are never used.")

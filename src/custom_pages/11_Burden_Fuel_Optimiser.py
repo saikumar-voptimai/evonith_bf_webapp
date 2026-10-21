@@ -41,7 +41,7 @@ from ui.burden_optimiser.omega_panel import render_auto, render_omega_result, re
 from utils.burden_engine import BandError, Engine, Infeasible, load_register
 from utils.burden_engine.commentary import build_context, load_notes
 from utils.burden_engine.scenarios import limit_labels, limits_from, settings_from_regime
-from utils.coke_energy.bf_thermo import HUMIDITY_G_NM3
+from utils.coke_energy.weather import blast_moisture_g
 
 MODES = {
     "cheapest": "Step 1 · Cheapest production level",
@@ -97,7 +97,7 @@ else:
 with st.expander("Yard, prices and stock", expanded=False):
     materials, fluxes, fuel = render_yard_editor(yard, "bfo")
 
-humidity_default = (regime or {}).get("humidity_g") or HUMIDITY_G_NM3[dt.date.today().month]
+humidity_default = (regime or {}).get("humidity_g") or blast_moisture_g(dt.date.today())   # DATA-11
 with st.expander("Thermal target and fixed fuels", expanded=False):
     thermal = render_thermal(cfg.get("thermal", {}), reg, humidity_default, "bfo_th")
 
@@ -242,11 +242,13 @@ with st.expander("Facts this result rests on"):
 with st.expander("Assumptions and what the engine does not see"):
     st.markdown(
         "- **Shaft efficiency** is either held at the calibration (switch off; ASM-01) or blend-dependent (default; "
-        "ASM-18, GAS-13..18): the BF-02 gas-flow model's ring counter-current description of the thermal reserve zone "
-        "(reducibility and size of each ferrous, where the burden puts ore and coke, residence time, gas quantity), "
-        "scaled by 200 days of plant data. Each plan carries σ(coke) and a certainty class; the calibration's own "
-        "error (about ±2 kg/tHM) and the day-to-day spread (about ±7 kg/tHM) are reported apart. Pellet and lump-ore "
-        "reducibility are literature values (no plant RI for them).\n"
+        "ASM-18, GAS-13..20, OMEGA v1.1): the BF-02 gas-flow model's ring counter-current description of the thermal "
+        "reserve zone (reducibility and size of each ferrous, residence time, coke layers, production, oxygen), with "
+        "plant-data scales for pellet (1.26 ± 0.45) and lump ore (0.44 ± 0.33) and a blast-moisture term, tested out "
+        "of sample on 175 days (burnt-coke skill +0.18 against holding ω; GAS-20). Each plan carries σ(coke) and a "
+        "certainty class; the calibration's own error (about ±2 kg/tHM) and the day-to-day spread (about ±8 kg/tHM) "
+        "are reported apart. Pellet and lump-ore reducibility are literature values (no plant RI for them).\n"
+        "- **Blast moisture** is the Wardha daily weather record's value (DATA-11), the monthly table outside it.\n"
         "- **Burden-resistance rules** (FLOW-02..07) were fitted on pellet up to 16.6 % and Gomti up to 11.6 % of "
         "ferrous; beyond that the page warns that it is extrapolating.\n"
         "- **Process limits** default to the Jun-Oct 2026 operating envelope, not equipment ratings. Oxygen and stove "

@@ -5,7 +5,8 @@ lives in ``utils.coke_energy.pipeline`` as ``valid_shift_mask`` and ``run_shift_
 """
 import pandas as pd, numpy as np
 from utils.coke_energy.bf_balance import core, DEFAULTS, calibrate_loss
-from utils.coke_energy.bf_thermo import HUMIDITY_G_NM3
+from utils.coke_energy.bf_thermo import HUMIDITY_G_NM3  # noqa: F401  (fallback table, re-exported)
+from utils.coke_energy.weather import blast_moisture_g
 
 RHO_CP = 4.16   # MJ/(m3.K) cooling water at ~30-35 degC
 HBV_INCLUDES_O2 = True   # plant confirmation: hot_blast_vol_nm3h = air + enrichment O2
@@ -91,7 +92,7 @@ def case_from_shift(r):
         hm=dict(Fe=r['chem_pct_fe'], C=r['chem_pct_c'], Si=r['chem_pct_si'], Mn=r['chem_pct_mn'], P=r['chem_pct_p'],
                 S=r['chem_pct_s'], Ti=r['chem_pct_ti']),
         HMT=hmt, slag_FeO_pct=r['slag_pct_feo'], T_top=r['top_temp_avg'], HBT=r['hot_blast_temp'],
-        humidity_g=HUMIDITY_G_NM3[month], O2_per_air=o2 / hb_air,
+        humidity_g=blast_moisture_g(r['sdate']), O2_per_air=o2 / hb_air,   # DATA-11: weather record, else table
         dust=dict(dc_kg=r['dpr_dc_dust_kgthm'], gcp_kg=r['dpr_gcp_dust_kgthm'],
                   dc_C_pct=r['h_DUST_1_BASIC_ANALYSIS_FC_PCT'], gcp_C_pct=r['h_DUST_2_BASIC_ANALYSIS_FC_PCT'],
                   dc_Fe_pct=r['h_DUST_1_BASIC_ANALYSIS_FE_TOTAL_PCT'], gcp_Fe_pct=r['h_DUST_2_BASIC_ANALYSIS_FE_TOTAL_PCT']),

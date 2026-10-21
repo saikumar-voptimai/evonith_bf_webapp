@@ -17,6 +17,15 @@ coke_energy:
   rolling_window_days: 14
   rolling_min_shifts: 10
 
+  # Blast moisture (DATA-04, DATA-11). The cold blast is ambient air: weather_file takes each day's absolute humidity
+  # from the Wardha daily record (Magnus vapour pressure at the mean of T_max and T_min, mean RH, station pressure
+  # below); dates the record does not cover use the monthly table (bf_thermo.HUMIDITY_G_NM3). table: the monthly
+  # table for every date (behaviour before Oct 2026).
+  blast_moisture:
+    source: weather_file
+    path: src/assets/coke_energy/wardha_daily_weather_2025_2026.csv
+    station_pressure_hpa: 985.0
+
   # Shifts excluded from predictions. The web model excluded 2026-10-07_C (ORE_TM% = 129.7 %, a data error); the
   # moisture rule catches the same error class generally.
   bad_shifts: ["2026-10-07_C"]

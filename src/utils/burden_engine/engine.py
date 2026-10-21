@@ -23,10 +23,11 @@ Engine 2.0 (fact register v1.1)
 Shaft efficiency (``Settings.omega_mode``)
   * "fixed" (default, ASM-01): omega held at the calibration for every blend; a blend moves the coke rate through its
     chemistry only.
-  * "blend" (ASM-18, GAS-13..18): omega from ``utils.burden_engine.omega_model`` - the BF-02 gas-flow model's ring
-    counter-current description of the thermal reserve zone, scaled by the plant data - as a function of the blend,
-    the coke rate, production, oxygen and the gas capacity of the balance (solved inside the two-zone balance). Every
-    result then carries sigma(coke), a certainty class (High / Medium / Low) and the parts of omega;
+  * "blend" (ASM-18, GAS-13..20): omega from ``utils.burden_engine.omega_model`` (OMEGA v1.1) - the BF-02 gas-flow
+    model's ring counter-current description of the thermal reserve zone, scaled by the plant data and tested out of
+    sample (GAS-20) - as a function of the blend, the coke rate, production, oxygen and the blast moisture (solved
+    inside the two-zone balance). Every result then carries sigma(coke), a certainty class (High / Medium / Low) and
+    the parts of omega;
     ``Settings.risk_k`` adds risk_k x sigma(cost) to the objective and ``Settings.certainty`` ("medium" / "high")
     restricts the optimiser to plans of that certainty.
 
@@ -243,10 +244,12 @@ class Engine:
         return self._om
 
     def R_eff(self, z: Mapping[str, Any]) -> float:
-        """Capacity ratio the omega model sees: the calibration's total R moved by the change of its carbon-gas part
-        only (GAS-17). Hydrogen reduces wustite several times faster than CO; the ring model has no gas-side rate, so
-        counting extra H2 as capacity alone would lower omega where the plant data show it rising (blast moisture)."""
+        """Capacity ratio the omega model sees. OMEGA v1.1 (``gas_capacity_channel: false``): the calibration's R for
+        every plan - the gas-capacity channel (GAS-17, retired) gave no out-of-sample skill and a negative data scale.
+        With the channel on (v1.0): the calibration's total R moved by the change of its carbon-gas part only."""
         from utils.coke_energy.rist import Y_W
+        if self._om is not None and not self._om.gas_capacity:
+            return self._om.R_ref
         return self._om.R_ref + (z["etaWc"] * z["nCg"] / (Y_W * z["nFe"]) - self._RC_cal) if self._om is not None \
             else z["O_max_TRZ"] / (Y_W * z["nFe"])
 
@@ -278,7 +281,8 @@ class Engine:
                           nut=float(case["nut_kg"]) / (1 - float(case["nut"]["moist_pct"]) / 100),
                           pci=float(case["pci_kg"]) / (1 - float(case["pci"]["moist_pct"]) / 100),
                           prod=float(case["prod_th"]), blast_t=self.c_hb * float(cal["hb_per_t_model_cal"]),
-                          o2=r_o2 / (1 + r_o2), rdi=m.rdi, fer=sum(wet.values()))
+                          o2=r_o2 / (1 + r_o2), rdi=m.rdi, fer=sum(wet.values()),
+                          humidity=float(case.get("humidity_g", float("nan"))))
 
     def plan_state(self, z, s: Settings, P) -> OmegaState:
         m = self.omega_model()
@@ -288,7 +292,7 @@ class Engine:
         sh, fe, cls = m.blend_parts(wet)
         return OmegaState(sh, fe, cls, coke=float(m.ref.coke), nut=float(s.nut_plant), pci=float(s.pci_plant),
                           prod=float(P), blast_t=m.ref.blast_t, o2=s.O2_per_air / (1 + s.O2_per_air), rdi=m.rdi,
-                          fer=float(np.sum(np.maximum(z[:self.nf], 0.0))))
+                          fer=float(np.sum(np.maximum(z[:self.nf], 0.0))), humidity=float(s.humidity_g))
 
     def omega_limits(self, s: Settings) -> dict[str, Any] | None:
         """The certainty filter's constraints (blend mode only)."""
@@ -686,7 +690,8 @@ class Engine:
                     sigma_K=sigK, sigma_parts_K={k: to_K * v for k, v in t["sigma_parts"].items()},
                     certainty=m.certainty(sigK, t["support"]), support=t["support"], outside=list(t["outside"]),
                     d_blend=t["d_blend"], d_blend_phys=t["d_blend_phys"], d_disc=t["d_disc"], d_oper=t["d_oper"],
-                    d_R=t["d_R"], R=t["R"], k_blend=t["k_blend"], gas_in_excess=t["gas_in_excess"],
+                    d_R=t["d_R"], d_moist=t.get("d_moist", 0.0), R=t["R"], k_blend=t["k_blend"],
+                    gas_in_excess=t["gas_in_excess"],
                     wall_gas_share=t["wall_gas_share"], cal_se_K=to_K * m.cal_se, day_sd_K=to_K * m.day_sd,
                     dK_domega=self._dKdw, risk_k=s.risk_k, filter=s.certainty, version=m.version, terms=t)
 

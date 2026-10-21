@@ -167,5 +167,5 @@ def load_register(path: str | Path | None = None) -> FactRegister:
 # Facts every engine result rests on; the page shows these with their status.
 ENGINE_FACTS = ("ASM-01", "ASM-02", "ASM-03", "ASM-04", "ASM-05", "ASM-06", "ASM-08", "ASM-09",
                 "FLOW-01", "FLOW-02", "FLOW-03", "FLOW-04", "FLOW-05", "FLOW-06", "DATA-02", "DATA-03",
-                "BAND-01", "BAND-02", "BAND-03", "GAS-10", "ASM-18", "GAS-13", "GAS-14", "GAS-15", "GAS-16", "GAS-17",
-                "GAS-18", "ASM-19")
+                "BAND-01", "BAND-02", "BAND-03", "GAS-10", "ASM-18", "GAS-13", "GAS-14", "GAS-15", "GAS-16",
+                "GAS-18", "GAS-19", "GAS-20", "DATA-11", "ASM-19")

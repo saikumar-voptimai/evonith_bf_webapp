@@ -24,7 +24,8 @@ import numpy as np
 import pandas as pd
 
 from utils.coke_energy.bf_balance import DEFAULTS, calibrate_loss, flux_needed, slag_and_flux
-from utils.coke_energy.bf_thermo import HUMIDITY_G_NM3, MW
+from utils.coke_energy.bf_thermo import MW
+from utils.coke_energy.weather import blast_moisture, mean_blast_moisture
 from utils.coke_energy.rist import TZ, calibrate_2z, solve_2z
 from utils.coke_energy.run_shifts import case_from_shift
 from utils.coke_energy.whatif import stable_mask
@@ -105,6 +106,7 @@ def calibrate_from_shifts(S: pd.DataFrame, R: pd.DataFrame, keys: Iterable[str],
     row["sdate"] = pd.to_datetime(sel["sdate"]).max()
     row["shift"] = "avg"
     case = case_from_shift(row)
+    case["humidity_g"] = mean_blast_moisture(pd.to_datetime(sel["sdate"]))[0]     # window mean (DATA-11)
     Rb = R.loc[keys]
     case["eta_H2"] = float(Rb["eta_H2"].mean()) / 100
     eta = float(Rb["eta_CO"].mean()) / 100
@@ -171,15 +173,16 @@ def operating_regime(S: pd.DataFrame, R: pd.DataFrame, keys: Iterable[str], enri
                      as_of: pd.Timestamp | None = None) -> dict[str, Any]:
     """Today's operating regime: medians over the given shifts of the controls, pressures and thermal state.
 
-    O2/air uses the hot-blast meter basis (DATA-01: the meter includes the O2). Blast moisture is the month's typical
-    ambient value (DATA-04) for ``as_of`` (default: the last shift's month)."""
+    O2/air uses the hot-blast meter basis (DATA-01: the meter includes the O2). Blast moisture is the weather record's
+    value for ``as_of`` (default: the last shift's date), else the month's typical ambient value (DATA-04, DATA-11)."""
     keys = pd.Index(list(keys))
     sel = S.loc[keys]
     Rb = R.loc[keys]
     hbv = pd.to_numeric(sel.get("hot_blast_vol_nm3h"), errors="coerce")
     o2 = pd.to_numeric(sel.get("oxygen_flow"), errors="coerce")
     o2_per_air = (o2 / (hbv - o2)).replace([np.inf, -np.inf], np.nan)
-    month = (as_of or pd.to_datetime(sel["sdate"]).max()).month
+    day = as_of if as_of is not None else pd.to_datetime(sel["sdate"]).max()
+    hum, hum_src = blast_moisture(day)
     pci = pd.to_numeric(Rb.get("pci_kgthm_dry"), errors="coerce")
     nut = pd.to_numeric(Rb.get("nut_kgthm_dry"), errors="coerce")
     out = dict(
@@ -191,7 +194,7 @@ def operating_regime(S: pd.DataFrame, R: pd.DataFrame, keys: Iterable[str], enri
         HMT=_median(Rb.get("HMT")), hm_Si=_median(Rb.get("hm_si")), prod_th=_median(Rb.get("prod_th")),
         coke_kgthm_dry=_median(Rb.get("coke_kgthm_dry")), pci_kgthm_dry=_median(pci), nut_kgthm_dry=_median(nut),
         eta_CO=_median(Rb.get("eta_CO")), T_top=_median(Rb.get("T_top")), raft_dcs=_median(Rb.get("raft")),
-        humidity_g=float(HUMIDITY_G_NM3[month]),
+        humidity_g=float(hum), humidity_source=hum_src,
     )
     if out["O2_per_air"] is not None:
         r = out["O2_per_air"]

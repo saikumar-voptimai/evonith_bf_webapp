@@ -54,7 +54,9 @@ def test_regime_is_medians(SR):
     assert reg["prod_th"] == pytest.approx(R["prod_th"].median())
     o2 = S["oxygen_flow"] / (S["hot_blast_vol_nm3h"] - S["oxygen_flow"])
     assert reg["O2_per_air"] == pytest.approx(o2.median())
-    assert reg["humidity_g"] == 15.0          # October, typical ambient
+    # blast moisture: the weather record's value for the last shift's date (DATA-11), table outside the record
+    from utils.coke_energy.weather import blast_moisture
+    assert (reg["humidity_g"], reg["humidity_source"]) == blast_moisture(pd.to_datetime(S["sdate"]).max())
 
 
 def test_live_calibration_falls_back_with_few_shifts(SR):

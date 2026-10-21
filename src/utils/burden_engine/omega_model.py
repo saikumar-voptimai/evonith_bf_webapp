@@ -1,14 +1,14 @@
-"""Blend-dependent shaft efficiency (omega) for the burden engine (fact register GAS-13..GAS-18, ASM-18).
+"""Blend-dependent shaft efficiency (omega) for the burden engine (fact register GAS-13..GAS-20, ASM-18).
 
 Why
   With omega held at the calibration (ASM-01) a blend changes the coke rate only through its chemistry: Fe units,
   slag, flux and LOI. It also changes how well the gas is used in the thermal reserve zone (TRZ): reducibility and
   size of each ferrous, where the burden puts ore and coke across the radius, and how long the ore stays in the TRZ.
-  This module supplies omega as a function of the blend, the operating point and the gas quantity, with a 1-sigma
+  This module supplies omega as a function of the blend, the operating point and the blast moisture, with a 1-sigma
   uncertainty and a certainty class for every plan.
 
-Model (constants in ``assets/burden_engine/omega_model.json``; built from the BF-02 layered gas-flow model v0.4 and
-calibrated on 200 days of BF-02 data, Dec 2025 - Oct 2026)
+Model (constants in ``assets/burden_engine/omega_model.json``; built from the BF-02 layered gas-flow model v0.4,
+scaled and tested out of sample on 191 days of BF-02 data, Dec 2025 - Oct 2026; OMEGA v1.1)
 
   w(state, R)   ring counter-current model of the TRZ. Six rings, i = 1 (centre) .. 6 (wall):
                   C_g,i = R f_i        oxygen the ring's gas can take at the W point (f_i: gas share of ring i)
@@ -19,20 +19,22 @@ calibrated on 200 days of BF-02 data, Dec 2025 - Oct 2026)
                 f, o, t (TRZ residence, h) come from a quadratic surrogate of the gas-flow network (burden profile,
                 layered Ergun resistance, floating cohesive zone); k is the Fe-weighted reduction rate of the blend,
                 r_m (d_test / d_m)^1.5 with r_m = ln(1 - RI_m) / ln(1 - RI_sinter) from the ISO 7215 index;
-                R = O_max,TRZ / (Y_W n_Fe) comes from the two-zone balance itself; kappa is re-fitted at start-up so
-                that w(calibration state) equals the calibrated omega.
-  omega(plan) = omega_cal + lam_b [w(blend_plan, op_cal, R_cal) - w(cal)]          blend channel, data-scaled
-                          + sum_c b_c (s_c,plan - s_c,cal)                          class discrepancy (data)
-                          + [w(blend_plan, op_plan, R_plan) - w(blend_plan, op_cal, R_cal)]
-                                                    operating channel (coke layers, production, oxygen) and gas capacity
-  (lam_b, b) is the posterior of a Bayesian regression of the daily omega on the model's blend term (priors
-  lam_b ~ N(1, 0.5^2), b_c ~ N(0, tau^2) with tau chosen by marginal likelihood; month-effect and trend
-  specifications averaged).
+                kappa is re-fitted at start-up so that w(calibration state) equals the calibrated omega.
+  omega(plan) = omega_cal + [w(blend_plan, op_cal) - w(cal)] + sum_c b_c (s_c,plan - s_c,cal)      blend channel
+                          + [w(blend_plan, op_plan) - w(blend_plan, op_cal)]                        operating channel
+                          + a_h (moisture_plan - moisture_cal)                                      blast moisture
+  The blend channel is the physics with a plant-data scale per material group: b_c = (lam_g - 1) g_c, where g_c is
+  the physics change of omega per wet pt of class c replacing sinter and lam_g the scale of its group (pellet; lump
+  ore = Lloyds CLO, Geomin, NMDC ROM, Donimalai, Gomti, oversize). lam_pellet, lam_lump, the operating scale and a_h
+  are the AR(1) posterior of the daily change of omega against its 14-day anchor (GAS-14, GAS-19); the posterior is
+  stored as the mean and covariance of (x_blend, b_c) so that the code below is unchanged from v1.0.
+  The gas-capacity channel of v1.0 (R from the carbon gas of the balance, GAS-17) is retired: out of sample it gave
+  no skill and its data scale was negative. ``gas_capacity_channel: false`` holds R at the calibration.
 
-Uncertainty of omega(plan) relative to the calibration state (1 sigma): posterior of (lam_b, b); 50 % of the operating
-and gas-capacity terms (physics only, not identified by the plant data); surrogate error. Converted to coke with the
-loop-inclusive dK/domega of the engine. Reported apart (not in the plan comparison): the calibration's own standard
-error (common to every plan) and the day-to-day spread of omega.
+Uncertainty of omega(plan) relative to the calibration state (1 sigma): posterior of the blend scales; the operating
+scale's posterior (oper_rel_sd x |operating channel|); the moisture coefficient's standard error x |moisture change|;
+surrogate error. Converted to coke with the loop-inclusive dK/domega of the engine. Reported apart (not in the plan
+comparison): the calibration's own standard error (common to every plan) and the day-to-day spread of omega.
 
 Certainty classes: High = sigma(coke) <= 2 kg/tHM and blend and production inside the range BF-02 ran (1st-99th
 percentile of days); Medium = sigma(coke) <= 5 kg/tHM and within the margin of that range; Low otherwise.
@@ -89,6 +91,7 @@ class OmegaState:
     o2: float                         # O2 fraction of the hot blast (oxygen added / total)
     rdi: float                        # sinter RDI, %
     fer: float                        # wet ferrous, kg/tHM
+    humidity: float = float("nan")    # blast moisture, g/Nm3 (DATA-11); nan: no moisture term
 
     def inputs(self, order: list[str]) -> np.ndarray:
         vals = dict(coke_kg_thm=self.coke, nut_coke_kg_thm=self.nut, pci_kg_thm=self.pci, production_t_h=self.prod,
@@ -105,7 +108,7 @@ class OmegaTerms:
     d_blend_phys: float              # the model's blend channel before scaling
     d_disc: float                    # class discrepancy
     d_oper: float                    # operating channel at the calibration gas capacity
-    d_R: float                       # gas-capacity channel
+    d_R: float                       # gas-capacity channel (0 when retired, GAS-17)
     sigma: float                     # 1 sigma, relative to the calibration state
     sigma_parts: dict[str, float]
     R: float
@@ -115,6 +118,7 @@ class OmegaTerms:
     gas_in_excess: float = float("nan")
     wall_gas_share: float = float("nan")
     g: list[float] = field(default_factory=list)      # gradient of omega in the posterior parameters (lam_b, b)
+    d_moist: float = 0.0             # blast-moisture term (GAS-19)
 
 
 class OmegaModel:
@@ -143,6 +147,10 @@ class OmegaModel:
         self.classes = [n[3:] for n in self.post_names if n.startswith("sh_")]
         self.op_rel_sd = float(spec["priors"]["oper_rel_sd"])
         self.R_rel_sd = float(spec["priors"]["gas_capacity_rel_sd"])
+        self.gas_capacity = bool(spec.get("gas_capacity_channel", True))
+        mo = spec.get("moisture") or {}
+        self.a_moist = float(mo.get("coef", 0.0))
+        self.a_moist_se = float(mo.get("se", 0.0))
         self.support = {k: tuple(v) for k, v in spec["support"]["classes"].items()}
         self.support_prod = tuple(spec["support"]["production_t_h"])
         self.margin_pt = float(spec["support"]["margin_pt"])
@@ -275,7 +283,7 @@ class PlanOmega:
         ref = model.ref
         # blend channel: the plan's blend and ferrous per tHM at the calibration's operation
         self.st_b = OmegaState(st.shares, st.fe_frac, st.cls, ref.coke, ref.nut, ref.pci, ref.prod, ref.blast_t, ref.o2,
-                               ref.rdi, st.fer)
+                               ref.rdi, st.fer, ref.humidity)
         self.pb = model.parts(self.st_b)
         self.w_b = model.w(self.st_b, model.R_ref, parts=self.pb)
         self.d_blend_phys = self.w_b - model.w_ref
@@ -287,14 +295,20 @@ class PlanOmega:
         self.g = np.r_[self.d_blend_phys, self.ds]
         idx = [names.index("x_blend")] + [names.index("sh_" + c) for c in model.classes]
         self.V = model.post_cov[np.ix_(idx, idx)]
-        self.base = model.omega_ref + self.d_blend + self.d_disc
+        dh = float(st.humidity) - float(ref.humidity)
+        self.d_moist = model.a_moist * dh if math.isfinite(dh) else 0.0
+        self.s_moist = model.a_moist_se * abs(dh) if math.isfinite(dh) else 0.0
+        self.base = model.omega_ref + self.d_blend + self.d_disc + self.d_moist
         self._last: tuple[float, float, float, float] | None = None
 
     def _state_at(self, K: float) -> OmegaState:
         s = self.st
-        return OmegaState(s.shares, s.fe_frac, s.cls, float(K), s.nut, s.pci, s.prod, s.blast_t, s.o2, s.rdi, s.fer)
+        return OmegaState(s.shares, s.fe_frac, s.cls, float(K), s.nut, s.pci, s.prod, s.blast_t, s.o2, s.rdi, s.fer,
+                          s.humidity)
 
     def omega(self, K: float, R: float) -> float:
+        if not self.m.gas_capacity:
+            R = self.m.R_ref
         st = self._state_at(K)
         p = self.m.parts(st)
         w_op = self.m.w(st, self.m.R_ref, parts=p)
@@ -312,16 +326,18 @@ class PlanOmega:
         s_R = m.R_rel_sd * abs(d_R)
         du = (self.st.inputs(m.inputs) - m.ref.inputs(m.inputs)) / m.sd
         s_sur = m.sigma_sur * min(1.0, float(np.linalg.norm(du)))
-        sig = math.sqrt(s_post ** 2 + s_oper ** 2 + s_R ** 2 + s_sur ** 2)
+        sig = math.sqrt(s_post ** 2 + s_oper ** 2 + s_R ** 2 + s_sur ** 2 + self.s_moist ** 2)
         support, outside = m.support_status(self.st.cls, self.st.prod)
         st = self._state_at(K)
         f, o, t = m.parts(st)
         excess = float(f[(R * f) >= o].sum())
         return OmegaTerms(omega=om, d_blend=self.d_blend, d_blend_phys=self.d_blend_phys, d_disc=self.d_disc,
                           d_oper=d_oper, d_R=d_R, sigma=sig,
-                          sigma_parts=dict(data=s_post, operation=s_oper, gas_capacity=s_R, surrogate=s_sur),
+                          sigma_parts=dict(data=s_post, operation=s_oper, gas_capacity=s_R, surrogate=s_sur,
+                                           moisture=self.s_moist),
                           R=float(R), k_blend=m.k_blend(self.st.fe_frac), support=support, outside=outside,
-                          gas_in_excess=excess, wall_gas_share=float(f[-1]), g=[float(x) for x in self.g])
+                          gas_in_excess=excess, wall_gas_share=float(f[-1]), g=[float(x) for x in self.g],
+                          d_moist=self.d_moist)
 
     def sigma(self, K: float, R: float) -> float:
         """1-sigma of omega without the support and ring diagnostics (cheap; used inside the optimiser)."""
@@ -331,7 +347,7 @@ class PlanOmega:
         s_post2 = max(float(self.g @ self.V @ self.g), 0.0)
         du = (self.st.inputs(m.inputs) - m.ref.inputs(m.inputs)) / m.sd
         s_sur = m.sigma_sur * min(1.0, float(np.linalg.norm(du)))
-        return math.sqrt(s_post2 + (m.op_rel_sd * d_oper) ** 2 + (m.R_rel_sd * d_R) ** 2 + s_sur ** 2)
+        return math.sqrt(s_post2 + (m.op_rel_sd * d_oper) ** 2 + (m.R_rel_sd * d_R) ** 2 + s_sur ** 2 + self.s_moist ** 2)
 
 
 def difference_sigma(model: OmegaModel, a: Mapping[str, Any], b: Mapping[str, Any]) -> float:
@@ -345,6 +361,8 @@ def difference_sigma(model: OmegaModel, a: Mapping[str, Any], b: Mapping[str, An
     s2 = max(float(dg @ V @ dg), 0.0)
     s2 += (model.op_rel_sd * (a["d_oper"] - b["d_oper"])) ** 2 + (model.R_rel_sd * (a["d_R"] - b["d_R"])) ** 2
     s2 += a["sigma_parts"]["surrogate"] ** 2 + b["sigma_parts"]["surrogate"] ** 2
+    # moisture: same coefficient for both plans (fully correlated); zero when both plans run at the same moisture
+    s2 += (a["sigma_parts"].get("moisture", 0.0) - b["sigma_parts"].get("moisture", 0.0)) ** 2
     return math.sqrt(s2)
 
 

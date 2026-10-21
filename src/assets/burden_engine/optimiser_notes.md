@@ -29,32 +29,42 @@ Steel as of October 2026; the fact register version sent with the request govern
   are the medians of the stable shifts of the 14 days before today, from the same pipeline result as page 10. With
   fewer than 10 stable shifts the shipped Jul–Oct 2026 calibration is used and the page says so.
 * **Shaft efficiency: two modes.** *Held* (ASM-01, switch off): omega at the calibration value for every blend; a
-  blend moves coke through its chemistry only. *Blend-dependent* (ASM-18, page default): omega from the BF-02 gas-flow
-  model (GAS-13). The thermal reserve zone is six rings, each a counter-current exchanger between the gas (capacity
-  R·f_i, f_i = gas share of the ring) and the ore's wüstite oxygen (o_i, the ring's Fe share); transfer units grow
-  with the blend's reduction rate (ISO 7215 RI and size of each ferrous, Fe-weighted) and the residence time in the
-  zone. Omega therefore responds to: the blend (pellet and sinter reduce faster than lump ore; ROM slowest), the
-  burden volume per tonne (Fe grade), production (faster descent, shorter residence: GAS-16, supported by the data),
-  coke layers, and the gas quantity (more gas per tonne of ore oxygen is used less completely: GAS-17), solved inside
-  the two-zone balance. The model's blend term is scaled by the plant data (GAS-14: 0.59 ± 0.33) with a class
-  correction; a 10-pt pellet change is worth Δomega +0.012 ± 0.012 replacing sinter and +0.018 ± 0.012 replacing
-  CLO (GAS-15). With the gas-quantity loop, 0.01 of omega is about 3.4 kg/tHM of coke.
-* **Uncertainty and certainty (blend mode).** Each plan carries σ(coke) relative to the calibration (data posterior,
-  50 % of the operating and gas-quantity terms, surrogate error) and a class (GAS-18): High = σ ≤ 2 kg/tHM and blend
-  and production inside what BF-02 ran (1st–99th percentile of 200 days: pellet 0–15.4 %, sinter 58.9–69.5 %,
-  production 86.9–96.2 t/h); Medium = σ ≤ 5 and within 5 pt / 3 t/h of that range; Low otherwise. Not in σ: the
-  calibration's own error (about ±2 kg/tHM, common to every plan) and the day-to-day spread of omega (SD 0.020 after
-  the model, about ±7 kg/tHM), which averages out over days. The saving against today's blend is shown with σ of the
-  difference (parameters shared by both plans cancel). Options: a certainty filter (Medium or better / High only)
-  restricts the optimiser; risk aversion k minimises cost + k·σ(cost); auto mode prices three candidates (lowest
-  cost, cost + 1.28σ, High only) beside today's blend, picks by a fixed rule (lowest cost + 1σ; hold today's blend
-  when the saving is inside 1σ; ASM-19) and offers a language-model review of that pick.
-* **What the plant data could not settle.** No model predicts a new month's omega level (leave-one-month-out CV:
-  physics-structured RMSE 0.029, XGBoost 0.030, the mean 0.030); the 14-day calibration remains the anchor and the
-  model supplies differences. The pellet step of 1 June 2026 coincides with a month boundary and the monsoon
-  humidity step, so the data bound the pellet effect only loosely (hence σ ≈ 4 kg/tHM per 10 pt). Pellet and lump-ore
-  reducibility are literature values (no plant RI for them). Trial T5 (pellet step at constant matrix and coke) is
-  the test that would narrow it.
+  blend moves coke through its chemistry only. *Blend-dependent* (ASM-18, page default, OMEGA v1.1): omega from the
+  BF-02 gas-flow model (GAS-13). The thermal reserve zone is six rings, each a counter-current exchanger between the
+  gas (capacity R·f_i, f_i = gas share of the ring) and the ore's wüstite oxygen (o_i, the ring's Fe share); transfer
+  units grow with the blend's reduction rate (ISO 7215 RI and size of each ferrous, Fe-weighted) and the residence
+  time in the zone. The blend effect is kinetic: a 10-pt swap moves the radial gas shares by less than 0.002. Omega
+  responds to the blend (pellet and sinter reduce faster than lump ore; ROM slowest), the burden volume per tonne,
+  production (faster descent, shorter residence: GAS-16), the coke layers, oxygen, and the blast moisture of the
+  weather record (GAS-19: +0.0042 ± 0.0004 per g/Nm³). Plant-data scales (GAS-14): pellet 1.26 ± 0.45, lump ore
+  0.44 ± 0.33, operation 1.05 ± 0.26. A 10-pt pellet change is worth Δomega +0.015 ± 0.005 replacing sinter and
+  +0.020 ± 0.006 replacing Lloyds CLO (GAS-15); 0.01 of omega is about 2.8 kg/tHM of coke. The v1.0 gas-capacity
+  channel (GAS-17) is retired.
+* **Uncertainty and certainty (blend mode).** Each plan carries σ(coke) relative to the calibration (posterior of the
+  blend scales, the operating scale, the moisture coefficient, surrogate error) and a class (GAS-18): High = σ ≤ 2
+  kg/tHM and blend and production inside what BF-02 ran (1st–99th percentile of 200 days: pellet 0–15.4 %, sinter
+  58.9–69.5 %, production 86.9–96.2 t/h); Medium = σ ≤ 5 and within 5 pt / 3 t/h of that range; Low otherwise. Not
+  in σ: the calibration's own error (about ±2 kg/tHM, common to every plan) and the day-to-day spread of omega (about
+  ±8 kg/tHM), which averages out over days. The saving against today's blend is shown with σ of the difference
+  (parameters shared by both plans cancel). Options: a certainty filter (Medium or better / High only) restricts the
+  optimiser; risk aversion k minimises cost + k·σ(cost); auto mode prices three candidates (lowest cost, cost + 1.28σ,
+  High only) beside today's blend, picks by a fixed rule (lowest cost + 1σ; hold today's blend when the saving is
+  inside 1σ; ASM-19) and offers a language-model review of that pick.
+* **Out-of-sample test (GAS-20).** Each day's omega and burnt coke predicted from the previous 14 days with every
+  parameter estimated on earlier days only (175 days, Jan–Oct 2026). Skill against holding omega: v1.1 +0.25 (omega),
+  +0.18 (burnt coke, day and 7-day); in time splits +0.22 and +0.16 (burnt coke). v1.0 was worse than holding omega
+  in every test (−0.14 to −0.33). The skill comes from the moisture and operating terms; the blend term is neither
+  confirmed nor rejected by the record (a model without it scores +0.21, difference not significant, t 1.0).
+* **What the plant data could not settle.** The pellet start of 1 June 2026 coincides with the weather record's
+  monsoon step (+13 g/Nm³ between the weeks either side); with the moisture coefficient estimated from within-month weather variation,
+  the June rise of omega leaves +0.021 ± 0.022 for the blend against +0.029 expected. Within periods the blend moves
+  by 1–3 pt, too little to measure. Pellet and lump-ore reducibility are literature values (no plant RI). A switchback
+  trial (pellet 5 ↔ 20 % against Lloyds CLO, 3-day blocks, 30–36 days, matrix and fuel practice constant) measures
+  the effect to ±2.8 kg/tHM; a single step needs about ±8 kg/tHM.
+* **Gas flow and wall flow by material (FLOW-15, FLOW-16).** Within days and within months the burden resistance does
+  not fall when lump ore or pellet replaces sinter (+0.00 to +0.06 in ln K per 10 pt; the network predicts −0.04 to
+  −0.07); Gomti raises it in both. Lump ore raises the row 6–10 stave heat load (+11 to +41 % per 10 pt); pellet does
+  not. The blast-limit rules (FLOW-02..07) are unchanged.
 * **Solver.** Sequential LP (HiGHS): coke, blast and O₂ per tonne, slag oxides, top-gas temperature and the Fe
   balance are linearised around the current blend, the LP is solved with page 9's rows (slag rate, CaO/SiO₂, Al₂O₃,
   MgO, MgO/Al₂O₃, shares, charging) plus the process rows, and the balance is re-solved at the new blend; 2–5 LPs.

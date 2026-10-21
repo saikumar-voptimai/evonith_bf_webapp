@@ -66,16 +66,53 @@ def test_solve_2z_omega_fn_constant_equals_fixed(eng):
     assert b["omega"] == pytest.approx(cal["omega"]) and 0.6 < b["R_cap"] < 0.8 and b["R_cap_C"] < b["R_cap"]
 
 
-def test_moisture_acts_on_omega_through_carbon_gas_only(eng):
-    """GAS-17: the gas-quantity channel follows the carbon gas only; the hydrogen from blast moisture moves the total
-    capacity ratio more than the ratio the omega model sees."""
+def test_gas_capacity_channel_retired(eng):
+    """GAS-17 retired (OMEGA v1.1): the capacity ratio the omega model sees is the calibration's for every plan, while
+    the balance's own R still moves with the gas (here: blast moisture)."""
+    m = eng.omega_model()
+    assert m.gas_capacity is False
     s = Settings(omega_mode="blend")
     z = eng.min_cost(prod_t_day=2270, s=s, L=Limits())["z"]
     dry = eng.evaluate(z, replace(s, humidity_g=10.0), P_REF, full=True)
     wet = eng.evaluate(z, replace(s, humidity_g=20.0), P_REF, full=True)
-    d_seen = wet["omega_terms"]["R"] - dry["omega_terms"]["R"]
-    d_total = wet["R_cap"] - dry["R_cap"]
-    assert 0 < d_seen < d_total
+    assert wet["omega_terms"]["R"] == pytest.approx(m.R_ref) == pytest.approx(dry["omega_terms"]["R"])
+    assert wet["omega_terms"]["d_R"] == 0.0 and dry["omega_terms"]["d_R"] == 0.0
+    assert wet["R_cap"] > dry["R_cap"]
+
+
+def test_moisture_term(eng):
+    """GAS-19: omega rises with the blast moisture of the weather record by a_h per g/Nm3, so the coke rate responds
+    to moisture much less than with omega held (the balance alone: about +0.8 kg/tHM per g/Nm3)."""
+    m = eng.omega_model()
+    assert 0.002 < m.a_moist < 0.007 and m.a_moist_se > 0
+    s = Settings(omega_mode="blend")
+    z = eng.min_cost(prod_t_day=2270, s=s, L=Limits())["z"]
+    dry = eng.evaluate(z, replace(s, humidity_g=10.0), P_REF, full=True)
+    wet = eng.evaluate(z, replace(s, humidity_g=20.0), P_REF, full=True)
+    assert wet["omega_terms"]["d_moist"] - dry["omega_terms"]["d_moist"] == pytest.approx(10 * m.a_moist, rel=1e-9)
+    assert wet["omega_terms"]["sigma_parts"]["moisture"] > 0
+    held_dry = eng.evaluate(z, replace(Settings(), humidity_g=10.0), P_REF)
+    held_wet = eng.evaluate(z, replace(Settings(), humidity_g=20.0), P_REF)
+    d_held, d_blend = held_wet["K"] - held_dry["K"], wet["K"] - dry["K"]
+    assert d_held > 5.0                                   # balance: moisture is endothermic
+    assert abs(d_blend) < 0.6 * d_held
+
+
+def test_asset_v11():
+    from utils.burden_engine.omega_model import MODEL_PATH
+    with open(MODEL_PATH, encoding="utf-8") as fh:
+        spec = json.load(fh)
+    assert spec["version"].startswith("OMEGA v1.1") and spec["gas_capacity_channel"] is False
+    po, cs = spec["posterior"], spec["channel_scales"]
+    assert po["names"][0] == "x_blend" and po["mean"][0] == 1.0
+    g = cs["g_per_pt"]
+    i = po["names"].index("sh_pellet")
+    assert po["mean"][i] == pytest.approx((cs["lam_pellet"] - 1) * g["sh_pellet"], rel=1e-9)
+    for c in ("sh_clo", "sh_rom", "sh_gomti", "sh_oversize"):
+        assert po["mean"][po["names"].index(c)] == pytest.approx((cs["lam_lump"] - 1) * g[c], rel=1e-9)
+    v = spec["validation"]["expanding"]
+    for key in ("omega_day", "K_burnt_day", "K_burnt_7-day"):
+        assert v[key]["v1.1"]["skill"] > 0 > v[key]["v1.0"]["skill"]
 
 
 # ---------------------------------------------------------------------------------------------- engine
@@ -93,7 +130,7 @@ def test_blend_mode_result(eng):
     assert r["feasible"] and om["mode"] == "blend"
     assert 0.70 < om["value"] < 0.90 and om["sigma_K"] > 0
     assert om["certainty"] in ("High", "Medium", "Low")
-    parts = om["d_blend"] + om["d_disc"] + om["d_oper"] + om["d_R"]
+    parts = om["d_blend"] + om["d_disc"] + om["d_oper"] + om["d_R"] + om["d_moist"]
     assert om["value"] == pytest.approx(om["omega_cal"] + parts, abs=1e-9)
     assert r["cost"]["sigma"] == pytest.approx(om["sigma_K"] * eng.prices_fuel["coke"] / 1000)
 
@@ -108,7 +145,7 @@ def _pinned(inputs, mode, pel):
 
 def test_pellet_lowers_coke_in_blend_mode_only(inputs):
     """Pellet 10 -> 20 % with the blend re-optimised (pellet mostly displaces Lloyds CLO): about flat coke with omega
-    held; several kg/tHM less with blend-dependent omega."""
+    held; several kg/tHM less with blend-dependent omega (v1.1: about -5 kg/tHM, GAS-15)."""
     f10, f20 = _pinned(inputs, "fixed", 10), _pinned(inputs, "fixed", 20)
     b10, b20 = _pinned(inputs, "blend", 10), _pinned(inputs, "blend", 20)
     d_fixed = f20["out"]["K"] - f10["out"]["K"]

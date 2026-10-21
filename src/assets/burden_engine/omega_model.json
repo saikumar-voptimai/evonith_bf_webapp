@@ -1,5 +1,5 @@
 {
- "version": "OMEGA v1.0 (2026-10-21): BF-02 gas-flow model v0.4 ring counter-current, calibrated Dec 2025 - Oct 2026",
+ "version": "OMEGA v1.1 (2026-10-21): BF-02 gas-flow model v0.4 ring counter-current; blend scales per group, operating channel and blast moisture from the out-of-sample-tested AR(1) posterior (Dec 2025 - Oct 2026, weather-file moisture); gas-capacity channel retired",
  "materials": {
   "sinter": {
    "ri_pct": 68.7,
@@ -2868,68 +2868,68 @@
    "sh_oversize"
   ],
   "mean": [
-   0.5864944111447028,
-   0.0005309303851181279,
-   0.0001232523229372868,
-   0.00031319538747974284,
-   0.00031994462061036145,
-   0.00015843317394854917
+   1.0,
+   0.0003095796835643746,
+   0.0006079876233846208,
+   0.0008829232030769309,
+   0.0006387222918461594,
+   0.00010058618769230858
   ],
   "cov": [
    [
-    0.11071558264456005,
-    7.385488164719415e-06,
-    3.833104491077032e-05,
-    8.744171791378227e-05,
-    4.983133684289096e-05,
-    -1.1559276523625838e-05
+    1e-08,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
    ],
    [
-    7.385488164719373e-06,
-    1.2351706098899587e-06,
-    2.6044962719091096e-07,
-    3.688292580178078e-07,
-    4.955563053823168e-07,
-    2.9660059779614383e-07
+    0.0,
+    2.873447381829654e-07,
+    3.166363614658942e-08,
+    4.598211866876038e-08,
+    3.326427951797032e-08,
+    5.238469215428398e-09
    ],
    [
-    3.833104491077022e-05,
-    2.604496271909111e-07,
-    2.867853148839217e-07,
-    2.8118957629277725e-07,
-    2.1112439112020077e-07,
-    1.6344883701849535e-07
+    0.0,
+    3.1663636146589475e-08,
+    1.2891442041156937e-07,
+    1.872102796418011e-07,
+    1.354312339434042e-07,
+    2.132775337691405e-08
    ],
    [
-    8.744171791378229e-05,
-    3.688292580178078e-07,
-    2.8118957629277735e-07,
-    4.1186574374057717e-07,
-    2.903953644599255e-07,
-    1.8307738052927608e-07
+    0.0,
+    4.598211866876045e-08,
+    1.8721027964180107e-07,
+    2.718678693327626e-07,
+    1.9667403458692887e-07,
+    3.097228891132739e-08
    ],
    [
-    4.983133684289078e-05,
-    4.95556305382317e-07,
-    2.1112439112020082e-07,
-    2.9039536445992536e-07,
-    6.551954626671847e-07,
-    2.286205276411977e-07
+    0.0,
+    3.3264279517970374e-08,
+    1.354312339434042e-07,
+    1.9667403458692887e-07,
+    1.422774819828226e-07,
+    2.2405902674460252e-08
    ],
    [
-    -1.1559276523625967e-05,
-    2.96600597796144e-07,
-    1.6344883701849535e-07,
-    1.8307738052927597e-07,
-    2.2862052764119764e-07,
-    2.8029423744137325e-07
+    0.0,
+    5.238469215428406e-09,
+    2.132775337691405e-08,
+    3.097228891132739e-08,
+    2.2405902674460255e-08,
+    3.5284886101512217e-09
    ]
   ],
-  "note": "daily omega (200 days, Dec 2025 - Oct 2026) on the model blend term and class shares (wet % of ferrous, sinter the reference), AR(1) errors, operation and quality controls; month-effect and trend specifications averaged; tau by restricted marginal likelihood"
+  "note": "blend channel = physics (x_blend coefficient 1) + b_c = (lam_g - 1) g_c; lam_pellet 1.258 +/- 0.447, lam_lump 0.441 +/- 0.330 (AR(1) posterior of the daily change of omega against its 14-day anchor, priors N(1, 0.5^2)); g_c physics change of omega per wet pt replacing sinter"
  },
  "priors": {
-  "oper_rel_sd": 0.5,
-  "gas_capacity_rel_sd": 0.5
+  "oper_rel_sd": 0.258,
+  "gas_capacity_rel_sd": 0.0
  },
  "support": {
   "classes": {
@@ -2972,7 +2972,8 @@
  },
  "sigma": {
   "omega_cal_se": 0.006,
-  "omega_day_sd": 0.02
+  "omega_day_sd": 0.028,
+  "note": "omega_day_sd: out-of-sample RMSE of v1.1 against the daily omega (expanding test)"
  },
  "reference": {
   "R": 0.704,
@@ -2987,18 +2988,269 @@
   "window": "2026-07-01 to 2026-10-07 (stable days)"
  },
  "validation": {
-  "xgboost_lomo": {
-   "rmse": 0.029778436347271914,
-   "r2": -0.08418712166189368
+  "method": "day minus its 14-day anchor (the Coke Energy pipeline rolling calibration); parameters estimated on days before the predicted month only (expanding window, refit monthly) or on the other half of the record (time split); skill = 1 - MSE / MSE(held). Coke target: oxygen-balance burnt coke. 175 days, 1 Jan - 7 Oct 2026.",
+  "expanding": {
+   "omega_day": {
+    "held": {
+     "rmse": 0.0321,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 0.0356,
+     "skill": -0.229
+    },
+    "v1.1": {
+     "rmse": 0.0277,
+     "skill": 0.252
+    },
+    "xgboost": {
+     "rmse": 0.0308,
+     "skill": 0.079
+    }
+   },
+   "K_burnt_day": {
+    "held": {
+     "rmse": 8.107,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 9.2078,
+     "skill": -0.29
+    },
+    "v1.1": {
+     "rmse": 7.363,
+     "skill": 0.175
+    },
+    "xgboost": {
+     "rmse": 7.743,
+     "skill": 0.088
+    }
+   },
+   "omega_7-day": {
+    "held": {
+     "rmse": 0.0271,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 0.0289,
+     "skill": -0.136
+    },
+    "v1.1": {
+     "rmse": 0.0243,
+     "skill": 0.198
+    },
+    "xgboost": {
+     "rmse": 0.0256,
+     "skill": 0.107
+    }
+   },
+   "K_burnt_7-day": {
+    "held": {
+     "rmse": 6.468,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 6.9065,
+     "skill": -0.14
+    },
+    "v1.1": {
+     "rmse": 5.8502,
+     "skill": 0.182
+    },
+    "xgboost": {
+     "rmse": 6.1751,
+     "skill": 0.089
+    }
+   }
   },
-  "physics_lomo": {
-   "rmse": 0.02879782548492337,
-   "r2": -0.01395774431855501
+  "time_split_train_dec_may": {
+   "omega_day": {
+    "held": {
+     "rmse": 0.0346,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 0.0366,
+     "skill": -0.118
+    },
+    "v1.1": {
+     "rmse": 0.0288,
+     "skill": 0.308
+    },
+    "xgboost": {
+     "rmse": 0.0303,
+     "skill": 0.233
+    }
+   },
+   "K_burnt_day": {
+    "held": {
+     "rmse": 7.4285,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 8.2085,
+     "skill": -0.221
+    },
+    "v1.1": {
+     "rmse": 6.5721,
+     "skill": 0.217
+    },
+    "xgboost": {
+     "rmse": 6.0526,
+     "skill": 0.336
+    }
+   },
+   "omega_7-day": {
+    "held": {
+     "rmse": 0.0282,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 0.0298,
+     "skill": -0.11
+    },
+    "v1.1": {
+     "rmse": 0.0231,
+     "skill": 0.333
+    },
+    "xgboost": {
+     "rmse": 0.0238,
+     "skill": 0.287
+    }
+   },
+   "K_burnt_7-day": {
+    "held": {
+     "rmse": 5.5789,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 6.1305,
+     "skill": -0.208
+    },
+    "v1.1": {
+     "rmse": 4.9426,
+     "skill": 0.215
+    },
+    "xgboost": {
+     "rmse": 4.289,
+     "skill": 0.409
+    }
+   }
   },
-  "mean_lomo": {
-   "rmse": 0.029563922306417433,
-   "r2": -0.06862312985992935
+  "time_split_train_jun_oct": {
+   "omega_day": {
+    "held": {
+     "rmse": 0.0295,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 0.0353,
+     "skill": -0.435
+    },
+    "v1.1": {
+     "rmse": 0.0271,
+     "skill": 0.153
+    },
+    "xgboost": {
+     "rmse": 0.0276,
+     "skill": 0.119
+    }
+   },
+   "K_burnt_day": {
+    "held": {
+     "rmse": 8.6994,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 10.0468,
+     "skill": -0.334
+    },
+    "v1.1": {
+     "rmse": 7.982,
+     "skill": 0.158
+    },
+    "xgboost": {
+     "rmse": 6.9416,
+     "skill": 0.363
+    }
+   },
+   "omega_7-day": {
+    "held": {
+     "rmse": 0.0239,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 0.0283,
+     "skill": -0.4
+    },
+    "v1.1": {
+     "rmse": 0.0236,
+     "skill": 0.023
+    },
+    "xgboost": {
+     "rmse": 0.0252,
+     "skill": -0.111
+    }
+   },
+   "K_burnt_7-day": {
+    "held": {
+     "rmse": 6.8126,
+     "skill": 0.0
+    },
+    "v1.0": {
+     "rmse": 7.5823,
+     "skill": -0.239
+    },
+    "v1.1": {
+     "rmse": 6.4587,
+     "skill": 0.101
+    },
+    "xgboost": {
+     "rmse": 5.9051,
+     "skill": 0.249
+    }
+   }
   },
-  "note": "leave-one-month-out CV of the daily omega: no model predicts a new month level; the engine therefore uses the 14-day calibration as the anchor and this model for differences only"
+  "interval_coverage": {
+   "within_1_sigma": 0.634,
+   "within_1_96_sigma": 0.903
+  },
+  "note": "v1.0 (level calibration with class corrections and the gas-capacity channel) was worse than holding omega in every test; v1.1 is better than holding omega in every test. A data-only XGBoost on the same deltas is better for coke in the time splits and worse in the expanding test; it has no mechanism for blends outside the record and is kept as a benchmark only."
+ },
+ "channel_scales": {
+  "lam_pellet": 1.258413759235705,
+  "lam_lump": 0.4411878461538412,
+  "lam_oper": 1.0518533953750275,
+  "cov_pellet_lump": [
+   [
+    0.20021177350604188,
+    -0.02429266006041735
+   ],
+   [
+    -0.024292660060417387,
+    0.10890396944911176
+   ]
+  ],
+  "sd_oper": 0.2576829349292432,
+  "g_per_pt": {
+   "sh_pellet": 0.001198,
+   "sh_clo": -0.001088,
+   "sh_rom": -0.00158,
+   "sh_gomti": -0.001143,
+   "sh_oversize": -0.00018
+  },
+  "rho": 0.7501494096971012,
+  "sigma_e": 0.017876456022839562,
+  "n_days": 191
+ },
+ "gas_capacity_channel": false,
+ "moisture": {
+  "coef": 0.00422,
+  "se": 0.00042,
+  "unit": "omega per g/Nm3",
+  "basis": "same posterior; blast moisture from the Wardha daily weather record (DATA-11); top-gas H2 shows no matching response to the record's day-to-day moisture (GAS-19)"
+ },
+ "validation_v10_lomo": {
+  "note": "v1.0 leave-one-month-out CV of the level (kept for reference): physics 0.0288, XGBoost 0.0298, mean 0.0296 (RMSE omega)"
  }
 }
