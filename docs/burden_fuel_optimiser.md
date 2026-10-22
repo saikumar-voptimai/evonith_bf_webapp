@@ -167,6 +167,32 @@ ASM-01 — and **STRATA-ω** (ASM-18, page default; `Settings.omega_mode="blend"
   Coke kg/tHM dry, cost Rs/tHM. Below 10 % pellet STRATA-ω gives more coke (slower lump ore replaces pellet); above
   about 25 % pellet replaces sinter and the acid pellet needs limestone, so the coke gain stops.
 
+## STRATA-Learn — continuous learning, shadow mode (v1)
+
+`src/utils/burden_engine/learn/` (pure, no Streamlit). The learner never changes the asset, the register or the page;
+it writes proposals. The 14-day calibration anchor stays: the learner works on day-minus-anchor changes only.
+
+1. **Evidence store** (`evidence.py`): one row per day — the five channels (pellet, lump ore, production, other
+   operation, blast moisture), the observed change of omega, burnt coke, the Fixed-ω prediction, dK/dω, class shares,
+   blend family and a trial flag. Seed: `assets/burden_engine/strata_evidence_seed.csv` (191 days).
+2. **Random-walk Kalman filter** (`kalman.py`) on (λ_pellet, λ_lump, λ_production, λ_other, a_moisture) with AR(1)
+   day errors (Prais–Winsten form, ρ 0.76, σ_e 0.0176); random-walk sd 0.01 per day on the scales. Each day is
+   predicted with the previous state before it updates the state, so the prediction history is out of sample.
+   Replay of the record from the priors: burnt-coke skill +0.20, omega +0.27 since 1 Jan 2026 (expanding-window test
+   +0.18 / +0.26); final state within 0.02 of the deployed posterior.
+3. **Gate** (`gate.py`): champion = deployed asset, challenger = Kalman state; on the last 60 days after deployment,
+   promotion is proposed when the challenger's MSE is ≥ 5 % lower and the Diebold–Mariano t ≥ 2 and no drift alarm
+   is open. **Drift**: two-sided CUSUM (k 0.5, h 5) on the AR(1) innovations of the champion's errors.
+4. **Register proposals** (`autofill.py`): automatic — GAS-14 / GAS-19 values and se within 2 registered se, VAL
+   counts and means; approval — any status change (e.g. Modelled only → Supported), a value outside 2 se, growth of
+   the GAS-18 support envelope (> 0.5 pt), promotion, drift. `apply()` writes approved items with a revision entry.
+5. **Constrained exploration** (`explore.py`): Thompson-sampling probability that each candidate plan is optimal and
+   its expected regret; a plan is an exploration candidate only outside the Investigate tier and within the regret
+   budget (default Rs 15/tHM). Reported, not applied.
+
+Nightly run: `python -m utils.burden_engine.learn.run --evidence <store.csv> --add <new_days.csv> --out <dir>`
+→ `strata_learn_report.md`, `strata_learn_state.json`, `strata_learn_history.csv`, `register_proposal.json`.
+
 ## Files
 
 | Path | Role |
@@ -180,6 +206,7 @@ ASM-01 — and **STRATA-ω** (ASM-18, page default; `Settings.omega_mode="blend"
 | `src/utils/slag_bands.py` | Plant p5–p95 slag bands, shared with page 9 |
 | `src/utils/burden_engine/engine.py` | `Engine`, `Settings`, `Limits`, `value_in_use`, `summary` |
 | `src/utils/burden_engine/omega_model.py` + `src/assets/burden_engine/omega_model.json` | STRATA-ω shaft efficiency: ring model, surrogate, posterior, σ, certainty tiers, critical assumptions |
+| `src/utils/burden_engine/learn/` | STRATA-Learn shadow mode: evidence store, Kalman, gate, drift, register proposals, exploration |
 | `src/utils/burden_engine/model_facts.py` | Fact-register groups MOD (Fixed-ω vs STRATA-ω responses) and VAL (per-blend out-of-sample) |
 | `src/utils/burden_engine/auto_review.py`, `src/ui/burden_optimiser/omega_panel.py` | Auto mode rule and review checks (pure); omega settings, panel and review UI |
 | `src/utils/burden_engine/hydraulics.py` | Packed-bed limit, enrichment tag, per-tonne RAFT |
