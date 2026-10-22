@@ -63,8 +63,8 @@ Steel as of October 2026; the fact register version sent with the request govern
   the effect to ±2.8 kg/tHM; a single step needs about ±8 kg/tHM.
 * **Gas flow and wall flow by material (FLOW-15, FLOW-16).** Within days and within months the burden resistance does
   not fall when lump ore or pellet replaces sinter (+0.00 to +0.06 in ln K per 10 pt; the network predicts −0.04 to
-  −0.07); Gomti raises it in both. Lump ore raises the row 6–10 stave heat load (+11 to +41 % per 10 pt); pellet does
-  not. The blast-limit rules (FLOW-02..07) are unchanged.
+  −0.07); Gomti raises it in both. Lump ore raises the row 6–10 stave heat load (+0.05 to +0.41 in ln(heat load) per
+  10 pt); pellet does not. The blast-limit rules (FLOW-02..07) are unchanged.
 * **Solver.** Sequential LP (HiGHS): coke, blast and O₂ per tonne, slag oxides, top-gas temperature and the Fe
   balance are linearised around the current blend, the LP is solved with page 9's rows (slag rate, CaO/SiO₂, Al₂O₃,
   MgO, MgO/Al₂O₃, shares, charging) plus the process rows, and the balance is re-solved at the new blend; 2–5 LPs.
