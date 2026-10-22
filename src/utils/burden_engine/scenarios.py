@@ -294,8 +294,8 @@ def process_table(r: Mapping[str, Any]) -> pd.DataFrame:
         ("Fuel rate (coke wet + nut + PCI)", f"{o['fuel_rate']:.1f} kg/tHM", f"{L['fuel_min']:.0f} – {L['fuel_max']:.0f} (BAND-01)"),
         ("ηCO / top gas", f"{o['eta']:.1f} % · {o['T_top']:.0f} °C", f"top gas ≥ {L['T_top_min']:.0f} °C"),
         ("Shaft efficiency ω", f"{o['omega']:.3f}" + (f" ± {r['omega']['sigma_omega']:.3f}" if (r.get("omega") or {}).get("mode") == "blend" else ""),
-         "blend-dependent (gas-flow model), " + (r.get("omega") or {}).get("certainty", "") + " certainty"
-         if (r.get("omega") or {}).get("mode") == "blend" else "held at the calibration"),
+         "STRATA-ω, " + (r.get("omega") or {}).get("certainty", "") + " certainty"
+         if (r.get("omega") or {}).get("mode") == "blend" else "Fixed-ω (held at the calibration)"),
         ("Hot blast temperature", f"{s['HBT']:,.0f} °C", f"≤ {L['HBT_max']:,.0f}"),
         ("Hot blast (meter basis)", f"{r['blast_nm3h']:,.0f} Nm³/h", f"≤ {L['V_max']:,.0f}" if L["process"] else ""),
         ("Oxygen / enrichment tag", f"{r['O2_nm3h']:,.0f} Nm³/h · {r['enrich_tag']:.2f} %",

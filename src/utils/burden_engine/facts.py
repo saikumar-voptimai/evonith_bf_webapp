@@ -149,6 +149,22 @@ class FactRegister:
         return rows
 
 
+    def model_table(self) -> list[dict[str, Any]]:
+        """MOD and VAL rows with the Fixed-omega and STRATA-omega values side by side (``utils.burden_engine.model_facts``)."""
+        rows = []
+        for f in self._facts.values():
+            if f.group not in ("MOD", "VAL"):
+                continue
+            p = f.params
+            row = dict(id=f.id, statement=f.statement, unit=f.unit, fixed_omega=p.get("fixed_omega"),
+                       strata_omega=p.get("strata_omega"), sigma_strata=p.get("sigma_strata", f.se), status=f.status)
+            if f.group == "VAL":
+                row.update(realised=p.get("realised"), n=p.get("n"), rmse_fixed=p.get("rmse_fixed"),
+                           rmse_strata=p.get("rmse_strata"), skill=p.get("skill"))
+            rows.append(row)
+        return rows
+
+
 def load_register_data(path: str | Path | None = None) -> dict[str, Any]:
     with open(path or REGISTER_PATH, encoding="utf-8") as fh:
         return json.load(fh)
@@ -168,4 +184,4 @@ def load_register(path: str | Path | None = None) -> FactRegister:
 ENGINE_FACTS = ("ASM-01", "ASM-02", "ASM-03", "ASM-04", "ASM-05", "ASM-06", "ASM-08", "ASM-09",
                 "FLOW-01", "FLOW-02", "FLOW-03", "FLOW-04", "FLOW-05", "FLOW-06", "DATA-02", "DATA-03",
                 "BAND-01", "BAND-02", "BAND-03", "GAS-10", "ASM-18", "GAS-13", "GAS-14", "GAS-15", "GAS-16",
-                "GAS-18", "GAS-19", "GAS-20", "DATA-11", "ASM-19")
+                "GAS-18", "GAS-19", "GAS-20", "GAS-21", "DATA-11", "ASM-19")

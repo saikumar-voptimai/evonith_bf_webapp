@@ -23,13 +23,14 @@ Engine 2.0 (fact register v1.1)
 Shaft efficiency (``Settings.omega_mode``)
   * "fixed" (default, ASM-01): omega held at the calibration for every blend; a blend moves the coke rate through its
     chemistry only.
-  * "blend" (ASM-18, GAS-13..20): omega from ``utils.burden_engine.omega_model`` (OMEGA v1.1) - the BF-02 gas-flow
-    model's ring counter-current description of the thermal reserve zone, scaled by the plant data and tested out of
-    sample (GAS-20) - as a function of the blend, the coke rate, production, oxygen and the blast moisture (solved
-    inside the two-zone balance). Every result then carries sigma(coke), a certainty class (High / Medium / Low) and
-    the parts of omega;
-    ``Settings.risk_k`` adds risk_k x sigma(cost) to the objective and ``Settings.certainty`` ("medium" / "high")
-    restricts the optimiser to plans of that certainty.
+  * "blend" (ASM-18, GAS-13..20): STRATA-omega from ``utils.burden_engine.omega_model`` (STRATA 1.2) - the STRATA-Flow
+    gas-flow model's ring counter-current description of the thermal reserve zone, scaled by the plant data and tested
+    out of sample (GAS-20) - as a function of the blend, the coke rate, production, oxygen and the blast moisture
+    (solved inside the two-zone balance). Every result then carries sigma(coke), a certainty class (High / Medium /
+    Low / Investigate) and the parts of omega; ``Engine.critical_assumptions`` gives the coke effect of each critical
+    assumption (RI, size exponent, plant-data scales, moisture coefficient);
+    ``Settings.risk_k`` adds risk_k x sigma(cost) to the objective and ``Settings.certainty`` ("low" = all but
+    Investigate / "medium" / "high") restricts the optimiser to plans of that certainty.
 
 Units: decision variables are WET kg/tHM of each material; shares are wet % of the ferrous charge; prices Rs per wet
 tonne. Pure numerical code: no Streamlit, no I/O except reading the JSON inputs when given paths.
@@ -39,6 +40,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -48,7 +50,8 @@ from scipy.optimize import linprog
 
 from utils.burden_engine.facts import ENGINE_FACTS, FactRegister, load_register
 from utils.burden_engine.hydraulics import Hydraulics, raft_c
-from utils.burden_engine.omega_model import CERTAINTY_LEVELS, OmegaModel, OmegaState, difference_sigma
+from utils.burden_engine.omega_model import (CERTAINTY_LEVELS, OmegaModel, OmegaState, assumption_sensitivity,
+                                             difference_sigma)
 from utils.coke_energy.rist import solve_2z
 
 ASSET_DIR = Path(__file__).resolve().parents[2] / "assets" / "burden_engine"
@@ -84,7 +87,7 @@ class Settings:
     nut_size_delta_mm: float = 0.0       # nut coke mean size vs the base point (FLOW-07)
     omega_mode: str = "fixed"            # "fixed" (ASM-01) or "blend" (ASM-18: omega_model)
     risk_k: float = 0.0                  # blend mode: objective = cost + risk_k x sigma(cost)
-    certainty: str = "any"               # blend mode: "any", "medium" or "high" (certainty filter on the plan)
+    certainty: str = "any"               # blend mode: "any", "low" (all but Investigate), "medium", "high"
 
 
 @dataclass
@@ -244,7 +247,7 @@ class Engine:
         return self._om
 
     def R_eff(self, z: Mapping[str, Any]) -> float:
-        """Capacity ratio the omega model sees. OMEGA v1.1 (``gas_capacity_channel: false``): the calibration's R for
+        """Capacity ratio the omega model sees. STRATA 1.1+ (``gas_capacity_channel: false``): the calibration's R for
         every plan - the gas-capacity channel (GAS-17, retired) gave no out-of-sample skill and a negative data scale.
         With the channel on (v1.0): the calibration's total R moved by the change of its carbon-gas part only."""
         from utils.coke_energy.rist import Y_W
@@ -303,7 +306,7 @@ class Engine:
     def p_range(self, s: Settings, lo: float, hi: float) -> tuple[float, float]:
         """Production search range, narrowed to the certainty filter's production range."""
         lim = self.omega_limits(s)
-        if lim:
+        if lim and lim.get("production"):
             lo, hi = max(lo, lim["production"][0]), min(hi, lim["production"][1])
         return lo, max(lo, hi)
 
@@ -481,8 +484,9 @@ class Engine:
         le("charging", a_ch, P / 1000 * s.nut_plant, cap, 1.0)
         lim = self.omega_limits(s)
         if lim:                                              # certainty filter (blend mode)
-            aSg, cSg = lin("sig_K")
-            le("certainty sigma", aSg, cSg, lim["sigma_max"], 1.0)
+            if math.isfinite(lim["sigma_max"]):
+                aSg, cSg = lin("sig_K")
+                le("certainty sigma", aSg, cSg, lim["sigma_max"], 1.0)
             for cname, (lo_c, hi_c) in lim["classes"].items():
                 mask = self.om_cls.get(cname)
                 if mask is None or not mask.any():
@@ -536,7 +540,8 @@ class Engine:
         v["charging"] = max(0.0, P / 1000 * (z.sum() + s.nut_plant) - L.charge_t * L.charges_per_h)
         lim = self.omega_limits(s)
         if lim:
-            v["certainty sigma"] = max(0.0, float(o.get("sig_K", 0.0)) - lim["sigma_max"])
+            if math.isfinite(lim["sigma_max"]):
+                v["certainty sigma"] = max(0.0, float(o.get("sig_K", 0.0)) - lim["sigma_max"])
             Y = float(np.sum(z[:self.nf]))
             for cname, (lo_c, hi_c) in lim["classes"].items():
                 mask = self.om_cls.get(cname)
@@ -658,6 +663,10 @@ class Engine:
         if om_info["mode"] == "blend" and om_info["outside"]:
             warnings.append("Shaft efficiency extrapolated beyond what BF-02 ran: " + "; ".join(om_info["outside"])
                             + f" (certainty {om_info['certainty']}, GAS-18).")
+        if om_info["mode"] == "blend" and om_info["certainty"] == "Investigate":
+            why = "; ".join(om_info["investigate"]) or f"sigma(coke) {om_info['sigma_K']:.1f} kg/tHM above the Investigate limit"
+            warnings.append(f"Investigate tier: {why}. The coke prediction rests on the RI, size and channel-scale "
+                            "assumptions listed under critical assumptions; trial before adoption (GAS-18).")
         out = dict(P_th=P, P_tday=P * 24, settings=asdict(s), limits=asdict(L), fuel_in_objective=fuel, ore6_on=ore6_on,
                    z=zs, wet_kg={v.id: float(w) for v, w in zip(self.vars, zs)},
                    dry_kg={v.id: float(w * (1 - v.moist / 100)) for v, w in zip(self.vars, zs)},
@@ -686,14 +695,39 @@ class Engine:
         wet = 1 - self.case0["coke"]["moist_pct"] / 100
         to_K = abs(self._dKdw) / wet
         sigK = float(o["sig_K"])
+        inv = list(t.get("investigate") or [])
         return dict(mode="blend", value=float(o["omega"]), omega_cal=float(self.cal["omega"]), sigma_omega=t["sigma"],
                     sigma_K=sigK, sigma_parts_K={k: to_K * v for k, v in t["sigma_parts"].items()},
-                    certainty=m.certainty(sigK, t["support"]), support=t["support"], outside=list(t["outside"]),
+                    certainty=m.certainty(sigK, t["support"], inv), support=t["support"], outside=list(t["outside"]),
+                    investigate=inv,
                     d_blend=t["d_blend"], d_blend_phys=t["d_blend_phys"], d_disc=t["d_disc"], d_oper=t["d_oper"],
+                    d_prod=t.get("d_prod", 0.0), d_rest=t.get("d_rest", t["d_oper"]),
                     d_R=t["d_R"], d_moist=t.get("d_moist", 0.0), R=t["R"], k_blend=t["k_blend"],
                     gas_in_excess=t["gas_in_excess"],
                     wall_gas_share=t["wall_gas_share"], cal_se_K=to_K * m.cal_se, day_sd_K=to_K * m.day_sd,
                     dK_domega=self._dKdw, risk_k=s.risk_k, filter=s.certainty, version=m.version, terms=t)
+
+    def critical_assumptions(self, r: Mapping[str, Any], s: Settings, ri_step: float = 5.0,
+                             n_alt: float = 1.0) -> list[dict[str, Any]]:
+        """Coke effect (kg/tHM wet) of each critical assumption of a STRATA-omega result taking another credible value
+        (``omega_model.assumption_sensitivity``): RI of each material +/- ri_step, size exponent n -> n_alt, plant-data
+        scales +/- 1 sd, moisture coefficient +/- 1 se. Linear in omega through dK/domega; sorted by size."""
+        om = r.get("omega") or {}
+        if om.get("mode") != "blend":
+            return []
+        m = self.omega_model()
+        z, P = np.asarray(r["z"], float), float(r["P_th"])
+        st = self.plan_state(z, s, P)
+        o = r["out"]
+        R = om["R"]
+        rows = assumption_sensitivity(m, st, float(o["K"]), float(R), ri_step=ri_step, n_alt=n_alt)
+        wet = 1 - self.case0["coke"]["moist_pct"] / 100
+        to_K = self._dKdw / wet
+        for row in rows:
+            row["d_coke_kg"] = abs(to_K * row["d_omega"]) if row.get("symmetric") else to_K * row["d_omega"]
+            if "d_omega_lo" in row:
+                row["d_coke_lo_kg"], row["d_coke_hi_kg"] = to_K * row["d_omega_lo"], to_K * row["d_omega_hi"]
+        return rows
 
     def saving_sigma(self, a: Mapping[str, Any], b: Mapping[str, Any]) -> dict[str, float] | None:
         """1-sigma of the coke (kg/tHM wet) and cost (Rs/tHM) difference between two blend-mode results of this

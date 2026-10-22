@@ -8,7 +8,8 @@ Why
   uncertainty and a certainty class for every plan.
 
 Model (constants in ``assets/burden_engine/omega_model.json``; built from the BF-02 layered gas-flow model v0.4,
-scaled and tested out of sample on 191 days of BF-02 data, Dec 2025 - Oct 2026; OMEGA v1.1)
+scaled and tested out of sample on 191 days of BF-02 data, Dec 2025 - Oct 2026; STRATA 1.2 = STRATA-omega on
+STRATA-Flow, the Stratified Transport & Reduction Analytics model of BF-02; OMEGA v1.0 / v1.1 were its earlier names)
 
   w(state, R)   ring counter-current model of the TRZ. Six rings, i = 1 (centre) .. 6 (wall):
                   C_g,i = R f_i        oxygen the ring's gas can take at the W point (f_i: gas share of ring i)
@@ -28,6 +29,14 @@ scaled and tested out of sample on 191 days of BF-02 data, Dec 2025 - Oct 2026; 
   ore = Lloyds CLO, Geomin, NMDC ROM, Donimalai, Gomti, oversize). lam_pellet, lam_lump, the operating scale and a_h
   are the AR(1) posterior of the daily change of omega against its 14-day anchor (GAS-14, GAS-19); the posterior is
   stored as the mean and covariance of (x_blend, b_c) so that the code below is unchanged from v1.0.
+
+STRATA 1.2 (``operating_scales`` in the asset)
+  The operating channel is split: production part = w(plan blend, calibration operation, plan production) minus
+  w(plan blend, calibration operation), scaled by lam_prod (TRZ residence; 0.68 +/- 0.29), and the rest (coke layers,
+  fuels, oxygen) scaled by lam_rest (1.37 +/- 0.28), correlated. RI set S8 (RI review, Oct 2026). Certainty tier
+  Investigate: a class beyond ``certainty.investigate.classes_max`` (pellet > 25 % of ferrous) or sigma(coke) above
+  ``certainty.investigate.sigma_kg``; ``limits_for("low")`` keeps every plan except Investigate ones.
+  ``assumption_sensitivity`` gives the omega change when one critical assumption takes another credible value.
   The gas-capacity channel of v1.0 (R from the carbon gas of the balance, GAS-17) is retired: out of sample it gave
   no skill and its data scale was negative. ``gas_capacity_channel: false`` holds R at the calibration.
 
@@ -54,7 +63,8 @@ from typing import Any, Mapping
 import numpy as np
 
 MODEL_PATH = Path(__file__).resolve().parents[2] / "assets" / "burden_engine" / "omega_model.json"
-CERTAINTY_LEVELS = ("any", "medium", "high")
+CERTAINTY_LEVELS = ("any", "low", "medium", "high")      # "low" = everything except Investigate
+TIERS = ("High", "Medium", "Low", "Investigate")
 
 
 def counter_current_eff(ntu: np.ndarray, cr: np.ndarray) -> np.ndarray:
@@ -119,6 +129,11 @@ class OmegaTerms:
     wall_gas_share: float = float("nan")
     g: list[float] = field(default_factory=list)      # gradient of omega in the posterior parameters (lam_b, b)
     d_moist: float = 0.0             # blast-moisture term (GAS-19)
+    d_prod: float = 0.0              # operating channel: production part (TRZ residence), data-scaled (STRATA 1.2)
+    d_rest: float = 0.0              # operating channel: coke layers, fuels, oxygen, data-scaled
+    d_prod_phys: float = 0.0
+    d_rest_phys: float = 0.0
+    investigate: list[str] = field(default_factory=list)   # reasons for the Investigate tier (beyond common practice)
 
 
 class OmegaModel:
@@ -151,12 +166,24 @@ class OmegaModel:
         mo = spec.get("moisture") or {}
         self.a_moist = float(mo.get("coef", 0.0))
         self.a_moist_se = float(mo.get("se", 0.0))
+        ops = spec.get("operating_scales")
+        self.split_oper = bool(ops)                     # STRATA 1.2: production and other operation scaled apart
+        ops = ops or {}
+        self.lam_prod, self.sd_prod = float(ops.get("production", 1.0)), float(ops.get("production_sd", self.op_rel_sd))
+        self.lam_rest, self.sd_rest = float(ops.get("other", 1.0)), float(ops.get("other_sd", self.op_rel_sd))
+        self.corr_oper = float(ops.get("corr", 0.0))
         self.support = {k: tuple(v) for k, v in spec["support"]["classes"].items()}
         self.support_prod = tuple(spec["support"]["production_t_h"])
         self.margin_pt = float(spec["support"]["margin_pt"])
         self.margin_prod = float(spec["support"]["margin_t_h"])
         cert = spec["certainty"]
         self.sig_high, self.sig_medium = float(cert["high_sigma_kg"]), float(cert["medium_sigma_kg"])
+        inv = cert.get("investigate") or {}
+        self.inv_sigma = float(inv.get("sigma_kg") or math.inf)
+        self.inv_max = {c: float(v) for c, v in (inv.get("classes_max") or {}).items()}
+        self.inv_min = {c: float(v) for c, v in (inv.get("classes_min") or {}).items()}
+        self.inv_prod = tuple(inv["production_t_h"]) if inv.get("production_t_h") else None
+        self.inv_note = str(inv.get("note", "beyond common practice"))
         self.cal_se = float(spec["sigma"]["omega_cal_se"])
         self.day_sd = float(spec["sigma"]["omega_day_sd"])
         self.kappa = float(spec["kinetics"]["kappa"])
@@ -258,7 +285,26 @@ class OmegaModel:
             status = "outside" if far or status == "outside" else "margin"
         return status, outside
 
-    def certainty(self, sigma_coke: float, support: str) -> str:
+    def investigate_reasons(self, cls: Mapping[str, float], prod: float | None = None) -> list[str]:
+        """Why a plan falls in the Investigate tier (GAS-18): a class or production beyond the configured envelope of
+        common practice (e.g. pellet above 25 % of ferrous). Empty list: not Investigate on these grounds."""
+        out = []
+        for c, hi in self.inv_max.items():
+            v = float(cls.get(c, 0.0))
+            if v > hi + 1e-6:
+                out.append(f"{c} {v:.1f} % > {hi:.0f} % ({self.inv_note})")
+        for c, lo in self.inv_min.items():
+            v = float(cls.get(c, 0.0))
+            if v < lo - 1e-6:
+                out.append(f"{c} {v:.1f} % < {lo:.0f} % ({self.inv_note})")
+        if self.inv_prod and prod is not None and not self.inv_prod[0] - 1e-6 <= prod <= self.inv_prod[1] + 1e-6:
+            out.append(f"production {prod:.1f} t/h outside {self.inv_prod[0]:.0f}-{self.inv_prod[1]:.0f} t/h ({self.inv_note})")
+        return out
+
+    def certainty(self, sigma_coke: float, support: str, investigate: list[str] | None = None) -> str:
+        """High / Medium / Low / Investigate (GAS-18)."""
+        if investigate or sigma_coke > self.inv_sigma:
+            return "Investigate"
         if sigma_coke <= self.sig_high and support == "inside":
             return "High"
         if sigma_coke <= self.sig_medium and support in ("inside", "margin"):
@@ -266,7 +312,11 @@ class OmegaModel:
         return "Low"
 
     def limits_for(self, level: str) -> dict[str, Any] | None:
-        """Constraints a certainty filter puts on the optimiser: sigma(coke) cap and the class / production range."""
+        """Constraints a certainty filter puts on the optimiser: sigma(coke) cap and the class / production range.
+        "low" keeps every plan except Investigate ones; "medium" / "high" as before."""
+        if level == "low":
+            classes = {c: (self.inv_min.get(c, 0.0), self.inv_max.get(c, 100.0)) for c in set(self.inv_max) | set(self.inv_min)}
+            return dict(sigma_max=self.inv_sigma, classes=classes, production=self.inv_prod)
         if level not in ("medium", "high"):
             return None
         m, mp = (0.0, 0.0) if level == "high" else (self.margin_pt, self.margin_prod)
@@ -299,7 +349,15 @@ class PlanOmega:
         self.d_moist = model.a_moist * dh if math.isfinite(dh) else 0.0
         self.s_moist = model.a_moist_se * abs(dh) if math.isfinite(dh) else 0.0
         self.base = model.omega_ref + self.d_blend + self.d_disc + self.d_moist
-        self._last: tuple[float, float, float, float] | None = None
+        # operating channel, production part: the plan's blend at the calibration's operation but the plan's production
+        if model.split_oper:
+            self.st_bp = OmegaState(st.shares, st.fe_frac, st.cls, ref.coke, ref.nut, ref.pci, st.prod, ref.blast_t,
+                                    ref.o2, ref.rdi, st.fer, ref.humidity)
+            self.w_bp = model.w(self.st_bp, model.R_ref)
+        else:
+            self.w_bp = self.w_b
+        self.d_prod_phys = self.w_bp - self.w_b
+        self._last: tuple[float, float, float, float, float] | None = None
 
     def _state_at(self, K: float) -> OmegaState:
         s = self.st
@@ -313,16 +371,27 @@ class PlanOmega:
         p = self.m.parts(st)
         w_op = self.m.w(st, self.m.R_ref, parts=p)
         w_R = self.m.w(st, R, parts=p)
-        d_oper, d_R = w_op - self.w_b, w_R - w_op
-        self._last = (float(K), float(R), d_oper, d_R)
+        d_rest_phys = w_op - self.w_bp
+        if self.m.split_oper:
+            d_oper = self.m.lam_prod * self.d_prod_phys + self.m.lam_rest * d_rest_phys
+        else:
+            d_oper = w_op - self.w_b
+        d_R = w_R - w_op
+        self._last = (float(K), float(R), d_oper, d_R, d_rest_phys)
         return self.base + d_oper + d_R
+
+    def _s_oper(self, d_oper: float, d_rest_phys: float) -> float:
+        m = self.m
+        if m.split_oper:
+            return oper_sigma(m, self.d_prod_phys, d_rest_phys)
+        return m.op_rel_sd * abs(d_oper)
 
     def terms(self, K: float, R: float) -> OmegaTerms:
         om = self.omega(K, R)
-        _, _, d_oper, d_R = self._last
+        _, _, d_oper, d_R, d_rest_phys = self._last
         m = self.m
         s_post = float(math.sqrt(max(self.g @ self.V @ self.g, 0.0)))
-        s_oper = m.op_rel_sd * abs(d_oper)
+        s_oper = self._s_oper(d_oper, d_rest_phys)
         s_R = m.R_rel_sd * abs(d_R)
         du = (self.st.inputs(m.inputs) - m.ref.inputs(m.inputs)) / m.sd
         s_sur = m.sigma_sur * min(1.0, float(np.linalg.norm(du)))
@@ -337,17 +406,22 @@ class PlanOmega:
                                            moisture=self.s_moist),
                           R=float(R), k_blend=m.k_blend(self.st.fe_frac), support=support, outside=outside,
                           gas_in_excess=excess, wall_gas_share=float(f[-1]), g=[float(x) for x in self.g],
-                          d_moist=self.d_moist)
+                          d_moist=self.d_moist,
+                          d_prod=(m.lam_prod * self.d_prod_phys if m.split_oper else 0.0),
+                          d_rest=(m.lam_rest * d_rest_phys if m.split_oper else d_oper),
+                          d_prod_phys=self.d_prod_phys, d_rest_phys=d_rest_phys,
+                          investigate=m.investigate_reasons(self.st.cls, self.st.prod))
 
     def sigma(self, K: float, R: float) -> float:
         """1-sigma of omega without the support and ring diagnostics (cheap; used inside the optimiser)."""
         self.omega(K, R)
-        _, _, d_oper, d_R = self._last
+        _, _, d_oper, d_R, d_rest_phys = self._last
         m = self.m
         s_post2 = max(float(self.g @ self.V @ self.g), 0.0)
         du = (self.st.inputs(m.inputs) - m.ref.inputs(m.inputs)) / m.sd
         s_sur = m.sigma_sur * min(1.0, float(np.linalg.norm(du)))
-        return math.sqrt(s_post2 + (m.op_rel_sd * d_oper) ** 2 + (m.R_rel_sd * d_R) ** 2 + s_sur ** 2 + self.s_moist ** 2)
+        return math.sqrt(s_post2 + self._s_oper(d_oper, d_rest_phys) ** 2 + (m.R_rel_sd * d_R) ** 2 + s_sur ** 2
+                         + self.s_moist ** 2)
 
 
 def difference_sigma(model: OmegaModel, a: Mapping[str, Any], b: Mapping[str, Any]) -> float:
@@ -359,11 +433,88 @@ def difference_sigma(model: OmegaModel, a: Mapping[str, Any], b: Mapping[str, An
     V = model.post_cov[np.ix_(idx, idx)]
     dg = np.asarray(a["g"], float) - np.asarray(b["g"], float)
     s2 = max(float(dg @ V @ dg), 0.0)
-    s2 += (model.op_rel_sd * (a["d_oper"] - b["d_oper"])) ** 2 + (model.R_rel_sd * (a["d_R"] - b["d_R"])) ** 2
+    if model.split_oper:
+        s2 += oper_sigma(model, a.get("d_prod_phys", 0.0) - b.get("d_prod_phys", 0.0),
+                         a.get("d_rest_phys", 0.0) - b.get("d_rest_phys", 0.0)) ** 2
+    else:
+        s2 += (model.op_rel_sd * (a["d_oper"] - b["d_oper"])) ** 2
+    s2 += (model.R_rel_sd * (a["d_R"] - b["d_R"])) ** 2
     s2 += a["sigma_parts"]["surrogate"] ** 2 + b["sigma_parts"]["surrogate"] ** 2
     # moisture: same coefficient for both plans (fully correlated); zero when both plans run at the same moisture
     s2 += (a["sigma_parts"].get("moisture", 0.0) - b["sigma_parts"].get("moisture", 0.0)) ** 2
     return math.sqrt(s2)
+
+
+def oper_sigma(model: OmegaModel, d_prod_phys: float, d_rest_phys: float) -> float:
+    """1-sigma of the scaled operating channel: production and other parts with correlated scales (STRATA 1.2)."""
+    a, b = model.sd_prod * d_prod_phys, model.sd_rest * d_rest_phys
+    return math.sqrt(max(a * a + b * b + 2 * model.corr_oper * a * b, 0.0))
+
+
+def assumption_sensitivity(model: OmegaModel, st: OmegaState, K: float, R: float, ri_step: float = 5.0,
+                           n_alt: float = 1.0, min_fe_share: float = 0.005) -> list[dict[str, Any]]:
+    """Change of a plan's omega (against the calibration) when one critical assumption takes another credible value.
+
+    Each alternative re-anchors kappa on the calibration (so the calibration's omega is unchanged) and re-evaluates the
+    plan at the same coke rate and capacity ratio. Covered: the ISO 7215 reducibility of every material in the plan or
+    the calibration (+/- ri_step), the size exponent of the reduction rate (n -> n_alt), the plant-data scales of the
+    pellet and lump-ore channels and of the production channel (+/- 1 sd) and the blast-moisture coefficient (+/- 1 se).
+    Returns rows sorted by the size of the effect; omega units (multiply by dK/domega for coke)."""
+    import copy
+    base = PlanOmega(model, st).omega(K, R)
+    ref = model.ref
+    rows: list[dict[str, Any]] = []
+
+    def alt(rates: Mapping[str, float]) -> float:
+        m2 = copy.copy(model)
+        m2.rate = dict(rates)
+        m2.calibrate(ref, model.omega_ref, model.R_ref)
+        return PlanOmega(m2, st).omega(K, R) - base
+
+    mats = {mm for mm, v in st.fe_frac.items() if v >= min_fe_share} | {mm for mm, v in ref.fe_frac.items() if v >= min_fe_share}
+    kin = model.spec["kinetics"]
+    for mm in sorted(mats):
+        info = model.spec["materials"].get(mm, {})
+        ri = float(info.get("ri_pct", float("nan")))
+        effs = []
+        for dri in (-ri_step, ri_step):
+            v = dict(info, ri_pct=min(95.0, max(30.0, ri + dri)))
+            r2 = dict(model.rate); r2[mm] = model._rate(v)
+            effs.append(alt(r2))
+        worst = max(effs, key=abs)
+        rows.append(dict(assumption=f"RI {mm}", value=f"{ri:.0f} %", alternative=f"{ri - ri_step:.0f} / {ri + ri_step:.0f} %",
+                         basis=str(info.get("ri_basis", "literature")), d_omega=float(worst),
+                         d_omega_lo=float(effs[0]), d_omega_hi=float(effs[1]), kind="RI"))
+    n0 = float(kin["n_size"])
+    if abs(n_alt - n0) > 1e-9:
+        r2 = {mm: model._rate(dict(v, ri_pct=v["ri_pct"])) * (float(kin["d_test_mm"]) / float(v["sauter_mm"])) ** (n_alt - n0)
+              for mm, v in model.spec["materials"].items()}
+        rows.append(dict(assumption="size exponent of the reduction rate", value=f"{n0:g}", alternative=f"{n_alt:g}",
+                         basis="shrinking-core range 0.5-2; not tested on BF-02", d_omega=float(alt(r2)), kind="size"))
+    cs = model.spec.get("channel_scales") or {}
+    g = cs.get("g_per_pt") or {}
+    if g:
+        ds = {c: st.cls.get(c[3:], 0.0) - ref.cls.get(c[3:], 0.0) for c in g}
+        pel = g.get("sh_pellet", 0.0) * ds.get("sh_pellet", 0.0)
+        lump = sum(g[c] * ds[c] for c in g if c != "sh_pellet")
+        rows.append(dict(assumption="plant-data scale, pellet channel", value=f"{cs.get('lam_pellet', 1):.2f}",
+                         alternative=f"+/- {cs.get('sd_pellet', 0):.2f}", basis="AR(1) posterior, GAS-14",
+                         d_omega=float(cs.get("sd_pellet", 0.0) * abs(pel)), kind="scale", symmetric=True))
+        rows.append(dict(assumption="plant-data scale, lump-ore channel", value=f"{cs.get('lam_lump', 1):.2f}",
+                         alternative=f"+/- {cs.get('sd_lump', 0):.2f}", basis="AR(1) posterior, GAS-14",
+                         d_omega=float(cs.get("sd_lump", 0.0) * abs(lump)), kind="scale", symmetric=True))
+    if model.split_oper:
+        po = PlanOmega(model, st)
+        rows.append(dict(assumption="plant-data scale, production channel", value=f"{model.lam_prod:.2f}",
+                         alternative=f"+/- {model.sd_prod:.2f}", basis="AR(1) posterior, GAS-16",
+                         d_omega=float(model.sd_prod * abs(po.d_prod_phys)), kind="scale", symmetric=True))
+    dh = float(st.humidity) - float(ref.humidity)
+    if math.isfinite(dh) and abs(dh) > 0:
+        rows.append(dict(assumption="blast-moisture coefficient", value=f"{model.a_moist:.4f}/g",
+                         alternative=f"+/- {model.a_moist_se:.4f}", basis="GAS-19 (weather record, DATA-11)",
+                         d_omega=float(model.a_moist_se * abs(dh)), kind="moisture", symmetric=True))
+    rows.sort(key=lambda r: -abs(r["d_omega"]))
+    return rows
 
 
 @lru_cache(maxsize=4)

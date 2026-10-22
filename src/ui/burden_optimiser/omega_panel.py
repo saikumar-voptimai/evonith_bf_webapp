@@ -1,5 +1,6 @@
-"""Shaft efficiency on the Burden & Fuel Optimiser page: the settings (model, certainty filter, risk aversion, auto
-mode), the shaft-efficiency panel of a plan, and the auto-mode candidates with the language-model review.
+"""Shaft efficiency on the Burden & Fuel Optimiser page: the settings (model switch Fixed-ω / STRATA-ω, certainty
+filter, risk aversion, auto mode), the shaft-efficiency panel of a plan with its critical assumptions, and the auto-mode
+candidates with the language-model review.
 
 The model is ``utils/burden_engine/omega_model.py``; the rule and the review checks are
 ``utils/burden_engine/auto_review.py``. As with the commentary, the model call is on a button, never automatic.
@@ -19,26 +20,33 @@ from utils.burden_engine.auto_review import REVIEW_SYSTEM, parse_review, review_
 
 log = logging.getLogger(__name__)
 
-FILTERS = {"any": "Any certainty", "medium": "Medium or better", "high": "High only", "auto": "Auto: rule + review"}
+FILTERS = {"low": "Exclude Investigate", "any": "Any (incl. Investigate)", "medium": "Medium or better",
+           "high": "High only", "auto": "Auto: rule + review"}
+MODELS = {"blend": "STRATA-ω (blend-dependent)", "fixed": "Fixed-ω (Rist baseline)"}
 RISK = {0.0: "None (expected cost)", 1.0: "Moderate (+1 σ)", 1.28: "Cautious (+1.28 σ)", 1.64: "Strict (+1.64 σ)"}
 BADGE = {"High": ":green-badge[High certainty]", "Medium": ":orange-badge[Medium certainty]",
-         "Low": ":red-badge[Low certainty]", "Held": ":gray-badge[ω held]"}
+         "Low": ":red-badge[Low certainty]", "Investigate": ":violet-badge[Investigate: trial before adoption]",
+         "Held": ":gray-badge[ω held]"}
+N_FLOAT = 3                     # critical assumptions shown on the face of a Low / Investigate / extrapolated result
 
 
 def render_omega_settings(key: str = "bfo_om") -> dict[str, Any]:
     """Model choice, certainty filter and risk aversion. Returns Settings fields plus ``auto``."""
     c1, c2, c3 = st.columns([2, 2, 2])
-    blend = c1.toggle("Blend-dependent shaft efficiency", value=True, key=f"{key}_mode",
-                      help="On: ω responds to the blend's reducibility and size, residence time in the thermal reserve "
-                           "zone, the coke layers, production, oxygen and blast moisture (BF-02 gas-flow model, scaled by "
-                           "the plant data and tested out of sample; OMEGA v1.1, GAS-13..20). Off: ω held at the "
-                           "calibration for every blend (ASM-01), as before.")
-    if not blend:
-        c2.caption("ω held at the calibration: a blend changes coke through its chemistry only.")
+    mode = c1.radio("Shaft-efficiency model", list(MODELS), format_func=MODELS.get, index=0, key=f"{key}_mode",
+                    horizontal=True,
+                    help="STRATA-ω: ω responds to the blend's reducibility and size, residence time in the thermal "
+                         "reserve zone, the coke layers, production, oxygen and blast moisture (STRATA-Flow gas-flow model "
+                         "of BF-02, scaled by the plant data and tested out of sample; STRATA 1.2, GAS-13..20). "
+                         "Fixed-ω: ω held at the calibration for every blend (Rist baseline, ASM-01).")
+    if mode == "fixed":
+        c2.caption("Fixed-ω: ω held at the calibration; a blend changes coke through its chemistry only.")
         return dict(omega_mode="fixed", certainty="any", risk_k=0.0, auto=False)
     filt = c2.selectbox("Certainty filter", list(FILTERS), format_func=FILTERS.get, index=0, key=f"{key}_filter",
                         help="High: σ(coke) ≤ 2 kg/tHM and blend and production inside what BF-02 ran. Medium: σ ≤ 5 and "
-                             "within the margin. Auto: the plan under three settings, a fixed rule picks, a language "
+                             "within the margin. Investigate: pellet above 25 % of ferrous or σ(coke) above 8 kg/tHM "
+                             "(beyond common practice; trial before adoption). Exclude Investigate (default) keeps "
+                             "every other plan. Auto: the plan under three settings, a fixed rule picks, a language "
                              "model reviews the pick.")
     risk = c3.select_slider("Risk aversion", options=list(RISK), value=0.0, format_func=RISK.get, key=f"{key}_risk",
                             disabled=(filt == "auto"),
@@ -77,9 +85,14 @@ def render_omega_result(eng: Any, r: Mapping[str, Any], today: Mapping[str, Any]
             k[3].metric("Day-to-day spread (kg/tHM)", f"± {om['day_sd_K']:.1f}",
                         help="Daily scatter of ω around the model, as coke; it averages out over days.")
         rows = [("Blend: reducibility, size, burden volume (model)", om["d_blend"]),
-                ("Blend: plant-data scale (pellet, lump ore)", om["d_disc"]),
-                ("Operation: coke layers, production (residence), oxygen", om["d_oper"]),
-                ("Blast moisture (weather record)", om.get("d_moist", 0.0))]
+                ("Blend: plant-data scale (pellet, lump ore)", om["d_disc"])]
+        if "d_prod" in om and abs(om.get("d_prod", 0.0)) + abs(om.get("d_rest", 0.0)) > 0 and \
+                abs(om["d_prod"] + om["d_rest"] - om["d_oper"]) < 1e-9:
+            rows += [("Operation: production (TRZ residence), scaled", om["d_prod"]),
+                     ("Operation: coke layers, fuels, oxygen, scaled", om["d_rest"])]
+        else:
+            rows.append(("Operation: coke layers, production (residence), oxygen", om["d_oper"]))
+        rows.append(("Blast moisture (Wardha weather record)", om.get("d_moist", 0.0)))
         if abs(om.get("d_R", 0.0)) > 0:
             rows.append(("Gas quantity (capacity ratio R)", om["d_R"]))
         parts = pd.DataFrame(rows, columns=["Part of Δω against the calibration", "Δω"])
@@ -92,8 +105,67 @@ def render_omega_result(eng: Any, r: Mapping[str, Any], today: Mapping[str, Any]
                    f"dK/dω {om['dK_domega']:.0f} kg/tHM per unit ω including the coke-layer loop. Not in σ: the "
                    f"calibration's own error (± {om['cal_se_K']:.1f} kg/tHM, common to every plan) and the day-to-day "
                    f"spread (± {om['day_sd_K']:.1f}). Model {om['version']}.")
+        fixed_k = _fixed_omega_coke(eng, r)
+        if fixed_k is not None:
+            st.caption(f"Same blend under Fixed-ω (Rist baseline): coke {fixed_k:.1f} kg/tHM dry; STRATA-ω gives "
+                       f"{r['out']['K']:.1f} ({r['out']['K'] - fixed_k:+.1f}). The difference is the blend's and the "
+                       "operation's effect on gas utilisation that the fixed model does not see.")
+        if om.get("investigate"):
+            st.error("**Investigate tier** — " + "; ".join(om["investigate"]) + ". Beyond common practice: the "
+                     "coke prediction rests on the assumptions below, not on BF-02 evidence. Trial before adoption.")
         if om["outside"]:
             st.warning("Outside what BF-02 has run: " + "; ".join(om["outside"]) + ".")
+        render_critical_assumptions(eng, r, om)
+
+
+def _fixed_omega_coke(eng: Any, r: Mapping[str, Any]) -> float | None:
+    """Dry coke of the plan's blend with ω held at the calibration (Fixed-ω), for the side-by-side comparison."""
+    try:
+        from dataclasses import replace
+
+        import numpy as np
+
+        from utils.burden_engine.engine import Settings
+
+        s = Settings(**{k: v for k, v in r["settings"].items() if k in Settings.__dataclass_fields__})
+        o = eng.evaluate(np.asarray(r["z"], float), replace(s, omega_mode="fixed"), float(r["P_th"]))
+        return float(o["K"])
+    except Exception:  # a comparison must never break the results page
+        log.exception("Fixed-omega comparison failed")
+        return None
+
+
+def render_critical_assumptions(eng: Any, r: Mapping[str, Any], om: Mapping[str, Any]) -> None:
+    """Coke effect of each critical assumption taking another credible value. On a Low / Investigate / extrapolated
+    result the largest ones are floated on the face of the panel; otherwise they sit in an expander."""
+    try:
+        from utils.burden_engine.engine import Settings
+
+        s = Settings(**{k: v for k, v in r["settings"].items() if k in Settings.__dataclass_fields__})
+        rows = eng.critical_assumptions(r, s)
+    except Exception:  # the sensitivity table must never break the results page
+        log.exception("critical assumptions failed")
+        return
+    if not rows:
+        return
+    T = pd.DataFrame([dict(Assumption=x["assumption"], Value=x["value"], Alternative=x["alternative"],
+                           **{"Coke effect, kg/tHM": (f"± {x['d_coke_kg']:.1f}" if x.get("symmetric") else
+                                                      f"{x['d_coke_lo_kg']:+.1f} / {x['d_coke_hi_kg']:+.1f}"
+                                                      if "d_coke_lo_kg" in x else f"{x['d_coke_kg']:+.1f}")},
+                           Basis=x["basis"]) for x in rows])
+    flag = om.get("certainty") in ("Low", "Investigate") or bool(om.get("outside"))
+    if flag:
+        top = rows[:N_FLOAT]
+        st.warning("**Critical assumptions behind this extrapolated result** (coke effect if the assumption takes "
+                   "the alternative value): " + "; ".join(
+                       f"{x['assumption']} {x['value']} → {x['alternative']}: "
+                       + (f"± {x['d_coke_kg']:.1f}" if x.get("symmetric") else f"{x['d_coke_kg']:+.1f}")
+                       + " kg/tHM" for x in top)
+                   + ". Reducibility of pellet and lump ores is a literature value (no plant RI test).")
+    with st.expander("Critical assumptions (sensitivity of this plan's coke)", expanded=flag):
+        st.dataframe(T, hide_index=True, width="stretch")
+        st.caption("Each row changes one assumption, re-anchors the model on the calibration and re-evaluates this "
+                   "plan at the same coke rate; effect on coke through dK/dω. RI = ISO 7215 reducibility index.")
 
 
 def _generate(system_prompt: str, user_prompt: str) -> str:

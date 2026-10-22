@@ -1,53 +1,69 @@
 {
- "version": "OMEGA v1.1 (2026-10-21): BF-02 gas-flow model v0.4 ring counter-current; blend scales per group, operating channel and blast moisture from the out-of-sample-tested AR(1) posterior (Dec 2025 - Oct 2026, weather-file moisture); gas-capacity channel retired",
+ "version": "STRATA 1.2 (2026-10-22): STRATA-omega shaft-efficiency model on STRATA-Flow (BF-02 gas-flow model v0.4, ring counter-current); RI set S8; blend scales per group, production and other operating channels and blast moisture from the out-of-sample-tested AR(1) posterior (Dec 2025 - Oct 2026, Wardha weather-record moisture); gas-capacity channel retired",
  "materials": {
   "sinter": {
    "ri_pct": 68.7,
    "sauter_mm": 12.391,
    "fe_pct": 54.5,
-   "class": "sinter"
+   "class": "sinter",
+   "ri_basis": "plant mean, SP-02 (measured)",
+   "ri_v11_pct": 68.7
   },
   "pellet": {
    "ri_pct": 65.0,
    "sauter_mm": 9.779,
    "fe_pct": 63.2,
-   "class": "pellet"
+   "class": "pellet",
+   "ri_basis": "literature for acid / fluxed pellets 60-70 %; no plant RI",
+   "ri_v11_pct": 65.0
   },
   "lloyds_clo": {
-   "ri_pct": 58.0,
+   "ri_pct": 65.0,
    "sauter_mm": 17.378,
    "fe_pct": 60.6,
-   "class": "clo"
+   "class": "clo",
+   "ri_basis": "hematite-goethite CLO, LOI 2-4 %: literature 60-70 % (Lloyds CLO raised from 58)",
+   "ri_v11_pct": 58.0
   },
   "geomin": {
-   "ri_pct": 58.0,
+   "ri_pct": 75.0,
    "sauter_mm": 16.273,
    "fe_pct": 49.0,
-   "class": "clo"
+   "class": "clo",
+   "ri_basis": "goethitic / limonitic, LOI 5-8 %: porous after dehydration, literature 70-80 %",
+   "ri_v11_pct": 58.0
   },
   "nmdc_rom": {
-   "ri_pct": 51.0,
+   "ri_pct": 65.0,
    "sauter_mm": 19.985,
    "fe_pct": 64.6,
-   "class": "rom"
+   "class": "rom",
+   "ri_basis": "Bailadila hard hematite, LOI < 2 %: literature 55-70 %, NMDC ROM raised from 51 (not 70-75: dense hematite; plant data cannot separate 62-77)",
+   "ri_v11_pct": 51.0
   },
   "donimalai": {
-   "ri_pct": 51.0,
+   "ri_pct": 60.0,
    "sauter_mm": 20.184,
    "fe_pct": 55.3,
-   "class": "rom"
+   "class": "rom",
+   "ri_basis": "Bellary-Hospet hematite with goethite: literature 55-65 %",
+   "ri_v11_pct": 51.0
   },
   "lloyds_oversize": {
-   "ri_pct": 58.0,
+   "ri_pct": 65.0,
    "sauter_mm": 11.695,
    "fe_pct": 61.1,
-   "class": "oversize"
+   "class": "oversize",
+   "ri_basis": "as Lloyds CLO",
+   "ri_v11_pct": 58.0
   },
   "gomti": {
-   "ri_pct": 64.0,
+   "ri_pct": 75.0,
    "sauter_mm": 17.135,
    "fe_pct": 55.3,
-   "class": "gomti"
+   "class": "gomti",
+   "ri_basis": "goethitic, LOI 5-8 %: literature 70-80 % (raised from 64; the review gives no support for lowering it)",
+   "ri_v11_pct": 64.0
   }
  },
  "engine_map": {
@@ -76,7 +92,7 @@
   "n_size": 1.5,
   "ri_ref_pct": 68.7,
   "kappa": 1.9348528050729006,
-  "note": "r_m = ln(1-RI_m)/ln(1-RI_sinter) x (d_test/d_m)^n; RI: sinter plant mean (SP-02), others literature (no plant RI for pellets and lump ores); as-charged Sauter sizes from plant sieves"
+  "note": "r_m = ln(1-RI_m)/ln(1-RI_sinter) x (d_test/d_m)^n; RI: sinter plant mean (SP-02), others set S8 of the RI review (mineralogy by LOI and literature; plant data do not separate the candidate sets); as-charged Sauter sizes from plant sieves; kappa refitted at startup"
  },
  "surrogate": {
   "inputs": [
@@ -2869,11 +2885,11 @@
   ],
   "mean": [
    1.0,
-   0.0003095796835643746,
-   0.0006079876233846208,
-   0.0008829232030769309,
-   0.0006387222918461594,
-   0.00010058618769230858
+   0.0003493609783874436,
+   0.00026406572416304215,
+   0.0005329423623290548,
+   0.0002662039081643623,
+   -0.00021809476813465829
   ],
   "cov": [
    [
@@ -2886,49 +2902,49 @@
    ],
    [
     0.0,
-    2.873447381829654e-07,
-    3.166363614658942e-08,
-    4.598211866876038e-08,
-    3.326427951797032e-08,
-    5.238469215428398e-09
+    3.2534616182412445e-07,
+    1.165342670856714e-08,
+    2.3519162810610202e-08,
+    1.1747786439000881e-08,
+    -9.624692504241686e-09
    ],
    [
     0.0,
-    3.1663636146589475e-08,
-    1.2891442041156937e-07,
-    1.872102796418011e-07,
-    1.354312339434042e-07,
-    2.132775337691405e-08
+    1.165342670856714e-08,
+    2.946710975911702e-08,
+    5.947106969603172e-08,
+    2.970570983813821e-08,
+    -2.4337208060161423e-08
    ],
    [
     0.0,
-    4.598211866876045e-08,
-    1.8721027964180107e-07,
-    2.718678693327626e-07,
-    1.9667403458692887e-07,
-    3.097228891132739e-08
+    2.3519162810610202e-08,
+    5.9471069696031724e-08,
+    1.2002562041891424e-07,
+    5.995261681907651e-08,
+    -4.911780655056871e-08
    ],
    [
     0.0,
-    3.3264279517970374e-08,
-    1.354312339434042e-07,
-    1.9667403458692887e-07,
-    1.422774819828226e-07,
-    2.2405902674460252e-08
+    1.1747786439000881e-08,
+    2.970570983813821e-08,
+    5.995261681907651e-08,
+    2.9946241901604914e-08,
+    -2.4534270473604026e-08
    ],
    [
     0.0,
-    5.238469215428406e-09,
-    2.132775337691405e-08,
-    3.097228891132739e-08,
-    2.2405902674460255e-08,
-    3.5284886101512217e-09
+    -9.624692504241686e-09,
+    -2.4337208060161427e-08,
+    -4.911780655056872e-08,
+    -2.453427047360403e-08,
+    2.010036617114547e-08
    ]
   ],
-  "note": "blend channel = physics (x_blend coefficient 1) + b_c = (lam_g - 1) g_c; lam_pellet 1.258 +/- 0.447, lam_lump 0.441 +/- 0.330 (AR(1) posterior of the daily change of omega against its 14-day anchor, priors N(1, 0.5^2)); g_c physics change of omega per wet pt replacing sinter"
+  "note": "blend channel = physics (x_blend coefficient 1) + b_c = (lam_g - 1) g_c; lam_pellet 1.266 +/- 0.434, lam_lump 0.465 +/- 0.347 (AR(1) posterior of the daily change of omega against its 14-day anchor, priors N(1, 0.5^2)); g_c physics change of omega per wet pt replacing sinter (RI set S8)"
  },
  "priors": {
-  "oper_rel_sd": 0.258,
+  "oper_rel_sd": 0.279,
   "gas_capacity_rel_sd": 0.0
  },
  "support": {
@@ -2968,7 +2984,15 @@
  },
  "certainty": {
   "high_sigma_kg": 2.0,
-  "medium_sigma_kg": 5.0
+  "medium_sigma_kg": 5.0,
+  "investigate": {
+   "sigma_kg": 8.0,
+   "classes_max": {
+    "pellet": 25.0
+   },
+   "note": "beyond common practice: 20 % pellet is standard, BF-02 ran <= 15 %",
+   "basis": "GAS-18; user decision 22 Oct 2026"
+  }
  },
  "sigma": {
   "omega_cal_se": 0.006,
@@ -2988,269 +3012,355 @@
   "window": "2026-07-01 to 2026-10-07 (stable days)"
  },
  "validation": {
-  "method": "day minus its 14-day anchor (the Coke Energy pipeline rolling calibration); parameters estimated on days before the predicted month only (expanding window, refit monthly) or on the other half of the record (time split); skill = 1 - MSE / MSE(held). Coke target: oxygen-balance burnt coke. 175 days, 1 Jan - 7 Oct 2026.",
+  "method": "day minus its 14-day anchor (the Coke Energy pipeline rolling calibration); parameters estimated on days before the predicted month only (expanding window, refit monthly) or on the other half of the record (time split); skill = 1 - MSE / MSE(Fixed-omega). Coke target: oxygen-balance burnt coke. 175 days, 1 Jan - 7 Oct 2026.",
   "expanding": {
-   "omega_day": {
-    "held": {
-     "rmse": 0.0321,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 0.0356,
-     "skill": -0.229
-    },
-    "v1.1": {
-     "rmse": 0.0277,
-     "skill": 0.252
-    },
-    "xgboost": {
-     "rmse": 0.0308,
-     "skill": 0.079
-    }
+   "omega_day": 0.256,
+   "coke_day": 0.182,
+   "coke_7d": 0.188
+  },
+  "time_split": {
+   "train Dec-May, test Jun-Oct": {
+    "omega_day": 0.311,
+    "coke_day": 0.233,
+    "coke_7d": 0.223
    },
-   "K_burnt_day": {
-    "held": {
-     "rmse": 8.107,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 9.2078,
-     "skill": -0.29
-    },
-    "v1.1": {
-     "rmse": 7.363,
-     "skill": 0.175
-    },
-    "xgboost": {
-     "rmse": 7.743,
-     "skill": 0.088
-    }
-   },
-   "omega_7-day": {
-    "held": {
-     "rmse": 0.0271,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 0.0289,
-     "skill": -0.136
-    },
-    "v1.1": {
-     "rmse": 0.0243,
-     "skill": 0.198
-    },
-    "xgboost": {
-     "rmse": 0.0256,
-     "skill": 0.107
-    }
-   },
-   "K_burnt_7-day": {
-    "held": {
-     "rmse": 6.468,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 6.9065,
-     "skill": -0.14
-    },
-    "v1.1": {
-     "rmse": 5.8502,
-     "skill": 0.182
-    },
-    "xgboost": {
-     "rmse": 6.1751,
-     "skill": 0.089
-    }
+   "train Jun-Oct, test Jan-May": {
+    "omega_day": 0.183,
+    "coke_day": 0.166,
+    "coke_7d": 0.109
    }
   },
-  "time_split_train_dec_may": {
-   "omega_day": {
-    "held": {
-     "rmse": 0.0346,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 0.0366,
-     "skill": -0.118
-    },
-    "v1.1": {
-     "rmse": 0.0288,
-     "skill": 0.308
-    },
-    "xgboost": {
-     "rmse": 0.0303,
-     "skill": 0.233
-    }
+  "v11_expanding": {
+   "omega_day": 0.254,
+   "coke_day": 0.181,
+   "coke_7d": 0.189
+  },
+  "by_blend": [
+   {
+    "family": "N1 No pellet, sinter + CLO",
+    "n": 21,
+    "pellet": 0.0,
+    "clo": 32.0,
+    "rom": 0.1,
+    "gomti": 0.0,
+    "oversize": 0.1,
+    "realised": 296.9,
+    "fixed_omega": 296.2,
+    "strata": 296.5,
+    "rmse_fixed": 6.07,
+    "rmse_strata": 6.0,
+    "skill": 0.024,
+    "bias": 0.42,
+    "se_bias": 1.99,
+    "verdict": "Supported"
    },
-   "K_burnt_day": {
-    "held": {
-     "rmse": 7.4285,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 8.2085,
-     "skill": -0.221
-    },
-    "v1.1": {
-     "rmse": 6.5721,
-     "skill": 0.217
-    },
-    "xgboost": {
-     "rmse": 6.0526,
-     "skill": 0.336
-    }
+   {
+    "family": "N2 No pellet, with Gomti",
+    "n": 9,
+    "pellet": 0.0,
+    "clo": 26.5,
+    "rom": 0.0,
+    "gomti": 7.0,
+    "oversize": 0.5,
+    "realised": 304.3,
+    "fixed_omega": 301.9,
+    "strata": 301.9,
+    "rmse_fixed": 8.36,
+    "rmse_strata": 8.79,
+    "skill": -0.107,
+    "bias": 2.38,
+    "se_bias": 3.45,
+    "verdict": "Modelled only"
    },
-   "omega_7-day": {
-    "held": {
-     "rmse": 0.0282,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 0.0298,
-     "skill": -0.11
-    },
-    "v1.1": {
-     "rmse": 0.0231,
-     "skill": 0.333
-    },
-    "xgboost": {
-     "rmse": 0.0238,
-     "skill": 0.287
-    }
+   {
+    "family": "N3 No pellet, with oversize",
+    "n": 32,
+    "pellet": 0.0,
+    "clo": 25.4,
+    "rom": 0.0,
+    "gomti": 0.0,
+    "oversize": 9.9,
+    "realised": 307.3,
+    "fixed_omega": 307.3,
+    "strata": 306.3,
+    "rmse_fixed": 8.66,
+    "rmse_strata": 7.48,
+    "skill": 0.254,
+    "bias": 0.94,
+    "se_bias": 1.53,
+    "verdict": "Supported"
    },
-   "K_burnt_7-day": {
-    "held": {
-     "rmse": 5.5789,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 6.1305,
-     "skill": -0.208
-    },
-    "v1.1": {
-     "rmse": 4.9426,
-     "skill": 0.215
-    },
-    "xgboost": {
-     "rmse": 4.289,
-     "skill": 0.409
-    }
+   {
+    "family": "N4 No pellet, with ROM",
+    "n": 20,
+    "pellet": 0.2,
+    "clo": 24.2,
+    "rom": 11.1,
+    "gomti": 0.0,
+    "oversize": 0.0,
+    "realised": 306.0,
+    "fixed_omega": 302.3,
+    "strata": 303.5,
+    "rmse_fixed": 10.55,
+    "rmse_strata": 9.74,
+    "skill": 0.148,
+    "bias": 2.5,
+    "se_bias": 3.7,
+    "verdict": "Supported"
+   },
+   {
+    "family": "N5 No pellet, ROM + oversize",
+    "n": 9,
+    "pellet": 0.4,
+    "clo": 17.9,
+    "rom": 10.9,
+    "gomti": 0.0,
+    "oversize": 4.7,
+    "realised": 300.1,
+    "fixed_omega": 304.3,
+    "strata": 303.3,
+    "rmse_fixed": 10.24,
+    "rmse_strata": 8.83,
+    "skill": 0.257,
+    "bias": -3.14,
+    "se_bias": 4.31,
+    "verdict": "Modelled only"
+   },
+   {
+    "family": "P1 Pellet, sinter + CLO",
+    "n": 43,
+    "pellet": 12.2,
+    "clo": 23.6,
+    "rom": 0.2,
+    "gomti": 0.0,
+    "oversize": 0.0,
+    "realised": 314.2,
+    "fixed_omega": 314.2,
+    "strata": 314.7,
+    "rmse_fixed": 5.62,
+    "rmse_strata": 5.19,
+    "skill": 0.147,
+    "bias": -0.48,
+    "se_bias": 1.19,
+    "verdict": "Supported"
+   },
+   {
+    "family": "P2 Pellet, with oversize",
+    "n": 6,
+    "pellet": 14.9,
+    "clo": 10.4,
+    "rom": 0.2,
+    "gomti": 0.0,
+    "oversize": 9.9,
+    "realised": 314.0,
+    "fixed_omega": 311.0,
+    "strata": 306.0,
+    "rmse_fixed": 5.56,
+    "rmse_strata": 10.0,
+    "skill": -2.234,
+    "bias": 8.01,
+    "se_bias": 2.93,
+    "verdict": "Modelled only"
+   },
+   {
+    "family": "P3 Pellet, with ROM",
+    "n": 27,
+    "pellet": 10.1,
+    "clo": 17.7,
+    "rom": 7.9,
+    "gomti": 0.0,
+    "oversize": 0.0,
+    "realised": 306.4,
+    "fixed_omega": 304.5,
+    "strata": 307.2,
+    "rmse_fixed": 7.19,
+    "rmse_strata": 6.55,
+    "skill": 0.17,
+    "bias": -0.82,
+    "se_bias": 2.48,
+    "verdict": "Supported"
+   },
+   {
+    "family": "P4 Pellet, ROM + oversize",
+    "n": 8,
+    "pellet": 15.0,
+    "clo": 10.0,
+    "rom": 4.4,
+    "gomti": 0.0,
+    "oversize": 6.8,
+    "realised": 296.5,
+    "fixed_omega": 306.5,
+    "strata": 290.7,
+    "rmse_fixed": 14.08,
+    "rmse_strata": 9.03,
+    "skill": 0.589,
+    "bias": 5.8,
+    "se_bias": 2.61,
+    "verdict": "Modelled only"
+   },
+   {
+    "family": "All days",
+    "n": 175,
+    "pellet": 5.8,
+    "clo": 22.9,
+    "rom": 3.3,
+    "gomti": 0.4,
+    "oversize": 2.8,
+    "realised": 306.7,
+    "fixed_omega": 306.3,
+    "strata": 305.9,
+    "rmse_fixed": 8.11,
+    "rmse_strata": 7.33,
+    "skill": 0.182,
+    "bias": 0.77,
+    "se_bias": 0.94,
+    "verdict": "Supported"
+   },
+   {
+    "family": "ROM >= 10 % (any family)",
+    "n": 21,
+    "pellet": 4.4,
+    "clo": 17.0,
+    "rom": 16.3,
+    "gomti": 0.0,
+    "oversize": 0.4,
+    "realised": 306.3,
+    "fixed_omega": 306.8,
+    "strata": 310.2,
+    "rmse_fixed": 9.03,
+    "rmse_strata": 8.58,
+    "skill": 0.096,
+    "bias": -3.9,
+    "se_bias": 2.73,
+    "verdict": "Supported"
+   },
+   {
+    "family": "Pellet >= 12 % (any family)",
+    "n": 35,
+    "pellet": 14.5,
+    "clo": 17.3,
+    "rom": 1.1,
+    "gomti": 0.0,
+    "oversize": 3.3,
+    "realised": 308.7,
+    "fixed_omega": 310.9,
+    "strata": 307.1,
+    "rmse_fixed": 8.46,
+    "rmse_strata": 7.64,
+    "skill": 0.184,
+    "bias": 1.58,
+    "se_bias": 2.19,
+    "verdict": "Supported"
    }
-  },
-  "time_split_train_jun_oct": {
-   "omega_day": {
-    "held": {
-     "rmse": 0.0295,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 0.0353,
-     "skill": -0.435
-    },
-    "v1.1": {
-     "rmse": 0.0271,
-     "skill": 0.153
-    },
-    "xgboost": {
-     "rmse": 0.0276,
-     "skill": 0.119
-    }
-   },
-   "K_burnt_day": {
-    "held": {
-     "rmse": 8.6994,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 10.0468,
-     "skill": -0.334
-    },
-    "v1.1": {
-     "rmse": 7.982,
-     "skill": 0.158
-    },
-    "xgboost": {
-     "rmse": 6.9416,
-     "skill": 0.363
-    }
-   },
-   "omega_7-day": {
-    "held": {
-     "rmse": 0.0239,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 0.0283,
-     "skill": -0.4
-    },
-    "v1.1": {
-     "rmse": 0.0236,
-     "skill": 0.023
-    },
-    "xgboost": {
-     "rmse": 0.0252,
-     "skill": -0.111
-    }
-   },
-   "K_burnt_7-day": {
-    "held": {
-     "rmse": 6.8126,
-     "skill": 0.0
-    },
-    "v1.0": {
-     "rmse": 7.5823,
-     "skill": -0.239
-    },
-    "v1.1": {
-     "rmse": 6.4587,
-     "skill": 0.101
-    },
-    "xgboost": {
-     "rmse": 5.9051,
-     "skill": 0.249
-    }
-   }
-  },
-  "interval_coverage": {
-   "within_1_sigma": 0.634,
-   "within_1_96_sigma": 0.903
-  },
-  "note": "v1.0 (level calibration with class corrections and the gas-capacity channel) was worse than holding omega in every test; v1.1 is better than holding omega in every test. A data-only XGBoost on the same deltas is better for coke in the time splits and worse in the expanding test; it has no mechanism for blends outside the record and is kept as a benchmark only."
+  ],
+  "verdict_rule": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
+  "note": "STRATA 1.2 is better than Fixed-omega in the expanding test and in both time splits. Families with fewer than 10 days (Gomti, ROM + oversize, pellet + oversize) are modelled only: the prediction rests on the RI and size assumptions, not on plant evidence."
  },
  "channel_scales": {
-  "lam_pellet": 1.258413759235705,
-  "lam_lump": 0.4411878461538412,
-  "lam_oper": 1.0518533953750275,
+  "lam_pellet": 1.2658759348458475,
+  "lam_lump": 0.46545399966995515,
+  "sd_pellet": 0.4340876984423548,
+  "sd_lump": 0.3474896082543074,
   "cov_pellet_lump": [
    [
-    0.20021177350604188,
-    -0.02429266006041735
+    0.18843212993898076,
+    -0.01795276454218836
    ],
    [
-    -0.024292660060417387,
-    0.10890396944911176
+    -0.01795276454218836,
+    0.12074902784473202
    ]
   ],
-  "sd_oper": 0.2576829349292432,
   "g_per_pt": {
-   "sh_pellet": 0.001198,
-   "sh_clo": -0.001088,
-   "sh_rom": -0.00158,
-   "sh_gomti": -0.001143,
-   "sh_oversize": -0.00018
+   "sh_pellet": 0.001314,
+   "sh_clo": -0.000494,
+   "sh_rom": -0.000997,
+   "sh_gomti": -0.000498,
+   "sh_oversize": 0.000408
   },
-  "rho": 0.7501494096971012,
-  "sigma_e": 0.017876456022839562,
-  "n_days": 191
+  "rho": 0.7603740776297001,
+  "n_days": 191,
+  "names": [
+   "q_pel",
+   "q_lump",
+   "q_prod",
+   "q_oper_rest",
+   "d_humidity_g"
+  ],
+  "mean": [
+   1.2658759348458475,
+   0.46545399966995515,
+   0.6825158011561986,
+   1.365578452647947,
+   0.004436287415092964
+  ],
+  "cov": [
+   [
+    0.18843212993898076,
+    -0.01795276454218836,
+    -0.0017589869412759677,
+    -0.006215412787087443,
+    -3.532019973081241e-05
+   ],
+   [
+    -0.01795276454218836,
+    0.12074902784473202,
+    -0.0014082071095341824,
+    -0.004491833399841276,
+    -1.0013682515039432e-05
+   ],
+   [
+    -0.0017589869412759555,
+    -0.001408207109534182,
+    0.08404735833291607,
+    0.02191081383410857,
+    3.234630284857785e-06
+   ],
+   [
+    -0.006215412787087399,
+    -0.004491833399841277,
+    0.02191081383410857,
+    0.07775822619072126,
+    4.222700693382718e-05
+   ],
+   [
+    -3.532019973081218e-05,
+    -1.0013682515039437e-05,
+    3.2346302848578073e-06,
+    4.222700693382726e-05,
+    1.7747049471487053e-07
+   ]
+  ]
  },
  "gas_capacity_channel": false,
  "moisture": {
-  "coef": 0.00422,
+  "coef": 0.00444,
   "se": 0.00042,
   "unit": "omega per g/Nm3",
   "basis": "same posterior; blast moisture from the Wardha daily weather record (DATA-11); top-gas H2 shows no matching response to the record's day-to-day moisture (GAS-19)"
  },
  "validation_v10_lomo": {
   "note": "v1.0 leave-one-month-out CV of the level (kept for reference): physics 0.0288, XGBoost 0.0298, mean 0.0296 (RMSE omega)"
+ },
+ "brand": {
+  "name": "STRATA",
+  "expansion": "Stratified Transport & Reduction Analytics",
+  "modules": {
+   "STRATA-Flow": "layered gas-flow (packed-bed, ring) model of BF-02",
+   "STRATA-omega": "blend- and operation-dependent shaft efficiency",
+   "STRATA-Learn": "continuous learning (shadow mode)"
+  },
+  "modes": {
+   "fixed": "Fixed-omega (Rist baseline)",
+   "blend": "STRATA-omega"
+  }
+ },
+ "operating_scales": {
+  "production": 0.6825,
+  "production_sd": 0.2899,
+  "other": 1.3656,
+  "other_sd": 0.2789,
+  "corr": 0.271,
+  "basis": "production part = omega change of the plan blend at the calibration operation but the plan production (TRZ residence); other = coke layers, fuels, oxygen, blast. STRATA 1.1 scaled both with one factor (1.05); the data give 0.68 for production and 1.37 for the rest (GAS-16)"
  }
 }

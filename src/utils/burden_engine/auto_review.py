@@ -25,10 +25,10 @@ import re
 from typing import Any, Mapping, Sequence
 
 RULE_K = 1.0
-CERT_RANK = {"High": 3, "Medium": 2, "Low": 1, "Held": 0}
-CANDIDATES = (
-    ("A", "Lowest expected cost", dict(risk_k=0.0, certainty="any")),
-    ("B", "Risk-averse: lowest cost + 1.28 sigma", dict(risk_k=1.28, certainty="any")),
+CERT_RANK = {"High": 3, "Medium": 2, "Low": 1, "Investigate": 0, "Held": 0}
+CANDIDATES = (                                     # "low": every certainty except Investigate (GAS-18)
+    ("A", "Lowest expected cost", dict(risk_k=0.0, certainty="low")),
+    ("B", "Risk-averse: lowest cost + 1.28 sigma", dict(risk_k=1.28, certainty="low")),
     ("C", "High certainty only", dict(risk_k=0.0, certainty="high")),
 )
 
@@ -40,7 +40,9 @@ PLANT POLICY (Evonith BF-2) - what "in the plant's best interest" means for this
 4. A Low-certainty plan (blend or production outside what BF-2 has run, or sigma(coke) above 5 kg/tHM) is chosen only
    if its saving exceeds two sigma of the saving and the change can be made in steps one descent time apart.
 5. Among plans within one sigma of each other, prefer the smaller change from today's blend and the higher certainty.
-6. Furnace stability (permeability, thermal state) outranks a saving of less than Rs 50/tHM."""
+6. Furnace stability (permeability, thermal state) outranks a saving of less than Rs 50/tHM.
+7. An Investigate plan (pellet above 25 % of ferrous or sigma(coke) above 8 kg/tHM: beyond common practice) is never
+   picked; it is a trial proposal, not an operating plan."""
 
 REVIEW_SYSTEM = """\
 You review the choice between candidate burden plans for Evonith Steel BF-2 for the operating team. You are given the \
@@ -87,7 +89,8 @@ def candidate_row(cid: str, label: str, r: Mapping[str, Any] | None, today: Mapp
 
 def pick(rows: Sequence[Mapping[str, Any]], k: float = RULE_K) -> tuple[str | None, str]:
     """(candidate id, reason) by the fixed rule."""
-    ok = [r for r in rows if r.get("available") and r.get("feasible") and r["id"] != "T"]
+    ok = [r for r in rows if r.get("available") and r.get("feasible") and r["id"] != "T"
+          and r.get("certainty") != "Investigate"]
     if not ok:
         today = next((r for r in rows if r["id"] == "T" and r.get("available")), None)
         return (("T", "No optimised candidate meets every limit; today's blend is kept.") if today

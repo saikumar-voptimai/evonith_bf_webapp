@@ -695,5 +695,16 @@ def render_facts(reg: FactRegister, r: Mapping[str, Any] | None) -> None:
     rows = pd.DataFrame(reg.table(ids))
     st.dataframe(rows, width="stretch", hide_index=True)
     st.caption(f"Fact register v{reg.version} ({reg.date}). Statuses: Model = follows from the balance; Supported = "
-               "BF-02 data agree; Validated = tested out of sample; Assumed = literature or judgement. Retired facts "
-               "(COKE-17 webapp hand coefficients, DATA-10 regressed RAFT, GAS-17 gas-capacity channel) are never used.")
+               "BF-02 data agree; Validated = tested out of sample; Assumed = literature or judgement; Modelled only = "
+               "too few days to test. Retired facts (COKE-17 webapp hand coefficients, DATA-10 regressed RAFT, GAS-17 "
+               "gas-capacity channel) are never used.")
+    mt = pd.DataFrame(reg.model_table())
+    if not mt.empty:
+        st.markdown("**Fixed-ω and STRATA-ω side by side** — MOD: coke response at the reference point; VAL: "
+                    "out-of-sample burnt coke by blend family (realised against both models).")
+        num = st.column_config.NumberColumn
+        st.dataframe(mt, width="stretch", hide_index=True, column_config={
+            "fixed_omega": num("Fixed-ω", format="%.2f"), "strata_omega": num("STRATA-ω", format="%.2f"),
+            "sigma_strata": num("± (STRATA)", format="%.2f"), "realised": num("Realised", format="%.1f"),
+            "rmse_fixed": num("RMSE Fixed", format="%.2f"), "rmse_strata": num("RMSE STRATA", format="%.2f"),
+            "skill": num("Skill", format="%+.2f")})

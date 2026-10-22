@@ -28,18 +28,21 @@ Steel as of October 2026; the fact register version sent with the request govern
 * **Calibration.** Shaft efficiency (omega), lower- and upper-zone heat losses (GJ/h), r_H and the packed-bed anchor
   are the medians of the stable shifts of the 14 days before today, from the same pipeline result as page 10. With
   fewer than 10 stable shifts the shipped Jul–Oct 2026 calibration is used and the page says so.
-* **Shaft efficiency: two modes.** *Held* (ASM-01, switch off): omega at the calibration value for every blend; a
-  blend moves coke through its chemistry only. *Blend-dependent* (ASM-18, page default, OMEGA v1.1): omega from the
-  BF-02 gas-flow model (GAS-13). The thermal reserve zone is six rings, each a counter-current exchanger between the
-  gas (capacity R·f_i, f_i = gas share of the ring) and the ore's wüstite oxygen (o_i, the ring's Fe share); transfer
-  units grow with the blend's reduction rate (ISO 7215 RI and size of each ferrous, Fe-weighted) and the residence
-  time in the zone. The blend effect is kinetic: a 10-pt swap moves the radial gas shares by less than 0.002. Omega
-  responds to the blend (pellet and sinter reduce faster than lump ore; ROM slowest), the burden volume per tonne,
-  production (faster descent, shorter residence: GAS-16), the coke layers, oxygen, and the blast moisture of the
-  weather record (GAS-19: +0.0042 ± 0.0004 per g/Nm³). Plant-data scales (GAS-14): pellet 1.26 ± 0.45, lump ore
-  0.44 ± 0.33, operation 1.05 ± 0.26. A 10-pt pellet change is worth Δomega +0.015 ± 0.005 replacing sinter and
-  +0.020 ± 0.006 replacing Lloyds CLO (GAS-15); 0.01 of omega is about 2.8 kg/tHM of coke. The v1.0 gas-capacity
-  channel (GAS-17) is retired.
+* **Shaft efficiency: two modes.** *Fixed-ω* (Rist baseline, ASM-01): omega at the calibration value for every blend;
+  a blend moves coke through its chemistry only. *STRATA-ω* (ASM-18, page default, STRATA 1.2 — the BF-02 gas-flow
+  model, formerly OMEGA): omega from STRATA-Flow (GAS-13). The thermal reserve zone is six rings, each a
+  counter-current exchanger between the gas and the ore's wüstite oxygen; transfer units grow with the blend's
+  reduction rate (ISO 7215 RI and size of each ferrous, Fe-weighted) and the residence time in the zone. Omega responds
+  to the blend (pellet and sinter reduce faster than lump ore; ROM and Donimalai slowest), production (shorter residence,
+  GAS-16: data scale 0.68 ± 0.29), the coke layers, fuels and oxygen (scale 1.37 ± 0.28), and the blast moisture of the
+  Wardha weather record (GAS-19: +0.0044 ± 0.0004 per g/Nm³). Blend scales (GAS-14): pellet 1.27 ± 0.43, lump ore
+  0.47 ± 0.35. Coke responses of both models side by side: MOD-01..10 (e.g. 10 pt pellet for sinter: Fixed-ω −1.7,
+  STRATA-ω −6.4 ± 1.7 kg/tHM). 0.01 of omega is about 2.9 kg/tHM of coke.
+* **Reducibility is an assumption (GAS-21).** Sinter RI is the plant mean; pellet and lump-ore RI are literature and
+  mineralogy values (pellet 65, Lloyds CLO 65, NMDC ROM 65, Donimalai 60, Geomin / Gomti 75 %). The plant data cannot
+  separate RI sets. When a plan is Low, Investigate or outside what BF-02 ran, state its critical assumptions first.
+* **Investigate tier (GAS-18).** Pellet above 25 % of ferrous or σ(coke) above 8 kg/tHM: beyond common practice. Such a
+  plan is a trial proposal, never an operating plan; the default filter and auto mode exclude it.
 * **Uncertainty and certainty (blend mode).** Each plan carries σ(coke) relative to the calibration (posterior of the
   blend scales, the operating scale, the moisture coefficient, surrogate error) and a class (GAS-18): High = σ ≤ 2
   kg/tHM and blend and production inside what BF-02 ran (1st–99th percentile of 200 days: pellet 0–15.4 %, sinter
@@ -165,7 +168,7 @@ The page opens with the model against the furnace, before any plan.
 
 ## 8. What the engine does not see
 
-* With omega held (switch off), shaft efficiency does not respond to the blend. With blend-dependent omega it does,
+* With Fixed-ω, shaft efficiency does not respond to the blend. With STRATA-ω it does,
   but the charging matrix is held at the one in force over the calibration window (a matrix change is not an
   optimiser variable), and coke quality (CSR, M40), nut-coke rate, PCI and hot-blast temperature act on omega only
   through the calibration, not through the model.

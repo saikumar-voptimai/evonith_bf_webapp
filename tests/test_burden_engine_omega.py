@@ -14,7 +14,7 @@ import pytest
 
 from utils.burden_engine.auto_review import (CANDIDATES, parse_review, pick, review_context, ungrounded_numbers)
 from utils.burden_engine.engine import REFERENCE_INPUTS_PATH, Engine, Limits, Settings
-from utils.burden_engine.omega_model import difference_sigma
+from utils.burden_engine.omega_model import assumption_sensitivity, difference_sigma
 from utils.coke_energy.rist import solve_2z
 
 P_REF = 2270 / 24
@@ -67,7 +67,7 @@ def test_solve_2z_omega_fn_constant_equals_fixed(eng):
 
 
 def test_gas_capacity_channel_retired(eng):
-    """GAS-17 retired (OMEGA v1.1): the capacity ratio the omega model sees is the calibration's for every plan, while
+    """GAS-17 retired (STRATA 1.1+): the capacity ratio the omega model sees is the calibration's for every plan, while
     the balance's own R still moves with the gas (here: blast moisture)."""
     m = eng.omega_model()
     assert m.gas_capacity is False
@@ -98,11 +98,20 @@ def test_moisture_term(eng):
     assert abs(d_blend) < 0.6 * d_held
 
 
-def test_asset_v11():
+def test_asset_strata12():
     from utils.burden_engine.omega_model import MODEL_PATH
     with open(MODEL_PATH, encoding="utf-8") as fh:
         spec = json.load(fh)
-    assert spec["version"].startswith("OMEGA v1.1") and spec["gas_capacity_channel"] is False
+    assert spec["version"].startswith("STRATA 1.2") and spec["gas_capacity_channel"] is False
+    assert spec["brand"]["name"] == "STRATA"
+    ri = {m: v["ri_pct"] for m, v in spec["materials"].items()}
+    assert ri == {"sinter": 68.7, "pellet": 65.0, "lloyds_clo": 65.0, "geomin": 75.0, "nmdc_rom": 65.0,
+                  "donimalai": 60.0, "lloyds_oversize": 65.0, "gomti": 75.0}                      # GAS-21, set S8
+    assert all(v.get("ri_basis") for v in spec["materials"].values())
+    ops = spec["operating_scales"]
+    assert 0.3 < ops["production"] < 1.0 < ops["other"] < 2.0 and ops["production_sd"] > 0
+    inv = spec["certainty"]["investigate"]
+    assert inv["classes_max"] == {"pellet": 25.0} and inv["sigma_kg"] == 8.0
     po, cs = spec["posterior"], spec["channel_scales"]
     assert po["names"][0] == "x_blend" and po["mean"][0] == 1.0
     g = cs["g_per_pt"]
@@ -110,9 +119,65 @@ def test_asset_v11():
     assert po["mean"][i] == pytest.approx((cs["lam_pellet"] - 1) * g["sh_pellet"], rel=1e-9)
     for c in ("sh_clo", "sh_rom", "sh_gomti", "sh_oversize"):
         assert po["mean"][po["names"].index(c)] == pytest.approx((cs["lam_lump"] - 1) * g[c], rel=1e-9)
-    v = spec["validation"]["expanding"]
-    for key in ("omega_day", "K_burnt_day", "K_burnt_7-day"):
-        assert v[key]["v1.1"]["skill"] > 0 > v[key]["v1.0"]["skill"]
+    v = spec["validation"]
+    assert v["expanding"]["coke_day"] > 0.15 and v["expanding"]["omega_day"] > 0.2
+    assert all(x["coke_day"] > 0.1 for x in v["time_split"].values())
+    fams = {f["family"]: f for f in v["by_blend"]}
+    assert fams["All days"]["verdict"] == "Supported" and fams["All days"]["n"] == 175
+    assert all(f["verdict"] == "Modelled only" for f in v["by_blend"] if f["n"] < 10)
+
+
+def test_production_split(eng):
+    """STRATA 1.2: the operating channel is a production part (TRZ residence) and the rest, scaled apart; the parts
+    add up to the operating channel; production alone moves only the production part."""
+    m = eng.omega_model()
+    assert m.split_oper and m.lam_prod < 1.0 < m.lam_rest
+    s = Settings(omega_mode="blend")
+    z = eng.min_cost(prod_t_day=2270, s=s, L=Limits())["z"]
+    a = eng.evaluate(z, s, 90.0, full=True)["omega_terms"]
+    b = eng.evaluate(z, s, 95.0, full=True)["omega_terms"]
+    for t in (a, b):
+        assert t["d_prod"] + t["d_rest"] == pytest.approx(t["d_oper"], abs=1e-12)
+        assert t["d_prod"] == pytest.approx(m.lam_prod * t["d_prod_phys"], rel=1e-9)
+    assert b["d_prod_phys"] < a["d_prod_phys"]                               # faster: shorter TRZ residence
+    slope = (b["d_prod_phys"] - a["d_prod_phys"]) / 5.0
+    assert -0.004 < slope < -0.001                                           # GAS-16 physics about -0.0023 per t/h
+
+
+def test_investigate_tier(eng, inputs):
+    """GAS-18: pellet above 25 % of ferrous is Investigate whatever sigma; "low" removes Investigate plans."""
+    m = eng.omega_model()
+    assert m.certainty(0.5, "inside", ["pellet 30 % > 25 %"]) == "Investigate"
+    assert m.certainty(9.0, "inside") == "Investigate"
+    assert m.certainty(1.0, "inside") == "High" and m.certainty(6.0, "outside") == "Low"
+    assert m.investigate_reasons({"pellet": 26.0}) and not m.investigate_reasons({"pellet": 24.0})
+    lim = m.limits_for("low")
+    assert lim["classes"]["pellet"] == (0.0, 25.0) and lim["sigma_max"] == 8.0
+    r30 = _pinned(inputs, "blend", 30)
+    assert r30["omega"]["certainty"] == "Investigate" and r30["omega"]["investigate"]
+    assert any(w.startswith("Investigate tier") for w in r30["warnings"])
+    mats = [x["id"] for x in inputs["materials"] if x.get("selected_in_uat", True)]
+    bounds = {x["id"]: (x["lo"], x["hi"]) for x in inputs["materials"]}
+    bounds["lloyds_pellet"] = (10.0, 40.0)
+    e = Engine(inputs, materials=mats, bounds=bounds)
+    r = e._try(Settings(omega_mode="blend", certainty="low"), P_REF, Limits(), True)
+    assert r["share_wet"]["lloyds_pellet"] <= 25.0 + 0.1 and r["omega"]["certainty"] != "Investigate"
+
+
+def test_critical_assumptions(eng):
+    """Each critical assumption re-anchors on the calibration: zero effect at the calibration state, non-zero for a
+    plan away from it; RI rows for every material in the plan; scale rows symmetric."""
+    m = eng.omega_model()
+    rows0 = assumption_sensitivity(m, m.ref, m.ref.coke, m.R_ref)
+    assert all(abs(r["d_omega"]) < 1e-9 for r in rows0 if r["kind"] in ("RI", "size"))
+    s = Settings(omega_mode="blend")
+    r = eng.min_cost(prod_t_day=2270, s=s, L=Limits())
+    rows = eng.critical_assumptions(r, s)
+    names = {x["assumption"] for x in rows}
+    assert {"RI pellet", "RI sinter", "size exponent of the reduction rate", "plant-data scale, pellet channel"} <= names
+    assert all(x["d_coke_kg"] >= 0 for x in rows if x.get("symmetric"))
+    assert abs(rows[0]["d_coke_kg"]) >= abs(rows[-1]["d_coke_kg"])
+    assert eng.critical_assumptions(eng.min_cost(prod_t_day=2270, s=Settings(), L=Limits()), Settings()) == []
 
 
 # ---------------------------------------------------------------------------------------------- engine
@@ -129,7 +194,7 @@ def test_blend_mode_result(eng):
     om = r["omega"]
     assert r["feasible"] and om["mode"] == "blend"
     assert 0.70 < om["value"] < 0.90 and om["sigma_K"] > 0
-    assert om["certainty"] in ("High", "Medium", "Low")
+    assert om["certainty"] in ("High", "Medium", "Low", "Investigate")
     parts = om["d_blend"] + om["d_disc"] + om["d_oper"] + om["d_R"] + om["d_moist"]
     assert om["value"] == pytest.approx(om["omega_cal"] + parts, abs=1e-9)
     assert r["cost"]["sigma"] == pytest.approx(om["sigma_K"] * eng.prices_fuel["coke"] / 1000)
@@ -145,7 +210,7 @@ def _pinned(inputs, mode, pel):
 
 def test_pellet_lowers_coke_in_blend_mode_only(inputs):
     """Pellet 10 -> 20 % with the blend re-optimised (pellet mostly displaces Lloyds CLO): about flat coke with omega
-    held; several kg/tHM less with blend-dependent omega (v1.1: about -5 kg/tHM, GAS-15)."""
+    held; several kg/tHM less with STRATA-omega (about -5 kg/tHM, GAS-15, MOD-08)."""
     f10, f20 = _pinned(inputs, "fixed", 10), _pinned(inputs, "fixed", 20)
     b10, b20 = _pinned(inputs, "blend", 10), _pinned(inputs, "blend", 20)
     d_fixed = f20["out"]["K"] - f10["out"]["K"]
@@ -230,6 +295,12 @@ def test_rule_pick():
     rows = [_row("A", 30000, 10, feasible=False), _row("T", 30040, 0)]
     assert pick(rows)[0] == "T"
     assert [c[0] for c in CANDIDATES] == ["A", "B", "C"]
+    assert all(c[2]["certainty"] in ("low", "high") for c in CANDIDATES)          # never "any": no Investigate plan
+
+
+def test_rule_never_picks_investigate():
+    rows = [_row("A", 29000, 50, "Investigate"), _row("B", 30050, 40, "Medium")]
+    assert pick(rows)[0] == "B"
 
 
 def test_rule_pick_ties_to_certainty():
