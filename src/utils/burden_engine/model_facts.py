@@ -6,6 +6,7 @@ MOD  Coke response of the two shaft-efficiency models to a standard change at th
        substitutions  10 wet pt of ferrous, flux held at the reference plan (coke through chemistry + omega)
        production     +1 t/h at the same burden (heat loss GJ/h held: dilution in both; residence in STRATA only)
        moisture       +1 g/Nm3 blast moisture at the same burden
+       nut coke       +10 kg/tHM at the same burden (STRATA 1.3, GAS-23)
      Reference point: the 16 Oct 2026 UAT yard, the shipped calibration, 2,270 t/d, a record-average ferrous blend.
 VAL  Out-of-sample burnt coke by blend family (``validation.by_blend`` of the STRATA asset, oos/by_blend.py):
      realised against Fixed-omega and STRATA-omega, skill, bias and the verdict (Supported / Disputed / Neutral /
@@ -115,7 +116,16 @@ def model_facts(eng: Engine | None = None) -> list[dict[str, Any]]:
                                                     "Fixed-omega and STRATA-omega", value=round(ks, 2), se=round(sg, 2),
                      unit="kg/tHM dry coke per g/Nm3",
                      basis="Fixed-omega: endothermic water-gas reaction in the balance only; STRATA-omega adds the "
-                           "moisture term of shaft efficiency (GAS-19, Wardha weather record DATA-11)",
+                           "moisture term of shaft efficiency (GAS-19, weather-record RH estimate DATA-11)",
+                     params=dict(fixed_omega=round(kf, 2), strata_omega=round(ks, 2), difference=round(ks - kf, 2),
+                                 sigma_strata=round(sg, 2), d_omega=round(dw, 4))))
+    s_n = replace(s_fix, nut_plant=s_fix.nut_plant + 10.0)
+    kf, ks, sg, dw = pair(z0, z0, s_fix, s_n, P_REF, P_REF)
+    rows.append(dict(common, id="MOD-11", statement="Nut coke +10 kg/tHM at the same burden: coke response, "
+                                                    "Fixed-omega and STRATA-omega", value=round(ks, 2), se=round(sg, 2),
+                     unit="kg/tHM dry coke per 10 kg/tHM nut coke",
+                     basis="Fixed-omega: nut-coke carbon and its heat in the balance only; STRATA-omega adds the nut-coke "
+                           "term of shaft efficiency (GAS-23) and the network's coke-layer response",
                      params=dict(fixed_omega=round(kf, 2), strata_omega=round(ks, 2), difference=round(ks - kf, 2),
                                  sigma_strata=round(sg, 2), d_omega=round(dw, 4))))
     return rows
@@ -141,7 +151,7 @@ def validation_facts(spec: dict[str, Any] | None = None) -> list[dict[str, Any]]
             basis=f"{f['n']} days, 1 Jan - 7 Oct 2026, day minus 14-day anchor, parameters from earlier days only; "
                   f"{comp}. Realised {f['realised']:.1f}, Fixed-omega {f['fixed_omega']:.1f}, STRATA {f['strata']:.1f}; "
                   f"RMSE {f['rmse_fixed']:.2f} -> {f['rmse_strata']:.2f}; skill {f['skill']:+.2f}; STRATA bias "
-                  f"{f['bias']:+.2f} +/- {f['se_bias']:.2f}",
+                  f"{f['bias']:+.2f} +/- " + (f"{f['se_bias']:.2f}" if f.get("se_bias") is not None else "n/a"),
             literature="", next_test="T5" if f["verdict"] != "Supported" else "", version="", date=today,
             note=val.get("verdict_rule", ""),
             params=dict(n=f["n"], realised=f["realised"], fixed_omega=f["fixed_omega"], strata_omega=f["strata"],

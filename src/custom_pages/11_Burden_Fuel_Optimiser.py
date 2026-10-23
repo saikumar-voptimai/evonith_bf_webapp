@@ -40,7 +40,7 @@ from ui.burden_optimiser.commentary import render_furnace_commentary
 from ui.burden_optimiser.omega_panel import render_auto, render_omega_result, render_omega_settings
 from utils.burden_engine import BandError, Engine, Infeasible, load_register
 from utils.burden_engine.commentary import build_context, load_notes
-from utils.burden_engine.scenarios import limit_labels, limits_from, settings_from_regime
+from utils.burden_engine.scenarios import fuel_defaults, limit_labels, limits_from, settings_from_regime
 from utils.coke_energy.weather import blast_moisture_g
 
 MODES = {
@@ -99,7 +99,8 @@ with st.expander("Yard, prices and stock", expanded=False):
 
 humidity_default = (regime or {}).get("humidity_g") or blast_moisture_g(dt.date.today())   # DATA-11
 with st.expander("Thermal target and fixed fuels", expanded=False):
-    thermal = render_thermal(cfg.get("thermal", {}), reg, humidity_default, "bfo_th")
+    thermal_defaults = {**cfg.get("thermal", {}), **fuel_defaults(regime, cfg.get("thermal", {}), info.cal)}
+    thermal = render_thermal(thermal_defaults, reg, humidity_default, "bfo_th")
 
 charging = dict(cfg.get("charging", {}))
 saved = yard.get("charging_saved") or {}
@@ -157,7 +158,11 @@ if st.session_state["bfo_args"] != args:
 
 args = st.session_state["bfo_args"]
 try:
-    with st.spinner("Optimising (two-zone balance inside a sequential LP)…"):
+    _dur = {"fixed": "about 30 s", "max": "about 2 min", "cheapest": "about 8 min"}.get(args[0], "")
+    with st.spinner("Optimising (two-zone balance inside a sequential LP)…" if args[3].get("omega_mode") != "blend" else
+                    "Optimising: two-zone balance inside a sequential LP, with the STRATA-Flow network solved at every "
+                    "iteration and for every reported plan (about 1 s per solve; " + (f"{_dur} for this mode; " if _dur else "")
+                    + "the first run of a new calibration also computes the network Jacobian, about 20 s)…"):
         res = loaders.run_mode(*args)
 except BandError as exc:
     st.error(f"{exc}. The engine does not report outside the plausibility bands.")
@@ -242,20 +247,26 @@ with st.expander("Facts this result rests on"):
 with st.expander("Assumptions and what the engine does not see"):
     st.markdown(
         "- **Shaft efficiency** is either Fixed-ω (held at the calibration, the Rist baseline; ASM-01) or STRATA-ω "
-        "(default; ASM-18, GAS-13..20, STRATA 1.2): the STRATA-Flow gas-flow model's ring counter-current description "
-        "of the thermal reserve zone (reducibility and size of each ferrous, residence time, coke layers, production, "
-        "oxygen), with plant-data scales for pellet (1.27 ± 0.43), lump ore (0.47 ± 0.35), production (0.68 ± 0.29) "
-        "and the other operation (1.37 ± 0.28) and a blast-moisture term, tested out of sample on 175 days "
-        "(burnt-coke skill +0.18 against Fixed-ω; GAS-20). Each plan carries σ(coke), a certainty class (High / "
-        "Medium / Low / Investigate) and its critical assumptions; the calibration's own error (about ±2 kg/tHM) and "
-        "the day-to-day spread (about ±8 kg/tHM) are reported apart.\n"
-        "- **Reducibility (RI, ISO 7215)**: sinter 68.7 % is the plant mean; pellet 65 %, Lloyds CLO / oversize 65 %, "
-        "NMDC ROM 65 %, Donimalai 60 %, Geomin / Gomti 75 % are literature and mineralogy (LOI) values - there is no "
-        "plant RI test for pellet or lump ore. The plant data cannot separate RI sets; results outside what BF-02 ran "
-        "lean on these values (see the critical-assumptions table of each plan).\n"
+        "(default; ASM-18, GAS-13..24, STRATA 1.3): the STRATA-Flow gas-flow network's ring counter-current description "
+        "of the thermal reserve zone (size of each ferrous, residence time, coke layers, production, oxygen, nut coke), "
+        "solved for every plan - one network solve per optimiser iteration and three per reported plan, about 1 s each, "
+        "no surrogate. Plant-data scales: pellet 1.38 ± 0.45, lump ore 0.96 ± 0.42, production 0.59 ± 0.30, other "
+        "operation 0.98 ± 0.30; blast-moisture and nut-coke terms; tested out of sample on 175 days (burnt-coke skill "
+        "+0.13 day, +0.22 7-day against Fixed-ω; GAS-20). Each plan carries σ(coke), a certainty class (High / Medium / "
+        "Low / Investigate), its critical assumptions and the network solves behind it; the calibration's own error "
+        "(about ±2 kg/tHM) and the day-to-day spread (about ±7 kg/tHM) are reported apart.\n"
+        "- **Reducibility and RDI** are the Evonith laboratory tests as given (GAS-21, DATA-13: pellet 82, Lloyds CLO 84, "
+        "Geomin 79, NMDC ROM 61, Donimalai 78 % RI; Gomti not tested). The ore RDIs act in the network as shaft fines. "
+        "The link from RI to reduction rate is calibrated on the plant data: the measured RI differences show no effect "
+        "on the plant's shaft efficiency, particle size does (RI exponent 0, size exponent 1.0; both are critical "
+        "assumptions of every plan).\n"
+        "- **Oversize**: the Lloyds fines oversize (ore_6) reduces at the Lloyds CLO size (no size credit, GAS-24); the "
+        "Donimalai oversize return (ore_11) is Donimalai.\n"
         "- **Investigate tier**: pellet above 25 % of ferrous or σ(coke) above 8 kg/tHM is beyond common practice; such "
         "plans are excluded by default and are trial proposals only.\n"
-        "- **Blast moisture** is the Wardha daily weather record's value (DATA-11), the monthly table outside it.\n"
+        "- **Blast moisture** is the weather record's relative humidity, smoothed over 31 days and mapped to 7-21 g/Nm³ "
+        "(DATA-11; no step changes), the monthly table outside the record. **PCI and nut coke** default to the regime "
+        "window's medians (ASM-08); both act through the balance, nut coke also through STRATA-ω (GAS-23).\n"
         "- **Burden-resistance rules** (FLOW-02..07) were fitted on pellet up to 16.6 % and Gomti up to 11.6 % of "
         "ferrous; beyond that the page warns that it is extrapolating.\n"
         "- **Process limits** default to the Jun-Oct 2026 operating envelope, not equipment ratings. Oxygen and stove "

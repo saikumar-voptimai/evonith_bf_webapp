@@ -40,10 +40,11 @@ def suggest(labels: Sequence[str], C0, H, mean, cov, tiers: Sequence[str], regre
 
 
 def plan_sensitivity(om_terms: Mapping[str, Any], cls: Mapping[str, float], ref_cls: Mapping[str, float],
-                     g_per_pt: Mapping[str, float], d_humidity: float, rs_per_omega: float) -> np.ndarray:
-    """H of one plan (Rs/tHM per unit of lam_pellet, lam_lump, lam_production, lam_other, a_moisture)."""
+                     g_per_pt: Mapping[str, float], d_humidity: float, rs_per_omega: float, d_nut: float = 0.0) -> np.ndarray:
+    """H of one plan (Rs/tHM per unit of lam_pellet, lam_lump, lam_production, lam_other, a_moisture, a_nut)."""
     ds = {c: float(cls.get(c, 0.0)) - float(ref_cls.get(c, 0.0)) for c in ("pellet", "clo", "rom", "gomti", "oversize")}
     h = np.array([g_per_pt["sh_pellet"] * ds["pellet"],
                   sum(g_per_pt["sh_" + c] * ds[c] for c in ("clo", "rom", "gomti", "oversize")),
-                  float(om_terms.get("d_prod_phys", 0.0)), float(om_terms.get("d_rest_phys", 0.0)), float(d_humidity)])
+                  float(om_terms.get("d_prod_phys", 0.0)), float(om_terms.get("d_rest_phys", 0.0)), float(d_humidity),
+                  float(d_nut)])
     return rs_per_omega * h

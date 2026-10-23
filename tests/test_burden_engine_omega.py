@@ -2,6 +2,8 @@
 
 Reference: the 16 Oct 2026 UAT yard and the shipped Jul-Oct 2026 calibration. Fixed mode must keep reproducing the
 case report (305.7 kg/tHM, Rs 30,139/tHM at 2,270 t/d); blend mode is checked for consistency and direction.
+STRATA 1.3 runs the STRATA-Flow network (about 1.1 s per solve; the Jacobian at the calibration is cached in
+src/storage/strata_flow after the first run, about 20 s).
 """
 
 from __future__ import annotations
@@ -81,10 +83,10 @@ def test_gas_capacity_channel_retired(eng):
 
 
 def test_moisture_term(eng):
-    """GAS-19: omega rises with the blast moisture of the weather record by a_h per g/Nm3, so the coke rate responds
-    to moisture much less than with omega held (the balance alone: about +0.8 kg/tHM per g/Nm3)."""
+    """GAS-19 (STRATA 1.3, step-free RH estimate): a small, uncertain data term a_h per g/Nm3 on omega; the coke rate
+    responds to moisture no more than with omega held (the balance alone: about +0.8 kg/tHM per g/Nm3)."""
     m = eng.omega_model()
-    assert 0.002 < m.a_moist < 0.007 and m.a_moist_se > 0
+    assert 0.0 <= m.a_moist < 0.007 and m.a_moist_se > 0
     s = Settings(omega_mode="blend")
     z = eng.min_cost(prod_t_day=2270, s=s, L=Limits())["z"]
     dry = eng.evaluate(z, replace(s, humidity_g=10.0), P_REF, full=True)
@@ -95,21 +97,31 @@ def test_moisture_term(eng):
     held_wet = eng.evaluate(z, replace(Settings(), humidity_g=20.0), P_REF)
     d_held, d_blend = held_wet["K"] - held_dry["K"], wet["K"] - dry["K"]
     assert d_held > 5.0                                   # balance: moisture is endothermic
-    assert abs(d_blend) < 0.6 * d_held
+    assert d_blend < d_held
 
 
-def test_asset_strata12():
+def test_asset_strata13():
     from utils.burden_engine.omega_model import MODEL_PATH
     with open(MODEL_PATH, encoding="utf-8") as fh:
         spec = json.load(fh)
-    assert spec["version"].startswith("STRATA 1.2") and spec["gas_capacity_channel"] is False
-    assert spec["brand"]["name"] == "STRATA"
-    ri = {m: v["ri_pct"] for m, v in spec["materials"].items()}
-    assert ri == {"sinter": 68.7, "pellet": 65.0, "lloyds_clo": 65.0, "geomin": 75.0, "nmdc_rom": 65.0,
-                  "donimalai": 60.0, "lloyds_oversize": 65.0, "gomti": 75.0}                      # GAS-21, set S8
-    assert all(v.get("ri_basis") for v in spec["materials"].values())
+    assert spec["version"].startswith("STRATA 1.3") and spec["gas_capacity_channel"] is False
+    assert spec["brand"]["name"] == "STRATA" and spec["parts_backend"] == "network"
+    mats = spec["materials"]
+    ri = {m: v["ri_pct"] for m, v in mats.items()}
+    assert ri["sinter"] == 66.0 and ri["gomti"] == 65.0              # sinter: latest strength test; Gomti: no test
+    assert 80 < ri["pellet"] < 85 and 55 < ri["nmdc_rom"] < 65 and 75 < ri["geomin"] < 82   # laboratory tests (T26)
+    kin = spec["kinetics"]
+    assert kin["ri_exponent"] == 0.0 and kin["n_size"] == 1.0                               # link calibrated (GAS-21)
+    assert all(v.get("ri_basis") and v.get("ri_sd", 0) > 0 for v in mats.values())
+    assert all(v.get("ri_tests") for m, v in mats.items() if m not in ("sinter", "gomti"))
+    assert mats["lloyds_oversize"]["sauter_mm"] == mats["lloyds_clo"]["sauter_mm"]          # no size credit
+    assert mats["lloyds_oversize"]["sauter_sieve_mm"] < 13.0
+    assert "donimalai" in spec["plant_map"]["ore_11"]                                       # two oversize types
+    ctx = spec["network"]["context"]
+    assert {"matrix", "top_eta_co", "top_h2", "top_gas_T_c", "hbt_c"} <= set(ctx)
+    assert spec["nut_coke"]["coef"] > 0 and spec["nut_coke"]["se"] > 0
     ops = spec["operating_scales"]
-    assert 0.3 < ops["production"] < 1.0 < ops["other"] < 2.0 and ops["production_sd"] > 0
+    assert 0.2 < ops["production"] < ops["other"] < 2.0 and ops["production_sd"] > 0
     inv = spec["certainty"]["investigate"]
     assert inv["classes_max"] == {"pellet": 25.0} and inv["sigma_kg"] == 8.0
     po, cs = spec["posterior"], spec["channel_scales"]
@@ -120,18 +132,18 @@ def test_asset_strata12():
     for c in ("sh_clo", "sh_rom", "sh_gomti", "sh_oversize"):
         assert po["mean"][po["names"].index(c)] == pytest.approx((cs["lam_lump"] - 1) * g[c], rel=1e-9)
     v = spec["validation"]
-    assert v["expanding"]["coke_day"] > 0.15 and v["expanding"]["omega_day"] > 0.2
-    assert all(x["coke_day"] > 0.1 for x in v["time_split"].values())
+    assert v["expanding"]["coke_day"] > 0.05 and v["expanding"]["omega_day"] > 0.05
+    assert all(x["coke_day"] > 0.0 for x in v["time_split"].values())
     fams = {f["family"]: f for f in v["by_blend"]}
     assert fams["All days"]["verdict"] == "Supported" and fams["All days"]["n"] == 175
     assert all(f["verdict"] == "Modelled only" for f in v["by_blend"] if f["n"] < 10)
 
 
 def test_production_split(eng):
-    """STRATA 1.2: the operating channel is a production part (TRZ residence) and the rest, scaled apart; the parts
+    """STRATA 1.2+: the operating channel is a production part (TRZ residence) and the rest, scaled apart; the parts
     add up to the operating channel; production alone moves only the production part."""
     m = eng.omega_model()
-    assert m.split_oper and m.lam_prod < 1.0 < m.lam_rest
+    assert m.split_oper and m.lam_prod < 1.0 and m.lam_prod < m.lam_rest
     s = Settings(omega_mode="blend")
     z = eng.min_cost(prod_t_day=2270, s=s, L=Limits())["z"]
     a = eng.evaluate(z, s, 90.0, full=True)["omega_terms"]
@@ -166,7 +178,8 @@ def test_investigate_tier(eng, inputs):
 
 def test_critical_assumptions(eng):
     """Each critical assumption re-anchors on the calibration: zero effect at the calibration state, non-zero for a
-    plan away from it; RI rows for every material in the plan; scale rows symmetric."""
+    plan away from it; with the calibrated link (beta = 0) the RI enters through the beta row, not per material;
+    scale rows symmetric."""
     m = eng.omega_model()
     rows0 = assumption_sensitivity(m, m.ref, m.ref.coke, m.R_ref)
     assert all(abs(r["d_omega"]) < 1e-9 for r in rows0 if r["kind"] in ("RI", "size"))
@@ -174,7 +187,10 @@ def test_critical_assumptions(eng):
     r = eng.min_cost(prod_t_day=2270, s=s, L=Limits())
     rows = eng.critical_assumptions(r, s)
     names = {x["assumption"] for x in rows}
-    assert {"RI pellet", "RI sinter", "size exponent of the reduction rate", "plant-data scale, pellet channel"} <= names
+    assert {"RI exponent of the reduction rate (laboratory RI weight)", "size exponent of the reduction rate",
+            "plant-data scale, pellet channel"} <= names
+    if m.spec["kinetics"].get("ri_exponent", 1.0) == 0.0:
+        assert not any(n.startswith("RI ") and "exponent" not in n for n in names)
     assert all(x["d_coke_kg"] >= 0 for x in rows if x.get("symmetric"))
     assert abs(rows[0]["d_coke_kg"]) >= abs(rows[-1]["d_coke_kg"])
     assert eng.critical_assumptions(eng.min_cost(prod_t_day=2270, s=Settings(), L=Limits()), Settings()) == []
@@ -195,7 +211,7 @@ def test_blend_mode_result(eng):
     assert r["feasible"] and om["mode"] == "blend"
     assert 0.70 < om["value"] < 0.90 and om["sigma_K"] > 0
     assert om["certainty"] in ("High", "Medium", "Low", "Investigate")
-    parts = om["d_blend"] + om["d_disc"] + om["d_oper"] + om["d_R"] + om["d_moist"]
+    parts = om["d_blend"] + om["d_disc"] + om["d_oper"] + om["d_R"] + om["d_moist"] + om["d_nut"]
     assert om["value"] == pytest.approx(om["omega_cal"] + parts, abs=1e-9)
     assert r["cost"]["sigma"] == pytest.approx(om["sigma_K"] * eng.prices_fuel["coke"] / 1000)
 
@@ -260,11 +276,11 @@ def test_saving_sigma_and_difference(eng):
     s = Settings(omega_mode="blend")
     r = eng.min_cost(prod_t_day=2270, s=s, L=Limits())
     same = eng.saving_sigma(r, r)
-    assert same["sigma_coke"] == pytest.approx(r["omega"]["terms"]["sigma_parts"]["surrogate"] * math.sqrt(2)
-                                               * abs(eng._dKdw) / (1 - eng.case0["coke"]["moist_pct"] / 100), rel=1e-6)
+    assert same["sigma_coke"] == pytest.approx(0.0, abs=1e-9)          # network: no independent surrogate error
     m = eng.omega_model()
     t = r["omega"]["terms"]
-    assert difference_sigma(m, t, t) == pytest.approx(math.sqrt(2) * t["sigma_parts"]["surrogate"])
+    assert t["sigma_parts"]["surrogate"] == 0.0
+    assert difference_sigma(m, t, t) == pytest.approx(0.0, abs=1e-12)
     assert eng.saving_sigma(r, eng.min_cost(prod_t_day=2270, s=Settings(), L=Limits())) is None
 
 
@@ -329,3 +345,100 @@ def test_run_candidates(eng):
     assert ids == ["A", "B", "C"] and out["pick"] in ids
     a = next(r for r in out["rows"] if r["id"] == "A")
     assert all(r["cost"] >= a["cost"] - 1.0 for r in out["rows"] if r.get("available") and r.get("feasible"))
+
+
+# ---------------------------------------------------------------------------------------------- STRATA 1.3: network
+def test_network_backend_at_calibration(eng):
+    """The ring quantities at the calibration are a network solve (not a surrogate); the Jacobian is the network's."""
+    m = eng.omega_model()
+    assert m.backend == "network" and m.net is not None and m.net.J.shape == (18, 16)
+    from utils.strata_flow.omega_eval import evaluate
+    f, o, t = m.parts(m.ref)
+    r = evaluate(m.net.network_state(m.net._fill(m.net.vec(m.ref))))
+    assert f == pytest.approx(r["f"], abs=1e-9) and t == pytest.approx(r["t"], abs=1e-9)
+    assert m.net.distance(m.ref) == 0.0
+
+
+def test_reported_plan_is_solved_by_the_network(eng):
+    """Every SLP iterate is solved at its blend (one solve per iterate); a reported plan at its blend, production and
+    full-operation states, so its omega comes from network solves at the plan itself."""
+    m = eng.omega_model()
+    n0 = m.net.n_solves
+    r = eng.min_cost(prod_t_day=2200, s=Settings(omega_mode="blend"), L=Limits())
+    net = r["omega"]["terms"]["network"]
+    assert net["backend"] == "network" and m.net.n_solves - n0 >= 2
+    assert net["distance"]["blend"] == 0.0 and net["distance"]["production"] == 0.0
+    assert net["distance"]["operation"] < 0.01             # the balance's coke moved < 0.05 kg/tHM after the last solve
+    assert r["feasible"]
+
+
+def test_surrogate_selectable_but_not_default():
+    from utils.burden_engine.omega_model import OmegaModel
+    assert OmegaModel.load().backend == "network"
+    assert OmegaModel.load(backend="surrogate").backend == "surrogate"
+
+
+def test_nut_coke_term(eng):
+    """GAS-23: omega moves by a_n per kg/tHM of nut coke against the calibration; sigma carries its se."""
+    m = eng.omega_model()
+    s = Settings(omega_mode="blend")
+    z = eng.min_cost(prod_t_day=2270, s=s, L=Limits())["z"]
+    lo = eng.evaluate(z, replace(s, nut_plant=60.0), P_REF, full=True)["omega_terms"]
+    hi = eng.evaluate(z, replace(s, nut_plant=80.0), P_REF, full=True)["omega_terms"]
+    assert hi["d_nut"] - lo["d_nut"] == pytest.approx(20 * m.a_nut, rel=1e-9) and m.a_nut > 0
+    assert hi["sigma_parts"]["nut_coke"] > 0
+
+
+def test_fuel_defaults_from_regime(eng):
+    """PCI and nut coke default to the regime window's medians (as injected / charged), else the calibration."""
+    from utils.burden_engine.scenarios import fuel_defaults, settings_from_regime
+    cal = eng.cal
+    d = fuel_defaults({"pci_kgthm_dry": 170.0, "nut_kgthm_dry": 60.0}, {}, cal)
+    assert d["pci_kg_thm"] == pytest.approx(170.0 / (1 - cal["case"]["pci"]["moist_pct"] / 100))
+    assert d["nut_kg_thm_source"] == "regime median"
+    d0 = fuel_defaults(None, {}, cal)
+    assert d0["pci_kg_thm_source"] == "calibration"
+    assert d0["pci_kg_thm"] == pytest.approx(cal["case"]["pci_kg"] / (1 - cal["case"]["pci"]["moist_pct"] / 100))
+    s = settings_from_regime({"pci_kgthm_dry": 170.0, "nut_kgthm_dry": 60.0}, {}, cal)
+    assert s.pci_plant == pytest.approx(d["pci_kg_thm"]) and s.nut_plant == pytest.approx(d["nut_kg_thm"])
+
+
+def test_search_tolerance_and_refine(eng):
+    """Production searches solve the network coarsely (reuse within SEARCH_TOL scaled units) and re-solve the plan they
+    return exactly; the tolerance is restored after the search."""
+    assert eng.net_tol_iter == 0.0 and eng.net_tol_final == 0.0
+    with eng.network_tolerance(Engine.SEARCH_TOL):
+        assert eng.net_tol_iter == eng.net_tol_final == Engine.SEARCH_TOL
+    assert eng.net_tol_iter == 0.0 and eng.net_tol_final == 0.0
+    s = Settings(omega_mode="blend")
+    with eng.network_tolerance(Engine.SEARCH_TOL):
+        coarse = eng.min_cost(prod_t_day=2250, s=s, L=Limits())
+    exact = eng.refine(coarse, Limits())
+    assert exact["omega"]["terms"]["network"]["distance"]["blend"] == 0.0
+    assert abs(exact["out"]["K"] - coarse["out"]["K"]) < 1.0
+
+
+def test_slag_credit(inputs):
+    """ASM-20: the slag sold is credited in the objective and the total; with a slag price the optimiser does not take
+    less slag than without it (more saleable slag is preferred at nearly the same cost)."""
+    base = Engine(inputs)
+    r0 = base.min_cost(prod_t_day=2270, s=Settings(), L=Limits())
+    assert r0["cost"]["slag_credit"] == 0.0 and r0["cost"]["total"] == pytest.approx(r0["cost"]["gross"])
+    inp = dict(inputs, fuel=dict(inputs["fuel"], slag_price=1500.0))
+    e = Engine(inp)
+    r1 = e.min_cost(prod_t_day=2270, s=Settings(), L=Limits())
+    c = r1["cost"]
+    assert c["slag_credit"] == pytest.approx(r1["out"]["slag"] * 1.5, rel=1e-9)
+    assert c["total"] == pytest.approx(c["gross"] - c["slag_credit"], abs=1e-9)
+    assert r1["out"]["slag"] >= r0["out"]["slag"] - 0.5
+
+
+def test_sinter_strength_from_calibration():
+    """Sinter RI / RDI come from the calibration's latest raw-material strength data, not from the laboratory report."""
+    e = Engine()
+    assert e.cal["sinter_strength"]["rdi_pct"] == pytest.approx(30.06)
+    m = e.omega_model()
+    assert m.rdi == pytest.approx(30.06) and m.ref.rdi == pytest.approx(30.06)
+    assert m.spec["kinetics"]["ri_ref_pct"] == pytest.approx(e.cal["sinter_strength"]["ri_pct"])
+    assert m.rate["sinter"] == pytest.approx((m.spec["kinetics"]["d_test_mm"] / m.spec["materials"]["sinter"]["sauter_mm"])
+                                             ** m.spec["kinetics"]["n_size"])

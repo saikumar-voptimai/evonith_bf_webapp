@@ -7,9 +7,9 @@ Why
   This module supplies omega as a function of the blend, the operating point and the blast moisture, with a 1-sigma
   uncertainty and a certainty class for every plan.
 
-Model (constants in ``assets/burden_engine/omega_model.json``; built from the BF-02 layered gas-flow model v0.4,
-scaled and tested out of sample on 191 days of BF-02 data, Dec 2025 - Oct 2026; STRATA 1.2 = STRATA-omega on
-STRATA-Flow, the Stratified Transport & Reduction Analytics model of BF-02; OMEGA v1.0 / v1.1 were its earlier names)
+Model (constants in ``assets/burden_engine/omega_model.json``; STRATA 1.3 = STRATA-omega on STRATA-Flow, the Stratified
+Transport & Reduction Analytics model of BF-02 (layered gas-flow model v0.4), scaled and tested out of sample on 191 days
+of BF-02 data, Dec 2025 - Oct 2026; OMEGA v1.0 / v1.1 and STRATA 1.2 were earlier versions)
 
   w(state, R)   ring counter-current model of the TRZ. Six rings, i = 1 (centre) .. 6 (wall):
                   C_g,i = R f_i        oxygen the ring's gas can take at the W point (f_i: gas share of ring i)
@@ -17,18 +17,32 @@ STRATA-Flow, the Stratified Transport & Reduction Analytics model of BF-02; OMEG
                   NTU_i = kappa k t_i C_s,i / C_min,i,   C_r,i = C_min,i / C_max,i
                   eps_i = (1 - exp(-NTU (1 - C_r))) / (1 - C_r exp(-NTU (1 - C_r)))
                   w     = sum eps_i C_min,i / sum C_g,i
-                f, o, t (TRZ residence, h) come from a quadratic surrogate of the gas-flow network (burden profile,
-                layered Ergun resistance, floating cohesive zone); k is the Fe-weighted reduction rate of the blend,
-                r_m (d_test / d_m)^1.5 with r_m = ln(1 - RI_m) / ln(1 - RI_sinter) from the ISO 7215 index;
+                f, o, t (TRZ residence, h) come from the STRATA-Flow network itself (burden profile, layered Ergun
+                resistance, floating cohesive zone; ``strata_network.NetworkParts``: network solves at the calibration
+                and at every plan, the network Jacobian between solves; STRATA 1.2 used a quadratic surrogate, which
+                remains selectable with ``parts_backend: surrogate`` but is not used by the engine or the page);
+                k is the Fe-weighted reduction rate of the blend,
+                r_m^beta (d_test / d_m)^n with r_m = ln(1 - RI_m) / ln(1 - RI_sinter) from the laboratory RI
+                (IS 8167 / ISO 7215); STRATA 1.3: beta = 0, n = 1.0 calibrated on the plant data (the measured RI
+                differences show no effect on the plant's omega; size does), STRATA 1.2: beta = 1, n = 1.5;
                 kappa is re-fitted at start-up so that w(calibration state) equals the calibrated omega.
   omega(plan) = omega_cal + [w(blend_plan, op_cal) - w(cal)] + sum_c b_c (s_c,plan - s_c,cal)      blend channel
                           + [w(blend_plan, op_plan) - w(blend_plan, op_cal)]                        operating channel
                           + a_h (moisture_plan - moisture_cal)                                      blast moisture
+                          + a_n (nut_plan - nut_cal)                                                nut coke (1.3)
   The blend channel is the physics with a plant-data scale per material group: b_c = (lam_g - 1) g_c, where g_c is
   the physics change of omega per wet pt of class c replacing sinter and lam_g the scale of its group (pellet; lump
   ore = Lloyds CLO, Geomin, NMDC ROM, Donimalai, Gomti, oversize). lam_pellet, lam_lump, the operating scale and a_h
   are the AR(1) posterior of the daily change of omega against its 14-day anchor (GAS-14, GAS-19); the posterior is
   stored as the mean and covariance of (x_blend, b_c) so that the code below is unchanged from v1.0.
+
+STRATA 1.3 (asset ``version``)
+  Ring quantities from network solves, not from the surrogate. RI set S9 = S8 with Gomti 65 %; the Lloyds fines
+  oversize (ore_6) reduces at the Lloyds CLO size (no size credit for its 8-16 mm sizing); the Donimalai oversize
+  return (ore_11) is Donimalai. Blast moisture from the smoothed weather-record RH (DATA-11, no step changes): the data
+  moisture coefficient is small and uncertain (GAS-19). Nut-coke data term a_n (GAS-23): omega rises with the nut
+  coke charged in the ore layer, which the network's layer model does not represent. PCI acts through the balance
+  (carbon, energy, H2) and the network; no additional data term (it lowered out-of-sample skill).
 
 STRATA 1.2 (``operating_scales`` in the asset)
   The operating channel is split: production part = w(plan blend, calibration operation, plan production) minus
@@ -41,8 +55,8 @@ STRATA 1.2 (``operating_scales`` in the asset)
   no skill and its data scale was negative. ``gas_capacity_channel: false`` holds R at the calibration.
 
 Uncertainty of omega(plan) relative to the calibration state (1 sigma): posterior of the blend scales; the operating
-scale's posterior (oper_rel_sd x |operating channel|); the moisture coefficient's standard error x |moisture change|;
-surrogate error. Converted to coke with the loop-inclusive dK/domega of the engine. Reported apart (not in the plan
+scales' posterior; the moisture and nut-coke coefficients' standard errors x |change|; with the surrogate backend
+only, the surrogate error. Converted to coke with the loop-inclusive dK/domega of the engine. Reported apart (not in the plan
 comparison): the calibration's own standard error (common to every plan) and the day-to-day spread of omega.
 
 Certainty classes: High = sigma(coke) <= 2 kg/tHM and blend and production inside the range BF-02 ran (1st-99th
@@ -61,6 +75,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
+
+from utils.burden_engine.strata_network import NetworkParts, network_parts
 
 MODEL_PATH = Path(__file__).resolve().parents[2] / "assets" / "burden_engine" / "omega_model.json"
 CERTAINTY_LEVELS = ("any", "low", "medium", "high")      # "low" = everything except Investigate
@@ -134,6 +150,8 @@ class OmegaTerms:
     d_prod_phys: float = 0.0
     d_rest_phys: float = 0.0
     investigate: list[str] = field(default_factory=list)   # reasons for the Investigate tier (beyond common practice)
+    d_nut: float = 0.0               # nut-coke data term (STRATA 1.3, GAS-23)
+    network: dict = field(default_factory=dict)            # network backend: solves and distance from the anchors
 
 
 class OmegaModel:
@@ -149,12 +167,19 @@ class OmegaModel:
         self.cls_of = {m: v["class"] for m, v in mats.items()}
         self.engine_map = dict(spec.get("engine_map", {}))
         self.kind_default = dict(spec.get("kind_default", {}))
-        sur = spec["surrogate"]
-        self.inputs = list(sur["inputs"])
-        self.mu = np.asarray(sur["mu"], float)
-        self.sd = np.asarray(sur["sd"], float)
-        self.W = np.asarray(sur["W"], float)
-        self.sigma_sur = float(sur.get("pair_rmse", 0.0))
+        self.backend = str(spec.get("parts_backend", "surrogate"))
+        if self.backend not in ("network", "surrogate"):
+            raise ValueError(f"parts_backend must be 'network' or 'surrogate', not {self.backend!r}")
+        sur = spec.get("surrogate") or {}
+        if self.backend == "surrogate" and not sur:
+            raise ValueError("parts_backend 'surrogate' needs the surrogate block in the asset")
+        self.inputs = list(sur.get("inputs", []))
+        self.mu = np.asarray(sur.get("mu", []), float)
+        self.sd = np.asarray(sur.get("sd", []), float)
+        self.W = np.asarray(sur.get("W", []), float)
+        self.sigma_sur = float(sur.get("pair_rmse", 0.0)) if self.backend == "surrogate" else 0.0
+        self.net_ctx = dict((spec.get("network") or {}).get("context") or {})
+        self.net: NetworkParts | None = None
         po = spec["posterior"]
         self.post_names = list(po["names"])
         self.post_mean = np.asarray(po["mean"], float)
@@ -166,6 +191,9 @@ class OmegaModel:
         mo = spec.get("moisture") or {}
         self.a_moist = float(mo.get("coef", 0.0))
         self.a_moist_se = float(mo.get("se", 0.0))
+        nc = spec.get("nut_coke") or {}
+        self.a_nut = float(nc.get("coef", 0.0))
+        self.a_nut_se = float(nc.get("se", 0.0))
         ops = spec.get("operating_scales")
         self.split_oper = bool(ops)                     # STRATA 1.2: production and other operation scaled apart
         ops = ops or {}
@@ -195,13 +223,41 @@ class OmegaModel:
 
     # ---------------------------------------------------------------------------------------------- construction
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "OmegaModel":
-        return cls(_load_spec(str(Path(path or MODEL_PATH).resolve())))
+    def load(cls, path: str | Path | None = None, backend: str | None = None) -> "OmegaModel":
+        spec = dict(_load_spec(str(Path(path or MODEL_PATH).resolve())))
+        if backend:
+            spec["parts_backend"] = backend
+        return cls(spec)
 
-    def _rate(self, v: Mapping[str, Any]) -> float:
+    def set_sinter_strength(self, ss: Mapping[str, Any] | None) -> "OmegaModel":
+        """Sinter RI (reference of the rate law) and RDI (network shaft fines) from the latest raw-material strength
+        data (calibration ``sinter_strength``); without it the asset's values (the latest test when the asset was
+        built). Call before ``calibrate``."""
+        if not ss:
+            return self
+        if ss.get("ri_pct"):
+            mats = {k: dict(v) for k, v in self.spec["materials"].items()}
+            mats["sinter"]["ri_pct"] = float(ss["ri_pct"])
+            self.spec = dict(self.spec, materials=mats, kinetics=dict(self.spec["kinetics"], ri_ref_pct=float(ss["ri_pct"])))
+            self.rate = {m: self._rate(v) for m, v in mats.items()}
+        if ss.get("rdi_pct"):
+            self.rdi = float(ss["rdi_pct"])
+        return self
+
+    def set_network_context(self, override: Mapping[str, Any] | None) -> "OmegaModel":
+        """Charging matrix, top gas, HBT etc. of the calibration window for the network (default: the asset's)."""
+        if override:
+            self.net_ctx = {**self.net_ctx, **{k: v for k, v in override.items() if v is not None}}
+        return self
+
+    def _rate(self, v: Mapping[str, Any], beta: float | None = None, n: float | None = None) -> float:
+        """Relative reduction rate r = [ln(1 - RI) / ln(1 - RI_sinter)]^beta x (d_test / d)^n (STRATA 1.3: beta and n
+        calibrated on the plant data with the laboratory RI as given; beta = 1, n = 1.5 is the first-order link)."""
         k = self.spec["kinetics"]
+        beta = float(k.get("ri_exponent", 1.0)) if beta is None else float(beta)
+        n = float(k["n_size"]) if n is None else float(n)
         r = math.log(1 - float(v["ri_pct"]) / 100) / math.log(1 - float(k["ri_ref_pct"]) / 100)
-        return r * (float(k["d_test_mm"]) / float(v["sauter_mm"])) ** float(k["n_size"])
+        return r ** beta * (float(k["d_test_mm"]) / float(v["sauter_mm"])) ** n
 
     def model_material(self, var_id: str, kind: str) -> str:
         """Model material for an engine material: by id, else by kind (lump ore -> generic CLO properties)."""
@@ -227,6 +283,10 @@ class OmegaModel:
         return float(sum(v * self.rate[m] for m, v in fe_frac.items()))
 
     def parts(self, st: OmegaState) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        if self.backend == "network":
+            if self.net is None:
+                raise RuntimeError("OmegaModel.calibrate() first (network backend)")
+            return self.net.parts(st)
         u = (st.inputs(self.inputs) - self.mu) / self.sd
         y = _phi(u) @ self.W
         f = np.clip(y[0:6], 1e-4, None); f = f / f.sum()
@@ -247,6 +307,8 @@ class OmegaModel:
     def calibrate(self, ref: OmegaState, omega_cal: float, R_cal: float) -> "OmegaModel":
         """Anchor on the engine's calibration point: kappa so that w(ref, R_cal) = omega_cal."""
         self.ref, self.R_ref, self.omega_ref = ref, float(R_cal), float(omega_cal)
+        if self.backend == "network":
+            self.net = network_parts(self.net_ctx, ref)
         pr = self.parts(ref)
         lo, hi = 1e-3, 1e3
         for _ in range(70):
@@ -260,6 +322,15 @@ class OmegaModel:
         return self
 
     # ---------------------------------------------------------------------------------------------- prediction
+    def anchor(self, st: OmegaState, tol: float = 1e-9) -> None:
+        """Network backend: one network solve at this state unless a solve lies within ``tol`` scaled units (1 unit =
+        1 pt of a ferrous share, 5 kg/tHM coke, 1 t/h ...); no-op with the surrogate."""
+        if self.backend == "network" and self.net is not None:
+            self.net.anchor(st, tol=max(float(tol), 1e-9))
+
+    def network_stats(self) -> dict[str, Any]:
+        return self.net.stats() if (self.backend == "network" and self.net is not None) else dict(backend=self.backend)
+
     def lam_b(self) -> float:
         return float(self.post_mean[self.post_names.index("x_blend")])
 
@@ -348,7 +419,11 @@ class PlanOmega:
         dh = float(st.humidity) - float(ref.humidity)
         self.d_moist = model.a_moist * dh if math.isfinite(dh) else 0.0
         self.s_moist = model.a_moist_se * abs(dh) if math.isfinite(dh) else 0.0
-        self.base = model.omega_ref + self.d_blend + self.d_disc + self.d_moist
+        dn = float(st.nut) - float(ref.nut)
+        self.d_nut = model.a_nut * dn
+        self.s_nut = model.a_nut_se * abs(dn)
+        self.offset = 0.0                # explicit omega shift of the calibration anchor (engine Settings.omega)
+        self.base = model.omega_ref + self.d_blend + self.d_disc + self.d_moist + self.d_nut
         # operating channel, production part: the plan's blend at the calibration's operation but the plan's production
         if model.split_oper:
             self.st_bp = OmegaState(st.shares, st.fe_frac, st.cls, ref.coke, ref.nut, ref.pci, st.prod, ref.blast_t,
@@ -358,6 +433,32 @@ class PlanOmega:
             self.w_bp = self.w_b
         self.d_prod_phys = self.w_bp - self.w_b
         self._last: tuple[float, float, float, float, float] | None = None
+
+    def anchor_blend(self, tol: float = 0.0) -> None:
+        """Network backend: solve the network at the plan's blend state (one solve per SLP iterate)."""
+        self.m.anchor(self.st_b, tol)
+        self._refresh()
+
+    def anchor_all(self, K: float, tol: float = 0.0) -> None:
+        """Network backend: solve the network at the blend, blend + production and full-operation states of the plan
+        (at coke rate K), so that its omega comes from network solves at the plan itself (``tol`` > 0: reuse a solve
+        within that many scaled units)."""
+        self.m.anchor(self.st_b, tol)
+        if self.m.split_oper:
+            self.m.anchor(self.st_bp, tol)
+        self.m.anchor(self._state_at(K), tol)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        m = self.m
+        self.pb = m.parts(self.st_b)
+        self.w_b = m.w(self.st_b, m.R_ref, parts=self.pb)
+        self.d_blend_phys = self.w_b - m.w_ref
+        self.d_blend = m.lam_b() * self.d_blend_phys
+        self.g = np.r_[self.d_blend_phys, self.ds]
+        self.base = m.omega_ref + self.d_blend + self.d_disc + self.d_moist + self.d_nut + self.offset
+        self.w_bp = m.w(self.st_bp, m.R_ref) if m.split_oper else self.w_b
+        self.d_prod_phys = self.w_bp - self.w_b
 
     def _state_at(self, K: float) -> OmegaState:
         s = self.st
@@ -393,9 +494,11 @@ class PlanOmega:
         s_post = float(math.sqrt(max(self.g @ self.V @ self.g, 0.0)))
         s_oper = self._s_oper(d_oper, d_rest_phys)
         s_R = m.R_rel_sd * abs(d_R)
-        du = (self.st.inputs(m.inputs) - m.ref.inputs(m.inputs)) / m.sd
-        s_sur = m.sigma_sur * min(1.0, float(np.linalg.norm(du)))
-        sig = math.sqrt(s_post ** 2 + s_oper ** 2 + s_R ** 2 + s_sur ** 2 + self.s_moist ** 2)
+        s_sur = 0.0
+        if m.backend == "surrogate":
+            du = (self.st.inputs(m.inputs) - m.ref.inputs(m.inputs)) / m.sd
+            s_sur = m.sigma_sur * min(1.0, float(np.linalg.norm(du)))
+        sig = math.sqrt(s_post ** 2 + s_oper ** 2 + s_R ** 2 + s_sur ** 2 + self.s_moist ** 2 + self.s_nut ** 2)
         support, outside = m.support_status(self.st.cls, self.st.prod)
         st = self._state_at(K)
         f, o, t = m.parts(st)
@@ -403,14 +506,25 @@ class PlanOmega:
         return OmegaTerms(omega=om, d_blend=self.d_blend, d_blend_phys=self.d_blend_phys, d_disc=self.d_disc,
                           d_oper=d_oper, d_R=d_R, sigma=sig,
                           sigma_parts=dict(data=s_post, operation=s_oper, gas_capacity=s_R, surrogate=s_sur,
-                                           moisture=self.s_moist),
+                                           moisture=self.s_moist, nut_coke=self.s_nut),
                           R=float(R), k_blend=m.k_blend(self.st.fe_frac), support=support, outside=outside,
                           gas_in_excess=excess, wall_gas_share=float(f[-1]), g=[float(x) for x in self.g],
                           d_moist=self.d_moist,
                           d_prod=(m.lam_prod * self.d_prod_phys if m.split_oper else 0.0),
                           d_rest=(m.lam_rest * d_rest_phys if m.split_oper else d_oper),
                           d_prod_phys=self.d_prod_phys, d_rest_phys=d_rest_phys,
-                          investigate=m.investigate_reasons(self.st.cls, self.st.prod))
+                          investigate=m.investigate_reasons(self.st.cls, self.st.prod), d_nut=self.d_nut,
+                          network=self._network_info(st))
+
+    def _network_info(self, st_op: OmegaState) -> dict[str, Any]:
+        m = self.m
+        if m.backend != "network" or m.net is None:
+            return dict(backend=m.backend)
+        net = m.net
+        d = dict(blend=net.distance(self.st_b), operation=net.distance(st_op))
+        if m.split_oper:
+            d["production"] = net.distance(self.st_bp)
+        return dict(backend="network", distance=d, exact=bool(max(d.values()) <= 1e-9), **net.stats())
 
     def sigma(self, K: float, R: float) -> float:
         """1-sigma of omega without the support and ring diagnostics (cheap; used inside the optimiser)."""
@@ -418,16 +532,18 @@ class PlanOmega:
         _, _, d_oper, d_R, d_rest_phys = self._last
         m = self.m
         s_post2 = max(float(self.g @ self.V @ self.g), 0.0)
-        du = (self.st.inputs(m.inputs) - m.ref.inputs(m.inputs)) / m.sd
-        s_sur = m.sigma_sur * min(1.0, float(np.linalg.norm(du)))
+        s_sur = 0.0
+        if m.backend == "surrogate":
+            du = (self.st.inputs(m.inputs) - m.ref.inputs(m.inputs)) / m.sd
+            s_sur = m.sigma_sur * min(1.0, float(np.linalg.norm(du)))
         return math.sqrt(s_post2 + self._s_oper(d_oper, d_rest_phys) ** 2 + (m.R_rel_sd * d_R) ** 2 + s_sur ** 2
-                         + self.s_moist ** 2)
+                         + self.s_moist ** 2 + self.s_nut ** 2)
 
 
 def difference_sigma(model: OmegaModel, a: Mapping[str, Any], b: Mapping[str, Any]) -> float:
     """1-sigma of omega(a) - omega(b) for two evaluated plans (``OmegaTerms`` as dicts). The data part uses the
     difference of the gradients (shared parameters cancel); operating and gas-capacity parts are taken as fully
-    correlated between the plans (same physics), the surrogate part as independent."""
+    correlated between the plans (same physics), the surrogate part (surrogate backend only) as independent."""
     names = model.post_names
     idx = [names.index("x_blend")] + [names.index("sh_" + c) for c in model.classes]
     V = model.post_cov[np.ix_(idx, idx)]
@@ -439,9 +555,10 @@ def difference_sigma(model: OmegaModel, a: Mapping[str, Any], b: Mapping[str, An
     else:
         s2 += (model.op_rel_sd * (a["d_oper"] - b["d_oper"])) ** 2
     s2 += (model.R_rel_sd * (a["d_R"] - b["d_R"])) ** 2
-    s2 += a["sigma_parts"]["surrogate"] ** 2 + b["sigma_parts"]["surrogate"] ** 2
-    # moisture: same coefficient for both plans (fully correlated); zero when both plans run at the same moisture
+    s2 += a["sigma_parts"].get("surrogate", 0.0) ** 2 + b["sigma_parts"].get("surrogate", 0.0) ** 2
+    # moisture and nut coke: same coefficient for both plans (fully correlated); zero at the same moisture / nut coke
     s2 += (a["sigma_parts"].get("moisture", 0.0) - b["sigma_parts"].get("moisture", 0.0)) ** 2
+    s2 += (a["sigma_parts"].get("nut_coke", 0.0) - b["sigma_parts"].get("nut_coke", 0.0)) ** 2
     return math.sqrt(s2)
 
 
@@ -452,13 +569,15 @@ def oper_sigma(model: OmegaModel, d_prod_phys: float, d_rest_phys: float) -> flo
 
 
 def assumption_sensitivity(model: OmegaModel, st: OmegaState, K: float, R: float, ri_step: float = 5.0,
-                           n_alt: float = 1.0, min_fe_share: float = 0.005) -> list[dict[str, Any]]:
+                           n_alt: float = 1.5, min_fe_share: float = 0.005, beta_alt: float = 0.25) -> list[dict[str, Any]]:
     """Change of a plan's omega (against the calibration) when one critical assumption takes another credible value.
 
     Each alternative re-anchors kappa on the calibration (so the calibration's omega is unchanged) and re-evaluates the
-    plan at the same coke rate and capacity ratio. Covered: the ISO 7215 reducibility of every material in the plan or
-    the calibration (+/- ri_step), the size exponent of the reduction rate (n -> n_alt), the plant-data scales of the
-    pellet and lump-ore channels and of the production channel (+/- 1 sd) and the blast-moisture coefficient (+/- 1 se).
+    plan at the same coke rate and capacity ratio. Covered: the reducibility (IS 8167 / ISO 7215) of every material in
+    the plan or the calibration (+/- the asset's ri_sd of the material, else ri_step), the size exponent of the
+    reduction rate (n -> n_alt), the exponent of the RI in the rate (beta -> beta_alt; with beta = 0 the RI rows are zero
+    and omitted), the plant-data scales of the pellet and lump-ore channels and of the production channel (+/- 1 sd),
+    the blast-moisture and nut-coke coefficients (+/- 1 se).
     Returns rows sorted by the size of the effect; omega units (multiply by dK/domega for coke)."""
     import copy
     base = PlanOmega(model, st).omega(K, R)
@@ -473,24 +592,33 @@ def assumption_sensitivity(model: OmegaModel, st: OmegaState, K: float, R: float
 
     mats = {mm for mm, v in st.fe_frac.items() if v >= min_fe_share} | {mm for mm, v in ref.fe_frac.items() if v >= min_fe_share}
     kin = model.spec["kinetics"]
+    beta0 = float(kin.get("ri_exponent", 1.0))
+    if beta0 == 0.0:
+        mats = set()                      # the RI does not enter the rate: no RI rows (see the beta row below)
     for mm in sorted(mats):
         info = model.spec["materials"].get(mm, {})
         ri = float(info.get("ri_pct", float("nan")))
+        step = float(info.get("ri_sd", ri_step))              # the test's uncertainty where the asset carries one
         effs = []
-        for dri in (-ri_step, ri_step):
+        for dri in (-step, step):
             v = dict(info, ri_pct=min(95.0, max(30.0, ri + dri)))
             r2 = dict(model.rate); r2[mm] = model._rate(v)
             effs.append(alt(r2))
         worst = max(effs, key=abs)
-        rows.append(dict(assumption=f"RI {mm}", value=f"{ri:.0f} %", alternative=f"{ri - ri_step:.0f} / {ri + ri_step:.0f} %",
+        rows.append(dict(assumption=f"RI {mm}", value=f"{ri:.0f} %", alternative=f"{ri - step:.0f} / {ri + step:.0f} %",
                          basis=str(info.get("ri_basis", "literature")), d_omega=float(worst),
                          d_omega_lo=float(effs[0]), d_omega_hi=float(effs[1]), kind="RI"))
     n0 = float(kin["n_size"])
     if abs(n_alt - n0) > 1e-9:
-        r2 = {mm: model._rate(dict(v, ri_pct=v["ri_pct"])) * (float(kin["d_test_mm"]) / float(v["sauter_mm"])) ** (n_alt - n0)
-              for mm, v in model.spec["materials"].items()}
+        r2 = {mm: model._rate(v, n=n_alt) for mm, v in model.spec["materials"].items()}
         rows.append(dict(assumption="size exponent of the reduction rate", value=f"{n0:g}", alternative=f"{n_alt:g}",
-                         basis="shrinking-core range 0.5-2; not tested on BF-02", d_omega=float(alt(r2)), kind="size"))
+                         basis="calibrated on the plant data (n 0.5 / 1.0 / 1.5 tested out of sample; GAS-21)",
+                         d_omega=float(alt(r2)), kind="size"))
+    if abs(beta_alt - beta0) > 1e-9:
+        r2 = {mm: model._rate(v, beta=beta_alt) for mm, v in model.spec["materials"].items()}
+        rows.append(dict(assumption="RI exponent of the reduction rate (laboratory RI weight)", value=f"{beta0:g}",
+                         alternative=f"{beta_alt:g}", basis="calibrated on the plant data with the laboratory RI as given "
+                         "(GAS-21)", d_omega=float(alt(r2)), kind="RI"))
     cs = model.spec.get("channel_scales") or {}
     g = cs.get("g_per_pt") or {}
     if g:
@@ -513,6 +641,11 @@ def assumption_sensitivity(model: OmegaModel, st: OmegaState, K: float, R: float
         rows.append(dict(assumption="blast-moisture coefficient", value=f"{model.a_moist:.4f}/g",
                          alternative=f"+/- {model.a_moist_se:.4f}", basis="GAS-19 (weather record, DATA-11)",
                          d_omega=float(model.a_moist_se * abs(dh)), kind="moisture", symmetric=True))
+    dn = float(st.nut) - float(ref.nut)
+    if abs(dn) > 0 and model.a_nut_se > 0:
+        rows.append(dict(assumption="nut-coke coefficient", value=f"{model.a_nut:.4f}/kg",
+                         alternative=f"+/- {model.a_nut_se:.4f}", basis="GAS-23 (AR(1) posterior)",
+                         d_omega=float(model.a_nut_se * abs(dn)), kind="nut", symmetric=True))
     rows.sort(key=lambda r: -abs(r["d_omega"]))
     return rows
 

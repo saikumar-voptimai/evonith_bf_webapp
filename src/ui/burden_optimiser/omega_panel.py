@@ -35,10 +35,12 @@ def render_omega_settings(key: str = "bfo_om") -> dict[str, Any]:
     c1, c2, c3 = st.columns([2, 2, 2])
     mode = c1.radio("Shaft-efficiency model", list(MODELS), format_func=MODELS.get, index=0, key=f"{key}_mode",
                     horizontal=True,
-                    help="STRATA-ω: ω responds to the blend's reducibility and size, residence time in the thermal "
-                         "reserve zone, the coke layers, production, oxygen and blast moisture (STRATA-Flow gas-flow model "
-                         "of BF-02, scaled by the plant data and tested out of sample; STRATA 1.2, GAS-13..20). "
-                         "Fixed-ω: ω held at the calibration for every blend (Rist baseline, ASM-01).")
+                    help="STRATA-ω: ω responds to the blend's reducibility (plant RI tests) and size, residence time in "
+                         "the thermal reserve zone, the coke layers, production, oxygen, nut coke and blast moisture. "
+                         "The STRATA-Flow gas-flow network of BF-02 is solved for every plan (no surrogate; about 1 s "
+                         "per solve, one solve per optimiser iteration), scaled by the plant data and tested out of "
+                         "sample (STRATA 1.3, GAS-13..23). Fixed-ω: ω held at the calibration for every blend (Rist "
+                         "baseline, ASM-01).")
     if mode == "fixed":
         c2.caption("Fixed-ω: ω held at the calibration; a blend changes coke through its chemistry only.")
         return dict(omega_mode="fixed", certainty="any", risk_k=0.0, auto=False)
@@ -70,7 +72,7 @@ def render_omega_result(eng: Any, r: Mapping[str, Any], today: Mapping[str, Any]
                     delta_color="normal", help=f"Calibration ω {om['omega_cal']:.3f}.")
         k[1].metric("σ coke (kg/tHM)", f"± {om['sigma_K']:.1f}",
                     help="1 sigma of the plan's coke relative to the calibration state: blend scales (data posterior), "
-                         "operating scale, blast-moisture coefficient, surrogate. "
+                         "operating scales, blast-moisture and nut-coke coefficients. "
                          + ", ".join(f"{p} {v:.1f}" for p, v in om["sigma_parts_K"].items()) + " kg/tHM.")
         k[2].metric("σ cost (Rs/tHM)", f"± {r['cost'].get('sigma', 0.0):,.0f}")
         if today is not None and (today.get("omega") or {}).get("mode") == "blend":
@@ -92,7 +94,9 @@ def render_omega_result(eng: Any, r: Mapping[str, Any], today: Mapping[str, Any]
                      ("Operation: coke layers, fuels, oxygen, scaled", om["d_rest"])]
         else:
             rows.append(("Operation: coke layers, production (residence), oxygen", om["d_oper"]))
-        rows.append(("Blast moisture (Wardha weather record)", om.get("d_moist", 0.0)))
+        rows.append(("Blast moisture (weather record, RH estimate)", om.get("d_moist", 0.0)))
+        if abs(om.get("d_nut", 0.0)) > 0:
+            rows.append(("Nut coke against the calibration (GAS-23)", om["d_nut"]))
         if abs(om.get("d_R", 0.0)) > 0:
             rows.append(("Gas quantity (capacity ratio R)", om["d_R"]))
         parts = pd.DataFrame(rows, columns=["Part of Δω against the calibration", "Δω"])
@@ -105,6 +109,14 @@ def render_omega_result(eng: Any, r: Mapping[str, Any], today: Mapping[str, Any]
                    f"dK/dω {om['dK_domega']:.0f} kg/tHM per unit ω including the coke-layer loop. Not in σ: the "
                    f"calibration's own error (± {om['cal_se_K']:.1f} kg/tHM, common to every plan) and the day-to-day "
                    f"spread (± {om['day_sd_K']:.1f}). Model {om['version']}.")
+        net = om.get("network") or {}
+        if net.get("backend") == "network":
+            dist = max((net.get("distance") or {}).values(), default=float("nan"))
+            st.caption(f"STRATA-Flow network: {net.get('solves', 0)} solves so far for this calibration "
+                       f"({net.get('seconds', 0):.0f} s; Jacobian {net.get('jacobian', '')}). This plan's ω comes from "
+                       "solves at its blend, blend + production and full-operation states"
+                       + (" (exact)." if dist <= 1e-9 else f" (largest distance from a solve {dist:.2f} scaled units: "
+                          "under 1 pt of a share or 5 kg of coke)."))
         fixed_k = _fixed_omega_coke(eng, r)
         if fixed_k is not None:
             st.caption(f"Same blend under Fixed-ω (Rist baseline): coke {fixed_k:.1f} kg/tHM dry; STRATA-ω gives "

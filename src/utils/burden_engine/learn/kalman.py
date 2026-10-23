@@ -1,6 +1,6 @@
 """Random-walk Kalman filter on the STRATA-omega plant-data scales with AR(1) day errors.
 
-State theta = (lam_pellet, lam_lump, lam_production, lam_other, a_moisture); theta_t = theta_{t-1} + w_t,
+State theta = (lam_pellet, lam_lump, lam_production, lam_other, a_moisture, a_nut); theta_t = theta_{t-1} + w_t,
 w ~ N(0, Q), Q = diag(rw_sd^2) per day. Observation on consecutive days after the Prais-Winsten transform
     dobs_t - rho dobs_{t-1} = (x_t - rho x_{t-1})' theta_t + e_t,   e ~ N(0, sigma_e^2)
 and sqrt(1 - rho^2) (dobs_t = x_t' theta_t + e_t) after a gap. The one-step prediction of each day is made with
@@ -18,9 +18,9 @@ import numpy as np
 
 from utils.burden_engine.learn.evidence import PARAMS
 
-PRIOR_MEAN = (1.0, 1.0, 1.0, 1.0, 0.0)
-PRIOR_SD = (0.5, 0.5, 0.5, 0.5, 0.005)
-RW_SD = (0.01, 0.01, 0.01, 0.01, 0.00002)          # per day: about 0.19 (lam) over a year of random walk
+PRIOR_MEAN = (1.0, 1.0, 1.0, 1.0, 0.0, 0.0)
+PRIOR_SD = (0.5, 0.5, 0.5, 0.5, 0.005, 0.0005)
+RW_SD = (0.01, 0.01, 0.01, 0.01, 0.00002, 0.000002)   # per day: about 0.19 (lam) over a year of random walk
 
 
 @dataclass

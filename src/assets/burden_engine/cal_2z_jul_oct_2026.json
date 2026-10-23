@@ -218,5 +218,11 @@
     "LOI": 34.392039027250654
    }
   }
- ]
+ ],
+ "sinter_strength": {
+  "ri_pct": 66.0,
+  "rdi_pct": 30.06,
+  "as_of": "2026-10-04",
+  "source": "raw_material_strength_analysis, sinter_3, latest test (Jul-Oct window median RI 66.0, RDI 31.0)"
+ }
 }

@@ -84,6 +84,12 @@ def propose(reg_data: Mapping[str, Any], kalman_summary: Mapping[str, Any], fam_
         auto = abs(a - g19["value"]) <= 2 * g19["se"]
         items.append(dict(id="GAS-19", kind="value", automatic=auto, change=dict(value=round(a, 5), se=round(s, 5)),
                           reason="Kalman state of the moisture coefficient" + ("" if auto else " (outside 2 se)")))
+    g23 = facts.get("GAS-23")
+    if g23 and g23.get("se") and "a_nut" in mean:
+        a, s = mean["a_nut"], sd["a_nut"]
+        auto = abs(a - g23["value"]) <= 2 * g23["se"]
+        items.append(dict(id="GAS-23", kind="value", automatic=auto, change=dict(value=round(a, 6), se=round(s, 6)),
+                          reason="Kalman state of the nut-coke coefficient" + ("" if auto else " (outside 2 se)")))
     for r in fam_rows:
         f = next((v for v in facts.values() if v["group"] == "VAL" and f", {r['family']}:" in v["statement"]), None)
         if f is None:

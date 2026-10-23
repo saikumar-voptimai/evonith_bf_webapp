@@ -1,9 +1,13 @@
-"""Blast moisture from the Wardha daily weather record (DATA-11, utils/coke_energy/weather.py)."""
+"""Blast moisture from the Wardha daily weather record (DATA-11, utils/coke_energy/weather.py).
+
+Default source rh_scaled: 31-day centred mean of RH mapped linearly to 7-21 g/Nm3, no step changes. The psychrometric
+estimate (Magnus) remains selectable and keeps the record's seasonal steps."""
 
 from __future__ import annotations
 
 import math
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -20,28 +24,47 @@ def test_moisture_formula():
     assert v == pytest.approx(20.6, abs=0.1)
 
 
-def test_record_and_fallback():
+def test_rh_scaled_map():
+    assert W.rh_scaled(26.7) == pytest.approx(7.0) and W.rh_scaled(79.7) == pytest.approx(21.0)
+    assert W.rh_scaled(53.2) == pytest.approx(14.0, abs=1e-9)
+    assert W.rh_scaled(10.0) == 7.0 and W.rh_scaled(95.0) == 21.0                  # clipped to the plant range
+    s = pd.Series([40.0] * 10 + [80.0] * 10, index=pd.date_range("2026-01-01", periods=20))
+    sm = W.smoothed_rh(s, 7)
+    assert sm.iloc[0] == pytest.approx(40.0) and sm.iloc[-1] == pytest.approx(80.0)
+    assert 40.0 < sm.loc["2026-01-10"] < 80.0                                       # the step is spread over the window
+
+
+def test_record_default_is_step_free():
     rec = W.daily_record()
     assert len(rec) > 600 and rec.index.min() <= pd.Timestamp("2025-12-01") and rec.index.max() >= pd.Timestamp("2026-10-07")
-    assert 3.0 < rec.min() and rec.max() < 35.0
+    assert rec.min() >= 7.0 - 1e-9 and rec.max() <= 21.0 + 1e-9
+    assert float(np.abs(np.diff(rec.to_numpy())).max()) < 1.0                       # no overnight jump (largest 0.6)
+    june = rec.loc["2026-05-25":"2026-06-07"]
+    assert float(np.abs(np.diff(june.to_numpy())).max()) < 1.0                       # no step on 1 Jun
     v, src = W.blast_moisture("2026-06-15")
-    assert src == "weather record" and v == pytest.approx(rec.loc[pd.Timestamp("2026-06-15")])
+    assert src == "weather record (RH, smoothed)" and v == pytest.approx(rec.loc[pd.Timestamp("2026-06-15")])
+
+
+def test_psychrometric_keeps_steps():
+    psy = W.daily_record(method="psychrometric")
+    assert 3.0 < psy.min() and psy.max() < 35.0
+    m = psy.groupby(psy.index.to_period("M")).mean()
+    for mon in ("2026-06", "2026-07", "2026-08", "2026-09"):
+        assert 22.0 < m.loc[mon] < 26.5
+    assert psy.loc["2026-06-01"] - psy.loc["2026-05-31"] > 5.0                    # the record's seasonal step
+    v, src = W.blast_moisture("2026-06-15", source="psychrometric")
+    assert src == "weather record" and v == pytest.approx(psy.loc[pd.Timestamp("2026-06-15")])
+
+
+def test_fallback():
     v, src = W.blast_moisture("2030-01-15")                      # outside the record: monthly table
     assert src == "monthly table" and v == HUMIDITY_G_NM3[1]
     v, src = W.blast_moisture("2026-06-15", source="table")
     assert src == "monthly table" and v == HUMIDITY_G_NM3[6]
 
 
-def test_monsoon_level():
-    """Jun-Sep 2026 monthly means of the record: 23-25 g/Nm3 (the table held 17-21)."""
-    rec = W.daily_record()
-    m = rec.groupby(rec.index.to_period("M")).mean()
-    for mon in ("2026-06", "2026-07", "2026-08", "2026-09"):
-        assert 22.0 < m.loc[mon] < 26.5
-
-
 def test_window_mean():
     days = pd.date_range("2026-07-01", "2026-07-14")
     v, src = W.mean_blast_moisture(days)
-    assert src == "weather record"
+    assert src == "weather record (RH, smoothed)"
     assert v == pytest.approx(float(W.daily_record().loc[days].mean()))

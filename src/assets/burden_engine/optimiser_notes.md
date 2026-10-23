@@ -29,23 +29,28 @@ Steel as of October 2026; the fact register version sent with the request govern
   are the medians of the stable shifts of the 14 days before today, from the same pipeline result as page 10. With
   fewer than 10 stable shifts the shipped Jul–Oct 2026 calibration is used and the page says so.
 * **Shaft efficiency: two modes.** *Fixed-ω* (Rist baseline, ASM-01): omega at the calibration value for every blend;
-  a blend moves coke through its chemistry only. *STRATA-ω* (ASM-18, page default, STRATA 1.2 — the BF-02 gas-flow
-  model, formerly OMEGA): omega from STRATA-Flow (GAS-13). The thermal reserve zone is six rings, each a
-  counter-current exchanger between the gas and the ore's wüstite oxygen; transfer units grow with the blend's
-  reduction rate (ISO 7215 RI and size of each ferrous, Fe-weighted) and the residence time in the zone. Omega responds
-  to the blend (pellet and sinter reduce faster than lump ore; ROM and Donimalai slowest), production (shorter residence,
-  GAS-16: data scale 0.68 ± 0.29), the coke layers, fuels and oxygen (scale 1.37 ± 0.28), and the blast moisture of the
-  Wardha weather record (GAS-19: +0.0044 ± 0.0004 per g/Nm³). Blend scales (GAS-14): pellet 1.27 ± 0.43, lump ore
-  0.47 ± 0.35. Coke responses of both models side by side: MOD-01..10 (e.g. 10 pt pellet for sinter: Fixed-ω −1.7,
-  STRATA-ω −6.4 ± 1.7 kg/tHM). 0.01 of omega is about 2.9 kg/tHM of coke.
-* **Reducibility is an assumption (GAS-21).** Sinter RI is the plant mean; pellet and lump-ore RI are literature and
-  mineralogy values (pellet 65, Lloyds CLO 65, NMDC ROM 65, Donimalai 60, Geomin / Gomti 75 %). The plant data cannot
-  separate RI sets. When a plan is Low, Investigate or outside what BF-02 ran, state its critical assumptions first.
+  a blend moves coke through its chemistry only. *STRATA-ω* (ASM-18, page default, STRATA 1.3 — the BF-02 gas-flow
+  model, formerly OMEGA): omega from STRATA-Flow network solves made for every plan (GAS-13; no surrogate). The thermal
+  reserve zone is six rings, each a counter-current exchanger between the gas and the ore's wüstite oxygen; transfer
+  units grow with the blend's reduction rate and the residence time in the zone. The reduction rate follows particle
+  size, (11.25/d)^1.0: the laboratory RI differences (GAS-21) show no effect on the plant's omega, so the calibrated
+  RI exponent is 0. Omega responds to the blend (pellet reduces fastest by size; NMDC ROM and Donimalai lumps slowest),
+  production (shorter residence, GAS-16: data scale 0.59 ± 0.30), the coke layers, fuels and oxygen (scale 0.98 ±
+  0.30), nut coke (GAS-23: +0.00094 ± 0.00035 per kg/tHM) and blast moisture (GAS-19: +0.0016 ± 0.0024 per g/Nm³,
+  not resolved). Blend scales (GAS-14): pellet 1.38 ± 0.45, lump ore 0.96 ± 0.42. Coke responses of both models side
+  by side: MOD-01..11 (e.g. 10 pt pellet for sinter: Fixed-ω −1.7, STRATA-ω −5.9 ± 1.2 kg/tHM; nut coke +10 kg/tHM:
+  −9.9 and −13.1). 0.01 of omega is about 2.8 kg/tHM of coke.
+* **Reducibility and RDI are measured (GAS-21, DATA-13).** Evonith laboratory tests as given: RI pellet 82, Lloyds CLO
+  84, Geomin 79, NMDC ROM 61, Donimalai 78 %; RDI 7-28 %; Gomti not tested (65 % assumed). The ore RDIs act in the
+  network as shaft fines. The RI-to-rate exponent (0) and the size exponent (1.0) are calibrated on the plant data and
+  are the critical assumptions to state first for a plan that is Low, Investigate or outside what BF-02 ran.
+* **Two oversize materials (GAS-24).** Lloyds fines oversize (ore_6, 8-16 mm, Lloyds chemistry) reduces at the Lloyds
+  CLO size (no size credit; the plant data reject the credit); Donimalai oversize return (ore_11) is Donimalai.
 * **Investigate tier (GAS-18).** Pellet above 25 % of ferrous or σ(coke) above 8 kg/tHM: beyond common practice. Such a
   plan is a trial proposal, never an operating plan; the default filter and auto mode exclude it.
 * **Uncertainty and certainty (blend mode).** Each plan carries σ(coke) relative to the calibration (posterior of the
-  blend scales, the operating scale, the moisture coefficient, surrogate error) and a class (GAS-18): High = σ ≤ 2
-  kg/tHM and blend and production inside what BF-02 ran (1st–99th percentile of 200 days: pellet 0–15.4 %, sinter
+  blend scales, the operating scales, the moisture and nut-coke coefficients) and a class (GAS-18): High = σ ≤ 2
+  kg/tHM and blend and production inside what BF-02 ran (1st–99th percentile of 191 days: pellet 0–15.4 %, sinter
   58.9–69.5 %, production 86.9–96.2 t/h); Medium = σ ≤ 5 and within 5 pt / 3 t/h of that range; Low otherwise. Not
   in σ: the calibration's own error (about ±2 kg/tHM, common to every plan) and the day-to-day spread of omega (about
   ±8 kg/tHM), which averages out over days. The saving against today's blend is shown with σ of the difference

@@ -142,7 +142,7 @@ def flux_rows(fluxes: Iterable[FluxInput], prefs: Mapping[str, Any] | None = Non
 def fuel_prices(prefs: Mapping[str, Any] | None, default: Mapping[str, float] | None = None) -> dict[str, float]:
     rows = _saved(prefs, "fuel_ash_editor", "rows")
     d = dict(default or {})
-    for key, name in (("coke_price", "coke"), ("nut_price", "nut_coke"), ("pci_price", "pci")):
+    for key, name in (("coke_price", "coke"), ("nut_price", "nut_coke"), ("pci_price", "pci"), ("slag_price", "slag")):
         v = (rows.get(name) or {}).get("price_rs_per_mt")
         if v is not None:
             d[key] = float(v)
@@ -288,7 +288,7 @@ def load_yard(cfg: Mapping[str, Any], *, prefs_path: str | Path = "src/config/bm
         materials=yard_rows(ores, prefs, exclude_fallback=bool(yard_cfg.get("exclude_fallback_chemistry", True)),
                             k_rules=yard_cfg.get("k_rules")),
         fluxes=flux_rows(fluxes, prefs),
-        fuel=fuel_prices(prefs),
+        fuel=fuel_prices(prefs, dict(slag_price=float(((cfg.get("prices") or {}).get("slag_price_rs_per_t")) or 0.0))),
         slag=slag_limits(prefs),
         charging_saved=saved_charging(prefs),
         warnings=warnings,

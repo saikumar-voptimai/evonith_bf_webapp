@@ -18,6 +18,40 @@ burden_optimiser:
       gomti_clo: gomti
       lloyds_oversize_clo: oversize
 
+  prices:
+    # Price basis (DATA-14). Ferrous and flux: plant prices of 23 Oct 2026 (NMDC ROM 10,323, Lloyds CLO 8,877, NMDC
+    # Donimalai 6,141, Geomin 4,204, sinter 8,784, Lloyds pellet 10,515; limestone 2,369, dolomite 1,196, quartzite
+    # 1,792 Rs/t); materials without a given price keep the operator's saved value. Fuels: BF-2 October-26 cost sheet,
+    # FTD Costing 22 Oct 2026. The same prices are the defaults in bmo_operator_inputs.yml (live yard); the reference
+    # yard (offline) takes them from here.
+    source: "Plant prices 23 Oct 2026; fuels: BF-2 cost sheet FTD Costing 22 Oct 2026"
+    materials:
+      sinter_sp_02: 8784
+      geomin_clo: 4204
+      lloyds_clo: 8877
+      nmdc_donimalai: 6141
+      gomti_clo: 5349
+      jrs_ventures: 6831
+      jayaswal_neco: 6650
+      titani_ferrous_clo: 4939
+      acore_ind_pvt_ltd: 8473
+      nmdc_rom: 10323
+      lloyds_oversize_clo: 6162
+      bacheli_fines_over_size: 10000
+      lloyds_pellet: 10515
+      sarda_pellet: 9650
+    fluxes:
+      quartz: 1792
+      limestone: 2369
+      dolomite: 1196
+    fuel:
+      coke_price: 31960
+      nut_price: 26292
+      pci_price: 21168
+    # Granulated slag sale price, Rs/t (ASM-20; plant, 23 Oct 2026). The optimiser's objective is ore + flux + coke -
+    # slag credit. The operator's saved value (fuel_ash_editor -> slag) takes precedence.
+    slag_price_rs_per_t: 457.85
+
   charging:
     # Operator figure (Oct 2026): 26.46 t non-coke per charge, at most 6.5 charges/h (FLOW-12). The Blend Mix
     # Optimiser's saved UAT value is 6.35/h; the page shows both and uses the one the operator picks.

@@ -125,7 +125,7 @@ def test_charged_blend_accepts_naive_utc_and_empty():
 @pytest.fixture(scope="module")
 def plans():
     eng = Engine()
-    s = settings_from_regime(None, THERMAL, eng.cal)
+    s = settings_from_regime(None, THERMAL, eng.cal, pci_plant=190.0, nut_plant=70.0)  # case report
     L = limits_from(load_register())
     inputs = json.load(open(REFERENCE_INPUTS_PATH, encoding="utf-8"))
     r = run_fixed(eng, 2270.0, s, L)["with_fuel"]

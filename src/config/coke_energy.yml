@@ -22,8 +22,13 @@ coke_energy:
   # below); dates the record does not cover use the monthly table (bf_thermo.HUMIDITY_G_NM3). table: the monthly
   # table for every date (behaviour before Oct 2026).
   blast_moisture:
-    source: weather_file
+    # rh_scaled (default): centred 31-day mean of the record's RH mapped linearly onto 7-21 g/Nm3 (no step changes);
+    # psychrometric (alias weather_file): Magnus from T and RH, keeps the record's seasonal steps; table: monthly table.
+    source: rh_scaled
     path: src/assets/coke_energy/wardha_daily_weather_2025_2026.csv
+    smoothing_days: 31
+    g_range: [7.0, 21.0]
+    rh_range: [26.7, 79.7]          # 1st / 99th percentile of the smoothed RH, 1 Jan 2025 - 21 Oct 2026
     station_pressure_hpa: 985.0
 
   # Shifts excluded from predictions. The web model excluded 2026-10-07_C (ORE_TM% = 129.7 %, a data error); the

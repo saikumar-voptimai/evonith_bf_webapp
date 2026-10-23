@@ -23,12 +23,14 @@ Engine 2.0 (fact register v1.1)
 Shaft efficiency (``Settings.omega_mode``)
   * "fixed" (default, ASM-01): omega held at the calibration for every blend; a blend moves the coke rate through its
     chemistry only.
-  * "blend" (ASM-18, GAS-13..20): STRATA-omega from ``utils.burden_engine.omega_model`` (STRATA 1.2) - the STRATA-Flow
+  * "blend" (ASM-18, GAS-13..24): STRATA-omega from ``utils.burden_engine.omega_model`` (STRATA 1.3) - the STRATA-Flow
     gas-flow model's ring counter-current description of the thermal reserve zone, scaled by the plant data and tested
-    out of sample (GAS-20) - as a function of the blend, the coke rate, production, oxygen and the blast moisture
-    (solved inside the two-zone balance). Every result then carries sigma(coke), a certainty class (High / Medium /
-    Low / Investigate) and the parts of omega; ``Engine.critical_assumptions`` gives the coke effect of each critical
-    assumption (RI, size exponent, plant-data scales, moisture coefficient);
+    out of sample (GAS-20) - as a function of the blend, the coke rate, production, oxygen, nut coke and the blast
+    moisture (solved inside the two-zone balance). The STRATA-Flow network is solved during the optimisation (one solve
+    per SLP iterate, three per reported plan; ``strata_network.py``), not approximated by a surrogate. Every result then
+    carries sigma(coke), a certainty class (High / Medium / Low / Investigate), the parts of omega and the network
+    solves behind it; ``Engine.critical_assumptions`` gives the coke effect of each critical assumption (RI exponent,
+    size exponent, plant-data scales, moisture and nut-coke coefficients);
     ``Settings.risk_k`` adds risk_k x sigma(cost) to the objective and ``Settings.certainty`` ("low" = all but
     Investigate / "medium" / "high") restricts the optimiser to plans of that certainty.
 
@@ -41,6 +43,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -163,6 +166,7 @@ def _k_rule(m: Mapping[str, Any]) -> str | None:
 
 class Engine:
     OUT = ["K", "K_wet", "hb", "O2", "T_top", "slag", "CaO", "SiO2", "MgO", "Al2O3", "Fe_res", "eta", "sig_K"]
+    SEARCH_TOL = 1.0              # network solve tolerance inside the production searches (scaled units)
 
     def __init__(self, inputs: str | Path | Mapping[str, Any] | None = None,
                  cal: str | Path | Mapping[str, Any] | None = None,
@@ -201,7 +205,8 @@ class Engine:
         self.nf, self.nx = len(self.fer), len(self.flux)
         self.n = self.nf + self.nx
         fu = self.inp["fuel"]
-        self.prices_fuel = dict(coke=float(fu["coke_price"]), nut=float(fu["nut_price"]), pci=float(fu["pci_price"]))
+        self.prices_fuel = dict(coke=float(fu["coke_price"]), nut=float(fu["nut_price"]), pci=float(fu["pci_price"]),
+                                slag=float(fu.get("slag_price", 0.0) or 0.0))        # slag sale, Rs/t (ASM-20)
         c = self.cal
         self.case0 = copy.deepcopy(c["case"])
         self.p = c["p"]
@@ -218,6 +223,11 @@ class Engine:
         self.is_gom = np.array([v.k_rule == GOMTI_RULE for v in self.fer], float)
         self.is_o6 = np.array([v.k_rule == OVERSIZE_RULE for v in self.fer], float)
         self.n_evals = 0
+        # STRATA-Flow solve tolerance (scaled units: 1 pt of a ferrous share, 5 kg/tHM coke, 1 t/h ...): 0 = a solve at
+        # every SLP iterate and at every reported plan. The production searches (min_total_cost, max_production,
+        # frontier) run coarse (``SEARCH_TOL``) and re-solve the plan they return exactly.
+        self.net_tol_iter = 0.0
+        self.net_tol_final = 0.0
         self._om: OmegaModel | None = None
         self._dKdw = float("nan")
 
@@ -226,6 +236,8 @@ class Engine:
         """The blend-dependent omega model, anchored on this engine's calibration (built on first use)."""
         if self._om is None:
             m = OmegaModel.load()
+            m.set_network_context(self.cal.get("strata_flow") if isinstance(self.cal, Mapping) else None)
+            m.set_sinter_strength(self.cal.get("sinter_strength") if isinstance(self.cal, Mapping) else None)
             self.om_mat = [m.model_material(v.id, v.kind) for v in self.fer]
             self.om_cls = {c: np.array([m.cls_of[mm] == c for mm in self.om_mat], float) for c in m.support}
             c, P = self._cal_case(), self.case0["prod_th"]
@@ -347,10 +359,17 @@ class Engine:
         if s.omega_mode == "blend":
             po = self.omega_model().plan(self.plan_state(z, s, P))
             if s.omega is not None:                       # an explicit omega shifts the calibration anchor
-                po.base += s.omega - cal["omega"]
+                po.offset = s.omega - cal["omega"]
+                po.base += po.offset
         fn = (lambda K, zz: po.omega(K, self.R_eff(zz))) if po is not None else None
         r = solve_2z(c, self.p, om, cal["Q_LZ_GJh"] * 1000 / P, cal["Q_UZ_GJh"] * 1000 / P, cal["r_H"],
                      T_R=cal["T_R"], x0=self._x0, omega_fn=fn)
+        if full and po is not None and po.m.backend == "network":
+            # a reported result: network solves at the plan's blend, production and full-operation states, then the
+            # balance again on those ring quantities (the coke moves by the Jacobian's error only, ~0.1 kg/tHM)
+            po.anchor_all(r["K"], self.net_tol_final)
+            r = solve_2z(c, self.p, om, cal["Q_LZ_GJh"] * 1000 / P, cal["Q_UZ_GJh"] * 1000 / P, cal["r_H"],
+                         T_R=cal["T_R"], x0=self._x0, omega_fn=fn)
         self.n_evals += 1
         ro = r["ro"]; sl = ro["slag"]
         K = r["K"]; wet = 1 - c["coke"]["moist_pct"] / 100; Kw = K / wet
@@ -421,6 +440,10 @@ class Engine:
         return raft_c(s.HBT, hb_per_t, O2_per_t, s.pci_plant, s.humidity_g)
 
     def cost(self, z, o, fuel=True, s: Settings | None = None):
+        """Rs/tHM. ``gross`` = ore + flux + fuel; ``slag_credit`` = slag sold at ``fuel['slag_price']`` (ASM-20);
+        ``total`` = gross - slag credit (the plant's cost per tonne net of the slag recovery). The optimiser's objective
+        (``fuel=True``) carries the credit, so between two blends of nearly the same cost the one with more saleable slag
+        wins; the page-9 comparison objective (``fuel=False``, ore + flux) does not."""
         pr = np.array([v.price for v in self.vars])
         ore = float(pr[:self.nf] @ z[:self.nf]) / 1000
         flx = float(pr[self.nf:] @ z[self.nf:]) / 1000
@@ -428,11 +451,14 @@ class Engine:
         coke = o["K_wet"] * self.prices_fuel["coke"] / 1000
         nut = s.nut_plant * self.prices_fuel["nut"] / 1000
         pci = s.pci_plant * self.prices_fuel["pci"] / 1000
+        slag_credit = float(o.get("slag", 0.0)) * self.prices_fuel.get("slag", 0.0) / 1000
         sigma = float(o.get("sig_K", 0.0)) * self.prices_fuel["coke"] / 1000          # 1 sigma of the coke cost
         risk = s.risk_k * sigma if fuel else 0.0
-        obj = ore + flx + (coke if fuel else 0.0) + risk
-        total = ore + flx + coke + nut + pci
-        return dict(ore=ore, flux=flx, coke=coke, nut=nut, pci=pci, fuel=coke + nut + pci,
+        obj = ore + flx + ((coke - slag_credit) if fuel else 0.0) + risk
+        gross = ore + flx + coke + nut + pci
+        total = gross - slag_credit
+        return dict(ore=ore, flux=flx, coke=coke, nut=nut, pci=pci, fuel=coke + nut + pci, gross=gross,
+                    slag_credit=slag_credit, slag_price=self.prices_fuel.get("slag", 0.0),
                     total=total, objective=obj, sigma=sigma, risk_adjusted=total + s.risk_k * sigma)
 
     def var_cap(self, P):
@@ -567,12 +593,19 @@ class Engine:
         vcap = self.var_cap(P)
         dmax = np.r_[np.full(self.nf, 400.0), np.full(self.nx, 40.0)]
         delta = dmax.copy()
-        Phi0, o0 = self.phi(z0, s, P)
         merit = lambda z, o: self.cost(z, o, fuel, s)["objective"] + M * sum(self.violation(z, o, s, P, L, ore6_on, checks=False).values())
+        net = self._network_on(s)
+        final_solved = False
+        if net:
+            self._anchor_iterate(z0, s, P)
+        Phi0, o0 = self.phi(z0, s, P)
         m0 = merit(z0, o0)
         last_lp = None
         lp = soft_ub = eq = hard = n_s = J = None
         for it in range(max_iter):
+            if net and it > 0 and self._anchor_iterate(z0, s, P):     # new iterate: one network solve at its blend
+                Phi0, o0 = self.phi(z0, s, P)
+                m0 = merit(z0, o0)
             J = np.zeros((len(self.OUT), self.n))
             for j in range(self.n):
                 h = 5.0 if j < self.nf else 2.0
@@ -583,7 +616,7 @@ class Engine:
             n_s = len(soft_ub) + 2 * len(eq)
             pr = np.array([v.price for v in self.vars]) / 1000
             cz = pr + (self.prices_fuel["coke"] / 1000 * (J[self.OUT.index("K_wet")] + s.risk_k * J[self.OUT.index("sig_K")])
-                       if fuel else 0.0)
+                       - self.prices_fuel.get("slag", 0.0) / 1000 * J[self.OUT.index("slag")] if fuel else 0.0)
             c = np.r_[cz, np.full(n_s, M) / np.r_[[r[3] for r in soft_ub], [r[3] for r in eq], [r[3] for r in eq]]]
             A_ub, b_ub = [], []
             for k, (name, a, b, scale, soft) in enumerate(soft_ub):
@@ -616,6 +649,14 @@ class Engine:
                 z0, Phi0, o0, m0 = z1, Phi1, o1, m1
                 delta = np.minimum(delta * 1.5, dmax)
                 if step < tol:
+                    if net and not final_solved and self.net_tol_final == 0.0:   # exact mode only (not in searches)
+                        # converged on the blend solves: solve the network at the plan's three states and take one
+                        # more LP step on them, so the reported plan meets its limits on the network itself
+                        final_solved = True
+                        self._anchor_plan(z0, s, P, float(Phi0[self.OUT.index("K")]))
+                        Phi0, o0 = self.phi(z0, s, P)
+                        m0 = merit(z0, o0)
+                        continue
                     break
             else:
                 delta *= 0.4
@@ -624,6 +665,50 @@ class Engine:
         if last_lp is None:
             last_lp = dict(lp=lp, ub=soft_ub, eq=eq, hard=hard, n_s=n_s, J=J, z0=z0, iters=max_iter)
         return self._result(z0, s, P, L, fuel, last_lp, ore6_on)
+
+    def _network_on(self, s: Settings) -> bool:
+        return s.omega_mode == "blend" and self.omega_model().backend == "network"
+
+    def _anchor_iterate(self, z, s: Settings, P) -> bool:
+        """Network solve at the blend state of iterate z (STRATA 1.3); True when a new solve was made."""
+        m = self.omega_model()
+        n0 = m.net.n_solves
+        m.plan(self.plan_state(z, s, P)).anchor_blend(self.net_tol_iter)
+        return m.net.n_solves > n0
+
+    def _anchor_plan(self, z, s: Settings, P, K: float) -> None:
+        """Network solves at the blend, blend + production and full-operation states of plan z at coke rate K."""
+        m = self.omega_model()
+        m.plan(self.plan_state(z, s, P)).anchor_all(K, self.net_tol_final)
+
+    @contextmanager
+    def network_tolerance(self, tol: float):
+        """Coarse STRATA-Flow solving inside a search: reuse a network solve within ``tol`` scaled units."""
+        old = (self.net_tol_iter, self.net_tol_final)
+        self.net_tol_iter = self.net_tol_final = max(float(tol), old[0], old[1])
+        try:
+            yield self
+        finally:
+            self.net_tol_iter, self.net_tol_final = old
+
+    def refine(self, r: Mapping[str, Any] | None, L: Limits, fuel: bool = True) -> Mapping[str, Any] | None:
+        """Re-solve a result found by a coarse search with exact network solves (warm start from its blend); the
+        search's own extras (curves, oxygen trace) are kept."""
+        if r is None or not r.get("feasible") or (r.get("omega") or {}).get("mode") != "blend" \
+                or self.omega_model().backend != "network":
+            return r
+        r2 = self._try(Settings(**r["settings"]), r["P_th"], Limits(**r["limits"]), fuel, z0=r["z"], ore6_on=r["ore6_on"],
+                       tol=0.002)
+        if r2 is None or not r2["feasible"]:
+            return r
+        for k in ("curves", "o2_trace"):
+            if k in r:
+                r2[k] = r[k]
+        return r2
+
+    def network_stats(self) -> dict[str, Any]:
+        """Network solves made so far for this engine's calibration (blend mode, network backend)."""
+        return self.omega_model().network_stats() if self._om is not None else {}
 
     def _result(self, z, s, P, L, fuel, last, ore6_on):
         zs = self.size_fe(z, s, P)
@@ -702,16 +787,19 @@ class Engine:
                     investigate=inv,
                     d_blend=t["d_blend"], d_blend_phys=t["d_blend_phys"], d_disc=t["d_disc"], d_oper=t["d_oper"],
                     d_prod=t.get("d_prod", 0.0), d_rest=t.get("d_rest", t["d_oper"]),
-                    d_R=t["d_R"], d_moist=t.get("d_moist", 0.0), R=t["R"], k_blend=t["k_blend"],
+                    d_R=t["d_R"], d_moist=t.get("d_moist", 0.0), d_nut=t.get("d_nut", 0.0), R=t["R"],
+                    k_blend=t["k_blend"],
+                    network=t.get("network", {}),
                     gas_in_excess=t["gas_in_excess"],
                     wall_gas_share=t["wall_gas_share"], cal_se_K=to_K * m.cal_se, day_sd_K=to_K * m.day_sd,
                     dK_domega=self._dKdw, risk_k=s.risk_k, filter=s.certainty, version=m.version, terms=t)
 
     def critical_assumptions(self, r: Mapping[str, Any], s: Settings, ri_step: float = 5.0,
-                             n_alt: float = 1.0) -> list[dict[str, Any]]:
+                             n_alt: float = 1.5) -> list[dict[str, Any]]:
         """Coke effect (kg/tHM wet) of each critical assumption of a STRATA-omega result taking another credible value
-        (``omega_model.assumption_sensitivity``): RI of each material +/- ri_step, size exponent n -> n_alt, plant-data
-        scales +/- 1 sd, moisture coefficient +/- 1 se. Linear in omega through dK/domega; sorted by size."""
+        (``omega_model.assumption_sensitivity``): RI of each material +/- its test uncertainty (when the RI enters the
+        rate), the RI exponent beta -> 0.25, size exponent n -> n_alt, plant-data scales +/- 1 sd, moisture and nut-coke
+        coefficients +/- 1 se. Linear in omega through dK/domega; sorted by size."""
         om = r.get("omega") or {}
         if om.get("mode") != "blend":
             return []
@@ -761,7 +849,12 @@ class Engine:
         return s
 
     def max_prod_at(self, s: Settings, L: Limits, fuel=True, lo=80.0, hi=115.0, tol=0.01, ore6_on=False, z0=None):
-        """Highest production (t/h) with a feasible blend at controls s. Bisection on production."""
+        """Highest production (t/h) with a feasible blend at controls s. Bisection on production (coarse network solves
+        inside the bisection, see ``network_tolerance``)."""
+        with self.network_tolerance(self.SEARCH_TOL):
+            return self._max_prod_at(s, L, fuel, lo, hi, tol, ore6_on, z0)
+
+    def _max_prod_at(self, s: Settings, L: Limits, fuel=True, lo=80.0, hi=115.0, tol=0.01, ore6_on=False, z0=None):
         lo, hi = self.p_range(s, lo, hi)
         r = self._try(s, lo, L, fuel, z0=z0, ore6_on=ore6_on)
         if r is None or not r["feasible"]:
@@ -780,6 +873,13 @@ class Engine:
         return [False, True] if any(v.k_rule == OVERSIZE_RULE and v.hi > 0 for v in self.fer) else [False]
 
     def max_production(self, L: Limits, fuel=True, base: Settings | None = None, o2_grid=None, verbose=False, tie=0.02):
+        """Blend and controls that give the most hot metal per hour within the limits (see ``_max_production``); in
+        STRATA mode the search solves the network coarsely and the returned plan exactly."""
+        with self.network_tolerance(self.SEARCH_TOL):
+            best = self._max_production(L, fuel, base, o2_grid, verbose, tie)
+        return self.refine(best, replace(L, process=True), fuel)
+
+    def _max_production(self, L: Limits, fuel=True, base: Settings | None = None, o2_grid=None, verbose=False, tie=0.02):
         """Blend and controls that give the most hot metal per hour within the limits. Oxygen enrichment is searched
         (more O2 lowers blast per tonne but raises burden resistance and is capped by flow and enrichment limits);
         among settings within ``tie`` t/h of the best, the one with the least oxygen is returned."""
@@ -811,6 +911,10 @@ class Engine:
         return best
 
     def frontier(self, s: Settings, L: Limits, P_list, fuel=True, ore6_on=False):
+        with self.network_tolerance(self.SEARCH_TOL):
+            return self._frontier(s, L, P_list, fuel, ore6_on)
+
+    def _frontier(self, s: Settings, L: Limits, P_list, fuel=True, ore6_on=False):
         rows = []; z0 = None
         for P in P_list:
             r = self._try(s, P, L, fuel, z0=z0, ore6_on=ore6_on)
@@ -823,6 +927,14 @@ class Engine:
 
     def min_total_cost(self, L: Limits, base: Settings | None = None, P_lo=85.0, step=0.5, o2_levels=None, tol_P=0.02,
                        tol_r=1e-4, curves=True):
+        """Production level, blend and oxygen with the lowest ore + flux + fuel cost (see ``_min_total_cost``); in STRATA
+        mode the search solves the network coarsely and the returned plan exactly."""
+        with self.network_tolerance(self.SEARCH_TOL):
+            best = self._min_total_cost(L, base, P_lo, step, o2_levels, tol_P, tol_r, curves)
+        return self.refine(best, replace(L, process=True), True)
+
+    def _min_total_cost(self, L: Limits, base: Settings | None = None, P_lo=85.0, step=0.5, o2_levels=None, tol_P=0.02,
+                        tol_r=1e-4, curves=True):
         """Production level, blend and oxygen with the lowest ore + flux + fuel cost per tHM within the limits.
         Controls: HBT and pressures at their limits (they cost nothing in Rs/tHM). Oxygen: the base settings' unless
         o2_levels (O2/air ratios, a grid from the base up) is given; then oxygen is searched too. Oxygen has no price,
@@ -920,10 +1032,11 @@ def value_in_use(eng: Engine, z, s: Settings, P, B2=1.10, balancer="limestone"):
         Lb = (B2 * sio2 - cao) / (bCaO - B2 * bSiO2)                    # t balancer per t material (negative = credit)
         coke = dK[v.id] + Lb * dK[balancer]; slag = dS[v.id] + Lb * dS[balancer]
         buy = v.price; flux = Lb * b.price; fuel = coke * cp
+        credit = slag * eng.prices_fuel.get("slag", 0.0) / 1000                         # slag sold (ASM-20)
         rows.append(dict(id=v.id, name=v.name, price=v.price, fe_wet_pct=fe / 10, buy_per_tFe=1000 * buy / fe,
                          flux_kg_per_t=1000 * Lb, flux_per_tFe=1000 * flux / fe, coke_kg_per_tFe=1000 * coke / fe,
                          fuel_per_tFe=1000 * fuel / fe, slag_kg_per_tFe=1000 * slag / fe,
-                         viu_per_tFe=1000 * (buy + flux + fuel) / fe))
+                         slag_credit_per_tFe=1000 * credit / fe, viu_per_tFe=1000 * (buy + flux + fuel - credit) / fe))
     return rows, dK, dS
 
 
@@ -941,7 +1054,7 @@ def summary(r, eng: Engine) -> dict[str, Any]:
              raft=r["raft"], blast=r["blast_nm3h"], O2=r["O2_nm3h"], Pb=s["Pb"], Pt=s["Pt"], Pb_needed=r["Pb_needed"],
              dP_needed=r["dP_needed"], V_ceiling=r["V_ceiling"], charges_h=r["charges_per_h"], ore_cost=c["ore"],
              flux_cost=c["flux"], coke_cost=c["coke"], nut_cost=c["nut"], pci_cost=c["pci"], fuel_cost=c["fuel"],
-             total=c["total"], total_day=c["total"] * r["P_tday"], feasible=r["feasible"],
+             slag_credit=c.get("slag_credit", 0.0), gross=c.get("gross", c["total"]), total=c["total"], total_day=c["total"] * r["P_tday"], feasible=r["feasible"],
              binding=", ".join(r.get("binding", [])))
     om = r.get("omega") or {}
     d.update(omega=om.get("value", o.get("omega")), omega_mode=om.get("mode", "fixed"), sigma_coke=om.get("sigma_K", 0.0),

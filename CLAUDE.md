@@ -801,7 +801,9 @@ format: ResponseFormat          # json (default) or csv
 
 Optimises the ferrous blend and flux for **ore + flux + fuel** cost per tHM and the **production level** under the
 day's limits. Coke for every candidate blend comes from the two-zone (Rist) balance in `utils/coke_energy`
-(page 10's model, unchanged), calibrated on the last 14 days of stable shifts. PCI and nut coke are fixed inputs.
+(page 10's model, unchanged), calibrated on the last 14 days of stable shifts. PCI and nut coke are fixed inputs per
+run; their page defaults are the regime window's medians (`scenarios.fuel_defaults`; ASM-08 values 190 / 70 only as
+fallback).
 
 - **Modes:** Step 1 cheapest production level (`Engine.min_total_cost` + frontier), Step 2 fixed production
   (`min_cost(fuel=True)` next to `fuel=False`, the page-9 objective), maximum production (`max_production`).
@@ -818,11 +820,20 @@ day's limits. Coke for every candidate blend comes from the two-zone (Rist) bala
   balance; blast limit (Pb² − Pt²) = K·V^1.8 with burden-resistance rules; RAFT from `utils.energy_balance.raft`.
 - **Shaft efficiency:** Fixed-ω (Rist baseline, held at the calibration; ASM-01, `Settings.omega_mode="fixed"`, the
   engine default) or STRATA-ω (ASM-18, page default): `utils/burden_engine/omega_model.py` +
-  `assets/burden_engine/omega_model.json` (STRATA 1.2 — Stratified Transport & Reduction Analytics, formerly OMEGA:
-  STRATA-Flow gas-flow model ring counter-current; RI set S8 (GAS-21, literature / mineralogy, critical assumption);
-  plant-data scales for pellet and lump ore, production and other operating channels and blast-moisture term from an
-  out-of-sample-tested AR(1) posterior, GAS-13..22; gas-capacity channel retired), solved inside the balance via
-  `rist.solve_2z(omega_fn=)`. Blend mode adds σ(coke), certainty tiers High / Medium / Low / Investigate (pellet > 25 %
+  `assets/burden_engine/omega_model.json` (STRATA 1.3 — Stratified Transport & Reduction Analytics, formerly OMEGA:
+  STRATA-Flow ring counter-current model of the thermal reserve zone; RI and RDI from the Evonith laboratory tests
+  (set T26, GAS-21; Gomti 65 % without test); plant-data scales for pellet and lump ore, production and other operating
+  channels, blast-moisture and nut-coke terms from an out-of-sample-tested AR(1) posterior, GAS-13..24; gas-capacity
+  channel retired), solved inside the balance via `rist.solve_2z(omega_fn=)`. **No surrogate:** the ring quantities
+  come from the STRATA-Flow network itself (`src/utils/strata_flow/`, vendored bf2_momentum v0.4.1, ~1.1 s per solve)
+  through `utils/burden_engine/strata_network.py`: a solve at the calibration plus its Jacobian (16 solves, cached in
+  `src/storage/strata_flow/` per calibration and catalogue), one solve per SLP iterate (plan blend), the plan's three
+  states (blend, blend + production, full operation) before a final LP step and again for the reported plan; the
+  Jacobian is used only between solves and each result reports its solves and distance from the nearest solve.
+  Production searches reuse solves within `Engine.SEARCH_TOL` (1 scaled unit) and `Engine.refine` re-solves the plan
+  they return exactly. `OmegaModel.load(backend="surrogate")` keeps the STRATA 1.2
+  surrogate for diagnostics only. Two oversize types: ore_6 Lloyds fines oversize (reduction rate at the Lloyds CLO
+  size, no size credit) and ore_11 Donimalai oversize return (= Donimalai). Blend mode adds σ(coke), certainty tiers High / Medium / Low / Investigate (pellet > 25 %
   or σ > 8 kg/tHM; GAS-18), a certainty filter (`Settings.certainty`, page default "low" = all but Investigate), risk
   aversion (`Settings.risk_k`), critical assumptions per plan (`Engine.critical_assumptions`) and auto mode
   (`scenarios.run_candidates` + `auto_review.py`: fixed rule picks, never an Investigate plan; the LLM only reviews).
@@ -833,9 +844,17 @@ day's limits. Coke for every candidate blend comes from the two-zone (Rist) bala
   challenger gate (60 days, Diebold–Mariano), CUSUM drift alarm, register proposals (automatic within 2 se; status
   changes need approval), Thompson-sampling exploration under a regret budget. `python -m utils.burden_engine.learn.run`.
   Never changes the asset, the register or the page.
-- **Blast moisture:** the Wardha daily weather record (`utils/coke_energy/weather.py`, DATA-11;
-  `config/coke_energy.yml → blast_moisture.source: weather_file | table`), monthly table outside the record. Used by
-  the Coke Energy pipeline (`run_shifts.case_from_shift`), the engine calibration and the page default.
+- **Prices and slag credit:** ferrous and flux prices from the plant (23 Oct 2026), fuels from the BF-2 cost sheet
+  (FTD Costing 22 Oct 2026) — DATA-14 — in `bmo_operator_inputs.yml` (live) and `burden_optimiser.yml → prices`
+  (reference yard). The objective credits the slag sold (`fuel["slag_price"]`, granulated slag 457.85 Rs/t, ASM-20):
+  cost `total` = ore + flux + fuel − slag credit (`gross` before the credit).
+- **Sinter RI / RDI:** from the latest raw-material strength data (calibration `sinter_strength`, pipeline columns
+  SINTER_HOT_STRENGTH_RI / _RDI), not from the laboratory report.
+- **Blast moisture:** the Wardha daily weather record (`utils/coke_energy/weather.py`, DATA-11): default
+  `rh_scaled` — 31-day centred mean of RH mapped linearly to 7–21 g/Nm³, no step changes (the record's seasonal blocks
+  jump 40–60 RH points overnight; a furnace does not); `psychrometric` (Magnus, keeps the steps) and `table` selectable
+  in `config/coke_energy.yml → blast_moisture.source`; monthly table outside the record. Used by the Coke Energy
+  pipeline (`run_shifts.case_from_shift`), the engine calibration and the page default.
 - **Fact register:** `src/config/facts_register.json` (schema in `config/schemas/`). Every coefficient outside the
   balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
   Change values there, not in code; retired facts are refused by `FactRegister.active()`.

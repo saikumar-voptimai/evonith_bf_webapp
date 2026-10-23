@@ -311,15 +311,20 @@ def render_yard_editor(yard: Mapping[str, Any], key: str) -> tuple[list[dict], l
         mq, sk = row["max_qty_mt"], row["stock_mt"]
         fluxes.append(dict(f, price=float(row["price"]), max_qty_mt=None if pd.isna(mq) else float(mq),
                            stock_mt=None if sk is None or pd.isna(sk) else float(sk)))
-    st.markdown("**Fuel prices**, Rs/t")
+    st.markdown("**Fuel prices and slag sale**, Rs/t")
     fu = dict(yard["fuel"])
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     fuel = dict(coke_price=c1.number_input("Coke", value=float(fu["coke_price"]), step=100.0, format="%.0f",
                                            key=f"{key}_pc"),
                 nut_price=c2.number_input("Nut coke", value=float(fu["nut_price"]), step=100.0, format="%.0f",
                                           key=f"{key}_pn"),
                 pci_price=c3.number_input("PCI", value=float(fu["pci_price"]), step=100.0, format="%.0f",
-                                          key=f"{key}_pp"))
+                                          key=f"{key}_pp"),
+                slag_price=c4.number_input("Slag (sale)", value=float(fu.get("slag_price", 0.0) or 0.0), min_value=0.0,
+                                           step=50.0, format="%.0f", key=f"{key}_ps",
+                                           help="Price the granulated slag sells at (ASM-20). The optimiser credits "
+                                                "the slag sold, so of two blends at nearly the same cost the one with "
+                                                "more saleable slag is preferred; the slag cap and quality limits stay."))
     return edited, fluxes, fuel
 
 
@@ -334,13 +339,18 @@ def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_defau
         hm_Si=c2.number_input("Hot metal Si, %", min_value=si_lo, max_value=si_hi, value=float(thermal.get("hm_Si", 0.38)),
                               step=0.01, format="%.2f", key=f"{key}_si", help="BAND-03"),
         pci_plant=c3.number_input("PCI, kg/tHM", min_value=0.0, max_value=260.0, value=float(thermal.get("pci_kg_thm", 190.0)),
-                                  step=5.0, format="%.0f", key=f"{key}_pci", help="Fixed input, as injected"),
+                                  step=1.0, format="%.0f", key=f"{key}_pci",
+                                  help="Fixed input, as injected. Default: " + str(thermal.get("pci_kg_thm_source", "config"))
+                                       + " (14-day window). PCI acts on coke through the balance (carbon, energy, H2)."),
         nut_plant=c4.number_input("Nut coke, kg/tHM", min_value=0.0, max_value=120.0,
-                                  value=float(thermal.get("nut_kg_thm", 70.0)), step=5.0, format="%.0f", key=f"{key}_nut",
-                                  help="Fixed input, as charged"),
+                                  value=float(thermal.get("nut_kg_thm", 70.0)), step=1.0, format="%.0f", key=f"{key}_nut",
+                                  help="Fixed input, as charged. Default: " + str(thermal.get("nut_kg_thm_source", "config"))
+                                       + " (14-day window). Acts through the balance and, in STRATA-omega, through the "
+                                         "nut-coke term (GAS-23)."),
         humidity_g=c5.number_input("Blast moisture, g/Nm³", min_value=0.0, max_value=40.0, value=float(humidity_default),
                                    step=1.0, format="%.0f", key=f"{key}_hum",
-                                   help="Not measured at BF-02 (DATA-04): defaults to the month's typical ambient value."),
+                                   help="Not measured at BF-02 (DATA-04): defaults to the weather-record estimate "
+                                        "(smoothed RH mapped to 7-21 g/Nm³, DATA-11) for the regime window."),
     )
     return out
 
@@ -441,8 +451,9 @@ def render_plan_summary(r: Mapping[str, Any], title: str, *, flux_ids: list[str]
 
     ov = P["overview"]
     o1, o2, o3, o4 = st.columns(4)
-    o1.metric("Ore + flux + fuel (Rs/tHM)", _num(ov["total"]), _delta(d("cost", "total"), "+,.0f", tol=0.5),
-              delta_color="inverse", help="Ore, flux and fuel at the prices in the yard editor.")
+    o1.metric("Ore + flux + fuel − slag credit (Rs/tHM)" if P["cost"].get("slag_credit") else "Ore + flux + fuel (Rs/tHM)",
+              _num(ov["total"]), _delta(d("cost", "total"), "+,.0f", tol=0.5), delta_color="inverse",
+              help="Ore, flux and fuel at the prices in the yard editor, less the slag sold at the slag price (ASM-20).")
     if other is not None:
         d0 = ov["total"] - other["cost"]["total"]
         o1.caption(f"Same blend as the {other_label} answer" if abs(d0) < 0.5
@@ -470,7 +481,9 @@ def render_plan_summary(r: Mapping[str, Any], title: str, *, flux_ids: list[str]
         for col, label, key in ((k[0], "Ore", "ore"), (k[1], "Flux", "flux"), (k[2], "Fuel", "fuel"),
                                 (k[3], "**Total**", "total")):
             col.metric(label, _num(c[key]), _delta(d("cost", key), "+,.0f", tol=0.5), delta_color="inverse")
-        st.caption(f"Fuel = coke Rs {c['coke']:,.0f} + nut coke Rs {c['nut']:,.0f} + PCI Rs {c['pci']:,.0f}.")
+        st.caption(f"Fuel = coke Rs {c['coke']:,.0f} + nut coke Rs {c['nut']:,.0f} + PCI Rs {c['pci']:,.0f}."
+                   + (f" Total = ore + flux + fuel Rs {c['gross']:,.0f} − slag credit Rs {c['slag_credit']:,.0f} "
+                      f"({P['slag']['rate']:.0f} kg/tHM sold)." if c.get("slag_credit") else ""))
 
     f = P["fuel"]
     with st.container(border=True):

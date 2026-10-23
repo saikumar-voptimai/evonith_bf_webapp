@@ -33,14 +33,21 @@ def coke_energy_config(mtime_ns: int) -> dict:
     return load_config("coke_energy.yml").get("coke_energy", {})
 
 
-def reference_yard() -> dict[str, Any]:
-    """The 16 Oct 2026 UAT yard (case report), as yard rows."""
+def reference_yard(cfg: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The 16 Oct 2026 UAT yard (case report), as yard rows, at the page's price basis (``prices`` in the page config,
+    DATA-14) when one is configured."""
     with open(REFERENCE_INPUTS_PATH, encoding="utf-8") as fh:
         ref = json.load(fh)
+    pb = dict((cfg or {}).get("prices") or {})
+    mp, fp = dict(pb.get("materials") or {}), dict(pb.get("fluxes") or {})
     mats = [dict(m, selected=m.get("selected_in_uat", True), stock_mt=None, chem_source="reference 16 Oct 2026",
-                 chem_time=m.get("chem_period", ""), carried=True, reason="") for m in ref["materials"]]
-    fl = [dict(f, stock_mt=None, max_qty_mt=f.get("max_t_day"), carried=True) for f in ref["fluxes"]]
-    return dict(materials=mats, fluxes=fl, fuel=ref["fuel"], slag=ref.get("slag", {}), charging_saved=dict(
+                 chem_time=m.get("chem_period", ""), carried=True, reason="", price=float(mp.get(m["id"], m["price"])))
+            for m in ref["materials"]]
+    fl = [dict(f, stock_mt=None, max_qty_mt=f.get("max_t_day"), carried=True, price=float(fp.get(f["id"], f["price"])))
+          for f in ref["fluxes"]]
+    fuel = {**ref["fuel"], **{k: float(v) for k, v in (pb.get("fuel") or {}).items()},
+            "slag_price": float(pb.get("slag_price_rs_per_t", 0.0) or 0.0)}
+    return dict(materials=mats, fluxes=fl, fuel=fuel, slag=ref.get("slag", {}), charging_saved=dict(
         charge_t=ref["charging"]["uat_charge_t"], charges_per_h=ref["charging"]["uat_charges_per_h"]), warnings=[])
 
 
@@ -54,7 +61,7 @@ def yard(cfg_json: str, nonce: int) -> tuple[dict[str, Any], str, str]:
             raise RuntimeError("no material has lab chemistry in the window")
         return y, "live", ""
     except Exception as exc:  # noqa: BLE001 - offline / no DB: fall back to the reference yard
-        return reference_yard(), "reference", f"Live yard unavailable ({type(exc).__name__}: {exc})."
+        return reference_yard(cfg), "reference", f"Live yard unavailable ({type(exc).__name__}: {exc})."
 
 
 def calibration(cfg: Mapping[str, Any], nonce: int) -> tuple[CalibrationInfo, Any]:

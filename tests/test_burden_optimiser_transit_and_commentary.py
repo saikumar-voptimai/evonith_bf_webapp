@@ -84,7 +84,7 @@ def test_summary_and_its_commentary_lines():
 @pytest.fixture(scope="module")
 def plans():
     eng = Engine()
-    s = settings_from_regime(None, THERMAL, eng.cal)
+    s = settings_from_regime(None, THERMAL, eng.cal, pci_plant=190.0, nut_plant=70.0)  # case report
     L = limits_from(load_register())
     inputs = json.load(open(REFERENCE_INPUTS_PATH, encoding="utf-8"))
     res = run_fixed(eng, 2270.0, s, L)

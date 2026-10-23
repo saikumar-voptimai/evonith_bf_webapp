@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 
 import pytest
@@ -15,6 +16,22 @@ from utils.burden_engine.engine import REFERENCE_INPUTS_PATH
 
 REF = json.load(open(REFERENCE_INPUTS_PATH, encoding="utf-8"))
 PREFS = yaml.safe_load(open(repo_path("src/config/bmo_operator_inputs.yml"), encoding="utf-8"))
+
+
+def _uat_prefs():
+    """The operator inputs at the 16 Oct 2026 UAT prices (the case report's basis); the file itself now carries the
+    22 Oct 2026 cost-sheet prices (DATA-14)."""
+    p = copy.deepcopy(PREFS)
+    for m in REF["materials"]:
+        p["ore_editor"]["rows"].setdefault(m["id"], {})["price_rs_per_mt"] = float(m["price"])
+    for f in REF["fluxes"]:
+        p["flux_editor"]["rows"].setdefault(f["id"], {})["price_rs_per_mt"] = float(f["price"])
+    for k, name in (("coke_price", "coke"), ("nut_price", "nut_coke"), ("pci_price", "pci")):
+        p["fuel_ash_editor"]["rows"][name]["price_rs_per_mt"] = float(REF["fuel"][k])
+    return p
+
+
+UAT_PREFS = _uat_prefs()
 
 
 def _ore(m, source="lab"):
@@ -35,10 +52,10 @@ def _flux(f):
 
 @pytest.fixture(scope="module")
 def inputs():
-    mats = yard_rows([_ore(m) for m in REF["materials"]], PREFS,
+    mats = yard_rows([_ore(m) for m in REF["materials"]], UAT_PREFS,
                      k_rules=dict(gomti_clo="gomti", lloyds_oversize_clo="oversize"))
-    fl = flux_rows([_flux(f) for f in REF["fluxes"]], PREFS)
-    return build_engine_inputs(mats, fl, fuel_prices(PREFS))
+    fl = flux_rows([_flux(f) for f in REF["fluxes"]], UAT_PREFS)
+    return build_engine_inputs(mats, fl, fuel_prices(UAT_PREFS))
 
 
 def test_kind_for():
@@ -55,6 +72,21 @@ def test_operator_prices_and_shares_applied(inputs):
     assert inputs["fuel"] == dict(coke_price=31992.0, nut_price=26074.0, pci_price=22120.0)
     assert slag_limits(PREFS)["slag_max"] == 340.0
     assert saved_charging(PREFS)["charges_per_h"] == pytest.approx(6.35)
+
+
+def test_operator_file_carries_plant_prices():
+    """DATA-14: plant prices of 23 Oct 2026; fuels from the BF-2 cost sheet (FTD Costing 22 Oct 2026)."""
+    rows = PREFS["ore_editor"]["rows"]
+    given = dict(nmdc_rom=10323.0, lloyds_clo=8877.0, nmdc_donimalai=6141.0, geomin_clo=4204.0, sinter_sp_02=8784.0,
+                 lloyds_pellet=10515.0)
+    assert {k: rows[k]["price_rs_per_mt"] for k in given} == given
+    fl = PREFS["flux_editor"]["rows"]
+    assert (fl["limestone"]["price_rs_per_mt"], fl["dolomite"]["price_rs_per_mt"], fl["quartz"]["price_rs_per_mt"]) == \
+        (2369.0, 1196.0, 1792.0)
+    assert fuel_prices(PREFS) == dict(coke_price=31960.0, nut_price=26292.0, pci_price=21168.0)
+    cfg = yaml.safe_load(open(repo_path("src/config/burden_optimiser.yml"), encoding="utf-8"))["burden_optimiser"]
+    assert cfg["prices"]["slag_price_rs_per_t"] == pytest.approx(457.85)
+    assert cfg["prices"]["materials"]["lloyds_clo"] == 8877
 
 
 def test_adapter_reproduces_case2(inputs):

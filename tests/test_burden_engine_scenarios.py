@@ -22,7 +22,7 @@ def eng():
 
 @pytest.fixture(scope="module")
 def fixed(eng):
-    s = settings_from_regime(None, THERMAL, eng.cal)
+    s = settings_from_regime(None, THERMAL, eng.cal, pci_plant=190.0, nut_plant=70.0)  # case report
     return s, run_fixed(eng, 2270.0, s, limits_from(load_register()))
 
 
@@ -30,7 +30,13 @@ def test_settings_from_regime_prefers_regime(eng):
     s = settings_from_regime(dict(HBT=1201.0, O2_per_air=None, Pb=2.8), THERMAL, eng.cal)
     assert s.HBT == 1201.0 and s.Pb == 2.8
     assert s.O2_per_air == pytest.approx(eng.cal["case"]["O2_per_air"])
-    assert s.pci_plant == 190.0 and s.HMT == 1470.0
+    assert s.HMT == 1470.0
+    # PCI / nut coke: the regime's medians when given, else the calibration's (as injected / as charged), not 190 / 70
+    case = eng.cal["case"]
+    assert s.pci_plant == pytest.approx(case["pci_kg"] / (1 - case["pci"]["moist_pct"] / 100))
+    s2 = settings_from_regime(dict(pci_kgthm_dry=175.0, nut_kgthm_dry=65.0), THERMAL, eng.cal)
+    assert s2.pci_plant == pytest.approx(175.0 / (1 - case["pci"]["moist_pct"] / 100))
+    assert s2.nut_plant == pytest.approx(65.0 / (1 - case["nut"]["moist_pct"] / 100))
 
 
 def test_limits_from_register_and_saved():
@@ -77,7 +83,7 @@ def test_frontier_table_marginal_cost():
 
 @pytest.mark.skipif(os.environ.get("BURDEN_ENGINE_FAST") == "1", reason="slow")
 def test_cheapest_level_matches_case4(eng):
-    s = settings_from_regime(None, THERMAL, eng.cal)
+    s = settings_from_regime(None, THERMAL, eng.cal, pci_plant=190.0, nut_plant=70.0)  # case report
     res = run_cheapest_level(eng, s, limits_from(load_register()))
     assert res["best"]["P_tday"] == pytest.approx(2290, abs=3)
     assert res["best"]["cost"]["total"] == pytest.approx(29935, abs=10)
