@@ -96,7 +96,7 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 * **RAFT** is the plant workbook (`utils.energy_balance.raft`) at the input blast moisture (not measured at BF-02;
   default = the month's typical value from the Coke Energy table).
 
-## STRATA-ω shaft efficiency (#262, closes the certainty menu of #259) — STRATA 1.3
+## STRATA-ω shaft efficiency (#262, closes the certainty menu of #259) — STRATA 1.4
 
 **STRATA** (Stratified Transport & Reduction Analytics) is the name of the BF-02 gas-flow / shaft-efficiency model,
 formerly OMEGA. Modules: **STRATA-Flow** (layered packed-bed gas-flow model of BF-02, ring description of the thermal
@@ -108,11 +108,11 @@ baseline)** — omega held at the calibration, ASM-01 — and **STRATA-ω** (ASM
 ```
  omega(plan) = omega_cal                                   14-day calibration (the anchor, ASM-01)
              + [w(blend, op_cal) - w(cal)]                 network blend term (GAS-13)
-             + sum_c (lam_g - 1) g_c (s_c - s_c,cal)       plant-data scale per group: pellet 1.38, lump ore 0.96 (GAS-14)
-             + lam_prod [w(blend, op_cal, P) - w(blend, op_cal)]      production / TRZ residence, 0.59 +/- 0.30 (GAS-16)
-             + lam_rest [w(blend, op) - w(blend, op_cal, P)]          coke layers, fuels, O2, 0.98 +/- 0.30
+             + sum_c (lam_g - 1) g_c (s_c - s_c,cal)       plant-data scale per group: pellet 1.39, lump ore 0.97 (GAS-14)
+             + 0 x [w(blend, op_cal, P) - w(blend, op_cal)]           production / TRZ residence: no channel (GAS-16 retired)
+             + lam_rest [w(blend, op) - w(blend, op_cal, P)]          coke layers, fuels, O2, blast, 0.83 +/- 0.29
              + 0.0016 (moisture - moisture_cal)            blast moisture, RH estimate, +/- 0.0024 (GAS-19, DATA-11)
-             + 0.00094 (nut - nut_cal)                     nut coke in the ore layer, +/- 0.00035 (GAS-23)
+             + 0.00093 (nut - nut_cal)                     nut coke in the ore layer, +/- 0.00035 (GAS-23)
 ```
 
 ### No surrogate: the network is solved in the optimiser
@@ -173,20 +173,22 @@ baseline)** — omega held at the calibration, ASM-01 — and **STRATA-ω** (ASM
 * **What the scales are.** λ multiplies the network's own Δω for one channel: Δω_channel = λ × Δω_physics. λ = 1 takes
   the physics as it is; λ > 1 means the plant responds more than the physics, λ < 1 less. Channels: pellet (the blend
   term of pellet replacing sinter), lump ore (Lloyds CLO, Geomin, NMDC ROM, Donimalai, Gomti, oversize), production
-  (TRZ residence at the plan's production) and other operation (coke layers, fuels, oxygen, blast). AR(1) Bayesian
-  posterior of the daily change of omega against its 14-day anchor on exact network channels (191 days, 15 Dec 2025 –
-  7 Oct 2026), priors N(1, 0.5²): pellet 1.38 ± 0.45, lump 0.96 ± 0.42, production 0.59 ± 0.30, other 0.98 ± 0.30.
-  Stored as (x_blend = 1, b_c = (λ_g − 1) g_c) so `PlanOmega` reads them as in v1.0.
+  (TRZ residence at the plan's production; scale fixed at 0 since STRATA 1.4) and other operation (coke layers, fuels,
+  oxygen, blast). AR(1) Bayesian posterior of the daily change of omega against its 14-day anchor on exact network
+  channels (191 days, 15 Dec 2025 – 7 Oct 2026), priors N(1, 0.5²): pellet 1.39 ± 0.46, lump 0.97 ±
+  0.46, other 0.83 ± 0.29; ρ 0.72, σ_e 0.0178. STRATA 1.3 had a production channel
+  (0.59 ± 0.30); it was removed after the strict 2023–24 test (below). Stored as (x_blend = 1, b_c = (λ_g − 1) g_c) so
+  `PlanOmega` reads them as in v1.0.
 * **Blast moisture** (DATA-11): the smoothed weather-record RH mapped to 7–21 g/Nm³ — no step changes. The data term
   is small and not resolved (0.0016 ± 0.0024 per g/Nm³; STRATA 1.2 had 0.0044 on the stepped series, whose 1 June
   step coincided with the pellet start). Moisture acts on coke through the balance (+0.8 kg/tHM per g/Nm³).
 * **PCI and nut coke** vary shift to shift. Both enter (1) the two-zone balance of every shift and plan (carbon,
   energy, H₂), (2) the network's other-operation channel (nut coke −0.0002 ω per kg as coke-layer mass, PCI about 0)
-  and, for nut coke, (3) a data term +0.00094 ± 0.00035 ω per kg (GAS-23: nut coke mixed in the ore layer raises the
-  shaft efficiency; out-of-sample coke skill 0.128 with it, 0.115 without). A PCI data term lowers the skill (0.104)
-  and is not used. The page defaults PCI and nut coke to the regime window's medians (ASM-08).
-* **Uncertainty and certainty** (`omega_model.OmegaModel`): σ(omega) from the posterior of the blend scales, the two
-  operating scales (correlated), the moisture and nut-coke coefficients, converted with the loop-inclusive dK/dω.
+  and, for nut coke, (3) a data term +0.00093 ± 0.00035 ω per kg (GAS-23: nut coke mixed in the ore layer raises the
+  shaft efficiency; out-of-sample coke skill 0.139 with it, 0.128 without). A PCI data term lowers the
+  skill (0.119) and is not used. The page defaults PCI and nut coke to the regime window's medians (ASM-08).
+* **Uncertainty and certainty** (`omega_model.OmegaModel`): σ(omega) from the posterior of the blend scales, the
+  other-operation scale, the moisture and nut-coke coefficients, converted with the loop-inclusive dK/dω.
   Tiers (GAS-18): **High** σ ≤ 2 kg/tHM and inside the 1st–99th percentile of what BF-02 ran; **Medium** σ ≤ 5 and
   within 5 pt / 3 t/h; **Low** otherwise; **Investigate** pellet > 25 % of ferrous or σ > 8 kg/tHM.
 * **Optimiser options.** Certainty filter (`Settings.certainty` = low (all but Investigate, page default) / medium /
@@ -204,7 +206,10 @@ baseline)** — omega held at the calibration, ASM-01 — and **STRATA-ω** (ASM
   (`cost["gross"]` before it). Granulated slag sale price 457.85 Rs/t (plant, 23 Oct 2026; config
   `prices.slag_price_rs_per_t`; the operator's saved value takes precedence). Between two blends of nearly equal cost
   the one with more saleable slag is preferred; with the slag cap binding (340 kg/tHM in the reference case) the credit
-  does not move the plan.
+  does not move the plan. Reference plan at 2,270 t/d (16 Oct yard, plant prices, credit ₹156/tHM): Fixed-ω
+  ₹29,913/tHM (sinter 58.0 / Lloyds CLO 18.6 / Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg, coke
+  305.7); STRATA-ω ₹29,949 ± 11/tHM (sinter 61.5 / Lloyds CLO 16.1 / Geomin 12.3 / pellet
+  10.0 %, no flux, coke 304.6 ± 0.4, High). At the UAT prices: ₹30,139 and ₹30,184.
 
 ### Out-of-sample test (GAS-20, VAL-01..12)
 
@@ -212,18 +217,41 @@ Day minus its 14-day anchor; channels from network runs of each day; parameters 
 refit); 175 days, 1 Jan – 7 Oct 2026; skill = 1 − MSE/MSE(Fixed-ω). On the step-free moisture the Fixed-ω baseline
 itself improved (RMSE 8.11 → 6.94 kg/tHM), so the skills are not comparable with the STRATA 1.2 figures.
 
-| Test (burnt coke unless stated) | STRATA 1.2 physics, same days | STRATA 1.3 |
+| Test (burnt coke unless stated) | STRATA 1.3 (with production channel) | STRATA 1.4 |
 |---|---:|---:|
-| Expanding, omega, day | +0.155 | +0.160 |
-| Expanding, day (RMSE Fixed-ω 6.94 kg/tHM) | +0.110 | +0.128 (6.48) |
-| Expanding, 7-day | +0.196 | +0.219 |
-| Train Dec–May, test Jun–Oct, day | +0.015 | +0.061 |
-| Train Jun–Oct, test Jan–May, day | +0.113 | +0.134 |
+| Expanding, omega, day | +0.160 | +0.155 |
+| Expanding, day (RMSE Fixed-ω 6.94 kg/tHM) | +0.128 (6.48) | +0.139 (6.44) |
+| Expanding, 7-day | +0.219 | +0.221 |
+| Train Dec–May, test Jun–Oct, day | +0.061 | +0.147 |
+| Train Jun–Oct, test Jan–May, day | +0.134 | +0.114 |
 
-By blend family (VAL facts): Supported — no pellet with oversize; no pellet with ROM; pellet with CLO; pellet with
-ROM; all days; ROM ≥ 10 %; pellet ≥ 12 %. Neutral — no pellet, sinter + CLO (bias +0.1 kg/tHM). Modelled only
-(< 10 days) — Gomti (bias +2.8 ± 3.6), ROM + oversize, pellet + oversize (+4.7 ± 2.0, June 2026, the first month of
-pellet), pellet + ROM + oversize (+1.9 ± 2.7). No family is Disputed.
+By blend family (VAL facts, STRATA 1.4): Supported — no pellet with oversize; no pellet with ROM; pellet with CLO;
+pellet with ROM; all days; ROM ≥ 10 %; pellet ≥ 12 %. Neutral — no pellet, sinter + CLO (bias +0.4 kg/tHM). Modelled only
+(< 10 days) — Gomti (bias +2.1 ± 3.6), ROM + oversize, pellet + oversize (+4.4 ± 2.1, June 2026,
+the first month of pellet), pellet + ROM + oversize (+1.2 ± 2.4). No family is Disputed. Per-ore credit
+test (slope of the error on the share change, per +10 wet pt, HAC): all |t| < 1 for STRATA 1.4, joint p
+0.70; Fixed-ω joint p 0.044 (GAS-26).
+
+### Strict out-of-sample test on 2023–24 data (GAS-25, DATA-15)
+
+413 stable days, 5 Mar 2023 – 11 Jul 2024, not used in any fit; every parameter frozen at the 2026 fit; ω anchor and
+zone losses from the 14 previous days; network solved per day; blast moisture = RH-scaled ambient + steam injection
+(0–2.9 t/h in 2023–24). Day RMSE of burnt coke, kg/tHM:
+
+| Days | n | Fixed-ω | STRATA 1.2 | STRATA 1.3 | STRATA 1.4 |
+|---|---:|---:|---:|---:|---:|
+| All days | 413 | 7.95 | 7.48 | 7.57 | 7.40 |
+| Pellet era (Feb - Oct 2023) | 181 | 7.27 | 7.16 | 6.97 | 6.81 |
+| Lump era (Nov 2023 - Jul 2024) | 232 | 8.44 | 7.71 | 8.00 | 7.83 |
+
+Skill (day / 7-day / ω): STRATA 1.2 0.115 / 0.228 / -0.007;
+STRATA 1.3 0.094 / 0.126 / 0.093; STRATA 1.4 0.133 / 0.149 / 0.124.
+Paired ΔMSE 1.4 − Fixed-ω -8.4 ± 3.2 (t -2.7). The gain comes mainly from the moisture
+term (steam injection); the gas-flow channels alone give 0.046. The pellet, lump-ore and other-operation
+scales re-estimated on 2023–24 replicate the 2026 values within 1 SD; the production scale does not (−0.42 ± 0.28),
+which is why STRATA 1.4 has no production channel. The day-level per-ore credit test fails in 2023–24 for every model,
+Fixed-ω included (CLO +9, NMDC +12 kg/tHM per 10 pt): an unmodelled sinter-related effect (GAS-26, Measured gap).
+Report: project document `claude/strata_strict_oos_2023_24.md`; scripts `y24/` (outside the repository).
 
 * **Fact register groups MOD and VAL** (`utils/burden_engine/model_facts.py`): MOD-01..11 hold the coke response of
   Fixed-ω and STRATA-ω side by side at the reference point (substitutions of 10 wet pt, production +1 t/h, moisture
@@ -231,7 +259,23 @@ pellet), pellet + ROM + oversize (+1.9 ± 2.7). No family is Disputed.
   utils.burden_engine.model_facts --write` regenerates them after a recalibration.
 * **Reference results at 2,270 t/d** (16 Oct yard, shipped calibration, blend re-optimised at each pinned pellet):
 
-REFTABLE
+| Pellet, % | Fixed-ω coke, kg/tHM | Fixed-ω Rs/tHM | STRATA-ω coke ± σ | STRATA-ω Rs/tHM ± σ | Tier |
+|---:|---:|---:|---:|---:|---|
+| 0 | 303.6 | 29,720 | 309.8 ± 1.4 | 29,940 ± 44 | High |
+| 2.5 | 303.6 | 29,759 | 308.4 ± 1.1 | 29,929 ± 34 | High |
+| 5 | 303.6 | 29,799 | 307.0 ± 0.8 | 29,920 ± 24 | High |
+| 7.5 | 304.9 | 29,852 | 305.8 ± 0.5 | 29,929 ± 16 | High |
+| 10 | 305.7 | 29,913 | 304.6 ± 0.4 | 29,948 ± 11 | High |
+| 12.5 | 305.6 | 29,974 | 303.4 ± 0.4 | 29,968 ± 13 | High |
+| 15 | 305.6 | 30,035 | 302.2 ± 0.6 | 29,989 ± 20 | High |
+| 17.5 | 305.6 | 30,095 | 301.1 ± 0.9 | 30,012 ± 29 | Medium |
+| 20 | 305.5 | 30,156 | 300.1 ± 1.2 | 30,036 ± 38 | Medium |
+| 22.5 | 305.5 | 30,216 | 299.0 ± 1.5 | 30,061 ± 47 | Low |
+| 25 | 305.5 | 30,276 | 298.0 ± 1.8 | 30,087 ± 57 | Low |
+| 27.5 | 305.4 | 30,336 | 297.2 ± 2.1 | 30,113 ± 66 | Investigate |
+| 30 | 305.4 | 30,396 | 297.9 ± 2.3 | 30,153 ± 74 | Investigate |
+
+Plant prices of 23 Oct 2026 with the slag credit; STRATA 1.4; 10 % pellet floor of the yard relaxed in the sweep.
 
 ## STRATA-Learn — continuous learning, shadow mode (v1)
 
@@ -239,14 +283,16 @@ REFTABLE
 it writes proposals. The 14-day calibration anchor stays: the learner works on day-minus-anchor changes only.
 
 1. **Evidence store** (`evidence.py`): one row per day — the six channels (pellet, lump ore, production, other
-   operation from STRATA-Flow day runs; blast moisture and nut coke against the window), the observed change of omega,
+   operation from STRATA-Flow day runs; blast moisture and nut coke against the window; the production column has
+   coefficient 0 in STRATA 1.4 and is kept for a re-test), the observed change of omega,
    burnt coke, the Fixed-ω prediction, dK/dω, class shares, blend family and a trial flag. Seed:
    `assets/burden_engine/strata_evidence_seed.csv` (191 days, STRATA 1.3 channels).
 2. **Random-walk Kalman filter** (`kalman.py`) on (λ_pellet, λ_lump, λ_production, λ_other, a_moisture, a_nut) with
-   AR(1) day errors (Prais–Winsten form, ρ 0.71, σ_e 0.0179); random-walk sd 0.01 per day on the scales. Each day is
+   AR(1) day errors (Prais–Winsten form, ρ 0.72, σ_e 0.0178); random-walk sd 0.01 per day on the scales;
+   λ_production held at 0 (prior sd 0, no random walk; `from_asset` honours `channel_scales.fixed`). Each day is
    predicted with the previous state before it updates the state, so the prediction history is out of sample.
-   Replay of the record from the priors (STRATA 1.3 evidence): burnt-coke skill +0.12, omega +0.16 since 1 Jan 2026
-   (expanding-window test +0.13 / +0.16); final state within 0.02 of the deployed posterior.
+   Replay of the record from the priors: burnt-coke skill +0.129, omega +0.155 since 1 Jan 2026
+   (expanding-window test +0.139 / +0.155); final state within 0.03 of the deployed posterior.
 3. **Gate** (`gate.py`): champion = deployed asset, challenger = Kalman state; on the last 60 days after deployment,
    promotion is proposed when the challenger's MSE is ≥ 5 % lower and the Diebold–Mariano t ≥ 2 and no drift alarm
    is open. **Drift**: two-sided CUSUM (k 0.5, h 5) on the AR(1) innovations of the champion's errors.
@@ -285,7 +331,7 @@ Nightly run: `python -m utils.burden_engine.learn.run --evidence <store.csv> --a
 | `src/data/burden_engine/inputs.py` | Yard / prices / limits from the BMO provider and `bmo_operator_inputs.yml`; today's charged blend |
 | `src/data/burden_engine/calibration.py` | Live calibration over the window, with fallback |
 | `src/config/burden_optimiser.yml` | Page config (yard window, charging, thermal basis, frontier grid, calibration window, model check) |
-| `src/config/facts_register.json` + `schemas/facts_register.schema.json` | Fact register v1.6 |
+| `src/config/facts_register.json` + `schemas/facts_register.schema.json` | Fact register v1.7 (115 facts) |
 | `src/assets/burden_engine/` | Reference yard (16 Oct 2026 UAT) and Jul–Oct 2026 calibration |
 | `scripts/compare_bmo_vs_burden_engine.py` | Page-9 LP against the engine (ore + flux objective) |
 | `scripts/replay_slag_vs_lab.py` | Both slag calculations on each day's actual charge against the lab's slag analysis |

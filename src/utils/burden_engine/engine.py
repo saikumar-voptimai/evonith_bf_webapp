@@ -586,6 +586,19 @@ class Engine:
         return v
 
     def slp(self, s: Settings, P, L: Limits, fuel=True, z0=None, ore6_on=False, max_iter=40, tol=0.02, verbose=False):
+        """Sequential LP (``_slp``). STRATA-omega only: when the first linearisation from the default start point has no
+        feasible LP (e.g. sinter >= 65 % with the pellet floor), the plan is re-started from the Fixed-omega optimum of
+        the same case, which lies inside the feasible region; the result is the STRATA-omega plan (no change of model)."""
+        try:
+            return self._slp(s, P, L, fuel=fuel, z0=z0, ore6_on=ore6_on, max_iter=max_iter, tol=tol, verbose=verbose)
+        except Infeasible:
+            if s.omega_mode != "blend" or z0 is not None:
+                raise
+            ref = self._slp(replace(s, omega_mode="fixed"), P, L, fuel=fuel, z0=None, ore6_on=ore6_on, max_iter=max_iter,
+                            tol=tol, verbose=verbose)
+            return self._slp(s, P, L, fuel=fuel, z0=ref["z"], ore6_on=ore6_on, max_iter=max_iter, tol=tol, verbose=verbose)
+
+    def _slp(self, s: Settings, P, L: Limits, fuel=True, z0=None, ore6_on=False, max_iter=40, tol=0.02, verbose=False):
         """Sequential LP with an elastic (penalised) copy of every physics row, so it always returns a point;
         'feasible' is True when no penalty is used. Returns the blend, outputs, costs and LP duals."""
         self.check_settings(s)

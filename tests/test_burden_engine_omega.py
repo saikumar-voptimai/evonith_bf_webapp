@@ -455,3 +455,15 @@ def test_sinter_strength_from_calibration():
     assert m.spec["kinetics"]["ri_ref_pct"] == pytest.approx(e.cal["sinter_strength"]["ri_pct"])
     assert m.rate["sinter"] == pytest.approx((m.spec["kinetics"]["d_test_mm"] / m.spec["materials"]["sinter"]["sauter_mm"])
                                              ** m.spec["kinetics"]["n_size"])
+
+
+def test_blend_mode_restarts_from_fixed_optimum(inputs):
+    """Sinter >= 65 % with the pellet floor: the first STRATA-omega linearisation from the default start has no feasible
+    LP; the engine re-starts from the Fixed-omega optimum and returns a feasible STRATA plan."""
+    mats = [m["id"] for m in inputs["materials"] if m.get("selected_in_uat", True)]
+    bounds = {m["id"]: (m["lo"], m["hi"]) for m in inputs["materials"]}
+    bounds["sinter_sp_02"] = (65.0, 70.0)
+    e = Engine(inputs, materials=mats, bounds=bounds)
+    r = e._try(Settings(omega_mode="blend"), P_REF, Limits(), True)
+    assert r is not None and r["feasible"] and r["share_wet"]["sinter_sp_02"] >= 65.0 - 1e-6
+    assert r["omega"]["mode"] == "blend" and r["omega"]["certainty"] in ("High", "Medium")

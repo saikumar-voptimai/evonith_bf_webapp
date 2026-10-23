@@ -3,7 +3,8 @@
 These notes are the static context the furnace commentary is given with every request, ahead of the fact register and
 the live results. They say what the page's numbers are, how they were made and validated, and where they are weak.
 They are written for a metallurgist and for the commentary model alike. Everything here holds for BF-02 at Evonith
-Steel as of October 2026; the fact register version sent with the request governs any coefficient.
+Steel as of 24 October 2026 (STRATA 1.4, fact register v1.7); the fact register version sent with the request governs
+any coefficient.
 
 ## 1. What the page answers
 
@@ -29,17 +30,20 @@ Steel as of October 2026; the fact register version sent with the request govern
   are the medians of the stable shifts of the 14 days before today, from the same pipeline result as page 10. With
   fewer than 10 stable shifts the shipped Jul–Oct 2026 calibration is used and the page says so.
 * **Shaft efficiency: two modes.** *Fixed-ω* (Rist baseline, ASM-01): omega at the calibration value for every blend;
-  a blend moves coke through its chemistry only. *STRATA-ω* (ASM-18, page default, STRATA 1.3 — the BF-02 gas-flow
+  a blend moves coke through its chemistry only. *STRATA-ω* (ASM-18, page default, **STRATA 1.4** — the BF-02 gas-flow
   model, formerly OMEGA): omega from STRATA-Flow network solves made for every plan (GAS-13; no surrogate). The thermal
   reserve zone is six rings, each a counter-current exchanger between the gas and the ore's wüstite oxygen; transfer
   units grow with the blend's reduction rate and the residence time in the zone. The reduction rate follows particle
   size, (11.25/d)^1.0: the laboratory RI differences (GAS-21) show no effect on the plant's omega, so the calibrated
   RI exponent is 0. Omega responds to the blend (pellet reduces fastest by size; NMDC ROM and Donimalai lumps slowest),
-  production (shorter residence, GAS-16: data scale 0.59 ± 0.30), the coke layers, fuels and oxygen (scale 0.98 ±
-  0.30), nut coke (GAS-23: +0.00094 ± 0.00035 per kg/tHM) and blast moisture (GAS-19: +0.0016 ± 0.0024 per g/Nm³,
-  not resolved). Blend scales (GAS-14): pellet 1.38 ± 0.45, lump ore 0.96 ± 0.42. Coke responses of both models side
-  by side: MOD-01..11 (e.g. 10 pt pellet for sinter: Fixed-ω −1.7, STRATA-ω −5.9 ± 1.2 kg/tHM; nut coke +10 kg/tHM:
-  −9.9 and −13.1). 0.01 of omega is about 2.8 kg/tHM of coke.
+  the coke layers, fuels, oxygen and blast (other-operation scale 0.83 ± 0.29), nut coke (GAS-23: +0.00093 ± 0.00035
+  per kg/tHM) and blast moisture (GAS-19: +0.0016 ± 0.0024 per g/Nm³, not resolved). Blend scales (GAS-14): pellet
+  1.39 ± 0.46, lump ore 0.97 ± 0.46. **There is no production channel in STRATA 1.4** (GAS-16 retired): the
+  residence-time penalty of the network was not replicated on 2023–24 data and lowered out-of-sample skill in both
+  periods; production lowers coke through the balance (fixed heat loss per hour spread over more tonnes; GAS-22).
+  Coke responses of both models side by side: MOD-01..11 (10 pt pellet for sinter: Fixed-ω -1.7, STRATA-ω
+  -5.8 ± 1.1 kg/tHM; nut coke +10 kg/tHM: -9.9 and -13.0; production +1 t/h: -0.38 and
+  -0.41). 0.01 of omega is about 2.5 kg/tHM of coke.
 * **Reducibility and RDI are measured (GAS-21, DATA-13).** Evonith laboratory tests as given: RI pellet 82, Lloyds CLO
   84, Geomin 79, NMDC ROM 61, Donimalai 78 %; RDI 7-28 %; Gomti not tested (65 % assumed). The ore RDIs act in the
   network as shaft fines. The RI-to-rate exponent (0) and the size exponent (1.0) are calibrated on the plant data and
@@ -59,16 +63,20 @@ Steel as of October 2026; the fact register version sent with the request govern
   High only) beside today's blend, picks by a fixed rule (lowest cost + 1σ; hold today's blend when the saving is
   inside 1σ; ASM-19) and offers a language-model review of that pick.
 * **Out-of-sample test (GAS-20).** Each day's omega and burnt coke predicted from the previous 14 days with every
-  parameter estimated on earlier days only (175 days, Jan–Oct 2026). Skill against holding omega: v1.1 +0.25 (omega),
-  +0.18 (burnt coke, day and 7-day); in time splits +0.22 and +0.16 (burnt coke). v1.0 was worse than holding omega
-  in every test (−0.14 to −0.33). The skill comes from the moisture and operating terms; the blend term is neither
-  confirmed nor rejected by the record (a model without it scores +0.21, difference not significant, t 1.0).
-* **What the plant data could not settle.** The pellet start of 1 June 2026 coincides with the weather record's
-  monsoon step (+13 g/Nm³ between the weeks either side); with the moisture coefficient estimated from within-month weather variation,
-  the June rise of omega leaves +0.021 ± 0.022 for the blend against +0.029 expected. Within periods the blend moves
-  by 1–3 pt, too little to measure. Pellet and lump-ore reducibility are literature values (no plant RI). A switchback
-  trial (pellet 5 ↔ 20 % against Lloyds CLO, 3-day blocks, 30–36 days, matrix and fuel practice constant) measures
-  the effect to ±2.8 kg/tHM; a single step needs about ±8 kg/tHM.
+  parameter estimated on earlier days only (175 days, Jan–Oct 2026). Skill of STRATA 1.4 against holding omega: omega
+  +0.155, burnt coke +0.139 (day; RMSE 6.44 against 6.94 kg/tHM) and +0.221 (7-day); time splits
+  +0.147 and +0.114. By blend family (VAL-01..12) seven groups are Supported, one Neutral, four Modelled only
+  (fewer than 10 days), none Disputed. Per ore (GAS-26), no ore is over- or under-credited in 2026 (joint p 0.70).
+* **Strict test on unseen 2023–24 data (GAS-25).** 413 stable days, Mar 2023 – Jul 2024, every parameter frozen at
+  the 2026 fit: day RMSE of burnt coke Fixed-ω 7.95, STRATA 1.2 7.48, 1.3 7.57, **1.4 7.40**
+  (skill 0.133; paired t -2.7 against Fixed-ω). The regime differed (coke 409 against 309 kg/tHM, PCI
+  107 against 190, steam injection); the ω level was the same (0.80). The gain is mainly the moisture term (steam).
+  In 2023–24 every model, Fixed-ω included, over-credits CLO and NMDC replacing sinter (+9 and +12 kg/tHM per 10 pt):
+  a sinter-quality effect outside the model; sinter strength is not in the 2023–24 files (GAS-26, Measured gap).
+* **What the plant data could not settle.** Within periods the blend moves by 1–3 pt; the pellet effect is resolved to
+  about ±4 kg/tHM per 10 pt (GAS-15: +0.0123 ± 0.0041 ω per 10 pt replacing sinter). A switchback trial (pellet
+  10 ↔ 20 % against Lloyds CLO, 3-day blocks, 30 days, matrix and fuel practice constant) measures the effect to
+  ±2.8 kg/tHM; a single step needs about ±8 kg/tHM.
 * **Gas flow and wall flow by material (FLOW-15, FLOW-16).** Within days and within months the burden resistance does
   not fall when lump ore or pellet replaces sinter (+0.00 to +0.06 in ln K per 10 pt; the network predicts −0.04 to
   −0.07); Gomti raises it in both. Lump ore raises the row 6–10 stave heat load (+0.05 to +0.41 in ln(heat load) per
@@ -82,7 +90,7 @@ Steel as of October 2026; the fact register version sent with the request govern
   were fitted on pellet up to 16.6 % and Gomti up to 11.6 % of ferrous; beyond that the page warns that it is
   extrapolating (ASM-09).
 * **RAFT** is the plant workbook formula at the input blast moisture. Blast humidity is not measured at BF-02
-  (DATA-04); the default is the month's typical ambient value.
+  (DATA-04); the default is the RH-scaled weather-record estimate (DATA-11: 31-day mean RH mapped to 7–21 g/Nm³).
 * **Plausibility bands** (fact register): fuel rate 520–600 kg/tHM (coke wet + nut coke + PCI; the upper end is a
   limit row, below 520 a result is marked infeasible and not reported), HMT 1,440–1,520 °C, Si 0.20–0.80 %.
 
@@ -95,9 +103,10 @@ The page opens with the model against the furnace, before any plan.
 * **Energy balance** = the optimiser's model with omega and losses at the 14-day medians before the shift: out of
   sample. **Oxygen balance** = ηCO fixed at the analyser value.
 * **Verdict.** On track when, over the chosen period's stable shifts, the energy model's bias is within ±8 kg/tHM and
-  its SD within ±12 (about 1.5 × the validated shift SD). The validated record (DATA-06): by shift SD 7.7, MAE 6.0,
-  r 0.91; daily SD 7.0 (5.5 Jul–Oct). On the validation workbook's last 14 days to 8 Oct 2026: bias −0.4 kg/tHM,
-  ±3.9 over 40 stable shifts; oxygen balance +2.8 / ±4.2.
+  its SD within ±12 (about 1.5 × the validated shift SD). The validated record (DATA-06, RH-scaled moisture, 545
+  stable shifts Dec 2025 – Oct 2026): by shift bias -1.0, SD 7.8, MAE 6.1, r 0.91; one day SD 7.0; one week SD
+  5.8. Oxygen balance with the analyser's ηCO: SD 4.8, r 0.97. Last 14 days to 7 Oct 2026: bias -1.8, SD 4.0 over
+  38 stable shifts (97 % within ±10 kg/tHM).
 * A warning appears when the latest scored shift is more than 2 days old; then the check is for that older period.
 * **What to make of it.** On track means the coke figures of the plans can be read at face value within about
   ±8 kg/tHM per shift and ±5 kg/tHM per day. "Check before trusting the plan" means the calibration window no longer
@@ -112,19 +121,23 @@ The page opens with the model against the furnace, before any plan.
 * **How it is shown** (`utils.coke_energy.transit`): Lin's concordance correlation coefficient (CCC = r × C_b, 1 only
   when the series are identical), Bland–Altman bias and 95 % limits, per averaging window; a fit of the window spread
   SD(W)² = A/W² (transit) + B/W (random) + C (floor); and the cross-correlation of shift-to-shift movements by lag.
-* **Result on 610 shifts, Sep 2025 – Oct 2026** (validation export):
+* **Result on 568 stable shifts, 2025-09-13 – 2026-10-07** (pipeline result with RH-scaled moisture):
 
   | Window | Windows | Bias, kg/tHM | SD | 95 % band | CCC |
   |---|---:|---:|---:|---:|---:|
-  | Shift (8 h) | 610 | +0.4 | 11.2 | ±22 | 0.86 |
-  | 1 day | 155 | +1.2 | 7.6 | ±15 | 0.88 |
-  | 2 days | 83 | +1.2 | 6.1 | ±12 | 0.92 |
-  | 1 week | 25 | −0.1 | 4.8 | ±9 | 0.93 |
+  | Shift (8 h) | 568 | +0.5 | 11.2 | ±22 | 0.86 |
+  | 1 day | 200 | +0.5 | 7.9 | ±16 | 0.92 |
+  | 2 days | 87 | +0.7 | 6.4 | ±12 | 0.93 |
+  | 3 days | 60 | +0.8 | 5.8 | ±11 | 0.94 |
+  | 5 days | 34 | +0.6 | 5.2 | ±10 | 0.92 |
+  | 1 week | 23 | +0.3 | 5.2 | ±10 | 0.92 |
 
   C_b stays at 0.99–1.00: no level or scale difference, the CCC is limited by scatter, and the scatter averages
-  away (about ±10 kg/tHM per shift, falling as 1/√shifts) to a floor of about ±4.4 kg/tHM SD (±9 at 95 %), which is
-  instrument drift inside the 14-day offset window. Shift-to-shift movements correlate 0.33 with the charged coke one
-  shift earlier and 0.17 with the charged coke one shift later: burnt follows charged, not the reverse.
+  away to a floor of about ±5 kg/tHM SD over a week, which is instrument drift inside the 14-day offset window.
+  Shift-to-shift movements correlate 0.35 with the charged coke one shift earlier and 0.20 with the charged
+  coke one shift later: burnt follows charged, not the reverse. The uncalibrated oxygen balance closes on the charged
+  coke within 1.2 % over three months (1.2 % over six); coke in transit (≈ 133 t) is at most 0.3 % of that.
+  Hourly data (charge dumps): gain 1.04 ± 0.31, no reverse link; 90 coke steps: delay 4 h (2–12 h), complete by 6–7 h.
 * **Limits of this evidence.** The level agreement is partly by construction (the 14-day offset); the spread, its
   decay and the direction of the lag are not. 8-hour shifts with one shared production figure cannot measure a 6–7 h
   delay (the peak sits inside the shift); that needs hourly charge-dump times. Tonnes per hour cannot show the delay
@@ -162,21 +175,25 @@ The page opens with the model against the furnace, before any plan.
 
 ## 7. Validation against the case report (16 Oct 2026, UAT yard, PCI 190, nut coke 70, HMT 1,470 °C)
 
-* Fixed 2,270 t/d with fuel: coke 305.7 kg/tHM dry, slag 340, Rs 30,139/tHM; sinter 58 / Lloyds CLO 18.6 / Geomin
-  13.4 / pellet 10.0 %, limestone 13.7 kg/tHM; RAFT 2,214 °C.
-* Maximum production 2,412 t/d (charging binds, pellet 19.8 % flagged as extrapolated); cheapest level 2,290 t/d at
-  Rs 29,935/tHM; blast ≤ 105,000 Nm³/h → 2,257 t/d, O₂ 6,490 Nm³/h.
-* Value of limits at 2,270 t/d: slag cap +10 kg/tHM → Rs 53/tHM, pellet floor −2 pt → Rs 44, basicity floor −0.01 →
-  Rs 27.
-* Page-9 LP and the engine on the same yard and objective agree within 0.3 pt of share; page 9 costs Rs 46–54/tHM more
-  from charging about 4 kg/tHM more ferrous.
+* Fixed-ω, UAT prices, no slag credit (the report's basis): fixed 2,270 t/d with fuel: coke 305.7 kg/tHM dry, slag
+  340, Rs 30,139/tHM; sinter 58 / Lloyds CLO 18.6 / Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg/tHM; RAFT 2,214 °C.
+  Maximum production 2,412 t/d (charging binds); cheapest level 2,290 t/d at Rs 29,935/tHM; blast ≤ 105,000 Nm³/h →
+  2,257 t/d. Page-9 LP and the engine on the same yard and objective agree within 0.3 pt of share.
+* **At the plant prices of 23 Oct 2026 with the slag credit** (DATA-14, ASM-20; slag 340 kg/tHM × 457.85 Rs/t =
+  Rs 156/tHM): Fixed-ω Rs 29,913/tHM, coke 305.7, same blend; STRATA 1.4 Rs 29,949 ± 11/tHM, coke
+  304.6 ± 0.4 kg/tHM, sinter 61.5 / Lloyds CLO 16.1 / Geomin 12.3 / pellet 10.0 %, no flux (High certainty).
+  STRATA carries more sinter: sinter reduces faster per unit Fe at its size, and its lime replaces the limestone.
+* Pellet share at 2,270 t/d (rest re-optimised, plant prices): STRATA-ω cost is flat within Rs 30/tHM between 0 and
+  12.5 % pellet; coke falls about 1.2 kg/tHM per 2.5 pt; tiers High to 15 %, Medium to 20 %, Low to 25 %, Investigate
+  above. Fixed-ω coke is flat and its cost rises with the pellet price.
 
 ## 8. What the engine does not see
 
-* With Fixed-ω, shaft efficiency does not respond to the blend. With STRATA-ω it does,
-  but the charging matrix is held at the one in force over the calibration window (a matrix change is not an
-  optimiser variable), and coke quality (CSR, M40), nut-coke rate, PCI and hot-blast temperature act on omega only
-  through the calibration, not through the model.
+* With Fixed-ω, shaft efficiency does not respond to the blend. With STRATA-ω it does, but the charging matrix is held
+  at the one in force over the calibration window (a matrix change is not an optimiser variable); coke quality (CSR,
+  M40) and sinter strength act on omega only through the calibration; production acts through the balance only (no
+  residence-time channel in STRATA 1.4); PCI and hot-blast temperature act through the balance and the network's
+  other-operation channel; nut coke also through its data term (GAS-23).
 * Process limits default to the Jun–Oct 2026 operating envelope, not equipment ratings. Oxygen and stove gas have no
   price.
 * Not limited: phosphorus, alkalis, zinc, sulphur; the sinter plant's cost of a basicity change.

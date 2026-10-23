@@ -23,6 +23,26 @@ and each gives a number:
 Pearson's r alone is not enough: two series can correlate perfectly and differ by 10 kg/tHM. CCC is 1 only when the
 series are identical; C_b (≤ 1) is the level-and-scale part, r the scatter part.
 
+## Update 24 Oct 2026: recomputed on the current pipeline (RH-scaled blast moisture)
+
+The pipeline now takes blast moisture from the RH-scaled weather record (DATA-11), which enters the oxygen balance.
+Recomputed on 568 stable shifts, 2025-09-13 – 2026-10-07 (production-weighted, non-overlapping windows; a
+window needs two thirds of its shifts):
+
+| Window | Windows | Bias, kg/tHM | SD | 95 % band | r | CCC | C_b |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Shift (8 h) | 568 | +0.5 | 11.2 | -21.5 to +22.5 | 0.862 | 0.861 | 0.998 |
+| 1 day | 200 | +0.5 | 7.9 | -15.0 to +16.0 | 0.922 | 0.921 | 0.999 |
+| 2 days | 87 | +0.7 | 6.4 | -11.8 to +13.2 | 0.933 | 0.929 | 0.996 |
+| 3 days | 60 | +0.8 | 5.8 | -10.6 to +12.2 | 0.944 | 0.943 | 0.999 |
+| 5 days | 34 | +0.6 | 5.2 | -9.6 to +10.8 | 0.927 | 0.920 | 0.993 |
+| 1 week | 23 | +0.3 | 5.2 | -10.0 to +10.5 | 0.934 | 0.923 | 0.988 |
+
+Shift-to-shift movements (deviations from a 7-day centred mean): burnt coke correlates 0.35 with the charged coke
+one shift earlier, 0.59 in the same shift and 0.20 one shift later. Raw (uncalibrated) oxygen balance against
+the pipeline's charged coke: 1.012 [1.007, 1.018] over the last 3 months, 1.012 over 6 months,
+1.017 over all months (week-block bootstrap 95 %). The conclusions below are unchanged.
+
 ## Result: 610 shifts, Sep 2025 – Oct 2026 (validation export)
 
 | Window | Windows | Bias, kg/tHM | SD | 95 % band | r | CCC | C_b |
