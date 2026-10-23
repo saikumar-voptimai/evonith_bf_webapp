@@ -816,6 +816,12 @@ day's limits. Coke for every candidate blend comes from the two-zone (Rist) bala
   built in `utils/burden_engine/commentary.py` (pure, tested), the panel is `ui/burden_optimiser/commentary.py`.
 - **Engine:** `src/utils/burden_engine/` — pure numerical (no Streamlit). Sequential LP (HiGHS) re-linearising the
   balance; blast limit (Pb² − Pt²) = K·V^1.8 with burden-resistance rules; RAFT from `utils.energy_balance.raft`.
+- **Shaft efficiency:** held at the calibration (ASM-01, `Settings.omega_mode="fixed"`, the engine default) or
+  blend-dependent (ASM-18, page default): `utils/burden_engine/omega_model.py` + `assets/burden_engine/omega_model.json`
+  (BF-02 gas-flow model ring counter-current, scaled by plant data), solved inside the balance via
+  `rist.solve_2z(omega_fn=)`. Blend mode adds σ(coke), certainty classes (GAS-18), a certainty filter
+  (`Settings.certainty`), risk aversion (`Settings.risk_k`) and auto mode (`scenarios.run_candidates` +
+  `auto_review.py`: fixed rule picks, the LLM only reviews).
 - **Fact register:** `src/config/facts_register.json` (schema in `config/schemas/`). Every coefficient outside the
   balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
   Change values there, not in code; retired facts are refused by `FactRegister.active()`.

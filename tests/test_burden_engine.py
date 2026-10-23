@@ -41,11 +41,11 @@ def test_register_matches_schema():
     data = load_register_data()
     with open(SCHEMA_PATH, encoding="utf-8") as fh:
         jsonschema.validate(data, json.load(fh))
-    assert data["version"] == "1.2"
+    assert data["version"] == "1.3"
     groups = {}
     for f in data["facts"]:
         groups[f["group"]] = groups.get(f["group"], 0) + 1
-    assert groups == {"COKE": 17, "GAS": 11, "FLOW": 14, "DATA": 10, "BAND": 3, "ASM": 13}
+    assert groups == {"COKE": 17, "GAS": 17, "FLOW": 14, "DATA": 10, "BAND": 3, "ASM": 15}
 
 
 def test_retired_facts_are_refused():

@@ -37,6 +37,7 @@ from ui.burden_optimiser.sections import (plan_sentence, render_controls, render
                                           render_model_check, render_plan_summary, render_plan_tabs, render_status,
                                           render_thermal, render_yard_editor)
 from ui.burden_optimiser.commentary import render_furnace_commentary
+from ui.burden_optimiser.omega_panel import render_auto, render_omega_result, render_omega_settings
 from utils.burden_engine import BandError, Engine, Infeasible, load_register
 from utils.burden_engine.commentary import build_context, load_notes
 from utils.burden_engine.scenarios import limit_labels, limits_from, settings_from_regime
@@ -81,6 +82,7 @@ st.divider()
 st.subheader("Optimise")
 mode = st.radio("What to optimise", list(MODES), format_func=MODES.get, horizontal=True, key="bfo_mode")
 process = mode in ("cheapest", "max")
+om_set = render_omega_settings("bfo_om")
 prod_cfg = dict(cfg.get("production", {}))
 if mode == "fixed":
     today_t_day = (regime or {}).get("prod_th")
@@ -116,6 +118,7 @@ with st.expander("Day limits", expanded=False):
 
 s0 = settings_from_regime(regime, cfg.get("thermal", {}), info.cal)
 s0_d = dict(s0.__dict__, **thermal)
+s0_d.update(omega_mode=om_set["omega_mode"], certainty=om_set["certainty"], risk_k=om_set["risk_k"])
 if mode == "fixed":
     with st.expander("Controls held for the plan (start: today's medians)", expanded=False):
         hy_eng = Engine(cal=info.cal)          # only for the enrichment-tag conversion
@@ -141,7 +144,8 @@ today_shares = dict(today_blend.get("shares") or {})
 run = st.button("Optimise", type="primary", key="bfo_run")
 args = (mode, loaders.as_json(inputs), loaders.as_json(info.cal), s0_d, L.__dict__ | {"process": process}, float(target),
         bool(search_o2), int(prod_cfg.get("o2_levels", 9)), float(prod_cfg.get("frontier_lo_t_h", 84.0)),
-        float(prod_cfg.get("frontier_step_t_h", 1.0)), loaders.as_json(today_shares if mode == "fixed" else {}))
+        float(prod_cfg.get("frontier_step_t_h", 1.0)), loaders.as_json(today_shares if mode == "fixed" else {}),
+        bool(om_set["auto"]))
 if run:
     st.session_state["bfo_args"] = args
 if st.session_state.get("bfo_args") is None:
@@ -179,6 +183,7 @@ if res["mode"] == "fixed":
     elif yard_source == "live" and today is None:
         st.caption("Today's charged blend is not available"
                    + (f" ({today_blend['error']})" if today_blend.get("error") else "") + ", so there is no comparison.")
+    render_omega_result(eng, r, today)
     render_plan_tabs(eng, r, "fixed", other=r0, value_of_limits=res.get("value_of_limits"), today=today,
                      names=names, prices=prices, today_window=window)
     final, plan_label = r, f"fixed production {r['P_tday']:,.0f} t/d"
@@ -192,6 +197,7 @@ elif res["mode"] == "cheapest":
     which = st.radio("Plan shown below", ["Cheapest output", "Highest output"], horizontal=True, key="bfo_which")
     final = res["best"] if which == "Cheapest output" or res["top"] is None else res["top"]
     render_plan_summary(final, f"{which}: {final['P_tday']:,.0f} t/d", flux_ids=flux_ids, today_t_day=today_t_day)
+    render_omega_result(eng, final)
     render_plan_tabs(eng, final, "cheapest", names=names, prices=prices)
     plan_label = f"{which.lower()} on the Step 1 frontier, {final['P_tday']:,.0f} t/d"
 else:
@@ -204,8 +210,16 @@ else:
                         lead=("plain", "Limited by: " + (limit_labels(final.get("binding", []), names) or "–")
                               + ". Controls at their limits; oxygen searched within its flow and enrichment limits, "
                               "least oxygen among equal outputs."))
+    render_omega_result(eng, final)
     render_plan_tabs(eng, final, "max", names=names, prices=prices)
     plan_label = f"maximum production {final['P_tday']:,.0f} t/d"
+
+# ── Auto mode ─────────────────────────────────────────────────────────
+_cal_txt = dict(source=info.source, window=(f"{info.window[0]} to {info.window[1]}" if info.source == "live"
+                                            else " to ".join(info.cal.get("period", ["", ""]))), omega=info.cal.get("omega"))
+if len(args) > 11 and args[11]:
+    st.divider()
+    render_auto(res.get("auto"), names, mode_label=f"{MODES[res['mode']]}, {plan_label}", calibration=_cal_txt)
 
 # ── Furnace commentary ────────────────────────────────────────────────
 st.divider()
@@ -227,9 +241,12 @@ with st.expander("Facts this result rests on"):
     render_facts(reg, final)
 with st.expander("Assumptions and what the engine does not see"):
     st.markdown(
-        "- **Shaft efficiency is held** at the calibration value for every blend (register GAS-10, ASM-01): the plant data "
-        "show no measurable blend effect on gas utilisation; its day-to-day spread (±0.028, about ±7 kg/tHM coke) is the "
-        "largest single uncertainty.\n"
+        "- **Shaft efficiency** is either held at the calibration (switch off; ASM-01) or blend-dependent (default; "
+        "ASM-18, GAS-13..18): the BF-02 gas-flow model's ring counter-current description of the thermal reserve zone "
+        "(reducibility and size of each ferrous, where the burden puts ore and coke, residence time, gas quantity), "
+        "scaled by 200 days of plant data. Each plan carries σ(coke) and a certainty class; the calibration's own "
+        "error (about ±2 kg/tHM) and the day-to-day spread (about ±7 kg/tHM) are reported apart. Pellet and lump-ore "
+        "reducibility are literature values (no plant RI for them).\n"
         "- **Burden-resistance rules** (FLOW-02..07) were fitted on pellet up to 16.6 % and Gomti up to 11.6 % of "
         "ferrous; beyond that the page warns that it is extrapolating.\n"
         "- **Process limits** default to the Jun-Oct 2026 operating envelope, not equipment ratings. Oxygen and stove "

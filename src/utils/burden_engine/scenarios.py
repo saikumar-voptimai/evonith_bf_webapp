@@ -112,6 +112,30 @@ def run_max(eng: Engine, s: Settings, L: Limits) -> dict[str, Any]:
     return dict(mode="max", result=r)
 
 
+def run_candidates(eng: Engine, prod_t_day: float, s: Settings, L: Limits,
+                   today: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Auto mode (``utils.burden_engine.auto_review``): the plan at one production under the three decision settings
+    (lowest expected cost, risk-averse, High certainty only) with blend-dependent shaft efficiency, today's charged
+    blend alongside, the rows of the comparison and the fixed rule's pick."""
+    from utils.burden_engine.auto_review import CANDIDATES, candidate_row, pick
+
+    base = replace(s, omega_mode="blend")
+    results, rows = {}, []
+    z0 = None
+    for cid, label, ov in CANDIDATES:
+        r = eng._try(replace(base, **ov), prod_t_day / 24, L, True, z0=z0)
+        if r is not None and z0 is None:
+            z0 = r["z"]
+        results[cid] = r
+        sig = eng.saving_sigma(r, today) if (r is not None and today is not None) else None
+        rows.append(candidate_row(cid, label, r, today, sig))
+    if today is not None:
+        results["T"] = today
+        rows.append(candidate_row("T", "Today's charged blend", today))
+    cid, reason = pick(rows)
+    return dict(rows=rows, results=results, pick=cid, reason=reason, prod_t_day=prod_t_day)
+
+
 # ---------------------------------------------------------------------------------------------- tables
 def frontier_table(rows: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
     """Cheapest feasible plan at each production level, with the marginal ore + flux + fuel cost of each extra tonne
@@ -269,7 +293,9 @@ def process_table(r: Mapping[str, Any]) -> pd.DataFrame:
         ("Production", f"{r['P_th']:.1f} t/h · {r['P_tday']:,.0f} t/d", ""),
         ("Fuel rate (coke wet + nut + PCI)", f"{o['fuel_rate']:.1f} kg/tHM", f"{L['fuel_min']:.0f} – {L['fuel_max']:.0f} (BAND-01)"),
         ("ηCO / top gas", f"{o['eta']:.1f} % · {o['T_top']:.0f} °C", f"top gas ≥ {L['T_top_min']:.0f} °C"),
-        ("Shaft efficiency ω", f"{o['omega']:.3f}", "held at the calibration"),
+        ("Shaft efficiency ω", f"{o['omega']:.3f}" + (f" ± {r['omega']['sigma_omega']:.3f}" if (r.get("omega") or {}).get("mode") == "blend" else ""),
+         "blend-dependent (gas-flow model), " + (r.get("omega") or {}).get("certainty", "") + " certainty"
+         if (r.get("omega") or {}).get("mode") == "blend" else "held at the calibration"),
         ("Hot blast temperature", f"{s['HBT']:,.0f} °C", f"≤ {L['HBT_max']:,.0f}"),
         ("Hot blast (meter basis)", f"{r['blast_nm3h']:,.0f} Nm³/h", f"≤ {L['V_max']:,.0f}" if L["process"] else ""),
         ("Oxygen / enrichment tag", f"{r['O2_nm3h']:,.0f} Nm³/h · {r['enrich_tag']:.2f} %",

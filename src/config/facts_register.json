@@ -1,7 +1,7 @@
 {
  "name": "BF-02 process fact register",
- "version": "1.2",
- "date": "2026-10-19",
+ "version": "1.3",
+ "date": "2026-10-21",
  "source": "BF-02 process fact register v1.1 (Claude Docs, 16 Oct 2026); machine copy for the Burden & Fuel Optimiser",
  "statuses": [
   "Assumed",
@@ -24,6 +24,11 @@
   "D": "vendor note or judgement"
  },
  "revision_log": [
+  {
+   "version": "1.3",
+   "date": "2026-10-21",
+   "change": "Blend-dependent shaft efficiency (#262): GAS-13..18, ASM-18, ASM-19 added; GAS-06 and GAS-10 notes updated. No existing value changed."
+  },
   {
    "version": "1.2",
    "date": "2026-10-19",
@@ -427,7 +432,7 @@
    "version": "1.0",
    "date": "2026-10-16",
    "se": 0.07,
-   "note": "Shaft efficiency +0.0030 +/- 0.0021; +0.0053 +/- 0.0028, worth -0.8 to -1.3 kg coke per pt if real"
+   "note": "Shaft efficiency +0.0030 +/- 0.0021; +0.0053 +/- 0.0028, worth -0.8 to -1.3 kg coke per pt if real Superseded for the engine by GAS-15 (model x data posterior, 2026-10-21)."
   },
   {
    "id": "GAS-07",
@@ -492,7 +497,8 @@
    "params": {
     "day_sd": 0.028,
     "day_sd_reanchored": 0.014
-   }
+   },
+   "note": "Blend mode (ASM-18) models differences from the calibration; the level stays the 14-day calibration."
   },
   {
    "id": "GAS-11",
@@ -1179,6 +1185,170 @@
    "params": {
     "T_top_min": 120.0
    }
+  },
+  {
+   "id": "GAS-13",
+   "group": "GAS",
+   "statement": "Shaft efficiency from the gas-flow model: ring counter-current reduction of wustite in the thermal reserve zone",
+   "value": null,
+   "unit": "",
+   "status": "Model",
+   "grade": "B",
+   "basis": "BF-02 layered gas-flow model v0.4 (burden profile from the charging matrix, layered Ergun resistance, floating cohesive zone); six rings, eps-NTU with NTU = kappa k t_TRZ C_s / C_min; k from ISO 7215 RI and as-charged Sauter size, (11.25/d)^1.5; kappa fitted to the calibrated omega; quadratic surrogate (520-state DOE, CV omega RMSE 0.0002)",
+   "literature": "Rist & Meysson W-point shaft efficiency; counter-current exchanger analogy for gas-solid reduction",
+   "next_test": "Q6, T5",
+   "version": "1.3",
+   "date": "2026-10-21",
+   "note": "Physics responses at the reference (per 10 wet pt): pellet for sinter +0.012, pellet for CLO +0.023, CLO for sinter -0.011, ROM for CLO -0.005, oversize for CLO +0.009; production +5 % -0.0068; coke +20 kg/tHM -0.0069; capacity ratio R +0.025 -0.013. Pellet and lump-ore RI are literature values (no plant RI).",
+   "params": {
+    "asset": "assets/burden_engine/omega_model.json"
+   }
+  },
+  {
+   "id": "GAS-14",
+   "group": "GAS",
+   "statement": "Plant-data scale on the model blend effect on shaft efficiency (lambda_b)",
+   "value": 0.586,
+   "unit": "",
+   "status": "Supported",
+   "grade": "B",
+   "se": 0.333,
+   "basis": "Bayesian regression of daily omega (200 days, Dec 2025 - Oct 2026, AR(1) errors) on the model blend term (day blend and ferrous per tHM at reference operation), class shares, operation and quality; prior N(1, 0.5^2); class-correction prior tau by restricted marginal likelihood (averaged over the tau grid); month-effect (0.70 +/- 0.34) and trend (0.47 +/- 0.28) specifications averaged with equal weight",
+   "literature": "",
+   "next_test": "T5",
+   "version": "1.3",
+   "date": "2026-10-21",
+   "note": "Leave-one-month-out CV: no model predicts a new month level (physics-structured RMSE 0.0288, XGBoost 0.0298, mean 0.0296); the model is used for differences against the 14-day calibration only."
+  },
+  {
+   "id": "GAS-15",
+   "group": "GAS",
+   "statement": "Pellet +10 wet pt -> shaft efficiency (posterior, reference operation)",
+   "value": 0.0123,
+   "unit": "omega",
+   "status": "Supported",
+   "grade": "B",
+   "se": 0.0119,
+   "basis": "GAS-13 x GAS-14 plus the class correction b_pellet +0.0005 +/- 0.0011 per pt; pellet replacing sinter. Replacing Lloyds CLO: +0.0175 +/- 0.0120",
+   "literature": "Gas utilisation rises with pellet share (Indian pellets); supersedes the data-only estimate in GAS-06",
+   "next_test": "Q6, T5",
+   "version": "1.3",
+   "date": "2026-10-21",
+   "note": "Worth -4.2 +/- 4.1 kg/tHM dry coke (pellet for sinter) and -6.0 +/- 4.1 (for CLO) with the gas-quantity loop (dK/domega about -340 kg/tHM per unit)."
+  },
+  {
+   "id": "GAS-16",
+   "group": "GAS",
+   "statement": "Production +1 t/h -> shaft efficiency (residence time in the thermal reserve zone)",
+   "value": -0.00145,
+   "unit": "omega per t/h",
+   "status": "Supported",
+   "grade": "B",
+   "se": 0.0007,
+   "basis": "Model (GAS-13): shorter TRZ residence at faster descent; data -0.0018 +/- 0.0010 (month effects), -0.0026 +/- 0.0009 (trend)",
+   "literature": "Shaft efficiency falls at high productivity (shorter residence)",
+   "next_test": "Q12",
+   "version": "1.3",
+   "date": "2026-10-21",
+   "note": "In blend mode the cost frontier against production is flatter: heat losses spread over more tonnes, gas utilisation falls."
+  },
+  {
+   "id": "GAS-17",
+   "group": "GAS",
+   "statement": "Gas quantity -> shaft efficiency (capacity ratio R = O_max,TRZ / (Y_W n_Fe), moved by its carbon-gas part)",
+   "value": -0.53,
+   "unit": "omega per unit R",
+   "status": "Model",
+   "grade": "D",
+   "range": [
+    -0.8,
+    -0.27
+   ],
+   "basis": "Model (GAS-13) at R 0.70, NTU about 3; solved inside the two-zone balance (rist.solve_2z omega_fn). R follows the carbon gas only: H2 reduces wustite several times faster than CO and the ring model has no gas-side rate, so H2 is not counted as extra capacity (the data show omega rising with blast moisture, +0.0035 +/- 0.0011 per g/Nm3). Amplifies coke responses by about 1.35 (dK/domega -342 against -254 kg/tHM at fixed omega): HMT +10 degC 0.94 -> 1.26, Si +0.1 % 2.0 -> 2.7 kg/tHM",
+   "literature": "",
+   "next_test": "Q12",
+   "version": "1.3",
+   "date": "2026-10-21",
+   "note": "Not identified by the plant data (charged coke is endogenous); 50 % relative uncertainty carried in sigma."
+  },
+  {
+   "id": "GAS-18",
+   "group": "GAS",
+   "statement": "Certainty classes of a plan (blend-dependent shaft efficiency)",
+   "value": null,
+   "unit": "kg/tHM",
+   "status": "Plant choice",
+   "grade": "D",
+   "basis": "High: sigma(coke) <= 2 kg/tHM and blend classes and production inside the 1st-99th percentile of the 200 days BF-02 ran; Medium: sigma <= 5 and within 5 pt / 3 t/h of that range; Low otherwise",
+   "literature": "",
+   "next_test": "",
+   "version": "1.3",
+   "date": "2026-10-21",
+   "params": {
+    "high_sigma_kg": 2.0,
+    "medium_sigma_kg": 5.0,
+    "margin_pt": 5.0,
+    "margin_t_h": 3.0,
+    "support": {
+     "sinter": [
+      58.9,
+      69.5
+     ],
+     "pellet": [
+      0.0,
+      15.4
+     ],
+     "clo": [
+      1.8,
+      34.5
+     ],
+     "rom": [
+      0.0,
+      29.8
+     ],
+     "gomti": [
+      0.0,
+      7.3
+     ],
+     "oversize": [
+      0.0,
+      14.2
+     ],
+     "production_t_h": [
+      86.9,
+      96.2
+     ]
+    }
+   }
+  },
+  {
+   "id": "ASM-18",
+   "group": "ASM",
+   "statement": "Two-zone balance with blend-dependent shaft efficiency (page default)",
+   "value": null,
+   "unit": "",
+   "status": "Model",
+   "grade": "B",
+   "basis": "omega = omega_cal + data-scaled blend term + class correction + operating and gas-quantity terms (GAS-13..17); anchored on the 14-day calibration (ASM-01) and zero at the calibration state",
+   "literature": "",
+   "next_test": "T5",
+   "version": "1.3",
+   "date": "2026-10-21",
+   "note": "ASM-01 (omega held) remains available as a switch and is the engine default for scripts and tests."
+  },
+  {
+   "id": "ASM-19",
+   "group": "ASM",
+   "statement": "Auto mode: the pick is a fixed rule; the language model only reviews it",
+   "value": 1.0,
+   "unit": "sigma",
+   "status": "Plant choice",
+   "grade": "D",
+   "basis": "Candidates: lowest expected cost, lowest cost + 1.28 sigma, High certainty only, today. Rule: lowest cost + 1 sigma among plans that meet every limit; keep today when the saving is below 1 sigma of the saving. Review: JSON, choice must be a candidate, numbers checked against the table, disagreement shown, never substituted",
+   "literature": "",
+   "next_test": "",
+   "version": "1.3",
+   "date": "2026-10-21"
   }
  ]
 }

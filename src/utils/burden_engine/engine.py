@@ -20,6 +20,16 @@ Engine 2.0 (fact register v1.1)
     1,440-1,520 degC and 0.20-0.80 % are refused;
   * the webapp hand coefficients (COKE-17) are gone.
 
+Shaft efficiency (``Settings.omega_mode``)
+  * "fixed" (default, ASM-01): omega held at the calibration for every blend; a blend moves the coke rate through its
+    chemistry only.
+  * "blend" (ASM-18, GAS-13..18): omega from ``utils.burden_engine.omega_model`` - the BF-02 gas-flow model's ring
+    counter-current description of the thermal reserve zone, scaled by the plant data - as a function of the blend,
+    the coke rate, production, oxygen and the gas capacity of the balance (solved inside the two-zone balance). Every
+    result then carries sigma(coke), a certainty class (High / Medium / Low) and the parts of omega;
+    ``Settings.risk_k`` adds risk_k x sigma(cost) to the objective and ``Settings.certainty`` ("medium" / "high")
+    restricts the optimiser to plans of that certainty.
+
 Units: decision variables are WET kg/tHM of each material; shares are wet % of the ferrous charge; prices Rs per wet
 tonne. Pure numerical code: no Streamlit, no I/O except reading the JSON inputs when given paths.
 """
@@ -37,6 +47,7 @@ from scipy.optimize import linprog
 
 from utils.burden_engine.facts import ENGINE_FACTS, FactRegister, load_register
 from utils.burden_engine.hydraulics import Hydraulics, raft_c
+from utils.burden_engine.omega_model import CERTAINTY_LEVELS, OmegaModel, OmegaState, difference_sigma
 from utils.coke_energy.rist import solve_2z
 
 ASSET_DIR = Path(__file__).resolve().parents[2] / "assets" / "burden_engine"
@@ -68,8 +79,11 @@ class Settings:
     nut_plant: float = 70.0              # kg/tHM as charged
     Pb: float = 2.79                     # hot-blast pressure, bar g
     Pt: float = 1.42                     # top pressure, bar g
-    omega: float | None = None           # shaft efficiency; None = calibrated value
+    omega: float | None = None           # shaft efficiency; None = calibrated value (fixed mode)
     nut_size_delta_mm: float = 0.0       # nut coke mean size vs the base point (FLOW-07)
+    omega_mode: str = "fixed"            # "fixed" (ASM-01) or "blend" (ASM-18: omega_model)
+    risk_k: float = 0.0                  # blend mode: objective = cost + risk_k x sigma(cost)
+    certainty: str = "any"               # blend mode: "any", "medium" or "high" (certainty filter on the plan)
 
 
 @dataclass
@@ -144,7 +158,7 @@ def _k_rule(m: Mapping[str, Any]) -> str | None:
 
 
 class Engine:
-    OUT = ["K", "K_wet", "hb", "O2", "T_top", "slag", "CaO", "SiO2", "MgO", "Al2O3", "Fe_res", "eta"]
+    OUT = ["K", "K_wet", "hb", "O2", "T_top", "slag", "CaO", "SiO2", "MgO", "Al2O3", "Fe_res", "eta", "sig_K"]
 
     def __init__(self, inputs: str | Path | Mapping[str, Any] | None = None,
                  cal: str | Path | Mapping[str, Any] | None = None,
@@ -200,10 +214,102 @@ class Engine:
         self.is_gom = np.array([v.k_rule == GOMTI_RULE for v in self.fer], float)
         self.is_o6 = np.array([v.k_rule == OVERSIZE_RULE for v in self.fer], float)
         self.n_evals = 0
+        self._om: OmegaModel | None = None
+        self._dKdw = float("nan")
+
+    # ------------------------------------------------------------------------------------------------ omega model
+    def omega_model(self) -> OmegaModel:
+        """The blend-dependent omega model, anchored on this engine's calibration (built on first use)."""
+        if self._om is None:
+            m = OmegaModel.load()
+            self.om_mat = [m.model_material(v.id, v.kind) for v in self.fer]
+            self.om_cls = {c: np.array([m.cls_of[mm] == c for mm in self.om_mat], float) for c in m.support}
+            c, P = self._cal_case(), self.case0["prod_th"]
+            cal = self.cal
+            r = solve_2z(c, self.p, cal["omega"], cal["Q_LZ_GJh"] * 1000 / P, cal["Q_UZ_GJh"] * 1000 / P, cal["r_H"],
+                         T_R=cal["T_R"], x0=self._x0)
+            m.calibrate(self._omega_ref_state(m), cal["omega"], r["R_cap"])
+            self._RC_cal = float(r["R_cap_C"])
+            # loop-inclusive dK/domega: the same blend with omega shifted by d (coke and gas capacity respond)
+            po = m.plan(m.ref)
+            d = 0.005
+            Ks = []
+            for off in (0.0, d):
+                fn = (lambda K, z, off=off: po.omega(K, self.R_eff(z)) + off)
+                Ks.append(solve_2z(c, self.p, cal["omega"], cal["Q_LZ_GJh"] * 1000 / P, cal["Q_UZ_GJh"] * 1000 / P,
+                                   cal["r_H"], T_R=cal["T_R"], x0=self._x0, omega_fn=fn)["K"])
+            self._dKdw = (Ks[1] - Ks[0]) / d
+            self._om = m
+        return self._om
+
+    def R_eff(self, z: Mapping[str, Any]) -> float:
+        """Capacity ratio the omega model sees: the calibration's total R moved by the change of its carbon-gas part
+        only (GAS-17). Hydrogen reduces wustite several times faster than CO; the ring model has no gas-side rate, so
+        counting extra H2 as capacity alone would lower omega where the plant data show it rising (blast moisture)."""
+        from utils.coke_energy.rist import Y_W
+        return self._om.R_ref + (z["etaWc"] * z["nCg"] / (Y_W * z["nFe"]) - self._RC_cal) if self._om is not None \
+            else z["O_max_TRZ"] / (Y_W * z["nFe"])
+
+    def _cal_case(self):
+        """The calibration point as a two-zone case (class-level burden of the calibration window)."""
+        c = copy.deepcopy(self.case0)
+        c["burden"] = [dict(b, LOI_type=b.get("LOI_type", "CO2" if b["name"] == "flux" else "H2O"))
+                       for b in self.cal["burden_cal"]]
+        return c
+
+    def _omega_ref_state(self, m: OmegaModel) -> OmegaState:
+        """The calibration window as an omega state: class shares of the calibration, the lump-ore split of the model's
+        reference window (the calibration carries classes only), the calibration's coke, fuels, production, blast."""
+        cal, case = self.cal, self.case0
+        wet: dict[str, float] = {}
+        split = m.spec["reference"]["lump_split"]
+        for b in cal["burden_cal"]:
+            kg = float(b["dry_kg"]) / (1 - float(b.get("moist_pct", 0.0)) / 100)
+            if b["name"] == "sinter":
+                wet["sinter"] = wet.get("sinter", 0.0) + kg
+            elif b["name"] == "pellet":
+                wet["pellet"] = wet.get("pellet", 0.0) + kg
+            elif b["name"] == "ore":
+                for mm, f in split.items():
+                    wet[mm] = wet.get(mm, 0.0) + kg * float(f)
+        sh, fe, cls = m.blend_parts(wet)
+        r_o2 = float(case["O2_per_air"])
+        return OmegaState(sh, fe, cls, coke=float(cal["K"]),
+                          nut=float(case["nut_kg"]) / (1 - float(case["nut"]["moist_pct"]) / 100),
+                          pci=float(case["pci_kg"]) / (1 - float(case["pci"]["moist_pct"]) / 100),
+                          prod=float(case["prod_th"]), blast_t=self.c_hb * float(cal["hb_per_t_model_cal"]),
+                          o2=r_o2 / (1 + r_o2), rdi=m.rdi, fer=sum(wet.values()))
+
+    def plan_state(self, z, s: Settings, P) -> OmegaState:
+        m = self.omega_model()
+        wet: dict[str, float] = {}
+        for mm, w in zip(self.om_mat, z[:self.nf]):
+            wet[mm] = wet.get(mm, 0.0) + max(float(w), 0.0)
+        sh, fe, cls = m.blend_parts(wet)
+        return OmegaState(sh, fe, cls, coke=float(m.ref.coke), nut=float(s.nut_plant), pci=float(s.pci_plant),
+                          prod=float(P), blast_t=m.ref.blast_t, o2=s.O2_per_air / (1 + s.O2_per_air), rdi=m.rdi,
+                          fer=float(np.sum(np.maximum(z[:self.nf], 0.0))))
+
+    def omega_limits(self, s: Settings) -> dict[str, Any] | None:
+        """The certainty filter's constraints (blend mode only)."""
+        if s.omega_mode != "blend" or s.certainty not in CERTAINTY_LEVELS or s.certainty == "any":
+            return None
+        return self.omega_model().limits_for(s.certainty)
+
+    def p_range(self, s: Settings, lo: float, hi: float) -> tuple[float, float]:
+        """Production search range, narrowed to the certainty filter's production range."""
+        lim = self.omega_limits(s)
+        if lim:
+            lo, hi = max(lo, lim["production"][0]), min(hi, lim["production"][1])
+        return lo, max(lo, hi)
 
     # ------------------------------------------------------------------------------------------------ checks
     def check_settings(self, s: Settings) -> None:
-        """BAND-02 / BAND-03: refuse thermal inputs outside what BF-02 runs."""
+        """BAND-02 / BAND-03: refuse thermal inputs outside what BF-02 runs; known omega mode and certainty level."""
+        if s.omega_mode not in ("fixed", "blend"):
+            raise ValueError(f"omega_mode must be 'fixed' or 'blend', not {s.omega_mode!r}")
+        if s.certainty not in CERTAINTY_LEVELS:
+            raise ValueError(f"certainty must be one of {CERTAINTY_LEVELS}, not {s.certainty!r}")
         lo, hi = self.band_hmt
         if not lo <= s.HMT <= hi:
             raise BandError(f"HMT {s.HMT:.0f} degC is outside BAND-02 ({lo:.0f}-{hi:.0f} degC)")
@@ -230,19 +336,30 @@ class Engine:
         c = self.make_case(z, s, P)
         cal = self.cal
         om = cal["omega"] if s.omega is None else s.omega
+        po = None
+        if s.omega_mode == "blend":
+            po = self.omega_model().plan(self.plan_state(z, s, P))
+            if s.omega is not None:                       # an explicit omega shifts the calibration anchor
+                po.base += s.omega - cal["omega"]
+        fn = (lambda K, zz: po.omega(K, self.R_eff(zz))) if po is not None else None
         r = solve_2z(c, self.p, om, cal["Q_LZ_GJh"] * 1000 / P, cal["Q_UZ_GJh"] * 1000 / P, cal["r_H"],
-                     T_R=cal["T_R"], x0=self._x0)
+                     T_R=cal["T_R"], x0=self._x0, omega_fn=fn)
         self.n_evals += 1
         ro = r["ro"]; sl = ro["slag"]
-        K = r["K"]; Kw = K / (1 - c["coke"]["moist_pct"] / 100)
+        K = r["K"]; wet = 1 - c["coke"]["moist_pct"] / 100; Kw = K / wet
+        R_eff = self.R_eff(r["z"]) if po is not None else r["R_cap"]
+        sig_w = po.sigma(K, R_eff) if po is not None else 0.0
         out = dict(K=K, K_wet=Kw, hb=r["V"] + ro["V_O2"], O2=ro["V_O2"], T_top=r["T_top"], slag=ro["slag_kg"],
                    CaO=sl["CaO"], SiO2=sl["SiO2"], MgO=sl["MgO"], Al2O3=sl["Al2O3"],
-                   Fe_res=ro["Fe_burden"] - ro["Fe_HM"] - ro["Fe_slag"] - self.fe_dust, eta=100 * r["eta"])
+                   Fe_res=ro["Fe_burden"] - ro["Fe_HM"] - ro["Fe_slag"] - self.fe_dust, eta=100 * r["eta"],
+                   sig_K=abs(self._dKdw) * sig_w / wet if po is not None else 0.0)
         if full:
             out.update(air=r["V"], y_d=r["y_d"], r_d=r["r_d"], topgas=ro["V_tg"], B2=sl["B2"], Al2O3_pct=sl["Al2O3_pct"],
-                       MgO_pct=sl["MgO_pct"], O_err=r["O_err"], E_err=r["E_err"], omega=om,
+                       MgO_pct=sl["MgO_pct"], O_err=r["O_err"], E_err=r["E_err"], omega=r["omega"], R_cap=r["R_cap"],
                        fuel_dry=K + c["nut_kg"] + c["pci_kg"], fuel_rate=Kw + s.nut_plant + s.pci_plant,
                        nut_dry=c["nut_kg"], pci_dry=c["pci_kg"], CO2_carb=ro["CO2_carb_kg"])
+            if po is not None:
+                out["omega_terms"] = asdict(po.terms(K, R_eff))
         return out
 
     def phi(self, z, s, P):
@@ -304,9 +421,12 @@ class Engine:
         coke = o["K_wet"] * self.prices_fuel["coke"] / 1000
         nut = s.nut_plant * self.prices_fuel["nut"] / 1000
         pci = s.pci_plant * self.prices_fuel["pci"] / 1000
-        obj = ore + flx + (coke if fuel else 0.0)
+        sigma = float(o.get("sig_K", 0.0)) * self.prices_fuel["coke"] / 1000          # 1 sigma of the coke cost
+        risk = s.risk_k * sigma if fuel else 0.0
+        obj = ore + flx + (coke if fuel else 0.0) + risk
+        total = ore + flx + coke + nut + pci
         return dict(ore=ore, flux=flx, coke=coke, nut=nut, pci=pci, fuel=coke + nut + pci,
-                    total=ore + flx + coke + nut + pci, objective=obj)
+                    total=total, objective=obj, sigma=sigma, risk_adjusted=total + s.risk_k * sigma)
 
     def var_cap(self, P):
         """Upper bound on each variable in wet kg/tHM from its t/day cap (stock, flux limit) at production P t/h."""
@@ -355,6 +475,19 @@ class Engine:
         cap = L.charge_t * L.charges_per_h
         a_ch = np.full(self.n, P / 1000)
         le("charging", a_ch, P / 1000 * s.nut_plant, cap, 1.0)
+        lim = self.omega_limits(s)
+        if lim:                                              # certainty filter (blend mode)
+            aSg, cSg = lin("sig_K")
+            le("certainty sigma", aSg, cSg, lim["sigma_max"], 1.0)
+            for cname, (lo_c, hi_c) in lim["classes"].items():
+                mask = self.om_cls.get(cname)
+                if mask is None or not mask.any():
+                    continue
+                a = np.zeros(self.n); a[:self.nf] = mask - hi_c / 100
+                le(f"certainty {cname} max", a, 0.0, 0.0, 1.0)
+                if lo_c > 0:
+                    a = np.zeros(self.n); a[:self.nf] = lo_c / 100 - mask
+                    le(f"certainty {cname} min", a, 0.0, 0.0, 1.0)
         if L.process:
             aH, cH = lin("hb"); aO, cO = lin("O2")
             K0 = Phi0[ix["K"]]
@@ -397,6 +530,18 @@ class Engine:
         if checks:
             v["fuel rate min"] = max(0.0, L.fuel_min - fuel)
         v["charging"] = max(0.0, P / 1000 * (z.sum() + s.nut_plant) - L.charge_t * L.charges_per_h)
+        lim = self.omega_limits(s)
+        if lim:
+            v["certainty sigma"] = max(0.0, float(o.get("sig_K", 0.0)) - lim["sigma_max"])
+            Y = float(np.sum(z[:self.nf]))
+            for cname, (lo_c, hi_c) in lim["classes"].items():
+                mask = self.om_cls.get(cname)
+                if mask is None or not mask.any():
+                    continue
+                sc = float(mask @ z[:self.nf])
+                v[f"certainty {cname} max"] = max(0.0, sc - hi_c / 100 * Y)
+                if lo_c > 0:
+                    v[f"certainty {cname} min"] = max(0.0, lo_c / 100 * Y - sc)
         if L.process:
             V = P * self.c_hb * o["hb"]
             v["blast pressure"] = max(0.0, V - self.hy.v_ceiling(s.Pb, s.Pt, self.dlnK(z, o["K"], s, ore6_on))) / 1000
@@ -428,7 +573,8 @@ class Engine:
             soft_ub = [r for r in ub if r[4]]
             n_s = len(soft_ub) + 2 * len(eq)
             pr = np.array([v.price for v in self.vars]) / 1000
-            cz = pr + (self.prices_fuel["coke"] / 1000 * J[self.OUT.index("K_wet")] if fuel else 0.0)
+            cz = pr + (self.prices_fuel["coke"] / 1000 * (J[self.OUT.index("K_wet")] + s.risk_k * J[self.OUT.index("sig_K")])
+                       if fuel else 0.0)
             c = np.r_[cz, np.full(n_s, M) / np.r_[[r[3] for r in soft_ub], [r[3] for r in eq], [r[3] for r in eq]]]
             A_ub, b_ub = [], []
             for k, (name, a, b, scale, soft) in enumerate(soft_ub):
@@ -504,6 +650,10 @@ class Engine:
         if not L.RAFT_min <= raft <= L.RAFT_max:
             warnings.append(f"RAFT {raft:.0f} degC is outside the {L.RAFT_min:.0f}-{L.RAFT_max:.0f} degC band at "
                             f"{s.humidity_g:.0f} g/Nm3 blast moisture (DATA-03/04).")
+        om_info = self.omega_info(o, s)
+        if om_info["mode"] == "blend" and om_info["outside"]:
+            warnings.append("Shaft efficiency extrapolated beyond what BF-02 ran: " + "; ".join(om_info["outside"])
+                            + f" (certainty {om_info['certainty']}, GAS-18).")
         out = dict(P_th=P, P_tday=P * 24, settings=asdict(s), limits=asdict(L), fuel_in_objective=fuel, ore6_on=ore6_on,
                    z=zs, wet_kg={v.id: float(w) for v, w in zip(self.vars, zs)},
                    dry_kg={v.id: float(w * (1 - v.moist / 100)) for v, w in zip(self.vars, zs)},
@@ -517,10 +667,40 @@ class Engine:
                    blast_nm3h=V, O2_nm3h=P * o["O2"], enrich_tag=self.hy.enrich_tag(s.O2_per_air), raft=raft,
                    dlnK=d, V_ceiling=self.hy.v_ceiling(s.Pb, s.Pt, d), Pb_needed=self.hy.pb_needed(V, s.Pt, d),
                    charging_th=P / 1000 * (zs.sum() + s.nut_plant), charges_per_h=P / 1000 * (zs.sum() + s.nut_plant) / L.charge_t,
-                   charging_cap_th=L.charge_t * L.charges_per_h, warnings=warnings,
+                   charging_cap_th=L.charge_t * L.charges_per_h, warnings=warnings, omega=om_info,
                    facts_version=self.facts.version, facts=list(ENGINE_FACTS))
         out["dP_needed"] = out["Pb_needed"] - s.Pt
         return out
+
+    def omega_info(self, o: Mapping[str, Any], s: Settings) -> dict[str, Any]:
+        """Shaft efficiency of an evaluated plan (``evaluate(full=True)``): value, parts, sigma and certainty."""
+        if s.omega_mode != "blend":
+            return dict(mode="fixed", value=float(o["omega"]), omega_cal=float(self.cal["omega"]), sigma_K=0.0,
+                        certainty="Held", support="", outside=[])
+        m = self.omega_model()
+        t = o["omega_terms"]
+        wet = 1 - self.case0["coke"]["moist_pct"] / 100
+        to_K = abs(self._dKdw) / wet
+        sigK = float(o["sig_K"])
+        return dict(mode="blend", value=float(o["omega"]), omega_cal=float(self.cal["omega"]), sigma_omega=t["sigma"],
+                    sigma_K=sigK, sigma_parts_K={k: to_K * v for k, v in t["sigma_parts"].items()},
+                    certainty=m.certainty(sigK, t["support"]), support=t["support"], outside=list(t["outside"]),
+                    d_blend=t["d_blend"], d_blend_phys=t["d_blend_phys"], d_disc=t["d_disc"], d_oper=t["d_oper"],
+                    d_R=t["d_R"], R=t["R"], k_blend=t["k_blend"], gas_in_excess=t["gas_in_excess"],
+                    wall_gas_share=t["wall_gas_share"], cal_se_K=to_K * m.cal_se, day_sd_K=to_K * m.day_sd,
+                    dK_domega=self._dKdw, risk_k=s.risk_k, filter=s.certainty, version=m.version, terms=t)
+
+    def saving_sigma(self, a: Mapping[str, Any], b: Mapping[str, Any]) -> dict[str, float] | None:
+        """1-sigma of the coke (kg/tHM wet) and cost (Rs/tHM) difference between two blend-mode results of this
+        engine's calibration (e.g. the plan and today's charged blend)."""
+        oa, ob = a.get("omega") or {}, b.get("omega") or {}
+        if oa.get("mode") != "blend" or ob.get("mode") != "blend":
+            return None
+        m = self.omega_model()
+        sw = difference_sigma(m, oa["terms"], ob["terms"])
+        wet = 1 - self.case0["coke"]["moist_pct"] / 100
+        sk = abs(self._dKdw) * sw / wet
+        return dict(sigma_omega=sw, sigma_coke=sk, sigma_cost=sk * self.prices_fuel["coke"] / 1000)
 
     # ------------------------------------------------------------------------------------------------ modes
     def min_cost(self, prod_t_day=None, P=None, s: Settings | None = None, L: Limits | None = None, fuel=True, z0=None,
@@ -543,6 +723,7 @@ class Engine:
 
     def max_prod_at(self, s: Settings, L: Limits, fuel=True, lo=80.0, hi=115.0, tol=0.01, ore6_on=False, z0=None):
         """Highest production (t/h) with a feasible blend at controls s. Bisection on production."""
+        lo, hi = self.p_range(s, lo, hi)
         r = self._try(s, lo, L, fuel, z0=z0, ore6_on=ore6_on)
         if r is None or not r["feasible"]:
             return None
@@ -612,6 +793,7 @@ class Engine:
         Also returns 'curves': the frontier on a production grid (one per oversize option)."""
         L = replace(L, process=True)
         r_now = (base or Settings()).O2_per_air
+        P_lo = self.p_range(base or Settings(), P_lo, 1e9)[0]
         levels = [r_now] if o2_levels is None else sorted(set([r_now] + [r for r in o2_levels if r >= r_now - 1e-12]))
         cost = lambda x: x["cost"]["total"] if (x is not None and x["feasible"]) else np.inf
         gr = (5 ** 0.5 - 1) / 2
@@ -722,4 +904,7 @@ def summary(r, eng: Engine) -> dict[str, Any]:
              flux_cost=c["flux"], coke_cost=c["coke"], nut_cost=c["nut"], pci_cost=c["pci"], fuel_cost=c["fuel"],
              total=c["total"], total_day=c["total"] * r["P_tday"], feasible=r["feasible"],
              binding=", ".join(r.get("binding", [])))
+    om = r.get("omega") or {}
+    d.update(omega=om.get("value", o.get("omega")), omega_mode=om.get("mode", "fixed"), sigma_coke=om.get("sigma_K", 0.0),
+             sigma_cost=c.get("sigma", 0.0), certainty=om.get("certainty", "Held"))
     return d

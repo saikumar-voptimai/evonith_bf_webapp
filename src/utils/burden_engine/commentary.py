@@ -50,9 +50,11 @@ RULES YOU MUST FOLLOW:
 3. Start from the model check. If the energy model is not on track, or the latest scored shift is stale, say what \
    that means for the plan before anything else. Quote the fact register ID when you lean on a coefficient.
 4. If the plan breaks a limit, lead with it. A saving on an infeasible plan is not a saving.
-5. Respect the stated uncertainties: shaft efficiency held at the calibration (about +/-7 kg/tHM coke day to day), \
-   burden-resistance rules extrapolated beyond their fitted range, process limits that are an operating envelope \
-   and not equipment ratings. A saving inside the model's error band is not a reason to change the burden - say so.
+5. Respect the stated uncertainties: shaft efficiency either held at the calibration or blend-dependent with the \
+   plan's sigma(coke) and certainty class (High / Medium / Low) as stated; the day-to-day spread (about +/-7 kg/tHM \
+   coke); burden-resistance rules extrapolated beyond their fitted range; process limits that are an operating \
+   envelope and not equipment ratings. A saving inside the model's error band (smaller than one sigma of the saving) \
+   is not a reason to change the burden - say so. A Low-certainty plan is outside what BF-2 has run: say so first.
 6. Burnt and charged coke are the same coke a descent time apart; compare them over a day or more, never shift by \
    shift.
 
@@ -255,7 +257,19 @@ def describe_plan(r: Mapping[str, Any], label: str, names: Mapping[str, str], fl
             f"{_f(r.get('O2_nm3h'), ',.0f')} Nm3/h (enrichment tag {_f(r.get('enrich_tag'), '.2f')} %), RAFT "
             f"{_f(r.get('raft'), ',.0f')} °C, eta CO {_f(o.get('eta'))} %, top gas {_f(o.get('T_top'), '.0f')} °C, "
             f"hot-blast pressure needed {_f(r.get('Pb_needed'), '.2f')} bar g, dP {_f(r.get('dP_needed'), '.2f')} bar, "
-            f"shaft efficiency {_f(o.get('omega'), '.3f')} (held)")
+            f"shaft efficiency {_f(o.get('omega'), '.3f')} "
+            + ("(blend-dependent)" if (r.get("omega") or {}).get("mode") == "blend" else "(held at the calibration)"))
+    om = r.get("omega") or {}
+    if om.get("mode") == "blend":
+        lines.append(
+            f"Shaft efficiency (blend-dependent, GAS-13..18): {_f(om.get('value'), '.3f')} against the calibration "
+            f"{_f(om.get('omega_cal'), '.3f')}; parts: blend {_f(om.get('d_blend'), '+.4f')}, class correction "
+            f"{_f(om.get('d_disc'), '+.4f')}, operation {_f(om.get('d_oper'), '+.4f')}, gas quantity {_f(om.get('d_R'), '+.4f')}; "
+            f"sigma(coke) +/-{_f(om.get('sigma_K'), '.1f')} kg/tHM, sigma(cost) +/-{_f(r['cost'].get('sigma'), ',.0f')} "
+            f"Rs/tHM; certainty {om.get('certainty')}"
+            + (f"; outside what BF-2 ran: {'; '.join(om.get('outside') or [])}" if om.get("outside") else "")
+            + f"; calibration error +/-{_f(om.get('cal_se_K'), '.1f')} and day-to-day spread +/-{_f(om.get('day_sd_K'), '.1f')} "
+              "kg/tHM are not in sigma")
     bt = binding_table(r)
     if not bt.empty:
         lines.append("Binding limits (shadow price, Rs/tHM per unit): " + "; ".join(

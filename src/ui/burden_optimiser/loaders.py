@@ -19,7 +19,8 @@ from config.config_loader import load_config
 from data.burden_engine.calibration import CalibrationInfo, fallback_calibration, live_calibration
 from data.burden_engine.inputs import load_charged_blend, load_yard
 from utils.burden_engine.engine import REFERENCE_INPUTS_PATH, Engine, Limits, Settings
-from utils.burden_engine.scenarios import run_cheapest_level, run_fixed, run_max, run_today, value_of_limits
+from utils.burden_engine.scenarios import (run_candidates, run_cheapest_level, run_fixed, run_max, run_today,
+                                           value_of_limits)
 
 
 @st.cache_data(show_spinner=False)
@@ -109,7 +110,8 @@ def charged_blend(materials_json: str, nonce: int) -> dict[str, Any]:
 
 @st.cache_data(show_spinner=False, max_entries=16)
 def run_mode(mode: str, inputs_json: str, cal_json: str, settings: dict, limits: dict, prod_t_day: float,
-             search_o2: bool, n_o2: int, P_lo: float, step: float, today_json: str = "{}") -> dict[str, Any]:
+             search_o2: bool, n_o2: int, P_lo: float, step: float, today_json: str = "{}",
+             auto: bool = False) -> dict[str, Any]:
     eng = Engine(json.loads(inputs_json), json.loads(cal_json))
     s, L = Settings(**settings), Limits(**limits)
     if mode == "fixed":
@@ -118,10 +120,19 @@ def run_mode(mode: str, inputs_json: str, cal_json: str, settings: dict, limits:
         shares = json.loads(today_json or "{}")
         out["today"] = run_today(json.loads(inputs_json), json.loads(cal_json), shares, prod_t_day, s, L) if shares \
             else None
+        if auto:
+            out["auto"] = run_candidates(eng, prod_t_day, s, L, out["today"])
         return out
     if mode == "cheapest":
-        return run_cheapest_level(eng, s, L, search_o2=search_o2, n_o2=n_o2, P_lo=P_lo, step=step)
-    return run_max(eng, s, L)
+        out = run_cheapest_level(eng, s, L, search_o2=search_o2, n_o2=n_o2, P_lo=P_lo, step=step)
+        plan = out.get("best")
+    else:
+        out = run_max(eng, s, L)
+        plan = out.get("result")
+    if auto and plan is not None:
+        s_p = Settings(**plan["settings"])
+        out["auto"] = run_candidates(eng, plan["P_tday"], s_p, Limits(**plan["limits"]), None)
+    return out
 
 
 def as_json(obj: Any) -> str:

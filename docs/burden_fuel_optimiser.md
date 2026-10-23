@@ -87,7 +87,7 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
   dust, packed-bed anchor. Fewer than 10 stable shifts → the shipped Jul–Oct 2026 calibration, and the page says so.
 * **Operating regime**: 14-day medians of HBT, blast, O₂, pressures, ΔP, HMT, Si, production, ηCO, top gas.
   These pre-fill the controls (Step 2) and appear as "today" next to each limit.
-* **Fact register** (`src/config/facts_register.json`, v1.2): every coefficient outside the balance, the plausibility
+* **Fact register** (`src/config/facts_register.json`, v1.3): every coefficient outside the balance, the plausibility
   bands and the default limits. Retired facts (COKE-17 webapp hand coefficients, DATA-10 regressed RAFT) are
   refused in code.
 * **Bands.** Fuel rate (coke wet + nut + PCI) above 600 kg/tHM is a limit row; below 520 the result is marked
@@ -95,6 +95,46 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
   outside 0.20–0.80 % are refused.
 * **RAFT** is the plant workbook (`utils.energy_balance.raft`) at the input blast moisture (not measured at BF-02;
   default = the month's typical value from the Coke Energy table).
+
+## Blend-dependent shaft efficiency (#262, closes the certainty menu of #259)
+
+With omega held (ASM-01) a blend moves coke only through its chemistry, so a 10-pt pellet change moved coke by about
+2 kg/tHM. Blend-dependent omega (ASM-18, page default; switch on the page, `Settings.omega_mode="blend"` in code)
+adds how well the gas is used.
+
+```
+ omega(plan) = omega_cal                                   14-day calibration (the anchor, ASM-01)
+             + 0.59 [w(blend, op_cal, R_cal) - w(cal)]     model blend term x plant-data scale (GAS-13, GAS-14)
+             + sum_c b_c (s_c - s_c,cal)                   class correction from the plant data (GAS-15)
+             + [w(blend, op, R) - w(blend, op_cal, R_cal)] production, coke layers, O2 and gas quantity (GAS-16, -17)
+```
+
+* **w** is the BF-02 gas-flow model (v0.4) reduced to its thermal reserve zone: six rings, each a counter-current
+  exchanger between the gas (capacity R·f_i) and the ore's wüstite oxygen (o_i); NTU = κ·k·t_TRZ·C_s/C_min with k the
+  Fe-weighted reduction rate (ISO 7215 RI, as-charged size, (11.25/d)^1.5) and t_TRZ the residence time in the zone.
+  f, o, t come from a quadratic surrogate of the network (520-state design, CV error 0.0002 in omega); κ is re-fitted
+  at start-up so that w(calibration state) equals the calibrated omega. R = O_max,TRZ/(Y_W n_Fe) is computed by the
+  two-zone balance itself: `rist.solve_2z(..., omega_fn=)` solves omega inside equation E2.
+* **Data scale.** Daily omega of 200 days (Dec 2025 – Oct 2026) regressed on the model's blend term with class
+  shares, operation and quality as controls, AR(1) errors, priors λ ~ N(1, 0.5²), b ~ N(0, τ²) with τ by marginal
+  likelihood; month-effect and trend specifications averaged. λ = 0.59 ± 0.33.
+* **Uncertainty and certainty** (`omega_model.OmegaModel`): σ(omega) relative to the calibration from the posterior,
+  50 % of the operating and gas-quantity terms and the surrogate error, converted with the loop-inclusive dK/dω
+  (about −340 kg/tHM). Classes (GAS-18): High σ ≤ 2 kg/tHM and inside the 1st–99th percentile of what BF-02 ran;
+  Medium σ ≤ 5 and within 5 pt / 3 t/h; Low otherwise.
+* **Optimiser options.** Certainty filter (`Settings.certainty` = medium / high: σ row and class / production range
+  rows); risk aversion (`Settings.risk_k`: objective = cost + k·σ(cost)); auto mode (`scenarios.run_candidates`,
+  `utils/burden_engine/auto_review.py`): candidates A lowest cost, B cost + 1.28σ, C High only, T today's blend; the
+  rule picks the lowest cost + 1σ and holds today's blend when the saving is inside 1σ (ASM-19); a language model
+  reviews the pick as JSON (choice must be a candidate, numbers checked against the table, disagreement displayed).
+* **Validation.** Fixed mode reproduces the case report exactly (tests). Leave-one-month-out CV of the daily omega:
+  no model predicts a new month's level (physics-structured 0.029, XGBoost 0.030, mean 0.030 RMSE), which is why the
+  model supplies differences only and XGBoost is a benchmark, not the model.
+* **Reference results at 2,270 t/d** (16 Oct yard): pellet 10 → 20 % with the blend re-optimised: coke −0.2 kg/tHM
+  held, −5.4 kg/tHM blend-dependent, cost +Rs 227 → +Rs 39/tHM; pellet replacing sinter only: coke +4.6 held,
+  +2.2 blend-dependent (acid pellet needs limestone). Coke responses to HMT, Si and blast moisture are about 1.35
+  times the held-omega values (gas-quantity loop, GAS-17). Step 1: the cost frontier between 2,064 and 2,304 t/d
+  is flat within Rs 70/tHM (held omega: falls Rs 126/tHM), inside the uncertainty (residence time, GAS-16).
 
 ## Files
 
@@ -108,6 +148,8 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 | `src/assets/burden_engine/optimiser_notes.md` | Optimiser notes: the commentary's static context |
 | `src/utils/slag_bands.py` | Plant p5–p95 slag bands, shared with page 9 |
 | `src/utils/burden_engine/engine.py` | `Engine`, `Settings`, `Limits`, `value_in_use`, `summary` |
+| `src/utils/burden_engine/omega_model.py` + `src/assets/burden_engine/omega_model.json` | Blend-dependent shaft efficiency: ring model, surrogate, posterior, σ, certainty |
+| `src/utils/burden_engine/auto_review.py`, `src/ui/burden_optimiser/omega_panel.py` | Auto mode rule and review checks (pure); omega settings, panel and review UI |
 | `src/utils/burden_engine/hydraulics.py` | Packed-bed limit, enrichment tag, per-tonne RAFT |
 | `src/utils/burden_engine/facts.py` | Fact register loader (guarded access) |
 | `src/utils/burden_engine/calibration.py` | Two-zone calibration and regime from pipeline frames |
@@ -115,7 +157,7 @@ charging), binding limits with their shadow prices, value in use per tonne of Fe
 | `src/data/burden_engine/inputs.py` | Yard / prices / limits from the BMO provider and `bmo_operator_inputs.yml`; today's charged blend |
 | `src/data/burden_engine/calibration.py` | Live calibration over the window, with fallback |
 | `src/config/burden_optimiser.yml` | Page config (yard window, charging, thermal basis, frontier grid, calibration window, model check) |
-| `src/config/facts_register.json` + `schemas/facts_register.schema.json` | Fact register v1.2 |
+| `src/config/facts_register.json` + `schemas/facts_register.schema.json` | Fact register v1.3 |
 | `src/assets/burden_engine/` | Reference yard (16 Oct 2026 UAT) and Jul–Oct 2026 calibration |
 | `scripts/compare_bmo_vs_burden_engine.py` | Page-9 LP against the engine (ore + flux objective) |
 | `scripts/replay_slag_vs_lab.py` | Both slag calculations on each day's actual charge against the lab's slag analysis |
@@ -243,9 +285,9 @@ mean slag analysis (`docs/slag_replay_vs_lab.md`). 284 days, Sep 2025 – Oct 20
 
 ## What the engine does not see
 
-* Shaft efficiency is held at the calibration value for every blend (GAS-10): no measurable blend effect in the plant
-  data; its day-to-day spread (±0.028, about ±7 kg/tHM coke) is the largest single uncertainty. Uncertainty and the
-  certainty menu are #259 (phase 2).
+* Blend-dependent shaft efficiency holds the charging matrix at the one in force over the calibration window, and
+  coke quality, nut coke, PCI and hot-blast temperature act on omega only through the calibration. The day-to-day
+  spread of omega (SD 0.020 after the model, about ±7 kg/tHM) is not in σ; it averages out over days.
 * Process limits default to the Jun–Oct 2026 operating envelope, not equipment ratings. Oxygen and stove gas are
   unpriced.
 * Not limited: phosphorus, alkalis, zinc, sulphur; the sinter plant's cost of a basicity change.

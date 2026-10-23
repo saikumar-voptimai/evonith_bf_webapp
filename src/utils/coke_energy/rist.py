@@ -118,10 +118,19 @@ def calibrate_2z(case, K, V, eta, p=None, T_R=None, extra_lime=0.0, extra_qtz=0.
                 r_H=eta_H2 / eta_f, eta_f=eta_f, eta=eta, eta_H2=eta_H2, O_err=ro['O_err'], z=z, ro=ro)
 
 
-def solve_2z(case, p, omega, Q_LZ, Q_UZ, r_H, T_R=None, case_fn=None, flux_fn=None, x0=(300.0, 1000.0, 0.35), T_top0=None):
+def solve_2z(case, p, omega, Q_LZ, Q_UZ, r_H, T_R=None, case_fn=None, flux_fn=None, x0=(300.0, 1000.0, 0.35), T_top0=None,
+             omega_fn=None):
     """Fixed shaft-efficiency solve. case_fn(K) may return a re-sized case (IBRM burden); flux_fn(K, case) -> (lime, qtz).
-    Q_LZ, Q_UZ in MJ/tHM. Returns dict with K, V, y_d, eta, eta_f, eta_H2, T_top and the zone/overall results."""
+    Q_LZ, Q_UZ in MJ/tHM. Returns dict with K, V, y_d, eta, eta_f, eta_H2, T_top and the zone/overall results.
+
+    omega_fn(K, z) -> omega makes the shaft efficiency a function of the dry coke rate K and of the zone terms z of
+    the current iterate (``zone_terms``: n_Fe, n_Cg, n_H2, eta_W, O_max_TRZ, ...), e.g. of the TRZ capacity ratio
+    R = O_max_TRZ / (Y_W n_Fe); it is solved inside E2 (blend-dependent omega, utils.burden_engine.omega_model).
+    None: omega fixed (the default). The result reports R_cap (total) and R_cap_C (carbon gas only)."""
     p = {**DEFAULTS, **(p or {})}
+
+    def om_of(K, z):
+        return omega if omega_fn is None else float(omega_fn(K, z))
 
     def build(K):
         c = case_fn(K) if case_fn else case
@@ -132,7 +141,7 @@ def solve_2z(case, p, omega, Q_LZ, Q_UZ, r_H, T_R=None, case_fn=None, flux_fn=No
         K, V, yd = x
         c, lime, qtz = build(K)
         z = zone_terms(K, V, yd, c, p, T_R, lime, qtz)
-        return np.array([z['E1'], z['O_TRZ'] - omega * z['O_max_TRZ'], z['LZ_avail'] - Q_LZ]), z
+        return np.array([z['E1'], z['O_TRZ'] - om_of(K, z) * z['O_max_TRZ'], z['LZ_avail'] - Q_LZ]), z
 
     x = np.array(x0, dtype=float)
     for _ in range(30):
@@ -161,7 +170,9 @@ def solve_2z(case, p, omega, Q_LZ, Q_UZ, r_H, T_R=None, case_fn=None, flux_fn=No
             break
     cc['T_top'] = T
     ro = core(K, V, cc, p, eta_CO=eta, extra_lime=lime, extra_qtz=qtz)
-    return dict(K=K, V=V, y_d=yd, r_d=yd / Y_W, eta=eta, eta_f=eta_f, eta_H2=eta_H2, T_top=T, omega=omega,
+    om = om_of(K, z)
+    return dict(K=K, V=V, y_d=yd, r_d=yd / Y_W, eta=eta, eta_f=eta_f, eta_H2=eta_H2, T_top=T, omega=om,
+                R_cap=z['O_max_TRZ'] / (Y_W * z['nFe']), R_cap_C=z['etaWc'] * z['nCg'] / (Y_W * z['nFe']),
                 z=z, ro=ro, case=cc, lime=lime, qtz=qtz, O_err=ro['O_err'], E_err=ro['avail_for_loss'] - Q_LZ - Q_UZ)
 
 
