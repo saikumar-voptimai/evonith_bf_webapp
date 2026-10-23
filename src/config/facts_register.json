@@ -1528,10 +1528,10 @@
    "grade": "B",
    "basis": "568 shifts: cooling water flow x dT by circuit = 8.0 GJ/h (staves rows 6-10 5.0, hearth and bottom 2.7, tuyere noses 0.4) against 64 GJ/h required by the calibrated two-zone balance (692 MJ/tHM); coverage 13 % (10-18 % by month). Typical furnaces of this size report 50-70 GJ/h of wall and cooling loss.",
    "literature": "Heat loss to cooling 0.5-0.8 GJ/tHM in comparable furnaces",
-   "next_test": "Calibrate flow meters; dT sensors per circuit; account rows 1-5, 11-15 and cold-surface circuits",
+   "next_test": "Verify flow meters; paired calibrated dT sensors per circuit; dT on rows 11-15 and the cold-surface circuits",
    "version": "1.5",
    "date": "2026-10-22",
-   "note": "Rows 6-10 dT 1.1-2.4 K on 1,630 m3/h; tuyere nose dT 0.18 K (implausible); rows 1-5, 11-15 and the cold-surface circuits (about 650 m3/h design) are not instrumented. The measured value cannot replace the calibrated loss (ASM-03); the gap is an instrumentation finding, not a heat-balance finding.",
+   "note": "Rows 6-10 dT 1.1-2.4 K on 1,630 m3/h; tuyere nose dT 0.18 K (implausible); rows 11-15 and the rows 6-10 cold-surface circuits (657 m3/h design) have no dT measurement. The measured value cannot replace the calibrated loss (ASM-03); the gap is an instrumentation finding, not a heat-balance finding.",
    "params": {
     "required_GJh": 64.0,
     "measured_GJh": 7.97,
