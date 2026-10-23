@@ -100,11 +100,11 @@ def test_moisture_term(eng):
     assert d_blend < d_held
 
 
-def test_asset_strata13():
+def test_asset_strata14():
     from utils.burden_engine.omega_model import MODEL_PATH
     with open(MODEL_PATH, encoding="utf-8") as fh:
         spec = json.load(fh)
-    assert spec["version"].startswith("STRATA 1.3") and spec["gas_capacity_channel"] is False
+    assert spec["version"].startswith("STRATA 1.4") and spec["gas_capacity_channel"] is False
     assert spec["brand"]["name"] == "STRATA" and spec["parts_backend"] == "network"
     mats = spec["materials"]
     ri = {m: v["ri_pct"] for m, v in mats.items()}
@@ -121,7 +121,14 @@ def test_asset_strata13():
     assert {"matrix", "top_eta_co", "top_h2", "top_gas_T_c", "hbt_c"} <= set(ctx)
     assert spec["nut_coke"]["coef"] > 0 and spec["nut_coke"]["se"] > 0
     ops = spec["operating_scales"]
-    assert 0.2 < ops["production"] < ops["other"] < 2.0 and ops["production_sd"] > 0
+    assert ops["production_channel"] is False and ops["production"] == 0.0 and ops["production_sd"] == 0.0  # STRATA 1.4
+    assert 0.3 < ops["other"] < 2.0 and ops["other_sd"] > 0
+    cs0 = spec["channel_scales"]
+    i = cs0["names"].index("q_prod")
+    assert cs0["mean"][i] == 0.0 and all(abs(x) == 0.0 for x in cs0["cov"][i]) and cs0["fixed"] == {"q_prod": 0.0}
+    strict = spec["validation"]["strict_2023_24"]
+    assert strict["rmse"]["All days"]["STRATA 1.4"] < strict["rmse"]["All days"]["Fixed-omega"]
+    assert strict["skill_day"]["STRATA 1.4"] > strict["skill_day"]["STRATA 1.3"]
     inv = spec["certainty"]["investigate"]
     assert inv["classes_max"] == {"pellet": 25.0} and inv["sigma_kg"] == 8.0
     po, cs = spec["posterior"], spec["channel_scales"]
@@ -141,9 +148,10 @@ def test_asset_strata13():
 
 def test_production_split(eng):
     """STRATA 1.2+: the operating channel is a production part (TRZ residence) and the rest, scaled apart; the parts
-    add up to the operating channel; production alone moves only the production part."""
+    add up to the operating channel. STRATA 1.4: the production part has scale 0 (no production channel); its physics
+    is still solved and reported, and production alone leaves the scaled operating channel unchanged."""
     m = eng.omega_model()
-    assert m.split_oper and m.lam_prod < 1.0 and m.lam_prod < m.lam_rest
+    assert m.split_oper and m.lam_prod == 0.0 and m.sd_prod == 0.0 and not m.prod_channel
     s = Settings(omega_mode="blend")
     z = eng.min_cost(prod_t_day=2270, s=s, L=Limits())["z"]
     a = eng.evaluate(z, s, 90.0, full=True)["omega_terms"]
@@ -151,9 +159,10 @@ def test_production_split(eng):
     for t in (a, b):
         assert t["d_prod"] + t["d_rest"] == pytest.approx(t["d_oper"], abs=1e-12)
         assert t["d_prod"] == pytest.approx(m.lam_prod * t["d_prod_phys"], rel=1e-9)
-    assert b["d_prod_phys"] < a["d_prod_phys"]                               # faster: shorter TRZ residence
+        assert t["d_prod"] == 0.0
+    assert b["d_prod_phys"] < a["d_prod_phys"]                               # faster: shorter TRZ residence (physics)
     slope = (b["d_prod_phys"] - a["d_prod_phys"]) / 5.0
-    assert -0.004 < slope < -0.001                                           # GAS-16 physics about -0.0023 per t/h
+    assert -0.004 < slope < -0.001                                           # network about -0.0023 per t/h (GAS-16)
 
 
 def test_investigate_tier(eng, inputs):
@@ -189,6 +198,7 @@ def test_critical_assumptions(eng):
     names = {x["assumption"] for x in rows}
     assert {"RI exponent of the reduction rate (laboratory RI weight)", "size exponent of the reduction rate",
             "plant-data scale, pellet channel"} <= names
+    assert "plant-data scale, production channel" not in names                    # STRATA 1.4: no production channel
     if m.spec["kinetics"].get("ri_exponent", 1.0) == 0.0:
         assert not any(n.startswith("RI ") and "exponent" not in n for n in names)
     assert all(x["d_coke_kg"] >= 0 for x in rows if x.get("symmetric"))
@@ -236,12 +246,15 @@ def test_pellet_lowers_coke_in_blend_mode_only(inputs):
     assert b20["omega"]["sigma_K"] > b10["omega"]["sigma_K"]            # further from the calibration blend
 
 
-def test_production_lowers_omega(eng):
+def test_production_has_no_residence_penalty(eng):
+    """STRATA 1.4 (GAS-16 retired): production alone does not lower omega through the TRZ residence; the other-
+    operation channel (blast, coke layers per tonne) moves it by less than 0.002 over 88 -> 96 t/h."""
     s = Settings(omega_mode="blend")
     z = eng.min_cost(prod_t_day=2270, s=s, L=Limits())["z"]
     lo = eng.evaluate(z, s, 88.0, full=True)
     hi = eng.evaluate(z, s, 96.0, full=True)
-    assert hi["omega"] < lo["omega"] - 0.005
+    assert abs(hi["omega"] - lo["omega"]) < 0.002
+    assert hi["omega_terms"]["d_prod_phys"] < lo["omega_terms"]["d_prod_phys"] - 0.01      # physics still solved
 
 
 def test_certainty_filter_high(inputs):

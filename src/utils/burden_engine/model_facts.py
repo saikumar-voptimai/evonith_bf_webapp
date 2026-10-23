@@ -4,9 +4,10 @@ MOD  Coke response of the two shaft-efficiency models to a standard change at th
      baseline, omega held at the calibration, ASM-01) and STRATA-omega (blend- and operation-dependent, ASM-18). Each
      fact carries both values, their difference and the 1-sigma of the STRATA value.
        substitutions  10 wet pt of ferrous, flux held at the reference plan (coke through chemistry + omega)
-       production     +1 t/h at the same burden (heat loss GJ/h held: dilution in both; residence in STRATA only)
+       production     +1 t/h at the same burden (heat loss GJ/h held: dilution in both; STRATA 1.4 has no production
+                      channel, so the two models differ only through the other-operation response)
        moisture       +1 g/Nm3 blast moisture at the same burden
-       nut coke       +10 kg/tHM at the same burden (STRATA 1.3, GAS-23)
+       nut coke       +10 kg/tHM at the same burden (STRATA 1.3+, GAS-23)
      Reference point: the 16 Oct 2026 UAT yard, the shipped calibration, 2,270 t/d, a record-average ferrous blend.
 VAL  Out-of-sample burnt coke by blend family (``validation.by_blend`` of the STRATA asset, oos/by_blend.py):
      realised against Fixed-omega and STRATA-omega, skill, bias and the verdict (Supported / Disputed / Neutral /
@@ -105,9 +106,10 @@ def model_facts(eng: Engine | None = None) -> list[dict[str, Any]]:
     rows.append(dict(common, id="MOD-09", statement="Production +1 t/h at the same burden: coke response, Fixed-omega "
                                                     "and STRATA-omega", value=round(ks, 2), se=round(sg, 2),
                      unit="kg/tHM dry coke per t/h",
-                     basis="Heat loss GJ/h held (dilution of the loss per tonne in both models); STRATA-omega adds the "
-                           "shorter TRZ residence (production channel, GAS-16). Plant data: burnt coke -1.3 +/- 0.4 "
-                           "kg/tHM per t/h within months (VAL production test)",
+                     basis="Heat loss GJ/h held (dilution of the loss per tonne in both models). STRATA 1.4 has no "
+                           "production channel (GAS-16 retired, GAS-25): the TRZ-residence effect of the network is not "
+                           "applied, so the STRATA value differs from Fixed-omega only through the other-operation "
+                           "channel. Plant data: burnt coke -1.3 +/- 0.4 kg/tHM per t/h within months (GAS-22)",
                      params=dict(fixed_omega=round(kf, 2), strata_omega=round(ks, 2), difference=round(ks - kf, 2),
                                  sigma_strata=round(sg, 2), d_omega=round(dw, 4))))
     s_h = replace(s_fix, humidity_g=s_fix.humidity_g + 1.0)

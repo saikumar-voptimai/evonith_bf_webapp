@@ -19,7 +19,8 @@ def test_model_facts_directions(mod):
     assert p["MOD-01"]["strata_omega"] < p["MOD-01"]["fixed_omega"] - 2.0      # pellet for sinter: omega gain
     assert p["MOD-08"]["strata_omega"] < -2.0 and abs(p["MOD-08"]["fixed_omega"]) < 1.0
     assert p["MOD-02"]["strata_omega"] > p["MOD-02"]["fixed_omega"]            # lump ore: slower reduction
-    assert p["MOD-09"]["fixed_omega"] < 0 < p["MOD-09"]["difference"]          # dilution; residence penalty
+    assert p["MOD-09"]["fixed_omega"] < 0                                        # dilution of the heat loss
+    assert abs(p["MOD-09"]["difference"]) < 0.2                                  # STRATA 1.4: no residence penalty
     assert p["MOD-10"]["fixed_omega"] > 0.5 and p["MOD-10"]["strata_omega"] < p["MOD-10"]["fixed_omega"]
     assert p["MOD-11"]["fixed_omega"] < 0 and p["MOD-11"]["strata_omega"] < p["MOD-11"]["fixed_omega"]   # nut coke (GAS-23)
     for v in p.values():

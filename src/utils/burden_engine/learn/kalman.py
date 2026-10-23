@@ -1,7 +1,8 @@
 """Random-walk Kalman filter on the STRATA-omega plant-data scales with AR(1) day errors.
 
-State theta = (lam_pellet, lam_lump, lam_production, lam_other, a_moisture, a_nut); theta_t = theta_{t-1} + w_t,
-w ~ N(0, Q), Q = diag(rw_sd^2) per day. Observation on consecutive days after the Prais-Winsten transform
+State theta = (lam_pellet, lam_lump, lam_production, lam_other, a_moisture, a_nut), lam_production fixed at 0
+(STRATA 1.4); theta_t = theta_{t-1} + w_t, w ~ N(0, Q), Q = diag(rw_sd^2) per day. Observation on consecutive days
+after the Prais-Winsten transform
     dobs_t - rho dobs_{t-1} = (x_t - rho x_{t-1})' theta_t + e_t,   e ~ N(0, sigma_e^2)
 and sqrt(1 - rho^2) (dobs_t = x_t' theta_t + e_t) after a gap. The one-step prediction of each day is made with
 theta_{t-1} before the day updates the state, so the prediction history is out of sample by construction.
@@ -18,9 +19,11 @@ import numpy as np
 
 from utils.burden_engine.learn.evidence import PARAMS
 
-PRIOR_MEAN = (1.0, 1.0, 1.0, 1.0, 0.0, 0.0)
-PRIOR_SD = (0.5, 0.5, 0.5, 0.5, 0.005, 0.0005)
-RW_SD = (0.01, 0.01, 0.01, 0.01, 0.00002, 0.000002)   # per day: about 0.19 (lam) over a year of random walk
+# STRATA 1.4: no production channel. lam_production is held at 0 (prior sd 0, no random walk); the q_prod column stays
+# in the evidence store so that the channel can be re-tested offline (GAS-16, GAS-25).
+PRIOR_MEAN = (1.0, 1.0, 0.0, 1.0, 0.0, 0.0)
+PRIOR_SD = (0.5, 0.5, 0.0, 0.5, 0.005, 0.0005)
+RW_SD = (0.01, 0.01, 0.0, 0.01, 0.00002, 0.000002)    # per day: about 0.19 (lam) over a year of random walk
 
 
 @dataclass
@@ -48,9 +51,14 @@ class RandomWalkKalman:
 
     @classmethod
     def from_asset(cls, spec: Mapping[str, Any], rw_sd=RW_SD) -> RandomWalkKalman:
-        """Start from the deployed STRATA posterior (``channel_scales`` of the asset): the forward-running learner."""
+        """Start from the deployed STRATA posterior (``channel_scales`` of the asset): the forward-running learner.
+        Terms the asset fixes (``channel_scales.fixed``, STRATA 1.4: q_prod = 0) get no random walk."""
         cs = spec["channel_scales"]
-        return cls(cs["mean"], cs["cov"], cs["rho"], cs["sigma_e"], rw_sd)
+        rw = np.asarray(rw_sd, float).copy()
+        for name in (cs.get("fixed") or {}):
+            if name in cs["names"]:
+                rw[cs["names"].index(name)] = 0.0
+        return cls(cs["mean"], cs["cov"], cs["rho"], cs["sigma_e"], rw)
 
     @property
     def mean(self) -> np.ndarray:

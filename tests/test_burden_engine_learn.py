@@ -112,14 +112,14 @@ def test_register_proposal_rules(spec, reg):
     p2 = propose(reg, res["state"], fam)
     it = next(i for i in p2["items"] if i["id"] == "VAL-01")
     assert it["kind"] == "status" and not it["automatic"]
-    r_auto = apply(reg, p2, version="1.6x", today="2026-12-01")
+    r_auto = apply(reg, p2, version="1.7x", today="2026-12-01")
     old_status = next(f for f in reg["facts"] if f["id"] == "VAL-01")["status"]
     assert old_status != "Disputed"
     assert next(f for f in r_auto["facts"] if f["id"] == "VAL-01")["status"] == old_status   # status change needs approval
-    r_ok = apply(reg, p2, approved={"VAL-01"}, version="1.7", today="2026-12-01")
+    r_ok = apply(reg, p2, approved={"VAL-01"}, version="1.8", today="2026-12-01")
     assert next(f for f in r_ok["facts"] if f["id"] == "VAL-01")["status"] == "Disputed"
-    assert r_ok["version"] == "1.7" and r_ok["revision_log"][0]["change"].startswith("STRATA-Learn")
-    assert reg["version"] == "1.6"                                           # input untouched
+    assert r_ok["version"] == "1.8" and r_ok["revision_log"][0]["change"].startswith("STRATA-Learn")
+    assert reg["version"] == "1.7"                                           # input untouched
 
 
 def test_exploration():

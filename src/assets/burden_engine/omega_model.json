@@ -1,5 +1,5 @@
 {
- "version": "STRATA 1.3 (2026-10-23): STRATA-omega on STRATA-Flow network solves (no surrogate); RI and RDI from the Evonith laboratory tests as given (set T26), RI-to-rate link calibrated on the plant data (beta 0, n 1), ore RDI as shaft fines, Lloyds fines oversize without size credit, Donimalai oversize return as Donimalai; blend scales per group, production and other operating channels, blast moisture (RH estimate, no steps) and nut coke from the out-of-sample-tested AR(1) posterior (Dec 2025 - Oct 2026)",
+ "version": "STRATA 1.4 (2026-10-23): STRATA-omega on STRATA-Flow network solves; RI and RDI from the Evonith laboratory tests (set T26), beta 0, n 1, ore RDI as shaft fines, Lloyds fines oversize without size credit, Donimalai oversize return as Donimalai; blend scales per group, other-operation channel, blast moisture and nut coke from the AR(1) posterior (Dec 2025 - Oct 2026); no production channel (strict 2023-24 test)",
  "materials": {
   "sinter": {
    "ri_pct": 66.0,
@@ -2991,11 +2991,11 @@
   ],
   "mean": [
    1.0,
-   0.0003376717600170487,
-   1.609982861535095e-05,
-   2.657490698027549e-05,
-   2.209141040384864e-05,
-   1.6140587675136647e-05
+   0.0003464788021724218,
+   1.0483841729904362e-05,
+   1.7304974197209226e-05,
+   1.438542333571687e-05,
+   1.0510383101372473e-05
   ],
   "cov": [
    [
@@ -3008,49 +3008,49 @@
    ],
    [
     0.0,
-    1.7021903157132036e-07,
-    5.841461643718225e-09,
-    9.642108839757678e-09,
-    8.015372685810829e-09,
-    5.85625015420865e-09
+    1.7046188768888586e-07,
+    5.802609886043783e-09,
+    9.5779788498748e-09,
+    7.962062172748682e-09,
+    5.81730003765402e-09
    ],
    [
     0.0,
-    5.841461643718203e-09,
-    3.359261635973937e-08,
-    5.5449078143164735e-08,
-    4.6094172321465154e-08,
-    3.3677660958118456e-08
+    5.802609886043767e-09,
+    3.3617920978848345e-08,
+    5.5490846780276257e-08,
+    4.6128894102622285e-08,
+    3.370302963955429e-08
    ],
    [
     0.0,
-    9.642108839757642e-09,
-    5.544907814316473e-08,
-    9.152607328947697e-08,
-    7.608455785720324e-08,
-    5.5589455556185396e-08
+    9.577978849874775e-09,
+    5.549084678027626e-08,
+    9.159501797655728e-08,
+    7.614187077192337e-08,
+    5.563132993668202e-08
    ],
    [
     0.0,
-    8.0153726858108e-09,
-    4.6094172321465154e-08,
-    7.608455785720324e-08,
-    6.324820607147876e-08,
-    4.62108664286081e-08
+    7.962062172748661e-09,
+    4.6128894102622285e-08,
+    7.614187077192336e-08,
+    6.329584962942095e-08,
+    4.6245676113008666e-08
    ],
    [
     0.0,
-    5.856250154208628e-09,
-    3.367766095811845e-08,
-    5.5589455556185396e-08,
-    4.62108664286081e-08,
-    3.376292085927824e-08
+    5.817300037654004e-09,
+    3.370302963955429e-08,
+    5.563132993668202e-08,
+    4.6245676113008666e-08,
+    3.3788353765224045e-08
    ]
   ],
-  "note": "blend channel = network physics (x_blend coefficient 1) + b_c = (lam_g - 1) g_c; lam_pellet 1.377 +/- 0.461, lam_lump 0.959 +/- 0.464 (lump = CLO, ROM, Gomti, oversize); AR(1) posterior of the daily change of omega against its 14-day anchor on exact network channels; g_c physics change of omega per wet pt replacing sinter (RI set T26)"
+  "note": "blend channel = network physics (x_blend coefficient 1) + b_c = (lam_g - 1) g_c; lam_pellet 1.387 +/- 0.461, lam_lump 0.973 +/- 0.464 (lump = CLO, ROM, Gomti, oversize); AR(1) posterior of the daily change of omega against its 14-day anchor on exact network channels, STRATA 1.4 (no production channel); g_c physics change of omega per wet pt replacing sinter (RI set T26)"
  },
  "priors": {
-  "oper_rel_sd": 0.298,
+  "oper_rel_sd": 0.289,
   "gas_capacity_rel_sd": 0.0
  },
  "support": {
@@ -3102,8 +3102,8 @@
  },
  "sigma": {
   "omega_cal_se": 0.006,
-  "omega_day_sd": 0.0256,
-  "note": "omega_day_sd: out-of-sample RMSE of STRATA 1.3 against the daily omega (expanding test)"
+  "omega_day_sd": 0.0257,
+  "note": "omega_day_sd: out-of-sample RMSE of STRATA 1.4 against the daily omega (expanding test)"
  },
  "reference": {
   "R": 0.704,
@@ -3121,121 +3121,65 @@
  "validation": {
   "method": "day minus its 14-day anchor (the Coke Energy pipeline rolling calibration); channels from network runs of each day (window blend and operation, day blend, day production, day operation; window charging matrix and top gas); parameters estimated on days before the predicted month only (expanding window, refit monthly) or on the other half of the record (time split); skill = 1 - MSE / MSE(Fixed-omega). Coke target: oxygen-balance burnt coke. 175 days, 1 Jan - 7 Oct 2026; blast moisture from the RH estimate.",
   "expanding": {
-   "omega_day": 0.16,
-   "coke_day": 0.128,
-   "coke_7d": 0.219,
-   "rmse_coke": 6.48,
+   "omega_day": 0.155,
+   "coke_day": 0.139,
+   "coke_7d": 0.221,
+   "rmse_coke": 6.44,
    "rmse_fixed": 6.94
   },
   "time_split": {
    "train Dec-May, test Jun-Oct": {
-    "omega_day": 0.187,
-    "coke_day": 0.061
+    "omega_day": 0.202,
+    "coke_day": 0.147
    },
    "train Jun-Oct, test Jan-May": {
-    "omega_day": 0.104,
-    "coke_day": 0.134
+    "omega_day": 0.085,
+    "coke_day": 0.114
    }
   },
   "alternatives": {
-   "STRATA 1.3 (final)": {
+   "STRATA 1.4 (final)": {
+    "coke_day": 0.139,
+    "coke_7d": 0.221,
+    "omega_day": 0.155,
+    "split_dec_may": 0.147,
+    "split_jun_oct": 0.114
+   },
+   "STRATA 1.3 (with production channel)": {
     "coke_day": 0.128,
     "coke_7d": 0.219,
     "omega_day": 0.16,
     "split_dec_may": 0.061,
     "split_jun_oct": 0.134
    },
-   "oversize with size credit": {
-    "coke_day": 0.116,
-    "coke_7d": 0.199,
-    "omega_day": 0.156,
-    "split_dec_may": 0.024,
-    "split_jun_oct": 0.134
-   },
-   "laboratory RI, first-order link (beta 1, n 1.5)": {
-    "coke_day": 0.023,
-    "coke_7d": 0.092,
-    "omega_day": 0.077,
-    "split_dec_may": 0.012,
-    "split_jun_oct": 0.007
-   },
-   "laboratory RI, beta 0.25, n 1.0": {
-    "coke_day": 0.11,
-    "coke_7d": 0.196,
-    "omega_day": 0.147,
-    "split_dec_may": 0.057,
-    "split_jun_oct": 0.102
-   },
-   "size exponent n 0.5": {
-    "coke_day": 0.134,
-    "coke_7d": 0.214,
-    "omega_day": 0.158,
-    "split_dec_may": 0.065,
-    "split_jun_oct": 0.158
-   },
-   "size exponent n 1.5": {
-    "coke_day": 0.12,
-    "coke_7d": 0.219,
-    "omega_day": 0.158,
-    "split_dec_may": 0.046,
-    "split_jun_oct": 0.11
-   },
-   "literature RI S9 (beta 1, n 1.5)": {
-    "coke_day": 0.12,
-    "coke_7d": 0.217,
-    "omega_day": 0.153,
-    "split_dec_may": 0.057,
-    "split_jun_oct": 0.105
-   },
-   "literature RI S8 with size credit, network without ore RDI (STRATA 1.2 physics)": {
-    "coke_day": 0.11,
-    "coke_7d": 0.196,
-    "omega_day": 0.155,
-    "split_dec_may": 0.015,
-    "split_jun_oct": 0.113
-   },
-   "network without ore RDI": {
-    "coke_day": 0.129,
-    "coke_7d": 0.22,
-    "omega_day": 0.161,
-    "split_dec_may": 0.061,
-    "split_jun_oct": 0.135
+   "without moisture term": {
+    "coke_day": 0.131,
+    "coke_7d": 0.197,
+    "omega_day": 0.143,
+    "split_dec_may": 0.166,
+    "split_jun_oct": 0.112
    },
    "without nut-coke term": {
-    "coke_day": 0.115,
-    "coke_7d": 0.198,
-    "omega_day": 0.124,
-    "split_dec_may": 0.072,
-    "split_jun_oct": 0.127
-   },
-   "without moisture term": {
-    "coke_day": 0.12,
-    "coke_7d": 0.19,
-    "omega_day": 0.149,
-    "split_dec_may": 0.093,
-    "split_jun_oct": 0.133
+    "coke_day": 0.128,
+    "coke_7d": 0.202,
+    "omega_day": 0.122,
+    "split_dec_may": 0.163,
+    "split_jun_oct": 0.108
    },
    "with PCI term": {
-    "coke_day": 0.104,
-    "coke_7d": 0.226,
-    "omega_day": 0.143,
-    "split_dec_may": 0.008,
-    "split_jun_oct": 0.121
-   },
-   "oversize own scale": {
-    "coke_day": 0.123,
-    "coke_7d": 0.213,
-    "omega_day": 0.158,
-    "split_dec_may": 0.059,
-    "split_jun_oct": 0.135
-   },
-   "Gomti own scale": {
-    "coke_day": 0.127,
-    "coke_7d": 0.22,
-    "omega_day": 0.158,
-    "split_dec_may": 0.061,
-    "split_jun_oct": 0.134
+    "coke_day": 0.119,
+    "coke_7d": 0.23,
+    "omega_day": 0.14,
+    "split_dec_may": 0.101,
+    "split_jun_oct": 0.102
    }
+  },
+  "v13_expanding": {
+   "omega_day": 0.16,
+   "coke_day": 0.128,
+   "coke_7d": 0.219,
+   "rmse_coke": 6.48,
+   "rmse_fixed": 6.94
   },
   "v12_expanding": {
    "omega_day": 0.256,
@@ -3253,12 +3197,12 @@
     "oversize": 0.1,
     "realised": 296.6,
     "fixed_omega": 296.9,
-    "strata": 296.6,
+    "strata": 296.3,
     "rmse_fixed": 4.15,
-    "rmse_strata": 4.24,
-    "skill": -0.041,
-    "bias": 0.06,
-    "se_bias": 1.12,
+    "rmse_strata": 4.16,
+    "skill": -0.005,
+    "bias": 0.36,
+    "se_bias": 1.13,
     "verdict": "Neutral"
    },
    {
@@ -3271,12 +3215,12 @@
     "oversize": 0.0,
     "realised": 304.3,
     "fixed_omega": 301.7,
-    "strata": 301.5,
+    "strata": 302.2,
     "rmse_fixed": 8.64,
-    "rmse_strata": 8.56,
-    "skill": 0.018,
-    "bias": 2.77,
-    "se_bias": 3.57,
+    "rmse_strata": 8.26,
+    "skill": 0.085,
+    "bias": 2.08,
+    "se_bias": 3.63,
     "verdict": "Modelled only"
    },
    {
@@ -3289,12 +3233,12 @@
     "oversize": 9.9,
     "realised": 307.6,
     "fixed_omega": 306.7,
-    "strata": 306.7,
+    "strata": 307.0,
     "rmse_fixed": 7.64,
-    "rmse_strata": 6.8,
-    "skill": 0.207,
-    "bias": 0.94,
-    "se_bias": 1.71,
+    "rmse_strata": 7.3,
+    "skill": 0.087,
+    "bias": 0.63,
+    "se_bias": 1.93,
     "verdict": "Supported"
    },
    {
@@ -3309,10 +3253,10 @@
     "fixed_omega": 303.5,
     "strata": 303.2,
     "rmse_fixed": 10.33,
-    "rmse_strata": 9.33,
-    "skill": 0.185,
+    "rmse_strata": 9.21,
+    "skill": 0.206,
     "bias": 1.37,
-    "se_bias": 3.53,
+    "se_bias": 3.6,
     "verdict": "Supported"
    },
    {
@@ -3325,11 +3269,11 @@
     "oversize": 5.1,
     "realised": 293.0,
     "fixed_omega": 293.1,
-    "strata": 292.1,
+    "strata": 292.4,
     "rmse_fixed": 0.04,
-    "rmse_strata": 0.9,
-    "skill": -465.332,
-    "bias": 0.9,
+    "rmse_strata": 0.61,
+    "skill": -215.821,
+    "bias": 0.61,
     "se_bias": null,
     "verdict": "Modelled only"
    },
@@ -3343,12 +3287,12 @@
     "oversize": 0.0,
     "realised": 314.1,
     "fixed_omega": 314.1,
-    "strata": 314.0,
+    "strata": 314.1,
     "rmse_fixed": 4.76,
-    "rmse_strata": 4.4,
-    "skill": 0.146,
-    "bias": 0.1,
-    "se_bias": 1.0,
+    "rmse_strata": 4.29,
+    "skill": 0.187,
+    "bias": 0.03,
+    "se_bias": 0.98,
     "verdict": "Supported"
    },
    {
@@ -3361,12 +3305,12 @@
     "oversize": 9.9,
     "realised": 314.5,
     "fixed_omega": 312.4,
-    "strata": 309.8,
+    "strata": 310.1,
     "rmse_fixed": 5.17,
-    "rmse_strata": 6.51,
-    "skill": -0.587,
-    "bias": 4.73,
-    "se_bias": 2.01,
+    "rmse_strata": 6.3,
+    "skill": -0.486,
+    "bias": 4.43,
+    "se_bias": 2.12,
     "verdict": "Modelled only"
    },
    {
@@ -3379,12 +3323,12 @@
     "oversize": 0.0,
     "realised": 306.3,
     "fixed_omega": 306.1,
-    "strata": 307.1,
+    "strata": 307.0,
     "rmse_fixed": 5.51,
-    "rmse_strata": 5.43,
-    "skill": 0.029,
-    "bias": -0.74,
-    "se_bias": 1.94,
+    "rmse_strata": 5.38,
+    "skill": 0.048,
+    "bias": -0.65,
+    "se_bias": 1.91,
     "verdict": "Supported"
    },
    {
@@ -3397,12 +3341,12 @@
     "oversize": 6.8,
     "realised": 297.5,
     "fixed_omega": 301.1,
-    "strata": 295.6,
+    "strata": 296.3,
     "rmse_fixed": 7.79,
-    "rmse_strata": 7.32,
-    "skill": 0.119,
-    "bias": 1.92,
-    "se_bias": 2.67,
+    "rmse_strata": 6.37,
+    "skill": 0.332,
+    "bias": 1.23,
+    "se_bias": 2.36,
     "verdict": "Modelled only"
    },
    {
@@ -3415,12 +3359,12 @@
     "oversize": 2.4,
     "realised": 306.7,
     "fixed_omega": 306.3,
-    "strata": 306.0,
+    "strata": 306.1,
     "rmse_fixed": 6.94,
-    "rmse_strata": 6.48,
-    "skill": 0.128,
-    "bias": 0.71,
-    "se_bias": 0.8,
+    "rmse_strata": 6.44,
+    "skill": 0.139,
+    "bias": 0.61,
+    "se_bias": 0.83,
     "verdict": "Supported"
    },
    {
@@ -3433,12 +3377,12 @@
     "oversize": 0.0,
     "realised": 305.6,
     "fixed_omega": 307.8,
-    "strata": 307.9,
+    "strata": 308.0,
     "rmse_fixed": 8.0,
-    "rmse_strata": 7.12,
-    "skill": 0.209,
-    "bias": -2.31,
-    "se_bias": 2.12,
+    "rmse_strata": 6.8,
+    "skill": 0.279,
+    "bias": -2.41,
+    "se_bias": 2.09,
     "verdict": "Supported"
    },
    {
@@ -3451,31 +3395,225 @@
     "oversize": 3.3,
     "realised": 308.9,
     "fixed_omega": 309.8,
-    "strata": 308.0,
+    "strata": 308.2,
     "rmse_fixed": 6.11,
-    "rmse_strata": 5.93,
-    "skill": 0.058,
-    "bias": 0.92,
-    "se_bias": 1.32,
+    "rmse_strata": 5.55,
+    "skill": 0.173,
+    "bias": 0.76,
+    "se_bias": 1.28,
     "verdict": "Supported"
    }
   ],
+  "credit_2026": {
+   "Fixed-omega": {
+    "Pellet": {
+     "slope": -3.1,
+     "se": 4.4
+    },
+    "CLO (Lloyds, Geomin)": {
+     "slope": 2.0,
+     "se": 4.0
+    },
+    "ROM (NMDC, Donimalai)": {
+     "slope": 1.1,
+     "se": 3.8
+    },
+    "Gomti": {
+     "slope": 0.0,
+     "se": 4.5
+    },
+    "Lloyds fines oversize": {
+     "slope": 0.8,
+     "se": 3.5
+    },
+    "joint_p": 0.044,
+    "rmse": 6.939
+   },
+   "STRATA 1.3": {
+    "Pellet": {
+     "slope": -0.4,
+     "se": 4.1
+    },
+    "CLO (Lloyds, Geomin)": {
+     "slope": -0.5,
+     "se": 3.7
+    },
+    "ROM (NMDC, Donimalai)": {
+     "slope": -2.1,
+     "se": 3.5
+    },
+    "Gomti": {
+     "slope": -2.0,
+     "se": 4.2
+    },
+    "Lloyds fines oversize": {
+     "slope": -1.3,
+     "se": 3.1
+    },
+    "joint_p": 0.761,
+    "rmse": 6.48
+   },
+   "STRATA 1.4": {
+    "Pellet": {
+     "slope": -0.3,
+     "se": 4.1
+    },
+    "CLO (Lloyds, Geomin)": {
+     "slope": -0.2,
+     "se": 3.6
+    },
+    "ROM (NMDC, Donimalai)": {
+     "slope": -1.8,
+     "se": 3.5
+    },
+    "Gomti": {
+     "slope": -3.1,
+     "se": 4.0
+    },
+    "Lloyds fines oversize": {
+     "slope": -1.6,
+     "se": 3.1
+    },
+    "joint_p": 0.702,
+    "rmse": 6.44
+   }
+  },
+  "strict_2023_24": {
+   "method": "parameters frozen as fitted on Dec 2025 - Oct 2026; 413 stable days, 5 Mar 2023 - 11 Jul 2024 (July 2023 missing); omega anchor and zone losses = 14 previous days; network solves per day (T26 catalogue); blast moisture = RH-scaled ambient + steam injection; K = K_held + dK/domega x domega_model",
+   "rmse": {
+    "All days": {
+     "Fixed-omega": 7.95,
+     "STRATA 1.2": 7.48,
+     "STRATA 1.3": 7.57,
+     "STRATA 1.4": 7.4
+    },
+    "Pellet era (Feb - Oct 2023)": {
+     "Fixed-omega": 7.27,
+     "STRATA 1.2": 7.16,
+     "STRATA 1.3": 6.97,
+     "STRATA 1.4": 6.81
+    },
+    "Lump era (Nov 2023 - Jul 2024)": {
+     "Fixed-omega": 8.44,
+     "STRATA 1.2": 7.71,
+     "STRATA 1.3": 8.0,
+     "STRATA 1.4": 7.83
+    }
+   },
+   "skill_day": {
+    "STRATA 1.2": 0.115,
+    "STRATA 1.3": 0.094,
+    "STRATA 1.4": 0.133
+   },
+   "skill_7d": {
+    "STRATA 1.2": 0.228,
+    "STRATA 1.3": 0.126,
+    "STRATA 1.4": 0.149
+   },
+   "skill_omega": {
+    "STRATA 1.2": -0.007,
+    "STRATA 1.3": 0.093,
+    "STRATA 1.4": 0.124
+   },
+   "dmse_14_fixed": {
+    "mean": -8.43,
+    "se": 3.16,
+    "t": -2.67
+   },
+   "credit": {
+    "Fixed-omega": {
+     "Pellet": {
+      "slope": 2.2,
+      "se": 2.5
+     },
+     "CLO (Lloyds, Geomin, GIMPL, Neco)": {
+      "slope": 9.2,
+      "se": 2.9
+     },
+     "NMDC": {
+      "slope": 13.7,
+      "se": 4.3
+     },
+     "joint_p": 0.002
+    },
+    "STRATA 1.2": {
+     "Pellet": {
+      "slope": 8.6,
+      "se": 2.5
+     },
+     "CLO (Lloyds, Geomin, GIMPL, Neco)": {
+      "slope": 8.1,
+      "se": 2.5
+     },
+     "NMDC": {
+      "slope": 11.5,
+      "se": 3.4
+     },
+     "joint_p": 0.001
+    },
+    "STRATA 1.3": {
+     "Pellet": {
+      "slope": 6.5,
+      "se": 2.4
+     },
+     "CLO (Lloyds, Geomin, GIMPL, Neco)": {
+      "slope": 8.9,
+      "se": 2.7
+     },
+     "NMDC": {
+      "slope": 12.1,
+      "se": 3.9
+     },
+     "joint_p": 0.003
+    },
+    "STRATA 1.4": {
+     "Pellet": {
+      "slope": 6.6,
+      "se": 2.3
+     },
+     "CLO (Lloyds, Geomin, GIMPL, Neco)": {
+      "slope": 8.7,
+      "se": 2.5
+     },
+     "NMDC": {
+      "slope": 12.3,
+      "se": 3.7
+     },
+     "joint_p": 0.001
+    }
+   },
+   "refit_2023_24": {
+    "q_pel": 1.2352,
+    "q_lump_all": 1.0809,
+    "q_rest": 1.3824,
+    "d_humidity_g": 0.0009,
+    "d_nut": 0.0003
+   },
+   "refit_2023_24_sd": {
+    "q_pel": 0.3968,
+    "q_lump_all": 0.495,
+    "q_rest": 0.3974,
+    "d_humidity_g": 0.0004,
+    "d_nut": 0.0004
+   },
+   "note": "STRATA 1.4 has the lowest day RMSE of the four models (7.40 against Fixed-omega 7.95, t -2.7). Day-level per-ore credit test fails for every model in 2023-24 (CLO and NMDC over-credited also by Fixed-omega): an unmodelled sinter-related effect; the 2026 credit test passes (joint p 0.70)"
+  },
   "verdict_rule": "Supported: n >= 10, skill > 0, |bias| < 2 SE (AR-adjusted n); Disputed: n >= 10 and skill < -0.05 or |bias| >= 2 SE; Modelled only: n < 10",
-  "note": "STRATA 1.3 is better than Fixed-omega in the expanding test and in both time splits, and better than the STRATA 1.2 physics on the same days (alternatives). Pellet + oversize (6 days, June 2026, first month of pellet) remains biased (realised above predicted); families with fewer than 10 days are modelled only."
+  "note": "STRATA 1.4 is better than Fixed-omega in the 2026 expanding test, in both 2026 time splits and on the strict 2023-24 test, and better than STRATA 1.3 in the expanding test, the first time split and 2023-24. Pellet + oversize (6 days, June 2026, first month of pellet) remains biased; families with fewer than 10 days are modelled only."
  },
  "channel_scales": {
-  "lam_pellet": 1.377286882700613,
-  "lam_lump": 0.9592409402143014,
-  "sd_pellet": 0.46097887358232575,
-  "sd_lump": 0.46400730673831997,
+  "lam_pellet": 1.3871271532652758,
+  "lam_lump": 0.9734586285318877,
+  "sd_pellet": 0.4613076019150774,
+  "sd_lump": 0.4641820373652124,
   "cov_pellet_lump": [
    [
-    0.21250152188922988,
-    -0.01652347540829708
+    0.21280470358463952,
+    -0.016413577218142374
    ],
    [
-    -0.016523475408297017,
-    0.21530278070654937
+    -0.01641357721814233,
+    0.21546496381251945
    ]
   ],
   "g_per_pt": {
@@ -3485,7 +3623,7 @@
    "sh_gomti": -0.000542,
    "sh_oversize": -0.000396
   },
-  "rho": 0.7082284075519577,
+  "rho": 0.7170674071850197,
   "n_days": 191,
   "names": [
    "q_pel",
@@ -3498,78 +3636,106 @@
   "names_analysis": [
    "q_pel",
    "q_lump_all",
-   "q_prod",
    "q_rest",
    "d_humidity_g",
    "d_nut"
   ],
   "mean": [
-   1.377286882700613,
-   0.9592409402143014,
-   0.5911810751234301,
-   0.9802470537026469,
-   0.0015764565408674233,
-   0.0009378939466351752
+   1.3871271532652758,
+   0.9734586285318877,
+   0.0,
+   0.8276409917655845,
+   0.0015958200506778993,
+   0.0009309169221553296
   ],
   "cov": [
    [
-    0.21250152188922988,
-    -0.01652347540829708,
-    -0.0015967754006333094,
-    -0.001839606086708357,
-    -0.0001235850431216828,
-    1.1033501321536328e-06
+    0.21280470358463952,
+    -0.016413577218142374,
+    0.0,
+    -0.0015227479368339783,
+    -0.00012206709055084511,
+    1.0995927416967084e-06
    ],
    [
-    -0.016523475408297017,
-    0.21530278070654937,
-    -0.00199768234875339,
-    -0.0023393562507006737,
-    -0.00012675978374118192,
-    2.539215901326904e-07
+    -0.01641357721814233,
+    0.21546496381251945,
+    0.0,
+    -0.001909505783281742,
+    -0.00012572335460581002,
+    1.8560601017055597e-07
    ],
    [
-    -0.0015967754006332787,
-    -0.001997682348753468,
-    0.08911533106535194,
-    0.021114530551909927,
-    -6.575729490283624e-06,
-    1.2183958563525993e-06
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
    ],
    [
-    -0.0018396060867083403,
-    -0.002339356250700717,
-    0.021114530551909927,
-    0.08869909444004165,
-    -2.1234461446510726e-05,
-    1.2284112309615677e-06
+    -0.001522747936833945,
+    -0.0019095057832817525,
+    0.0,
+    0.08353873179817708,
+    -1.959078195916525e-05,
+    1.0924052533200546e-06
    ],
    [
-    -0.00012358504312168282,
-    -0.0001267597837411796,
-    -6.5757294902837175e-06,
-    -2.1234461446510845e-05,
-    5.586087054340376e-06,
-    -3.770174936359561e-08
+    -0.00012206709055084605,
+    -0.00012572335460581127,
+    0.0,
+    -1.959078195916558e-05,
+    5.731710040913816e-06,
+    -3.6912992797470156e-08
    ],
    [
-    1.103350132155584e-06,
-    2.539215901301031e-07,
-    1.21839585635113e-06,
-    1.228411230961251e-06,
-    -3.7701749363595045e-08,
-    1.1955880392475417e-07
+    1.0995927417016932e-06,
+    1.8560601016722716e-07,
+    0.0,
+    1.0924052533212085e-06,
+    -3.691299279747145e-08,
+    1.2005149430446434e-07
    ]
   ],
-  "sigma_e": 0.017855068110495326,
-  "channels": "q_pel = g_pellet d_pellet; q_lump = sum over CLO, ROM, Gomti, oversize of g_c d_c; q_prod = w(day blend, window operation, day production) - w(day blend, window operation); q_oper_rest = w(day blend, day operation) - w(day blend, window operation, day production); d_humidity_g, d_nut: day minus window (the evidence-store columns of STRATA-Learn)"
+  "sigma_e": 0.017830474795730435,
+  "fixed": {
+   "q_prod": 0.0
+  },
+  "channels": "q_pel = g_pellet d_pellet; q_lump = sum over CLO, ROM, Gomti, oversize of g_c d_c; q_prod = w(day blend, window operation, day production) - w(day blend, window operation); q_oper_rest = w(day blend, day operation) - w(day blend, window operation, day production); d_humidity_g, d_nut: day minus window (the evidence-store columns of STRATA-Learn). STRATA 1.4: the q_prod coefficient is fixed at 0 (no production channel); the column stays in the evidence store for monitoring",
+  "v13": {
+   "names": [
+    "q_pel",
+    "q_lump",
+    "q_prod",
+    "q_oper_rest",
+    "d_humidity_g",
+    "d_nut"
+   ],
+   "mean": [
+    1.377286882700613,
+    0.9592409402143014,
+    0.5911810751234301,
+    0.9802470537026469,
+    0.0015764565408674233,
+    0.0009378939466351752
+   ],
+   "sd": [
+    0.46097887358232575,
+    0.46400730673831997,
+    0.2985219105281084,
+    0.2978239319464466,
+    0.0023634904388087495,
+    0.0003457727634223872
+   ]
+  }
  },
  "gas_capacity_channel": false,
  "moisture": {
-  "coef": 0.00158,
-  "se": 0.00236,
+  "coef": 0.0016,
+  "se": 0.00239,
   "unit": "omega per g/Nm3",
-  "basis": "same posterior; blast moisture = smoothed weather-record RH (31-day centred mean) mapped linearly to 7-21 g/Nm3 (DATA-11), no step changes. STRATA 1.2 had 0.0044 +/- 0.0004 on the psychrometric series, whose seasonal steps (1 Jun: +8 g/Nm3 overnight) coincided with the start of pellet; on the step-free series the term is small and not resolved (GAS-19). Out of sample without it: coke skill 0.120 (day) / 0.190 (7-day)"
+  "basis": "STRATA 1.4 posterior; blast moisture = smoothed weather-record RH (31-day centred mean) mapped linearly to 7-21 g/Nm3 (DATA-11), no step changes. STRATA 1.2 had 0.0044 +/- 0.0004 on the psychrometric series with seasonal steps; on the step-free series the term is small and not resolved (GAS-19). 2023-24 (steam injection 0-2.9 t/h): 0.0009 +/- 0.0004. Out of sample without it: coke skill 0.131 (day) / 0.197 (7-day)"
  },
  "validation_v10_lomo": {
   "note": "v1.0 leave-one-month-out CV of the level (kept for reference): physics 0.0288, XGBoost 0.0298, mean 0.0296 (RMSE omega)"
@@ -3588,12 +3754,13 @@
   }
  },
  "operating_scales": {
-  "production": 0.5912,
-  "production_sd": 0.2985,
-  "other": 0.9802,
-  "other_sd": 0.2978,
-  "corr": 0.237,
-  "basis": "network channels (STRATA 1.3): production part = omega change of the plan blend at the calibration operation but the plan production (TRZ residence); other = coke layers, fuels, oxygen, blast. With exact network channels the other-operation scale is 0.98 (STRATA 1.2 on the surrogate: 1.37); production 0.59 (1.2: 0.68) (GAS-16)"
+  "production": 0.0,
+  "production_sd": 0.0,
+  "other": 0.8276,
+  "other_sd": 0.289,
+  "corr": 0.0,
+  "production_channel": false,
+  "basis": "STRATA 1.4: no production channel. The physics production part (omega change of the plan blend at the calibration operation but the plan production, TRZ residence) is computed and reported but carries scale 0; other = coke layers, fuels, oxygen, blast, scaled 0.83 +/- 0.29. Reason (GAS-16, GAS-25): the production scale was not replicated on 2023-24 (-0.42 +/- 0.28 against 0.59 +/- 0.30 on 2026) and the channel lowered out-of-sample coke skill in both periods (2026 expanding 0.128 with, 0.139 without; 2023-24 strict 0.094 with, 0.133 without). Production acts on coke through the balance (heat loss per tHM, GAS-22)"
  },
  "ri_set": {
   "name": "T26",
@@ -3730,9 +3897,9 @@
   "use": "network solve at the calibration (plus 16 solves for the Jacobian, cached per calibration), one solve per SLP iterate (plan blend) and three per reported plan (blend, blend + production, full operation); between solves the network Jacobian. Reported results carry the number of solves and the distance from the nearest solve."
  },
  "nut_coke": {
-  "coef": 0.000938,
+  "coef": 0.000931,
   "se": 0.000346,
   "unit": "omega per kg/tHM nut coke",
-  "basis": "same posterior (GAS-23): omega rises with nut coke charged in the ore layer (mixed-layer reduction and cohesive-zone permeability), which the network carries only as coke-layer mass (network -0.00019 per kg); out-of-sample coke skill 0.128 with the term, 0.115 without. PCI: no data term (skill 0.104 with it); PCI acts through the balance and the network (network: -0.000006 omega per kg)"
+  "basis": "STRATA 1.4 posterior (GAS-23): omega rises with nut coke charged in the ore layer (mixed-layer reduction and cohesive-zone permeability), which the network carries only as coke-layer mass (network -0.00019 per kg); out-of-sample coke skill 0.139 with the term, 0.128 without. PCI: no data term (skill 0.119 with it); PCI acts through the balance and the network (-0.000006 omega per kg)"
  }
 }

@@ -20,7 +20,7 @@ import pandas as pd
 from utils.burden_engine.learn.evidence import PARAMS
 
 GAS14_KEYS = {"lam_pellet": ("lam_pellet", "sd_pellet"), "lam_lump": ("lam_lump", "sd_lump"),
-              "lam_production": ("lam_production", "sd_production"), "lam_other": ("lam_other", "sd_other")}
+              "lam_other": ("lam_other", "sd_other")}          # STRATA 1.4: no production scale (GAS-16 retired)
 
 
 def _neff(e: np.ndarray) -> float:

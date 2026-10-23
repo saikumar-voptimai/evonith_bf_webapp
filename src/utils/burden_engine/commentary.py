@@ -264,10 +264,13 @@ def describe_plan(r: Mapping[str, Any], label: str, names: Mapping[str, str], fl
     om = r.get("omega") or {}
     if om.get("mode") == "blend":
         lines.append(
-            f"Shaft efficiency (STRATA-omega 1.2, GAS-13..20): {_f(om.get('value'), '.3f')} against the calibration "
+            f"Shaft efficiency (STRATA-omega 1.4, GAS-13..25): {_f(om.get('value'), '.3f')} against the calibration "
             f"{_f(om.get('omega_cal'), '.3f')}; parts: blend {_f(om.get('d_blend'), '+.4f')}, per-group scale correction "
-            f"{_f(om.get('d_disc'), '+.4f')}, operation {_f(om.get('d_oper'), '+.4f')} (production "
-            f"{_f(om.get('d_prod'), '+.4f')}, other {_f(om.get('d_rest'), '+.4f')}), blast moisture {_f(om.get('d_moist'), '+.4f')}; "
+            f"{_f(om.get('d_disc'), '+.4f')}, operation {_f(om.get('d_oper'), '+.4f')} ("
+            + (f"production {_f(om.get('d_prod'), '+.4f')}, " if abs(om.get('d_prod') or 0.0) > 0 else
+               "no production channel, ")
+            + f"coke layers, fuels, oxygen {_f(om.get('d_rest'), '+.4f')}), blast moisture {_f(om.get('d_moist'), '+.4f')}, "
+            f"nut coke {_f(om.get('d_nut'), '+.4f')}; "
             f"sigma(coke) +/-{_f(om.get('sigma_K'), '.1f')} kg/tHM, sigma(cost) +/-{_f(r['cost'].get('sigma'), ',.0f')} "
             f"Rs/tHM; certainty {om.get('certainty')}"
             + (f"; outside what BF-2 ran: {'; '.join(om.get('outside') or [])}" if om.get("outside") else "")

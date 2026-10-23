@@ -7,9 +7,10 @@ Why
   This module supplies omega as a function of the blend, the operating point and the blast moisture, with a 1-sigma
   uncertainty and a certainty class for every plan.
 
-Model (constants in ``assets/burden_engine/omega_model.json``; STRATA 1.3 = STRATA-omega on STRATA-Flow, the Stratified
+Model (constants in ``assets/burden_engine/omega_model.json``; STRATA 1.4 = STRATA-omega on STRATA-Flow, the Stratified
 Transport & Reduction Analytics model of BF-02 (layered gas-flow model v0.4), scaled and tested out of sample on 191 days
-of BF-02 data, Dec 2025 - Oct 2026; OMEGA v1.0 / v1.1 and STRATA 1.2 were earlier versions)
+of BF-02 data, Dec 2025 - Oct 2026, and on 413 days of 2023-24 data with frozen parameters; OMEGA v1.0 / v1.1,
+STRATA 1.2 and STRATA 1.3 were earlier versions)
 
   w(state, R)   ring counter-current model of the TRZ. Six rings, i = 1 (centre) .. 6 (wall):
                   C_g,i = R f_i        oxygen the ring's gas can take at the W point (f_i: gas share of ring i)
@@ -27,7 +28,8 @@ of BF-02 data, Dec 2025 - Oct 2026; OMEGA v1.0 / v1.1 and STRATA 1.2 were earlie
                 differences show no effect on the plant's omega; size does), STRATA 1.2: beta = 1, n = 1.5;
                 kappa is re-fitted at start-up so that w(calibration state) equals the calibrated omega.
   omega(plan) = omega_cal + [w(blend_plan, op_cal) - w(cal)] + sum_c b_c (s_c,plan - s_c,cal)      blend channel
-                          + [w(blend_plan, op_plan) - w(blend_plan, op_cal)]                        operating channel
+                          + lam_rest [w(blend_plan, op_plan) - w(blend_plan, op_cal, prod_plan)]    other operation
+                          + lam_prod [w(blend_plan, op_cal, prod_plan) - w(blend_plan, op_cal)]     production (1.4: 0)
                           + a_h (moisture_plan - moisture_cal)                                      blast moisture
                           + a_n (nut_plan - nut_cal)                                                nut coke (1.3)
   The blend channel is the physics with a plant-data scale per material group: b_c = (lam_g - 1) g_c, where g_c is
@@ -36,7 +38,16 @@ of BF-02 data, Dec 2025 - Oct 2026; OMEGA v1.0 / v1.1 and STRATA 1.2 were earlie
   are the AR(1) posterior of the daily change of omega against its 14-day anchor (GAS-14, GAS-19); the posterior is
   stored as the mean and covariance of (x_blend, b_c) so that the code below is unchanged from v1.0.
 
-STRATA 1.3 (asset ``version``)
+STRATA 1.4 (asset ``version``)
+  STRATA 1.3 without the production channel: ``operating_scales.production_channel`` false, lam_prod = 0 with zero
+  uncertainty. The production part of the physics (TRZ residence) is still solved and reported (``d_prod_phys``), and
+  the other-operation channel stays defined against the plan production, w(op_plan) - w(op_cal, prod_plan), as in the
+  fit. Reason: the production scale was not replicated on 2023-24 data (-0.42 +/- 0.28 against 0.59 +/- 0.30 on 2026)
+  and the channel lowered out-of-sample coke skill in both periods (GAS-16, GAS-25). Production changes the coke rate
+  through the balance (heat loss per tHM, GAS-22). Posterior: lam_pellet 1.39 +/- 0.46, lam_lump 0.97 +/- 0.46,
+  lam_rest 0.83 +/- 0.29, a_h 0.0016 +/- 0.0024 per g/Nm3, a_n 0.00093 +/- 0.00034 per kg/tHM.
+
+STRATA 1.3
   Ring quantities from network solves, not from the surrogate. RI set S9 = S8 with Gomti 65 %; the Lloyds fines
   oversize (ore_6) reduces at the Lloyds CLO size (no size credit for its 8-16 mm sizing); the Donimalai oversize
   return (ore_11) is Donimalai. Blast moisture from the smoothed weather-record RH (DATA-11, no step changes): the data
@@ -200,6 +211,7 @@ class OmegaModel:
         self.lam_prod, self.sd_prod = float(ops.get("production", 1.0)), float(ops.get("production_sd", self.op_rel_sd))
         self.lam_rest, self.sd_rest = float(ops.get("other", 1.0)), float(ops.get("other_sd", self.op_rel_sd))
         self.corr_oper = float(ops.get("corr", 0.0))
+        self.prod_channel = bool(ops.get("production_channel", True)) and (self.lam_prod != 0.0 or self.sd_prod > 0.0)
         self.support = {k: tuple(v) for k, v in spec["support"]["classes"].items()}
         self.support_prod = tuple(spec["support"]["production_t_h"])
         self.margin_pt = float(spec["support"]["margin_pt"])
@@ -563,7 +575,8 @@ def difference_sigma(model: OmegaModel, a: Mapping[str, Any], b: Mapping[str, An
 
 
 def oper_sigma(model: OmegaModel, d_prod_phys: float, d_rest_phys: float) -> float:
-    """1-sigma of the scaled operating channel: production and other parts with correlated scales (STRATA 1.2)."""
+    """1-sigma of the scaled operating channel: production and other parts with correlated scales (STRATA 1.2, 1.3;
+    STRATA 1.4: production sd 0, so only the other-operation part)."""
     a, b = model.sd_prod * d_prod_phys, model.sd_rest * d_rest_phys
     return math.sqrt(max(a * a + b * b + 2 * model.corr_oper * a * b, 0.0))
 
@@ -576,7 +589,8 @@ def assumption_sensitivity(model: OmegaModel, st: OmegaState, K: float, R: float
     plan at the same coke rate and capacity ratio. Covered: the reducibility (IS 8167 / ISO 7215) of every material in
     the plan or the calibration (+/- the asset's ri_sd of the material, else ri_step), the size exponent of the
     reduction rate (n -> n_alt), the exponent of the RI in the rate (beta -> beta_alt; with beta = 0 the RI rows are zero
-    and omitted), the plant-data scales of the pellet and lump-ore channels and of the production channel (+/- 1 sd),
+    and omitted), the plant-data scales of the pellet and lump-ore channels and of the production channel where the
+    asset has one (+/- 1 sd; STRATA 1.4 has none),
     the blast-moisture and nut-coke coefficients (+/- 1 se).
     Returns rows sorted by the size of the effect; omega units (multiply by dK/domega for coke)."""
     import copy
@@ -631,7 +645,7 @@ def assumption_sensitivity(model: OmegaModel, st: OmegaState, K: float, R: float
         rows.append(dict(assumption="plant-data scale, lump-ore channel", value=f"{cs.get('lam_lump', 1):.2f}",
                          alternative=f"+/- {cs.get('sd_lump', 0):.2f}", basis="AR(1) posterior, GAS-14",
                          d_omega=float(cs.get("sd_lump", 0.0) * abs(lump)), kind="scale", symmetric=True))
-    if model.split_oper:
+    if model.split_oper and model.prod_channel:
         po = PlanOmega(model, st)
         rows.append(dict(assumption="plant-data scale, production channel", value=f"{model.lam_prod:.2f}",
                          alternative=f"+/- {model.sd_prod:.2f}", basis="AR(1) posterior, GAS-16",

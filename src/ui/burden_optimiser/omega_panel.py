@@ -35,11 +35,12 @@ def render_omega_settings(key: str = "bfo_om") -> dict[str, Any]:
     c1, c2, c3 = st.columns([2, 2, 2])
     mode = c1.radio("Shaft-efficiency model", list(MODELS), format_func=MODELS.get, index=0, key=f"{key}_mode",
                     horizontal=True,
-                    help="STRATA-ω: ω responds to the blend's reducibility (plant RI tests) and size, residence time in "
-                         "the thermal reserve zone, the coke layers, production, oxygen, nut coke and blast moisture. "
+                    help="STRATA-ω: ω responds to the blend's reducibility (plant RI tests) and size, the coke layers, "
+                         "fuels, oxygen, nut coke and blast moisture (no production channel: production acts through the "
+                         "balance; STRATA 1.4, GAS-16, GAS-25). "
                          "The STRATA-Flow gas-flow network of BF-02 is solved for every plan (no surrogate; about 1 s "
                          "per solve, one solve per optimiser iteration), scaled by the plant data and tested out of "
-                         "sample (STRATA 1.3, GAS-13..23). Fixed-ω: ω held at the calibration for every blend (Rist "
+                         "sample (STRATA 1.4, GAS-13..25). Fixed-ω: ω held at the calibration for every blend (Rist "
                          "baseline, ASM-01).")
     if mode == "fixed":
         c2.caption("Fixed-ω: ω held at the calibration; a blend changes coke through its chemistry only.")
@@ -90,8 +91,10 @@ def render_omega_result(eng: Any, r: Mapping[str, Any], today: Mapping[str, Any]
                 ("Blend: plant-data scale (pellet, lump ore)", om["d_disc"])]
         if "d_prod" in om and abs(om.get("d_prod", 0.0)) + abs(om.get("d_rest", 0.0)) > 0 and \
                 abs(om["d_prod"] + om["d_rest"] - om["d_oper"]) < 1e-9:
-            rows += [("Operation: production (TRZ residence), scaled", om["d_prod"]),
-                     ("Operation: coke layers, fuels, oxygen, scaled", om["d_rest"])]
+            if abs(om["d_prod"]) > 0:
+                rows.append(("Operation: production (TRZ residence), scaled", om["d_prod"]))
+            rows.append(("Operation: coke layers, fuels, oxygen, scaled" +
+                         ("" if abs(om["d_prod"]) > 0 else " (no production channel, STRATA 1.4)"), om["d_rest"]))
         else:
             rows.append(("Operation: coke layers, production (residence), oxygen", om["d_oper"]))
         rows.append(("Blast moisture (weather record, RH estimate)", om.get("d_moist", 0.0)))

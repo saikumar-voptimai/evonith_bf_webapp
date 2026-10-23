@@ -4,7 +4,8 @@ Row fields (the same definitions as the out-of-sample test, GAS-20):
   date            calendar day (IST)
   q_pel, q_lump   blend channels: physics change of omega per class (g_c x change of the class share against the
                   14-day anchor), pellet and lump-ore groups
-  q_prod          production channel: physics change of omega for the production change (TRZ residence)
+  q_prod          production channel: physics change of omega for the production change (TRZ residence);
+                  STRATA 1.4 gives it coefficient 0 and keeps the column for offline re-tests (GAS-16, GAS-25)
   q_oper_rest     other operating channel (coke layers, fuels, oxygen), physics
   d_humidity_g    blast moisture minus its 14-day anchor, g/Nm3 (weather record, smoothed RH estimate, DATA-11)
   d_nut           nut coke minus its 14-day anchor, kg/tHM (STRATA 1.3, GAS-23)
