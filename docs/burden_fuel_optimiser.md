@@ -130,7 +130,14 @@ baseline)** — omega held at the calibration, ASM-01 — and **STRATA-ω** (ASM
   solves. The production searches (Step 1, maximum production, frontier) reuse a solve within 1 scaled unit (1 pt of a
   share, 5 kg/tHM coke, 1 t/h) and re-solve the plan they return exactly (`Engine.network_tolerance`,
   `Engine.refine`): Step 1 with the 9-level oxygen search takes about 8 min (≈ 170 solves), maximum production
-  about 2 min (≈ 40 solves), Step 2 (with and without fuel in the objective) about 30 s.
+  about 2 min (≈ 40 solves), Step 2 (with and without fuel in the objective) about 30 s. Two safeguards keep the
+  searches from declaring a feasible point infeasible: when the first STRATA-ω linearisation has no feasible LP the
+  plan is re-started from the Fixed-ω optimum of the same case (`Engine.slp`; e.g. sinter ≥ 65 %), and a point that
+  stops with a small limit breach on coarse solves (total < 0.1, e.g. basicity 0.009 below its floor) is re-solved
+  exactly before it counts as infeasible (`Engine._try_search`). Without the second, Step 1 returned no plan on the
+  PCI 150, PCI 220, nut coke 50 and dry / wet season days, and maximum production stopped early on PCI 150 and
+  HMT 1,490 °C (PCI 150: 2,254 t/d instead of 2,413). The exact re-solves lengthen a difficult search (PCI 150:
+  maximum production about 15 min on two cores).
 * STRATA 1.2 used a quadratic surrogate of the network (520-state design); it stays in the asset for diagnostics only
   (`OmegaModel.load(backend="surrogate")`). The network extrapolates by its physics where the surrogate's design
   space ended.

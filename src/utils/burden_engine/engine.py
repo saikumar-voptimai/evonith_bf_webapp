@@ -473,6 +473,27 @@ class Engine:
         except Infeasible:
             return None
 
+    SEARCH_RETRY_VIOL = 0.1                # total limit breach below which a coarse-search failure is re-solved exactly
+
+    def _try_search(self, s, P, L, fuel=True, z0=None, ore6_on=False):
+        """``_try`` inside a production search. With coarse STRATA-Flow solves (``network_tolerance``) the SLP can stop
+        with a small limit breach that exact solves remove (e.g. basicity 0.009 below its floor); such a point, and an
+        LP failure from a warm start, is re-solved once with exact solves before it counts as infeasible."""
+        r = self._try(s, P, L, fuel, z0=z0, ore6_on=ore6_on)
+        if r is not None and r["feasible"]:
+            return r
+        if s.omega_mode != "blend" or self.net_tol_iter <= 0.0 or not self._network_on(s):
+            return r
+        if r is not None and sum(r.get("viol", {}).values()) > self.SEARCH_RETRY_VIOL:
+            return r
+        old = (self.net_tol_iter, self.net_tol_final)
+        self.net_tol_iter = self.net_tol_final = 0.0
+        try:
+            r2 = self._try(s, P, L, fuel, z0=(r["z"] if r is not None else None), ore6_on=ore6_on)
+        finally:
+            self.net_tol_iter, self.net_tol_final = old
+        return r2 if (r2 is not None and r2["feasible"]) else r
+
     def start_point(self, s, P):
         lo = np.array([v.lo for v in self.fer]); hi = np.array([v.hi for v in self.fer])
         sh = np.clip((lo + hi) / 2, lo, hi)
@@ -870,13 +891,13 @@ class Engine:
 
     def _max_prod_at(self, s: Settings, L: Limits, fuel=True, lo=80.0, hi=115.0, tol=0.01, ore6_on=False, z0=None):
         lo, hi = self.p_range(s, lo, hi)
-        r = self._try(s, lo, L, fuel, z0=z0, ore6_on=ore6_on)
+        r = self._try_search(s, lo, L, fuel, z0=z0, ore6_on=ore6_on)
         if r is None or not r["feasible"]:
             return None
         best = r; z0 = r["z"]
         while hi - lo > tol:
             mid = 0.5 * (lo + hi)
-            r = self._try(s, mid, L, fuel, z0=z0, ore6_on=ore6_on)
+            r = self._try_search(s, mid, L, fuel, z0=z0, ore6_on=ore6_on)
             if r is not None and r["feasible"]:
                 lo, best, z0 = mid, r, r["z"]
             else:
@@ -931,7 +952,7 @@ class Engine:
     def _frontier(self, s: Settings, L: Limits, P_list, fuel=True, ore6_on=False):
         rows = []; z0 = None
         for P in P_list:
-            r = self._try(s, P, L, fuel, z0=z0, ore6_on=ore6_on)
+            r = self._try_search(s, P, L, fuel, z0=z0, ore6_on=ore6_on)
             if r is None:
                 r = dict(P_th=P, P_tday=P * 24, feasible=False, cost=dict(total=np.inf), lp_failed=True)
             rows.append(r)
@@ -977,7 +998,7 @@ class Engine:
                     return None
                 tops[key] = top["P_th"]
                 seen = [top]
-                f = lambda P: seen.append(self._try(s_r, P, L, True, z0=top["z"], ore6_on=on6)) or seen[-1]
+                f = lambda P: seen.append(self._try_search(s_r, P, L, True, z0=top["z"], ore6_on=on6)) or seen[-1]
                 a, b = P_lo, top["P_th"]
                 c, d = b - gr * (b - a), a + gr * (b - a)
                 fc, fd = f(c), f(d)

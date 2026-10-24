@@ -839,7 +839,9 @@ fallback).
   production state is still solved: the other-operation channel is defined against it, and `d_prod_phys` is reported.
   Production searches reuse solves within `Engine.SEARCH_TOL` (1 scaled unit) and `Engine.refine` re-solves the plan
   they return exactly. When the first STRATA-ω linearisation has no feasible LP, `Engine.slp` re-starts from the
-  Fixed-ω optimum of the same case. `OmegaModel.load(backend="surrogate")` keeps the STRATA 1.2
+  Fixed-ω optimum of the same case; inside the searches a point that stops with a small limit breach on coarse solves
+  (total < `Engine.SEARCH_RETRY_VIOL`, 0.1) is re-solved exactly before it counts as infeasible (`Engine._try_search`).
+  `OmegaModel.load(backend="surrogate")` keeps the STRATA 1.2
   surrogate for diagnostics only. Two oversize types: ore_6 Lloyds fines oversize (reduction rate at the Lloyds CLO
   size, no size credit) and ore_11 Donimalai oversize return (= Donimalai). Blend mode adds σ(coke), certainty tiers High / Medium / Low / Investigate (pellet > 25 %
   or σ > 8 kg/tHM; GAS-18), a certainty filter (`Settings.certainty`, page default "low" = all but Investigate), risk

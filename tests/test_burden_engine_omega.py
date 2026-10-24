@@ -467,3 +467,26 @@ def test_blend_mode_restarts_from_fixed_optimum(inputs):
     r = e._try(Settings(omega_mode="blend"), P_REF, Limits(), True)
     assert r is not None and r["feasible"] and r["share_wet"]["sinter_sp_02"] >= 65.0 - 1e-6
     assert r["omega"]["mode"] == "blend" and r["omega"]["certainty"] in ("High", "Medium")
+
+
+def test_search_re_solves_near_feasible_points_exactly(inputs, monkeypatch):
+    """Inside a coarse production search a STRATA-omega point that stops with a small limit breach is re-solved once
+    with exact network solves; a large breach (above the ceiling) is not."""
+    e = Engine(inputs)
+    calls = []
+
+    def fake_try(s, P, L, fuel=True, z0=None, ore6_on=False):
+        calls.append(e.net_tol_iter)
+        if e.net_tol_iter > 0:
+            return dict(feasible=False, viol={"basicity min": 0.009 if P < 100 else 5.0}, z=[0.0])
+        return dict(feasible=True, viol={}, z=[1.0])
+
+    monkeypatch.setattr(e, "_try", fake_try)
+    monkeypatch.setattr(e, "_network_on", lambda s: True)
+    s = Settings(omega_mode="blend")
+    with e.network_tolerance(e.SEARCH_TOL):
+        near = e._try_search(s, 90.0, Limits(), True)
+        far = e._try_search(s, 105.0, Limits(), True)
+    assert near["feasible"] and calls[:2] == [e.SEARCH_TOL, 0.0]
+    assert not far["feasible"] and calls[2:] == [e.SEARCH_TOL]
+    assert e.net_tol_iter == 0.0
