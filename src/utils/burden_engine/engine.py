@@ -475,16 +475,17 @@ class Engine:
 
     SEARCH_RETRY_VIOL = 0.1                # total limit breach below which a coarse-search failure is re-solved exactly
 
-    def _try_search(self, s, P, L, fuel=True, z0=None, ore6_on=False):
+    def _try_search(self, s, P, L, fuel=True, z0=None, ore6_on=False, force=False):
         """``_try`` inside a production search. With coarse STRATA-Flow solves (``network_tolerance``) the SLP can stop
         with a small limit breach that exact solves remove (e.g. basicity 0.009 below its floor); such a point, and an
-        LP failure from a warm start, is re-solved once with exact solves before it counts as infeasible."""
+        LP failure from a warm start, is re-solved once with exact solves before it counts as infeasible. ``force``
+        re-solves any failure (the low end of a production search, where a failure ends the search)."""
         r = self._try(s, P, L, fuel, z0=z0, ore6_on=ore6_on)
         if r is not None and r["feasible"]:
             return r
         if s.omega_mode != "blend" or self.net_tol_iter <= 0.0 or not self._network_on(s):
             return r
-        if r is not None and sum(r.get("viol", {}).values()) > self.SEARCH_RETRY_VIOL:
+        if not force and r is not None and sum(r.get("viol", {}).values()) > self.SEARCH_RETRY_VIOL:
             return r
         old = (self.net_tol_iter, self.net_tol_final)
         self.net_tol_iter = self.net_tol_final = 0.0
@@ -891,7 +892,7 @@ class Engine:
 
     def _max_prod_at(self, s: Settings, L: Limits, fuel=True, lo=80.0, hi=115.0, tol=0.01, ore6_on=False, z0=None):
         lo, hi = self.p_range(s, lo, hi)
-        r = self._try_search(s, lo, L, fuel, z0=z0, ore6_on=ore6_on)
+        r = self._try_search(s, lo, L, fuel, z0=z0, ore6_on=ore6_on, force=True)
         if r is None or not r["feasible"]:
             return None
         best = r; z0 = r["z"]

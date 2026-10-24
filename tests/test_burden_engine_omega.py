@@ -489,4 +489,7 @@ def test_search_re_solves_near_feasible_points_exactly(inputs, monkeypatch):
         far = e._try_search(s, 105.0, Limits(), True)
     assert near["feasible"] and calls[:2] == [e.SEARCH_TOL, 0.0]
     assert not far["feasible"] and calls[2:] == [e.SEARCH_TOL]
+    with e.network_tolerance(e.SEARCH_TOL):
+        low_end = e._try_search(s, 105.0, Limits(), True, force=True)
+    assert low_end["feasible"] and calls[3:] == [e.SEARCH_TOL, 0.0]
     assert e.net_tol_iter == 0.0
