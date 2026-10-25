@@ -173,8 +173,9 @@ def operating_regime(S: pd.DataFrame, R: pd.DataFrame, keys: Iterable[str], enri
                      as_of: pd.Timestamp | None = None) -> dict[str, Any]:
     """Today's operating regime: medians over the given shifts of the controls, pressures and thermal state.
 
-    O2/air uses the hot-blast meter basis (DATA-01: the meter includes the O2). Blast moisture is the weather record's
-    value for ``as_of`` (default: the last shift's date), else the month's typical ambient value (DATA-04, DATA-11)."""
+    O2/air uses the hot-blast meter basis (DATA-01: the meter includes the O2). Blast moisture is the Open-Meteo
+    value for ``as_of`` (default: the last shift's date), else its day-of-year mean, else the month's typical ambient
+    value (DATA-04, DATA-11)."""
     keys = pd.Index(list(keys))
     sel = S.loc[keys]
     Rb = R.loc[keys]

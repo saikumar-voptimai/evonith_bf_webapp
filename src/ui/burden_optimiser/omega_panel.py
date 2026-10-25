@@ -36,11 +36,11 @@ def render_omega_settings(key: str = "bfo_om") -> dict[str, Any]:
     mode = c1.radio("Shaft-efficiency model", list(MODELS), format_func=MODELS.get, index=0, key=f"{key}_mode",
                     horizontal=True,
                     help="STRATA-ω: ω responds to the blend's reducibility (plant RI tests) and size, the coke layers, "
-                         "fuels, oxygen, nut coke and blast moisture (no production channel: production acts through the "
-                         "balance; STRATA 1.4, GAS-16, GAS-25). "
+                         "fuels, oxygen and nut coke (no production channel and no moisture term: production and the "
+                         "day's Open-Meteo moisture act through the balance; STRATA 1.5, GAS-16, GAS-19, GAS-25). "
                          "The STRATA-Flow gas-flow network of BF-02 is solved for every plan (no surrogate; about 1 s "
                          "per solve, one solve per optimiser iteration), scaled by the plant data and tested out of "
-                         "sample (STRATA 1.4, GAS-13..25). Fixed-ω: ω held at the calibration for every blend (Rist "
+                         "sample (STRATA 1.5, GAS-13..25). Fixed-ω: ω held at the calibration for every blend (Rist "
                          "baseline, ASM-01).")
     if mode == "fixed":
         c2.caption("Fixed-ω: ω held at the calibration; a blend changes coke through its chemistry only.")
@@ -94,10 +94,11 @@ def render_omega_result(eng: Any, r: Mapping[str, Any], today: Mapping[str, Any]
             if abs(om["d_prod"]) > 0:
                 rows.append(("Operation: production (TRZ residence), scaled", om["d_prod"]))
             rows.append(("Operation: coke layers, fuels, oxygen, scaled" +
-                         ("" if abs(om["d_prod"]) > 0 else " (no production channel, STRATA 1.4)"), om["d_rest"]))
+                         ("" if abs(om["d_prod"]) > 0 else " (no production channel, STRATA 1.4+)"), om["d_rest"]))
         else:
             rows.append(("Operation: coke layers, production (residence), oxygen", om["d_oper"]))
-        rows.append(("Blast moisture (weather record, RH estimate)", om.get("d_moist", 0.0)))
+        if abs(om.get("d_moist", 0.0)) > 0:                       # STRATA 1.5: no moisture term (GAS-19 retired)
+            rows.append(("Blast moisture (data term)", om["d_moist"]))
         if abs(om.get("d_nut", 0.0)) > 0:
             rows.append(("Nut coke against the calibration (GAS-23)", om["d_nut"]))
         if abs(om.get("d_R", 0.0)) > 0:

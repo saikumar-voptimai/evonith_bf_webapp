@@ -92,7 +92,7 @@ def case_from_shift(r):
         hm=dict(Fe=r['chem_pct_fe'], C=r['chem_pct_c'], Si=r['chem_pct_si'], Mn=r['chem_pct_mn'], P=r['chem_pct_p'],
                 S=r['chem_pct_s'], Ti=r['chem_pct_ti']),
         HMT=hmt, slag_FeO_pct=r['slag_pct_feo'], T_top=r['top_temp_avg'], HBT=r['hot_blast_temp'],
-        humidity_g=blast_moisture_g(r['sdate']), O2_per_air=o2 / hb_air,   # DATA-11: weather record, else table
+        humidity_g=blast_moisture_g(r['sdate']), O2_per_air=o2 / hb_air,   # DATA-11: Open-Meteo RH, else day-of-year mean / table
         dust=dict(dc_kg=r['dpr_dc_dust_kgthm'], gcp_kg=r['dpr_gcp_dust_kgthm'],
                   dc_C_pct=r['h_DUST_1_BASIC_ANALYSIS_FC_PCT'], gcp_C_pct=r['h_DUST_2_BASIC_ANALYSIS_FC_PCT'],
                   dc_Fe_pct=r['h_DUST_1_BASIC_ANALYSIS_FE_TOTAL_PCT'], gcp_Fe_pct=r['h_DUST_2_BASIC_ANALYSIS_FE_TOTAL_PCT']),

@@ -7,10 +7,10 @@ Why
   This module supplies omega as a function of the blend, the operating point and the blast moisture, with a 1-sigma
   uncertainty and a certainty class for every plan.
 
-Model (constants in ``assets/burden_engine/omega_model.json``; STRATA 1.4 = STRATA-omega on STRATA-Flow, the Stratified
+Model (constants in ``assets/burden_engine/omega_model.json``; STRATA 1.5 = STRATA-omega on STRATA-Flow, the Stratified
 Transport & Reduction Analytics model of BF-02 (layered gas-flow model v0.4), scaled and tested out of sample on 191 days
-of BF-02 data, Dec 2025 - Oct 2026, and on 413 days of 2023-24 data with frozen parameters; OMEGA v1.0 / v1.1,
-STRATA 1.2 and STRATA 1.3 were earlier versions)
+of BF-02 data, Dec 2025 - Oct 2026, and on 411 days of 2023-24 data with frozen parameters; OMEGA v1.0 / v1.1,
+STRATA 1.2, 1.3 and 1.4 were earlier versions)
 
   w(state, R)   ring counter-current model of the TRZ. Six rings, i = 1 (centre) .. 6 (wall):
                   C_g,i = R f_i        oxygen the ring's gas can take at the W point (f_i: gas share of ring i)
@@ -30,7 +30,7 @@ STRATA 1.2 and STRATA 1.3 were earlier versions)
   omega(plan) = omega_cal + [w(blend_plan, op_cal) - w(cal)] + sum_c b_c (s_c,plan - s_c,cal)      blend channel
                           + lam_rest [w(blend_plan, op_plan) - w(blend_plan, op_cal, prod_plan)]    other operation
                           + lam_prod [w(blend_plan, op_cal, prod_plan) - w(blend_plan, op_cal)]     production (1.4: 0)
-                          + a_h (moisture_plan - moisture_cal)                                      blast moisture
+                          + a_h (moisture_plan - moisture_cal)                          blast moisture (1.5: 0)
                           + a_n (nut_plan - nut_cal)                                                nut coke (1.3)
   The blend channel is the physics with a plant-data scale per material group: b_c = (lam_g - 1) g_c, where g_c is
   the physics change of omega per wet pt of class c replacing sinter and lam_g the scale of its group (pellet; lump
@@ -38,7 +38,15 @@ STRATA 1.2 and STRATA 1.3 were earlier versions)
   are the AR(1) posterior of the daily change of omega against its 14-day anchor (GAS-14, GAS-19); the posterior is
   stored as the mean and covariance of (x_blend, b_c) so that the code below is unchanged from v1.0.
 
-STRATA 1.4 (asset ``version``)
+STRATA 1.5 (asset ``version``)
+  STRATA 1.4 on the Open-Meteo daily blast moisture (DATA-11, ``utils/coke_energy/weather.py`` source ``open_meteo``):
+  the day's moisture enters the coke-energy pipeline, the calibration and the balance of every plan, and the data term
+  a_h is dropped (``moisture.coef`` 0, se 0; GAS-19 retired): with the moisture in the balance it is 0.0000 +/- 0.0009
+  and lowers out-of-sample skill. Posterior on the Open-Meteo run: lam_pellet 1.42 +/- 0.45, lam_lump 0.92 +/- 0.46,
+  lam_rest 0.80 +/- 0.28, a_n 0.0010 +/- 0.0003 per kg/tHM. 2026 expanding test RMSE 5.99 against Fixed-omega 6.39
+  kg/tHM (STRATA 1.4 on the RH-scaled record: 6.44 against 6.94).
+
+STRATA 1.4
   STRATA 1.3 without the production channel: ``operating_scales.production_channel`` false, lam_prod = 0 with zero
   uncertainty. The production part of the physics (TRZ residence) is still solved and reported (``d_prod_phys``), and
   the other-operation channel stays defined against the plan production, w(op_plan) - w(op_cal, prod_plan), as in the
@@ -155,7 +163,7 @@ class OmegaTerms:
     gas_in_excess: float = float("nan")
     wall_gas_share: float = float("nan")
     g: list[float] = field(default_factory=list)      # gradient of omega in the posterior parameters (lam_b, b)
-    d_moist: float = 0.0             # blast-moisture term (GAS-19)
+    d_moist: float = 0.0             # blast-moisture term (GAS-19; 0 since STRATA 1.5)
     d_prod: float = 0.0              # operating channel: production part (TRZ residence), data-scaled (STRATA 1.2)
     d_rest: float = 0.0              # operating channel: coke layers, fuels, oxygen, data-scaled
     d_prod_phys: float = 0.0
@@ -651,9 +659,9 @@ def assumption_sensitivity(model: OmegaModel, st: OmegaState, K: float, R: float
                          alternative=f"+/- {model.sd_prod:.2f}", basis="AR(1) posterior, GAS-16",
                          d_omega=float(model.sd_prod * abs(po.d_prod_phys)), kind="scale", symmetric=True))
     dh = float(st.humidity) - float(ref.humidity)
-    if math.isfinite(dh) and abs(dh) > 0:
+    if math.isfinite(dh) and abs(dh) > 0 and model.a_moist_se > 0:      # STRATA 1.5: no moisture term (GAS-19 retired)
         rows.append(dict(assumption="blast-moisture coefficient", value=f"{model.a_moist:.4f}/g",
-                         alternative=f"+/- {model.a_moist_se:.4f}", basis="GAS-19 (weather record, DATA-11)",
+                         alternative=f"+/- {model.a_moist_se:.4f}", basis="GAS-19 (DATA-11)",
                          d_omega=float(model.a_moist_se * abs(dh)), kind="moisture", symmetric=True))
     dn = float(st.nut) - float(ref.nut)
     if abs(dn) > 0 and model.a_nut_se > 0:

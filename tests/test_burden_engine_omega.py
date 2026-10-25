@@ -82,29 +82,30 @@ def test_gas_capacity_channel_retired(eng):
     assert wet["R_cap"] > dry["R_cap"]
 
 
-def test_moisture_term(eng):
-    """GAS-19 (STRATA 1.3, step-free RH estimate): a small, uncertain data term a_h per g/Nm3 on omega; the coke rate
-    responds to moisture no more than with omega held (the balance alone: about +0.8 kg/tHM per g/Nm3)."""
+def test_moisture_acts_through_the_balance(eng):
+    """GAS-19 retired (STRATA 1.5, Open-Meteo daily moisture in the balance): no moisture data term on omega; the coke
+    rate responds to moisture through the balance (about +0.8 kg/tHM per g/Nm3) and the network's small response in
+    the other-operation channel only."""
     m = eng.omega_model()
-    assert 0.0 <= m.a_moist < 0.007 and m.a_moist_se > 0
+    assert m.a_moist == 0.0 and m.a_moist_se == 0.0
     s = Settings(omega_mode="blend")
     z = eng.min_cost(prod_t_day=2270, s=s, L=Limits())["z"]
     dry = eng.evaluate(z, replace(s, humidity_g=10.0), P_REF, full=True)
     wet = eng.evaluate(z, replace(s, humidity_g=20.0), P_REF, full=True)
-    assert wet["omega_terms"]["d_moist"] - dry["omega_terms"]["d_moist"] == pytest.approx(10 * m.a_moist, rel=1e-9)
-    assert wet["omega_terms"]["sigma_parts"]["moisture"] > 0
+    assert wet["omega_terms"]["d_moist"] == 0.0 and dry["omega_terms"]["d_moist"] == 0.0
+    assert wet["omega_terms"]["sigma_parts"].get("moisture", 0.0) == 0.0
     held_dry = eng.evaluate(z, replace(Settings(), humidity_g=10.0), P_REF)
     held_wet = eng.evaluate(z, replace(Settings(), humidity_g=20.0), P_REF)
     d_held, d_blend = held_wet["K"] - held_dry["K"], wet["K"] - dry["K"]
     assert d_held > 5.0                                   # balance: moisture is endothermic
-    assert d_blend < d_held
+    assert abs(d_blend - d_held) < 0.3 * d_held           # network response to moisture is small (MOD-10)
 
 
-def test_asset_strata14():
+def test_asset_strata15():
     from utils.burden_engine.omega_model import MODEL_PATH
     with open(MODEL_PATH, encoding="utf-8") as fh:
         spec = json.load(fh)
-    assert spec["version"].startswith("STRATA 1.4") and spec["gas_capacity_channel"] is False
+    assert spec["version"].startswith("STRATA 1.5") and spec["gas_capacity_channel"] is False
     assert spec["brand"]["name"] == "STRATA" and spec["parts_backend"] == "network"
     mats = spec["materials"]
     ri = {m: v["ri_pct"] for m, v in mats.items()}
@@ -124,11 +125,19 @@ def test_asset_strata14():
     assert ops["production_channel"] is False and ops["production"] == 0.0 and ops["production_sd"] == 0.0  # STRATA 1.4
     assert 0.3 < ops["other"] < 2.0 and ops["other_sd"] > 0
     cs0 = spec["channel_scales"]
-    i = cs0["names"].index("q_prod")
-    assert cs0["mean"][i] == 0.0 and all(abs(x) == 0.0 for x in cs0["cov"][i]) and cs0["fixed"] == {"q_prod": 0.0}
-    strict = spec["validation"]["strict_2023_24"]
-    assert strict["rmse"]["All days"]["STRATA 1.4"] < strict["rmse"]["All days"]["Fixed-omega"]
-    assert strict["skill_day"]["STRATA 1.4"] > strict["skill_day"]["STRATA 1.3"]
+    for name in ("q_prod", "d_humidity_g"):                     # STRATA 1.4: no production channel; 1.5: no moisture term
+        i = cs0["names"].index(name)
+        assert cs0["mean"][i] == 0.0 and all(abs(x) == 0.0 for x in cs0["cov"][i])
+    assert cs0["fixed"] == {"q_prod": 0.0, "d_humidity_g": 0.0}
+    mo = spec["moisture"]
+    assert mo["coef"] == 0.0 and mo["se"] == 0.0 and mo["source"] == "open_meteo"   # moisture acts through the balance
+    from utils.coke_energy.weather import _settings
+    assert _settings()["source"] == mo["source"]                 # pipeline moisture = the basis of the fit
+    val = spec["validation"]
+    assert val["expanding"]["rmse_coke"] < val["expanding"]["rmse_fixed"] and val["expanding"]["coke_day"] > 0.05
+    strict = val["strict_2023_24"]
+    assert strict["rmse"]["All days"]["STRATA 1.5"] < strict["rmse"]["All days"]["Fixed-omega"]
+    assert strict["skill_day"]["STRATA 1.5"] > 0.0
     inv = spec["certainty"]["investigate"]
     assert inv["classes_max"] == {"pellet": 25.0} and inv["sigma_kg"] == 8.0
     po, cs = spec["posterior"], spec["channel_scales"]

@@ -2,7 +2,8 @@
 
 Rules
   automatic   value / se / params of an existing fact when the new value lies within 2 registered standard errors of
-              the registered value (GAS-14 scales, GAS-19 moisture coefficient); day counts and means of VAL facts
+              the registered value (GAS-14 scales, GAS-23 nut-coke coefficient; retired facts, e.g. the moisture term
+              GAS-19 since STRATA 1.5, are not proposed); day counts and means of VAL facts
   approval    any status change (e.g. VAL Modelled only -> Supported, Supported -> Disputed); a value outside 2 se;
               growth of the GAS-18 support envelope; promotion of the challenger (gate)
 Nothing is written by ``propose``; ``apply`` writes the approved items with a revision-log entry."""
@@ -20,7 +21,7 @@ import pandas as pd
 from utils.burden_engine.learn.evidence import PARAMS
 
 GAS14_KEYS = {"lam_pellet": ("lam_pellet", "sd_pellet"), "lam_lump": ("lam_lump", "sd_lump"),
-              "lam_other": ("lam_other", "sd_other")}          # STRATA 1.4: no production scale (GAS-16 retired)
+              "lam_other": ("lam_other", "sd_other")}          # STRATA 1.4+: no production scale (GAS-16 retired)
 
 
 def _neff(e: np.ndarray) -> float:
@@ -79,13 +80,13 @@ def propose(reg_data: Mapping[str, Any], kalman_summary: Mapping[str, Any], fam_
                           change=dict(value=round(mean["lam_pellet"], 3), se=round(sd["lam_pellet"], 3), params=new_p),
                           reason="Kalman state of the plant-data scales" + ("" if auto else " (outside 2 se: approval)")))
     g19 = facts.get("GAS-19")
-    if g19 and g19.get("se"):
+    if g19 and g19.get("se") and g19.get("status") != "Retired":     # STRATA 1.5: moisture term retired, held at 0
         a, s = mean["a_moisture"], sd["a_moisture"]
         auto = abs(a - g19["value"]) <= 2 * g19["se"]
         items.append(dict(id="GAS-19", kind="value", automatic=auto, change=dict(value=round(a, 5), se=round(s, 5)),
                           reason="Kalman state of the moisture coefficient" + ("" if auto else " (outside 2 se)")))
     g23 = facts.get("GAS-23")
-    if g23 and g23.get("se") and "a_nut" in mean:
+    if g23 and g23.get("se") and "a_nut" in mean and g23.get("status") != "Retired":
         a, s = mean["a_nut"], sd["a_nut"]
         auto = abs(a - g23["value"]) <= 2 * g23["se"]
         items.append(dict(id="GAS-23", kind="value", automatic=auto, change=dict(value=round(a, 6), se=round(s, 6)),

@@ -7,7 +7,8 @@ Row fields (the same definitions as the out-of-sample test, GAS-20):
   q_prod          production channel: physics change of omega for the production change (TRZ residence);
                   STRATA 1.4 gives it coefficient 0 and keeps the column for offline re-tests (GAS-16, GAS-25)
   q_oper_rest     other operating channel (coke layers, fuels, oxygen), physics
-  d_humidity_g    blast moisture minus its 14-day anchor, g/Nm3 (weather record, smoothed RH estimate, DATA-11)
+  d_humidity_g    blast moisture minus its 14-day anchor, g/Nm3 (Open-Meteo daily RH, DATA-11); STRATA 1.5 gives it
+                  coefficient 0 (the moisture acts through the balance) and keeps the column for monitoring (GAS-19)
   d_nut           nut coke minus its 14-day anchor, kg/tHM (STRATA 1.3, GAS-23)
   STRATA 1.3: the q channels come from STRATA-Flow network runs of each day (no surrogate), RI / RDI from the plant
   laboratory tests; q_lump covers CLO, ROM (with the Donimalai oversize return), Gomti and the Lloyds fines oversize.
@@ -16,8 +17,8 @@ Row fields (the same definitions as the out-of-sample test, GAS-20):
   dKdw            dK/domega of the day, kg/tHM per unit omega
   sh_*            class shares of ferrous, wet %; family from blend_family()
   trial           trial code or empty
-The seed (``assets/burden_engine/strata_evidence_seed.csv``) holds 191 days, 15 Dec 2025 - 7 Oct 2026 (STRATA 1.3
-channels, s13/final.py)."""
+The seed (``assets/burden_engine/strata_evidence_seed.csv``) holds 191 days, 15 Dec 2025 - 7 Oct 2026 (STRATA 1.5
+channels on the Open-Meteo daily moisture, s15/final15.py)."""
 
 from __future__ import annotations
 

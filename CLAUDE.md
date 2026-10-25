@@ -820,16 +820,18 @@ fallback).
   balance; blast limit (Pb² − Pt²) = K·V^1.8 with burden-resistance rules; RAFT from `utils.energy_balance.raft`.
 - **Shaft efficiency:** Fixed-ω (Rist baseline, held at the calibration; ASM-01, `Settings.omega_mode="fixed"`, the
   engine default) or STRATA-ω (ASM-18, page default): `utils/burden_engine/omega_model.py` +
-  `assets/burden_engine/omega_model.json` (**STRATA 1.4** — Stratified Transport & Reduction Analytics, formerly OMEGA:
+  `assets/burden_engine/omega_model.json` (**STRATA 1.5** — Stratified Transport & Reduction Analytics, formerly OMEGA:
   STRATA-Flow ring counter-current model of the thermal reserve zone; RI and RDI from the Evonith laboratory tests
   (set T26, GAS-21; Gomti 65 % without test), rate law [ln(1−RI)/ln(1−RI_sinter)]^β (11.25/d)^n with β 0, n 1.0
-  calibrated on the plant data; plant-data scales for pellet (1.39 ± 0.46) and lump ore (0.97 ± 0.46), an
-  other-operation channel (coke layers, fuels, O₂, blast; 0.83 ± 0.29), blast-moisture (0.0016 ± 0.0024 per g/Nm³) and
-  nut-coke (0.00093 ± 0.00035 per kg/tHM) terms from an out-of-sample-tested AR(1) posterior, GAS-13..26; **no
-  production channel** since 1.4 (`operating_scales.production_channel: false`, scale 0: it failed the strict 2023–24
-  test, GAS-16 retired, GAS-25); gas-capacity channel retired), solved inside the balance via
-  `rist.solve_2z(omega_fn=)`. Validation: 2026 expanding test coke skill +0.139 (RMSE 6.44 vs 6.94 kg/tHM); strict
-  2023–24 test with frozen parameters, 413 days, RMSE 7.40 vs 7.95 (`validation.strict_2023_24` in the asset).
+  calibrated on the plant data; plant-data scales for pellet (1.42 ± 0.45) and lump ore (0.92 ± 0.46), an
+  other-operation channel (coke layers, fuels, O₂, blast; 0.80 ± 0.28) and a nut-coke term (0.0010 ± 0.0003 per
+  kg/tHM) from an out-of-sample-tested AR(1) posterior, GAS-13..26; **no production channel** since 1.4
+  (`operating_scales.production_channel: false`, scale 0: it failed the strict 2023–24 test, GAS-16 retired, GAS-25);
+  **no moisture term** since 1.5 (`moisture.coef` 0: the day's Open-Meteo moisture acts through the balance, GAS-19
+  retired); gas-capacity channel retired), solved inside the balance via `rist.solve_2z(omega_fn=)`. Validation (Open-
+  Meteo daily moisture): 2026 expanding test RMSE 5.99 vs 6.39 kg/tHM for Fixed-ω (coke skill +0.120; STRATA 1.4 on the
+  RH-scaled record 6.44 vs 6.94); strict 2023–24 test with frozen parameters, 411 days, RMSE 8.00 vs 8.23
+  (`validation.strict_2023_24` in the asset; on the smoothed day-of-year moisture 1.4 gave 7.40 vs 7.95).
   **No surrogate:** the ring quantities
   come from the STRATA-Flow network itself (`src/utils/strata_flow/`, vendored bf2_momentum v0.4.1, ~1.1 s per solve)
   through `utils/burden_engine/strata_network.py`: a solve at the calibration plus its Jacobian (16 solves, cached in
@@ -854,20 +856,26 @@ fallback).
   `assets/burden_engine/strata_evidence_seed.csv`), random-walk Kalman filter on the plant-data scales, champion /
   challenger gate (60 days, Diebold–Mariano), CUSUM drift alarm, register proposals (automatic within 2 se; status
   changes need approval), Thompson-sampling exploration under a regret budget. `python -m utils.burden_engine.learn.run`.
-  Never changes the asset, the register or the page. STRATA 1.4: λ_production held at 0 (prior sd 0, no random walk;
-  `channel_scales.fixed`); the q_prod column stays in the evidence for a later re-test.
+  Never changes the asset, the register or the page. λ_production (STRATA 1.4) and a_moisture (STRATA 1.5) are held
+  at 0 (prior sd 0, no random walk; `channel_scales.fixed`); the q_prod and d_humidity_g columns stay in the evidence
+  for a later re-test. Seed rebuilt on the STRATA 1.5 channels (191 days).
 - **Prices and slag credit:** ferrous and flux prices from the plant (23 Oct 2026), fuels from the BF-2 cost sheet
   (FTD Costing 22 Oct 2026) — DATA-14 — in `bmo_operator_inputs.yml` (live) and `burden_optimiser.yml → prices`
   (reference yard). The objective credits the slag sold (`fuel["slag_price"]`, granulated slag 457.85 Rs/t, ASM-20):
   cost `total` = ore + flux + fuel − slag credit (`gross` before the credit).
 - **Sinter RI / RDI:** from the latest raw-material strength data (calibration `sinter_strength`, pipeline columns
   SINTER_HOT_STRENGTH_RI / _RDI), not from the laboratory report.
-- **Blast moisture:** the Wardha daily weather record (`utils/coke_energy/weather.py`, DATA-11): default
-  `rh_scaled` — 31-day centred mean of RH mapped linearly to 7–21 g/Nm³, no step changes (the record's seasonal blocks
-  jump 40–60 RH points overnight; a furnace does not); `psychrometric` (Magnus, keeps the steps) and `table` selectable
-  in `config/coke_energy.yml → blast_moisture.source`; monthly table outside the record. Used by the Coke Energy
-  pipeline (`run_shifts.case_from_shift`), the engine calibration and the page default.
-- **Fact register:** `src/config/facts_register.json` v1.7, 115 facts (schema in `config/schemas/`). Every coefficient outside the
+- **Blast moisture:** Open-Meteo daily mean RH at Wardha (`utils/coke_energy/weather.py`, DATA-11, STRATA 1.5):
+  default `open_meteo` — daily RH mapped linearly to 7–21 g/Nm³ (RH 26.1 → 7, 86.2 → 21), no smoothing; validated on
+  the top-gas H₂ (+0.041 pt H₂ per g/Nm³ in 2026, +0.038 in 2023–24, the physical slope; DATA-16). Shipped file
+  `assets/coke_energy/open_meteo_rh_wardha_daily.csv` (1 Jan 2023 – 15 Oct 2026); later days from the Open-Meteo
+  forecast endpoint (`blast_moisture.open_meteo`: refresh 6 h, failure retry 60 min, cache
+  `src/storage/coke_energy/`; `COKE_ENERGY_WEATHER_LIVE=0` disables the fetch, set in `tests/conftest.py`); missing
+  days use the Open-Meteo day-of-year mean, then the monthly table. `rh_scaled` (31-day centred RH of the 2025–26
+  weather record, the STRATA 1.4 basis), `psychrometric` and `table` remain selectable in
+  `config/coke_energy.yml → blast_moisture.source`. Used by the Coke Energy pipeline (`run_shifts.case_from_shift`), the
+  engine calibration and the page default; the asset's `moisture.source` must match (tested).
+- **Fact register:** `src/config/facts_register.json` v1.8, 116 facts (schema in `config/schemas/`). Every coefficient outside the
   balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
   Change values there, not in code; retired facts are refused by `FactRegister.active()`.
 - **Adapters:** `src/data/burden_engine/inputs.py` (yard from `EvonithBmoContextProvider` + `bmo_operator_inputs.yml`),

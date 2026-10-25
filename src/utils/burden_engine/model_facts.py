@@ -4,7 +4,7 @@ MOD  Coke response of the two shaft-efficiency models to a standard change at th
      baseline, omega held at the calibration, ASM-01) and STRATA-omega (blend- and operation-dependent, ASM-18). Each
      fact carries both values, their difference and the 1-sigma of the STRATA value.
        substitutions  10 wet pt of ferrous, flux held at the reference plan (coke through chemistry + omega)
-       production     +1 t/h at the same burden (heat loss GJ/h held: dilution in both; STRATA 1.4 has no production
+       production     +1 t/h at the same burden (heat loss GJ/h held: dilution in both; STRATA 1.4+ has no production
                       channel, so the two models differ only through the other-operation response)
        moisture       +1 g/Nm3 blast moisture at the same burden
        nut coke       +10 kg/tHM at the same burden (STRATA 1.3+, GAS-23)
@@ -106,7 +106,7 @@ def model_facts(eng: Engine | None = None) -> list[dict[str, Any]]:
     rows.append(dict(common, id="MOD-09", statement="Production +1 t/h at the same burden: coke response, Fixed-omega "
                                                     "and STRATA-omega", value=round(ks, 2), se=round(sg, 2),
                      unit="kg/tHM dry coke per t/h",
-                     basis="Heat loss GJ/h held (dilution of the loss per tonne in both models). STRATA 1.4 has no "
+                     basis="Heat loss GJ/h held (dilution of the loss per tonne in both models). STRATA 1.4+ has no "
                            "production channel (GAS-16 retired, GAS-25): the TRZ-residence effect of the network is not "
                            "applied, so the STRATA value differs from Fixed-omega only through the other-operation "
                            "channel. Plant data: burnt coke -1.3 +/- 0.4 kg/tHM per t/h within months (GAS-22)",
@@ -118,7 +118,9 @@ def model_facts(eng: Engine | None = None) -> list[dict[str, Any]]:
                                                     "Fixed-omega and STRATA-omega", value=round(ks, 2), se=round(sg, 2),
                      unit="kg/tHM dry coke per g/Nm3",
                      basis="Fixed-omega: endothermic water-gas reaction in the balance only; STRATA-omega adds the "
-                           "moisture term of shaft efficiency (GAS-19, weather-record RH estimate DATA-11)",
+                           "network's response to the moisture through the other-operation channel. STRATA 1.5 has no "
+                           "moisture data term (GAS-19 retired); the day's Open-Meteo moisture (DATA-11) acts through the "
+                           "balance. Plant data 2026: burnt coke +1.28 +/- 0.56 kg/tHM per g/Nm3 within months",
                      params=dict(fixed_omega=round(kf, 2), strata_omega=round(ks, 2), difference=round(ks - kf, 2),
                                  sigma_strata=round(sg, 2), d_omega=round(dw, 4))))
     s_n = replace(s_fix, nut_plant=s_fix.nut_plant + 10.0)

@@ -104,7 +104,8 @@ def test_gate_and_drift(spec):
 def test_register_proposal_rules(spec, reg):
     res = shadow_run(EvidenceStore(), spec, reg)
     prop = res["proposal"]
-    assert all(it["automatic"] for it in prop["items"] if it["id"] in ("GAS-14", "GAS-19", "GAS-23"))
+    assert all(it["automatic"] for it in prop["items"] if it["id"] in ("GAS-14", "GAS-23"))
+    assert not any(it["id"] == "GAS-19" for it in prop["items"])               # STRATA 1.5: moisture term retired
     fam = [dict(r) for r in res["families"]]
     for r in fam:
         if r["family"].startswith("N1"):
@@ -112,14 +113,14 @@ def test_register_proposal_rules(spec, reg):
     p2 = propose(reg, res["state"], fam)
     it = next(i for i in p2["items"] if i["id"] == "VAL-01")
     assert it["kind"] == "status" and not it["automatic"]
-    r_auto = apply(reg, p2, version="1.7x", today="2026-12-01")
+    r_auto = apply(reg, p2, version="1.8x", today="2026-12-01")
     old_status = next(f for f in reg["facts"] if f["id"] == "VAL-01")["status"]
     assert old_status != "Disputed"
     assert next(f for f in r_auto["facts"] if f["id"] == "VAL-01")["status"] == old_status   # status change needs approval
-    r_ok = apply(reg, p2, approved={"VAL-01"}, version="1.8", today="2026-12-01")
+    r_ok = apply(reg, p2, approved={"VAL-01"}, version="1.9", today="2026-12-01")
     assert next(f for f in r_ok["facts"] if f["id"] == "VAL-01")["status"] == "Disputed"
-    assert r_ok["version"] == "1.8" and r_ok["revision_log"][0]["change"].startswith("STRATA-Learn")
-    assert reg["version"] == "1.7"                                           # input untouched
+    assert r_ok["version"] == "1.9" and r_ok["revision_log"][0]["change"].startswith("STRATA-Learn")
+    assert reg["version"] == "1.8"                                           # input untouched
 
 
 def test_exploration():

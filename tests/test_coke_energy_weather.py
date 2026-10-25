@@ -1,11 +1,14 @@
-"""Blast moisture from the Wardha daily weather record (DATA-11, utils/coke_energy/weather.py).
+"""Blast moisture from the ambient RH at Wardha (DATA-11, utils/coke_energy/weather.py).
 
-Default source rh_scaled: 31-day centred mean of RH mapped linearly to 7-21 g/Nm3, no step changes. The psychrometric
-estimate (Magnus) remains selectable and keeps the record's seasonal steps."""
+Default source open_meteo (STRATA 1.5): Open-Meteo daily mean RH mapped linearly to 7-21 g/Nm3, no smoothing; days
+after the shipped file from the forecast endpoint (no network in the tests), else the Open-Meteo day-of-year mean.
+rh_scaled (31-day centred mean of the 2025-26 weather record's RH, the STRATA 1.4 basis) and the psychrometric
+estimate (Magnus, keeps the record's seasonal steps) remain selectable."""
 
 from __future__ import annotations
 
 import math
+import os
 
 import numpy as np
 import pandas as pd
@@ -13,6 +16,14 @@ import pytest
 
 from utils.coke_energy import weather as W
 from utils.coke_energy.bf_thermo import HUMIDITY_G_NM3
+
+
+@pytest.fixture(autouse=True)
+def _offline(monkeypatch):
+    monkeypatch.setenv("COKE_ENERGY_WEATHER_LIVE", "0")
+    W.clear_cache()
+    yield
+    W.clear_cache()
 
 
 def test_moisture_formula():
@@ -34,14 +45,73 @@ def test_rh_scaled_map():
     assert 40.0 < sm.loc["2026-01-10"] < 80.0                                       # the step is spread over the window
 
 
-def test_record_default_is_step_free():
+def test_open_meteo_default():
     rec = W.daily_record()
+    assert W._settings()["source"] == "open_meteo"
+    assert rec.index.min() == pd.Timestamp("2023-01-01") and rec.index.max() >= pd.Timestamp("2026-10-15")
+    assert rec.min() >= 7.0 - 1e-9 and rec.max() <= 21.0 + 1e-9
+    rh = W.open_meteo_rh(refresh=False)
+    d = pd.Timestamp("2026-06-11")
+    assert rec.loc[d] == pytest.approx(7.0 + 14.0 * (rh.loc[d] - 26.06) / (86.19 - 26.06))      # no smoothing
+    assert 0.8 < float(rec.diff().std()) < 2.5                                     # day-to-day variation is kept
+    jun = rec.loc["2026-06-01":"2026-06-20"].mean()
+    assert 9.0 < jun < 14.0                                   # the 2026 monsoon reached Wardha late in June
+    v, src = W.blast_moisture("2026-06-11")
+    assert src == "Open-Meteo daily RH" and v == pytest.approx(rec.loc[d])
+
+
+def test_open_meteo_gap_uses_day_of_year_mean():
+    v, src = W.blast_moisture("2030-07-15")
+    assert src == "Open-Meteo day-of-year mean" and 14.0 < v < 21.0
+    v1, _ = W.blast_moisture("2031-07-15")
+    assert v1 == pytest.approx(v)
+    v, _ = W.blast_moisture("2030-04-15")
+    assert 7.0 <= v < 11.0                                                            # dry season
+
+
+def test_open_meteo_live_fetch_is_cached(monkeypatch, tmp_path):
+    calls = []
+    today = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
+    days = pd.date_range(today - pd.Timedelta(days=3), today)
+
+    def fake(*a, **k):
+        calls.append(1)
+        return pd.Series([50.0, 60.0, 70.0, 80.0], index=days)
+
+    W.clear_cache()
+    om = W._settings()["open_meteo"]
+    monkeypatch.setitem(om, "cache_path", str(tmp_path / "rh.csv"))
+    monkeypatch.setenv("COKE_ENERGY_WEATHER_LIVE", "1")
+    monkeypatch.setattr(W, "fetch_open_meteo_rh", fake)
+    v, src = W.blast_moisture(today)
+    assert src == "Open-Meteo daily RH" and v == pytest.approx(7.0 + 14.0 * (80.0 - 26.06) / (86.19 - 26.06))
+    assert (tmp_path / "rh.csv").exists() and len(calls) == 1
+    W.blast_moisture(today - pd.Timedelta(days=1))
+    assert len(calls) == 1                                                           # within refresh_hours
+
+
+def test_open_meteo_fetch_failure_falls_back(monkeypatch, tmp_path):
+    def boom(*a, **k):
+        raise OSError("offline")
+
+    W.clear_cache()
+    om = W._settings()["open_meteo"]
+    monkeypatch.setitem(om, "cache_path", str(tmp_path / "rh.csv"))
+    monkeypatch.setenv("COKE_ENERGY_WEATHER_LIVE", "1")
+    monkeypatch.setattr(W, "fetch_open_meteo_rh", boom)
+    v, src = W.blast_moisture(pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize())
+    assert src == "Open-Meteo day-of-year mean" and 7.0 <= v <= 21.0
+    assert W._LIVE["t_fail"] > 0
+
+
+def test_rh_scaled_record_is_step_free():
+    rec = W.daily_record(method="rh_scaled")
     assert len(rec) > 600 and rec.index.min() <= pd.Timestamp("2025-12-01") and rec.index.max() >= pd.Timestamp("2026-10-07")
     assert rec.min() >= 7.0 - 1e-9 and rec.max() <= 21.0 + 1e-9
     assert float(np.abs(np.diff(rec.to_numpy())).max()) < 1.0                       # no overnight jump (largest 0.6)
     june = rec.loc["2026-05-25":"2026-06-07"]
     assert float(np.abs(np.diff(june.to_numpy())).max()) < 1.0                       # no step on 1 Jun
-    v, src = W.blast_moisture("2026-06-15")
+    v, src = W.blast_moisture("2026-06-15", source="rh_scaled")
     assert src == "weather record (RH, smoothed)" and v == pytest.approx(rec.loc[pd.Timestamp("2026-06-15")])
 
 
@@ -57,7 +127,7 @@ def test_psychrometric_keeps_steps():
 
 
 def test_fallback():
-    v, src = W.blast_moisture("2030-01-15")                      # outside the record: monthly table
+    v, src = W.blast_moisture("2030-01-15", source="rh_scaled")  # outside the record: monthly table
     assert src == "monthly table" and v == HUMIDITY_G_NM3[1]
     v, src = W.blast_moisture("2026-06-15", source="table")
     assert src == "monthly table" and v == HUMIDITY_G_NM3[6]
@@ -66,5 +136,8 @@ def test_fallback():
 def test_window_mean():
     days = pd.date_range("2026-07-01", "2026-07-14")
     v, src = W.mean_blast_moisture(days)
-    assert src == "weather record (RH, smoothed)"
+    assert src == "Open-Meteo daily RH"
     assert v == pytest.approx(float(W.daily_record().loc[days].mean()))
+    v, src = W.mean_blast_moisture(days, source="rh_scaled")
+    assert src == "weather record (RH, smoothed)"
+    assert v == pytest.approx(float(W.daily_record(method="rh_scaled").loc[days].mean()))

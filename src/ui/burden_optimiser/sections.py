@@ -349,8 +349,8 @@ def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_defau
                                          "nut-coke term (GAS-23)."),
         humidity_g=c5.number_input("Blast moisture, g/Nm³", min_value=0.0, max_value=40.0, value=float(humidity_default),
                                    step=1.0, format="%.0f", key=f"{key}_hum",
-                                   help="Not measured at BF-02 (DATA-04): defaults to the weather-record estimate "
-                                        "(smoothed RH mapped to 7-21 g/Nm³, DATA-11) for the regime window."),
+                                   help="Not measured at BF-02 (DATA-04): defaults to the Open-Meteo daily RH at "
+                                        "Wardha mapped to 7-21 g/Nm³ (DATA-11) for the regime window."),
     )
     return out
 

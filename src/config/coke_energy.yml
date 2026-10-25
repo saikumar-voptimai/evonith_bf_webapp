@@ -17,14 +17,29 @@ coke_energy:
   rolling_window_days: 14
   rolling_min_shifts: 10
 
-  # Blast moisture (DATA-04, DATA-11). The cold blast is ambient air: weather_file takes each day's absolute humidity
-  # from the Wardha daily record (Magnus vapour pressure at the mean of T_max and T_min, mean RH, station pressure
-  # below); dates the record does not cover use the monthly table (bf_thermo.HUMIDITY_G_NM3). table: the monthly
-  # table for every date (behaviour before Oct 2026).
+  # Blast moisture (DATA-04, DATA-11). The cold blast is ambient air (no steam injection on BF-02). Default
+  # open_meteo (STRATA 1.5, 25 Oct 2026): daily mean RH at Wardha from Open-Meteo mapped linearly onto 7-21 g/Nm3,
+  # no smoothing; validated on the top-gas H2 response (+0.041 pt H2 per g/Nm3 in 2026, +0.038 in 2023-24). Days after
+  # the shipped file come from the Open-Meteo forecast endpoint (cached under src/storage/coke_energy/); missing days
+  # use the Open-Meteo day-of-year mean, then the monthly table (bf_thermo.HUMIDITY_G_NM3).
   blast_moisture:
-    # rh_scaled (default): centred 31-day mean of the record's RH mapped linearly onto 7-21 g/Nm3 (no step changes);
-    # psychrometric (alias weather_file): Magnus from T and RH, keeps the record's seasonal steps; table: monthly table.
-    source: rh_scaled
+    # open_meteo (default) | rh_scaled: centred 31-day mean of the 2025-26 weather record's RH mapped onto 7-21 g/Nm3
+    # (STRATA 1.4 basis) | psychrometric (alias weather_file): Magnus from the record's T and RH, keeps its seasonal
+    # steps | table: monthly table.
+    source: open_meteo
+    open_meteo:
+      path: src/assets/coke_energy/open_meteo_rh_wardha_daily.csv     # 1 Jan 2023 - 15 Oct 2026, mean of 24 h
+      cache_path: src/storage/coke_energy/open_meteo_rh_wardha_daily.csv
+      latitude: 20.745
+      longitude: 78.602
+      live: true                      # environment COKE_ENERGY_WEATHER_LIVE=0 disables the fetch
+      past_days: 92
+      timeout_s: 8
+      refresh_hours: 6
+      retry_minutes: 60
+      smoothing_days: 1
+      rh_range: [26.06, 86.19]        # 1st / 99th percentile of the 31-day centred Open-Meteo RH, 2023 - Oct 2026
+    # rh_scaled / psychrometric settings (weather record)
     path: src/assets/coke_energy/wardha_daily_weather_2025_2026.csv
     smoothing_days: 31
     g_range: [7.0, 21.0]

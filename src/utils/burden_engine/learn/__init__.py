@@ -8,8 +8,8 @@ marked automatic; status changes, support-range growth and promotion of the chal
 The 14-day calibration anchor of the Coke Energy pipeline is kept: the learner works on day-minus-anchor changes only.
 
   evidence.py   evidence store (daily rows, blend family, trial flag) and the seed history
-  kalman.py     random-walk Kalman filter on (lam_pellet, lam_lump, lam_other, a_moisture, a_nut; lam_production
-                held at 0 since STRATA 1.4), AR(1)
+  kalman.py     random-walk Kalman filter on (lam_pellet, lam_lump, lam_other, a_nut; lam_production held at 0 since
+                STRATA 1.4, a_moisture held at 0 since STRATA 1.5), AR(1)
   gate.py       champion-challenger on a rolling window (Diebold-Mariano), CUSUM drift alarm
   autofill.py   register proposals (GAS-14, GAS-18 support, VAL-01..12) with approval flags; apply after approval
   explore.py    constrained exploration: Thompson-sampling probability of optimality under a regret budget

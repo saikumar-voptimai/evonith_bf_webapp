@@ -23,11 +23,11 @@ Engine 2.0 (fact register v1.1)
 Shaft efficiency (``Settings.omega_mode``)
   * "fixed" (default, ASM-01): omega held at the calibration for every blend; a blend moves the coke rate through its
     chemistry only.
-  * "blend" (ASM-18, GAS-13..24): STRATA-omega from ``utils.burden_engine.omega_model`` (STRATA 1.4) - the STRATA-Flow
+  * "blend" (ASM-18, GAS-13..24): STRATA-omega from ``utils.burden_engine.omega_model`` (STRATA 1.5) - the STRATA-Flow
     gas-flow model's ring counter-current description of the thermal reserve zone, scaled by the plant data and tested
     out of sample (GAS-20, GAS-25) - as a function of the blend, the coke rate, oxygen, nut coke and the blast moisture
-    (production enters through the balance; STRATA 1.4 has no production channel), solved inside the two-zone
-    balance. The STRATA-Flow network is solved during the optimisation (one solve per SLP iterate, three per reported
+    (production and blast moisture enter through the balance; STRATA 1.5 has no production channel and no moisture
+    term), solved inside the two-zone balance. The STRATA-Flow network is solved during the optimisation (one solve per SLP iterate, three per reported
     plan; ``strata_network.py``), not approximated by a surrogate. Every result then
     carries sigma(coke), a certainty class (High / Medium / Low / Investigate), the parts of omega and the network
     solves behind it; ``Engine.critical_assumptions`` gives the coke effect of each critical assumption (RI exponent,
