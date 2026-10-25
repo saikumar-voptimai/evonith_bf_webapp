@@ -250,8 +250,8 @@ test (slope of the error on the share change, per +10 wet pt, HAC): all |t| < 1.
 
 STRATA 1.5 (Open-Meteo daily ambient moisture + measured steam, 411 days, parameters frozen at the 2026 fit): day
 RMSE of burnt coke Fixed-ω 8.23, STRATA 1.5 8.00 (skill +0.055, 7-day +0.061, ω +0.081; paired ΔMSE −3.7 ± 2.0,
-t −1.9); pellet era 7.88 / 7.69, lump era 8.50 / 8.24. Both models are about 0.3 kg/tHM worse than on the smoothed
-day-of-year moisture below: in 2023–24, with steam injection, the burnt coke did not follow the day-to-day ambient
+t −1.9); pellet era 7.88 / 7.69, lump era 8.50 / 8.24. Against the smoothed day-of-year moisture below, Fixed-ω is 0.28 and STRATA 0.60 kg/tHM
+worse: in 2023–24, with steam injection, the burnt coke did not follow the day-to-day ambient
 moisture (−0.10 ± 0.16 kg/tHM per g/Nm³ within months, against +0.41 in the balance). Re-estimated on 2023–24 alone the
 scales are pellet 1.59 ± 0.39, lump 1.11 ± 0.50, other 1.10 ± 0.39: within 1 SD of the 2026 fit. Credit test: CLO
 +8.2 ± 3.1, NMDC +12.1 ± 3.9 kg/tHM per 10 pt (Fixed-ω +8.4 / +13.2). Scripts `y24/eval_strict15.py`.

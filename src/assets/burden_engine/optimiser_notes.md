@@ -73,8 +73,8 @@ any coefficient.
 * **Strict test on unseen 2023–24 data (GAS-25).** 411 stable days, Mar 2023 – Jul 2024, every parameter frozen at
   the 2026 fit, Open-Meteo daily ambient moisture + measured steam: day RMSE of burnt coke Fixed-ω 8.23, **STRATA 1.5
   8.00** (skill 0.055; paired t -1.9). On the smoothed day-of-year moisture STRATA 1.4 gave 7.40 against 7.95: in
-  2023–24 (steam injection 0–2.9 t/h) the burnt coke did not follow the day-to-day ambient moisture, so the daily
-  series adds about 0.3 kg/tHM to both models' error in that period. The regime differed (coke 409 against 309
+  2023–24 (steam injection 0–2.9 t/h) the burnt coke did not follow the day-to-day ambient moisture: on the daily
+  series Fixed-ω loses 0.28 and STRATA 0.60 kg/tHM against the smoothed series. The regime differed (coke 409 against 309
   kg/tHM, PCI 107 against 190); the ω level was the same (0.80). In 2023–24 both models over-credit CLO and NMDC
   replacing sinter (+8 and +12 kg/tHM per 10 pt): a sinter-quality effect outside the model; sinter strength is not in
   the 2023–24 files (GAS-26, Measured gap).

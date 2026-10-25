@@ -1605,7 +1605,7 @@
    "basis": "411 stable days, 2023-03-05 - 2024-07-11 (July 2023 missing), not used in any fit; omega anchor and zone losses = 14 previous days; STRATA-Flow solved per day (window, day blend, day production, day operation); blast moisture = Open-Meteo daily ambient + measured steam injection (DATA-15). Day RMSE of burnt coke, kg/tHM: all days (411 days) Fixed-omega 8.23, STRATA 1.5 8.00; pellet era (179 days) Fixed-omega 7.88, STRATA 1.5 7.69; lump era (232 days) Fixed-omega 8.50, STRATA 1.5 8.24. Skill (day / 7-day / omega): 0.055 / 0.061 / 0.081. Paired dMSE STRATA 1.5 - Fixed-omega -3.7 +/- 2.0 (t -1.9). On the RH-scaled day-of-year ambient (STRATA 1.4, 413 days): Fixed-omega 7.95, STRATA 1.4 7.4.",
    "literature": "",
    "next_test": "Sinter strength 2023-24; a steam-specific moisture coefficient (steam injection resumes)",
-   "note": "Regime 2023-24: coke 409 against 309 kg/tHM, PCI 107 against about 190 kg/tHM, pellet 0-30 %, CLO 9-30 %, NMDC 0-13 %, steam injection; omega level 0.80 in both periods. Both models are about 0.3 kg/tHM worse on the daily Open-Meteo moisture than on the smoothed day-of-year series: in 2023-24 the burnt coke did not follow the day-to-day moisture (GAS-19). Removing the production channel raised the skill (GAS-16). Per-ore credit: GAS-26.",
+   "note": "Regime 2023-24: coke 409 against 309 kg/tHM, PCI 107 against about 190 kg/tHM, pellet 0-30 %, CLO 9-30 %, NMDC 0-13 %, steam injection; omega level 0.80 in both periods. On the daily Open-Meteo moisture Fixed-omega is 0.28 and STRATA 0.60 kg/tHM worse than on the smoothed day-of-year series: in 2023-24 the burnt coke did not follow the day-to-day moisture (GAS-19). Removing the production channel raised the skill (GAS-16). Per-ore credit: GAS-26.",
    "version": "1.8",
    "date": "2026-10-25"
   },
@@ -1614,7 +1614,7 @@
    "group": "GAS",
    "statement": "Per-ore coke credit test (day level): coke error against the share change of each ore class",
    "value": 8.2,
-   "unit": "kg/tHM per +10 wet pt (CLO, 2023-24, STRATA 1.4)",
+   "unit": "kg/tHM per +10 wet pt (CLO, 2023-24, STRATA 1.5)",
    "se": 3.1,
    "status": "Measured gap",
    "grade": "B",
@@ -1689,7 +1689,7 @@
    "basis": "Plant files Feb 2023 - Jul 2024: parameter data (hourly: blast, O2, steam, PCI, top pressure, uptake temperature, top gas CO / CO2 / H2) in 10-min bins; daily production report (HM, coke, nut coke, sinter, pellet, ore, flux, dust; supplier split from Jan 2024, monthly raw-material % before); HM and slag chemistry (three samples per shift); raw-material analysis (daily). Blast moisture = ambient (Open-Meteo daily RH at Wardha mapped to 7-21 g/Nm3, DATA-11; STRATA 1.4 used the day-of-year mean of the 2025-26 RH-scaled record) + steam injection (0-2.9 t/h, mean 0.67 t/h). Not in the files: charging matrix (2026 reference matrix used), sinter RDI, coke CSR, ash and dust analyses, cooling water (2025-26 medians). Coke stability band 220-520 kg/tHM dry.",
    "literature": "",
    "next_test": "Sinter strength 2023-24",
-   "note": "July 2023 has no HM analysis. Sep - Nov 2025 is not usable (22 stable shifts, all in the leak period). Files: analysis workspace y24/ (parse_*.py, build_y24.py, run_pipeline_y24.py, net_y24.py, eval_strict14.py, eval_strict15.py, eval_moist.py).",
+   "note": "July 2023 has no HM analysis. Sep - Nov 2025 is not usable (22 stable shifts, all in the leak period). Files: analysis workspace y24/ (parse_*.py, build_y24.py, run_pipeline_y24.py, net_y24.py, eval_strict14.py, eval_strict15.py, eval_moist.py). 411 stable days on the Open-Meteo moisture basis (STRATA 1.5 test), 413 on the RH-scaled basis.",
    "version": "1.8",
    "date": "2026-10-25"
   },
