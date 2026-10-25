@@ -184,17 +184,23 @@ The page opens with the model against the furnace, before any plan.
 
 ## 7. Validation against the case report (16 Oct 2026, UAT yard, PCI 190, nut coke 70, HMT 1,470 °C)
 
-* Fixed-ω, UAT prices, no slag credit (the report's basis): fixed 2,270 t/d with fuel: coke 305.7 kg/tHM dry, slag
-  340, Rs 30,139/tHM; sinter 58 / Lloyds CLO 18.6 / Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg/tHM; RAFT 2,214 °C.
-  Maximum production 2,412 t/d (charging binds); cheapest level 2,290 t/d at Rs 29,935/tHM; blast ≤ 105,000 Nm³/h →
-  2,257 t/d. Page-9 LP and the engine on the same yard and objective agree within 0.3 pt of share.
+* Fixed-ω, UAT prices, no slag credit, calibration and plan at 15 g/Nm³ (the report's basis; reproduced by the tests
+  on the report's calibration): fixed 2,270 t/d with fuel: coke 305.7 kg/tHM dry, slag 340, Rs 30,139/tHM; sinter 58 /
+  Lloyds CLO 18.6 / Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg/tHM; RAFT 2,214 °C. Maximum production 2,412 t/d
+  (charging binds); cheapest level 2,290 t/d at Rs 29,935/tHM; blast ≤ 105,000 Nm³/h → 2,257 t/d. Page-9 LP and the
+  engine on the same yard and objective agree within 0.3 pt of share.
+* **Open-Meteo basis** (shipped calibration re-solved at its window mean, 18.45 g/Nm³: ω 0.801, Q_LZ 44.5, Q_UZ
+  21.5 GJ/h; plan day 15 Oct 2026, 15.2 g/Nm³). Same blend and UAT prices: Fixed-ω Rs 30,054/tHM, coke 303.2 kg/tHM.
 * **At the plant prices of 23 Oct 2026 with the slag credit** (DATA-14, ASM-20; slag 340 kg/tHM × 457.85 Rs/t =
-  Rs 156/tHM): Fixed-ω Rs 29,913/tHM, coke 305.7, same blend; STRATA 1.5 Rs 29,951 ± 11/tHM, coke
-  304.6 ± 0.3 kg/tHM, sinter 61.5 / Lloyds CLO 16.1 / Geomin 12.3 / pellet 10.0 %, no flux (High certainty).
-  STRATA carries more sinter: sinter reduces faster per unit Fe at its size, and its lime replaces the limestone.
-* Pellet share at 2,270 t/d (rest re-optimised, plant prices): STRATA-ω cost is flat within Rs 50/tHM between 0 and
-  12.5 % pellet (lowest Rs 29,924 at 5 %); coke falls about 1.2 kg/tHM per 2.5 pt; tiers High to 15 %, Medium to 20 %, Low to 25 %, Investigate
-  above. Fixed-ω coke is flat and its cost rises with the pellet price.
+  Rs 156/tHM), Open-Meteo basis: Fixed-ω Rs 29,828/tHM, coke 303.2, sinter 58.0 / Lloyds CLO 18.5 / Geomin 13.5 /
+  pellet 10.0 %, limestone 13.6 kg/tHM; STRATA 1.5 Rs 29,860 ± 12/tHM, coke 302.0 ± 0.4 kg/tHM, sinter 61.5 / Lloyds
+  CLO 16.0 / Geomin 12.5 / pellet 10.0 %, no flux (High certainty). STRATA carries more sinter: sinter reduces faster
+  per unit Fe at its size, and its lime replaces the limestone. Cheapest level 2,303 t/d at Rs 29,623/tHM (Fixed-ω) and
+  2,283 t/d at Rs 29,647 (STRATA); maximum 2,412 t/d (charging) in both. Value of limits at 2,270 t/d: hot blast
+  +40 °C Rs 185 (Fixed-ω) / 197 (STRATA) per tHM, slag cap +10 kg/tHM 61 / 64, CaO/SiO₂ floor −0.01 30 / 29.
+* Pellet share at 2,270 t/d (rest re-optimised, plant prices, Open-Meteo basis): STRATA-ω cost is flat within Rs 50/tHM
+  between 0 and 12.5 % pellet (lowest Rs 29,830 at 5 %); coke falls about 1.2 kg/tHM per 2.5 pt; tiers High to 15 %,
+  Medium to 20 %, Low to 25 %, Investigate above. Fixed-ω coke is flat and its cost rises with the pellet price.
 
 ## 8. What the engine does not see
 

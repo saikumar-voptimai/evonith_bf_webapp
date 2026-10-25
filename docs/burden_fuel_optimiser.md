@@ -218,10 +218,11 @@ baseline)** — omega held at the calibration, ASM-01 — and **STRATA-ω** (ASM
   (`cost["gross"]` before it). Granulated slag sale price 457.85 Rs/t (plant, 23 Oct 2026; config
   `prices.slag_price_rs_per_t`; the operator's saved value takes precedence). Between two blends of nearly equal cost
   the one with more saleable slag is preferred; with the slag cap binding (340 kg/tHM in the reference case) the credit
-  does not move the plan. Reference plan at 2,270 t/d (16 Oct yard, plant prices, credit ₹156/tHM): Fixed-ω
-  ₹29,913/tHM (sinter 58.0 / Lloyds CLO 18.6 / Geomin 13.4 / pellet 10.0 %, limestone 13.7 kg, coke
-  305.7); STRATA-ω ₹29,951 ± 11/tHM (sinter 61.5 / Lloyds CLO 16.1 / Geomin 12.3 / pellet
-  10.0 %, no flux, coke 304.6 ± 0.3, High). At the UAT prices: ₹30,139 and ₹30,187.
+  does not move the plan. Reference plan at 2,270 t/d (16 Oct yard, plant prices, credit ₹156/tHM; Open-Meteo basis:
+  calibration at 18.45 g/Nm³, plan day 15 Oct 2026 at 15.2 g/Nm³): Fixed-ω ₹29,828/tHM (sinter 58.0 / Lloyds CLO 18.5 /
+  Geomin 13.5 / pellet 10.0 %, limestone 13.6 kg, coke 303.2); STRATA-ω ₹29,860 ± 12/tHM (sinter 61.5 / Lloyds CLO 16.0 /
+  Geomin 12.5 / pellet 10.0 %, no flux, coke 302.0 ± 0.4, High). At the UAT prices: ₹30,054 and ₹30,095 (case report
+  basis, 15 g/Nm³: ₹30,139).
 
 ### Out-of-sample test (GAS-20, VAL-01..12)
 
@@ -283,21 +284,21 @@ Report: project document `claude/strata_strict_oos_2023_24.md`; scripts `y24/` (
 
 | Pellet, % | Fixed-ω coke, kg/tHM | Fixed-ω Rs/tHM | STRATA-ω coke ± σ | STRATA-ω Rs/tHM ± σ | Tier |
 |---:|---:|---:|---:|---:|---|
-| 0 | 303.6 | 29,720 | 310.0 ± 1.4 | 29,945 ± 44 | High |
-| 2.5 | 303.6 | 29,759 | 308.6 ± 1.1 | 29,934 ± 34 | High |
-| 5 | 303.6 | 29,799 | 307.2 ± 0.8 | 29,924 ± 24 | High |
-| 7.5 | 304.9 | 29,852 | 305.9 ± 0.5 | 29,933 ± 16 | High |
-| 10 | 305.7 | 29,913 | 304.6 ± 0.3 | 29,951 ± 11 | High |
-| 12.5 | 305.6 | 29,974 | 303.4 ± 0.4 | 29,970 ± 13 | High |
-| 15 | 305.6 | 30,035 | 302.2 ± 0.6 | 29,990 ± 20 | High |
-| 17.5 | 305.6 | 30,095 | 301.1 ± 0.9 | 30,012 ± 29 | Medium |
-| 20 | 305.5 | 30,156 | 300.1 ± 1.2 | 30,036 ± 38 | Medium |
-| 22.5 | 305.5 | 30,216 | 299.0 ± 1.5 | 30,060 ± 48 | Low |
-| 25 | 305.5 | 30,276 | 298.0 ± 1.8 | 30,085 ± 57 | Low |
-| 27.5 | 305.4 | 30,336 | 297.1 ± 2.1 | 30,110 ± 67 | Investigate |
-| 30 | 305.4 | 30,396 | 297.8 ± 2.4 | 30,149 ± 75 | Investigate |
+| 0 | 301.2 | 29,634 | 307.3 ± 1.4 | 29,850 ± 44 | High |
+| 2.5 | 301.2 | 29,673 | 305.9 ± 1.1 | 29,839 ± 34 | High |
+| 5 | 301.2 | 29,713 | 304.5 ± 0.8 | 29,830 ± 25 | High |
+| 7.5 | 302.6 | 29,767 | 303.2 ± 0.5 | 29,841 ± 17 | High |
+| 10 | 303.2 | 29,828 | 302.0 ± 0.4 | 29,859 ± 12 | High |
+| 12.5 | 303.2 | 29,889 | 300.8 ± 0.4 | 29,879 ± 14 | High |
+| 15 | 303.1 | 29,950 | 299.6 ± 0.7 | 29,900 ± 21 | High |
+| 17.5 | 303.1 | 30,011 | 298.5 ± 0.9 | 29,922 ± 30 | Medium |
+| 20 | 303.1 | 30,071 | 297.5 ± 1.2 | 29,946 ± 39 | Medium |
+| 22.5 | 303.0 | 30,132 | 296.4 ± 1.5 | 29,971 ± 49 | Low |
+| 25 | 303.0 | 30,192 | 295.4 ± 1.8 | 29,996 ± 58 | Low |
+| 27.5 | 303.0 | 30,252 | 294.6 ± 2.1 | 30,022 ± 68 | Investigate |
+| 30 | 302.9 | 30,313 | 295.2 ± 2.4 | 30,064 ± 76 | Investigate |
 
-Plant prices of 23 Oct 2026 with the slag credit; STRATA 1.5; 10 % pellet floor of the yard relaxed in the sweep.
+Plant prices of 23 Oct 2026 with the slag credit; STRATA 1.5; Open-Meteo basis (calibration 18.45 g/Nm³, plan day 15 Oct 2026 at 15.2 g/Nm³); 10 % pellet floor of the yard relaxed in the sweep.
 
 ## STRATA-Learn — continuous learning, shadow mode (v1)
 
