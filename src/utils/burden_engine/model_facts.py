@@ -70,7 +70,8 @@ def _blend_z(eng: Engine, z_ref: np.ndarray, shares: dict[str, float], s: Settin
 def model_facts(eng: Engine | None = None) -> list[dict[str, Any]]:
     """MOD rows: coke response under Fixed-omega and STRATA-omega (kg/tHM dry)."""
     eng = eng or _engine()
-    s_fix = Settings(omega_mode="fixed")
+    # reference point = the calibration point: blast moisture = the calibration window's Open-Meteo mean (DATA-11)
+    s_fix = Settings(omega_mode="fixed", humidity_g=float(eng.case0.get("humidity_g") or eng.cal["case"]["humidity_g"]))
     ref = eng.min_cost(P=P_REF, s=s_fix, L=Limits(), fuel=True)
     z0 = _blend_z(eng, np.asarray(ref["z"], float), BASE_BLEND, s_fix, P_REF)
     m = eng.omega_model()

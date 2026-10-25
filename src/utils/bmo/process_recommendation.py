@@ -121,7 +121,7 @@ def raft_from_controls(
     cfg: dict[str, Any] | None = None,
     *,
     blast_nm3_per_thm: float | None = None,
-    blast_moisture_g_per_nm3: float = 15.0,
+    blast_moisture_g_per_nm3: float | None = None,
 ) -> float:
     """
     RAFT computed directly from the control settings, standard industry form.
@@ -150,14 +150,18 @@ def raft_from_controls(
          - blast_nm3_per_thm: float | None - Blast volume per tonne hot metal,
            needed to convert PCI and steam into blast concentrations. Falls back
            to the configured plant median when unknown.
-         - blast_moisture_g_per_nm3: float - Ambient humidity in the blast. Not
-           instrumented here; comes from the operator assumptions table.
+         - blast_moisture_g_per_nm3: float | None - Ambient humidity in the blast
+           (not instrumented): an operator entry, else today's Open-Meteo value
+           at Wardha (DATA-11, fetched live).
 
     Returns:
          - return float - RAFT in degrees C.
     """
 
+    from utils.coke_energy.weather import resolve_blast_moisture
     from utils.energy_balance.raft import compute_raft, oxygen_flow_from_enrichment
+
+    blast_moisture_g_per_nm3 = resolve_blast_moisture(blast_moisture_g_per_nm3)
 
     raft_cfg = (cfg or _load_pr_config()).get("raft", {})
     basis = str(raft_cfg.get("blast_flow_basis", "total"))
@@ -319,10 +323,10 @@ def recommend_controls(
     # RAFT is computed from the controls themselves, so it must be evaluated at
     # each setting's OWN blast volume - the recommendation usually changes wind,
     # which changes the PCI concentration in the blast and hence RAFT.
-    try:
-        moisture = float(ecfg.get("blast_moisture_g_per_nm3", 15.0))
-    except (TypeError, ValueError):
-        moisture = 15.0
+    from utils.coke_energy.weather import resolve_blast_moisture
+
+    # Operator entry if given, else today's Open-Meteo value at Wardha (DATA-11, fetched live).
+    moisture = resolve_blast_moisture(ecfg.get("blast_moisture_g_per_nm3"))
 
     def _raft_for(settings: ControlSettings) -> float:
         wind_per_thm = settings.blast_volume_nm3_per_hr * 24.0 / hm if hm > 0 else None

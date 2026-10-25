@@ -57,7 +57,7 @@
   "slag_FeO_pct": 0.33128124999999997,
   "T_top": 208.29034242217114,
   "HBT": 1188.398290619847,
-  "humidity_g": 15,
+  "humidity_g": 18.45,
   "O2_per_air": 0.05208693474928195,
   "dust": {
    "dc_kg": 13.921279340079963,
@@ -97,14 +97,14 @@
   "qtz_CaO": 0.005,
   "qtz_Al2O3": 0.015
  },
- "omega": 0.7999146208285758,
- "Q_LZ_GJh": 47.41893994414005,
- "Q_UZ_GJh": 21.595484013656456,
- "r_H": 0.9358471978436068,
+ "omega": 0.8013763215581403,
+ "Q_LZ_GJh": 44.52672528097451,
+ "Q_UZ_GJh": 21.46347489088492,
+ "r_H": 0.9358471978436069,
  "T_R": 950.0,
- "y_d": 0.46245636325026473,
+ "y_d": 0.4574643248057116,
  "K": 305.4884783419367,
- "V": 1132.387363475248,
+ "V": 1130.666086288419,
  "B2": 1.0753699738167504,
  "shares_dry": {
   "sin": 64.28472048465949,
@@ -224,5 +224,6 @@
   "rdi_pct": 30.06,
   "as_of": "2026-10-04",
   "source": "raw_material_strength_analysis, sinter_3, latest test (Jul-Oct window median RI 66.0, RDI 31.0)"
- }
+ },
+ "moisture_basis": "Open-Meteo daily RH (DATA-11), mean over the window's stable shifts 18.45 g/Nm3; shipped values re-solved from 15 g/Nm3 (delta method, 25 Oct 2026)"
 }

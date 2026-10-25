@@ -196,13 +196,15 @@ energy_balance:
 
   # ---- blast moisture ------------------------------------------------------
   # Ambient humidity carried in with the blast. NOT instrumented - process_params
-  # has no humidity tag - so this is a plant-supplied constant. 15 g/Nm3 is the
-  # operator's figure; at ~1,175 Nm3/tHM that is 17.6 kg H2O/tHM, contributing
-  # about 2.0 kg H/tHM against roughly 7 kg from PCI.
+  # has no humidity tag. null (default) = the Open-Meteo daily relative humidity
+  # at Wardha for the day balanced, mapped to 7-21 g/Nm3 and fetched live
+  # (DATA-11, utils.coke_energy.weather); a number here or an operator entry
+  # overrides it. At ~1,175 Nm3/tHM, 15 g/Nm3 is 17.6 kg H2O/tHM, about 2.0 kg
+  # H/tHM against roughly 7 kg from PCI.
   #
   # It is credited as hydrogen ALREADY OXIDISED, so it gets no input heat. Its
   # effect appears through the extra H2 it puts in the top gas.
-  blast_moisture_g_per_nm3: 15.0
+  blast_moisture_g_per_nm3: null
 
   # ---- shell losses --------------------------------------------------------
   shell_loss:

@@ -56,7 +56,7 @@ class Assumption:
          - unit: str - Unit shown beside the value.
          - default: float - What ships today.
          - basis: str - Where the default came from, in one line.
-         - confidence: str - "measured", "literature" or "assumed".
+         - confidence: str - "measured", "literature", "assumed" or "Open-Meteo" (live weather, DATA-11).
          - impact: str - What changes if this is wrong. The reason an operator
            should care about filling it in.
          - minimum / maximum: float - Physically sensible bounds. Entering
@@ -163,10 +163,10 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         label="Moisture in the blast",
         unit="g/Nm³",
         default=15.0,
-        basis="Plant-stated constant. There is no humidity tag in "
-              "process_params, so this cannot vary with the weather as it "
-              "really does.",
-        confidence="assumed",
+        basis="Open-Meteo daily relative humidity at Wardha for today, mapped "
+              "to 7-21 g/Nm3 and fetched live (DATA-11); there is no humidity "
+              "tag in process_params. Enter a value only to override it.",
+        confidence="Open-Meteo",
         impact="Arrives already oxidised so earns no input heat, but it "
                "gasifies carbon and shows up in top-gas H2. Monsoon and "
                "winter values differ materially.",
@@ -277,7 +277,8 @@ def save_overrides(
 
 def _is_default(key: str, value: Any) -> bool:
     try:
-        return abs(float(value) - BY_KEY[key].default) < 1e-12
+        tol = 0.05 if key in LIVE_DEFAULT_KEYS else 1e-12
+        return abs(float(value) - default_value(key)) < tol
     except (TypeError, ValueError, KeyError):
         return False
 
@@ -333,6 +334,21 @@ def _deep_copy(value: Any) -> Any:
     return value
 
 
+LIVE_DEFAULT_KEYS = ("blast_moisture_g_per_nm3",)
+
+
+def default_value(key: str) -> float:
+    """The default shown and compared against: today's Open-Meteo blast moisture for the live keys (DATA-11), else the
+    shipped figure."""
+    if key == "blast_moisture_g_per_nm3":
+        try:
+            from utils.coke_energy.weather import plan_blast_moisture
+            return float(plan_blast_moisture()[0])
+        except Exception:  # noqa: BLE001 - the table must render offline
+            return BY_KEY[key].default
+    return BY_KEY[key].default
+
+
 def current_values(overrides: dict[str, float] | None = None) -> list[dict[str, Any]]:
     """The registry as rows ready for a table, defaults merged with overrides.
 
@@ -351,10 +367,10 @@ def current_values(overrides: dict[str, float] | None = None) -> list[dict[str, 
             {
                 "key": spec.key,
                 "Parameter": spec.label,
-                "Value": float(supplied if supplied is not None else spec.default),
+                "Value": float(supplied if supplied is not None else default_value(spec.key)),
                 "Unit": spec.unit,
                 "Source": "operator" if supplied is not None else spec.confidence,
-                "Default": spec.default,
+                "Default": default_value(spec.key),
                 "Basis": spec.basis,
                 "Why it matters": spec.impact,
             }

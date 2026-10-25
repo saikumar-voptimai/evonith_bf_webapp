@@ -56,7 +56,7 @@ def settings_from_regime(regime: Mapping[str, Any] | None, thermal: Mapping[str,
     s = Settings(
         HBT=pick("HBT", case.get("HBT", Settings.HBT)),
         O2_per_air=pick("O2_per_air", case.get("O2_per_air", Settings.O2_per_air)),
-        humidity_g=pick("humidity_g", case.get("humidity_g", Settings.humidity_g)),
+        humidity_g=None,                 # today's Open-Meteo blast moisture, fetched live (DATA-11)
         HMT=float(thermal.get("HMT", Settings.HMT)), hm_Si=float(thermal.get("hm_Si", Settings.hm_Si)),
         pci_plant=float(fuel_defaults(regime, thermal, cal)["pci_kg_thm"]),
         nut_plant=float(fuel_defaults(regime, thermal, cal)["nut_kg_thm"]),

@@ -25,14 +25,20 @@ P_PAGE = 2270.0 / 24
 slow = pytest.mark.skipif(os.environ.get("BURDEN_ENGINE_FAST") == "1", reason="production cases are slow")
 
 
+# The case report was computed on the Jul-Oct 2026 calibration at 15 g/Nm3 blast moisture (the basis before DATA-11):
+# the reproduction tests keep that calibration so they test the engine code, not the moisture basis. The shipped
+# calibration is the same one re-solved at its window's Open-Meteo moisture (18.45 g/Nm3).
+CASE_CAL = os.path.join(os.path.dirname(__file__), "fixtures", "cal_2z_jul_oct_2026_case_report_15g.json")
+
+
 @pytest.fixture(scope="module")
 def eng():
-    return Engine(materials=UAT)
+    return Engine(materials=UAT, cal=CASE_CAL)
 
 
 @pytest.fixture(scope="module")
 def ext():
-    return Engine(materials=EXT)
+    return Engine(materials=EXT, cal=CASE_CAL)
 
 
 # ---------------------------------------------------------------------------------------------- fact register
@@ -120,14 +126,14 @@ def test_calibration_reproduced():
 # ---------------------------------------------------------------------------------------------- bands
 def test_band_02_03_refuse_inputs(eng):
     with pytest.raises(BandError):
-        eng.min_cost(P=P_PAGE, s=Settings(HMT=1430.0))
+        eng.min_cost(P=P_PAGE, s=eng.cal_settings(HMT=1430.0))
     with pytest.raises(BandError):
-        eng.min_cost(P=P_PAGE, s=Settings(hm_Si=0.3836 + 0.5))
+        eng.min_cost(P=P_PAGE, s=eng.cal_settings(hm_Si=0.3836 + 0.5))
 
 
 def test_band_01_ideal_shaft_not_reported(eng):
     """The Rist ideal (omega 1.0) needs fuel below 520 kg/tHM: the fuel-band row makes it infeasible (COKE-14)."""
-    r = eng.min_cost(P=P_PAGE, s=Settings(omega=1.0), fuel=True)
+    r = eng.min_cost(P=P_PAGE, s=eng.cal_settings(omega=1.0), fuel=True)
     assert not r["feasible"]
     assert r["viol"]["fuel rate min"] > 0
 
@@ -143,7 +149,7 @@ def test_band_01_large_lower_zone_loss_not_reported():
 
 # ---------------------------------------------------------------------------------------------- RAFT (DATA-03/04)
 def test_raft_plant_workbook_per_tonne(eng):
-    s = Settings()
+    s = eng.cal_settings()                  # 15 g/Nm3, the case report's basis
     base = eng.raft(s)
     assert eng.raft(replace(s, humidity_g=16.0)) - base == pytest.approx(-6.6, abs=0.3)   # DATA-03 at fixed blast per tonne
     assert eng.raft(replace(s, HBT=s.HBT + 100)) - base == pytest.approx(83.9, abs=0.5)

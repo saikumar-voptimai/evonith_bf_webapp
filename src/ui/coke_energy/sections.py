@@ -187,7 +187,7 @@ def render_latest(T: pd.DataFrame, assess_shift: Callable[[str], pd.DataFrame], 
             ("ω fixed (14-day median)", row.omega_fixed, "–", ".3f"),
             ("Lower-zone heat loss, fixed", row.Q_LZ_GJh_fixed, "GJ/h", ".1f"),
             ("Upper-zone heat loss, fixed", row.Q_UZ_GJh_fixed, "GJ/h", ".1f"),
-            ("Blast moisture (assumed, monthly climate)", row.humidity_g, "g/Nm³", ".0f"),
+            ("Blast moisture (Open-Meteo daily RH, DATA-11)", row.humidity_g, "g/Nm³", ".1f"),
         ]
         if show_charged:
             items.insert(0, ("Charged coke", row.K_charged, KG, ".1f"))

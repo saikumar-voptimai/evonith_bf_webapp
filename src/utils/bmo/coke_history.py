@@ -376,7 +376,8 @@ def build_daily_history(days: int = 120) -> HistoryResult:
                     else None
                 ),
             )
-            predicted = solve_coke_rate_kg_per_thm(inputs, cfg)
+            # blast moisture of that day: Open-Meteo daily RH at Wardha (DATA-11), unless the config fixes a value
+            predicted = solve_coke_rate_kg_per_thm(inputs, {**cfg, "blast_moisture_day": when})
         except Exception:  # noqa: BLE001 - a bad day is a missing prediction
             predicted = np.nan
         rows.append({

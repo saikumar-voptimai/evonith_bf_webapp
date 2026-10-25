@@ -217,7 +217,8 @@ def test_critical_assumptions(eng):
 
 # ---------------------------------------------------------------------------------------------- engine
 def test_fixed_mode_unchanged(eng):
-    r = eng.min_cost(prod_t_day=2270, s=Settings(), L=Limits())
+    # at the calibration point (window's Open-Meteo moisture) the shipped calibration gives the case-report plan
+    r = eng.min_cost(prod_t_day=2270, s=eng.cal_settings(), L=Limits())
     assert r["out"]["K"] == pytest.approx(305.7, abs=0.15)
     assert r["cost"]["total"] == pytest.approx(30139, abs=5)
     assert r["out"]["sig_K"] == 0.0 and r["omega"]["mode"] == "fixed" and r["omega"]["certainty"] == "Held"

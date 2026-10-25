@@ -55,7 +55,8 @@ DEFAULTS: dict[str, Any] = {
         # Carbon in top-leaving dust. Charged but never burnt.
         "dust_carbon_pct": {"flue": 22.3, "gcp": 47.1},
     },
-    "blast_moisture_g_per_nm3": 15.0,
+    # None = the Open-Meteo daily value at Wardha for the day balanced (DATA-11, fetched live); a number = operator entry
+    "blast_moisture_g_per_nm3": None,
     "shell_loss": {
         "heatload_tag_to_gj_per_hr": 1.0,
         "valid_range_gj_per_hr": [2.0, 12.0],

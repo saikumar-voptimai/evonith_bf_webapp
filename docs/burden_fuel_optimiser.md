@@ -486,7 +486,10 @@ mean slag analysis (`docs/slag_replay_vs_lab.md`). 284 days, Sep 2025 – Oct 20
   coke quality, nut coke, PCI and hot-blast temperature act on omega only through the calibration. The day-to-day
   spread of omega (out-of-sample RMSE 0.028, about ±8 kg/tHM) is not in σ; it averages out over days.
 * Blast moisture is the day's Open-Meteo RH at Wardha mapped to 7–21 g/Nm³ (DATA-11, `config/coke_energy.yml →
-  blast_moisture`), not a measurement; the RH mapping may understate the moisture swing by about one fifth (its H₂
+  blast_moisture`), everywhere it enters: each shift's day in the pipeline, the window mean in a calibration (shipped
+  Jul–Oct 2026 calibration: 18.45 g/Nm³), the plan day in every plan (fetched live, today's value refreshed every 6 h),
+  and the day's value in the Blend Mix Optimiser's energy balance and RAFT unless the operator enters one. It is not a
+  measurement; the RH mapping may understate the moisture swing by about one fifth (its H₂
   slope is 77 % of the steam slope, DATA-16). Steam injection, when it resumes, is not represented by the 2026 fit
   (in 2023–24 the burnt coke did not follow moisture changes, GAS-19, GAS-25).
 * Process limits default to the Jun–Oct 2026 operating envelope, not equipment ratings. Oxygen and stove gas are

@@ -15,14 +15,19 @@ from utils.burden_engine.scenarios import (binding_table, blend_table, cost_tabl
 THERMAL = dict(HMT=1470.0, hm_Si=0.3836, pci_kg_thm=190.0, nut_kg_thm=70.0)
 
 
+# the case report's calibration and blast moisture (15 g/Nm3): these tests check the scenario layer against it
+CASE_CAL = os.path.join(os.path.dirname(__file__), "fixtures", "cal_2z_jul_oct_2026_case_report_15g.json")
+
+
 @pytest.fixture(scope="module")
 def eng():
-    return Engine()
+    return Engine(cal=CASE_CAL)
 
 
 @pytest.fixture(scope="module")
 def fixed(eng):
-    s = settings_from_regime(None, THERMAL, eng.cal, pci_plant=190.0, nut_plant=70.0)  # case report
+    s = settings_from_regime(None, THERMAL, eng.cal, pci_plant=190.0, nut_plant=70.0,
+                             humidity_g=eng.cal["case"]["humidity_g"])  # case report
     return s, run_fixed(eng, 2270.0, s, limits_from(load_register()))
 
 
@@ -83,7 +88,8 @@ def test_frontier_table_marginal_cost():
 
 @pytest.mark.skipif(os.environ.get("BURDEN_ENGINE_FAST") == "1", reason="slow")
 def test_cheapest_level_matches_case4(eng):
-    s = settings_from_regime(None, THERMAL, eng.cal, pci_plant=190.0, nut_plant=70.0)  # case report
+    s = settings_from_regime(None, THERMAL, eng.cal, pci_plant=190.0, nut_plant=70.0,
+                             humidity_g=eng.cal["case"]["humidity_g"])  # case report
     res = run_cheapest_level(eng, s, limits_from(load_register()))
     assert res["best"]["P_tday"] == pytest.approx(2290, abs=3)
     assert res["best"]["cost"]["total"] == pytest.approx(29935, abs=10)

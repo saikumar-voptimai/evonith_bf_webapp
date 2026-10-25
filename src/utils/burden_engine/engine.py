@@ -80,7 +80,7 @@ class Settings:
 
     HBT: float = 1188.4
     O2_per_air: float = 0.05209          # Nm3 O2 per Nm3 air (model basis); see Hydraulics.enrich_tag()
-    humidity_g: float = 15.0             # ambient blast moisture, g/Nm3 (DATA-04: not measured)
+    humidity_g: float | None = None      # blast moisture, g/Nm3; None = Open-Meteo for today (DATA-04/11, live)
     HMT: float = 1470.0
     hm_Si: float = 0.3836
     pci_plant: float = 190.0             # kg/tHM as injected
@@ -92,6 +92,13 @@ class Settings:
     omega_mode: str = "fixed"            # "fixed" (ASM-01) or "blend" (ASM-18: omega_model)
     risk_k: float = 0.0                  # blend mode: objective = cost + risk_k x sigma(cost)
     certainty: str = "any"               # blend mode: "any", "low" (all but Investigate), "medium", "high"
+
+    def __post_init__(self) -> None:
+        # Blast moisture is not measured at BF-02 (DATA-04): every plan without an explicit value takes the Open-Meteo
+        # daily value for today at Wardha, fetched live when it is not stored yet (DATA-11).
+        if self.humidity_g is None or not math.isfinite(float(self.humidity_g)):
+            from utils.coke_energy.weather import plan_blast_moisture
+            self.humidity_g = float(plan_blast_moisture()[0])
 
 
 @dataclass
@@ -233,6 +240,12 @@ class Engine:
         self._dKdw = float("nan")
 
     # ------------------------------------------------------------------------------------------------ omega model
+    def cal_settings(self, **kw: Any) -> "Settings":
+        """Settings at the calibration point (controls of the Jul-Oct 2026 case, blast moisture = the calibration
+        window's Open-Meteo mean, DATA-11): the engine's default when a call gives no settings. Plans for a day pass
+        their own settings (Settings() = today's Open-Meteo moisture)."""
+        return Settings(humidity_g=float(self.case0.get("humidity_g", 15.0)), **kw)
+
     def omega_model(self) -> OmegaModel:
         """The blend-dependent omega model, anchored on this engine's calibration (built on first use)."""
         if self._om is None:
@@ -448,7 +461,7 @@ class Engine:
         pr = np.array([v.price for v in self.vars])
         ore = float(pr[:self.nf] @ z[:self.nf]) / 1000
         flx = float(pr[self.nf:] @ z[self.nf:]) / 1000
-        s = s or Settings()
+        s = s or self.cal_settings()
         coke = o["K_wet"] * self.prices_fuel["coke"] / 1000
         nut = s.nut_plant * self.prices_fuel["nut"] / 1000
         pci = s.pci_plant * self.prices_fuel["pci"] / 1000
@@ -779,7 +792,7 @@ class Engine:
                             "fitted on (FLOW-03, ASM-09): extrapolated.")
         if not L.RAFT_min <= raft <= L.RAFT_max:
             warnings.append(f"RAFT {raft:.0f} degC is outside the {L.RAFT_min:.0f}-{L.RAFT_max:.0f} degC band at "
-                            f"{s.humidity_g:.0f} g/Nm3 blast moisture (DATA-03/04).")
+                            f"{s.humidity_g:.1f} g/Nm3 blast moisture (Open-Meteo, DATA-11).")
         om_info = self.omega_info(o, s)
         if om_info["mode"] == "blend" and om_info["outside"]:
             warnings.append("Shaft efficiency extrapolated beyond what BF-02 ran: " + "; ".join(om_info["outside"])
@@ -870,12 +883,12 @@ class Engine:
                  ore6_on=False, **kw):
         """Cheapest blend at a fixed production (t/d or t/h). ``fuel=False`` = ore + flux objective."""
         P = P if P is not None else prod_t_day / 24
-        return self.slp(s or Settings(), P, L or Limits(), fuel=fuel, z0=z0, ore6_on=ore6_on, **kw)
+        return self.slp(s or self.cal_settings(), P, L or Limits(), fuel=fuel, z0=z0, ore6_on=ore6_on, **kw)
 
     def process_settings(self, L: Limits, O2_per_air=None, base: Settings | None = None):
         """Controls at their production limits: HBT max (trimmed to RAFT max), Pb max, Pt = Pb max - dP max within
         [Pt_min, Pt_max]; O2 as given (default: the base settings')."""
-        s = replace(base or Settings())
+        s = replace(base or self.cal_settings())
         s.O2_per_air = s.O2_per_air if O2_per_air is None else O2_per_air
         s.HBT = L.HBT_max
         while self.raft(s) > L.RAFT_max and s.HBT > 1000:
@@ -921,7 +934,7 @@ class Engine:
         among settings within ``tie`` t/h of the best, the one with the least oxygen is returned."""
         L = replace(L, process=True)
         r_max = self.hy.o2_per_air_from_tag(L.enrich_max)
-        r_now = (base or Settings()).O2_per_air
+        r_now = (base or self.cal_settings()).O2_per_air
         grid = list(o2_grid) if o2_grid is not None else list(np.linspace(r_now, r_max, 6))
         found = []
         for on6 in self._ore6_options():
@@ -979,8 +992,8 @@ class Engine:
         ore) -> golden-section on production; over oxygen, the best grid level is refined between its neighbours.
         Also returns 'curves': the frontier on a production grid (one per oversize option)."""
         L = replace(L, process=True)
-        r_now = (base or Settings()).O2_per_air
-        P_lo = self.p_range(base or Settings(), P_lo, 1e9)[0]
+        r_now = (base or self.cal_settings()).O2_per_air
+        P_lo = self.p_range(base or self.cal_settings(), P_lo, 1e9)[0]
         levels = [r_now] if o2_levels is None else sorted(set([r_now] + [r for r in o2_levels if r >= r_now - 1e-12]))
         cost = lambda x: x["cost"]["total"] if (x is not None and x["feasible"]) else np.inf
         gr = (5 ** 0.5 - 1) / 2

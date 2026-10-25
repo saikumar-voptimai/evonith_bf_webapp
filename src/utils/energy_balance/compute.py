@@ -114,13 +114,17 @@ def _hydrogen_charged_kg_per_thm(
             "source": source,
         }
 
-    blast_water = (
-        _f(cfg.get("blast_moisture_g_per_nm3")) * rates["blast_nm3_per_thm"] / 1000.0
-    )
+    from utils.coke_energy.weather import resolve_blast_moisture
+
+    given = cfg.get("blast_moisture_g_per_nm3")
+    moisture = resolve_blast_moisture(given, cfg.get("blast_moisture_day"))
+    blast_water = moisture * rates["blast_nm3_per_thm"] / 1000.0
     provenance["blast_moisture"] = {
+        "g_per_nm3": moisture,
         "kg_h2o_per_thm": blast_water,
         "kg_h_per_thm": blast_water * H2O_TO_H_FRACTION,
-        "source": "plant-supplied constant; no humidity tag exists",
+        "source": ("operator entry" if given is not None else
+                   "Open-Meteo daily RH at Wardha (DATA-11); no humidity tag exists"),
         "credited_as_fuel": False,
     }
     return fuel_h, provenance

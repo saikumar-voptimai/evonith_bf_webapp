@@ -155,9 +155,10 @@ def _live_enabled(om: dict[str, Any]) -> bool:
 def _refresh_live(om: dict[str, Any], known_last: pd.Timestamp | None) -> None:
     """Fetch recent days when they are missing from file and cache; write them to the cache. Failures are remembered
     for ``retry_minutes`` so that an offline plant does not wait on every call."""
-    today = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
-    if not _live_enabled(om) or (known_last is not None and known_last >= today):
+    if not _live_enabled(om):
         return
+    # Today's value is fetched again every ``refresh_hours`` (its hourly values fill in during the day); earlier days
+    # are fetched once they are missing. One request per refresh window per process; failures wait ``retry_minutes``.
     now = time.time()
     if now - _LIVE["t_ok"] < 3600.0 * float(om["refresh_hours"]) or now - _LIVE["t_fail"] < 60.0 * float(om["retry_minutes"]):
         return
@@ -278,6 +279,35 @@ def blast_moisture(day: Any, source: str | None = None) -> tuple[float, str]:
 
 def blast_moisture_g(day: Any, source: str | None = None) -> float:
     return blast_moisture(day, source)[0]
+
+
+def today_ist() -> pd.Timestamp:
+    """Today's date at the plant (IST), as a normalised timestamp. The environment variable COKE_ENERGY_TODAY (ISO date)
+    fixes it, for tests and for reproducible reports."""
+    env = os.environ.get("COKE_ENERGY_TODAY")
+    if env:
+        return pd.Timestamp(env).normalize()
+    return pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
+
+
+def plan_blast_moisture(day: Any = None) -> tuple[float, str, pd.Timestamp]:
+    """Blast moisture for a plan day (default: today at the plant): the Open-Meteo daily value, fetched live when it is
+    not stored yet (DATA-11). Returns (g/Nm3, source label, day). Every plan and every unmeasured-moisture default in the
+    webapp takes its value from here or from ``blast_moisture`` for a historical date."""
+    d = today_ist() if day is None else pd.Timestamp(day).normalize()
+    g, label = blast_moisture(d)
+    return g, label, d
+
+
+def resolve_blast_moisture(value: Any, day: Any = None) -> float:
+    """``value`` when it is a number (an operator entry), else the Open-Meteo moisture of ``day`` (default today)."""
+    try:
+        v = float(value)
+        if np.isfinite(v):
+            return v
+    except (TypeError, ValueError):
+        pass
+    return plan_blast_moisture(day)[0]
 
 
 def mean_blast_moisture(days, source: str | None = None) -> tuple[float, str]:

@@ -13,6 +13,8 @@ import pytest
 
 from utils.energy_balance import EnergyBalanceInputs, run_energy_balance
 from utils.energy_balance.assumptions import (
+    LIVE_DEFAULT_KEYS,
+    default_value,
     ASSUMPTIONS,
     BY_KEY,
     apply_overrides,
@@ -82,7 +84,7 @@ def test_every_assumption_states_its_basis_and_confidence():
     for spec in ASSUMPTIONS:
         assert spec.basis.strip()
         assert spec.impact.strip()
-        assert spec.confidence in {"measured", "literature", "assumed"}
+        assert spec.confidence in {"measured", "literature", "assumed", "Open-Meteo"}
         assert spec.minimum < spec.default < spec.maximum, spec.key
 
 
@@ -100,7 +102,8 @@ def test_every_key_resolves_against_the_real_config():
         for part in spec.key.split("."):
             assert isinstance(node, dict) and part in node, spec.key
             node = node[part]
-        assert isinstance(node, (int, float)), spec.key
+        # live keys are null in the config: the value comes from Open-Meteo at run time (DATA-11)
+        assert isinstance(node, (int, float)) or (node is None and spec.key in LIVE_DEFAULT_KEYS), spec.key
 
 
 # --- overrides reaching the balance ---------------------------------------------
@@ -204,7 +207,7 @@ def test_saving_a_default_does_not_freeze_it(tmp_path):
     """
 
     path = tmp_path / "assumptions.json"
-    defaults = {spec.key: spec.default for spec in ASSUMPTIONS}
+    defaults = {spec.key: default_value(spec.key) for spec in ASSUMPTIONS}   # live keys: today's Open-Meteo value
 
     save_overrides(defaults, path)
 

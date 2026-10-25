@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 os.environ.setdefault("COKE_ENERGY_WEATHER_LIVE", "0")      # no Open-Meteo request from the test suite
+os.environ.setdefault("COKE_ENERGY_TODAY", "2026-10-15")   # fixed plan day: its Open-Meteo moisture is in the shipped file
 
 
 def _prefer_local_furnace_data_package() -> None:

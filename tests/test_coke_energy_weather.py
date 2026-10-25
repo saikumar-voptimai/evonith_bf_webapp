@@ -141,3 +141,55 @@ def test_window_mean():
     v, src = W.mean_blast_moisture(days, source="rh_scaled")
     assert src == "weather record (RH, smoothed)"
     assert v == pytest.approx(float(W.daily_record(method="rh_scaled").loc[days].mean()))
+
+
+# ---------------------------------------------------------------------------------------------- plan moisture (live)
+def test_today_value_is_refreshed_after_refresh_hours(monkeypatch, tmp_path):
+    """Today's value fills in during the day: it is fetched again once the refresh window has passed, even though the
+    day is already stored."""
+    calls = []
+    today = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
+
+    def fake(*a, **k):
+        calls.append(1)
+        return pd.Series([60.0 + len(calls)], index=[today])
+
+    W.clear_cache()
+    om = W._settings()["open_meteo"]
+    monkeypatch.setitem(om, "cache_path", str(tmp_path / "rh.csv"))
+    monkeypatch.setenv("COKE_ENERGY_WEATHER_LIVE", "1")
+    monkeypatch.setattr(W, "fetch_open_meteo_rh", fake)
+    v1 = W.blast_moisture(today)[0]
+    W._LIVE["t_ok"] -= 3600.0 * float(om["refresh_hours"]) + 1.0          # the refresh window has passed
+    v2 = W.blast_moisture(today)[0]
+    assert len(calls) == 2 and v2 > v1
+
+
+def test_plan_moisture_is_open_meteo_for_the_plan_day(monkeypatch):
+    monkeypatch.setenv("COKE_ENERGY_TODAY", "2026-10-15")
+    g, src, day = W.plan_blast_moisture()
+    assert day == pd.Timestamp("2026-10-15") and src == "Open-Meteo daily RH"
+    assert g == pytest.approx(W.blast_moisture("2026-10-15")[0]) and 7.0 <= g <= 21.0
+    assert W.resolve_blast_moisture(None) == pytest.approx(g)
+    assert W.resolve_blast_moisture(float("nan")) == pytest.approx(g)
+    assert W.resolve_blast_moisture(12.5) == 12.5                                   # an operator entry wins
+
+
+def test_engine_settings_default_to_live_open_meteo(monkeypatch):
+    from utils.burden_engine import Engine, Settings
+    monkeypatch.setenv("COKE_ENERGY_TODAY", "2026-10-15")
+    assert Settings().humidity_g == pytest.approx(W.plan_blast_moisture()[0])
+    assert Settings(humidity_g=9.0).humidity_g == 9.0
+    e = Engine()
+    assert e.cal_settings().humidity_g == pytest.approx(e.cal["case"]["humidity_g"])   # window's Open-Meteo mean
+    assert e.cal["case"]["humidity_g"] == pytest.approx(W.mean_blast_moisture(
+        pd.date_range("2026-07-01", "2026-10-07"))[0], abs=0.5)   # stable shifts only: 18.45 against 18.83 all days
+
+
+def test_energy_balance_moisture_follows_open_meteo(monkeypatch):
+    from utils.energy_balance.assumptions import current_values
+    from utils.energy_balance.constants import load_config
+    monkeypatch.setenv("COKE_ENERGY_TODAY", "2026-10-15")
+    assert load_config()["blast_moisture_g_per_nm3"] is None                       # resolved at run time
+    row = next(r for r in current_values({}) if r["key"] == "blast_moisture_g_per_nm3")
+    assert row["Value"] == pytest.approx(W.plan_blast_moisture()[0]) and row["Source"] == "Open-Meteo"

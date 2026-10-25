@@ -94,6 +94,7 @@ burden_optimiser:
     # Operating regime (today's controls): medians of the 10-min data over the previous N days.
     regime_window_days: 14
 
-  # Blast moisture (DATA-04: not measured; no steam added): the default is the month's typical ambient value from the
-  # Coke Energy model (utils.coke_energy.bf_thermo.HUMIDITY_G_NM3), so both pages use one table. The operator can
-  # override it on the page.
+  # Blast moisture (DATA-04: not measured; no steam added): the plan default is the Open-Meteo daily relative humidity
+  # at Wardha for today, mapped to 7-21 g/Nm3 and fetched live (DATA-11, utils.coke_energy.weather.plan_blast_moisture;
+  # coke_energy.yml -> blast_moisture.open_meteo). The calibration uses its window's Open-Meteo mean. The operator can
+  # override the plan value on the page.

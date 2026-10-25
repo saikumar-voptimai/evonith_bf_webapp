@@ -873,8 +873,15 @@ fallback).
   `src/storage/coke_energy/`; `COKE_ENERGY_WEATHER_LIVE=0` disables the fetch, set in `tests/conftest.py`); missing
   days use the Open-Meteo day-of-year mean, then the monthly table. `rh_scaled` (31-day centred RH of the 2025–26
   weather record, the STRATA 1.4 basis), `psychrometric` and `table` remain selectable in
-  `config/coke_energy.yml → blast_moisture.source`. Used by the Coke Energy pipeline (`run_shifts.case_from_shift`), the
-  engine calibration and the page default; the asset's `moisture.source` must match (tested).
+  `config/coke_energy.yml → blast_moisture.source`. Used everywhere blast moisture enters (user decision 25 Oct 2026):
+  the Coke Energy pipeline (`run_shifts.case_from_shift`, each shift's day); a calibration (its window's Open-Meteo
+  mean; the shipped `cal_2z_jul_oct_2026.json` is re-solved at 18.45 g/Nm³ instead of 15); every plan (the plan day's
+  value, fetched live: `weather.plan_blast_moisture`, the engine `Settings()` default, page 11 default; today's value is
+  fetched again every 6 h); the Blend Mix Optimiser energy balance and RAFT (`energy_balance.blast_moisture_g_per_nm3:
+  null` → the day's value unless the operator enters one). `Engine.cal_settings()` = the calibration point (engine
+  calls without settings). `COKE_ENERGY_TODAY=YYYY-MM-DD` fixes the plan day (tests: 2026-10-15). The 16 Oct case report
+  (15 g/Nm³) is reproduced by the tests on `tests/fixtures/cal_2z_jul_oct_2026_case_report_15g.json`. The asset's
+  `moisture.source` must match (tested).
 - **Fact register:** `src/config/facts_register.json` v1.8, 116 facts (schema in `config/schemas/`). Every coefficient outside the
   balance, the plausibility bands (fuel rate 520–600 kg/tHM, HMT 1,440–1,520 °C, Si 0.20–0.80 %) and default limits.
   Change values there, not in code; retired facts are refused by `FactRegister.active()`.

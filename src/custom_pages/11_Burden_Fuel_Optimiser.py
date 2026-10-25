@@ -41,7 +41,7 @@ from ui.burden_optimiser.omega_panel import render_auto, render_omega_result, re
 from utils.burden_engine import BandError, Engine, Infeasible, load_register
 from utils.burden_engine.commentary import build_context, load_notes
 from utils.burden_engine.scenarios import fuel_defaults, limit_labels, limits_from, settings_from_regime
-from utils.coke_energy.weather import blast_moisture_g
+from utils.coke_energy.weather import plan_blast_moisture
 
 MODES = {
     "cheapest": "Step 1 · Cheapest production level",
@@ -97,7 +97,11 @@ else:
 with st.expander("Yard, prices and stock", expanded=False):
     materials, fluxes, fuel = render_yard_editor(yard, "bfo")
 
-humidity_default = (regime or {}).get("humidity_g") or blast_moisture_g(dt.date.today())   # DATA-11
+# Blast moisture for the plan: Open-Meteo daily value for today at Wardha, fetched live (DATA-11); the calibration
+# window's own Open-Meteo mean sits in the calibration (cal.case.humidity_g).
+_hum_g, _hum_src, _hum_day = plan_blast_moisture()
+humidity_default = dict(value=_hum_g, source=_hum_src, day=_hum_day.date(),
+                        window=((info.cal or {}).get("case") or {}).get("humidity_g"))
 with st.expander("Thermal target and fixed fuels", expanded=False):
     thermal_defaults = {**cfg.get("thermal", {}), **fuel_defaults(regime, cfg.get("thermal", {}), info.cal)}
     thermal = render_thermal(thermal_defaults, reg, humidity_default, "bfo_th")

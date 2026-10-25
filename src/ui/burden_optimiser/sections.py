@@ -328,10 +328,16 @@ def render_yard_editor(yard: Mapping[str, Any], key: str) -> tuple[list[dict], l
     return edited, fluxes, fuel
 
 
-def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_default: float, key: str) -> dict:
+def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_default: Mapping[str, Any] | float,
+                   key: str) -> dict:
     hmt_lo, hmt_hi = reg.band("BAND-02")
     si_lo, si_hi = reg.band("BAND-03")
-    c1, c2, c3, c4, c5 = st.columns(5)
+    hd = dict(humidity_default) if isinstance(humidity_default, Mapping) else dict(value=float(humidity_default))
+    hum_help = ("Not measured at BF-02 (DATA-04). Default: the Open-Meteo daily relative humidity at Wardha for "
+                f"{hd.get('day', 'today')} ({hd.get('source', 'Open-Meteo')}), mapped to 7-21 g/Nm³ (DATA-11), fetched "
+                "live and refreshed every 6 h.")
+    if hd.get("window") is not None:
+        hum_help += f" The calibration was made at its window's Open-Meteo mean, {float(hd['window']):.1f} g/Nm³."
     out = dict(
         HMT=c1.number_input("Hot metal temperature, °C", min_value=hmt_lo, max_value=hmt_hi,
                             value=float(thermal.get("HMT", 1470.0)), step=5.0, format="%.0f", key=f"{key}_hmt",
@@ -347,10 +353,8 @@ def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_defau
                                   help="Fixed input, as charged. Default: " + str(thermal.get("nut_kg_thm_source", "config"))
                                        + " (14-day window). Acts through the balance and, in STRATA-omega, through the "
                                          "nut-coke term (GAS-23)."),
-        humidity_g=c5.number_input("Blast moisture, g/Nm³", min_value=0.0, max_value=40.0, value=float(humidity_default),
-                                   step=1.0, format="%.0f", key=f"{key}_hum",
-                                   help="Not measured at BF-02 (DATA-04): defaults to the Open-Meteo daily RH at "
-                                        "Wardha mapped to 7-21 g/Nm³ (DATA-11) for the regime window."),
+        humidity_g=c5.number_input("Blast moisture, g/Nm³", min_value=0.0, max_value=40.0, value=round(float(hd["value"]), 1),
+                                   step=0.1, format="%.1f", key=f"{key}_hum", help=hum_help),
     )
     return out
 

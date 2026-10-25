@@ -95,8 +95,10 @@ any coefficient.
   were fitted on pellet up to 16.6 % and Gomti up to 11.6 % of ferrous; beyond that the page warns that it is
   extrapolating (ASM-09).
 * **RAFT** is the plant workbook formula at the input blast moisture. Blast humidity is not measured at BF-02
-  (DATA-04); the default is the day's Open-Meteo relative humidity at Wardha mapped to 7–21 g/Nm³ (DATA-11), which the
-  top-gas H₂ confirms day by day (+0.041 pt H₂ per g/Nm³, the physically expected slope; DATA-16).
+  (DATA-04); the plan takes the plan day's Open-Meteo relative humidity at Wardha mapped to 7–21 g/Nm³ (DATA-11,
+  fetched live), which the top-gas H₂ confirms day by day (+0.041 pt H₂ per g/Nm³, the physically expected slope;
+  DATA-16). The calibration is made at its window's Open-Meteo mean; a drier plan day than the window needs less coke
+  (+0.80 kg/tHM per g/Nm³ under Fixed-ω, +0.88 under STRATA-ω).
 * **Plausibility bands** (fact register): fuel rate 520–600 kg/tHM (coke wet + nut coke + PCI; the upper end is a
   limit row, below 520 a result is marked infeasible and not reported), HMT 1,440–1,520 °C, Si 0.20–0.80 %.
 
