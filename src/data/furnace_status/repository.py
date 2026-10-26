@@ -1,4 +1,7 @@
-"""Influx/cache boundary for Furnace Status telemetry."""
+"""Influx/cache boundary for Furnace Status telemetry.
+
+Cached with ``utils.memo`` (no Streamlit, #271), so the Streamlit page, the twin-api and the worker share it.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +9,6 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 
 import pandas as pd
-import streamlit as st
 
 from data.fetchers.ts_data_fetcher import TimeSeriesDataFetcher
 from data.furnace_status.catalogue import (
@@ -18,11 +20,13 @@ from data.furnace_status.catalogue import (
 from domain.furnace_status.readings import normalize_timestamps
 from domain.furnace_status.types import ParameterSpec
 from utils.logger import get_logger
+from utils.memo import memo
 
 log = get_logger(__name__)
 
 
-@st.cache_data(ttl=SETTINGS.cache_ttl_seconds, show_spinner=False)
+# Same lifetime as before (st.cache_data ttl); copies on read like st.cache_data; bounded for distinct trend ranges.
+@memo(ttl_seconds=SETTINGS.cache_ttl_seconds, max_entries=256, copy=True)
 def _fetch_cached(
     measurement: str,
     fields: tuple[str, ...],

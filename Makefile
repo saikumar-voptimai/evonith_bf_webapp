@@ -2,7 +2,11 @@
 # `python scripts/dev.py` and the pnpm / pytest commands directly.
 PY ?= uv run python
 PNPM ?= pnpm --dir frontend
-SRC_PATH := PYTHONPATH=src:furnace_data
+RUFF ?= uvx ruff@0.17.2
+# Files under the programme's Ruff rules (the rest of the repository keeps black + isort).
+RUFF_PATHS := src/api src/services src/worker src/utils/memo.py src/ui/coke_energy/loaders.py \
+	src/ui/burden_optimiser/loaders.py scripts/dev.py tests/services_fakes.py tests/test_services_*.py \
+	tests/test_utils_memo.py
 
 .PHONY: help dev api worker legacy web install build check lint format test test-web test-py
 
@@ -41,12 +45,12 @@ check:
 
 lint:
 	$(PNPM) lint
-	uvx ruff@0.17.2 check src/api src/services src/worker scripts/dev.py
-	uvx ruff@0.17.2 format --check src/api src/services src/worker scripts/dev.py
+	$(RUFF) check $(RUFF_PATHS)
+	$(RUFF) format --check $(RUFF_PATHS)
 
 format:
 	$(PNPM) format
-	uvx ruff@0.17.2 format src/api src/services src/worker scripts/dev.py
+	$(RUFF) format $(RUFF_PATHS)
 
 test: test-web test-py
 

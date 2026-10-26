@@ -1,10 +1,10 @@
 """Live two-zone calibration and operating regime for the Burden & Fuel Optimiser (#252).
 
-Source: the Coke Energy pipeline result (``utils.coke_energy.pipeline.PipelineResult``), which the page gets from the
-same cached loader as the Coke Energy Model page (``ui.coke_energy.loaders.page_data``), so the two pages calibrate on
-the same shifts. Window: stable shifts in the ``window_days`` before ``as_of`` (default 14, the Coke Energy page's
-rolling window). With fewer than ``min_shifts`` stable shifts the shipped Jul-Oct 2026 calibration is used and the
-result says so.
+Source: the Coke Energy pipeline result (``utils.coke_energy.pipeline.PipelineResult``), assembled by
+``services.coke_energy`` (the Streamlit pages share its cached ``page_data``; the twin-api and the worker use the
+service's memoised one), so every view calibrates on the same shifts. Window: stable shifts in the ``window_days``
+before ``as_of`` (default 14, the Coke Energy page's rolling window). With fewer than ``min_shifts`` stable shifts the
+shipped Jul-Oct 2026 calibration is used and the result says so.
 """
 
 from __future__ import annotations

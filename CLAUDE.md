@@ -895,6 +895,26 @@ fallback).
 
 ---
 
+## 12. Svelte Frontend, twin-api and Service Layer (programme #262, milestone #M5)
+
+Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263-#269 (child issues SV-x.y = #270-#321).
+
+| Part | Path | Rule |
+|---|---|---|
+| SPA | `frontend/` | SvelteKit 3 (config inside `sveltekit()` in `vite.config.ts`, no `svelte.config.js`), Svelte 5 runes, TypeScript 6; imports from `src/lib` as `#lib/...` (`$lib` is removed in Kit 3); static build with `200.html` fallback |
+| twin-api | `src/api/` | FastAPI, run with `src/` on the path (`uvicorn api.main:app --app-dir src`); routers call `services.*` only |
+| Service layer | `src/services/` | All data assembly and model orchestration shared by the API, the worker and Streamlit. **No Streamlit or `ui.*` import** (tests/test_services_architecture.py, also transitive) |
+| Worker | `src/worker/` | `python -m worker` (scheduler and job queue: #277) |
+| Cache | `src/utils/memo.py` | `@memo(ttl_seconds=, max_entries=, copy=)` replaces `st.cache_data` outside Streamlit; key = argument values |
+
+- Pattern: a service exposes uncached building blocks (`load_*`, `read_*`, `build_*`, `compute_*`) and memoised
+  entry points for the API/worker. Streamlit loaders (`ui/*/loaders.py`) wrap the uncached blocks in `st.cache_data`
+  (spinners, copy-on-read) and pass them to the same composition, e.g. `services.coke_energy.build_page_data(keys,
+  settings, loaders)`. Never compose a quantity twice.
+- Dev: `python scripts/dev.py` (SPA 5173 + API 8100 + worker + Streamlit under `/legacy` on 8501). Lint the new
+  Python with `uvx ruff@0.17.2` (paths in the Makefile); do not run `uv add` without checking the lock revision
+  (a newer uv rewrites `uv.lock` to revision 3).
+
 ## Environment Variables
 
 ```
