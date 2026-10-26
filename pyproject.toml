@@ -240,6 +240,18 @@ target-version = ["py310"]
 [tool.isort]
 profile = "black"
 
+# Ruff lints the packages of the Svelte programme (#262): src/api, src/services, src/worker, scripts/dev.py.
+# Run with `uvx ruff@0.17.2 check <paths>` (see Makefile); the rest of the repository keeps black + isort.
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "services", "worker", "utils", "data", "config", "domain", "ui", "reports", "agents", "furnace_data"]
+
 
 [dependency-groups]
 dev = [

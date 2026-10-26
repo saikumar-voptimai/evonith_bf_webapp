@@ -1,0 +1,11 @@
+# Package managers
+package-lock.json
+pnpm-lock.yaml
+
+# Generated
+/build/
+/.svelte-kit/
+src/lib/api/schema.d.ts
+
+# Miscellaneous
+/static/

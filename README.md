@@ -20,6 +20,7 @@ A production-grade Streamlit web application for real-time monitoring, AI-powere
 12. [ML Dataset API Sidecar](#12-ml-dataset-api-sidecar)
 13. [Testing](#13-testing)
 14. [Key Domain Concepts](#14-key-domain-concepts)
+15. [Svelte Frontend and twin-api](#15-svelte-frontend-and-twin-api)
 
 ---
 
@@ -843,3 +844,36 @@ The codebase bridges three naming conventions:
 | Production | `production_per_hour` | `ProductionTonnesPerHr` | `BF2 Production per hr` |
 
 The `data_mapping` section in `config/setting_ds_dv.yml` is the authoritative translation table used throughout the app.
+
+---
+
+## 15. Svelte Frontend and twin-api
+
+Programme epic #262 (milestone #M5) moves the operator pages to a SvelteKit single-page application served behind
+Caddy with a FastAPI service (`twin-api`). Streamlit keeps running under `/legacy` until each page passes parity.
+
+| Part | Path | Run |
+|---|---|---|
+| SPA (SvelteKit 3, Svelte 5, TypeScript) | `frontend/` | `pnpm --dir frontend dev` (port 5173) |
+| twin-api (FastAPI) | `src/api/` | `python -m uvicorn api.main:app --app-dir src --port 8100` |
+| Service layer (no Streamlit) | `src/services/` | imported by the API, the worker and the Streamlit pages |
+| twin-worker | `src/worker/` | `PYTHONPATH=src python -m worker` |
+| Streamlit (legacy) | `src/app.py` | served under `/legacy` (port 8501) |
+
+**Development.** Node.js >= 20 with pnpm, plus the Python environment from section 11:
+
+```bash
+pnpm --dir frontend install
+python scripts/dev.py            # SPA + API + worker + Streamlit; open http://localhost:5173
+python scripts/dev.py api web    # a subset
+make dev / make lint / make test # Linux, macOS, Jetson
+```
+
+The SPA dev server proxies `/api` and `/legacy`, so the browser sees one origin, as in production behind Caddy.
+
+**Checks.** `pnpm --dir frontend check` (types), `pnpm --dir frontend lint` (Prettier + ESLint),
+`pnpm --dir frontend test` (Vitest), `uvx ruff@0.17.2 check src/api src/services src/worker scripts/dev.py`.
+
+**Imports.** Frontend modules under `frontend/src/lib` are imported as `#lib/...` (SvelteKit 3 subpath imports).
+Python routers import `services.*` only, never `ui.*` or Streamlit.
+
