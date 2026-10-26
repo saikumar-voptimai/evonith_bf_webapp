@@ -901,8 +901,8 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
 
 | Part | Path | Rule |
 |---|---|---|
-| SPA | `frontend/` | SvelteKit 3 (config inside `sveltekit()` in `vite.config.ts`, no `svelte.config.js`), Svelte 5 runes, TypeScript 6; imports from `src/lib` as `#lib/...` (`$lib` is removed in Kit 3); static build with `200.html` fallback |
-| twin-api | `src/api/` | FastAPI, run with `src/` on the path (`uvicorn api.main:app --app-dir src`); routers call `services.*` only |
+| SPA | `frontend/` | SvelteKit 3 (config inside `sveltekit()` in `vite.config.ts`, no `svelte.config.js`), Svelte 5 runes, TypeScript 6; imports from `src/lib` as `#lib/...` **with the file extension** (`#lib/api/client.ts`; `$lib` is removed in Kit 3, and TypeScript does not resolve extensionless `#lib` paths); static build with `200.html` fallback |
+| twin-api | `src/api/` | FastAPI, run with `src/` on the path (`uvicorn api.main:app --app-dir src`); routers call `services.*` only; errors are RFC 7807 problems (`api.errors.ApiError`); after changing a route run `make client` (or `python scripts/export_openapi.py && pnpm --dir frontend api:types`) and commit `frontend/src/lib/api/openapi.json` + `schema.d.ts` (a test fails on drift) |
 | Service layer | `src/services/` | All data assembly and model orchestration shared by the API, the worker and Streamlit. **No Streamlit or `ui.*` import** (tests/test_services_architecture.py, also transitive) |
 | Worker | `src/worker/` | `python -m worker` (scheduler and job queue: #277) |
 | Cache | `src/utils/memo.py` | `@memo(ttl_seconds=, max_entries=, copy=)` replaces `st.cache_data` outside Streamlit; key = argument values |

@@ -1,0 +1,266 @@
+{
+  "components": {
+    "schemas": {
+      "FieldError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Msg",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "FieldError",
+        "type": "object"
+      },
+      "Health": {
+        "properties": {
+          "service": {
+            "default": "twin-api",
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "description": "'ok' when the process answers",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "ProblemDetail": {
+        "description": "Error body of every non-2xx response (RFC 7807).",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explanation of this occurrence",
+            "title": "Detail"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FieldError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Validation errors (422 only)",
+            "title": "Errors"
+          },
+          "instance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Request path",
+            "title": "Instance"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Request id, also in the X-Request-ID header and the server log",
+            "title": "Request Id"
+          },
+          "status": {
+            "description": "HTTP status code",
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Short summary of the problem type",
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "default": "about:blank",
+            "description": "URI reference identifying the problem type",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "status"
+        ],
+        "title": "ProblemDetail",
+        "type": "object"
+      },
+      "Version": {
+        "properties": {
+          "environment": {
+            "description": "'dev' or 'prod'",
+            "title": "Environment",
+            "type": "string"
+          },
+          "git_sha": {
+            "description": "Commit of the running release ('unknown' in development)",
+            "title": "Git Sha",
+            "type": "string"
+          },
+          "python": {
+            "description": "Python version",
+            "title": "Python",
+            "type": "string"
+          },
+          "started_at": {
+            "description": "Process start (UTC)",
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "version": {
+            "description": "twin-api version",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "git_sha",
+          "environment",
+          "python",
+          "started_at"
+        ],
+        "title": "Version",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "summary": "Data and model API behind the BF-02 Svelte frontend (programme #262).",
+    "title": "BF-02 twin-api",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "description": "The process answers. Data-source checks are in ``/api/health/deep`` (#317).",
+        "operationId": "system_health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Liveness",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/version": {
+      "get": {
+        "operationId": "system_version",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Running version",
+        "tags": [
+          "system"
+        ]
+      }
+    }
+  }
+}

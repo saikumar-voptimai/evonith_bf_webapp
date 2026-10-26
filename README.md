@@ -874,6 +874,12 @@ The SPA dev server proxies `/api` and `/legacy`, so the browser sees one origin,
 **Checks.** `pnpm --dir frontend check` (types), `pnpm --dir frontend lint` (Prettier + ESLint),
 `pnpm --dir frontend test` (Vitest), `uvx ruff@0.17.2 check src/api src/services src/worker scripts/dev.py`.
 
-**Imports.** Frontend modules under `frontend/src/lib` are imported as `#lib/...` (SvelteKit 3 subpath imports).
+**Imports.** Frontend modules under `frontend/src/lib` are imported as `#lib/...` with the file extension
+(`#lib/api/client.ts`; SvelteKit 3 subpath imports).
+
+**Typed API client.** `frontend/src/lib/api/client.ts` wraps `openapi-fetch` with the types generated from the API's
+OpenAPI schema. After changing a route: `make client` (or `python scripts/export_openapi.py` and
+`pnpm --dir frontend api:types`), then commit `openapi.json` and `schema.d.ts`; `tests/test_api_foundation.py` fails
+on drift.
 Python routers import `services.*` only, never `ui.*` or Streamlit.
 

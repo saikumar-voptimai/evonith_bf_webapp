@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { api, type Schemas } from '#lib/api/client.ts';
 
-	type Health = { status: string; service: string };
+	type Health = Schemas['Health'];
 
 	let health = $state<Health | null>(null);
 	let error = $state<string | null>(null);
 
 	onMount(async () => {
 		try {
-			const res = await fetch('/api/health');
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			health = (await res.json()) as Health;
+			const { data } = await api.GET('/api/health');
+			health = data ?? null;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		}

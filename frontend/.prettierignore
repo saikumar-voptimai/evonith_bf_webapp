@@ -9,3 +9,4 @@ src/lib/api/schema.d.ts
 
 # Miscellaneous
 /static/
+src/lib/api/openapi.json
