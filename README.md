@@ -877,6 +877,11 @@ The SPA dev server proxies `/api` and `/legacy`, so the browser sees one origin,
 **Imports.** Frontend modules under `frontend/src/lib` are imported as `#lib/...` with the file extension
 (`#lib/api/client.ts`; SvelteKit 3 subpath imports).
 
+**Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
+shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (v-optimai.com palette;
+text contrast >= 4.5:1 on every surface, checked by a unit test). `make audit-ui` builds the SPA and runs axe-core,
+overflow, keyboard and dialog checks at 1920x1080, 1366x768 and 768x1024 (Playwright with Chromium required).
+
 **Typed API client.** `frontend/src/lib/api/client.ts` wraps `openapi-fetch` with the types generated from the API's
 OpenAPI schema. After changing a route: `make client` (or `python scripts/export_openapi.py` and
 `pnpm --dir frontend api:types`), then commit `openapi.json` and `schema.d.ts`; `tests/test_api_foundation.py` fails

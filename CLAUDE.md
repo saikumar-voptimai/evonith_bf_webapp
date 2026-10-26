@@ -911,6 +911,10 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   entry points for the API/worker. Streamlit loaders (`ui/*/loaders.py`) wrap the uncached blocks in `st.cache_data`
   (spinners, copy-on-read) and pass them to the same composition, e.g. `services.coke_energy.build_page_data(keys,
   settings, loaders)`. Never compose a quantity twice.
+- UI: colours, sizes and spacing only from `frontend/src/lib/theme/tokens.css`; build pages from
+  `frontend/src/lib/components/` (catalogue at `/dev/components`, rules in `frontend/DESIGN.md`): status always with
+  icon and word, `updatedAt` on live panels, units on every readout, chemical labels with Unicode subscripts (SiO₂).
+  New nav pages go into `frontend/src/lib/nav.ts`. Check with `make audit-ui` (axe-core, three viewports).
 - Dev: `python scripts/dev.py` (SPA 5173 + API 8100 + worker + Streamlit under `/legacy` on 8501). Lint the new
   Python with `uvx ruff@0.17.2` (paths in the Makefile); do not run `uv add` without checking the lock revision
   (a newer uv rewrites `uv.lock` to revision 3).

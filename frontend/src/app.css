@@ -1,16 +1,5 @@
-/* Placeholder until the design system (SV-0.5, #274) replaces it with tokens.css. */
-:root {
-	color-scheme: dark;
-	--vo-bg: #1b0f0a;
-	--vo-text: #f7f4ee;
-	--vo-text-muted: #b9b1aa;
-	--vo-yellow: #ffeb3b;
-}
-
-html,
-body {
-	margin: 0;
-	background: var(--vo-bg);
-	color: var(--vo-text);
-	font-family: Montserrat, 'Helvetica Neue', Arial, sans-serif;
-}
+/* Global styles: fonts, design tokens and element defaults (SV-0.5, #274). Components keep their own styles. */
+@import '@fontsource-variable/montserrat/wght.css';
+@import './lib/theme/fonts.css';
+@import './lib/theme/tokens.css';
+@import './lib/theme/base.css';

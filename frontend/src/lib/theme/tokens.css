@@ -1,0 +1,101 @@
+/*
+ * Design tokens of the BF-02 operator console (SV-0.5, #274; plan section 9).
+ *
+ * Palette from www.v-optimai.com: tap yellow on the brand's warm black. Every text colour below has a contrast
+ * ratio of at least 4.5:1 on every surface (black, bg, surface, surface-raised); contrast.test.ts checks it.
+ * Roles are fixed: yellow marks the active item, focus, the primary action and the STRATA prediction; amber marks
+ * FORGE and secondary emphasis; status colours appear only with an icon and a word.
+ */
+:root {
+	color-scheme: dark;
+
+	/* Surfaces */
+	--vo-black: #000000; /* chrome: navigation rail and top bar */
+	--vo-bg: #1b0f0a; /* canvas, the brand's warm black */
+	--vo-surface: #2c211c; /* panels */
+	--vo-surface-raised: #362b27; /* hover, selected rows, menus */
+	--vo-inset: #1b0f0a; /* input fields */
+	--vo-border: #3d332f; /* 1 px rules between regions */
+	--vo-border-input: #857a73; /* input and control boundaries, >= 3:1 against panel and canvas */
+	--vo-track: #4a3f3a; /* gauge and progress tracks */
+
+	/* Text */
+	--vo-text: #f7f4ee;
+	--vo-text-muted: #b9b1aa;
+	--vo-text-on-accent: #000000;
+
+	/* Brand accents */
+	--vo-yellow: #ffeb3b;
+	--vo-yellow-strong: #facc15; /* filled primary buttons, black text 13.7:1 */
+	--vo-amber: #ffa000;
+	--vo-amber-text: #fdae0f;
+	--vo-cream: #fffbe6; /* print background (report print layout, SV-2.4) */
+
+	/* Status, always with an icon and a word */
+	--vo-ok: #99d966;
+	--vo-warning: #fb923c;
+	--vo-critical: #f87171;
+	--vo-stale: #9e9690;
+	--vo-info: #8fb8de;
+
+	/* Chart series */
+	--vo-series-trace: #f7f4ee;
+	--vo-series-forge: #ffa000;
+	--vo-series-strata: #ffeb3b;
+	--vo-series-charged: #8fb8de;
+	--vo-series-hmt: #ff7043;
+
+	/* Type: Montserrat for everything; Greek letters (omega, sigma, Delta) from a Noto Sans subset */
+	--vo-font:
+		'Montserrat Variable', 'Noto Sans Greek', 'Segoe UI', 'DejaVu Sans', system-ui, -apple-system, sans-serif;
+	--vo-fs-label: 0.75rem; /* 12 px: labels, hints, table headers */
+	--vo-fs-body: 0.875rem; /* 14 px: body, table cells, controls */
+	--vo-fs-title: 1rem; /* 16 px: panel titles */
+	--vo-fs-heading: 1.3125rem; /* 21 px: page titles */
+	--vo-fs-kpi: 1.75rem; /* 28 px: readouts in tiles */
+	--vo-fs-display: 2.25rem; /* 36 px: the Live Twin headline readout */
+	--vo-lh-body: 1.45;
+	--vo-lh-tight: 1.2;
+
+	/* Space, 4 px base */
+	--vo-space-1: 4px;
+	--vo-space-2: 8px;
+	--vo-space-3: 12px;
+	--vo-space-4: 16px;
+	--vo-space-5: 24px;
+	--vo-space-6: 32px;
+	--vo-space-7: 48px;
+
+	/* Radius by hierarchy: panels > controls > chips */
+	--vo-radius-panel: 8px;
+	--vo-radius-control: 6px;
+	--vo-radius-small: 4px;
+	--vo-radius-pill: 999px;
+
+	/* Chrome */
+	--vo-rail-width: 232px;
+	--vo-rail-collapsed: 64px;
+	--vo-topbar-height: 56px;
+	--vo-gutter: 24px;
+	--vo-target: 40px; /* minimum touch target in the rail, buttons and inputs */
+
+	/* Overlays are the only elevated elements */
+	--vo-shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.6);
+	--vo-scrim: rgb(0 0 0 / 0.62);
+
+	/* Motion: only in answer to an action */
+	--vo-duration: 160ms;
+	--vo-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (max-width: 767px) {
+	:root {
+		--vo-gutter: 16px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--vo-duration: 0ms;
+	}
+}

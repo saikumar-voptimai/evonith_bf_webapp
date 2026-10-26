@@ -8,7 +8,7 @@ RUFF_PATHS := src/api src/services src/worker src/utils/memo.py src/ui/coke_ener
 	src/ui/burden_optimiser/loaders.py scripts/dev.py tests/services_fakes.py tests/test_services_*.py \
 	tests/test_utils_memo.py tests/test_api_*.py scripts/export_openapi.py
 
-.PHONY: help dev api worker legacy web install build check lint format test test-web test-py client
+.PHONY: help dev api worker legacy web install build check lint format test test-web test-py client audit-ui
 
 help:
 	@echo "make dev      SPA (5173) + API (8100) + worker + Streamlit (/legacy, 8501)"
@@ -18,6 +18,7 @@ help:
 	@echo "make lint     prettier + eslint + ruff (new packages)"
 	@echo "make test     vitest + pytest (BURDEN_ENGINE_FAST=1)"
 	@echo "make client   export the OpenAPI schema and regenerate the typed TS client"
+	@echo "make audit-ui build the SPA, then axe-core, layout and keyboard checks with screenshots (Playwright)"
 
 dev:
 	$(PY) scripts/dev.py
@@ -64,3 +65,6 @@ test-py:
 client:
 	$(PY) scripts/export_openapi.py
 	$(PNPM) api:types
+
+audit-ui: build
+	$(PNPM) audit:ui
