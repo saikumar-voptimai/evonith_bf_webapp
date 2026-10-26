@@ -21,9 +21,10 @@ Signed-in user in the top bar; the menu opens as a popover (Escape and a click o
 </script>
 
 {#if user}
-	<button type="button" class="trigger" popovertarget="{uid}-menu" aria-label="Account: {user.displayName}">
+	<button type="button" class="trigger" popovertarget="{uid}-menu">
 		<span class="avatar" aria-hidden="true">{initials(user.displayName)}</span>
-		{#if !compact}<span class="name" aria-hidden="true">{user.displayName}</span>{/if}
+		<span class={['name', compact && 'sr-only']}>{user.displayName}</span>
+		<span class="sr-only">, account menu</span>
 		<ChevronDown size={15} strokeWidth={2} />
 	</button>
 	<div id="{uid}-menu" class="menu" popover="auto">

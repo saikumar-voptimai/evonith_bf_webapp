@@ -13,7 +13,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src"
 FREE_PACKAGES = ("services", "api", "worker")
-FREE_MODULES = ("utils/memo.py", "data/furnace_status/repository.py")
+FREE_MODULES = ("utils/memo.py", "data/furnace_status/repository.py", "data/db.py", "domain/auth_service.py")
 
 
 def _python_files() -> list[Path]:
@@ -38,7 +38,11 @@ def test_no_streamlit_or_ui_import(path: Path) -> None:
     assert not bad, f"{path.relative_to(SRC)} imports {bad}"
 
 
-@pytest.mark.parametrize("module", ["services.coke_energy", "services.optimiser", "services.status", "api.main"])
+@pytest.mark.parametrize(
+    "module",
+    # data.db and domain.auth_service are imported lazily by services.auth (identity store of the twin-api).
+    ["services.coke_energy", "services.optimiser", "services.status", "services.auth", "data.db", "api.main"],
+)
 def test_no_transitive_streamlit_import(module: str) -> None:
     """Importing the module in a fresh interpreter must not load Streamlit or a ui module through any dependency."""
     code = (

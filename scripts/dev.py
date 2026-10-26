@@ -12,6 +12,7 @@ Ports: SPA 5173 (open http://localhost:5173), API 8100, Streamlit 8501 under /le
 from __future__ import annotations
 
 import os
+import secrets
 import shutil
 import signal
 import subprocess
@@ -21,6 +22,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+DEV_KEY_FILE = ROOT / "src" / "storage" / "twin_api" / "jwt_secret.dev"
 API_PORT = os.environ.get("BF_API_PORT", "8100")
 LEGACY_PORT = os.environ.get("BF_LEGACY_PORT", "8501")
 IS_WINDOWS = os.name == "nt"
@@ -88,6 +90,20 @@ def _pump(name: str, proc: subprocess.Popen) -> None:
         sys.stdout.flush()
 
 
+def _dev_jwt_secret() -> str:
+    """Session signing key for development, kept in a git-ignored file so sessions survive API reloads."""
+    if DEV_KEY_FILE.is_file():
+        key = DEV_KEY_FILE.read_text(encoding="utf-8").strip()
+        if len(key) >= 32:
+            return key
+    DEV_KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    key = secrets.token_hex(32)
+    fd = os.open(DEV_KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(key)
+    return key
+
+
 def _sigterm(signum: int, frame: object) -> None:
     raise KeyboardInterrupt  # stop the children exactly as Ctrl+C does
 
@@ -102,6 +118,8 @@ def main(argv: list[str]) -> int:
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), str(ROOT / "furnace_data"), env.get("PYTHONPATH", "")])
     env.setdefault("PYTHONUNBUFFERED", "1")
+    if "api" in names and not env.get("BF_API_JWT_SECRET"):
+        env["BF_API_JWT_SECRET"] = _dev_jwt_secret()
     procs: dict[str, subprocess.Popen] = {}
     flags = subprocess.CREATE_NEW_PROCESS_GROUP if IS_WINDOWS else 0
     for name in names:

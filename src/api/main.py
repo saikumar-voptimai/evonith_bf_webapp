@@ -3,8 +3,9 @@
     python -m uvicorn api.main:app --app-dir src --port 8100
 
 Routes live in ``api.routers``; every error is an RFC 7807 problem (``api.errors``); every request carries an id
-(``api.request_context``). With ``BF_API_STATIC_DIR`` set, the API also serves the built SPA with the ``200.html``
-fallback (development preview or a host without Caddy).
+(``api.request_context``); every route outside ``api.auth.PUBLIC_PATHS`` requires a role (``api.auth.require_role``).
+With ``BF_API_STATIC_DIR`` set, the API also serves the built SPA with the ``200.html`` fallback (development preview
+or a host without Caddy).
 """
 
 from __future__ import annotations
@@ -17,9 +18,11 @@ from fastapi.responses import FileResponse, Response
 from fastapi.routing import APIRoute
 
 from api import __version__
+from api.auth import build_auth_state
 from api.errors import ERROR_RESPONSES, ApiError, install_error_handlers
 from api.request_context import RequestContextMiddleware, RequestIdFilter
-from api.routers import system
+from api.routers import auth, system
+from api.security.origin import OriginGuardMiddleware
 from api.settings import ApiSettings, get_settings
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s [%(request_id)s] %(message)s"
@@ -65,13 +68,18 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         summary="Data and model API behind the BF-02 Svelte frontend (programme #262).",
         docs_url="/api/docs",
         redoc_url=None,
+        swagger_ui_oauth2_redirect_url=None,
         openapi_url="/api/openapi.json",
         responses=ERROR_RESPONSES,
         generate_unique_id_function=_operation_id,
     )
+    app.state.auth = build_auth_state(settings)
+    # The last middleware added is the outermost: the origin guard runs inside the request context (request id).
+    app.add_middleware(OriginGuardMiddleware)
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
     app.include_router(system.router)
+    app.include_router(auth.router)
     if settings.static_dir is not None and (settings.static_dir / "200.html").is_file():
         _mount_spa(app, settings.static_dir)
     return app

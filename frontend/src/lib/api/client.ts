@@ -43,18 +43,26 @@ export async function problemFrom(response: Response): Promise<Problem | undefin
 	}
 }
 
+/** Window event raised when the API answers 401 outside the sign-in calls: the session has ended. */
+export const UNAUTHORIZED_EVENT = 'vo:unauthorized';
+const AUTH_PATHS = ['/api/auth/login', '/api/auth/me', '/api/auth/logout'];
+
 export const throwOnError: Middleware = {
-	async onResponse({ response }) {
+	async onResponse({ request, response }) {
 		if (response.ok) return undefined;
 		const problem = await problemFrom(response);
+		if (response.status === 401 && typeof window !== 'undefined') {
+			const path = new URL(request.url, window.location.href).pathname;
+			if (!AUTH_PATHS.includes(path)) window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+		}
 		throw new ApiError(response.status, problem, response.headers.get('x-request-id') ?? undefined);
 	}
 };
 
-/** Same-origin client: the dev server and Caddy both route /api to the twin-api. */
-export function makeClient(fetchImpl?: typeof fetch) {
+/** Same-origin client: the dev server and Caddy both route /api to the twin-api. Tests pass an absolute `baseUrl`. */
+export function makeClient(fetchImpl?: typeof fetch, baseUrl = '') {
 	const client = createClient<paths>({
-		baseUrl: '',
+		baseUrl,
 		credentials: 'same-origin',
 		...(fetchImpl ? { fetch: fetchImpl } : {})
 	});

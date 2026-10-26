@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * UI audit of the built SPA (SV-0.5, #274): axe-core on every page at 1920x1080, 1366x768 and 768x1024, horizontal
- * overflow, keyboard and dialog behaviour, and full-page screenshots for review.
+ * UI audit of the built SPA (SV-0.5, #274; sign-in SV-0.4, #273): axe-core on every page at 1920x1080, 1366x768 and
+ * 768x1024, horizontal overflow, keyboard and dialog behaviour, sign-in, role guard and sign-out, and screenshots.
  *
  *   pnpm build && pnpm audit:ui                 # serves build/ with `vite preview`
  *   pnpm audit:ui --base http://127.0.0.1:5173  # audits a running server instead
  *   pnpm audit:ui --out ../audit-shots
  *
- * Needs Playwright with Chromium (`pnpm dlx playwright install chromium` on a dev machine). /api/health is answered
- * by the script, so the audit does not need the twin-api. Exit code 1 on a critical or serious axe violation, a
- * horizontal overflow or a failed behaviour check.
+ * Needs Playwright with Chromium (`pnpm dlx playwright install chromium` on a dev machine). The script answers
+ * /api/health and /api/auth/* itself (account `auditor`, password `correct-horse`), so the audit does not need the
+ * twin-api. Exit code 1 on a critical or serious axe violation, a horizontal overflow or a failed behaviour check.
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -40,6 +40,7 @@ const ROUTES = [
 	{ name: 'live-twin', path: '/' },
 	{ name: 'trace', path: '/trace' },
 	{ name: 'catalogue', path: '/dev/components' },
+	{ name: 'admin', path: '/admin' },
 	{ name: 'not-found', path: '/no-such-page' }
 ];
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
@@ -135,12 +136,42 @@ try {
 			body: '{"status":"ok","service":"twin-api"}'
 		})
 	);
+	// Session mock: `auth.role` is the signed-in role, or null when signed out.
+	const auth = { role: 'admin' };
+	const problem = (route, status, detail) =>
+		route.fulfill({
+			status,
+			contentType: 'application/problem+json',
+			body: JSON.stringify({ type: 'about:blank', title: String(status), status, detail })
+		});
+	const sessionBody = () =>
+		JSON.stringify({
+			user: { username: 'auditor', role: auth.role, user_id: 'u-audit' },
+			expires_at: new Date(Date.now() + 12 * 3600_000).toISOString()
+		});
+	await context.route('**/api/auth/me', (route) =>
+		auth.role
+			? route.fulfill({ status: 200, contentType: 'application/json', body: sessionBody() })
+			: problem(route, 401, 'Sign in to continue.')
+	);
+	await context.route('**/api/auth/login', (route) => {
+		const body = route.request().postDataJSON();
+		if (body?.username !== 'auditor' || body?.password !== 'correct-horse')
+			return problem(route, 401, 'Unknown user name or wrong password.');
+		auth.role = 'admin';
+		return route.fulfill({ status: 200, contentType: 'application/json', body: sessionBody() });
+	});
+	await context.route('**/api/auth/logout', (route) => {
+		auth.role = null;
+		return route.fulfill({ status: 204, body: '' });
+	});
 	const page = await context.newPage();
 	const consoleErrors = [];
 	page.on('console', (m) => {
-		// The 404 of the not-found route's own document is expected; everything else is an error.
+		// Expected HTTP statuses: the 404 of the not-found route's document and the 401s of the sign-in checks.
 		const url = m.location()?.url ?? '';
-		if (m.type() === 'error' && !url.endsWith('/no-such-page')) consoleErrors.push(`${m.text()} ${url}`);
+		const expected = url.endsWith('/no-such-page') || url.includes('/api/auth/');
+		if (m.type() === 'error' && !expected) consoleErrors.push(`${m.text()} ${url}`);
 	});
 	page.on('pageerror', (e) => consoleErrors.push(String(e)));
 
@@ -156,6 +187,7 @@ try {
 				path: join(OUT, `${route.name}-${vp.name}.png`),
 				fullPage: route.name === 'catalogue'
 			});
+			if (new URL(page.url()).pathname !== route.path) fail(`${label}: landed on ${page.url()}`);
 			report.pages.push({ label, violations, overflow: o });
 		}
 	}
@@ -306,6 +338,64 @@ try {
 		await dialog.getByRole('link', { name: 'STRATA' }).click();
 		await page.waitForURL('**/strata');
 		await dialog.waitFor({ state: 'hidden' });
+	});
+
+	await check('signed-out visit goes to the sign-in page and back', async () => {
+		auth.role = null;
+		await page.setViewportSize({ width: 1366, height: 768 });
+		await page.goto(`${base}/strata`, { waitUntil: 'networkidle' });
+		await page.waitForURL('**/login?next=%2Fstrata');
+		await settle(page);
+		for (const vp of VIEWPORTS) {
+			await page.setViewportSize({ width: vp.width, height: vp.height });
+			await settle(page);
+			const label = `login@${vp.name}`;
+			report.pages.push({ label, violations: await axe(page, label), overflow: await overflow(page, label) });
+			await page.screenshot({ path: join(OUT, `login-${vp.name}.png`) });
+		}
+		await page.setViewportSize({ width: 1366, height: 768 });
+		await page.getByLabel('User name').fill('auditor');
+		await page.getByLabel('Password').fill('wrong');
+		await page.getByRole('button', { name: 'Sign in' }).click();
+		const alert = page.getByRole('alert');
+		await alert.getByText('Unknown user name or wrong password.').waitFor();
+		await page.screenshot({ path: join(OUT, 'login-refused-1366x768.png') });
+		expect(
+			(await page.getByLabel('Password').inputValue()) === '',
+			'password field kept the refused password'
+		);
+		await page.getByLabel('Password').fill('correct-horse');
+		await page.getByRole('button', { name: 'Sign in' }).click();
+		await page.waitForURL('**/strata');
+		const current = await page.locator('nav[aria-label="Main"] [aria-current="page"]').innerText();
+		expect(current.trim() === 'STRATA', `after sign-in the current page is "${current}"`);
+	});
+
+	await check('the Admin pages refuse a supervisor', async () => {
+		auth.role = 'supervisor';
+		await page.goto(`${base}/trace`, { waitUntil: 'networkidle' });
+		expect(
+			(await page.getByRole('link', { name: 'Admin' }).count()) === 0,
+			'Admin link shown to a supervisor'
+		);
+		await page.goto(`${base}/admin`, { waitUntil: 'networkidle' });
+		await settle(page);
+		const text = await page.locator('main').innerText();
+		expect(
+			text.includes('The Admin pages are for administrators.'),
+			`admin page shows "${text.slice(0, 80)}"`
+		);
+		await axe(page, 'admin-403@1366x768');
+		await page.screenshot({ path: join(OUT, 'admin-403-1366x768.png') });
+	});
+
+	await check('sign-out ends the session and shows the sign-in page', async () => {
+		auth.role = 'admin';
+		await page.goto(`${base}/forge`, { waitUntil: 'networkidle' });
+		await page.getByRole('button', { name: /account menu/ }).click();
+		await page.getByRole('button', { name: 'Sign out' }).click();
+		await page.waitForURL('**/login');
+		expect(auth.role === null, 'logout was not called');
 	});
 
 	await check('no console errors', async () => {

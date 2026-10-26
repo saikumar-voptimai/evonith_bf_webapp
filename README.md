@@ -877,6 +877,24 @@ The SPA dev server proxies `/api` and `/legacy`, so the browser sees one origin,
 **Imports.** Frontend modules under `frontend/src/lib` are imported as `#lib/...` with the file extension
 (`#lib/api/client.ts`; SvelteKit 3 subpath imports).
 
+**Sign-in and roles.** The SPA and the API use the accounts and roles of the Streamlit app (Neon
+`identity.users`; roles user < supervisor < admin). `POST /api/auth/login` sets a 12 h HS256 session token in an
+httpOnly, Secure, SameSite=Strict cookie (path `/api`); `GET /api/auth/me` returns the user; `POST /api/auth/logout`
+revokes the token. After 5 failed sign-ins from one address within 60 s further attempts get 429 until the oldest
+failure leaves the window. Every API route outside `api.auth.PUBLIC_PATHS` declares a minimum role with
+`require_role`, and `tests/test_api_auth.py` fails on a route without one. Settings (environment or `.env`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BF_API_JWT_SECRET` | random per process (dev) | Signing key, >= 32 characters; **required in prod** (`openssl rand -hex 32`). `scripts/dev.py` keeps one in `src/storage/twin_api/` |
+| `BF_API_COOKIE_SECURE` | `true` | Set `false` only for plain-HTTP access from another machine in development |
+| `BF_API_TRUSTED_PROXIES` | `127.0.0.1,::1` | Peers whose `X-Forwarded-For` is used for the client address (Caddy) |
+| `BF_API_SESSION_HOURS` | `12` | Session lifetime |
+| `BF_API_LOGIN_MAX_FAILURES`, `BF_API_LOGIN_WINDOW_S` | `5`, `60` | Failed sign-in limit per address |
+
+The failure limit and the revoked-token list are held in the API process; the Redis-backed versions for several API
+processes come with the job queue (#277).
+
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (v-optimai.com palette;
 text contrast >= 4.5:1 on every surface, checked by a unit test). `make audit-ui` builds the SPA and runs axe-core,

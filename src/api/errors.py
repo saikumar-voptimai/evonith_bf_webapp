@@ -45,12 +45,21 @@ class ProblemDetail(BaseModel):
 class ApiError(Exception):
     """Raise from a route for a problem response with a specific status, title and detail."""
 
-    def __init__(self, status: int, detail: str | None = None, *, title: str | None = None, type: str = "about:blank"):
+    def __init__(
+        self,
+        status: int,
+        detail: str | None = None,
+        *,
+        title: str | None = None,
+        type: str = "about:blank",
+        headers: dict[str, str] | None = None,
+    ):
         super().__init__(detail or title or HTTPStatus(status).phrase)
         self.status = status
         self.detail = detail
         self.title = title or HTTPStatus(status).phrase
         self.type = type
+        self.headers = headers
 
 
 def problem(
@@ -80,7 +89,7 @@ def problem(
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(request: Request, exc: ApiError) -> JSONResponse:
-        return problem(exc.status, request, title=exc.title, detail=exc.detail, type=exc.type)
+        return problem(exc.status, request, title=exc.title, detail=exc.detail, type=exc.type, headers=exc.headers)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:

@@ -39,25 +39,29 @@ class _RelationalService:
         self.engine.dispose()
 
 
+def password_digest(password: str) -> str:
+    """Stored form of a password in ``identity.users.password_hash`` (shared by Streamlit and the twin-api)."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
 class UserDataService(_RelationalService):
     """User registration and credential validation service."""
 
-    def __init__(self, db_url: str | None = None) -> None:
+    def __init__(self, db_url: str | None = None, *, seed_defaults: bool = True) -> None:
         super().__init__(db_url=db_url)
         self._user_repository = UserRepository(self._session_factory)
-        self._seed_defaults()
+        if seed_defaults:
+            self._seed_defaults()
 
     def _seed_defaults(self) -> None:
-        self._user_repository.seed_admin_user(
-            password_hash=hashlib.sha256("admin123".encode()).hexdigest()
-        )
+        self._user_repository.seed_admin_user(password_hash=password_digest("admin123"))
 
     def add_user(self, username: str, password: str, role: str = "user") -> None:
         """Add a new user to the identity schema."""
         try:
             self._user_repository.add_user(
                 username=username,
-                password_hash=hashlib.sha256(password.encode()).hexdigest(),
+                password_hash=password_digest(password),
                 role=role,
             )
         except IntegrityError as exc:
@@ -69,7 +73,7 @@ class UserDataService(_RelationalService):
         """Validate credentials and return ``(username, role)`` or ``None``."""
         return self._user_repository.validate_user(
             username=username,
-            password_hash=hashlib.sha256(password.encode()).hexdigest(),
+            password_hash=password_digest(password),
         )
 
     def get_user_id(self, username: str | None) -> str | None:

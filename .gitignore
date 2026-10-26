@@ -39,3 +39,5 @@ tmp/
 # Unreferenced local backup retained outside the production bundle path.
 src/assets/models/old_bmo_16_09_26/
 src/storage/strata_flow/
+# twin-api development session key (scripts/dev.py)
+src/storage/twin_api/

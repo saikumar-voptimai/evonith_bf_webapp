@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import Compass from '@lucide/svelte/icons/compass';
+	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import Panel from '#lib/components/Panel.svelte';
@@ -14,6 +15,19 @@
 				icon={Compass}
 				title={page.url.pathname}
 				message="The address does not match a page of the console. Open a page from the navigation, or go to the Live Twin."
+				compact
+			>
+				{#snippet action()}
+					<a class="home" href={resolve('/')}>Go to the Live Twin</a>
+				{/snippet}
+			</EmptyState>
+		</Panel>
+	{:else if page.status === 403}
+		<Panel title="Not permitted">
+			<EmptyState
+				icon={ShieldAlert}
+				title={page.error?.message ?? 'This page needs a higher role.'}
+				message="Ask an administrator for the role, or open another page from the navigation."
 				compact
 			>
 				{#snippet action()}

@@ -911,6 +911,11 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   entry points for the API/worker. Streamlit loaders (`ui/*/loaders.py`) wrap the uncached blocks in `st.cache_data`
   (spinners, copy-on-read) and pass them to the same composition, e.g. `services.coke_energy.build_page_data(keys,
   settings, loaders)`. Never compose a quantity twice.
+- Auth: every router declares its minimum role, `APIRouter(..., dependencies=[Depends(require_role("user"))])` or per
+  route (`api.auth`; admin > supervisor > user); only `api.auth.PUBLIC_PATHS` answer without a session, and
+  `tests/test_api_auth.py` fails on a route without a role. Accounts come from Neon `identity.users` through
+  `services.auth.NeonIdentityStore` (never seeds users). `BF_API_JWT_SECRET` (>= 32 characters) is required in prod.
+  The SPA guards pages in `frontend/src/routes/+layout.ts` (session) and per section (`routes/admin/+layout.ts`).
 - UI: colours, sizes and spacing only from `frontend/src/lib/theme/tokens.css`; build pages from
   `frontend/src/lib/components/` (catalogue at `/dev/components`, rules in `frontend/DESIGN.md`): status always with
   icon and word, `updatedAt` on live panels, units on every readout, chemical labels with Unicode subscripts (SiO₂).
@@ -929,4 +934,6 @@ Qdrant:     QDRANT_ENDPOINT or QDRANT_URL, QDRANT_API_KEY
 Database:   DATABASE_URL (PostgreSQL/Neon)
 Tickets:    TICKETS_DB_URL (SQLite default; set for PostgreSQL override)
 InfluxDB:   INFLUX_ONLINE_TOKEN, INFLUX_OFFLINE_TOKEN
+twin-api:   BF_API_JWT_SECRET (required in prod), BF_API_COOKIE_SECURE, BF_API_TRUSTED_PROXIES, BF_API_STATIC_DIR,
+            BF_API_ENVIRONMENT, BF_API_SESSION_HOURS, BF_API_LOGIN_MAX_FAILURES, BF_API_LOGIN_WINDOW_S
 ```
