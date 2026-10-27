@@ -55,7 +55,10 @@ function fail(message) {
 }
 
 async function startPreview() {
-	const proc = spawn('pnpm', ['exec', 'vite', 'preview', '--port', String(PORT), '--strictPort'], {
+	// Bound to the address the audit opens: `localhost` resolves to ::1 first on hosts such as the GitHub runners, and
+	// a server on [::1] refuses the connection to 127.0.0.1.
+	const args = ['exec', 'vite', 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'];
+	const proc = spawn('pnpm', args, {
 		cwd: ROOT,
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
