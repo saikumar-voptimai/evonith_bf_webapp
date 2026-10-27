@@ -845,8 +845,9 @@ fallback).
   (total < `Engine.SEARCH_RETRY_VIOL`, 0.1), and any failure at the low end of a search, is re-solved exactly before it
   counts as infeasible (`Engine._try_search`). Parallel solves (SV-1.8): independent states go through
   `NetworkParts.solve_many` / `anchor_many` (the Jacobian, a plan's three states, the twin window's three states), and
-  the searches' independent items through `Engine.run_items` (Step 1 oxygen and frontier levels, maximum-production
-  grid, value-of-limits relaxations): every item starts from the anchors present before the items, the anchors are
+  the searches' independent items through `Engine.run_items` (Step 1: oxygen grid and bracket rounds of both oversize
+  options together, `bracket_rounds`, `o2_points` 4 per round, replacing the golden section over oxygen, then the
+  frontier levels of both options; maximum-production grid; value-of-limits relaxations): every item starts from the anchors present before the items, the anchors are
   merged in item order, so serial and parallel give the same plans, anchors and solve counts (a serial run solves more
   than SV-1.7: Step 2 73 vs 52); executor `strata_network.start_solvers(n)` / `solver_processes(n)` (`BF_STRATA_SOLVERS`,
   else min(8, cpus); `__main__` empty while they start; the forkserver builds the STRATA-Flow context once via
