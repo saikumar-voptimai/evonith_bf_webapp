@@ -67,6 +67,7 @@ from domain.furnace_status.time_ranges import (
 )
 from domain.furnace_status.trends import build_trend_data, compute_trend_stats
 from domain.furnace_status.types import (
+    LimitRef,
     OperatingState,
     ParameterReading,
     ParameterSpec,

@@ -313,6 +313,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/status/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest furnace status snapshot
+         * @description Every catalogue parameter with its latest reading of the last 15 min (value, unit, time, state against its
+         *     limits), the zones with their related readings, the operating state and the freshness of the data. From the
+         *     worker's live snapshot while it is fresh (``freshness.source`` producer), else taken for the request.
+         */
+        get: operations["status_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/status/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Furnace status trends
+         * @description Raw readings of each parameter over the range (the V-Board's trend: setpoint series where the parameter has
+         *     one, a null where the data has a gap), the minimum, maximum and mean of the raw range and the current reading.
+         */
+        get: operations["status_trend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stream": {
         parameters: {
             query?: never;
@@ -1201,15 +1244,50 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** LiveStatusData */
+        /**
+         * LiveStatusData
+         * @description Worker state every 10 s and, while clients hold the event stream, the plant snapshot of that beat (SV-2.1, one
+         *     InfluxDB snapshot query per beat for all clients; ``services.live_status``). Without clients, or when the snapshot
+         *     is not ready, only ``worker`` is set and the plant fields are empty or null.
+         */
         LiveStatusData: {
             /**
+             * Data At
+             * @description Newest reading of the snapshot (UTC)
+             */
+            data_at?: string | null;
+            /**
+             * Live Max Age Minutes
+             * @description Largest age of the newest reading for live telemetry (furnace_status.yml), min
+             */
+            live_max_age_minutes?: number | null;
+            /**
+             * Operating State
+             * @description normal when hot_blast_volume >= operating_state.normal_min of furnace_status.yml (25,000 Nm³/h), reduced below; null when unknown or without a snapshot
+             */
+            operating_state?: ("normal" | "reduced") | null;
+            /**
+             * Stale
+             * @description No reading within stale_after_minutes; null when the event carries no snapshot
+             */
+            stale?: boolean | null;
+            /**
+             * Stale After Minutes
+             * @description Age from which a reading counts as stale (furnace_status.yml), min
+             */
+            stale_after_minutes?: number | null;
+            /**
              * Tags
-             * @description Latest plant readings (not yet filled: KPI strip of the Live Twin, SV-1.9)
+             * @description Latest readings by furnace-status catalogue key (config/furnace_status.yml: production_rate, hot_blast_volume, o2_injection, pci_rate, co_utilization, raft, charges_per_hr, ...; every parameter with a live source, value null when stale), plus hmt (°C) and hm_si (%) of the latest hot-metal sample in Neon (at = sample time) when it is reachable
              */
             tags?: {
                 [key: string]: components["schemas"]["TagValue"];
             };
+            /**
+             * Telemetry
+             * @description Telemetry availability of the snapshot (the V-Board header): live = newest reading within live_max_age_minutes and enough parameters reporting; null without a snapshot
+             */
+            telemetry?: ("live" | "partial" | "offline") | null;
             worker: components["schemas"]["WorkerStatus"];
         };
         /** LiveStatusEvent */
@@ -1739,6 +1817,350 @@ export interface components {
              */
             state: "failed" | "cancelled" | "running" | "skipped" | "missed";
         };
+        /** StatusFreshness */
+        StatusFreshness: {
+            /**
+             * Age S
+             * @description computed_at minus the newest reading, s
+             */
+            age_s?: number | null;
+            /**
+             * Computed At
+             * Format: date-time
+             * @description Time the snapshot was taken (UTC)
+             */
+            computed_at: string;
+            /**
+             * Coverage
+             * @description Share of mapped parameters with a fresh reading, fraction 0-1
+             */
+            coverage: number;
+            /**
+             * Data At
+             * @description Newest reading or setpoint of the snapshot (UTC)
+             */
+            data_at?: string | null;
+            /**
+             * Detail
+             * @description Mapped parameters reporting, e.g. '40 of 41 mapped parameters reporting'
+             */
+            detail: string;
+            /**
+             * Failed Sources
+             * @description InfluxDB measurements that could not be read
+             */
+            failed_sources?: string[];
+            /**
+             * Live Max Age Minutes
+             * @description Largest age of the newest reading for live telemetry, min
+             */
+            live_max_age_minutes: number;
+            /**
+             * Live Min Coverage
+             * @description Smallest coverage for live telemetry, fraction 0-1
+             */
+            live_min_coverage: number;
+            /**
+             * Source
+             * @description producer: the worker's live snapshot (Redis, every 10 s); request: taken for this request
+             * @enum {string}
+             */
+            source: "producer" | "request";
+            /**
+             * Stale
+             * @description No parameter has a reading within stale_after_minutes
+             */
+            stale: boolean;
+            /**
+             * Stale After Minutes
+             * @description Age from which a reading is not shown, min
+             */
+            stale_after_minutes: number;
+            /**
+             * Telemetry
+             * @description Telemetry availability as the V-Board header (not furnace health): live when the newest reading is within live_max_age_minutes and coverage >= live_min_coverage, offline without fresh readings
+             * @enum {string}
+             */
+            telemetry: "live" | "partial" | "offline";
+            /** Telemetry Label */
+            telemetry_label: string;
+        };
+        /** StatusLimits */
+        StatusLimits: {
+            /**
+             * Basis
+             * @description Statement of that fact
+             */
+            basis: string;
+            /**
+             * Fact
+             * @description Fact of the process fact register the limits come from, e.g. ASM-11
+             */
+            fact: string;
+            /**
+             * High
+             * @description Upper limit; a reading above it is high, in the parameter's unit
+             */
+            high?: number | null;
+            /**
+             * Low
+             * @description Lower limit; a reading below it is low, in the parameter's unit
+             */
+            low?: number | null;
+        };
+        /** StatusOperatingState */
+        StatusOperatingState: {
+            /**
+             * Detail
+             * @description Rule and current value as the V-Board shows them
+             */
+            detail: string;
+            /** Label */
+            label: string;
+            /**
+             * Level
+             * @description Operating state of the V-Board
+             * @enum {string}
+             */
+            level: "normal" | "abnormal" | "unknown";
+            /**
+             * Normal Min
+             * @description Lowest value of normal operation, in the unit of the deciding parameter (Nm³/h)
+             */
+            normal_min: number;
+            /**
+             * Parameter
+             * @description Catalogue key of the deciding parameter
+             */
+            parameter: string;
+            /**
+             * State
+             * @description normal at or above normal_min, reduced below it, null when unknown (live.status wording)
+             */
+            state?: ("normal" | "reduced") | null;
+            /**
+             * Value
+             * @description Fresh reading of the deciding parameter, in the unit of the deciding parameter (Nm³/h)
+             */
+            value?: number | null;
+        };
+        /** StatusParameter */
+        StatusParameter: {
+            /**
+             * At
+             * @description Time of value (UTC)
+             */
+            at?: string | null;
+            /**
+             * Decimals
+             * @description Decimals the V-Board shows, count
+             */
+            decimals: number;
+            /**
+             * Display
+             * @description Reading as the V-Board shows it, without unit: 'setpoint / actual' for SP parameters
+             */
+            display: string;
+            /**
+             * Key
+             * @description Catalogue key (config/furnace_status.yml)
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /** @description Limits of the parameter; null when it has none */
+            limits?: components["schemas"]["StatusLimits"] | null;
+            /**
+             * Note
+             * @description Source note, or why the parameter has no live source
+             * @default
+             */
+            note: string;
+            /** Section */
+            section: string;
+            /**
+             * Setpoint
+             * @description Latest setpoint within stale_after_minutes, in unit
+             */
+            setpoint?: number | null;
+            /**
+             * Setpoint At
+             * @description Time of setpoint (UTC)
+             */
+            setpoint_at?: string | null;
+            /**
+             * State
+             * @description ok: fresh reading (inside its limits when it has limits); low / high: outside its limits; stale: newest reading older than stale_after_minutes; no_data: no reading in the window; fetch_failed: its measurement could not be read; no_source: no live field
+             * @enum {string}
+             */
+            state: "ok" | "low" | "high" | "stale" | "no_data" | "fetch_failed" | "no_source";
+            /**
+             * Title
+             * @description Title of the parameter's trend
+             */
+            title: string;
+            /**
+             * Unit
+             * @description Unit of value, setpoint and limits; empty when the plant unit is not confirmed
+             */
+            unit: string;
+            /**
+             * Value
+             * @description Latest reading within stale_after_minutes (scaled as shown, unrounded), in unit
+             */
+            value?: number | null;
+        };
+        /**
+         * StatusSnapshotView
+         * @description Latest 15-min snapshot of every furnace-status catalogue parameter, as the Streamlit V-Board shows it.
+         */
+        StatusSnapshotView: {
+            freshness: components["schemas"]["StatusFreshness"];
+            operating_state: components["schemas"]["StatusOperatingState"];
+            /**
+             * Parameters
+             * @description Every catalogue parameter, in display order
+             */
+            parameters: components["schemas"]["StatusParameter"][];
+            /**
+             * Sections
+             * @description Section names, in display order
+             */
+            sections: string[];
+            /**
+             * Zones
+             * @description Furnace zones, top to bottom, with their related readings
+             */
+            zones: components["schemas"]["StatusZone"][];
+        };
+        /** StatusTrend */
+        StatusTrend: {
+            /**
+             * End
+             * Format: date-time
+             * @description End of the range (UTC)
+             */
+            end: string;
+            /**
+             * Interval
+             * @description 1h, 4h, 8h, 16h, 24h or custom
+             */
+            interval: string;
+            /**
+             * Max Points
+             * @description Most points per series after decimation, count
+             */
+            max_points: number;
+            /** Series */
+            series: components["schemas"]["StatusTrendSeries"][];
+            /**
+             * Start
+             * Format: date-time
+             * @description Start of the range (UTC)
+             */
+            start: string;
+        };
+        /** StatusTrendSeries */
+        StatusTrendSeries: {
+            /** @description Current reading, as the V-Board trend header */
+            current: components["schemas"]["StatusParameter"];
+            /**
+             * Decimals
+             * @description Decimals the V-Board shows, count
+             */
+            decimals: number;
+            /**
+             * Key
+             * @description Catalogue key
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Message
+             * @description Why there is no series (no_source, no_data, error)
+             * @default
+             */
+            message: string;
+            /**
+             * Raw Points
+             * @description Samples of the range before decimation (gap marks included), count
+             * @default 0
+             */
+            raw_points: number;
+            /**
+             * Setpoint Times
+             * @description Setpoint sample times (UTC)
+             */
+            setpoint_times?: string[];
+            /**
+             * Setpoints
+             * @description Setpoints; null marks a gap, in unit
+             */
+            setpoints?: (number | null)[];
+            /** @description Minimum, maximum and mean of the raw range */
+            stats?: components["schemas"]["StatusTrendStats"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "no_source" | "no_data" | "error";
+            /**
+             * Times
+             * @description Sample times (UTC)
+             */
+            times?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Unit
+             * @description Unit of values, setpoints and stats; empty when not confirmed
+             */
+            unit: string;
+            /**
+             * Values
+             * @description Readings; null marks a gap in the data (break the line there), in unit
+             */
+            values?: (number | null)[];
+        };
+        /** StatusTrendStats */
+        StatusTrendStats: {
+            /**
+             * Maximum
+             * @description Highest reading of the range, in unit
+             */
+            maximum: number;
+            /**
+             * Mean
+             * @description Mean reading of the range, in unit
+             */
+            mean: number;
+            /**
+             * Minimum
+             * @description Lowest reading of the range, in unit
+             */
+            minimum: number;
+        };
+        /** StatusZone */
+        StatusZone: {
+            /**
+             * Lower M
+             * @description Lower edge, elevation above the hearth bottom, m
+             */
+            lower_m: number;
+            /** Name */
+            name: string;
+            /**
+             * Readings
+             * @description Catalogue keys of the readings related to the zone (its callouts)
+             */
+            readings: string[];
+            /**
+             * Upper M
+             * @description Upper edge, elevation above the hearth bottom, m
+             */
+            upper_m: number;
+        };
         /** SubmitRequest */
         SubmitRequest: {
             /**
@@ -1762,12 +2184,18 @@ export interface components {
         TagValue: {
             /**
              * At
-             * @description Time of the reading (UTC)
+             * @description Time of the reading or sample (UTC)
              */
             at?: string | null;
-            /** Unit */
+            /**
+             * Unit
+             * @description Unit of value; empty when the plant unit is not confirmed
+             */
             unit?: string | null;
-            /** Value */
+            /**
+             * Value
+             * @description Latest reading; null without a fresh reading, in unit
+             */
             value: number | null;
         };
         /** TransitBand */
@@ -2213,17 +2641,17 @@ export interface components {
             name: string;
             /**
              * Pool Size
-             * @description Processes of the model-solve pool
+             * @description Processes of the model-solve pool, count
              */
             pool_size: number;
             /**
              * Queued
-             * @description Jobs waiting in the queue
+             * @description Jobs waiting in the queue, count
              */
             queued: number;
             /**
              * Running
-             * @description Jobs running in this worker
+             * @description Jobs running in this worker, count
              */
             running: number;
             /**
@@ -2923,6 +3351,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunLookup"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    status_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusSnapshotView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    status_trend: {
+        parameters: {
+            query: {
+                /** @description Comma-separated catalogue keys, at most 8 (e.g. hot_blast_volume,raft) */
+                parameters: string;
+                /** @description Range ending now, or custom (start and end) */
+                interval?: "1h" | "4h" | "8h" | "16h" | "24h" | "custom";
+                /** @description Start of a custom range; a time without offset is IST */
+                start?: string | null;
+                /** @description End of a custom range (at most 7 days after start; clamped to now) */
+                end?: string | null;
+                /** @description Most points per series, count (min/max decimation above it) */
+                max_points?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusTrend"];
                 };
             };
             /** @description Client error (problem+json) */

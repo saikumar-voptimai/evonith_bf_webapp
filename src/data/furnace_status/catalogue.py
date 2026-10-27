@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from domain.furnace_status.types import ParameterSpec
+from domain.furnace_status.types import LimitRef, ParameterSpec
 from furnace_data.influx.query import influx_fields
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "furnace_status.yml"
@@ -245,6 +245,22 @@ def _optional_string(raw: Mapping[str, Any], name: str, key: str) -> str | None:
     return value
 
 
+def _load_limits(raw_value: object, key: str) -> LimitRef | None:
+    """Optional ``limits: {fact, low, high}``: parameter names of one fact of the process fact register."""
+    if raw_value is None:
+        return None
+    raw = _mapping(raw_value, f"parameter {key!r} limits")
+    unknown = sorted(set(raw) - {"fact", "low", "high"})
+    if unknown:
+        raise CatalogueError(f"parameter {key!r} limits has unknown keys: {unknown}")
+    fact = _nonempty_string(raw.get("fact"), f"parameter {key!r} limits.fact")
+    low = _optional_string(raw, key, "low")
+    high = _optional_string(raw, key, "high")
+    if low is None and high is None:
+        raise CatalogueError(f"parameter {key!r} limits must name low, high or both")
+    return LimitRef(fact=fact, low=low, high=high)
+
+
 def _load_parameter(raw_value: object, sections: frozenset[str]) -> ParameterSpec:
     raw = _mapping(raw_value, "parameter")
     key = _nonempty_string(raw.get("key"), "parameter key")
@@ -306,6 +322,9 @@ def _load_parameter(raw_value: object, sections: frozenset[str]) -> ParameterSpe
     scale = float(scale)
     if not math.isfinite(scale) or scale == 0:
         raise CatalogueError(f"parameter {key!r} scale must be finite and non-zero")
+    limits = _load_limits(raw.get("limits"), key)
+    if limits is not None and measurement is None:
+        raise CatalogueError(f"parameter {key!r} has limits without a source")
 
     spec = ParameterSpec(
         key=key,
@@ -322,6 +341,7 @@ def _load_parameter(raw_value: object, sections: frozenset[str]) -> ParameterSpe
         aggregate=aggregate,
         source_note=str(raw.get("source_note", "")),
         unavailable_reason=unavailable,
+        limits=limits,
     )
     if spec.has_source:
         configured_fields = frozenset(influx_fields(spec.measurement))

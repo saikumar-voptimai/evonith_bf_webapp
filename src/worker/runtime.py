@@ -289,13 +289,16 @@ async def _catch_up(
 
 
 async def heartbeat_loop(ctx: dict[str, Any]) -> None:
-    """Publish ``live.status`` with this worker's state every 10 s (on 10 s boundaries) and mark the time in
-    ``twin:worker:alive`` (the next start catches up from it)."""
+    """Publish ``live.status`` every 10 s (on 10 s boundaries) and mark the time in ``twin:worker:alive`` (the next
+    start catches up from it). The event carries this worker's state and, while API clients hold the event stream,
+    the plant snapshot of the beat (``ctx["live_status"]``, a ``services.live_status.LiveStatusProducer``: one
+    InfluxDB snapshot query per beat for all clients, SV-2.1)."""
     warned = 0.0
     while True:
         await asyncio.sleep(HEARTBEAT_S - (time.time() % HEARTBEAT_S))
         try:
-            await mark_alive(ctx["store"].redis)
+            redis = ctx["store"].redis
+            await mark_alive(redis)
             status = WorkerStatus(
                 name=ctx["name"],
                 started_at=ctx["started_at"],
@@ -303,7 +306,9 @@ async def heartbeat_loop(ctx: dict[str, Any]) -> None:
                 queued=await ctx["store"].queued_count(),
                 pool_size=ctx["pool_size"],
             )
-            await ctx["bus"].publish("live.status", LiveStatusData(worker=status))
+            producer = ctx.get("live_status")
+            plant = await producer.tick(redis) if producer is not None else {}
+            await ctx["bus"].publish("live.status", LiveStatusData(worker=status, **plant))
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # Redis briefly unavailable: keep the loop alive, warn once a minute

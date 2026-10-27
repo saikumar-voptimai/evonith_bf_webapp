@@ -14,6 +14,19 @@ TrendStatus = Literal["ok", "no_source", "no_data", "error"]
 
 
 @dataclass(frozen=True)
+class LimitRef:
+    """Limits of a parameter in the process fact register (``config/facts_register.json``).
+
+    ``low`` and ``high`` name parameters of fact ``fact`` whose values are in the parameter's display unit. The values
+    stay in the register; the twin-api status snapshot resolves them (``services.status``).
+    """
+
+    fact: str
+    low: str | None = None
+    high: str | None = None
+
+
+@dataclass(frozen=True)
 class ParameterSpec:
     """One display parameter and its optional live source."""
 
@@ -31,6 +44,7 @@ class ParameterSpec:
     aggregate: Aggregate = "sum"
     source_note: str = ""
     unavailable_reason: str = ""
+    limits: LimitRef | None = None
 
     @property
     def has_source(self) -> bool:
