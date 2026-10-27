@@ -105,6 +105,7 @@
 	--vo-series-trace: var(--vo-cat-1); /* TRACE, burnt coke (gas-side oxygen balance) */
 	--vo-series-forge: var(--vo-cat-2); /* FORGE, two-zone Rist energy balance */
 	--vo-series-strata: var(--vo-cat-3); /* STRATA, ring model */
+	--vo-series-forge-band: rgb(194 98 10 / 0.14); /* FORGE rolling bias +-1 SD */
 	--vo-series-strata-band: rgb(22 135 106 / 0.14); /* STRATA +-1 sigma */
 	--vo-series-hmt: var(--vo-cat-4); /* hot-metal temperature */
 	--vo-series-hmt-band: rgb(168 124 0 / 0.14); /* HMT forecast interval */
