@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 from alembic import command
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 from data.bmo import context_provider
 from data.twin.engine import build_engine, session_factory
@@ -206,7 +207,7 @@ class StreamlitPages:
 
         self.page9, self.page11 = page9, page11
         page9.cached_inputs.clear()
-        page11.yard.clear()
+        page11.cached_yard.clear()
 
     def page9_price(self) -> float:
         inputs = self.page9.current_inputs(svc.YAML_PATH)
@@ -247,6 +248,65 @@ def edit_in_either_ui(client: TestClient, monkeypatch) -> None:
 
 def test_an_edit_in_either_ui_appears_in_both(client, monkeypatch) -> None:
     edit_in_either_ui(client, monkeypatch)
+
+
+def test_inputs_read_during_a_store_failure_are_not_cached_under_a_version(twin, monkeypatch) -> None:
+    """Review of SV-3.1: the token (``neon:2``, trusted 10 s) and the read are two queries. When the read fails, the
+    YAML file stands in once, with the warning on page 9 and in the yard, and is not kept under ``neon:2`` by page 9,
+    page 11 or the worker's yard memo; once the store answers, the same key reads version 2."""
+    from services import optimiser
+
+    monkeypatch.setattr(context_provider, "EvonithBmoContextProvider", YardProvider)
+    pages = StreamlitPages()
+    optimiser.clear()
+    svc.write(svc.replace_sections({"ore_editor": ore_rows(9999.0)}), actor=Actor("sv1", "supervisor"), origin="api")
+    key = svc.token()
+    assert key == "neon:2"
+
+    read = twin.operator_inputs.current
+    failures = {"left": 0}
+
+    def flaky():
+        if failures["left"]:
+            failures["left"] -= 1
+            raise OperationalError("SELECT ... FROM twin.operator_inputs", {}, ConnectionResetError("reset by peer"))
+        return read()
+
+    monkeypatch.setattr(twin.operator_inputs, "current", flaky)
+    shown: list[str] = []
+    monkeypatch.setattr(pages.page9.st, "warning", lambda message, **_kw: shown.append(message))
+    cfg = json.dumps({"yard": {}})
+
+    def yard_price(found: tuple) -> tuple[float, str, list[str]]:
+        rows, source, message = found
+        assert source == "live", message
+        price = {m["id"]: m["price"] for m in rows["materials"]}[SINTER]
+        return price, rows["operator_inputs"]["source"], rows["warnings"]
+
+    # Page 9: the YAML once, with the warning; the key reads version 2 again once the store answers.
+    failures["left"] = 1
+    inputs = pages.page9.page_inputs(svc.YAML_PATH, key)
+    assert inputs["ore_editor"]["rows"][SINTER]["price_rs_per_mt"] == 8784.0
+    assert len(shown) == 1 and "not reachable (OperationalError)" in shown[0] and svc.YAML_PATH.name in shown[0]
+    assert pages.page9.page_inputs(svc.YAML_PATH, key)["ore_editor"]["rows"][SINTER]["price_rs_per_mt"] == 9999.0
+    assert len(shown) == 1 and pages.page9_price() == 9999.0
+
+    # Page 11 (Streamlit cache, 30 min) and the worker's yard (memo, 30 min): the same.
+    for reader in (pages.page11.yard, optimiser.yard):
+        failures["left"] = 1
+        price, source, warnings = yard_price(reader(cfg, 0, key))
+        assert (price, source) == (8784.0, "yaml") and any("not reachable" in w for w in warnings)
+        price, source, warnings = yard_price(reader(cfg, 0, key))
+        assert (price, source) == (9999.0, "neon") and not any("not reachable" in w for w in warnings)
+    assert failures["left"] == 0
+
+    # A version saved between the token and the read is not kept under the older key either.
+    svc.write(svc.replace_sections({"ore_editor": ore_rows(9100.0)}), actor=Actor("sv1", "supervisor"), origin="api")
+    pages.page9.cached_inputs.clear()
+    assert pages.page9.load(svc.YAML_PATH, key).version == 3  # read once under neon:2, not kept
+    with pytest.raises(svc.TokenMismatch):
+        pages.page9.cached_inputs(str(svc.YAML_PATH), key)
+    assert pages.page9.load(svc.YAML_PATH).version == 3  # the token asked the store again: neon:3
 
 
 @pytest.fixture(scope="module")

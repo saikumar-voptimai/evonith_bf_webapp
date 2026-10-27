@@ -251,3 +251,28 @@ def test_an_unmigrated_store_falls_back_to_the_yaml_file(tmp_path) -> None:
     finally:
         svc.invalidate()
         twin.dispose()
+
+
+# ------------------------------------------------------------------------------------------------- cache keys
+def test_only_inputs_that_fit_their_cache_key_are_kept() -> None:
+    v2 = {"source": "neon", "version": 2}
+    yaml_down = {"source": "yaml", "reason": "The twin store is not reachable (OperationalError)."}
+    assert svc.fits("neon:2", v2) and svc.fits("yaml:17:unavailable", yaml_down) and svc.fits("yaml:17", yaml_down)
+    assert not svc.fits("neon:2", yaml_down)  # the store failed between the token and the read
+    assert not svc.fits("neon:2", {"source": "neon", "version": 3})  # a version saved in between
+    assert not svc.fits("yaml:17:empty", v2)  # the first version saved in between
+    assert svc.fits("", yaml_down) and svc.fits("neon:2", None) and svc.fits("neon:2", {"source": "given"})
+    assert svc.require_fit("neon:2", v2, "kept") == "kept"
+    with pytest.raises(svc.TokenMismatch) as mismatch:
+        svc.require_fit("neon:2", yaml_down, "used once")
+    assert mismatch.value.value == "used once"
+
+
+def test_the_yaml_file_standing_in_for_a_failed_store_is_announced() -> None:
+    down = svc.fallback_warning({"source": "yaml", "reason": "The twin store is not reachable (OperationalError)."})
+    assert down.startswith("The twin store is not reachable (OperationalError).") and svc.YAML_PATH.name in down
+    assert "versions saved since are not in force" in down
+    assert svc.fallback_warning({"source": "yaml", "reason": svc._why(Exception("no such table"))}) is not None
+    for in_force in ({"source": "yaml", "reason": svc.NO_STORE}, {"source": "yaml", "reason": svc.EMPTY},
+                     {"source": "neon", "version": 2}, {"source": "given"}, None):  # fmt: skip
+        assert svc.fallback_warning(in_force) is None

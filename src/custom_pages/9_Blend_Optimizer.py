@@ -42,9 +42,9 @@ from data.bmo.ore_editor_preferences import (
 # Operator inputs: versioned in the twin store (Neon), the YAML file as seed and fallback (SV-3.1). The savers keep
 # the YAML savers' names, which the Sandbox refuses.
 from ui.bmo.operator_inputs import (
-    cached_inputs as _cached_operator_inputs,
     clear_dust_preferences,
     inputs_token as _operator_inputs_token,
+    page_inputs as _operator_inputs_for_page,
     save_dust_preferences,
     save_fuel_ash_preferences,
     save_fuel_price_preferences,
@@ -646,8 +646,9 @@ def _cached_recent_active_pellet_ids(
 
 
 def _cached_operator_preferences(path: str, token: str) -> dict[str, Any]:
-    # Cached per version of the operator inputs (ui.bmo.operator_inputs); a frozen Sandbox replay substitutes it.
-    return _cached_operator_inputs(path, token)
+    # Cached per version of the operator inputs (ui.bmo.operator_inputs), with a warning while the YAML file stands
+    # in for a twin store that failed; a frozen Sandbox replay substitutes it.
+    return _operator_inputs_for_page(path, token)
 
 
 def _refresh_static_dataset_if_needed(

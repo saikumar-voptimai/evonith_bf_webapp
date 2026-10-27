@@ -15,6 +15,7 @@ from typing import Any
 import streamlit as st
 
 from data.burden_engine.calibration import CalibrationInfo, live_calibration
+from services import operator_inputs
 from services import optimiser as svc
 from services.optimiser import as_json, reference_yard  # noqa: F401 (re-exported for the page)
 from utils.burden_engine.engine import Engine
@@ -31,10 +32,18 @@ def coke_energy_config(mtime_ns: int) -> dict:
 
 
 @st.cache_data(show_spinner="Reading the yard: raw-material chemistry, stock and saved prices…", ttl=1800)
+def cached_yard(cfg_json: str, nonce: int, inputs_token: str = "") -> tuple[dict[str, Any], str, str]:
+    return svc.read_yard_for(cfg_json, inputs_token)
+
+
 def yard(cfg_json: str, nonce: int, inputs_token: str = "") -> tuple[dict[str, Any], str, str]:
     """(yard, source, message). Source is 'live' or 'reference'. ``inputs_token``: the version of the operator inputs
-    in force (``services.operator_inputs.token()``), so a saved change is read at once."""
-    return svc.read_yard(json.loads(cfg_json))
+    in force (``services.operator_inputs.token()``), so a saved change is read at once; a yard whose operator inputs
+    do not fit the token (store failure, or a save, between the token and the read) is used once and not kept."""
+    try:
+        return cached_yard(cfg_json, nonce, inputs_token)
+    except operator_inputs.TokenMismatch as mismatch:
+        return mismatch.value
 
 
 def calibration(cfg: Mapping[str, Any], nonce: int) -> tuple[CalibrationInfo, Any]:
@@ -90,7 +99,7 @@ def run_mode(
 
 
 def clear() -> None:
-    yard.clear()
+    cached_yard.clear()
     charged_blend.clear()
     run_mode.clear()
     for k in ("bfo_cal_memo", "bfo_engine"):

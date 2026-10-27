@@ -273,6 +273,8 @@ def load_yard(cfg: Mapping[str, Any], *, prefs: Mapping[str, Any] | None = None,
     operator_inputs={source, version, valid_from, author, reason})."""
     import yaml
 
+    from services.operator_inputs import fallback_warning
+
     yard_cfg = dict(cfg.get("yard", {}))
     if provider is None:
         from data.bmo.context_provider import EvonithBmoContextProvider
@@ -292,9 +294,9 @@ def load_yard(cfg: Mapping[str, Any], *, prefs: Mapping[str, Any] | None = None,
     warnings = list(diag.get("warnings", []) if isinstance(diag, Mapping) else [])
     if not any(f.enabled for f in fluxes):
         warnings.append("No optimizable flux in setting_bmo.yml flux_inputs.")
-    reason = str(provenance.get("reason") or "")
-    if provenance.get("source") == "yaml" and ("not reachable" in reason or "no operator_inputs table" in reason):
-        warnings.append(f"Saved prices and limits from bmo_operator_inputs.yml: {reason}")
+    stale_inputs = fallback_warning(provenance)  # the YAML file standing in for a twin store that failed
+    if stale_inputs:
+        warnings.append(stale_inputs)
     return dict(
         materials=yard_rows(ores, prefs, exclude_fallback=bool(yard_cfg.get("exclude_fallback_chemistry", True)),
                             k_rules=yard_cfg.get("k_rules")),

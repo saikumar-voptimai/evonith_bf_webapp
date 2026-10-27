@@ -8,6 +8,8 @@ test also needs redis-server. Each module works in a database of its own.
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -601,6 +603,80 @@ def test_operator_input_versions_can_only_be_closed(store) -> None:
             text("UPDATE twin.operator_inputs SET valid_upto = valid_from + interval '1 hour' WHERE version = 2")
         )
     assert store.operator_inputs.current() is None and store.operator_inputs.get(2).valid_upto == T0 + 2 * H
+    reopened, written = store.operator_inputs.write(_set("model_inputs", "charge_mass_mt", 25.0), ALICE, origin="api")
+    assert written and reopened.version == 3 and store.operator_inputs.current().version == 3
+
+
+def _wait_for_a_lock_wait(store: TwinStore, timeout_s: float = 60.0) -> None:
+    """Until a session of this database waits for a lock (the second save queued on the first one's row lock)."""
+    query = text(
+        "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'"
+    )
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        with store.engine.connect() as connection:
+            if connection.execute(query).scalar_one() > 0:
+                return
+        time.sleep(0.02)
+    raise AssertionError("the second save never waited for the first one's lock")
+
+
+def _two_saves_at_once(store: TwinStore, second: dict) -> tuple[object, object]:
+    """Save A (charge mass 30.0) holds the row lock until save B (``second``: keyword arguments of ``write``; its
+    change sets the charge mass back to 26.0, version 1's value) waits for it. Returns A's and B's result (or B's
+    exception). No timing assumption: B is released only once PostgreSQL reports it waiting for the lock."""
+    repo = store.operator_inputs
+    repo.write(lambda d: d, ALICE, origin="api", seed=lambda: Seed({"model_inputs": {"charge_mass_mt": 26.0}}, T0))
+    assert repo.current_version() == 1
+    locked, release = threading.Event(), threading.Event()
+
+    def hold(doc: dict) -> dict:  # runs inside A's transaction, after its row lock
+        locked.set()
+        assert release.wait(60)
+        return _set("model_inputs", "charge_mass_mt", 30.0)(doc)
+
+    results: dict[str, object] = {}
+
+    def save(name: str, change, **kw) -> None:
+        try:
+            results[name] = repo.write(change, ALICE if name == "a" else SUPERVISOR, origin="api", **kw)
+        except Exception as exc:  # noqa: BLE001 - asserted by the caller
+            results[name] = exc
+
+    a = threading.Thread(target=save, args=("a", hold))
+    a.start()
+    assert locked.wait(60)
+    b = threading.Thread(target=save, args=("b", _set("model_inputs", "charge_mass_mt", 26.0)), kwargs=second)
+    b.start()
+    try:
+        _wait_for_a_lock_wait(store)
+    finally:
+        release.set()
+        a.join(60)
+        b.join(60)
+    return results["a"], results["b"]
+
+
+@needs_postgres
+def test_a_save_that_waited_for_another_applies_its_change_to_the_result(store) -> None:
+    """Review of SV-3.1: the waiting save got the version the first one had just closed (READ COMMITTED re-reads the
+    locked row, not the new one), found its change equal to it and wrote nothing: the edit lost, a closed version
+    reported as current."""
+    (a, a_written), b = _two_saves_at_once(store, {})
+    assert (a.version, a_written, a.inputs) == (2, True, {"model_inputs": {"charge_mass_mt": 30.0}})
+    b_row, b_written = b
+    assert (b_row.version, b_written, b_row.valid_upto) == (3, True, None)
+    current = store.operator_inputs.current()
+    assert (current.version, current.inputs) == (3, {"model_inputs": {"charge_mass_mt": 26.0}})
+    assert [(v.version, v.author) for v in store.operator_inputs.history()] == [(3, "sv1"), (2, "alice"), (1, "seed")]
+
+
+@needs_postgres
+def test_a_save_that_waited_from_a_stale_base_version_conflicts(store) -> None:
+    (a, _), b = _two_saves_at_once(store, {"base_version": 1})
+    assert a.version == 2
+    assert isinstance(b, VersionConflict) and (b.base_version, b.current_version) == (1, 2)
+    assert store.operator_inputs.current().version == 2
 
 
 @needs_postgres

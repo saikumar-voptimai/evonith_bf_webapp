@@ -721,6 +721,8 @@ class Seed:
 
 #: Changes listed in the details of one ``operator_inputs.update`` audit row (the total is always given).
 AUDIT_CHANGES_MAX = 200
+#: Transactions one save may start: each retry follows a concurrent save that got in first.
+WRITE_ATTEMPTS = 5
 
 
 class OperatorInputsRepository(_Repository):
@@ -730,8 +732,9 @@ class OperatorInputsRepository(_Repository):
     one at the same instant, with its audit row (``operator_inputs.update``, the changed values in the details) in the
     same transaction; a change that leaves the document as it is writes nothing. On an empty table the ``seed`` is
     recorded first as version 1 (origin ``seed``, audit ``operator_inputs.seed``), so the history starts from what was
-    in force before. Two saves at once: the second waits for the first (row lock on PostgreSQL) and applies its change
-    to the first one's result, or, with a ``base_version``, fails with ``VersionConflict``.
+    in force before. Two saves at once: the second waits for the first (row lock on PostgreSQL), then reads the first
+    one's result in a new transaction and applies its change to it, or, with a ``base_version``, fails with
+    ``VersionConflict`` (tests/test_twin_store.py, two threads on PostgreSQL).
     """
 
     def current(self) -> OperatorInputs | None:
@@ -790,11 +793,15 @@ class OperatorInputsRepository(_Repository):
         if origin not in OPERATOR_INPUT_ORIGINS or origin == "seed":
             raise ValueError("origin must be streamlit or api")
         when = _utc(at) or utcnow()
-        for _ in range(3):  # a concurrent save took the version number: start again from its result
+        for _ in range(WRITE_ATTEMPTS):  # a concurrent save got in first: start again from its result
             try:
                 with self._sessions.begin() as session:
                     query = select(OperatorInputs).order_by(OperatorInputs.version.desc()).limit(1)
                     latest = session.scalars(query.with_for_update()).one_or_none()
+                    if latest is not None and latest.valid_upto is not None and self._newer(session, latest.version):
+                        # This save waited for the row lock of a concurrent one, which closed the version: READ
+                        # COMMITTED hands back that row, not the new one. The next statement sees its result.
+                        continue
                     seeded = False
                     if latest is None and seed is not None:
                         recorded = seed()
@@ -812,7 +819,7 @@ class OperatorInputsRepository(_Repository):
                     start = when
                     if latest is not None:
                         start = max(when, _stored_utc(latest.valid_from) + timedelta(microseconds=1))
-                        if latest.valid_upto is None:
+                        if latest.valid_upto is None:  # closed by hand (no current version): nothing to close
                             latest.valid_upto = start
                             session.flush()  # closed before the next version opens: one current version
                     row = OperatorInputs(
@@ -841,6 +848,12 @@ class OperatorInputsRepository(_Repository):
             except IntegrityError:
                 continue
         raise TwinStoreError("no version number could be assigned to the operator inputs")
+
+    @staticmethod
+    def _newer(session: Session, version: int) -> bool:
+        """A version above ``version`` is committed (a new statement: a fresh snapshot under READ COMMITTED)."""
+        newest = session.scalar(select(func.max(OperatorInputs.version)))
+        return newest is not None and newest > version
 
     @staticmethod
     def _seed(session: Session, seed: Seed, actor: Actor, when: datetime) -> OperatorInputs:

@@ -117,11 +117,26 @@ def read_yard(cfg: Mapping[str, Any]) -> tuple[dict[str, Any], str, str]:
         return reference_yard(cfg), "reference", f"Live yard unavailable ({type(exc).__name__}: {exc})."
 
 
+def read_yard_for(cfg_json: str, inputs_token: str) -> tuple[dict[str, Any], str, str]:
+    """``read_yard`` for a cache keyed on ``inputs_token``: ``operator_inputs.TokenMismatch`` (carrying the yard)
+    when the operator inputs it was built with are not those the token names (the store failed, or a version was
+    saved, between the token and the read)."""
+    found = read_yard(json.loads(cfg_json))
+    return operator_inputs.require_fit(inputs_token, found[0].get("operator_inputs"), found)
+
+
 @memo(ttl_seconds=1800)
+def cached_yard(cfg_json: str, nonce: int, inputs_token: str = "") -> tuple[dict[str, Any], str, str]:
+    return read_yard_for(cfg_json, inputs_token)
+
+
 def yard(cfg_json: str, nonce: int, inputs_token: str = "") -> tuple[dict[str, Any], str, str]:
     """``read_yard`` kept 30 min per ``inputs_token`` (``operator_inputs.token()``: a new version of the operator
-    inputs is read at once)."""
-    return read_yard(json.loads(cfg_json))
+    inputs is read at once); a yard whose operator inputs do not fit the token is used once and not kept."""
+    try:
+        return cached_yard(cfg_json, nonce, inputs_token)
+    except operator_inputs.TokenMismatch as mismatch:
+        return mismatch.value
 
 
 # ---------------------------------------------------------------------------------------------- calibration
@@ -267,7 +282,7 @@ def as_json(obj: Any) -> str:
 
 def clear() -> None:
     """Forget the yard, the charged blend, runs, the live calibration and the engine."""
-    for fn in (yard, charged_blend, run_mode, page_config, coke_energy_config):
+    for fn in (cached_yard, charged_blend, run_mode, page_config, coke_energy_config):
         fn.clear()
     with _LIVE_LOCK:
         _LIVE_MEMO.clear()

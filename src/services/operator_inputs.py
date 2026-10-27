@@ -13,6 +13,9 @@ charging limits (``model_inputs``), fuel prices and ash chemistry (``fuel_ash_ed
   (origin ``seed``, valid from the file's modification time). Without a configured store the YAML file is written
   (development, the test suite). The API never writes the file.
 * ``token``: a cheap key of the current version for the readers' caches (re-read after 10 s, 60 s after a failure).
+  The cached readers keep only what ``fits`` its key (``require_fit``): inputs read during a store failure, or a
+  version saved between the token and the read, are used once and not cached under the key of another version.
+* ``fallback_warning``: the message the pages show while the YAML file stands in for a store that failed.
 
 Readers: page 9 (``ui.bmo.operator_inputs``), page 11, the API and the worker through
 ``data.burden_engine.inputs.load_yard`` (``EvonithBmoContextProvider.get_operator_inputs``), ``GET`` and ``PUT
@@ -418,7 +421,7 @@ def load_current(store: Any = _PROCESS, *, yaml_path: str | Path | None = None) 
         row = twin.operator_inputs.current()
     except SQLAlchemyError as exc:
         log.warning("operator inputs from %s: %s", path.name, str(exc).splitlines()[0][:300])
-        return _from_yaml(path, _why(exc) + " The inputs come from the YAML file.")
+        return _from_yaml(path, _why(exc))
     return _from_yaml(path, EMPTY) if row is None else _from_row(row)
 
 
@@ -486,6 +489,52 @@ def invalidate() -> None:
     """Forget the cached tokens (after a save in this process)."""
     with _TOKENS_LOCK:
         _TOKENS.clear()
+
+
+class TokenMismatch(RuntimeError):
+    """Raised inside a cached reader when what it read is not what its key (``token()``) names: a version was saved,
+    or the store failed and the YAML file stood in, between the token and the read. Caches keep no exception
+    (``st.cache_data``, ``utils.memo``): the caller catches it and uses ``value`` once, uncached."""
+
+    def __init__(self, key: str, value: Any) -> None:
+        super().__init__(f"the operator inputs read for the cache key {key!r} belong to another key")
+        self.key = key
+        self.value = value
+
+
+def fits(key: str, provenance: Mapping[str, Any] | None) -> bool:
+    """What was read (``OperatorInputs.provenance()``) is what the cache key names: ``neon:<n>`` version n of the
+    store, ``yaml:...`` the file. True without a key or without operator-input provenance (the reference yard)."""
+    source = (provenance or {}).get("source")
+    if not key or source not in ("neon", "yaml"):
+        return True
+    if key.startswith("neon:"):
+        return source == "neon" and key == f"neon:{(provenance or {}).get('version')}"
+    return source == "yaml"
+
+
+def require_fit(key: str, provenance: Mapping[str, Any] | None, value: Any) -> Any:
+    """``value`` when it ``fits`` its cache key; else forget the tokens (the next ``token()`` asks the store again)
+    and raise ``TokenMismatch`` carrying ``value``. Called inside the cached readers (page 9, the yard)."""
+    if fits(key, provenance):
+        return value
+    invalidate()
+    raise TokenMismatch(key, value)
+
+
+def fallback_warning(provenance: Mapping[str, Any] | None) -> str | None:
+    """What a reader shows when the YAML file stands in for a configured twin store that failed (not reachable, not
+    migrated): the versions saved since the seed are not in force. None for a version of the store, and when the YAML
+    file is what is in force (no store configured, no version saved yet)."""
+    if not provenance or provenance.get("source") != "yaml":
+        return None
+    reason = str(provenance.get("reason") or "")
+    if not reason or reason in (NO_STORE, EMPTY):
+        return None
+    return (
+        f"{reason} Prices, share bounds, availability and limits come from {YAML_PATH.name} (the seed of version 1): "
+        "versions saved since are not in force until the twin store answers again."
+    )
 
 
 # --------------------------------------------------------------------------------------------------------- write

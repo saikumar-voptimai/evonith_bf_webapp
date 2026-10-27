@@ -1,7 +1,8 @@
 """Operator inputs on page 9 (SV-3.1, #298): the Streamlit cache of ``services.operator_inputs`` and the page's saves.
 
-Page 9 reads the inputs through ``cached_inputs`` (one entry per version token, so an edit made through the API or in
-another session shows within ``services.operator_inputs.TOKEN_TTL_S`` and a save here on the next rerun) and saves
+Page 9 reads the inputs through ``page_inputs`` (cached per version token, so an edit made through the API or in
+another session shows within ``services.operator_inputs.TOKEN_TTL_S`` and a save here on the next rerun; a warning
+while the YAML file stands in for a twin store that failed) and saves
 each section with the functions below. They keep the names of the YAML savers of ``data.bmo.ore_editor_preferences``
 (same merges): the BMO Sandbox refuses ``save_*_preferences`` and ``clear_dust_preferences`` by name. A save is a new
 version in the twin store with the signed-in user as author, or the YAML file without a configured store.
@@ -22,10 +23,12 @@ from services import operator_inputs
 
 
 @st.cache_data(show_spinner=False, max_entries=8)
-def cached_inputs(yaml_path: str, token: str) -> dict[str, Any]:
-    """The operator inputs in force (twin store, else the YAML file) for this version token; Streamlit returns a
-    copy, so the page may change it."""
-    return operator_inputs.load_current(yaml_path=yaml_path).inputs
+def cached_inputs(yaml_path: str, token: str) -> operator_inputs.OperatorInputs:
+    """The operator inputs of this version token (twin store, else the YAML file) and where they came from; Streamlit
+    returns a copy, so the page may change them. Inputs that do not fit the token (the store failed, or a version was
+    saved, between the token and the read) raise ``TokenMismatch``, which Streamlit does not cache."""
+    current = operator_inputs.load_current(yaml_path=yaml_path)
+    return operator_inputs.require_fit(token, current.provenance(), current)
 
 
 def inputs_token(yaml_path: str | Path) -> str:
@@ -33,9 +36,28 @@ def inputs_token(yaml_path: str | Path) -> str:
     return operator_inputs.token(yaml_path)
 
 
+def load(yaml_path: str | Path, token: str | None = None) -> operator_inputs.OperatorInputs:
+    """The inputs in force: cached per version token, or read once, uncached, when they do not fit it."""
+    key = inputs_token(yaml_path) if token is None else token
+    try:
+        return cached_inputs(str(yaml_path), key)
+    except operator_inputs.TokenMismatch as mismatch:
+        return mismatch.value
+
+
 def current_inputs(yaml_path: str | Path) -> dict[str, Any]:
-    """What page 9 reads: the cached inputs of the version in force."""
-    return cached_inputs(str(yaml_path), inputs_token(yaml_path))
+    """The inputs of the version in force (``load``)."""
+    return load(yaml_path).inputs
+
+
+def page_inputs(yaml_path: str | Path, token: str) -> dict[str, Any]:
+    """What page 9 reads (``load``), with a warning while the YAML file stands in for a twin store that failed (not
+    reachable, not migrated): the versions saved since the seed are then not in force."""
+    current = load(yaml_path, token)
+    message = operator_inputs.fallback_warning(current.provenance())
+    if message:
+        st.warning(message)
+    return current.inputs
 
 
 def session_actor() -> Actor:
