@@ -1113,7 +1113,10 @@ start (`worker.runtime.catch_up`): the latest slot of each kind runs when it is 
 since the last heartbeat (Redis `twin:worker:alive`, every 10 s) are recorded as cancelled jobs `scheduler
 (skipped)` with the reason, as is a slot whose previous job of the kind is still queued or running. Audit:
 `python scripts/schedule_audit.py --days 14` (from `twin.jobs`; exit 1 on a missed or skipped slot, `--strict` also on
-a failed run; with the runtime statistics per kind) or `GET /api/jobs/schedule`.
+a failed run; with the runtime statistics per kind) or `GET /api/jobs/schedule`. Runtime of the scheduled optimiser
+runs on a host, as the job runs them: `python scripts/optimiser_bench.py --mode step2` (STRATA-ω and Fixed-ω in a
+2-process pool; exit 1 above `--limit-s`, default 90 s; `--fresh-jacobian` times the 17 Jacobian solves first) or
+`--mode step1`.
 
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family
