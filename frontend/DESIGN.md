@@ -126,8 +126,9 @@ The shift band is the strongest element of the header: the shift letter on yello
 the time left. Below 1024 px the sidebar becomes a navigation drawer opened from the menu button of the header; the
 subtitle and the shift window are dropped. When the sections do not fit the height (1366×768 laptops), the list
 scrolls and fades at the edge that has more items; focused items scroll clear of the fade. The collapse control sits
-in the product row. The Admin group is shown to administrators only. Navigation, page titles, subtitles and
-planned-page placeholders read `src/lib/nav.ts`.
+in the product row. The Admin group is shown to administrators only; the section lists its views (`ADMIN_VIEWS`) in
+its own sub-navigation (`shell/SectionNav`), one route per view (`routes/admin/<view>/`). Navigation, page titles,
+subtitles and planned-page placeholders read `src/lib/nav.ts`.
 
 Sign-in page: product panel in the chrome colour (mark, section label, two-line headline with the second line in
 yellow, introduction, the BF-02 lining profile of `setting_ds_dv.yml` drawn as two bands rising from the lower right

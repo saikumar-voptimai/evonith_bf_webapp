@@ -6,13 +6,21 @@ import type { LucideIcon } from '@lucide/svelte';
 import type { RouteId } from '$app/types';
 import Activity from '@lucide/svelte/icons/activity';
 import Blend from '@lucide/svelte/icons/blend';
+import BookOpen from '@lucide/svelte/icons/book-open';
 import Brain from '@lucide/svelte/icons/brain';
+import ChartLine from '@lucide/svelte/icons/chart-line';
 import ClipboardList from '@lucide/svelte/icons/clipboard-list';
 import Flame from '@lucide/svelte/icons/flame';
+import FlaskConical from '@lucide/svelte/icons/flask-conical';
+import Gauge from '@lucide/svelte/icons/gauge';
 import Layers from '@lucide/svelte/icons/layers';
+import Scale from '@lucide/svelte/icons/scale';
+import ScrollText from '@lucide/svelte/icons/scroll-text';
+import ServerCog from '@lucide/svelte/icons/server-cog';
 import Shield from '@lucide/svelte/icons/shield';
 import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 import Thermometer from '@lucide/svelte/icons/thermometer';
+import Users from '@lucide/svelte/icons/users';
 import Wind from '@lucide/svelte/icons/wind';
 import type { LegacyPage } from './legacy.ts';
 import { hasRole, type Role } from './session/session.svelte.ts';
@@ -31,6 +39,8 @@ export interface NavItem {
 	issue: number;
 	/** Streamlit page that covers the same ground until the Svelte page ships. */
 	legacy?: LegacyPage;
+	/** Views of a section, listed in its sub-navigation (`SectionNav`) rather than in the rail. */
+	children?: NavItem[];
 }
 
 export interface NavGroup {
@@ -41,6 +51,97 @@ export interface NavGroup {
 }
 
 export const ISSUE_URL = 'https://github.com/saikumar-voptimai/evonith_bf_webapp/issues/';
+
+/**
+ * Views of the admin space (SV-4.1, #304), in the order of its sub-navigation. Each view has its own route,
+ * `routes/admin/<view>/+page.svelte`; a view that is not built yet shows the planned-page placeholder of its issue.
+ */
+export const ADMIN_VIEWS: NavItem[] = [
+	{
+		href: '/admin/facts',
+		label: 'Fact register',
+		title: 'Fact register',
+		subtitle: 'Coefficients, plant bands and default limits, changed with a second review.',
+		icon: BookOpen,
+		summary:
+			'The fact register behind every model and limit: propose a change to a coefficient, band or default limit, have a second administrator review it, and compare the versions.',
+		issue: 305
+	},
+	{
+		href: '/admin/what-if',
+		label: 'What-if',
+		title: 'What-if analysis',
+		subtitle: 'Coke rate and cost of a changed blend, blast or limit at the calibration.',
+		icon: FlaskConical,
+		summary:
+			'Change the blend, the blast or a limit and see the coke rate, the cost and the certainty the models give at the current calibration.',
+		issue: 306
+	},
+	{
+		href: '/admin/burnt-vs-charged',
+		label: 'Burnt vs charged',
+		title: 'Burnt vs charged coke',
+		subtitle: 'Burnt against charged coke per averaging window, with agreement statistics.',
+		icon: Scale,
+		summary:
+			'Burnt coke from the oxygen balance against the coke charged, per averaging window, with the concordance coefficient and the Bland–Altman limits.',
+		issue: 307,
+		legacy: 'Burden & Fuel Optimiser'
+	},
+	{
+		href: '/admin/validation',
+		label: 'Validation',
+		title: 'Validation and STRATA-Learn',
+		subtitle: 'Out-of-sample error of the coke models and the STRATA-Learn shadow run.',
+		icon: ChartLine,
+		summary:
+			'Out-of-sample error of TRACE, FORGE and STRATA by period, and STRATA-Learn in shadow mode: scale estimates, champion and challenger, drift alarm and register proposals.',
+		issue: 308,
+		legacy: 'Burden & Fuel Optimiser'
+	},
+	{
+		href: '/admin/calibration',
+		label: 'Calibration',
+		title: 'Calibration',
+		subtitle: 'The 14-day calibration of the balance, its stable shifts and the nightly run.',
+		icon: Gauge,
+		summary:
+			'The 14-day calibration of the two-zone balance: the stable shifts it uses, its parameters, the nightly recalibration and the STRATA-Flow Jacobian of each plan.',
+		issue: 309,
+		legacy: 'Coke Energy Model'
+	},
+	{
+		href: '/admin/users',
+		label: 'Users & hoppers',
+		title: 'Users, hoppers and burden',
+		subtitle: 'User accounts and roles, hopper materials and the burden distribution.',
+		icon: Users,
+		summary:
+			'User accounts and their roles, the material in each hopper and the burden distribution (rings and angles); every change is written to the audit log.',
+		issue: 310,
+		legacy: 'Welcome'
+	},
+	{
+		href: '/admin/jobs',
+		label: 'Jobs & health',
+		title: 'Jobs and health',
+		subtitle: 'Background jobs, the schedule and missed slots, run times and service health.',
+		icon: ServerCog,
+		summary:
+			'Background jobs and their history, the IST schedule with missed slots, run times (p50 and p95) and the health of the API, the worker and the databases.',
+		issue: 311
+	},
+	{
+		href: '/admin/audit',
+		label: 'Audit log',
+		title: 'Audit log',
+		subtitle: 'Who changed what and when, with the values before and after.',
+		icon: ScrollText,
+		summary:
+			'Every admin write and plan decision: who did it, on which object and when, with the values before and after the change.',
+		issue: 304
+	}
+];
 
 export const NAV: NavGroup[] = [
 	{
@@ -164,7 +265,8 @@ export const NAV: NavGroup[] = [
 				icon: Shield,
 				summary:
 					'Fact register, what-if analysis, burnt vs charged coke, validation, calibration, users and job health.',
-				issue: 304
+				issue: 304,
+				children: ADMIN_VIEWS
 			}
 		]
 	}
@@ -186,10 +288,18 @@ function normalise(pathname: string): string {
 	return pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
 }
 
-/** Navigation item of a pathname: exact match, or the item whose route contains it (`/trace/2026-10-26`). */
+/** Every navigation item: the rail's pages and the views of their sections. */
+function allItems(): NavItem[] {
+	return NAV.flatMap((g) => g.items.flatMap((i) => [i, ...(i.children ?? [])]));
+}
+
+/**
+ * Navigation item of a pathname: exact match, or the item whose route contains it (`/trace/2026-10-26`); a section's
+ * view wins over the section (`/admin/audit`).
+ */
 export function navItemFor(pathname: string): NavItem | undefined {
 	const path = normalise(pathname);
-	const items = NAV.flatMap((g) => g.items);
+	const items = allItems();
 	return (
 		items.find((i) => i.href === path) ??
 		items
@@ -208,7 +318,7 @@ export interface PageHeading {
 export function headingFor(pathname: string): PageHeading {
 	const path = normalise(pathname);
 	const item = navItemFor(path);
-	const group = item && NAV.find((g) => g.items.includes(item));
+	const group = item && NAV.find((g) => g.items.some((i) => i === item || (i.children ?? []).includes(item)));
 	if (item && group) return { group: group.label, title: item.title, subtitle: item.subtitle };
 	const extra = EXTRA_TITLES[path];
 	return extra ? { title: extra.title, subtitle: extra.subtitle } : { title: 'BF-02' };

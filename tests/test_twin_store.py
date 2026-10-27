@@ -51,10 +51,10 @@ def alembic_config(url: str) -> Config:
     return config
 
 
-def job_columns(url: str) -> set[str]:
+def job_columns(url: str, table: str = "jobs") -> set[str]:
     engine = create_engine(url, poolclass=NullPool)
     try:
-        return {c["name"] for c in inspect(engine).get_columns("jobs", schema=SCHEMA)}
+        return {c["name"] for c in inspect(engine).get_columns(table, schema=SCHEMA)}
     finally:
         engine.dispose()
 
@@ -99,8 +99,13 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
         config = alembic_config(url)
         command.upgrade(config, "head")
         assert twin_tables(url) == {*TABLES, "alembic_version"}
-        assert TwinStore.from_url(url).revision() == "twin_0002"
+        assert TwinStore.from_url(url).revision() == "twin_0003"
         assert {"scheduled_for", "run_s"} <= job_columns(url)
+        assert {"before", "after"} <= job_columns(url, "audit_log")
+
+        command.downgrade(config, "-1")  # twin_0003: the values before and after of the audit log
+        assert TwinStore.from_url(url).revision() == "twin_0002"
+        assert not {"before", "after"} & job_columns(url, "audit_log")
 
         command.downgrade(config, "-1")  # twin_0002: the slot and execution time of the jobs
         assert TwinStore.from_url(url).revision() == "twin_0001"
