@@ -13,7 +13,8 @@ RUFF_PATHS := src/api src/services src/worker src/utils/memo.py src/ui/coke_ener
 	tests/pg_server.py tests/test_twin_store.py scripts/export_legacy_pages.py tests/test_legacy_pages.py run_streamlit.py \
 	tests/test_caddyfile.py tests/test_burden_optimiser_thermal.py tests/module_stubs.py src/utils/coke_energy/twin.py \
 	tests/twin_data.py tests/test_twin_window.py src/utils/burden_engine/strata_window.py tests/test_twin_strata.py \
-	scripts/twin_parity.py tests/test_twin_parity_script.py
+	scripts/twin_parity.py tests/test_twin_parity_script.py src/utils/coke_energy/drift.py scripts/drift_replay.py \
+	tests/test_twin_drift.py
 # The Jetson (SV-6.1): JetPack 6 = Ubuntu 22.04, glibc 2.35, CPython 3.12 from uv. Every locked package needs a wheel
 # for it, except these, which have none and install from their source archive (pypika: pure Python; quickjs:
 # C extension, built with the Jetson's compiler).

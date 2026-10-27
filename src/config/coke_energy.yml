@@ -143,3 +143,20 @@ coke_energy:
     rist_default_days: 14
     # Prediction vs burnt coke: default look-back.
     timeline_default_days: 30
+
+  # Live twin (programme #262). drift: implied-omega drift alarm (SV-1.2, services.drift / utils.coke_energy.drift) on
+  # r = omega_imp - omega_STRATA of the hourly windows. Innovations of an AR(1) between non-overlapping windows (lag
+  # 8 h: eight interleaved chains; the hourly series itself overlaps by 7 h and its AR(1) innovations stay correlated),
+  # two-sided CUSUM, rho and sigma_e re-estimated on the history at every evaluation (set rho and sigma_e to fix them).
+  twin:
+    drift:
+      lag_hours: 8
+      k: 0.5
+      h: 5.0
+      mu: 0.0                 # in-control mean of r: STRATA unbiased against the implied omega
+      clear_after_hours: 24   # an alarm clears 24 h after its last signal
+      max_gap_lags: 3         # a chain bridges up to 3 missing windows, then restarts
+      min_pairs: 72           # pairs 8 h apart needed for the estimate (3 days of hourly windows)
+      history_days: 56        # snapshot history read at each evaluation
+      rho: null
+      sigma_e: null

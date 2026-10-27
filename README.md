@@ -1023,6 +1023,16 @@ pipeline: largest difference 0.0 kg/tHM and 0.0 in ω on 54 synthetic shifts), `
 evaluates the window of every balanced shift of the last 14 days against the pipeline table and exits with 1 above
 0.1 kg/tHM or 0.0005 in ω (`--strata` adds K_STRATA and the evaluation time per window, `--out` a JSON report).
 
+**Drift alarm (SV-1.2).** `services.drift.run(store, bus, config)` reads the stored windows of the last 56 days and
+tests r = ω_imp − ω_STRATA (`src/utils/coke_energy/drift.py`): AR(1) innovations between non-overlapping windows (lag
+8 h, i.e. eight interleaved chains; the hourly windows overlap by 7 h and an AR(1) on the hourly series leaves
+innovations correlated 0.86 at one hour), ρ and σ_e re-estimated at every evaluation (σ_e from the median absolute
+deviation), two-sided CUSUM k 0.5, h 5. Alarm kind `omega_drift`, subject `high` (ω_imp above STRATA) or `low`, raised
+at the first signal, cleared 24 h after the last; raises and clears are published as `alarm.raised` /
+`alarm.cleared` (code `OMEGA_DRIFT`) and reach `/api/stream`. Settings: `config/coke_energy.yml → twin.drift`.
+Replay: `python scripts/drift_replay.py` (daily series of the STRATA evidence, 1 Jan – 7 Oct 2026; `--source
+snapshots` for the stored hourly windows).
+
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family
 look as in Optimus: dark sidebar, light canvas, white panels, yellow accent, Inter; text contrast >= 4.5:1 on every
