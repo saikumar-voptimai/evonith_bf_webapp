@@ -7,6 +7,7 @@
 | ``optimiser_run`` | Optimiser runs (Step 1, Step 2, maximum production), inputs and result | optimiser jobs (SV-1.7) |
 | ``plan_decision`` | Accept / reject of a run by a supervisor, append-only | API (SV-1.6) |
 | ``shift_record`` | Shift handover record frozen at 06:10, 14:10, 22:10, immutable | ``shift.close`` (SV-2.5) |
+| ``shift_report`` | Shift report (data, tables, LLM narrative) of a closed or the running shift | ``report.*`` |
 | ``alarm_event`` | Alarms raised and cleared (ω drift, model gap, stale source, job failure, lag) | twin and worker |
 | ``facts_version`` | Versioned overlay of the fact register with second-admin review | admin space (SV-4.2) |
 | ``audit_log`` | Admin writes (with the values before and after) and plan decisions, append-only | API |
@@ -75,6 +76,8 @@ DECISIONS = ("accepted", "rejected")
 SEVERITIES = ("warning", "critical")
 FACTS_STATES = ("pending", "approved", "rejected")
 SHIFT_LETTERS = ("A", "B", "C")
+REPORT_KINDS = ("closed", "live")
+NARRATIVE_STATES = ("ok", "failed", "skipped")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -248,6 +251,56 @@ class ShiftRecord(TwinBase):
     )
 
 
+class ShiftReport(TwinBase):
+    """A shift report of the FurnaceMind Reports tab (``reports.furnace_report``): the closed shift's, written by
+    ``report.shift`` after the shift ends, or the running shift's on demand (``report.live``). The narrative is the
+    LLM's analysis; a report whose narrative failed is kept without it (``narrative_status`` failed)."""
+
+    __tablename__ = "shift_report"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    #: ``YYYY-MM-DD_A`` (date of the shift start in IST).
+    shift_key: Mapped[str] = mapped_column(String(16))
+    letter: Mapped[str] = mapped_column(String(1))
+    shift_start: Mapped[datetime]
+    shift_end: Mapped[datetime]
+    #: ``closed`` (the shift had ended) or ``live`` (the running shift, data up to the request).
+    kind: Mapped[str] = mapped_column(String(16))
+    trigger: Mapped[str] = mapped_column(String(16))
+    requested_by: Mapped[str] = mapped_column(String(128))
+    job_id: Mapped[str | None] = mapped_column(ForeignKey(f"{SCHEMA}.jobs.id", ondelete="SET NULL"))
+    generated_at: Mapped[datetime]
+    #: Rule-based status of the report: STABLE, ATTENTION REQUIRED, UNSTABLE.
+    furnace_status: Mapped[str] = mapped_column(String(24))
+    #: Shift means: production t/h, fuel, coke and PCI rates kg/tHM, ETA CO %, hot-metal Si %.
+    production_rate_t_h: Mapped[float | None] = mapped_column(Float)
+    fuel_rate_kg_thm: Mapped[float | None] = mapped_column(Float)
+    coke_rate_kg_thm: Mapped[float | None] = mapped_column(Float)
+    pci_rate_kg_thm: Mapped[float | None] = mapped_column(Float)
+    etaco_pct: Mapped[float | None] = mapped_column(Float)
+    hm_si_pct: Mapped[float | None] = mapped_column(Float)
+    #: ``ok``, ``failed`` (stored without narrative after the retry) or ``skipped`` (not requested).
+    narrative_status: Mapped[str] = mapped_column(String(16))
+    narrative: Mapped[str | None] = mapped_column(Text)
+    narrative_error: Mapped[str | None] = mapped_column(Text)
+    narrative_tries: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    narrative_model: Mapped[str | None] = mapped_column(String(128))
+    #: The report's metrics (``ShiftReportData``) and its tables as the Reports tab shows them (``ReportDocument``).
+    data: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=EMPTY_JSON)
+    document: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=EMPTY_JSON)
+
+    __table_args__ = (
+        CheckConstraint(_in("letter", SHIFT_LETTERS), name="letter"),
+        CheckConstraint(_in("kind", REPORT_KINDS), name="kind"),
+        CheckConstraint(_in("trigger", RUN_TRIGGERS), name="trigger"),
+        CheckConstraint(_in("narrative_status", NARRATIVE_STATES), name="narrative_status"),
+        CheckConstraint("shift_start < shift_end", name="times"),
+        Index("ix_shift_report_shift_start", "shift_start"),
+        Index("ix_shift_report_generated_at", "generated_at"),
+        Index("ix_shift_report_shift_key_generated_at", "shift_key", "generated_at"),
+    )
+
+
 class AlarmEvent(TwinBase):
     """An alarm from raise to clear. At most one open alarm per kind and subject."""
 
@@ -355,6 +408,7 @@ TIME_INDEXED = {
     "optimiser_run": ("started_at",),
     "plan_decision": ("decided_at",),
     "shift_record": ("shift_start",),
+    "shift_report": ("shift_start", "generated_at"),
     "alarm_event": ("raised_at",),
     "facts_version": ("created_at",),
     "audit_log": ("at",),

@@ -92,33 +92,46 @@ class ShiftReportService:
     ) -> tuple[ShiftReportData, ReportDocument]:
         """Fetch data, build metrics, and return a structured report document."""
         timeframe = get_report_timeframe(report_type, shift_date, shift_label)
-        raw = self._fetcher.fetch(timeframe=timeframe)
-        current = self._builder.build(raw)
-
-        previous: Optional[ShiftReportData] = None
-        if include_analysis and self._analyser:
-            try:
-                prev_raw = self._fetcher.fetch(
-                    timeframe=previous_report_timeframe(timeframe)
-                )
-                previous = self._builder.build(prev_raw)
-            except Exception:
-                logger.warning(
-                    "Unable to build previous report window for analysis",
-                    exc_info=True,
-                )
-                previous = None
+        current = self.build(timeframe)
+        analyse = bool(include_analysis and self._analyser)
+        previous = self.build_previous(timeframe) if analyse else None
 
         analysis = ""
-        if include_analysis and self._analyser:
+        if analyse:
             try:
                 analysis = self._analyser.analyse(current, previous)
             except Exception:
                 logger.warning("Furnace report analysis failed", exc_info=True)
                 analysis = ""
 
+        return current, self.document(current, analysis, timeframe)
+
+    # Building blocks of ``generate_document``, shared with ``services.reports`` (twin-worker, SV-2.3).
+
+    def build(self, timeframe: ReportTimeframe) -> ShiftReportData:
+        """Fetch the raw data of one report window and compute its metrics."""
+        return self._builder.build(self._fetcher.fetch(timeframe=timeframe))
+
+    def build_previous(self, timeframe: ReportTimeframe) -> Optional[ShiftReportData]:
+        """Metrics of the window before ``timeframe`` for the analysis; None when they cannot be built."""
+        try:
+            return self.build(previous_report_timeframe(timeframe))
+        except Exception:
+            logger.warning(
+                "Unable to build previous report window for analysis",
+                exc_info=True,
+            )
+            return None
+
+    def document(
+        self,
+        current: ShiftReportData,
+        analysis: str,
+        timeframe: ReportTimeframe,
+    ) -> ReportDocument:
+        """The structured report document of ``current`` with the analysis text, stamped now (IST)."""
         document = as_document(current, analysis, title=_live_report_title(timeframe))
-        return current, replace(document, generated_at_ist=datetime.now(LOCAL_TIMEZONE))
+        return replace(document, generated_at_ist=datetime.now(LOCAL_TIMEZONE))
 
 
 def _live_report_title(timeframe: ReportTimeframe) -> str:

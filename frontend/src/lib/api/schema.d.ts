@@ -313,6 +313,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shift reports
+         * @description Newest shift first and, within a shift, newest report first (a re-run or a live report adds a row).
+         */
+        get: operations["reports_list_reports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report the running shift
+         * @description Queue ``report.live`` for the running shift; follow it with GET /api/jobs/{id} or the ``job.done`` event, then
+         *     read the report at GET /api/reports/{report_id}. A request equal to a queued or running one returns that job.
+         */
+        post: operations["reports_live_report"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A shift report
+         * @description Data, tables, narrative and status of a report, by report id or by the id of the job that wrote it.
+         */
+        get: operations["reports_get_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stream": {
         parameters: {
             query?: never;
@@ -1201,6 +1262,18 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * LiveReportParams
+         * @description The report of the running shift (``report.live``, SV-2.3).
+         */
+        LiveReportParams: {
+            /**
+             * Narrative
+             * @description Also write the LLM narrative (one retry on failure)
+             * @default true
+             */
+            narrative: boolean;
+        };
         /** LiveStatusData */
         LiveStatusData: {
             /**
@@ -1484,6 +1557,19 @@ export interface components {
              */
             trigger: "schedule" | "user";
         };
+        /** ParamStatsView */
+        ParamStatsView: {
+            /**
+             * Mean
+             * @description Mean over the report window, in the unit of the parameter
+             */
+            mean?: number | null;
+            /**
+             * Std
+             * @description Standard deviation over the window, in the unit of the parameter
+             */
+            std?: number | null;
+        };
         /** PlanDecisionView */
         PlanDecisionView: {
             /** Comment */
@@ -1554,6 +1640,73 @@ export interface components {
              */
             type: string;
         };
+        /**
+         * ReportDocumentView
+         * @description The report as the Reports tab renders it.
+         */
+        ReportDocumentView: {
+            /**
+             * Generated At Ist
+             * @description Time the report was generated, IST
+             */
+            generated_at_ist?: string | null;
+            /** Notes */
+            notes?: components["schemas"]["ReportNoteView"][];
+            /**
+             * Pre Blocks
+             * @description Heading text (markdown)
+             */
+            pre_blocks?: string[];
+            /** Sections */
+            sections?: components["schemas"]["ReportSectionView"][];
+            /** Title */
+            title: string;
+        };
+        /** ReportNoteView */
+        ReportNoteView: {
+            /**
+             * Kind
+             * @description material_usage, analysis (the narrative) or note
+             */
+            kind: string;
+            /**
+             * Placement
+             * @enum {string}
+             */
+            placement: "left" | "right";
+            /** Text */
+            text: string;
+        };
+        /** ReportSectionView */
+        ReportSectionView: {
+            /**
+             * Headers
+             * @description Column headers with their units, as the Reports tab shows them
+             */
+            headers: string[];
+            /**
+             * Placement
+             * @enum {string}
+             */
+            placement: "left" | "right";
+            /**
+             * Rows
+             * @description Formatted cells; '-' where a value is missing
+             */
+            rows: string[][];
+            /** Title */
+            title: string;
+        };
+        /** ReportSubmitted */
+        ReportSubmitted: {
+            /**
+             * Duplicate
+             * @description True when a live report was already queued or running
+             */
+            duplicate: boolean;
+            /** @description The report.live job; its result holds report_id once it is done */
+            job: components["schemas"]["JobRecord"];
+        };
         /** RunLookup */
         RunLookup: {
             /** @description The job (records are kept 7 days) */
@@ -1623,6 +1776,471 @@ export interface components {
             user_id?: string | null;
             /** Username */
             username: string;
+        };
+        /**
+         * ShiftReportDataView
+         * @description The report's metrics (``reports.furnace_report.data.ShiftReportData``).
+         */
+        ShiftReportDataView: {
+            /** @description Belly (15.16 m) temperatures by quadrant, °C */
+            belly: components["schemas"]["TempRowView"];
+            /** @description Hot blast pressure, bar: mean and standard deviation over the window */
+            blast_pressure: components["schemas"]["ParamStatsView"];
+            /** @description Hot blast temperature, °C: mean and standard deviation over the window */
+            blast_temp: components["schemas"]["ParamStatsView"];
+            /** @description Hot blast volume, Nm³/h: mean and standard deviation over the window */
+            blast_volume: components["schemas"]["ParamStatsView"];
+            /** @description Bosh (12.98 m) temperatures by quadrant, °C */
+            bosh: components["schemas"]["TempRowView"];
+            /**
+             * Burden Moisture Input
+             * @description Moisture charged with the burden, kg/tHM
+             */
+            burden_moisture_input?: number | null;
+            /**
+             * Burden Ratio
+             * @description Sinter : ore : pellet shares of the ferrous burden, % (text)
+             */
+            burden_ratio?: string | null;
+            /**
+             * Coke Rate
+             * @description Coke rate, mean, kg/tHM
+             */
+            coke_rate?: number | null;
+            /**
+             * Coke T
+             * @description Coke charged, t
+             */
+            coke_t?: number | null;
+            /**
+             * Duration H
+             * @description Length of the report window, h
+             */
+            duration_h: number;
+            /** @description ETA CO (gas utilisation), %: mean and standard deviation over the window */
+            etaco: components["schemas"]["ParamStatsView"];
+            /**
+             * Fines Input
+             * @description Fines charged with the burden, kg/tHM
+             */
+            fines_input?: number | null;
+            /**
+             * Flux T
+             * @description Flux charged, t
+             */
+            flux_t?: number | null;
+            /**
+             * Fuel Rate
+             * @description Coke + nut coke + PCI rate, kg/tHM
+             */
+            fuel_rate?: number | null;
+            /** @description Bottom differential pressure, bar: mean and standard deviation over the window */
+            furnace_bottom_dp: components["schemas"]["ParamStatsView"];
+            /** @description Top differential pressure, bar: mean and standard deviation over the window */
+            furnace_top_dp: components["schemas"]["ParamStatsView"];
+            /** @description Total differential pressure, bar: mean and standard deviation over the window */
+            furnace_total_dp: components["schemas"]["ParamStatsView"];
+            /**
+             * Hearth 4 3 A
+             * @description Hearth pad 4.3 m, position A, mean, °C
+             */
+            hearth_4_3_a?: number | null;
+            /**
+             * Hearth 5 4 C
+             * @description Hearth pad 5.4 m, position C, mean, °C
+             */
+            hearth_5_4_c?: number | null;
+            /**
+             * Hearth 5 7 C
+             * @description Hearth pad 5.7 m, position C, mean, °C
+             */
+            hearth_5_7_c?: number | null;
+            /**
+             * Hearth 6 1 B
+             * @description Hearth pad 6.1 m, position B, mean, °C
+             */
+            hearth_6_1_b?: number | null;
+            /**
+             * Hm S
+             * @description Hot-metal S, mean of the samples, %
+             */
+            hm_s?: number | null;
+            /**
+             * Hm Si
+             * @description Hot-metal Si, mean of the samples, %
+             */
+            hm_si?: number | null;
+            /**
+             * Hm Temp
+             * @description Hot-metal temperature, mean of the samples, °C
+             */
+            hm_temp?: number | null;
+            /**
+             * Ibrm
+             * @description Iron-bearing raw material (dry ore + pellet, sinter), t/tHM
+             */
+            ibrm?: number | null;
+            /** @description Lower stack (18.66 m) temperatures by quadrant, °C */
+            lower_stack: components["schemas"]["TempRowView"];
+            /**
+             * Nut Coke Rate
+             * @description Nut coke rate, mean, kg/tHM
+             */
+            nut_coke_rate?: number | null;
+            /**
+             * Nut Coke T
+             * @description Nut coke charged, t
+             */
+            nut_coke_t?: number | null;
+            /** @description Oxygen enrichment, %: mean and standard deviation over the window */
+            o2_enrichment: components["schemas"]["ParamStatsView"];
+            /** @description Oxygen flow, Nm³/h: mean and standard deviation over the window */
+            o2_flow: components["schemas"]["ParamStatsView"];
+            /**
+             * Ore T
+             * @description Lump ore charged, t
+             */
+            ore_t?: number | null;
+            /**
+             * Pci Rate
+             * @description PCI rate, mean, kg/tHM
+             */
+            pci_rate?: number | null;
+            /**
+             * Pellet T
+             * @description Pellet charged, t
+             */
+            pellet_t?: number | null;
+            /** @description Permeability index, dimensionless: mean and standard deviation over the window */
+            permeability: components["schemas"]["ParamStatsView"];
+            /**
+             * Production Rate
+             * @description Hot-metal production rate, mean, t/h
+             */
+            production_rate?: number | null;
+            /** @description Raceway adiabatic flame temperature, °C: mean and standard deviation over the window */
+            raft: components["schemas"]["ParamStatsView"];
+            /**
+             * Report Type
+             * @enum {string}
+             */
+            report_type: "Shift" | "Day";
+            /**
+             * Shift Date
+             * Format: date
+             * @description IST date of the shift start
+             */
+            shift_date: string;
+            /**
+             * Shift End Ist
+             * Format: date-time
+             * @description End of the report window, IST
+             */
+            shift_end_ist: string;
+            /**
+             * Shift Label
+             * @description Shift letter (null for a day report)
+             */
+            shift_label?: ("A" | "B" | "C") | null;
+            /**
+             * Shift Start Ist
+             * Format: date-time
+             * @description Start of the report window, IST
+             */
+            shift_start_ist: string;
+            /**
+             * Sinter T
+             * @description Sinter charged, t
+             */
+            sinter_t?: number | null;
+            /** @description Skin flow temperatures by quadrant, °C */
+            skin_flow: components["schemas"]["TempRowView"];
+            /**
+             * Slag Basicity
+             * @description Slag CaO/SiO₂, dimensionless
+             */
+            slag_basicity?: number | null;
+            /**
+             * Status
+             * @description Rule-based status (thresholds of config/shift_report.yml)
+             * @enum {string}
+             */
+            status: "STABLE" | "ATTENTION REQUIRED" | "UNSTABLE";
+            /**
+             * Status Flags
+             * @description The thresholds the window breached
+             */
+            status_flags?: string[];
+            /**
+             * Theoretical Production
+             * @description Production rate × window length, t
+             */
+            theoretical_production?: number | null;
+            /**
+             * Total Charges
+             * @description Charges in the window, count
+             */
+            total_charges?: number | null;
+            /**
+             * Total O2 Flow
+             * @description Day reports: the day's total oxygen flow, Nm³
+             */
+            total_o2_flow?: number | null;
+            /**
+             * Total Taps
+             * @description Taps in the window, count
+             */
+            total_taps?: number | null;
+            /** @description Uptake (top gas) temperatures by quadrant, °C */
+            uptake: components["schemas"]["TempRowView"];
+            /**
+             * Used Materials
+             * @description Ore and flux materials charged, text lines with t and burden share (%)
+             */
+            used_materials?: {
+                [key: string]: string;
+            };
+            /**
+             * Window Id
+             * @description Window id of the Reports tab, e.g. 2026-10-27_SHIFT_A
+             */
+            window_id: string;
+        };
+        /** ShiftReportDetail */
+        ShiftReportDetail: {
+            /**
+             * Coke Rate Kg Thm
+             * @description Coke rate, kg/tHM
+             */
+            coke_rate_kg_thm?: number | null;
+            data: components["schemas"]["ShiftReportDataView"];
+            document: components["schemas"]["ReportDocumentView"];
+            /**
+             * Etaco Pct
+             * @description ETA CO, mean, %
+             */
+            etaco_pct?: number | null;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke + nut coke + PCI rate, kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Furnace Status
+             * @description Rule-based status of the shift
+             * @enum {string}
+             */
+            furnace_status: "STABLE" | "ATTENTION REQUIRED" | "UNSTABLE";
+            /**
+             * Generated At
+             * Format: date-time
+             * @description UTC
+             */
+            generated_at: string;
+            /**
+             * Hm Si Pct
+             * @description Hot-metal Si, mean, %
+             */
+            hm_si_pct?: number | null;
+            /**
+             * Id
+             * @description Report id (UUID)
+             */
+            id: string;
+            /**
+             * Job Id
+             * @description Job that generated the report
+             */
+            job_id?: string | null;
+            /**
+             * Kind
+             * @description closed: the shift had ended; live: the running shift, data up to the request
+             * @enum {string}
+             */
+            kind: "closed" | "live";
+            /**
+             * Narrative
+             * @description The LLM's handover analysis (null without narrative)
+             */
+            narrative?: string | null;
+            /**
+             * Narrative Error
+             * @description Why there is no narrative: the error of each try
+             */
+            narrative_error?: string | null;
+            /**
+             * Narrative Model
+             * @description Model that wrote the narrative
+             */
+            narrative_model?: string | null;
+            /**
+             * Narrative Status
+             * @enum {string}
+             */
+            narrative_status: "ok" | "failed" | "skipped";
+            /**
+             * Narrative Tries
+             * @description LLM calls made, count (2 = first call and the retry)
+             */
+            narrative_tries: number;
+            /**
+             * Pci Rate Kg Thm
+             * @description PCI rate, kg/tHM
+             */
+            pci_rate_kg_thm?: number | null;
+            /**
+             * Production Rate T H
+             * @description Hot-metal production rate, mean, t/h
+             */
+            production_rate_t_h?: number | null;
+            /** Requested By */
+            requested_by: string;
+            /**
+             * Shift
+             * @enum {string}
+             */
+            shift: "A" | "B" | "C";
+            /**
+             * Shift Date
+             * Format: date
+             * @description IST date of the shift start
+             */
+            shift_date: string;
+            /**
+             * Shift End
+             * Format: date-time
+             * @description UTC
+             */
+            shift_end: string;
+            /**
+             * Shift Key
+             * @description YYYY-MM-DD_A|B|C, IST date of the shift start
+             */
+            shift_key: string;
+            /**
+             * Shift Start
+             * Format: date-time
+             * @description UTC
+             */
+            shift_start: string;
+            /**
+             * Status
+             * @description complete: data and narrative; no_narrative: data only (LLM failed after its retry, or skipped)
+             * @enum {string}
+             */
+            status: "complete" | "no_narrative";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "schedule" | "user";
+        };
+        /** ShiftReportSummary */
+        ShiftReportSummary: {
+            /**
+             * Coke Rate Kg Thm
+             * @description Coke rate, kg/tHM
+             */
+            coke_rate_kg_thm?: number | null;
+            /**
+             * Etaco Pct
+             * @description ETA CO, mean, %
+             */
+            etaco_pct?: number | null;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke + nut coke + PCI rate, kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Furnace Status
+             * @description Rule-based status of the shift
+             * @enum {string}
+             */
+            furnace_status: "STABLE" | "ATTENTION REQUIRED" | "UNSTABLE";
+            /**
+             * Generated At
+             * Format: date-time
+             * @description UTC
+             */
+            generated_at: string;
+            /**
+             * Hm Si Pct
+             * @description Hot-metal Si, mean, %
+             */
+            hm_si_pct?: number | null;
+            /**
+             * Id
+             * @description Report id (UUID)
+             */
+            id: string;
+            /**
+             * Job Id
+             * @description Job that generated the report
+             */
+            job_id?: string | null;
+            /**
+             * Kind
+             * @description closed: the shift had ended; live: the running shift, data up to the request
+             * @enum {string}
+             */
+            kind: "closed" | "live";
+            /**
+             * Narrative Status
+             * @enum {string}
+             */
+            narrative_status: "ok" | "failed" | "skipped";
+            /**
+             * Pci Rate Kg Thm
+             * @description PCI rate, kg/tHM
+             */
+            pci_rate_kg_thm?: number | null;
+            /**
+             * Production Rate T H
+             * @description Hot-metal production rate, mean, t/h
+             */
+            production_rate_t_h?: number | null;
+            /** Requested By */
+            requested_by: string;
+            /**
+             * Shift
+             * @enum {string}
+             */
+            shift: "A" | "B" | "C";
+            /**
+             * Shift Date
+             * Format: date
+             * @description IST date of the shift start
+             */
+            shift_date: string;
+            /**
+             * Shift End
+             * Format: date-time
+             * @description UTC
+             */
+            shift_end: string;
+            /**
+             * Shift Key
+             * @description YYYY-MM-DD_A|B|C, IST date of the shift start
+             */
+            shift_key: string;
+            /**
+             * Shift Start
+             * Format: date-time
+             * @description UTC
+             */
+            shift_start: string;
+            /**
+             * Status
+             * @description complete: data and narrative; no_narrative: data only (LLM failed after its retry, or skipped)
+             * @enum {string}
+             */
+            status: "complete" | "no_narrative";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "schedule" | "user";
         };
         /**
          * SiForecastData
@@ -1769,6 +2387,34 @@ export interface components {
             unit?: string | null;
             /** Value */
             value: number | null;
+        };
+        /** TempRowView */
+        TempRowView: {
+            /**
+             * Q1
+             * @description Quadrant Q1, mean over the window, °C
+             */
+            q1?: number | null;
+            /**
+             * Q2
+             * @description Quadrant Q2, mean over the window, °C
+             */
+            q2?: number | null;
+            /**
+             * Q3
+             * @description Quadrant Q3, mean over the window, °C
+             */
+            q3?: number | null;
+            /**
+             * Q4
+             * @description Quadrant Q4, mean over the window, °C
+             */
+            q4?: number | null;
+            /**
+             * Spread Std
+             * @description Standard deviation across Q1 to Q4, °C
+             */
+            spread_std?: number | null;
         };
         /** TransitBand */
         TransitBand: {
@@ -2923,6 +3569,135 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunLookup"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    reports_list_reports: {
+        parameters: {
+            query?: {
+                /** @description IST date of the shift start */
+                date?: string | null;
+                /** @description Only this shift */
+                shift?: ("A" | "B" | "C") | null;
+                /** @description Only closed or live reports */
+                kind?: ("closed" | "live") | null;
+                /** @description Reports, count */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftReportSummary"][];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    reports_live_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LiveReportParams"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSubmitted"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    reports_get_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftReportDetail"];
                 };
             };
             /** @description Client error (problem+json) */

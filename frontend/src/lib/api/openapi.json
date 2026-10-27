@@ -1473,6 +1473,20 @@
         "title": "KindStats",
         "type": "object"
       },
+      "LiveReportParams": {
+        "additionalProperties": false,
+        "description": "The report of the running shift (``report.live``, SV-2.3).",
+        "properties": {
+          "narrative": {
+            "default": true,
+            "description": "Also write the LLM narrative (one retry on failure)",
+            "title": "Narrative",
+            "type": "boolean"
+          }
+        },
+        "title": "LiveReportParams",
+        "type": "object"
+      },
       "LiveStatusData": {
         "properties": {
           "tags": {
@@ -2011,6 +2025,36 @@
         "title": "OptimiserRunSummary",
         "type": "object"
       },
+      "ParamStatsView": {
+        "properties": {
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean over the report window, in the unit of the parameter",
+            "title": "Mean"
+          },
+          "std": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard deviation over the window, in the unit of the parameter",
+            "title": "Std"
+          }
+        },
+        "title": "ParamStatsView",
+        "type": "object"
+      },
       "PlanDecisionView": {
         "properties": {
           "comment": {
@@ -2145,6 +2189,145 @@
           "status"
         ],
         "title": "ProblemDetail",
+        "type": "object"
+      },
+      "ReportDocumentView": {
+        "description": "The report as the Reports tab renders it.",
+        "properties": {
+          "generated_at_ist": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time the report was generated, IST",
+            "title": "Generated At Ist"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/ReportNoteView"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "pre_blocks": {
+            "description": "Heading text (markdown)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pre Blocks",
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ReportSectionView"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "ReportDocumentView",
+        "type": "object"
+      },
+      "ReportNoteView": {
+        "properties": {
+          "kind": {
+            "description": "material_usage, analysis (the narrative) or note",
+            "title": "Kind",
+            "type": "string"
+          },
+          "placement": {
+            "enum": [
+              "left",
+              "right"
+            ],
+            "title": "Placement",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "placement",
+          "kind"
+        ],
+        "title": "ReportNoteView",
+        "type": "object"
+      },
+      "ReportSectionView": {
+        "properties": {
+          "headers": {
+            "description": "Column headers with their units, as the Reports tab shows them",
+            "items": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "array"
+          },
+          "placement": {
+            "enum": [
+              "left",
+              "right"
+            ],
+            "title": "Placement",
+            "type": "string"
+          },
+          "rows": {
+            "description": "Formatted cells; '-' where a value is missing",
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "headers",
+          "rows",
+          "placement"
+        ],
+        "title": "ReportSectionView",
+        "type": "object"
+      },
+      "ReportSubmitted": {
+        "properties": {
+          "duplicate": {
+            "description": "True when a live report was already queued or running",
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobRecord",
+            "description": "The report.live job; its result holds report_id once it is done"
+          }
+        },
+        "required": [
+          "job",
+          "duplicate"
+        ],
+        "title": "ReportSubmitted",
         "type": "object"
       },
       "RunLookup": {
@@ -2292,6 +2475,949 @@
           "role"
         ],
         "title": "SessionUser",
+        "type": "object"
+      },
+      "ShiftReportDataView": {
+        "description": "The report's metrics (``reports.furnace_report.data.ShiftReportData``).",
+        "properties": {
+          "belly": {
+            "$ref": "#/components/schemas/TempRowView",
+            "description": "Belly (15.16 m) temperatures by quadrant, \u00b0C"
+          },
+          "blast_pressure": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Hot blast pressure, bar: mean and standard deviation over the window"
+          },
+          "blast_temp": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Hot blast temperature, \u00b0C: mean and standard deviation over the window"
+          },
+          "blast_volume": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Hot blast volume, Nm\u00b3/h: mean and standard deviation over the window"
+          },
+          "bosh": {
+            "$ref": "#/components/schemas/TempRowView",
+            "description": "Bosh (12.98 m) temperatures by quadrant, \u00b0C"
+          },
+          "burden_moisture_input": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Moisture charged with the burden, kg/tHM",
+            "title": "Burden Moisture Input"
+          },
+          "burden_ratio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sinter : ore : pellet shares of the ferrous burden, % (text)",
+            "title": "Burden Ratio"
+          },
+          "coke_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate, mean, kg/tHM",
+            "title": "Coke Rate"
+          },
+          "coke_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged, t",
+            "title": "Coke T"
+          },
+          "duration_h": {
+            "description": "Length of the report window, h",
+            "title": "Duration H",
+            "type": "number"
+          },
+          "etaco": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "ETA CO (gas utilisation), %: mean and standard deviation over the window"
+          },
+          "fines_input": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fines charged with the burden, kg/tHM",
+            "title": "Fines Input"
+          },
+          "flux_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Flux charged, t",
+            "title": "Flux T"
+          },
+          "fuel_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke + nut coke + PCI rate, kg/tHM",
+            "title": "Fuel Rate"
+          },
+          "furnace_bottom_dp": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Bottom differential pressure, bar: mean and standard deviation over the window"
+          },
+          "furnace_top_dp": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Top differential pressure, bar: mean and standard deviation over the window"
+          },
+          "furnace_total_dp": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Total differential pressure, bar: mean and standard deviation over the window"
+          },
+          "hearth_4_3_a": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hearth pad 4.3 m, position A, mean, \u00b0C",
+            "title": "Hearth 4 3 A"
+          },
+          "hearth_5_4_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hearth pad 5.4 m, position C, mean, \u00b0C",
+            "title": "Hearth 5 4 C"
+          },
+          "hearth_5_7_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hearth pad 5.7 m, position C, mean, \u00b0C",
+            "title": "Hearth 5 7 C"
+          },
+          "hearth_6_1_b": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hearth pad 6.1 m, position B, mean, \u00b0C",
+            "title": "Hearth 6 1 B"
+          },
+          "hm_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal S, mean of the samples, %",
+            "title": "Hm S"
+          },
+          "hm_si": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal Si, mean of the samples, %",
+            "title": "Hm Si"
+          },
+          "hm_temp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal temperature, mean of the samples, \u00b0C",
+            "title": "Hm Temp"
+          },
+          "ibrm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Iron-bearing raw material (dry ore + pellet, sinter), t/tHM",
+            "title": "Ibrm"
+          },
+          "lower_stack": {
+            "$ref": "#/components/schemas/TempRowView",
+            "description": "Lower stack (18.66 m) temperatures by quadrant, \u00b0C"
+          },
+          "nut_coke_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut coke rate, mean, kg/tHM",
+            "title": "Nut Coke Rate"
+          },
+          "nut_coke_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut coke charged, t",
+            "title": "Nut Coke T"
+          },
+          "o2_enrichment": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Oxygen enrichment, %: mean and standard deviation over the window"
+          },
+          "o2_flow": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Oxygen flow, Nm\u00b3/h: mean and standard deviation over the window"
+          },
+          "ore_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lump ore charged, t",
+            "title": "Ore T"
+          },
+          "pci_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI rate, mean, kg/tHM",
+            "title": "Pci Rate"
+          },
+          "pellet_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pellet charged, t",
+            "title": "Pellet T"
+          },
+          "permeability": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Permeability index, dimensionless: mean and standard deviation over the window"
+          },
+          "production_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal production rate, mean, t/h",
+            "title": "Production Rate"
+          },
+          "raft": {
+            "$ref": "#/components/schemas/ParamStatsView",
+            "description": "Raceway adiabatic flame temperature, \u00b0C: mean and standard deviation over the window"
+          },
+          "report_type": {
+            "enum": [
+              "Shift",
+              "Day"
+            ],
+            "title": "Report Type",
+            "type": "string"
+          },
+          "shift_date": {
+            "description": "IST date of the shift start",
+            "format": "date",
+            "title": "Shift Date",
+            "type": "string"
+          },
+          "shift_end_ist": {
+            "description": "End of the report window, IST",
+            "format": "date-time",
+            "title": "Shift End Ist",
+            "type": "string"
+          },
+          "shift_label": {
+            "anyOf": [
+              {
+                "enum": [
+                  "A",
+                  "B",
+                  "C"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shift letter (null for a day report)",
+            "title": "Shift Label"
+          },
+          "shift_start_ist": {
+            "description": "Start of the report window, IST",
+            "format": "date-time",
+            "title": "Shift Start Ist",
+            "type": "string"
+          },
+          "sinter_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sinter charged, t",
+            "title": "Sinter T"
+          },
+          "skin_flow": {
+            "$ref": "#/components/schemas/TempRowView",
+            "description": "Skin flow temperatures by quadrant, \u00b0C"
+          },
+          "slag_basicity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag CaO/SiO\u2082, dimensionless",
+            "title": "Slag Basicity"
+          },
+          "status": {
+            "description": "Rule-based status (thresholds of config/shift_report.yml)",
+            "enum": [
+              "STABLE",
+              "ATTENTION REQUIRED",
+              "UNSTABLE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_flags": {
+            "description": "The thresholds the window breached",
+            "items": {
+              "type": "string"
+            },
+            "title": "Status Flags",
+            "type": "array"
+          },
+          "theoretical_production": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Production rate \u00d7 window length, t",
+            "title": "Theoretical Production"
+          },
+          "total_charges": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charges in the window, count",
+            "title": "Total Charges"
+          },
+          "total_o2_flow": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Day reports: the day's total oxygen flow, Nm\u00b3",
+            "title": "Total O2 Flow"
+          },
+          "total_taps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Taps in the window, count",
+            "title": "Total Taps"
+          },
+          "uptake": {
+            "$ref": "#/components/schemas/TempRowView",
+            "description": "Uptake (top gas) temperatures by quadrant, \u00b0C"
+          },
+          "used_materials": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Ore and flux materials charged, text lines with t and burden share (%)",
+            "title": "Used Materials",
+            "type": "object"
+          },
+          "window_id": {
+            "description": "Window id of the Reports tab, e.g. 2026-10-27_SHIFT_A",
+            "title": "Window Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shift_date",
+          "shift_start_ist",
+          "shift_end_ist",
+          "report_type",
+          "window_id",
+          "duration_h",
+          "status",
+          "blast_volume",
+          "blast_temp",
+          "blast_pressure",
+          "furnace_top_dp",
+          "furnace_bottom_dp",
+          "furnace_total_dp",
+          "o2_flow",
+          "o2_enrichment",
+          "permeability",
+          "etaco",
+          "raft",
+          "uptake",
+          "lower_stack",
+          "belly",
+          "skin_flow",
+          "bosh"
+        ],
+        "title": "ShiftReportDataView",
+        "type": "object"
+      },
+      "ShiftReportDetail": {
+        "properties": {
+          "coke_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate, kg/tHM",
+            "title": "Coke Rate Kg Thm"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ShiftReportDataView"
+          },
+          "document": {
+            "$ref": "#/components/schemas/ReportDocumentView"
+          },
+          "etaco_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ETA CO, mean, %",
+            "title": "Etaco Pct"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke + nut coke + PCI rate, kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "furnace_status": {
+            "description": "Rule-based status of the shift",
+            "enum": [
+              "STABLE",
+              "ATTENTION REQUIRED",
+              "UNSTABLE"
+            ],
+            "title": "Furnace Status",
+            "type": "string"
+          },
+          "generated_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "hm_si_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal Si, mean, %",
+            "title": "Hm Si Pct"
+          },
+          "id": {
+            "description": "Report id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that generated the report",
+            "title": "Job Id"
+          },
+          "kind": {
+            "description": "closed: the shift had ended; live: the running shift, data up to the request",
+            "enum": [
+              "closed",
+              "live"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "narrative": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The LLM's handover analysis (null without narrative)",
+            "title": "Narrative"
+          },
+          "narrative_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why there is no narrative: the error of each try",
+            "title": "Narrative Error"
+          },
+          "narrative_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model that wrote the narrative",
+            "title": "Narrative Model"
+          },
+          "narrative_status": {
+            "enum": [
+              "ok",
+              "failed",
+              "skipped"
+            ],
+            "title": "Narrative Status",
+            "type": "string"
+          },
+          "narrative_tries": {
+            "description": "LLM calls made, count (2 = first call and the retry)",
+            "title": "Narrative Tries",
+            "type": "integer"
+          },
+          "pci_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI rate, kg/tHM",
+            "title": "Pci Rate Kg Thm"
+          },
+          "production_rate_t_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal production rate, mean, t/h",
+            "title": "Production Rate T H"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "shift": {
+            "enum": [
+              "A",
+              "B",
+              "C"
+            ],
+            "title": "Shift",
+            "type": "string"
+          },
+          "shift_date": {
+            "description": "IST date of the shift start",
+            "format": "date",
+            "title": "Shift Date",
+            "type": "string"
+          },
+          "shift_end": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Shift End",
+            "type": "string"
+          },
+          "shift_key": {
+            "description": "YYYY-MM-DD_A|B|C, IST date of the shift start",
+            "title": "Shift Key",
+            "type": "string"
+          },
+          "shift_start": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Shift Start",
+            "type": "string"
+          },
+          "status": {
+            "description": "complete: data and narrative; no_narrative: data only (LLM failed after its retry, or skipped)",
+            "enum": [
+              "complete",
+              "no_narrative"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger": {
+            "enum": [
+              "schedule",
+              "user"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "shift_key",
+          "shift",
+          "shift_date",
+          "shift_start",
+          "shift_end",
+          "kind",
+          "trigger",
+          "requested_by",
+          "generated_at",
+          "status",
+          "narrative_status",
+          "furnace_status",
+          "narrative_tries",
+          "data",
+          "document"
+        ],
+        "title": "ShiftReportDetail",
+        "type": "object"
+      },
+      "ShiftReportSummary": {
+        "properties": {
+          "coke_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate, kg/tHM",
+            "title": "Coke Rate Kg Thm"
+          },
+          "etaco_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ETA CO, mean, %",
+            "title": "Etaco Pct"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke + nut coke + PCI rate, kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "furnace_status": {
+            "description": "Rule-based status of the shift",
+            "enum": [
+              "STABLE",
+              "ATTENTION REQUIRED",
+              "UNSTABLE"
+            ],
+            "title": "Furnace Status",
+            "type": "string"
+          },
+          "generated_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "hm_si_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal Si, mean, %",
+            "title": "Hm Si Pct"
+          },
+          "id": {
+            "description": "Report id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that generated the report",
+            "title": "Job Id"
+          },
+          "kind": {
+            "description": "closed: the shift had ended; live: the running shift, data up to the request",
+            "enum": [
+              "closed",
+              "live"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "narrative_status": {
+            "enum": [
+              "ok",
+              "failed",
+              "skipped"
+            ],
+            "title": "Narrative Status",
+            "type": "string"
+          },
+          "pci_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI rate, kg/tHM",
+            "title": "Pci Rate Kg Thm"
+          },
+          "production_rate_t_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal production rate, mean, t/h",
+            "title": "Production Rate T H"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "shift": {
+            "enum": [
+              "A",
+              "B",
+              "C"
+            ],
+            "title": "Shift",
+            "type": "string"
+          },
+          "shift_date": {
+            "description": "IST date of the shift start",
+            "format": "date",
+            "title": "Shift Date",
+            "type": "string"
+          },
+          "shift_end": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Shift End",
+            "type": "string"
+          },
+          "shift_key": {
+            "description": "YYYY-MM-DD_A|B|C, IST date of the shift start",
+            "title": "Shift Key",
+            "type": "string"
+          },
+          "shift_start": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Shift Start",
+            "type": "string"
+          },
+          "status": {
+            "description": "complete: data and narrative; no_narrative: data only (LLM failed after its retry, or skipped)",
+            "enum": [
+              "complete",
+              "no_narrative"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger": {
+            "enum": [
+              "schedule",
+              "user"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "shift_key",
+          "shift",
+          "shift_date",
+          "shift_start",
+          "shift_end",
+          "kind",
+          "trigger",
+          "requested_by",
+          "generated_at",
+          "status",
+          "narrative_status",
+          "furnace_status"
+        ],
+        "title": "ShiftReportSummary",
         "type": "object"
       },
       "SiForecastData": {
@@ -2611,6 +3737,72 @@
           "value"
         ],
         "title": "TagValue",
+        "type": "object"
+      },
+      "TempRowView": {
+        "properties": {
+          "q1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Quadrant Q1, mean over the window, \u00b0C",
+            "title": "Q1"
+          },
+          "q2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Quadrant Q2, mean over the window, \u00b0C",
+            "title": "Q2"
+          },
+          "q3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Quadrant Q3, mean over the window, \u00b0C",
+            "title": "Q3"
+          },
+          "q4": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Quadrant Q4, mean over the window, \u00b0C",
+            "title": "Q4"
+          },
+          "spread_std": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard deviation across Q1 to Q4, \u00b0C",
+            "title": "Spread Std"
+          }
+        },
+        "title": "TempRowView",
         "type": "object"
       },
       "TransitBand": {
@@ -4574,6 +5766,244 @@
         "summary": "An optimiser run or its job",
         "tags": [
           "optimiser"
+        ]
+      }
+    },
+    "/api/reports": {
+      "get": {
+        "description": "Newest shift first and, within a shift, newest report first (a re-run or a live report adds a row).",
+        "operationId": "reports_list_reports",
+        "parameters": [
+          {
+            "description": "IST date of the shift start",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "IST date of the shift start",
+              "title": "Date"
+            }
+          },
+          {
+            "description": "Only this shift",
+            "in": "query",
+            "name": "shift",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "A",
+                    "B",
+                    "C"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this shift",
+              "title": "Shift"
+            }
+          },
+          {
+            "description": "Only closed or live reports",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "closed",
+                    "live"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only closed or live reports",
+              "title": "Kind"
+            }
+          },
+          {
+            "description": "Reports, count",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Reports, count",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShiftReportSummary"
+                  },
+                  "title": "Response Reports List Reports",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Shift reports",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/live": {
+      "post": {
+        "description": "Queue ``report.live`` for the running shift; follow it with GET /api/jobs/{id} or the ``job.done`` event, then\nread the report at GET /api/reports/{report_id}. A request equal to a queued or running one returns that job.",
+        "operationId": "reports_live_report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LiveReportParams"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Report the running shift",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/{report_id}": {
+      "get": {
+        "description": "Data, tables, narrative and status of a report, by report id or by the id of the job that wrote it.",
+        "operationId": "reports_get_report",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftReportDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "A shift report",
+        "tags": [
+          "reports"
         ]
       }
     },

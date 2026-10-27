@@ -34,6 +34,7 @@ TABLES = (
     "optimiser_run",
     "plan_decision",
     "shift_record",
+    "shift_report",
     "alarm_event",
     "facts_version",
     "audit_log",
@@ -99,9 +100,13 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
         config = alembic_config(url)
         command.upgrade(config, "head")
         assert twin_tables(url) == {*TABLES, "alembic_version"}
-        assert TwinStore.from_url(url).revision() == "twin_0003"
+        assert TwinStore.from_url(url).revision() == "twin_0004"
         assert {"scheduled_for", "run_s"} <= job_columns(url)
         assert {"before", "after"} <= job_columns(url, "audit_log")
+
+        command.downgrade(config, "-1")  # twin_0004: the shift reports (SV-2.3)
+        assert TwinStore.from_url(url).revision() == "twin_0003"
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"shift_report"}
 
         command.downgrade(config, "-1")  # twin_0003: the values before and after of the audit log
         assert TwinStore.from_url(url).revision() == "twin_0002"
@@ -109,7 +114,7 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
 
         command.downgrade(config, "-1")  # twin_0002: the slot and execution time of the jobs
         assert TwinStore.from_url(url).revision() == "twin_0001"
-        assert twin_tables(url) == {*TABLES, "alembic_version"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"shift_report"}
         assert not {"scheduled_for", "run_s"} & job_columns(url)
 
         command.downgrade(config, "base")
@@ -401,6 +406,44 @@ def test_shift_records_are_written_once(store) -> None:
         store.shifts.freeze(_shift("2026-10-27_D", T0))
     with pytest.raises(ValueError, match="does not match"):
         store.shifts.freeze(_shift("2026-10-28_A", T0 + 24 * H, letter="B"))
+
+
+def _report(key: str, start: datetime, generated: datetime, **values) -> dict:
+    return {
+        "shift_key": key,
+        "shift_start": start,
+        "shift_end": start + 8 * H,
+        "kind": "closed",
+        "trigger": "schedule",
+        "requested_by": "scheduler",
+        "generated_at": generated,
+        "furnace_status": "STABLE",
+        "fuel_rate_kg_thm": 528.4,
+        "narrative_status": "ok",
+        "narrative": "Stable shift.",
+        "narrative_tries": 1,
+        "data": {"fuel_rate": 528.4, "etaco": {"mean": 47.1, "std": 0.4}},
+        "document": {"title": f"Live Report ({key})", "sections": []},
+        **values,
+    }
+
+
+@needs_postgres
+def test_shift_reports_are_listed_by_shift(store) -> None:
+    a = store.reports.add(_report("2026-10-27_A", T0, T0 + 8 * H + H / 3))
+    rerun = store.reports.add(_report("2026-10-27_A", T0, T0 + 9 * H, narrative_status="failed", narrative=None))
+    store.reports.add(_report("2026-10-27_B", T0 + 8 * H, T0 + 12 * H, kind="live", trigger="user"))
+    got = store.reports.get(a.id)
+    assert got.letter == "A" and got.data["etaco"]["mean"] == 47.1 and got.fuel_rate_kg_thm == 528.4
+    assert [r.shift_key for r in store.reports.recent()] == ["2026-10-27_B", "2026-10-27_A", "2026-10-27_A"]
+    assert [r.id for r in store.reports.recent(start=T0, end=T0 + 8 * H)] == [rerun.id, a.id]
+    assert [r.kind for r in store.reports.recent(letter="B")] == ["live"]
+    assert store.reports.latest("2026-10-27_A").id == rerun.id
+    assert store.reports.latest("2026-10-27_B", kind="closed") is None
+    with pytest.raises(ValueError, match="shift_key"):
+        store.reports.add(_report("2026-10-27_X", T0, T0))
+    with pytest.raises(IntegrityError):  # narrative status outside ok / failed / skipped
+        store.reports.add(_report("2026-10-27_C", T0 + 16 * H, T0 + 24 * H, narrative_status="pending"))
 
 
 @needs_postgres

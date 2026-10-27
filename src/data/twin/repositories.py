@@ -37,6 +37,7 @@ from data.twin.models import (
     OptimiserRun,
     PlanDecision,
     ShiftRecord,
+    ShiftReport,
     Snapshot,
     TwinBase,
 )
@@ -427,6 +428,61 @@ class ShiftRecordRepository(_Repository):
             return list(session.scalars(query))
 
 
+class ShiftReportRepository(_Repository):
+    """Shift reports (SV-2.3): one row per generated report; a re-run of a shift adds a row, the latest applies."""
+
+    def add(self, values: Mapping[str, Any]) -> ShiftReport:
+        data = _checked(ShiftReport, values)
+        data["id"] = uuid.UUID(str(data["id"])) if data.get("id") else uuid.uuid4()
+        key = str(data.get("shift_key", ""))
+        match = SHIFT_KEY.match(key)
+        if not match:
+            raise ValueError(f"shift_key must read YYYY-MM-DD_A|B|C, got {key!r}")
+        data.setdefault("letter", match.group(1))
+        if data["letter"] != match.group(1):
+            raise ValueError(f"letter {data['letter']} does not match shift_key {key}")
+        with self._sessions.begin() as session:
+            row = ShiftReport(**data)
+            session.add(row)
+        return row
+
+    def get(self, report_id: uuid.UUID | str) -> ShiftReport | None:
+        with self._sessions() as session:
+            return session.get(ShiftReport, uuid.UUID(str(report_id)))
+
+    def latest(self, shift_key: str, *, kind: str | None = None) -> ShiftReport | None:
+        """The latest report of the shift (of ``kind`` when given)."""
+        query = select(ShiftReport).where(ShiftReport.shift_key == shift_key)
+        if kind:
+            query = query.where(ShiftReport.kind == kind)
+        with self._sessions() as session:
+            return session.scalars(query.order_by(ShiftReport.generated_at.desc()).limit(1)).one_or_none()
+
+    def recent(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        letter: str | None = None,
+        kind: str | None = None,
+        limit: int = 50,
+    ) -> list[ShiftReport]:
+        """Reports of shifts starting in [start, end), newest shift first and, within a shift, newest report first."""
+        query = (
+            select(ShiftReport).order_by(ShiftReport.shift_start.desc(), ShiftReport.generated_at.desc()).limit(limit)
+        )
+        if start:
+            query = query.where(ShiftReport.shift_start >= _utc(start, "start"))
+        if end:
+            query = query.where(ShiftReport.shift_start < _utc(end, "end"))
+        if letter:
+            query = query.where(ShiftReport.letter == letter)
+        if kind:
+            query = query.where(ShiftReport.kind == kind)
+        with self._sessions() as session:
+            return list(session.scalars(query))
+
+
 class AlarmRepository(_Repository):
     """Alarms from raise to clear; at most one open alarm per kind and subject."""
 
@@ -734,6 +790,7 @@ class TwinStore:
         self.snapshots = SnapshotRepository(sessions)
         self.optimiser = OptimiserRunRepository(sessions)
         self.shifts = ShiftRecordRepository(sessions)
+        self.reports = ShiftReportRepository(sessions)
         self.alarms = AlarmRepository(sessions)
         self.facts = FactsVersionRepository(sessions)
         self.audit = AuditRepository(sessions)
