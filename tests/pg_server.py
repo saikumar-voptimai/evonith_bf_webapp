@@ -93,10 +93,13 @@ def postgres_server() -> Iterator[str]:
         capture_output=True,
     )
     pg_ctl = [*run_as, str(BINDIR / "pg_ctl"), "-D", str(data)]
+    # On Windows the server inherits pg_ctl's output handles, so captured pipes would never close; its log goes to
+    # server.log through -l in any case.
+    output = (
+        {"capture_output": True} if os.name == "posix" else {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    )
     subprocess.run(
-        [*pg_ctl, "-l", str(root / "server.log"), "-w", "-t", "60", "-o", options, "start"],
-        check=True,
-        capture_output=True,
+        [*pg_ctl, "-l", str(root / "server.log"), "-w", "-t", "60", "-o", options, "start"], check=True, **output
     )
     try:
         deadline = time.monotonic() + 30
