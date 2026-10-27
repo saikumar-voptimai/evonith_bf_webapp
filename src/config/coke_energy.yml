@@ -180,3 +180,10 @@ coke_energy:
         block_h: 24                    # moving-block bootstrap, 95 % interval
         n_boot: 500
         basis: ferrous                 # coke per tonne of ferrous charged (charge: coke per charge on the counter)
+    # HMT one descent time ahead (SV-1.4, utils.coke_energy.hmt_forecast; gate run: scripts/hmt_gate.py). Every
+    # window carries the forecast quantities; the Live Twin shows the forecast only with gate status "passed".
+    hmt_forecast:
+      gate:
+        status: pending              # pending | passed | failed (set from the gate runs, register COKE-18 / COKE-19)
+        rmse_ratio_max: 0.90         # model RMSE at most 90 % of persistence at the tau_RW horizon
+        bias_max_c: 5.0

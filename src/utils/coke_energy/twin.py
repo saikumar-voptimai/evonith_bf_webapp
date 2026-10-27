@@ -38,7 +38,7 @@ import pandas as pd
 
 from utils.burden_engine import strata_window
 from utils.burden_engine.strata_network import solve_stats
-from utils.coke_energy import burden_column
+from utils.coke_energy import burden_column, hmt_forecast
 from utils.coke_energy.build_shifts import build_shift_inputs, window_key
 from utils.coke_energy.burnt import k_burnt
 from utils.coke_energy.pipeline import (
@@ -289,9 +289,12 @@ def evaluate_window(
     omega_roll = _num(med["omega_roll"])
     prod = float(rb.prod_th)
 
-    def balance(omega: float) -> dict:
+    def balance(omega: float, hmt: float | None = None) -> dict:
+        case = _case(cases, key)
+        if hmt is not None:
+            case["HMT"] = float(hmt)
         return solve_2z(
-            _case(cases, key),
+            case,
             p,
             omega,
             med["Q_LZ_GJh_roll"] * 1000 / prod,
@@ -321,6 +324,10 @@ def evaluate_window(
         except Exception as exc:  # noqa: BLE001 - reported, the rest of the evaluation stands
             ev.notes.append(f"FORGE: two-zone balance did not solve ({exc})")
 
+    # HMT one descent time ahead (SV-1.4; shown only after its gate): the FORGE balance at the latest tap HMT.
+    if ev.k_forge is not None:
+        _hmt_forecast(ev, fd, hm, window, S.loc[key], balance)
+
     # K_STRATA: the same balance with omega_STRATA of the window against the same 14 days.
     if strata and ev.k_forge is not None:
         _evaluate_strata(ev, pool, S.loc[key], rb, window, settings, balance)
@@ -348,6 +355,46 @@ def _transit_quantities(
         ev.notes.append("transit: the charge record does not reach the oldest charge of the column")
     ev.flags["transit_missing_hours"] = st.missing_hours
     return burden_column.quantities(st)
+
+
+def _hmt_forecast(
+    ev: WindowEvaluation,
+    fd: pd.DataFrame,
+    hm: pd.DataFrame,
+    window: Window,
+    row: pd.Series,
+    balance: Callable[..., dict],
+) -> None:
+    """HMT_f(t + tau_RW) of ``hmt_forecast`` into the quantities (nothing when a part is missing)."""
+    now = hmt_forecast.latest(hmt_forecast.taps(hm), window.end)
+    if now is None:
+        return
+    hmt_now, age = now
+    hm_t = _num(row.get("PRODUCTIONTONNESPERHR"))
+    fer = sum(_num(row.get(c)) or 0.0 for c in ("SINTER_CALC_MT", "ORE_CALC_MT", "TOTAL_PELLET_CALC_MT"))
+    karr = hmt_forecast.k_arr(fd, window.end, 1000.0 * fer / hm_t) if hm_t else None
+    horizon = ev.quantities.get("tau_raceway_h")
+    if karr is None or horizon is None:
+        return
+    omega = ev.omega_cal
+    try:
+        k0 = _num(balance(omega, hmt_now)["K"])
+        k1 = _num(balance(omega, hmt_now + hmt_forecast.DHMT)["K"])
+    except Exception as exc:  # noqa: BLE001 - reported, the evaluation stands
+        ev.notes.append(f"HMT forecast: balance at the tap HMT did not solve ({exc})")
+        return
+    if k0 is None or k1 is None:
+        return
+    slope = (k1 - k0) / hmt_forecast.DHMT
+    f = hmt_forecast.forecast(hmt_now, karr, k0, slope)
+    ev.quantities.update(
+        hmt_now_c=hmt_now,
+        hmt_now_age_h=age,
+        k_arr_kg_thm=karr,
+        k_forge_hmt_now_kg_thm=k0,
+        dk_dhmt_kg_thm_per_c=slope,
+        **({"hmt_forecast_c": f, "hmt_forecast_horizon_h": float(horizon)} if f is not None else {}),
+    )
 
 
 def _evaluate_strata(

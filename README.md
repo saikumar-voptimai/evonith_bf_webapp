@@ -1045,6 +1045,15 @@ column at its end (`tau_cz_h`, `tau_raceway_h`, `coke_*_t`). Implied lag: coke p
 K_TRACE of the stored windows over 14 days, 95 % moving-block bootstrap interval. Report:
 `python scripts/transit_report.py [--at ...] [--lag]`.
 
+**HMT forecast (SV-1.4, gated).** `src/utils/coke_energy/hmt_forecast.py`: HMT_f(t + τ_RW) = HMT(t) + [K_arr(t) −
+K_FORGE(HMT(t), x(t))] / (∂K_FORGE/∂HMT), HMT(t) the latest tap (≤ 3 h old), K_arr the dry coke per tHM of the last
+hour's charges (their coke-to-ferrous ratio times the window's ferrous rate), K_FORGE the window's FORGE balance at
+HMT(t), the slope by a 10 °C difference, τ_RW from the burden column. Every window carries these quantities
+(`hmt_now_c`, `k_arr_kg_thm`, `dk_dhmt_kg_thm_per_c`, `hmt_forecast_c`, `hmt_forecast_horizon_h`); the Live Twin
+shows the forecast only when `twin.hmt_forecast.gate.status` is `passed`. Gate run on plant data:
+`python scripts/hmt_gate.py --from 2026-01-01 --to 2026-10-08 --write` (RMSE at least 10 % below persistence and
+|bias| ≤ 5 °C; recorded as COKE-18, the 2023–24 run as COKE-19).
+
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family
 look as in Optimus: dark sidebar, light canvas, white panels, yellow accent, Inter; text contrast >= 4.5:1 on every

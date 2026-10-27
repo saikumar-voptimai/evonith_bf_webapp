@@ -76,7 +76,7 @@ def evaluate(
     pool = (page_data_for or ce.page_data)(keys, settings).result
     window = Window.ending(now_ist() if t is None else t, hours)
     reference, _ = transit.settings(cfg)
-    return evaluate_window(
+    ev = evaluate_window(
         frames.fd,
         frames.m10,
         frames.hm,
@@ -88,6 +88,16 @@ def evaluate(
         strata=strata,
         transit=reference,
     )
+    ev.flags["hmt_forecast_gate"] = hmt_gate_status(cfg)
+    return ev
+
+
+def hmt_gate_status(cfg: Mapping[str, Any]) -> str:
+    """Gate status of the HMT forecast (``twin.hmt_forecast.gate.status``): the Live Twin shows the forecast only
+    when it is ``passed`` (SV-1.4)."""
+    gate = (((cfg or {}).get("twin") or {}).get("hmt_forecast") or {}).get("gate") or {}
+    status = str(gate.get("status", "pending"))
+    return status if status in ("pending", "passed", "failed") else "pending"
 
 
 def snapshot_event(values: Mapping[str, Any]) -> TwinSnapshotData:
