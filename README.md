@@ -1019,7 +1019,9 @@ exact mode (no Jacobian): one solve per new anchor and three per window, about 1
 `partial` (a 14-day quantity or STRATA missing; the notes say which), `failed` (too little data, a known data error, or
 a balance that does not solve). Tests: `tests/test_twin_window.py` (every window on a completed shift equals the
 pipeline: largest difference 0.0 kg/tHM and 0.0 in ω on 54 synthetic shifts), `tests/test_twin_strata.py`,
-`tests/test_services_twin.py`.
+`tests/test_services_twin.py`. On plant data (InfluxDB and Neon reachable): `python scripts/twin_parity.py --days 14`
+evaluates the window of every balanced shift of the last 14 days against the pipeline table and exits with 1 above
+0.1 kg/tHM or 0.0005 in ω (`--strata` adds K_STRATA and the evaluation time per window, `--out` a JSON report).
 
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family

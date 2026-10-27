@@ -357,6 +357,7 @@ def _evaluate_strata(
     dk = (k_up - k) / DOMEGA
     t = sw.terms
     sigma_k = abs(dk) * sw.sigma
+    wet = 1 - (_num(row.get("COKE_MOIST%")) or 0.0) / 100  # the certainty tiers are set on wet coke (engine sig_K)
     ev.omega_strata, ev.omega_strata_sd = sw.omega, sw.sigma
     ev.k_strata, ev.k_strata_sd = k, sigma_k
     ev.quantities.update(
@@ -372,7 +373,7 @@ def _evaluate_strata(
         "support": t.support,
         "outside": list(t.outside),
         "investigate": list(t.investigate),
-        "certainty": anchor.model.certainty(sigma_k, t.support, t.investigate),
+        "certainty": anchor.model.certainty(sigma_k / wet, t.support, t.investigate),
         "unmapped_ores": sorted(set(anchor.unmapped) | set(sw.unmapped)),
     }
     ev.versions.update(strata_window.versions(anchor))
