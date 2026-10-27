@@ -1488,14 +1488,97 @@
         "type": "object"
       },
       "LiveStatusData": {
+        "description": "Worker state every 10 s and, while clients hold the event stream, the plant snapshot of that beat (SV-2.1, one\nInfluxDB snapshot query per beat for all clients; ``services.live_status``). Without clients, or when the snapshot\nis not ready, only ``worker`` is set and the plant fields are empty or null.",
         "properties": {
+          "data_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Newest reading of the snapshot (UTC)",
+            "title": "Data At"
+          },
+          "live_max_age_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest age of the newest reading for live telemetry (furnace_status.yml), min",
+            "title": "Live Max Age Minutes"
+          },
+          "operating_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "normal",
+                  "reduced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "normal when hot_blast_volume >= operating_state.normal_min of furnace_status.yml (25,000 Nm\u00b3/h), reduced below; null when unknown or without a snapshot",
+            "title": "Operating State"
+          },
+          "stale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "No reading within stale_after_minutes; null when the event carries no snapshot",
+            "title": "Stale"
+          },
+          "stale_after_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age from which a reading counts as stale (furnace_status.yml), min",
+            "title": "Stale After Minutes"
+          },
           "tags": {
             "additionalProperties": {
               "$ref": "#/components/schemas/TagValue"
             },
-            "description": "Latest plant readings (not yet filled: KPI strip of the Live Twin, SV-1.9)",
+            "description": "Latest readings by furnace-status catalogue key (config/furnace_status.yml: production_rate, hot_blast_volume, o2_injection, pci_rate, co_utilization, raft, charges_per_hr, ...; every parameter with a live source, value null when stale), plus hmt (\u00b0C) and hm_si (%) of the latest hot-metal sample in Neon (at = sample time) when it is reachable",
             "title": "Tags",
             "type": "object"
+          },
+          "telemetry": {
+            "anyOf": [
+              {
+                "enum": [
+                  "live",
+                  "partial",
+                  "offline"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Telemetry availability of the snapshot (the V-Board header): live = newest reading within live_max_age_minutes and enough parameters reporting; null without a snapshot",
+            "title": "Telemetry"
           },
           "worker": {
             "$ref": "#/components/schemas/WorkerStatus"
@@ -3659,6 +3742,629 @@
         "title": "SlotProblem",
         "type": "object"
       },
+      "StatusFreshness": {
+        "properties": {
+          "age_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "computed_at minus the newest reading, s",
+            "title": "Age S"
+          },
+          "computed_at": {
+            "description": "Time the snapshot was taken (UTC)",
+            "format": "date-time",
+            "title": "Computed At",
+            "type": "string"
+          },
+          "coverage": {
+            "description": "Share of mapped parameters with a fresh reading, fraction 0-1",
+            "title": "Coverage",
+            "type": "number"
+          },
+          "data_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Newest reading or setpoint of the snapshot (UTC)",
+            "title": "Data At"
+          },
+          "detail": {
+            "description": "Mapped parameters reporting, e.g. '40 of 41 mapped parameters reporting'",
+            "title": "Detail",
+            "type": "string"
+          },
+          "failed_sources": {
+            "description": "InfluxDB measurements that could not be read",
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Sources",
+            "type": "array"
+          },
+          "live_max_age_minutes": {
+            "description": "Largest age of the newest reading for live telemetry, min",
+            "title": "Live Max Age Minutes",
+            "type": "number"
+          },
+          "live_min_coverage": {
+            "description": "Smallest coverage for live telemetry, fraction 0-1",
+            "title": "Live Min Coverage",
+            "type": "number"
+          },
+          "source": {
+            "description": "producer: the worker's live snapshot (Redis, every 10 s); request: taken for this request",
+            "enum": [
+              "producer",
+              "request"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "stale": {
+            "description": "No parameter has a reading within stale_after_minutes",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_after_minutes": {
+            "description": "Age from which a reading is not shown, min",
+            "title": "Stale After Minutes",
+            "type": "number"
+          },
+          "telemetry": {
+            "description": "Telemetry availability as the V-Board header (not furnace health): live when the newest reading is within live_max_age_minutes and coverage >= live_min_coverage, offline without fresh readings",
+            "enum": [
+              "live",
+              "partial",
+              "offline"
+            ],
+            "title": "Telemetry",
+            "type": "string"
+          },
+          "telemetry_label": {
+            "title": "Telemetry Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "computed_at",
+          "stale",
+          "telemetry",
+          "telemetry_label",
+          "detail",
+          "coverage",
+          "stale_after_minutes",
+          "live_max_age_minutes",
+          "live_min_coverage",
+          "source"
+        ],
+        "title": "StatusFreshness",
+        "type": "object"
+      },
+      "StatusLimits": {
+        "properties": {
+          "basis": {
+            "description": "Statement of that fact",
+            "title": "Basis",
+            "type": "string"
+          },
+          "fact": {
+            "description": "Fact of the process fact register the limits come from, e.g. ASM-11",
+            "title": "Fact",
+            "type": "string"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper limit; a reading above it is high, in the parameter's unit",
+            "title": "High"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower limit; a reading below it is low, in the parameter's unit",
+            "title": "Low"
+          }
+        },
+        "required": [
+          "fact",
+          "basis"
+        ],
+        "title": "StatusLimits",
+        "type": "object"
+      },
+      "StatusOperatingState": {
+        "properties": {
+          "detail": {
+            "description": "Rule and current value as the V-Board shows them",
+            "title": "Detail",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "level": {
+            "description": "Operating state of the V-Board",
+            "enum": [
+              "normal",
+              "abnormal",
+              "unknown"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "normal_min": {
+            "description": "Lowest value of normal operation, in the unit of the deciding parameter (Nm\u00b3/h)",
+            "title": "Normal Min",
+            "type": "number"
+          },
+          "parameter": {
+            "description": "Catalogue key of the deciding parameter",
+            "title": "Parameter",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "normal",
+                  "reduced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "normal at or above normal_min, reduced below it, null when unknown (live.status wording)",
+            "title": "State"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fresh reading of the deciding parameter, in the unit of the deciding parameter (Nm\u00b3/h)",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "level",
+          "label",
+          "detail",
+          "parameter",
+          "normal_min"
+        ],
+        "title": "StatusOperatingState",
+        "type": "object"
+      },
+      "StatusParameter": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of value (UTC)",
+            "title": "At"
+          },
+          "decimals": {
+            "description": "Decimals the V-Board shows, count",
+            "title": "Decimals",
+            "type": "integer"
+          },
+          "display": {
+            "description": "Reading as the V-Board shows it, without unit: 'setpoint / actual' for SP parameters",
+            "title": "Display",
+            "type": "string"
+          },
+          "key": {
+            "description": "Catalogue key (config/furnace_status.yml)",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatusLimits"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Limits of the parameter; null when it has none"
+          },
+          "note": {
+            "default": "",
+            "description": "Source note, or why the parameter has no live source",
+            "title": "Note",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
+          "setpoint": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest setpoint within stale_after_minutes, in unit",
+            "title": "Setpoint"
+          },
+          "setpoint_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of setpoint (UTC)",
+            "title": "Setpoint At"
+          },
+          "state": {
+            "description": "ok: fresh reading (inside its limits when it has limits); low / high: outside its limits; stale: newest reading older than stale_after_minutes; no_data: no reading in the window; fetch_failed: its measurement could not be read; no_source: no live field",
+            "enum": [
+              "ok",
+              "low",
+              "high",
+              "stale",
+              "no_data",
+              "fetch_failed",
+              "no_source"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "description": "Title of the parameter's trend",
+            "title": "Title",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of value, setpoint and limits; empty when the plant unit is not confirmed",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest reading within stale_after_minutes (scaled as shown, unrounded), in unit",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "title",
+          "section",
+          "unit",
+          "decimals",
+          "display",
+          "state"
+        ],
+        "title": "StatusParameter",
+        "type": "object"
+      },
+      "StatusSnapshotView": {
+        "description": "Latest 15-min snapshot of every furnace-status catalogue parameter, as the Streamlit V-Board shows it.",
+        "properties": {
+          "freshness": {
+            "$ref": "#/components/schemas/StatusFreshness"
+          },
+          "operating_state": {
+            "$ref": "#/components/schemas/StatusOperatingState"
+          },
+          "parameters": {
+            "description": "Every catalogue parameter, in display order",
+            "items": {
+              "$ref": "#/components/schemas/StatusParameter"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "sections": {
+            "description": "Section names, in display order",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "zones": {
+            "description": "Furnace zones, top to bottom, with their related readings",
+            "items": {
+              "$ref": "#/components/schemas/StatusZone"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "parameters",
+          "sections",
+          "zones",
+          "operating_state",
+          "freshness"
+        ],
+        "title": "StatusSnapshotView",
+        "type": "object"
+      },
+      "StatusTrend": {
+        "properties": {
+          "end": {
+            "description": "End of the range (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "interval": {
+            "description": "1h, 4h, 8h, 16h, 24h or custom",
+            "title": "Interval",
+            "type": "string"
+          },
+          "max_points": {
+            "description": "Most points per series after decimation, count",
+            "title": "Max Points",
+            "type": "integer"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/StatusTrendSeries"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "start": {
+            "description": "Start of the range (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "interval",
+          "start",
+          "end",
+          "max_points",
+          "series"
+        ],
+        "title": "StatusTrend",
+        "type": "object"
+      },
+      "StatusTrendSeries": {
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/StatusParameter",
+            "description": "Current reading, as the V-Board trend header"
+          },
+          "decimals": {
+            "description": "Decimals the V-Board shows, count",
+            "title": "Decimals",
+            "type": "integer"
+          },
+          "key": {
+            "description": "Catalogue key",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "description": "Why there is no series (no_source, no_data, error)",
+            "title": "Message",
+            "type": "string"
+          },
+          "raw_points": {
+            "default": 0,
+            "description": "Samples of the range before decimation (gap marks included), count",
+            "title": "Raw Points",
+            "type": "integer"
+          },
+          "setpoint_times": {
+            "description": "Setpoint sample times (UTC)",
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Setpoint Times",
+            "type": "array"
+          },
+          "setpoints": {
+            "description": "Setpoints; null marks a gap, in unit",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Setpoints",
+            "type": "array"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatusTrendStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Minimum, maximum and mean of the raw range"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "no_source",
+              "no_data",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "times": {
+            "description": "Sample times (UTC)",
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Times",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of values, setpoints and stats; empty when not confirmed",
+            "title": "Unit",
+            "type": "string"
+          },
+          "values": {
+            "description": "Readings; null marks a gap in the data (break the line there), in unit",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "title",
+          "unit",
+          "decimals",
+          "status",
+          "current"
+        ],
+        "title": "StatusTrendSeries",
+        "type": "object"
+      },
+      "StatusTrendStats": {
+        "properties": {
+          "maximum": {
+            "description": "Highest reading of the range, in unit",
+            "title": "Maximum",
+            "type": "number"
+          },
+          "mean": {
+            "description": "Mean reading of the range, in unit",
+            "title": "Mean",
+            "type": "number"
+          },
+          "minimum": {
+            "description": "Lowest reading of the range, in unit",
+            "title": "Minimum",
+            "type": "number"
+          }
+        },
+        "required": [
+          "minimum",
+          "maximum",
+          "mean"
+        ],
+        "title": "StatusTrendStats",
+        "type": "object"
+      },
+      "StatusZone": {
+        "properties": {
+          "lower_m": {
+            "description": "Lower edge, elevation above the hearth bottom, m",
+            "title": "Lower M",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "readings": {
+            "description": "Catalogue keys of the readings related to the zone (its callouts)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Readings",
+            "type": "array"
+          },
+          "upper_m": {
+            "description": "Upper edge, elevation above the hearth bottom, m",
+            "title": "Upper M",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "lower_m",
+          "upper_m",
+          "readings"
+        ],
+        "title": "StatusZone",
+        "type": "object"
+      },
       "SubmitRequest": {
         "properties": {
           "kind": {
@@ -3707,7 +4413,7 @@
                 "type": "null"
               }
             ],
-            "description": "Time of the reading (UTC)",
+            "description": "Time of the reading or sample (UTC)",
             "title": "At"
           },
           "unit": {
@@ -3719,6 +4425,7 @@
                 "type": "null"
               }
             ],
+            "description": "Unit of value; empty when the plant unit is not confirmed",
             "title": "Unit"
           },
           "value": {
@@ -3730,6 +4437,7 @@
                 "type": "null"
               }
             ],
+            "description": "Latest reading; null without a fresh reading, in unit",
             "title": "Value"
           }
         },
@@ -4644,17 +5352,17 @@
             "type": "string"
           },
           "pool_size": {
-            "description": "Processes of the model-solve pool",
+            "description": "Processes of the model-solve pool, count",
             "title": "Pool Size",
             "type": "integer"
           },
           "queued": {
-            "description": "Jobs waiting in the queue",
+            "description": "Jobs waiting in the queue, count",
             "title": "Queued",
             "type": "integer"
           },
           "running": {
-            "description": "Jobs running in this worker",
+            "description": "Jobs running in this worker, count",
             "title": "Running",
             "type": "integer"
           },
@@ -6004,6 +6712,175 @@
         "summary": "A shift report",
         "tags": [
           "reports"
+        ]
+      }
+    },
+    "/api/status/snapshot": {
+      "get": {
+        "description": "Every catalogue parameter with its latest reading of the last 15 min (value, unit, time, state against its\nlimits), the zones with their related readings, the operating state and the freshness of the data. From the\nworker's live snapshot while it is fresh (``freshness.source`` producer), else taken for the request.",
+        "operationId": "status_snapshot",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusSnapshotView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Latest furnace status snapshot",
+        "tags": [
+          "status"
+        ]
+      }
+    },
+    "/api/status/trend": {
+      "get": {
+        "description": "Raw readings of each parameter over the range (the V-Board's trend: setpoint series where the parameter has\none, a null where the data has a gap), the minimum, maximum and mean of the raw range and the current reading.",
+        "operationId": "status_trend",
+        "parameters": [
+          {
+            "description": "Comma-separated catalogue keys, at most 8 (e.g. hot_blast_volume,raft)",
+            "in": "query",
+            "name": "parameters",
+            "required": true,
+            "schema": {
+              "description": "Comma-separated catalogue keys, at most 8 (e.g. hot_blast_volume,raft)",
+              "title": "Parameters",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Range ending now, or custom (start and end)",
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "8h",
+              "description": "Range ending now, or custom (start and end)",
+              "enum": [
+                "1h",
+                "4h",
+                "8h",
+                "16h",
+                "24h",
+                "custom"
+              ],
+              "title": "Interval",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Start of a custom range; a time without offset is IST",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start of a custom range; a time without offset is IST",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "End of a custom range (at most 7 days after start; clamped to now)",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End of a custom range (at most 7 days after start; clamped to now)",
+              "title": "End"
+            }
+          },
+          {
+            "description": "Most points per series, count (min/max decimation above it)",
+            "in": "query",
+            "name": "max_points",
+            "required": false,
+            "schema": {
+              "default": 2000,
+              "description": "Most points per series, count (min/max decimation above it)",
+              "maximum": 10000,
+              "minimum": 100,
+              "title": "Max Points",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusTrend"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Furnace status trends",
+        "tags": [
+          "status"
         ]
       }
     },

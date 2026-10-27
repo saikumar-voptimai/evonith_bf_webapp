@@ -15,6 +15,7 @@ os.environ.setdefault("BF_TWIN_DB_URL", "off")             # no job archive into
 # reports) and catches up nothing at start; the schedule tests enable both explicitly.
 os.environ.setdefault("BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.,report.")
 os.environ.setdefault("BF_WORKER_CATCH_UP", "0")
+os.environ.setdefault("BF_WORKER_LIVE_STATUS", "0")       # no InfluxDB snapshot query from a test worker's heartbeat
 # STRATA-Flow network solves one after the other; the parallel tests start their solver processes themselves.
 os.environ.setdefault("BF_STRATA_SOLVERS", "0")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")  # utils.settings needs a Qdrant URL; no test connects

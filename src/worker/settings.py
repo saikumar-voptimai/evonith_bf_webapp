@@ -6,6 +6,7 @@ delivery, default the longest kind limit plus 60 s; a job interrupted by a worke
 10 s has passed), ``BF_WORKER_SKIP_SCHEDULES`` (comma-separated kinds, or prefixes ending in ".", that are not
 scheduled: the test suite skips ``forecast.,twin.,optimiser.,calibration.,learn.,report.``, so a test worker never
 reads plant data; such kinds can still be submitted), ``BF_WORKER_CATCH_UP`` (``0`` turns the catch-up at start off; the
+test suite sets it), ``BF_WORKER_LIVE_STATUS`` (``0`` turns the live furnace-status producer of the heartbeat off; the
 test suite sets it). Job records are archived in ``twin.jobs`` when ``BF_TWIN_DB_URL`` or ``DATABASE_URL`` is set.
 
 At start the worker runs the latest missed slot of each scheduled kind when the slot is at most 30 min old and records
@@ -76,6 +77,12 @@ def catch_up_enabled() -> bool:
     return os.environ.get("BF_WORKER_CATCH_UP", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
+def live_status_enabled() -> bool:
+    """Whether the heartbeat produces the live furnace status (``BF_WORKER_LIVE_STATUS``, default on; the test suite
+    turns it off, so a test worker never queries InfluxDB)."""
+    return os.environ.get("BF_WORKER_LIVE_STATUS", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
 def cron_jobs() -> list[Any]:
     """arq cron entries of the scheduled kinds, at second 0 of their IST hours and minutes."""
     jobs = []
@@ -100,6 +107,10 @@ async def on_startup(ctx: dict[str, Any]) -> None:
     ctx["running"] = set()
     ctx["name"] = worker_name()
     ctx["started_at"] = datetime.now(UTC)
+    if live_status_enabled():
+        from services.live_status import LiveStatusProducer
+
+        ctx["live_status"] = LiveStatusProducer(ctx["name"])
     since = await read_alive(redis)  # before the first heartbeat of this worker overwrites it
     ctx["heartbeat"] = asyncio.create_task(heartbeat_loop(ctx))
     if catch_up_enabled():
@@ -119,6 +130,9 @@ async def on_shutdown(ctx: dict[str, Any]) -> None:
         task = ctx.get(name)
         if task is not None:
             task.cancel()
+    producer = ctx.get("live_status")
+    if producer is not None:
+        await producer.close()
     try:
         await mark_alive(ctx["redis"])  # the next start catches up from here
     except Exception as exc:

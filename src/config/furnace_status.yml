@@ -128,6 +128,10 @@ sections:
   - Hearth Temperatures
 
 # Order is the dashboard display order. Do not sort this list.
+# limits (optional, SV-2.1): the status of the twin-api snapshot compares the reading with parameters of one fact of the
+# process fact register (src/config/facts_register.json), values in the parameter's display unit. ASM-11 = the
+# optimiser's process limits (observed Jun-Oct envelope, not equipment ratings), BAND-01 = the fuel-rate band. Change
+# the values in the register, not here. The Streamlit V-Board does not use them.
 parameters:
   - key: production_theoretical
     label: Production (Theor.)
@@ -160,6 +164,7 @@ parameters:
     field: hot_blast_vol_nm3h
     unit: Nm³/h
     decimals: 0
+    limits: {fact: ASM-11, high: V_max}
 
   - key: blast_pressure
     label: Blast Pressure
@@ -168,6 +173,7 @@ parameters:
     field: hot_blast_press
     unit: bar
     decimals: 2
+    limits: {fact: ASM-11, high: Pb_max}
 
   - key: top_pressure
     label: Top Pressure
@@ -176,6 +182,7 @@ parameters:
     field: top_press_avg
     unit: bar
     decimals: 2
+    limits: {fact: ASM-11, low: Pt_min, high: Pt_max}
 
   - key: body_dp_total
     label: Total DP
@@ -184,6 +191,7 @@ parameters:
     field: body_dp_total
     unit: bar
     decimals: 2
+    limits: {fact: ASM-11, high: dP_max}
 
   - key: body_dp_bottom
     label: Bottom Pressure
@@ -217,6 +225,7 @@ parameters:
     field: hot_blast_temp
     unit: °C
     decimals: 0
+    limits: {fact: ASM-11, high: HBT_max}
 
   - key: raft
     label: RAFT
@@ -225,6 +234,7 @@ parameters:
     field: body_raft
     unit: °C
     decimals: 0
+    limits: {fact: ASM-11, low: RAFT_min, high: RAFT_max}
 
   - key: uptake_t1
     label: T1
@@ -301,6 +311,7 @@ parameters:
     unit: "%"
     decimals: 2
     source_note: Represents oxygen enrichment (%) of the blast.
+    limits: {fact: ASM-11, high: enrich_max}
 
   - key: oxygen_flow
     label: Oxygen Flow
@@ -309,6 +320,7 @@ parameters:
     field: oxygen_flow
     unit: Nm³/h
     decimals: 0
+    limits: {fact: ASM-11, high: O2_flow_max}
 
   - key: flare_bypass_press
     label: Flare Stack Bypass Pressure
@@ -340,6 +352,7 @@ parameters:
     components: [coal_rate_actual_value, coke_rate, nut_coke_rate]
     aggregate: sum
     source_note: Actual is PCI actual + coke rate + nut coke rate.
+    limits: {fact: BAND-01, low: lo, high: hi}
 
   - key: coke_rate
     label: Coke Rate

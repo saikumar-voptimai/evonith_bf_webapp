@@ -42,21 +42,55 @@ JobState = Literal["queued", "running", "done", "failed", "cancelled"]
 class WorkerStatus(BaseModel):
     name: str = Field(..., description="Worker process name (host:pid)")
     started_at: datetime
-    running: int = Field(..., description="Jobs running in this worker")
-    queued: int = Field(..., description="Jobs waiting in the queue")
-    pool_size: int = Field(..., description="Processes of the model-solve pool")
+    running: int = Field(..., description="Jobs running in this worker, count")
+    queued: int = Field(..., description="Jobs waiting in the queue, count")
+    pool_size: int = Field(..., description="Processes of the model-solve pool, count")
 
 
 class TagValue(BaseModel):
-    value: float | None
-    unit: str | None = None
-    at: datetime | None = Field(None, description="Time of the reading (UTC)")
+    value: float | None = Field(..., description="Latest reading; null without a fresh reading, in unit")
+    unit: str | None = Field(None, description="Unit of value; empty when the plant unit is not confirmed")
+    at: datetime | None = Field(None, description="Time of the reading or sample (UTC)")
 
 
 class LiveStatusData(BaseModel):
+    """Worker state every 10 s and, while clients hold the event stream, the plant snapshot of that beat (SV-2.1, one
+    InfluxDB snapshot query per beat for all clients; ``services.live_status``). Without clients, or when the snapshot
+    is not ready, only ``worker`` is set and the plant fields are empty or null."""
+
     worker: WorkerStatus
     tags: dict[str, TagValue] = Field(
-        default_factory=dict, description="Latest plant readings (not yet filled: KPI strip of the Live Twin, SV-1.9)"
+        default_factory=dict,
+        description=(
+            "Latest readings by furnace-status catalogue key (config/furnace_status.yml: production_rate, "
+            "hot_blast_volume, o2_injection, pci_rate, co_utilization, raft, charges_per_hr, ...; every parameter "
+            "with a live source, value null when stale), plus hmt (°C) and hm_si (%) of the latest hot-metal sample "
+            "in Neon (at = sample time) when it is reachable"
+        ),
+    )
+    operating_state: Literal["normal", "reduced"] | None = Field(
+        None,
+        description=(
+            "normal when hot_blast_volume >= operating_state.normal_min of furnace_status.yml (25,000 Nm³/h), reduced "
+            "below; null when unknown or without a snapshot"
+        ),
+    )
+    data_at: datetime | None = Field(None, description="Newest reading of the snapshot (UTC)")
+    stale: bool | None = Field(
+        None, description="No reading within stale_after_minutes; null when the event carries no snapshot"
+    )
+    telemetry: Literal["live", "partial", "offline"] | None = Field(
+        None,
+        description=(
+            "Telemetry availability of the snapshot (the V-Board header): live = newest reading within "
+            "live_max_age_minutes and enough parameters reporting; null without a snapshot"
+        ),
+    )
+    stale_after_minutes: float | None = Field(
+        None, description="Age from which a reading counts as stale (furnace_status.yml), min"
+    )
+    live_max_age_minutes: float | None = Field(
+        None, description="Largest age of the newest reading for live telemetry (furnace_status.yml), min"
     )
 
 
