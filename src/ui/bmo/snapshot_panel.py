@@ -30,7 +30,6 @@ from utils.bmo.replay import (
     K_LATEST,
     K_PENDING,
     K_RECORD,
-    finalize_run,
     page_substitutes,
     results_marker,
 )
@@ -42,14 +41,14 @@ from utils.bmo.sandbox import (
     run_sandbox_page,
 )
 from utils.bmo.snapshot import (
-    capture,
     frozen_state,
     restorable_state,
     results_state,
     validate,
 )
 from utils.bmo.snapshot_report import build_docx
-from utils.bmo.snapshot_store import delete, list_snapshots, load, save
+from utils.bmo.snapshot_store import delete, list_snapshots, load
+from services import bmo as bmo_service
 
 log = logging.getLogger(__name__)
 
@@ -429,10 +428,8 @@ def render_snapshot_panel(
 
     page_vars = page_vars or {}
     state = st.session_state
-    try:
-        finalize_run(state, prefix, page_vars)
-    except Exception:  # noqa: BLE001 - recording must never take the page down
-        log.exception("Could not pin the run context")
+    # Never raises: recording must never take the page down.
+    bmo_service.finalize_run(state, prefix, page_vars)
 
     ui = f"{prefix}{UI_SUFFIX}"
     in_sandbox = prefix == SANDBOX_PREFIX
@@ -455,8 +452,9 @@ def render_snapshot_panel(
         "📸 Take Snapshot", type="primary", width="stretch", key=f"{ui}take"
     ):
         try:
-            snapshot = capture(state, prefix=prefix, page_vars=page_vars, label=label)
-            path = save(snapshot)
+            snapshot, path = bmo_service.take_snapshot(
+                state, prefix=prefix, page_vars=page_vars, label=label
+            )
             st.success(f"Snapshot **{snapshot['id']}** saved — {path.name}")
             run = snapshot.get("run") or {}
             if not snapshot["results"]:

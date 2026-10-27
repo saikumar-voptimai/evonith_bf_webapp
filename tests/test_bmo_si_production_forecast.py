@@ -730,7 +730,11 @@ def test_new_forecast_replaces_legacy_blend_si_in_bmo() -> None:
     assert 'st.session_state["bmo_de_si"]' not in page
     assert 'st.session_state["bmo_manual_si"]' not in page
     assert 'st.session_state["bmo_si_furnace_forecast"] = record' in page
-    assert "hot_metal_si_pct=live_si_pct" in page
+    # The run's Si is the live furnace forecast; the LP, DE and the manual blend take it from the
+    # run's inputs in the service layer (SV-3.4).
+    service = (ROOT / "src/services/bmo.py").read_text(encoding="utf-8")
+    assert "live_si_pct=live_si_pct" in page
+    assert service.count("hot_metal_si_pct=case.live_si_pct") == 2
 
     accuracy = (ROOT / "src/ui/bmo/model_accuracy.py").read_text(encoding="utf-8")
     assert "Legacy proposed-blend Si model" not in accuracy
@@ -783,5 +787,5 @@ def test_seven_day_trend_plots_continuous_model_and_irregular_actuals() -> None:
     assert pd.Timestamp(model.x[0]) == pd.Timestamp("2026-10-01 12:00:00")
     assert pd.Timestamp(measured.x[0]) == pd.Timestamp("2026-10-01 12:19:00")
 
-    page = (ROOT / "src/custom_pages/9_Blend_Optimizer.py").read_text(encoding="utf-8")
-    assert "start = end - pd.Timedelta(days=7)" in page
+    service = (ROOT / "src/services/bmo.py").read_text(encoding="utf-8")  # page 9's 7-day replay (SV-3.4)
+    assert "start = end - pd.Timedelta(days=7)" in service
