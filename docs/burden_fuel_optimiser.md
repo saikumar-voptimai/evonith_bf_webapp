@@ -134,8 +134,16 @@ baseline)** — omega held at the calibration, ASM-01 — and **STRATA-ω** (ASM
   items, so the plans do not depend on the number of processes. Reference case (16 Oct 2026 yard with the Lloyds fines
   oversize, both oversize options searched; development host, 2 vCPU, serial / 2 solver processes): Step 2 with the
   value of limits 73 solves, 72 / 48 s; maximum production 347 solves, 393 / 246 s; Step 1 with the 9-level oxygen
-  search 1,260 solves, 19.3 min on 2 processes (solving occupied 53 % of the two processes; the steps that run one
-  after the other, among them the golden section over oxygen, take the rest). Two safeguards keep the
+  search 1,260 solves, 19.3 min on 2 processes (solving occupied 53 % of the two processes; the steps that ran one
+  after the other, among them the golden section over oxygen, took the rest). Step 1 search order since #288: at each
+  oxygen level a golden section on production (`Engine._cheapest_at_level`); over oxygen, the best of the 9 grid
+  levels is refined between its neighbours by bracket rounds (`bracket_rounds`: 4 evenly spaced levels per round, the
+  bracket narrowed to the neighbours of the cheapest evaluated level, until it is 10⁻⁴ O₂/air wide; 4–5 rounds where
+  the golden section took 10 levels one after the other), and the two oversize options are searched side by side:
+  their grid levels, each bracket round and their frontier levels each go to the solver processes as one
+  `Engine.run_items` call. Reference case on the Windows laptop (4 cores / 8 threads, 4 solver processes, other test
+  runs holding the CPU at 100 %, 6.0 s per solve against 1.1 s on the development host): 1,296 solves, 53.3 min,
+  solving occupied 61 % of the four processes. Two safeguards keep the
   searches from declaring a feasible point infeasible: when the first STRATA-ω linearisation has no feasible LP the
   plan is re-started from the Fixed-ω optimum of the same case (`Engine.slp`; e.g. sinter ≥ 65 %), and a point that
   stops with a small limit breach on coarse solves (total < 0.1, e.g. basicity 0.009 below its floor), and any

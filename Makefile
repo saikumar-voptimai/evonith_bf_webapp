@@ -18,7 +18,7 @@ RUFF_PATHS := src/api src/services src/worker src/utils/memo.py src/ui/coke_ener
 	src/utils/coke_energy/hmt_forecast.py scripts/hmt_gate.py tests/test_hmt_forecast.py src/utils/jsonl_log.py \
 	tests/test_jsonl_log.py tests/test_forecast_jobs.py scripts/forecast_gaps.py tests/test_schedule.py \
 	tests/test_schedule_worker.py tests/test_scheduled_jobs.py scripts/schedule_audit.py scripts/optimiser_bench.py \
-	tests/test_strata_parallel.py
+	tests/test_strata_parallel.py tests/test_burden_engine_step1.py
 # The Jetson (SV-6.1): JetPack 6 = Ubuntu 22.04, glibc 2.35, CPython 3.12 from uv. Every locked package needs a wheel
 # for it, except these, which have none and install from their source archive (pypika: pure Python; quickjs:
 # C extension, built with the Jetson's compiler).

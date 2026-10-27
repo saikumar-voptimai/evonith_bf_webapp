@@ -1125,8 +1125,9 @@ anchored as one after the other would anchor them: a state reuses the nearest an
 an earlier state of the list adds; only the new states are solved, together), the Jacobian of a new calibration (the
 calibration state and its 16 forward differences in one `solve_many`), a plan's three states (blend, blend +
 production, full operation; `PlanOmega.states`), and the twin window's three states (`strata_window.evaluate_window`).
-The searches' independent items run through `Engine.run_items`: the oxygen levels and the frontier levels of Step 1,
-the grid points of maximum production and the relaxations of the value of limits. Every item starts from the network
+The searches' independent items run through `Engine.run_items`: Step 1's oxygen grid and bracket rounds
+(`bracket_rounds`, 4 levels per round; both oversize options in one call each) and its frontier levels (both options
+in one call), the grid points of maximum production and the relaxations of the value of limits. Every item starts from the network
 anchors present before the items and adds its own; the anchors are merged in item order afterwards. With a solver
 executor each item runs in a solver process on an engine rebuilt from the parent's (`Engine._spec`), else one after
 the other here; plans, anchors and solve counts are the same (`tests/test_strata_parallel.py`, real network in the
