@@ -6,6 +6,10 @@ Outputs shifts_input.pkl / .csv
 App note: the web version was a top-level script that read fd.pkl, m10.pkl, the HM/slag CSV and dpr.pkl. Here the same
 statements run inside ``build_shift_inputs``, which takes those four frames as arguments (``utils.data`` loaders in
 ``data.coke_energy.sources`` produce them in the web formats) and returns S instead of writing shifts_input.pkl.
+
+Windows (SV-1.1, #281): ``key_fn`` assigns the rows to their aggregation period. ``shift_key`` (the default) gives the
+A/B/C shifts; ``window_key(start, end)`` gives one window [start, end) of any length, aggregated by the same statements,
+so a window that coincides with a shift returns that shift's row (under the window's key).
 """
 import pandas as pd, numpy as np
 
@@ -18,14 +22,35 @@ def shift_key(ts):
     return d.dt.date.astype(str) + '_' + sh, d, sh
 
 
-def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01'):
+def window_key(start, end, key='W'):
+    """Key function of one window [start, end) (IST, tz-naive), for ``build_shift_inputs(key_fn=...)``.
+
+    Rows inside get ``key``; rows outside get none and drop out of every aggregation. The window's date is the date of
+    its start, as a C shift belongs to the date it starts (the DPR dust and the blast moisture of that date apply);
+    its shift letter is 'W'."""
+    start, end = pd.Timestamp(start), pd.Timestamp(end)
+    day = start.normalize()
+
+    def key_fn(ts):
+        inside = ((ts >= start) & (ts < end)).to_numpy()
+        skey = pd.Series(np.where(inside, key, None), index=ts.index, dtype=object)
+        return skey, pd.Series(day, index=ts.index), np.full(len(ts), 'W', dtype=object)
+
+    return key_fn
+
+
+def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01', key_fn=shift_key):
     """Shift-level inputs S from the hourly furnace dataset (fd, 'time' column, IST), the 10-min process data
     (m10, 'ts' column, IST bin start), tap-wise HM/slag analyses (hm, 't' column, IST) and the daily DPR (dpr, indexed
-    by IST date, columns hm_t, dc_dust_t, gcp_dust_t, coke_rate_dpr, ...)."""
+    by IST date, columns hm_t, dc_dust_t, gcp_dust_t, coke_rate_dpr, ...).
+
+    ``key_fn(ts) -> (key, date, letter)`` assigns rows to periods (default: the A/B/C shifts). Rows of the hourly
+    dataset from ``start`` on enter the median fill of the ash analyses whatever their period, so a window and the
+    shift it coincides with are filled from the same rows."""
     # ---------------- hourly charge & raw material composition ----------------
     f = fd.copy()
     f = f[f.time >= start]
-    f['skey'], f['sdate'], f['shift'] = shift_key(f.time)
+    f['skey'], f['sdate'], f['shift'] = key_fn(f.time)
     f['ORE_DRY'] = f['ORE_CALC_MT'] * (1 - f['ORE_TM%'].clip(0, 15) / 100)
     f['PEL_DRY'] = f['TOTAL_PELLET_CALC_MT'] * (1 - f['PELLET_PCT_TM'].clip(0, 15) / 100)
     f['SIN_DRY'] = f['SINTER_CALC_MT']
@@ -74,7 +99,7 @@ def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01'):
     # ---------------- 10-min process data ----------------
     m = m10.copy()
     m = m[m.ts >= start].copy()
-    m['skey'], _, _ = shift_key(m.ts)
+    m['skey'], _, _ = key_fn(m.ts)
     ok = ((m.hot_blast_vol_nm3h > 60000) & (m.hot_blast_temp.between(900, 1350)) & (m.co_pct.between(15, 32)) &
           (m.co2_pct.between(10, 26)) & (m.h2_pct.between(0.3, 8)) & (m.top_temp_avg.between(50, 450)))
     m['ok'] = ok
@@ -104,7 +129,7 @@ def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01'):
 
     # ---------------- tap-wise HM & slag ----------------
     h = hm.copy()
-    h['skey'], _, _ = shift_key(h.t)
+    h['skey'], _, _ = key_fn(h.t)
     hc = [c for c in h.columns if c.startswith(('chem_pct', 'slag_')) or c == 'hmt_gt_1480c']
     h.loc[h.hmt_gt_1480c < 1350, 'hmt_gt_1480c'] = np.nan
     h.loc[h.chem_pct_fe > 97, 'chem_pct_fe'] = np.nan

@@ -22,10 +22,12 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from config.config_loader import load_config
 from data.coke_energy import sources
 from data.coke_energy.freshness import fetch_offline_samples, material_names
 from utils.coke_energy.bf_balance import DEFAULTS, calibrate_loss
@@ -37,6 +39,17 @@ from utils.memo import memo
 PLANT_TZ = "Asia/Kolkata"
 # How far back lab samples are read for the freshness check (a burden-distribution change can be months old).
 SAMPLE_LOOKBACK = pd.Timedelta(days=60)
+CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "coke_energy.yml"
+
+
+@memo(max_entries=2)
+def _read_config(mtime_ns: int) -> dict:
+    return load_config("coke_energy.yml").get("coke_energy", {})
+
+
+def config() -> dict:
+    """The ``coke_energy`` block of ``config/coke_energy.yml``, re-read when the file changes. Treat as read-only."""
+    return _read_config(CONFIG_PATH.stat().st_mtime_ns if CONFIG_PATH.exists() else 0)
 
 
 @dataclass(frozen=True)
