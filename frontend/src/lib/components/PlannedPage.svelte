@@ -5,6 +5,8 @@ covers the same ground in the meantime.
 -->
 <script lang="ts">
 	import AppWindow from '@lucide/svelte/icons/app-window';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import GitPullRequest from '@lucide/svelte/icons/git-pull-request';
 	import { ISSUE_URL, navItemFor } from '../nav.ts';
 	import Panel from './Panel.svelte';
 
@@ -20,25 +22,32 @@ covers the same ground in the meantime.
 
 {#if item}
 	<div class="planned">
-		<Panel title="Not built yet" note="Part of the Svelte frontend migration, milestone M5">
-			<div class="body">
-				<span class="icon" aria-hidden="true"><item.icon size={24} strokeWidth={1.75} /></span>
-				<div class="text">
-					<p class="summary">{item.summary}</p>
-					<p>
-						The page is built in
-						<a href="{ISSUE_URL}{item.issue}" rel="external noopener" target="_blank">issue #{item.issue}</a>.
-					</p>
-					{#if item.legacy}
-						<p class="legacy">
-							Until then, the {item.legacy} page in the Streamlit app covers this.
-							<a class="open" href="/legacy/" rel="external">
-								<AppWindow size={16} strokeWidth={2} />
-								<span>Open the Streamlit pages</span>
-							</a>
-						</p>
-					{/if}
-				</div>
+		<Panel
+			tone="cream"
+			icon={item.icon}
+			eyebrow="In preparation"
+			title="{item.title} is being built"
+			note={item.summary}
+		>
+			<div class="cards">
+				{#if item.legacy}
+					<a class="card" href="/legacy/" rel="external">
+						<span class="card-icon" aria-hidden="true"><AppWindow size={18} strokeWidth={1.75} /></span>
+						<span class="card-text">
+							<span class="card-title">Use the {item.legacy} page meanwhile</span>
+							<span class="card-sub">Opens the Streamlit pages under /legacy.</span>
+						</span>
+						<ArrowRight size={18} strokeWidth={1.75} />
+					</a>
+				{/if}
+				<a class="card" href="{ISSUE_URL}{item.issue}" rel="external noopener" target="_blank">
+					<span class="card-icon" aria-hidden="true"><GitPullRequest size={18} strokeWidth={1.75} /></span>
+					<span class="card-text">
+						<span class="card-title">Follow issue #{item.issue}</span>
+						<span class="card-sub">Scope, acceptance criteria and progress on GitHub.</span>
+					</span>
+					<ArrowRight size={18} strokeWidth={1.75} />
+				</a>
 			</div>
 		</Panel>
 	</div>
@@ -46,41 +55,56 @@ covers the same ground in the meantime.
 
 <style>
 	.planned {
-		max-width: 760px;
+		max-width: 1040px;
 	}
-	.body {
+	.cards {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+		gap: var(--vo-space-3);
+		margin-top: var(--vo-space-2);
+	}
+	.card {
 		display: flex;
-		gap: var(--vo-space-4);
 		align-items: flex-start;
+		gap: var(--vo-space-3);
+		padding: var(--vo-space-4) var(--vo-space-4) var(--vo-space-4) var(--vo-space-4);
+		border: 1px solid var(--vo-cream-line);
+		border-radius: var(--vo-radius-panel);
+		background: var(--vo-cream-raised);
+		color: var(--vo-text);
+		text-decoration: none;
 	}
-	.icon {
+	.card:hover {
+		border-color: var(--vo-cream-line-strong);
+		background: var(--vo-surface);
+	}
+	.card > :global(svg) {
+		flex: none;
+		margin-top: 2px;
+		color: var(--vo-accent-icon);
+	}
+	.card-icon {
 		display: inline-grid;
 		place-items: center;
 		flex: none;
-		width: 48px;
-		height: 48px;
-		border-radius: var(--vo-radius-panel);
-		background: var(--vo-surface-raised);
-		color: var(--vo-yellow);
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		background: var(--vo-accent-soft);
+		color: var(--vo-accent-icon);
 	}
-	.text {
+	.card-text {
 		display: flex;
 		flex-direction: column;
-		gap: var(--vo-space-2);
-		max-width: 64ch;
+		flex: 1;
+		gap: 2px;
+		min-width: 0;
 	}
-	.summary {
-		font-size: var(--vo-fs-title);
-		line-height: 1.5;
-	}
-	.legacy {
-		color: var(--vo-text-muted);
-	}
-	.open {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		margin-left: 4px;
+	.card-title {
 		font-weight: 600;
+	}
+	.card-sub {
+		font-size: var(--vo-fs-label);
+		color: var(--vo-text-muted);
 	}
 </style>

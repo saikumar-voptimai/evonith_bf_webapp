@@ -180,9 +180,9 @@ keeps the last valid value and sets `valid` to false. Arrow Up and Down step by 
 		background: var(--vo-inset);
 	}
 	.box:focus-within {
-		outline: 2px solid var(--vo-yellow);
+		outline: 2px solid var(--vo-focus);
 		outline-offset: 1px;
-		border-color: var(--vo-yellow);
+		border-color: var(--vo-focus);
 	}
 	.box.invalid,
 	.box.invalid:focus-within {

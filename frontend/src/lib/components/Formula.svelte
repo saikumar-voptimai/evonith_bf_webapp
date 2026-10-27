@@ -1,6 +1,6 @@
 <!--
 @component
-Label text with chemical subscripts: `<Formula text="SiO₂" />` renders SiO<sub>2</sub> in Montserrat digits.
+Label text with chemical subscripts: `<Formula text="SiO₂" />` renders SiO<sub>2</sub> with Inter digits.
 -->
 <script lang="ts">
 	import { formulaParts } from '../format/formula.ts';

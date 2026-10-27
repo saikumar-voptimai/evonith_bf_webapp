@@ -76,21 +76,20 @@ low-emphasis actions) and `danger` (destructive actions, confirmed in a Modal).
 	}
 
 	.primary {
-		background: var(--vo-yellow-strong);
+		background: var(--vo-accent);
 		color: var(--vo-text-on-accent);
 	}
 	.primary:hover:not(:disabled, [aria-disabled='true']) {
-		background: var(--vo-yellow);
+		background: var(--vo-accent-hover);
 	}
 
 	.secondary {
-		background: transparent;
+		background: var(--vo-surface);
 		border-color: var(--vo-border-input);
 		color: var(--vo-text);
 	}
 	.secondary:hover:not(:disabled, [aria-disabled='true']) {
 		background: var(--vo-surface-raised);
-		border-color: var(--vo-text-muted);
 	}
 
 	.ghost {
@@ -102,12 +101,12 @@ low-emphasis actions) and `danger` (destructive actions, confirmed in a Modal).
 	}
 
 	.danger {
-		background: transparent;
+		background: var(--vo-surface);
 		border-color: var(--vo-critical);
 		color: var(--vo-critical);
 	}
 	.danger:hover:not(:disabled, [aria-disabled='true']) {
-		background: color-mix(in srgb, var(--vo-critical) 12%, transparent);
+		background: var(--vo-critical-bg);
 	}
 
 	.vo-btn:disabled,

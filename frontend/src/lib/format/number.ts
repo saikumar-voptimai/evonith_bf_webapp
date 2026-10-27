@@ -38,13 +38,25 @@ export function formatSigned(value: number | null | undefined, digits = 0): stri
 	return `+${text}`;
 }
 
-/** `520, 600` → `520–600` (en dash, no spaces). */
+/** No-break space between a value and its unit: `9.0 %` never wraps between the number and the unit. */
+export const UNIT_SPACE = '\u00a0';
+
+/** En dash of a range followed by a word joiner (U+2060): `0.20–0.80` never wraps after the dash. */
+export const RANGE_DASH = '–\u2060';
+
+/** `9, 1, '%'` → `9.0 %` and `6250, 0, 't/d'` → `6,250 t/d` (no-break space); a missing value is `—` alone. */
+export function formatQuantity(value: number | null | undefined, digits: number, unit: string): string {
+	const text = formatNumber(value, digits);
+	return text === NO_VALUE ? text : `${text}${UNIT_SPACE}${unit}`;
+}
+
+/** `520, 600` → `520–600` (en dash, no spaces, no line break inside the range). */
 export function formatRange(
 	lo: number | null | undefined,
 	hi: number | null | undefined,
 	digits = 0
 ): string {
-	return `${formatNumber(lo, digits)}–${formatNumber(hi, digits)}`;
+	return `${formatNumber(lo, digits)}${RANGE_DASH}${formatNumber(hi, digits)}`;
 }
 
 const PLAIN = /^[-+]?(\d+\.?\d*|\.\d+)$/;

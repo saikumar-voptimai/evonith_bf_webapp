@@ -1,15 +1,22 @@
 <!--
 @component
-Titled region of a page. The header carries the title, an optional note, the data age and actions.
+Titled region of a page. The header carries an optional section label and icon tile, the title, one line of
+context, the data age and actions. `tone="cream"` highlights the region (the plan of the shift, a call to action).
 -->
 <script lang="ts">
+	import type { LucideIcon } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import Freshness from './Freshness.svelte';
 
 	interface Props {
 		title: string;
+		/** Upper-case section label above the title. */
+		eyebrow?: string;
+		/** Icon tile left of the title block. */
+		icon?: LucideIcon;
 		/** One line under the title: source, basis or period. */
 		note?: string;
+		tone?: 'plain' | 'cream';
 		/** Heading level inside the page (page title is h1). */
 		level?: 2 | 3;
 		/** Data time of the panel; shows its age in the header. */
@@ -27,7 +34,10 @@ Titled region of a page. The header carries the title, an optional note, the dat
 
 	let {
 		title,
+		eyebrow,
+		icon: Icon,
 		note,
+		tone = 'plain',
 		level = 2,
 		updatedAt,
 		warnAfterMin,
@@ -42,9 +52,11 @@ Titled region of a page. The header carries the title, an optional note, the dat
 	const uid = $props.id();
 </script>
 
-<section class="panel" aria-labelledby="{uid}-title" aria-busy={busy || undefined}>
+<section class={['panel', tone]} aria-labelledby="{uid}-title" aria-busy={busy || undefined}>
 	<header>
+		{#if Icon}<span class="icon" aria-hidden="true"><Icon size={22} strokeWidth={1.75} /></span>{/if}
 		<div class="heading">
+			{#if eyebrow}<p class="eyebrow">{eyebrow}</p>{/if}
 			<svelte:element this={`h${level}`} id="{uid}-title" class="title">{title}</svelte:element>
 			{#if note}<p class="note">{note}</p>{/if}
 		</div>
@@ -72,24 +84,49 @@ Titled region of a page. The header carries the title, an optional note, the dat
 		background: var(--vo-surface);
 		border: 1px solid var(--vo-border);
 		border-radius: var(--vo-radius-panel);
+		box-shadow: var(--vo-shadow-card);
+	}
+	.cream {
+		background: var(--vo-cream);
+		border-color: var(--vo-cream-line);
+		box-shadow: none;
 	}
 	header {
 		display: flex;
 		align-items: flex-start;
-		justify-content: space-between;
-		gap: var(--vo-space-3);
-		padding: 14px var(--vo-space-4) 0;
+		gap: var(--vo-space-4);
+		padding: 18px var(--vo-space-5) 0;
+	}
+	.icon {
+		display: inline-grid;
+		place-items: center;
+		flex: none;
+		width: 44px;
+		height: 44px;
+		border-radius: 9px;
+		background: var(--vo-accent-soft);
+		color: var(--vo-accent-icon);
 	}
 	.heading {
+		flex: 1;
 		min-width: 0;
+	}
+	.eyebrow {
+		margin-bottom: 6px;
+		font-size: var(--vo-fs-eyebrow);
+		font-weight: 600;
+		letter-spacing: var(--vo-tracking-eyebrow);
+		text-transform: uppercase;
+		color: var(--vo-text-muted);
 	}
 	.title {
 		font-size: var(--vo-fs-title);
-		font-weight: 600;
+		font-weight: 650;
 		line-height: 24px;
+		letter-spacing: -0.01em;
 	}
 	.note {
-		margin-top: 2px;
+		margin-top: 3px;
 		font-size: var(--vo-fs-label);
 		color: var(--vo-text-muted);
 	}
@@ -107,16 +144,24 @@ Titled region of a page. The header carries the title, an optional note, the dat
 	}
 	.body {
 		flex: 1;
-		padding: var(--vo-space-4);
+		padding: var(--vo-space-4) var(--vo-space-5) var(--vo-space-5);
 		min-width: 0;
 	}
 	.body.flush {
 		padding: var(--vo-space-3) 0 0;
 	}
 	footer {
-		padding: var(--vo-space-3) var(--vo-space-4);
+		padding: var(--vo-space-3) var(--vo-space-5);
 		border-top: 1px solid var(--vo-border);
 		font-size: var(--vo-fs-label);
 		color: var(--vo-text-muted);
+	}
+	@media (max-width: 767px) {
+		header {
+			padding: var(--vo-space-4) var(--vo-space-4) 0;
+		}
+		.body {
+			padding: var(--vo-space-3) var(--vo-space-4) var(--vo-space-4);
+		}
 	}
 </style>

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { formatNumber, formatRange, formatSigned, NO_VALUE, parseNumber } from './number.ts';
+import {
+	formatNumber,
+	formatQuantity,
+	formatRange,
+	formatSigned,
+	NO_VALUE,
+	parseNumber,
+	RANGE_DASH,
+	UNIT_SPACE
+} from './number.ts';
 
 describe('formatNumber', () => {
 	it('groups thousands and fixes the decimals', () => {
@@ -31,7 +40,8 @@ describe('formatSigned', () => {
 
 describe('formatRange', () => {
 	it('joins the bounds with an en dash', () => {
-		expect(formatRange(1440, 1520)).toBe('1,440–1,520');
+		expect(formatRange(1440, 1520)).toBe(`1,440${RANGE_DASH}1,520`);
+		expect(RANGE_DASH).toBe('–\u2060');
 	});
 });
 
@@ -49,5 +59,18 @@ describe('parseNumber', () => {
 
 	it.each(['', 'abc', '1234,5', '12,34', '1.2.3', '--1', '1e3'])('rejects %j', (text) => {
 		expect(parseNumber(text)).toBeNull();
+	});
+});
+
+describe('formatQuantity', () => {
+	it('joins the value and the unit with a no-break space', () => {
+		expect(formatQuantity(9, 1, '%')).toBe(`9.0${UNIT_SPACE}%`);
+		expect(formatQuantity(6250, 0, 't/d')).toBe('6,250\u00a0t/d');
+		expect(UNIT_SPACE).toBe('\u00a0');
+	});
+
+	it('shows the em dash without a unit for a missing value', () => {
+		expect(formatQuantity(null, 1, 'kg/tHM')).toBe(NO_VALUE);
+		expect(formatQuantity(Number.NaN, 1, 'kg/tHM')).toBe(NO_VALUE);
 	});
 });

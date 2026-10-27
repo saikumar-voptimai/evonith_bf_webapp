@@ -19,9 +19,11 @@ import { hasRole, type Role } from './session/session.svelte.ts';
 export interface NavItem {
 	href: RouteId;
 	label: string;
-	/** Page title in the top bar and the browser tab. */
+	/** Page title in the page header and the browser tab. */
 	title: string;
 	icon: LucideIcon;
+	/** One line under the page title. */
+	subtitle: string;
 	/** What the page shows, in the operator's terms. */
 	summary: string;
 	/** GitHub issue that builds the page. */
@@ -47,6 +49,7 @@ export const NAV: NavGroup[] = [
 				href: '/',
 				label: 'Live Twin',
 				title: 'Live Twin',
+				subtitle: 'Coke rate by model, HMT forecast and the burden in the furnace, every hour.',
 				icon: Activity,
 				summary:
 					'Coke rate from TRACE, FORGE and STRATA side by side, the HMT forecast, implied shaft efficiency and the burden in the furnace, refreshed every hour.',
@@ -57,6 +60,7 @@ export const NAV: NavGroup[] = [
 				href: '/trace',
 				label: 'TRACE',
 				title: 'TRACE',
+				subtitle: 'Burnt coke from the gas-side oxygen balance.',
 				icon: Wind,
 				summary:
 					'Burnt coke per shift and per hour from the gas-side oxygen balance, with its correction and record.',
@@ -67,6 +71,7 @@ export const NAV: NavGroup[] = [
 				href: '/forge',
 				label: 'FORGE',
 				title: 'FORGE',
+				subtitle: 'Modelled coke from the two-zone Rist energy balance.',
 				icon: Flame,
 				summary:
 					'Modelled coke from the two-zone Rist energy balance at the calibration, and the terms that drive it.',
@@ -77,6 +82,7 @@ export const NAV: NavGroup[] = [
 				href: '/strata',
 				label: 'STRATA',
 				title: 'STRATA',
+				subtitle: 'Shaft efficiency from the STRATA-Flow ring model.',
 				icon: Layers,
 				summary:
 					'Shaft efficiency from the STRATA-Flow ring model, its uncertainty, and the certainty tier of each blend.',
@@ -92,6 +98,7 @@ export const NAV: NavGroup[] = [
 				href: '/status',
 				label: 'Furnace status',
 				title: 'Furnace status',
+				subtitle: 'Process readings, wall temperatures and stave heat loads.',
 				icon: Thermometer,
 				summary: 'Current process readings, wall temperatures and stave heat loads on the furnace profile.',
 				issue: 294,
@@ -101,6 +108,7 @@ export const NAV: NavGroup[] = [
 				href: '/reports',
 				label: 'Shift reports',
 				title: 'Shift reports',
+				subtitle: 'Shift, daily and weekly reports with flagged parameters.',
 				icon: ClipboardList,
 				summary: 'Shift, daily and weekly reports with flagged parameters, stability and operator notes.',
 				issue: 296
@@ -109,6 +117,7 @@ export const NAV: NavGroup[] = [
 				href: '/furnacemind',
 				label: 'FurnaceMind',
 				title: 'FurnaceMind',
+				subtitle: 'Ask about the furnace data; answers come with tables and charts.',
 				icon: Brain,
 				summary: 'Ask questions about furnace data in plain language and get tables and charts back.',
 				issue: 313,
@@ -123,9 +132,10 @@ export const NAV: NavGroup[] = [
 				href: '/optimiser',
 				label: 'Burden & fuel',
 				title: 'Burden & Fuel Optimiser',
+				subtitle: 'Lowest-cost ore, flux and fuel blend and production level for today.',
 				icon: SlidersHorizontal,
 				summary:
-					'Cheapest ore, flux and fuel blend and production level under the day’s limits, priced against today’s charge.',
+					'Lowest-cost ore, flux and fuel blend and production level under the day’s limits, priced against today’s charge.',
 				issue: 300,
 				legacy: 'Burden & Fuel Optimiser'
 			},
@@ -133,6 +143,7 @@ export const NAV: NavGroup[] = [
 				href: '/bmo',
 				label: 'Blend mix',
 				title: 'Blend Mix Optimiser',
+				subtitle: 'Ore and flux blend at a fixed production.',
 				icon: Blend,
 				summary: 'Ore and flux blend at a fixed production with slag and hot-metal chemistry limits.',
 				issue: 303,
@@ -148,6 +159,7 @@ export const NAV: NavGroup[] = [
 				href: '/admin',
 				label: 'Admin',
 				title: 'Admin',
+				subtitle: 'Fact register, analyses, calibration, users and jobs.',
 				icon: Shield,
 				summary:
 					'Fact register, what-if analysis, burnt vs charged coke, validation, calibration, users and job health.',
@@ -158,8 +170,11 @@ export const NAV: NavGroup[] = [
 ];
 
 /** Titles of routes that are not in the navigation. */
-const EXTRA_TITLES: Record<string, string> = {
-	'/dev/components': 'Component catalogue'
+const EXTRA_TITLES: Record<string, { title: string; subtitle: string }> = {
+	'/dev/components': {
+		title: 'Component catalogue',
+		subtitle: 'Base components in their states, on sample values.'
+	}
 };
 
 export function visibleGroups(role: Role | null | undefined): NavGroup[] {
@@ -182,7 +197,18 @@ export function navItemFor(pathname: string): NavItem | undefined {
 	);
 }
 
-export function titleFor(pathname: string): string {
+export interface PageHeading {
+	/** Navigation group, shown before the title. */
+	group?: string;
+	title: string;
+	subtitle?: string;
+}
+
+export function headingFor(pathname: string): PageHeading {
 	const path = normalise(pathname);
-	return navItemFor(path)?.title ?? EXTRA_TITLES[path] ?? 'BF-02';
+	const item = navItemFor(path);
+	const group = item && NAV.find((g) => g.items.includes(item));
+	if (item && group) return { group: group.label, title: item.title, subtitle: item.subtitle };
+	const extra = EXTRA_TITLES[path];
+	return extra ? { title: extra.title, subtitle: extra.subtitle } : { title: 'BF-02' };
 }

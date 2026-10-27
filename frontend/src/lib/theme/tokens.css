@@ -1,61 +1,97 @@
 /*
- * Design tokens of the BF-02 operator console (SV-0.5, #274; plan section 9).
+ * Design tokens of the BF-02 operator console (SV-0.5, #274; revised 27 Oct 2026 to the V-OptimAIse Optimus look:
+ * dark green-charcoal navigation, light warm canvas, white panels, yellow accent, Inter).
  *
- * Palette from www.v-optimai.com: tap yellow on the brand's warm black. Every text colour below has a contrast
- * ratio of at least 4.5:1 on every surface (black, bg, surface, surface-raised); contrast.test.ts checks it.
- * Roles are fixed: yellow marks the active item, focus, the primary action and the STRATA prediction; amber marks
- * FORGE and secondary emphasis; status colours appear only with an icon and a word.
+ * Contrast (WCAG 2.2, contrast.test.ts): every text token reaches 4.5:1 on every surface of its side (light
+ * surfaces for page text, chrome surfaces for navigation text); chart lines and input boundaries reach 3:1.
+ * Roles: yellow fills mark the current item, the shift and the primary action; gold ink is the accent for text and
+ * focus on light surfaces; status colours appear only with an icon and a word.
  */
 :root {
-	color-scheme: dark;
+	color-scheme: light;
 
-	/* Surfaces */
-	--vo-black: #000000; /* chrome: navigation rail and top bar */
-	--vo-bg: #1b0f0a; /* canvas, the brand's warm black */
-	--vo-surface: #2c211c; /* panels */
-	--vo-surface-raised: #362b27; /* hover, selected rows, menus */
-	--vo-inset: #1b0f0a; /* input fields */
-	--vo-border: #3d332f; /* 1 px rules between regions */
-	--vo-border-input: #857a73; /* input and control boundaries, >= 3:1 against panel and canvas */
-	--vo-track: #4a3f3a; /* gauge and progress tracks */
+	/* Navigation chrome (sidebar, navigation drawer, sign-in panel) */
+	--vo-chrome: #232823;
+	--vo-chrome-hover: #2c322c;
+	--vo-chrome-active: #3b3e29; /* current item */
+	--vo-chrome-line: #353b34; /* rules and decorative linework */
+	--vo-chrome-scrollbar: #4b5448;
+	--vo-chrome-text: #c6cebe; /* items: 9.3:1 */
+	--vo-chrome-muted: #a0aa93; /* section labels, notes: 6.2:1 */
+	--vo-chrome-strong: #f1f3ed; /* product name, headline */
+	--vo-chrome-accent: #e9cf5b; /* current item text and icon, focus: 9.7:1 */
+	--vo-chrome-avatar: #384930;
+	--vo-chrome-display: #e8eee4; /* sign-in headline */
+	--vo-chrome-lede: #b2bca8; /* sign-in introduction */
+	--vo-chrome-eyebrow: #c1bf90; /* sign-in eyebrow */
+	--vo-chrome-band: #262e25; /* sign-in furnace profile, outer band */
+	--vo-chrome-band-strong: #2d3627; /* sign-in furnace profile, inner band */
 
-	/* Text */
-	--vo-text: #f7f4ee;
-	--vo-text-muted: #b9b1aa;
-	--vo-text-on-accent: #000000;
+	/* Light surfaces */
+	--vo-bg: #f7f8f6; /* canvas */
+	--vo-surface: #ffffff; /* panels, inputs */
+	--vo-surface-raised: #f1f3ef; /* hover, chips, table header band */
+	--vo-cream: #faf6e3; /* highlighted panel */
+	--vo-cream-raised: #fffaf0; /* cards inside a highlighted panel */
+	--vo-cream-line: #ece3bf;
+	--vo-cream-line-strong: #d9c98e; /* card border on hover */
+	--vo-inset: #ffffff;
+	--vo-border: #e3e7df; /* panel and region borders */
+	--vo-border-strong: #d5dad0; /* table header rule */
+	--vo-border-input: #858c80; /* input and control boundaries: >= 3.1:1 on every light surface */
+	--vo-track: #eef0eb; /* gauge tracks, skeletons */
+	--vo-track-band: #cfd5c9; /* plant band on a gauge track */
+	--vo-scrollbar: #c9cec4;
 
-	/* Brand accents */
-	--vo-yellow: #ffeb3b;
-	--vo-yellow-strong: #facc15; /* filled primary buttons, black text 13.7:1 */
-	--vo-amber: #ffa000;
-	--vo-amber-text: #fdae0f;
-	--vo-cream: #fffbe6; /* print background (report print layout, SV-2.4) */
+	/* Text on light surfaces */
+	--vo-text: #282d29; /* 14.0:1 on white */
+	--vo-text-muted: #676e65; /* labels, units, notes: >= 4.7:1 */
+	--vo-text-placeholder: #70776d; /* input placeholders: 4.6:1 on white */
+	--vo-text-faint: #b8beb2; /* separators only, never text that carries meaning */
+	--vo-text-on-accent: #282d29; /* on the yellow fill: 9.2:1 */
+	--vo-accent-ink: #6b5a12; /* links and gold text: 6.8:1 */
+	--vo-focus: #7a6418; /* focus ring on light surfaces: 5.7:1 */
 
-	/* Status, always with an icon and a word */
-	--vo-ok: #99d966;
-	--vo-warning: #fb923c;
-	--vo-critical: #f87171;
-	--vo-stale: #9e9690;
-	--vo-info: #8fb8de;
+	/* Yellow (fills) */
+	--vo-accent: #efd054;
+	--vo-accent-hover: #e5c443;
+	--vo-accent-strong: #d4b12f; /* selected outline, progress, elapsed shift hours */
+	--vo-accent-soft: #f5efd2; /* icon tiles */
+	--vo-accent-icon: #8a7430;
 
-	/* Chart series */
-	--vo-series-trace: #f7f4ee;
-	--vo-series-forge: #ffa000;
-	--vo-series-strata: #ffeb3b;
-	--vo-series-charged: #8fb8de;
-	--vo-series-hmt: #ff7043;
+	/* Status, always with an icon and a word: text colour and chip fill */
+	--vo-ok: #2f6b2a;
+	--vo-ok-bg: #eaf3e6;
+	--vo-warning: #9a4a07;
+	--vo-warning-bg: #fbefdf;
+	--vo-critical: #b42318;
+	--vo-critical-bg: #fbe9e7;
+	--vo-stale: #5e6570;
+	--vo-stale-bg: #eef0eb;
+	--vo-info: #1f5fa8;
+	--vo-info-bg: #e8f0fa;
 
-	/* Type: Montserrat for everything; Greek letters (omega, sigma, Delta) from a Noto Sans subset */
-	--vo-font:
-		'Montserrat Variable', 'Noto Sans Greek', 'Segoe UI', 'DejaVu Sans', system-ui, -apple-system, sans-serif;
-	--vo-fs-label: 0.75rem; /* 12 px: labels, hints, table headers */
-	--vo-fs-body: 0.875rem; /* 14 px: body, table cells, controls */
-	--vo-fs-title: 1rem; /* 16 px: panel titles */
-	--vo-fs-heading: 1.3125rem; /* 21 px: page titles */
-	--vo-fs-kpi: 1.75rem; /* 28 px: readouts in tiles */
-	--vo-fs-display: 2.25rem; /* 36 px: the Live Twin headline readout */
-	--vo-lh-body: 1.45;
+	/* Chart series (lines >= 3:1 on white and canvas) */
+	--vo-series-trace: #282d29;
+	--vo-series-forge: #c2620a;
+	--vo-series-strata: #9c7a00;
+	--vo-series-strata-band: rgb(239 208 84 / 0.35);
+	--vo-series-charged: #2f6db5;
+	--vo-series-hmt: #b42318;
+
+	/* Type: Inter for everything (latin, Greek for omega and sigma), tabular figures in readouts */
+	--vo-font: 'Inter Variable', Inter, 'Segoe UI', system-ui, -apple-system, 'DejaVu Sans', sans-serif;
+	--vo-fs-eyebrow: 0.71875rem; /* 11.5 px, upper case, tracked */
+	--vo-fs-label: 0.8125rem; /* 13 px: labels, hints, table headers */
+	--vo-fs-body: 0.875rem; /* 14 px: table cells, controls */
+	--vo-fs-text: 0.9375rem; /* 15 px: prose, navigation */
+	--vo-fs-title: 1.0625rem; /* 17 px: panel titles */
+	--vo-fs-heading: 1.625rem; /* 26 px: page title */
+	--vo-fs-kpi: 1.875rem; /* 30 px: readouts */
+	--vo-fs-display: 2.5rem; /* 40 px: Live Twin headline readout */
+	--vo-lh-body: 1.5;
 	--vo-lh-tight: 1.2;
+	--vo-tracking-eyebrow: 0.12em;
 
 	/* Space, 4 px base */
 	--vo-space-1: 4px;
@@ -67,25 +103,32 @@
 	--vo-space-7: 48px;
 
 	/* Radius by hierarchy: panels > controls > chips */
-	--vo-radius-panel: 8px;
-	--vo-radius-control: 6px;
-	--vo-radius-small: 4px;
+	--vo-radius-panel: 10px;
+	--vo-radius-control: 7px;
+	--vo-radius-small: 5px;
 	--vo-radius-pill: 999px;
 
-	/* Chrome */
-	--vo-rail-width: 232px;
-	--vo-rail-collapsed: 64px;
-	--vo-topbar-height: 56px;
-	--vo-gutter: 24px;
-	--vo-target: 40px; /* minimum touch target in the rail, buttons and inputs */
+	/* Layout */
+	--vo-rail-width: 260px;
+	--vo-rail-collapsed: 68px;
+	--vo-header-height: 64px;
+	--vo-gutter: 32px;
+	--vo-target: 40px; /* minimum touch target */
 
-	/* Overlays are the only elevated elements */
-	--vo-shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.6);
-	--vo-scrim: rgb(0 0 0 / 0.62);
+	/* Elevation: panels are flat; overlays lift */
+	--vo-shadow-card: 0 1px 2px rgb(35 40 35 / 0.04);
+	--vo-shadow-overlay: 0 18px 48px rgb(35 40 35 / 0.18), 0 2px 6px rgb(35 40 35 / 0.08);
+	--vo-scrim: rgb(35 40 35 / 0.45);
 
 	/* Motion: only in answer to an action */
 	--vo-duration: 160ms;
 	--vo-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (max-width: 1279px) {
+	:root {
+		--vo-gutter: 24px;
+	}
 }
 
 @media (max-width: 767px) {

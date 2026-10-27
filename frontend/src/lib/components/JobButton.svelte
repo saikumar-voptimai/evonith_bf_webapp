@@ -138,19 +138,19 @@ publishes the same states on the event stream.
 		overflow: hidden;
 		border: 1px solid transparent;
 		border-radius: var(--vo-radius-control);
-		background: var(--vo-yellow-strong);
+		background: var(--vo-accent);
 		color: var(--vo-text-on-accent);
 		font-size: var(--vo-fs-body);
 		font-weight: 600;
 		white-space: nowrap;
 	}
 	.run:hover:not(.busy, [aria-disabled='true']) {
-		background: var(--vo-yellow);
+		background: var(--vo-accent-hover);
 	}
 	.run.busy {
 		cursor: progress;
-		background: var(--vo-surface-raised);
-		border-color: var(--vo-yellow);
+		background: var(--vo-cream);
+		border-color: var(--vo-accent-strong);
 		color: var(--vo-text);
 		font-variant-numeric: tabular-nums;
 	}
@@ -169,12 +169,12 @@ publishes the same states on the event stream.
 	.bar span {
 		display: block;
 		height: 100%;
-		background: var(--vo-yellow);
+		background: var(--vo-accent-strong);
 		transition: width var(--vo-duration) linear;
 	}
 	.spin {
 		display: inline-flex;
-		color: var(--vo-yellow);
+		color: var(--vo-accent-icon);
 	}
 	@media (prefers-reduced-motion: no-preference) {
 		.spin {

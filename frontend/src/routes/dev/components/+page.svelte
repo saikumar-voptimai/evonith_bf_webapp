@@ -28,7 +28,7 @@ The values are illustrative and are not plant data.
 	import type { Column, SortState } from '#lib/components/table.ts';
 	import Tabs from '#lib/components/Tabs.svelte';
 	import { toasts } from '#lib/components/toast.svelte.ts';
-	import { formatNumber } from '#lib/format/number.ts';
+	import { formatNumber, formatQuantity } from '#lib/format/number.ts';
 	import { addDays, istDay } from '#lib/time/format.ts';
 
 	const loadedAt = new Date();
@@ -37,16 +37,19 @@ The values are illustrative and are not plant data.
 	// Tokens are read from the stylesheet, so the swatches always show the shipped values.
 	const SWATCHES: { token: string; name: string; role: string }[] = [
 		{ token: 'vo-bg', name: 'Canvas', role: 'Page background' },
-		{ token: 'vo-black', name: 'Chrome', role: 'Navigation rail and top bar' },
-		{ token: 'vo-surface', name: 'Panel', role: 'Panels, table header' },
-		{ token: 'vo-surface-raised', name: 'Raised', role: 'Hover, selected rows, menus' },
+		{ token: 'vo-chrome', name: 'Chrome', role: 'Navigation and sign-in panel' },
+		{ token: 'vo-surface', name: 'Panel', role: 'Panels, inputs' },
+		{ token: 'vo-surface-raised', name: 'Raised', role: 'Hover, chips' },
+		{ token: 'vo-cream', name: 'Highlight', role: 'Highlighted panels, selected rows' },
 		{ token: 'vo-border', name: 'Rule', role: 'Region borders' },
 		{ token: 'vo-border-input', name: 'Input edge', role: 'Input and control boundaries' },
 		{ token: 'vo-text', name: 'Text', role: 'Values and body text' },
 		{ token: 'vo-text-muted', name: 'Muted text', role: 'Labels, units, notes' },
-		{ token: 'vo-yellow', name: 'Tap yellow', role: 'Current item, focus, STRATA' },
-		{ token: 'vo-yellow-strong', name: 'Action yellow', role: 'Primary button fill' },
-		{ token: 'vo-amber', name: 'Amber', role: 'FORGE, secondary emphasis' }
+		{ token: 'vo-text-placeholder', name: 'Placeholder', role: 'Example entries in empty inputs' },
+		{ token: 'vo-accent', name: 'Yellow', role: 'Current item, shift, primary action' },
+		{ token: 'vo-accent-strong', name: 'Yellow line', role: 'Selected outline, progress, shift hours' },
+		{ token: 'vo-accent-ink', name: 'Gold ink', role: 'Links and gold text' },
+		{ token: 'vo-focus', name: 'Focus', role: 'Keyboard focus ring' }
 	];
 	const SERIES = [
 		{ token: 'vo-series-trace', name: 'TRACE', role: 'Burnt coke, gas side' },
@@ -222,33 +225,40 @@ The values are illustrative and are not plant data.
 		</div>
 
 		<div class="span-6">
-			<Panel title="Type" note="Montserrat; tabular figures in every readout and table">
+			<Panel title="Type" note="Inter; tabular figures in every readout and table">
 				<dl class="type">
 					<div>
-						<dt>Display 36/600</dt>
+						<dt>Eyebrow 11.5/600</dt>
+						<dd class="vo-eyebrow">Recommended blend, shift C</dd>
+					</div>
+					<div>
+						<dt>Display 40/650</dt>
 						<dd class="t-display vo-num">370.2</dd>
 					</div>
 					<div>
-						<dt>Readout 28/600</dt>
+						<dt>Readout 30/650</dt>
 						<dd class="t-kpi vo-num">1,486 <span class="vo-muted t-unit">°C</span></dd>
 					</div>
 					<div>
-						<dt>Page title 21/600</dt>
+						<dt>Page title 26/650</dt>
 						<dd class="t-heading">Burden & Fuel Optimiser</dd>
 					</div>
 					<div>
-						<dt>Panel title 16/600</dt>
+						<dt>Panel title 17/650</dt>
 						<dd class="t-title">Coke rate by model</dd>
 					</div>
 					<div>
 						<dt>Body 14/400</dt>
 						<dd>
-							Implied shaft efficiency ω 0.912 at <Formula text="O₂" /> enrichment 4.2 %, σ 5.9 kg/tHM, ΔP 1.42
-							bar.
+							Implied shaft efficiency ω 0.912 at <Formula text="O₂" /> enrichment {formatQuantity(
+								4.2,
+								1,
+								'%'
+							)}, σ {formatQuantity(5.9, 1, 'kg/tHM')}, ΔP {formatQuantity(1.42, 2, 'bar')}.
 						</dd>
 					</div>
 					<div>
-						<dt>Label 12/600</dt>
+						<dt>Label 13/550</dt>
 						<dd class="t-label">Hot blast volume, Nm³/h</dd>
 					</div>
 				</dl>
@@ -552,7 +562,10 @@ The values are illustrative and are not plant data.
 	description="The charge sheet for shift C will use this blend. The current plan is kept in the history."
 	size="sm"
 >
-	<p>Sinter 68.0 %, Lloyds pellet 17.5 %, Donimalai lump 9.0 %, Lloyds CLO 3.5 %, flux 2.0 %.</p>
+	<p>
+		Sinter {formatQuantity(68, 1, '%')}, Lloyds pellet {formatQuantity(17.5, 1, '%')}, Donimalai lump
+		{formatQuantity(9, 1, '%')}, Lloyds CLO {formatQuantity(3.5, 1, '%')}, flux {formatQuantity(2, 1, '%')}.
+	</p>
 	{#snippet footer()}
 		<Button onclick={() => (modalOpen = false)}>Keep current plan</Button>
 		<Button
@@ -684,12 +697,14 @@ The values are illustrative and are not plant data.
 	}
 	.t-display {
 		font-size: var(--vo-fs-display);
-		font-weight: 600;
+		font-weight: 650;
+		letter-spacing: -0.02em;
 		line-height: var(--vo-lh-tight);
 	}
 	.t-kpi {
 		font-size: var(--vo-fs-kpi);
-		font-weight: 600;
+		font-weight: 650;
+		letter-spacing: -0.02em;
 		line-height: var(--vo-lh-tight);
 	}
 	.t-unit {
@@ -698,15 +713,16 @@ The values are illustrative and are not plant data.
 	}
 	.t-heading {
 		font-size: var(--vo-fs-heading);
-		font-weight: 600;
+		font-weight: 650;
+		letter-spacing: -0.02em;
 	}
 	.t-title {
 		font-size: var(--vo-fs-title);
-		font-weight: 600;
+		font-weight: 650;
 	}
 	.t-label {
 		font-size: var(--vo-fs-label);
-		font-weight: 600;
+		font-weight: 550;
 		color: var(--vo-text-muted);
 	}
 

@@ -1,5 +1,5 @@
 /**
- * Reachability of the twin-api, shown in the top bar. It polls `/api/health` every 30 s while the tab is visible.
+ * Reachability of the twin-api, shown in the page header. It polls `/api/health` every 30 s while the tab is visible.
  * The live event stream (SV-0.7, #276) replaces the poll with its heartbeat and adds the data timestamps.
  */
 import { api } from '../api/client.ts';

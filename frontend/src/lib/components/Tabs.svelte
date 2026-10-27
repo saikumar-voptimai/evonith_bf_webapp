@@ -123,7 +123,7 @@ Only the selected panel is rendered.
 		bottom: -1px;
 		height: 3px;
 		border-radius: 2px 2px 0 0;
-		background: var(--vo-yellow);
+		background: var(--vo-accent);
 	}
 	[role='tab']:disabled {
 		cursor: not-allowed;

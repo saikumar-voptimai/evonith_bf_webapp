@@ -197,8 +197,8 @@ try {
 	await page.goto(`${base}/dev/components`, { waitUntil: 'networkidle' });
 	await settle(page);
 
-	await check('top bar shows the shift, the IST clock and the connection', async () => {
-		const text = await page.locator('header.topbar').innerText();
+	await check('page header shows the shift, the IST clock and the connection', async () => {
+		const text = await page.locator('header.header').innerText();
 		expect(/Shift [ABC]/.test(text), `no shift in "${text}"`);
 		expect(/\d{2}:\d{2}\s+IST/.test(text), `no IST clock in "${text}"`);
 		expect(text.includes('Connected'), `no connection state in "${text}"`);
@@ -248,7 +248,8 @@ try {
 		await input.fill('472');
 		const describedBy = await input.getAttribute('aria-describedby');
 		const msg = await page.locator(`#${describedBy}`).innerText();
-		expect(msg.includes('The maximum is 450.0 kg/tHM.'), `message is "${msg}"`);
+		// Value and unit are joined by a no-break space (formatQuantity, UNIT_SPACE).
+		expect(msg.includes('The maximum is 450.0\u00a0kg/tHM.'), `message is "${msg}"`);
 		expect((await input.getAttribute('aria-invalid')) === 'true', 'aria-invalid not set');
 		await page.locator('.inputs').screenshot({ path: join(OUT, 'inputs-error.png') });
 		await input.fill('372.5');
@@ -317,7 +318,7 @@ try {
 		await page.getByRole('button', { name: 'Collapse navigation' }).click();
 		await settle(page);
 		const width = await page.locator('.rail-slot').evaluate((el) => el.getBoundingClientRect().width);
-		expect(width <= 65, `collapsed rail is ${width}px wide`);
+		expect(width <= 70, `collapsed rail is ${width}px wide`);
 		expect(await page.getByRole('link', { name: 'STRATA' }).isVisible(), 'STRATA link not visible');
 		await page.screenshot({ path: join(OUT, 'rail-collapsed-1366x768.png') });
 		await axe(page, 'rail-collapsed@1366x768');
@@ -355,16 +356,16 @@ try {
 		}
 		await page.setViewportSize({ width: 1366, height: 768 });
 		await page.getByLabel('User name').fill('auditor');
-		await page.getByLabel('Password').fill('wrong');
+		await page.getByLabel('Password', { exact: true }).fill('wrong');
 		await page.getByRole('button', { name: 'Sign in' }).click();
 		const alert = page.getByRole('alert');
 		await alert.getByText('Unknown user name or wrong password.').waitFor();
 		await page.screenshot({ path: join(OUT, 'login-refused-1366x768.png') });
 		expect(
-			(await page.getByLabel('Password').inputValue()) === '',
+			(await page.getByLabel('Password', { exact: true }).inputValue()) === '',
 			'password field kept the refused password'
 		);
-		await page.getByLabel('Password').fill('correct-horse');
+		await page.getByLabel('Password', { exact: true }).fill('correct-horse');
 		await page.getByRole('button', { name: 'Sign in' }).click();
 		await page.waitForURL('**/strata');
 		const current = await page.locator('nav[aria-label="Main"] [aria-current="page"]').innerText();

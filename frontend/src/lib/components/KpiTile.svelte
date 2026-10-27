@@ -161,7 +161,7 @@ Tiles sit side by side in a `KpiStrip` or a grid; they carry no shadow of their 
 		flex-direction: column;
 		gap: 4px;
 		min-width: 0;
-		padding: var(--vo-space-3) var(--vo-space-4);
+		padding: var(--vo-space-3) var(--vo-space-5) var(--vo-space-4);
 	}
 	.head {
 		display: flex;
@@ -176,7 +176,7 @@ Tiles sit side by side in a `KpiStrip` or a grid; they carry no shadow of their 
 		gap: 8px;
 		min-width: 0;
 		font-size: var(--vo-fs-label);
-		font-weight: 600;
+		font-weight: 550;
 		color: var(--vo-text-muted);
 	}
 	.swatch {
@@ -196,8 +196,8 @@ Tiles sit side by side in a `KpiStrip` or a grid; they carry no shadow of their 
 	}
 	.num {
 		font-size: var(--vo-fs-kpi);
-		font-weight: 600;
-		letter-spacing: -0.01em;
+		font-weight: 650;
+		letter-spacing: -0.02em;
 	}
 	.lg .num {
 		font-size: var(--vo-fs-display);
@@ -237,7 +237,7 @@ Tiles sit side by side in a `KpiStrip` or a grid; they carry no shadow of their 
 	.gauge {
 		position: relative;
 		height: 6px;
-		margin: 6px 0 2px;
+		margin: 8px 0 2px;
 		border-radius: 3px;
 		background: var(--vo-track);
 	}
@@ -246,7 +246,7 @@ Tiles sit side by side in a `KpiStrip` or a grid; they carry no shadow of their 
 		top: 0;
 		bottom: 0;
 		border-radius: 3px;
-		background: var(--vo-border-input);
+		background: var(--vo-track-band);
 	}
 	.marker {
 		position: absolute;

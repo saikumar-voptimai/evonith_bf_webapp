@@ -1,15 +1,16 @@
 <!--
 @component
-Signed-in user in the top bar; the menu opens as a popover (Escape and a click outside close it).
+Signed-in user at the foot of the navigation; the menu opens as a popover above it (Escape and a click outside
+close it).
 -->
 <script lang="ts">
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import { initials, type Role, type SessionUser } from '../../session/session.svelte.ts';
 
 	interface Props {
 		user: SessionUser | null;
-		/** Hide the name next to the initials (narrow top bar). */
+		/** Initials only (collapsed navigation). */
 		compact?: boolean;
 		onsignout?: () => void;
 	}
@@ -21,16 +22,19 @@ Signed-in user in the top bar; the menu opens as a popover (Escape and a click o
 </script>
 
 {#if user}
-	<button type="button" class="trigger" popovertarget="{uid}-menu">
-		<span class="avatar" aria-hidden="true">{initials(user.displayName)}</span>
-		<span class={['name', compact && 'sr-only']}>{user.displayName}</span>
+	<button type="button" class={['trigger', compact && 'compact']} popovertarget="{uid}-menu">
+		<span class="avatar" aria-hidden="true">{initials(user.displayName).charAt(0)}</span>
+		<span class={['who', compact && 'sr-only']}>
+			<span class="name">{user.displayName}</span>
+			<span class="role">{ROLE[user.role]}</span>
+		</span>
 		<span class="sr-only">, account menu</span>
-		<ChevronDown size={15} strokeWidth={2} />
+		{#if !compact}<ChevronUp size={16} strokeWidth={2} />{/if}
 	</button>
 	<div id="{uid}-menu" class="menu" popover="auto">
-		<div class="who">
+		<div class="head">
 			<p class="display">{user.displayName}</p>
-			<p class="role">{ROLE[user.role]}, signed in as {user.username}</p>
+			<p class="detail">{ROLE[user.role]}, signed in as {user.username}</p>
 		</div>
 		<button type="button" class="item" onclick={onsignout} disabled={!onsignout}>
 			<LogOut size={16} strokeWidth={2} />
@@ -38,61 +42,76 @@ Signed-in user in the top bar; the menu opens as a popover (Escape and a click o
 		</button>
 	</div>
 {:else}
-	<span class="guest">Not signed in</span>
+	<p class={['guest', compact && 'sr-only']}>Not signed in</p>
 {/if}
 
 <style>
 	.trigger {
-		display: inline-flex;
+		display: flex;
 		align-items: center;
-		gap: 8px;
-		min-height: var(--vo-target);
-		padding: 0 8px 0 4px;
+		gap: 10px;
+		width: 100%;
+		min-height: 48px;
+		padding: 4px 8px;
 		border: 0;
 		border-radius: var(--vo-radius-control);
 		background: none;
-		color: var(--vo-text-muted);
+		color: var(--vo-chrome-muted);
+		text-align: left;
+	}
+	.trigger.compact {
+		justify-content: center;
+		padding: 4px 0;
 	}
 	.trigger:hover {
-		background: var(--vo-surface-raised);
-		color: var(--vo-text);
+		background: var(--vo-chrome-hover);
 	}
 	.avatar {
 		display: inline-grid;
 		place-items: center;
-		width: 30px;
-		height: 30px;
+		flex: none;
+		width: 32px;
+		height: 32px;
 		border-radius: 50%;
-		background: var(--vo-surface-raised);
-		border: 1px solid var(--vo-border-input);
-		color: var(--vo-text);
+		background: var(--vo-chrome-avatar);
+		color: var(--vo-chrome-strong);
 		font-size: var(--vo-fs-label);
-		font-weight: 700;
+		font-weight: 600;
+	}
+	.who {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-width: 0;
+		line-height: 1.25;
 	}
 	.name {
-		max-width: 12rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-size: var(--vo-fs-label);
-		font-weight: 600;
-		color: var(--vo-text);
+		font-size: var(--vo-fs-body);
+		font-weight: 550;
+		color: var(--vo-chrome-strong);
+	}
+	.role {
+		font-size: 0.75rem;
+		color: var(--vo-chrome-muted);
 	}
 	.menu {
 		position: fixed;
 		inset: auto;
-		top: calc(var(--vo-topbar-height) - 4px);
-		right: 12px;
+		left: 12px;
+		bottom: 72px;
 		margin: 0;
-		min-width: 240px;
+		min-width: 236px;
 		padding: var(--vo-space-2);
 		border: 1px solid var(--vo-border);
 		border-radius: var(--vo-radius-panel);
-		background: var(--vo-surface-raised);
+		background: var(--vo-surface);
 		color: var(--vo-text);
 		box-shadow: var(--vo-shadow-overlay);
 	}
-	.who {
+	.head {
 		padding: var(--vo-space-2) var(--vo-space-2) var(--vo-space-3);
 		border-bottom: 1px solid var(--vo-border);
 		margin-bottom: var(--vo-space-1);
@@ -100,7 +119,7 @@ Signed-in user in the top bar; the menu opens as a popover (Escape and a click o
 	.display {
 		font-weight: 600;
 	}
-	.role {
+	.detail {
 		font-size: var(--vo-fs-label);
 		color: var(--vo-text-muted);
 	}
@@ -114,19 +133,19 @@ Signed-in user in the top bar; the menu opens as a popover (Escape and a click o
 		border: 0;
 		border-radius: var(--vo-radius-control);
 		background: none;
+		color: var(--vo-text);
 		text-align: left;
 	}
 	.item:hover:not(:disabled) {
-		background: var(--vo-surface);
+		background: var(--vo-surface-raised);
 	}
 	.item:disabled {
 		cursor: not-allowed;
 		color: var(--vo-text-muted);
 	}
 	.guest {
+		padding: 8px 10px;
 		font-size: var(--vo-fs-label);
-		font-weight: 500;
-		color: var(--vo-text-muted);
-		white-space: nowrap;
+		color: var(--vo-chrome-muted);
 	}
 </style>

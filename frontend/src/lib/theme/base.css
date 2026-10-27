@@ -8,7 +8,7 @@
 html {
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
-	scrollbar-color: var(--vo-track) transparent;
+	scrollbar-color: var(--vo-scrollbar) transparent;
 }
 
 body {
@@ -20,6 +20,7 @@ body {
 	font-size: var(--vo-fs-body);
 	line-height: var(--vo-lh-body);
 	font-weight: 400;
+	font-feature-settings: 'calt' 1;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
@@ -41,6 +42,7 @@ h3,
 h4 {
 	font-weight: 600;
 	line-height: var(--vo-lh-tight);
+	letter-spacing: -0.01em;
 }
 
 button,
@@ -55,13 +57,18 @@ button {
 	cursor: pointer;
 }
 
+::placeholder {
+	color: var(--vo-text-placeholder);
+	opacity: 1;
+}
+
 /* The page behind an open modal dialog does not scroll. */
 :root:has(dialog[open]) {
 	overflow: hidden;
 }
 
 a {
-	color: var(--vo-yellow);
+	color: var(--vo-accent-ink);
 	text-underline-offset: 0.18em;
 	text-decoration-thickness: 1px;
 }
@@ -71,12 +78,12 @@ a:hover {
 }
 
 :focus-visible {
-	outline: 2px solid var(--vo-yellow);
+	outline: 2px solid var(--vo-focus);
 	outline-offset: 2px;
 }
 
 ::selection {
-	background: var(--vo-yellow);
+	background: var(--vo-accent);
 	color: var(--vo-text-on-accent);
 }
 
@@ -95,6 +102,15 @@ time {
 }
 
 .vo-muted {
+	color: var(--vo-text-muted);
+}
+
+/* Section label: upper case, tracked (the V-OptimAIse product family style). */
+.vo-eyebrow {
+	font-size: var(--vo-fs-eyebrow);
+	font-weight: 600;
+	letter-spacing: var(--vo-tracking-eyebrow);
+	text-transform: uppercase;
 	color: var(--vo-text-muted);
 }
 

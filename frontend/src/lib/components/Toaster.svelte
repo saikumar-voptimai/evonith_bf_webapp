@@ -68,7 +68,7 @@ Announcements go through two persistent live regions, so screen readers read eac
 		padding: var(--vo-space-3) var(--vo-space-3) var(--vo-space-3) var(--vo-space-4);
 		border: 1px solid var(--vo-border);
 		border-radius: var(--vo-radius-panel);
-		background: var(--vo-surface-raised);
+		background: var(--vo-surface);
 		box-shadow: var(--vo-shadow-overlay);
 	}
 	.icon {
@@ -110,7 +110,7 @@ Announcements go through two persistent live regions, so screen readers read eac
 	}
 	.close:hover {
 		color: var(--vo-text);
-		background: var(--vo-surface);
+		background: var(--vo-surface-raised);
 	}
 	@media (prefers-reduced-motion: no-preference) {
 		.toast {

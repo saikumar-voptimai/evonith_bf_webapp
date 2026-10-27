@@ -175,7 +175,7 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 		z-index: 1;
 		padding: 0;
 		background: var(--vo-surface);
-		border-bottom: 1px solid var(--vo-border-input);
+		border-bottom: 1px solid var(--vo-border-strong);
 		font-size: var(--vo-fs-label);
 		font-weight: 600;
 		color: var(--vo-text-muted);
@@ -187,7 +187,7 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 		align-items: baseline;
 		gap: 5px;
 		width: 100%;
-		padding: 8px 12px;
+		padding: 10px 14px;
 	}
 	.right .head {
 		justify-content: flex-end;
@@ -218,12 +218,15 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 	}
 	.arrow.on {
 		opacity: 1;
-		color: var(--vo-yellow);
+		color: var(--vo-accent-ink);
 	}
 	td {
-		padding: 9px 12px;
+		padding: 10px 14px;
 		border-bottom: 1px solid var(--vo-border);
 		vertical-align: middle;
+	}
+	tbody tr:last-child td {
+		border-bottom: 0;
 	}
 	.dense td {
 		padding-top: 5px;
@@ -244,13 +247,13 @@ is set, and empty and loading states. Custom cells: pass `cells={{ key: snippet 
 		white-space: nowrap;
 	}
 	tbody tr:hover td {
-		background: var(--vo-surface-raised);
+		background: var(--vo-bg);
 	}
 	tbody tr.selected td {
-		background: var(--vo-surface-raised);
+		background: var(--vo-cream);
 	}
 	tbody tr.selected td:first-child {
-		box-shadow: inset 3px 0 0 var(--vo-yellow);
+		box-shadow: inset 3px 0 0 var(--vo-accent);
 	}
 	tbody tr.muted td {
 		color: var(--vo-text-muted);

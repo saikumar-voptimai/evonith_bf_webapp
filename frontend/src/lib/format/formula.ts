@@ -1,6 +1,6 @@
 /**
- * Labels are written with Unicode subscript digits (SiO₂, Al₂O₃, CO₂). Montserrat has no glyphs for them, so
- * `Formula.svelte` renders each run of subscript digits as <sub> with the regular Montserrat digits.
+ * Labels are written with Unicode subscript digits (SiO₂, Al₂O₃, CO₂). The self-hosted Inter subsets do not contain
+ * U+2080–2089, so `Formula.svelte` renders each run of subscript digits as <sub> with the regular Inter digits.
  */
 
 const SUB_DIGITS = '₀₁₂₃₄₅₆₇₈₉';

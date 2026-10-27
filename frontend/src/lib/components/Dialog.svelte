@@ -112,7 +112,26 @@ Used through `Modal.svelte` (centred) and `Drawer.svelte` (side panel).
 		overflow: hidden;
 	}
 	.chrome {
-		background: var(--vo-black);
+		border-color: var(--vo-chrome);
+		background: var(--vo-chrome);
+		color: var(--vo-chrome-text);
+	}
+	.chrome header {
+		border-bottom-color: var(--vo-chrome-line);
+	}
+	.chrome h2 {
+		color: var(--vo-chrome-strong);
+	}
+	.chrome .desc,
+	.chrome .close {
+		color: var(--vo-chrome-muted);
+	}
+	.chrome .close:hover {
+		background: var(--vo-chrome-hover);
+		color: var(--vo-chrome-strong);
+	}
+	.chrome :global(:focus-visible) {
+		outline-color: var(--vo-chrome-accent);
 	}
 	.dialog::backdrop {
 		background: var(--vo-scrim);
@@ -196,6 +215,9 @@ Used through `Modal.svelte` (centred) and `Drawer.svelte` (side panel).
 	h2 {
 		font-size: var(--vo-fs-title);
 		line-height: 24px;
+	}
+	.chrome .body {
+		padding: var(--vo-space-3);
 	}
 	.desc {
 		margin-top: 2px;

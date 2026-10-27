@@ -1,5 +1,9 @@
-/* Global styles: fonts, design tokens and element defaults (SV-0.5, #274). Components keep their own styles. */
-@import '@fontsource-variable/montserrat/wght.css';
-@import './lib/theme/fonts.css';
+/*
+ * Global styles: font, design tokens and element defaults (SV-0.5, #274). Components keep their own styles.
+ * Inter Variable (OFL-1.1, @fontsource-variable/inter) is self-hosted: no request leaves the plant network. Its
+ * subsets cover latin, the degree and superscript signs, and Greek (omega, sigma, Delta); tabular figures (tnum).
+ * Chemical subscripts are written as Unicode (SiO₂) and drawn as <sub> by Formula.svelte.
+ */
+@import '@fontsource-variable/inter/wght.css';
 @import './lib/theme/tokens.css';
 @import './lib/theme/base.css';

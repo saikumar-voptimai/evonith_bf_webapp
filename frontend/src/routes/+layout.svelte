@@ -6,17 +6,20 @@
 	import { UNAUTHORIZED_EVENT } from '#lib/api/client.ts';
 	import AppShell from '#lib/components/shell/AppShell.svelte';
 	import { toasts } from '#lib/components/toast.svelte.ts';
-	import { titleFor } from '#lib/nav.ts';
+	import { headingFor, type PageHeading } from '#lib/nav.ts';
 	import { LOGIN_PATH } from '#lib/session/guard.ts';
 	import { session } from '#lib/session/session.svelte.ts';
 
 	let { children } = $props();
 
 	const onLogin = $derived(page.url.pathname === LOGIN_PATH);
-	const title = $derived.by(() => {
-		if (onLogin) return 'Sign in';
-		if (!page.error) return titleFor(page.url.pathname);
-		return page.status === 404 ? 'Page not found' : page.status === 403 ? 'Not permitted' : 'Error';
+	const heading = $derived.by<PageHeading>(() => {
+		if (onLogin) return { title: 'Sign in' };
+		if (!page.error) return headingFor(page.url.pathname);
+		if (page.status === 404)
+			return { title: 'Page not found', subtitle: 'The address does not match a page.' };
+		if (page.status === 403) return { title: 'Not permitted', subtitle: 'This page needs a higher role.' };
+		return { title: 'Error', subtitle: 'The page could not be shown.' };
 	});
 
 	async function signOut(): Promise<void> {
@@ -38,13 +41,13 @@
 </script>
 
 <svelte:head>
-	<title>{title} | V-OptimAIse BF-02</title>
+	<title>{heading.title} | V-OptimAIse BF-02</title>
 </svelte:head>
 
 {#if onLogin}
 	{@render children()}
 {:else}
-	<AppShell {title} current={page.url.pathname} user={session.user} onsignout={signOut}>
+	<AppShell {heading} current={page.url.pathname} user={session.user} onsignout={signOut}>
 		{@render children()}
 	</AppShell>
 {/if}

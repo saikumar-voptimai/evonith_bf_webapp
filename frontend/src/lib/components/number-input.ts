@@ -1,5 +1,5 @@
 /** Validation and stepping for `NumberInput.svelte`. */
-import { formatNumber, parseNumber } from '../format/number.ts';
+import { formatNumber, parseNumber, RANGE_DASH, UNIT_SPACE } from '../format/number.ts';
 
 export interface Bounds {
 	min?: number | undefined;
@@ -13,7 +13,7 @@ export type Check = { ok: true; value: number | null } | { ok: false; message: s
 
 function withUnit(value: number, b: Bounds): string {
 	const text = formatNumber(value, decimalsOf(value, b.digits));
-	return b.unit ? `${text} ${b.unit}` : text;
+	return b.unit ? `${text}${UNIT_SPACE}${b.unit}` : text;
 }
 
 /** Decimals needed to show a bound exactly (at least the field's own decimals). */
@@ -49,9 +49,10 @@ export function stepValue(current: number | null, direction: 1 | -1, step: numbe
 
 /** Hint under the field: `Range 360–400 kg/tHM`, `Minimum 0 %`. */
 export function rangeHint(b: Bounds): string | undefined {
-	const unit = b.unit ? ` ${b.unit}` : '';
+	const unit = b.unit ? `${UNIT_SPACE}${b.unit}` : '';
 	const fmt = (v: number) => formatNumber(v, decimalsOf(v, b.digits));
-	if (b.min !== undefined && b.max !== undefined) return `Range ${fmt(b.min)}–${fmt(b.max)}${unit}`;
+	if (b.min !== undefined && b.max !== undefined)
+		return `Range ${fmt(b.min)}${RANGE_DASH}${fmt(b.max)}${unit}`;
 	if (b.min !== undefined) return `Minimum ${fmt(b.min)}${unit}`;
 	if (b.max !== undefined) return `Maximum ${fmt(b.max)}${unit}`;
 	return undefined;

@@ -1,22 +1,22 @@
 <!--
 @component
-Application frame: navigation rail (from 1024 px; a drawer below), sticky top bar, the page, and notifications.
-Starts the shared clock and the server connection check while mounted.
+Application frame: dark navigation sidebar (from 1024 px; a drawer below), page header on the light canvas, the
+page, and notifications. Starts the shared clock and the server connection check while mounted.
 -->
 <script lang="ts">
 	import { afterNavigate } from '$app/navigation';
 	import type { Snippet } from 'svelte';
 	import { connection } from '../../live/connection.svelte.ts';
-	import { visibleGroups } from '../../nav.ts';
+	import { visibleGroups, type PageHeading } from '../../nav.ts';
 	import type { SessionUser } from '../../session/session.svelte.ts';
 	import { clock } from '../../time/clock.svelte.ts';
 	import Drawer from '../Drawer.svelte';
 	import Toaster from '../Toaster.svelte';
 	import NavRail from './NavRail.svelte';
-	import TopBar from './TopBar.svelte';
+	import PageHeader from './PageHeader.svelte';
 
 	interface Props {
-		title: string;
+		heading: PageHeading;
 		/** Current pathname. */
 		current: string;
 		user: SessionUser | null;
@@ -24,7 +24,7 @@ Starts the shared clock and the server connection check while mounted.
 		children: Snippet;
 	}
 
-	let { title, current, user, onsignout, children }: Props = $props();
+	let { heading, current, user, onsignout, children }: Props = $props();
 
 	const RAIL_KEY = 'vo.rail.collapsed';
 	let collapsed = $state(false);
@@ -35,7 +35,7 @@ Starts the shared clock and the server connection check while mounted.
 		try {
 			collapsed = localStorage.getItem(RAIL_KEY) === '1';
 		} catch {
-			// Storage blocked: the rail starts expanded.
+			// Storage blocked: the sidebar starts expanded.
 		}
 	});
 
@@ -61,23 +61,25 @@ Starts the shared clock and the server connection check while mounted.
 <div class={['shell', collapsed && 'collapsed']}>
 	<div class="rail-column">
 		<div class="rail-slot">
-			<NavRail {groups} {current} {collapsed} ontoggle={toggleRail} />
+			<NavRail {groups} {current} {user} {collapsed} ontoggle={toggleRail} {onsignout} />
 		</div>
 	</div>
 	<div class="column">
-		<TopBar
-			{title}
+		<PageHeader
+			{heading}
 			now={clock.now}
 			connection={connection.state}
 			lastOnline={connection.lastOnline}
-			{user}
-			{onsignout}
 			menuOpen={navOpen}
 			onmenu={() => (navOpen = true)}
 		/>
 		<main id="main" tabindex="-1">
 			{@render children()}
 		</main>
+		<footer class="foot">
+			<span>BF-02 Twin <span class="by">by V-OptimAIse</span></span>
+			<span>Times in IST. Shifts A 06:00, B 14:00, C 22:00.</span>
+		</footer>
 	</div>
 </div>
 
@@ -89,7 +91,7 @@ Starts the shared clock and the server connection check while mounted.
 	title="V-OptimAIse"
 	description="BF-02, Evonith Steel"
 >
-	<NavRail {groups} {current} embedded onnavigate={() => (navOpen = false)} />
+	<NavRail {groups} {current} {user} embedded {onsignout} onnavigate={() => (navOpen = false)} />
 </Drawer>
 
 <Toaster />
@@ -102,7 +104,7 @@ Starts the shared clock and the server connection check while mounted.
 		z-index: 100;
 		padding: 10px 16px;
 		border-radius: var(--vo-radius-control);
-		background: var(--vo-yellow-strong);
+		background: var(--vo-accent);
 		color: var(--vo-text-on-accent);
 		font-weight: 600;
 		text-decoration: none;
@@ -119,8 +121,7 @@ Starts the shared clock and the server connection check while mounted.
 		grid-template-columns: var(--vo-rail-collapsed) minmax(0, 1fr);
 	}
 	.rail-column {
-		border-right: 1px solid var(--vo-border);
-		background: var(--vo-black);
+		background: var(--vo-chrome);
 	}
 	.rail-slot {
 		position: sticky;
@@ -136,10 +137,23 @@ Starts the shared clock and the server connection check while mounted.
 	main {
 		flex: 1;
 		min-width: 0;
-		padding: var(--vo-gutter);
+		padding: var(--vo-space-5) var(--vo-gutter) var(--vo-space-6);
 	}
 	main:focus {
 		outline: none;
+	}
+	.foot {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--vo-space-4);
+		margin: 0 var(--vo-gutter);
+		padding: var(--vo-space-4) 0 var(--vo-space-5);
+		border-top: 1px solid var(--vo-border);
+		font-size: 0.75rem;
+		color: var(--vo-text-muted);
+	}
+	.by {
+		margin-left: 6px;
 	}
 	@media (max-width: 1023px) {
 		.shell,
@@ -147,6 +161,11 @@ Starts the shared clock and the server connection check while mounted.
 			grid-template-columns: minmax(0, 1fr);
 		}
 		.rail-column {
+			display: none;
+		}
+	}
+	@media (max-width: 767px) {
+		.foot span:last-child {
 			display: none;
 		}
 	}

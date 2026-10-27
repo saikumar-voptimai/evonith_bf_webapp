@@ -146,7 +146,7 @@ Period of IST calendar days with quick presets that end on the latest day with d
 	}
 	input:focus-visible {
 		outline-offset: 1px;
-		border-color: var(--vo-yellow);
+		border-color: var(--vo-focus);
 	}
 	input[aria-invalid='true'] {
 		border-color: var(--vo-critical);
@@ -161,7 +161,7 @@ Period of IST calendar days with quick presets that end on the latest day with d
 		padding: 0 12px;
 		border: 1px solid var(--vo-border);
 		border-radius: var(--vo-radius-pill);
-		background: none;
+		background: var(--vo-surface);
 		color: var(--vo-text-muted);
 		font-size: var(--vo-fs-label);
 		font-weight: 600;
@@ -171,8 +171,9 @@ Period of IST calendar days with quick presets that end on the latest day with d
 		border-color: var(--vo-border-input);
 	}
 	.presets button[aria-pressed='true'] {
-		border-color: var(--vo-yellow);
-		color: var(--vo-yellow);
+		border-color: var(--vo-accent-strong);
+		background: var(--vo-accent-soft);
+		color: var(--vo-text);
 	}
 	.msg {
 		display: flex;

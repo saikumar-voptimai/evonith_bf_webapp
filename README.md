@@ -896,8 +896,9 @@ The failure limit and the revoked-token list are held in the API process; the Re
 processes come with the job queue (#277).
 
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
-shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (v-optimai.com palette;
-text contrast >= 4.5:1 on every surface, checked by a unit test). `make audit-ui` builds the SPA and runs axe-core,
+shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family
+look as in Optimus: dark sidebar, light canvas, white panels, yellow accent, Inter; text contrast >= 4.5:1 on every
+surface, checked by a unit test). `make audit-ui` builds the SPA and runs axe-core,
 overflow, keyboard and dialog checks at 1920x1080, 1366x768 and 768x1024 (Playwright with Chromium required).
 
 **Typed API client.** `frontend/src/lib/api/client.ts` wraps `openapi-fetch` with the types generated from the API's
