@@ -27,7 +27,7 @@ def schema() -> dict:
 
 def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(schema(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    OUT.write_text(json.dumps(schema(), indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {OUT.relative_to(ROOT)}")
 
 

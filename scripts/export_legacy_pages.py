@@ -43,7 +43,7 @@ def render(pages: list[tuple[str, str]]) -> str:
 
 
 def main() -> None:
-    OUT.write_text(render(legacy_pages()), encoding="utf-8")
+    OUT.write_text(render(legacy_pages()), encoding="utf-8", newline="\n")
     print(f"wrote {OUT.relative_to(ROOT)}")
 
 
