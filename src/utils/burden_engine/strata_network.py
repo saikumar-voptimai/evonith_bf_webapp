@@ -19,6 +19,11 @@ between anchors (inside one iteration's finite differences and the coke fixed po
 from the nearest anchor is reported. Production searches run with a reuse tolerance (``Engine.network_tolerance``)
 and re-solve the plan they return exactly (``Engine.refine``).
 
+Exact mode (``jacobian=False``, the twin's window evaluation, SV-1.1): no Jacobian; ``parts(st)`` solves every state
+that has no solve yet (one solve per distinct state, kept as an anchor). Used where the states are known in advance
+and few (the anchor, then blend, blend + production and full operation of one window), so that the 17 solves of a
+Jacobian per anchor are not spent.
+
 Inputs u (network units): wet share of each ferrous material except sinter (the sinter share closes the sum), coke,
 nut coke, PCI (kg/tHM), production (t/h), blast per tonne (Nm3/tHM), O2 fraction of the blast, sinter RDI (%),
 ferrous rate (kg/tHM wet), blast moisture (g/Nm3). Pure numerical code; reads and writes one JSON cache file.
@@ -45,6 +50,12 @@ INPUTS = tuple("sh_" + m for m in SHARE_INPUTS) + SCALAR_INPUTS
 STEP = dict(sh=0.02, coke=10.0, nut=5.0, pci=10.0, prod=2.0, blast_t=20.0, o2=0.005, rdi=1.0, fer=20.0, humidity=2.0)
 SCALE = dict(sh=0.01, coke=5.0, nut=5.0, pci=5.0, prod=1.0, blast_t=10.0, o2=0.002, rdi=0.5, fer=10.0, humidity=0.5)
 NET_VERSION = "STRATA-Flow v0.4.1 (plant RI / RDI catalogue, 23 Oct 2026)"
+_STATS = {"solves": 0, "seconds": 0.0}            # network solves of this process (all NetworkParts)
+
+
+def solve_stats() -> tuple[int, float]:
+    """(network solves, seconds spent in them) of this process so far; differences give the cost of one step."""
+    return int(_STATS["solves"]), float(_STATS["seconds"])
 
 
 def _per_input(table: Mapping[str, float]) -> np.ndarray:
@@ -54,9 +65,10 @@ def _per_input(table: Mapping[str, float]) -> np.ndarray:
 class NetworkParts:
     """Ring quantities from the STRATA-Flow network, anchored per state; see the module docstring."""
 
-    def __init__(self, context: Mapping[str, Any], cache_dir: str | Path | None = CACHE_DIR):
+    def __init__(self, context: Mapping[str, Any], cache_dir: str | Path | None = CACHE_DIR, jacobian: bool = True):
         self.ctx = dict(context)
         self.cache_dir = Path(cache_dir) if cache_dir else None
+        self.jacobian = bool(jacobian)                              # False: exact mode, a solve per distinct state
         self.U = np.zeros((0, len(INPUTS)))                         # anchor inputs
         self.Y = np.zeros((0, 18))                                  # anchor outputs y = f(6) + o(6) + t(6)
         self.J: np.ndarray | None = None
@@ -94,8 +106,11 @@ class NetworkParts:
         from utils.strata_flow.omega_eval import evaluate
         t0 = time.perf_counter()
         r = evaluate(self.network_state(u))
+        dt = time.perf_counter() - t0
         self.n_solves += 1
-        self.sec_solves += time.perf_counter() - t0
+        self.sec_solves += dt
+        _STATS["solves"] += 1
+        _STATS["seconds"] += dt
         return np.r_[np.asarray(r["f"], float), np.asarray(r["o"], float), np.asarray(r["t"], float)]
 
     @staticmethod
@@ -140,13 +155,19 @@ class NetworkParts:
         return self.U[i], self.Y[i], float(d[i])
 
     def parts(self, st) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        if self.J is None or not len(self.U):
+        if not len(self.U) or (self.jacobian and self.J is None):
             raise RuntimeError("NetworkParts.set_reference() first")
         u = self._fill(self.vec(st))
         ua, ya, d = self.nearest(u)
-        self.last_distance = d
         if d <= 1e-9:
+            self.last_distance = d
             return self._split(ya)
+        if not self.jacobian:                                       # exact mode: solve the state itself
+            y = self.solve(u)
+            self._add(u, y)
+            self.last_distance = 0.0
+            return self._split(y)
+        self.last_distance = d
         return self._split(ya + self.J @ (u - ua))
 
     def distance(self, st) -> float:
@@ -165,9 +186,15 @@ class NetworkParts:
         return hashlib.sha1(payload.encode()).hexdigest()[:16]
 
     def set_reference(self, ref, tag: str = "") -> "NetworkParts":
-        """Exact solve at the calibration state and the network Jacobian there (disk cache per calibration)."""
+        """Exact solve at the calibration state and the network Jacobian there (disk cache per calibration); in exact
+        mode the solve only."""
         u0 = self._fill(self.vec(ref))
         self.u_ref = u0
+        if not self.jacobian:
+            self.J = None
+            self.U, self.Y = u0[None, :].copy(), self.solve(u0)[None, :]
+            self.jacobian_source = "none (exact mode: a network solve at every state)"
+            return self
         key = self._key(u0, tag)
         path = self.cache_dir / f"jacobian_{key}.json" if self.cache_dir else None
         if path is not None and path.exists():
@@ -208,14 +235,17 @@ class NetworkParts:
 
 
 _POOL: dict[str, NetworkParts] = {}
+POOL_MAX = 32                     # calibrations kept per process (oldest dropped; one per day in a long-lived worker)
 
 
-def network_parts(context: Mapping[str, Any], ref, tag: str = "") -> NetworkParts:
-    """One NetworkParts per (network context, calibration state) in the process, so that engines built on the same
-    calibration (a page rerun, today's blend, the scenario runs) share the network solves already made."""
-    net = NetworkParts(context)
-    key = net._key(net._fill(net.vec(ref)), tag)
+def network_parts(context: Mapping[str, Any], ref, tag: str = "", jacobian: bool = True) -> NetworkParts:
+    """One NetworkParts per (network context, calibration state, mode) in the process, so that engines built on the
+    same calibration (a page rerun, today's blend, the scenario runs) share the network solves already made."""
+    net = NetworkParts(context, jacobian=jacobian)
+    key = net._key(net._fill(net.vec(ref)), tag if jacobian else f"{tag}|exact")
     if key not in _POOL:
+        while len(_POOL) >= POOL_MAX:
+            _POOL.pop(next(iter(_POOL)))
         _POOL[key] = net.set_reference(ref, tag)
     return _POOL[key]
 

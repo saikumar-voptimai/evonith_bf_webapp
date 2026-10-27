@@ -324,11 +324,14 @@ class OmegaModel:
         return float(np.sum(eff * cmin) / np.sum(cg))
 
     # ---------------------------------------------------------------------------------------------- calibration
-    def calibrate(self, ref: OmegaState, omega_cal: float, R_cal: float) -> "OmegaModel":
-        """Anchor on the engine's calibration point: kappa so that w(ref, R_cal) = omega_cal."""
+    def calibrate(self, ref: OmegaState, omega_cal: float, R_cal: float, jacobian: bool = True) -> "OmegaModel":
+        """Anchor on the engine's calibration point: kappa so that w(ref, R_cal) = omega_cal.
+
+        Network backend: ``jacobian=False`` skips the network Jacobian at the anchor (17 solves) and solves every state
+        on first use instead (exact mode of ``strata_network``; the twin's window evaluation)."""
         self.ref, self.R_ref, self.omega_ref = ref, float(R_cal), float(omega_cal)
         if self.backend == "network":
-            self.net = network_parts(self.net_ctx, ref)
+            self.net = network_parts(self.net_ctx, ref, jacobian=jacobian)
         pr = self.parts(ref)
         lo, hi = 1e-3, 1e3
         for _ in range(70):

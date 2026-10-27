@@ -995,6 +995,32 @@ keeps its version in `twin.alembic_version`. The default Alembic environment (`a
 | `BF_TWIN_DB_URL` | `DATABASE_URL` | Database of the twin store; `off` disables it (the test suite sets `off`). The worker archives job records when a URL is set |
 | `BF_TEST_DATABASE_URL` | unset | PostgreSQL server for `tests/test_twin_store.py` (a role that may create databases: CI service, Neon branch); unset, the tests start a throw-away local cluster with `initdb` / `pg_ctl` (PostgreSQL 16: `apt install postgresql`) and are skipped without one |
 
+**Twin evaluation (SV-1.1).** `services.twin.evaluate(t)` evaluates the window W = [t − 8 h, t), t floored to the
+full hour (IST), on the Coke Energy sources and pipeline run of `services.coke_energy`; `services.twin.snapshot_values`
+gives its `twin.snapshot` row. The window is aggregated and balanced by the pipeline's own statements
+(`build_shift_inputs(key_fn=window_key(start, end))`, `shift_balance`); every 14-day quantity comes from the stable
+shifts dated in [d − 14 d, d), d the date of the window's start, as on page 10 (`src/utils/coke_energy/twin.py`).
+
+| Quantity | Definition |
+|---|---|
+| K_TRACE | Oxygen-balance coke of the metered blast at the analyser's ηCO + 14-day median of (charged − burnt) |
+| K_FORGE | Two-zone balance of W with ω, Q_LZ, Q_UZ, r_H at their 14-day medians |
+| K_STRATA ± 1σ | The K_FORGE balance with ω = ω_STRATA; σ = \|dK/dω\| · σ(ω_STRATA), dK/dω at fixed ω |
+| ω_imp | Two-zone calibration of W on the reconciled basis (charged coke, O-balance air, analyser ηCO) |
+| ω_STRATA ± 1σ | STRATA 1.5 for the window's blend and operation against the same 14 days (`src/utils/burden_engine/strata_window.py`) |
+| K_charged, production, HMT, Si, blast moisture | From the window's balance; data flags: hourly rows, 10-min samples, taps, provisional DPR dust |
+
+ω_STRATA follows the protocol on which the STRATA 1.5 posterior was fitted: anchor A = blend and operation of the 14
+days (ω_A = their median ω, the ω of K_FORGE; κ refitted so that w(A) = ω_A; network context and sinter RDI of the
+anchor), network solves at the window's blend (B), blend + production (P) and full operation at the charged coke (F).
+The ores enter by type (`ORE_k_CALC_MT` summed per window, mapped by the asset's `plant_map`). The network runs in
+exact mode (no Jacobian): one solve per new anchor and three per window, about 1 s each in the development container
+(about 3.5 s per window, 6 s with a new anchor). Status: `complete` (TRACE, FORGE, ω_imp and STRATA evaluated),
+`partial` (a 14-day quantity or STRATA missing; the notes say which), `failed` (too little data, a known data error, or
+a balance that does not solve). Tests: `tests/test_twin_window.py` (every window on a completed shift equals the
+pipeline: largest difference 0.0 kg/tHM and 0.0 in ω on 54 synthetic shifts), `tests/test_twin_strata.py`,
+`tests/test_services_twin.py`.
+
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family
 look as in Optimus: dark sidebar, light canvas, white panels, yellow accent, Inter; text contrast >= 4.5:1 on every

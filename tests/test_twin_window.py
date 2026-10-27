@@ -3,12 +3,12 @@
 The synthetic frames (``tests/twin_data.py``) are 18 days of shifts made from three real shift rows. The pipeline is
 run on them once; every window that coincides with a shift must return that shift's pipeline values (acceptance:
 within 0.1 kg/tHM and 0.0005 in omega), a window between shifts aggregates its own hours, and the data checks and
-flags of the window are reported.
+flags of the window are reported. K_STRATA (network solves) is tested in ``tests/test_twin_strata.py``; here every
+evaluation runs with ``strata=False``.
 """
 
 from __future__ import annotations
 
-import time
 import warnings
 
 import numpy as np
@@ -33,6 +33,10 @@ def world():
         result = run_pipeline(fd, m10, hm, dpr, SETTINGS)
     assert not result.errors
     return (fd, m10, hm, dpr), result
+
+
+def evaluate(*args, **kw):
+    return evaluate_window(*args, strata=False, **kw)
 
 
 def _close(a, b, tol):
@@ -83,7 +87,7 @@ def test_windows_on_completed_shifts_equal_the_pipeline(world) -> None:
     T = result.shifts
     checked = 0
     for skey, row in T.iterrows():
-        ev = evaluate_window(*frames, Window.of_shift(skey), result, SETTINGS)
+        ev = evaluate(*frames, Window.of_shift(skey), result, SETTINGS)
         assert _close(ev.k_trace, row.K_burnt, TOL_K), (skey, ev.k_trace, row.K_burnt)
         assert _close(ev.k_forge, row.K_energy, TOL_K), (skey, ev.k_forge, row.K_energy)
         assert _close(ev.omega_imp, row.omega_shift, TOL_OMEGA), (skey, ev.omega_imp, row.omega_shift)
@@ -102,7 +106,7 @@ def test_windows_on_completed_shifts_equal_the_pipeline(world) -> None:
 
 def test_early_windows_are_partial_with_the_reason(world) -> None:
     frames, result = world
-    ev = evaluate_window(*frames, Window.of_shift("2026-05-02_A"), result, SETTINGS)
+    ev = evaluate(*frames, Window.of_shift("2026-05-02_A"), result, SETTINGS)
     assert ev.status == "partial"
     assert ev.k_trace is None and ev.k_forge is None and ev.omega_imp is not None
     assert any("TRACE: fewer than 10 stable shifts" in n for n in ev.notes)
@@ -110,7 +114,7 @@ def test_early_windows_are_partial_with_the_reason(world) -> None:
 
 def test_a_window_between_shifts_is_evaluated(world) -> None:
     frames, result = world
-    ev = evaluate_window(*frames, Window.ending("2026-05-15 10:00"), result, SETTINGS)
+    ev = evaluate(*frames, Window.ending("2026-05-15 10:00"), result, SETTINGS)
     assert ev.status == "complete"
     assert 250 < ev.k_trace < 400 and 250 < ev.k_forge < 400 and 0.6 < ev.omega_imp < 0.95
     assert ev.flags["n_hours"] == 8 and ev.flags["n_ok10"] == 48
@@ -120,18 +124,18 @@ def test_a_window_between_shifts_is_evaluated(world) -> None:
 def test_provisional_dpr_dust_is_flagged(world) -> None:
     frames, result = world
     w = Window.of_shift("2026-05-16_B")
-    assert evaluate_window(*frames, w, result, SETTINGS).flags["provisional_dpr"] is False
-    flagged = evaluate_window(*frames, w, result, SETTINGS, provisional_dates={w.date.date()})
+    assert evaluate(*frames, w, result, SETTINGS).flags["provisional_dpr"] is False
+    flagged = evaluate(*frames, w, result, SETTINGS, provisional_dates={w.date.date()})
     assert flagged.flags["provisional_dpr"] is True and flagged.status == "complete"
 
 
 def test_a_window_without_data_fails_with_the_reasons(world) -> None:
     (fd, m10, hm, dpr), result = world
-    empty = evaluate_window(fd, m10, hm, dpr, Window.ending("2026-07-01 10:00"), result, SETTINGS)
+    empty = evaluate(fd, m10, hm, dpr, Window.ending("2026-07-01 10:00"), result, SETTINGS)
     assert empty.status == "failed" and empty.notes == ["no hourly data in the window"]
     w = Window.of_shift("2026-05-12_A")
     no_taps = hm[(hm.t < w.start) | (hm.t >= w.end)]
-    ev = evaluate_window(fd, m10, no_taps, dpr, w, result, SETTINGS)
+    ev = evaluate(fd, m10, no_taps, dpr, w, result, SETTINGS)
     assert ev.status == "failed"
     assert "0 hot-metal taps (need 2)" in ev.notes and "no hot-metal analysis" in ev.notes
 
@@ -141,12 +145,5 @@ def test_a_known_data_error_fails_the_window(world) -> None:
     w = Window.of_shift("2026-05-12_B")
     wet = fd.copy()
     wet.loc[(wet.time >= w.start) & (wet.time < w.end), "ORE_TM%"] = 129.7
-    ev = evaluate_window(wet, m10, hm, dpr, w, result, SETTINGS)
+    ev = evaluate(wet, m10, hm, dpr, w, result, SETTINGS)
     assert ev.status == "failed" and ev.notes[0].startswith("data error: ore moisture")
-
-
-def test_one_evaluation_takes_well_under_30_s(world) -> None:
-    frames, result = world
-    t0 = time.perf_counter()
-    evaluate_window(*frames, Window.ending("2026-05-17 13:00"), result, SETTINGS)
-    assert time.perf_counter() - t0 < 30

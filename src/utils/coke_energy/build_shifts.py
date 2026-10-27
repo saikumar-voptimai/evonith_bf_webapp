@@ -11,6 +11,8 @@ Windows (SV-1.1, #281): ``key_fn`` assigns the rows to their aggregation period.
 A/B/C shifts; ``window_key(start, end)`` gives one window [start, end) of any length, aggregated by the same statements,
 so a window that coincides with a shift returns that shift's row (under the window's key).
 """
+import re
+
 import pandas as pd, numpy as np
 
 
@@ -65,6 +67,8 @@ def build_shift_inputs(fd, m10, hm, dpr, start='2025-08-01', key_fn=shift_key):
 
     mass_sum = ['COKE_CALC_MT', 'NUTCOKE_CALC_MT', 'PCI_CALC_MT', 'SINTER_CALC_MT', 'ORE_CALC_MT', 'TOTAL_PELLET_CALC_MT',
                 'FLUX_CALC_MT', 'ORE_DRY', 'PEL_DRY', 'SIN_DRY', 'COKE_DRY', 'NUT_DRY', 'PCI_DRY', 'PRODUCTIONTONNESPERHR']
+    # charge of each ore type (ORE_1 .. ORE_12, wet t; STRATA's blend by ore, SV-1.1); not used by the balances
+    mass_sum += sorted((c for c in f.columns if re.fullmatch(r'ORE_\d+_CALC_MT', c)), key=lambda c: int(c.split('_')[1]))
     # composition columns weighted by the relevant mass
     wmap = {
         'COKE_CALC_MT': [c for c in f.columns if c.startswith('COKE_') and c.endswith('%')] + [c for c in f.columns if c.startswith('COKE_ASH_ANALYSIS')] + ['COKE_CSR', 'COKE_CRI', 'COKE_M-40', 'COKE_M-10'],

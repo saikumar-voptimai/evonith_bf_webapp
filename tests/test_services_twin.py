@@ -58,13 +58,22 @@ def test_evaluate_runs_the_window_ending_at_the_full_hour(sources) -> None:
     assert calls[-1] == KEYS
     pool = page_data_for(KEYS, ce.PipelineSettings.from_config(CFG)).result
     direct = evaluate_window(fd, m10, hm, dpr, ev.window, pool, ce.PipelineSettings.from_config(CFG), provisional)
-    assert (ev.status, ev.k_trace, ev.k_forge, ev.omega_imp) == (
+    assert (ev.status, ev.k_trace, ev.k_forge, ev.omega_imp, ev.k_strata) == (
         direct.status,
         direct.k_trace,
         direct.k_forge,
         direct.omega_imp,
+        direct.k_strata,
     )
     assert ev.status == "complete"
+
+
+def test_strata_can_be_left_out(sources) -> None:
+    _, loaders, page_data_for, _ = sources
+    ev = twin.evaluate(
+        "2026-05-15 10:00", cfg=CFG, keys=KEYS, loaders=loaders, page_data_for=page_data_for, strata=False
+    )
+    assert ev.status == "complete" and ev.k_strata is None and ev.k_forge is not None
 
 
 def test_the_provisional_dpr_of_the_loaders_is_flagged(sources) -> None:
@@ -80,8 +89,11 @@ def test_snapshot_values_are_in_utc_and_round_trip_through_the_twin_store(source
     values = twin.snapshot_values(ev, evaluated_at=at, versions={"pipeline_window_days": 14})
     assert values["window_start"] == datetime(2026, 5, 14, 20, 30, tzinfo=UTC)  # 02:00 IST
     assert values["window_end"] == datetime(2026, 5, 15, 4, 30, tzinfo=UTC)  # 10:00 IST
-    assert values["k_strata"] is None and values["omega_strata"] is None
+    assert (values["k_strata"], values["k_strata_sd"]) == (ev.k_strata, ev.k_strata_sd)
+    assert (values["omega_strata"], values["omega_strata_sd"]) == (ev.omega_strata, ev.omega_strata_sd)
+    assert values["k_strata"] is not None and values["flags"]["strata"]["network_solves"] >= 0
     assert values["flags"]["notes"] == [] and values["versions"]["model"] == twin.MODEL
+    assert values["versions"]["strata"] == "STRATA 1.5"
 
     engine = build_engine(f"sqlite:///{tmp_path / 'twin.db'}")
     TwinBase.metadata.create_all(engine)
@@ -90,6 +102,7 @@ def test_snapshot_values_are_in_utc_and_round_trip_through_the_twin_store(source
     row = store.snapshots.get(values["window_end"])
     assert row.status == "complete"
     assert row.k_trace == pytest.approx(ev.k_trace) and row.omega_imp == pytest.approx(ev.omega_imp)
+    assert row.k_strata == pytest.approx(ev.k_strata) and row.omega_strata_sd == pytest.approx(ev.omega_strata_sd)
     assert row.quantities["hmt_c"] == pytest.approx(ev.quantities["hmt_c"])
     assert row.flags["n_hours"] == 8 and row.versions["pipeline_window_days"] == 14
     engine.dispose()

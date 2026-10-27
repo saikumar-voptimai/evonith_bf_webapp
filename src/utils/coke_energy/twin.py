@@ -13,17 +13,22 @@ returns that shift's values from the pipeline table:
                                                                                       = pipeline ``omega_shift``
     omega_cal  the 14-day median omega that K_FORGE uses                              = pipeline ``omega_fixed``
     K_charged  dry coke charged per tonne of hot metal                                = pipeline ``K_charged``
+    K_STRATA   the K_FORGE balance with omega = omega_STRATA, STRATA 1.5 for the window's blend and operation
+               against the same 14 days (``utils.burden_engine.strata_window``: anchor A = those shifts, network
+               solves at the window's blend, blend + production and full operation); 1 sigma = |dK/domega| x
+               sigma(omega_STRATA), dK/domega of the balance at fixed omega
 
-Status: ``complete`` when K_TRACE, K_FORGE and omega_imp were evaluated; ``partial`` when the window balanced but a
-14-day quantity is missing (fewer than ``min_shifts`` stable shifts in the pool, or a date before ``predict_from``);
-``failed`` when the window has too little data, a known data error, or a balance that does not solve. Pure numerics:
-no I/O, no Streamlit (``services.twin`` loads the sources and stores the result).
+Status: ``complete`` when K_TRACE, K_FORGE, omega_imp and (when requested) K_STRATA were evaluated; ``partial`` when
+the window balanced but a 14-day quantity is missing (fewer than ``min_shifts`` stable shifts in the pool, or a date
+before ``predict_from``) or STRATA did not evaluate; ``failed`` when the window has too little data, a known data error,
+or a balance that does not solve. Pure numerics: no I/O, no Streamlit (``services.twin`` loads the sources and stores
+the result).
 """
 
 from __future__ import annotations
 
 import warnings
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -31,6 +36,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from utils.burden_engine import strata_window
+from utils.burden_engine.strata_network import solve_stats
 from utils.coke_energy.build_shifts import build_shift_inputs, window_key
 from utils.coke_energy.burnt import k_burnt
 from utils.coke_energy.pipeline import (
@@ -51,6 +58,7 @@ from utils.coke_energy.whatif import stable_mask
 WINDOW_HOURS = 8
 SHIFT_START_HOURS = {"A": 6, "B": 14, "C": 22}
 STATES = ("complete", "partial", "failed")
+DOMEGA = 0.005  # omega step of dK/domega (fixed-omega balance)
 
 # Window row (pipeline name) -> quantity key with its unit.
 QUANTITIES = {
@@ -123,9 +131,14 @@ class WindowEvaluation:
     k_charged: float | None = None
     omega_imp: float | None = None
     omega_cal: float | None = None
+    k_strata: float | None = None
+    k_strata_sd: float | None = None
+    omega_strata: float | None = None
+    omega_strata_sd: float | None = None
     quantities: dict[str, float] = field(default_factory=dict)
     flags: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    versions: dict[str, str] = field(default_factory=dict)
 
 
 def _num(x: Any) -> float | None:
@@ -195,8 +208,11 @@ def evaluate_window(
     pool: PipelineResult,
     settings: PipelineSettings | None = None,
     provisional_dates: Collection[date] = (),
+    strata: bool = True,
 ) -> WindowEvaluation:
-    """Evaluate ``window`` on the four source frames with the 14-day quantities of ``pool`` (see the module notes)."""
+    """Evaluate ``window`` on the four source frames with the 14-day quantities of ``pool`` (see the module notes).
+
+    ``strata=False`` skips K_STRATA (3 network solves per window and 1 per 14-day anchor, about 1 s each)."""
 
     settings = settings or pool.settings
     key = window.key
@@ -265,6 +281,18 @@ def evaluate_window(
 
     # K_FORGE: two-zone balance at the pool's 14-day medians.
     omega_roll = _num(med["omega_roll"])
+    prod = float(rb.prod_th)
+
+    def balance(omega: float) -> dict:
+        return solve_2z(
+            _case(cases, key),
+            p,
+            omega,
+            med["Q_LZ_GJh_roll"] * 1000 / prod,
+            med["Q_UZ_GJh_roll"] * 1000 / prod,
+            med["r_H_roll"],
+        )
+
     if omega_roll is None:
         ev.notes.append(
             f"FORGE: fewer than {settings.min_shifts} stable shifts in the {settings.window_days} days "
@@ -273,16 +301,8 @@ def evaluate_window(
     elif window.date < pd.Timestamp(settings.predict_from):
         ev.notes.append(f"FORGE: window before predict_from {settings.predict_from}")
     else:
-        prod = float(rb.prod_th)
         try:
-            s = solve_2z(
-                _case(cases, key),
-                p,
-                omega_roll,
-                med["Q_LZ_GJh_roll"] * 1000 / prod,
-                med["Q_UZ_GJh_roll"] * 1000 / prod,
-                med["r_H_roll"],
-            )
+            s = balance(omega_roll)
             ev.k_forge = _num(s["K"])
             ev.omega_cal = omega_roll
             ev.quantities.update(
@@ -295,6 +315,64 @@ def evaluate_window(
         except Exception as exc:  # noqa: BLE001 - reported, the rest of the evaluation stands
             ev.notes.append(f"FORGE: two-zone balance did not solve ({exc})")
 
-    if ev.k_trace is not None and ev.k_forge is not None and ev.omega_imp is not None:
+    # K_STRATA: the same balance with omega_STRATA of the window against the same 14 days.
+    if strata and ev.k_forge is not None:
+        _evaluate_strata(ev, pool, S.loc[key], rb, window, settings, balance)
+
+    if (
+        ev.k_trace is not None
+        and ev.k_forge is not None
+        and ev.omega_imp is not None
+        and (ev.k_strata is not None or not strata)
+    ):
         ev.status = "complete"
     return ev
+
+
+def _evaluate_strata(
+    ev: WindowEvaluation,
+    pool: PipelineResult,
+    row: pd.Series,
+    rb: pd.Series,
+    window: Window,
+    settings: PipelineSettings,
+    balance: Callable[[float], dict],
+) -> None:
+    """omega_STRATA, K_STRATA and their 1 sigma into ``ev`` (a failure leaves them empty with a note)."""
+    R = _with_dates(pool.R)
+    keys = strata_window.anchor_keys(R, R.stable, window.date, settings.window_days)
+    n0, s0 = solve_stats()
+    try:
+        anchor = strata_window.build_anchor(pool.S, pool.R, pool.Z, keys, ev.omega_cal, window.date)
+        sw = strata_window.evaluate_window(anchor, row, humidity=float(rb.humidity_g))
+        k = _num(balance(sw.omega)["K"])
+        k_up = _num(balance(sw.omega + DOMEGA)["K"])
+    except Exception as exc:  # noqa: BLE001 - reported, TRACE and FORGE stand
+        ev.notes.append(f"STRATA: not evaluated ({exc})")
+        return
+    if k is None or k_up is None:
+        ev.notes.append("STRATA: the balance at omega_STRATA did not solve")
+        return
+    n1, s1 = solve_stats()
+    dk = (k_up - k) / DOMEGA
+    t = sw.terms
+    sigma_k = abs(dk) * sw.sigma
+    ev.omega_strata, ev.omega_strata_sd = sw.omega, sw.sigma
+    ev.k_strata, ev.k_strata_sd = k, sigma_k
+    ev.quantities.update(
+        sw.channels(),
+        strata_capacity_ratio=anchor.R,
+        dk_domega_kg_thm=float(dk),
+        strata_anchor_coke_kg_thm=float(anchor.state.coke),
+    )
+    ev.flags["strata"] = {
+        "anchor_shifts": len(anchor.keys),
+        "network_solves": n1 - n0,  # this evaluation: the anchor (first use) and the window's new states
+        "network_seconds": round(s1 - s0, 2),
+        "support": t.support,
+        "outside": list(t.outside),
+        "investigate": list(t.investigate),
+        "certainty": anchor.model.certainty(sigma_k, t.support, t.investigate),
+        "unmapped_ores": sorted(set(anchor.unmapped) | set(sw.unmapped)),
+    }
+    ev.versions.update(strata_window.versions(anchor))

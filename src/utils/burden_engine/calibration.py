@@ -162,6 +162,48 @@ def calibrate_from_shifts(S: pd.DataFrame, R: pd.DataFrame, keys: Iterable[str],
     )
 
 
+def network_context(S: pd.DataFrame, keys) -> dict[str, float]:
+    """STRATA-Flow context of a calibration window (STRATA 1.3): median measured top-gas eta_CO, H2 and temperature and
+    the hot-blast temperature of the window's shifts. The charging matrix stays the asset's (burden_history is not in
+    the pipeline result)."""
+    if S is None or S.empty or not len(keys):
+        return {}
+    w = S.loc[[k for k in keys if k in S.index]]
+    num = lambda c: pd.to_numeric(w[c], errors="coerce") if c in w else pd.Series(dtype=float)
+    out: dict[str, float] = {}
+    co, co2 = num("co_pct"), num("co2_pct")
+    eta = (co2 / (co + co2)).median()
+    if np.isfinite(eta) and 0.3 < eta < 0.6:
+        out["top_eta_co"] = float(eta)
+    h2 = num("h2_pct").median()
+    if np.isfinite(h2) and 0 < h2 < 10:
+        out["top_h2"] = float(h2) / 100.0
+    for col, key, lo, hi in (("top_temp_avg", "top_gas_T_c", 60.0, 400.0), ("hot_blast_temp", "hbt_c", 900.0, 1300.0)):
+        v = num(col).median()
+        if np.isfinite(v) and lo < v < hi:
+            out[key] = float(v)
+    return out
+
+
+def sinter_strength(S: pd.DataFrame, end: pd.Timestamp | None = None) -> dict[str, Any]:
+    """Sinter RI and RDI from the latest raw-material strength data (pipeline columns SINTER_HOT_STRENGTH_RI / _RDI,
+    the routine sinter test carried forward per shift) up to ``end``: the value STRATA uses for the calibration state
+    and the plans (user decision 23 Oct 2026; not the laboratory report)."""
+    if S is None or S.empty or "SINTER_HOT_STRENGTH_RDI" not in S:
+        return {}
+    d = S.copy()
+    if end is not None and "sdate" in d:
+        d = d[pd.to_datetime(d["sdate"]) < end]
+    ri = pd.to_numeric(d.get("SINTER_HOT_STRENGTH_RI"), errors="coerce")
+    rdi = pd.to_numeric(d.get("SINTER_HOT_STRENGTH_RDI"), errors="coerce")
+    ok = rdi.notna() & ri.notna() & rdi.between(5, 60) & ri.between(40, 95)
+    if not ok.any():
+        return {}
+    k = ok[ok].index[-1]
+    return dict(ri_pct=float(ri.loc[k]), rdi_pct=float(rdi.loc[k]),
+                as_of=str(d.loc[k, "sdate"]) if "sdate" in d else str(k), source="RM strength (latest, pipeline)")
+
+
 def _median(s: pd.Series | None) -> float | None:
     if s is None:
         return None

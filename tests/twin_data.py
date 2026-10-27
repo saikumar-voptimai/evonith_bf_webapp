@@ -96,9 +96,12 @@ def _columns(T: pd.DataFrame) -> dict[str, list[str]]:
 
 
 def synthetic_frames(
-    start: str = "2026-05-01", days: int = 18
+    start: str = "2026-05-01", days: int = 18, ore_split: dict[str, float] | None = None
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """(fd, m10, hm, dpr) of ``days`` days from ``start`` (IST), in the formats of ``data.coke_energy.sources``."""
+    """(fd, m10, hm, dpr) of ``days`` days from ``start`` (IST), in the formats of ``data.coke_energy.sources``.
+
+    ``ore_split`` (column -> share, e.g. ``{"ORE_2_CALC_MT": 0.7, "ORE_3_CALC_MT": 0.3}``) adds the charge of each ore
+    type as a share of ``ORE_CALC_MT`` (the templates carry the ore total only)."""
 
     T = templates()
     cols = _columns(T)
@@ -121,6 +124,7 @@ def synthetic_frames(
                 r = {"time": t0 + pd.Timedelta(hours=h)}
                 for c in MASS:
                     r[c] = tpl[c] / n * prod_f * (coke_f if c == "COKE_CALC_MT" else 1.0)
+                r.update({c: r["ORE_CALC_MT"] * share for c, share in (ore_split or {}).items()})
                 r.update({c: tpl[c] for c in cols["comp"]})
                 r.update({c[2:]: tpl[c] for c in cols["proc"]})
                 fd_rows.append(r)

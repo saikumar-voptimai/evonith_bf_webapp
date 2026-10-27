@@ -1,11 +1,11 @@
 """Live twin evaluation for the API and the worker (SV-1.1, #281).
 
 ``evaluate(t)`` evaluates the window W = [t - 8 h, t) on data up to the full hour of ``t``: the Coke Energy sources of
-``services.coke_energy`` (the same memoised loaders and pipeline run as TRACE, FORGE and page 10), the window balance
-and the 14-day quantities of the completed shifts (``utils.coke_energy.twin``). ``snapshot_values(ev, ...)`` gives the
-row of ``twin.snapshot`` for ``data.twin.SnapshotRepository.upsert``: window times in UTC, coke rates in kg/tHM dry,
-omega dimensionless, other quantities with their units in the keys, data flags and the notes of the evaluation.
-STRATA (K_STRATA, omega_STRATA and their 1-sigma) is evaluated by a later step of SV-1.1 and stays empty here.
+``services.coke_energy`` (the same memoised loaders and pipeline run as TRACE, FORGE and page 10), the window balance,
+the 14-day quantities of the completed shifts and STRATA 1.5 against the same 14 days (``utils.coke_energy.twin``).
+``snapshot_values(ev, ...)`` gives the row of ``twin.snapshot`` for ``data.twin.SnapshotRepository.upsert``: window
+times in UTC, coke rates in kg/tHM dry, omega dimensionless, other quantities with their units in the keys, data flags
+and the notes of the evaluation, model versions.
 """
 
 from __future__ import annotations
@@ -59,18 +59,22 @@ def evaluate(
     loaders: ce.Loaders = ce.CACHED_LOADERS,
     page_data_for: Callable[[ce.DataKeys, PipelineSettings], ce.PageData] | None = None,
     hours: int = 8,
+    strata: bool = True,
 ) -> WindowEvaluation:
     """Evaluate the window of ``hours`` ending at the full hour of ``t`` (IST; default now).
 
     ``keys`` (default: the sources' current tokens, ``ce.data_keys``), ``loaders`` and ``page_data_for`` (default:
-    the memoised ``ce.page_data``) are the Coke Energy service's; a caller holding its own passes them."""
+    the memoised ``ce.page_data``) are the Coke Energy service's; a caller holding its own passes them. ``strata=False``
+    skips K_STRATA (network solves)."""
     cfg = ce.config() if cfg is None else cfg
     settings = PipelineSettings.from_config(cfg)
     keys = keys or ce.data_keys(cfg, nonce)
     frames = load_frames(keys, loaders)
     pool = (page_data_for or ce.page_data)(keys, settings).result
     window = Window.ending(now_ist() if t is None else t, hours)
-    return evaluate_window(frames.fd, frames.m10, frames.hm, frames.dpr, window, pool, settings, frames.provisional)
+    return evaluate_window(
+        frames.fd, frames.m10, frames.hm, frames.dpr, window, pool, settings, frames.provisional, strata=strata
+    )
 
 
 def to_utc(ts: pd.Timestamp) -> datetime:
@@ -85,7 +89,7 @@ def snapshot_values(
     job_id: str | None = None,
     versions: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The ``twin.snapshot`` row of an evaluation (STRATA columns empty until STRATA is evaluated)."""
+    """The ``twin.snapshot`` row of an evaluation (STRATA columns empty when STRATA was not evaluated)."""
     return {
         "window_start": to_utc(ev.window.start),
         "window_end": to_utc(ev.window.end),
@@ -94,14 +98,14 @@ def snapshot_values(
         "status": ev.status,
         "k_trace": ev.k_trace,
         "k_forge": ev.k_forge,
-        "k_strata": None,
-        "k_strata_sd": None,
+        "k_strata": ev.k_strata,
+        "k_strata_sd": ev.k_strata_sd,
         "k_charged": ev.k_charged,
         "omega_imp": ev.omega_imp,
-        "omega_strata": None,
-        "omega_strata_sd": None,
+        "omega_strata": ev.omega_strata,
+        "omega_strata_sd": ev.omega_strata_sd,
         "omega_cal": ev.omega_cal,
         "quantities": dict(ev.quantities),
         "flags": {**ev.flags, "notes": list(ev.notes)},
-        "versions": {"model": MODEL, **dict(versions or {})},
+        "versions": {"model": MODEL, **dict(ev.versions), **dict(versions or {})},
     }
