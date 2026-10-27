@@ -3,12 +3,15 @@ with the values before and after, and states the unit of every numeric field. SQ
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from api.routers.admin import AuditPage
 from data.twin.engine import build_engine, session_factory
 from data.twin.models import TwinBase
 from data.twin.repositories import Actor, TwinStore
@@ -20,6 +23,8 @@ from tests.test_api_live import session_cookie
 T0 = datetime(2026, 10, 27, 0, 30, tzinfo=UTC)  # 06:00 IST
 H = timedelta(hours=1)
 URL = "/api/admin/audit"
+#: The page the UI audit answers for GET /api/admin/audit (frontend/scripts/ui-audit.mjs).
+UI_AUDIT_PAGE = Path(__file__).resolve().parents[1] / "frontend" / "scripts" / "fixtures" / "audit-page.json"
 
 
 @pytest.fixture()
@@ -188,3 +193,31 @@ def test_query_parameters_state_their_unit() -> None:
     params = build().openapi()["paths"][URL]["get"]["parameters"]
     numeric = {p["name"]: p.get("description", "") for p in params if p["schema"].get("type") == "integer"}
     assert numeric == {"limit": "Page size, count", "offset": "Entries to skip, count"}
+
+
+# ------------------------------------------------------------------------------------------------------- UI audit
+
+
+def test_the_ui_audit_page_is_what_the_route_returns() -> None:
+    """The UI audit's mock of the route validates against its model, each entry's changes are those
+    ``services.audit.changes`` gives, the facets list the entries' values sorted, and the page has every kind of
+    record the viewer formats (changed, created, deleted, details only)."""
+    data = json.loads(UI_AUDIT_PAGE.read_text(encoding="utf-8"))
+    page = AuditPage.model_validate(data)
+    assert page.total == len(page.entries) and (page.limit, page.offset) == (50, 0)
+    assert [e.id for e in page.entries] == sorted((e.id for e in page.entries), reverse=True)
+    assert [e.at for e in page.entries] == sorted((e.at for e in page.entries), reverse=True)  # newest first
+    for entry in data["entries"]:
+        assert entry["changes"] == audit.changes(entry["before"], entry["after"]), entry["id"]
+    assert page.facets.model_dump() == {
+        "actors": sorted({e.actor for e in page.entries}),
+        "actions": sorted({e.action for e in page.entries}),
+        "object_types": sorted({e.object_type for e in page.entries}),
+    }
+    records = {
+        "details": any(e.before is None and e.after is None for e in page.entries),
+        "created": any(e.before is None and e.after is not None for e in page.entries),
+        "deleted": any(e.before is not None and e.after is None for e in page.entries),
+        "changed": any(e.before is not None and e.after is not None and e.changes for e in page.entries),
+    }
+    assert all(records.values()), records
