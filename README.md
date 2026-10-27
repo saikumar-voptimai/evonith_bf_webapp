@@ -904,7 +904,8 @@ internal CA or the plant CA), build directory and upstreams come from `BF_*` var
 
 CI uses uv 0.7.13 (lock rule), CPython 3.12 installed by uv (as on the Jetson), Node 22, pnpm 10.28.0, Ruff 0.17.2,
 Playwright 1.63.0 (devDependency of the frontend) and Caddy 2.10.2 (SHA-512 checked); actions are pinned to
-commits. Scheduled runs start from the default branch only.
+commits. Scheduled runs start from the default branch only. Every command step runs through `scripts/ci/step.sh`:
+when it fails, its last 50 lines appear as an error annotation on the pull request and in the Checks API.
 
 **Jetson packages.** `make lock-check` exports `uv.lock` and resolves it for `aarch64-manylinux_2_35` (JetPack 6:
 Ubuntu 22.04, glibc 2.35) and CPython 3.12 from wheels only, except `pypika` (pure Python) and `quickjs` (C extension,

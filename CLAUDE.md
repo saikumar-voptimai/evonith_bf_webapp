@@ -942,7 +942,10 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `make lint-py`, `make lock-check`; `python-tests`: pytest with PostgreSQL, Redis and Caddy,
   `BF_TEST_REQUIRE_SERVICES=1`, `BURDEN_ENGINE_FAST=1`; `frontend`: lint, check, Vitest, `schema.d.ts` against
   `openapi.json`, build, UI audit), `nightly.yml` (full suite), `release.yml` (tag `v*`: `frontend-build.tar.gz`,
-  `uv.lock`, `pnpm-lock.yaml`, `SHA256SUMS`). Keep every CI step runnable as a Make target or pnpm script.
+  `uv.lock`, `pnpm-lock.yaml`, `SHA256SUMS`). Keep every CI step runnable as a Make target or pnpm script, and run
+  it through `bash scripts/ci/step.sh "<title>" <command>` (a failure's last 50 lines become an error annotation,
+  readable through the Checks API: `gh api repos/:owner/:repo/check-runs/<id>/annotations`). Servers started by a
+  check bind to `127.0.0.1`, not `localhost` (`::1` first on the runners).
 - A new Python package needs a linux-aarch64 wheel for the Jetson (`make lock-check`: glibc 2.35, CPython 3.12), or
   an entry in `JETSON_SOURCE_BUILDS` (Makefile) with the reason. Never write `-o /dev/null` for a uv command: uv
   replaces the output file by a rename, which turns `/dev/null` into a regular file when run as root.
