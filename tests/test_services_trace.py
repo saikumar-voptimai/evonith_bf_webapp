@@ -71,6 +71,14 @@ def lab_and_charged(fd: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return lab, charged
 
 
+def clear_all() -> None:
+    """Forget the service's and page 10's caches, the day-long material names included (``clear_caches`` keeps
+    them, and a later module would read these synthetic names)."""
+    svc.clear()
+    st_loaders.clear_caches()
+    st_loaders.names.clear()
+
+
 @pytest.fixture(scope="module")
 def world():
     fd, m10, hm, dpr = synthetic_frames(start="2026-05-01", days=26)
@@ -83,12 +91,10 @@ def world():
         mp.setattr(sources, "fetch_dpr_daily", lambda start, end: dpr.copy())
         mp.setattr(svc, "fetch_offline_samples", lambda start: (lab.copy(), charged.copy()))
         mp.setattr(svc, "material_names", lambda: dict(NAMES))
-        svc.clear()
-        st_loaders.clear_caches()
+        clear_all()
         service = svc.page_data(KEYS, SETTINGS)  # the API's and the worker's path
         streamlit = st_loaders.page_data(KEYS, SETTINGS)  # page 10's path
-        svc.clear()
-        st_loaders.clear_caches()
+        clear_all()
     assert not service.result.errors and len(service.result.shifts) >= 70
     return service, streamlit, trace.build_view(service, CFG, now=BUILT)
 
