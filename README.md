@@ -952,7 +952,8 @@ Job semantics: parameters are validated against the kind's model before queuing;
 enforced in the worker; transient failures are retried with the kind's retry delay up to `max_tries`; CPU-bound
 model solves run in a process pool; a job interrupted by a worker stop runs again after the arq time limit plus
 10 s; scheduled kinds start at their IST times (`system.housekeeping` at 04:00). Kinds: `system.selftest`
-(admin; progress steps and one pool task, also in the component catalogue) and `system.housekeeping`; the model
+(admin; progress steps and one pool task, also in the component catalogue), `system.housekeeping`, and the live
+forecasts `forecast.si` (every 5 min) and `forecast.charged_coke` (HH:07; supervisor, see Live forecasts); the model
 kinds follow with their pages. In the SPA, `#lib/live/stream.svelte.ts` holds one EventSource per tab (backoff,
 watchdog, session check), `#lib/live/connection.svelte.ts` drives the header state (offline after 10 s without the
 stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
@@ -964,6 +965,7 @@ stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
 | `BF_WORKER_POOL` | `8` | Processes of the model-solve pool |
 | `BF_WORKER_MAX_JOBS` | `4` | Jobs run at the same time by one worker |
 | `BF_WORKER_JOB_TIMEOUT` | longest kind limit + 60 s | arq time limit of one delivery |
+| `BF_WORKER_SKIP_SCHEDULES` | unset | Kinds, or prefixes ending in `.`, that are not scheduled (still submittable); the test suite sets `forecast.` |
 
 Redis: `apt install redis-server` (Linux, Jetson; Redis 6.0 or later), Memurai or WSL on Windows. Tests that need it
 (`tests/test_jobs.py`, `tests/test_api_live.py`) start a throw-away `redis-server` and are skipped without the binary.
@@ -1053,6 +1055,20 @@ HMT(t), the slope by a 10 °C difference, τ_RW from the burden column. Every wi
 shows the forecast only when `twin.hmt_forecast.gate.status` is `passed`. Gate run on plant data:
 `python scripts/hmt_gate.py --from 2026-01-01 --to 2026-10-08 --write` (RMSE at least 10 % below persistence and
 |bias| ≤ 5 °C; recorded as COKE-18, the 2023–24 run as COKE-19).
+
+**Live forecasts (SV-1.5).** The worker issues the HM Si path (`forecast.si`, every 5 min IST) and the charged-coke
+block (`forecast.charged_coke`, HH:07, retried every 5 min up to HH:27 while the hour's build of the published dataset
+is missing; the local copy is fetched again first when it predates the hour) through `services.forecasts`, with the
+functions page 9 used, into the same ledgers (`src/storage/bmo_si_forecast/`, `src/storage/bmo_charged_coke/`, format
+unchanged; Si outcomes matched on every call, charged-coke outcomes on each new row). `setting_bmo.yml →
+bmo.forecast_issuer`: `auto` (page 9 reads the ledgers while the worker's last attempt is younger than 15 min (Si) or
+75 min (charged coke), else issues itself as before), `worker` (page 9 only reads; an out-of-date record is not passed
+to the optimiser) or `page`. Every attempt is logged in `attempts/YYYY-MM.jsonl` of the storage folder (the latest with
+its record in `latest_attempt.json`, which page 9 shows for a Si attempt with unusable inputs); events
+`forecast.si` and `forecast.charged_coke`. The ledgers are append-only JSON lines shared by processes
+(`utils.jsonl_log`: incremental reads, appends under a cross-process lock). Gap check:
+`python scripts/forecast_gaps.py --days 7` (exit 1 on a Si gap above 10 min or a charged-coke gap above 60 min).
+`BF_WORKER_SKIP_SCHEDULES=forecast.` leaves the forecast jobs unscheduled (set by the test suite).
 
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family

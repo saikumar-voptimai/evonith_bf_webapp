@@ -43,6 +43,8 @@ def test_no_streamlit_or_ui_import(path: Path) -> None:
     # data.db and domain.auth_service are imported lazily by services.auth (identity store of the twin-api).
     [
         "services.coke_energy",
+        "services.forecasts",
+        "data.ml.static_dataset_manager",  # the worker refreshes the hourly dataset with it (SV-1.5)
         "services.optimiser",
         "services.status",
         "services.auth",

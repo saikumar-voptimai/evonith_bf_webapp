@@ -15,14 +15,17 @@ Planned major changes
     data, condition and two-update recovery checks apply as usual.
 
 Both files are JSON lines under ``src/storage/bmo_charged_coke/`` and are only
-ever appended to.
+ever appended to. The worker issues the forecast (``forecast.charged_coke``,
+HH:07) and page 9 reads it (SV-1.5, #285): reads are incremental and appends
+are made under a lock that also excludes other processes
+(``utils.jsonl_log``). The format is unchanged.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import math
-import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,11 +34,12 @@ from typing import Any, Iterable
 
 import pandas as pd
 
+from utils.jsonl_log import JsonlLog
+
 # One path string, not a bare folder name: TestBMO renames key-shaped
 # ``bmo_...`` strings, and this is a folder, not a session key.
 DEFAULT_STORAGE_DIR = Path(__file__).resolve().parents[3] / "storage/bmo_charged_coke"
 MAX_PLAN_VALIDITY = pd.Timedelta(hours=24)
-_LOCK = threading.Lock()
 
 
 def _jsonable(value: Any) -> Any:
@@ -53,22 +57,11 @@ def _jsonable(value: Any) -> Any:
 
 
 def _append(path: Path, record: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(_jsonable(record), ensure_ascii=False)
-    with _LOCK, open(path, "a", encoding="utf-8", newline="\n") as handle:
-        handle.write(line + "\n")
+    JsonlLog(path).append(_jsonable(record))
 
 
 def _read(path: Path) -> list[dict[str, Any]]:
-    if not path.is_file():
-        return []
-    records = []
-    with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if line:
-                records.append(json.loads(line))
-    return records
+    return JsonlLog(path).records()
 
 
 class ForecastLedger:
@@ -78,7 +71,10 @@ class ForecastLedger:
         self.path = Path(storage_dir) / "issued_forecasts.jsonl"
 
     def issues(self) -> dict[pd.Timestamp, dict[str, Any]]:
-        """First ``issue`` event per data row (later duplicates are ignored)."""
+        """First ``issue`` event per data row (later duplicates are ignored).
+
+        The records are shared with the log's cache: read them, do not modify them.
+        """
 
         out: dict[pd.Timestamp, dict[str, Any]] = {}
         for record in _read(self.path):
@@ -89,7 +85,9 @@ class ForecastLedger:
         return dict(sorted(out.items()))
 
     def get(self, data_row: pd.Timestamp) -> dict[str, Any] | None:
-        return self.issues().get(pd.Timestamp(data_row))
+        """The issue for ``data_row`` (a copy), or None."""
+        record = self.issues().get(pd.Timestamp(data_row))
+        return copy.deepcopy(record) if record is not None else None
 
     def record_issue(self, record: dict[str, Any]) -> dict[str, Any]:
         """Write the forecast for a data row unless one was already issued.
@@ -100,11 +98,12 @@ class ForecastLedger:
         """
 
         row = pd.Timestamp(record["data_row"])
-        existing = self.get(row)
-        if existing is not None:
-            return existing
-        stored = json.loads(json.dumps(_jsonable({"type": "issue", **record}), ensure_ascii=False))
-        _append(self.path, stored)
+        with JsonlLog(self.path).exclusive():
+            existing = self.get(row)
+            if existing is not None:
+                return existing
+            stored = json.loads(json.dumps(_jsonable({"type": "issue", **record}), ensure_ascii=False))
+            _append(self.path, stored)
         # Callers always see the stored form, whether just written or re-read.
         return stored
 

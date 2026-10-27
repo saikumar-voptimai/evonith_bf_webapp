@@ -106,15 +106,28 @@ def response_settings(
 
 
 def _built_at(meta_path: Path) -> pd.Timestamp | None:
+    """When the publisher built the dataset: its Last-Modified header, saved in ``cache_meta.json``.
+
+    The header is an HTTP date, always GMT. It is parsed as such: the generic
+    parser reads "GMT" as the host's local time zone when that zone is called
+    GMT in winter (Europe/London), which put the build an hour late in summer.
+    """
     import json
+    from email.utils import parsedate_to_datetime
 
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    stamp = meta.get("source_last_modified") or ""
+    stamp = str(meta.get("source_last_modified") or "")
+    if not stamp:
+        return None
     try:
-        return pd.Timestamp(stamp) if stamp else None
+        return pd.Timestamp(parsedate_to_datetime(stamp))
+    except (TypeError, ValueError):
+        pass
+    try:
+        return pd.Timestamp(stamp)
     except ValueError:
         return None
 
@@ -131,18 +144,25 @@ def charged_coke_prediction(
     pci_override: float | None = None,
     nut_override: float | None = None,
     force_predict: bool = False,
+    record: dict[str, Any] | None = None,
 ) -> tuple[ChargedCokePrediction, dict[str, Any]]:
     """Issue (once per hour) and return the Data-Driven level for the BMO.
+
+    Args:
+        record: An issued record to use instead of issuing: the ledger's, read
+            by page 9 while the worker issues (SV-1.5). Without it the record
+            is issued here, as before.
 
     Returns:
         The page's prediction type, and the issued record with any operator
         override applied, for display.
     """
 
-    record = issue_latest(
-        source, engine, ledger=ForecastLedger(storage_dir), plans=PlannedChangeRegister(storage_dir),
-        now=now, built_at=built_at, model_version=str(engine.model.manifest.get("version", "")),
-    )
+    if record is None:
+        record = issue_latest(
+            source, engine, ledger=ForecastLedger(storage_dir), plans=PlannedChangeRegister(storage_dir),
+            now=now, built_at=built_at, model_version=str(engine.model.manifest.get("version", "")),
+        )
     detail: dict[str, Any] = {
         "record": record,
         "mode": mode,

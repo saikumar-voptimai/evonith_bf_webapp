@@ -107,6 +107,185 @@
         "title": "AlarmRaisedEvent",
         "type": "object"
       },
+      "ChargedCokeForecastData": {
+        "description": "A charged-coke forecast written to the ledger (``services.forecasts.issue_charged``, SV-1.5); times in IST\nwith their offset.",
+        "properties": {
+          "coke_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End of the charges the block sums (IST)",
+            "title": "Coke End"
+          },
+          "coke_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start of the charges the block sums (IST)",
+            "title": "Coke Start"
+          },
+          "data_row": {
+            "description": "Label of the hourly row the forecast was made from (IST)",
+            "format": "date-time",
+            "title": "Data Row",
+            "type": "string"
+          },
+          "issued_at": {
+            "description": "When the forecast was issued (IST)",
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "lower_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower end of the 90 % range, kg/tHM",
+            "title": "Lower Kg Thm"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/ChargedCokePoint"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "prediction_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged coke of the 4-h block, kg/tHM",
+            "title": "Prediction Kg Thm"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "shown": {
+            "description": "The forecast may be shown and used as the Data-Driven level",
+            "title": "Shown",
+            "type": "boolean"
+          },
+          "state": {
+            "description": "cruise, unsettled, off_cruise (shown) or a pause state",
+            "title": "State",
+            "type": "string"
+          },
+          "upper_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper end of the 90 % range, kg/tHM",
+            "title": "Upper Kg Thm"
+          }
+        },
+        "required": [
+          "data_row",
+          "issued_at",
+          "state",
+          "shown"
+        ],
+        "title": "ChargedCokeForecastData",
+        "type": "object"
+      },
+      "ChargedCokePoint": {
+        "properties": {
+          "at": {
+            "description": "End of the 4-h charge window of the rate",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "horizon": {
+            "description": "Rows (hours) after the data row",
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "lower_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower end of the 90 % range, kg/tHM",
+            "title": "Lower Kg Thm"
+          },
+          "prediction_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged coke, 4-h rate, kg/tHM",
+            "title": "Prediction Kg Thm"
+          },
+          "upper_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper end of the 90 % range, kg/tHM",
+            "title": "Upper Kg Thm"
+          }
+        },
+        "required": [
+          "horizon",
+          "at"
+        ],
+        "title": "ChargedCokePoint",
+        "type": "object"
+      },
       "FieldError": {
         "properties": {
           "loc": {
@@ -140,6 +319,37 @@
         "title": "FieldError",
         "type": "object"
       },
+      "ForecastChargedCokeEvent": {
+        "properties": {
+          "at": {
+            "description": "Publication time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ChargedCokeForecastData"
+          },
+          "id": {
+            "description": "Stream id; the SSE event id used for Last-Event-ID replay",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "forecast.charged_coke",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "type",
+          "data"
+        ],
+        "title": "ForecastChargedCokeEvent",
+        "type": "object"
+      },
       "ForecastSiEvent": {
         "properties": {
           "at": {
@@ -149,9 +359,7 @@
             "type": "string"
           },
           "data": {
-            "description": "Hot-metal Si forecast (schema in SV-1.5)",
-            "title": "Data",
-            "type": "object"
+            "$ref": "#/components/schemas/SiForecastData"
           },
           "id": {
             "description": "Stream id; the SSE event id used for Last-Event-ID replay",
@@ -356,7 +564,7 @@
                 "type": "null"
               }
             ],
-            "description": "Scheduled times (IST), e.g. '04:00'",
+            "description": "Scheduled times (IST), e.g. '04:00', 'every hour at :07', 'every 5 min'",
             "title": "Schedule"
           },
           "timeout_s": {
@@ -602,7 +810,7 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/TagValue"
             },
-            "description": "Latest plant readings (from SV-1.5)",
+            "description": "Latest plant readings (not yet filled: KPI strip of the Live Twin, SV-1.9)",
             "title": "Tags",
             "type": "object"
           },
@@ -801,6 +1009,196 @@
           "role"
         ],
         "title": "SessionUser",
+        "type": "object"
+      },
+      "SiForecastData": {
+        "description": "One attempt of the hot-metal Si forecast at a new origin (``services.forecasts.issue_si``, SV-1.5). Usable\npaths (status ok, warning, out_of_domain) are in the ledger; others carry the reason the inputs were not usable.",
+        "properties": {
+          "horizons": {
+            "items": {
+              "$ref": "#/components/schemas/SiForecastPoint"
+            },
+            "title": "Horizons",
+            "type": "array"
+          },
+          "issued_at": {
+            "description": "When the path was issued (UTC)",
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "last_sample_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of that sample (UTC)",
+            "title": "Last Sample At"
+          },
+          "last_sample_si_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest raw cast Si at the origin, mass %",
+            "title": "Last Sample Si Pct"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "shadow or forecast",
+            "title": "Mode"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "origin_at": {
+            "description": "Origin of the path (UTC), floored in IST to the model cadence",
+            "format": "date-time",
+            "title": "Origin At",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "recorded": {
+            "description": "The path is in the ledger",
+            "title": "Recorded",
+            "type": "boolean"
+          },
+          "si_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Headline (Now) hot-metal Si, mass %",
+            "title": "Si Pct"
+          },
+          "status": {
+            "description": "ok, warning, out_of_domain, stale_inputs, insufficient_data, ...",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin_at",
+          "issued_at",
+          "status",
+          "recorded"
+        ],
+        "title": "SiForecastData",
+        "type": "object"
+      },
+      "SiForecastPoint": {
+        "properties": {
+          "horizon_minutes": {
+            "description": "Target start after the origin, minutes",
+            "title": "Horizon Minutes",
+            "type": "integer"
+          },
+          "label": {
+            "description": "Now, +1 h, +2 h, +3 h",
+            "title": "Label",
+            "type": "string"
+          },
+          "lower_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower end of the 90 % range, mass %",
+            "title": "Lower Pct"
+          },
+          "si_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Forecast hot-metal Si, mass %",
+            "title": "Si Pct"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "target_end": {
+            "description": "End of the target band (UTC)",
+            "format": "date-time",
+            "title": "Target End",
+            "type": "string"
+          },
+          "target_start": {
+            "description": "Start of the target band (UTC)",
+            "format": "date-time",
+            "title": "Target Start",
+            "type": "string"
+          },
+          "upper_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper end of the 90 % range, mass %",
+            "title": "Upper Pct"
+          }
+        },
+        "required": [
+          "horizon_minutes",
+          "label",
+          "target_start",
+          "target_end"
+        ],
+        "title": "SiForecastPoint",
         "type": "object"
       },
       "SubmitRequest": {
@@ -1704,6 +2102,7 @@
                       "mapping": {
                         "alarm.cleared": "#/components/schemas/AlarmClearedEvent",
                         "alarm.raised": "#/components/schemas/AlarmRaisedEvent",
+                        "forecast.charged_coke": "#/components/schemas/ForecastChargedCokeEvent",
                         "forecast.si": "#/components/schemas/ForecastSiEvent",
                         "heartbeat": "#/components/schemas/HeartbeatEvent",
                         "job.done": "#/components/schemas/JobDoneEvent",
@@ -1722,6 +2121,9 @@
                       },
                       {
                         "$ref": "#/components/schemas/ForecastSiEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ForecastChargedCokeEvent"
                       },
                       {
                         "$ref": "#/components/schemas/JobProgressEvent"

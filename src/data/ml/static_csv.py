@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
+import threading
+from collections.abc import Callable
 from io import BytesIO
 from datetime import date
 from pathlib import Path
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import streamlit as st
 from sqlalchemy import inspect
 
 from config.config_loader import load_config
@@ -234,7 +237,41 @@ def fetch_static_dataset_from_url(
     return df.sort_index() if sort_index else df
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+def _cache_data_on_first_call(**options: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """``st.cache_data(**options)``, applied when the function is first called.
+
+    The worker imports this module to refresh the published dataset (SV-1.5, #285) and must not load Streamlit;
+    inside the Streamlit app the first call applies the cache exactly as the decorator did. ``.clear()`` clears that
+    cache and is a no-op before the first call (nothing is cached then).
+    """
+
+    def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
+        state: dict[str, Callable[..., Any]] = {}
+        lock = threading.Lock()
+
+        def cached() -> Callable[..., Any]:
+            with lock:
+                if "fn" not in state:
+                    import streamlit as st
+
+                    state["fn"] = st.cache_data(**options)(fn)
+                return state["fn"]
+
+        @functools.wraps(fn)
+        def call(*args: Any, **kwargs: Any) -> Any:
+            return cached()(*args, **kwargs)
+
+        def clear(*args: Any, **kwargs: Any) -> None:
+            if "fn" in state:
+                state["fn"].clear(*args, **kwargs)
+
+        call.clear = clear  # type: ignore[attr-defined]
+        return call
+
+    return decorate
+
+
+@_cache_data_on_first_call(ttl=3600, show_spinner=False)
 def load_static_dataset(
     path: str | Path | None = None,
     *,

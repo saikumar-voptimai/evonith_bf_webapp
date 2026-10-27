@@ -89,6 +89,35 @@ register(
         description="Copies the job records of the last 7 days to the archive and removes older index entries.",
     )
 )
+register(
+    JobKind(
+        name="forecast.si",
+        title="HM Si forecast",
+        role="supervisor",
+        timeout_s=150,
+        max_tries=1,  # the next run is 5 min later
+        schedule=(None, set(range(0, 60, 5))),
+        description=(
+            "Issues the hot-metal Si path (Now, +1, +2, +3 h) at the current origin into the Si ledger and matches "
+            "matured outcomes to the raw samples (SV-1.5)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="forecast.charged_coke",
+        title="Charged-coke forecast",
+        role="supervisor",
+        timeout_s=300,
+        max_tries=5,  # HH:07 to HH:27 while the build of the hour is not published
+        retry_delay_s=300,
+        schedule=(None, {7}),
+        description=(
+            "Fetches the hourly dataset when the local build predates this hour and issues the 4-h charged-coke "
+            "block for the latest complete row into the charged-coke ledger (SV-1.5)."
+        ),
+    )
+)
 
 
 class JobRecord(BaseModel):

@@ -3,7 +3,9 @@
 Environment: ``BF_REDIS_URL`` (default ``redis://127.0.0.1:6379/0``), ``BF_WORKER_POOL`` (model-solve processes,
 default 8), ``BF_WORKER_MAX_JOBS`` (concurrent jobs, default 4), ``BF_WORKER_JOB_TIMEOUT`` (arq time limit of one
 delivery, default the longest kind limit plus 60 s; a job interrupted by a worker stop runs again once this limit plus
-10 s has passed). Job records are archived in ``twin.jobs`` when ``BF_TWIN_DB_URL`` or ``DATABASE_URL`` is set.
+10 s has passed), ``BF_WORKER_SKIP_SCHEDULES`` (comma-separated kinds, or prefixes ending in ".", that are not
+scheduled: the test suite skips ``forecast.``, so a test worker never reads plant data; such kinds can still be
+submitted). Job records are archived in ``twin.jobs`` when ``BF_TWIN_DB_URL`` or ``DATABASE_URL`` is set.
 """
 
 from __future__ import annotations
@@ -43,11 +45,20 @@ def job_timeout_s() -> int:
     return _int_env("BF_WORKER_JOB_TIMEOUT", default)
 
 
+def skipped(kind_name: str) -> bool:
+    """Whether ``BF_WORKER_SKIP_SCHEDULES`` leaves the kind unscheduled."""
+    for entry in os.environ.get("BF_WORKER_SKIP_SCHEDULES", "").split(","):
+        entry = entry.strip()
+        if entry and (kind_name == entry or (entry.endswith(".") and kind_name.startswith(entry))):
+            return True
+    return False
+
+
 def cron_jobs() -> list[Any]:
     """arq cron entries of the scheduled kinds, at second 0 of their IST hours and minutes."""
     jobs = []
     for kind in CATALOG.values():
-        if kind.schedule is None:
+        if kind.schedule is None or skipped(kind.name):
             continue
         hours, minutes = kind.schedule
         # The cron entry only submits the job (milliseconds); its 10 s limit keeps arq's in-progress mark short.

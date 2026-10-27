@@ -26,6 +26,7 @@ EventType = Literal[
     "live.status",
     "twin.snapshot",
     "forecast.si",
+    "forecast.charged_coke",
     "job.progress",
     "job.done",
     "alarm.raised",
@@ -54,7 +55,9 @@ class TagValue(BaseModel):
 
 class LiveStatusData(BaseModel):
     worker: WorkerStatus
-    tags: dict[str, TagValue] = Field(default_factory=dict, description="Latest plant readings (from SV-1.5)")
+    tags: dict[str, TagValue] = Field(
+        default_factory=dict, description="Latest plant readings (not yet filled: KPI strip of the Live Twin, SV-1.9)"
+    )
 
 
 class JobProgressData(BaseModel):
@@ -97,6 +100,60 @@ class TwinSnapshotData(BaseModel):
     versions: dict[str, Any] = Field(default_factory=dict)
 
 
+class SiForecastPoint(BaseModel):
+    horizon_minutes: int = Field(..., description="Target start after the origin, minutes")
+    label: str = Field(..., description="Now, +1 h, +2 h, +3 h")
+    target_start: datetime = Field(..., description="Start of the target band (UTC)")
+    target_end: datetime = Field(..., description="End of the target band (UTC)")
+    si_pct: float | None = Field(None, description="Forecast hot-metal Si, mass %")
+    lower_pct: float | None = Field(None, description="Lower end of the 90 % range, mass %")
+    upper_pct: float | None = Field(None, description="Upper end of the 90 % range, mass %")
+    status: str | None = None
+
+
+class SiForecastData(BaseModel):
+    """One attempt of the hot-metal Si forecast at a new origin (``services.forecasts.issue_si``, SV-1.5). Usable
+    paths (status ok, warning, out_of_domain) are in the ledger; others carry the reason the inputs were not usable."""
+
+    origin_at: datetime = Field(..., description="Origin of the path (UTC), floored in IST to the model cadence")
+    issued_at: datetime = Field(..., description="When the path was issued (UTC)")
+    status: str = Field(..., description="ok, warning, out_of_domain, stale_inputs, insufficient_data, ...")
+    recorded: bool = Field(..., description="The path is in the ledger")
+    mode: str | None = Field(None, description="shadow or forecast")
+    model_version: str | None = None
+    si_pct: float | None = Field(None, description="Headline (Now) hot-metal Si, mass %")
+    last_sample_si_pct: float | None = Field(None, description="Latest raw cast Si at the origin, mass %")
+    last_sample_at: datetime | None = Field(None, description="Time of that sample (UTC)")
+    horizons: list[SiForecastPoint] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+
+
+class ChargedCokePoint(BaseModel):
+    horizon: int = Field(..., description="Rows (hours) after the data row")
+    at: datetime = Field(..., description="End of the 4-h charge window of the rate")
+    prediction_kg_thm: float | None = Field(None, description="Charged coke, 4-h rate, kg/tHM")
+    lower_kg_thm: float | None = Field(None, description="Lower end of the 90 % range, kg/tHM")
+    upper_kg_thm: float | None = Field(None, description="Upper end of the 90 % range, kg/tHM")
+
+
+class ChargedCokeForecastData(BaseModel):
+    """A charged-coke forecast written to the ledger (``services.forecasts.issue_charged``, SV-1.5); times in IST
+    with their offset."""
+
+    data_row: datetime = Field(..., description="Label of the hourly row the forecast was made from (IST)")
+    issued_at: datetime = Field(..., description="When the forecast was issued (IST)")
+    state: str = Field(..., description="cruise, unsettled, off_cruise (shown) or a pause state")
+    shown: bool = Field(..., description="The forecast may be shown and used as the Data-Driven level")
+    prediction_kg_thm: float | None = Field(None, description="Charged coke of the 4-h block, kg/tHM")
+    lower_kg_thm: float | None = Field(None, description="Lower end of the 90 % range, kg/tHM")
+    upper_kg_thm: float | None = Field(None, description="Upper end of the 90 % range, kg/tHM")
+    coke_start: datetime | None = Field(None, description="Start of the charges the block sums (IST)")
+    coke_end: datetime | None = Field(None, description="End of the charges the block sums (IST)")
+    model_version: str | None = None
+    path: list[ChargedCokePoint] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+
+
 class AlarmData(BaseModel):
     alarm_id: str
     code: str = Field(..., description="Alarm code, e.g. OMEGA_DRIFT")
@@ -129,7 +186,12 @@ class TwinSnapshotEvent(_Event):
 
 class ForecastSiEvent(_Event):
     type: Literal["forecast.si"]
-    data: dict[str, Any] = Field(..., description="Hot-metal Si forecast (schema in SV-1.5)")
+    data: SiForecastData
+
+
+class ForecastChargedCokeEvent(_Event):
+    type: Literal["forecast.charged_coke"]
+    data: ChargedCokeForecastData
 
 
 class JobProgressEvent(_Event):
@@ -161,6 +223,7 @@ StreamEvent = Annotated[
     LiveStatusEvent
     | TwinSnapshotEvent
     | ForecastSiEvent
+    | ForecastChargedCokeEvent
     | JobProgressEvent
     | JobDoneEvent
     | AlarmRaisedEvent

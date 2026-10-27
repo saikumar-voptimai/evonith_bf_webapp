@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
 from data.bmo.si_forecast_context import LiveSiliconForecastSource
+from services import forecasts as forecast_service
 from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
 from data.bmo.dust_inputs import dust_caption, dust_cfg_with_live, load_dataset_dust_analysis
 from data.bmo.ore_editor_preferences import (
@@ -2141,7 +2142,9 @@ def _charged_prediction_for_page(
     slag_response_coefficient: float,
     force_predict: bool,
 ) -> tuple[ChargedCokePrediction, dict[str, Any]]:
-    """Issue (once per completed hour) the charged forecast for the BMO level."""
+    """The charged forecast for the BMO level: read from the ledger while the worker
+    issues it (SV-1.5), else issued here once per completed hour, as before
+    (``bmo.forecast_issuer``)."""
 
     from utils.bmo.charged_coke.bmo import _built_at
 
@@ -2150,10 +2153,20 @@ def _charged_prediction_for_page(
     source = _charged_source_frame(str(dataset_path), mtime)
     built_at = _built_at(dataset_path.parent / "cache_meta.json")
     storage = _charged_storage()
-    return charged_coke_prediction(
+    engine = _get_charged_engine()
+    now = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None)
+    note = None
+    if forecast_service.page_issues(storage, "charged_coke", _get_bmo_config()):
+        record = forecast_service.issue_charged(
+            now=now, cfg=_get_bmo_config(), issued_by="page", refresh=False, source=source, engine=engine
+        )["record"]
+    else:
+        view = forecast_service.charged_for_page(storage, now=now)
+        record, note = view.record, view.note
+    prediction, detail = charged_coke_prediction(
         source,
-        _get_charged_engine(),
-        now=pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None),
+        engine,
+        now=now,
         storage_dir=storage,
         mode="fitted",
         slag_response_coefficient=slag_response_coefficient,
@@ -2161,7 +2174,10 @@ def _charged_prediction_for_page(
         pci_override=pci_override,
         nut_override=nut_override,
         force_predict=force_predict,
+        record=record,
     )
+    detail["note"] = note
+    return prediction, detail
 
 
 def _si_furnace_paths(
@@ -2169,32 +2185,8 @@ def _si_furnace_paths(
 ) -> tuple[str, Path, Path, Path]:
     """Independent production-forecast mode and paths (never legacy Si paths)."""
 
-    cfg = dict(bmo_cfg.get("si_forecast", {}) or {})
-    mode = str(cfg.get("mode", "forecast")).strip().lower()
-    if mode not in {"legacy", "shadow", "forecast"}:
-        mode = "forecast"
-    default_bundle = _repo_path(
-        str(
-            cfg.get(
-                "default_bundle_dir",
-                "src/assets/models/bmo_si_forecast/20260924_initial",
-            )
-        )
-    )
-    storage_dir = _repo_path(
-        str(cfg.get("storage_dir", "src/storage/bmo_si_forecast"))
-    )
-    static_dataset = _repo_path(
-        str(
-            cfg.get(
-                "static_dataset_path",
-                (bmo_cfg.get("data_sources", {}) or {}).get(
-                    "static_dataset_path", "src/assets/data/furnace_dataset.csv"
-                ),
-            )
-        )
-    )
-    return mode, default_bundle, storage_dir, static_dataset
+    paths = forecast_service.si_paths(bmo_cfg)
+    return paths.mode, paths.default_bundle, paths.storage_dir, paths.static_dataset
 
 
 @_resource_cache(show_spinner=False)
@@ -2222,37 +2214,18 @@ def _issue_si_furnace_forecast(
     source_cache_version: int,
     forest_mtime_ns: int,
 ) -> dict[str, Any]:
-    """Fetch/issue once per origin, active version and explicit refresh token."""
+    """Fetch/issue once per origin, active version and explicit refresh token (when
+    page 9 issues: ``bmo.forecast_issuer`` page, or auto without a worker)."""
 
-    del source_cache_version
+    del source_cache_version, mode, bundle_path, storage_path, static_dataset_path, forest_mtime_ns
     origin = pd.Timestamp(origin_at)
-    service = _get_si_furnace_service(
-        bundle_path, storage_path, forest_mtime_ns
-    )
     try:
-        source = LiveSiliconForecastSource(
-            bundle_dir=bundle_path,
-            static_dataset_path=static_dataset_path,
-        )
-        feeds = source.fetch(origin)
-        return service.issue(feeds, origin=origin, mode=mode)
+        return forecast_service.issue_si(
+            origin=origin, cfg=_get_bmo_config(), issued_by="page"
+        )["record"]
     except Exception as exc:  # noqa: BLE001 - Si must never stop BMO/coke
         log.exception("Production HM Si forecast failed")
-        target_start = origin
-        return {
-            "schema_version": "bf2-si-forecast/2",
-            "furnace_id": "BF2",
-            "status": "insufficient_data",
-            "reason_codes": ["source_fetch_failed"],
-            "reasons": [str(exc)],
-            "si_pct": None,
-            "origin_at": origin.isoformat(),
-            "issued_at": pd.Timestamp.now(tz="UTC").isoformat(),
-            "target_start": target_start.isoformat(),
-            "target_end": (target_start + pd.Timedelta(minutes=5)).isoformat(),
-            "interval": None,
-            "horizons": [],
-        }
+        return forecast_service.si_failure_record(origin, exc)
 
 
 @_data_cache(ttl=600, show_spinner=False)
@@ -2307,22 +2280,31 @@ def _replay_si_furnace_history(
 
 def _si_furnace_forecast_for_page(
     bmo_cfg: Mapping[str, Any], *, source_cache_version: int
-) -> tuple[str, dict[str, Any] | None]:
-    """Return the global production forecast without touching blend Si state."""
+) -> tuple[str, dict[str, Any] | None, str | None]:
+    """Return the global production forecast without touching blend Si state.
+
+    Read from the ledger while the worker issues it (SV-1.5), else issued here
+    (``bmo.forecast_issuer``). The third value is a note on the record shown
+    when it is not the current origin's.
+    """
 
     mode, default_bundle, storage_dir, static_dataset = _si_furnace_paths(bmo_cfg)
     if mode == "legacy":
-        return mode, None
+        return mode, None, None
     # TestBMO rewrites this key to testbmo_ui_frozen. A loaded sandbox must show
     # the archived result and must never query today's production feeds.
     if st.session_state.get("bmo_ui_frozen") is not None:
-        return mode, st.session_state.get("bmo_si_furnace_forecast")
+        return mode, st.session_state.get("bmo_si_furnace_forecast"), None
     active = active_si_bundle(storage_dir, default_bundle)
+    if not forecast_service.page_issues(storage_dir, "si", bmo_cfg):
+        view = forecast_service.si_for_page(storage_dir, active)
+        st.session_state["bmo_si_furnace_forecast"] = view.record
+        return mode, view.record, view.note
     try:
         model_mtime = int((active / "manifest.json").stat().st_mtime_ns)
     except OSError:
         model_mtime = 0
-    cadence = 60 if (active / "forest.npz").is_file() else 5
+    cadence = forecast_service.si_cadence(active)
     origin = si_forecast_origin(
         pd.Timestamp.now(tz="Asia/Kolkata"), cadence_minutes=cadence
     )
@@ -2336,7 +2318,7 @@ def _si_furnace_forecast_for_page(
         forest_mtime_ns=model_mtime,
     )
     st.session_state["bmo_si_furnace_forecast"] = record
-    return mode, record
+    return mode, record, None
 
 
 @st.fragment(run_every=300)
@@ -2345,11 +2327,15 @@ def _render_live_si_furnace_panel(
 ) -> None:
     """Refresh only the advisory Si panel every five minutes."""
 
-    mode, record = _si_furnace_forecast_for_page(
+    mode, record, note = _si_furnace_forecast_for_page(
         bmo_cfg, source_cache_version=source_cache_version
     )
     if mode == "legacy" or record is None:
+        if note:
+            st.caption(note)
         return
+    if note:
+        st.caption(note)
     _mode, default_bundle, storage_dir, static_dataset = _si_furnace_paths(bmo_cfg)
     history: dict[str, Any] = {
         "forecasts": pd.DataFrame(),
@@ -3612,7 +3598,7 @@ manual_blend_lookback_hours = int(
 # reads so they are fetched once per session and reused until the operator asks
 # for fresh data.
 source_cache_version = int(st.session_state.get("bmo_source_cache_version", 0))
-_si_forecast_mode, si_furnace_forecast = _si_furnace_forecast_for_page(
+_si_forecast_mode, si_furnace_forecast, _si_furnace_note = _si_furnace_forecast_for_page(
     bmo_cfg, source_cache_version=source_cache_version
 )
 live_si_result_tile = _live_si_result_tile(si_furnace_forecast)
@@ -4556,12 +4542,13 @@ if not use_charged_engine:
         log.exception("Physics-Driven coke prediction failed")
         st.error(f"The Physics-Driven coke rate could not be calculated: {exc}")
     st.session_state["bmo_energy_anchor"] = physics_prediction
-# Always issue the charged-coke forecast as an advisory production signal.  The
+# Always obtain the charged-coke forecast as an advisory production signal (read
+# from the worker's ledger, or issued here when no worker issues it). The
 # switch above still decides which coke level the optimiser uses; Physics-Driven
 # therefore remains fully physics-anchored while operators can see and snapshot
 # the independent Data-Driven forecast and its accuracy.
 try:
-    with st.spinner("Issuing the charged-coke forecast for the latest complete hour..."):
+    with st.spinner("Charged-coke forecast for the latest complete hour..."):
         data_driven_prediction, _charged_detail = _charged_prediction_for_page(
             pci_override=(
                 float(recent_fuel_rates.get("pci_rate_kg_thm", 0.0) or 0.0)

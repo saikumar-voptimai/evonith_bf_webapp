@@ -11,6 +11,7 @@ import pytest
 os.environ.setdefault("COKE_ENERGY_WEATHER_LIVE", "0")      # no Open-Meteo request from the test suite
 os.environ.setdefault("COKE_ENERGY_TODAY", "2026-10-15")   # fixed plan day: its Open-Meteo moisture is in the shipped file
 os.environ.setdefault("BF_TWIN_DB_URL", "off")             # no job archive into a DATABASE_URL of the developer's shell
+os.environ.setdefault("BF_WORKER_SKIP_SCHEDULES", "forecast.")  # a test worker never issues plant forecasts
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")  # utils.settings needs a Qdrant URL; no test connects
 os.environ.setdefault("OPENROUTER_API_KEY", "test-openrouter-key")  # utils.settings needs an LLM key; no test calls one
 

@@ -175,7 +175,8 @@ def test_charged_coke_trend_sits_between_results_and_commentary() -> None:
     assert 'key="bmo_force_predict"' in page_source
     assert "force_predict=force_data_driven_prediction" in page_source
     assert "if use_charged_engine:" not in issue_block
-    assert "Always issue the charged-coke forecast as an advisory" in issue_block
+    # Read from the worker's ledger or issued on the page (SV-1.5), whichever engine drives the run.
+    assert "Always obtain the charged-coke forecast as an advisory" in issue_block
     assert "render_charged_status" not in page_source
     assert "show_status=False" not in page_source
     assert charged_ui.index('st.markdown("### Charged coke trend")') < charged_ui.index(

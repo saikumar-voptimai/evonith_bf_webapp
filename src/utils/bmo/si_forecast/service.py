@@ -16,7 +16,6 @@ from utils.bmo.si_forecast.features import (
     PLANT_TZ,
     SiliconFeatureError,
     build_features,
-    matched_outcomes,
     prepare_labs,
 )
 from utils.bmo.si_forecast.ledger import SiliconForecastLedger
@@ -29,6 +28,8 @@ MODES = frozenset({LEGACY_MODE, SHADOW_MODE, FORECAST_MODE})
 SCHEMA_VERSION = "bf2-si-forecast/2"
 MAX_MISSING_FEATURE_FRACTION = 0.25
 PREDICTABLE_STATUSES = frozenset({"ok", "warning", "out_of_domain"})
+# Every issued target band ends within this time of its origin (horizons <= 3 h, bands <= 1 h).
+MATCH_LOOKBACK = pd.Timedelta(days=1)
 
 
 @dataclass(frozen=True)
@@ -286,42 +287,61 @@ class SiliconForecastService:
     def record_matured_outcomes(
         self, sources: SiliconForecastSources, *, available_by: pd.Timestamp
     ) -> int:
-        recorded = 0
+        """Append every raw sample that falls in an issued target band and was available by ``available_by``.
+
+        The matches are those of ``matched_outcomes`` for every issue and horizon (sample in [target start, target
+        end), available by ``available_by``, same-time conflicts dropped within the band), recorded once per origin,
+        horizon and sample. The lab feed is prepared once, and issues older than its earliest sample by more than
+        ``MATCH_LOOKBACK`` are not searched: their bands end before any sample of the feed (SV-1.5, #285; searching
+        every issue of the ledger made a 5-min issue take minutes after a week).
+
+        Returns:
+            The number of outcome records written.
+        """
+
+        available_utc = _aware(available_by).tz_convert("UTC")
+        seen = available_utc.tz_convert(PLANT_TZ).tz_localize(None)
+        labs = prepare_labs(sources.labs)
+        labs = labs[labs["available"].le(seen)]
+        if labs.empty:
+            return 0
+        samples = labs["sample"].to_numpy()
+        first_origin = (
+            pd.Timestamp(samples[0]).tz_localize(PLANT_TZ).tz_convert("UTC") - MATCH_LOOKBACK
+        )
+        rows: list[dict[str, Any]] = []
         for origin, issue in self.ledger.issues().items():
-            if issue.get("status") not in PREDICTABLE_STATUSES:
+            if origin < first_origin or issue.get("status") not in PREDICTABLE_STATUSES:
                 continue
             for horizon in forecast_horizons(issue):
                 if horizon.get("si_pct") is None:
                     continue
                 target_end = _aware(horizon["target_end"]).tz_convert("UTC")
-                if target_end > available_by.tz_convert("UTC"):
+                if target_end > available_utc:
                     continue
-                matches = matched_outcomes(
-                    sources.labs,
-                    target_start=_aware(horizon["target_start"]),
-                    target_end=target_end,
-                    available_by=available_by,
+                start = _aware(horizon["target_start"]).tz_convert(PLANT_TZ).tz_localize(None)
+                end = target_end.tz_convert(PLANT_TZ).tz_localize(None)
+                lo, hi = np.searchsorted(samples, np.datetime64(start), "left"), np.searchsorted(
+                    samples, np.datetime64(end), "left"
                 )
-                for row in matches.itertuples():
-                    sample_at = (
-                        pd.Timestamp(row.sample).tz_localize(PLANT_TZ).tz_convert("UTC")
+                if lo >= hi:
+                    continue
+                band = labs.iloc[lo:hi]
+                band = band[~band["sample"].duplicated(False)]
+                for row in band.itertuples():
+                    rows.append(
+                        {
+                            "origin_at": origin,
+                            "horizon_minutes": int(horizon["horizon_minutes"]),
+                            "sample_id": str(row.id),
+                            "lab_sample_id": str(row.lab_sample_id),
+                            "sample_at": pd.Timestamp(row.sample).tz_localize(PLANT_TZ).tz_convert("UTC"),
+                            "available_at": pd.Timestamp(row.available).tz_localize(PLANT_TZ).tz_convert("UTC"),
+                            "actual_si_pct": float(row.chem_pct_si),
+                            "recorded_at": available_by,
+                        }
                     )
-                    available_at = (
-                        pd.Timestamp(row.available).tz_localize(PLANT_TZ).tz_convert("UTC")
-                    )
-                    recorded += int(
-                        self.ledger.record_outcome(
-                            origin_at=origin,
-                            horizon_minutes=int(horizon["horizon_minutes"]),
-                            sample_id=str(row.id),
-                            lab_sample_id=str(row.lab_sample_id),
-                            sample_at=sample_at,
-                            available_at=available_at,
-                            actual_si_pct=float(row.chem_pct_si),
-                            recorded_at=available_by,
-                        )
-                    )
-        return recorded
+        return self.ledger.record_outcomes(rows) if rows else 0
 
     def replay_history(
         self,

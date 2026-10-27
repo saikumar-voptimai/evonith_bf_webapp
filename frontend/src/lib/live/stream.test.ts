@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UNAUTHORIZED_EVENT } from '../api/client.ts';
+import openapi from '../api/openapi.json';
 import { connectionState } from './connection.svelte.ts';
 import { FakeSource } from './fake-source.ts';
-import { LiveStream, retryDelay, type SessionCheck, type StreamEvent } from './stream.svelte.ts';
+import { EVENT_TYPES, LiveStream, retryDelay, type SessionCheck, type StreamEvent } from './stream.svelte.ts';
 
 const AT = '2026-10-27T05:00:00Z';
 const progress = (id: string, job: string, fraction: number): StreamEvent => ({
@@ -34,6 +35,14 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+});
+
+describe('EVENT_TYPES', () => {
+	it('lists every event type the API publishes', () => {
+		const items = openapi.paths['/api/stream/recent'].get.responses['200'].content['application/json'].schema
+			.items as { discriminator: { mapping: Record<string, string> } };
+		expect([...EVENT_TYPES].sort()).toEqual(Object.keys(items.discriminator.mapping).sort());
+	});
 });
 
 describe('retryDelay', () => {

@@ -287,6 +287,95 @@ export interface components {
              */
             type: "alarm.raised";
         };
+        /**
+         * ChargedCokeForecastData
+         * @description A charged-coke forecast written to the ledger (``services.forecasts.issue_charged``, SV-1.5); times in IST
+         *     with their offset.
+         */
+        ChargedCokeForecastData: {
+            /**
+             * Coke End
+             * @description End of the charges the block sums (IST)
+             */
+            coke_end?: string | null;
+            /**
+             * Coke Start
+             * @description Start of the charges the block sums (IST)
+             */
+            coke_start?: string | null;
+            /**
+             * Data Row
+             * Format: date-time
+             * @description Label of the hourly row the forecast was made from (IST)
+             */
+            data_row: string;
+            /**
+             * Issued At
+             * Format: date-time
+             * @description When the forecast was issued (IST)
+             */
+            issued_at: string;
+            /**
+             * Lower Kg Thm
+             * @description Lower end of the 90 % range, kg/tHM
+             */
+            lower_kg_thm?: number | null;
+            /** Model Version */
+            model_version?: string | null;
+            /** Path */
+            path?: components["schemas"]["ChargedCokePoint"][];
+            /**
+             * Prediction Kg Thm
+             * @description Charged coke of the 4-h block, kg/tHM
+             */
+            prediction_kg_thm?: number | null;
+            /** Reasons */
+            reasons?: string[];
+            /**
+             * Shown
+             * @description The forecast may be shown and used as the Data-Driven level
+             */
+            shown: boolean;
+            /**
+             * State
+             * @description cruise, unsettled, off_cruise (shown) or a pause state
+             */
+            state: string;
+            /**
+             * Upper Kg Thm
+             * @description Upper end of the 90 % range, kg/tHM
+             */
+            upper_kg_thm?: number | null;
+        };
+        /** ChargedCokePoint */
+        ChargedCokePoint: {
+            /**
+             * At
+             * Format: date-time
+             * @description End of the 4-h charge window of the rate
+             */
+            at: string;
+            /**
+             * Horizon
+             * @description Rows (hours) after the data row
+             */
+            horizon: number;
+            /**
+             * Lower Kg Thm
+             * @description Lower end of the 90 % range, kg/tHM
+             */
+            lower_kg_thm?: number | null;
+            /**
+             * Prediction Kg Thm
+             * @description Charged coke, 4-h rate, kg/tHM
+             */
+            prediction_kg_thm?: number | null;
+            /**
+             * Upper Kg Thm
+             * @description Upper end of the 90 % range, kg/tHM
+             */
+            upper_kg_thm?: number | null;
+        };
         /** FieldError */
         FieldError: {
             /** Loc */
@@ -296,6 +385,26 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** ForecastChargedCokeEvent */
+        ForecastChargedCokeEvent: {
+            /**
+             * At
+             * Format: date-time
+             * @description Publication time (UTC)
+             */
+            at: string;
+            data: components["schemas"]["ChargedCokeForecastData"];
+            /**
+             * Id
+             * @description Stream id; the SSE event id used for Last-Event-ID replay
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "forecast.charged_coke";
+        };
         /** ForecastSiEvent */
         ForecastSiEvent: {
             /**
@@ -304,11 +413,7 @@ export interface components {
              * @description Publication time (UTC)
              */
             at: string;
-            /**
-             * Data
-             * @description Hot-metal Si forecast (schema in SV-1.5)
-             */
-            data: Record<string, unknown>;
+            data: components["schemas"]["SiForecastData"];
             /**
              * Id
              * @description Stream id; the SSE event id used for Last-Event-ID replay
@@ -418,7 +523,7 @@ export interface components {
             role: "user" | "supervisor" | "admin";
             /**
              * Schedule
-             * @description Scheduled times (IST), e.g. '04:00'
+             * @description Scheduled times (IST), e.g. '04:00', 'every hour at :07', 'every 5 min'
              */
             schedule?: string | null;
             /** Timeout S */
@@ -514,7 +619,7 @@ export interface components {
         LiveStatusData: {
             /**
              * Tags
-             * @description Latest plant readings (from SV-1.5)
+             * @description Latest plant readings (not yet filled: KPI strip of the Live Twin, SV-1.9)
              */
             tags?: {
                 [key: string]: components["schemas"]["TagValue"];
@@ -618,6 +723,103 @@ export interface components {
             user_id?: string | null;
             /** Username */
             username: string;
+        };
+        /**
+         * SiForecastData
+         * @description One attempt of the hot-metal Si forecast at a new origin (``services.forecasts.issue_si``, SV-1.5). Usable
+         *     paths (status ok, warning, out_of_domain) are in the ledger; others carry the reason the inputs were not usable.
+         */
+        SiForecastData: {
+            /** Horizons */
+            horizons?: components["schemas"]["SiForecastPoint"][];
+            /**
+             * Issued At
+             * Format: date-time
+             * @description When the path was issued (UTC)
+             */
+            issued_at: string;
+            /**
+             * Last Sample At
+             * @description Time of that sample (UTC)
+             */
+            last_sample_at?: string | null;
+            /**
+             * Last Sample Si Pct
+             * @description Latest raw cast Si at the origin, mass %
+             */
+            last_sample_si_pct?: number | null;
+            /**
+             * Mode
+             * @description shadow or forecast
+             */
+            mode?: string | null;
+            /** Model Version */
+            model_version?: string | null;
+            /**
+             * Origin At
+             * Format: date-time
+             * @description Origin of the path (UTC), floored in IST to the model cadence
+             */
+            origin_at: string;
+            /** Reasons */
+            reasons?: string[];
+            /**
+             * Recorded
+             * @description The path is in the ledger
+             */
+            recorded: boolean;
+            /**
+             * Si Pct
+             * @description Headline (Now) hot-metal Si, mass %
+             */
+            si_pct?: number | null;
+            /**
+             * Status
+             * @description ok, warning, out_of_domain, stale_inputs, insufficient_data, ...
+             */
+            status: string;
+        };
+        /** SiForecastPoint */
+        SiForecastPoint: {
+            /**
+             * Horizon Minutes
+             * @description Target start after the origin, minutes
+             */
+            horizon_minutes: number;
+            /**
+             * Label
+             * @description Now, +1 h, +2 h, +3 h
+             */
+            label: string;
+            /**
+             * Lower Pct
+             * @description Lower end of the 90 % range, mass %
+             */
+            lower_pct?: number | null;
+            /**
+             * Si Pct
+             * @description Forecast hot-metal Si, mass %
+             */
+            si_pct?: number | null;
+            /** Status */
+            status?: string | null;
+            /**
+             * Target End
+             * Format: date-time
+             * @description End of the target band (UTC)
+             */
+            target_end: string;
+            /**
+             * Target Start
+             * Format: date-time
+             * @description Start of the target band (UTC)
+             */
+            target_start: string;
+            /**
+             * Upper Pct
+             * @description Upper end of the 90 % range, mass %
+             */
+            upper_pct?: number | null;
         };
         /** SubmitRequest */
         SubmitRequest: {
@@ -1233,7 +1435,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": (components["schemas"]["LiveStatusEvent"] | components["schemas"]["TwinSnapshotEvent"] | components["schemas"]["ForecastSiEvent"] | components["schemas"]["JobProgressEvent"] | components["schemas"]["JobDoneEvent"] | components["schemas"]["AlarmRaisedEvent"] | components["schemas"]["AlarmClearedEvent"] | components["schemas"]["HeartbeatEvent"])[];
+                    "application/json": (components["schemas"]["LiveStatusEvent"] | components["schemas"]["TwinSnapshotEvent"] | components["schemas"]["ForecastSiEvent"] | components["schemas"]["ForecastChargedCokeEvent"] | components["schemas"]["JobProgressEvent"] | components["schemas"]["JobDoneEvent"] | components["schemas"]["AlarmRaisedEvent"] | components["schemas"]["AlarmClearedEvent"] | components["schemas"]["HeartbeatEvent"])[];
                 };
             };
             /** @description Client error (problem+json) */

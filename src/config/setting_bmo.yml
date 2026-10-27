@@ -441,6 +441,13 @@ bmo:
   # current state and the operator's PCI / nut coke rates.
   fuel_rate_anchor_basis: data_driven
 
+  # Who issues the HM Si and charged-coke forecasts (SV-1.5). auto: page 9 reads
+  # the ledgers while the worker issues them (forecast.si every 5 min,
+  # forecast.charged_coke at HH:07) and issues them itself when the worker has
+  # made no attempt for 15 min (Si) or 75 min (charged coke); worker: page 9
+  # only reads; page: page 9 issues, as before SV-1.5.
+  forecast_issuer: auto
+
   # Price-independent charged-coke forecast used by the Data-Driven option.
   data_driven_coke:
     dataset_path: src/assets/data/furnace_dataset.csv

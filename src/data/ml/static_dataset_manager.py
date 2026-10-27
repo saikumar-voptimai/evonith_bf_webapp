@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import shutil
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
@@ -25,6 +26,19 @@ from furnace_data.dataset.cleaning import DataCleaner, build_default_config
 log = logging.getLogger(__name__)
 
 _CACHE_META_NAME = "cache_meta.json"
+
+
+def _replace_atomically(source: Path, target: Path) -> None:
+    """Copy ``source`` over ``target`` so that a concurrent reader sees the old file or the new one, never part of
+    one (the worker refreshes the dataset while pages read it, SV-1.5). Windows refuses to replace a file another
+    process holds open; the plain copy of before is used then."""
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    shutil.copyfile(source, temporary)
+    try:
+        os.replace(temporary, target)
+    except PermissionError:
+        temporary.unlink(missing_ok=True)
+        shutil.copyfile(source, target)
 
 
 @dataclass
@@ -233,8 +247,9 @@ class StaticDatasetManager:
         saved_path = self.static_path.parent / self._versioned_filename()
         df.to_csv(saved_path, index=True)
         if saved_path.resolve() != self.static_path.resolve():
-            shutil.copyfile(saved_path, self.static_path)
+            _replace_atomically(saved_path, self.static_path)
 
+        # After the CSV: a reader that sees the new metadata (build time) also sees the new rows.
         self._save_meta(self._build_meta(df, saved_path))
         self._rotate_versioned_files()
 
@@ -428,10 +443,14 @@ class StaticDatasetManager:
         )
 
     def _save_meta(self, meta: CacheMeta) -> None:
-        self._meta_path.write_text(
-            json.dumps(asdict(meta), indent=2),
-            encoding="utf-8",
-        )
+        text = json.dumps(asdict(meta), indent=2)
+        temporary = self._meta_path.with_name(f".{self._meta_path.name}.{os.getpid()}.tmp")
+        temporary.write_text(text, encoding="utf-8")
+        try:
+            os.replace(temporary, self._meta_path)
+        except PermissionError:  # Windows: a reader holds the file open
+            temporary.unlink(missing_ok=True)
+            self._meta_path.write_text(text, encoding="utf-8")
 
 
 __all__ = ["CacheMeta", "StaticDatasetManager"]

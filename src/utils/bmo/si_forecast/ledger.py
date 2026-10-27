@@ -1,18 +1,24 @@
-"""Append-only production Si forecasts and their raw-cast outcomes."""
+"""Append-only production Si forecasts and their raw-cast outcomes.
+
+The file is shared by the worker (``forecast.si``, every 5 min), page 9 and the API (SV-1.5, #285): reads are
+incremental and appends are made under a lock that also excludes other processes (``utils.jsonl_log``). The format
+is unchanged.
+"""
 
 from __future__ import annotations
 
-import json
+import copy
 import math
-import threading
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from utils.jsonl_log import JsonlLog
+
 DEFAULT_STORAGE_DIR = Path(__file__).resolve().parents[3] / "storage/bmo_si_forecast"
-_LOCK = threading.Lock()
 
 
 def _jsonable(value: Any) -> Any:
@@ -36,21 +42,13 @@ def _stamp(value: Any) -> pd.Timestamp:
     return stamp.tz_convert("UTC")
 
 
-def _read_unlocked(path: Path) -> list[dict[str, Any]]:
-    if not path.is_file():
-        return []
-    records: list[dict[str, Any]] = []
-    with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                records.append(json.loads(line))
-    return records
-
-
-def _append_unlocked(path: Path, record: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(_jsonable(record), ensure_ascii=False) + "\n")
+def _outcome_key(row: dict[str, Any]) -> tuple[str, int, str, str]:
+    return (
+        _stamp(row["origin_at"]).isoformat(),
+        int(row.get("horizon_minutes", 120)),
+        str(row.get("sample_id", "")),
+        _stamp(row["sample_at"]).isoformat(),
+    )
 
 
 class SiliconForecastLedger:
@@ -58,6 +56,7 @@ class SiliconForecastLedger:
 
     def __init__(self, storage_dir: str | Path = DEFAULT_STORAGE_DIR) -> None:
         self.path = Path(storage_dir) / "issued_forecasts.jsonl"
+        self._log = JsonlLog(self.path)
 
     def _issues_from(self, records: list[dict[str, Any]]) -> dict[pd.Timestamp, dict[str, Any]]:
         out: dict[pd.Timestamp, dict[str, Any]] = {}
@@ -67,23 +66,24 @@ class SiliconForecastLedger:
         return dict(sorted(out.items()))
 
     def issues(self) -> dict[pd.Timestamp, dict[str, Any]]:
-        with _LOCK:
-            return self._issues_from(_read_unlocked(self.path))
+        """First issue per origin. The records are shared with the log's cache: read them, do not modify them."""
+        return self._issues_from(self._log.records())
 
     def get(self, origin_at: Any) -> dict[str, Any] | None:
-        return self.issues().get(_stamp(origin_at))
+        """The issue at ``origin_at`` (a copy), or None."""
+        record = self.issues().get(_stamp(origin_at))
+        return copy.deepcopy(record) if record is not None else None
 
     def record_issue(self, record: dict[str, Any]) -> dict[str, Any]:
-        """Append once; concurrent reruns still return the same first record."""
+        """Append once; concurrent reruns, in this process or another, still return the same first record."""
 
         origin = _stamp(record["origin_at"])
-        with _LOCK:
-            records = _read_unlocked(self.path)
-            existing = self._issues_from(records).get(origin)
+        with self._log.exclusive():
+            existing = self._issues_from(self._log.records()).get(origin)
             if existing is not None:
-                return existing
+                return copy.deepcopy(existing)
             stored = _jsonable({"type": "issue", **record})
-            _append_unlocked(self.path, stored)
+            self._log.append(stored)
             return stored
 
     def record_outcome(
@@ -100,47 +100,62 @@ class SiliconForecastLedger:
     ) -> bool:
         """Append one raw sample match. Multiple samples in a band stay separate."""
 
-        key = (
-            _stamp(origin_at).isoformat(),
-            int(horizon_minutes),
-            str(sample_id),
-            _stamp(sample_at).isoformat(),
-        )
-        with _LOCK:
-            records = _read_unlocked(self.path)
-            known = {
-                (
-                    _stamp(row["origin_at"]).isoformat(),
-                    int(row.get("horizon_minutes", 120)),
-                    str(row.get("sample_id", "")),
-                    _stamp(row["sample_at"]).isoformat(),
-                )
-                for row in records
-                if row.get("type") == "outcome"
-            }
-            if key in known:
-                return False
-            _append_unlocked(
-                self.path,
-                {
-                    "type": "outcome",
-                    "origin_at": origin_at,
-                    "horizon_minutes": int(horizon_minutes),
-                    "sample_id": sample_id,
-                    "lab_sample_id": lab_sample_id,
-                    "sample_at": sample_at,
-                    "available_at": available_at,
-                    "actual_si_pct": float(actual_si_pct),
-                    "recorded_at": recorded_at,
-                },
+        return bool(
+            self.record_outcomes(
+                [
+                    {
+                        "origin_at": origin_at,
+                        "horizon_minutes": int(horizon_minutes),
+                        "sample_id": sample_id,
+                        "lab_sample_id": lab_sample_id,
+                        "sample_at": sample_at,
+                        "available_at": available_at,
+                        "actual_si_pct": float(actual_si_pct),
+                        "recorded_at": recorded_at,
+                    }
+                ]
             )
-            return True
+        )
+
+    def record_outcomes(self, rows: Iterable[dict[str, Any]]) -> int:
+        """Append the outcome matches not yet recorded (same fields and key as ``record_outcome``), under one lock.
+
+        Returns:
+            The number of outcome lines written.
+        """
+
+        with self._log.exclusive():
+            known = {_outcome_key(row) for row in self._log.records() if row.get("type") == "outcome"}
+            written = 0
+            for row in rows:
+                key = _outcome_key(row)
+                if key in known:
+                    continue
+                known.add(key)
+                self._log.append(
+                    _jsonable(
+                        {
+                            "type": "outcome",
+                            "origin_at": row["origin_at"],
+                            "horizon_minutes": int(row["horizon_minutes"]),
+                            "sample_id": row["sample_id"],
+                            "lab_sample_id": row["lab_sample_id"],
+                            "sample_at": row["sample_at"],
+                            "available_at": row["available_at"],
+                            "actual_si_pct": float(row["actual_si_pct"]),
+                            "recorded_at": row["recorded_at"],
+                        }
+                    )
+                )
+                written += 1
+            return written
+
+    def outcome_keys(self) -> set[tuple[str, int, str, str]]:
+        """(origin, horizon, sample id, sample time) of every recorded outcome."""
+        return {_outcome_key(row) for row in self.outcomes()}
 
     def outcomes(self) -> list[dict[str, Any]]:
-        with _LOCK:
-            return [
-                row for row in _read_unlocked(self.path) if row.get("type") == "outcome"
-            ]
+        return [row for row in self._log.records() if row.get("type") == "outcome"]
 
     def scored_frame(self) -> pd.DataFrame:
         """One row per horizon/raw-cast match, joined to as-issued values."""

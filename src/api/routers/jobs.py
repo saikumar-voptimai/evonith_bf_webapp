@@ -28,7 +28,9 @@ class JobKindInfo(BaseModel):
     role: Role = Field(..., description="Lowest role that may start the job")
     timeout_s: float
     max_tries: int
-    schedule: str | None = Field(None, description="Scheduled times (IST), e.g. '04:00'")
+    schedule: str | None = Field(
+        None, description="Scheduled times (IST), e.g. '04:00', 'every hour at :07', 'every 5 min'"
+    )
     description: str
     params_schema: dict[str, Any] = Field(..., description="JSON schema of the parameters")
 
@@ -44,11 +46,17 @@ class SubmitResponse(BaseModel):
 
 
 def _schedule_text(schedule: tuple[set[int] | None, set[int]] | None) -> str | None:
+    """'04:00', '06:15, 14:15, 22:15'; for every hour 'every hour at :07' or 'every 5 min'."""
     if schedule is None:
         return None
     hours, minutes = schedule
-    hh = sorted(hours) if hours is not None else list(range(24))
-    return ", ".join(f"{h:02d}:{m:02d}" for h in hh for m in sorted(minutes))
+    mm = sorted(minutes)
+    if hours is None:
+        step = mm[1] - mm[0] if len(mm) > 1 else 60
+        if len(mm) > 1 and 60 % step == 0 and mm == list(range(mm[0], 60, step)):
+            return f"every {step} min" + (f" from :{mm[0]:02d}" if mm[0] else "")
+        return "every hour at " + ", ".join(f":{m:02d}" for m in mm)
+    return ", ".join(f"{h:02d}:{m:02d}" for h in sorted(hours) for m in mm)
 
 
 @router.get("/kinds", response_model=list[JobKindInfo], summary="Job kinds")

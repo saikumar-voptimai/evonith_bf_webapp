@@ -364,6 +364,8 @@ def render_status(prediction: Any, detail: dict[str, Any]) -> None:
     reasons = [reason for reason in (record.get("reasons") or []) if reason]
     forced = bool(detail.get("forced") or record.get("forced"))
     st.markdown("**Charged coke forecast**")
+    if detail.get("note"):  # read from the worker's ledger: the record is not this build's yet (SV-1.5)
+        st.caption(str(detail["note"]))
     st.caption(
         "Charged coke is the coke physically charged into the furnace per tonne "
         "of hot metal, measured over four hours. The four-hour rate removes the "

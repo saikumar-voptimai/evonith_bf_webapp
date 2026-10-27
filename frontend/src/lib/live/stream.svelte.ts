@@ -15,6 +15,7 @@ export type StreamEvent =
 	| Schemas['LiveStatusEvent']
 	| Schemas['TwinSnapshotEvent']
 	| Schemas['ForecastSiEvent']
+	| Schemas['ForecastChargedCokeEvent']
 	| Schemas['JobProgressEvent']
 	| Schemas['JobDoneEvent']
 	| Schemas['AlarmRaisedEvent']
@@ -27,6 +28,7 @@ export const EVENT_TYPES: readonly StreamEventType[] = [
 	'live.status',
 	'twin.snapshot',
 	'forecast.si',
+	'forecast.charged_coke',
 	'job.progress',
 	'job.done',
 	'alarm.raised',
