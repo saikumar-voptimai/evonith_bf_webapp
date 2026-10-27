@@ -103,6 +103,30 @@ class TwinEvaluateParams(BaseModel):
     strata: bool = Field(True, description="Evaluate K_STRATA (3 network solves per window and 1 per 14-day anchor)")
 
 
+class ShiftReportParams(BaseModel):
+    """The report of a closed shift (``report.shift``, SV-2.3)."""
+
+    model_config = {"extra": "forbid"}
+
+    shift_key: str | None = Field(
+        None,
+        pattern=r"^\d{4}-\d{2}-\d{2}_[ABC]$",
+        description=(
+            "Shift to report, YYYY-MM-DD_A|B|C (IST date of its start); default: the shift that ended before the "
+            "schedule slot (C at 06:20, A at 14:20, B at 22:20), else before now"
+        ),
+    )
+    narrative: bool = Field(True, description="Also write the LLM narrative (one retry on failure)")
+
+
+class LiveReportParams(BaseModel):
+    """The report of the running shift (``report.live``, SV-2.3)."""
+
+    model_config = {"extra": "forbid"}
+
+    narrative: bool = Field(True, description="Also write the LLM narrative (one retry on failure)")
+
+
 @dataclass(frozen=True)
 class JobKind:
     name: str
@@ -267,6 +291,37 @@ register(
             "STRATA-Learn in shadow mode on the stored evidence (Kalman challenger, champion/challenger gate, CUSUM "
             "drift, register proposal) into src/storage/burden_engine/learn; changes nothing in the asset, the "
             "register or the pages (SV-1.7)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="report.shift",
+        title="Shift report",
+        role="supervisor",
+        # data of the shift and the one before (InfluxDB, Neon), then at most two LLM calls of 120 s, 15 s apart
+        timeout_s=600,
+        max_tries=2,  # data sources unavailable: once more 5 min later (an LLM failure does not fail the job)
+        retry_delay_s=300,
+        params=ShiftReportParams,
+        schedule=({6, 14, 22}, {20}),
+        description=(
+            "The FurnaceMind Reports tab's report of the shift that has just closed (C, A, B) with the LLM narrative "
+            "(one retry; stored without narrative when the LLM fails) into twin.shift_report (SV-2.3)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="report.live",
+        title="Live shift report",
+        role="user",
+        timeout_s=600,
+        max_tries=1,
+        params=LiveReportParams,
+        description=(
+            "The Reports tab's report of the running shift, data up to now, with the LLM narrative (one retry) into "
+            "twin.shift_report (POST /api/reports/live, SV-2.3)."
         ),
     )
 )

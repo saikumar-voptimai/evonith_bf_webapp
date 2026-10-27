@@ -968,7 +968,7 @@ stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
 | `BF_WORKER_POOL` | `8` | Processes of the model-solve pool |
 | `BF_WORKER_MAX_JOBS` | `4` | Jobs run at the same time by one worker |
 | `BF_WORKER_JOB_TIMEOUT` | longest kind limit + 60 s | arq time limit of one delivery |
-| `BF_WORKER_SKIP_SCHEDULES` | unset | Kinds, or prefixes ending in `.`, that are not scheduled (still submittable); the test suite sets `forecast.,twin.,optimiser.,calibration.,learn.` |
+| `BF_WORKER_SKIP_SCHEDULES` | unset | Kinds, or prefixes ending in `.`, that are not scheduled (still submittable); the test suite sets `forecast.,twin.,optimiser.,calibration.,learn.,report.` |
 | `BF_WORKER_CATCH_UP` | `1` | `0` turns off the catch-up of missed slots at worker start (the test suite sets `0`) |
 | `BF_STRATA_SOLVERS` | min(8, cpus) | Network-solver processes of one STRATA-ω run (worker and page 11 optimiser runs, nightly Jacobian, twin backfill); `0` or `1`: one solve after the other (the test suite sets `0`) |
 

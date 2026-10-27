@@ -57,6 +57,9 @@ def test_no_streamlit_or_ui_import(path: Path) -> None:
         "services.status",
         "services.auth",
         "services.job_archive",
+        "services.reports",  # SV-2.3, with what its worker kinds load on first use:
+        "reports.furnace_report.service",  # the Reports tab's data pipeline (InfluxDB, Neon)
+        "agents.llm.llm_client",  # page 7's LLM client
         "data.db",
         "data.twin",
         "api.main",

@@ -4,8 +4,8 @@ Environment: ``BF_REDIS_URL`` (default ``redis://127.0.0.1:6379/0``), ``BF_WORKE
 default 8), ``BF_WORKER_MAX_JOBS`` (concurrent jobs, default 4), ``BF_WORKER_JOB_TIMEOUT`` (arq time limit of one
 delivery, default the longest kind limit plus 60 s; a job interrupted by a worker stop runs again once this limit plus
 10 s has passed), ``BF_WORKER_SKIP_SCHEDULES`` (comma-separated kinds, or prefixes ending in ".", that are not
-scheduled: the test suite skips ``forecast.,twin.,optimiser.,calibration.,learn.``, so a test worker never reads
-plant data; such kinds can still be submitted), ``BF_WORKER_CATCH_UP`` (``0`` turns the catch-up at start off; the
+scheduled: the test suite skips ``forecast.,twin.,optimiser.,calibration.,learn.,report.``, so a test worker never
+reads plant data; such kinds can still be submitted), ``BF_WORKER_CATCH_UP`` (``0`` turns the catch-up at start off; the
 test suite sets it). Job records are archived in ``twin.jobs`` when ``BF_TWIN_DB_URL`` or ``DATABASE_URL`` is set.
 
 At start the worker runs the latest missed slot of each scheduled kind when the slot is at most 30 min old and records
