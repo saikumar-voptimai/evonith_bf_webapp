@@ -1,0 +1,110 @@
+{
+	"total": 5,
+	"limit": 50,
+	"offset": 0,
+	"entries": [
+		{
+			"id": 105,
+			"at": "2026-10-27T09:12:40Z",
+			"actor": "r.kulkarni",
+			"role": "admin",
+			"action": "facts.edit",
+			"object_type": "facts_version",
+			"object_id": "9",
+			"client_ip": "10.20.4.31",
+			"details": { "base_version": "1.8" },
+			"before": {
+				"status": "pending",
+				"overlay": {
+					"ASM-08": { "value": 190, "unit": "kg/tHM" },
+					"ASM-20": { "value": 457.85, "unit": "Rs/t" }
+				}
+			},
+			"after": {
+				"status": "pending",
+				"overlay": {
+					"ASM-08": { "value": 185.5, "unit": "kg/tHM" },
+					"ASM-20": { "value": 457.85, "unit": "Rs/t" }
+				},
+				"note": "PCI trial on shift B"
+			},
+			"changes": [
+				{ "path": "overlay.ASM-08.value", "kind": "changed", "before": 190, "after": 185.5 },
+				{ "path": "note", "kind": "added", "before": null, "after": "PCI trial on shift B" }
+			]
+		},
+		{
+			"id": 104,
+			"at": "2026-10-27T07:05:00Z",
+			"actor": "s.deshmukh",
+			"role": "admin",
+			"action": "burden.update",
+			"object_type": "burden_history",
+			"object_id": "412",
+			"client_ip": "10.20.4.18",
+			"details": { "purpose": "Open the periphery" },
+			"before": { "charge_pattern": "C4O4", "coke_angles_deg": [38.5, 36, 33.5, 31] },
+			"after": { "charge_pattern": "C4O4", "coke_angles_deg": [38.5, 36, 34, 31] },
+			"changes": [{ "path": "coke_angles_deg[2]", "kind": "changed", "before": 33.5, "after": 34 }]
+		},
+		{
+			"id": 103,
+			"at": "2026-10-27T05:48:10Z",
+			"actor": "s.deshmukh",
+			"role": "admin",
+			"action": "hopper.assign",
+			"object_type": "hopper",
+			"object_id": "hopper_04",
+			"client_ip": "10.20.4.18",
+			"details": {},
+			"before": null,
+			"after": { "hopper": "hopper_04", "material_code": "ORE-11", "stock_mt": 1250.5 },
+			"changes": [
+				{ "path": "hopper", "kind": "added", "before": null, "after": "hopper_04" },
+				{ "path": "material_code", "kind": "added", "before": null, "after": "ORE-11" },
+				{ "path": "stock_mt", "kind": "added", "before": null, "after": 1250.5 }
+			]
+		},
+		{
+			"id": 102,
+			"at": "2026-10-27T03:20:00Z",
+			"actor": "a.patil",
+			"role": "supervisor",
+			"action": "plan.decide",
+			"object_type": "optimiser_run",
+			"object_id": "3f1c9a52-7d41-4f0e-9b8a-2c6e5d1a7b90",
+			"client_ip": "10.20.6.7",
+			"details": {
+				"decision": "accepted",
+				"shift_key": "2026-10-27_Shift_B",
+				"comment": "Apply from 14:00"
+			},
+			"before": null,
+			"after": null,
+			"changes": []
+		},
+		{
+			"id": 101,
+			"at": "2026-10-26T18:02:00Z",
+			"actor": "r.kulkarni",
+			"role": "admin",
+			"action": "user.delete",
+			"object_type": "user",
+			"object_id": "u-17",
+			"client_ip": null,
+			"details": { "reason": "Left the plant" },
+			"before": { "username": "trainee.03", "role": "user", "active": true },
+			"after": null,
+			"changes": [
+				{ "path": "username", "kind": "removed", "before": "trainee.03", "after": null },
+				{ "path": "role", "kind": "removed", "before": "user", "after": null },
+				{ "path": "active", "kind": "removed", "before": true, "after": null }
+			]
+		}
+	],
+	"facets": {
+		"actors": ["a.patil", "r.kulkarni", "s.deshmukh"],
+		"actions": ["burden.update", "facts.edit", "hopper.assign", "plan.decide", "user.delete"],
+		"object_types": ["burden_history", "facts_version", "hopper", "optimiser_run", "user"]
+	}
+}

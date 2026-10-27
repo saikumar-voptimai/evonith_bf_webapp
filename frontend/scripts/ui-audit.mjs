@@ -8,12 +8,13 @@
  *   pnpm audit:ui --out ../audit-shots
  *
  * Needs Playwright with Chromium (`pnpm dlx playwright install chromium` on a dev machine). The script answers
- * /api/health, /api/stream and /api/auth/* itself (account `auditor`, password `correct-horse`), so the audit does
- * not need the twin-api. Exit code 1 on a critical or serious axe violation, a horizontal overflow or a failed
+ * /api/health, /api/stream, /api/auth/* (account `auditor`, password `correct-horse`) and /api/admin/audit
+ * (`scripts/fixtures/audit-page.json`, checked against the API model by tests/test_api_admin.py) itself, so the audit
+ * does not need the twin-api. Exit code 1 on a critical or serious axe violation, a horizontal overflow or a failed
  * behaviour check.
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +30,8 @@ const arg = (name, fallback) => {
 	return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
 };
 const OUT = resolve(arg('out', join(ROOT, '.audit')));
+// Page of GET /api/admin/audit: a changed, a list-item, a created, a details-only and a deleted entry (SV-4.1, #304).
+const AUDIT_PAGE = JSON.parse(readFileSync(join(ROOT, 'scripts', 'fixtures', 'audit-page.json'), 'utf8'));
 const PORT = 4179;
 let base = arg('base', null);
 
@@ -42,6 +45,7 @@ const ROUTES = [
 	{ name: 'trace', path: '/trace' },
 	{ name: 'catalogue', path: '/dev/components' },
 	{ name: 'admin', path: '/admin' },
+	{ name: 'admin-audit', path: '/admin/audit' },
 	{ name: 'not-found', path: '/no-such-page' }
 ];
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
@@ -178,6 +182,15 @@ try {
 	await context.route('**/api/auth/logout', (route) => {
 		auth.role = null;
 		return route.fulfill({ status: 204, body: '' });
+	});
+	// Audit log mock: the fixture page whatever the filters; `auditQueries` keeps each request's query.
+	const auditQueries = [];
+	await context.route(/\/api\/admin\/audit(\?.*)?$/, (route) => {
+		const query = Object.fromEntries(new URL(route.request().url()).searchParams);
+		auditQueries.push(query);
+		const offset = Number(query.offset ?? 0);
+		const body = { ...AUDIT_PAGE, offset, entries: offset > 0 ? [] : AUDIT_PAGE.entries };
+		return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 	});
 	const page = await context.newPage();
 	const consoleErrors = [];
@@ -409,6 +422,71 @@ try {
 		await page.waitForURL('**/strata');
 		await dialog.waitFor({ state: 'hidden' });
 	});
+
+	await check(
+		'audit viewer asks for 30 IST days of 50 entries and shows an entry before and after',
+		async () => {
+			await page.setViewportSize({ width: 768, height: 1024 });
+			auditQueries.length = 0;
+			await page.goto(`${base}/admin/audit`, { waitUntil: 'networkidle' });
+			await settle(page);
+			const q = auditQueries.at(-1);
+			expect(q, 'no request to /api/admin/audit');
+			const days = (Date.parse(q.until) - Date.parse(q.since)) / 86_400_000;
+			const since = new Date(q.since);
+			expect(days === 30, `period of ${days} days, expected 30`);
+			expect(since.getUTCHours() === 18 && since.getUTCMinutes() === 30, `since ${q.since} is not 00:00 IST`);
+			expect(q.limit === '50' && q.offset === '0', `limit ${q.limit}, offset ${q.offset}`);
+
+			const table = page.getByRole('table', { name: 'Audit log entries, newest first' });
+			const records = await table.locator('tbody tr').allInnerTexts();
+			const want = [
+				'2 fields changed',
+				'1 field changed',
+				'Created, 3 fields',
+				'Details only',
+				'Deleted, 3 fields'
+			];
+			expect(
+				records.length === want.length && want.every((w, i) => records[i].includes(w)),
+				`records ${JSON.stringify(records.map((r) => r.replace(/\s+/g, ' ')))}`
+			);
+			const pager = (await page.locator('.pager').innerText()).trim();
+			expect(pager === '5 entries', `pager reads "${pager}"`);
+
+			await page.getByRole('button', { name: /^Open entry 105,/ }).click();
+			const drawer = page.getByRole('dialog', { name: 'Entry 105: facts.edit' });
+			await drawer.waitFor();
+			await settle(page);
+			const label = 'audit-drawer@768x1024';
+			report.pages.push({ label, violations: await axe(page, label), overflow: await overflow(page, label) });
+			await page.screenshot({ path: join(OUT, 'audit-drawer-768x1024.png') });
+			const diff = drawer.getByRole('table', { name: 'Fields changed by entry 105' });
+			const rows = await diff.locator('tbody tr').allInnerTexts();
+			const flat = rows.map((r) => r.replace(/\s+/g, ' ').trim());
+			expect(
+				flat.length === 2 && flat[0] === 'overlay.ASM-08.value Changed 190 185.5',
+				`changed fields ${JSON.stringify(flat)}`
+			);
+			expect(flat[1] === 'note Added — PCI trial on shift B', `added field "${flat[1]}"`);
+			await page.keyboard.press('Escape');
+			await drawer.waitFor({ state: 'hidden' });
+			const back = await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '');
+			expect(back.startsWith('Open entry 105,'), `focus returned to "${back}"`);
+
+			await page.getByRole('button', { name: /^Open entry 102,/ }).click();
+			const details = page.getByRole('dialog', { name: 'Entry 102: plan.decide' });
+			await details.waitFor();
+			const text = await details.innerText();
+			expect(
+				text.includes('No values recorded'),
+				'details-only entry does not say that no values are recorded'
+			);
+			expect(text.includes('Apply from 14:00'), 'details-only entry does not show its comment');
+			await details.getByRole('button', { name: 'Close', exact: true }).first().click();
+			await details.waitFor({ state: 'hidden' });
+		}
+	);
 
 	await check('signed-out visit goes to the sign-in page and back', async () => {
 		auth.role = null;
