@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from data.coke_energy.sources import SourceFreshness
+from services.coke_energy import RIST_MAX_FRAMES, rist_candidates, rist_keys
 from ui.coke_energy.figures import (
     MODELS,
     parity_figure,
@@ -18,7 +19,8 @@ from ui.coke_energy.figures import (
     rist_animation_figure,
     shift_label,
 )
-from utils.coke_energy.accuracy import WINDOWS, accuracy, rolling_mean, window_means
+from utils.coke_energy.accuracy import (WINDOWS, accuracy, period_rows, rolling_mean, scored_shifts,
+                                        window_means)
 from utils.coke_energy.freshness import format_age, format_limit, item_label as _item
 from utils.coke_energy.rist_diagram import RistShift
 
@@ -188,7 +190,7 @@ def render_latest(T: pd.DataFrame, assess_shift: Callable[[str], pd.DataFrame], 
 def render_prediction(T: pd.DataFrame, default_days: int, show_charged: bool, highlight: str | None) -> None:
     """Each model against burnt coke over time, the predicted-vs-burnt scatter, the error over time and the table."""
 
-    scored = T[T.K_obal.notna() & T.K_energy.notna() & T.K_burnt.notna()]
+    scored = scored_shifts(T)
     if scored.empty:
         st.info("No shifts with both predictions yet.")
         return
@@ -206,9 +208,7 @@ def render_prediction(T: pd.DataFrame, default_days: int, show_charged: bool, hi
                                   help="Include shifts that failed the stability filter (upsets, slips, stoppage "
                                        "recovery). The models were validated on stable shifts only.")
     start, end = (period if isinstance(period, (tuple, list)) and len(period) == 2 else (period, period))
-    rows = scored[(scored.sdate.dt.date >= start) & (scored.sdate.dt.date <= end)]
-    if not with_unstable:
-        rows = rows[rows.stable]
+    rows = period_rows(scored, start, end, with_unstable)
     if len(rows) < 2:
         st.info("Not enough shifts in that period.")
         return
@@ -255,7 +255,7 @@ def render_rist(T: pd.DataFrame, frames_for: Callable[[tuple[str, ...]], list[Ri
                 show_charged: bool) -> None:
     """Animated Rist diagram over the stable shifts of a chosen period."""
 
-    stable = T[T.stable & T.K_energy.notna() & T.K_burnt.notna()]
+    stable = rist_candidates(T)
     if stable.empty:
         st.info("No stable shift with a fixed-ω prediction yet.")
         return
@@ -266,16 +266,17 @@ def render_rist(T: pd.DataFrame, frames_for: Callable[[tuple[str, ...]], list[Ri
                                value=(max(first_day, last_day - timedelta(days=default_days)), last_day),
                                min_value=first_day, max_value=last_day, key="ce_rist_period")
     start, end = (period if isinstance(period, (tuple, list)) and len(period) == 2 else (period, period))
-    keys = stable[(stable.sdate.dt.date >= start) & (stable.sdate.dt.date <= end)].index
+    keys = rist_keys(T, start, end, limit=None)
     with c2:
         st.caption(f"{len(keys)} stable shifts. Press ▶ Play, or drag the slider under the chart; the strip below the "
                    "diagram marks the same shift.")
     if len(keys) == 0:
         st.info("No stable shifts in that period.")
         return
-    if len(keys) > 360:
-        st.warning(f"{len(keys)} shifts selected; showing the latest 360 to keep the animation responsive.")
-        keys = keys[-360:]
+    if len(keys) > RIST_MAX_FRAMES:
+        st.warning(f"{len(keys)} shifts selected; showing the latest {RIST_MAX_FRAMES} to keep the animation "
+                   "responsive.")
+        keys = keys[-RIST_MAX_FRAMES:]
     frames = frames_for(tuple(keys))
     if not frames:
         st.error("The Rist geometry could not be solved for these shifts.")

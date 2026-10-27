@@ -171,3 +171,29 @@ def shift_rist(case: Mapping[str, Any], K: float, V: float, eta: float, *, prod_
             p_model = None
     return RistShift(skey=skey, actual=actual, p_actual=p_act, model=model, p_model=p_model,
                      ideal_mu=ideal_mu, ideal_y_a=ideal_y_a, T_R=T_R)
+
+
+LINE_FIELDS = ("mu", "y_a", "y_d", "omega", "eta_w", "y_wc", "x_top", "y_top_c", "y_top")
+
+
+def rist_dict(rs: RistShift) -> dict[str, Any]:
+    """One shift's diagram as plain floats, the shape of the SPA's ``RistShift`` (``frontend/src/lib/charts/rist.ts``):
+    both lines' parameters, the pivots, the ideal line, T_R and the wustite level; the points A, D, E, W and T follow
+    from the line parameters (``OperatingLine``)."""
+
+    def line(op: OperatingLine | None) -> dict[str, float] | None:
+        return None if op is None else {f: float(getattr(op, f)) for f in LINE_FIELDS}
+
+    def point(p: Point | None) -> list[float] | None:
+        return None if p is None else [float(p[0]), float(p[1])]
+
+    return {
+        "skey": rs.skey,
+        "t_r": float(rs.T_R),
+        "y_w": float(Y_W),
+        "actual": line(rs.actual),
+        "model": line(rs.model),
+        "p_actual": point(rs.p_actual),
+        "p_model": point(rs.p_model),
+        "ideal": None if rs.ideal_mu is None else {"mu": float(rs.ideal_mu), "y_a": float(rs.ideal_y_a)},
+    }

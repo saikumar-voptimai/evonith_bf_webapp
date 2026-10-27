@@ -10,6 +10,7 @@ charged coke.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -80,6 +81,22 @@ def rolling_mean(table: pd.DataFrame, shifts: int, cols: Sequence[str], weight: 
     out.index = grid.t_mid.to_numpy()
     out.index.name = "t_mid"
     return out
+
+
+def scored_shifts(table: pd.DataFrame) -> pd.DataFrame:
+    """Shifts with both predictions and burnt coke: the rows the prediction section scores (page 10, FORGE page)."""
+
+    return table[table.K_obal.notna() & table.K_energy.notna() & table.K_burnt.notna()]
+
+
+def period_rows(scored: pd.DataFrame, start: date, end: date, with_unstable: bool = False) -> pd.DataFrame:
+    """Scored shifts dated ``start`` to ``end`` (IST calendar days, both included), stable ones only unless
+    ``with_unstable``: the period of the prediction section."""
+
+    # sdate.dt.date in [start, end], compared as timestamps (a date column would be built per call)
+    lo, hi = pd.Timestamp(start), pd.Timestamp(end) + pd.Timedelta(days=1)
+    rows = scored[(scored.sdate >= lo) & (scored.sdate < hi)]
+    return rows if with_unstable else rows[rows.stable]
 
 
 def accuracy(model: pd.Series, target: pd.Series) -> dict[str, float]:

@@ -27,6 +27,7 @@ from api.request_context import RequestContextMiddleware, RequestIdFilter
 from api.routers import (
     admin,
     auth,
+    forge,
     furnacemind,
     jobs,
     operator_inputs,
@@ -113,6 +114,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(twin.router)
     app.include_router(trace.router)
+    app.include_router(forge.router)
     app.include_router(optimiser.router)
     app.include_router(reports.router)
     app.include_router(admin.router)

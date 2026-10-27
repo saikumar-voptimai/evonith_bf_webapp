@@ -32,6 +32,7 @@ src/storage/bmo_coke_setpoint/
 
 # Coke Energy Model: monthly 10-min InfluxDB cache (re-fetched on demand).
 src/storage/coke_energy/
+src/storage/forge/
 
 # Local integration packages, replays, browser logs and test output.
 tmp/
