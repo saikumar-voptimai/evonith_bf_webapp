@@ -14,6 +14,7 @@ import Shield from '@lucide/svelte/icons/shield';
 import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 import Thermometer from '@lucide/svelte/icons/thermometer';
 import Wind from '@lucide/svelte/icons/wind';
+import type { LegacyPage } from './legacy.ts';
 import { hasRole, type Role } from './session/session.svelte.ts';
 
 export interface NavItem {
@@ -29,7 +30,7 @@ export interface NavItem {
 	/** GitHub issue that builds the page. */
 	issue: number;
 	/** Streamlit page that covers the same ground until the Svelte page ships. */
-	legacy?: string;
+	legacy?: LegacyPage;
 }
 
 export interface NavGroup {

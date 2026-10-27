@@ -33,27 +33,12 @@ API_PORT = os.environ.get("BF_API_PORT", "8100")
 LEGACY_PORT = os.environ.get("BF_LEGACY_PORT", "8501")
 IS_WINDOWS = os.name == "nt"
 
-STREAMLIT_ARGS = [
-    "run",
-    "src/app.py",
-    "--server.port",
-    LEGACY_PORT,
-    "--server.baseUrlPath",
-    "legacy",
-    "--server.headless",
-    "true",
-]
+STREAMLIT_ARGS = ["--server.port", LEGACY_PORT, "--server.baseUrlPath", "legacy", "--server.headless", "true"]
 
 
 def _streamlit_cmd() -> list[str]:
-    if IS_WINDOWS:
-        # torch must be imported before Streamlit on Windows (DLL load order, see run_streamlit.py).
-        code = (
-            "import sys, torch; from streamlit.web.cli import main; "
-            f"sys.argv = ['streamlit', *{STREAMLIT_ARGS!r}]; main()"
-        )
-        return [sys.executable, "-c", code]
-    return [sys.executable, "-m", "streamlit", *STREAMLIT_ARGS]
+    # run_streamlit.py runs src/app.py from the repository root and imports torch first on Windows (DLL load order).
+    return [sys.executable, str(ROOT / "run_streamlit.py"), *STREAMLIT_ARGS]
 
 
 def _pnpm() -> str:

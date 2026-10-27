@@ -10,12 +10,12 @@ Blast Furnace Web Application — an industrial manufacturing dashboard for real
 
 ```bash
 uv sync                    # Install dependencies
-python run_streamlit.py    # Run the app (always use this, not streamlit run directly)
+python run_streamlit.py    # Run the app (always use this, not streamlit run directly; Streamlit options pass through)
 pytest tests/              # Run tests
 uv add <package>           # Add dependency
 ```
 
-**Do not invoke `streamlit run` directly** — `run_streamlit.py` imports torch first to prevent Windows DLL errors.
+**Do not invoke `streamlit run` directly** — `run_streamlit.py` imports torch first on Windows (DLL errors), runs `src/app.py` from the repository root from any directory, and passes its arguments to Streamlit (`--server.baseUrlPath legacy` behind Caddy).
 
 **All pages run with `src/` as the working directory** — use `from agents.xxx`, `from utils.xxx`, etc., not `from src.agents.xxx`. The old `FurnaceMind/` package was flattened into top-level dirs under `src/`.
 
@@ -930,6 +930,7 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `-strata` / `-hmt` (slots 1-4), `series-context` for references; never a second value axis. After changing
   `utils/coke_energy/rist_diagram.py` or `ui/furnace_status/schematic.py` run `make fixtures` and commit the JSON
   (`tests/test_chart_fixtures.py` fails on drift). Rules in `frontend/DESIGN.md` section 6.
+- One origin in production: `deploy/jetson/Caddyfile` (SPA with `200.html` fallback, `/api` with `flush_interval -1`, `/legacy` to Streamlit with WebSocket, HTTP to HTTPS; settings from `BF_*` variables, see `deploy/jetson/README.md`). Link to a Streamlit page with `legacyHref('<title>')` from `#lib/legacy.ts`; the titles are generated from `config/page_registry.py` (`make fixtures`, checked by `tests/test_legacy_pages.py`), so a renamed page fails the type check.
 - Live data in the SPA: subscribe through `#lib/live/stream.svelte.ts` (`live.on(type, handler)`, one EventSource
   per tab); follow jobs with `JobTracker` (`#lib/live/jobs.svelte.ts`). A new event type is added to `EventType` and
   the payload models in `services/events.py`, then the OpenAPI client is regenerated (`make client`).

@@ -17,6 +17,7 @@ Accounts and roles are those of the Streamlit app (Neon identity.users).
 	import ShiftBand from '#lib/components/shell/ShiftBand.svelte';
 	import { safeNext } from '#lib/session/guard.ts';
 	import { session } from '#lib/session/session.svelte.ts';
+	import { legacyHref } from '#lib/legacy.ts';
 	import { clock } from '#lib/time/clock.svelte.ts';
 	import { istDayMonth } from '#lib/time/format.ts';
 	import { istClock } from '#lib/time/shift.ts';
@@ -192,7 +193,7 @@ Accounts and roles are those of the Streamlit app (Neon identity.users).
 				<ShieldCheck size={18} strokeWidth={1.75} />
 				<span
 					>Ask your administrator for an account or a different role. The Streamlit pages stay available under
-					<a href="/legacy/" rel="external">/legacy</a>.</span
+					<a href={legacyHref()} rel="external">/legacy</a>.</span
 				>
 			</p>
 		</div>

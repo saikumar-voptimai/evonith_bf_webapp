@@ -94,7 +94,7 @@ The Streamlit app serves 8 pages, each tackling a distinct operational concern:
 
 ```
 evonith_webapp/
-├── run_streamlit.py            Entry point — imports torch first (Windows DLL fix)
+├── run_streamlit.py            Entry point — any directory; imports torch first on Windows (DLL fix)
 ├── pyproject.toml
 ├── CLAUDE.md                   AI-assistant domain knowledge
 ├── README.md                   This file
@@ -727,8 +727,9 @@ INFLUX_OFFLINE_TOKEN=...
 # Install dependencies
 uv sync
 
-# Run the app (always use this — imports torch first for Windows DLL fix)
+# Run the app (always use this — imports torch first on Windows for the DLL fix; works from any directory)
 python run_streamlit.py
+python run_streamlit.py --server.baseUrlPath legacy    # Streamlit options pass through (as behind Caddy)
 
 # Run tests
 pytest tests/
@@ -737,7 +738,7 @@ pytest tests/
 uv add <package>
 ```
 
-**Do not invoke `streamlit run` directly.** `run_streamlit.py` pre-imports `torch` before Streamlit starts to prevent Windows DLL load-order errors.
+**Do not invoke `streamlit run` directly.** `run_streamlit.py` pre-imports `torch` on Windows before Streamlit starts (DLL load-order errors), runs `src/app.py` from the repository root whatever the current directory, and passes its arguments to `streamlit run`.
 
 All pages execute with `src/` as the Python working directory. Use:
 ```python
@@ -858,7 +859,7 @@ Caddy with a FastAPI service (`twin-api`). Streamlit keeps running under `/legac
 | twin-api (FastAPI) | `src/api/` | `python -m uvicorn api.main:app --app-dir src --port 8100` |
 | Service layer (no Streamlit) | `src/services/` | imported by the API, the worker and the Streamlit pages |
 | twin-worker (arq on Redis) | `src/worker/` | `PYTHONPATH=src python -m worker` |
-| Streamlit (legacy) | `src/app.py` | served under `/legacy` (port 8501) |
+| Streamlit (legacy) | `src/app.py` | `python run_streamlit.py --server.baseUrlPath legacy` (port 8501), served under `/legacy` |
 
 **Development.** Node.js >= 20 with pnpm, plus the Python environment from section 11:
 
@@ -870,6 +871,15 @@ make dev / make lint / make test # Linux, macOS, Jetson
 ```
 
 The SPA dev server proxies `/api` and `/legacy`, so the browser sees one origin, as in production behind Caddy.
+
+**Production origin.** On the Jetson, Caddy (`deploy/jetson/Caddyfile`, Caddy 2.10) serves one HTTPS origin: the
+SPA build with the `200.html` fallback (deep links survive a reload; hashed assets cached for a year, the rest
+revalidated), `/api/*` to the twin-api with `flush_interval -1` (server-sent events unbuffered), `/legacy` and
+`/legacy/*` to Streamlit with its WebSocket, and a 308 redirect from HTTP to HTTPS. Host name, certificate (Caddy's
+internal CA or the plant CA), build directory and upstreams come from `BF_*` variables; see
+`deploy/jetson/README.md`. The SPA links to the Streamlit pages by name (`#lib/legacy.ts`, generated from
+`config/page_registry.py` by `make fixtures`). `tests/test_caddyfile.py` checks the routes Caddy derives from the file
+(needs `caddy` on PATH or `BF_CADDY_BIN`).
 
 **Checks.** `pnpm --dir frontend check` (types), `pnpm --dir frontend lint` (Prettier + ESLint),
 `pnpm --dir frontend test` (Vitest), `uvx ruff@0.17.2 check src/api src/services src/worker scripts/dev.py`.

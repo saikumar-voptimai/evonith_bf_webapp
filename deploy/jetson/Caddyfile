@@ -1,0 +1,72 @@
+# BF-02 operator console on the Jetson (SV-0.10, #279): one HTTPS origin for the SPA, the twin-api and the Streamlit
+# pages. Caddy 2.10.
+#
+#   https://<site>/            SPA: the static build; client-side routes are answered with 200.html
+#   https://<site>/api/...     twin-api (uvicorn, one process); /api/stream is passed through unbuffered (SSE)
+#   https://<site>/legacy/...  Streamlit (--server.baseUrlPath legacy), WebSocket included
+#   http://<site>/...          308 redirect to https
+#
+# Environment (EnvironmentFile of the caddy unit, SV-6.3); every value has a default:
+#   BF_SITE             host name of the console                       bf02.local
+#   BF_TLS              internal (Caddy's own CA; its root certificate is installed on the control-room PCs), or
+#                       "<cert.pem> <key.pem>" (certificate of the plant CA)                        internal
+#   BF_HSTS             Strict-Transport-Security value, once every client trusts the certificate   max-age=0
+#   BF_SPA_ROOT         frontend build of the current release           /var/lib/bf-webapp/current/frontend/build
+#   BF_API_UPSTREAM     twin-api                                       127.0.0.1:8100
+#   BF_LEGACY_UPSTREAM  Streamlit                                      127.0.0.1:8501
+#   BF_HTTP_PORT, BF_HTTPS_PORT                                        80, 443
+#
+# Check: caddy validate --config deploy/jetson/Caddyfile --adapter caddyfile
+{
+	http_port {$BF_HTTP_PORT:80}
+	https_port {$BF_HTTPS_PORT:443}
+	# The root of Caddy's internal CA is installed on the clients by hand (README), not in the Jetson's trust store.
+	skip_install_trust
+}
+
+{$BF_SITE:bf02.local} {
+	tls {$BF_TLS:internal}
+
+	# No compression on the event stream: its frames are small and must leave at once on every Caddy release.
+	@compressible not path /api/stream
+	encode @compressible zstd gzip
+
+	header {
+		Strict-Transport-Security "{$BF_HSTS:max-age=0}"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# twin-api. One process: it holds the sign-in failure limit and the revoked sessions (README, "Sign-in and
+	# roles"). flush_interval -1 writes every server-sent event to the browser as soon as the API sends it.
+	handle /api/* {
+		reverse_proxy {$BF_API_UPSTREAM:127.0.0.1:8100} {
+			flush_interval -1
+		}
+	}
+
+	# Streamlit pages, retired one by one after their Svelte page is signed off. Streamlit keeps the /legacy prefix
+	# itself (--server.baseUrlPath legacy); its WebSocket (/legacy/_stcore/stream) is proxied as is.
+	@legacy path /legacy /legacy/*
+	handle @legacy {
+		reverse_proxy {$BF_LEGACY_UPSTREAM:127.0.0.1:8501}
+	}
+
+	# Hashed build assets: cached for a year. A missing one is a 404, never the SPA shell.
+	handle /_app/immutable/* {
+		root * {$BF_SPA_ROOT:/var/lib/bf-webapp/current/frontend/build}
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Everything else: a file of the build, or 200.html, so a deep link (/trace, /admin/jobs) survives a reload.
+	# Revalidated on every load, so a new release is picked up at once.
+	handle {
+		root * {$BF_SPA_ROOT:/var/lib/bf-webapp/current/frontend/build}
+		header Cache-Control "no-cache"
+		try_files {path} /200.html
+		file_server
+	}
+}

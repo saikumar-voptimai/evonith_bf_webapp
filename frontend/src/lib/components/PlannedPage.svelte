@@ -7,6 +7,7 @@ covers the same ground in the meantime.
 	import AppWindow from '@lucide/svelte/icons/app-window';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import GitPullRequest from '@lucide/svelte/icons/git-pull-request';
+	import { legacyHref } from '../legacy.ts';
 	import { ISSUE_URL, navItemFor } from '../nav.ts';
 	import Panel from './Panel.svelte';
 
@@ -31,11 +32,11 @@ covers the same ground in the meantime.
 		>
 			<div class="cards">
 				{#if item.legacy}
-					<a class="card" href="/legacy/" rel="external">
+					<a class="card" href={legacyHref(item.legacy)} rel="external">
 						<span class="card-icon" aria-hidden="true"><AppWindow size={18} strokeWidth={1.75} /></span>
 						<span class="card-text">
 							<span class="card-title">Use the {item.legacy} page meanwhile</span>
-							<span class="card-sub">Opens the Streamlit pages under /legacy.</span>
+							<span class="card-sub">Opens the Streamlit page under {legacyHref(item.legacy)}.</span>
 						</span>
 						<ArrowRight size={18} strokeWidth={1.75} />
 					</a>

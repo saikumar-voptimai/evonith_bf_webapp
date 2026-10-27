@@ -12,6 +12,7 @@ scrolls and fades at the edge that has more items.
 	import Flame from '@lucide/svelte/icons/flame';
 	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
 	import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
+	import { legacyHref } from '../../legacy.ts';
 	import type { NavGroup } from '../../nav.ts';
 	import type { SessionUser } from '../../session/session.svelte.ts';
 	import UserMenu from './UserMenu.svelte';
@@ -122,7 +123,7 @@ scrolls and fades at the edge that has more items.
 	</div>
 
 	<div class="foot">
-		<a class="item" href="/legacy/" rel="external" title={collapsed ? 'Streamlit pages' : undefined}>
+		<a class="item" href={legacyHref()} rel="external" title={collapsed ? 'Streamlit pages' : undefined}>
 			<AppWindow size={19} strokeWidth={1.75} />
 			<span class="label">Streamlit pages</span>
 			<span class="ext" aria-hidden="true"><ExternalLink size={13} strokeWidth={2} /></span>

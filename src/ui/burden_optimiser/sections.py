@@ -338,6 +338,7 @@ def render_thermal(thermal: Mapping[str, Any], reg: FactRegister, humidity_defau
                 "live and refreshed every 6 h.")
     if hd.get("window") is not None:
         hum_help += f" The calibration was made at its window's Open-Meteo mean, {float(hd['window']):.1f} g/Nm³."
+    c1, c2, c3, c4, c5 = st.columns(5)
     out = dict(
         HMT=c1.number_input("Hot metal temperature, °C", min_value=hmt_lo, max_value=hmt_hi,
                             value=float(thermal.get("HMT", 1470.0)), step=5.0, format="%.0f", key=f"{key}_hmt",
