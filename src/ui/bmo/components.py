@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.bmo.calculations import compute_charging_requirements
+from services.bmo import blend_table as build_blend_table_df  # the result table data (SV-3.4)
 from utils.slag_bands import PLANT_SLAG_BANDS, band_note
 from utils.bmo.constraints import CHARGING_HOURS_PER_DAY
 from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
@@ -1666,70 +1667,6 @@ def render_coke_correction_breakdown(blend: BlendEvaluation) -> None:
 
         for warning in warnings:
             st.warning(str(warning))
-
-
-def build_blend_table_df(
-    blend: BlendEvaluation,
-    selected_ores: list[OreInput],
-    *,
-    charge_mass_mt: float = 26.4,
-) -> pd.DataFrame:
-    """
-    Build the result table data for a blend.
-
-    Args:
-         - blend: BlendEvaluation - Evaluated blend result to display.
-         - selected_ores: list[OreInput] - Ores included in the current run.
-         - charge_mass_mt: float - Tonnes carried by one furnace charge.
-
-    Returns:
-         - return pd.DataFrame - Per-ore result table sorted by share.
-    """
-
-    charges_per_hour = compute_charging_requirements(
-        blend,
-        charge_mass_mt=charge_mass_mt,
-        hours_per_day=CHARGING_HOURS_PER_DAY,
-    )["required_charges_per_hour"]
-    daily_charges = (
-        float(charges_per_hour) * CHARGING_HOURS_PER_DAY
-        if charges_per_hour is not None and float(charges_per_hour) > 0.0
-        else None
-    )
-
-    rows = []
-    dry_weight_by_ore = blend.diagnostics.get("dry_weight_mt_by_ore", {}) or {}
-    fe_contribution_by_ore = (
-        blend.diagnostics.get("fe_contribution_mt_by_ore", {}) or {}
-    )
-    slag_contribution_by_ore = (
-        blend.diagnostics.get("slag_contribution_mt_by_ore", {}) or {}
-    )
-    for ore in selected_ores:
-        qty = float(blend.quantities_mt.get(ore.ore_id, 0.0))
-        share = float(blend.shares_pct.get(ore.ore_id, 0.0))
-        fe_mt = float(fe_contribution_by_ore.get(ore.ore_id, 0.0))
-        slag_mt = float(slag_contribution_by_ore.get(ore.ore_id, 0.0))
-        rows.append(
-            {
-                "ore_name": ore.display_name,
-                "quantity_mt": qty,
-                "kg_per_charge": (
-                    qty * 1000.0 / daily_charges if daily_charges else None
-                ),
-                "dry_quantity_mt": float(dry_weight_by_ore.get(ore.ore_id, 0.0)),
-                "moisture_pct": float(ore.chemistry.moisture_pct),
-                "fe_contribution_mt": fe_mt,
-                "slag_contribution_mt": slag_mt,
-                "slag_per_fe": slag_mt / fe_mt if fe_mt > 0 else 0.0,
-                "share_pct": share,
-                "stock_mt": ore.stock_mt,
-                "price_rs_per_mt": ore.price_rs_per_mt,
-                "ore_cost_rs": qty * ore.price_rs_per_mt,
-                "ore_cost_lakhs": (qty * ore.price_rs_per_mt) / 1.0e5,
-            }
-        )
-    return pd.DataFrame(rows).sort_values("share_pct", ascending=False)
 
 
 def render_blend_table(

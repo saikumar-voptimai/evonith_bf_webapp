@@ -301,19 +301,42 @@ def test_comparison_uses_currently_applied_ore_prices() -> None:
         for node in tree.body
         if isinstance(node, ast.FunctionDef) and node.name == "_render_blend_comparison"
     )
+    # The comparison reads the run's ores (services.bmo.BlendCase, built from
+    # the selected ores with the applied prices) and the service evaluates the
+    # manual blend on exactly those (SV-3.4).
     assert any(
         isinstance(node, ast.Assign)
         and any(
             isinstance(target, ast.Name) and target.id == "compare_ores"
             for target in node.targets
         )
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "selected_ores"
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "ores"
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "case"
         for node in ast.walk(comparison)
+    )
+    case_call = next(
+        call
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "BlendCase"
+    )
+    case_ores = next(keyword for keyword in case_call.keywords if keyword.arg == "ores")
+    assert isinstance(case_ores.value, ast.Name)
+    assert case_ores.value.id == "selected_ores"
+    service_tree = ast.parse(
+        (page_path.parents[1] / "services" / "bmo.py").read_text(encoding="utf-8")
+    )
+    service_manual = next(
+        node
+        for node in service_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "evaluate_manual_blend"
     )
     manual_evaluation = next(
         call
-        for call in ast.walk(comparison)
+        for call in ast.walk(service_manual)
         if isinstance(call, ast.Call)
         and isinstance(call.func, ast.Name)
         and call.func.id == "evaluate_blend_with_fuel_prediction"

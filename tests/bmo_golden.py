@@ -815,7 +815,8 @@ def build_config_fixture() -> Path:
     cfg = yaml.safe_load((SRC / "config" / "setting_bmo.yml").read_text(encoding="utf-8"))["bmo"]
     path = FIXTURES / "setting_bmo.json"
     FIXTURES.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(cfg, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    text = json.dumps(cfg, indent=1, ensure_ascii=False) + "\n"
+    path.write_bytes(text.encode("utf-8"))
     return path
 
 
