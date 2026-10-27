@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import warnings
 from datetime import UTC, datetime
 
@@ -13,6 +14,7 @@ from data.twin.models import TwinBase
 from data.twin.repositories import TwinStore
 from services import coke_energy as ce
 from services import twin
+from services.events import MemoryEventBus
 from tests.twin_data import synthetic_frames
 from utils.coke_energy.twin import Window, evaluate_window
 
@@ -114,3 +116,26 @@ def test_a_failed_window_still_gives_a_snapshot_row(sources) -> None:
     values = twin.snapshot_values(ev, evaluated_at=datetime(2026, 7, 1, 4, 35, tzinfo=UTC))
     assert values["status"] == "failed" and values["k_trace"] is None
     assert values["flags"]["notes"] == ["no hourly data in the window"]
+
+
+def test_the_snapshot_row_is_the_payload_of_the_twin_snapshot_event(sources) -> None:
+    _, loaders, page_data_for, _ = sources
+    ev = twin.evaluate("2026-05-15 10:00", cfg=CFG, keys=KEYS, loaders=loaders, page_data_for=page_data_for)
+    values = twin.snapshot_values(ev, evaluated_at=datetime(2026, 5, 15, 4, 35, tzinfo=UTC), job_id="job-1")
+    payload = twin.snapshot_event(values)
+    assert payload.k_strata == ev.k_strata and payload.status == "complete" and payload.job_id == "job-1"
+
+    async def publish_and_read():
+        bus = MemoryEventBus()
+        await bus.publish("twin.snapshot", payload)
+        return await bus.read("0-0", 0)
+
+    (event,) = asyncio.run(publish_and_read())
+    assert event.type == "twin.snapshot"
+    assert event.data.window_end == datetime(2026, 5, 15, 4, 30, tzinfo=UTC)
+    assert event.data.quantities["hmt_c"] == pytest.approx(ev.quantities["hmt_c"])
+    failed = twin.snapshot_values(
+        twin.evaluate("2026-07-01 10:00", cfg=CFG, keys=KEYS, loaders=loaders, page_data_for=page_data_for),
+        evaluated_at=datetime(2026, 7, 1, 4, 35, tzinfo=UTC),
+    )
+    assert twin.snapshot_event(failed).k_trace is None

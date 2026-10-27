@@ -5,7 +5,8 @@
 the 14-day quantities of the completed shifts and STRATA 1.5 against the same 14 days (``utils.coke_energy.twin``).
 ``snapshot_values(ev, ...)`` gives the row of ``twin.snapshot`` for ``data.twin.SnapshotRepository.upsert``: window
 times in UTC, coke rates in kg/tHM dry, omega dimensionless, other quantities with their units in the keys, data flags
-and the notes of the evaluation, model versions.
+and the notes of the evaluation, model versions; ``snapshot_event(values)`` the payload of the ``twin.snapshot``
+event (``services.events.TwinSnapshotData``).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from typing import Any
 import pandas as pd
 
 from services import coke_energy as ce
+from services.events import TwinSnapshotData
 from utils.coke_energy.pipeline import PipelineSettings
 from utils.coke_energy.twin import Window, WindowEvaluation, evaluate_window
 
@@ -75,6 +77,11 @@ def evaluate(
     return evaluate_window(
         frames.fd, frames.m10, frames.hm, frames.dpr, window, pool, settings, frames.provisional, strata=strata
     )
+
+
+def snapshot_event(values: Mapping[str, Any]) -> TwinSnapshotData:
+    """The ``twin.snapshot`` event payload of a snapshot row (``snapshot_values``), validated against its schema."""
+    return TwinSnapshotData.model_validate(dict(values))
 
 
 def to_utc(ts: pd.Timestamp) -> datetime:

@@ -883,6 +883,177 @@
         "title": "TagValue",
         "type": "object"
       },
+      "TwinSnapshotData": {
+        "description": "One hourly twin evaluation (``services.twin.snapshot_values``, table ``twin.snapshot``, SV-1.1): the window\n[window_start, window_end) in UTC, coke rates in kg/tHM dry, omega dimensionless, other quantities with their units\nin the keys, data flags with the notes of the evaluation, model versions.",
+        "properties": {
+          "evaluated_at": {
+            "format": "date-time",
+            "title": "Evaluated At",
+            "type": "string"
+          },
+          "flags": {
+            "title": "Flags",
+            "type": "object"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged, kg/tHM dry",
+            "title": "K Charged"
+          },
+          "k_forge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Two-zone balance at the 14-day medians, kg/tHM dry",
+            "title": "K Forge"
+          },
+          "k_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Two-zone balance at omega_STRATA, kg/tHM dry",
+            "title": "K Strata"
+          },
+          "k_strata_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of k_strata, kg/tHM dry",
+            "title": "K Strata Sd"
+          },
+          "k_trace": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, oxygen balance + 14-day offset, kg/tHM dry",
+            "title": "K Trace"
+          },
+          "omega_cal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "14-day median omega (the anchor of FORGE and STRATA)",
+            "title": "Omega Cal"
+          },
+          "omega_imp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Implied shaft efficiency of the window",
+            "title": "Omega Imp"
+          },
+          "omega_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA 1.5 shaft efficiency of the window",
+            "title": "Omega Strata"
+          },
+          "omega_strata_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of omega_strata",
+            "title": "Omega Strata Sd"
+          },
+          "quantities": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Quantities",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "partial",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "versions": {
+            "title": "Versions",
+            "type": "object"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_start",
+          "window_end",
+          "evaluated_at",
+          "status"
+        ],
+        "title": "TwinSnapshotData",
+        "type": "object"
+      },
       "TwinSnapshotEvent": {
         "properties": {
           "at": {
@@ -892,9 +1063,7 @@
             "type": "string"
           },
           "data": {
-            "description": "Hourly twin evaluation (schema in SV-1.1)",
-            "title": "Data",
-            "type": "object"
+            "$ref": "#/components/schemas/TwinSnapshotData"
           },
           "id": {
             "description": "Stream id; the SSE event id used for Last-Event-ID replay",

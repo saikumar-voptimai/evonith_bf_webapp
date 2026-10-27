@@ -650,6 +650,89 @@ export interface components {
             /** Value */
             value: number | null;
         };
+        /**
+         * TwinSnapshotData
+         * @description One hourly twin evaluation (``services.twin.snapshot_values``, table ``twin.snapshot``, SV-1.1): the window
+         *     [window_start, window_end) in UTC, coke rates in kg/tHM dry, omega dimensionless, other quantities with their units
+         *     in the keys, data flags with the notes of the evaluation, model versions.
+         */
+        TwinSnapshotData: {
+            /**
+             * Evaluated At
+             * Format: date-time
+             */
+            evaluated_at: string;
+            /** Flags */
+            flags?: Record<string, unknown>;
+            /** Job Id */
+            job_id?: string | null;
+            /**
+             * K Charged
+             * @description Coke charged, kg/tHM dry
+             */
+            k_charged?: number | null;
+            /**
+             * K Forge
+             * @description Two-zone balance at the 14-day medians, kg/tHM dry
+             */
+            k_forge?: number | null;
+            /**
+             * K Strata
+             * @description Two-zone balance at omega_STRATA, kg/tHM dry
+             */
+            k_strata?: number | null;
+            /**
+             * K Strata Sd
+             * @description 1 sigma of k_strata, kg/tHM dry
+             */
+            k_strata_sd?: number | null;
+            /**
+             * K Trace
+             * @description Burnt coke, oxygen balance + 14-day offset, kg/tHM dry
+             */
+            k_trace?: number | null;
+            /**
+             * Omega Cal
+             * @description 14-day median omega (the anchor of FORGE and STRATA)
+             */
+            omega_cal?: number | null;
+            /**
+             * Omega Imp
+             * @description Implied shaft efficiency of the window
+             */
+            omega_imp?: number | null;
+            /**
+             * Omega Strata
+             * @description STRATA 1.5 shaft efficiency of the window
+             */
+            omega_strata?: number | null;
+            /**
+             * Omega Strata Sd
+             * @description 1 sigma of omega_strata
+             */
+            omega_strata_sd?: number | null;
+            /** Quantities */
+            quantities?: {
+                [key: string]: number;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "partial" | "failed";
+            /** Versions */
+            versions?: Record<string, unknown>;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+        };
         /** TwinSnapshotEvent */
         TwinSnapshotEvent: {
             /**
@@ -658,11 +741,7 @@ export interface components {
              * @description Publication time (UTC)
              */
             at: string;
-            /**
-             * Data
-             * @description Hourly twin evaluation (schema in SV-1.1)
-             */
-            data: Record<string, unknown>;
+            data: components["schemas"]["TwinSnapshotData"];
             /**
              * Id
              * @description Stream id; the SSE event id used for Last-Event-ID replay

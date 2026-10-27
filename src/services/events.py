@@ -73,6 +73,30 @@ class JobDoneData(BaseModel):
     duration_s: float | None = None
 
 
+class TwinSnapshotData(BaseModel):
+    """One hourly twin evaluation (``services.twin.snapshot_values``, table ``twin.snapshot``, SV-1.1): the window
+    [window_start, window_end) in UTC, coke rates in kg/tHM dry, omega dimensionless, other quantities with their units
+    in the keys, data flags with the notes of the evaluation, model versions."""
+
+    window_start: datetime
+    window_end: datetime
+    evaluated_at: datetime
+    job_id: str | None = None
+    status: Literal["complete", "partial", "failed"]
+    k_trace: float | None = Field(None, description="Burnt coke, oxygen balance + 14-day offset, kg/tHM dry")
+    k_forge: float | None = Field(None, description="Two-zone balance at the 14-day medians, kg/tHM dry")
+    k_strata: float | None = Field(None, description="Two-zone balance at omega_STRATA, kg/tHM dry")
+    k_strata_sd: float | None = Field(None, description="1 sigma of k_strata, kg/tHM dry")
+    k_charged: float | None = Field(None, description="Coke charged, kg/tHM dry")
+    omega_imp: float | None = Field(None, description="Implied shaft efficiency of the window")
+    omega_strata: float | None = Field(None, description="STRATA 1.5 shaft efficiency of the window")
+    omega_strata_sd: float | None = Field(None, description="1 sigma of omega_strata")
+    omega_cal: float | None = Field(None, description="14-day median omega (the anchor of FORGE and STRATA)")
+    quantities: dict[str, float] = Field(default_factory=dict)
+    flags: dict[str, Any] = Field(default_factory=dict)
+    versions: dict[str, Any] = Field(default_factory=dict)
+
+
 class AlarmData(BaseModel):
     alarm_id: str
     code: str = Field(..., description="Alarm code, e.g. OMEGA_DRIFT")
@@ -100,7 +124,7 @@ class LiveStatusEvent(_Event):
 
 class TwinSnapshotEvent(_Event):
     type: Literal["twin.snapshot"]
-    data: dict[str, Any] = Field(..., description="Hourly twin evaluation (schema in SV-1.1)")
+    data: TwinSnapshotData
 
 
 class ForecastSiEvent(_Event):
