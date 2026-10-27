@@ -49,6 +49,11 @@ def test_no_streamlit_or_ui_import(path: Path) -> None:
         "worker.settings",  # every worker kind (SV-1.5 forecasts, SV-1.6 optimiser runs)
         "data.ml.static_dataset_manager",  # the worker refreshes the hourly dataset with it (SV-1.5)
         "services.optimiser",
+        "services.schedule",  # SV-1.7: schedule, catch-up and audit
+        "services.jobstats",
+        "services.day_calibration",
+        "services.learn",
+        "services.twin",
         "services.status",
         "services.auth",
         "services.job_archive",

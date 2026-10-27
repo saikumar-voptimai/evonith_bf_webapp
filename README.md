@@ -943,18 +943,21 @@ process reads the stream once and forwards it to the browsers as server-sent eve
 |---|---|---|
 | `GET /api/stream` | user | Event stream: `live.status`, `twin.snapshot`, `forecast.si`, `forecast.charged_coke`, `job.progress`, `job.done`, `alarm.raised`, `alarm.cleared`, and a heartbeat every 15 s. Missed events (at most the last 100) are replayed after a reconnect with `Last-Event-ID` (or `?last_event_id=`). The session is re-checked every 15 s; the stream ends when it is revoked or expired |
 | `GET /api/stream/recent` | user | Last events, oldest first |
-| `GET /api/jobs/kinds` | user | Job kinds with role, time limit, retries, schedule (IST) and parameter schema |
+| `GET /api/jobs/kinds` | user | Job kinds with role, time limit, retries, schedule (IST), next slot and parameter schema |
 | `GET /api/jobs`, `GET /api/jobs/{id}` | user | Job records of the last 7 days |
+| `GET /api/jobs/stats` | user | Per kind for the jobs of `days` (default 14): runs, done, failed, cancelled, skipped, execution time p50 / p95 / max (over the tries), start delay p95; from `twin.jobs` (Redis, 7 days, without a twin store) |
+| `GET /api/jobs/schedule` | user | Audit of the schedule over `days` (default 14): per scheduled kind the slots done, failed, cancelled, running, skipped, missed, the latest 50 not done with their reason, the next slot |
 | `POST /api/jobs` | per kind | Queue a job (202); a request equal to a queued or running job (same kind and parameters) returns that job with `duplicate: true` |
 | `POST /api/jobs/{id}/cancel` | supervisor | A queued job is not started; a running job is stopped; both end as `cancelled` |
 
 Job semantics: parameters are validated against the kind's model before queuing; the time limit of each kind is
 enforced in the worker; transient failures are retried with the kind's retry delay up to `max_tries`; CPU-bound
 model solves run in a process pool; a job interrupted by a worker stop runs again after the arq time limit plus
-10 s; scheduled kinds start at their IST times (`system.housekeeping` at 04:00). Kinds: `system.selftest`
-(admin; progress steps and one pool task, also in the component catalogue), `system.housekeeping`, the live
-forecasts `forecast.si` (every 5 min) and `forecast.charged_coke` (HH:07; supervisor, see Live forecasts) and
-`optimiser.run` (supervisor, see Twin and optimiser API); the model kinds follow with their pages. In the SPA, `#lib/live/stream.svelte.ts` holds one EventSource per tab (backoff,
+10 s; scheduled kinds start at their IST times (see Scheduled jobs). Kinds: `system.selftest` (admin; progress steps
+and one pool task, also in the component catalogue), `system.housekeeping`, the live forecasts `forecast.si` (every
+5 min) and `forecast.charged_coke` (HH:07; supervisor, see Live forecasts), `optimiser.run` (supervisor, see Twin and
+optimiser API) and the scheduled twin, optimiser, calibration and STRATA-Learn kinds (see Scheduled jobs); the model
+kinds follow with their pages. In the SPA, `#lib/live/stream.svelte.ts` holds one EventSource per tab (backoff,
 watchdog, session check), `#lib/live/connection.svelte.ts` drives the header state (offline after 10 s without the
 stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
 
@@ -965,7 +968,8 @@ stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
 | `BF_WORKER_POOL` | `8` | Processes of the model-solve pool |
 | `BF_WORKER_MAX_JOBS` | `4` | Jobs run at the same time by one worker |
 | `BF_WORKER_JOB_TIMEOUT` | longest kind limit + 60 s | arq time limit of one delivery |
-| `BF_WORKER_SKIP_SCHEDULES` | unset | Kinds, or prefixes ending in `.`, that are not scheduled (still submittable); the test suite sets `forecast.` |
+| `BF_WORKER_SKIP_SCHEDULES` | unset | Kinds, or prefixes ending in `.`, that are not scheduled (still submittable); the test suite sets `forecast.,twin.,optimiser.,calibration.,learn.` |
+| `BF_WORKER_CATCH_UP` | `1` | `0` turns off the catch-up of missed slots at worker start (the test suite sets `0`) |
 
 Redis: `apt install redis-server` (Linux, Jetson; Redis 6.0 or later), Memurai or WSL on Windows. Tests that need it
 (`tests/test_jobs.py`, `tests/test_api_live.py`) start a throw-away `redis-server` and are skipped without the binary.
@@ -976,7 +980,7 @@ Neon database: SQLAlchemy 2.0 models and repositories in `src/data/twin/` (`Twin
 
 | Table | Content | Indexes |
 |---|---|---|
-| `jobs` | Job records beyond the 7 days kept in Redis: written by the worker at every change of state (ordered, non-blocking), copied again by the nightly housekeeping job | `submitted_at`, `(kind, submitted_at)`, `finished_at` |
+| `jobs` | Job records beyond the 7 days kept in Redis: written by the worker at every change of state (ordered, non-blocking), copied again by the nightly housekeeping job; `scheduled_for` (the slot a scheduler job serves) and `run_s` (execution time over the tries) since twin_0002 | `submitted_at`, `(kind, submitted_at)`, `finished_at`, `scheduled_for` |
 | `snapshot` | Hourly twin evaluation of the window [t − 8 h, t): coke rates (TRACE, FORGE, STRATA ± 1σ, charged), ω (implied, STRATA, calibration), other quantities as JSON; one row per window end, a re-evaluation replaces it | `window_end` (unique), `evaluated_at` |
 | `optimiser_run` | Optimiser runs: mode, ω mode, status, production, cost and saving, coke ± σ, certainty; inputs and plan as JSON | `started_at`, `(mode, started_at)` |
 | `plan_decision` | Accept or reject of a run by a supervisor; the latest decision applies; append-only | `decided_at`, `(run_id, decided_at)` |
@@ -1068,7 +1072,8 @@ its record in `latest_attempt.json`, which page 9 shows for a Si attempt with un
 `forecast.si` and `forecast.charged_coke`. The ledgers are append-only JSON lines shared by processes
 (`utils.jsonl_log`: incremental reads, appends under a cross-process lock). Gap check:
 `python scripts/forecast_gaps.py --days 7` (exit 1 on a Si gap above 10 min or a charged-coke gap above 60 min).
-`BF_WORKER_SKIP_SCHEDULES=forecast.` leaves the forecast jobs unscheduled (set by the test suite).
+`BF_WORKER_SKIP_SCHEDULES=forecast.` leaves the forecast jobs unscheduled (the test suite leaves out every kind that
+reads plant data).
 
 **Twin and optimiser API (SV-1.6).** Read from the twin store (`twin` schema; `services.store`, 503 without
 `BF_TWIN_DB_URL` / `DATABASE_URL`, 503 while the database is unreachable). Every numeric field states its unit in the
@@ -1076,17 +1081,39 @@ schema (`tests/test_api_twin.py` checks it). Coke kg/tHM dry, ω dimensionless, 
 
 | Route | Role | Purpose |
 |---|---|---|
-| `GET /api/twin/now` | user | Latest evaluation (`TwinSnapshotData`), its age, the lag behind the window that should exist (evaluation at HH:05; stale from one missed hour) and the open alarms |
+| `GET /api/twin/now` | user | Latest evaluation (`TwinSnapshotData`), its age, the lag behind the window that should exist (run at HH:10, due at HH:15; stale from one missed hour) and the open alarms |
 | `GET /api/twin/series` | user | Stored windows in [start, end] (default 7 days, at most 92), `resolution=hour` or `shift` (the windows ending 06:00, 14:00, 22:00 IST: shifts C, A, B), selected `quantities`; 30 days hourly in 40–180 ms (SQLite and PostgreSQL, test fixture) |
 | `GET /api/twin/transit` | user | Burden column at `at` from the hourly dataset: descent times, coke by zone and in transit, the blend by zone; `lag=true` adds the implied lag against the stored K_TRACE |
 | `GET /api/twin/alarms` | user | Open alarms and the history of `days` (default 7), optionally one `kind` |
-| `POST /api/optimiser/runs` | supervisor | Queue `optimiser.run` (202): `mode` step1, step2 or max_production, `omega_mode` strata or fixed, Step 2 `production_t_d`, certainty filter, risk aversion; page 11's defaults otherwise (`services.optimiser.default_case`) |
+| `POST /api/optimiser/runs` | supervisor | Queue `optimiser.run` (202): `mode` step1, step2 or max_production, `omega_mode` strata or fixed, Step 2 `production_t_d` (default: the latest twin window's production, at most 3 h old, else page 11's regime median), certainty filter, risk aversion, `calibration` day (default: the calibration of 02:30) or live (page 11's); page 11's defaults otherwise (`services.optimiser.default_case`) |
 | `GET /api/optimiser/runs`, `GET /api/optimiser/runs/{run or job id}` | user | Recent runs with their decision; one run with its inputs, result and decisions, or the job while it runs |
 | `GET /api/optimiser/latest` | user | Latest plan (status ok), optionally per `mode` |
 | `POST /api/optimiser/runs/{id}/decision` | supervisor | Accept or reject a plan with a comment; appended to `twin.plan_decision` with its audit row (`plan.decide`, actor, role, client address) in one transaction; the latest decision applies |
 
 The worker solves `optimiser.run` in the model-solve pool and stores the plan in `twin.optimiser_run` (status ok,
 infeasible with the LP's or the band's reason, or failed), with the job record it refers to.
+
+**Scheduled jobs (SV-1.7).** The worker's schedule (IST); every slot is submitted with `scheduled_for` = the slot.
+
+| Kind | Time | Work | Tries |
+|---|---|---|---|
+| `forecast.si` | every 5 min | HM Si path into the Si ledger (Live forecasts) | 1 |
+| `forecast.charged_coke` | HH:07 | Charged-coke block of the latest complete row | 5, every 5 min |
+| `twin.evaluate` | HH:10 | Window [HH − 8, HH) into `twin.snapshot`, once the local hourly dataset holds the row HH − 1 (published in the build of about HH:06; at HH:05 the window would have had 7 of its 8 hours); the windows of the last 24 h without a snapshot, or evaluated without their last row, first; then the implied-ω drift alarm and the `twin.snapshot` event of W | 4, every 5 min; the last try evaluates on the rows there are and flags the window |
+| `optimiser.step2` | 06:15, 14:15, 22:15 | Step 2 with STRATA-ω and Fixed-ω in parallel in the pool, at the current production (latest twin window, at most 3 h old, else the regime median), live yard and prices, the day's calibration; two `twin.optimiser_run` rows | 3, every 5 min while the yard or calibration falls back to the reference; the last try runs on it, labelled |
+| `optimiser.step1` | 06:30, 14:30, 22:30 | Step 1 (cheapest production level) with STRATA-ω, the day's calibration | 2 |
+| `calibration.nightly` | 02:30 | Two-zone calibration on the stable shifts dated in the 14 days before today (`src/storage/burden_engine/calibration/<date>.json`, 30 days kept) and the STRATA-Flow Jacobian at it (17 network solves, disk cache) | 3, every 10 min |
+| `learn.shadow` | 03:00 | STRATA-Learn shadow run on the stored evidence into `src/storage/burden_engine/learn/`; changes nothing in the asset, the register or the pages | 1 |
+| `system.housekeeping` | 04:00 | Archive sync, index trim, runtime statistics of the last 14 days into its result | 2 |
+
+The day's calibration (`services.day_calibration`) serves every optimiser run of the worker: the scheduled plans of a
+day compare on one calibration, and none spends the 17 Jacobian solves (21 s here) that a new live calibration costs
+after each balanced shift. Page 11 keeps its live calibration (`calibration=live` reproduces it). Catch-up at worker
+start (`worker.runtime.catch_up`): the latest slot of each kind runs when it is at most 30 min old; the other slots
+since the last heartbeat (Redis `twin:worker:alive`, every 10 s) are recorded as cancelled jobs `scheduler
+(skipped)` with the reason, as is a slot whose previous job of the kind is still queued or running. Audit:
+`python scripts/schedule_audit.py --days 14` (from `twin.jobs`; exit 1 on a missed or skipped slot, `--strict` also on
+a failed run; with the runtime statistics per kind) or `GET /api/jobs/schedule`.
 
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family

@@ -4,8 +4,12 @@ Environment: ``BF_REDIS_URL`` (default ``redis://127.0.0.1:6379/0``), ``BF_WORKE
 default 8), ``BF_WORKER_MAX_JOBS`` (concurrent jobs, default 4), ``BF_WORKER_JOB_TIMEOUT`` (arq time limit of one
 delivery, default the longest kind limit plus 60 s; a job interrupted by a worker stop runs again once this limit plus
 10 s has passed), ``BF_WORKER_SKIP_SCHEDULES`` (comma-separated kinds, or prefixes ending in ".", that are not
-scheduled: the test suite skips ``forecast.``, so a test worker never reads plant data; such kinds can still be
-submitted). Job records are archived in ``twin.jobs`` when ``BF_TWIN_DB_URL`` or ``DATABASE_URL`` is set.
+scheduled: the test suite skips ``forecast.,twin.,optimiser.,calibration.,learn.``, so a test worker never reads
+plant data; such kinds can still be submitted), ``BF_WORKER_CATCH_UP`` (``0`` turns the catch-up at start off; the
+test suite sets it). Job records are archived in ``twin.jobs`` when ``BF_TWIN_DB_URL`` or ``DATABASE_URL`` is set.
+
+At start the worker runs the latest missed slot of each scheduled kind when the slot is at most 30 min old and records
+the other slots missed since its last heartbeat as skipped (``worker.runtime.catch_up``, SV-1.7).
 """
 
 from __future__ import annotations
@@ -23,7 +27,16 @@ import worker.kinds  # noqa: F401  (registers the handlers)
 from services.events import RedisEventBus
 from services.job_archive import open_job_archive
 from services.jobs import ARQ_FUNCTION, CATALOG, QUEUE_NAME, JobStore
-from worker.runtime import heartbeat_loop, process_pool, run_job, scheduled, worker_name
+from worker.runtime import (
+    catch_up,
+    heartbeat_loop,
+    mark_alive,
+    process_pool,
+    read_alive,
+    run_job,
+    scheduled,
+    worker_name,
+)
 
 log = logging.getLogger("worker")
 
@@ -54,12 +67,19 @@ def skipped(kind_name: str) -> bool:
     return False
 
 
+def scheduled_kinds() -> list[Any]:
+    """The kinds this worker schedules (a schedule, not left out by ``BF_WORKER_SKIP_SCHEDULES``)."""
+    return [k for k in CATALOG.values() if k.schedule is not None and not skipped(k.name)]
+
+
+def catch_up_enabled() -> bool:
+    return os.environ.get("BF_WORKER_CATCH_UP", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
 def cron_jobs() -> list[Any]:
     """arq cron entries of the scheduled kinds, at second 0 of their IST hours and minutes."""
     jobs = []
-    for kind in CATALOG.values():
-        if kind.schedule is None or skipped(kind.name):
-            continue
+    for kind in scheduled_kinds():
         hours, minutes = kind.schedule
         # The cron entry only submits the job (milliseconds); its 10 s limit keeps arq's in-progress mark short.
         jobs.append(cron(scheduled(kind.name), hour=hours, minute=minutes, second=0, unique=True, timeout=10))
@@ -80,7 +100,10 @@ async def on_startup(ctx: dict[str, Any]) -> None:
     ctx["running"] = set()
     ctx["name"] = worker_name()
     ctx["started_at"] = datetime.now(UTC)
+    since = await read_alive(redis)  # before the first heartbeat of this worker overwrites it
     ctx["heartbeat"] = asyncio.create_task(heartbeat_loop(ctx))
+    if catch_up_enabled():
+        ctx["catch_up"] = asyncio.create_task(catch_up(ctx, scheduled_kinds(), since=since))
     log.info(
         "twin-worker %s started: queue %s, %d kinds, pool %d, Redis %s",
         ctx["name"],
@@ -92,9 +115,14 @@ async def on_startup(ctx: dict[str, Any]) -> None:
 
 
 async def on_shutdown(ctx: dict[str, Any]) -> None:
-    task = ctx.get("heartbeat")
-    if task is not None:
-        task.cancel()
+    for name in ("heartbeat", "catch_up"):
+        task = ctx.get(name)
+        if task is not None:
+            task.cancel()
+    try:
+        await mark_alive(ctx["redis"])  # the next start catches up from here
+    except Exception as exc:
+        log.warning("last heartbeat not written: %s", exc)
     pool = ctx.get("pool")
     if pool is not None:
         pool.shutdown(wait=False, cancel_futures=True)

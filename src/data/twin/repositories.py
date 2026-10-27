@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 
-from sqlalchemy import func, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
@@ -57,6 +57,8 @@ JOB_FIELDS = (
     "message",
     "result",
     "error",
+    "scheduled_for",
+    "run_s",
 )
 
 
@@ -192,6 +194,25 @@ class JobRepository(_Repository):
     def get(self, job_id: str) -> Job | None:
         with self._sessions() as session:
             return session.get(Job, job_id)
+
+    def window(self, since: datetime, until: datetime, *, kinds: Sequence[str] | None = None) -> list[Job]:
+        """Jobs submitted in [since, until) or serving a schedule slot in it, oldest first by submission (the schedule
+        audit and the runtime statistics read a period with this)."""
+        s, u = _utc(since, "since"), _utc(until, "until")
+        query = (
+            select(Job)
+            .where(
+                or_(
+                    and_(Job.submitted_at >= s, Job.submitted_at < u),
+                    and_(Job.scheduled_for >= s, Job.scheduled_for < u),
+                )
+            )
+            .order_by(Job.submitted_at)
+        )
+        if kinds:
+            query = query.where(Job.kind.in_(list(kinds)))
+        with self._sessions() as session:
+            return list(session.scalars(query))
 
     def recent(
         self,

@@ -1,8 +1,9 @@
 """Views of the stored twin for the API (SV-1.6, #286): freshness of the latest evaluation, hourly and per-shift
 series, alarms, optimiser runs and decisions as plain values.
 
-The twin evaluates the window [t - 8 h, t) at HH:05 for t = HH:00 (plan section 4): at a time ``now`` the newest
-window that should exist ends at the full hour of ``now - 5 min``. The windows ending at 06:00, 14:00 and 22:00 IST
+The twin evaluates the window [t - 8 h, t) for t = HH:00 at HH:10 (``twin.evaluate``, SV-1.7: the window's last
+hourly row is in the published build of about HH:06), normally within a few minutes: at a time ``now`` the newest
+window that should exist ends at the full hour of ``now - 15 min``. The windows ending at 06:00, 14:00 and 22:00 IST
 are the shifts C, A and B, so the per-shift series is the hourly series at those ends (the twin's window on a
 completed shift equals page 10's shift, ``tests/test_twin_window.py``). Stored times are UTC: aware on PostgreSQL,
 naive on SQLite; both are returned aware. Pure: rows in, plain values out.
@@ -18,7 +19,7 @@ from typing import Any
 import pandas as pd
 
 PLANT_TZ = "Asia/Kolkata"
-EVALUATION_MINUTE = 5
+EVALUATION_MINUTE = 15  # the window ending HH:00 is expected from HH:15 (run at HH:10, retried to HH:25)
 SHIFT_ENDS = {6: "C", 14: "A", 22: "B"}  # IST hour at which a shift window ends -> shift letter
 SNAPSHOT_FIELDS = (
     "k_trace",

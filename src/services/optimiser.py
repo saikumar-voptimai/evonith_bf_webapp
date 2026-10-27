@@ -277,6 +277,7 @@ class Case:
     calibration: dict[str, Any]
     names: dict[str, str]
     today_shares: dict[str, float]
+    production_source: str = ""
 
     def summary(self) -> dict[str, Any]:
         """The case as stored with the run (``optimiser_run.inputs``): settings, limits, target and sources."""
@@ -285,6 +286,7 @@ class Case:
             mode=self.mode,
             omega_mode=self.omega_mode,
             production_target_t_d=target if self.mode == "step2" else None,
+            production_source=self.production_source if self.mode == "step2" else None,
             settings=settings,
             limits=limits,
             search_o2=search_o2,
@@ -300,23 +302,51 @@ class Case:
         )
 
 
+CALIBRATION_BASES = ("day", "live")
+
+
+def case_calibration(
+    cfg: Mapping[str, Any], nonce: int = 0, basis: str = "day", day: Any = None
+) -> tuple[CalibrationInfo, dict[str, Any]]:
+    """(CalibrationInfo, how it was chosen). ``basis`` day: the calibration ``calibration.nightly`` made for ``day``
+    (default today, IST; ``services.day_calibration``), the live one while there is none; live: page 11's."""
+    from services import day_calibration
+
+    if basis not in CALIBRATION_BASES:
+        raise ValueError(f"calibration must be one of {', '.join(CALIBRATION_BASES)}")
+    if basis == "day":
+        d = day or day_calibration.today()
+        doc = day_calibration.read(d)
+        info = day_calibration.load(d) if doc is not None else None
+        if info is not None:
+            return info, dict(basis="day", day=d.isoformat(), made_at=doc.get("made_at"))
+        info, _ = calibration(cfg, nonce)
+        note = f"No calibration of {d.isoformat()} yet (calibration.nightly at 02:30): the live calibration was used."
+        return info, dict(basis="live", requested="day", note=note)
+    info, _ = calibration(cfg, nonce)
+    return info, dict(basis="live")
+
+
 def default_case(
     mode: str,
     *,
     omega_mode: str = "strata",
     production_t_d: float | None = None,
+    production_source: str | None = None,
     certainty: str = "low",
     risk_k: float = 0.0,
     auto: bool = False,
+    calibration_basis: str = "live",
     nonce: int = 0,
     cfg: Mapping[str, Any] | None = None,
 ) -> Case:
     """The run page 11 would start for ``mode`` with its defaults: live yard (else the reference yard) and
     calibration (else the shipped one), today's controls, PCI and nut coke (regime medians), today's Open-Meteo
     blast moisture, the register's limits with the saved slag limits and the plant charging; Step 2 at today's
-    production (``production_t_d`` overrides it) with the controls held as page 11 starts them, against today's
-    charged blend; Step 1 and maximum production searching oxygen. ``omega_mode`` strata (default, certainty filter
-    and risk aversion as given) or fixed."""
+    production (``production_t_d`` overrides it; ``production_source`` says where it came from) with the controls held
+    as page 11 starts them, against today's charged blend; Step 1 and maximum production searching oxygen.
+    ``omega_mode`` strata (default, certainty filter and risk aversion as given) or fixed. ``calibration_basis`` live
+    (page 11's) or day (the calibration of 02:30, ``case_calibration``)."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {', '.join(MODES)}")
     if omega_mode not in OMEGA_MODES:
@@ -326,17 +356,19 @@ def default_case(
     cfg = page_config(config_mtime("burden_optimiser.yml")) if cfg is None else cfg
     reg = load_register()
     yard_rows, yard_source, yard_message = yard(as_json(cfg), nonce)
-    info, _ = calibration(cfg, nonce)
+    info, chosen = case_calibration(cfg, nonce, calibration_basis)
     regime = info.regime
     engine_mode = MODES[mode]
     process = engine_mode in ("cheapest", "max")
     prod_cfg = dict(cfg.get("production", {}))
     target = float(prod_cfg.get("default_target_t_day", 2270.0))
+    source = "configured default"
     if engine_mode == "fixed":
         if production_t_d is not None:
-            target = float(production_t_d)
+            target, source = float(production_t_d), production_source or "requested"
         elif (regime or {}).get("prod_th"):
             target = float(round(float(regime["prod_th"]) * 24, -1))
+            source = "median of the regime window (page 11's default)"
     humidity_g, _, _ = plan_blast_moisture()
     thermal_cfg = cfg.get("thermal", {})
     th = {**thermal_cfg, **fuel_defaults(regime, thermal_cfg, info.cal)}
@@ -400,10 +432,49 @@ def default_case(
         args=args,
         yard_source=yard_source,
         yard_message=yard_message,
-        calibration=dict(source=info.source, window=cal_window, omega=info.cal.get("omega"), message=info.message),
+        calibration=dict(
+            source=info.source, window=cal_window, omega=info.cal.get("omega"), message=info.message, **chosen
+        ),
         names=names,
         today_shares=shares,
+        production_source=source,
     )
+
+
+PRODUCTION_RANGE_T_D = (1500.0, 3000.0)
+CURRENT_MAX_AGE_H = 3.0
+
+
+def current_production(
+    store: Any, now: Any = None, *, max_age_h: float = CURRENT_MAX_AGE_H
+) -> tuple[float | None, str]:
+    """Step 2's current production: the production of the latest twin window (``twin.snapshot``, at most
+    ``max_age_h`` old) in t/d rounded to 10, and where it came from; ``(None, reason)`` without a usable window (the
+    run then takes page 11's default, the median of the regime window)."""
+    import pandas as pd
+
+    row = store.snapshots.latest() if store is not None else None
+    if row is None:
+        return None, "no twin window stored"
+    now_utc = pd.Timestamp(now if now is not None else pd.Timestamp.now(tz="UTC"))
+    now_utc = now_utc.tz_convert("UTC") if now_utc.tzinfo else now_utc.tz_localize("UTC")
+    end = pd.Timestamp(row.window_end)
+    end = end.tz_convert("UTC") if end.tzinfo else end.tz_localize("UTC")
+    start = pd.Timestamp(row.window_start)
+    start = start.tz_convert("UTC") if start.tzinfo else start.tz_localize("UTC")
+    age_h = (now_utc - end) / pd.Timedelta(hours=1)
+    if age_h > max_age_h:
+        return None, f"the latest twin window ended {age_h:.1f} h ago (more than {max_age_h:g} h)"
+    prod_th = _num((row.quantities or {}).get("production_t_h"))
+    if prod_th is None:
+        return None, "the latest twin window has no production"
+    t_d = float(round(prod_th * 24, -1))
+    lo, hi = PRODUCTION_RANGE_T_D
+    if not lo <= t_d <= hi:
+        return None, f"the latest twin window's production {t_d:.0f} t/d is outside {lo:.0f}-{hi:.0f} t/d"
+    ist = "Asia/Kolkata"
+    label = f"twin window {start.tz_convert(ist):%d %b %H:%M}-{end.tz_convert(ist):%H:%M} IST ({prod_th:.1f} t/h)"
+    return t_d, label
 
 
 def plan_of(res: Mapping[str, Any]) -> Mapping[str, Any] | None:
@@ -462,7 +533,11 @@ def run_values(
         inputs=jsonable(case.summary()),
         status=status,
         result=jsonable({k: v for k, v in dict(res or {}).items() if k != "z"}) | ({"error": error} if error else {}),
-        versions=dict(calibration=case.calibration.get("source"), yard=case.yard_source),
+        versions=dict(
+            calibration=case.calibration.get("source"),
+            calibration_basis=case.calibration.get("basis"),
+            yard=case.yard_source,
+        ),
     )
     if plan is not None:
         out, cost, om = plan.get("out") or {}, plan.get("cost") or {}, plan.get("omega") or {}

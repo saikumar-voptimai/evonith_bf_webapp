@@ -1,9 +1,13 @@
-"""Background jobs: catalogue, submission with de-duplication, status and cancellation (SV-0.8, #277)."""
+"""Background jobs: catalogue, submission with de-duplication, status and cancellation (SV-0.8, #277); runtime
+statistics per kind and the audit of the schedule (SV-1.7, #287), from ``twin.jobs`` (the Redis records of the last
+7 days without a twin store)."""
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
-from typing import Annotated, Any
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.encoders import jsonable_encoder
@@ -13,9 +17,12 @@ from pydantic import BaseModel, Field, ValidationError
 from api.auth import require_role
 from api.errors import ApiError
 from api.live import job_store, live_state
+from api.store import optional_twin_store
+from data.twin.repositories import TwinStore
+from services import jobstats, schedule
 from services.auth import Principal, Role, has_role
 from services.events import JobDoneData
-from services.jobs import CATALOG, QUEUE_NAME, JobRecord, JobStore, UnknownJobKind
+from services.jobs import CATALOG, QUEUE_NAME, RECORD_TTL_S, JobRecord, JobStore, UnknownJobKind
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"], dependencies=[Depends(require_role("user"))])
 
@@ -31,8 +38,70 @@ class JobKindInfo(BaseModel):
     schedule: str | None = Field(
         None, description="Scheduled times (IST), e.g. '04:00', 'every hour at :07', 'every 5 min'"
     )
+    next_slot: datetime | None = Field(None, description="Next scheduled time (UTC); null for kinds without a schedule")
     description: str
     params_schema: dict[str, Any] = Field(..., description="JSON schema of the parameters")
+
+
+class KindStats(BaseModel):
+    kind: str
+    title: str
+    schedule: str | None = Field(None, description="Scheduled times (IST)")
+    timeout_s: float | None = Field(None, description="Time limit of one try, s")
+    runs: int = Field(..., description="Jobs submitted in the period (skipped slots excluded), count")
+    done: int = Field(..., description="Runs that ended done, count")
+    failed: int = Field(..., description="Runs that failed, count")
+    cancelled: int = Field(..., description="Runs cancelled by a user, count")
+    skipped: int = Field(..., description="Schedule slots recorded as skipped, count")
+    running: int = Field(..., description="Runs still queued or running, count")
+    runtime_p50_s: float | None = Field(
+        None, description="Median execution time of the done runs (over their tries), s"
+    )
+    runtime_p95_s: float | None = Field(None, description="95th percentile of the execution time of the done runs, s")
+    runtime_max_s: float | None = Field(None, description="Longest execution time of a done run, s")
+    start_delay_p95_s: float | None = Field(
+        None, description="95th percentile of start minus schedule slot (scheduler) or submission (others), s"
+    )
+    last_finished_at: datetime | None = Field(None, description="End of the latest run that ended (UTC)")
+    last_status: str | None = None
+
+
+class JobStatsResponse(BaseModel):
+    start: datetime = Field(..., description="Start of the period (UTC)")
+    end: datetime = Field(..., description="End of the period (UTC)")
+    source: Literal["twin.jobs", "redis"] = Field(..., description="Where the records were read")
+    kinds: list[KindStats]
+
+
+class SlotProblem(BaseModel):
+    slot: datetime = Field(..., description="Schedule slot (UTC)")
+    state: Literal["failed", "cancelled", "running", "skipped", "missed"]
+    job_id: str | None = None
+    reason: str | None = None
+
+
+class KindSchedule(BaseModel):
+    kind: str
+    title: str
+    schedule: str = Field(..., description="Scheduled times (IST)")
+    expected: int = Field(..., description="Slots in the period, count")
+    done: int = Field(..., description="Slots whose job ended done, count")
+    failed: int = Field(..., description="Slots whose job failed, count")
+    cancelled: int = Field(..., description="Slots whose job a user cancelled, count")
+    running: int = Field(..., description="Slots whose job is still queued or running, count")
+    skipped: int = Field(..., description="Slots recorded as skipped (worker not running, previous job active), count")
+    missed: int = Field(..., description="Slots without any job record, count")
+    clean: bool = Field(..., description="No slot missed or skipped")
+    next_slot: datetime | None = Field(None, description="Next scheduled time (UTC)")
+    problems: list[SlotProblem] = Field(..., description="The latest 50 slots not done, oldest first")
+
+
+class ScheduleAuditResponse(BaseModel):
+    start: datetime = Field(..., description="Start of the period (UTC)")
+    end: datetime = Field(..., description="End of the period (UTC); slots of the last minute are not counted")
+    source: Literal["twin.jobs", "redis"] = Field(..., description="Where the records were read")
+    clean: bool = Field(..., description="No slot of any kind missed or skipped in the period")
+    kinds: list[KindSchedule]
 
 
 class SubmitRequest(BaseModel):
@@ -45,22 +114,9 @@ class SubmitResponse(BaseModel):
     duplicate: bool = Field(..., description="True when an identical job was already queued or running")
 
 
-def _schedule_text(schedule: tuple[set[int] | None, set[int]] | None) -> str | None:
-    """'04:00', '06:15, 14:15, 22:15'; for every hour 'every hour at :07' or 'every 5 min'."""
-    if schedule is None:
-        return None
-    hours, minutes = schedule
-    mm = sorted(minutes)
-    if hours is None:
-        step = mm[1] - mm[0] if len(mm) > 1 else 60
-        if len(mm) > 1 and 60 % step == 0 and mm == list(range(mm[0], 60, step)):
-            return f"every {step} min" + (f" from :{mm[0]:02d}" if mm[0] else "")
-        return "every hour at " + ", ".join(f":{m:02d}" for m in mm)
-    return ", ".join(f"{h:02d}:{m:02d}" for h in sorted(hours) for m in mm)
-
-
 @router.get("/kinds", response_model=list[JobKindInfo], summary="Job kinds")
 def kinds() -> list[JobKindInfo]:
+    now = datetime.now(UTC)
     return [
         JobKindInfo(
             name=k.name,
@@ -68,12 +124,73 @@ def kinds() -> list[JobKindInfo]:
             role=k.role,
             timeout_s=k.timeout_s,
             max_tries=k.max_tries,
-            schedule=_schedule_text(k.schedule),
+            schedule=schedule.describe(k.schedule),
+            next_slot=schedule.next_slot(k.schedule, now) if k.schedule else None,
             description=k.description,
             params_schema=k.params.model_json_schema(),
         )
         for k in CATALOG.values()
     ]
+
+
+def optional_job_store(request: Request) -> JobStore | None:
+    live = getattr(request.app.state, "live", None)
+    return live.store if live is not None else None
+
+
+async def _records(
+    jobs: JobStore | None, twin: TwinStore | None, start: datetime, end: datetime
+) -> tuple[list[Any], Literal["twin.jobs", "redis"]]:
+    """Job records of [start, end): ``twin.jobs`` when a twin store is configured, else Redis (7 days)."""
+    if twin is not None:
+        return await asyncio.to_thread(twin.jobs.window, start, end), "twin.jobs"
+    if jobs is None:
+        raise ApiError(503, "Neither the twin store nor Redis is available: no job records to read.")
+    return await jobs.list(limit=100_000), "redis"
+
+
+def _period(days: float, end: datetime | None, source: str) -> tuple[datetime, datetime]:
+    """[start, end) of the request; from Redis at most the 7 days its records are kept."""
+    now = datetime.now(UTC)
+    stop = min(schedule.utc(end), now) if end is not None else now
+    start = stop - timedelta(days=days)
+    if source == "redis":
+        start = max(start, now - timedelta(seconds=RECORD_TTL_S))
+    return start, stop
+
+
+@router.get("/stats", response_model=JobStatsResponse, summary="Runtime statistics per job kind")
+async def stats(
+    jobs: Annotated[JobStore | None, Depends(optional_job_store)],
+    twin: Annotated[TwinStore | None, Depends(optional_twin_store)],
+    days: Annotated[float, Query(gt=0, le=92, description="Length of the period, d")] = 14,
+    end: Annotated[datetime | None, Query(description="End of the period (default now)")] = None,
+) -> JobStatsResponse:
+    """Runs, outcomes, runtime percentiles (execution time over the tries) and start delay per kind for the jobs
+    submitted in the period. Without a twin store only the Redis records of the last 7 days are available."""
+    start, stop = _period(days, end, "twin.jobs" if twin is not None else "redis")
+    rows, source = await _records(jobs, twin, start, stop)
+    table = jobstats.stats(rows, CATALOG.values(), start=start, end=stop)
+    return JobStatsResponse(start=start, end=stop, source=source, kinds=[KindStats(**vars(v)) for v in table.values()])
+
+
+@router.get("/schedule", response_model=ScheduleAuditResponse, summary="Audit of the schedule")
+async def schedule_audit(
+    jobs: Annotated[JobStore | None, Depends(optional_job_store)],
+    twin: Annotated[TwinStore | None, Depends(optional_twin_store)],
+    days: Annotated[float, Query(gt=0, le=92, description="Length of the period, d")] = 14,
+    end: Annotated[datetime | None, Query(description="End of the period (default now)")] = None,
+) -> ScheduleAuditResponse:
+    """For every scheduled kind, the slots of the period and what became of each: done, failed, cancelled, still
+    running, skipped (with the reason) or missed (no record). Clean = no slot missed or skipped."""
+    start, stop = _period(days, end, "twin.jobs" if twin is not None else "redis")
+    rows, source = await _records(jobs, twin, start, stop)
+    now = datetime.now(UTC)
+    stop = min(stop, now - schedule.SETTLE)
+    kinds_ = [k for k in CATALOG.values() if k.schedule is not None]
+    table = schedule.audit(rows, kinds_, start, stop)
+    out = [KindSchedule(**table[k.name].as_dict(), next_slot=schedule.next_slot(k.schedule, now)) for k in kinds_]
+    return ScheduleAuditResponse(start=start, end=stop, source=source, clean=all(k.clean for k in out), kinds=out)
 
 
 @router.get("", response_model=list[JobRecord], summary="Recent jobs")

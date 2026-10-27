@@ -658,6 +658,19 @@
             "title": "Name",
             "type": "string"
           },
+          "next_slot": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Next scheduled time (UTC); null for kinds without a schedule",
+            "title": "Next Slot"
+          },
           "params_schema": {
             "description": "JSON schema of the parameters",
             "title": "Params Schema",
@@ -873,6 +886,31 @@
             ],
             "title": "Result"
           },
+          "run_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Execution time summed over the tries, s",
+            "title": "Run S"
+          },
+          "scheduled_for": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Schedule slot a scheduler job serves (its IST cron time); null for jobs a user started",
+            "title": "Scheduled For"
+          },
           "started_at": {
             "anyOf": [
               {
@@ -920,6 +958,290 @@
           "submitted_at"
         ],
         "title": "JobRecord",
+        "type": "object"
+      },
+      "JobStatsResponse": {
+        "properties": {
+          "end": {
+            "description": "End of the period (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KindStats"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "source": {
+            "description": "Where the records were read",
+            "enum": [
+              "twin.jobs",
+              "redis"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "start": {
+            "description": "Start of the period (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "source",
+          "kinds"
+        ],
+        "title": "JobStatsResponse",
+        "type": "object"
+      },
+      "KindSchedule": {
+        "properties": {
+          "cancelled": {
+            "description": "Slots whose job a user cancelled, count",
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "clean": {
+            "description": "No slot missed or skipped",
+            "title": "Clean",
+            "type": "boolean"
+          },
+          "done": {
+            "description": "Slots whose job ended done, count",
+            "title": "Done",
+            "type": "integer"
+          },
+          "expected": {
+            "description": "Slots in the period, count",
+            "title": "Expected",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Slots whose job failed, count",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "missed": {
+            "description": "Slots without any job record, count",
+            "title": "Missed",
+            "type": "integer"
+          },
+          "next_slot": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Next scheduled time (UTC)",
+            "title": "Next Slot"
+          },
+          "problems": {
+            "description": "The latest 50 slots not done, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/SlotProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "running": {
+            "description": "Slots whose job is still queued or running, count",
+            "title": "Running",
+            "type": "integer"
+          },
+          "schedule": {
+            "description": "Scheduled times (IST)",
+            "title": "Schedule",
+            "type": "string"
+          },
+          "skipped": {
+            "description": "Slots recorded as skipped (worker not running, previous job active), count",
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "schedule",
+          "expected",
+          "done",
+          "failed",
+          "cancelled",
+          "running",
+          "skipped",
+          "missed",
+          "clean",
+          "problems"
+        ],
+        "title": "KindSchedule",
+        "type": "object"
+      },
+      "KindStats": {
+        "properties": {
+          "cancelled": {
+            "description": "Runs cancelled by a user, count",
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "done": {
+            "description": "Runs that ended done, count",
+            "title": "Done",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Runs that failed, count",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End of the latest run that ended (UTC)",
+            "title": "Last Finished At"
+          },
+          "last_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Status"
+          },
+          "running": {
+            "description": "Runs still queued or running, count",
+            "title": "Running",
+            "type": "integer"
+          },
+          "runs": {
+            "description": "Jobs submitted in the period (skipped slots excluded), count",
+            "title": "Runs",
+            "type": "integer"
+          },
+          "runtime_max_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Longest execution time of a done run, s",
+            "title": "Runtime Max S"
+          },
+          "runtime_p50_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Median execution time of the done runs (over their tries), s",
+            "title": "Runtime P50 S"
+          },
+          "runtime_p95_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "95th percentile of the execution time of the done runs, s",
+            "title": "Runtime P95 S"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scheduled times (IST)",
+            "title": "Schedule"
+          },
+          "skipped": {
+            "description": "Schedule slots recorded as skipped, count",
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "start_delay_p95_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "95th percentile of start minus schedule slot (scheduler) or submission (others), s",
+            "title": "Start Delay P95 S"
+          },
+          "timeout_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time limit of one try, s",
+            "title": "Timeout S"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "runs",
+          "done",
+          "failed",
+          "cancelled",
+          "skipped",
+          "running"
+        ],
+        "title": "KindStats",
         "type": "object"
       },
       "LiveStatusData": {
@@ -1208,6 +1530,16 @@
             "description": "Also run the three decision settings of auto mode (STRATA-\u03c9)",
             "title": "Auto",
             "type": "boolean"
+          },
+          "calibration": {
+            "default": "day",
+            "description": "Two-zone calibration: day = the one made at 02:30 on the 14 days before today (calibration.nightly; the live one while it is missing), live = page 11's, on the stable shifts balanced so far",
+            "enum": [
+              "day",
+              "live"
+            ],
+            "title": "Calibration",
+            "type": "string"
           },
           "certainty": {
             "default": "low",
@@ -1632,6 +1964,52 @@
         "title": "RunSubmitted",
         "type": "object"
       },
+      "ScheduleAuditResponse": {
+        "properties": {
+          "clean": {
+            "description": "No slot of any kind missed or skipped in the period",
+            "title": "Clean",
+            "type": "boolean"
+          },
+          "end": {
+            "description": "End of the period (UTC); slots of the last minute are not counted",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KindSchedule"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "source": {
+            "description": "Where the records were read",
+            "enum": [
+              "twin.jobs",
+              "redis"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "start": {
+            "description": "Start of the period (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "source",
+          "clean",
+          "kinds"
+        ],
+        "title": "ScheduleAuditResponse",
+        "type": "object"
+      },
       "SessionInfo": {
         "properties": {
           "expires_at": {
@@ -1875,6 +2253,55 @@
           "target_end"
         ],
         "title": "SiForecastPoint",
+        "type": "object"
+      },
+      "SlotProblem": {
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "slot": {
+            "description": "Schedule slot (UTC)",
+            "format": "date-time",
+            "title": "Slot",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "failed",
+              "cancelled",
+              "running",
+              "skipped",
+              "missed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "state"
+        ],
+        "title": "SlotProblem",
         "type": "object"
       },
       "SubmitRequest": {
@@ -2180,7 +2607,7 @@
             "type": "integer"
           },
           "expected_window_end": {
-            "description": "End of the newest window that should be evaluated now (UTC; evaluation at HH:05)",
+            "description": "End of the newest window that should be evaluated now (UTC; run at HH:10, due at HH:15)",
             "format": "date-time",
             "title": "Expected Window End",
             "type": "string"
@@ -3156,6 +3583,160 @@
           }
         },
         "summary": "Job kinds",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/schedule": {
+      "get": {
+        "description": "For every scheduled kind, the slots of the period and what became of each: done, failed, cancelled, still\nrunning, skipped (with the reason) or missed (no record). Clean = no slot missed or skipped.",
+        "operationId": "jobs_schedule_audit",
+        "parameters": [
+          {
+            "description": "Length of the period, d",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 14,
+              "description": "Length of the period, d",
+              "exclusiveMinimum": 0.0,
+              "maximum": 92.0,
+              "title": "Days",
+              "type": "number"
+            }
+          },
+          {
+            "description": "End of the period (default now)",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End of the period (default now)",
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleAuditResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Audit of the schedule",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/stats": {
+      "get": {
+        "description": "Runs, outcomes, runtime percentiles (execution time over the tries) and start delay per kind for the jobs\nsubmitted in the period. Without a twin store only the Redis records of the last 7 days are available.",
+        "operationId": "jobs_stats",
+        "parameters": [
+          {
+            "description": "Length of the period, d",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 14,
+              "description": "Length of the period, d",
+              "exclusiveMinimum": 0.0,
+              "maximum": 92.0,
+              "title": "Days",
+              "type": "number"
+            }
+          },
+          {
+            "description": "End of the period (default now)",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End of the period (default now)",
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Runtime statistics per job kind",
         "tags": [
           "jobs"
         ]

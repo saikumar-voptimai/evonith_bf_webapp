@@ -7,6 +7,10 @@ parameters equal those of a queued or running job returns that job instead of st
 ``twin:job-active:<kind>:<hash>``). Records are kept in Redis for 7 days; a ``JobArchive`` (the worker's
 ``services.job_archive.TwinJobArchive``, table ``twin.jobs`` in Neon, #278) receives every change of state and keeps
 them longer. Worker implementations of the kinds are in ``worker.kinds``.
+
+Scheduled kinds (``JobKind.schedule``, IST) are submitted by the worker's cron entries with ``submitted_by="scheduler"``
+and ``scheduled_for`` = the slot; the catch-up at worker start and skipped slots are recorded the same way
+(``services.schedule``, SV-1.7).
 """
 
 from __future__ import annotations
@@ -65,6 +69,38 @@ class OptimiserRunParams(BaseModel):
         0.0, ge=0, le=3, description="STRATA-ω risk aversion: objective = cost + k × σ(cost), dimensionless"
     )
     auto: bool = Field(False, description="Also run the three decision settings of auto mode (STRATA-ω)")
+    calibration: Literal["day", "live"] = Field(
+        "day",
+        description=(
+            "Two-zone calibration: day = the one made at 02:30 on the 14 days before today (calibration.nightly; "
+            "the live one while it is missing), live = page 11's, on the stable shifts balanced so far"
+        ),
+    )
+
+
+class TwinEvaluateParams(BaseModel):
+    """One twin evaluation (``twin.evaluate``): the window ending at a full hour, and the windows before it that are
+    missing."""
+
+    model_config = {"extra": "forbid"}
+
+    window_end: datetime | None = Field(
+        None,
+        description=(
+            "End of the 8-h window, a full hour (aware, or IST when naive); default: the hour of the schedule slot, "
+            "else of now"
+        ),
+    )
+    backfill_hours: int = Field(
+        24,
+        ge=0,
+        le=168,
+        description=(
+            "Windows ending in these hours before window_end without a snapshot, or evaluated before their last "
+            "hourly row was published, are evaluated too, h"
+        ),
+    )
+    strata: bool = Field(True, description="Evaluate K_STRATA (3 network solves per window and 1 per 14-day anchor)")
 
 
 @dataclass(frozen=True)
@@ -155,6 +191,83 @@ register(
         ),
     )
 )
+register(
+    JobKind(
+        name="twin.evaluate",
+        title="Twin evaluation",
+        role="supervisor",
+        timeout_s=900,
+        max_tries=4,  # HH:10 to HH:25 while the hourly dataset lacks the window's last row
+        retry_delay_s=300,
+        params=TwinEvaluateParams,
+        schedule=(None, {10}),
+        description=(
+            "Evaluates the 8-h window ending at the full hour (K_TRACE, K_FORGE, K_STRATA, implied ω, transit) into "
+            "twin.snapshot once the hourly dataset holds the window's last row, with the windows of the last 24 h "
+            "that are missing; runs the implied-ω drift alarm and publishes twin.snapshot (SV-1.7)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="optimiser.step2",
+        title="Scheduled Step 2",
+        role="supervisor",
+        timeout_s=900,
+        max_tries=3,  # 06:15 to 06:25 while the yard or the calibration falls back to the reference
+        retry_delay_s=300,
+        schedule=({6, 14, 22}, {15}),
+        description=(
+            "Step 2 at the current production (latest twin window) with STRATA-ω and Fixed-ω in parallel: live yard "
+            "and prices, the day's calibration; two runs in twin.optimiser_run (SV-1.7)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="optimiser.step1",
+        title="Scheduled Step 1",
+        role="supervisor",
+        timeout_s=1800,
+        max_tries=2,
+        retry_delay_s=300,
+        schedule=({6, 14, 22}, {30}),
+        description=(
+            "Step 1 (cheapest production level) with STRATA-ω: live yard and prices, the day's calibration; one run "
+            "in twin.optimiser_run (SV-1.7)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="calibration.nightly",
+        title="Nightly calibration",
+        role="admin",
+        timeout_s=900,
+        max_tries=3,
+        retry_delay_s=600,
+        schedule=({2}, {30}),
+        description=(
+            "Two-zone calibration on the stable shifts of the 14 days before today, saved as the day's calibration of "
+            "the optimiser runs, and the STRATA-Flow network Jacobian at it (17 solves, disk cache) (SV-1.7)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="learn.shadow",
+        title="STRATA-Learn shadow run",
+        role="admin",
+        timeout_s=600,
+        max_tries=1,
+        schedule=({3}, {0}),
+        description=(
+            "STRATA-Learn in shadow mode on the stored evidence (Kalman challenger, champion/challenger gate, CUSUM "
+            "drift, register proposal) into src/storage/burden_engine/learn; changes nothing in the asset, the "
+            "register or the pages (SV-1.7)."
+        ),
+    )
+)
 
 
 class JobRecord(BaseModel):
@@ -173,6 +286,10 @@ class JobRecord(BaseModel):
     result: dict[str, Any] | None = None
     error: str | None = None
     cancel_requested: bool = False
+    scheduled_for: datetime | None = Field(
+        None, description="Schedule slot a scheduler job serves (its IST cron time); null for jobs a user started"
+    )
+    run_s: float | None = Field(None, description="Execution time summed over the tries, s")
 
 
 class UnknownJobKind(KeyError):
@@ -228,8 +345,16 @@ class JobStore:
             self.archive.record(record)
         return record
 
-    async def submit(self, kind_name: str, params: dict[str, Any], submitted_by: str) -> tuple[JobRecord, bool]:
-        """Create and queue a job; ``(record, True)`` when an identical job is already queued or running."""
+    async def submit(
+        self,
+        kind_name: str,
+        params: dict[str, Any],
+        submitted_by: str,
+        *,
+        scheduled_for: datetime | None = None,
+    ) -> tuple[JobRecord, bool]:
+        """Create and queue a job; ``(record, True)`` when an identical job is already queued or running.
+        ``scheduled_for``: the schedule slot the job serves (scheduler, catch-up)."""
         kind = CATALOG.get(kind_name)
         if kind is None:
             raise UnknownJobKind(kind_name)
@@ -252,6 +377,7 @@ class JobStore:
             input_hash=digest,
             submitted_by=submitted_by,
             submitted_at=self.clock(),
+            scheduled_for=scheduled_for,
         )
         await self.save(record)
         await self.redis.zadd(INDEX_KEY, {job_id: record.submitted_at.timestamp()})
@@ -261,9 +387,44 @@ class JobStore:
             await self.enqueue(job_id)
         return record, False
 
+    async def record_skipped(
+        self, kind_name: str, slot: datetime, reason: str, *, submitted_by: str = "scheduler (skipped)"
+    ) -> JobRecord:
+        """Record a schedule slot that did not run: a cancelled job record of the kind with ``scheduled_for`` =
+        ``slot`` and the reason (worker not running at the slot, or the previous job of the kind still active)."""
+        kind = CATALOG.get(kind_name)
+        if kind is None:
+            raise UnknownJobKind(kind_name)
+        now = self.clock()
+        record = JobRecord(
+            id=uuid.uuid4().hex,
+            kind=kind.name,
+            status="cancelled",
+            params={},
+            input_hash=input_hash(kind.name, {}),
+            message=reason,
+            submitted_by=submitted_by,
+            submitted_at=now,
+            finished_at=now,
+            error=reason,
+            scheduled_for=slot,
+        )
+        await self.save(record)
+        await self.redis.zadd(INDEX_KEY, {record.id: now.timestamp()})
+        if self.archive is not None:
+            self.archive.record(record)
+        return record
+
     async def finish(
-        self, job_id: str, status: JobState, *, result: dict[str, Any] | None = None, error: str | None = None
+        self,
+        job_id: str,
+        status: JobState,
+        *,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+        run_s: float | None = None,
     ) -> JobRecord | None:
+        changes: dict[str, Any] = {} if run_s is None else {"run_s": run_s}
         record = await self.update(
             job_id,
             status=status,
@@ -271,6 +432,7 @@ class JobStore:
             result=result,
             error=error,
             progress=1.0 if status == "done" else None,
+            **changes,
         )
         if record is not None:
             active_key = ACTIVE_KEY.format(record.kind, record.input_hash)

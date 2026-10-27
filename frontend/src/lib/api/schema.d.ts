@@ -128,6 +128,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit of the schedule
+         * @description For every scheduled kind, the slots of the period and what became of each: done, failed, cancelled, still
+         *     running, skipped (with the reason) or missed (no record). Clean = no slot missed or skipped.
+         */
+        get: operations["jobs_schedule_audit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Runtime statistics per job kind
+         * @description Runs, outcomes, runtime percentiles (execution time over the tries) and start delay per kind for the jobs
+         *     submitted in the period. Without a twin store only the Redis records of the last 7 days are available.
+         */
+        get: operations["jobs_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -729,6 +771,11 @@ export interface components {
             /** Name */
             name: string;
             /**
+             * Next Slot
+             * @description Next scheduled time (UTC); null for kinds without a schedule
+             */
+            next_slot?: string | null;
+            /**
              * Params Schema
              * @description JSON schema of the parameters
              */
@@ -813,6 +860,16 @@ export interface components {
             progress?: number | null;
             /** Result */
             result?: Record<string, unknown> | null;
+            /**
+             * Run S
+             * @description Execution time summed over the tries, s
+             */
+            run_s?: number | null;
+            /**
+             * Scheduled For
+             * @description Schedule slot a scheduler job serves (its IST cron time); null for jobs a user started
+             */
+            scheduled_for?: string | null;
             /** Started At */
             started_at?: string | null;
             /**
@@ -832,6 +889,165 @@ export interface components {
              * @default 0
              */
             tries: number;
+        };
+        /** JobStatsResponse */
+        JobStatsResponse: {
+            /**
+             * End
+             * Format: date-time
+             * @description End of the period (UTC)
+             */
+            end: string;
+            /** Kinds */
+            kinds: components["schemas"]["KindStats"][];
+            /**
+             * Source
+             * @description Where the records were read
+             * @enum {string}
+             */
+            source: "twin.jobs" | "redis";
+            /**
+             * Start
+             * Format: date-time
+             * @description Start of the period (UTC)
+             */
+            start: string;
+        };
+        /** KindSchedule */
+        KindSchedule: {
+            /**
+             * Cancelled
+             * @description Slots whose job a user cancelled, count
+             */
+            cancelled: number;
+            /**
+             * Clean
+             * @description No slot missed or skipped
+             */
+            clean: boolean;
+            /**
+             * Done
+             * @description Slots whose job ended done, count
+             */
+            done: number;
+            /**
+             * Expected
+             * @description Slots in the period, count
+             */
+            expected: number;
+            /**
+             * Failed
+             * @description Slots whose job failed, count
+             */
+            failed: number;
+            /** Kind */
+            kind: string;
+            /**
+             * Missed
+             * @description Slots without any job record, count
+             */
+            missed: number;
+            /**
+             * Next Slot
+             * @description Next scheduled time (UTC)
+             */
+            next_slot?: string | null;
+            /**
+             * Problems
+             * @description The latest 50 slots not done, oldest first
+             */
+            problems: components["schemas"]["SlotProblem"][];
+            /**
+             * Running
+             * @description Slots whose job is still queued or running, count
+             */
+            running: number;
+            /**
+             * Schedule
+             * @description Scheduled times (IST)
+             */
+            schedule: string;
+            /**
+             * Skipped
+             * @description Slots recorded as skipped (worker not running, previous job active), count
+             */
+            skipped: number;
+            /** Title */
+            title: string;
+        };
+        /** KindStats */
+        KindStats: {
+            /**
+             * Cancelled
+             * @description Runs cancelled by a user, count
+             */
+            cancelled: number;
+            /**
+             * Done
+             * @description Runs that ended done, count
+             */
+            done: number;
+            /**
+             * Failed
+             * @description Runs that failed, count
+             */
+            failed: number;
+            /** Kind */
+            kind: string;
+            /**
+             * Last Finished At
+             * @description End of the latest run that ended (UTC)
+             */
+            last_finished_at?: string | null;
+            /** Last Status */
+            last_status?: string | null;
+            /**
+             * Running
+             * @description Runs still queued or running, count
+             */
+            running: number;
+            /**
+             * Runs
+             * @description Jobs submitted in the period (skipped slots excluded), count
+             */
+            runs: number;
+            /**
+             * Runtime Max S
+             * @description Longest execution time of a done run, s
+             */
+            runtime_max_s?: number | null;
+            /**
+             * Runtime P50 S
+             * @description Median execution time of the done runs (over their tries), s
+             */
+            runtime_p50_s?: number | null;
+            /**
+             * Runtime P95 S
+             * @description 95th percentile of the execution time of the done runs, s
+             */
+            runtime_p95_s?: number | null;
+            /**
+             * Schedule
+             * @description Scheduled times (IST)
+             */
+            schedule?: string | null;
+            /**
+             * Skipped
+             * @description Schedule slots recorded as skipped, count
+             */
+            skipped: number;
+            /**
+             * Start Delay P95 S
+             * @description 95th percentile of start minus schedule slot (scheduler) or submission (others), s
+             */
+            start_delay_p95_s?: number | null;
+            /**
+             * Timeout S
+             * @description Time limit of one try, s
+             */
+            timeout_s?: number | null;
+            /** Title */
+            title: string;
         };
         /** LiveStatusData */
         LiveStatusData: {
@@ -991,6 +1207,13 @@ export interface components {
              * @default false
              */
             auto: boolean;
+            /**
+             * Calibration
+             * @description Two-zone calibration: day = the one made at 02:30 on the 14 days before today (calibration.nightly; the live one while it is missing), live = page 11's, on the stable shifts balanced so far
+             * @default day
+             * @enum {string}
+             */
+            calibration: "day" | "live";
             /**
              * Certainty
              * @description STRATA-ω certainty filter: low excludes Investigate plans (page 11's default)
@@ -1195,6 +1418,34 @@ export interface components {
             duplicate: boolean;
             job: components["schemas"]["JobRecord"];
         };
+        /** ScheduleAuditResponse */
+        ScheduleAuditResponse: {
+            /**
+             * Clean
+             * @description No slot of any kind missed or skipped in the period
+             */
+            clean: boolean;
+            /**
+             * End
+             * Format: date-time
+             * @description End of the period (UTC); slots of the last minute are not counted
+             */
+            end: string;
+            /** Kinds */
+            kinds: components["schemas"]["KindSchedule"][];
+            /**
+             * Source
+             * @description Where the records were read
+             * @enum {string}
+             */
+            source: "twin.jobs" | "redis";
+            /**
+             * Start
+             * Format: date-time
+             * @description Start of the period (UTC)
+             */
+            start: string;
+        };
         /** SessionInfo */
         SessionInfo: {
             /**
@@ -1317,6 +1568,24 @@ export interface components {
              * @description Upper end of the 90 % range, mass %
              */
             upper_pct?: number | null;
+        };
+        /** SlotProblem */
+        SlotProblem: {
+            /** Job Id */
+            job_id?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Slot
+             * Format: date-time
+             * @description Schedule slot (UTC)
+             */
+            slot: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "failed" | "cancelled" | "running" | "skipped" | "missed";
         };
         /** SubmitRequest */
         SubmitRequest: {
@@ -1473,7 +1742,7 @@ export interface components {
             /**
              * Expected Window End
              * Format: date-time
-             * @description End of the newest window that should be evaluated now (UTC; evaluation at HH:05)
+             * @description End of the newest window that should be evaluated now (UTC; run at HH:10, due at HH:15)
              */
             expected_window_end: string;
             /**
@@ -2072,6 +2341,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobKindInfo"][];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    jobs_schedule_audit: {
+        parameters: {
+            query?: {
+                /** @description Length of the period, d */
+                days?: number;
+                /** @description End of the period (default now) */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleAuditResponse"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    jobs_stats: {
+        parameters: {
+            query?: {
+                /** @description Length of the period, d */
+                days?: number;
+                /** @description End of the period (default now) */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobStatsResponse"];
                 };
             };
             /** @description Client error (problem+json) */

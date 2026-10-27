@@ -5,10 +5,14 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from services.jobs import NoParams, SelfTestParams
+from services import jobstats
+from services.jobs import CATALOG, NoParams, SelfTestParams
 from worker.runtime import JobContext, handles
+
+STATS_DAYS = 14
 
 
 def cpu_probe(n: int) -> tuple[int, int]:
@@ -33,13 +37,28 @@ async def selftest(job: JobContext, params: SelfTestParams) -> dict[str, Any]:
 
 @handles("system.housekeeping")
 async def housekeeping(job: JobContext, params: NoParams) -> dict[str, Any]:
-    """Copy the job records still in Redis (7 days) to the archive, then trim the index. An archive failure is
-    reported in the result and does not stop the trim: the records stay in Redis until their 7 days end."""
+    """Copy the job records still in Redis (7 days) to the archive, then trim the index, then compute the runtime
+    statistics per kind of the last 14 days (``services.jobstats``) into the result, which ``twin.jobs`` keeps: one
+    document per day. An archive failure is reported in the result and does not stop the trim: the records stay in
+    Redis until their 7 days end; the statistics are then computed from Redis."""
     result: dict[str, Any] = {"records_archived": None}
-    if job.store.archive is not None:
+    records = await job.store.list(limit=100_000)
+    archive = job.store.archive
+    if archive is not None:
         try:
-            result["records_archived"] = await job.store.archive.sync(await job.store.list(limit=100_000))
+            result["records_archived"] = await archive.sync(records)
         except Exception as exc:
             result["archive_error"] = f"{type(exc).__name__}: {exc}"[:400]
     result["index_entries_removed"] = await job.store.trim()
+    end = datetime.now(UTC)
+    start = end - timedelta(days=STATS_DAYS)
+    rows: list[Any] = records
+    source = "redis"
+    if archive is not None and "archive_error" not in result:
+        try:
+            rows, source = await asyncio.to_thread(archive.store.jobs.window, start, end), "twin.jobs"
+        except Exception as exc:
+            result["stats_error"] = f"{type(exc).__name__}: {exc}"[:400]
+    table = jobstats.stats(rows, CATALOG.values(), start=start, end=end)
+    result["job_stats"] = jobstats.document(table, start=start, end=end, source=source)
     return result

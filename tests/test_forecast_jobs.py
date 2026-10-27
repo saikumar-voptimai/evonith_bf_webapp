@@ -474,10 +474,12 @@ def test_the_forecast_jobs_are_scheduled_in_ist(monkeypatch) -> None:
     kind = CATALOG["forecast.charged_coke"]
     assert kind.max_tries * kind.retry_delay_s <= 30 * 60  # retries end before the next hour's run
     assert CATALOG["forecast.si"].timeout_s < 300  # a run ends before the next one starts
-    monkeypatch.setenv("BF_WORKER_SKIP_SCHEDULES", "forecast.charged_coke, system.")
+    monkeypatch.setenv(
+        "BF_WORKER_SKIP_SCHEDULES", "forecast.charged_coke, system., twin., optimiser., calibration., learn."
+    )
     assert sorted(c.name for c in settings.cron_jobs()) == ["cron:schedule_forecast_si"]
 
-    from api.routers.jobs import _schedule_text  # as GET /api/jobs/kinds states them
+    from services.schedule import describe as _schedule_text  # as GET /api/jobs/kinds states them
 
     assert _schedule_text(CATALOG["forecast.si"].schedule) == "every 5 min"
     assert _schedule_text(CATALOG["forecast.charged_coke"].schedule) == "every hour at :07"

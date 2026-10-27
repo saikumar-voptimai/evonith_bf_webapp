@@ -30,7 +30,7 @@ class TwinNow(BaseModel):
     snapshot: TwinSnapshotData | None = Field(None, description="Latest stored evaluation (None before the first)")
     now: datetime = Field(..., description="Server time (UTC)")
     expected_window_end: datetime = Field(
-        ..., description="End of the newest window that should be evaluated now (UTC; evaluation at HH:05)"
+        ..., description="End of the newest window that should be evaluated now (UTC; run at HH:10, due at HH:15)"
     )
     age_s: float | None = Field(None, description="Time since the latest evaluation, s")
     lag_h: float | None = Field(None, description="Expected window end minus the latest window end, h")

@@ -51,6 +51,14 @@ def alembic_config(url: str) -> Config:
     return config
 
 
+def job_columns(url: str) -> set[str]:
+    engine = create_engine(url, poolclass=NullPool)
+    try:
+        return {c["name"] for c in inspect(engine).get_columns("jobs", schema=SCHEMA)}
+    finally:
+        engine.dispose()
+
+
 def twin_tables(url: str) -> set[str]:
     engine = create_engine(url, poolclass=NullPool)
     try:
@@ -91,9 +99,15 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
         config = alembic_config(url)
         command.upgrade(config, "head")
         assert twin_tables(url) == {*TABLES, "alembic_version"}
-        assert TwinStore.from_url(url).revision() == "twin_0001"
+        assert TwinStore.from_url(url).revision() == "twin_0002"
+        assert {"scheduled_for", "run_s"} <= job_columns(url)
 
-        command.downgrade(config, "-1")
+        command.downgrade(config, "-1")  # twin_0002: the slot and execution time of the jobs
+        assert TwinStore.from_url(url).revision() == "twin_0001"
+        assert twin_tables(url) == {*TABLES, "alembic_version"}
+        assert not {"scheduled_for", "run_s"} & job_columns(url)
+
+        command.downgrade(config, "base")
         assert twin_tables(url) == {"alembic_version"}  # the schema and Alembic's table stay
         engine = create_engine(url, poolclass=NullPool)
         with engine.connect() as connection:
@@ -280,6 +294,24 @@ def test_job_records_are_upserted_and_listed(store) -> None:
         store.jobs.upsert(_job("j3", "queued", datetime(2026, 10, 27, 6)))
     with pytest.raises(IntegrityError):
         store.jobs.upsert(_job("j4", "paused", T0))
+
+
+@needs_postgres
+def test_jobs_of_a_period_include_the_slots_served_in_it(store) -> None:
+    """``jobs.window``: submitted in the period, or serving a slot in it (a slot recorded as skipped at a later
+    worker start); with the slot and the execution time over the tries (twin_0002)."""
+    store.jobs.upsert_many(
+        [
+            _job("in", "done", T0 + H, scheduled_for=T0 + H, run_s=12.5),
+            _job("late", "cancelled", T0 + 30 * H, scheduled_for=T0 + 2 * H),  # recorded the next day
+            _job("before", "done", T0 - H),
+            _job("user", "done", T0 + 3 * H),
+        ]
+    )
+    rows = store.jobs.window(T0, T0 + 24 * H)
+    assert [j.id for j in rows] == ["in", "user", "late"]  # oldest first by submission
+    assert rows[0].scheduled_for == T0 + H and rows[0].run_s == 12.5
+    assert [j.id for j in store.jobs.window(T0, T0 + 24 * H, kinds=["other.kind"])] == []
 
 
 @needs_postgres

@@ -105,12 +105,18 @@ class Job(TwinBase):
     result: Mapped[dict[str, Any] | None]
     error: Mapped[str | None] = mapped_column(Text)
     archived_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    #: The schedule slot a scheduler job serves (its IST cron time, stored in UTC); null for jobs a user started
+    #: (twin_0002, SV-1.7): the schedule audit matches slots to jobs on it.
+    scheduled_for: Mapped[datetime | None]
+    #: Execution time summed over the tries, s (twin_0002): the runtime of a job that waited between tries.
+    run_s: Mapped[float | None] = mapped_column(Float)
 
     __table_args__ = (
         CheckConstraint(_in("status", JOB_STATES), name="status"),
         Index("ix_jobs_submitted_at", "submitted_at"),
         Index("ix_jobs_kind_submitted_at", "kind", "submitted_at"),
         Index("ix_jobs_finished_at", "finished_at"),
+        Index("ix_jobs_scheduled_for", "scheduled_for"),
     )
 
 
@@ -336,7 +342,7 @@ APPEND_ONLY = ("shift_record", "plan_decision", "audit_log")
 
 #: Time columns queried by range, each the leading column of an index.
 TIME_INDEXED = {
-    "jobs": ("submitted_at", "finished_at"),
+    "jobs": ("submitted_at", "finished_at", "scheduled_for"),
     "snapshot": ("window_end", "evaluated_at"),
     "optimiser_run": ("started_at",),
     "plan_decision": ("decided_at",),

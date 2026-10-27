@@ -41,3 +41,5 @@ src/assets/models/old_bmo_16_09_26/
 src/storage/strata_flow/
 # twin-api development session key (scripts/dev.py)
 src/storage/twin_api/
+# Day calibrations and STRATA-Learn outputs of the worker (SV-1.7)
+src/storage/burden_engine/
