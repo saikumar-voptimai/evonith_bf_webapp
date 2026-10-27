@@ -27,7 +27,6 @@ from typing import Any, Dict, List, Literal, Optional
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
 from langchain.tools import tool
 from pydantic import BaseModel, Field, ValidationError
 
@@ -46,6 +45,8 @@ from furnace_data.offline import fetch_offline_report as _fetch_offline_report_d
 from furnace_data.offline import (
     resolve_offline_table_name,
 )
+from agents.furnacemind import tool_state
+from utils.memo import memo
 from utils.shift_windows import shift_window_naive
 
 # CONFIG
@@ -63,18 +64,28 @@ _KNOWLEDGE_RERANK_CANDIDATES = 16
 _KNOWLEDGE_RETURN_LIMIT = 8
 
 
+def _state() -> Dict[str, Any]:
+    """Return the tools' working state (SV-5.1).
+
+    The agent service binds one mapping per conversation
+    (``agents.furnacemind.tool_state.bind``); inside a Streamlit script run the
+    unbound state is the browser session's ``st.session_state`` (page 7).
+    """
+    return tool_state.current()  # type: ignore[return-value]
+
+
 def _ensure_dataset_store() -> Dict[str, Any]:
-    """Return the Streamlit session-state store for temporary datasets.
+    """Return the tools' store for temporary datasets.
 
     FurnaceMind tools pass data between model/tool calls by storing fetched or
-    merged DataFrames in ``st.session_state["fm_datasets"]``. This helper lazily
+    merged DataFrames in the tool state under ``fm_datasets``. This helper lazily
     creates that dictionary and protects against stale non-dictionary values.
     """
-    if "fm_datasets" not in st.session_state or not isinstance(
-        st.session_state.get("fm_datasets"), dict
+    if "fm_datasets" not in _state() or not isinstance(
+        _state().get("fm_datasets"), dict
     ):
-        st.session_state["fm_datasets"] = {}
-    return st.session_state["fm_datasets"]
+        _state()["fm_datasets"] = {}
+    return _state()["fm_datasets"]
 
 
 def _new_dataset_id(prefix: str) -> str:
@@ -86,11 +97,11 @@ def _new_dataset_id(prefix: str) -> str:
 
     Returns:
         Stable session-local id containing the prefix, UTC timestamp, and a
-        monotonically increasing Streamlit session counter.
+        monotonically increasing counter of the tool state.
     """
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    counter = st.session_state.get("fm_dataset_counter", 0) + 1
-    st.session_state["fm_dataset_counter"] = counter
+    counter = _state().get("fm_dataset_counter", 0) + 1
+    _state()["fm_dataset_counter"] = counter
     return f"{prefix}_{ts}_{counter}"
 
 
@@ -323,10 +334,10 @@ def _current_artifact_turn_id() -> str | None:
     from previous questions.
 
     Returns:
-        Clean turn id from Streamlit session state, or ``None`` when no agent
+        Clean turn id from the tool state, or ``None`` when no agent
         turn is active.
     """
-    value = st.session_state.get("fm_current_artifact_turn_id")
+    value = _state().get("fm_current_artifact_turn_id")
     clean = str(value or "").strip()
     return clean or None
 
@@ -344,9 +355,9 @@ def _tag_artifact_turn(key: str) -> None:
     """
     turn_id = _current_artifact_turn_id()
     if turn_id:
-        st.session_state[key] = turn_id
+        _state()[key] = turn_id
     else:
-        st.session_state.pop(key, None)
+        _state().pop(key, None)
 
 
 def _save_dataset(*, dataset_id: str, df: pd.DataFrame, meta: Dict[str, Any]) -> None:
@@ -363,8 +374,8 @@ def _save_dataset(*, dataset_id: str, df: pd.DataFrame, meta: Dict[str, Any]) ->
     """
     store = _ensure_dataset_store()
     store[dataset_id] = {"df": df, "meta": meta}
-    st.session_state.fm_df = df
-    st.session_state.fm_df_meta = meta
+    _state()["fm_df"] = df
+    _state()["fm_df_meta"] = meta
     _tag_artifact_turn("fm_df_turn_id")
 
 
@@ -407,18 +418,31 @@ def _parse_ist_naive(s: str) -> pd.Timestamp:
     return ts
 
 
+@memo(ttl_seconds=3600, max_entries=1)
+def _static_dataset_outside_streamlit() -> pd.DataFrame:
+    """The static ML dataset without ``st.cache_data`` (agent service in the API process), cached 1 h per process."""
+    return getattr(load_static_dataset, "__wrapped__", load_static_dataset)()
+
+
 def _load_ml_dataset() -> tuple[pd.DataFrame, pd.Timestamp, pd.Timestamp]:
     """
     Load the static ML dataset with aggressive session-level caching.
     Returns (df, data_start, data_end). The index is tz-naive IST at hourly resolution.
+    Outside a Streamlit script run (agent service) the dataset comes from a
+    process-wide cache instead, so Streamlit is never loaded there.
     """
-    cache_key = "fm_ml_df_cache"
-    if cache_key not in st.session_state:
-        df = load_static_dataset()
+    if tool_state.in_streamlit():
+        cache_key = "fm_ml_df_cache"
+        if cache_key not in _state():
+            df = load_static_dataset()
+            if df.empty:
+                raise ValueError("Static ML dataset returned no rows.")
+            _state()[cache_key] = df
+        df: pd.DataFrame = _state()[cache_key]
+    else:
+        df = _static_dataset_outside_streamlit()
         if df.empty:
             raise ValueError("Static ML dataset returned no rows.")
-        st.session_state[cache_key] = df
-    df: pd.DataFrame = st.session_state[cache_key]
     return df, df.index.min(), df.index.max()
 
 
@@ -1438,7 +1462,7 @@ def _stored_document_file_for_payload(payload: dict[str, Any]) -> Any | None:
         Repository file record with original upload bytes, or ``None`` when the
         repository/user/document mapping is unavailable.
     """
-    repository = st.session_state.get("knowledge_document_repository")
+    repository = _state().get("knowledge_document_repository")
     if repository is None or not hasattr(repository, "get_document_file_by_mrag_id"):
         return None
     mrag_document_id = str(payload.get("document_id") or "").strip()
@@ -1450,7 +1474,7 @@ def _stored_document_file_for_payload(payload: dict[str, Any]) -> Any | None:
             mrag_document_id=mrag_document_id,
         )
     except Exception as exc:
-        st.session_state["fm_last_knowledge_visual_error"] = str(exc)
+        _state()["fm_last_knowledge_visual_error"] = str(exc)
         return None
 
 
@@ -1504,7 +1528,7 @@ def _render_pdf_page_visual(file_bytes: bytes, page_number: int | None) -> bytes
                 image_bytes = page.get("image_bytes")
                 return bytes(image_bytes) if image_bytes else None
     except Exception as exc:
-        st.session_state["fm_last_knowledge_visual_error"] = str(exc)
+        _state()["fm_last_knowledge_visual_error"] = str(exc)
     return None
 
 
@@ -1531,7 +1555,7 @@ def _render_pptx_slide_visual(
                 image_bytes = slide.get("image_bytes")
                 return bytes(image_bytes) if image_bytes else None
     except Exception as exc:
-        st.session_state["fm_last_knowledge_visual_error"] = str(exc)
+        _state()["fm_last_knowledge_visual_error"] = str(exc)
     return None
 
 
@@ -1563,7 +1587,7 @@ def _extract_pptx_embedded_visual(
                 return None
             return bytes(image_blobs[index])
     except Exception as exc:
-        st.session_state["fm_last_knowledge_visual_error"] = str(exc)
+        _state()["fm_last_knowledge_visual_error"] = str(exc)
     return None
 
 
@@ -1685,7 +1709,7 @@ def _store_knowledge_image_results(results: list[dict[str, Any]]) -> None:
             ``_KNOWLEDGE_IMAGE_RESULT_LIMIT``.
 
     Side effects:
-        Writes ``fm_mrag_image_results`` in Streamlit session state for
+        Writes ``fm_mrag_image_results`` in the tool state for
         ``consume_pending_mrag_image_message`` to consume after the tool call.
     """
     attachments: list[dict[str, Any]] = []
@@ -1704,9 +1728,9 @@ def _store_knowledge_image_results(results: list[dict[str, Any]]) -> None:
             break
 
     if attachments:
-        st.session_state["fm_mrag_image_results"] = attachments
+        _state()["fm_mrag_image_results"] = attachments
     else:
-        st.session_state.pop("fm_mrag_image_results", None)
+        _state().pop("fm_mrag_image_results", None)
 
 
 def _store_knowledge_document_refs(results: list[dict[str, Any]]) -> None:
@@ -1736,9 +1760,9 @@ def _store_knowledge_document_refs(results: list[dict[str, Any]]) -> None:
         refs.append(ref)
 
     if refs:
-        st.session_state["fm_last_knowledge_document_refs"] = refs
+        _state()["fm_last_knowledge_document_refs"] = refs
     else:
-        st.session_state.pop("fm_last_knowledge_document_refs", None)
+        _state().pop("fm_last_knowledge_document_refs", None)
 
 
 def _active_knowledge_document_ids(*, user_id: str | None = None) -> set[str] | None:
@@ -1759,7 +1783,7 @@ def _active_knowledge_document_ids(*, user_id: str | None = None) -> set[str] | 
         shared documents. ``None`` means the SQL repository is unavailable, so
         the caller should continue without this active-document filter.
     """
-    repository = st.session_state.get("knowledge_document_repository")
+    repository = _state().get("knowledge_document_repository")
     if repository is None:
         return None
 
@@ -1887,14 +1911,14 @@ def _log_knowledge_retrieval_trace(
     Returns:
         None.
     """
-    repository = st.session_state.get("knowledge_retrieval_trace_repository")
+    repository = _state().get("knowledge_retrieval_trace_repository")
     if repository is None:
         return
 
     try:
         repository.create_trace(
             user_id=user_id,
-            conversation_id=st.session_state.get("fm_conversation_id"),
+            conversation_id=_state().get("fm_conversation_id"),
             query=query,
             qdrant_collection=getattr(knowledge_store, "collection_name", None),
             results=results,
@@ -1907,9 +1931,9 @@ def _log_knowledge_retrieval_trace(
                 "returned_limit": len(results),
             },
         )
-        st.session_state.pop("fm_last_knowledge_trace_error", None)
+        _state().pop("fm_last_knowledge_trace_error", None)
     except Exception as exc:
-        st.session_state["fm_last_knowledge_trace_error"] = str(exc)
+        _state()["fm_last_knowledge_trace_error"] = str(exc)
 
 
 def consume_pending_mrag_image_message() -> dict[str, Any] | None:
@@ -1925,7 +1949,7 @@ def consume_pending_mrag_image_message() -> dict[str, Any] | None:
         A user message containing source labels and ``image_url`` parts, or
         ``None`` when no queued image can be attached.
     """
-    attachments = st.session_state.pop("fm_mrag_image_results", []) or []
+    attachments = _state().pop("fm_mrag_image_results", []) or []
     if not attachments:
         return None
 
@@ -2255,12 +2279,12 @@ def render_heatload_plot() -> str:
     """Render the standard heatload trend chart from the active dataframe.
 
     Use this after ``fetch_online_data`` has loaded recent heatload and
-    temperature-profile telemetry into ``st.session_state["fm_df"]``. The chart
+    temperature-profile telemetry into the tool state (``fm_df``). The chart
     is built in trusted application code instead of model-generated Python, so
     common heatload questions get a stable multi-panel plot without depending on
     the plotting sandbox accepting arbitrary subplot code.
     """
-    df = st.session_state.get("fm_df")
+    df = _state().get("fm_df")
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         return "No active dataframe is available. Fetch heatload data first."
 
@@ -2331,7 +2355,7 @@ def render_heatload_plot() -> str:
         title_text="Heatloads - last 8 hours (IST)",
         showlegend=True,
     )
-    st.session_state.fm_fig = apply_default_plot_style(fig)
+    _state()["fm_fig"] = apply_default_plot_style(fig)
     _tag_artifact_turn("fm_fig_turn_id")
     return (
         "Successfully generated standard heatload plot with "
@@ -2366,8 +2390,8 @@ def execute_python_plot(code: str) -> str:
         fig = px.line(df.reset_index(), x='index', y='fuel_rate', title='Fuel Rate')
     """
     try:
-        # Load the active DataFrame directly from session state (no disk I/O needed)
-        df = st.session_state.get("fm_df")
+        # Load the active DataFrame directly from the tool state (no disk I/O needed)
+        df = _state().get("fm_df")
 
         import numpy as np  # noqa: PLC0415 — local import intentional for sandbox context
         from plotly.subplots import make_subplots  # noqa: PLC0415
@@ -2393,8 +2417,8 @@ def execute_python_plot(code: str) -> str:
 
         if "fig" in local_vars:
             # Save the figure object to session state for the UI to pick up
-            st.session_state.fm_fig = apply_default_plot_style(local_vars["fig"])
-            st.session_state.last_plot_code = code
+            _state()["fm_fig"] = apply_default_plot_style(local_vars["fig"])
+            _state()["last_plot_code"] = code
             _tag_artifact_turn("fm_fig_turn_id")
             return "Successfully generated Plotly figure."
         elif captured_output:
@@ -2416,7 +2440,7 @@ def execute_python_plot(code: str) -> str:
             },
             error=str(e),
         )
-        st.session_state.last_plot_error = str(e)
+        _state()["last_plot_error"] = str(e)
         return f"Python Error: {str(e)}"
 
 
@@ -2426,7 +2450,7 @@ def search_shift_history(query: str) -> str:
     Search past shift summaries using semantic similarity.
     Use for questions about past shifts, stability, anomalies, or shift performance.
     """
-    shift_store = st.session_state.get("shift_store")
+    shift_store = _state().get("shift_store")
     if shift_store is None:
         return "Shift store not initialized."
 
@@ -2463,13 +2487,13 @@ def search_knowledge_docs(query: str) -> str:
         Formatted evidence chunks with source labels and scores, or a clear
         empty-state message when no active or relevant knowledge is available.
     """
-    knowledge_store = st.session_state.get("knowledge_store")
+    knowledge_store = _state().get("knowledge_store")
     if knowledge_store is None:
         return "Knowledge store not initialized."
 
-    st.session_state.pop("fm_mrag_image_results", None)
-    st.session_state.pop("fm_last_knowledge_document_refs", None)
-    user_id = st.session_state.get("fm_user_id")
+    _state().pop("fm_mrag_image_results", None)
+    _state().pop("fm_last_knowledge_document_refs", None)
+    user_id = _state().get("fm_user_id")
     active_document_ids = _active_knowledge_document_ids(user_id=user_id)
     if active_document_ids == set():
         return "No active shared knowledge documents found."

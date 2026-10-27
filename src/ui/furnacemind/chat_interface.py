@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any
 
 import streamlit as st
 
+from agents.furnacemind.tool_state import owned_by_turn
+from agents.furnacemind.turn import ARTIFACT_TYPES, history_to_messages
 from agents.multimodal.ingestion import process_file
 from utils.furnacemind.skill_ui import (
     build_skill_context_preview,
@@ -38,7 +40,7 @@ if TYPE_CHECKING:
     from agents.furnacemind.skill_registry import SkillDefinition, SkillRegistry
     from agents.furnacemind.skills import SkillEngine
 
-_ARTIFACT_TYPES = {"plotly", "dataframe"}
+_ARTIFACT_TYPES = ARTIFACT_TYPES
 _CHAT_HISTORY_LIMIT = 14
 _CHAT_HISTORY_HEIGHT = 560
 KNOWLEDGE_FILE_TYPES = [
@@ -169,23 +171,12 @@ def chat_history_to_messages(
     Returns:
          - return: list[dict] - Chat messages compatible with the LLM client.
     """
-    messages: list[dict] = []
-    for item in (st.session_state.get("chat_history") or [])[-max_messages:]:
-        if item.get("type") in _ARTIFACT_TYPES:
-            continue
-        if _is_revoked_knowledge_message(item):
-            continue
-        if _is_inactive_skill_message(item):
-            continue
-        role = item.get("role")
-        content = item.get("content")
-        if (
-            role in {"user", "assistant"}
-            and isinstance(content, str)
-            and content.strip()
-        ):
-            messages.append({"role": role, "content": content})
-    return messages
+    return history_to_messages(
+        st.session_state.get("chat_history") or [],
+        max_messages=max_messages,
+        skip=lambda item: _is_revoked_knowledge_message(item)
+        or _is_inactive_skill_message(item),
+    )
 
 
 def render_chat_history(*, height: int = _CHAT_HISTORY_HEIGHT) -> None:
@@ -382,9 +373,7 @@ def _artifact_belongs_to_turn(
     artifact_turn_id: str | None,
 ) -> bool:
     """Return True when an artifact should render for the current answer."""
-    if artifact_turn_id is None:
-        return True
-    return str(st.session_state.get(turn_key) or "") == artifact_turn_id
+    return owned_by_turn(st.session_state, turn_key, artifact_turn_id)
 
 
 def inject_artifacts(

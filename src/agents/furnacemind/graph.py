@@ -22,6 +22,13 @@ an orchestration layer instead of accumulating domain-specific routing rules.
 Tool failures are returned to the model as normal tool messages. That lets the
 assistant explain the problem or choose a fallback instead of letting a Streamlit
 page exception break the user session.
+
+Progress is reported to an :class:`AgentObserver` (SV-5.1): tool calls and
+their results, and, when the observer asks for them and the client can stream,
+the visible content tokens of every model call (``<think>`` blocks removed while
+streaming). Page 7 passes its Streamlit status placeholder, wrapped in
+:class:`StatusBoxObserver`; the agent service passes an observer that forwards
+the events to the API's server-sent-event stream.
 """
 
 from __future__ import annotations
@@ -29,7 +36,7 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from typing import Any, TypedDict
+from typing import Any, Protocol, TypedDict
 
 from langgraph.graph import END, StateGraph
 
@@ -50,6 +57,98 @@ _TOOL_LABELS: dict[str, str] = {
 }
 
 
+class AgentObserver(Protocol):
+    """Receives the progress of one agent run (all methods are called from the thread running the graph)."""
+
+    #: True when the observer wants content tokens (the graph then streams model calls that support it).
+    wants_tokens: bool
+
+    def on_token(self, step: int, text: str) -> None:
+        """Visible content of model call ``step`` (0-based), as it streams."""
+
+    def on_tool_call(self, call_id: str | None, name: str, arguments: dict[str, Any], label: str) -> None:
+        """The graph is about to run tool ``name``; ``label`` is the operator-facing progress text."""
+
+    def on_tool_result(self, call_id: str | None, name: str, result: str, ok: bool) -> None:
+        """Tool ``name`` returned ``result`` (``ok`` False when the tool raised and ``result`` is the error text)."""
+
+
+class NullObserver:
+    """Observer that ignores every event."""
+
+    wants_tokens = False
+
+    def on_token(self, step: int, text: str) -> None:
+        return None
+
+    def on_tool_call(self, call_id: str | None, name: str, arguments: dict[str, Any], label: str) -> None:
+        return None
+
+    def on_tool_result(self, call_id: str | None, name: str, result: str, ok: bool) -> None:
+        return None
+
+
+class StatusBoxObserver(NullObserver):
+    """Page 7's progress display: the tool label in the Streamlit status placeholder."""
+
+    def __init__(self, status_box: Any) -> None:
+        self.status_box = status_box
+
+    def on_tool_call(self, call_id: str | None, name: str, arguments: dict[str, Any], label: str) -> None:
+        self.status_box.status(label, expanded=False)
+
+
+class ThinkFilter:
+    """Removes ``<think>...</think>`` blocks from streamed text, also when a tag is split across chunks."""
+
+    OPEN = "<think>"
+    CLOSE = "</think>"
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._inside = False
+
+    @staticmethod
+    def _partial_tail(text: str, tag: str) -> int:
+        """Length of the longest end of ``text`` that starts ``tag`` (a tag that may continue in the next chunk)."""
+        lower = text.lower()
+        for size in range(min(len(tag) - 1, len(text)), 0, -1):
+            if lower.endswith(tag[:size]):
+                return size
+        return 0
+
+    def feed(self, text: str) -> str:
+        """Visible part of ``text``; a possible partial tag at its end is held back for the next chunk."""
+        self._buffer += text
+        visible: list[str] = []
+        while True:
+            lower = self._buffer.lower()
+            if self._inside:
+                end = lower.find(self.CLOSE)
+                if end < 0:
+                    keep = self._partial_tail(self._buffer, self.CLOSE)
+                    self._buffer = self._buffer[len(self._buffer) - keep :]
+                    return "".join(visible)
+                self._buffer = self._buffer[end + len(self.CLOSE) :]
+                self._inside = False
+                continue
+            start = lower.find(self.OPEN)
+            if start < 0:
+                keep = self._partial_tail(self._buffer, self.OPEN)
+                visible.append(self._buffer[: len(self._buffer) - keep])
+                self._buffer = self._buffer[len(self._buffer) - keep :]
+                return "".join(visible)
+            visible.append(self._buffer[:start])
+            self._buffer = self._buffer[start + len(self.OPEN) :]
+            self._inside = True
+
+    def flush(self) -> str:
+        """Text held back at the end of the stream (nothing when it ends inside a think block)."""
+        rest = "" if self._inside else self._buffer
+        self._buffer = ""
+        return rest
+
+
 class FurnaceMindGraphState(TypedDict):
     """State object passed between all FurnaceMind LangGraph nodes.
 
@@ -59,8 +158,9 @@ class FurnaceMindGraphState(TypedDict):
             appending assistant messages, tool outputs, and optional MRAG visual
             messages.
         tools: OpenAI-compatible tool schemas exposed to the model.
-        status_box: Streamlit placeholder used to show the currently running
-            tool label.
+        observer: Receives tool calls, tool results and streamed tokens
+            (page 7: the Streamlit status placeholder; agent service: the SSE
+            stream).
         final_response: Final assistant response once the model stops requesting
             tools.
         last_tool_result: Last tool output, used as a defensive fallback if the
@@ -71,7 +171,7 @@ class FurnaceMindGraphState(TypedDict):
     llm: OpenRouterClient
     messages: list[dict[str, Any]]
     tools: list[dict[str, Any]]
-    status_box: Any
+    observer: AgentObserver
     final_response: str
     last_tool_result: str | None
     iterations: int
@@ -249,11 +349,33 @@ def _call_model(state: FurnaceMindGraphState) -> FurnaceMindGraphState:
         message. If the model returned plain content, ``final_response`` is set
         and the graph can finalize.
     """
-    completion = state["llm"].chat_completions(
-        messages=state["messages"],
-        tools=state["tools"],
-        tool_choice="auto",
-    )
+    llm = state["llm"]
+    observer = state["observer"]
+    stream = getattr(llm, "chat_completions_stream", None)
+    if getattr(observer, "wants_tokens", False) and callable(stream):
+        step = state["iterations"]
+        think = ThinkFilter()
+
+        def on_token(text: str) -> None:
+            visible = think.feed(text)
+            if visible:
+                observer.on_token(step, visible)
+
+        completion = stream(
+            messages=state["messages"],
+            tools=state["tools"],
+            tool_choice="auto",
+            on_token=on_token,
+        )
+        rest = think.flush()
+        if rest:
+            observer.on_token(step, rest)
+    else:
+        completion = llm.chat_completions(
+            messages=state["messages"],
+            tools=state["tools"],
+            tool_choice="auto",
+        )
     msg = completion.choices[0].message
 
     content = _strip_thinking(getattr(msg, "content", None) or "")
@@ -291,20 +413,25 @@ def _execute_tools(state: FurnaceMindGraphState) -> FurnaceMindGraphState:
     """
     assistant_message = state["messages"][-1]
     pending_visual_message: dict[str, Any] | None = None
+    observer = state["observer"]
 
     for tool_call in assistant_message.get("tool_calls", []):
         function = tool_call.get("function", {})
         tool_name = str(function.get("name") or "")
         label = _TOOL_LABELS.get(tool_name, f"Running {tool_name}...")
-        state["status_box"].status(label, expanded=False)
+        arguments = _parse_tool_arguments(function.get("arguments"))
+        observer.on_tool_call(tool_call.get("id"), tool_name, arguments, label)
 
+        ok = True
         try:
             result = execute_openai_tool_call(
                 name=tool_name,
-                arguments=_parse_tool_arguments(function.get("arguments")),
+                arguments=arguments,
             )
         except Exception as exc:
+            ok = False
             result = _tool_error_result(tool_name, exc)
+        observer.on_tool_result(tool_call.get("id"), tool_name, result, ok)
         state["last_tool_result"] = result
         state["messages"].append(
             {
@@ -416,7 +543,8 @@ def run_furnacemind_graph_loop(
     llm: OpenRouterClient,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
-    status_box: Any,
+    status_box: Any = None,
+    observer: AgentObserver | None = None,
 ) -> str:
     """Run one complete FurnaceMind model/tool workflow.
 
@@ -427,19 +555,22 @@ def run_furnacemind_graph_loop(
             MRAG visual messages produced during the run.
         tools: OpenAI-compatible schemas for tools the model may call.
         status_box: Streamlit placeholder used to display progress labels while
-            tools execute.
+            tools execute (page 7); ignored when ``observer`` is given.
+        observer: Receiver of tool calls, tool results and streamed tokens.
 
     Returns:
         Final assistant response text. Hidden reasoning blocks have already been
         stripped before this value is set.
     """
+    if observer is None:
+        observer = StatusBoxObserver(status_box) if status_box is not None else NullObserver()
     _ensure_langchain_debug_compat()
     result = build_furnacemind_graph().invoke(
         {
             "llm": llm,
             "messages": messages,
             "tools": tools,
-            "status_box": status_box,
+            "observer": observer,
             "final_response": "",
             "last_tool_result": None,
             "iterations": 0,

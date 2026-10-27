@@ -18,6 +18,8 @@ from __future__ import annotations
 import io as _io
 import logging
 import os as _os
+from collections.abc import Callable, Iterable
+from types import SimpleNamespace
 from typing import Any, List, Literal, Optional
 
 from openai import OpenAI
@@ -26,6 +28,77 @@ from utils.settings import normalize_openrouter_reasoning_level, settings
 
 Provider = Literal["openrouter", "openai"]
 ApiMode = Literal["responses", "chat_completions"]
+
+
+def _field(obj: Any, name: str) -> Any:
+    """Read ``name`` from an SDK object or a dictionary (stream chunks in tests)."""
+    if isinstance(obj, dict):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def assemble_stream(
+    chunks: Iterable[Any],
+    *,
+    on_token: Callable[[str], None] | None = None,
+    default_model: str | None = None,
+) -> Any:
+    """Assemble streamed Chat Completions chunks into a completion-shaped object.
+
+    Content deltas are joined (and passed to ``on_token`` as they arrive);
+    tool-call deltas are merged by their ``index`` (id and name from the first
+    delta that carries them, arguments concatenated). The result has the shape
+    the agent graph reads from a non-streamed completion:
+    ``result.model`` and ``result.choices[0].message.content / .tool_calls``
+    (tool calls as OpenAI-compatible dictionaries, in index order).
+
+    Args:
+        chunks: Stream returned by ``chat.completions.create(stream=True)``.
+        on_token: Called with every non-empty content delta.
+        default_model: Model reported when no chunk names one.
+
+    Returns:
+        A ``SimpleNamespace`` completion with one choice.
+    """
+    content: list[str] = []
+    calls: dict[int, dict[str, Any]] = {}
+    model: str | None = None
+    finish_reason: str | None = None
+    for chunk in chunks:
+        model = _field(chunk, "model") or model
+        choices = _field(chunk, "choices") or []
+        if not choices:
+            continue
+        choice = choices[0]
+        finish_reason = _field(choice, "finish_reason") or finish_reason
+        delta = _field(choice, "delta")
+        if delta is None:
+            continue
+        text = _field(delta, "content")
+        if text:
+            content.append(text)
+            if on_token is not None:
+                on_token(text)
+        for tool_call in _field(delta, "tool_calls") or []:
+            index = _field(tool_call, "index")
+            slot = calls.setdefault(
+                len(calls) if index is None else int(index),
+                {"id": None, "type": "function", "function": {"name": "", "arguments": ""}},
+            )
+            slot["id"] = slot["id"] or _field(tool_call, "id")
+            function = _field(tool_call, "function")
+            if function is not None:
+                slot["function"]["name"] = slot["function"]["name"] or (_field(function, "name") or "")
+                slot["function"]["arguments"] += _field(function, "arguments") or ""
+    message = SimpleNamespace(
+        role="assistant",
+        content="".join(content) or None,
+        tool_calls=[calls[i] for i in sorted(calls)] or None,
+    )
+    return SimpleNamespace(
+        model=model or default_model,
+        choices=[SimpleNamespace(index=0, message=message, finish_reason=finish_reason)],
+    )
 
 
 # OPENROUTER CLIENT
@@ -282,6 +355,43 @@ class OpenRouterClient:
                 **kwargs,
                 max_tokens=self.max_tokens,
             )
+        return self._record_completion(completion)
+
+    def chat_completions_stream(
+        self,
+        *,
+        messages: List[dict],
+        tools: Optional[List[dict]] = None,
+        tool_choice: Optional[Any] = "auto",
+        stop: Optional[List[str]] = None,
+        on_token: Callable[[str], None] | None = None,
+    ) -> Any:
+        """Streamed variant of :meth:`chat_completions` (FurnaceMind agent service, SV-5.1).
+
+        Sends the same request with ``stream=True``, calls ``on_token`` with
+        every content delta and returns the assembled completion in the shape
+        of a non-streamed one (:func:`assemble_stream`), so the agent graph
+        handles both alike.
+        """
+        kwargs = self._base_kwargs(messages=messages, stop=stop)
+        kwargs["stream"] = True
+        if tools:
+            kwargs["tools"] = tools
+            if tool_choice is not None:
+                kwargs["tool_choice"] = tool_choice
+        try:
+            stream = self.client.chat.completions.create(
+                **kwargs,
+                max_completion_tokens=self.max_tokens,
+            )
+        except Exception as exc:
+            if not self._should_retry_with_max_tokens(exc):
+                raise
+            stream = self.client.chat.completions.create(
+                **kwargs,
+                max_tokens=self.max_tokens,
+            )
+        completion = assemble_stream(stream, on_token=on_token, default_model=self.primary_model)
         return self._record_completion(completion)
 
 

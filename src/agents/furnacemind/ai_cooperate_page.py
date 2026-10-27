@@ -18,11 +18,12 @@ import streamlit as st
 import agents.furnace_tools as furnace_tools
 from agents.embeddings.cloud_embedding import CloudEmbeddingClient
 from agents.furnacemind import prompts
-from agents.furnacemind.agent import run_agent_loop
 from agents.furnacemind.context import SystemPromptContext
+from agents.furnacemind.graph import StatusBoxObserver
 from agents.furnacemind.skill_registry import SkillRegistry
 from agents.furnacemind.skill_vector_store import SkillVectorStore
 from agents.furnacemind.skills import SkillEngine
+from agents.furnacemind.turn import run_turn, system_prompt
 from agents.llm.llm_client import OpenRouterClient
 from agents.memory import fm_memory
 from agents.memory.conversation_history import ConversationHistoryStore
@@ -900,18 +901,16 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     if st.session_state.get("shift_store") is None:
         st.session_state["shift_store"] = _cached_shift_store()
     tools = furnace_tools.get_openai_tool_schemas()
-    extra_context = prompts.TOOL_POLICY
-    if feedback_lesson_context:
-        extra_context = f"{extra_context}\n\n{feedback_lesson_context}"
-    if semantic_memory_context:
-        extra_context = f"{extra_context}\n\n{semantic_memory_context}"
     messages = [
         {
             "role": "system",
-            "content": context.build(
-                extra=extra_context,
+            "content": system_prompt(
+                context,
+                tool_policy=prompts.TOOL_POLICY,
                 skill_id=active_skill_id,
                 skill_context=active_skill_context,
+                feedback_context=feedback_lesson_context,
+                semantic_context=semantic_memory_context,
             ),
         },
         *chat_interface.chat_history_to_messages(
@@ -920,28 +919,24 @@ def render_ai_cooperate(*, field_labels: dict) -> None:  # noqa: ARG001
     ]
     history_len_before = len(st.session_state.chat_history)
     artifact_turn_id = uuid.uuid4().hex
-    st.session_state["fm_current_artifact_turn_id"] = artifact_turn_id
 
-    try:
-        with st.chat_message("assistant"):
-            status_box = st.empty()
-            response_box = st.empty()
-            status_box.status("Thinking...", expanded=False)
-            try:
-                final_response = run_agent_loop(
-                    llm=llm,
-                    messages=messages,
-                    tools=tools,
-                    status_box=status_box,
-                    response_box=response_box,
-                )
-            except Exception as exc:
-                llm.record_failure(exc)
-                final_response = llm.unavailable_message()
-                status_box.empty()
-                response_box.markdown(final_response)
-    finally:
-        st.session_state.pop("fm_current_artifact_turn_id", None)
+    # The turn shared with the agent service (agents.furnacemind.turn, SV-5.1): the browser session's state is
+    # the tools' state, the status placeholder shows the running tool.
+    with st.chat_message("assistant"):
+        status_box = st.empty()
+        response_box = st.empty()
+        status_box.status("Thinking...", expanded=False)
+        turn = run_turn(
+            llm=llm,
+            messages=messages,
+            tools=tools,
+            state=st.session_state,
+            observer=StatusBoxObserver(status_box),
+            turn_id=artifact_turn_id,
+        )
+        final_response = turn.final_text
+        status_box.empty()
+        response_box.markdown(final_response)
 
     chat_interface.inject_artifacts(
         history_len_before,

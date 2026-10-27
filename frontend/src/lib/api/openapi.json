@@ -602,6 +602,125 @@
         "title": "ChargedCokePoint",
         "type": "object"
       },
+      "ConversationCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "reasoning_level": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OpenRouter reasoning profile (default: the configured default, Medium)",
+            "title": "Reasoning Level"
+          },
+          "title": {
+            "default": "",
+            "description": "Title; empty: the first question becomes the title",
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "title": "ConversationCreate",
+        "type": "object"
+      },
+      "DatasetPart": {
+        "properties": {
+          "columns": {
+            "description": "Columns of the dataset, count",
+            "title": "Columns",
+            "type": "integer"
+          },
+          "dataset_id": {
+            "default": "",
+            "description": "Dataset id the tools return to the model",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "meta": {
+            "description": "Source, window and resampling of the dataset",
+            "title": "Meta",
+            "type": "object"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DatasetPreview"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First rows; null when they cannot be serialised"
+          },
+          "preview_rows": {
+            "description": "Rows in the preview, count (first rows of the dataset)",
+            "title": "Preview Rows",
+            "type": "integer"
+          },
+          "rows": {
+            "description": "Rows of the dataset, count",
+            "title": "Rows",
+            "type": "integer"
+          },
+          "type": {
+            "const": "dataset",
+            "default": "dataset",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rows",
+          "columns",
+          "preview_rows"
+        ],
+        "title": "DatasetPart",
+        "type": "object"
+      },
+      "DatasetPreview": {
+        "properties": {
+          "columns": {
+            "description": "Column names",
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "data": {
+            "description": "Rows of values in the columns' own units; null for missing",
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "index": {
+            "description": "Row labels (ISO 8601 times for a time index, IST as the tool gave)",
+            "items": {},
+            "title": "Index",
+            "type": "array"
+          }
+        },
+        "required": [
+          "columns",
+          "index",
+          "data"
+        ],
+        "title": "DatasetPreview",
+        "type": "object"
+      },
       "DecisionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -984,6 +1103,408 @@
           }
         },
         "title": "FluxInputRow",
+        "type": "object"
+      },
+      "FmArtifactEvent": {
+        "properties": {
+          "part": {
+            "discriminator": {
+              "mapping": {
+                "dataset": "#/components/schemas/DatasetPart",
+                "plotly": "#/components/schemas/PlotlyPart"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PlotlyPart"
+              },
+              {
+                "$ref": "#/components/schemas/DatasetPart"
+              }
+            ],
+            "title": "Part"
+          },
+          "type": {
+            "const": "artifact",
+            "default": "artifact",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "part"
+        ],
+        "title": "FmArtifactEvent",
+        "type": "object"
+      },
+      "FmAssistantMessageEvent": {
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "message": {
+            "$ref": "#/components/schemas/FmMessage"
+          },
+          "type": {
+            "const": "message.assistant",
+            "default": "message.assistant",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "message"
+        ],
+        "title": "FmAssistantMessageEvent",
+        "type": "object"
+      },
+      "FmConversation": {
+        "properties": {
+          "created_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "description": "Conversation id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "message_count": {
+            "description": "Messages in the conversation, count",
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "messages": {
+            "description": "Every message, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/FmMessage"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "owner": {
+            "description": "Username of the creator",
+            "title": "Owner",
+            "type": "string"
+          },
+          "reasoning_level": {
+            "description": "OpenRouter reasoning profile of the conversation",
+            "enum": [
+              "Low",
+              "Medium",
+              "High"
+            ],
+            "title": "Reasoning Level",
+            "type": "string"
+          },
+          "running": {
+            "default": false,
+            "description": "True while a turn runs in this API process",
+            "title": "Running",
+            "type": "boolean"
+          },
+          "title": {
+            "description": "First user message, shortened; empty before it",
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "UTC, time of the last message",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "reasoning_level",
+          "owner",
+          "created_at",
+          "updated_at",
+          "message_count"
+        ],
+        "title": "FmConversation",
+        "type": "object"
+      },
+      "FmConversationSummary": {
+        "properties": {
+          "created_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "description": "Conversation id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "message_count": {
+            "description": "Messages in the conversation, count",
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "owner": {
+            "description": "Username of the creator",
+            "title": "Owner",
+            "type": "string"
+          },
+          "reasoning_level": {
+            "description": "OpenRouter reasoning profile of the conversation",
+            "enum": [
+              "Low",
+              "Medium",
+              "High"
+            ],
+            "title": "Reasoning Level",
+            "type": "string"
+          },
+          "title": {
+            "description": "First user message, shortened; empty before it",
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "UTC, time of the last message",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "reasoning_level",
+          "owner",
+          "created_at",
+          "updated_at",
+          "message_count"
+        ],
+        "title": "FmConversationSummary",
+        "type": "object"
+      },
+      "FmErrorEvent": {
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "description": "HTTP status the error would have had",
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "const": "error",
+            "default": "error",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "title"
+        ],
+        "title": "FmErrorEvent",
+        "type": "object"
+      },
+      "FmMessage": {
+        "properties": {
+          "content": {
+            "description": "Text replayed to the model (user question or final answer)",
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "meta": {
+            "description": "Reasoning level, model status and error, duration_s (s), tool_calls (count)",
+            "title": "Meta",
+            "type": "object"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model that answered",
+            "title": "Model"
+          },
+          "parts": {
+            "description": "What the answer showed, in order",
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "dataset": "#/components/schemas/DatasetPart",
+                  "plotly": "#/components/schemas/PlotlyPart",
+                  "text": "#/components/schemas/TextPart",
+                  "tool_call": "#/components/schemas/ToolCallPart",
+                  "tool_result": "#/components/schemas/ToolResultPart"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TextPart"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolCallPart"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolResultPart"
+                },
+                {
+                  "$ref": "#/components/schemas/PlotlyPart"
+                },
+                {
+                  "$ref": "#/components/schemas/DatasetPart"
+                }
+              ]
+            },
+            "title": "Parts",
+            "type": "array"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "seq": {
+            "description": "Position in the conversation, 1-based",
+            "title": "Seq",
+            "type": "integer"
+          },
+          "status": {
+            "description": "failed: the model was unavailable",
+            "enum": [
+              "complete",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "role",
+          "content",
+          "status",
+          "created_at"
+        ],
+        "title": "FmMessage",
+        "type": "object"
+      },
+      "FmTokenEvent": {
+        "properties": {
+          "step": {
+            "description": "Model call of the turn, 0-based (tool rounds in between)",
+            "title": "Step",
+            "type": "integer"
+          },
+          "text": {
+            "description": "Visible content as it streams (reasoning blocks removed)",
+            "title": "Text",
+            "type": "string"
+          },
+          "type": {
+            "const": "token",
+            "default": "token",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "text"
+        ],
+        "title": "FmTokenEvent",
+        "type": "object"
+      },
+      "FmToolCallEvent": {
+        "properties": {
+          "part": {
+            "$ref": "#/components/schemas/ToolCallPart"
+          },
+          "type": {
+            "const": "tool.call",
+            "default": "tool.call",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "part"
+        ],
+        "title": "FmToolCallEvent",
+        "type": "object"
+      },
+      "FmToolResultEvent": {
+        "properties": {
+          "part": {
+            "$ref": "#/components/schemas/ToolResultPart"
+          },
+          "type": {
+            "const": "tool.result",
+            "default": "tool.result",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "part"
+        ],
+        "title": "FmToolResultEvent",
+        "type": "object"
+      },
+      "FmUserMessageEvent": {
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "message": {
+            "$ref": "#/components/schemas/FmMessage"
+          },
+          "type": {
+            "const": "message.user",
+            "default": "message.user",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "message"
+        ],
+        "title": "FmUserMessageEvent",
         "type": "object"
       },
       "ForecastChargedCokeEvent": {
@@ -2305,6 +2826,40 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MessageCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "The question (Markdown)",
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "reasoning_level": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reasoning profile of this turn (default: the conversation's)",
+            "title": "Reasoning Level"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "MessageCreate",
+        "type": "object"
+      },
       "OperatorInputsDocument": {
         "additionalProperties": false,
         "description": "The operator inputs; a section left out is not set (the configured defaults apply).",
@@ -3295,6 +3850,44 @@
           "decided_at"
         ],
         "title": "PlanDecisionView",
+        "type": "object"
+      },
+      "PlotlyPart": {
+        "properties": {
+          "bytes": {
+            "description": "Size of the figure JSON, bytes",
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "figure": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Plotly figure JSON (data, layout); null when omitted",
+            "title": "Figure"
+          },
+          "omitted": {
+            "default": false,
+            "description": "True when the figure exceeds 5000000 bytes and is not kept",
+            "title": "Omitted",
+            "type": "boolean"
+          },
+          "type": {
+            "const": "plotly",
+            "default": "plotly",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bytes"
+        ],
+        "title": "PlotlyPart",
         "type": "object"
       },
       "ProblemDetail": {
@@ -5741,6 +6334,125 @@
         "title": "TempRowView",
         "type": "object"
       },
+      "TextPart": {
+        "properties": {
+          "text": {
+            "description": "Final answer of the turn (Markdown)",
+            "title": "Text",
+            "type": "string"
+          },
+          "type": {
+            "const": "text",
+            "default": "text",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TextPart",
+        "type": "object"
+      },
+      "ToolCallPart": {
+        "properties": {
+          "arguments": {
+            "description": "Arguments the model passed",
+            "title": "Arguments",
+            "type": "object"
+          },
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Id of the call, pairs the call with its result",
+            "title": "Call Id"
+          },
+          "label": {
+            "default": "",
+            "description": "Progress text shown while the tool runs",
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "description": "Tool name, e.g. fetch_ml_data",
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "const": "tool_call",
+            "default": "tool_call",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ToolCallPart",
+        "type": "object"
+      },
+      "ToolResultPart": {
+        "properties": {
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Id of the call",
+            "title": "Call Id"
+          },
+          "chars": {
+            "description": "Length of the full tool output, characters",
+            "title": "Chars",
+            "type": "integer"
+          },
+          "content": {
+            "description": "Tool output returned to the model, at most 8000 characters",
+            "title": "Content",
+            "type": "string"
+          },
+          "name": {
+            "description": "Tool name",
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "description": "False when the tool raised (content is then the error)",
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "truncated": {
+            "description": "True when content is shorter than the full output",
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "type": {
+            "const": "tool_result",
+            "default": "tool_result",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "ok",
+          "content",
+          "chars",
+          "truncated"
+        ],
+        "title": "ToolResultPart",
+        "type": "object"
+      },
       "TransitBand": {
         "properties": {
           "blend_wet_pct": {
@@ -6930,6 +7642,276 @@
         "summary": "Current session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/fm/conversations": {
+      "get": {
+        "description": "The signed-in user's conversations, most recently updated first.",
+        "operationId": "furnacemind_list_conversations",
+        "parameters": [
+          {
+            "description": "Conversations, count",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "description": "Conversations, count",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FmConversationSummary"
+                  },
+                  "title": "Response Furnacemind List Conversations",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "My conversations",
+        "tags": [
+          "furnacemind"
+        ]
+      },
+      "post": {
+        "description": "An empty conversation owned by the signed-in user; ask with POST /api/fm/conversations/{id}/messages.",
+        "operationId": "furnacemind_create_conversation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FmConversation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Start a conversation",
+        "tags": [
+          "furnacemind"
+        ]
+      }
+    },
+    "/api/fm/conversations/{conversation_id}": {
+      "get": {
+        "description": "Every message with its parts (tool calls and results, Plotly figure JSON, dataset previews), oldest first.",
+        "operationId": "furnacemind_get_conversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FmConversation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "A conversation",
+        "tags": [
+          "furnacemind"
+        ]
+      }
+    },
+    "/api/fm/conversations/{conversation_id}/messages": {
+      "post": {
+        "description": "Store the question, run page 7's agent on the conversation (the model call streamed; tools in a worker\nthread) and stream its progress. The answer is stored when the turn completes, also if the client disconnects.\nOne turn per conversation at a time.",
+        "operationId": "furnacemind_post_message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "artifact": "#/components/schemas/FmArtifactEvent",
+                      "error": "#/components/schemas/FmErrorEvent",
+                      "message.assistant": "#/components/schemas/FmAssistantMessageEvent",
+                      "message.user": "#/components/schemas/FmUserMessageEvent",
+                      "token": "#/components/schemas/FmTokenEvent",
+                      "tool.call": "#/components/schemas/FmToolCallEvent",
+                      "tool.result": "#/components/schemas/FmToolResultEvent"
+                    },
+                    "propertyName": "type"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/FmUserMessageEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FmTokenEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FmToolCallEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FmToolResultEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FmArtifactEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FmAssistantMessageEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FmErrorEvent"
+                    }
+                  ],
+                  "title": "Response 200 Furnacemind Post Message",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Server-sent events, one FmStreamEvent per event (``event:`` is its type): message.user (the stored question), token, tool.call, tool.result, artifact (Plotly figure or dataset preview), then message.assistant (the stored answer) or error."
+          },
+          "409": {
+            "description": "A turn of this conversation is running"
+          },
+          "4XX": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "503": {
+            "description": "The twin store or the agent (LLM, Qdrant settings) is not available"
+          },
+          "5XX": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Ask (answer streamed as text/event-stream)",
+        "tags": [
+          "furnacemind"
         ]
       }
     },

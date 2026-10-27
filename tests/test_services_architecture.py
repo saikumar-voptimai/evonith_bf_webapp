@@ -60,6 +60,11 @@ def test_no_streamlit_or_ui_import(path: Path) -> None:
         "services.reports",  # SV-2.3, with what its worker kinds load on first use:
         "reports.furnace_report.service",  # the Reports tab's data pipeline (InfluxDB, Neon)
         "agents.llm.llm_client",  # page 7's LLM client
+        "services.furnacemind",
+        # SV-5.1: the agent stack a FurnaceMind turn loads in the API process (tools, turn, client, prompt context).
+        "agents.furnace_tools",
+        "agents.furnacemind.turn",
+        "agents.furnacemind.context",
         "data.db",
         "data.twin",
         "api.main",

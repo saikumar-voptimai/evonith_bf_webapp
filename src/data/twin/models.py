@@ -12,6 +12,8 @@
 | ``facts_version`` | Versioned overlay of the fact register with second-admin review | admin space (SV-4.2) |
 | ``operator_inputs`` | Optimiser inputs (prices, stock, availability, bounds), SCD-2 versions | page 9, API (SV-3.1) |
 | ``audit_log`` | Admin writes (with the values before and after) and plan decisions, append-only | API |
+| ``fm_conversation`` | FurnaceMind conversations of the agent service: owner, title, reasoning level | API (SV-5.1) |
+| ``fm_message`` | Their messages in order: text and parts (tool calls and results, figures, dataset previews) | API |
 
 Times are ``timestamptz`` in UTC. Columns queried by time range are indexed (``ix_<table>_<column>``). Values that are
 plotted or filtered have typed columns with the unit in the name (``k_trace`` kg/tHM); everything else of a result is
@@ -81,6 +83,11 @@ REPORT_KINDS = ("closed", "live")
 NARRATIVE_STATES = ("ok", "failed", "skipped")
 #: Where a version of the operator inputs was written: the YAML recorded as version 1, page 9, the API.
 OPERATOR_INPUT_ORIGINS = ("seed", "streamlit", "api")
+FM_ROLES = ("user", "assistant")
+FM_MESSAGE_STATES = ("complete", "failed")
+REASONING_LEVELS = ("Low", "Medium", "High")
+#: Server default of the JSON list columns (message parts).
+EMPTY_JSON_LIST = text("'[]'")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -442,6 +449,69 @@ class AuditLog(TwinBase):
     )
 
 
+class FmConversation(TwinBase):
+    """A FurnaceMind conversation of the agent service (``services.furnacemind``, SV-5.1).
+
+    Owned by the twin-api user who created it; ``message_count`` is the ``seq`` of its last message.
+    """
+
+    __tablename__ = "fm_conversation"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    #: Username of the twin-api session; ``owner_id`` the ``identity.users`` id when the session carries it.
+    owner: Mapped[str] = mapped_column(String(128))
+    owner_id: Mapped[str | None] = mapped_column(String(64))
+    #: First user message, shortened (empty until the first message).
+    title: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    #: OpenRouter reasoning profile of the conversation: Low, Medium, High.
+    reasoning_level: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+    message_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    meta: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=EMPTY_JSON)
+
+    __table_args__ = (
+        CheckConstraint(_in("reasoning_level", REASONING_LEVELS), name="reasoning_level"),
+        CheckConstraint("message_count >= 0", name="message_count"),
+        Index("ix_fm_conversation_updated_at", "updated_at"),
+        Index("ix_fm_conversation_owner_updated_at", "owner", "updated_at"),
+    )
+
+
+class FmMessage(TwinBase):
+    """One message of a FurnaceMind conversation: user question or assistant answer, numbered ``seq`` 1, 2, ...
+
+    ``content`` is the text replayed to the model; ``parts`` what the answer showed, in order: ``tool_call``,
+    ``tool_result``, ``plotly`` (figure JSON), ``dataset`` (preview of the first rows) and ``text``.
+    """
+
+    __tablename__ = "fm_message"
+
+    id: Mapped[int] = mapped_column(BIG_ID, Identity(), primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(f"{SCHEMA}.fm_conversation.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column(Integer)
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text, default="", server_default="")
+    parts: Mapped[list[dict[str, Any]]] = mapped_column(JSON_DOC, default=list, server_default=EMPTY_JSON_LIST)
+    #: ``complete``, or ``failed`` when the model was unavailable (``content`` is then the operator message).
+    status: Mapped[str] = mapped_column(String(16), default="complete", server_default="complete")
+    #: Model that answered (assistant messages).
+    model: Mapped[str | None] = mapped_column(String(128))
+    #: Owner id of the turn's artifacts (assistant messages).
+    turn_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime]
+    #: Reasoning level, model status and error, durations (s) of the turn.
+    meta: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=EMPTY_JSON)
+
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "seq"),
+        CheckConstraint(_in("role", FM_ROLES), name="role"),
+        CheckConstraint(_in("status", FM_MESSAGE_STATES), name="status"),
+        CheckConstraint("seq >= 1", name="seq"),
+        Index("ix_fm_message_created_at", "created_at"),
+    )
+
+
 #: Tables whose rows are written once; the migration's trigger refuses UPDATE and DELETE on PostgreSQL.
 APPEND_ONLY = ("shift_record", "plan_decision", "audit_log")
 
@@ -457,4 +527,6 @@ TIME_INDEXED = {
     "facts_version": ("created_at",),
     "operator_inputs": ("valid_from",),
     "audit_log": ("at",),
+    "fm_conversation": ("updated_at",),
+    "fm_message": ("created_at",),
 }
