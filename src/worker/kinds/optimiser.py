@@ -77,7 +77,7 @@ def _fallbacks(case: optimiser.Case) -> list[str]:
 async def _solve(job: JobContext, case: optimiser.Case) -> tuple[dict[str, Any], BaseException | None]:
     """Solve one case in the pool; the run's row values and the failure that is not a refusal of the case."""
     try:
-        res = await job.run_cpu(optimiser.compute_mode, *case.args)
+        res = await job.run_cpu(optimiser.solve_case, *case.args)
         return optimiser.run_values(case, res), None
     except (BandError, Infeasible) as exc:
         return optimiser.run_values(case, None, error=f"{type(exc).__name__}: {exc}", status="infeasible"), None

@@ -37,7 +37,7 @@ import numpy as np
 import pandas as pd
 
 from utils.burden_engine.calibration import network_context, sinter_strength
-from utils.burden_engine.omega_model import OmegaModel, OmegaState, OmegaTerms
+from utils.burden_engine.omega_model import OmegaModel, OmegaState, OmegaTerms, PlanOmega
 from utils.burden_engine.strata_network import NET_VERSION, solve_stats
 
 ORE_COLUMN = re.compile(r"ORE_(\d+)_CALC_MT")
@@ -215,6 +215,7 @@ def evaluate_window(anchor: StrataAnchor, row: Mapping[str, Any], *, humidity: f
     m = anchor.model
     state, unmapped = omega_state(row, m, humidity=humidity, rdi=m.rdi)
     n0, s0 = solve_stats()
+    m.anchor_many(PlanOmega.states(m, state, state.coke))  # B, P and F together (in parallel with an executor)
     plan = m.plan(state)
     terms = plan.terms(state.coke, anchor.R)
     n1, s1 = solve_stats()

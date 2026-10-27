@@ -22,7 +22,10 @@ from services import coke_energy as ce
 from services import drift, twin
 from services.jobs import TwinEvaluateParams
 from services.store import twin_store
+from utils.burden_engine import strata_network
 from worker.runtime import JobContext, TransientJobError, handles
+
+BACKFILL_SOLVERS_FROM = 3  # windows from which their network solves run in solver processes
 
 
 @handles("twin.evaluate")
@@ -42,21 +45,30 @@ async def evaluate(job: JobContext, params: TwinEvaluateParams) -> dict[str, Any
         await asyncio.to_thread(store.jobs.upsert, record.model_dump())
     job_id = job.job_id if record is not None else None
     results: list[twin.StoredWindow] = []
-    for i, w in enumerate(windows):
-        await job.progress(
-            0.05 + 0.85 * i / len(windows),
-            f"Window {i + 1} of {len(windows)}: {w - 8 * twin.HOUR:%d %b %H:%M} to {w:%H:%M}",
-        )
-        results.append(
-            await asyncio.to_thread(
-                twin.evaluate_and_store,
-                store,
-                w,
-                job_id=job_id,
-                last_row_pending=not data.holds(w - twin.HOUR),  # a backfilled window may lack its row too
-                strata=params.strata,
-            )
-        )
+    # A backfill of several windows solves each window's three STRATA states in solver processes (SV-1.8); for one
+    # window the start of the processes would cost about what it saves. Starting and stopping them blocks (a thread);
+    # the executor holds for this job's context, which the evaluation threads copy, not for other jobs.
+    solvers = min(3, strata_network.solver_count()) if params.strata and len(windows) >= BACKFILL_SOLVERS_FROM else 0
+    pool = await asyncio.to_thread(strata_network.start_solvers, solvers)
+    try:
+        with strata_network.parallel_solves(pool):
+            for i, w in enumerate(windows):
+                await job.progress(
+                    0.05 + 0.85 * i / len(windows),
+                    f"Window {i + 1} of {len(windows)}: {w - 8 * twin.HOUR:%d %b %H:%M} to {w:%H:%M}",
+                )
+                results.append(
+                    await asyncio.to_thread(
+                        twin.evaluate_and_store,
+                        store,
+                        w,
+                        job_id=job_id,
+                        last_row_pending=not data.holds(w - twin.HOUR),  # a backfilled window may lack its row too
+                        strata=params.strata,
+                    )
+                )
+    finally:
+        await asyncio.to_thread(strata_network.stop_solvers, pool)
     latest = results[-1].values
     alarms: list[str] = []
     if store is not None:

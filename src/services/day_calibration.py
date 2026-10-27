@@ -145,14 +145,17 @@ def compute(
     return live_calibration(data.result, cfg, as_of=pd.Timestamp(day))
 
 
-def network_jacobian(cal_json: str) -> dict[str, Any]:
+def network_jacobian(cal_json: str, solvers: int | None = None) -> dict[str, Any]:
     """Runs in a pool process: the STRATA-ω model of an engine on this calibration (exact solve at the calibration
-    state and its 17-solve Jacobian, read from or written to the disk cache). Returns the network statistics."""
+    state and its 17-solve Jacobian, read from or written to the disk cache; a new Jacobian is solved in a pool of
+    ``solvers`` processes, SV-1.8). Returns the network statistics."""
+    from utils.burden_engine import strata_network
     from utils.burden_engine.engine import Engine
 
     t0 = time.perf_counter()
     eng = Engine(cal=json.loads(cal_json))
-    model = eng.omega_model()
+    with strata_network.solver_processes(solvers):  # a cached Jacobian needs no solve; the pool then idles
+        model = eng.omega_model()
     stats = dict(model.network_stats())
     stats["seconds_total"] = round(time.perf_counter() - t0, 1)
     return stats

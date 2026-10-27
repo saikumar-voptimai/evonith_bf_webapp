@@ -379,18 +379,27 @@ def relax_steps(eng: Engine, L: Limits, s: Settings) -> list[tuple[str, dict[str
     return steps
 
 
+def _relaxed(eng: Engine, s: Settings, prod_t_day: float, L: Limits, ch: Mapping[str, Any], z0) -> Any:
+    """The plan at a fixed production with one limit relaxed (an item of ``Engine.run_items``)."""
+    e = eng
+    if "bounds" in ch:
+        e = Engine(eng.inp, eng.cal, facts=eng.facts, materials=[v.id for v in eng.fer],
+                   prices={v.id: v.price for v in eng.vars},
+                   bounds={**{v.id: (v.lo, v.hi) for v in eng.fer}, **ch["bounds"]})
+    return e._try(replace(s, **ch.get("S", {})), prod_t_day / 24, replace(L, **ch.get("L", {})), True, z0=z0)
+
+
 def value_of_limits(eng: Engine, prod_t_day: float, s: Settings, L: Limits,
                     base: Mapping[str, Any] | None = None) -> pd.DataFrame:
-    """Saving in Rs/tHM at a fixed production from relaxing each limit one step (Step 2 rows; ~0.1 s each)."""
+    """Saving in Rs/tHM at a fixed production from relaxing each limit one step (Step 2 rows; ~0.1 s each with
+    Fixed-ω). The relaxations do not depend on each other: with STRATA-ω each starts from the same network anchors,
+    in parallel with a solver executor (``Engine.run_items``, SV-1.8)."""
     base = base or eng.min_cost(prod_t_day=prod_t_day, s=s, L=L, fuel=True)
     rows = []
-    for label, ch in relax_steps(eng, L, s):
-        e = eng
-        if "bounds" in ch:
-            e = Engine(eng.inp, eng.cal, facts=eng.facts, materials=[v.id for v in eng.fer],
-                       prices={v.id: v.price for v in eng.vars},
-                       bounds={**{v.id: (v.lo, v.hi) for v in eng.fer}, **ch["bounds"]})
-        r = e._try(replace(s, **ch.get("S", {})), prod_t_day / 24, replace(L, **ch.get("L", {})), True, z0=base["z"])
+    steps = relax_steps(eng, L, s)
+    plans = eng.run_items(_relaxed, [(s, prod_t_day, L, ch, base["z"]) for _, ch in steps],
+                          network=s.omega_mode == "blend")
+    for (label, ch), r in zip(steps, plans):
         if r is None or not r["feasible"]:
             rows.append(dict(change=label, saving_rs_thm=None, note="infeasible"))
             continue

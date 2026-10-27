@@ -82,7 +82,8 @@ def run_mode(
     today_json: str = "{}",
     auto: bool = False,
 ) -> dict[str, Any]:
-    return svc.compute_mode(
+    # as the worker runs it: with STRATA-ω the independent network solves in solver processes (SV-1.8)
+    return svc.solve_case(
         mode, inputs_json, cal_json, settings, limits, prod_t_day, search_o2, n_o2, P_lo, step, today_json, auto
     )
 

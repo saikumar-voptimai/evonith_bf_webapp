@@ -38,7 +38,7 @@ from ui.burden_optimiser.sections import (plan_sentence, render_controls, render
                                           render_thermal, render_yard_editor)
 from ui.burden_optimiser.commentary import render_furnace_commentary
 from ui.burden_optimiser.omega_panel import render_auto, render_omega_result, render_omega_settings
-from utils.burden_engine import BandError, Engine, Infeasible, load_register
+from utils.burden_engine import BandError, Engine, Infeasible, load_register, strata_network
 from utils.burden_engine.commentary import build_context, load_notes
 from utils.burden_engine.scenarios import fuel_defaults, limit_labels, limits_from, settings_from_regime
 from utils.coke_energy.weather import plan_blast_moisture
@@ -162,11 +162,17 @@ if st.session_state["bfo_args"] != args:
 
 args = st.session_state["bfo_args"]
 try:
-    _dur = {"fixed": "about 30 s", "max": "about 2 min", "cheapest": "about 8 min"}.get(args[0], "")
-    with st.spinner("Optimising (two-zone balance inside a sequential LP)…" if args[3].get("omega_mode") != "blend" else
-                    "Optimising: two-zone balance inside a sequential LP, with the STRATA-Flow network solved at every "
-                    "iteration and for every reported plan (about 1 s per solve; " + (f"{_dur} for this mode; " if _dur else "")
-                    + "the first run of a new calibration also computes the network Jacobian, about 20 s)…"):
+    # network solves of the reference case of 16 Oct 2026 (SV-1.8 benchmark); independent ones run in parallel
+    _solves = {"fixed": "about 75", "max": "about 350"}.get(args[0], "")
+    _n = strata_network.solver_count()
+    _where = f"shared by {_n} solver processes" if _n >= 2 else "one after the other"
+    _strata_msg = ("Optimising: two-zone balance inside a sequential LP, with the STRATA-Flow network solved at every "
+                   "iteration and for every reported plan (" + (f"{_solves} network solves for this mode, " if _solves
+                                                                else "")
+                   + f"about 1 s each, {_where}; the first run of a new calibration also computes the network Jacobian, "
+                   "17 solves)…")
+    with st.spinner("Optimising (two-zone balance inside a sequential LP)…" if args[3].get("omega_mode") != "blend"
+                    else _strata_msg):
         res = loaders.run_mode(*args)
 except BandError as exc:
     st.error(f"{exc}. The engine does not report outside the plausibility bands.")

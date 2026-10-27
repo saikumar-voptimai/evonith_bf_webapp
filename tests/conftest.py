@@ -15,6 +15,8 @@ os.environ.setdefault("BF_TWIN_DB_URL", "off")             # no job archive into
 # catches up nothing at start; the schedule tests enable both explicitly.
 os.environ.setdefault("BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.")
 os.environ.setdefault("BF_WORKER_CATCH_UP", "0")
+# STRATA-Flow network solves one after the other; the parallel tests start their solver processes themselves.
+os.environ.setdefault("BF_STRATA_SOLVERS", "0")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")  # utils.settings needs a Qdrant URL; no test connects
 os.environ.setdefault("OPENROUTER_API_KEY", "test-openrouter-key")  # utils.settings needs an LLM key; no test calls one
 

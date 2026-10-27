@@ -242,6 +242,21 @@ def compute_mode(
 run_mode = memo(max_entries=16)(compute_mode)
 
 
+def solve_case(*args: Any, solvers: int | None = None) -> dict[str, Any]:
+    """``compute_mode`` as the worker and page 11 run it (SV-1.8): with STRATA-ω, the network solves that do not
+    depend on each other (the Jacobian of a new calibration, a plan's blend, production and operation states, the
+    independent items of the searches) run in a pool of ``solvers`` processes (``strata_network.solver_count``:
+    ``BF_STRATA_SOLVERS``, else min(8, cpus)) created for this run; the plan, the anchors and the solve counts equal
+    the serial run's. Fixed-ω runs in this process."""
+    from utils.burden_engine import strata_network
+
+    settings = args[3] if len(args) > 3 else {}
+    if dict(settings).get("omega_mode") != "blend":
+        return compute_mode(*args)
+    with strata_network.solver_processes(solvers):
+        return compute_mode(*args)
+
+
 def as_json(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, default=lambda x: x.item() if hasattr(x, "item") else str(x))
 

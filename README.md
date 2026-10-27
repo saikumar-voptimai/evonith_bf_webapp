@@ -970,6 +970,7 @@ stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
 | `BF_WORKER_JOB_TIMEOUT` | longest kind limit + 60 s | arq time limit of one delivery |
 | `BF_WORKER_SKIP_SCHEDULES` | unset | Kinds, or prefixes ending in `.`, that are not scheduled (still submittable); the test suite sets `forecast.,twin.,optimiser.,calibration.,learn.` |
 | `BF_WORKER_CATCH_UP` | `1` | `0` turns off the catch-up of missed slots at worker start (the test suite sets `0`) |
+| `BF_STRATA_SOLVERS` | min(8, cpus) | Network-solver processes of one STRATA-ω run (worker and page 11 optimiser runs, nightly Jacobian, twin backfill); `0` or `1`: one solve after the other (the test suite sets `0`) |
 
 Redis: `apt install redis-server` (Linux, Jetson; Redis 6.0 or later), Memurai or WSL on Windows. Tests that need it
 (`tests/test_jobs.py`, `tests/test_api_live.py`) start a throw-away `redis-server` and are skipped without the binary.
@@ -1117,6 +1118,38 @@ a failed run; with the runtime statistics per kind) or `GET /api/jobs/schedule`.
 runs on a host, as the job runs them: `python scripts/optimiser_bench.py --mode step2` (STRATA-ω and Fixed-ω in a
 2-process pool; exit 1 above `--limit-s`, default 90 s; `--fresh-jacobian` times the 17 Jacobian solves first) or
 `--mode step1`.
+
+**STRATA-Flow throughput (SV-1.8).** Network solves that do not depend on each other run together
+(`utils/burden_engine/strata_network.py`): `NetworkParts.solve_many` (one executor `map`), `anchor_many` (several states
+anchored as one after the other would anchor them: a state reuses the nearest anchor within the tolerance, also one
+an earlier state of the list adds; only the new states are solved, together), the Jacobian of a new calibration (the
+calibration state and its 16 forward differences in one `solve_many`), a plan's three states (blend, blend +
+production, full operation; `PlanOmega.states`), and the twin window's three states (`strata_window.evaluate_window`).
+The searches' independent items run through `Engine.run_items`: the oxygen levels and the frontier levels of Step 1,
+the grid points of maximum production and the relaxations of the value of limits. Every item starts from the network
+anchors present before the items and adds its own; the anchors are merged in item order afterwards. With a solver
+executor each item runs in a solver process on an engine rebuilt from the parent's (`Engine._spec`), else one after
+the other here; plans, anchors and solve counts are the same (`tests/test_strata_parallel.py`, real network in the
+nightly suite). SV-1.7 let a later item reuse the anchors of an earlier one, so a serial run now makes more solves
+for the same plans: Step 2 73 instead of 52, maximum production 347 instead of 278 (reference yard, shipped
+calibration; coke rate within 4·10⁻¹² kg/tHM, value of limits within 6·10⁻⁷ Rs/tHM of SV-1.7).
+
+Executor: `strata_network.start_solvers(n)` / `solver_processes(n)` start `n` processes (`BF_STRATA_SOLVERS`, else
+min(8, cpus)), build the STRATA-Flow context in each (about 2.6 s, the first solve of a process otherwise) and shut them
+down after the run; inside a block that has solver processes already, `solver_processes` uses those. On POSIX the
+processes fork from the process's forkserver, which builds the context once when it can import the code
+(`utils/burden_engine/strata_preload.py`; Python 3.12 starts the forkserver with the interpreter's own path, so `src`
+must be on `PYTHONPATH`, as the worker runs): the first pool of a process then starts in about 2.7 s, every later one in
+0.03 s (`strata_network.LAST_START`). While they start, `__main__` is an empty module, so that they never run a main
+script (a Streamlit page, an app test, a `python -m` module). The executor is a context variable: it holds for the
+thread or asyncio task that sets it (a Streamlit session, a worker job) and the `asyncio.to_thread` threads started from
+there, not for other sessions or jobs. A pool that does not start, or breaks during a run (a solver process killed),
+leaves the solves to the calling process with a warning; the results are the same. The anchors of a calibration are
+shared by the engines of a process and locked (`NetworkParts.lock`); `Engine.run_items` holds the lock while its items
+run. `services.optimiser.solve_case` runs a STRATA-ω case on solver processes: the worker's optimiser runs and page 11's
+runs (`ui/burden_optimiser/loaders.run_mode`) go through it; the nightly calibration solves a new Jacobian and the twin
+evaluation a backfill of 3 windows or more on solver processes. Benchmark: `python scripts/optimiser_bench.py --mode
+solve | jacobian | step2 | max_production | step1 [--solvers N] [--compare]`.
 
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family

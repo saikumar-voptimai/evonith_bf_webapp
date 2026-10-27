@@ -348,8 +348,13 @@ class OmegaModel:
     def anchor(self, st: OmegaState, tol: float = 1e-9) -> None:
         """Network backend: one network solve at this state unless a solve lies within ``tol`` scaled units (1 unit =
         1 pt of a ferrous share, 5 kg/tHM coke, 1 t/h ...); no-op with the surrogate."""
+        self.anchor_many([st], tol)
+
+    def anchor_many(self, states: list[OmegaState], tol: float = 1e-9) -> None:
+        """``anchor`` of each state in order, the new solves run together (in parallel with an executor,
+        ``strata_network.parallel_solves``); the same anchors as one after the other."""
         if self.backend == "network" and self.net is not None:
-            self.net.anchor(st, tol=max(float(tol), 1e-9))
+            self.net.anchor_many(states, tol=max(float(tol), 1e-9))
 
     def network_stats(self) -> dict[str, Any]:
         return self.net.stats() if (self.backend == "network" and self.net is not None) else dict(backend=self.backend)
@@ -422,12 +427,34 @@ class OmegaModel:
 class PlanOmega:
     """Omega of one blend as a function of the balance's coke rate K and capacity ratio R."""
 
+    @staticmethod
+    def blend_state(model: OmegaModel, st: OmegaState) -> OmegaState:
+        """The plan's blend and ferrous per tHM at the calibration's operation (state B)."""
+        ref = model.ref
+        return OmegaState(st.shares, st.fe_frac, st.cls, ref.coke, ref.nut, ref.pci, ref.prod, ref.blast_t, ref.o2,
+                          ref.rdi, st.fer, ref.humidity)
+
+    @staticmethod
+    def production_state(model: OmegaModel, st: OmegaState) -> OmegaState:
+        """State B at the plan's production (state P)."""
+        ref = model.ref
+        return OmegaState(st.shares, st.fe_frac, st.cls, ref.coke, ref.nut, ref.pci, st.prod, ref.blast_t, ref.o2,
+                          ref.rdi, st.fer, ref.humidity)
+
+    @staticmethod
+    def states(model: OmegaModel, st: OmegaState, K: float) -> list[OmegaState]:
+        """The states a plan's omega at coke rate K solves: B, P (when the operating channel is split) and the full
+        operation at K, in the order the plan solves them (SV-1.8: solved together by ``OmegaModel.anchor_many``)."""
+        full = OmegaState(st.shares, st.fe_frac, st.cls, float(K), st.nut, st.pci, st.prod, st.blast_t, st.o2, st.rdi,
+                          st.fer, st.humidity)
+        prod = [PlanOmega.production_state(model, st)] if model.split_oper else []
+        return [PlanOmega.blend_state(model, st), *prod, full]
+
     def __init__(self, model: OmegaModel, st: OmegaState):
         self.m, self.st = model, st
         ref = model.ref
         # blend channel: the plan's blend and ferrous per tHM at the calibration's operation
-        self.st_b = OmegaState(st.shares, st.fe_frac, st.cls, ref.coke, ref.nut, ref.pci, ref.prod, ref.blast_t, ref.o2,
-                               ref.rdi, st.fer, ref.humidity)
+        self.st_b = self.blend_state(model, st)
         self.pb = model.parts(self.st_b)
         self.w_b = model.w(self.st_b, model.R_ref, parts=self.pb)
         self.d_blend_phys = self.w_b - model.w_ref
@@ -449,8 +476,7 @@ class PlanOmega:
         self.base = model.omega_ref + self.d_blend + self.d_disc + self.d_moist + self.d_nut
         # operating channel, production part: the plan's blend at the calibration's operation but the plan's production
         if model.split_oper:
-            self.st_bp = OmegaState(st.shares, st.fe_frac, st.cls, ref.coke, ref.nut, ref.pci, st.prod, ref.blast_t,
-                                    ref.o2, ref.rdi, st.fer, ref.humidity)
+            self.st_bp = self.production_state(model, st)
             self.w_bp = model.w(self.st_bp, model.R_ref)
         else:
             self.w_bp = self.w_b
@@ -466,10 +492,7 @@ class PlanOmega:
         """Network backend: solve the network at the blend, blend + production and full-operation states of the plan
         (at coke rate K), so that its omega comes from network solves at the plan itself (``tol`` > 0: reuse a solve
         within that many scaled units)."""
-        self.m.anchor(self.st_b, tol)
-        if self.m.split_oper:
-            self.m.anchor(self.st_bp, tol)
-        self.m.anchor(self._state_at(K), tol)
+        self.m.anchor_many(self.states(self.m, self.st, K), tol)   # the three solves together (SV-1.8)
         self._refresh()
 
     def _refresh(self) -> None:

@@ -843,7 +843,17 @@ fallback).
   they return exactly. When the first STRATA-ω linearisation has no feasible LP, `Engine.slp` re-starts from the
   Fixed-ω optimum of the same case; inside the searches a point that stops with a small limit breach on coarse solves
   (total < `Engine.SEARCH_RETRY_VIOL`, 0.1), and any failure at the low end of a search, is re-solved exactly before it
-  counts as infeasible (`Engine._try_search`).
+  counts as infeasible (`Engine._try_search`). Parallel solves (SV-1.8): independent states go through
+  `NetworkParts.solve_many` / `anchor_many` (the Jacobian, a plan's three states, the twin window's three states), and
+  the searches' independent items through `Engine.run_items` (Step 1 oxygen and frontier levels, maximum-production
+  grid, value-of-limits relaxations): every item starts from the anchors present before the items, the anchors are
+  merged in item order, so serial and parallel give the same plans, anchors and solve counts (a serial run solves more
+  than SV-1.7: Step 2 73 vs 52); executor `strata_network.start_solvers(n)` / `solver_processes(n)` (`BF_STRATA_SOLVERS`,
+  else min(8, cpus); `__main__` empty while they start; the forkserver builds the STRATA-Flow context once via
+  `strata_preload` when `src` is on `PYTHONPATH`; a context variable per thread / asyncio task; a pool that fails
+  leaves the solves serial with a warning), used by `services.optimiser.solve_case` (the worker's and page 11's
+  STRATA-ω runs), the nightly Jacobian and twin backfills of ≥ 3 windows; the anchors of a calibration are locked
+  (`NetworkParts.lock`, held by `Engine.run_items`); benchmark `scripts/optimiser_bench.py`.
   `OmegaModel.load(backend="surrogate")` keeps the STRATA 1.2
   surrogate for diagnostics only. Two oversize types: ore_6 Lloyds fines oversize (reduction rate at the Lloyds CLO
   size, no size credit) and ore_11 Donimalai oversize return (= Donimalai). Blend mode adds σ(coke), certainty tiers High / Medium / Low / Investigate (pellet > 25 %
@@ -970,6 +980,7 @@ twin-api:   BF_API_JWT_SECRET (required in prod), BF_API_COOKIE_SECURE, BF_API_T
             BF_API_STREAM_HEARTBEAT_S
 Worker:     BF_REDIS_URL (API and worker), BF_WORKER_POOL, BF_WORKER_MAX_JOBS, BF_WORKER_JOB_TIMEOUT,
             BF_WORKER_SKIP_SCHEDULES (kinds or prefixes left unscheduled; tests: forecast.,twin.,optimiser.,calibration.,learn.),
-            BF_WORKER_CATCH_UP (0 = no catch-up of missed slots at start; tests: 0)
+            BF_WORKER_CATCH_UP (0 = no catch-up of missed slots at start; tests: 0),
+            BF_STRATA_SOLVERS (network-solver processes per STRATA-ω run; default min(8, cpus); 0 or 1 = serial; tests: 0)
 Twin store: BF_TWIN_DB_URL (default DATABASE_URL; `off` disables), BF_TEST_DATABASE_URL (tests; else a local cluster)
 ```

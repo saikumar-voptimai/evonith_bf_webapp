@@ -231,6 +231,9 @@ class Engine:
         self.is_gom = np.array([v.k_rule == GOMTI_RULE for v in self.fer], float)
         self.is_o6 = np.array([v.k_rule == OVERSIZE_RULE for v in self.fer], float)
         self.n_evals = 0
+        # what rebuilds this engine in a network-solver process (``run_items``, SV-1.8)
+        self._spec = dict(inputs=self.inp, cal=self.cal, materials=[v.id for v in self.fer],
+                          prices={v.id: v.price for v in self.vars}, bounds={v.id: (v.lo, v.hi) for v in self.fer})
         # STRATA-Flow solve tolerance (scaled units: 1 pt of a ferrous share, 5 kg/tHM coke, 1 t/h ...): 0 = a solve at
         # every SLP iterate and at every reported plan. The production searches (min_total_cost, max_production,
         # frontier) run coarse (``SEARCH_TOL``) and re-solve the plan they return exactly.
@@ -730,6 +733,53 @@ class Engine:
         m = self.omega_model()
         m.plan(self.plan_state(z, s, P)).anchor_all(K, self.net_tol_final)
 
+    def run_items(self, fn, items: Sequence[tuple], *, network: bool) -> list[Any]:
+        """``fn(self, *item)`` for items that do not depend on each other (the oxygen levels of Step 1, the levels of
+        the frontier, the points of the maximum-production grid, the relaxations of the value of limits; SV-1.8).
+
+        With STRATA-ω (``network``), every item starts from the network anchors present now, and the anchors the items
+        add are kept afterwards in item order; so the results, the anchors and the solve counts do not depend on the
+        order of the items, and with a solver executor (``strata_network.parallel_solves``) the items run in parallel,
+        each in a solver process on an engine rebuilt from this one, with the same results as one after the other.
+        The network's anchors stay locked meanwhile (``NetworkParts.lock``: an engine of another thread on the same
+        calibration waits). ``fn`` must be a top-level function of an importable module."""
+        if not network:
+            return [fn(self, *item) for item in items]
+        from concurrent.futures import BrokenExecutor
+
+        from utils.burden_engine import strata_network
+        net = self.omega_model().net if self.omega_model().backend == "network" else None
+        if net is None:
+            return [fn(self, *item) for item in items]
+        with net.lock:
+            U0, Y0, n0, sec0 = net.U.copy(), net.Y.copy(), net.n_solves, net.sec_solves
+            ex = strata_network.executor()
+            outs = None
+            if ex is not None and len(items) > 1:
+                tol = (self.net_tol_iter, self.net_tol_final)
+                tasks = [dict(spec=self._spec, facts=self.facts, fn=fn, item=item, tol=tol, U=U0, Y=Y0, n=n0,
+                              sec=sec0) for item in items]
+                try:
+                    outs = list(ex.map(_item_task, tasks))
+                except BrokenExecutor as exc:                # a solver process killed: the items run here
+                    strata_network.drop_executor(exc)
+                else:
+                    for _, _, _, dn, ds in outs:             # the solves made in the solver processes
+                        strata_network._STATS["solves"] += dn
+                        strata_network._STATS["seconds"] += ds
+            if outs is None:
+                outs = []
+                for item in items:
+                    net.U, net.Y, net.n_solves, net.sec_solves = U0.copy(), Y0.copy(), n0, sec0
+                    res = fn(self, *item)
+                    outs.append((res, net.U[len(U0):].copy(), net.Y[len(Y0):].copy(), net.n_solves - n0,
+                                 net.sec_solves - sec0))
+            net.U = np.vstack([U0, *[o[1] for o in outs]])
+            net.Y = np.vstack([Y0, *[o[2] for o in outs]])
+            net.n_solves = n0 + sum(o[3] for o in outs)
+            net.sec_solves = sec0 + sum(o[4] for o in outs)
+        return [o[0] for o in outs]
+
     @contextmanager
     def network_tolerance(self, tol: float):
         """Coarse STRATA-Flow solving inside a search: reuse a network solve within ``tol`` scaled units."""
@@ -936,21 +986,25 @@ class Engine:
         r_max = self.hy.o2_per_air_from_tag(L.enrich_max)
         r_now = (base or self.cal_settings()).O2_per_air
         grid = list(o2_grid) if o2_grid is not None else list(np.linspace(r_now, r_max, 6))
+        network = (base or self.cal_settings()).omega_mode == "blend"
         found = []
-        for on6 in self._ore6_options():
-            for r in grid:
-                res = self.max_prod_at(self.process_settings(L, r, base), L, fuel, ore6_on=on6)
-                if res is not None:
-                    found.append(res)
-                    if verbose:
-                        print(f"   ore6 {on6} enrich {self.hy.enrich_tag(r):.2f} -> {res['P_th']:.2f} t/h")
+        # the grid points do not depend on each other (SV-1.8: same anchors, in parallel with a solver executor)
+        pairs = [(on6, r) for on6 in self._ore6_options() for r in grid]
+        tops = self.run_items(_item_max_prod_at, [(self.process_settings(L, r, base), L, fuel, on6, None)
+                                                  for on6, r in pairs], network=network)
+        for (on6, r), res in zip(pairs, tops):
+            if res is not None:
+                found.append(res)
+                if verbose:
+                    print(f"   ore6 {on6} enrich {self.hy.enrich_tag(r):.2f} -> {res['P_th']:.2f} t/h")
         if not found:
             return None
         top = max(found, key=lambda x: x["P_th"])
         if len(grid) > 2:                                   # refine oxygen around the best grid point
             r_best = top["settings"]["O2_per_air"]; step = grid[1] - grid[0]
-            for r in np.linspace(max(r_now, r_best - step), min(r_max, r_best + step), 7):
-                res = self.max_prod_at(self.process_settings(L, r, base), L, fuel, ore6_on=top["ore6_on"], z0=top["z"])
+            near = np.linspace(max(r_now, r_best - step), min(r_max, r_best + step), 7)
+            for res in self.run_items(_item_max_prod_at, [(self.process_settings(L, r, base), L, fuel, top["ore6_on"],
+                                                           top["z"]) for r in near], network=network):
                 if res is not None:
                     found.append(res)
         P_best = max(x["P_th"] for x in found)
@@ -958,6 +1012,28 @@ class Engine:
         best["o2_trace"] = sorted((bool(x["ore6_on"]), x["settings"]["O2_per_air"], self.hy.enrich_tag(x["settings"]["O2_per_air"]),
                                    x["P_th"]) for x in found)
         return best
+
+    def _cheapest_at_level(self, r, L: Limits, base: Settings | None, P_lo: float, on6: bool, tol_P: float):
+        """At oxygen level r (O2/air): the highest production, then the production with the lowest cost between P_lo and
+        it (golden section; cost against production is single-dipped). Returns (the cheapest plan or None, the highest
+        production in t/h or None)."""
+        gr = (5 ** 0.5 - 1) / 2
+        s_r = self.process_settings(L, r, base)
+        top = self.max_prod_at(s_r, L, True, lo=P_lo, ore6_on=on6)
+        if top is None:
+            return None, None
+        seen = [top]
+        f = lambda P: seen.append(self._try_search(s_r, P, L, True, z0=top["z"], ore6_on=on6)) or seen[-1]
+        a, b = P_lo, top["P_th"]
+        c, d = b - gr * (b - a), a + gr * (b - a)
+        fc, fd = f(c), f(d)
+        while b - a > tol_P:
+            if _total_cost(fc) <= _total_cost(fd):
+                b, d, fd = d, c, fc; c = b - gr * (b - a); fc = f(c)
+            else:
+                a, c, fc = c, d, fd; d = a + gr * (b - a); fd = f(d)
+        res = min([x for x in seen if x is not None], key=_total_cost)
+        return (res if np.isfinite(_total_cost(res)) else None), top["P_th"]
 
     def frontier(self, s: Settings, L: Limits, P_list, fuel=True, ore6_on=False):
         with self.network_tolerance(self.SEARCH_TOL):
@@ -995,37 +1071,33 @@ class Engine:
         r_now = (base or self.cal_settings()).O2_per_air
         P_lo = self.p_range(base or self.cal_settings(), P_lo, 1e9)[0]
         levels = [r_now] if o2_levels is None else sorted(set([r_now] + [r for r in o2_levels if r >= r_now - 1e-12]))
-        cost = lambda x: x["cost"]["total"] if (x is not None and x["feasible"]) else np.inf
+        cost = _total_cost
         gr = (5 ** 0.5 - 1) / 2
         best = None; out_curves = {}
+        network = (base or self.cal_settings()).omega_mode == "blend"
         for on6 in self._ore6_options():
             memo, tops = {}, {}
+
+            def keep(r, found):
+                key = round(float(r), 7)
+                res, top_P = found
+                memo[key] = res
+                if top_P is not None:
+                    tops[key] = top_P
+                return res
 
             def at_r(r):
                 key = round(float(r), 7)
                 if key in memo:
                     return memo[key]
-                s_r = self.process_settings(L, r, base)
-                top = self.max_prod_at(s_r, L, True, lo=P_lo, ore6_on=on6)
-                if top is None:
-                    memo[key] = None
-                    return None
-                tops[key] = top["P_th"]
-                seen = [top]
-                f = lambda P: seen.append(self._try_search(s_r, P, L, True, z0=top["z"], ore6_on=on6)) or seen[-1]
-                a, b = P_lo, top["P_th"]
-                c, d = b - gr * (b - a), a + gr * (b - a)
-                fc, fd = f(c), f(d)
-                while b - a > tol_P:
-                    if cost(fc) <= cost(fd):
-                        b, d, fd = d, c, fc; c = b - gr * (b - a); fc = f(c)
-                    else:
-                        a, c, fc = c, d, fd; d = a + gr * (b - a); fd = f(d)
-                res = min([x for x in seen if x is not None], key=cost)
-                memo[key] = res if np.isfinite(cost(res)) else None
-                return memo[key]
+                return keep(r, self._cheapest_at_level(r, L, base, P_lo, on6, tol_P))
 
-            grid = [(r, at_r(r)) for r in levels]
+            # the levels do not depend on each other: each from the same network anchors, in parallel with a solver
+            # executor (SV-1.8); the golden section between them below follows on the anchors of all of them
+            firsts = self.run_items(_item_level, [(r, L, base, P_lo, on6, tol_P) for r in levels], network=network)
+            for r, found in zip(levels, firsts):
+                keep(r, found)
+            grid = [(r, memo[round(float(r), 7)]) for r in levels]
             ok = [(r, x) for r, x in grid if x is not None]
             if not ok:
                 continue
@@ -1049,7 +1121,8 @@ class Engine:
                 k_top = max(tops, key=tops.get); P_top = tops[k_top]
                 r_curve = sorted(set([r for r, _ in ok] + [cand["settings"]["O2_per_air"], k_top]))
                 Ps = list(np.arange(P_lo, P_top, step)) + [P_top]
-                per_level = [self.frontier(self.process_settings(L, r, base), L, Ps, True, on6) for r in r_curve]
+                per_level = self.run_items(_item_frontier, [(self.process_settings(L, r, base), L, Ps, True, on6)
+                                                            for r in r_curve], network=network)
                 rows = []
                 for k, P in enumerate(Ps):
                     feas = [lvl[k] for lvl in per_level if lvl[k]["feasible"]]
@@ -1059,6 +1132,50 @@ class Engine:
         if best is not None:
             best["curves"] = out_curves
         return best
+
+
+# ------------------------------------------------------------------------------------------- independent items (SV-1.8)
+_CHILD_ENGINES: dict[str, Engine] = {}
+
+
+def _total_cost(x: Mapping[str, Any] | None) -> float:
+    """Total cost of a feasible plan, Rs/tHM; infinite for none or an infeasible one."""
+    return x["cost"]["total"] if (x is not None and x["feasible"]) else np.inf
+
+
+def _item_task(task: Mapping[str, Any]) -> tuple[Any, np.ndarray, np.ndarray, int, float]:
+    """Runs in a network-solver process: one item of ``Engine.run_items`` on an engine rebuilt from the parent's spec,
+    its network anchors set to the parent's at the start of the items. Returns (result, the anchors the item added
+    (inputs, outputs), its solves, their seconds)."""
+    key = json.dumps(task["spec"], sort_keys=True, default=str)
+    eng = _CHILD_ENGINES.get(key)
+    if eng is None:
+        _CHILD_ENGINES.clear()                          # one engine per process: the latest calibration and yard
+        eng = Engine(task["spec"]["inputs"], task["spec"]["cal"], facts=task["facts"],
+                     materials=task["spec"]["materials"], prices=task["spec"]["prices"], bounds=task["spec"]["bounds"])
+        _CHILD_ENGINES[key] = eng
+    net = eng.omega_model().net
+    U0, Y0 = np.asarray(task["U"], float), np.asarray(task["Y"], float)
+    net.U, net.Y, net.n_solves, net.sec_solves = U0.copy(), Y0.copy(), int(task["n"]), float(task["sec"])
+    eng.net_tol_iter, eng.net_tol_final = task["tol"]
+    try:
+        res = task["fn"](eng, *task["item"])
+    finally:
+        eng.net_tol_iter = eng.net_tol_final = 0.0
+    return (res, net.U[len(U0):].copy(), net.Y[len(Y0):].copy(), net.n_solves - int(task["n"]),
+            net.sec_solves - float(task["sec"]))
+
+
+def _item_level(eng: Engine, r, L: Limits, base: Settings | None, P_lo: float, on6: bool, tol_P: float):
+    return eng._cheapest_at_level(r, L, base, P_lo, on6, tol_P)
+
+
+def _item_frontier(eng: Engine, s: Settings, L: Limits, P_list, fuel: bool, on6: bool):
+    return eng.frontier(s, L, P_list, fuel, on6)
+
+
+def _item_max_prod_at(eng: Engine, s: Settings, L: Limits, fuel: bool, on6: bool, z0):
+    return eng.max_prod_at(s, L, fuel, ore6_on=on6, z0=z0)
 
 
 def value_in_use(eng: Engine, z, s: Settings, P, B2=1.10, balancer="limestone"):
