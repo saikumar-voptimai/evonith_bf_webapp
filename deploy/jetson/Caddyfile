@@ -11,7 +11,7 @@
 #   BF_TLS              internal (Caddy's own CA; its root certificate is installed on the control-room PCs), or
 #                       "<cert.pem> <key.pem>" (certificate of the plant CA)                        internal
 #   BF_HSTS             Strict-Transport-Security value, once every client trusts the certificate   max-age=0
-#   BF_SPA_ROOT         frontend build of the current release           /var/lib/bf-webapp/current/frontend/build
+#   BF_SPA_ROOT         frontend build of the current release           /opt/bf-webapp/current/frontend/build
 #   BF_API_UPSTREAM     twin-api                                       127.0.0.1:8100
 #   BF_LEGACY_UPSTREAM  Streamlit                                      127.0.0.1:8501
 #   BF_HTTP_PORT, BF_HTTPS_PORT                                        80, 443
@@ -56,7 +56,7 @@
 
 	# Hashed build assets: cached for a year. A missing one is a 404, never the SPA shell.
 	handle /_app/immutable/* {
-		root * {$BF_SPA_ROOT:/var/lib/bf-webapp/current/frontend/build}
+		root * {$BF_SPA_ROOT:/opt/bf-webapp/current/frontend/build}
 		header Cache-Control "public, max-age=31536000, immutable"
 		file_server
 	}
@@ -64,7 +64,7 @@
 	# Everything else: a file of the build, or 200.html, so a deep link (/trace, /admin/jobs) survives a reload.
 	# Revalidated on every load, so a new release is picked up at once.
 	handle {
-		root * {$BF_SPA_ROOT:/var/lib/bf-webapp/current/frontend/build}
+		root * {$BF_SPA_ROOT:/opt/bf-webapp/current/frontend/build}
 		header Cache-Control "no-cache"
 		try_files {path} /200.html
 		file_server
