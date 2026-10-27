@@ -29,6 +29,8 @@ The values are illustrative and are not plant data.
 	import Tabs from '#lib/components/Tabs.svelte';
 	import { toasts } from '#lib/components/toast.svelte.ts';
 	import { formatNumber, formatQuantity } from '#lib/format/number.ts';
+	import { JobTracker } from '#lib/live/jobs.svelte.ts';
+	import { hasRole, session } from '#lib/session/session.svelte.ts';
 	import { addDays, istDay } from '#lib/time/format.ts';
 
 	const loadedAt = new Date();
@@ -172,6 +174,12 @@ The values are illustrative and are not plant data.
 	}
 
 	$effect(() => () => clearInterval(jobTimer));
+
+	// Worker self-test: a real job on the queue (admin role, Redis and `python -m worker` required).
+	const selftest = new JobTracker();
+	const isAdmin = $derived(hasRole(session.user?.role, 'admin'));
+	const toDate = (iso: string | null | undefined): Date | null => (iso ? new Date(iso) : null);
+	$effect(() => () => selftest.stop());
 
 	const sampleError = new ApiError(503, {
 		type: 'about:blank',
@@ -384,6 +392,30 @@ The values are illustrative and are not plant data.
 							message="No feasible blend at 6,400 t/d"
 							onrun={() => {}}
 						/>
+					</div>
+					<div class="live-job">
+						<h3 class="t-label">Worker self-test, live</h3>
+						<p class="vo-muted">
+							Queues <code>system.selftest</code>: five 1 s steps and one task in the model-solve pool, with
+							progress from the event stream. Needs the admin role, Redis and a running worker.
+						</p>
+						<JobButton
+							label="Run self-test"
+							phase={selftest.phase}
+							progress={selftest.record?.progress ?? null}
+							startedAt={toDate(selftest.record?.started_at)}
+							finishedAt={toDate(selftest.record?.finished_at)}
+							expectedS={6}
+							message={selftest.record?.error ?? selftest.record?.message ?? undefined}
+							disabled={!isAdmin}
+							onrun={() => selftest.run('system.selftest', { steps: 5, step_s: 1 })}
+							{...selftest.active ? { oncancel: () => selftest.cancel() } : {}}
+						/>
+						{#if selftest.error}
+							<p class="job-error" role="alert">{selftest.error}</p>
+						{:else if !isAdmin}
+							<p class="vo-muted">Signed in without the admin role: the run is not available.</p>
+						{/if}
 					</div>
 				</div>
 			</Panel>
@@ -750,6 +782,21 @@ The values are illustrative and are not plant data.
 		display: flex;
 		flex-direction: column;
 		gap: var(--vo-space-3);
+	}
+	.live-job {
+		display: flex;
+		flex-direction: column;
+		gap: var(--vo-space-2);
+		padding-top: var(--vo-space-4);
+		border-top: 1px solid var(--vo-border);
+	}
+	.live-job p {
+		font-size: var(--vo-fs-label);
+	}
+	.job-error {
+		color: var(--vo-critical);
+		font-size: var(--vo-fs-label);
+		font-weight: 500;
 	}
 
 	.inputs {

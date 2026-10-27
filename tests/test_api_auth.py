@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 
 import pytest
@@ -13,7 +14,7 @@ from pydantic import ValidationError
 from api.auth import PUBLIC_PATHS, require_role, required_role_of
 from api.main import create_app
 from api.security.limits import DenyList, FailureLimiter
-from api.security.tokens import TokenError, b64url_decode, b64url_encode, decode, encode, sign
+from api.security.tokens import TokenError, decode, encode
 from api.settings import ApiSettings
 from services.auth import IdentityUnavailable, Principal
 
@@ -90,15 +91,22 @@ def sign_in(app, username: str) -> TestClient:
 # ---------------------------------------------------------------- tokens
 
 
-def test_hs256_matches_the_rfc_7515_example() -> None:
-    """RFC 7515 appendix A.1: the JWS signing input and key give the published signature."""
-    key = b64url_decode("AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow")
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def test_hs256_verifies_the_rfc_7515_example() -> None:
+    """RFC 7515 appendix A.1: the published HS256 JWS verifies with its key; one changed byte does not."""
+    key = base64.urlsafe_b64decode(
+        "AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow=="
+    )
     header = "eyJ0eXAiOiJKV1QiLA0KICJhbGciOiJIUzI1NiJ9"
     payload = "eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ"
     signature = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
-    assert b64url_encode(sign(f"{header}.{payload}".encode(), key)) == signature
     claims = decode(f"{header}.{payload}.{signature}", key, now=1_300_819_000)
     assert claims["iss"] == "joe" and claims["http://example.com/is_root"] is True
+    with pytest.raises(TokenError):
+        decode(f"{header}.{payload}.e{signature[1:]}", key, now=1_300_819_000)
 
 
 def test_token_round_trip_and_rejections() -> None:
@@ -107,9 +115,9 @@ def test_token_round_trip_and_rejections() -> None:
     assert decode(token, key, now=1500)["sub"] == "op"
 
     header, payload, sig = token.split(".")
-    forged = b64url_encode(json.dumps({"sub": "adm", "exp": 2000, "iat": 1000}).encode())
-    none_header = b64url_encode(json.dumps({"alg": "none", "typ": "JWT"}).encode())
-    hs512_header = b64url_encode(json.dumps({"alg": "HS512", "typ": "JWT"}).encode())
+    forged = _b64url(json.dumps({"sub": "adm", "exp": 2000, "iat": 1000}).encode())
+    none_header = _b64url(json.dumps({"alg": "none", "typ": "JWT"}).encode())
+    hs512_header = _b64url(json.dumps({"alg": "HS512", "typ": "JWT"}).encode())
     cases = {
         "changed payload": f"{header}.{forged}.{sig}",
         "alg none": f"{none_header}.{payload}.",

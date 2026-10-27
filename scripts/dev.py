@@ -7,6 +7,9 @@ Cross-platform (Windows, Linux, Jetson). Run from anywhere:
 
 Ports: SPA 5173 (open http://localhost:5173), API 8100, Streamlit 8501 under /legacy. The SPA dev server proxies
 /api and /legacy, so the browser sees one origin, as it does behind Caddy in production. Ctrl+C stops everything.
+
+Live events and jobs need Redis (``BF_REDIS_URL``, default redis://127.0.0.1:6379/0). When it is not reachable, the
+worker is left out of the default set and the API keeps events in-process (job routes answer 503).
 """
 
 from __future__ import annotations
@@ -15,14 +18,17 @@ import os
 import secrets
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 DEV_KEY_FILE = ROOT / "src" / "storage" / "twin_api" / "jwt_secret.dev"
+DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
 API_PORT = os.environ.get("BF_API_PORT", "8100")
 LEGACY_PORT = os.environ.get("BF_LEGACY_PORT", "8501")
 IS_WINDOWS = os.name == "nt"
@@ -104,6 +110,15 @@ def _dev_jwt_secret() -> str:
     return key
 
 
+def _reachable(url: str, timeout: float = 0.5) -> bool:
+    parts = urlsplit(url)
+    try:
+        with socket.create_connection((parts.hostname or "127.0.0.1", parts.port or 6379), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def _sigterm(signum: int, frame: object) -> None:
     raise KeyboardInterrupt  # stop the children exactly as Ctrl+C does
 
@@ -118,6 +133,16 @@ def main(argv: list[str]) -> int:
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), str(ROOT / "furnace_data"), env.get("PYTHONPATH", "")])
     env.setdefault("PYTHONUNBUFFERED", "1")
+    redis_url = env.get("BF_REDIS_URL") or DEFAULT_REDIS_URL
+    if _reachable(redis_url):
+        env["BF_REDIS_URL"] = redis_url  # API and worker share the queue and the event stream
+    elif not argv and "worker" in names:
+        names.remove("worker")
+        print(
+            f"Redis is not reachable at {redis_url}: the worker is not started, the API keeps events in-process and "
+            "the job routes answer 503. Start Redis (Linux: apt install redis-server; Windows: Memurai or WSL) "
+            "or set BF_REDIS_URL."
+        )
     if "api" in names and not env.get("BF_API_JWT_SECRET"):
         env["BF_API_JWT_SECRET"] = _dev_jwt_secret()
     procs: dict[str, subprocess.Popen] = {}

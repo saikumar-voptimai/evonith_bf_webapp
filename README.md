@@ -857,7 +857,7 @@ Caddy with a FastAPI service (`twin-api`). Streamlit keeps running under `/legac
 | SPA (SvelteKit 3, Svelte 5, TypeScript) | `frontend/` | `pnpm --dir frontend dev` (port 5173) |
 | twin-api (FastAPI) | `src/api/` | `python -m uvicorn api.main:app --app-dir src --port 8100` |
 | Service layer (no Streamlit) | `src/services/` | imported by the API, the worker and the Streamlit pages |
-| twin-worker | `src/worker/` | `PYTHONPATH=src python -m worker` |
+| twin-worker (arq on Redis) | `src/worker/` | `PYTHONPATH=src python -m worker` |
 | Streamlit (legacy) | `src/app.py` | served under `/legacy` (port 8501) |
 
 **Development.** Node.js >= 20 with pnpm, plus the Python environment from section 11:
@@ -892,8 +892,42 @@ failure leaves the window. Every API route outside `api.auth.PUBLIC_PATHS` decla
 | `BF_API_SESSION_HOURS` | `12` | Session lifetime |
 | `BF_API_LOGIN_MAX_FAILURES`, `BF_API_LOGIN_WINDOW_S` | `5`, `60` | Failed sign-in limit per address |
 
-The failure limit and the revoked-token list are held in the API process; the Redis-backed versions for several API
-processes come with the job queue (#277).
+The failure limit and the revoked-token list are held in the API process, so the API runs as one process (its
+async event loop serves the event streams). Running several API processes needs both shared through Redis; that
+decision belongs to the deployment issue (#279).
+
+**Live events and background jobs.** Model runs execute in the twin-worker (`python -m worker`, arq 0.28 on Redis);
+the API and the scheduler queue them, and the worker publishes progress to the Redis stream `twin:events`. Each API
+process reads the stream once and forwards it to the browsers as server-sent events.
+
+| Route | Role | Purpose |
+|---|---|---|
+| `GET /api/stream` | user | Event stream: `live.status`, `twin.snapshot`, `forecast.si`, `job.progress`, `job.done`, `alarm.raised`, `alarm.cleared`, and a heartbeat every 15 s. Missed events (at most the last 100) are replayed after a reconnect with `Last-Event-ID` (or `?last_event_id=`). The session is re-checked every 15 s; the stream ends when it is revoked or expired |
+| `GET /api/stream/recent` | user | Last events, oldest first |
+| `GET /api/jobs/kinds` | user | Job kinds with role, time limit, retries, schedule (IST) and parameter schema |
+| `GET /api/jobs`, `GET /api/jobs/{id}` | user | Job records of the last 7 days |
+| `POST /api/jobs` | per kind | Queue a job (202); a request equal to a queued or running job (same kind and parameters) returns that job with `duplicate: true` |
+| `POST /api/jobs/{id}/cancel` | supervisor | A queued job is not started; a running job is stopped; both end as `cancelled` |
+
+Job semantics: parameters are validated against the kind's model before queuing; the time limit of each kind is
+enforced in the worker; transient failures are retried with the kind's retry delay up to `max_tries`; CPU-bound
+model solves run in a process pool; a job interrupted by a worker stop runs again after the arq time limit plus
+10 s; scheduled kinds start at their IST times (`system.housekeeping` at 04:00). Kinds: `system.selftest`
+(admin; progress steps and one pool task, also in the component catalogue) and `system.housekeeping`; the model
+kinds follow with their pages. In the SPA, `#lib/live/stream.svelte.ts` holds one EventSource per tab (backoff,
+watchdog, session check), `#lib/live/connection.svelte.ts` drives the header state (offline after 10 s without the
+stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BF_REDIS_URL` | unset (API), `redis://127.0.0.1:6379/0` (worker) | Redis shared by the API and the worker. Without it the API keeps events in-process and the job routes answer 503; `scripts/dev.py` sets it when a local Redis answers |
+| `BF_API_STREAM_HEARTBEAT_S` | `15` | Heartbeat and session-check interval of `/api/stream` |
+| `BF_WORKER_POOL` | `8` | Processes of the model-solve pool |
+| `BF_WORKER_MAX_JOBS` | `4` | Jobs run at the same time by one worker |
+| `BF_WORKER_JOB_TIMEOUT` | longest kind limit + 60 s | arq time limit of one delivery |
+
+Redis: `apt install redis-server` (Linux, Jetson; Redis 6.0 or later), Memurai or WSL on Windows. Tests that need it
+(`tests/test_jobs.py`, `tests/test_api_live.py`) start a throw-away `redis-server` and are skipped without the binary.
 
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family

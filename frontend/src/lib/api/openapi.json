@@ -1,6 +1,112 @@
 {
   "components": {
     "schemas": {
+      "AlarmClearedEvent": {
+        "properties": {
+          "at": {
+            "description": "Publication time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AlarmData"
+          },
+          "id": {
+            "description": "Stream id; the SSE event id used for Last-Event-ID replay",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "alarm.cleared",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "type",
+          "data"
+        ],
+        "title": "AlarmClearedEvent",
+        "type": "object"
+      },
+      "AlarmData": {
+        "properties": {
+          "alarm_id": {
+            "title": "Alarm Id",
+            "type": "string"
+          },
+          "code": {
+            "description": "Alarm code, e.g. OMEGA_DRIFT",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "warning",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "alarm_id",
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "AlarmData",
+        "type": "object"
+      },
+      "AlarmRaisedEvent": {
+        "properties": {
+          "at": {
+            "description": "Publication time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AlarmData"
+          },
+          "id": {
+            "description": "Stream id; the SSE event id used for Last-Event-ID replay",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "alarm.raised",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "type",
+          "data"
+        ],
+        "title": "AlarmRaisedEvent",
+        "type": "object"
+      },
       "FieldError": {
         "properties": {
           "loc": {
@@ -34,6 +140,39 @@
         "title": "FieldError",
         "type": "object"
       },
+      "ForecastSiEvent": {
+        "properties": {
+          "at": {
+            "description": "Publication time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "data": {
+            "description": "Hot-metal Si forecast (schema in SV-1.5)",
+            "title": "Data",
+            "type": "object"
+          },
+          "id": {
+            "description": "Stream id; the SSE event id used for Last-Event-ID replay",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "forecast.si",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "type",
+          "data"
+        ],
+        "title": "ForecastSiEvent",
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "service": {
@@ -51,6 +190,461 @@
           "status"
         ],
         "title": "Health",
+        "type": "object"
+      },
+      "HeartbeatData": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at"
+        ],
+        "title": "HeartbeatData",
+        "type": "object"
+      },
+      "HeartbeatEvent": {
+        "properties": {
+          "at": {
+            "description": "Publication time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HeartbeatData"
+          },
+          "id": {
+            "description": "Stream id; the SSE event id used for Last-Event-ID replay",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "heartbeat",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "type",
+          "data"
+        ],
+        "title": "HeartbeatEvent",
+        "type": "object"
+      },
+      "JobDoneData": {
+        "properties": {
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "status"
+        ],
+        "title": "JobDoneData",
+        "type": "object"
+      },
+      "JobDoneEvent": {
+        "properties": {
+          "at": {
+            "description": "Publication time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/JobDoneData"
+          },
+          "id": {
+            "description": "Stream id; the SSE event id used for Last-Event-ID replay",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "job.done",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "type",
+          "data"
+        ],
+        "title": "JobDoneEvent",
+        "type": "object"
+      },
+      "JobKindInfo": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "max_tries": {
+            "title": "Max Tries",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "params_schema": {
+            "description": "JSON schema of the parameters",
+            "title": "Params Schema",
+            "type": "object"
+          },
+          "role": {
+            "description": "Lowest role that may start the job",
+            "enum": [
+              "user",
+              "supervisor",
+              "admin"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scheduled times (IST), e.g. '04:00'",
+            "title": "Schedule"
+          },
+          "timeout_s": {
+            "title": "Timeout S",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "role",
+          "timeout_s",
+          "max_tries",
+          "description",
+          "params_schema"
+        ],
+        "title": "JobKindInfo",
+        "type": "object"
+      },
+      "JobProgressData": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fraction done, when the job reports it",
+            "title": "Progress"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "status"
+        ],
+        "title": "JobProgressData",
+        "type": "object"
+      },
+      "JobProgressEvent": {
+        "properties": {
+          "at": {
+            "description": "Publication time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/JobProgressData"
+          },
+          "id": {
+            "description": "Stream id; the SSE event id used for Last-Event-ID replay",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "job.progress",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "type",
+          "data"
+        ],
+        "title": "JobProgressEvent",
+        "type": "object"
+      },
+      "JobRecord": {
+        "properties": {
+          "cancel_requested": {
+            "default": false,
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "params": {
+            "title": "Params",
+            "type": "object"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "submitted_by": {
+            "title": "Submitted By",
+            "type": "string"
+          },
+          "tries": {
+            "default": 0,
+            "title": "Tries",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "input_hash",
+          "submitted_by",
+          "submitted_at"
+        ],
+        "title": "JobRecord",
+        "type": "object"
+      },
+      "LiveStatusData": {
+        "properties": {
+          "tags": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TagValue"
+            },
+            "description": "Latest plant readings (from SV-1.5)",
+            "title": "Tags",
+            "type": "object"
+          },
+          "worker": {
+            "$ref": "#/components/schemas/WorkerStatus"
+          }
+        },
+        "required": [
+          "worker"
+        ],
+        "title": "LiveStatusData",
+        "type": "object"
+      },
+      "LiveStatusEvent": {
+        "properties": {
+          "at": {
+            "description": "Publication time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/LiveStatusData"
+          },
+          "id": {
+            "description": "Stream id; the SSE event id used for Last-Event-ID replay",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "live.status",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "type",
+          "data"
+        ],
+        "title": "LiveStatusEvent",
         "type": "object"
       },
       "LoginRequest": {
@@ -209,6 +803,119 @@
         "title": "SessionUser",
         "type": "object"
       },
+      "SubmitRequest": {
+        "properties": {
+          "kind": {
+            "description": "Job kind, see /api/jobs/kinds",
+            "title": "Kind",
+            "type": "string"
+          },
+          "params": {
+            "title": "Params",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "SubmitRequest",
+        "type": "object"
+      },
+      "SubmitResponse": {
+        "properties": {
+          "duplicate": {
+            "description": "True when an identical job was already queued or running",
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobRecord"
+          }
+        },
+        "required": [
+          "job",
+          "duplicate"
+        ],
+        "title": "SubmitResponse",
+        "type": "object"
+      },
+      "TagValue": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the reading (UTC)",
+            "title": "At"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "TagValue",
+        "type": "object"
+      },
+      "TwinSnapshotEvent": {
+        "properties": {
+          "at": {
+            "description": "Publication time (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "data": {
+            "description": "Hourly twin evaluation (schema in SV-1.1)",
+            "title": "Data",
+            "type": "object"
+          },
+          "id": {
+            "description": "Stream id; the SSE event id used for Last-Event-ID replay",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "twin.snapshot",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "type",
+          "data"
+        ],
+        "title": "TwinSnapshotEvent",
+        "type": "object"
+      },
       "Version": {
         "properties": {
           "environment": {
@@ -246,6 +953,44 @@
           "started_at"
         ],
         "title": "Version",
+        "type": "object"
+      },
+      "WorkerStatus": {
+        "properties": {
+          "name": {
+            "description": "Worker process name (host:pid)",
+            "title": "Name",
+            "type": "string"
+          },
+          "pool_size": {
+            "description": "Processes of the model-solve pool",
+            "title": "Pool Size",
+            "type": "integer"
+          },
+          "queued": {
+            "description": "Jobs waiting in the queue",
+            "title": "Queued",
+            "type": "integer"
+          },
+          "running": {
+            "description": "Jobs running in this worker",
+            "title": "Running",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "started_at",
+          "running",
+          "queued",
+          "pool_size"
+        ],
+        "title": "WorkerStatus",
         "type": "object"
       }
     }
@@ -425,6 +1170,438 @@
         "summary": "Liveness",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "description": "Jobs of the last 7 days, newest first.",
+        "operationId": "jobs_list_jobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobRecord"
+                  },
+                  "title": "Response Jobs List Jobs",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Recent jobs",
+        "tags": [
+          "jobs"
+        ]
+      },
+      "post": {
+        "description": "Queue a job. A request equal to a queued or running job (same kind and parameters) returns that job.",
+        "operationId": "jobs_submit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Start a job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/kinds": {
+      "get": {
+        "operationId": "jobs_kinds",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobKindInfo"
+                  },
+                  "title": "Response Jobs Kinds",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Job kinds",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "operationId": "jobs_get_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Job status",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "description": "A queued job is not started; a running job is stopped. Both end with status ``cancelled``.",
+        "operationId": "jobs_cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Cancel a job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/stream": {
+      "get": {
+        "description": "Events as they are published, a heartbeat every 15 s, and after a reconnect with ``Last-Event-ID`` (header, or\nthe ``last_event_id`` parameter) the events that were missed (at most the last 100). The stream ends when the\nsession ends; the browser then reconnects and receives 401.",
+        "operationId": "stream_stream",
+        "parameters": [
+          {
+            "description": "Resume after this event id when the client opens a new connection (an EventSource cannot set headers); the Last-Event-ID header of the browser's own reconnect takes precedence",
+            "in": "query",
+            "name": "last_event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Resume after this event id when the client opens a new connection (an EventSource cannot set headers); the Last-Event-ID header of the browser's own reconnect takes precedence",
+              "title": "Last Event Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Server-sent events, see /api/stream/recent"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Live event stream (text/event-stream)",
+        "tags": [
+          "stream"
+        ]
+      }
+    },
+    "/api/stream/recent": {
+      "get": {
+        "description": "The last ``limit`` events of the stream, oldest first (heartbeats are not stored).",
+        "operationId": "stream_recent",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "alarm.cleared": "#/components/schemas/AlarmClearedEvent",
+                        "alarm.raised": "#/components/schemas/AlarmRaisedEvent",
+                        "forecast.si": "#/components/schemas/ForecastSiEvent",
+                        "heartbeat": "#/components/schemas/HeartbeatEvent",
+                        "job.done": "#/components/schemas/JobDoneEvent",
+                        "job.progress": "#/components/schemas/JobProgressEvent",
+                        "live.status": "#/components/schemas/LiveStatusEvent",
+                        "twin.snapshot": "#/components/schemas/TwinSnapshotEvent"
+                      },
+                      "propertyName": "type"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/LiveStatusEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/TwinSnapshotEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ForecastSiEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/JobProgressEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/JobDoneEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AlarmRaisedEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AlarmClearedEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/HeartbeatEvent"
+                      }
+                    ]
+                  },
+                  "title": "Response Stream Recent",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Recent events",
+        "tags": [
+          "stream"
         ]
       }
     },

@@ -11,6 +11,8 @@ or a host without Caddy).
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -20,8 +22,9 @@ from fastapi.routing import APIRoute
 from api import __version__
 from api.auth import build_auth_state
 from api.errors import ERROR_RESPONSES, ApiError, install_error_handlers
+from api.live import LiveState
 from api.request_context import RequestContextMiddleware, RequestIdFilter
-from api.routers import auth, system
+from api.routers import auth, jobs, stream, system
 from api.security.origin import OriginGuardMiddleware
 from api.settings import ApiSettings, get_settings
 
@@ -62,7 +65,19 @@ def _mount_spa(app: FastAPI, static_dir: Path) -> None:
 def create_app(settings: ApiSettings | None = None) -> FastAPI:
     settings = settings or get_settings()
     _configure_logging(settings.log_level)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        live = LiveState(settings)
+        await live.start()
+        app.state.live = live
+        try:
+            yield
+        finally:
+            await live.stop()
+
     app = FastAPI(
+        lifespan=lifespan,
         title="BF-02 twin-api",
         version=__version__,
         summary="Data and model API behind the BF-02 Svelte frontend (programme #262).",
@@ -80,6 +95,8 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     install_error_handlers(app)
     app.include_router(system.router)
     app.include_router(auth.router)
+    app.include_router(stream.router)
+    app.include_router(jobs.router)
     if settings.static_dir is not None and (settings.static_dir / "200.html").is_file():
         _mount_spa(app, settings.static_dir)
     return app

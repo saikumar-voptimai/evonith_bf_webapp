@@ -228,6 +228,9 @@ dependencies = [
     "requests>=2.32.3",
     "pillow>=11.1.0",
     "voyageai>=0.3.2",
+    "arq>=0.28,<0.29",
+    "pyjwt>=2.10,<3",
+    "redis[hiredis]>=5.2,<6",
     "furnace_data",
 ]
 

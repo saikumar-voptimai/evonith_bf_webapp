@@ -17,7 +17,7 @@
 		"format": "prettier --write .",
 		"test": "vitest --run",
 		"audit:ui": "node scripts/ui-audit.mjs",
-		"api:types": "openapi-typescript src/lib/api/openapi.json -o src/lib/api/schema.d.ts"
+		"api:types": "openapi-typescript src/lib/api/openapi.json -o src/lib/api/schema.d.ts --empty-objects-unknown"
 	},
 	"imports": {
 		"#lib": "./src/lib/index.ts",

@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +33,14 @@ class ApiSettings(BaseSettings):
     login_max_failures: int = Field(5, ge=1, description="Failed sign-ins allowed per client address per window")
     login_window_s: float = Field(60.0, gt=0, description="Window of the failed sign-in limit")
     identity_db_url: str | None = Field(None, description="Identity database; default DATABASE_URL")
+
+    # Live events and jobs (SV-0.7 #276, SV-0.8 #277)
+    redis_url: str | None = Field(
+        None,
+        validation_alias=AliasChoices("BF_REDIS_URL", "BF_API_REDIS_URL", "redis_url"),
+        description="Redis shared with the worker, e.g. redis://127.0.0.1:6379/0; without it events stay in-process",
+    )
+    stream_heartbeat_s: float = Field(15.0, gt=0, le=60, description="Heartbeat interval of /api/stream")
 
     @field_validator("jwt_secret")
     @classmethod

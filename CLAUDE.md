@@ -904,7 +904,7 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
 | SPA | `frontend/` | SvelteKit 3 (config inside `sveltekit()` in `vite.config.ts`, no `svelte.config.js`), Svelte 5 runes, TypeScript 6; imports from `src/lib` as `#lib/...` **with the file extension** (`#lib/api/client.ts`; `$lib` is removed in Kit 3, and TypeScript does not resolve extensionless `#lib` paths); static build with `200.html` fallback |
 | twin-api | `src/api/` | FastAPI, run with `src/` on the path (`uvicorn api.main:app --app-dir src`); routers call `services.*` only; errors are RFC 7807 problems (`api.errors.ApiError`); after changing a route run `make client` (or `python scripts/export_openapi.py && pnpm --dir frontend api:types`) and commit `frontend/src/lib/api/openapi.json` + `schema.d.ts` (a test fails on drift) |
 | Service layer | `src/services/` | All data assembly and model orchestration shared by the API, the worker and Streamlit. **No Streamlit or `ui.*` import** (tests/test_services_architecture.py, also transitive) |
-| Worker | `src/worker/` | `python -m worker` (scheduler and job queue: #277) |
+| Worker | `src/worker/` | `python -m worker`: arq 0.28 on Redis (`BF_REDIS_URL`); job kinds in `services.jobs.CATALOG` (role, time limit, retries, IST schedule, parameter model), handlers in `worker/kinds/` (`@handles("kind")`, `JobContext.progress`, CPU work through `ctx.run_cpu` in the process pool); events to the Redis stream `twin:events` (`services.events`, typed `StreamEvent`), forwarded by the API as SSE (`/api/stream`) |
 | Cache | `src/utils/memo.py` | `@memo(ttl_seconds=, max_entries=, copy=)` replaces `st.cache_data` outside Streamlit; key = argument values |
 
 - Pattern: a service exposes uncached building blocks (`load_*`, `read_*`, `build_*`, `compute_*`) and memoised
@@ -923,9 +923,13 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   icon and word, `updatedAt` on live panels, units on every readout joined by a no-break space (`formatQuantity`),
   chemical labels with Unicode subscripts (SiO₂). New nav pages go into `frontend/src/lib/nav.ts`. Check with
   `make audit-ui` (axe-core, three viewports).
-- Dev: `python scripts/dev.py` (SPA 5173 + API 8100 + worker + Streamlit under `/legacy` on 8501). Lint the new
-  Python with `uvx ruff@0.17.2` (paths in the Makefile); do not run `uv add` without checking the lock revision
-  (a newer uv rewrites `uv.lock` to revision 3).
+- Live data in the SPA: subscribe through `#lib/live/stream.svelte.ts` (`live.on(type, handler)`, one EventSource
+  per tab); follow jobs with `JobTracker` (`#lib/live/jobs.svelte.ts`). A new event type is added to `EventType` and
+  the payload models in `services/events.py`, then the OpenAPI client is regenerated (`make client`).
+- Dev: `python scripts/dev.py` (SPA 5173 + API 8100 + worker + Streamlit under `/legacy` on 8501; the worker only
+  when Redis answers). Lint the new Python with `uvx ruff@0.17.2` (paths in the Makefile). Lock changes with
+  `uvx --from "uv==0.7.13" uv lock` (keeps `uv.lock` at revision 2 with pure additions; uv 0.11 rewrites it to
+  revision 3 and later 0.7.x releases add marker churn), then `uv sync --frozen`.
 
 ## Environment Variables
 
@@ -938,5 +942,7 @@ Database:   DATABASE_URL (PostgreSQL/Neon)
 Tickets:    TICKETS_DB_URL (SQLite default; set for PostgreSQL override)
 InfluxDB:   INFLUX_ONLINE_TOKEN, INFLUX_OFFLINE_TOKEN
 twin-api:   BF_API_JWT_SECRET (required in prod), BF_API_COOKIE_SECURE, BF_API_TRUSTED_PROXIES, BF_API_STATIC_DIR,
-            BF_API_ENVIRONMENT, BF_API_SESSION_HOURS, BF_API_LOGIN_MAX_FAILURES, BF_API_LOGIN_WINDOW_S
+            BF_API_ENVIRONMENT, BF_API_SESSION_HOURS, BF_API_LOGIN_MAX_FAILURES, BF_API_LOGIN_WINDOW_S,
+            BF_API_STREAM_HEARTBEAT_S
+Worker:     BF_REDIS_URL (API and worker), BF_WORKER_POOL, BF_WORKER_MAX_JOBS, BF_WORKER_JOB_TIMEOUT
 ```

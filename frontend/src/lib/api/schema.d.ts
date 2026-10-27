@@ -87,6 +87,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent jobs
+         * @description Jobs of the last 7 days, newest first.
+         */
+        get: operations["jobs_list_jobs"];
+        put?: never;
+        /**
+         * Start a job
+         * @description Queue a job. A request equal to a queued or running job (same kind and parameters) returns that job.
+         */
+        post: operations["jobs_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job kinds */
+        get: operations["jobs_kinds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job status */
+        get: operations["jobs_get_job"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a job
+         * @description A queued job is not started; a running job is stopped. Both end with status ``cancelled``.
+         */
+        post: operations["jobs_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live event stream (text/event-stream)
+         * @description Events as they are published, a heartbeat every 15 s, and after a reconnect with ``Last-Event-ID`` (header, or
+         *     the ``last_event_id`` parameter) the events that were missed (at most the last 100). The stream ends when the
+         *     session ends; the browser then reconnects and receives 401.
+         */
+        get: operations["stream_stream"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stream/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent events
+         * @description The last ``limit`` events of the stream, oldest first (heartbeats are not stored).
+         */
+        get: operations["stream_recent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version": {
         parameters: {
             query?: never;
@@ -108,6 +228,65 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AlarmClearedEvent */
+        AlarmClearedEvent: {
+            /**
+             * At
+             * Format: date-time
+             * @description Publication time (UTC)
+             */
+            at: string;
+            data: components["schemas"]["AlarmData"];
+            /**
+             * Id
+             * @description Stream id; the SSE event id used for Last-Event-ID replay
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "alarm.cleared";
+        };
+        /** AlarmData */
+        AlarmData: {
+            /** Alarm Id */
+            alarm_id: string;
+            /**
+             * Code
+             * @description Alarm code, e.g. OMEGA_DRIFT
+             */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warning" | "critical";
+            /** Value */
+            value?: number | null;
+        };
+        /** AlarmRaisedEvent */
+        AlarmRaisedEvent: {
+            /**
+             * At
+             * Format: date-time
+             * @description Publication time (UTC)
+             */
+            at: string;
+            data: components["schemas"]["AlarmData"];
+            /**
+             * Id
+             * @description Stream id; the SSE event id used for Last-Event-ID replay
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "alarm.raised";
+        };
         /** FieldError */
         FieldError: {
             /** Loc */
@@ -116,6 +295,30 @@ export interface components {
             msg: string;
             /** Type */
             type: string;
+        };
+        /** ForecastSiEvent */
+        ForecastSiEvent: {
+            /**
+             * At
+             * Format: date-time
+             * @description Publication time (UTC)
+             */
+            at: string;
+            /**
+             * Data
+             * @description Hot-metal Si forecast (schema in SV-1.5)
+             */
+            data: Record<string, unknown>;
+            /**
+             * Id
+             * @description Stream id; the SSE event id used for Last-Event-ID replay
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "forecast.si";
         };
         /** Health */
         Health: {
@@ -129,6 +332,214 @@ export interface components {
              * @description 'ok' when the process answers
              */
             status: string;
+        };
+        /** HeartbeatData */
+        HeartbeatData: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** HeartbeatEvent */
+        HeartbeatEvent: {
+            /**
+             * At
+             * Format: date-time
+             * @description Publication time (UTC)
+             */
+            at: string;
+            data: components["schemas"]["HeartbeatData"];
+            /**
+             * Id
+             * @description Stream id; the SSE event id used for Last-Event-ID replay
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "heartbeat";
+        };
+        /** JobDoneData */
+        JobDoneData: {
+            /** Duration S */
+            duration_s?: number | null;
+            /** Job Id */
+            job_id: string;
+            /** Kind */
+            kind: string;
+            /** Message */
+            message?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "failed" | "cancelled";
+        };
+        /** JobDoneEvent */
+        JobDoneEvent: {
+            /**
+             * At
+             * Format: date-time
+             * @description Publication time (UTC)
+             */
+            at: string;
+            data: components["schemas"]["JobDoneData"];
+            /**
+             * Id
+             * @description Stream id; the SSE event id used for Last-Event-ID replay
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "job.done";
+        };
+        /** JobKindInfo */
+        JobKindInfo: {
+            /** Description */
+            description: string;
+            /** Max Tries */
+            max_tries: number;
+            /** Name */
+            name: string;
+            /**
+             * Params Schema
+             * @description JSON schema of the parameters
+             */
+            params_schema: Record<string, unknown>;
+            /**
+             * Role
+             * @description Lowest role that may start the job
+             * @enum {string}
+             */
+            role: "user" | "supervisor" | "admin";
+            /**
+             * Schedule
+             * @description Scheduled times (IST), e.g. '04:00'
+             */
+            schedule?: string | null;
+            /** Timeout S */
+            timeout_s: number;
+            /** Title */
+            title: string;
+        };
+        /** JobProgressData */
+        JobProgressData: {
+            /** Job Id */
+            job_id: string;
+            /** Kind */
+            kind: string;
+            /** Message */
+            message?: string | null;
+            /**
+             * Progress
+             * @description Fraction done, when the job reports it
+             */
+            progress?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed" | "cancelled";
+        };
+        /** JobProgressEvent */
+        JobProgressEvent: {
+            /**
+             * At
+             * Format: date-time
+             * @description Publication time (UTC)
+             */
+            at: string;
+            data: components["schemas"]["JobProgressData"];
+            /**
+             * Id
+             * @description Stream id; the SSE event id used for Last-Event-ID replay
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "job.progress";
+        };
+        /** JobRecord */
+        JobRecord: {
+            /**
+             * Cancel Requested
+             * @default false
+             */
+            cancel_requested: boolean;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: string;
+            /** Input Hash */
+            input_hash: string;
+            /** Kind */
+            kind: string;
+            /** Message */
+            message?: string | null;
+            /** Params */
+            params?: Record<string, unknown>;
+            /** Progress */
+            progress?: number | null;
+            /** Result */
+            result?: Record<string, unknown> | null;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed" | "cancelled";
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /** Submitted By */
+            submitted_by: string;
+            /**
+             * Tries
+             * @default 0
+             */
+            tries: number;
+        };
+        /** LiveStatusData */
+        LiveStatusData: {
+            /**
+             * Tags
+             * @description Latest plant readings (from SV-1.5)
+             */
+            tags?: {
+                [key: string]: components["schemas"]["TagValue"];
+            };
+            worker: components["schemas"]["WorkerStatus"];
+        };
+        /** LiveStatusEvent */
+        LiveStatusEvent: {
+            /**
+             * At
+             * Format: date-time
+             * @description Publication time (UTC)
+             */
+            at: string;
+            data: components["schemas"]["LiveStatusData"];
+            /**
+             * Id
+             * @description Stream id; the SSE event id used for Last-Event-ID replay
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "live.status";
         };
         /** LoginRequest */
         LoginRequest: {
@@ -208,6 +619,61 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** SubmitRequest */
+        SubmitRequest: {
+            /**
+             * Kind
+             * @description Job kind, see /api/jobs/kinds
+             */
+            kind: string;
+            /** Params */
+            params?: Record<string, unknown>;
+        };
+        /** SubmitResponse */
+        SubmitResponse: {
+            /**
+             * Duplicate
+             * @description True when an identical job was already queued or running
+             */
+            duplicate: boolean;
+            job: components["schemas"]["JobRecord"];
+        };
+        /** TagValue */
+        TagValue: {
+            /**
+             * At
+             * @description Time of the reading (UTC)
+             */
+            at?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Value */
+            value: number | null;
+        };
+        /** TwinSnapshotEvent */
+        TwinSnapshotEvent: {
+            /**
+             * At
+             * Format: date-time
+             * @description Publication time (UTC)
+             */
+            at: string;
+            /**
+             * Data
+             * @description Hourly twin evaluation (schema in SV-1.1)
+             */
+            data: Record<string, unknown>;
+            /**
+             * Id
+             * @description Stream id; the SSE event id used for Last-Event-ID replay
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "twin.snapshot";
+        };
         /** Version */
         Version: {
             /**
@@ -236,6 +702,34 @@ export interface components {
              * @description twin-api version
              */
             version: string;
+        };
+        /** WorkerStatus */
+        WorkerStatus: {
+            /**
+             * Name
+             * @description Worker process name (host:pid)
+             */
+            name: string;
+            /**
+             * Pool Size
+             * @description Processes of the model-solve pool
+             */
+            pool_size: number;
+            /**
+             * Queued
+             * @description Jobs waiting in the queue
+             */
+            queued: number;
+            /**
+             * Running
+             * @description Jobs running in this worker
+             */
+            running: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
         };
     };
     responses: never;
@@ -378,6 +872,289 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    jobs_list_jobs: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRecord"][];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    jobs_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitResponse"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    jobs_kinds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobKindInfo"][];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    jobs_get_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRecord"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    jobs_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRecord"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    stream_stream: {
+        parameters: {
+            query?: {
+                /** @description Resume after this event id when the client opens a new connection (an EventSource cannot set headers); the Last-Event-ID header of the browser's own reconnect takes precedence */
+                last_event_id?: string | null;
+            };
+            header?: {
+                "Last-Event-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-sent events, see /api/stream/recent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    stream_recent: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": (components["schemas"]["LiveStatusEvent"] | components["schemas"]["TwinSnapshotEvent"] | components["schemas"]["ForecastSiEvent"] | components["schemas"]["JobProgressEvent"] | components["schemas"]["JobDoneEvent"] | components["schemas"]["AlarmRaisedEvent"] | components["schemas"]["AlarmClearedEvent"] | components["schemas"]["HeartbeatEvent"])[];
                 };
             };
             /** @description Client error (problem+json) */

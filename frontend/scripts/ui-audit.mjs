@@ -8,8 +8,9 @@
  *   pnpm audit:ui --out ../audit-shots
  *
  * Needs Playwright with Chromium (`pnpm dlx playwright install chromium` on a dev machine). The script answers
- * /api/health and /api/auth/* itself (account `auditor`, password `correct-horse`), so the audit does not need the
- * twin-api. Exit code 1 on a critical or serious axe violation, a horizontal overflow or a failed behaviour check.
+ * /api/health, /api/stream and /api/auth/* itself (account `auditor`, password `correct-horse`), so the audit does
+ * not need the twin-api. Exit code 1 on a critical or serious axe violation, a horizontal overflow or a failed
+ * behaviour check.
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -136,6 +137,16 @@ try {
 			body: '{"status":"ok","service":"twin-api"}'
 		})
 	);
+	// Event stream mock: one heartbeat per connection; the EventSource reconnects after `retry` (SV-0.7, #276).
+	await context.route(/\/api\/stream(\?.*)?$/, (route) => {
+		const at = new Date().toISOString();
+		const beat = JSON.stringify({ id: '0-0', type: 'heartbeat', at, data: { at } });
+		return route.fulfill({
+			status: 200,
+			headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' },
+			body: `retry: 3000\n\nevent: heartbeat\ndata: ${beat}\n\n`
+		});
+	});
 	// Session mock: `auth.role` is the signed-in role, or null when signed out.
 	const auth = { role: 'admin' };
 	const problem = (route, status, detail) =>

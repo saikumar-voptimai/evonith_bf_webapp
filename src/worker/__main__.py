@@ -1,21 +1,18 @@
-"""Worker entry point. Skeleton of #270: idles until the job queue and schedule of #277 are registered."""
+"""twin-worker entry point: ``PYTHONPATH=src python -m worker`` (Redis from ``BF_REDIS_URL``)."""
 
 from __future__ import annotations
 
 import logging
-import time
 
-log = logging.getLogger("worker")
+from arq import run_worker
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    log.info("twin-worker skeleton: no jobs registered yet (job queue and schedule: #277)")
-    try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        log.info("twin-worker stopped")
+    logging.getLogger("arq").setLevel(logging.WARNING)  # job lines come from worker.runtime
+    from worker.settings import WorkerSettings
+
+    run_worker(WorkerSettings)  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":
