@@ -941,7 +941,7 @@ process reads the stream once and forwards it to the browsers as server-sent eve
 
 | Route | Role | Purpose |
 |---|---|---|
-| `GET /api/stream` | user | Event stream: `live.status`, `twin.snapshot`, `forecast.si`, `job.progress`, `job.done`, `alarm.raised`, `alarm.cleared`, and a heartbeat every 15 s. Missed events (at most the last 100) are replayed after a reconnect with `Last-Event-ID` (or `?last_event_id=`). The session is re-checked every 15 s; the stream ends when it is revoked or expired |
+| `GET /api/stream` | user | Event stream: `live.status`, `twin.snapshot`, `forecast.si`, `forecast.charged_coke`, `job.progress`, `job.done`, `alarm.raised`, `alarm.cleared`, and a heartbeat every 15 s. Missed events (at most the last 100) are replayed after a reconnect with `Last-Event-ID` (or `?last_event_id=`). The session is re-checked every 15 s; the stream ends when it is revoked or expired |
 | `GET /api/stream/recent` | user | Last events, oldest first |
 | `GET /api/jobs/kinds` | user | Job kinds with role, time limit, retries, schedule (IST) and parameter schema |
 | `GET /api/jobs`, `GET /api/jobs/{id}` | user | Job records of the last 7 days |
@@ -952,9 +952,9 @@ Job semantics: parameters are validated against the kind's model before queuing;
 enforced in the worker; transient failures are retried with the kind's retry delay up to `max_tries`; CPU-bound
 model solves run in a process pool; a job interrupted by a worker stop runs again after the arq time limit plus
 10 s; scheduled kinds start at their IST times (`system.housekeeping` at 04:00). Kinds: `system.selftest`
-(admin; progress steps and one pool task, also in the component catalogue), `system.housekeeping`, and the live
-forecasts `forecast.si` (every 5 min) and `forecast.charged_coke` (HH:07; supervisor, see Live forecasts); the model
-kinds follow with their pages. In the SPA, `#lib/live/stream.svelte.ts` holds one EventSource per tab (backoff,
+(admin; progress steps and one pool task, also in the component catalogue), `system.housekeeping`, the live
+forecasts `forecast.si` (every 5 min) and `forecast.charged_coke` (HH:07; supervisor, see Live forecasts) and
+`optimiser.run` (supervisor, see Twin and optimiser API); the model kinds follow with their pages. In the SPA, `#lib/live/stream.svelte.ts` holds one EventSource per tab (backoff,
 watchdog, session check), `#lib/live/connection.svelte.ts` drives the header state (offline after 10 s without the
 stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
 
@@ -1069,6 +1069,24 @@ its record in `latest_attempt.json`, which page 9 shows for a Si attempt with un
 (`utils.jsonl_log`: incremental reads, appends under a cross-process lock). Gap check:
 `python scripts/forecast_gaps.py --days 7` (exit 1 on a Si gap above 10 min or a charged-coke gap above 60 min).
 `BF_WORKER_SKIP_SCHEDULES=forecast.` leaves the forecast jobs unscheduled (set by the test suite).
+
+**Twin and optimiser API (SV-1.6).** Read from the twin store (`twin` schema; `services.store`, 503 without
+`BF_TWIN_DB_URL` / `DATABASE_URL`, 503 while the database is unreachable). Every numeric field states its unit in the
+schema (`tests/test_api_twin.py` checks it). Coke kg/tHM dry, ω dimensionless, costs Rs/tHM, production t/d, times UTC.
+
+| Route | Role | Purpose |
+|---|---|---|
+| `GET /api/twin/now` | user | Latest evaluation (`TwinSnapshotData`), its age, the lag behind the window that should exist (evaluation at HH:05; stale from one missed hour) and the open alarms |
+| `GET /api/twin/series` | user | Stored windows in [start, end] (default 7 days, at most 92), `resolution=hour` or `shift` (the windows ending 06:00, 14:00, 22:00 IST: shifts C, A, B), selected `quantities`; 30 days hourly in 40–180 ms (SQLite and PostgreSQL, test fixture) |
+| `GET /api/twin/transit` | user | Burden column at `at` from the hourly dataset: descent times, coke by zone and in transit, the blend by zone; `lag=true` adds the implied lag against the stored K_TRACE |
+| `GET /api/twin/alarms` | user | Open alarms and the history of `days` (default 7), optionally one `kind` |
+| `POST /api/optimiser/runs` | supervisor | Queue `optimiser.run` (202): `mode` step1, step2 or max_production, `omega_mode` strata or fixed, Step 2 `production_t_d`, certainty filter, risk aversion; page 11's defaults otherwise (`services.optimiser.default_case`) |
+| `GET /api/optimiser/runs`, `GET /api/optimiser/runs/{run or job id}` | user | Recent runs with their decision; one run with its inputs, result and decisions, or the job while it runs |
+| `GET /api/optimiser/latest` | user | Latest plan (status ok), optionally per `mode` |
+| `POST /api/optimiser/runs/{id}/decision` | supervisor | Accept or reject a plan with a comment; appended to `twin.plan_decision` with its audit row (`plan.decide`, actor, role, client address) in one transaction; the latest decision applies |
+
+The worker solves `optimiser.run` in the model-solve pool and stores the plan in `twin.optimiser_run` (status ok,
+infeasible with the LP's or the band's reason, or failed), with the job record it refers to.
 
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family

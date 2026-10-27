@@ -165,6 +165,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/optimiser/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest optimiser plan
+         * @description The latest run with status ok, with its decisions.
+         */
+        get: operations["optimiser_latest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/optimiser/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent optimiser runs
+         * @description Newest first, with the decision that applies to each.
+         */
+        get: operations["optimiser_list_runs"];
+        put?: never;
+        /**
+         * Start an optimiser run
+         * @description Queue ``optimiser.run`` with page 11's defaults for the mode; follow it with GET /api/optimiser/runs/{job id}
+         *     or the ``job.progress`` / ``job.done`` events. A request equal to a queued or running run returns that run.
+         */
+        post: operations["optimiser_start_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/optimiser/runs/{run_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept or reject a plan
+         * @description Append the decision, with its audit row (``plan.decide``), in the current shift. A later decision supersedes.
+         */
+        post: operations["optimiser_decide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/optimiser/runs/{run_or_job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An optimiser run or its job
+         * @description By run id (UUID) or by the job id returned when the run was started.
+         */
+        get: operations["optimiser_get_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stream": {
         parameters: {
             query?: never;
@@ -199,6 +284,83 @@ export interface paths {
          * @description The last ``limit`` events of the stream, oldest first (heartbeats are not stored).
          */
         get: operations["stream_recent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/twin/alarms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open alarms and recent history */
+        get: operations["twin_alarms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/twin/now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest twin evaluation
+         * @description The latest stored evaluation, how far it lags the expected window and the number of open alarms.
+         */
+        get: operations["twin_now"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/twin/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Twin series, hourly or per shift
+         * @description Stored windows with start <= window end <= end, oldest first (at most 92 days).
+         */
+        get: operations["twin_series"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/twin/transit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Burden column and coke in transit
+         * @description The charges in the column at ``at`` from the hourly dataset: descent times, coke by zone, the blend by zone.
+         */
+        get: operations["twin_transit"];
         put?: never;
         post?: never;
         delete?: never;
@@ -287,6 +449,49 @@ export interface components {
              */
             type: "alarm.raised";
         };
+        /** AlarmView */
+        AlarmView: {
+            /**
+             * Acknowledged At
+             * @description UTC
+             */
+            acknowledged_at?: string | null;
+            /** Acknowledged By */
+            acknowledged_by?: string | null;
+            /**
+             * Cleared At
+             * @description UTC; None while open
+             */
+            cleared_at?: string | null;
+            /** Details */
+            details?: Record<string, unknown>;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @description omega_drift, source_stale, job_failed, ...
+             */
+            kind: string;
+            /** Message */
+            message: string;
+            /**
+             * Raised At
+             * Format: date-time
+             * @description UTC
+             */
+            raised_at: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warning" | "critical";
+            /**
+             * Subject
+             * @description What the alarm is about (e.g. high or low for omega_drift)
+             * @default
+             */
+            subject: string;
+        };
         /**
          * ChargedCokeForecastData
          * @description A charged-coke forecast written to the ledger (``services.forecasts.issue_charged``, SV-1.5); times in IST
@@ -357,7 +562,7 @@ export interface components {
             at: string;
             /**
              * Horizon
-             * @description Rows (hours) after the data row
+             * @description Rows after the data row (one per hour), h
              */
             horizon: number;
             /**
@@ -375,6 +580,19 @@ export interface components {
              * @description Upper end of the 90 % range, kg/tHM
              */
             upper_kg_thm?: number | null;
+        };
+        /** DecisionRequest */
+        DecisionRequest: {
+            /**
+             * Comment
+             * @description Reason, shown with the decision
+             */
+            comment?: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accepted" | "rejected";
         };
         /** FieldError */
         FieldError: {
@@ -656,6 +874,269 @@ export interface components {
              */
             username: string;
         };
+        /** OptimiserRunDetail */
+        OptimiserRunDetail: {
+            /**
+             * Certainty
+             * @description High, Medium, Low or Investigate (STRATA-ω)
+             */
+            certainty?: string | null;
+            /**
+             * Coke Kg Thm
+             * @description Coke rate of the plan, kg/tHM dry
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Coke Sd Kg Thm
+             * @description 1 sigma of the coke rate, kg/tHM dry (STRATA-ω)
+             */
+            coke_sd_kg_thm?: number | null;
+            /**
+             * Cost Rs Thm
+             * @description Ore + flux + fuel − slag credit of the plan, Rs/tHM
+             */
+            cost_rs_thm?: number | null;
+            /** @description The decision that applies (the latest) */
+            decision?: components["schemas"]["PlanDecisionView"] | null;
+            /**
+             * Decisions
+             * @description Every decision, oldest first
+             */
+            decisions?: components["schemas"]["PlanDecisionView"][];
+            /**
+             * Finished At
+             * Format: date-time
+             * @description UTC
+             */
+            finished_at: string;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke (wet) + nut coke + PCI of the plan, kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Id
+             * @description Run id (UUID)
+             */
+            id: string;
+            /**
+             * Inputs
+             * @description The case: settings, limits, target, sources
+             */
+            inputs?: Record<string, unknown>;
+            /**
+             * Job Id
+             * @description Job that produced the run
+             */
+            job_id?: string | null;
+            /**
+             * Mode
+             * @description step1: cheapest production level; step2: fixed production; max_production
+             * @enum {string}
+             */
+            mode: "step1" | "step2" | "max_production";
+            /**
+             * Omega Mode
+             * @description STRATA-ω (blend-dependent) or Fixed-ω
+             * @enum {string}
+             */
+            omega_mode: "strata" | "fixed";
+            /**
+             * Production T D
+             * @description Hot metal of the plan, t/d
+             */
+            production_t_d?: number | null;
+            /** Requested By */
+            requested_by: string;
+            /**
+             * Result
+             * @description The engine's result (plans, frontier, notes)
+             */
+            result?: Record<string, unknown>;
+            /**
+             * Saving Rs Thm
+             * @description Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)
+             */
+            saving_rs_thm?: number | null;
+            /**
+             * Started At
+             * Format: date-time
+             * @description UTC
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "infeasible" | "failed";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "schedule" | "user";
+            /**
+             * Versions
+             * @description Calibration and yard source
+             */
+            versions?: Record<string, unknown>;
+        };
+        /**
+         * OptimiserRunParams
+         * @description One Burden & Fuel Optimiser run with page 11's defaults (``services.optimiser.default_case``).
+         */
+        OptimiserRunParams: {
+            /**
+             * Auto
+             * @description Also run the three decision settings of auto mode (STRATA-ω)
+             * @default false
+             */
+            auto: boolean;
+            /**
+             * Certainty
+             * @description STRATA-ω certainty filter: low excludes Investigate plans (page 11's default)
+             * @default low
+             * @enum {string}
+             */
+            certainty: "low" | "any" | "medium" | "high";
+            /**
+             * Mode
+             * @description step1: cheapest production level; step2: cheapest blend at a fixed production; max_production
+             * @enum {string}
+             */
+            mode: "step1" | "step2" | "max_production";
+            /**
+             * Omega Mode
+             * @description Shaft efficiency: STRATA-ω (blend-dependent, ASM-18) or Fixed-ω (calibration, ASM-01)
+             * @default strata
+             * @enum {string}
+             */
+            omega_mode: "strata" | "fixed";
+            /**
+             * Production T D
+             * @description Step 2 hot-metal target, t/d (default: today's production)
+             */
+            production_t_d?: number | null;
+            /**
+             * Risk K
+             * @description STRATA-ω risk aversion: objective = cost + k × σ(cost), dimensionless
+             * @default 0
+             */
+            risk_k: number;
+        };
+        /** OptimiserRunSummary */
+        OptimiserRunSummary: {
+            /**
+             * Certainty
+             * @description High, Medium, Low or Investigate (STRATA-ω)
+             */
+            certainty?: string | null;
+            /**
+             * Coke Kg Thm
+             * @description Coke rate of the plan, kg/tHM dry
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Coke Sd Kg Thm
+             * @description 1 sigma of the coke rate, kg/tHM dry (STRATA-ω)
+             */
+            coke_sd_kg_thm?: number | null;
+            /**
+             * Cost Rs Thm
+             * @description Ore + flux + fuel − slag credit of the plan, Rs/tHM
+             */
+            cost_rs_thm?: number | null;
+            /** @description The decision that applies (the latest) */
+            decision?: components["schemas"]["PlanDecisionView"] | null;
+            /**
+             * Finished At
+             * Format: date-time
+             * @description UTC
+             */
+            finished_at: string;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke (wet) + nut coke + PCI of the plan, kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Id
+             * @description Run id (UUID)
+             */
+            id: string;
+            /**
+             * Job Id
+             * @description Job that produced the run
+             */
+            job_id?: string | null;
+            /**
+             * Mode
+             * @description step1: cheapest production level; step2: fixed production; max_production
+             * @enum {string}
+             */
+            mode: "step1" | "step2" | "max_production";
+            /**
+             * Omega Mode
+             * @description STRATA-ω (blend-dependent) or Fixed-ω
+             * @enum {string}
+             */
+            omega_mode: "strata" | "fixed";
+            /**
+             * Production T D
+             * @description Hot metal of the plan, t/d
+             */
+            production_t_d?: number | null;
+            /** Requested By */
+            requested_by: string;
+            /**
+             * Saving Rs Thm
+             * @description Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)
+             */
+            saving_rs_thm?: number | null;
+            /**
+             * Started At
+             * Format: date-time
+             * @description UTC
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "infeasible" | "failed";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "schedule" | "user";
+        };
+        /** PlanDecisionView */
+        PlanDecisionView: {
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Decided At
+             * Format: date-time
+             * @description UTC
+             */
+            decided_at: string;
+            /** Decided By */
+            decided_by: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accepted" | "rejected";
+            /**
+             * Run Id
+             * @description Run id (UUID)
+             */
+            run_id: string;
+            /**
+             * Shift Key
+             * @description Shift of the decision (YYYY-MM-DD_A, IST date)
+             */
+            shift_key?: string | null;
+        };
         /**
          * ProblemDetail
          * @description Error body of every non-2xx response (RFC 7807).
@@ -697,6 +1178,22 @@ export interface components {
              * @default about:blank
              */
             type: string;
+        };
+        /** RunLookup */
+        RunLookup: {
+            /** @description The job (records are kept 7 days) */
+            job?: components["schemas"]["JobRecord"] | null;
+            /** @description The stored run, once the job has finished */
+            run?: components["schemas"]["OptimiserRunDetail"] | null;
+        };
+        /** RunSubmitted */
+        RunSubmitted: {
+            /**
+             * Duplicate
+             * @description True when an identical run was already queued or running
+             */
+            duplicate: boolean;
+            job: components["schemas"]["JobRecord"];
         };
         /** SessionInfo */
         SessionInfo: {
@@ -783,7 +1280,7 @@ export interface components {
         SiForecastPoint: {
             /**
              * Horizon Minutes
-             * @description Target start after the origin, minutes
+             * @description Target start after the origin, min
              */
             horizon_minutes: number;
             /**
@@ -852,6 +1349,255 @@ export interface components {
             /** Value */
             value: number | null;
         };
+        /** TransitBand */
+        TransitBand: {
+            /**
+             * Blend Wet Pct
+             * @description Wet share of the ferrous charge, %
+             */
+            blend_wet_pct?: {
+                [key: string]: number;
+            };
+            /**
+             * Charges
+             * @description Charges in the zone, count
+             */
+            charges: number;
+            /**
+             * Coke Inventory T
+             * @description Coke in the zone, t
+             */
+            coke_inventory_t?: number | null;
+            /**
+             * Coke Kg Per T Ferrous
+             * @description Coke per tonne of ferrous of the zone, kg/t
+             */
+            coke_kg_per_t_ferrous?: number | null;
+            /**
+             * Coke Kg Thm
+             * @description Coke as charged per tonne of hot metal, kg/tHM
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Coke T Per Charge
+             * @description Coke per charge on the plant counter, t
+             */
+            coke_t_per_charge?: number | null;
+            /**
+             * Coke Volume Fraction
+             * @description Coke share of the charge volume, dimensionless
+             */
+            coke_volume_fraction?: number | null;
+            /**
+             * Newest H
+             * @description Age of the newest charge of the zone, h
+             */
+            newest_h: number;
+            /**
+             * Oldest H
+             * @description Age of the oldest charge (descent time to the zone's lower edge), h
+             */
+            oldest_h: number;
+            /**
+             * Tonnes
+             * @description Charged material over the zone, t
+             */
+            tonnes?: {
+                [key: string]: number;
+            };
+            /**
+             * Zone
+             * @description above_cz, in_cz or below_cz
+             */
+            zone: string;
+        };
+        /** TransitLag */
+        TransitLag: {
+            /**
+             * Ci High H
+             * @description Upper end of the 95 % bootstrap interval, h
+             */
+            ci_high_h?: number | null;
+            /**
+             * Ci Low H
+             * @description Lower end of the 95 % bootstrap interval, h
+             */
+            ci_low_h?: number | null;
+            /**
+             * Lag H
+             * @description Implied transit time, charging to burning, h
+             */
+            lag_h?: number | null;
+            /**
+             * N Hours
+             * @description Hours in the comparison, count
+             */
+            n_hours: number;
+            /**
+             * R Peak
+             * @description Correlation at the lag, dimensionless
+             */
+            r_peak?: number | null;
+        };
+        /** TwinAlarms */
+        TwinAlarms: {
+            /**
+             * History
+             * @description Alarms raised in the window, newest first
+             */
+            history: components["schemas"]["AlarmView"][];
+            /**
+             * Open
+             * @description Open alarms, newest first
+             */
+            open: components["schemas"]["AlarmView"][];
+            /**
+             * Since
+             * Format: date-time
+             * @description Start of the history window (UTC)
+             */
+            since: string;
+        };
+        /** TwinNow */
+        TwinNow: {
+            /**
+             * Age S
+             * @description Time since the latest evaluation, s
+             */
+            age_s?: number | null;
+            /**
+             * Alarms Open
+             * @description Open alarms, count
+             */
+            alarms_open: number;
+            /**
+             * Expected Window End
+             * Format: date-time
+             * @description End of the newest window that should be evaluated now (UTC; evaluation at HH:05)
+             */
+            expected_window_end: string;
+            /**
+             * Lag H
+             * @description Expected window end minus the latest window end, h
+             */
+            lag_h?: number | null;
+            /**
+             * Now
+             * Format: date-time
+             * @description Server time (UTC)
+             */
+            now: string;
+            /** @description Latest stored evaluation (None before the first) */
+            snapshot?: components["schemas"]["TwinSnapshotData"] | null;
+            /**
+             * Stale
+             * @description The latest window lags the expected one by stale_after_h or more
+             */
+            stale: boolean;
+            /**
+             * Stale After H
+             * @description Lag from which the twin is stale, h (one missed evaluation)
+             */
+            stale_after_h: number;
+        };
+        /** TwinSeries */
+        TwinSeries: {
+            /**
+             * Count
+             * @description Rows, count
+             */
+            count: number;
+            /**
+             * End
+             * Format: date-time
+             * @description Last window end included (UTC)
+             */
+            end: string;
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "hour" | "shift";
+            /** Rows */
+            rows: components["schemas"]["TwinSeriesRow"][];
+            /**
+             * Start
+             * Format: date-time
+             * @description First window end included (UTC)
+             */
+            start: string;
+        };
+        /** TwinSeriesRow */
+        TwinSeriesRow: {
+            /**
+             * K Charged
+             * @description Coke charged, kg/tHM dry
+             */
+            k_charged?: number | null;
+            /**
+             * K Forge
+             * @description Two-zone balance at the 14-day medians, kg/tHM dry
+             */
+            k_forge?: number | null;
+            /**
+             * K Strata
+             * @description Two-zone balance at omega_STRATA, kg/tHM dry
+             */
+            k_strata?: number | null;
+            /**
+             * K Strata Sd
+             * @description 1 sigma of k_strata, kg/tHM dry
+             */
+            k_strata_sd?: number | null;
+            /**
+             * K Trace
+             * @description Burnt coke, oxygen balance + 14-day offset, kg/tHM dry
+             */
+            k_trace?: number | null;
+            /**
+             * Omega Cal
+             * @description 14-day median shaft efficiency, dimensionless
+             */
+            omega_cal?: number | null;
+            /**
+             * Omega Imp
+             * @description Implied shaft efficiency, dimensionless
+             */
+            omega_imp?: number | null;
+            /**
+             * Omega Strata
+             * @description STRATA 1.5 shaft efficiency, dimensionless
+             */
+            omega_strata?: number | null;
+            /**
+             * Omega Strata Sd
+             * @description 1 sigma of omega_strata, dimensionless
+             */
+            omega_strata_sd?: number | null;
+            /**
+             * Quantities
+             * @description Requested quantities of the window, units in the keys (e.g. hmt_c, °C)
+             */
+            quantities?: {
+                [key: string]: number;
+            };
+            /**
+             * Shift Key
+             * @description Shift of the window when it is one (YYYY-MM-DD_A, IST date)
+             */
+            shift_key?: string | null;
+            /**
+             * Status
+             * @description complete, partial or failed
+             */
+            status: string;
+            /**
+             * Window End
+             * Format: date-time
+             * @description End of the 8-h window (UTC)
+             */
+            window_end: string;
+        };
         /**
          * TwinSnapshotData
          * @description One hourly twin evaluation (``services.twin.snapshot_values``, table ``twin.snapshot``, SV-1.1): the window
@@ -895,22 +1641,22 @@ export interface components {
             k_trace?: number | null;
             /**
              * Omega Cal
-             * @description 14-day median omega (the anchor of FORGE and STRATA)
+             * @description 14-day median omega (the anchor of FORGE and STRATA), dimensionless
              */
             omega_cal?: number | null;
             /**
              * Omega Imp
-             * @description Implied shaft efficiency of the window
+             * @description Implied shaft efficiency of the window, dimensionless
              */
             omega_imp?: number | null;
             /**
              * Omega Strata
-             * @description STRATA 1.5 shaft efficiency of the window
+             * @description STRATA 1.5 shaft efficiency of the window, dimensionless
              */
             omega_strata?: number | null;
             /**
              * Omega Strata Sd
-             * @description 1 sigma of omega_strata
+             * @description 1 sigma of omega_strata, dimensionless
              */
             omega_strata_sd?: number | null;
             /** Quantities */
@@ -954,6 +1700,59 @@ export interface components {
              * @enum {string}
              */
             type: "twin.snapshot";
+        };
+        /** TwinTransit */
+        TwinTransit: {
+            /**
+             * At
+             * Format: date-time
+             * @description Time of the column state (UTC)
+             */
+            at: string;
+            /** Bands */
+            bands: components["schemas"]["TransitBand"][];
+            /**
+             * Charges Per Hour
+             * @description Charging rate of the last hour, charges/h
+             */
+            charges_per_hour?: number | null;
+            /**
+             * Coke In Transit T
+             * @description Coke in the column, t
+             */
+            coke_in_transit_t?: number | null;
+            /**
+             * Complete
+             * @description The hourly record reaches the oldest charge of the column
+             */
+            complete: boolean;
+            /** @description Implied lag over the last days (with lag=true) */
+            lag?: components["schemas"]["TransitLag"] | null;
+            /**
+             * Missing Hours
+             * @description Hours missing from the record inside the column, count
+             */
+            missing_hours: number;
+            /**
+             * Tau Cz H
+             * @description Descent time to the cohesive zone, h
+             */
+            tau_cz_h?: number | null;
+            /**
+             * Tau Cz Rate H
+             * @description Descent time to the cohesive zone at the current rate, h
+             */
+            tau_cz_rate_h?: number | null;
+            /**
+             * Tau Raceway H
+             * @description Descent time to the raceways, h
+             */
+            tau_raceway_h?: number | null;
+            /**
+             * Tau Raceway Rate H
+             * @description Descent time to the raceways at the current rate, h
+             */
+            tau_raceway_rate_h?: number | null;
         };
         /** Version */
         Version: {
@@ -1375,6 +2174,215 @@ export interface operations {
             };
         };
     };
+    optimiser_latest: {
+        parameters: {
+            query?: {
+                /** @description Only this mode (default: any) */
+                mode?: ("step1" | "step2" | "max_production") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptimiserRunDetail"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    optimiser_list_runs: {
+        parameters: {
+            query?: {
+                /** @description Only this mode */
+                mode?: ("step1" | "step2" | "max_production") | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptimiserRunSummary"][];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    optimiser_start_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptimiserRunParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSubmitted"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    optimiser_decide: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDecisionView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    optimiser_get_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_or_job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunLookup"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     stream_stream: {
         parameters: {
             query?: {
@@ -1436,6 +2444,177 @@ export interface operations {
                 };
                 content: {
                     "application/json": (components["schemas"]["LiveStatusEvent"] | components["schemas"]["TwinSnapshotEvent"] | components["schemas"]["ForecastSiEvent"] | components["schemas"]["ForecastChargedCokeEvent"] | components["schemas"]["JobProgressEvent"] | components["schemas"]["JobDoneEvent"] | components["schemas"]["AlarmRaisedEvent"] | components["schemas"]["AlarmClearedEvent"] | components["schemas"]["HeartbeatEvent"])[];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    twin_alarms: {
+        parameters: {
+            query?: {
+                /** @description History window, days */
+                days?: number;
+                /** @description Only this kind (e.g. omega_drift) */
+                kind?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwinAlarms"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    twin_now: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwinNow"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    twin_series: {
+        parameters: {
+            query?: {
+                /** @description First window end (default: end - 7 days) */
+                start?: string | null;
+                /** @description Last window end (default: now) */
+                end?: string | null;
+                /** @description hour, or shift: the shift windows */
+                resolution?: "hour" | "shift";
+                /** @description Comma-separated quantity keys to include (e.g. hmt_c,tau_raceway_h) */
+                quantities?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwinSeries"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    twin_transit: {
+        parameters: {
+            query?: {
+                /** @description Time of the column (default: now) */
+                at?: string | null;
+                /** @description Also the implied lag against the stored K_TRACE (14 days) */
+                lag?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwinTransit"];
                 };
             };
             /** @description Client error (problem+json) */

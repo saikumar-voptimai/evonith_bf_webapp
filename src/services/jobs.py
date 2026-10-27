@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -42,6 +42,29 @@ class SelfTestParams(BaseModel):
     steps: int = Field(5, ge=1, le=60, description="Progress steps")
     step_s: float = Field(1.0, ge=0, le=30, description="Seconds per step")
     cpu: bool = Field(True, description="Also run one task in the model-solve process pool")
+
+
+class OptimiserRunParams(BaseModel):
+    """One Burden & Fuel Optimiser run with page 11's defaults (``services.optimiser.default_case``)."""
+
+    model_config = {"extra": "forbid"}
+
+    mode: Literal["step1", "step2", "max_production"] = Field(
+        ..., description="step1: cheapest production level; step2: cheapest blend at a fixed production; max_production"
+    )
+    omega_mode: Literal["strata", "fixed"] = Field(
+        "strata", description="Shaft efficiency: STRATA-ω (blend-dependent, ASM-18) or Fixed-ω (calibration, ASM-01)"
+    )
+    production_t_d: float | None = Field(
+        None, ge=1500, le=3000, description="Step 2 hot-metal target, t/d (default: today's production)"
+    )
+    certainty: Literal["low", "any", "medium", "high"] = Field(
+        "low", description="STRATA-ω certainty filter: low excludes Investigate plans (page 11's default)"
+    )
+    risk_k: float = Field(
+        0.0, ge=0, le=3, description="STRATA-ω risk aversion: objective = cost + k × σ(cost), dimensionless"
+    )
+    auto: bool = Field(False, description="Also run the three decision settings of auto mode (STRATA-ω)")
 
 
 @dataclass(frozen=True)
@@ -87,6 +110,20 @@ register(
         max_tries=2,
         schedule=({4}, {0}),
         description="Copies the job records of the last 7 days to the archive and removes older index entries.",
+    )
+)
+register(
+    JobKind(
+        name="optimiser.run",
+        title="Optimiser run",
+        role="supervisor",
+        timeout_s=1200,  # Step 1 with STRATA-ω about 8 min on the development host
+        max_tries=1,
+        params=OptimiserRunParams,
+        description=(
+            "Runs the Burden & Fuel Optimiser with page 11's defaults (live yard and calibration, today's controls) in "
+            "the model-solve pool and stores the plan in twin.optimiser_run (SV-1.6)."
+        ),
     )
 )
 register(

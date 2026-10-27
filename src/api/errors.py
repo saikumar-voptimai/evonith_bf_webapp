@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.request_context import get_request_id
@@ -109,6 +110,11 @@ def install_error_handlers(app: FastAPI) -> None:
             for e in exc.errors()
         ]
         return problem(422, request, detail="The request does not match the schema.", errors=errors)
+
+    @app.exception_handler(OperationalError)
+    async def _store_unreachable(request: Request, exc: OperationalError) -> JSONResponse:
+        log.warning("database not reachable for %s: %s", request.url.path, str(exc).splitlines()[0][:300])
+        return problem(503, request, detail="The twin store is not reachable now; try again shortly.")
 
     # Unhandled exceptions are converted in RequestContextMiddleware (inside the request context), see
     # internal_error_body below.

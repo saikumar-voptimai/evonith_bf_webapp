@@ -24,7 +24,7 @@ from api.auth import build_auth_state
 from api.errors import ERROR_RESPONSES, ApiError, install_error_handlers
 from api.live import LiveState
 from api.request_context import RequestContextMiddleware, RequestIdFilter
-from api.routers import auth, jobs, stream, system
+from api.routers import auth, jobs, optimiser, stream, system, twin
 from api.security.origin import OriginGuardMiddleware
 from api.settings import ApiSettings, get_settings
 
@@ -97,6 +97,8 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(stream.router)
     app.include_router(jobs.router)
+    app.include_router(twin.router)
+    app.include_router(optimiser.router)
     if settings.static_dir is not None and (settings.static_dir / "200.html").is_file():
         _mount_spa(app, settings.static_dir)
     return app

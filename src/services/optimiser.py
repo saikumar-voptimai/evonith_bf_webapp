@@ -17,23 +17,29 @@ import hashlib
 import json
 import threading
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from config.config_loader import load_config
 from data.burden_engine.calibration import CalibrationInfo, fallback_calibration, live_calibration
-from data.burden_engine.inputs import load_charged_blend, load_yard
+from data.burden_engine.inputs import build_engine_inputs, load_charged_blend, load_yard
 from services import coke_energy as ce
 from utils.burden_engine.engine import REFERENCE_INPUTS_PATH, Engine, Limits, Settings
+from utils.burden_engine.facts import load_register
 from utils.burden_engine.scenarios import (
+    fuel_defaults,
+    limits_from,
     run_candidates,
     run_cheapest_level,
     run_fixed,
     run_max,
     run_today,
+    settings_from_regime,
     value_of_limits,
 )
 from utils.coke_energy.pipeline import PipelineSettings
+from utils.coke_energy.weather import plan_blast_moisture
 from utils.memo import memo
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
@@ -248,3 +254,240 @@ def clear() -> None:
         _LIVE_MEMO.clear()
     with _ENGINE_LOCK:
         _ENGINE.clear()
+
+
+# --------------------------------------------------------------------------------------- runs of the API (SV-1.6)
+#: Mode names of the API and of ``twin.optimiser_run`` -> modes of ``compute_mode``.
+MODES = {"step1": "cheapest", "step2": "fixed", "max_production": "max"}
+#: Shaft-efficiency names of the API and the store -> ``Settings.omega_mode``.
+OMEGA_MODES = {"strata": "blend", "fixed": "fixed"}
+CERTAINTY_FILTERS = ("low", "any", "medium", "high")
+
+
+@dataclass(frozen=True)
+class Case:
+    """One optimiser run as page 11 starts it without operator edits: the arguments of ``compute_mode`` and what
+    they were built from."""
+
+    mode: str  # step1 | step2 | max_production
+    omega_mode: str  # strata | fixed
+    args: tuple[Any, ...]
+    yard_source: str  # live | reference
+    yard_message: str
+    calibration: dict[str, Any]
+    names: dict[str, str]
+    today_shares: dict[str, float]
+
+    def summary(self) -> dict[str, Any]:
+        """The case as stored with the run (``optimiser_run.inputs``): settings, limits, target and sources."""
+        _, _, _, settings, limits, target, search_o2, n_o2, p_lo, step, _, auto = self.args
+        return dict(
+            mode=self.mode,
+            omega_mode=self.omega_mode,
+            production_target_t_d=target if self.mode == "step2" else None,
+            settings=settings,
+            limits=limits,
+            search_o2=search_o2,
+            o2_levels=n_o2,
+            frontier_lo_t_h=p_lo,
+            frontier_step_t_h=step,
+            auto=auto,
+            yard_source=self.yard_source,
+            yard_message=self.yard_message,
+            calibration=self.calibration,
+            today_shares=self.today_shares,
+            materials=self.names,
+        )
+
+
+def default_case(
+    mode: str,
+    *,
+    omega_mode: str = "strata",
+    production_t_d: float | None = None,
+    certainty: str = "low",
+    risk_k: float = 0.0,
+    auto: bool = False,
+    nonce: int = 0,
+    cfg: Mapping[str, Any] | None = None,
+) -> Case:
+    """The run page 11 would start for ``mode`` with its defaults: live yard (else the reference yard) and
+    calibration (else the shipped one), today's controls, PCI and nut coke (regime medians), today's Open-Meteo
+    blast moisture, the register's limits with the saved slag limits and the plant charging; Step 2 at today's
+    production (``production_t_d`` overrides it) with the controls held as page 11 starts them, against today's
+    charged blend; Step 1 and maximum production searching oxygen. ``omega_mode`` strata (default, certainty filter
+    and risk aversion as given) or fixed."""
+    if mode not in MODES:
+        raise ValueError(f"mode must be one of {', '.join(MODES)}")
+    if omega_mode not in OMEGA_MODES:
+        raise ValueError(f"omega_mode must be one of {', '.join(OMEGA_MODES)}")
+    if certainty not in CERTAINTY_FILTERS:
+        raise ValueError(f"certainty must be one of {', '.join(CERTAINTY_FILTERS)}")
+    cfg = page_config(config_mtime("burden_optimiser.yml")) if cfg is None else cfg
+    reg = load_register()
+    yard_rows, yard_source, yard_message = yard(as_json(cfg), nonce)
+    info, _ = calibration(cfg, nonce)
+    regime = info.regime
+    engine_mode = MODES[mode]
+    process = engine_mode in ("cheapest", "max")
+    prod_cfg = dict(cfg.get("production", {}))
+    target = float(prod_cfg.get("default_target_t_day", 2270.0))
+    if engine_mode == "fixed":
+        if production_t_d is not None:
+            target = float(production_t_d)
+        elif (regime or {}).get("prod_th"):
+            target = float(round(float(regime["prod_th"]) * 24, -1))
+    humidity_g, _, _ = plan_blast_moisture()
+    thermal_cfg = cfg.get("thermal", {})
+    th = {**thermal_cfg, **fuel_defaults(regime, thermal_cfg, info.cal)}
+    thermal = dict(
+        HMT=float(th.get("HMT", 1470.0)),
+        hm_Si=float(th.get("hm_Si", 0.38)),
+        pci_plant=float(th.get("pci_kg_thm", 190.0)),
+        nut_plant=float(th.get("nut_kg_thm", 70.0)),
+        humidity_g=round(float(humidity_g), 1),
+    )
+    limits = limits_from(reg, yard_rows.get("slag"), dict(cfg.get("charging", {})))
+    s = dict(settings_from_regime(regime, thermal_cfg, info.cal).__dict__, **thermal)
+    if omega_mode == "fixed":
+        s.update(omega_mode="fixed", certainty="any", risk_k=0.0)
+    else:
+        s.update(omega_mode="blend", certainty=certainty, risk_k=float(risk_k))
+    if engine_mode == "fixed":  # the controls held for the plan start as page 11 shows them
+        hy = Engine(cal=info.cal).hy
+        s.update(HBT=float(round(s["HBT"])), O2_per_air=hy.o2_per_air_from_tag(float(hy.enrich_tag(s["O2_per_air"]))))
+    materials = [m for m in yard_rows["materials"] if m.get("carried", True)]
+    fu = dict(yard_rows["fuel"])
+    fuel = dict(
+        coke_price=float(fu["coke_price"]),
+        nut_price=float(fu["nut_price"]),
+        pci_price=float(fu["pci_price"]),
+        slag_price=float(fu.get("slag_price", 0.0) or 0.0),
+    )
+    inputs = build_engine_inputs(
+        materials,
+        yard_rows["fluxes"],
+        fuel,
+        stock_horizon_days=float(cfg.get("yard", {}).get("stock_horizon_days", 1.0)),
+    )
+    names = {m["id"]: m.get("name", m["id"]) for m in inputs["materials"]} | {
+        f["id"]: f.get("name", f["id"]) for f in inputs["fluxes"]
+    }
+    today = charged_blend(as_json(yard_rows["materials"]), nonce) if yard_source == "live" else {}
+    shares = {k: float(v) for k, v in dict(today.get("shares") or {}).items()} if engine_mode == "fixed" else {}
+    args = (
+        engine_mode,
+        as_json(inputs),
+        as_json(info.cal),
+        s,
+        limits.__dict__ | {"process": process},
+        target,
+        process,  # page 11 searches oxygen in the process modes by default
+        int(prod_cfg.get("o2_levels", 9)),
+        float(prod_cfg.get("frontier_lo_t_h", 84.0)),
+        float(prod_cfg.get("frontier_step_t_h", 1.0)),
+        as_json(shares),
+        bool(auto),
+    )
+    cal_window = (
+        f"{info.window[0]} to {info.window[1]}"
+        if info.source == "live"
+        else " to ".join(info.cal.get("period", ["", ""]))
+    )
+    return Case(
+        mode=mode,
+        omega_mode=omega_mode,
+        args=args,
+        yard_source=yard_source,
+        yard_message=yard_message,
+        calibration=dict(source=info.source, window=cal_window, omega=info.cal.get("omega"), message=info.message),
+        names=names,
+        today_shares=shares,
+    )
+
+
+def plan_of(res: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The plan a run reports: Step 2 the plan with fuel, Step 1 the cheapest level, else the maximum production."""
+    mode = res.get("mode")
+    if mode == "fixed":
+        return res.get("with_fuel")
+    if mode == "cheapest":
+        return res.get("best")
+    return res.get("result")
+
+
+def jsonable(value: Any) -> Any:
+    """A JSON document of a result: numpy and pandas values as numbers and lists, frames as records, non-finite
+    numbers as null."""
+    import math
+
+    import numpy as np
+    import pandas as pd
+
+    if isinstance(value, Mapping):
+        return {str(k): jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [jsonable(v) for v in value]
+    if isinstance(value, pd.DataFrame):
+        return [jsonable(r) for r in value.to_dict(orient="records")]
+    if isinstance(value, pd.Series):
+        return jsonable(value.to_dict())
+    if isinstance(value, np.ndarray):
+        return [jsonable(v) for v in value.tolist()]
+    if isinstance(value, (pd.Timestamp,)):
+        return value.isoformat()
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if hasattr(value, "__dataclass_fields__"):
+        return jsonable(value.__dict__)
+    return value
+
+
+def run_values(
+    case: Case, res: Mapping[str, Any] | None, *, error: str | None = None, status: str | None = None
+) -> dict[str, Any]:
+    """The headline columns and documents of ``twin.optimiser_run`` for a case and its result (or failure): status
+    ok, infeasible (no plan meets every limit, or the LP or a plausibility band refused the case) or failed;
+    production t/d; cost, Rs/tHM (ore + flux + fuel - slag credit); saving against today's charged blend, Rs/tHM
+    (Step 2); dry coke and its 1 sigma, kg/tHM; fuel rate, kg/tHM; certainty tier."""
+    plan = plan_of(res) if res is not None else None
+    if status is None:
+        feasible = plan is not None and plan.get("feasible", True)
+        status = "failed" if error is not None else ("ok" if feasible else "infeasible")
+    values: dict[str, Any] = dict(
+        mode=case.mode,
+        omega_mode=case.omega_mode,
+        inputs=jsonable(case.summary()),
+        status=status,
+        result=jsonable({k: v for k, v in dict(res or {}).items() if k != "z"}) | ({"error": error} if error else {}),
+        versions=dict(calibration=case.calibration.get("source"), yard=case.yard_source),
+    )
+    if plan is not None:
+        out, cost, om = plan.get("out") or {}, plan.get("cost") or {}, plan.get("omega") or {}
+        today = (res or {}).get("today")
+        values.update(
+            production_t_d=_num(plan.get("P_tday")),
+            cost_rs_thm=_num(cost.get("total")),
+            saving_rs_thm=(
+                _num(today["cost"]["total"]) - _num(cost.get("total"))
+                if today is not None and today.get("cost") and cost.get("total") is not None
+                else None
+            ),
+            coke_kg_thm=_num(out.get("K")),
+            coke_sd_kg_thm=_num(om.get("sigma_K")),
+            fuel_rate_kg_thm=_num(out.get("fuel_rate")),
+            certainty=om.get("certainty") if om.get("mode") == "blend" else None,
+        )
+    return values
+
+
+def _num(value: Any) -> float | None:
+    import math
+
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) else None

@@ -107,6 +107,93 @@
         "title": "AlarmRaisedEvent",
         "type": "object"
       },
+      "AlarmView": {
+        "properties": {
+          "acknowledged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "UTC",
+            "title": "Acknowledged At"
+          },
+          "acknowledged_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledged By"
+          },
+          "cleared_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "UTC; None while open",
+            "title": "Cleared At"
+          },
+          "details": {
+            "title": "Details",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "omega_drift, source_stale, job_failed, ...",
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "raised_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Raised At",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "warning",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "subject": {
+            "default": "",
+            "description": "What the alarm is about (e.g. high or low for omega_drift)",
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "severity",
+          "message",
+          "raised_at"
+        ],
+        "title": "AlarmView",
+        "type": "object"
+      },
       "ChargedCokeForecastData": {
         "description": "A charged-coke forecast written to the ledger (``services.forecasts.issue_charged``, SV-1.5); times in IST\nwith their offset.",
         "properties": {
@@ -238,7 +325,7 @@
             "type": "string"
           },
           "horizon": {
-            "description": "Rows (hours) after the data row",
+            "description": "Rows after the data row (one per hour), h",
             "title": "Horizon",
             "type": "integer"
           },
@@ -284,6 +371,37 @@
           "at"
         ],
         "title": "ChargedCokePoint",
+        "type": "object"
+      },
+      "DecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason, shown with the decision",
+            "title": "Comment"
+          },
+          "decision": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "DecisionRequest",
         "type": "object"
       },
       "FieldError": {
@@ -878,6 +996,518 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "OptimiserRunDetail": {
+        "properties": {
+          "certainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "High, Medium, Low or Investigate (STRATA-\u03c9)",
+            "title": "Certainty"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate of the plan, kg/tHM dry",
+            "title": "Coke Kg Thm"
+          },
+          "coke_sd_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the coke rate, kg/tHM dry (STRATA-\u03c9)",
+            "title": "Coke Sd Kg Thm"
+          },
+          "cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + flux + fuel \u2212 slag credit of the plan, Rs/tHM",
+            "title": "Cost Rs Thm"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanDecisionView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The decision that applies (the latest)"
+          },
+          "decisions": {
+            "description": "Every decision, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/PlanDecisionView"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "finished_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke (wet) + nut coke + PCI of the plan, kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "id": {
+            "description": "Run id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "inputs": {
+            "description": "The case: settings, limits, target, sources",
+            "title": "Inputs",
+            "type": "object"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that produced the run",
+            "title": "Job Id"
+          },
+          "mode": {
+            "description": "step1: cheapest production level; step2: fixed production; max_production",
+            "enum": [
+              "step1",
+              "step2",
+              "max_production"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "omega_mode": {
+            "description": "STRATA-\u03c9 (blend-dependent) or Fixed-\u03c9",
+            "enum": [
+              "strata",
+              "fixed"
+            ],
+            "title": "Omega Mode",
+            "type": "string"
+          },
+          "production_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot metal of the plan, t/d",
+            "title": "Production T D"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "result": {
+            "description": "The engine's result (plans, frontier, notes)",
+            "title": "Result",
+            "type": "object"
+          },
+          "saving_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)",
+            "title": "Saving Rs Thm"
+          },
+          "started_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "infeasible",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger": {
+            "enum": [
+              "schedule",
+              "user"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          },
+          "versions": {
+            "description": "Calibration and yard source",
+            "title": "Versions",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "requested_by",
+          "mode",
+          "omega_mode",
+          "status",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "OptimiserRunDetail",
+        "type": "object"
+      },
+      "OptimiserRunParams": {
+        "additionalProperties": false,
+        "description": "One Burden & Fuel Optimiser run with page 11's defaults (``services.optimiser.default_case``).",
+        "properties": {
+          "auto": {
+            "default": false,
+            "description": "Also run the three decision settings of auto mode (STRATA-\u03c9)",
+            "title": "Auto",
+            "type": "boolean"
+          },
+          "certainty": {
+            "default": "low",
+            "description": "STRATA-\u03c9 certainty filter: low excludes Investigate plans (page 11's default)",
+            "enum": [
+              "low",
+              "any",
+              "medium",
+              "high"
+            ],
+            "title": "Certainty",
+            "type": "string"
+          },
+          "mode": {
+            "description": "step1: cheapest production level; step2: cheapest blend at a fixed production; max_production",
+            "enum": [
+              "step1",
+              "step2",
+              "max_production"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "omega_mode": {
+            "default": "strata",
+            "description": "Shaft efficiency: STRATA-\u03c9 (blend-dependent, ASM-18) or Fixed-\u03c9 (calibration, ASM-01)",
+            "enum": [
+              "strata",
+              "fixed"
+            ],
+            "title": "Omega Mode",
+            "type": "string"
+          },
+          "production_t_d": {
+            "anyOf": [
+              {
+                "maximum": 3000.0,
+                "minimum": 1500.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Step 2 hot-metal target, t/d (default: today's production)",
+            "title": "Production T D"
+          },
+          "risk_k": {
+            "default": 0.0,
+            "description": "STRATA-\u03c9 risk aversion: objective = cost + k \u00d7 \u03c3(cost), dimensionless",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Risk K",
+            "type": "number"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "OptimiserRunParams",
+        "type": "object"
+      },
+      "OptimiserRunSummary": {
+        "properties": {
+          "certainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "High, Medium, Low or Investigate (STRATA-\u03c9)",
+            "title": "Certainty"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate of the plan, kg/tHM dry",
+            "title": "Coke Kg Thm"
+          },
+          "coke_sd_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the coke rate, kg/tHM dry (STRATA-\u03c9)",
+            "title": "Coke Sd Kg Thm"
+          },
+          "cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + flux + fuel \u2212 slag credit of the plan, Rs/tHM",
+            "title": "Cost Rs Thm"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanDecisionView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The decision that applies (the latest)"
+          },
+          "finished_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke (wet) + nut coke + PCI of the plan, kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "id": {
+            "description": "Run id (UUID)",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that produced the run",
+            "title": "Job Id"
+          },
+          "mode": {
+            "description": "step1: cheapest production level; step2: fixed production; max_production",
+            "enum": [
+              "step1",
+              "step2",
+              "max_production"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "omega_mode": {
+            "description": "STRATA-\u03c9 (blend-dependent) or Fixed-\u03c9",
+            "enum": [
+              "strata",
+              "fixed"
+            ],
+            "title": "Omega Mode",
+            "type": "string"
+          },
+          "production_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot metal of the plan, t/d",
+            "title": "Production T D"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "saving_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cost of today's charged blend minus the plan's, Rs/tHM (Step 2 with the live yard)",
+            "title": "Saving Rs Thm"
+          },
+          "started_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "infeasible",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger": {
+            "enum": [
+              "schedule",
+              "user"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "requested_by",
+          "mode",
+          "omega_mode",
+          "status",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "OptimiserRunSummary",
+        "type": "object"
+      },
+      "PlanDecisionView": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "decided_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decided_by": {
+            "title": "Decided By",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "run_id": {
+            "description": "Run id (UUID)",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "shift_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shift of the decision (YYYY-MM-DD_A, IST date)",
+            "title": "Shift Key"
+          }
+        },
+        "required": [
+          "run_id",
+          "decision",
+          "decided_by",
+          "decided_at"
+        ],
+        "title": "PlanDecisionView",
+        "type": "object"
+      },
       "ProblemDetail": {
         "description": "Error body of every non-2xx response (RFC 7807).",
         "properties": {
@@ -954,6 +1584,52 @@
           "status"
         ],
         "title": "ProblemDetail",
+        "type": "object"
+      },
+      "RunLookup": {
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The job (records are kept 7 days)"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptimiserRunDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stored run, once the job has finished"
+          }
+        },
+        "title": "RunLookup",
+        "type": "object"
+      },
+      "RunSubmitted": {
+        "properties": {
+          "duplicate": {
+            "description": "True when an identical run was already queued or running",
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobRecord"
+          }
+        },
+        "required": [
+          "job",
+          "duplicate"
+        ],
+        "title": "RunSubmitted",
         "type": "object"
       },
       "SessionInfo": {
@@ -1123,7 +1799,7 @@
       "SiForecastPoint": {
         "properties": {
           "horizon_minutes": {
-            "description": "Target start after the origin, minutes",
+            "description": "Target start after the origin, min",
             "title": "Horizon Minutes",
             "type": "integer"
           },
@@ -1281,6 +1957,478 @@
         "title": "TagValue",
         "type": "object"
       },
+      "TransitBand": {
+        "properties": {
+          "blend_wet_pct": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Wet share of the ferrous charge, %",
+            "title": "Blend Wet Pct",
+            "type": "object"
+          },
+          "charges": {
+            "description": "Charges in the zone, count",
+            "title": "Charges",
+            "type": "number"
+          },
+          "coke_inventory_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke in the zone, t",
+            "title": "Coke Inventory T"
+          },
+          "coke_kg_per_t_ferrous": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke per tonne of ferrous of the zone, kg/t",
+            "title": "Coke Kg Per T Ferrous"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke as charged per tonne of hot metal, kg/tHM",
+            "title": "Coke Kg Thm"
+          },
+          "coke_t_per_charge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke per charge on the plant counter, t",
+            "title": "Coke T Per Charge"
+          },
+          "coke_volume_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke share of the charge volume, dimensionless",
+            "title": "Coke Volume Fraction"
+          },
+          "newest_h": {
+            "description": "Age of the newest charge of the zone, h",
+            "title": "Newest H",
+            "type": "number"
+          },
+          "oldest_h": {
+            "description": "Age of the oldest charge (descent time to the zone's lower edge), h",
+            "title": "Oldest H",
+            "type": "number"
+          },
+          "tonnes": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Charged material over the zone, t",
+            "title": "Tonnes",
+            "type": "object"
+          },
+          "zone": {
+            "description": "above_cz, in_cz or below_cz",
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zone",
+          "charges",
+          "newest_h",
+          "oldest_h"
+        ],
+        "title": "TransitBand",
+        "type": "object"
+      },
+      "TransitLag": {
+        "properties": {
+          "ci_high_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper end of the 95 % bootstrap interval, h",
+            "title": "Ci High H"
+          },
+          "ci_low_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower end of the 95 % bootstrap interval, h",
+            "title": "Ci Low H"
+          },
+          "lag_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Implied transit time, charging to burning, h",
+            "title": "Lag H"
+          },
+          "n_hours": {
+            "description": "Hours in the comparison, count",
+            "title": "N Hours",
+            "type": "integer"
+          },
+          "r_peak": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Correlation at the lag, dimensionless",
+            "title": "R Peak"
+          }
+        },
+        "required": [
+          "n_hours"
+        ],
+        "title": "TransitLag",
+        "type": "object"
+      },
+      "TwinAlarms": {
+        "properties": {
+          "history": {
+            "description": "Alarms raised in the window, newest first",
+            "items": {
+              "$ref": "#/components/schemas/AlarmView"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "open": {
+            "description": "Open alarms, newest first",
+            "items": {
+              "$ref": "#/components/schemas/AlarmView"
+            },
+            "title": "Open",
+            "type": "array"
+          },
+          "since": {
+            "description": "Start of the history window (UTC)",
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "open",
+          "history",
+          "since"
+        ],
+        "title": "TwinAlarms",
+        "type": "object"
+      },
+      "TwinNow": {
+        "properties": {
+          "age_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time since the latest evaluation, s",
+            "title": "Age S"
+          },
+          "alarms_open": {
+            "description": "Open alarms, count",
+            "title": "Alarms Open",
+            "type": "integer"
+          },
+          "expected_window_end": {
+            "description": "End of the newest window that should be evaluated now (UTC; evaluation at HH:05)",
+            "format": "date-time",
+            "title": "Expected Window End",
+            "type": "string"
+          },
+          "lag_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expected window end minus the latest window end, h",
+            "title": "Lag H"
+          },
+          "now": {
+            "description": "Server time (UTC)",
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TwinSnapshotData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest stored evaluation (None before the first)"
+          },
+          "stale": {
+            "description": "The latest window lags the expected one by stale_after_h or more",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_after_h": {
+            "description": "Lag from which the twin is stale, h (one missed evaluation)",
+            "title": "Stale After H",
+            "type": "number"
+          }
+        },
+        "required": [
+          "now",
+          "expected_window_end",
+          "stale",
+          "stale_after_h",
+          "alarms_open"
+        ],
+        "title": "TwinNow",
+        "type": "object"
+      },
+      "TwinSeries": {
+        "properties": {
+          "count": {
+            "description": "Rows, count",
+            "title": "Count",
+            "type": "integer"
+          },
+          "end": {
+            "description": "Last window end included (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "hour",
+              "shift"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TwinSeriesRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "start": {
+            "description": "First window end included (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution",
+          "start",
+          "end",
+          "count",
+          "rows"
+        ],
+        "title": "TwinSeries",
+        "type": "object"
+      },
+      "TwinSeriesRow": {
+        "properties": {
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged, kg/tHM dry",
+            "title": "K Charged"
+          },
+          "k_forge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Two-zone balance at the 14-day medians, kg/tHM dry",
+            "title": "K Forge"
+          },
+          "k_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Two-zone balance at omega_STRATA, kg/tHM dry",
+            "title": "K Strata"
+          },
+          "k_strata_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of k_strata, kg/tHM dry",
+            "title": "K Strata Sd"
+          },
+          "k_trace": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, oxygen balance + 14-day offset, kg/tHM dry",
+            "title": "K Trace"
+          },
+          "omega_cal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "14-day median shaft efficiency, dimensionless",
+            "title": "Omega Cal"
+          },
+          "omega_imp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Implied shaft efficiency, dimensionless",
+            "title": "Omega Imp"
+          },
+          "omega_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA 1.5 shaft efficiency, dimensionless",
+            "title": "Omega Strata"
+          },
+          "omega_strata_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of omega_strata, dimensionless",
+            "title": "Omega Strata Sd"
+          },
+          "quantities": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Requested quantities of the window, units in the keys (e.g. hmt_c, \u00b0C)",
+            "title": "Quantities",
+            "type": "object"
+          },
+          "shift_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shift of the window when it is one (YYYY-MM-DD_A, IST date)",
+            "title": "Shift Key"
+          },
+          "status": {
+            "description": "complete, partial or failed",
+            "title": "Status",
+            "type": "string"
+          },
+          "window_end": {
+            "description": "End of the 8-h window (UTC)",
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_end",
+          "status"
+        ],
+        "title": "TwinSeriesRow",
+        "type": "object"
+      },
       "TwinSnapshotData": {
         "description": "One hourly twin evaluation (``services.twin.snapshot_values``, table ``twin.snapshot``, SV-1.1): the window\n[window_start, window_end) in UTC, coke rates in kg/tHM dry, omega dimensionless, other quantities with their units\nin the keys, data flags with the notes of the evaluation, model versions.",
         "properties": {
@@ -1373,7 +2521,7 @@
                 "type": "null"
               }
             ],
-            "description": "14-day median omega (the anchor of FORGE and STRATA)",
+            "description": "14-day median omega (the anchor of FORGE and STRATA), dimensionless",
             "title": "Omega Cal"
           },
           "omega_imp": {
@@ -1385,7 +2533,7 @@
                 "type": "null"
               }
             ],
-            "description": "Implied shaft efficiency of the window",
+            "description": "Implied shaft efficiency of the window, dimensionless",
             "title": "Omega Imp"
           },
           "omega_strata": {
@@ -1397,7 +2545,7 @@
                 "type": "null"
               }
             ],
-            "description": "STRATA 1.5 shaft efficiency of the window",
+            "description": "STRATA 1.5 shaft efficiency of the window, dimensionless",
             "title": "Omega Strata"
           },
           "omega_strata_sd": {
@@ -1409,7 +2557,7 @@
                 "type": "null"
               }
             ],
-            "description": "1 sigma of omega_strata",
+            "description": "1 sigma of omega_strata, dimensionless",
             "title": "Omega Strata Sd"
           },
           "quantities": {
@@ -1481,6 +2629,124 @@
           "data"
         ],
         "title": "TwinSnapshotEvent",
+        "type": "object"
+      },
+      "TwinTransit": {
+        "properties": {
+          "at": {
+            "description": "Time of the column state (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "bands": {
+            "items": {
+              "$ref": "#/components/schemas/TransitBand"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "charges_per_hour": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charging rate of the last hour, charges/h",
+            "title": "Charges Per Hour"
+          },
+          "coke_in_transit_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke in the column, t",
+            "title": "Coke In Transit T"
+          },
+          "complete": {
+            "description": "The hourly record reaches the oldest charge of the column",
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "lag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TransitLag"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Implied lag over the last days (with lag=true)"
+          },
+          "missing_hours": {
+            "description": "Hours missing from the record inside the column, count",
+            "title": "Missing Hours",
+            "type": "integer"
+          },
+          "tau_cz_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Descent time to the cohesive zone, h",
+            "title": "Tau Cz H"
+          },
+          "tau_cz_rate_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Descent time to the cohesive zone at the current rate, h",
+            "title": "Tau Cz Rate H"
+          },
+          "tau_raceway_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Descent time to the raceways, h",
+            "title": "Tau Raceway H"
+          },
+          "tau_raceway_rate_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Descent time to the raceways at the current rate, h",
+            "title": "Tau Raceway Rate H"
+          }
+        },
+        "required": [
+          "at",
+          "complete",
+          "missing_hours",
+          "bands"
+        ],
+        "title": "TwinTransit",
         "type": "object"
       },
       "Version": {
@@ -2000,6 +3266,322 @@
         ]
       }
     },
+    "/api/optimiser/latest": {
+      "get": {
+        "description": "The latest run with status ok, with its decisions.",
+        "operationId": "optimiser_latest",
+        "parameters": [
+          {
+            "description": "Only this mode (default: any)",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "step1",
+                    "step2",
+                    "max_production"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this mode (default: any)",
+              "title": "Mode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptimiserRunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Latest optimiser plan",
+        "tags": [
+          "optimiser"
+        ]
+      }
+    },
+    "/api/optimiser/runs": {
+      "get": {
+        "description": "Newest first, with the decision that applies to each.",
+        "operationId": "optimiser_list_runs",
+        "parameters": [
+          {
+            "description": "Only this mode",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "step1",
+                    "step2",
+                    "max_production"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this mode",
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OptimiserRunSummary"
+                  },
+                  "title": "Response Optimiser List Runs",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Recent optimiser runs",
+        "tags": [
+          "optimiser"
+        ]
+      },
+      "post": {
+        "description": "Queue ``optimiser.run`` with page 11's defaults for the mode; follow it with GET /api/optimiser/runs/{job id}\nor the ``job.progress`` / ``job.done`` events. A request equal to a queued or running run returns that run.",
+        "operationId": "optimiser_start_run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimiserRunParams"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Start an optimiser run",
+        "tags": [
+          "optimiser"
+        ]
+      }
+    },
+    "/api/optimiser/runs/{run_id}/decision": {
+      "post": {
+        "description": "Append the decision, with its audit row (``plan.decide``), in the current shift. A later decision supersedes.",
+        "operationId": "optimiser_decide",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanDecisionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Accept or reject a plan",
+        "tags": [
+          "optimiser"
+        ]
+      }
+    },
+    "/api/optimiser/runs/{run_or_job_id}": {
+      "get": {
+        "description": "By run id (UUID) or by the job id returned when the run was started.",
+        "operationId": "optimiser_get_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_or_job_id",
+            "required": true,
+            "schema": {
+              "title": "Run Or Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunLookup"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "An optimiser run or its job",
+        "tags": [
+          "optimiser"
+        ]
+      }
+    },
     "/api/stream": {
       "get": {
         "description": "Events as they are published, a heartbeat every 15 s, and after a reconnect with ``Last-Event-ID`` (header, or\nthe ``last_event_id`` parameter) the events that were missed (at most the last 100). The stream ends when the\nsession ends; the browser then reconnects and receives 401.",
@@ -2173,6 +3755,314 @@
         "summary": "Recent events",
         "tags": [
           "stream"
+        ]
+      }
+    },
+    "/api/twin/alarms": {
+      "get": {
+        "operationId": "twin_alarms",
+        "parameters": [
+          {
+            "description": "History window, days",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7.0,
+              "description": "History window, days",
+              "exclusiveMinimum": 0.0,
+              "maximum": 92.0,
+              "title": "Days",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Only this kind (e.g. omega_drift)",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this kind (e.g. omega_drift)",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwinAlarms"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Open alarms and recent history",
+        "tags": [
+          "twin"
+        ]
+      }
+    },
+    "/api/twin/now": {
+      "get": {
+        "description": "The latest stored evaluation, how far it lags the expected window and the number of open alarms.",
+        "operationId": "twin_now",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwinNow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Latest twin evaluation",
+        "tags": [
+          "twin"
+        ]
+      }
+    },
+    "/api/twin/series": {
+      "get": {
+        "description": "Stored windows with start <= window end <= end, oldest first (at most 92 days).",
+        "operationId": "twin_series",
+        "parameters": [
+          {
+            "description": "First window end (default: end - 7 days)",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First window end (default: end - 7 days)",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Last window end (default: now)",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last window end (default: now)",
+              "title": "End"
+            }
+          },
+          {
+            "description": "hour, or shift: the shift windows",
+            "in": "query",
+            "name": "resolution",
+            "required": false,
+            "schema": {
+              "default": "hour",
+              "description": "hour, or shift: the shift windows",
+              "enum": [
+                "hour",
+                "shift"
+              ],
+              "title": "Resolution",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated quantity keys to include (e.g. hmt_c,tau_raceway_h)",
+            "in": "query",
+            "name": "quantities",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated quantity keys to include (e.g. hmt_c,tau_raceway_h)",
+              "title": "Quantities"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwinSeries"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Twin series, hourly or per shift",
+        "tags": [
+          "twin"
+        ]
+      }
+    },
+    "/api/twin/transit": {
+      "get": {
+        "description": "The charges in the column at ``at`` from the hourly dataset: descent times, coke by zone, the blend by zone.",
+        "operationId": "twin_transit",
+        "parameters": [
+          {
+            "description": "Time of the column (default: now)",
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Time of the column (default: now)",
+              "title": "At"
+            }
+          },
+          {
+            "description": "Also the implied lag against the stored K_TRACE (14 days)",
+            "in": "query",
+            "name": "lag",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Also the implied lag against the stored K_TRACE (14 days)",
+              "title": "Lag",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwinTransit"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Burden column and coke in transit",
+        "tags": [
+          "twin"
         ]
       }
     },

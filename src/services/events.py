@@ -91,17 +91,19 @@ class TwinSnapshotData(BaseModel):
     k_strata: float | None = Field(None, description="Two-zone balance at omega_STRATA, kg/tHM dry")
     k_strata_sd: float | None = Field(None, description="1 sigma of k_strata, kg/tHM dry")
     k_charged: float | None = Field(None, description="Coke charged, kg/tHM dry")
-    omega_imp: float | None = Field(None, description="Implied shaft efficiency of the window")
-    omega_strata: float | None = Field(None, description="STRATA 1.5 shaft efficiency of the window")
-    omega_strata_sd: float | None = Field(None, description="1 sigma of omega_strata")
-    omega_cal: float | None = Field(None, description="14-day median omega (the anchor of FORGE and STRATA)")
+    omega_imp: float | None = Field(None, description="Implied shaft efficiency of the window, dimensionless")
+    omega_strata: float | None = Field(None, description="STRATA 1.5 shaft efficiency of the window, dimensionless")
+    omega_strata_sd: float | None = Field(None, description="1 sigma of omega_strata, dimensionless")
+    omega_cal: float | None = Field(
+        None, description="14-day median omega (the anchor of FORGE and STRATA), dimensionless"
+    )
     quantities: dict[str, float] = Field(default_factory=dict)
     flags: dict[str, Any] = Field(default_factory=dict)
     versions: dict[str, Any] = Field(default_factory=dict)
 
 
 class SiForecastPoint(BaseModel):
-    horizon_minutes: int = Field(..., description="Target start after the origin, minutes")
+    horizon_minutes: int = Field(..., description="Target start after the origin, min")
     label: str = Field(..., description="Now, +1 h, +2 h, +3 h")
     target_start: datetime = Field(..., description="Start of the target band (UTC)")
     target_end: datetime = Field(..., description="End of the target band (UTC)")
@@ -129,7 +131,7 @@ class SiForecastData(BaseModel):
 
 
 class ChargedCokePoint(BaseModel):
-    horizon: int = Field(..., description="Rows (hours) after the data row")
+    horizon: int = Field(..., description="Rows after the data row (one per hour), h")
     at: datetime = Field(..., description="End of the 4-h charge window of the rate")
     prediction_kg_thm: float | None = Field(None, description="Charged coke, 4-h rate, kg/tHM")
     lower_kg_thm: float | None = Field(None, description="Lower end of the 90 % range, kg/tHM")
