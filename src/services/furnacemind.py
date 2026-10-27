@@ -357,51 +357,80 @@ def _default_system_prompt() -> str:
     return system_prompt(SystemPromptContext(), tool_policy=prompts.TOOL_POLICY)
 
 
-_RESOURCES: dict[str, Any] | None = None
-_RESOURCES_LOCK = threading.Lock()
+#: A shared store that could not be built is built again on the first turn after this many seconds.
+RESOURCE_RETRY_S = 60.0
 
 
-def _default_resources() -> Mapping[str, Any]:
-    """Page 7's shared stores, built once per process; each one that cannot be built is left out (the tool that
-    needs it answers that it is not initialised)."""
-    global _RESOURCES
-    with _RESOURCES_LOCK:
-        if _RESOURCES is not None:
-            return _RESOURCES
-        resources: dict[str, Any] = {}
+class ResourceCache:
+    """Shared stores built once per process. A store whose build fails is left out (the tool that needs it answers
+    that it is not initialised) and built again on a later call, at most once per ``retry_s``; page 7's
+    ``st.cache_resource`` does not cache a failure either."""
 
-        def attempt(key: str, build: Callable[[], Any]) -> None:
-            try:
-                resources[key] = build()
-            except Exception as exc:  # noqa: BLE001 - optional store: the turn runs without it
-                log.warning("FurnaceMind %s unavailable: %s", key, exc)
+    def __init__(
+        self,
+        builders: Mapping[str, Callable[[], Any]],
+        *,
+        retry_s: float = RESOURCE_RETRY_S,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._builders = dict(builders)
+        self._retry_s = retry_s
+        self._clock = clock
+        self._built: dict[str, Any] = {}
+        self._retry_at: dict[str, float] = {}
+        self._lock = threading.Lock()
 
-        def shift_store() -> Any:
-            from agents.memory.vector_store import QdrantVectorStore
+    def __call__(self) -> dict[str, Any]:
+        """The stores built so far (a copy), after building each missing store that is due."""
+        with self._lock:
+            for key, build in self._builders.items():
+                if key in self._built:
+                    continue
+                now = self._clock()
+                if now < self._retry_at.get(key, now):
+                    continue
+                try:
+                    self._built[key] = build()
+                except Exception as exc:  # noqa: BLE001 - optional store: the turn runs without it
+                    self._retry_at[key] = now + self._retry_s
+                    log.warning("FurnaceMind %s unavailable (next try in %.0f s): %s", key, self._retry_s, exc)
+                else:
+                    self._retry_at.pop(key, None)
+            return dict(self._built)
 
-            return QdrantVectorStore()
 
-        def knowledge_store() -> Any:
-            from agents.embeddings.cloud_embedding import CloudEmbeddingClient
-            from agents.memory.knowledge_vector_store import KnowledgeVectorStore
+def _shift_store() -> Any:
+    from agents.memory.vector_store import QdrantVectorStore
 
-            return KnowledgeVectorStore(CloudEmbeddingClient())
+    return QdrantVectorStore()
 
-        def relational(name: str) -> Callable[[], Any]:
-            def build() -> Any:
-                from furnace_data import relational as rel
 
-                engine = rel.build_relational_engine()
-                return getattr(rel, name)(rel.build_relational_session_factory(engine))
+def _knowledge_store() -> Any:
+    from agents.embeddings.cloud_embedding import CloudEmbeddingClient
+    from agents.memory.knowledge_vector_store import KnowledgeVectorStore
 
-            return build
+    return KnowledgeVectorStore(CloudEmbeddingClient())
 
-        attempt("shift_store", shift_store)
-        attempt("knowledge_store", knowledge_store)
-        attempt("knowledge_document_repository", relational("MemoryDocumentRepository"))
-        attempt("knowledge_retrieval_trace_repository", relational("RetrievalTraceRepository"))
-        _RESOURCES = resources
-        return resources
+
+def _relational(name: str) -> Callable[[], Any]:
+    def build() -> Any:
+        from furnace_data import relational as rel
+
+        engine = rel.build_relational_engine()
+        return getattr(rel, name)(rel.build_relational_session_factory(engine))
+
+    return build
+
+
+#: Page 7's shared stores of this process (vector stores, knowledge repositories).
+_default_resources = ResourceCache(
+    {
+        "shift_store": _shift_store,
+        "knowledge_store": _knowledge_store,
+        "knowledge_document_repository": _relational("MemoryDocumentRepository"),
+        "knowledge_retrieval_trace_repository": _relational("RetrievalTraceRepository"),
+    }
+)
 
 
 def _default_history_window() -> int:
@@ -482,16 +511,18 @@ def _pool() -> ThreadPoolExecutor:
 
 
 def tool_state(conversation_id: str, *, user_id: str | None, resources: Mapping[str, Any]) -> dict[str, Any]:
-    """The tool state of a conversation in this process (created with the shared resources when missing)."""
+    """The tool state of a conversation in this process (created when missing). The turn's shared resources are
+    seeded on every turn, so a store built after the conversation started reaches it."""
     with _STATES_LOCK:
         state = _STATES.get(conversation_id)
         if state is None:
-            state = {**resources, "fm_conversation_id": conversation_id}
+            state = {"fm_conversation_id": conversation_id}
             _STATES[conversation_id] = state
             while len(_STATES) > STATE_CONVERSATIONS:
                 _STATES.popitem(last=False)
         else:
             _STATES.move_to_end(conversation_id)
+        state.update(resources)
         state["fm_user_id"] = user_id
         return state
 
@@ -788,7 +819,9 @@ __all__ = [
     "NotConfigured",
     "PlotlyPart",
     "REASONING_LEVELS",
+    "RESOURCE_RETRY_S",
     "ReasoningLevel",
+    "ResourceCache",
     "TextPart",
     "ToolCallPart",
     "ToolResultPart",

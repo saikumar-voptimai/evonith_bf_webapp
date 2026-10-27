@@ -126,6 +126,42 @@ def test_tool_state_is_bound_per_context_and_never_loads_streamlit() -> None:
     assert tool_state.owned_by_turn({}, "fm_fig_turn_id", None)
 
 
+def test_a_store_that_fails_to_build_is_built_again_after_the_retry_time() -> None:
+    now = [100.0]
+    calls = {"shift_store": 0, "knowledge_store": 0}
+    shift = object()
+
+    def shift_store() -> object:
+        calls["shift_store"] += 1
+        if calls["shift_store"] == 1:
+            raise TimeoutError("Qdrant timed out")
+        return shift
+
+    def knowledge_store() -> object:
+        calls["knowledge_store"] += 1
+        raise ConnectionError("Qdrant unreachable")
+
+    cache = fm.ResourceCache(
+        {"shift_store": shift_store, "knowledge_store": knowledge_store}, retry_s=60.0, clock=lambda: now[0]
+    )
+    assert cache() == {} and calls == {"shift_store": 1, "knowledge_store": 1}
+    now[0] = 159.9  # within the retry time: no new build
+    assert cache() == {} and calls == {"shift_store": 1, "knowledge_store": 1}
+    first = fm.tool_state("conv-retry", user_id="op", resources=cache())
+    assert "shift_store" not in first
+    now[0] = 160.0
+    resources = cache()
+    assert resources == {"shift_store": shift} and calls == {"shift_store": 2, "knowledge_store": 2}
+    now[0] = 400.0  # a built store is kept; the failing one is tried once per 60 s
+    assert cache() == {"shift_store": shift} and calls == {"shift_store": 2, "knowledge_store": 3}
+    resources["shift_store"] = None  # the caller's copy, not the cache
+    assert cache()["shift_store"] is shift
+    # The conversation started without the store gets it on its next turn.
+    state = fm.tool_state("conv-retry", user_id="op", resources=cache())
+    assert state is first and state["shift_store"] is shift and state["fm_conversation_id"] == "conv-retry"
+    fm.forget_states()
+
+
 def test_figure_and_dataset_parts() -> None:
     import plotly.graph_objects as go
 
