@@ -228,6 +228,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/operator-inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Operator inputs in force or at a date
+         * @description The version in force (the YAML file while the store holds none or cannot be reached), or the version valid at
+         *     ``at`` (404 before the first version, 503 without the store).
+         */
+        get: operations["operator_inputs_get_operator_inputs"];
+        /**
+         * Save a new version of the operator inputs
+         * @description Apply the sections to the version in force and save the result as the next version, with its audit row
+         *     (``operator_inputs.update``, the changed values in the details). The first save records the YAML file as version 1.
+         *     A request that changes nothing writes no version (``changed`` false). 409 when ``base_version`` is not the current
+         *     version, 422 when a section has values the optimisers cannot use.
+         */
+        put: operations["operator_inputs_put_operator_inputs"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/optimiser/latest": {
         parameters: {
             query?: never;
@@ -892,6 +920,114 @@ export interface components {
              */
             decision: "accepted" | "rejected";
         };
+        /** DustEditorInputs */
+        DustEditorInputs: {
+            /**
+             * Rows
+             * @description Quantity and chemistry by dust id
+             */
+            rows?: {
+                [key: string]: components["schemas"]["DustInputRow"];
+            };
+        };
+        /** DustInputRow */
+        DustInputRow: {
+            /**
+             * Al2O3 Pct
+             * @description Al₂O₃ in the dry dust, %
+             */
+            al2o3_pct?: number | null;
+            /**
+             * Caf2 Pct
+             * @description CaF₂ in the dry dust, %
+             */
+            caf2_pct?: number | null;
+            /**
+             * Cao Pct
+             * @description CaO in the dry dust, %
+             */
+            cao_pct?: number | null;
+            /**
+             * Enabled
+             * @description The dust is deducted from the burden balance
+             */
+            enabled?: boolean | null;
+            /**
+             * Fe Pct
+             * @description Fe in the dry dust, %
+             */
+            fe_pct?: number | null;
+            /**
+             * K2O Pct
+             * @description K₂O in the dry dust, %
+             */
+            k2o_pct?: number | null;
+            /**
+             * Mgo Pct
+             * @description MgO in the dry dust, %
+             */
+            mgo_pct?: number | null;
+            /**
+             * Mn Pct
+             * @description Mn in the dry dust, %
+             */
+            mn_pct?: number | null;
+            /**
+             * Moisture Pct
+             * @description Moisture of the dust, %
+             */
+            moisture_pct?: number | null;
+            /**
+             * Na2O Pct
+             * @description Na₂O in the dry dust, %
+             */
+            na2o_pct?: number | null;
+            /**
+             * P Pct
+             * @description Phosphorus in the dry dust, %
+             */
+            p_pct?: number | null;
+            /**
+             * Quantity Kg Per Charge
+             * @description Wet dust when rate_basis is kg_per_charge, kg/charge
+             */
+            quantity_kg_per_charge?: number | null;
+            /**
+             * Rate Basis
+             * @description mt_per_day or kg_per_charge
+             */
+            rate_basis?: string | null;
+            /**
+             * S Pct
+             * @description Sulphur in the dry dust, %
+             */
+            s_pct?: number | null;
+            /**
+             * Sio2 Pct
+             * @description SiO₂ in the dry dust, %
+             */
+            sio2_pct?: number | null;
+            /**
+             * Source
+             * @description manual: saved from the page
+             */
+            source?: string | null;
+            /**
+             * Ti Pct
+             * @description Ti in the dry dust, %
+             */
+            ti_pct?: number | null;
+            /**
+             * Wet Qty Mt
+             * @description Wet dust when rate_basis is mt_per_day, t/d
+             */
+            wet_qty_mt?: number | null;
+            /**
+             * Zn Pct
+             * @description Zn in the dry dust, %
+             */
+            zn_pct?: number | null;
+        };
         /** FieldError */
         FieldError: {
             /** Loc */
@@ -900,6 +1036,39 @@ export interface components {
             msg: string;
             /** Type */
             type: string;
+        };
+        /** FluxEditorInputs */
+        FluxEditorInputs: {
+            /**
+             * Rows
+             * @description Price, stock and bounds by flux id
+             */
+            rows?: {
+                [key: string]: components["schemas"]["FluxInputRow"];
+            };
+        };
+        /** FluxInputRow */
+        FluxInputRow: {
+            /**
+             * Max Qty Mt
+             * @description Upper bound of the flux charged when it is optimised (none: the stock), t/d
+             */
+            max_qty_mt?: number | null;
+            /**
+             * Min Qty Mt
+             * @description Lower bound of the flux charged when it is optimised, t/d
+             */
+            min_qty_mt?: number | null;
+            /**
+             * Price Rs Per Mt
+             * @description Price per wet tonne, Rs/t
+             */
+            price_rs_per_mt?: number | null;
+            /**
+             * Stock Mt
+             * @description Stock in the yard, t
+             */
+            stock_mt?: number | null;
         };
         /** ForecastChargedCokeEvent */
         ForecastChargedCokeEvent: {
@@ -941,6 +1110,129 @@ export interface components {
              */
             type: "forecast.si";
         };
+        /** FuelEditorInputs */
+        FuelEditorInputs: {
+            /**
+             * Rows
+             * @description Price, rate and ash chemistry by fuel id (coke, nut_coke, pci)
+             */
+            rows?: {
+                [key: string]: components["schemas"]["FuelInputRow"];
+            };
+        };
+        /** FuelInputRow */
+        FuelInputRow: {
+            /**
+             * Al2O3 Pct
+             * @description Al₂O₃ in the ash, %
+             */
+            al2o3_pct?: number | null;
+            /**
+             * Alkali Pct
+             * @description Alkalis in the ash, %
+             */
+            alkali_pct?: number | null;
+            /**
+             * Ash Pct
+             * @description Ash of the fuel, %
+             */
+            ash_pct?: number | null;
+            /**
+             * Cao Pct
+             * @description CaO in the ash, %
+             */
+            cao_pct?: number | null;
+            /**
+             * Chemistry Source
+             * @description manual: saved from the page
+             */
+            chemistry_source?: string | null;
+            /**
+             * Enabled
+             * @description The fuel's ash enters the slag balance
+             */
+            enabled?: boolean | null;
+            /**
+             * Fe2O3 Pct
+             * @description Fe₂O₃ in the ash, %
+             */
+            fe2o3_pct?: number | null;
+            /**
+             * K2O Pct
+             * @description K₂O in the ash, %
+             */
+            k2o_pct?: number | null;
+            /**
+             * Mgo Pct
+             * @description MgO in the ash, %
+             */
+            mgo_pct?: number | null;
+            /**
+             * Mn Basis
+             * @description mn or mno: how mno_pct is given
+             */
+            mn_basis?: string | null;
+            /**
+             * Mno Pct
+             * @description Mn or MnO in the ash (mn_basis), %
+             */
+            mno_pct?: number | null;
+            /**
+             * Moisture Pct
+             * @description Moisture (TM for coke and nut coke, IM for PCI), %
+             */
+            moisture_pct?: number | null;
+            /**
+             * Na2O Pct
+             * @description Na₂O in the ash, %
+             */
+            na2o_pct?: number | null;
+            /**
+             * P Pct
+             * @description Phosphorus in the fuel, %
+             */
+            p_pct?: number | null;
+            /**
+             * Price Rs Per Mt
+             * @description Price per wet tonne, Rs/t
+             */
+            price_rs_per_mt?: number | null;
+            /**
+             * Rate Basis
+             * @description Basis of the fuel rate
+             */
+            rate_basis?: string | null;
+            /**
+             * Rate Kg Per Thm
+             * @description Fuel rate, kg/tHM
+             */
+            rate_kg_per_thm?: number | null;
+            /**
+             * S Pct
+             * @description Sulphur in the fuel, %
+             */
+            s_pct?: number | null;
+            /**
+             * Sio2 Pct
+             * @description SiO₂ in the ash, %
+             */
+            sio2_pct?: number | null;
+            /**
+             * Ti Basis
+             * @description ti or tio2: how tio2_pct is given
+             */
+            ti_basis?: string | null;
+            /**
+             * Tio2 Pct
+             * @description Ti or TiO₂ in the ash (ti_basis), %
+             */
+            tio2_pct?: number | null;
+            /**
+             * Vm Pct
+             * @description Volatile matter of the ash analysis, %
+             */
+            vm_pct?: number | null;
+        };
         /** Health */
         Health: {
             /**
@@ -981,6 +1273,29 @@ export interface components {
              * @enum {string}
              */
             type: "heartbeat";
+        };
+        /** HotMetalChemistryInputs */
+        HotMetalChemistryInputs: {
+            /**
+             * Carbon Pct
+             * @description Carbon in the hot metal held for the slag balance, %
+             */
+            carbon_pct?: number | null;
+            /**
+             * Other Pct
+             * @description Other elements in the hot metal held for the slag balance, %
+             */
+            other_pct?: number | null;
+            /**
+             * Silicon Pct
+             * @description Silicon in the hot metal held for the slag balance, %
+             */
+            silicon_pct?: number | null;
+            /**
+             * Sulphur Pct
+             * @description Sulphur in the hot metal held for the slag balance, %
+             */
+            sulphur_pct?: number | null;
         };
         /** JobDoneData */
         JobDoneData: {
@@ -1393,6 +1708,146 @@ export interface components {
              */
             username: string;
         };
+        /**
+         * OperatorInputsDocument
+         * @description The operator inputs; a section left out is not set (the configured defaults apply).
+         */
+        OperatorInputsDocument: {
+            /** @description BF gas dust deducted from the burden balance */
+            dust_editor?: components["schemas"]["DustEditorInputs"] | null;
+            /** @description Fluxes: prices, stock and quantity bounds */
+            flux_editor?: components["schemas"]["FluxEditorInputs"] | null;
+            /** @description Fuel prices, rates and ash chemistry */
+            fuel_ash_editor?: components["schemas"]["FuelEditorInputs"] | null;
+            /** @description Hot-metal chemistry held for the slag balance */
+            hot_metal_chemistry?: components["schemas"]["HotMetalChemistryInputs"] | null;
+            /** @description Slag targets and charging limits */
+            model_inputs?: components["schemas"]["SlagChargingInputs"] | null;
+            /** @description Ferrous materials: availability, prices, bounds */
+            ore_editor?: components["schemas"]["OreEditorInputs"] | null;
+        };
+        /** OperatorInputsSaved */
+        OperatorInputsSaved: {
+            /**
+             * At
+             * @description The instant the version was looked up for (UTC; null: now)
+             */
+            at?: string | null;
+            /**
+             * Author
+             * @description User who saved the version (seed: the YAML recorded as version 1)
+             */
+            author?: string | null;
+            /**
+             * Changed
+             * @description False when the request left the inputs as they were (no new version)
+             */
+            changed: boolean;
+            /** @description The operator inputs (units in the field descriptions) */
+            inputs: components["schemas"]["OperatorInputsDocument"];
+            /**
+             * Note
+             * @description Note saved with the version
+             */
+            note?: string | null;
+            /**
+             * Origin
+             * @description Where the version was saved
+             */
+            origin?: ("seed" | "streamlit" | "api") | null;
+            /**
+             * Reason
+             * @description Why the YAML file is in force (source yaml)
+             */
+            reason?: string | null;
+            /**
+             * Source
+             * @description neon: a version of twin.operator_inputs; yaml: bmo_operator_inputs.yml (no version in force)
+             * @enum {string}
+             */
+            source: "neon" | "yaml";
+            /**
+             * Valid From
+             * @description Start of the validity (UTC)
+             */
+            valid_from?: string | null;
+            /**
+             * Valid Upto
+             * @description End of the validity (UTC); null for the current version
+             */
+            valid_upto?: string | null;
+            /**
+             * Version
+             * @description Number of the version (1, 2, ...; null for the YAML file), count
+             */
+            version?: number | null;
+        };
+        /** OperatorInputsUpdate */
+        OperatorInputsUpdate: {
+            /**
+             * Base Version
+             * @description The version the edit started from (GET's version; 0 when GET answered from the YAML file); another current version answers 409, count
+             */
+            base_version?: number | null;
+            /** @description Sections to save: a section given replaces the saved one, a section set to null is removed (the configured defaults apply), a section left out is kept */
+            inputs: components["schemas"]["OperatorInputsDocument"];
+            /**
+             * Note
+             * @description Reason for the change, saved with the version
+             */
+            note?: string | null;
+        };
+        /** OperatorInputsView */
+        OperatorInputsView: {
+            /**
+             * At
+             * @description The instant the version was looked up for (UTC; null: now)
+             */
+            at?: string | null;
+            /**
+             * Author
+             * @description User who saved the version (seed: the YAML recorded as version 1)
+             */
+            author?: string | null;
+            /** @description The operator inputs (units in the field descriptions) */
+            inputs: components["schemas"]["OperatorInputsDocument"];
+            /**
+             * Note
+             * @description Note saved with the version
+             */
+            note?: string | null;
+            /**
+             * Origin
+             * @description Where the version was saved
+             */
+            origin?: ("seed" | "streamlit" | "api") | null;
+            /**
+             * Reason
+             * @description Why the YAML file is in force (source yaml)
+             */
+            reason?: string | null;
+            /**
+             * Source
+             * @description neon: a version of twin.operator_inputs; yaml: bmo_operator_inputs.yml (no version in force)
+             * @enum {string}
+             */
+            source: "neon" | "yaml";
+            /**
+             * Valid From
+             * @description Start of the validity (UTC)
+             */
+            valid_from?: string | null;
+            /**
+             * Valid Upto
+             * @description End of the validity (UTC); null for the current version
+             */
+            valid_upto?: string | null;
+            /**
+             * Version
+             * @description Number of the version (1, 2, ...; null for the YAML file), count
+             */
+            version?: number | null;
+        };
         /** OptimiserRunDetail */
         OptimiserRunDetail: {
             /**
@@ -1634,6 +2089,39 @@ export interface components {
              * @enum {string}
              */
             trigger: "schedule" | "user";
+        };
+        /** OreEditorInputs */
+        OreEditorInputs: {
+            /**
+             * Rows
+             * @description Price and share bounds by ore id
+             */
+            rows?: {
+                [key: string]: components["schemas"]["OreInputRow"];
+            };
+            /**
+             * Selected Ore Ids
+             * @description Ferrous materials offered to the optimisers (availability), ids of bmo_ore_mapping.yml; empty: every material
+             */
+            selected_ore_ids?: string[];
+        };
+        /** OreInputRow */
+        OreInputRow: {
+            /**
+             * Max Share Pct
+             * @description Upper bound of the wet share of the ferrous charge, %
+             */
+            max_share_pct?: number | null;
+            /**
+             * Min Share Pct
+             * @description Lower bound of the wet share of the ferrous charge, %
+             */
+            min_share_pct?: number | null;
+            /**
+             * Price Rs Per Mt
+             * @description Price per wet tonne, Rs/t
+             */
+            price_rs_per_mt?: number | null;
         };
         /** ParamStatsView */
         ParamStatsView: {
@@ -2416,6 +2904,59 @@ export interface components {
              * @description Upper end of the 90 % range, mass %
              */
             upper_pct?: number | null;
+        };
+        /** SlagChargingInputs */
+        SlagChargingInputs: {
+            /**
+             * Charge Mass Mt
+             * @description Mass of one charge, t
+             */
+            charge_mass_mt?: number | null;
+            /**
+             * Max Charges Per Hour
+             * @description Charging capacity of the skips, charges/h
+             */
+            max_charges_per_hour?: number | null;
+            /**
+             * Target Slag Al2O3 Max Pct
+             * @description Upper limit of Al₂O₃ in the slag, %
+             */
+            target_slag_al2o3_max_pct?: number | null;
+            /**
+             * Target Slag Basicity Max
+             * @description Upper limit of the slag CaO/SiO₂, dimensionless
+             */
+            target_slag_basicity_max?: number | null;
+            /**
+             * Target Slag Basicity Min
+             * @description Lower limit of the slag CaO/SiO₂, dimensionless
+             */
+            target_slag_basicity_min?: number | null;
+            /**
+             * Target Slag Mgo Al2O3 Ratio Min
+             * @description Lower limit of MgO per Al₂O₃ charged, dimensionless
+             */
+            target_slag_mgo_al2o3_ratio_min?: number | null;
+            /**
+             * Target Slag Mgo Min Pct
+             * @description Lower limit of MgO in the slag, %
+             */
+            target_slag_mgo_min_pct?: number | null;
+            /**
+             * Target Slag Rate Kg Per Thm
+             * @description Upper limit of the slag rate, kg/tHM
+             */
+            target_slag_rate_kg_per_thm?: number | null;
+            /**
+             * Target Slag T Basicity Max
+             * @description Upper limit of the slag (CaO + MgO)/SiO₂, dimensionless
+             */
+            target_slag_t_basicity_max?: number | null;
+            /**
+             * Target Slag T Basicity Min
+             * @description Lower limit of the slag (CaO + MgO)/SiO₂, dimensionless
+             */
+            target_slag_t_basicity_min?: number | null;
         };
         /** SlotProblem */
         SlotProblem: {
@@ -3788,6 +4329,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobRecord"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    operator_inputs_get_operator_inputs: {
+        parameters: {
+            query?: {
+                /** @description A date (YYYY-MM-DD: the version in force at the end of that IST day) or an ISO 8601 time (without offset: IST); omitted: the version in force now */
+                at?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorInputsView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    operator_inputs_put_operator_inputs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperatorInputsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorInputsSaved"];
                 };
             };
             /** @description Client error (problem+json) */

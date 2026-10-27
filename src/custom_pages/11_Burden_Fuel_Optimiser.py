@@ -33,6 +33,7 @@ import json
 
 from data.burden_engine.inputs import build_engine_inputs
 import ui.burden_optimiser.loaders as loaders
+from services import operator_inputs
 from ui.burden_optimiser.sections import (plan_sentence, render_controls, render_facts, render_frontier, render_limits,
                                           render_model_check, render_plan_summary, render_plan_tabs, render_status,
                                           render_thermal, render_yard_editor)
@@ -69,7 +70,7 @@ def _refresh() -> None:
 
 
 # ── Yard and calibration ──────────────────────────────────────────────
-yard, yard_source, yard_msg = loaders.yard(loaders.as_json(cfg), nonce)
+yard, yard_source, yard_msg = loaders.yard(loaders.as_json(cfg), nonce, operator_inputs.token())
 with st.spinner("Calibrating on recent stable shifts (shared with the Coke Energy Model page)…"):
     info, _ce = loaders.calibration(cfg, nonce)
 render_status(yard_source, yard_msg, info, reg, _refresh)

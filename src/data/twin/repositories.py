@@ -2,22 +2,23 @@
 
 ``TwinStore`` holds one repository per table. Each call runs in its own transaction and returns detached rows
 (readable after the session closes). User actions (plan decision, fact-register proposal and review, alarm
-acknowledgement) write their audit row in the same transaction as the change (``audit_row``); admin writes do so
-through ``services.audit.admin_write``, which also records the object's values before and after (SV-4.1). Times passed
-in must be timezone-aware; they are stored in UTC.
+acknowledgement, a new version of the operator inputs) write their audit row in the same transaction as the change
+(``audit_row``); admin writes do so through ``services.audit.admin_write``, which also records the object's values
+before and after (SV-4.1). Times passed in must be timezone-aware; they are stored in UTC.
 
 The store is synchronous (SQLAlchemy 2.0 with psycopg2); async callers run it in a thread (``asyncio.to_thread``).
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 from sqlalchemy import and_, func, or_, select, text
@@ -28,12 +29,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from data.twin.engine import build_engine, resolve_twin_url, session_factory
 from data.twin.models import (
     DECISIONS,
+    OPERATOR_INPUT_ORIGINS,
     SCHEMA,
     SEVERITIES,
     AlarmEvent,
     AuditLog,
     FactsVersion,
     Job,
+    OperatorInputs,
     OptimiserRun,
     PlanDecision,
     ShiftRecord,
@@ -78,6 +81,18 @@ class AlreadyRecorded(TwinStoreError):
 
 class ReviewRefused(TwinStoreError):
     """A fact-register version that is not pending, or a status change reviewed by its own author."""
+
+
+class VersionConflict(TwinStoreError):
+    """An edit of the operator inputs that started from a version which is no longer the current one."""
+
+    def __init__(self, base_version: int, current_version: int) -> None:
+        super().__init__(
+            f"the edit started from version {base_version}, but version {current_version} is current: "
+            "reload the operator inputs and apply the change again"
+        )
+        self.base_version = base_version
+        self.current_version = current_version
 
 
 @dataclass(frozen=True)
@@ -174,6 +189,26 @@ def overlay_hash(overlay: Mapping[str, Any]) -> str:
     """SHA-256 of the overlay in canonical JSON (sorted keys, no spaces)."""
     canonical = json.dumps(overlay, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _leaves(doc: Any, prefix: str = "") -> dict[str, Any]:
+    """``{"a.b.c": value}`` of a JSON document; lists and scalars are leaves."""
+    if isinstance(doc, Mapping) and doc:
+        out: dict[str, Any] = {}
+        for key, value in doc.items():
+            out.update(_leaves(value, f"{prefix}.{key}" if prefix else str(key)))
+        return out
+    return {prefix: doc} if prefix else {}
+
+
+def document_changes(before: Mapping[str, Any], after: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The leaves that differ between two JSON documents, by path: ``{"path", "before", "after"}`` (None = absent)."""
+    old, new = _leaves(before), _leaves(after)
+    return [
+        {"path": path, "before": old.get(path), "after": new.get(path)}
+        for path in sorted(old.keys() | new.keys())
+        if old.get(path) != new.get(path) or (path in old) != (path in new)
+    ]
 
 
 class _Repository:
@@ -675,6 +710,157 @@ class FactsVersionRepository(_Repository):
             return list(session.scalars(select(FactsVersion).order_by(FactsVersion.version.desc()).limit(limit)))
 
 
+@dataclass(frozen=True)
+class Seed:
+    """The operator inputs in force before the first version (the YAML), recorded as version 1 on an empty table."""
+
+    inputs: Mapping[str, Any]
+    valid_from: datetime
+    note: str | None = None
+
+
+#: Changes listed in the details of one ``operator_inputs.update`` audit row (the total is always given).
+AUDIT_CHANGES_MAX = 200
+
+
+class OperatorInputsRepository(_Repository):
+    """Versions of the operator inputs (``operator_inputs``, SCD-2): the current one has no ``valid_upto``.
+
+    ``write`` applies a change to the current document and stores the result as the next version, closing the current
+    one at the same instant, with its audit row (``operator_inputs.update``, the changed values in the details) in the
+    same transaction; a change that leaves the document as it is writes nothing. On an empty table the ``seed`` is
+    recorded first as version 1 (origin ``seed``, audit ``operator_inputs.seed``), so the history starts from what was
+    in force before. Two saves at once: the second waits for the first (row lock on PostgreSQL) and applies its change
+    to the first one's result, or, with a ``base_version``, fails with ``VersionConflict``.
+    """
+
+    def current(self) -> OperatorInputs | None:
+        with self._sessions() as session:
+            return session.scalars(select(OperatorInputs).where(OperatorInputs.valid_upto.is_(None))).one_or_none()
+
+    def current_version(self) -> int | None:
+        """Number of the current version (one indexed row): the cache token of the readers."""
+        with self._sessions() as session:
+            query = select(OperatorInputs.version).where(OperatorInputs.valid_upto.is_(None))
+            return session.scalars(query).one_or_none()
+
+    def at(self, when: datetime) -> OperatorInputs | None:
+        """The version valid at ``when`` (valid_from <= when < valid_upto); None before the first version."""
+        t = _utc(when, "when")
+        query = (
+            select(OperatorInputs)
+            .where(
+                OperatorInputs.valid_from <= t,
+                or_(OperatorInputs.valid_upto.is_(None), OperatorInputs.valid_upto > t),
+            )
+            .order_by(OperatorInputs.valid_from.desc())
+            .limit(1)
+        )
+        with self._sessions() as session:
+            return session.scalars(query).one_or_none()
+
+    def get(self, version: int) -> OperatorInputs | None:
+        with self._sessions() as session:
+            return session.scalars(select(OperatorInputs).where(OperatorInputs.version == version)).one_or_none()
+
+    def history(self, *, limit: int = 50) -> list[OperatorInputs]:
+        """Newest version first."""
+        query = select(OperatorInputs).order_by(OperatorInputs.version.desc()).limit(limit)
+        with self._sessions() as session:
+            return list(session.scalars(query))
+
+    def write(
+        self,
+        change: Callable[[dict[str, Any]], Mapping[str, Any]],
+        actor: Actor,
+        *,
+        origin: str,
+        note: str | None = None,
+        base_version: int | None = None,
+        seed: Callable[[], Seed | None] | None = None,
+        at: datetime | None = None,
+    ) -> tuple[OperatorInputs, bool]:
+        """Store ``change(current inputs)`` as the next version. Returns the version in force afterwards and whether
+        a version was written (also true when only the seed was).
+
+        ``base_version``: the version the edit started from (0: no version stored yet, the seed); when another one is
+        current, ``VersionConflict``.
+        ``seed``: called only on an empty table. ``at``: the save time (default now); a version never starts before
+        the one it closes."""
+        if origin not in OPERATOR_INPUT_ORIGINS or origin == "seed":
+            raise ValueError("origin must be streamlit or api")
+        when = _utc(at) or utcnow()
+        for _ in range(3):  # a concurrent save took the version number: start again from its result
+            try:
+                with self._sessions.begin() as session:
+                    query = select(OperatorInputs).order_by(OperatorInputs.version.desc()).limit(1)
+                    latest = session.scalars(query.with_for_update()).one_or_none()
+                    seeded = False
+                    if latest is None and seed is not None:
+                        recorded = seed()
+                        if recorded is not None:
+                            latest, seeded = self._seed(session, recorded, actor, when), True
+                    current = latest.version if latest is not None else 0
+                    # base_version 0: the edit started from the seed (the YAML), no version was stored yet.
+                    if base_version is not None and base_version != (0 if seeded else current):
+                        raise VersionConflict(base_version, current)
+                    before = dict(latest.inputs) if latest is not None else {}
+                    after = dict(change(copy.deepcopy(before)))
+                    digest = overlay_hash(after)
+                    if latest is not None and digest == latest.content_hash:
+                        return latest, seeded
+                    start = when
+                    if latest is not None:
+                        start = max(when, _stored_utc(latest.valid_from) + timedelta(microseconds=1))
+                        if latest.valid_upto is None:
+                            latest.valid_upto = start
+                            session.flush()  # closed before the next version opens: one current version
+                    row = OperatorInputs(
+                        version=current + 1,
+                        valid_from=start,
+                        author=actor.name,
+                        origin=origin,
+                        note=note,
+                        inputs=after,
+                        content_hash=digest,
+                    )
+                    session.add(row)
+                    changes = document_changes(before, after)
+                    details = {
+                        "version": row.version,
+                        "previous_version": current or None,
+                        "origin": origin,
+                        "note": note,
+                        "changes": changes[:AUDIT_CHANGES_MAX],
+                        "changes_total": len(changes),
+                    }
+                    audit_row(
+                        session, actor, "operator_inputs.update", "operator_inputs", str(row.version), details, start
+                    )
+                return row, True
+            except IntegrityError:
+                continue
+        raise TwinStoreError("no version number could be assigned to the operator inputs")
+
+    @staticmethod
+    def _seed(session: Session, seed: Seed, actor: Actor, when: datetime) -> OperatorInputs:
+        start = min(_utc(seed.valid_from, "valid_from") or when, when - timedelta(milliseconds=1))
+        row = OperatorInputs(
+            version=1,
+            valid_from=start,
+            author="seed",
+            origin="seed",
+            note=seed.note,
+            inputs=dict(seed.inputs),
+            content_hash=overlay_hash(seed.inputs),
+        )
+        session.add(row)
+        session.flush()
+        details = {"version": 1, "origin": "seed", "valid_from": start.isoformat(), "note": seed.note}
+        audit_row(session, actor, "operator_inputs.seed", "operator_inputs", "1", details, when)
+        return row
+
+
 class AuditRepository(_Repository):
     """Append-only log of admin writes and plan decisions."""
 
@@ -793,6 +979,7 @@ class TwinStore:
         self.reports = ShiftReportRepository(sessions)
         self.alarms = AlarmRepository(sessions)
         self.facts = FactsVersionRepository(sessions)
+        self.operator_inputs = OperatorInputsRepository(sessions)
         self.audit = AuditRepository(sessions)
 
     @classmethod

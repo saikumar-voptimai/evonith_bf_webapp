@@ -21,7 +21,7 @@ from sqlalchemy import CheckConstraint, UniqueConstraint, create_engine, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import NullPool
 
-from data.twin import Actor, AlreadyRecorded, NotFound, ReviewRefused, TwinStore
+from data.twin import Actor, AlreadyRecorded, NotFound, ReviewRefused, Seed, TwinStore, VersionConflict
 from data.twin.engine import build_engine, session_factory
 from data.twin.models import APPEND_ONLY, SCHEMA, TIME_INDEXED, TwinBase
 from tests.pg_server import fresh_database, needs_postgres, postgres_server
@@ -37,6 +37,7 @@ TABLES = (
     "shift_report",
     "alarm_event",
     "facts_version",
+    "operator_inputs",
     "audit_log",
 )
 T0 = datetime(2026, 10, 27, 0, 30, tzinfo=UTC)  # 06:00 IST, start of shift A
@@ -100,13 +101,17 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
         config = alembic_config(url)
         command.upgrade(config, "head")
         assert twin_tables(url) == {*TABLES, "alembic_version"}
-        assert TwinStore.from_url(url).revision() == "twin_0004"
+        assert TwinStore.from_url(url).revision() == "twin_0005"
         assert {"scheduled_for", "run_s"} <= job_columns(url)
         assert {"before", "after"} <= job_columns(url, "audit_log")
 
+        command.downgrade(config, "-1")  # twin_0005: the versions of the operator inputs (SV-3.1)
+        assert TwinStore.from_url(url).revision() == "twin_0004"
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"operator_inputs"}
+
         command.downgrade(config, "-1")  # twin_0004: the shift reports (SV-2.3)
         assert TwinStore.from_url(url).revision() == "twin_0003"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"shift_report"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"shift_report", "operator_inputs"}
 
         command.downgrade(config, "-1")  # twin_0003: the values before and after of the audit log
         assert TwinStore.from_url(url).revision() == "twin_0002"
@@ -114,7 +119,7 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
 
         command.downgrade(config, "-1")  # twin_0002: the slot and execution time of the jobs
         assert TwinStore.from_url(url).revision() == "twin_0001"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"shift_report"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"shift_report", "operator_inputs"}
         assert not {"scheduled_for", "run_s"} & job_columns(url)
 
         command.downgrade(config, "base")
@@ -517,6 +522,87 @@ def test_audit_log_filters_newest_first(store) -> None:
     assert [a.action for a in store.audit.query(object_type="user", object_id="u-17", until=T0 + H)] == ["user.create"]
 
 
+def _set(section: str, key: str, value: float):
+    """A change of the operator inputs: one value of a section."""
+
+    def change(doc: dict) -> dict:
+        doc.setdefault(section, {})[key] = value
+        return doc
+
+    return change
+
+
+YARD = {"ore_editor": {"selected_ore_ids": ["sinter_sp_02"], "rows": {"sinter_sp_02": {"price_rs_per_mt": 8784.0}}}}
+
+
+@needs_postgres
+def test_operator_inputs_are_versioned_scd2_with_their_audit_rows(store) -> None:
+    repo = store.operator_inputs
+    assert repo.current() is None and repo.current_version() is None and repo.at(T0) is None
+    seed = Seed(YARD, T0 - 24 * H, note="bmo_operator_inputs.yml")
+    v2, written = repo.write(
+        _set("model_inputs", "charge_mass_mt", 26.4), SUPERVISOR, origin="api", seed=lambda: seed, at=T0
+    )
+    assert written and v2.version == 2 and v2.valid_upto is None and v2.author == "sv1" and v2.origin == "api"
+    assert v2.inputs == {**YARD, "model_inputs": {"charge_mass_mt": 26.4}}  # the change applied to the seed
+    v1 = repo.get(1)
+    assert (v1.origin, v1.author, v1.valid_from, v1.valid_upto, v1.inputs) == ("seed", "seed", T0 - 24 * H, T0, YARD)
+
+    v3, _ = repo.write(_set("model_inputs", "charge_mass_mt", 26.0), ALICE, origin="streamlit", at=T0 + 8 * H)
+    same, written = repo.write(_set("model_inputs", "charge_mass_mt", 26.0), ALICE, origin="streamlit", at=T0 + 9 * H)
+    assert (same.version, written) == (3, False)  # nothing changed: no version, no audit row
+    assert repo.current().version == repo.current_version() == 3
+    probes = (T0 - H, T0, T0 + 8 * H - timedelta(microseconds=1), T0 + 8 * H)
+    assert [repo.at(t).version for t in probes] == [1, 2, 2, 3]
+    assert repo.at(T0 - 25 * H) is None  # before the seed
+    assert [v.version for v in repo.history()] == [3, 2, 1]
+
+    with pytest.raises(VersionConflict, match="version 2, but version 3 is current"):
+        repo.write(_set("model_inputs", "charge_mass_mt", 25.0), SUPERVISOR, origin="api", base_version=2)
+    assert repo.current_version() == 3
+    early, _ = repo.write(_set("model_inputs", "charge_mass_mt", 25.0), SUPERVISOR, origin="api", at=T0)  # clock behind
+    assert early.version == 4 and early.valid_from > v3.valid_from
+
+    audit = store.audit.query(object_type="operator_inputs")
+    assert [(a.action, a.object_id, a.actor) for a in reversed(audit)] == [
+        ("operator_inputs.seed", "1", "sv1"),
+        ("operator_inputs.update", "2", "sv1"),
+        ("operator_inputs.update", "3", "alice"),
+        ("operator_inputs.update", "4", "sv1"),
+    ]
+    third = audit[1]
+    assert third.details["changes"] == [{"path": "model_inputs.charge_mass_mt", "before": 26.4, "after": 26.0}]
+    assert (third.details["previous_version"], third.details["origin"]) == (2, "streamlit")
+    with pytest.raises(ValueError):
+        repo.write(_set("x", "y", 1.0), ALICE, origin="seed")
+
+
+@needs_postgres
+def test_operator_input_versions_can_only_be_closed(store) -> None:
+    store.operator_inputs.write(_set("model_inputs", "charge_mass_mt", 26.4), ALICE, origin="api", at=T0)
+    store.operator_inputs.write(_set("model_inputs", "charge_mass_mt", 26.0), ALICE, origin="api", at=T0 + H)
+    refused = (
+        "UPDATE twin.operator_inputs SET inputs = '{}' WHERE version = 2",  # the current version's content
+        "UPDATE twin.operator_inputs SET valid_upto = now() + interval '1 day' WHERE version = 1",  # a closed one
+        "UPDATE twin.operator_inputs SET author = 'x', valid_upto = now() + interval '1 day' WHERE version = 2",
+        "DELETE FROM twin.operator_inputs WHERE version = 1",
+    )
+    for sql in refused:
+        with pytest.raises(IntegrityError, match="written once"), store.engine.begin() as connection:
+            connection.execute(text(sql))
+    second_current = (
+        "INSERT INTO twin.operator_inputs (version, valid_from, author, origin, inputs, content_hash) "
+        "VALUES (9, now(), 'x', 'api', '{}', 'h')"
+    )
+    with pytest.raises(IntegrityError, match="uq_operator_inputs_current"), store.engine.begin() as connection:
+        connection.execute(text(second_current))
+    with store.engine.begin() as connection:  # closing the current version is the one change allowed
+        connection.execute(
+            text("UPDATE twin.operator_inputs SET valid_upto = valid_from + interval '1 hour' WHERE version = 2")
+        )
+    assert store.operator_inputs.current() is None and store.operator_inputs.get(2).valid_upto == T0 + 2 * H
+
+
 @needs_postgres
 def test_revision_is_none_before_the_migration(pg_server) -> None:
     with fresh_database(pg_server) as url:
@@ -609,5 +695,17 @@ def test_models_work_on_sqlite_for_the_outage_buffer(tmp_path) -> None:
     run = twin.optimiser.add(_run(T0))
     twin.optimiser.decide(run.id, "accepted", SUPERVISOR)
     assert twin.optimiser.decision(run.id).decision == "accepted"
+    twin.operator_inputs.write(_set("model_inputs", "charge_mass_mt", 26.4), ALICE, origin="api", at=T0)
+    twin.operator_inputs.write(_set("model_inputs", "charge_mass_mt", 26.0), ALICE, origin="api", at=T0 + H)
+    assert twin.operator_inputs.at(T0 + timedelta(minutes=30)).version == 1
+    assert twin.operator_inputs.current().inputs == {"model_inputs": {"charge_mass_mt": 26.0}}
+    with pytest.raises(IntegrityError):  # one current version on SQLite as well
+        with twin.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO operator_inputs (version, valid_from, author, origin, inputs, content_hash) "
+                    "VALUES (9, '2026-10-28 00:00:00', 'x', 'api', '{}', 'h')"
+                )
+            )
     assert twin.revision() is None
     engine.dispose()

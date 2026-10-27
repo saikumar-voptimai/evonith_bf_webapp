@@ -1,7 +1,8 @@
 """Burden & Fuel Optimiser: yard, calibration and runs (moved from ``ui/burden_optimiser/loaders.py``, #271).
 
-* Yard: the Blend Mix Optimiser's provider (Neon chemistry + stock) and the operator's saved inputs; if that fails
-  (no database connection), the reference yard of 16 Oct 2026 shipped with the engine, clearly labelled.
+* Yard: the Blend Mix Optimiser's provider (Neon chemistry + stock) and the operator's saved inputs (the version in
+  force, ``services.operator_inputs``; a new version reads the yard again); if that fails (no database connection),
+  the reference yard of 16 Oct 2026 shipped with the engine, clearly labelled.
 * Calibration and regime: from the Coke Energy pipeline result (``services.coke_energy``), so the optimiser and the
   Coke Energy views calibrate on the same shifts; the shipped Jul-Oct 2026 calibration if the pipeline cannot run.
 * Runs: keyed on every input, so repeating a request does not re-solve.
@@ -17,7 +18,7 @@ import hashlib
 import json
 import threading
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from config.config_loader import load_config
 from data.burden_engine.calibration import CalibrationInfo, fallback_calibration, live_calibration
 from data.burden_engine.inputs import build_engine_inputs, load_charged_blend, load_yard
 from services import coke_energy as ce
+from services import operator_inputs
 from utils.burden_engine.engine import REFERENCE_INPUTS_PATH, Engine, Limits, Settings
 from utils.burden_engine.facts import load_register
 from utils.burden_engine.scenarios import (
@@ -116,7 +118,9 @@ def read_yard(cfg: Mapping[str, Any]) -> tuple[dict[str, Any], str, str]:
 
 
 @memo(ttl_seconds=1800)
-def yard(cfg_json: str, nonce: int) -> tuple[dict[str, Any], str, str]:
+def yard(cfg_json: str, nonce: int, inputs_token: str = "") -> tuple[dict[str, Any], str, str]:
+    """``read_yard`` kept 30 min per ``inputs_token`` (``operator_inputs.token()``: a new version of the operator
+    inputs is read at once)."""
     return read_yard(json.loads(cfg_json))
 
 
@@ -293,6 +297,8 @@ class Case:
     names: dict[str, str]
     today_shares: dict[str, float]
     production_source: str = ""
+    #: The operator inputs the yard was built with: source, version, valid_from, author (SV-3.1).
+    operator_inputs: dict[str, Any] = field(default_factory=dict)
 
     def summary(self) -> dict[str, Any]:
         """The case as stored with the run (``optimiser_run.inputs``): settings, limits, target and sources."""
@@ -311,6 +317,7 @@ class Case:
             auto=auto,
             yard_source=self.yard_source,
             yard_message=self.yard_message,
+            operator_inputs=self.operator_inputs,
             calibration=self.calibration,
             today_shares=self.today_shares,
             materials=self.names,
@@ -370,7 +377,7 @@ def default_case(
         raise ValueError(f"certainty must be one of {', '.join(CERTAINTY_FILTERS)}")
     cfg = page_config(config_mtime("burden_optimiser.yml")) if cfg is None else cfg
     reg = load_register()
-    yard_rows, yard_source, yard_message = yard(as_json(cfg), nonce)
+    yard_rows, yard_source, yard_message = yard(as_json(cfg), nonce, operator_inputs.token())
     info, chosen = case_calibration(cfg, nonce, calibration_basis)
     regime = info.regime
     engine_mode = MODES[mode]
@@ -453,6 +460,7 @@ def default_case(
         names=names,
         today_shares=shares,
         production_source=source,
+        operator_inputs=dict(yard_rows.get("operator_inputs") or {}),
     )
 
 

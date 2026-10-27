@@ -31,8 +31,9 @@ def coke_energy_config(mtime_ns: int) -> dict:
 
 
 @st.cache_data(show_spinner="Reading the yard: raw-material chemistry, stock and saved prices…", ttl=1800)
-def yard(cfg_json: str, nonce: int) -> tuple[dict[str, Any], str, str]:
-    """(yard, source, message). Source is 'live' or 'reference'."""
+def yard(cfg_json: str, nonce: int, inputs_token: str = "") -> tuple[dict[str, Any], str, str]:
+    """(yard, source, message). Source is 'live' or 'reference'. ``inputs_token``: the version of the operator inputs
+    in force (``services.operator_inputs.token()``), so a saved change is read at once."""
     return svc.read_yard(json.loads(cfg_json))
 
 

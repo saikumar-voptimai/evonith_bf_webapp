@@ -10,8 +10,10 @@ from data.twin.repositories import (
     AlreadyRecorded,
     NotFound,
     ReviewRefused,
+    Seed,
     TwinStore,
     TwinStoreError,
+    VersionConflict,
 )
 
 __all__ = [
@@ -20,7 +22,9 @@ __all__ = [
     "AlreadyRecorded",
     "NotFound",
     "ReviewRefused",
+    "Seed",
     "TwinBase",
     "TwinStore",
     "TwinStoreError",
+    "VersionConflict",
 ]
