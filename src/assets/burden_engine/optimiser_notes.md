@@ -26,9 +26,11 @@ any coefficient.
   each candidate blend the coke rate is what the balance needs to make hot metal at the target HMT and Si with that
   burden, blast and PCI. It is not a hand coefficient; the webapp's old hand coefficients (COKE-17) are retired and
   refused in code.
-* **Calibration.** Shaft efficiency (omega), lower- and upper-zone heat losses (GJ/h), r_H and the packed-bed anchor
-  are the medians of the stable shifts of the 14 days before today, from the same pipeline result as page 10. With
-  fewer than 10 stable shifts the shipped Jul–Oct 2026 calibration is used and the page says so.
+* **Calibration.** Shaft efficiency (omega), lower- and upper-zone heat losses (GJ/h) and r_H come from one two-zone
+  calibration of the mean inputs of the stable shifts of the 14 days before today (the packed-bed anchor from the same
+  shifts), from the same pipeline result as page 10. Page 10's energy-balance prediction (FORGE) uses the medians of
+  the per-shift calibrations instead; the two definitions give different omega values in general. With fewer than 10
+  stable shifts the shipped Jul–Oct 2026 calibration is used and the page says so.
 * **Shaft efficiency: two modes.** *Fixed-ω* (Rist baseline, ASM-01): omega at the calibration value for every blend;
   a blend moves coke through its chemistry only. *STRATA-ω* (ASM-18, page default, **STRATA 1.5** — the BF-02 gas-flow
   model, formerly OMEGA): omega from STRATA-Flow network solves made for every plan (GAS-13; no surrogate). The thermal
