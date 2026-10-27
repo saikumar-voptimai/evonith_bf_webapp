@@ -236,6 +236,22 @@ register(
 )
 register(
     JobKind(
+        name="twin.trace",
+        title="TRACE view",
+        role="supervisor",
+        timeout_s=900,  # a cold build reads 15 months of 10-min data and balances every shift
+        max_tries=2,
+        retry_delay_s=300,
+        schedule=(None, {20}),
+        description=(
+            "Builds the TRACE view from the Coke Energy pipeline (burnt coke raw and calibrated per shift and day, "
+            "the 14-day correction, feeds and freshness, burnt against charged coke) into "
+            "src/storage/coke_energy/trace_view.json, which the TRACE page reads (SV-1.10)."
+        ),
+    )
+)
+register(
+    JobKind(
         name="optimiser.step2",
         title="Scheduled Step 2",
         role="supervisor",

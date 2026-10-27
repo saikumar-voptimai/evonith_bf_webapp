@@ -35,6 +35,7 @@ from api.routers import (
     status,
     stream,
     system,
+    trace,
     twin,
 )
 from api.security.origin import OriginGuardMiddleware
@@ -110,6 +111,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(stream.router)
     app.include_router(jobs.router)
     app.include_router(twin.router)
+    app.include_router(trace.router)
     app.include_router(optimiser.router)
     app.include_router(reports.router)
     app.include_router(admin.router)
