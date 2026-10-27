@@ -129,8 +129,13 @@ baseline)** — omega held at the calibration, ASM-01 — and **STRATA-ω** (ASM
   and its distance from the nearest solve (0 = solved at the plan). A fixed-production plan takes 10–15 s and about 8
   solves. The production searches (Step 1, maximum production, frontier) reuse a solve within 1 scaled unit (1 pt of a
   share, 5 kg/tHM coke, 1 t/h) and re-solve the plan they return exactly (`Engine.network_tolerance`,
-  `Engine.refine`): Step 1 with the 9-level oxygen search takes about 8 min (≈ 170 solves), maximum production
-  about 2 min (≈ 40 solves), Step 2 (with and without fuel in the objective) about 30 s. Two safeguards keep the
+  `Engine.refine`). Independent solves and search items (oxygen and frontier levels, grid points, relaxed limits) run
+  on solver processes (SV-1.8, README "STRATA-Flow throughput"); each item starts from the solves present before the
+  items, so the plans do not depend on the number of processes. Reference case (16 Oct 2026 yard with the Lloyds fines
+  oversize, both oversize options searched; development host, 2 vCPU, serial / 2 solver processes): Step 2 with the
+  value of limits 73 solves, 72 / 48 s; maximum production 347 solves, 393 / 246 s; Step 1 with the 9-level oxygen
+  search 1,260 solves, 19.3 min on 2 processes (solving occupied 53 % of the two processes; the steps that run one
+  after the other, among them the golden section over oxygen, take the rest). Two safeguards keep the
   searches from declaring a feasible point infeasible: when the first STRATA-ω linearisation has no feasible LP the
   plan is re-started from the Fixed-ω optimum of the same case (`Engine.slp`; e.g. sinter ≥ 65 %), and a point that
   stops with a small limit breach on coarse solves (total < 0.1, e.g. basicity 0.009 below its floor), and any

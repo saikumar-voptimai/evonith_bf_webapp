@@ -163,7 +163,7 @@ if st.session_state["bfo_args"] != args:
 args = st.session_state["bfo_args"]
 try:
     # network solves of the reference case of 16 Oct 2026 (SV-1.8 benchmark); independent ones run in parallel
-    _solves = {"fixed": "about 75", "max": "about 350"}.get(args[0], "")
+    _solves = {"fixed": "about 75", "max": "about 350", "cheapest": "about 1,250"}.get(args[0], "")
     _n = strata_network.solver_count()
     _where = f"shared by {_n} solver processes" if _n >= 2 else "one after the other"
     _strata_msg = ("Optimising: two-zone balance inside a sequential LP, with the STRATA-Flow network solved at every "
