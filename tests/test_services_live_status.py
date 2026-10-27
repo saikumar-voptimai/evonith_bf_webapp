@@ -235,31 +235,166 @@ def test_a_second_worker_does_not_query(fetcher) -> None:
     asyncio.run(run())
 
 
+class GatedSnapshots:
+    """A snapshot source whose i-th query returns only after the test opens gate i (controlled time: no test here
+    assumes a fast query)."""
+
+    def __init__(self, gates: int = 16) -> None:
+        self.gates = [threading.Event() for _ in range(gates)]
+        self.started: list[datetime] = []
+        self.threads: list[str] = []
+        self.returned = 0
+        self._lock = threading.Lock()
+
+    def __call__(self, now: datetime) -> status.StatusSnapshotView:
+        with self._lock:
+            index = len(self.started)
+            self.started.append(now)
+            self.threads.append(threading.current_thread().name)
+        self.gates[index].wait(10)
+        view = status.snapshot_view(_snapshot_at(now), now, source="producer")
+        with self._lock:
+            self.returned += 1
+        return view
+
+    def release(self, *indices: int) -> None:
+        for index in indices or range(len(self.gates)):
+            self.gates[index].set()
+
+    async def count(self) -> int:
+        return len(self.started)
+
+
+async def _settled(producer: live_status.LiveStatusProducer) -> None:
+    """Until the producer's current query has finished (its future settled on the loop)."""
+
+    async def done() -> bool:
+        return producer._task is not None and producer._task.done()
+
+    await _until(done, True)
+
+
+async def _abandoned(producer: live_status.LiveStatusProducer) -> int:
+    return len(producer._abandoned)
+
+
 def test_a_slow_snapshot_is_not_started_again_while_it_runs() -> None:
-    release = threading.Event()
-    started: list[datetime] = []
-
-    def slow(now: datetime) -> status.StatusSnapshotView:
-        started.append(now)
-        release.wait(5)
-        return status.snapshot_view(_snapshot_at(now), now, source="producer")
-
+    gated = GatedSnapshots()
     redis = FakeRedis()
 
     async def run() -> None:
         await live_status.record_subscribers(redis, "api-a", 2)
         producer = live_status.LiveStatusProducer(
-            "worker-1", snapshot=slow, hot_metal=no_hot_metal, snapshot_wait_s=0.05
+            "worker-1", snapshot=gated, hot_metal=no_hot_metal, snapshot_wait_s=0.05
         )
         assert await producer.tick(redis) == {}  # not ready within the beat
         assert await producer.tick(redis) == {}  # still running: no second query
-        assert producer.queries == 1 and len(started) == 1
+        assert producer.queries == 1 and await gated.count() == 1
         producer.snapshot_wait_s = 5.0
-        release.set()
-        fields = await producer.tick(redis)  # still the first query (finishing): awaited, not started again
-        assert fields["tags"] and producer.queries == 1 and len(started) == 1
+        asyncio.get_running_loop().call_later(0.05, gated.release, 0)  # returns during the next beat's wait
+        fields = await producer.tick(redis)  # still the first query: awaited, not started again
+        assert fields["tags"] and producer.queries == 1 and await gated.count() == 1
+        gated.release(1)
         fields = await producer.tick(redis)  # the next beat: a new query
-        assert fields["tags"] and producer.queries == 2 and len(started) == 2
+        assert fields["tags"] and producer.queries == 2 and await gated.count() == 2
+        assert gated.threads[0].startswith("live-status-")  # a daemon thread, not the loop's default executor
+        await producer.close()
+
+    asyncio.run(run())
+
+
+def test_a_snapshot_slower_than_the_wait_is_published_by_the_next_beat() -> None:
+    """Review finding (SV-2.1): a query that finished after the beat's wait but before the next beat (8-10 s) was
+    dropped and a new one started, so no beat ever published. Now the next beat publishes it and starts the next
+    query: one query and one published snapshot per beat, one beat late."""
+    gated = GatedSnapshots()
+    redis = FakeRedis()
+
+    async def run() -> None:
+        await live_status.record_subscribers(redis, "api-a", 3)
+        producer = live_status.LiveStatusProducer(
+            "worker-1", snapshot=gated, hot_metal=no_hot_metal, snapshot_wait_s=0.05
+        )
+        published = 0
+        for beat in range(8):
+            fields = await producer.tick(redis)
+            assert producer.queries == beat + 1  # one query per beat, never two at a time
+            if beat == 0:
+                assert fields == {}  # nothing finished yet
+            else:
+                assert set(fields["tags"]) >= {"production_rate", "hot_blast_volume", "raft"}
+                latest = await live_status.read_latest(redis)
+                assert latest is not None and latest.freshness.computed_at == gated.started[beat - 1]
+                published += 1
+            gated.release(beat)  # finishes after this beat's wait, before the next beat
+            await _settled(producer)
+        assert (producer.queries, published, gated.returned) == (8, 7, 8)
+        await producer.close()
+
+    asyncio.run(run())
+
+
+def test_a_late_snapshot_older_than_the_fresh_limit_is_dropped() -> None:
+    gated = GatedSnapshots()
+    clock = {"now": NOW}
+    redis = FakeRedis()
+
+    async def run() -> None:
+        await live_status.record_subscribers(redis, "api-a", 1)
+        producer = live_status.LiveStatusProducer(
+            "worker-1", snapshot=gated, hot_metal=no_hot_metal, clock=lambda: clock["now"], snapshot_wait_s=0.05
+        )
+        assert await producer.tick(redis) == {}
+        gated.release(0)
+        await _settled(producer)
+        clock["now"] = NOW + timedelta(seconds=live_status.LATEST_FRESH_S + 1)  # e.g. the beats stopped meanwhile
+        assert await producer.tick(redis) == {}  # too old to publish; the next query has started
+        assert producer.queries == 2 and await redis.get(live_status.LATEST_KEY) is None
+        gated.release()
+        await producer.close()
+
+    asyncio.run(run())
+
+
+def test_a_hung_snapshot_is_given_up_and_the_threads_stay_bounded() -> None:
+    """Review finding (SV-2.1): a query that never returned held the producer until the worker restarted. Now a
+    query older than snapshot_abandon_s is given up and a new one started while fewer than max_abandoned given-up
+    queries still run; a given-up query's late snapshot is not published."""
+    gated = GatedSnapshots()
+    mono = Clock(0.0)
+    redis = FakeRedis()
+
+    async def run() -> None:
+        await live_status.record_subscribers(redis, "api-a", 2)
+        producer = live_status.LiveStatusProducer(
+            "worker-1", snapshot=gated, hot_metal=no_hot_metal, monotonic=mono, snapshot_wait_s=0.05
+        )
+        assert live_status.SNAPSHOT_ABANDON_S == producer.snapshot_abandon_s == 60.0
+        assert await producer.tick(redis) == {}  # query 0 hangs
+        mono.t = 50.0
+        assert await producer.tick(redis) == {} and producer.queries == 1  # 50 s: still waited for
+        await _until(gated.count, 1)
+        mono.t = 60.0
+        assert await producer.tick(redis) == {} and (producer.queries, producer.abandoned) == (2, 1)
+        await _until(gated.count, 2)
+        mono.t = 120.0
+        assert await producer.tick(redis) == {} and (producer.queries, producer.abandoned) == (3, 2)
+        await _until(gated.count, 3)
+        mono.t = 200.0  # query 2 is 80 s old, but two given-up queries still run: no fourth thread
+        assert await producer.tick(redis) == {} and (producer.queries, producer.abandoned) == (3, 2)
+        gated.release(0)  # a given-up query returns: its thread ends, its snapshot is not used
+        await _until(lambda: _abandoned(producer), 1)
+        assert await redis.get(live_status.LATEST_KEY) is None
+        gated.release(3)  # the next query answers at once
+        producer.snapshot_wait_s = 5.0
+        fields = await producer.tick(redis)  # query 2 given up, query 3 started and published
+        assert fields["tags"] and (producer.queries, producer.abandoned) == (4, 3)
+        latest = await live_status.read_latest(redis)
+        assert latest is not None and latest.freshness.computed_at == gated.started[3]
+        gated.release()
+        await _until(lambda: _abandoned(producer), 0)
+        await producer.close()
+        assert gated.returned == 4
 
     asyncio.run(run())
 
@@ -360,11 +495,20 @@ def test_the_heartbeat_publishes_the_snapshot_while_clients_are_connected(fetche
             "pool_size": 0,
             "live_status": live_status.LiveStatusProducer("worker-1", hot_metal=no_hot_metal),
         }
+
+        async def beats(with_plant: bool) -> int:
+            events = [e for e in await bus.recent(100) if e.type == "live.status"]
+            return sum(bool(e.data.tags) == with_plant for e in events)
+
+        async def at_least(with_plant: bool, n: int) -> bool:
+            return await beats(with_plant) >= n
+
+        # Conditions, not fixed sleeps: a snapshot takes 0.4-2 s on a loaded machine (beats every 0.25 s).
         await live_status.record_subscribers(redis, "api-a", 5)
         task = asyncio.create_task(runtime.heartbeat_loop(ctx))
-        await asyncio.sleep(1.4)
+        await _until(lambda: at_least(True, 4), True, timeout=60.0)
         await live_status.record_subscribers(redis, "api-a", 0)  # the last client left
-        await asyncio.sleep(0.8)
+        await _until(lambda: at_least(False, 2), True, timeout=30.0)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
