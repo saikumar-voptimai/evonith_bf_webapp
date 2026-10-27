@@ -47,7 +47,7 @@ import math
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 from scipy.optimize import linprog
@@ -734,8 +734,9 @@ class Engine:
         m.plan(self.plan_state(z, s, P)).anchor_all(K, self.net_tol_final)
 
     def run_items(self, fn, items: Sequence[tuple], *, network: bool) -> list[Any]:
-        """``fn(self, *item)`` for items that do not depend on each other (the oxygen levels of Step 1, the levels of
-        the frontier, the points of the maximum-production grid, the relaxations of the value of limits; SV-1.8).
+        """``fn(self, *item)`` for items that do not depend on each other (the oxygen levels of Step 1 - the grid and
+        each bracket round, of both oversize options together - the levels of the frontier, the points of the
+        maximum-production grid, the relaxations of the value of limits; SV-1.8).
 
         With STRATA-ω (``network``), every item starts from the network anchors present now, and the anchors the items
         add are kept afterwards in item order; so the results, the anchors and the solve counts do not depend on the
@@ -1051,91 +1052,139 @@ class Engine:
         return rows
 
     def min_total_cost(self, L: Limits, base: Settings | None = None, P_lo=85.0, step=0.5, o2_levels=None, tol_P=0.02,
-                       tol_r=1e-4, curves=True):
+                       tol_r=1e-4, curves=True, o2_points=4):
         """Production level, blend and oxygen with the lowest ore + flux + fuel cost (see ``_min_total_cost``); in STRATA
         mode the search solves the network coarsely and the returned plan exactly."""
         with self.network_tolerance(self.SEARCH_TOL):
-            best = self._min_total_cost(L, base, P_lo, step, o2_levels, tol_P, tol_r, curves)
+            best = self._min_total_cost(L, base, P_lo, step, o2_levels, tol_P, tol_r, curves, o2_points)
         return self.refine(best, replace(L, process=True), True)
 
     def _min_total_cost(self, L: Limits, base: Settings | None = None, P_lo=85.0, step=0.5, o2_levels=None, tol_P=0.02,
-                        tol_r=1e-4, curves=True):
+                        tol_r=1e-4, curves=True, o2_points=4):
         """Production level, blend and oxygen with the lowest ore + flux + fuel cost per tHM within the limits.
         Controls: HBT and pressures at their limits (they cost nothing in Rs/tHM). Oxygen: the base settings' unless
         o2_levels (O2/air ratios, a grid from the base up) is given; then oxygen is searched too. Oxygen has no price,
         and at a fixed production more oxygen adds a little coke, so it is used only to reach a higher production.
         Cost against production is single-dipped (falls while the cheap blend fits, rises once a limit forces dearer
-        ore) -> golden-section on production; over oxygen, the best grid level is refined between its neighbours.
+        ore) -> golden section on production at each oxygen level (``_cheapest_at_level``). Cost against oxygen is
+        taken as single-dipped too: the best grid level is refined between its neighbours by bracket rounds of
+        ``o2_points`` levels each (``bracket_rounds``) until the bracket is ``tol_r`` wide; the cheapest of all
+        evaluated levels is kept. The oversize options (``_ore6_options``) are searched side by side as independent
+        items of ``run_items`` (SV-1.8): the grid levels of both options in one call, each bracket round of both in one
+        call, the frontier levels of both in one call.
         Also returns 'curves': the frontier on a production grid (one per oversize option)."""
         L = replace(L, process=True)
         r_now = (base or self.cal_settings()).O2_per_air
         P_lo = self.p_range(base or self.cal_settings(), P_lo, 1e9)[0]
         levels = [r_now] if o2_levels is None else sorted(set([r_now] + [r for r in o2_levels if r >= r_now - 1e-12]))
         cost = _total_cost
-        gr = (5 ** 0.5 - 1) / 2
-        best = None; out_curves = {}
         network = (base or self.cal_settings()).omega_mode == "blend"
-        for on6 in self._ore6_options():
-            memo, tops = {}, {}
+        options = self._ore6_options()
+        memo: dict[bool, dict[float, Any]] = {on6: {} for on6 in options}    # oxygen level -> cheapest plan (or None)
+        tops: dict[bool, dict[float, float]] = {on6: {} for on6 in options}  # oxygen level -> highest production, t/h
 
-            def keep(r, found):
-                key = round(float(r), 7)
-                res, top_P = found
-                memo[key] = res
+        def at_levels(pairs: Sequence[tuple[bool, float]]) -> list[float]:
+            """The cheapest plan at each (oversize option, oxygen level): independent items, each from the network
+            anchors present before them (in parallel with a solver executor). Returns their costs."""
+            found = self.run_items(_item_level, [(r, L, base, P_lo, on6, tol_P) for on6, r in pairs], network=network)
+            for (on6, r), (res, top_P) in zip(pairs, found):
+                memo[on6][_r_key(r)] = res
                 if top_P is not None:
-                    tops[key] = top_P
-                return res
+                    tops[on6][_r_key(r)] = top_P
+            return [cost(res) for res, _ in found]
 
-            def at_r(r):
-                key = round(float(r), 7)
-                if key in memo:
-                    return memo[key]
-                return keep(r, self._cheapest_at_level(r, L, base, P_lo, on6, tol_P))
-
-            # the levels do not depend on each other: each from the same network anchors, in parallel with a solver
-            # executor (SV-1.8); the golden section between them below follows on the anchors of all of them
-            firsts = self.run_items(_item_level, [(r, L, base, P_lo, on6, tol_P) for r in levels], network=network)
-            for r, found in zip(levels, firsts):
-                keep(r, found)
-            grid = [(r, memo[round(float(r), 7)]) for r in levels]
-            ok = [(r, x) for r, x in grid if x is not None]
+        at_levels([(on6, r) for on6 in options for r in levels])
+        ok_levels, cands, brackets = {}, {}, {}
+        for on6 in options:
+            ok = [(r, memo[on6][_r_key(r)]) for r in levels if memo[on6][_r_key(r)] is not None]
             if not ok:
                 continue
             i = min(range(len(ok)), key=lambda k: cost(ok[k][1]))
-            cand = ok[i][1]
+            ok_levels[on6], cands[on6] = [r for r, _ in ok], ok[i][1]
             if len(ok) > 1:
-                a = ok[max(i - 1, 0)][0]; b = ok[min(i + 1, len(ok) - 1)][0]
-                c, d = b - gr * (b - a), a + gr * (b - a)
-                fc, fd = at_r(c), at_r(d)
-                while b - a > tol_r:
-                    if cost(fc) <= cost(fd):
-                        b, d, fd = d, c, fc; c = b - gr * (b - a); fc = at_r(c)
-                    else:
-                        a, c, fc = c, d, fd; d = a + gr * (b - a); fd = at_r(d)
-                for x in memo.values():
-                    if cost(x) < cost(cand):
-                        cand = x
+                brackets[on6] = (ok[max(i - 1, 0)][0], ok[min(i + 1, len(ok) - 1)][0])
+        if brackets:
+            seen = {on6: {k: cost(x) for k, x in memo[on6].items()} for on6 in brackets}
+            bracket_rounds(brackets, seen, at_levels, k=o2_points, tol=tol_r)
+            for on6 in brackets:
+                for x in memo[on6].values():
+                    if cost(x) < cost(cands[on6]):
+                        cands[on6] = x
+        best = None
+        for cand in cands.values():                                           # in option order: a tie keeps the first
             if best is None or cost(cand) < cost(best):
                 best = cand
-            if curves:
-                k_top = max(tops, key=tops.get); P_top = tops[k_top]
-                r_curve = sorted(set([r for r, _ in ok] + [cand["settings"]["O2_per_air"], k_top]))
-                Ps = list(np.arange(P_lo, P_top, step)) + [P_top]
-                per_level = self.run_items(_item_frontier, [(self.process_settings(L, r, base), L, Ps, True, on6)
-                                                            for r in r_curve], network=network)
+        if best is None:
+            return None
+        out_curves = {}
+        if curves:
+            plan = []                                                         # (option, production grid, levels)
+            for on6, cand in cands.items():
+                k_top = max(tops[on6], key=tops[on6].get); P_top = tops[on6][k_top]
+                r_curve = {}                       # one frontier per level: k_top is a rounded key (_r_key)
+                for r in ok_levels[on6] + [cand["settings"]["O2_per_air"], k_top]:
+                    r_curve.setdefault(_r_key(r), r)
+                plan.append((on6, list(np.arange(P_lo, P_top, step)) + [P_top], [r_curve[k] for k in sorted(r_curve)]))
+            per_level = iter(self.run_items(_item_frontier, [(self.process_settings(L, r, base), L, Ps, True, on6)
+                                                             for on6, Ps, r_curve in plan for r in r_curve],
+                                            network=network))
+            for on6, Ps, r_curve in plan:
+                lvls = [next(per_level) for _ in r_curve]
                 rows = []
                 for k, P in enumerate(Ps):
-                    feas = [lvl[k] for lvl in per_level if lvl[k]["feasible"]]
+                    feas = [lvl[k] for lvl in lvls if lvl[k]["feasible"]]
                     if feas:
                         rows.append(min(feas, key=lambda x: x["cost"]["total"]))
                 out_curves[on6] = rows
-        if best is not None:
-            best["curves"] = out_curves
+        best["curves"] = out_curves
         return best
+
+
+def bracket_rounds(brackets: Mapping[Any, tuple[float, float]], seen: dict[Any, dict[float, float]],
+                   evaluate: Callable[[list[tuple[Any, float]]], Sequence[float]], k: int = 4,
+                   tol: float = 1e-4) -> int:
+    """Minimum of functions single-dipped in x, one per key (Step 1: cost against oxygen for each oversize option), by
+    parallel bracket rounds (SV-1.8, #288; they replace a golden section, which evaluates one point after the other).
+
+    Each round places ``k`` evenly spaced interior points in every open bracket [a, b], evaluates the new points of all
+    keys in ONE call ``evaluate([(key, x), ...]) -> costs`` (in that order), then narrows each bracket to the
+    neighbours of its cheapest point among all its evaluated points inside [a, b] (ties: the lower x; an end that is
+    not evaluated stays the end). A bracket closes when b - a <= ``tol``. ``seen`` {key: {x: cost}} holds the points
+    evaluated before (Step 1: the grid levels, among them the bracket's ends and its best level) and gains the new
+    ones; x are rounded to 7 decimals (``_r_key``). The width falls to at most 2/(k + 1) of the bracket per round (k is
+    at least 2: with one point a bracket around its midpoint would not narrow): with k = 4, 4-5 rounds from two oxygen
+    grid steps (Step 1, 9 levels), where the golden section took 10 levels one after the other. Returns the number of
+    rounds."""
+    k = max(2, int(k))
+    open_ = {key: (_r_key(a), _r_key(b)) for key, (a, b) in brackets.items() if _r_key(b) - _r_key(a) > tol}
+    rounds = 0
+    while open_:
+        todo = [(key, a + (b - a) * j / (k + 1)) for key, (a, b) in open_.items() for j in range(1, k + 1)]
+        todo = [(key, x) for key, x in todo if _r_key(x) not in seen.setdefault(key, {})]
+        if not todo:                                       # the brackets are finer than the rounding of x
+            break
+        for (key, x), c in zip(todo, evaluate(todo)):
+            seen[key][_r_key(x)] = float(c)
+        rounds += 1
+        nxt = {}
+        for key, (a, b) in open_.items():
+            xs = sorted(x for x in seen[key] if a <= x <= b)
+            j = min(range(len(xs)), key=lambda i: seen[key][xs[i]])
+            a2 = xs[j - 1] if j > 0 else a
+            b2 = xs[j + 1] if j < len(xs) - 1 else b
+            if b2 - a2 > tol:
+                nxt[key] = (a2, b2)
+        open_ = nxt
+    return rounds
 
 
 # ------------------------------------------------------------------------------------------- independent items (SV-1.8)
 _CHILD_ENGINES: dict[str, Engine] = {}
+
+
+def _r_key(r: float) -> float:
+    """An oxygen level (O2/air) as a key: rounded to 7 decimals."""
+    return round(float(r), 7)
 
 
 def _total_cost(x: Mapping[str, Any] | None) -> float:
