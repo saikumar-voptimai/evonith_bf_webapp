@@ -1011,7 +1011,7 @@ def test_lp_baseline_treats_fuel_ash_slag_as_hard_constraint():
     )
 
     assert blend is None
-    assert any("LP infeasible" in error for error in errors)
+    assert any("Balanced Optimizer infeasible" in error for error in errors)
 
 
 def test_lp_baseline_treats_fixed_flux_slag_as_hard_constraint():
@@ -1054,7 +1054,7 @@ def test_lp_baseline_treats_fixed_flux_slag_as_hard_constraint():
     )
 
     assert blend is None
-    assert any("LP infeasible" in error for error in errors)
+    assert any("Balanced Optimizer infeasible" in error for error in errors)
 
 
 def test_lp_baseline_explains_stock_and_share_infeasibility():
@@ -1090,7 +1090,7 @@ def test_lp_baseline_explains_stock_and_share_infeasibility():
     )
 
     assert blend is None
-    assert any("LP infeasible" in error for error in errors)
+    assert any("Balanced Optimizer infeasible" in error for error in errors)
     assert any("maximum shares sum to" in error for error in errors)
     assert any("can supply at most" in error and "MT Fe" in error for error in errors)
 
@@ -1632,11 +1632,11 @@ def test_nonlinear_optimizer_skips_de_when_lp_constraints_are_infeasible():
     )
 
     assert blend is None
-    assert (
-        errors[0]
-        == "Total-cost optimizer skipped because hard LP constraints are infeasible."
+    assert errors[0] == (
+        "Intensive Optimizer skipped because the Balanced Optimizer's hard "
+        "constraints are infeasible."
     )
-    assert any("LP infeasible" in error for error in errors)
+    assert any("Balanced Optimizer infeasible" in error for error in errors)
 
 
 def test_nonlinear_optimizer_falls_back_to_a_random_start_by_default():

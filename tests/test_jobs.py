@@ -242,8 +242,10 @@ def test_queued_jobs_survive_a_worker_kill(redis_url, tmp_path) -> None:
         second = None
         try:
             running, _ = await store.submit("system.selftest", {"steps": 4, "step_s": 1, "cpu": False}, "adm")
-            queued, _ = await store.submit("system.selftest", {"steps": 1, "step_s": 0, "cpu": False}, "adm")
             await wait_for(lambda: _status(store, running.id, "running"), timeout=20)
+            # Submitted while the only job slot is busy (BF_WORKER_MAX_JOBS=1). Submitted together, both jobs could get
+            # the same millisecond score in the arq queue, whose order is then the job id: the short job ran first.
+            queued, _ = await store.submit("system.selftest", {"steps": 1, "step_s": 0, "cpu": False}, "adm")
             first.send_signal(signal.SIGKILL)
             first.wait(timeout=5)
             assert (await store.get(queued.id)).status == "queued"

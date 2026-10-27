@@ -1,15 +1,6 @@
 from __future__ import annotations
 
-import sys
-import types
-
-
-def _install_module(name: str, **attrs) -> None:
-    """Install a lightweight import stub for unused page dependencies."""
-    module = types.ModuleType(name)
-    for attr, value in attrs.items():
-        setattr(module, attr, value)
-    sys.modules.setdefault(name, module)
+from tests.module_stubs import import_with_stubs
 
 
 def _cache_resource(*args, **kwargs):
@@ -24,45 +15,44 @@ def _cache_resource(*args, **kwargs):
     return decorator
 
 
-_install_module("streamlit", cache_resource=_cache_resource, session_state={})
-_install_module(
-    "agents.embeddings.cloud_embedding",
-    CloudEmbeddingClient=type("CloudEmbeddingClient", (), {}),
-)
-_install_module("agents.furnace_tools", get_openai_tool_schemas=lambda: [])
-_install_module("agents.furnacemind.agent", run_agent_loop=lambda **kwargs: "")
-_install_module(
-    "agents.furnacemind.context",
-    SystemPromptContext=type("SystemPromptContext", (), {}),
-)
-_install_module("agents.furnacemind.skills", SkillEngine=type("SkillEngine", (), {}))
-_install_module(
-    "agents.llm.llm_client",
-    OpenRouterClient=type(
-        "OpenRouterClient", (), {"__init__": lambda self, **kwargs: None}
-    ),
-)
-_install_module(
-    "agents.memory.conversation_history",
-    ConversationHistoryStore=type("ConversationHistoryStore", (), {}),
-)
-_install_module(
-    "agents.memory.knowledge_vector_store",
-    KnowledgeVectorStore=type("KnowledgeVectorStore", (), {}),
-)
-_install_module(
-    "agents.memory.vector_store", QdrantVectorStore=type("QdrantVectorStore", (), {})
-)
-_install_module("ui.furnacemind.chat_interface")
-_install_module("ui.furnacemind.feedback_flow")
-_install_module(
-    "utils.furnacemind.feedback_service",
-    FurnaceMindFeedbackService=type("FurnaceMindFeedbackService", (), {}),
-)
-_install_module("utils.session", current_user_id=lambda: "user-1")
-_install_module("utils.shift_windows", last_completed_shift=lambda: (None, ""))
+# Page dependencies the flush does not use, replaced for the import of the page only (tests/module_stubs.py).
+_PAGE_STUBS = {
+    "streamlit": {"cache_resource": _cache_resource, "session_state": {}},
+    "agents.embeddings.cloud_embedding": {
+        "CloudEmbeddingClient": type("CloudEmbeddingClient", (), {})
+    },
+    "agents.furnace_tools": {"get_openai_tool_schemas": lambda: []},
+    "agents.furnacemind.agent": {"run_agent_loop": lambda **kwargs: ""},
+    "agents.furnacemind.context": {
+        "SystemPromptContext": type("SystemPromptContext", (), {})
+    },
+    "agents.furnacemind.skills": {"SkillEngine": type("SkillEngine", (), {})},
+    "agents.llm.llm_client": {
+        "OpenRouterClient": type(
+            "OpenRouterClient", (), {"__init__": lambda self, **kwargs: None}
+        )
+    },
+    "agents.memory.conversation_history": {
+        "ConversationHistoryStore": type("ConversationHistoryStore", (), {})
+    },
+    "agents.memory.knowledge_vector_store": {
+        "KnowledgeVectorStore": type("KnowledgeVectorStore", (), {})
+    },
+    "agents.memory.vector_store": {
+        "QdrantVectorStore": type("QdrantVectorStore", (), {})
+    },
+    "ui.furnacemind.chat_interface": {},
+    "ui.furnacemind.feedback_flow": {},
+    "utils.furnacemind.feedback_service": {
+        "FurnaceMindFeedbackService": type("FurnaceMindFeedbackService", (), {})
+    },
+    "utils.session": {"current_user_id": lambda: "user-1"},
+    "utils.shift_windows": {"last_completed_shift": lambda: (None, "")},
+}
 
-from agents.furnacemind import ai_cooperate_page  # noqa: E402
+ai_cooperate_page = import_with_stubs(
+    "agents.furnacemind.ai_cooperate_page", _PAGE_STUBS
+)
 
 
 class FakeSummaryLLM:

@@ -1,45 +1,10 @@
 from __future__ import annotations
 
-import sys
 import types
 
-
-def _install_plotly_stubs() -> None:
-    """Install lightweight Plotly stubs before importing furnace_tools."""
-    plotly = types.ModuleType("plotly")
-    express = types.ModuleType("plotly.express")
-    graph_objects = types.ModuleType("plotly.graph_objects")
-    subplots = types.ModuleType("plotly.subplots")
-    subplots.make_subplots = lambda *args, **kwargs: None
-    plotly.express = express
-    plotly.graph_objects = graph_objects
-    plotly.subplots = subplots
-    sys.modules.setdefault("plotly", plotly)
-    sys.modules.setdefault("plotly.express", express)
-    sys.modules.setdefault("plotly.graph_objects", graph_objects)
-    sys.modules.setdefault("plotly.subplots", subplots)
-
-
-def _install_langchain_tool_stub() -> None:
-    """Install a no-op LangChain tool decorator for import-only tests."""
-    langchain = types.ModuleType("langchain")
-    tools = types.ModuleType("langchain.tools")
-
-    def tool(func=None, *args, **kwargs):  # noqa: ANN001, ANN202, ARG001
-        if func is None:
-            return lambda wrapped: wrapped
-        return func
-
-    tools.tool = tool
-    langchain.tools = tools
-    sys.modules.setdefault("langchain", langchain)
-    sys.modules.setdefault("langchain.tools", tools)
-
-
-_install_plotly_stubs()
-_install_langchain_tool_stub()
-
-from agents.furnace_tools import (  # noqa: E402
+# Plotly and LangChain are dependencies of the project: the real modules are imported. Stubs placed in sys.modules
+# here remained for every later test (tests/module_stubs.py).
+from agents.furnace_tools import (
     apply_default_plot_style,
     get_openai_tool_schemas,
 )

@@ -3,7 +3,8 @@
 ``BF_TEST_DATABASE_URL`` is used when set: a server whose role may create databases (the CI service container, or a
 Neon branch made for the test). Otherwise ``initdb`` and ``pg_ctl`` (from PATH, ``pg_config --bindir`` or
 ``/usr/lib/postgresql/<version>/bin``) start a cluster in a temporary directory, as the ``postgres`` system user when
-the tests run as root (PostgreSQL refuses root). Tests that need it are skipped without either.
+the tests run as root (PostgreSQL refuses root). Tests that need it are skipped without either, and fail instead with
+``BF_TEST_REQUIRE_SERVICES=1`` (CI; marker ``requires_service`` in ``tests/conftest.py``).
 
 Every test module works in a database of its own (``fresh_database``), dropped afterwards, so the server's existing
 databases and schemas are never touched.
@@ -53,9 +54,9 @@ def _bindir() -> Path | None:
 
 
 BINDIR = None if SERVER_URL else _bindir()
-needs_postgres = pytest.mark.skipif(
-    SERVER_URL is None and BINDIR is None,
-    reason="no PostgreSQL: set BF_TEST_DATABASE_URL or install the PostgreSQL server (initdb, pg_ctl)",
+needs_postgres = pytest.mark.requires_service(
+    SERVER_URL is not None or BINDIR is not None,
+    "no PostgreSQL: set BF_TEST_DATABASE_URL or install the PostgreSQL server (initdb, pg_ctl)",
 )
 
 
@@ -126,6 +127,8 @@ def fresh_database(server_url: str) -> Iterator[str]:
             connection.execute(text(f'CREATE DATABASE "{name}"'))
     except Exception as exc:  # e.g. a role without CREATEDB
         admin.dispose()
+        if os.environ.get("BF_TEST_REQUIRE_SERVICES") == "1":
+            raise
         pytest.skip(f"cannot create a test database on {url.host}: {exc}")
     try:
         yield url.set(database=name).render_as_string(hide_password=False)

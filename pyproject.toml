@@ -234,6 +234,14 @@ dependencies = [
     "furnace_data",
 ]
 
+[tool.uv]
+# xgboost 3.3 requires nvidia-nccl-cu12 on every Linux machine, and torch 2.2.2 pins NCCL 2.19.3, which has x86_64
+# wheels only: the lock could not be installed on the Jetson (linux-aarch64). NCCL serves multi-GPU training; xgboost
+# runs inference on the CPU here, so the requirement is limited to x86_64 Linux, as torch states it (SV-0.11, #280).
+override-dependencies = [
+    "nvidia-nccl-cu12==2.19.3 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
 [tool.uv.sources]
 furnace_data = { path = "./furnace_data", editable = true }
 

@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 import os
-import sys
 from io import BytesIO
 from types import SimpleNamespace
 
 os.environ.setdefault("OPENROUTER_API_KEY", "test-openrouter-key")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
-
-# Other page-level tests install lightweight stubs into sys.modules during
-# collection. These MRAG tests need the real vector-store module.
-sys.modules.pop("agents.memory.knowledge_vector_store", None)
 
 from agents.memory.knowledge_vector_store import KnowledgeVectorStore  # noqa: E402
 from agents.multimodal.ingestion import process_file  # noqa: E402

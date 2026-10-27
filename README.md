@@ -716,8 +716,8 @@ INFLUX_OFFLINE_TOKEN=...
 
 ### Prerequisites
 
-- Python 3.11+
-- `uv` package manager
+- Python 3.12 (`requires-python >= 3.12`; `uv` installs it when absent)
+- `uv` package manager (lock changes with uv 0.7.13, see CLAUDE.md)
 - Access to InfluxDB, Qdrant, PostgreSQL instances
 - `.env` file at repo root with variables from §10
 
@@ -776,8 +776,9 @@ python run.py
 ## 13. Testing
 
 ```bash
-# Run all tests
+# Run all tests (BURDEN_ENGINE_FAST=1 skips the 10-50 s production cases of the burden engine, as CI does on PRs)
 pytest tests/
+BURDEN_ENGINE_FAST=1 pytest tests/
 
 # Run with coverage
 pytest tests/ --cov=src --cov-report=term-missing
@@ -786,6 +787,16 @@ pytest tests/ --cov=src --cov-report=term-missing
 cd ml-dataset-api
 uv run --group dev pytest test/ --cov=app --cov-fail-under=80
 ```
+
+**Test environment.** `tests/conftest.py` disables the Open-Meteo request and the twin store, fixes the plan day,
+and sets placeholder `QDRANT_URL` and `OPENROUTER_API_KEY` values (`utils.settings` validates both at import; no test
+calls Qdrant or an LLM). Tests that need PostgreSQL, Redis or Caddy carry the marker `requires_service`
+(`needs_postgres`, `needs_redis`): skipped without the service, failed with `BF_TEST_REQUIRE_SERVICES=1` (CI).
+
+**Module stubs.** A test that replaces dependencies of the module under test imports it with
+`tests.module_stubs.import_with_stubs(name, stubs)`, which restores `sys.modules` afterwards. Stubs written into
+`sys.modules` while a file is collected stay for the rest of the session: a `streamlit` stub without `cache_data` made
+50 test files fail at collection, and the failures depended on the order of collection.
 
 **Key test files:**
 - `tests/test_tickets_service.py` — Ticket CRUD, status transitions, audit events (uses in-memory SQLite)
@@ -881,8 +892,25 @@ internal CA or the plant CA), build directory and upstreams come from `BF_*` var
 `config/page_registry.py` by `make fixtures`). `tests/test_caddyfile.py` checks the routes Caddy derives from the file
 (needs `caddy` on PATH or `BF_CADDY_BIN`).
 
-**Checks.** `pnpm --dir frontend check` (types), `pnpm --dir frontend lint` (Prettier + ESLint),
-`pnpm --dir frontend test` (Vitest), `uvx ruff@0.17.2 check src/api src/services src/worker scripts/dev.py`.
+**Checks and CI.** Locally: `make lint` (Prettier and ESLint; Ruff on the programme's Python, `make lint-py`),
+`make check` (svelte-check), `make test` (Vitest; pytest with `BURDEN_ENGINE_FAST=1`), `make audit-ui`,
+`make lock-check`. GitHub Actions (`.github/workflows/`, SV-0.11):
+
+| Workflow | Trigger | Content |
+|---|---|---|
+| `ci.yml` | pull request; push to `main` and `feature/**`; manual | `static`: Ruff, `uv lock --check`, resolution for the Jetson (`make lock-check`). `python-tests`: `uv sync --frozen`, pytest (`BURDEN_ENGINE_FAST=1`) with PostgreSQL 16 (service container), Redis and Caddy 2.10.2; a missing service fails the run (`BF_TEST_REQUIRE_SERVICES=1`). `frontend`: install from the frozen lock, Prettier and ESLint, svelte-check, Vitest, `schema.d.ts` regenerated from `openapi.json` and compared, build, UI audit (report and screenshots kept 14 days) |
+| `nightly.yml` | daily 21:17 UTC (02:47 IST), manual | `ci.yml` with the full suite (the slow production cases of the burden engine) |
+| `release.yml` | tag `v*` | `ci.yml` with the full suite, then the release of the tag: `frontend-build.tar.gz` (`build/`), `uv.lock`, `pnpm-lock.yaml`, `SHA256SUMS` |
+
+CI uses uv 0.7.13 (lock rule), CPython 3.12 installed by uv (as on the Jetson), Node 22, pnpm 10.28.0, Ruff 0.17.2,
+Playwright 1.63.0 (devDependency of the frontend) and Caddy 2.10.2 (SHA-512 checked); actions are pinned to
+commits. Scheduled runs start from the default branch only.
+
+**Jetson packages.** `make lock-check` exports `uv.lock` and resolves it for `aarch64-manylinux_2_35` (JetPack 6:
+Ubuntu 22.04, glibc 2.35) and CPython 3.12 from wheels only, except `pypika` (pure Python) and `quickjs` (C extension,
+built with the Jetson's compiler), which publish no aarch64 wheel. xgboost 3.3 requires NCCL on every Linux machine,
+and NCCL 2.19.3 (pinned by torch 2.2.2) has x86_64 wheels only; `[tool.uv] override-dependencies` in `pyproject.toml`
+limits that requirement to x86_64 Linux, where torch needs it.
 
 **Imports.** Frontend modules under `frontend/src/lib` are imported as `#lib/...` with the file extension
 (`#lib/api/client.ts`; SvelteKit 3 subpath imports).

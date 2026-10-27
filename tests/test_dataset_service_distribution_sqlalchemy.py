@@ -22,10 +22,13 @@ class FakeRepository:
         self.session_factory = session_factory
 
     def fetch_distribution_frame(self, *, start_date, end_date):
+        # Snapshots at 00:00 IST (18:30 UTC of the previous day). The service converts UTC to IST before it
+        # anchors the daily rows at local midnight, so a snapshot at 00:00 UTC would only take effect the
+        # next IST day.
         idx = pd.DatetimeIndex(
             [
-                pd.Timestamp("2026-01-01T00:00:00Z"),
-                pd.Timestamp("2026-01-02T00:00:00Z"),
+                pd.Timestamp("2025-12-31T18:30:00Z"),
+                pd.Timestamp("2026-01-01T18:30:00Z"),
             ],
             name="time",
         )
@@ -69,6 +72,8 @@ def test_fetch_distribution_data_returns_expected_windowed_rows(monkeypatch) -> 
     assert str(day["burden_changing_purpose"]) == "stability"
     assert float(day["total_coke_portions"]) == 4.0
     assert float(day["weighted_coke_angle"]) == 35.0
+    # No snapshot on 3 Jan: the 2 Jan configuration stays in force.
+    assert float(output.loc[datetime(2026, 1, 3), "coke_p01_angles"]) == 35.0
 
 
 def test_fetch_distribution_data_propagates_engine_errors(monkeypatch) -> None:

@@ -1,7 +1,8 @@
 """A throw-away Redis server for tests of the event stream and the job queue.
 
 Starts ``redis-server`` (no persistence) on a free port in a temporary directory; tests that need it are skipped when
-the binary is not installed (install: ``apt install redis-server``; Windows: Memurai or WSL).
+the binary is not installed (install: ``apt install redis-server``; Windows: Memurai or WSL), and fail instead with
+``BF_TEST_REQUIRE_SERVICES=1`` (CI; marker ``requires_service`` in ``tests/conftest.py``).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from pathlib import Path
 import pytest
 
 BINARY = shutil.which("redis-server")
-needs_redis = pytest.mark.skipif(BINARY is None, reason="redis-server is not installed")
+needs_redis = pytest.mark.requires_service(BINARY is not None, "redis-server is not installed")
 
 
 def _free_port() -> int:

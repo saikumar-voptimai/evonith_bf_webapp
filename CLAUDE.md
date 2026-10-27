@@ -938,6 +938,18 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   when Redis answers). Lint the new Python with `uvx ruff@0.17.2` (paths in the Makefile). Lock changes with
   `uvx --from "uv==0.7.13" uv lock` (keeps `uv.lock` at revision 2 with pure additions; uv 0.11 rewrites it to
   revision 3 and later 0.7.x releases add marker churn), then `uv sync --frozen`.
+- CI (`.github/workflows/`, SV-0.11): `ci.yml` on pull requests and pushes to `main` / `feature/**` (`static`:
+  `make lint-py`, `make lock-check`; `python-tests`: pytest with PostgreSQL, Redis and Caddy,
+  `BF_TEST_REQUIRE_SERVICES=1`, `BURDEN_ENGINE_FAST=1`; `frontend`: lint, check, Vitest, `schema.d.ts` against
+  `openapi.json`, build, UI audit), `nightly.yml` (full suite), `release.yml` (tag `v*`: `frontend-build.tar.gz`,
+  `uv.lock`, `pnpm-lock.yaml`, `SHA256SUMS`). Keep every CI step runnable as a Make target or pnpm script.
+- A new Python package needs a linux-aarch64 wheel for the Jetson (`make lock-check`: glibc 2.35, CPython 3.12), or
+  an entry in `JETSON_SOURCE_BUILDS` (Makefile) with the reason. Never write `-o /dev/null` for a uv command: uv
+  replaces the output file by a rename, which turns `/dev/null` into a regular file when run as root.
+- Tests: never write stubs into `sys.modules` while a file is collected (they stay for the session and break later
+  files); import the module under test with `tests/module_stubs.import_with_stubs`. Tests that need a service use
+  the `requires_service` marker (`needs_postgres`, `needs_redis`). `tests/conftest.py` sets placeholder
+  `QDRANT_URL` and `OPENROUTER_API_KEY` for the import-time validation of `utils.settings`.
 
 ## Environment Variables
 

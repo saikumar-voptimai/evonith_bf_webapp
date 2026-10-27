@@ -31,6 +31,33 @@ def _config(_: str) -> dict:
     }
 
 
+@pytest.fixture(autouse=True)
+def _no_plant_cutoff(monkeypatch) -> None:
+    """Keep the plant's ``ml_dataset.cutoff_date`` (setting_ds_dv.yml) out of these tests.
+
+    ``update_static`` drops database rows after the configured cutoff (2025-12-06), which removed every row of
+    the 2026 test frames. The cutoff behaviour has a test of its own, which sets its cutoff explicitly.
+    """
+    monkeypatch.setattr(manager_module, "load_config", _config)
+
+
+class FakeResponse:
+    """The context manager ``urlopen`` returns: the payload and the response headers."""
+
+    def __init__(self, payload: bytes, headers: dict[str, str] | None = None) -> None:
+        self.payload = payload
+        self.headers = headers or {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self):
+        return self.payload
+
+
 def test_load_static_dataset_uses_local_copy_when_present(
     monkeypatch, tmp_path
 ) -> None:
@@ -61,19 +88,9 @@ def test_fetch_static_dataset_from_url_validates_published_csv(monkeypatch) -> N
     ).encode("utf-8")
     calls: list[tuple[str, float]] = []
 
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-        def read(self):
-            return payload
-
     def fake_urlopen(request, timeout):
         calls.append((request.full_url, timeout))
-        return FakeResponse()
+        return FakeResponse(payload)
 
     monkeypatch.setattr(static_csv, "urlopen", fake_urlopen)
 
@@ -97,17 +114,9 @@ def test_fetch_static_dataset_from_url_accepts_published_day_first_time(
         "25-09-2026 15:00,181.0\n"
     ).encode("utf-8")
 
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-        def read(self):
-            return payload
-
-    monkeypatch.setattr(static_csv, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+    monkeypatch.setattr(
+        static_csv, "urlopen", lambda *_args, **_kwargs: FakeResponse(payload)
+    )
 
     df = static_csv.fetch_static_dataset_from_url(
         "http://example.test/furnace_dataset.csv"
@@ -192,6 +201,12 @@ def test_load_static_dataset_fetches_canonical_table_when_no_copy(
     )
     monkeypatch.setattr(manager_module, "build_default_config", lambda: object())
     monkeypatch.setattr(manager_module, "DataCleaner", IdentityCleaner)
+    # Half an hour after the database row: the base is current, so no post-cutoff delta is fetched.
+    monkeypatch.setattr(
+        StaticDatasetManager,
+        "_current_local_hour",
+        staticmethod(lambda: pd.Timestamp("2026-05-05 06:00:00")),
+    )
     static_csv.load_static_dataset.clear()
 
     csv_path = tmp_path / "missing.csv"
@@ -279,6 +294,12 @@ def test_static_dataset_manager_cleans_before_save(monkeypatch, tmp_path) -> Non
     monkeypatch.setattr(manager_module, "build_default_config", lambda: object())
     monkeypatch.setattr(manager_module, "DataCleaner", FakeCleaner)
     monkeypatch.setattr(static_csv.load_static_dataset, "clear", lambda: None)
+    # Half an hour after the database row: the base is current, so no post-cutoff delta is fetched.
+    monkeypatch.setattr(
+        StaticDatasetManager,
+        "_current_local_hour",
+        staticmethod(lambda: pd.Timestamp("2026-05-05 06:00:00")),
+    )
 
     cleaned = manager.update_static()
     saved_path = manager.save(cleaned)
@@ -399,7 +420,7 @@ def test_static_dataset_delta_fills_missing_pci_quantity_rowwise(
         "furnace_data.dataset.fetcher.DatasetFetcher",
         lambda: FakeFetcher(),
     )
-    monkeypatch.setattr(manager_module, "build_default_config", lambda: object())
+    # The real cleaning config: the delta path derives its own with dataclasses.replace.
     monkeypatch.setattr(manager_module, "DataCleaner", IdentityCleaner)
 
     cleaned = manager._fetch_and_clean_delta(

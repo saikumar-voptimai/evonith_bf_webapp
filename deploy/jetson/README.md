@@ -5,6 +5,7 @@ Production host for the Svelte frontend, the twin-api, the twin-worker and Strea
 | Issue | Content |
 |---|---|
 | #279 (SV-0.10) | `Caddyfile`: static SPA with `200.html` fallback, `/api` → twin-api, `/legacy` → Streamlit (this file, below) |
+| #280 (SV-0.11) | CI release artefacts (`frontend-build.tar.gz`, lock files) and the aarch64 lock check (below) |
 | #315 (SV-6.1) | Base system: JetPack 6.x, NVMe at `/var/lib/bf-webapp`, nvpmodel MAXN, chrony, ufw |
 | #316 (SV-6.2) | Python 3.12 via uv on aarch64, wheel audit, runtime benchmark |
 | #317 (SV-6.3) | systemd units: caddy, twin-api, twin-worker, streamlit, redis, furnace-data-service |
@@ -72,3 +73,23 @@ ports 80 / 443, `BF_SITE=localhost`):
 | Assets | `/_app/immutable/...` 200 with the one-year cache; a missing asset 404; `/_app/version.json` `no-cache` |
 | Event stream | 20 of 20 events through Caddy, latency from publish to the browser 3 ms (p50), 4 ms (max) |
 | Streamlit | All 11 pages under `/legacy` run to the end with the WebSocket `/legacy/_stcore/stream` connected and the same content as Streamlit without the proxy |
+
+## Release artefacts (CI, SV-0.11)
+
+A tag `v*` runs `.github/workflows/release.yml`: the full CI suite, then the GitHub release of the tag with
+
+| File | Content |
+|---|---|
+| `frontend-build.tar.gz` | `build/` of the SPA (entries sorted, owner 0, commit time as mtime); unpack into `<release>/frontend/`, giving `BF_SPA_ROOT` |
+| `uv.lock`, `pnpm-lock.yaml` | Lock files of the tagged commit (`uv sync --frozen` on the Jetson) |
+| `SHA256SUMS` | SHA-256 of the three files; `sha256sum --check SHA256SUMS` before unpacking |
+
+`release.sh` (SV-6.4, #318) consumes these files.
+
+## Python packages on aarch64
+
+`make lock-check` (CI job `static`) resolves `uv.lock` for `aarch64-manylinux_2_35` (JetPack 6: Ubuntu 22.04,
+glibc 2.35) and CPython 3.12 from wheels, with two exceptions that publish no aarch64 wheel and build from source
+during `uv sync`: `pypika` (pure Python) and `quickjs` (C extension; needs `build-essential`). The check covers wheel
+availability only: torch 2.2.2 from PyPI is the CPU build on aarch64, and its use of the Jetson GPU (NVIDIA's
+JetPack wheel) belongs to the wheel audit and runtime benchmark of SV-6.2 (#316).

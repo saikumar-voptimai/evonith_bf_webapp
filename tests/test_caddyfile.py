@@ -1,7 +1,8 @@
 """The Jetson's Caddyfile (#279): valid, and its routes are those the console needs.
 
-Needs the caddy binary (PATH, or ``BF_CADDY_BIN``); skipped without it. The tests read the configuration Caddy derives
-from the file (``caddy adapt``), so they check what Caddy will do rather than the text of the file.
+Needs the caddy binary (PATH, or ``BF_CADDY_BIN``); skipped without it, failed instead with
+``BF_TEST_REQUIRE_SERVICES=1`` (CI). The tests read the configuration Caddy derives from the file (``caddy adapt``),
+so they check what Caddy will do rather than the text of the file.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CADDYFILE = ROOT / "deploy" / "jetson" / "Caddyfile"
 CADDY = os.environ.get("BF_CADDY_BIN") or shutil.which("caddy")
-pytestmark = pytest.mark.skipif(CADDY is None, reason="caddy is not installed (or set BF_CADDY_BIN)")
+pytestmark = pytest.mark.requires_service(CADDY is not None, "caddy is not installed (or set BF_CADDY_BIN)")
 
 
 def _run(*args: str, env: dict[str, str] | None = None, tmp: Path) -> subprocess.CompletedProcess[str]:
