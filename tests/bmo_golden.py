@@ -16,10 +16,13 @@ top-level names pass through ``PageNamespace`` substitutions. Every source of th
     yard, chemistry, HM/slag, fuel analysis, process history,    frozen provider calls of a committed snapshot
     last-shift blend, operator inputs and preferences            (``fixtures/bmo_golden/plant_*.json.gz``)
     configuration                                                ``fixtures/bmo_golden/setting_bmo.json``
+    coke-rate bias calibration (energy anchor, its age)          ``fixtures/bmo_golden/coke_rate_calibration.json``
+                                                                 (page 9's Model accuracy refit rewrites the live file)
     hourly dataset (charged-coke forecast, last-shift baseline)  ``fixtures/charged_coke/source_window.csv.gz``,
                                                                  cut at the day's last complete row
     HM Si sources                                                ``fixtures/bmo_si_forecast``
-    clock                                                        the day's wall-clock time (``pd.Timestamp.now``)
+    clock                                                        the day's wall-clock time (``pd.Timestamp.now``;
+                                                                 ``datetime.now`` of the calibration's age)
     live process tags (energy balance, control recommendation)   the day's last hourly row (``live_tags`` cases),
                                                                  else unavailable, as when InfluxDB is down
 
@@ -37,6 +40,7 @@ from __future__ import annotations
 import argparse
 import builtins
 import contextlib
+import datetime as dt
 import functools
 import gzip
 import hashlib
@@ -59,6 +63,8 @@ REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src"
 PAGE = SRC / "custom_pages" / "9_Blend_Optimizer.py"
 FIXTURES = REPO / "tests" / "fixtures" / "bmo_golden"
+#: The coke-rate bias calibration of the records (a copy of ``src/data/coke_rate_calibration.json`` at recording).
+CALIBRATION_FIXTURE = FIXTURES / "coke_rate_calibration.json"
 CHARGED_SOURCE = REPO / "tests" / "fixtures" / "charged_coke" / "source_window.csv.gz"
 SI_FIXTURE = REPO / "tests" / "fixtures" / "bmo_si_forecast"
 PLANT_TZ = "Asia/Kolkata"
@@ -158,6 +164,21 @@ def frozen_pandas(now_utc: pandas.Timestamp) -> types.ModuleType:
     module = _Pandas("pandas")
     module.Timestamp = stamp
     return module
+
+
+def frozen_datetime(now_utc: pandas.Timestamp) -> type[dt.datetime]:
+    """``datetime.datetime`` with ``now`` fixed at ``now_utc`` (naive IST without ``tz``, as ``frozen_pandas``)."""
+
+    aware = now_utc.to_pydatetime()
+
+    class _FrozenDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz: dt.tzinfo | None = None) -> dt.datetime:
+            if tz is not None:
+                return aware.astimezone(tz)
+            return now_utc.tz_convert(PLANT_TZ).tz_localize(None).to_pydatetime()
+
+    return _FrozenDatetime
 
 
 # --------------------------------------------------------------------------------------------- fixtures
@@ -318,11 +339,13 @@ def _si_source_class(now_utc: pandas.Timestamp) -> type:
 
 @contextlib.contextmanager
 def _patched(case: Case, tmp: Path) -> Iterator[None]:
-    """Process-wide patches for one run: no InfluxDB, temporary stores, the case's clock in the forecast modules."""
+    """Process-wide patches for one run: no InfluxDB, temporary stores, the committed coke calibration, the case's
+    clock in the forecast modules and in the calibration's age."""
 
     import furnace_data.influx.online as influx_online
     import services.forecasts as forecasts
     import ui.bmo.si_forecast as si_ui
+    import utils.bmo.coke_calibration as coke_calibration
     import utils.bmo.si_forecast.service as si_service
     import utils.bmo.snapshot as snapshot_module
     import utils.bmo.snapshot_store as snapshot_store
@@ -340,6 +363,10 @@ def _patched(case: Case, tmp: Path) -> Iterator[None]:
         (influx_online, "fetch_online_df", no_influx),
         (snapshot_store, "STORE_DIR", tmp / "snapshots"),
         (assumptions, "OVERRIDES_PATH", tmp / "energy_balance_assumptions.json"),
+        # The live file is refit at runtime (Model accuracy tab, scripts/refresh_coke_calibration.py); its offset
+        # moves the energy anchor, the LP plan and the control recommendation, its age adds the stale warning.
+        (coke_calibration, "CALIBRATION_PATH", CALIBRATION_FIXTURE),
+        (coke_calibration, "datetime", frozen_datetime(now_utc)),
         (snapshot_module, "_git_provenance", lambda: {}),
         (forecasts, "pd", clock),
         (si_service, "pd", clock),
@@ -820,11 +847,21 @@ def build_config_fixture() -> Path:
     return path
 
 
+def build_calibration_fixture() -> Path:
+    """``coke_rate_calibration.json``: a byte copy of ``src/data/coke_rate_calibration.json``."""
+
+    CALIBRATION_FIXTURE.parent.mkdir(parents=True, exist_ok=True)
+    CALIBRATION_FIXTURE.write_bytes((SRC / "data" / "coke_rate_calibration.json").read_bytes())
+    return CALIBRATION_FIXTURE
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--write", action="store_true", help="rewrite the golden files")
     parser.add_argument("--day", action="append", help="only these days (default: all)")
-    parser.add_argument("--inputs", action="store_true", help="rebuild the plant and config fixtures first")
+    parser.add_argument(
+        "--inputs", action="store_true", help="rebuild the plant, config and calibration fixtures first"
+    )
     args = parser.parse_args(argv)
     for name, value in TEST_ENVIRONMENT.items():  # as tests/conftest.py, so a written record is the test's
         os.environ.setdefault(name, value)
@@ -832,7 +869,7 @@ def main(argv: list[str] | None = None) -> int:
         if str(path) not in sys.path:
             sys.path.insert(0, str(path))
     if args.inputs:
-        for path in [*build_plant_fixtures(), build_config_fixture()]:
+        for path in [*build_plant_fixtures(), build_config_fixture(), build_calibration_fixture()]:
             print(f"input fixture: {path.relative_to(REPO)}")
     failures = 0
     for case in CASES:

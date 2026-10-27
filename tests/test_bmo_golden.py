@@ -39,3 +39,27 @@ def test_compare_tolerates_relative_1e6_only() -> None:
     assert bmo_golden.compare(golden, {"a": 1000.002, "b": [1, "x"], "c": None}) == ["$.a: 1000.0 != 1000.002"]
     assert bmo_golden.compare(golden, {"a": 1000.0, "b": [1, "y"], "c": None}) == ["$.b[1]: 'x' != 'y'"]
     assert bmo_golden.compare(golden, {"a": 1000.0, "b": [1]}) == ["$.c: missing", "$.b: length 2 != 1"]
+
+
+def test_calibration_frozen_at_fixture_and_case_clock(tmp_path, monkeypatch) -> None:
+    """A refit of the live calibration file and the wall clock leave the golden runs unchanged."""
+
+    import dataclasses
+    import datetime as dt
+
+    from utils.bmo import coke_calibration
+
+    fixture = coke_calibration.load_calibration(bmo_golden.CALIBRATION_FIXTURE)
+    live = tmp_path / "live" / "coke_rate_calibration.json"
+    monkeypatch.setattr(coke_calibration, "CALIBRATION_PATH", live)
+    coke_calibration.save_calibration(dataclasses.replace(fixture, offset_kg_per_thm=-3.0, fitted_on="2026-01-01"))
+    case = CASES["2026-10-04"]
+    with bmo_golden._patched(case, tmp_path / "run"):
+        frozen = coke_calibration.load_calibration()
+        age = frozen.age_days()
+        stale = frozen.is_stale()
+    assert frozen == fixture
+    assert age == (dt.date(2026, 10, 4) - dt.date.fromisoformat(fixture.fitted_on)).days
+    assert not stale
+    assert coke_calibration.load_calibration().offset_kg_per_thm == -3.0  # the live file again after the run
+    assert coke_calibration.datetime is dt.datetime
