@@ -279,4 +279,3 @@ def headline(values: Mapping[str, Any]) -> dict[str, Any]:
     out = {"window_end": ist_naive(values["window_end"]).isoformat()} | {k: values.get(k) for k in keys}
     out["seconds"] = (values.get("flags") or {}).get("evaluation_s")
     return out
-
