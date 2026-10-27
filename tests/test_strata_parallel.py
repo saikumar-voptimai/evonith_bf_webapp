@@ -184,6 +184,7 @@ def _pid(_: int) -> int:
     return os.getpid()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the forkserver start method is POSIX only")
 def test_the_forkserver_builds_the_context_once_for_its_solver_processes() -> None:
     """With ``src`` on PYTHONPATH (as the worker runs) the forkserver imports ``strata_preload``: the solver processes
     of every pool start with the STRATA-Flow context built."""
