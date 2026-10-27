@@ -11,7 +11,8 @@
 #
 # Pull requests and pushes run the fast suite (BURDEN_ENGINE_FAST=1: the production cases of the burden engine,
 # 10-50 s each, are skipped). nightly.yml calls this workflow with full-suite: true; release.yml calls it before it
-# publishes the release artefacts. Action versions are pinned to commits (tag in the comment).
+# publishes the release artefacts. Action versions are pinned to commits (tag in the comment). The command steps run
+# through scripts/ci/step.sh, which repeats the end of a failing step's output as an error annotation.
 name: CI
 
 on:
@@ -61,9 +62,9 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: false
       - name: Ruff (check, format; version and paths in the Makefile)
-        run: make lint-py
+        run: bash scripts/ci/step.sh "Ruff" make lint-py
       - name: uv.lock matches pyproject.toml and installs on the Jetson
-        run: make lock-check UV_LOCK=uv
+        run: bash scripts/ci/step.sh "Lock check" make lock-check UV_LOCK=uv
 
   python-tests:
     name: pytest${{ inputs.full-suite && ' (full suite)' || '' }}
@@ -114,9 +115,10 @@ jobs:
           "$RUNNER_TEMP/caddy/caddy" version
           echo "BF_CADDY_BIN=$RUNNER_TEMP/caddy/caddy" >> "$GITHUB_ENV"
       - name: Python environment (uv sync --frozen)
-        run: uv sync --frozen
+        run: bash scripts/ci/step.sh "uv sync" uv sync --frozen
       - name: pytest
         run: >-
+          bash scripts/ci/step.sh "pytest"
           uv run --frozen pytest tests -q -ra --durations=25
           --junitxml="$RUNNER_TEMP/pytest-report.xml"
       - name: Test report
@@ -148,25 +150,25 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Install (pnpm-lock.yaml, frozen)
-        run: pnpm install --frozen-lockfile
+        run: bash ../scripts/ci/step.sh "pnpm install" pnpm install --frozen-lockfile
       - name: Prettier and ESLint
-        run: pnpm lint
+        run: bash ../scripts/ci/step.sh "Prettier and ESLint" pnpm lint
       - name: svelte-check
-        run: pnpm check
+        run: bash ../scripts/ci/step.sh "svelte-check" pnpm check
       - name: Vitest
-        run: pnpm test
+        run: bash ../scripts/ci/step.sh "Vitest" pnpm test
       - name: TypeScript client matches the committed OpenAPI schema
-        run: |
-          pnpm api:types
-          git diff --exit-code -- src/lib/api/schema.d.ts
+        run: >-
+          bash ../scripts/ci/step.sh "TypeScript client"
+          sh -c 'pnpm api:types && git diff --exit-code -- src/lib/api/schema.d.ts'
       - name: Build (static SPA, 200.html fallback)
-        run: pnpm build
+        run: bash ../scripts/ci/step.sh "Build" pnpm build
       - name: Chromium for the UI audit
         run: |
           sudo rm -f /var/lib/man-db/auto-update # skip the man-db trigger of apt (tens of seconds on the runners)
-          pnpm exec playwright install --with-deps chromium
+          bash ../scripts/ci/step.sh "Playwright install" pnpm exec playwright install --with-deps chromium
       - name: UI audit (axe-core, layout and keyboard checks, three viewports)
-        run: pnpm audit:ui --out "$RUNNER_TEMP/ui-audit"
+        run: bash ../scripts/ci/step.sh "UI audit" pnpm audit:ui --out "$RUNNER_TEMP/ui-audit"
       - name: UI audit report and screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
