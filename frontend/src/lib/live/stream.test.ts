@@ -142,6 +142,24 @@ describe('LiveStream', () => {
 		expect(FakeSource.all).toHaveLength(2);
 	});
 
+	it('leaves a reconnecting EventSource alone: the browser retries every 3 s and reaches a restarted API sooner', async () => {
+		const { stream } = makeStream('valid', 45_000);
+		stream.start();
+		const source = FakeSource.last();
+		source.open();
+		source.fail(false); // API down: readyState CONNECTING, the browser retries by itself
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(FakeSource.all).toHaveLength(1);
+		expect(source.closed).toBe(false);
+		source.open(); // the API is back
+		expect(stream.state).toBe('open');
+		expect(stream.disconnectedAt).toBe(null);
+	});
+
+	it('caps the delay after refusals at 8 s', () => {
+		expect(retryDelay(10, 1000, 8000, () => 1)).toBe(8000);
+	});
+
 	it('ignores frames that are not JSON or whose type differs from the event name', () => {
 		const { stream } = makeStream();
 		const handler = vi.fn();

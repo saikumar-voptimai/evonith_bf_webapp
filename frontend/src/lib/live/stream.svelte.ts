@@ -4,9 +4,10 @@
  * After a network break the browser reconnects an open stream by itself and sends `Last-Event-ID`, so the events it
  * missed are replayed (at most the last 100). When the server refuses the stream (401 after the session ended, 503
  * while the API starts) the EventSource stops for good; the store then checks the session (an ended session raises
- * `UNAUTHORIZED_EVENT`, which signs the user out in the layout) and opens a new stream with exponential backoff,
- * passing the last event id as `last_event_id`. A watchdog does the same when no frame (event or the 15 s heartbeat)
- * arrived for 45 s, e.g. behind a proxy that holds the connection open without forwarding data.
+ * `UNAUTHORIZED_EVENT`, which signs the user out in the layout) and opens a new stream with exponential backoff
+ * (1 s doubling to 8 s), passing the last event id as `last_event_id`. A watchdog does the same when an open
+ * connection delivered no frame (event or the 15 s heartbeat) for 45 s, e.g. behind a proxy that holds the
+ * connection without forwarding data.
  */
 import { api, ApiError, type Schemas, UNAUTHORIZED_EVENT } from '../api/client.ts';
 
@@ -60,6 +61,7 @@ export interface StreamOptions {
 	now?: () => number;
 }
 
+const OPEN = 1;
 const CLOSED = 2;
 
 export async function checkSession(): Promise<SessionCheck> {
@@ -112,7 +114,7 @@ export class LiveStream {
 		this.#checkSession = options.checkSession ?? checkSession;
 		this.#staleMs = options.staleMs ?? 45_000;
 		this.#firstRetryMs = options.firstRetryMs ?? 1_000;
-		this.#maxRetryMs = options.maxRetryMs ?? 30_000;
+		this.#maxRetryMs = options.maxRetryMs ?? 8_000; // a restarted API is reached within 10 s
 		this.#random = options.random ?? Math.random;
 		this.#now = options.now ?? Date.now;
 	}
@@ -202,7 +204,11 @@ export class LiveStream {
 	#armWatchdog(): void {
 		clearTimeout(this.#watchdog);
 		this.#watchdog = setTimeout(() => {
-			if (this.#users > 0) this.#retry();
+			if (this.#users === 0) return;
+			// Only an open but silent connection is replaced; while the browser is reconnecting (every 3 s, the
+			// `retry` of the stream) it reaches a restarted API sooner than a new connection would.
+			if (this.#source?.readyState === OPEN) this.#retry();
+			else this.#armWatchdog();
 		}, this.#staleMs);
 	}
 
