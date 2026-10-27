@@ -28,10 +28,19 @@ The values are illustrative and are not plant data.
 	import type { Column, SortState } from '#lib/components/table.ts';
 	import Tabs from '#lib/components/Tabs.svelte';
 	import { toasts } from '#lib/components/toast.svelte.ts';
+	import BarChart from '#lib/charts/BarChart.svelte';
+	import DonutChart from '#lib/charts/DonutChart.svelte';
+	import ristShift from '#lib/charts/fixtures/rist_shift.json';
+	import RistDiagram from '#lib/charts/RistDiagram.svelte';
+	import type { RistShift } from '#lib/charts/rist.ts';
+	import ScatterChart from '#lib/charts/ScatterChart.svelte';
+	import TimeSeriesChart from '#lib/charts/TimeSeriesChart.svelte';
+	import FurnaceSchematic, { type SchematicReading } from '#lib/furnace/FurnaceSchematic.svelte';
 	import { formatNumber, formatQuantity } from '#lib/format/number.ts';
 	import { JobTracker } from '#lib/live/jobs.svelte.ts';
 	import { hasRole, session } from '#lib/session/session.svelte.ts';
 	import { addDays, istDay } from '#lib/time/format.ts';
+	import { BLEND, burntVsCharged, cokeSeries, HEAT_LOADS, hmtSeries, hours, QUADRANTS } from './samples.ts';
 
 	const loadedAt = new Date();
 	const minutesAgo = (m: number) => new Date(loadedAt.getTime() - m * 60_000);
@@ -57,8 +66,10 @@ The values are illustrative and are not plant data.
 		{ token: 'vo-series-trace', name: 'TRACE', role: 'Burnt coke, gas side' },
 		{ token: 'vo-series-forge', name: 'FORGE', role: 'Two-zone Rist balance' },
 		{ token: 'vo-series-strata', name: 'STRATA', role: 'Ring model, ±1σ band' },
-		{ token: 'vo-series-charged', name: 'Charged', role: 'Coke charged, dashed' },
-		{ token: 'vo-series-hmt', name: 'HMT', role: 'Hot-metal temperature' }
+		{ token: 'vo-series-charged', name: 'Charged', role: 'Coke charged, dashed (context grey)' },
+		{ token: 'vo-series-hmt', name: 'HMT', role: 'Hot-metal temperature' },
+		{ token: 'vo-cat-5', name: 'Slot 5', role: 'Further categories (blend)' },
+		{ token: 'vo-cat-6', name: 'Slot 6', role: 'Further categories (blend)' }
 	];
 	const KINDS: StatusKind[] = ['ok', 'warning', 'critical', 'stale', 'info'];
 	let values = $state<Record<string, string>>({});
@@ -72,6 +83,38 @@ The values are illustrative and are not plant data.
 			read[s.token] = longHex(style.getPropertyValue(`--${s.token}`).trim()).toUpperCase();
 		values = read;
 	});
+
+	// Charts
+	const cokeTimes = hours(loadedAt, 72);
+	const coke72 = cokeSeries(loadedAt);
+	const hmt72 = hmtSeries(loadedAt);
+	const scatter = burntVsCharged();
+	const calibrationAt = cokeTimes[30] as number;
+	let cokeRenderMs = $state<number | null>(null);
+	let zone = $state<string | null>(null);
+	const READINGS: Record<string, SchematicReading> = {
+		top_pressure: { label: 'Top pressure', value: '1.42', unit: 'bar' },
+		permeability: { label: 'Permeability', value: '2.31', unit: 'index' },
+		hbt: { label: 'Hot blast temperature', value: '1,118', unit: '°C' },
+		raft: { label: 'RAFT', value: '2,214', unit: '°C' },
+		furnace_level: { label: 'Stock level', value: '1.32', unit: 'm' },
+		heat_load_total: { label: 'Heat load, R6–R10', value: '5.17', unit: 'GJ/h', state: 'warning' },
+		blast_pressure: { label: 'Hot blast pressure', value: '3.62', unit: 'bar' },
+		hearth_temp_d: {
+			label: 'Hearth temperature D',
+			value: null,
+			unit: '°C',
+			state: 'stale',
+			word: 'No reading'
+		}
+	};
+	const ZONE_READINGS: Record<string, string[]> = {
+		Stack: ['top_pressure', 'furnace_level'],
+		Belly: ['permeability', 'heat_load_total'],
+		Bosh: ['permeability', 'heat_load_total'],
+		Tuyere: ['hbt', 'raft', 'blast_pressure'],
+		Hearth: ['hearth_temp_d']
+	};
 
 	// Blend table
 	interface BlendRow {
@@ -505,6 +548,100 @@ The values are illustrative and are not plant data.
 			</Panel>
 		</div>
 
+		<div class="span-12">
+			<Panel
+				title="Coke rate by model, last 72 h"
+				note="Time series: uncertainty band, shift starts (A, B, C), an annotation and direct end labels"
+				updatedAt={minutesAgo(4)}
+			>
+				<div data-chart="coke-72h" data-render-ms={cokeRenderMs ?? undefined}>
+					<TimeSeriesChart
+						title="Coke rate by model, last 72 h"
+						series={coke72}
+						unit="kg/tHM"
+						digits={1}
+						height={300}
+						endLabels
+						annotations={[{ t: calibrationAt, label: 'Calibration' }]}
+						onrender={(ms) => (cokeRenderMs = ms)}
+					/>
+				</div>
+			</Panel>
+		</div>
+
+		<div class="span-6">
+			<Panel title="Hot-metal temperature" note="Plant band 1,440–1,520 °C; forecast with 80 % interval">
+				<TimeSeriesChart
+					title="Hot-metal temperature, last 72 h and next 6 h"
+					series={hmt72}
+					unit="°C"
+					digits={0}
+					height={260}
+					band={{ lo: 1440, hi: 1520, label: 'Plant band 1,440–1,520 °C' }}
+					annotations={[{ t: cokeTimes[71] as number, label: 'Now' }]}
+				/>
+			</Panel>
+		</div>
+
+		<div class="span-6">
+			<Panel title="Burnt against charged coke" note="Scatter with the identity line, one dot per shift">
+				<ScatterChart
+					title="Burnt against charged coke per shift"
+					series={scatter}
+					x={{ label: 'Charged', unit: 'kg/tHM', digits: 0 }}
+					y={{ label: 'Burnt', unit: 'kg/tHM', digits: 0 }}
+					references={[{ kind: 'identity', label: 'burnt = charged' }]}
+					height={260}
+				/>
+			</Panel>
+		</div>
+
+		<div class="span-6">
+			<Panel title="Stave heat load by quadrant" note="Bars; the quadrant in question in colour, rows R6–R10">
+				<BarChart
+					title="Stave heat load by quadrant"
+					categories={QUADRANTS}
+					values={HEAT_LOADS}
+					unit="GJ/h"
+					quantity="Heat load"
+					digits={2}
+					horizontal
+					highlight={1}
+				/>
+			</Panel>
+		</div>
+
+		<div class="span-6">
+			<Panel title="Ferrous and flux blend" note="Donut: part of a whole, six segments at most">
+				<DonutChart
+					title="Ferrous and flux blend"
+					segments={BLEND}
+					unit="%"
+					digits={1}
+					centre={{ value: '6,150', label: 't/d' }}
+				/>
+			</Panel>
+		</div>
+
+		<div class="span-6">
+			<Panel title="Rist operating diagram" note="Shift 14 Oct A, from the two-zone model (test case)">
+				<RistDiagram
+					title="Rist operating diagram, 14 Oct shift A"
+					shift={ristShift as unknown as RistShift}
+					height={380}
+				/>
+			</Panel>
+		</div>
+
+		<div class="span-6">
+			<Panel
+				title="Furnace schematic"
+				note="Configured BF-02 profile; zones highlight their related readings"
+			>
+				<FurnaceSchematic readings={READINGS} zoneReadings={ZONE_READINGS} bind:selected={zone} />
+			</Panel>
+		</div>
+
 		<div class="span-6">
 			<Panel title="Table states" flush>
 				<DataTable
@@ -688,6 +825,15 @@ The values are illustrative and are not plant data.
 		grid-template-columns: 28px 8.5rem 5.5rem minmax(0, 1fr);
 		align-items: center;
 		gap: var(--vo-space-3);
+	}
+	@media (max-width: 479px) {
+		.swatches li {
+			grid-template-columns: 28px minmax(0, 1fr) auto;
+			row-gap: 2px;
+		}
+		.sw-role {
+			grid-column: 2 / -1;
+		}
 	}
 	.swatches .chip {
 		width: 28px;

@@ -21,12 +21,21 @@ export function contrastRatio(a: string, b: string): number {
 	return (hi + 0.05) / (lo + 0.05);
 }
 
-/** `--vo-name: #rrggbb` declarations of a stylesheet (first occurrence wins, i.e. the default theme). */
+/**
+ * `--vo-name: #rrggbb` declarations of a stylesheet, and aliases `--vo-name: var(--vo-other)` resolved to the hex
+ * value (first occurrence wins, i.e. the default theme).
+ */
 export function parseTokens(css: string): Record<string, string> {
 	const tokens: Record<string, string> = {};
 	for (const m of css.matchAll(/--(vo-[a-z0-9-]+):\s*(#[0-9a-f]{6})\b/gi)) {
 		const [, name, value] = m;
 		if (name && value && !(name in tokens)) tokens[name] = value.toLowerCase();
+	}
+	const aliases = [...css.matchAll(/--(vo-[a-z0-9-]+):\s*var\(--(vo-[a-z0-9-]+)\)/gi)];
+	for (let pass = 0; pass < 4; pass += 1) {
+		for (const [, name, target] of aliases) {
+			if (name && target && !(name in tokens) && tokens[target]) tokens[name] = tokens[target];
+		}
 	}
 	return tokens;
 }

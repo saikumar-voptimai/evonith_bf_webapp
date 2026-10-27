@@ -923,6 +923,12 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   icon and word, `updatedAt` on live panels, units on every readout joined by a no-break space (`formatQuantity`),
   chemical labels with Unicode subscripts (SiO₂). New nav pages go into `frontend/src/lib/nav.ts`. Check with
   `make audit-ui` (axe-core, three viewports).
+- Charts in the SPA: `#lib/charts/` (`TimeSeriesChart`, `ScatterChart`, `BarChart`, `DonutChart`, `RistDiagram`;
+  ECharts 6 SVG, loaded lazily; pure option builders with unit tests) and `#lib/furnace/FurnaceSchematic.svelte`.
+  Series colours only by token: categorical slots `cat-1..6` in fixed order, entity aliases `series-trace` / `-forge` /
+  `-strata` / `-hmt` (slots 1-4), `series-context` for references; never a second value axis. After changing
+  `utils/coke_energy/rist_diagram.py` or `ui/furnace_status/schematic.py` run `make fixtures` and commit the JSON
+  (`tests/test_chart_fixtures.py` fails on drift). Rules in `frontend/DESIGN.md` section 6.
 - Live data in the SPA: subscribe through `#lib/live/stream.svelte.ts` (`live.on(type, handler)`, one EventSource
   per tab); follow jobs with `JobTracker` (`#lib/live/jobs.svelte.ts`). A new event type is added to `EventType` and
   the payload models in `services/events.py`, then the OpenAPI client is regenerated (`make client`).

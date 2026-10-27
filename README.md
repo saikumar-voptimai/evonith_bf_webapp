@@ -933,7 +933,18 @@ Redis: `apt install redis-server` (Linux, Jetson; Redis 6.0 or later), Memurai o
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family
 look as in Optimus: dark sidebar, light canvas, white panels, yellow accent, Inter; text contrast >= 4.5:1 on every
 surface, checked by a unit test). `make audit-ui` builds the SPA and runs axe-core,
-overflow, keyboard and dialog checks at 1920x1080, 1366x768 and 768x1024 (Playwright with Chromium required).
+overflow, keyboard and dialog checks at 1920x1080, 1366x768 and 768x1024, and on the catalogue at 390x844
+(Playwright with Chromium required).
+
+**Charts and furnace schematic.** `frontend/src/lib/charts/` holds the chart kit on Apache ECharts 6 (SVG renderer,
+loaded on first use): time series on an IST axis with shift starts, uncertainty and plant bands, annotations and
+direct end labels; scatter with identity and limit lines; bars; donut; the Rist operating diagram of a shift. Every
+chart has a legend that toggles series and a table view with every value. Series colours are the six validated
+categorical slots of `tokens.css` (TRACE, FORGE, STRATA and HMT keep slots 1-4 on every page). The BF-02 schematic
+(`frontend/src/lib/furnace/`) is drawn from the configured furnace profile. `make fixtures` writes the parity fixtures
+from the Python models (`utils.coke_energy.rist_diagram`, `ui.furnace_status.schematic`); the Vitest suite checks the
+Svelte drawings against them and `tests/test_chart_fixtures.py` fails when a committed fixture is out of date. Rules:
+`frontend/DESIGN.md`, section 6.
 
 **Typed API client.** `frontend/src/lib/api/client.ts` wraps `openapi-fetch` with the types generated from the API's
 OpenAPI schema. After changing a route: `make client` (or `python scripts/export_openapi.py` and

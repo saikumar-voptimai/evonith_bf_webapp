@@ -34,6 +34,13 @@ const SIGN_IN_TEXT = [
 const SIGN_IN_PANEL = ['vo-chrome', 'vo-chrome-band', 'vo-chrome-band-strong'];
 const STATUS = ['ok', 'warning', 'critical', 'stale', 'info'];
 const SERIES = [
+	'vo-cat-1',
+	'vo-cat-2',
+	'vo-cat-3',
+	'vo-cat-4',
+	'vo-cat-5',
+	'vo-cat-6',
+	'vo-series-context',
 	'vo-series-trace',
 	'vo-series-forge',
 	'vo-series-strata',

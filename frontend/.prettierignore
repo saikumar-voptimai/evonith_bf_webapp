@@ -6,6 +6,9 @@ pnpm-lock.yaml
 /build/
 /.svelte-kit/
 src/lib/api/schema.d.ts
+# Parity fixtures written by scripts/export_chart_fixtures.py (make fixtures)
+src/lib/charts/fixtures/
+src/lib/furnace/fixtures/
 
 # Miscellaneous
 /static/

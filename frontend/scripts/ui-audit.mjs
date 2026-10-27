@@ -325,6 +325,61 @@ try {
 			.screenshot({ path: join(OUT, 'job-running.png') });
 	});
 
+	// Charts and schematic (SV-0.6, #275).
+	await check('72 h coke chart renders within 100 ms', async () => {
+		const host = page.locator('[data-chart="coke-72h"][data-render-ms]');
+		await host.waitFor({ timeout: 15_000 });
+		const ms = Number(await host.getAttribute('data-render-ms'));
+		report.renderMs = ms;
+		expect(ms < 100, `rendered in ${ms} ms`);
+	});
+
+	await check('chart legend toggles a series and the table view lists every value', async () => {
+		const panel = page.locator('[data-chart="coke-72h"]');
+		const forge = panel.getByRole('button', { name: 'FORGE, modelled' });
+		await forge.click();
+		expect((await forge.getAttribute('aria-pressed')) === 'false', 'FORGE still shown');
+		await forge.click();
+		await panel.getByRole('button', { name: 'Table' }).click();
+		const rows = await panel.locator('table tbody tr').count();
+		expect(rows === 72, `table view has ${rows} rows, expected 72 hours`);
+		await settle(page);
+		await axe(page, 'chart-table@1366x768');
+		await panel.getByRole('button', { name: 'Chart' }).click();
+		await panel.locator('[data-render-ms]').first().waitFor();
+	});
+
+	await check('schematic zone highlights its readings', async () => {
+		const tuyere = page.getByRole('button', { name: 'Tuyere', exact: true });
+		await tuyere.click();
+		expect((await tuyere.getAttribute('aria-pressed')) === 'true', 'zone not selected');
+		const on = await page.locator('.schematic .callout.on').count();
+		expect(on === 3, `${on} callouts highlighted, expected 3 (blast temperature, RAFT, blast pressure)`);
+		await page
+			.locator('section.panel', { has: page.getByRole('heading', { name: 'Furnace schematic' }) })
+			.screenshot({ path: join(OUT, 'schematic-tuyere-1366x768.png') });
+		await tuyere.click();
+	});
+
+	await check('catalogue fits a 390 px phone; the schematic lists its readings', async () => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.goto(`${base}/dev/components`, { waitUntil: 'networkidle' });
+		await settle(page);
+		const label = 'catalogue@390x844';
+		report.pages.push({ label, violations: await axe(page, label), overflow: await overflow(page, label) });
+		await page.screenshot({ path: join(OUT, 'catalogue-390x844.png'), fullPage: true });
+		const readings = await page.locator('.schematic.compact .readings li').count();
+		expect(readings === 8, `${readings} readings in the compact schematic, expected 8`);
+		const endLabels = await page
+			.locator('[data-chart="coke-72h"] svg text')
+			.filter({ hasText: /^TRACE / })
+			.count();
+		expect(endLabels === 0, 'end labels drawn on a 390 px chart');
+		await page.setViewportSize({ width: 1366, height: 768 });
+		await page.goto(`${base}/dev/components`, { waitUntil: 'networkidle' });
+		await settle(page);
+	});
+
 	await check('rail collapses to icons and keeps accessible names', async () => {
 		await page.getByRole('button', { name: 'Collapse navigation' }).click();
 		await settle(page);

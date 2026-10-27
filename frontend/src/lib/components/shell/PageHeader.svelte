@@ -220,4 +220,26 @@ server connection and the IST clock. Below 1024 px it carries the button that op
 			display: none;
 		}
 	}
+	/* Phones: the shift, connection and clock take a second row under the title. */
+	@media (max-width: 639px) {
+		.header {
+			flex-wrap: wrap;
+			row-gap: var(--vo-space-2);
+			padding-block: var(--vo-space-3);
+		}
+		.meta {
+			flex: 1 0 100%;
+			justify-content: space-between;
+			gap: var(--vo-space-3);
+		}
+	}
+	/* Narrow phones: the hour segments show the shift's progress; the time left is dropped. */
+	@media (max-width: 479px) {
+		.meta {
+			gap: var(--vo-space-2);
+		}
+		.shift-compact :global(.left) {
+			display: none;
+		}
+	}
 </style>
