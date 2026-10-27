@@ -12,8 +12,8 @@ os.environ.setdefault("COKE_ENERGY_WEATHER_LIVE", "0")      # no Open-Meteo requ
 os.environ.setdefault("COKE_ENERGY_TODAY", "2026-10-15")   # fixed plan day: its Open-Meteo moisture is in the shipped file
 os.environ.setdefault("BF_TWIN_DB_URL", "off")             # no job archive into a DATABASE_URL of the developer's shell
 # A test worker schedules no job that reads plant data (forecasts, twin, optimiser, calibration, STRATA-Learn, shift
-# reports) and catches up nothing at start; the schedule tests enable both explicitly.
-os.environ.setdefault("BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.,report.")
+# reports, STRATA live point) and catches up nothing at start; the schedule tests enable both explicitly.
+os.environ.setdefault("BF_WORKER_SKIP_SCHEDULES", "forecast.,twin.,optimiser.,calibration.,learn.,report.,strata.")
 os.environ.setdefault("BF_WORKER_CATCH_UP", "0")
 os.environ.setdefault("BF_WORKER_LIVE_STATUS", "0")       # no InfluxDB snapshot query from a test worker's heartbeat
 # STRATA-Flow network solves one after the other; the parallel tests start their solver processes themselves.

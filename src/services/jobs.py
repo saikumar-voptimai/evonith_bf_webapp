@@ -127,6 +127,20 @@ class LiveReportParams(BaseModel):
     narrative: bool = Field(True, description="Also write the LLM narrative (one retry on failure)")
 
 
+class StrataLivePointParams(BaseModel):
+    """The STRATA live point (``strata.live_point``): the MOD facts and the ring view at the current calibration."""
+
+    model_config = {"extra": "forbid"}
+
+    calibration: Literal["day", "live"] = Field(
+        "day",
+        description=(
+            "Two-zone calibration: day = the one made at 02:30 (calibration.nightly; the live one while it is "
+            "missing), live = page 11's, on the stable shifts balanced so far"
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class JobKind:
     name: str
@@ -338,6 +352,23 @@ register(
         description=(
             "The Reports tab's report of the running shift, data up to now, with the LLM narrative (one retry) into "
             "twin.shift_report (POST /api/reports/live, SV-2.3)."
+        ),
+    )
+)
+register(
+    JobKind(
+        name="strata.live_point",
+        title="STRATA live point",
+        role="supervisor",
+        timeout_s=1200,  # about 30 network solves, plus 17 for a Jacobian the nightly calibration did not cache
+        max_tries=2,
+        retry_delay_s=300,
+        params=StrataLivePointParams,
+        schedule=({3}, {15}),
+        description=(
+            "Recomputes the MOD facts (coke response of Fixed-ω and STRATA-ω to the standard changes) at the day's "
+            "calibration and the ring view of the thermal reserve zone at its state (STRATA-Flow network solves) for "
+            "the STRATA page (SV-1.12)."
         ),
     )
 )
