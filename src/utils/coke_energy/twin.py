@@ -38,6 +38,7 @@ import pandas as pd
 
 from utils.burden_engine import strata_window
 from utils.burden_engine.strata_network import solve_stats
+from utils.coke_energy import burden_column
 from utils.coke_energy.build_shifts import build_shift_inputs, window_key
 from utils.coke_energy.burnt import k_burnt
 from utils.coke_energy.pipeline import (
@@ -209,10 +210,13 @@ def evaluate_window(
     settings: PipelineSettings | None = None,
     provisional_dates: Collection[date] = (),
     strata: bool = True,
+    transit: burden_column.TransitReference | None = None,
 ) -> WindowEvaluation:
     """Evaluate ``window`` on the four source frames with the 14-day quantities of ``pool`` (see the module notes).
 
-    ``strata=False`` skips K_STRATA (3 network solves per window and 1 per 14-day anchor, about 1 s each)."""
+    ``strata=False`` skips K_STRATA (3 network solves per window and 1 per 14-day anchor, about 1 s each).
+    ``transit``: reference of the burden column (``burden_column.TransitReference``); the column at the window's end
+    adds the transit quantities (descent times, coke by zone)."""
 
     settings = settings or pool.settings
     key = window.key
@@ -225,6 +229,7 @@ def evaluate_window(
         return ev
     row = S.loc[key]
     flags.update(n_hours=_count(row, "n_hours"), n_ok10=_count(row, "n_ok10"), n_taps=_count(row, "n_taps"))
+    transit_q = _transit_quantities(fd, window, transit, ev)
     if not bool(valid_shift_mask(S).loc[key]):
         ev.notes.extend(_invalid_reasons(row))
         return ev
@@ -247,6 +252,7 @@ def evaluate_window(
     flags["stable"] = bool(stable_mask(R).loc[key])
     ev.k_charged = _num(rb.coke_kgthm_dry)
     ev.quantities = {name: v for col, name in QUANTITIES.items() if (v := _num(rb.get(col))) is not None}
+    ev.quantities.update(transit_q)
     ev.status = "partial"
 
     target = pd.Series([window.date], index=[key])
@@ -327,6 +333,21 @@ def evaluate_window(
     ):
         ev.status = "complete"
     return ev
+
+
+def _transit_quantities(
+    fd: pd.DataFrame, window: Window, ref: burden_column.TransitReference | None, ev: WindowEvaluation
+) -> dict[str, float]:
+    """Descent times and coke by zone of the burden column at the window's end (a failure is a note)."""
+    try:
+        st = burden_column.column(fd, window.end, ref)
+    except Exception as exc:  # noqa: BLE001 - reported, the balances stand
+        ev.notes.append(f"transit: burden column not evaluated ({exc})")
+        return {}
+    if not st.complete:
+        ev.notes.append("transit: the charge record does not reach the oldest charge of the column")
+    ev.flags["transit_missing_hours"] = st.missing_hours
+    return burden_column.quantities(st)
 
 
 def _evaluate_strata(

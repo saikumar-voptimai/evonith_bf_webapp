@@ -160,3 +160,23 @@ coke_energy:
       history_days: 56        # snapshot history read at each evaluation
       rho: null
       sigma_e: null
+    # Burden column (SV-1.3, services.transit / utils.coke_energy.burden_column): descent times, charges and coke by
+    # zone, the ledger of the charges in the column, the implied lag. Reference: layered gas-flow model v0.4 on the
+    # drawn BF-02 profile (momentum model notes 6.5; burnt-vs-charged study 1.9).
+    transit:
+      reference:
+        charges_per_hour: 5.9
+        hours: {above_cz: 2.2, in_cz: 0.9, below_cz: 3.1}       # cohesive-zone top 2.2 h, raceways 6.2 h
+        coke_t: {above_cz: 61.0, in_cz: 14.0, below_cz: 59.0}    # 133 t of coke in transit
+        coke_t_per_charge: 4.55        # model reference charge: 305.7 kg/tHM x 94.6 t/h / 6.35 charges/h
+        volume_per_charge_m3: 23.5     # at the stockline
+        coke_bulk_t_m3: 0.50
+        noncoke_t_per_charge: 26.46    # ferrous + nut coke + flux of the reference charge
+      implied_lag:
+        days: 14                       # coke content of the charges against K_TRACE of the stored windows
+        lags_h: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        window_h: 8
+        detrend_days: 7                # deviations from a centred 7-day mean
+        block_h: 24                    # moving-block bootstrap, 95 % interval
+        n_boot: 500
+        basis: ferrous                 # coke per tonne of ferrous charged (charge: coke per charge on the counter)

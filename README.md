@@ -1033,6 +1033,18 @@ at the first signal, cleared 24 h after the last; raises and clears are publishe
 Replay: `python scripts/drift_replay.py` (daily series of the STRATA evidence, 1 Jan – 7 Oct 2026; `--source
 snapshots` for the stored hourly windows).
 
+**Burden transit (SV-1.3).** `src/utils/coke_energy/burden_column.py`, `services.transit`. Reference of the layered
+gas-flow model (drawn profile, 23.5 m³ per charge): at 5.9 charges/h the cohesive-zone top 2.2 h after charging, the
+raceways 6.2 h (zones 2.2 / 0.9 / 3.1 h), coke 61 / 14 / 59 t = 133 t in transit (`coke_energy.yml → twin.transit`).
+Descent times: τ = τ_ref · 5.9 / n_ch at the current rate, and from the record the age of the charge at each zone
+boundary (the zones hold fixed numbers of charges, 12.98 / 5.31 / 18.29). The ledger counts the charges back from a
+time through the hourly record and gives per band the charges, the tonnes and wet blend of the ferrous charge, coke per
+charge, per tonne of ferrous and per tonne of hot metal; coke above and in the zone scales with the coke share of the
+charge volume (reference 0.387), the coke bed below it is the reference 59 t. Every window evaluation carries the
+column at its end (`tau_cz_h`, `tau_raceway_h`, `coke_*_t`). Implied lag: coke per tonne of ferrous charged against
+K_TRACE of the stored windows over 14 days, 95 % moving-block bootstrap interval. Report:
+`python scripts/transit_report.py [--at ...] [--lag]`.
+
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family
 look as in Optimus: dark sidebar, light canvas, white panels, yellow accent, Inter; text contrast >= 4.5:1 on every

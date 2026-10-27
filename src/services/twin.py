@@ -19,6 +19,7 @@ from typing import Any
 import pandas as pd
 
 from services import coke_energy as ce
+from services import transit
 from services.events import TwinSnapshotData
 from utils.coke_energy.pipeline import PipelineSettings
 from utils.coke_energy.twin import Window, WindowEvaluation, evaluate_window
@@ -74,8 +75,18 @@ def evaluate(
     frames = load_frames(keys, loaders)
     pool = (page_data_for or ce.page_data)(keys, settings).result
     window = Window.ending(now_ist() if t is None else t, hours)
+    reference, _ = transit.settings(cfg)
     return evaluate_window(
-        frames.fd, frames.m10, frames.hm, frames.dpr, window, pool, settings, frames.provisional, strata=strata
+        frames.fd,
+        frames.m10,
+        frames.hm,
+        frames.dpr,
+        window,
+        pool,
+        settings,
+        frames.provisional,
+        strata=strata,
+        transit=reference,
     )
 
 

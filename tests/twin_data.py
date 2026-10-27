@@ -72,6 +72,7 @@ DPR = {
     "dpr_delay_min": "delay_min",
 }
 SHIFT_START = {"A": 6, "B": 14, "C": 22}
+HM_T_PER_CHARGE = 15.0  # charges per hour of the synthetic record = hot metal per hour / 15 t
 
 
 def templates() -> pd.DataFrame:
@@ -125,6 +126,7 @@ def synthetic_frames(
                 for c in MASS:
                     r[c] = tpl[c] / n * prod_f * (coke_f if c == "COKE_CALC_MT" else 1.0)
                 r.update({c: r["ORE_CALC_MT"] * share for c, share in (ore_split or {}).items()})
+                r["CHARGES/HRS."] = r["PRODUCTIONTONNESPERHR"] / HM_T_PER_CHARGE
                 r.update({c: tpl[c] for c in cols["comp"]})
                 r.update({c[2:]: tpl[c] for c in cols["proc"]})
                 fd_rows.append(r)

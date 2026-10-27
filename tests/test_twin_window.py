@@ -118,6 +118,10 @@ def test_a_window_between_shifts_is_evaluated(world) -> None:
     assert ev.status == "complete"
     assert 250 < ev.k_trace < 400 and 250 < ev.k_forge < 400 and 0.6 < ev.omega_imp < 0.95
     assert ev.flags["n_hours"] == 8 and ev.flags["n_ok10"] == 48
+    # burden column at the window's end (SV-1.3): synthetic record at hot metal / 15 t charges per hour
+    q = ev.quantities
+    assert 1.5 < q["tau_cz_h"] < 3.0 and q["tau_cz_h"] < q["tau_raceway_h"] < 8.0 and q["coke_in_transit_t"] > 0
+    assert ev.flags["transit_missing_hours"] == 0
 
 
 # ---------------------------------------------------------------------------------------------- flags and data checks
