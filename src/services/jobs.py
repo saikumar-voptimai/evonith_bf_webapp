@@ -153,7 +153,9 @@ register(
         name="optimiser.run",
         title="Optimiser run",
         role="supervisor",
-        timeout_s=1200,  # Step 1 with STRATA-ω about 8 min on the development host
+        # Step 1 with STRATA-ω: 18.4 min on the development host (offline case, both oversize options, 670 network
+        # solves); the AGX Orin may need twice that until the solves run in parallel (SV-1.8)
+        timeout_s=3600,
         max_tries=1,
         params=OptimiserRunParams,
         description=(
@@ -228,7 +230,7 @@ register(
         name="optimiser.step1",
         title="Scheduled Step 1",
         role="supervisor",
-        timeout_s=1800,
+        timeout_s=3600,  # as optimiser.run
         max_tries=2,
         retry_delay_s=300,
         schedule=({6, 14, 22}, {30}),
