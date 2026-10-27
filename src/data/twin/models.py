@@ -9,7 +9,7 @@
 | ``shift_record`` | Shift handover record frozen at 06:10, 14:10, 22:10, immutable | ``shift.close`` (SV-2.5) |
 | ``alarm_event`` | Alarms raised and cleared (ω drift, model gap, stale source, job failure, lag) | twin and worker |
 | ``facts_version`` | Versioned overlay of the fact register with second-admin review | admin space (SV-4.2) |
-| ``audit_log`` | Admin writes and plan decisions, append-only | API |
+| ``audit_log`` | Admin writes (with the values before and after) and plan decisions, append-only | API |
 
 Times are ``timestamptz`` in UTC. Columns queried by time range are indexed (``ix_<table>_<column>``). Values that are
 plotted or filtered have typed columns with the unit in the name (``k_trace`` kg/tHM); everything else of a result is
@@ -315,7 +315,12 @@ class FactsVersion(TwinBase):
 
 
 class AuditLog(TwinBase):
-    """One admin write or plan decision: who, what, on which object, when, with the details of the change."""
+    """One admin write or plan decision: who, what, on which object, when, with the details of the change.
+
+    An admin write (``services.audit.admin_write``, SV-4.1) also records the object's fields before and after the
+    write, in the transaction of the write (twin_0003): ``before`` is null for a created object, ``after`` for a
+    deleted one, and both are null on entries that record only ``details`` (plan decisions, fact-register reviews).
+    """
 
     __tablename__ = "audit_log"
 
@@ -329,6 +334,9 @@ class AuditLog(TwinBase):
     object_id: Mapped[str | None] = mapped_column(String(128))
     details: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=EMPTY_JSON)
     client_ip: Mapped[str | None] = mapped_column(String(64))
+    #: The written object's fields before and after an admin write (JSON objects, units in the keys where they apply).
+    before: Mapped[dict[str, Any] | None]
+    after: Mapped[dict[str, Any] | None]
 
     __table_args__ = (
         Index("ix_audit_log_at", "at"),

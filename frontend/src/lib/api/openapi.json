@@ -194,6 +194,235 @@
         "title": "AlarmView",
         "type": "object"
       },
+      "AuditChange": {
+        "properties": {
+          "after": {
+            "description": "Value after the write (JSON; null when removed); units in the field name",
+            "title": "After"
+          },
+          "before": {
+            "description": "Value before the write (JSON; null when added); units in the field name",
+            "title": "Before"
+          },
+          "kind": {
+            "description": "added: the field is only in after; removed: only in before; changed: in both, different",
+            "enum": [
+              "added",
+              "removed",
+              "changed"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "path": {
+            "description": "Changed field: keys joined by dots, list items by index (e.g. overlay.ASM-08.value)",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "kind",
+          "before",
+          "after"
+        ],
+        "title": "AuditChange",
+        "type": "object"
+      },
+      "AuditEntry": {
+        "properties": {
+          "action": {
+            "description": "What was done, e.g. plan.decide, facts.propose, hopper.assign",
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "description": "User name of the actor",
+            "title": "Actor",
+            "type": "string"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The object's fields after an admin write; null for a deleted object and for entries that record only details",
+            "title": "After"
+          },
+          "at": {
+            "description": "Time of the action (UTC)",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The object's fields before an admin write; null for a created object and for entries that record only details",
+            "title": "Before"
+          },
+          "changes": {
+            "description": "Fields that differ between before and after, in the order of before",
+            "items": {
+              "$ref": "#/components/schemas/AuditChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "client_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client address of the request",
+            "title": "Client Ip"
+          },
+          "details": {
+            "description": "Context of the action (decision, comment, note)",
+            "title": "Details",
+            "type": "object"
+          },
+          "id": {
+            "description": "Entry id (the log is append-only)",
+            "title": "Id",
+            "type": "integer"
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Id of the object written",
+            "title": "Object Id"
+          },
+          "object_type": {
+            "description": "Kind of object written, e.g. optimiser_run, facts_version, hopper",
+            "title": "Object Type",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Role of the actor at the time: admin, supervisor or user",
+            "title": "Role"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "actor",
+          "role",
+          "action",
+          "object_type",
+          "object_id",
+          "client_ip",
+          "details",
+          "before",
+          "after",
+          "changes"
+        ],
+        "title": "AuditEntry",
+        "type": "object"
+      },
+      "AuditFacets": {
+        "properties": {
+          "actions": {
+            "description": "Actions present in the log, sorted",
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "actors": {
+            "description": "User names present in the log, sorted",
+            "items": {
+              "type": "string"
+            },
+            "title": "Actors",
+            "type": "array"
+          },
+          "object_types": {
+            "description": "Object types present in the log, sorted",
+            "items": {
+              "type": "string"
+            },
+            "title": "Object Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "actors",
+          "actions",
+          "object_types"
+        ],
+        "title": "AuditFacets",
+        "type": "object"
+      },
+      "AuditPage": {
+        "properties": {
+          "entries": {
+            "description": "The page's entries, newest first",
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "facets": {
+            "$ref": "#/components/schemas/AuditFacets",
+            "description": "Values present in the whole log, for the filter menus"
+          },
+          "limit": {
+            "description": "Page size, count",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Entries before this page, count",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Entries that match the filters, count",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "entries",
+          "facets"
+        ],
+        "title": "AuditPage",
+        "type": "object"
+      },
       "ChargedCokeForecastData": {
         "description": "A charged-coke forecast written to the ledger (``services.forecasts.issue_charged``, SV-1.5); times in IST\nwith their offset.",
         "properties": {
@@ -3262,6 +3491,191 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/admin/audit": {
+      "get": {
+        "description": "Entries newest first with their values before and after and the changed fields; ``total`` counts every entry\nthat matches, ``facets`` lists the users, actions and object types of the whole log.",
+        "operationId": "admin_audit_log",
+        "parameters": [
+          {
+            "description": "Only this user (user name)",
+            "in": "query",
+            "name": "actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this user (user name)",
+              "title": "Actor"
+            }
+          },
+          {
+            "description": "Only this action, e.g. plan.decide",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this action, e.g. plan.decide",
+              "title": "Action"
+            }
+          },
+          {
+            "description": "Only this object type, e.g. facts_version",
+            "in": "query",
+            "name": "object_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this object type, e.g. facts_version",
+              "title": "Object Type"
+            }
+          },
+          {
+            "description": "Only this object id",
+            "in": "query",
+            "name": "object_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this object id",
+              "title": "Object Id"
+            }
+          },
+          {
+            "description": "From this time, inclusive (ISO 8601; naive is UTC)",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "From this time, inclusive (ISO 8601; naive is UTC)",
+              "title": "Since"
+            }
+          },
+          {
+            "description": "Before this time, exclusive (ISO 8601; naive is UTC)",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Before this time, exclusive (ISO 8601; naive is UTC)",
+              "title": "Until"
+            }
+          },
+          {
+            "description": "Page size, count",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Page size, count",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Entries to skip, count",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Entries to skip, count",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Audit log",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/auth/login": {
       "post": {
         "description": "Check the account against ``identity.users`` and start a 12 h session (cookie).\n\nAfter ``login_max_failures`` failed attempts from one address within ``login_window_s``, further attempts are\nrefused with 429 and ``Retry-After`` until the oldest failure leaves the window.",

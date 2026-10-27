@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/api/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit log
+         * @description Entries newest first with their values before and after and the changed fields; ``total`` counts every entry
+         *     that matches, ``facets`` lists the users, actions and object types of the whole log.
+         */
+        get: operations["admin_audit_log"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -533,6 +554,137 @@ export interface components {
              * @default
              */
             subject: string;
+        };
+        /** AuditChange */
+        AuditChange: {
+            /**
+             * After
+             * @description Value after the write (JSON; null when removed); units in the field name
+             */
+            after: unknown;
+            /**
+             * Before
+             * @description Value before the write (JSON; null when added); units in the field name
+             */
+            before: unknown;
+            /**
+             * Kind
+             * @description added: the field is only in after; removed: only in before; changed: in both, different
+             * @enum {string}
+             */
+            kind: "added" | "removed" | "changed";
+            /**
+             * Path
+             * @description Changed field: keys joined by dots, list items by index (e.g. overlay.ASM-08.value)
+             */
+            path: string;
+        };
+        /** AuditEntry */
+        AuditEntry: {
+            /**
+             * Action
+             * @description What was done, e.g. plan.decide, facts.propose, hopper.assign
+             */
+            action: string;
+            /**
+             * Actor
+             * @description User name of the actor
+             */
+            actor: string;
+            /**
+             * After
+             * @description The object's fields after an admin write; null for a deleted object and for entries that record only details
+             */
+            after: Record<string, unknown> | null;
+            /**
+             * At
+             * Format: date-time
+             * @description Time of the action (UTC)
+             */
+            at: string;
+            /**
+             * Before
+             * @description The object's fields before an admin write; null for a created object and for entries that record only details
+             */
+            before: Record<string, unknown> | null;
+            /**
+             * Changes
+             * @description Fields that differ between before and after, in the order of before
+             */
+            changes: components["schemas"]["AuditChange"][];
+            /**
+             * Client Ip
+             * @description Client address of the request
+             */
+            client_ip: string | null;
+            /**
+             * Details
+             * @description Context of the action (decision, comment, note)
+             */
+            details: Record<string, unknown>;
+            /**
+             * Id
+             * @description Entry id (the log is append-only)
+             */
+            id: number;
+            /**
+             * Object Id
+             * @description Id of the object written
+             */
+            object_id: string | null;
+            /**
+             * Object Type
+             * @description Kind of object written, e.g. optimiser_run, facts_version, hopper
+             */
+            object_type: string;
+            /**
+             * Role
+             * @description Role of the actor at the time: admin, supervisor or user
+             */
+            role: string | null;
+        };
+        /** AuditFacets */
+        AuditFacets: {
+            /**
+             * Actions
+             * @description Actions present in the log, sorted
+             */
+            actions: string[];
+            /**
+             * Actors
+             * @description User names present in the log, sorted
+             */
+            actors: string[];
+            /**
+             * Object Types
+             * @description Object types present in the log, sorted
+             */
+            object_types: string[];
+        };
+        /** AuditPage */
+        AuditPage: {
+            /**
+             * Entries
+             * @description The page's entries, newest first
+             */
+            entries: components["schemas"]["AuditEntry"][];
+            /** @description Values present in the whole log, for the filter menus */
+            facets: components["schemas"]["AuditFacets"];
+            /**
+             * Limit
+             * @description Page size, count
+             */
+            limit: number;
+            /**
+             * Offset
+             * @description Entries before this page, count
+             */
+            offset: number;
+            /**
+             * Total
+             * @description Entries that match the filters, count
+             */
+            total: number;
         };
         /**
          * ChargedCokeForecastData
@@ -2089,6 +2241,61 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    admin_audit_log: {
+        parameters: {
+            query?: {
+                /** @description Only this user (user name) */
+                actor?: string | null;
+                /** @description Only this action, e.g. plan.decide */
+                action?: string | null;
+                /** @description Only this object type, e.g. facts_version */
+                object_type?: string | null;
+                /** @description Only this object id */
+                object_id?: string | null;
+                /** @description From this time, inclusive (ISO 8601; naive is UTC) */
+                since?: string | null;
+                /** @description Before this time, exclusive (ISO 8601; naive is UTC) */
+                until?: string | null;
+                /** @description Page size, count */
+                limit?: number;
+                /** @description Entries to skip, count */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     auth_login: {
         parameters: {
             query?: never;

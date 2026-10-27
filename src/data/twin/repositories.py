@@ -2,8 +2,9 @@
 
 ``TwinStore`` holds one repository per table. Each call runs in its own transaction and returns detached rows
 (readable after the session closes). User actions (plan decision, fact-register proposal and review, alarm
-acknowledgement) write their audit row in the same transaction as the change. Times passed in must be timezone-aware;
-they are stored in UTC.
+acknowledgement) write their audit row in the same transaction as the change (``audit_row``); admin writes do so
+through ``services.audit.admin_write``, which also records the object's values before and after (SV-4.1). Times passed
+in must be timezone-aware; they are stored in UTC.
 
 The store is synchronous (SQLAlchemy 2.0 with psycopg2); async callers run it in a thread (``asyncio.to_thread``).
 """
@@ -138,7 +139,7 @@ def _upsert(session: Session, model: type[TwinBase], values: dict[str, Any], key
         raise NotImplementedError(f"upsert on {dialect}")
 
 
-def _audit(
+def audit_row(
     session: Session,
     actor: Actor,
     action: str,
@@ -146,7 +147,12 @@ def _audit(
     object_id: str | None,
     details: Mapping[str, Any] | None,
     at: datetime,
+    *,
+    before: Mapping[str, Any] | None = None,
+    after: Mapping[str, Any] | None = None,
 ) -> AuditLog:
+    """Add the audit row of an action to ``session``, the transaction of the change it records. ``before`` and
+    ``after`` are the object's fields around an admin write (JSON-safe values, ``services.audit.json_safe``)."""
     row = AuditLog(
         at=at,
         actor=actor.name,
@@ -156,6 +162,8 @@ def _audit(
         object_id=object_id,
         details=dict(details or {}),
         client_ip=actor.client_ip,
+        before=None if before is None else dict(before),
+        after=None if after is None else dict(after),
     )
     session.add(row)
     return row
@@ -344,7 +352,7 @@ class OptimiserRunRepository(_Repository):
                 comment=comment,
             )
             session.add(row)
-            _audit(
+            audit_row(
                 session,
                 actor,
                 "plan.decide",
@@ -485,7 +493,7 @@ class AlarmRepository(_Repository):
                 raise NotFound(f"alarm {alarm_id}")
             row.acknowledged_by = actor.name
             row.acknowledged_at = when
-            _audit(session, actor, "alarm.acknowledge", "alarm_event", str(alarm_id), {"kind": row.kind}, when)
+            audit_row(session, actor, "alarm.acknowledge", "alarm_event", str(alarm_id), {"kind": row.kind}, when)
             return row
 
     def open_alarms(self) -> list[AlarmEvent]:
@@ -547,7 +555,7 @@ class FactsVersionRepository(_Repository):
                         created_at=when,
                     )
                     session.add(row)
-                    _audit(
+                    audit_row(
                         session,
                         actor,
                         "facts.propose",
@@ -583,7 +591,7 @@ class FactsVersionRepository(_Repository):
             row.status = "approved" if approve else "rejected"
             row.reviewed_by = actor.name
             row.reviewed_at = when
-            _audit(
+            audit_row(
                 session,
                 actor,
                 "facts.review",
@@ -623,9 +631,48 @@ class AuditRepository(_Repository):
         details: Mapping[str, Any] | None = None,
         *,
         at: datetime | None = None,
+        before: Mapping[str, Any] | None = None,
+        after: Mapping[str, Any] | None = None,
     ) -> AuditLog:
+        """An entry in its own transaction (an action without a write in the twin store); writes record theirs
+        through ``services.audit.admin_write``."""
         with self._sessions.begin() as session:
-            return _audit(session, actor, action, object_type, object_id, details, _utc(at) or utcnow())
+            return audit_row(
+                session,
+                actor,
+                action,
+                object_type,
+                object_id,
+                details,
+                _utc(at) or utcnow(),
+                before=before,
+                after=after,
+            )
+
+    @staticmethod
+    def _filtered(
+        query: Any,
+        *,
+        actor: str | None = None,
+        action: str | None = None,
+        object_type: str | None = None,
+        object_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> Any:
+        if actor:
+            query = query.where(AuditLog.actor == actor)
+        if action:
+            query = query.where(AuditLog.action == action)
+        if object_type:
+            query = query.where(AuditLog.object_type == object_type)
+        if object_id:
+            query = query.where(AuditLog.object_id == object_id)
+        if since:
+            query = query.where(AuditLog.at >= _utc(since, "since"))
+        if until:
+            query = query.where(AuditLog.at < _utc(until, "until"))
+        return query
 
     def query(
         self,
@@ -639,21 +686,42 @@ class AuditRepository(_Repository):
         limit: int = 200,
     ) -> list[AuditLog]:
         """Entries in [since, until), newest first."""
-        query = select(AuditLog).order_by(AuditLog.at.desc(), AuditLog.id.desc()).limit(limit)
-        if actor:
-            query = query.where(AuditLog.actor == actor)
-        if action:
-            query = query.where(AuditLog.action == action)
-        if object_type:
-            query = query.where(AuditLog.object_type == object_type)
-        if object_id:
-            query = query.where(AuditLog.object_id == object_id)
-        if since:
-            query = query.where(AuditLog.at >= _utc(since, "since"))
-        if until:
-            query = query.where(AuditLog.at < _utc(until, "until"))
+        filters = dict(
+            actor=actor, action=action, object_type=object_type, object_id=object_id, since=since, until=until
+        )
+        query = self._filtered(select(AuditLog), **filters).order_by(AuditLog.at.desc(), AuditLog.id.desc())
         with self._sessions() as session:
-            return list(session.scalars(query))
+            return list(session.scalars(query.limit(limit)))
+
+    def page(
+        self,
+        *,
+        actor: str | None = None,
+        action: str | None = None,
+        object_type: str | None = None,
+        object_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[AuditLog], int]:
+        """One page of the entries in [since, until), newest first, and the number of entries that match."""
+        if limit < 1 or offset < 0:
+            raise ValueError(f"limit must be >= 1 and offset >= 0, got {limit} and {offset}")
+        filters = dict(
+            actor=actor, action=action, object_type=object_type, object_id=object_id, since=since, until=until
+        )
+        rows = self._filtered(select(AuditLog), **filters).order_by(AuditLog.at.desc(), AuditLog.id.desc())
+        count = self._filtered(select(func.count()).select_from(AuditLog), **filters)
+        with self._sessions() as session:
+            total = int(session.scalar(count) or 0)
+            return list(session.scalars(rows.limit(limit).offset(offset))), total
+
+    def facets(self) -> dict[str, list[str]]:
+        """The actors, actions and object types present in the log, sorted (the viewer's filter menus)."""
+        columns = {"actors": AuditLog.actor, "actions": AuditLog.action, "object_types": AuditLog.object_type}
+        with self._sessions() as session:
+            return {key: sorted(session.scalars(select(column).distinct())) for key, column in columns.items()}
 
 
 class TwinStore:
