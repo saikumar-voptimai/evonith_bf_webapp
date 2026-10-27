@@ -906,6 +906,7 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
 | Service layer | `src/services/` | All data assembly and model orchestration shared by the API, the worker and Streamlit. **No Streamlit or `ui.*` import** (tests/test_services_architecture.py, also transitive) |
 | Worker | `src/worker/` | `python -m worker`: arq 0.28 on Redis (`BF_REDIS_URL`); job kinds in `services.jobs.CATALOG` (role, time limit, retries, IST schedule, parameter model), handlers in `worker/kinds/` (`@handles("kind")`, `JobContext.progress`, CPU work through `ctx.run_cpu` in the process pool); events to the Redis stream `twin:events` (`services.events`, typed `StreamEvent`), forwarded by the API as SSE (`/api/stream`) |
 | Cache | `src/utils/memo.py` | `@memo(ttl_seconds=, max_entries=, copy=)` replaces `st.cache_data` outside Streamlit; key = argument values |
+| Twin store | `src/data/twin/`, `alembic/twin/` | SQLAlchemy 2.0 models and repositories (`TwinStore`) of the Neon schema `twin`: jobs, snapshot, optimiser_run, plan_decision, shift_record, alarm_event, facts_version, audit_log. Migrate with `alembic -n twin upgrade head` (`make db-upgrade`; URL `BF_TWIN_DB_URL`, else `DATABASE_URL`). A model change needs a migration (`tests/test_twin_store.py` compares both). shift_record, plan_decision, audit_log are append-only (trigger); user actions write their audit row in the same transaction. The worker archives job records into `twin.jobs` (`services.job_archive`) |
 
 - Pattern: a service exposes uncached building blocks (`load_*`, `read_*`, `build_*`, `compute_*`) and memoised
   entry points for the API/worker. Streamlit loaders (`ui/*/loaders.py`) wrap the uncached blocks in `st.cache_data`
@@ -951,4 +952,5 @@ twin-api:   BF_API_JWT_SECRET (required in prod), BF_API_COOKIE_SECURE, BF_API_T
             BF_API_ENVIRONMENT, BF_API_SESSION_HOURS, BF_API_LOGIN_MAX_FAILURES, BF_API_LOGIN_WINDOW_S,
             BF_API_STREAM_HEARTBEAT_S
 Worker:     BF_REDIS_URL (API and worker), BF_WORKER_POOL, BF_WORKER_MAX_JOBS, BF_WORKER_JOB_TIMEOUT
+Twin store: BF_TWIN_DB_URL (default DATABASE_URL; `off` disables), BF_TEST_DATABASE_URL (tests; else a local cluster)
 ```

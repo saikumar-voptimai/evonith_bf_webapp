@@ -929,6 +929,33 @@ stream), and `#lib/live/jobs.svelte.ts` (`JobTracker`) starts and follows a job.
 Redis: `apt install redis-server` (Linux, Jetson; Redis 6.0 or later), Memurai or WSL on Windows. Tests that need it
 (`tests/test_jobs.py`, `tests/test_api_live.py`) start a throw-away `redis-server` and are skipped without the binary.
 
+**Twin store (Neon `twin` schema).** Persistent results of the twin-api and the worker, in the schema `twin` of the
+Neon database: SQLAlchemy 2.0 models and repositories in `src/data/twin/` (`TwinStore`), migrations in
+`alembic/twin/`. Times are UTC (`timestamptz`); every time column queried by range leads an index.
+
+| Table | Content | Indexes |
+|---|---|---|
+| `jobs` | Job records beyond the 7 days kept in Redis: written by the worker at every change of state (ordered, non-blocking), copied again by the nightly housekeeping job | `submitted_at`, `(kind, submitted_at)`, `finished_at` |
+| `snapshot` | Hourly twin evaluation of the window [t − 8 h, t): coke rates (TRACE, FORGE, STRATA ± 1σ, charged), ω (implied, STRATA, calibration), other quantities as JSON; one row per window end, a re-evaluation replaces it | `window_end` (unique), `evaluated_at` |
+| `optimiser_run` | Optimiser runs: mode, ω mode, status, production, cost and saving, coke ± σ, certainty; inputs and plan as JSON | `started_at`, `(mode, started_at)` |
+| `plan_decision` | Accept or reject of a run by a supervisor; the latest decision applies; append-only | `decided_at`, `(run_id, decided_at)` |
+| `shift_record` | Shift handover record (twin values, plan and decision, report), written once at the shift close | `shift_start` |
+| `alarm_event` | Alarms from raise to clear; at most one open alarm per kind and subject | `raised_at`; open alarms unique |
+| `facts_version` | Versions of the fact-register overlay; a version that changes a fact's status needs a second administrator | `created_at` |
+| `audit_log` | Admin writes and plan decisions (actor, role, address, object, details); append-only | `at`, `(actor, at)`, `(object_type, object_id, at)` |
+
+`shift_record`, `plan_decision` and `audit_log` refuse UPDATE and DELETE (trigger `twin.reject_change`). A user action
+(plan decision, fact-register proposal or review, alarm acknowledgement) writes its audit row in the same transaction.
+Migrations: `make db-upgrade`, `make db-downgrade` (one revision), `make db-current`, i.e.
+`alembic -n twin upgrade head` etc.; the URL comes from `-x url=...`, `BF_TWIN_DB_URL` or `DATABASE_URL`, and Alembic
+keeps its version in `twin.alembic_version`. The default Alembic environment (`alembic upgrade head` without
+`-n twin`) is the earlier relational migration of `furnace_data` and not part of the twin store.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BF_TWIN_DB_URL` | `DATABASE_URL` | Database of the twin store; `off` disables it (the test suite sets `off`). The worker archives job records when a URL is set |
+| `BF_TEST_DATABASE_URL` | unset | PostgreSQL server for `tests/test_twin_store.py` (a role that may create databases: CI service, Neon branch); unset, the tests start a throw-away local cluster with `initdb` / `pg_ctl` (PostgreSQL 16: `apt install postgresql`) and are skipped without one |
+
 **Design system.** Tokens, type, rules and components are described in `frontend/DESIGN.md`; every component is
 shown in its states at `/dev/components`. Colours come only from `src/lib/theme/tokens.css` (V-OptimAIse product-family
 look as in Optimus: dark sidebar, light canvas, white panels, yellow accent, Inter; text contrast >= 4.5:1 on every

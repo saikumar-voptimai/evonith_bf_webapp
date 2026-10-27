@@ -33,5 +33,13 @@ async def selftest(job: JobContext, params: SelfTestParams) -> dict[str, Any]:
 
 @handles("system.housekeeping")
 async def housekeeping(job: JobContext, params: NoParams) -> dict[str, Any]:
-    removed = await job.store.trim()
-    return {"index_entries_removed": removed}
+    """Copy the job records still in Redis (7 days) to the archive, then trim the index. An archive failure is
+    reported in the result and does not stop the trim: the records stay in Redis until their 7 days end."""
+    result: dict[str, Any] = {"records_archived": None}
+    if job.store.archive is not None:
+        try:
+            result["records_archived"] = await job.store.archive.sync(await job.store.list(limit=100_000))
+        except Exception as exc:
+            result["archive_error"] = f"{type(exc).__name__}: {exc}"[:400]
+    result["index_entries_removed"] = await job.store.trim()
+    return result

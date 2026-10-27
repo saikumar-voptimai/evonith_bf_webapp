@@ -7,9 +7,11 @@ RUFF ?= uvx ruff@0.17.2
 RUFF_PATHS := src/api src/services src/worker src/utils/memo.py src/ui/coke_energy/loaders.py \
 	src/ui/burden_optimiser/loaders.py scripts/dev.py tests/services_fakes.py tests/test_services_*.py \
 	tests/test_utils_memo.py tests/test_api_*.py tests/test_events.py tests/test_jobs.py tests/redis_server.py \
-	scripts/export_openapi.py scripts/export_chart_fixtures.py tests/test_chart_fixtures.py
+	scripts/export_openapi.py scripts/export_chart_fixtures.py tests/test_chart_fixtures.py src/data/twin alembic/twin \
+	tests/pg_server.py tests/test_twin_store.py
 
-.PHONY: help dev api worker legacy web install build check lint format test test-web test-py client fixtures audit-ui
+.PHONY: help dev api worker legacy web install build check lint format test test-web test-py client fixtures db-upgrade \
+	db-downgrade db-current audit-ui
 
 help:
 	@echo "make dev      SPA (5173) + API (8100) + worker + Streamlit (/legacy, 8501)"
@@ -20,6 +22,7 @@ help:
 	@echo "make test     vitest + pytest (BURDEN_ENGINE_FAST=1)"
 	@echo "make client   export the OpenAPI schema and regenerate the typed TS client"
 	@echo "make fixtures write the chart-kit parity fixtures (Rist diagram, schematic) from the Python models"
+	@echo "make db-upgrade / db-downgrade / db-current   twin schema migrations (BF_TWIN_DB_URL or DATABASE_URL)"
 	@echo "make audit-ui build the SPA, then axe-core, layout and keyboard checks with screenshots (Playwright)"
 
 dev:
@@ -70,6 +73,15 @@ client:
 
 fixtures:
 	$(PY) scripts/export_chart_fixtures.py
+
+db-upgrade:
+	uv run alembic -n twin upgrade head
+
+db-downgrade:
+	uv run alembic -n twin downgrade -1
+
+db-current:
+	uv run alembic -n twin current
 
 audit-ui: build
 	$(PNPM) audit:ui

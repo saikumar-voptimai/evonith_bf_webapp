@@ -3,7 +3,7 @@
 Environment: ``BF_REDIS_URL`` (default ``redis://127.0.0.1:6379/0``), ``BF_WORKER_POOL`` (model-solve processes,
 default 8), ``BF_WORKER_MAX_JOBS`` (concurrent jobs, default 4), ``BF_WORKER_JOB_TIMEOUT`` (arq time limit of one
 delivery, default the longest kind limit plus 60 s; a job interrupted by a worker stop runs again once this limit plus
-10 s has passed).
+10 s has passed). Job records are archived in ``twin.jobs`` when ``BF_TWIN_DB_URL`` or ``DATABASE_URL`` is set.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from arq.connections import RedisSettings
 
 import worker.kinds  # noqa: F401  (registers the handlers)
 from services.events import RedisEventBus
+from services.job_archive import open_job_archive
 from services.jobs import ARQ_FUNCTION, CATALOG, QUEUE_NAME, JobStore
 from worker.runtime import heartbeat_loop, process_pool, run_job, scheduled, worker_name
 
@@ -60,7 +61,8 @@ async def on_startup(ctx: dict[str, Any]) -> None:
     async def enqueue(job_id: str) -> None:
         await redis.enqueue_job(ARQ_FUNCTION, job_id, _job_id=job_id, _queue_name=QUEUE_NAME)
 
-    ctx["store"] = JobStore(redis, enqueue=enqueue)
+    ctx["archive"] = await open_job_archive()
+    ctx["store"] = JobStore(redis, enqueue=enqueue, archive=ctx["archive"])
     ctx["bus"] = RedisEventBus(redis)
     ctx["pool_size"] = _int_env("BF_WORKER_POOL", 8)
     ctx["pool"] = process_pool(ctx["pool_size"]) if ctx["pool_size"] > 0 else None
@@ -85,6 +87,9 @@ async def on_shutdown(ctx: dict[str, Any]) -> None:
     pool = ctx.get("pool")
     if pool is not None:
         pool.shutdown(wait=False, cancel_futures=True)
+    archive = ctx.get("archive")
+    if archive is not None:
+        await archive.close()
     log.info("twin-worker %s stopped", ctx.get("name"))
 
 

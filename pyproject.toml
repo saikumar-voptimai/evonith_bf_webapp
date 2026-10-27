@@ -254,6 +254,7 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["api", "services", "worker", "utils", "data", "config", "domain", "ui", "reports", "agents", "furnace_data"]
+known-third-party = ["alembic"]  # the repository's alembic/ directory holds migrations, not the package
 
 
 [dependency-groups]

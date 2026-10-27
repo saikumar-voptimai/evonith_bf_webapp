@@ -4,8 +4,9 @@ A job is a model run executed by the worker (``python -m worker``, arq on Redis)
 through ``submit``: the parameters are validated against the kind's model, a record is written to Redis
 (``twin:job:<id>``, listed in ``twin:jobs``) and the arq queue receives the job id. A request whose kind and
 parameters equal those of a queued or running job returns that job instead of starting another (input hash in
-``twin:job-active:<kind>:<hash>``). Records are kept for 7 days; the ``twin.jobs`` table in Neon (#278) keeps them
-longer. Worker implementations of the kinds are in ``worker.kinds``.
+``twin:job-active:<kind>:<hash>``). Records are kept in Redis for 7 days; a ``JobArchive`` (the worker's
+``services.job_archive.TwinJobArchive``, table ``twin.jobs`` in Neon, #278) receives every change of state and keeps
+them longer. Worker implementations of the kinds are in ``worker.kinds``.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -85,7 +86,7 @@ register(
         timeout_s=300,
         max_tries=2,
         schedule=({4}, {0}),
-        description="Removes job records older than 7 days from the index.",
+        description="Copies the job records of the last 7 days to the archive and removes older index entries.",
     )
 )
 
@@ -112,6 +113,20 @@ class UnknownJobKind(KeyError):
     pass
 
 
+class JobArchive(Protocol):
+    """Long-term store of job records. ``record`` must not block: it is called on every change of state."""
+
+    def record(self, record: JobRecord) -> None: ...
+
+    async def sync(self, records: list[JobRecord]) -> int:
+        """Write the records now (reconciliation); returns how many were written."""
+        ...
+
+
+#: Fields whose change is a change of state worth archiving (progress and messages are not).
+ARCHIVED_CHANGES = frozenset({"status", "started_at", "finished_at", "tries"})
+
+
 def input_hash(kind: str, params: dict[str, Any]) -> str:
     canonical = json.dumps({"kind": kind, "params": params}, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()[:24]
@@ -128,6 +143,7 @@ class JobStore:
     redis: Any
     enqueue: Callable[[str], Any] | None = None
     clock: Callable[[], datetime] = field(default=_now)
+    archive: JobArchive | None = None
 
     async def get(self, job_id: str) -> JobRecord | None:
         raw = await self.redis.get(RECORD_KEY.format(job_id))
@@ -142,6 +158,8 @@ class JobStore:
             return None
         record = record.model_copy(update=changes)
         await self.save(record)
+        if self.archive is not None and ARCHIVED_CHANGES.intersection(changes):
+            self.archive.record(record)
         return record
 
     async def submit(self, kind_name: str, params: dict[str, Any], submitted_by: str) -> tuple[JobRecord, bool]:
@@ -171,6 +189,8 @@ class JobStore:
         )
         await self.save(record)
         await self.redis.zadd(INDEX_KEY, {job_id: record.submitted_at.timestamp()})
+        if self.archive is not None:
+            self.archive.record(record)
         if self.enqueue is not None:
             await self.enqueue(job_id)
         return record, False
