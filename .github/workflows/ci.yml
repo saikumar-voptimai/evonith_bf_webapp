@@ -117,6 +117,8 @@ jobs:
       - name: Python environment (uv sync --frozen)
         run: bash scripts/ci/step.sh "uv sync" uv sync --frozen
       - name: pytest
+        env:
+          STEP_SLOW_S: ${{ inputs.full-suite && '1200' || '600' }} # notice above this; the fast suite takes 4-5 min
         run: >-
           bash scripts/ci/step.sh "pytest"
           uv run --frozen pytest tests -q -ra --durations=25
