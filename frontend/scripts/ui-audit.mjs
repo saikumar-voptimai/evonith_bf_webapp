@@ -8,16 +8,17 @@
  *   pnpm audit:ui --out ../audit-shots
  *
  * Needs Playwright with Chromium (`pnpm dlx playwright install chromium` on a dev machine). The script answers
- * /api/health, /api/stream, /api/auth/* (account `auditor`, password `correct-horse`) and /api/admin/audit
- * (`scripts/fixtures/audit-page.json`, checked against the API model by tests/test_api_admin.py) itself, so the audit
- * does not need the twin-api. Exit code 1 on a critical or serious axe violation, a horizontal overflow or a failed
- * behaviour check.
+ * /api/health, /api/stream, /api/auth/* (account `auditor`, password `correct-horse`), /api/admin/audit
+ * (`scripts/fixtures/audit-page.json`, checked against the API model by tests/test_api_admin.py) and the STRATA page's
+ * /api/strata/* (`strata-mock.mjs`) itself, so the audit does not need the twin-api. Exit code 1 on a critical or
+ * serious axe violation, a horizontal overflow or a failed behaviour check.
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { strataMock } from './strata-mock.mjs';
 import { traceFixture } from './trace-fixture.mjs';
 
 const require = createRequire(import.meta.url);
@@ -44,6 +45,7 @@ const VIEWPORTS = [
 const ROUTES = [
 	{ name: 'live-twin', path: '/' },
 	{ name: 'trace', path: '/trace' },
+	{ name: 'strata', path: '/strata' },
 	{ name: 'catalogue', path: '/dev/components' },
 	{ name: 'admin', path: '/admin' },
 	{ name: 'admin-audit', path: '/admin/audit' },
@@ -155,6 +157,14 @@ try {
 			body: `retry: 3000\n\nevent: heartbeat\ndata: ${beat}\n\n`
 		});
 	});
+	// STRATA page (SV-1.12, #292): its three reads answered with generated values.
+	await context.route(/\/api\/strata\/(omega|summary|live-point)(\?.*)?$/, (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify(strataMock(route.request().url()))
+		})
+	);
 	// Session mock: `auth.role` is the signed-in role, or null when signed out.
 	const auth = { role: 'admin' };
 	const problem = (route, status, detail) =>
