@@ -29,7 +29,6 @@ No Streamlit.
 from __future__ import annotations
 
 import json
-import math
 import os
 import re
 import time
@@ -450,9 +449,7 @@ def compute_live_point(cal_json: str, solvers: int | None = None) -> dict[str, A
             yard="16 Oct 2026 UAT yard (reference inputs)",
         ),
         rings=rings,
-        network=dict(
-            model.network_stats(), solves_run=n1 - n0, solve_seconds=round(s1 - s0, 1), net=strata_network.NET_VERSION
-        ),
+        network=dict(model.network_stats(), solves_run=n1 - n0, solve_seconds=round(s1 - s0, 1)),
         seconds=round(time.perf_counter() - t0, 1),
     )
 
@@ -519,10 +516,6 @@ def live_point_view(doc: Mapping[str, Any] | None, register: FactRegister | None
             )
         )
     return dict(doc, responses=responses)
-
-
-def finite(values: Iterable[Any]) -> bool:
-    return all(isinstance(v, (int, float)) and math.isfinite(float(v)) for v in values)
 
 
 __all__ = [
