@@ -138,7 +138,10 @@ class TraceSummary(BaseModel):
     hour_available: bool = Field(..., description="The twin store is configured (hourly windows)")
     correction: TraceCorrection | None = None
     feeds: list[TraceFeed] = Field(default_factory=list, description="Freshness of every source, as of feeds_at")
-    feeds_at: datetime = Field(..., description="Reference time of feeds: now (UTC)")
+    feeds_at: datetime | None = Field(
+        None, description="Reference time of feeds: the build of the view, when it read the sources (UTC); the view's "
+        "own age is age_s. Null before the first build",
+    )  # fmt: skip
 
 
 class TraceSeriesRow(BaseModel):
@@ -244,12 +247,12 @@ def _latest_hour(store: TwinStore | None, now: datetime) -> tuple[dict[str, Any]
 @router.get("", response_model=TraceSummary, summary="TRACE: latest shift and hour, correction, feeds")
 def summary(store: Annotated[TwinStore | None, Depends(optional_twin_store)] = None) -> TraceSummary:
     """The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the 14-day
-    correction and the age of every source as of now."""
+    correction and the age of every source at the build of the view (the view's own age in age_s)."""
     now = datetime.now(UTC)
     hour, hour_available = _latest_hour(store, now)
     view = trace.load()
     if view is None:
-        return TraceSummary(available=False, stale=True, latest_hour=hour, hour_available=hour_available, feeds_at=now)
+        return TraceSummary(available=False, stale=True, latest_hour=hour, hour_available=hour_available)
     shifts = view.get("shifts") or []
     latest = view.get("latest")
     latest_shift = None
@@ -274,8 +277,8 @@ def summary(store: Annotated[TwinStore | None, Depends(optional_twin_store)] = N
         latest_hour=hour,
         hour_available=hour_available,
         correction=view.get("correction"),
-        feeds=trace.feeds_now(view, now),
-        feeds_at=now,
+        feeds=trace.feeds_built(view),
+        feeds_at=trace.feeds_reference(view),
     )
 
 

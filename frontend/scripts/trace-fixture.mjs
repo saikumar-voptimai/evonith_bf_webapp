@@ -239,8 +239,8 @@ export function traceFixture(now = Date.now()) {
 				gap: round(r.k_charged - r.k_burnt_raw, 3)
 			}))
 		},
-		feeds: feeds(now),
-		feeds_at: iso(now)
+		feeds: feeds(builtAt),
+		feeds_at: iso(builtAt)
 	};
 
 	const shiftSeries = all.map((r) => ({

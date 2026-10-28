@@ -6,6 +6,7 @@ that source's freshness at the end of the shift (page 10's notice under the tile
 <script lang="ts">
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import DataTable from '../components/DataTable.svelte';
+	import EmptyState from '../components/EmptyState.svelte';
 	import Panel from '../components/Panel.svelte';
 	import StatusChip from '../components/StatusChip.svelte';
 	import type { Column } from '../components/table.ts';
@@ -25,9 +26,11 @@ that source's freshness at the end of the shift (page 10's notice under the tile
 		latest: TraceSummary['latest_shift'];
 		builtAt: Date | null;
 		loading: boolean;
+		/** The summary request failed before any summary was read. */
+		failed?: boolean;
 	}
 
-	let { latest, builtAt, loading }: Props = $props();
+	let { latest, builtAt, loading, failed = false }: Props = $props();
 
 	const rows = $derived(latest ? inputRows(latest.inputs, latest.feeds) : []);
 
@@ -69,20 +72,29 @@ that source's freshness at the end of the shift (page 10's notice under the tile
 	busy={loading}
 	flush
 >
-	<DataTable
-		caption="Inputs of the oxygen balance in the latest shift"
-		{rows}
-		{columns}
-		rowKey={(r) => r.key}
-		cells={{ state: stateCell }}
-		dense
-		{loading}
-		emptyTitle="No balanced shift yet"
-		emptyMessage="The inputs appear once the TRACE view holds a shift with a burnt coke."
-	/>
+	{#if failed}
+		<div class="pad">
+			<EmptyState title="Not loaded" message="Retry above to read the inputs of the balance." compact />
+		</div>
+	{:else}
+		<DataTable
+			caption="Inputs of the oxygen balance in the latest shift"
+			{rows}
+			{columns}
+			rowKey={(r) => r.key}
+			cells={{ state: stateCell }}
+			dense
+			{loading}
+			emptyTitle="No balanced shift yet"
+			emptyMessage="The inputs appear once the TRACE view holds a shift with a burnt coke."
+		/>
+	{/if}
 </Panel>
 
 <style>
+	.pad {
+		padding: 0 var(--vo-space-5) var(--vo-space-4);
+	}
 	.state {
 		display: inline-flex;
 		align-items: center;

@@ -38,10 +38,21 @@ correction over the chosen period. Values from `GET /api/trace` (correction) and
 		period: string;
 		builtAt: Date | null;
 		loading: boolean;
+		/** The summary request failed before any summary was read. */
+		failed?: boolean;
 		seriesLoading: boolean;
 	}
 
-	let { correction, rows, resolution, period, builtAt, loading, seriesLoading }: Props = $props();
+	let {
+		correction,
+		rows,
+		resolution,
+		period,
+		builtAt,
+		loading,
+		failed = false,
+		seriesLoading
+	}: Props = $props();
 
 	const series = $derived(correctionSeries(rows, resolution));
 	const short = $derived(correction ? correction.n_shifts < correction.min_shifts : false);
@@ -65,7 +76,11 @@ correction over the chosen period. Values from `GET /api/trace` (correction) and
 	busy={loading}
 	flush
 >
-	{#if !loading && !correction}
+	{#if failed}
+		<div class="pad">
+			<EmptyState title="Not loaded" message="Retry above to read the correction." compact />
+		</div>
+	{:else if !loading && !correction}
 		<div class="pad">
 			<EmptyState
 				title="No correction yet"

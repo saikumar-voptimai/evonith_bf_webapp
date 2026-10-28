@@ -7659,10 +7659,17 @@
             "type": "array"
           },
           "feeds_at": {
-            "description": "Reference time of feeds: now (UTC)",
-            "format": "date-time",
-            "title": "Feeds At",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reference time of feeds: the build of the view, when it read the sources (UTC); the view's own age is age_s. Null before the first build",
+            "title": "Feeds At"
           },
           "hour_available": {
             "description": "The twin store is configured (hourly windows)",
@@ -7749,8 +7756,7 @@
         "required": [
           "available",
           "stale",
-          "hour_available",
-          "feeds_at"
+          "hour_available"
         ],
         "title": "TraceSummary",
         "type": "object"
@@ -10686,7 +10692,7 @@
     },
     "/api/trace": {
       "get": {
-        "description": "The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the 14-day\ncorrection and the age of every source as of now.",
+        "description": "The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the 14-day\ncorrection and the age of every source at the build of the view (the view's own age in age_s).",
         "operationId": "trace_summary",
         "responses": {
           "200": {

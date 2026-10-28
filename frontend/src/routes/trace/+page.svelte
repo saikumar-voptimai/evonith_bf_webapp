@@ -22,7 +22,8 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 	import { JobTracker } from '#lib/live/jobs.svelte.ts';
 	import { live, type StreamEvent } from '#lib/live/stream.svelte.ts';
 	import { hasRole, session } from '#lib/session/session.svelte.ts';
-	import { addDays, istDay } from '#lib/time/format.ts';
+	import { clock } from '#lib/time/clock.svelte.ts';
+	import { addDays, daySpan, istDay } from '#lib/time/format.ts';
 	import AgreementPanel from '#lib/trace/AgreementPanel.svelte';
 	import CorrectionPanel from '#lib/trace/CorrectionPanel.svelte';
 	import FreshnessPanel from '#lib/trace/FreshnessPanel.svelte';
@@ -55,16 +56,17 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 		type TraceSummary
 	} from '#lib/trace/trace.ts';
 
-	/** The summary is read again every 5 min: the feeds' ages, and a build or window the stream did not report. */
+	/** The summary is read again every 5 min: a build or window the stream did not report. */
 	const SUMMARY_POLL_MS = 5 * 60_000;
 
-	const today = istDay(new Date());
+	/** Today (IST) from the shell clock: a page left open moves on at midnight. */
+	const firstDay = istDay(clock.now);
+	const today = $derived(istDay(clock.now));
 
 	// ------------------------------------------------------------ summary: latest shift and hour, correction, feeds
 	let summary = $state<TraceSummary | null>(null);
 	let summaryError = $state<unknown>(null);
 	let summaryLoading = $state(true);
-	let summaryAt = $state<Date | null>(null);
 	let summaryRequest = 0;
 
 	async function loadSummary(): Promise<void> {
@@ -75,7 +77,6 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 			if (id !== summaryRequest) return;
 			summary = data ?? null;
 			summaryError = null;
-			summaryAt = new Date();
 		} catch (e) {
 			if (id === summaryRequest) summaryError = e;
 		} finally {
@@ -100,9 +101,22 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 	// ------------------------------------------------------------ series: raw against calibrated
 	let tab = $state<string>('shift');
 	const resolution = $derived<Resolution>(isResolution(tab) ? tab : 'shift');
-	let start = $state(addDays(today, -6)); // a week: the shift boundaries are drawn
-	let end = $state(today);
+	let start = $state(addDays(firstDay, -6)); // a week: the shift boundaries are drawn
+	let end = $state(firstDay);
 	let rangeValid = $state(true);
+
+	// A period that ends today keeps ending today after midnight (same length); a period chosen in the past stays.
+	let shownToday = firstDay;
+	$effect(() => {
+		const t = today;
+		if (t === shownToday) return;
+		if (end === shownToday) {
+			const days = daySpan(start, end);
+			end = t;
+			start = addDays(t, 1 - days);
+		}
+		shownToday = t;
+	});
 
 	let rows = $state<TraceSeriesRow[]>([]);
 	let seriesError = $state<unknown>(null);
@@ -135,8 +149,10 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 		const s = start;
 		const e = end;
 		void seriesKey;
-		if (!rangeValid || viewState === 'pending') return;
-		if (r !== 'hour' && viewState === 'missing') {
+		if (viewState === 'pending') return;
+		if (!rangeValid || (r !== 'hour' && viewState === 'missing')) {
+			// Nothing to draw: an invalid period (DateRange names the error) or no view yet. Rows of an earlier period
+			// or resolution are dropped, so they are never drawn under the new title.
 			seriesRequest += 1;
 			rows = [];
 			seriesError = null;
@@ -431,7 +447,13 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 			</div>
 			<Tabs label="Resolution" tabs={RESOLUTIONS.map((r) => ({ id: r.id, label: r.label }))} bind:value={tab}>
 				{#snippet panel()}
-					{#if viewState === 'missing' && resolution !== 'hour'}
+					{#if !rangeValid}
+						<EmptyState
+							title="Period not valid"
+							message="Correct the period above: {info.label.toLowerCase()}, the chart covers at most {info.maxDays} days."
+							compact
+						/>
+					{:else if viewState === 'missing' && resolution !== 'hour'}
 						<EmptyState
 							title="No shifts yet"
 							message="Shift and day values come with the TRACE view; per hour reads the twin’s windows."
@@ -478,6 +500,7 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 			{period}
 			{builtAt}
 			loading={firstLoad}
+			{failed}
 			{seriesLoading}
 		/>
 	</div>
@@ -493,11 +516,11 @@ Coke Energy pipeline's values (page 10) from the view the `twin.trace` job build
 	</div>
 
 	<div class="wide-6">
-		<InputsPanel {latest} {builtAt} loading={firstLoad} />
+		<InputsPanel {latest} {builtAt} loading={firstLoad} {failed} />
 	</div>
 
 	<div class="wide-6">
-		<FreshnessPanel {summary} loadedAt={summaryAt} loading={summaryLoading} />
+		<FreshnessPanel {summary} {builtAt} loading={summaryLoading} {failed} />
 	</div>
 </div>
 

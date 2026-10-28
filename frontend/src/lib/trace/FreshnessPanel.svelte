@@ -1,13 +1,14 @@
 <!--
 @component
 Feeds and freshness on the TRACE page (SV-1.10, #290): how far the four sources of a balanced shift reach, and the age
-of every source as of now against its limit (page 10's freshness table). Values from `GET /api/trace`, aged by the API
-at the request.
+of every source at the build of the view against its limit (page 10's freshness table at the time the build read the
+sources). Values from `GET /api/trace`; the panel's update time is the build, so the view's own age shows beside it.
 -->
 <script lang="ts">
 	import Database from '@lucide/svelte/icons/database';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import DataTable from '../components/DataTable.svelte';
+	import EmptyState from '../components/EmptyState.svelte';
 	import Panel from '../components/Panel.svelte';
 	import StatusChip from '../components/StatusChip.svelte';
 	import type { Column } from '../components/table.ts';
@@ -18,18 +19,22 @@ at the request.
 		sourceRows,
 		stampText,
 		staleFeeds,
+		VIEW_STALE_MIN,
+		VIEW_WARN_MIN,
 		type TraceFeed,
 		type TraceSummary
 	} from './trace.ts';
 
 	interface Props {
 		summary: TraceSummary | null;
-		/** Time the summary was read: the reference of the ages. */
-		loadedAt: Date | null;
+		/** Build of the view: the reference of the ages. */
+		builtAt: Date | null;
 		loading: boolean;
+		/** The summary request failed before any summary was read. */
+		failed?: boolean;
 	}
 
-	let { summary, loadedAt, loading }: Props = $props();
+	let { summary, builtAt, loading, failed = false }: Props = $props();
 
 	const feeds = $derived(summary?.feeds ?? []);
 	const stale = $derived(staleFeeds(feeds));
@@ -66,43 +71,54 @@ at the request.
 	title="Feeds and freshness"
 	note="A shift is balanced once all four sources cover it; a source past its limit is carried forward."
 	icon={Database}
-	updatedAt={summary ? loadedAt : undefined}
+	updatedAt={summary ? (builtAt ?? undefined) : undefined}
+	warnAfterMin={VIEW_WARN_MIN}
+	staleAfterMin={VIEW_STALE_MIN}
 	busy={loading}
 	flush
 >
-	<dl class="sources">
-		{#each sources as s (s.label)}
-			<div>
-				<dt>{s.label}</dt>
-				<dd class="vo-num">{loading && !summary ? '…' : s.to}</dd>
-			</div>
-		{/each}
-	</dl>
-	{#if stale.length > 0}
-		<p class="warn" role="status">
-			<TriangleAlert size={15} strokeWidth={2.25} aria-hidden="true" />
-			<span>
-				<strong>Warning:</strong>
-				{stale.length === 1 ? 'one source that changes' : `${stale.length} sources that change`} the coke rates
-				{stale.length === 1 ? 'is' : 'are'} past the limit: {stale.map((f) => f.item).join(', ')}.
-			</span>
-		</p>
+	{#if failed}
+		<div class="pad">
+			<EmptyState title="Not loaded" message="Retry above to read the feeds and their ages." compact />
+		</div>
+	{:else}
+		<dl class="sources">
+			{#each sources as s (s.label)}
+				<div>
+					<dt>{s.label}</dt>
+					<dd class="vo-num">{loading && !summary ? '…' : s.to}</dd>
+				</div>
+			{/each}
+		</dl>
+		{#if stale.length > 0}
+			<p class="warn" role="status">
+				<TriangleAlert size={15} strokeWidth={2.25} aria-hidden="true" />
+				<span>
+					<strong>Warning:</strong>
+					{stale.length === 1 ? 'one source that changes' : `${stale.length} sources that change`} the coke rates
+					{stale.length === 1 ? 'is' : 'are'} past the limit: {stale.map((f) => f.item).join(', ')}.
+				</span>
+			</p>
+		{/if}
+		<DataTable
+			caption="Age of every source at the build of the view"
+			rows={feeds}
+			{columns}
+			rowKey={(f) => `${f.source}|${f.material}`}
+			cells={{ state: stateCell }}
+			dense
+			maxHeight="34rem"
+			loading={loading && !summary}
+			emptyTitle="No sources assessed"
+			emptyMessage="The freshness table is built with the TRACE view, every hour at :20."
+		/>
 	{/if}
-	<DataTable
-		caption="Age of every source as of now"
-		rows={feeds}
-		{columns}
-		rowKey={(f) => `${f.source}|${f.material}`}
-		cells={{ state: stateCell }}
-		dense
-		maxHeight="34rem"
-		loading={loading && !summary}
-		emptyTitle="No sources assessed"
-		emptyMessage="The freshness table is built with the TRACE view, every hour at :20."
-	/>
 </Panel>
 
 <style>
+	.pad {
+		padding: 0 var(--vo-space-5) var(--vo-space-4);
+	}
 	.sources {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));

@@ -13,7 +13,9 @@ pipeline result (``services.coke_energy.page_data``) or composed by the pipeline
                  burnt_offset_kg_thm), equal to the shift values on the shift windows (tests/test_twin_window.py)
     correction   the latest shift's offset, its 14-day window and the stable shifts the median runs over
     feeds        the oxygen balance's inputs of the latest shift and the age of every source as on page 10
-                 (``freshness.assess``), aged again at each request from the last sample times stored with the view
+                 (``freshness.assess``) at the build of the view, when the build read the sources; the view's own
+                 age is reported next to it (a request does not age the sources: the 10-min data would read stale
+                 for most of every hour between two builds)
     agreement    burnt against charged coke per averaging window (``transit.summary``: Lin's CCC, Bland-Altman bias
                  and limits of agreement) with the per-shift and per-week pairs (``transit.window_pairs``)
 
@@ -256,11 +258,20 @@ def feeds_at(stored: Mapping[str, Any], cfg: Mapping[str, Any], reference: pd.Ti
     return feed_rows(assessed, stored.get("names") or {})
 
 
-def feeds_now(view: Mapping[str, Any], now: datetime | None = None, cfg: Mapping[str, Any] | None = None) -> list[dict]:
-    """Page 10's freshness table as of ``now`` (UTC; default the current time) for a stored view."""
-    at = pd.Timestamp(now or datetime.now(UTC))
-    at = at.tz_localize("UTC") if at.tzinfo is None else at
-    reference = at.tz_convert(PLANT_TZ).tz_localize(None)
+def feeds_reference(view: Mapping[str, Any]) -> str | None:
+    """Reference time of the view's freshness table (UTC, ISO 8601): the build, when the sources were read."""
+    return (view.get("feeds") or {}).get("reference") or view.get("built_at")
+
+
+def feeds_built(view: Mapping[str, Any], cfg: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Page 10's freshness table at the build of a stored view (``feeds_reference``), with the configured limits.
+
+    The sources are aged at the build, not at the request: the view rests on what the build read, and between two
+    builds (an hour) the 10-min data (limit 30 min) would otherwise read stale although the feed is current. The
+    view's own age (``age_s``) says how old that reading is."""
+    reference = _ist(feeds_reference(view))
+    if reference is None:
+        return []
     return feeds_at(view["feeds"], ce.config() if cfg is None else cfg, reference)
 
 

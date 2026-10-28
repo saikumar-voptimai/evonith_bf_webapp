@@ -4,6 +4,7 @@ schemas and the role."""
 
 from __future__ import annotations
 
+import dataclasses
 import warnings
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -99,7 +100,8 @@ def store_view(page_data: ce.PageData, now: pd.Timestamp | None = None) -> dict[
 def test_before_the_first_build_the_summary_says_so(client, view_path) -> None:
     body = get(client, "/api/trace").json()
     assert body["available"] is False and body["stale"] is True and body["job_kind"] == "twin.trace"
-    assert body["latest_shift"] is None and body["feeds"] == [] and body["hour_available"] is True
+    assert body["latest_shift"] is None and body["feeds"] == [] and body["feeds_at"] is None
+    assert body["hour_available"] is True
     for url in ("/api/trace/series?resolution=shift", "/api/trace/series?resolution=day", "/api/trace/agreement"):
         r = get(client, url)
         assert r.status_code == 503 and "twin.trace" in r.json()["detail"], url
@@ -127,8 +129,25 @@ def test_summary_serves_the_latest_shift_hour_correction_and_feeds(client, twin,
     assert c["skey"] == view["correction"]["skey"] and c["offset"] == pytest.approx(view["correction"]["offset"])
     assert c["n_shifts"] == len(c["pool"]) >= c["min_shifts"]
     online = next(f for f in body["feeds"] if f["source"] == "online_10min")
+    assert pd.Timestamp(body["feeds_at"]) == pd.Timestamp(body["built_at"])  # aged at the build, not at the request
     age = (pd.Timestamp(body["feeds_at"]) - pd.Timestamp(online["last"])).total_seconds()
     assert online["age_s"] == pytest.approx(age, abs=1) and online["stale"] and online["limit_s"] == 1800
+
+
+def test_feeds_are_aged_at_the_build_not_at_the_request(client, view_path, page_data) -> None:
+    """A view built 45 min before the request on a 10-min feed that was 10 min old at the build: the feed reads
+    current (limit 30 min), and the view's own age is 45 min."""
+    built = pd.Timestamp.now(tz=IST).tz_localize(None).floor("min") - pd.Timedelta(minutes=45)
+    samples = page_data.samples.copy()
+    online = samples["source"].eq("online_10min")
+    times = pd.to_datetime(samples.loc[online, "t"])
+    samples.loc[online, "t"] = times + (built - pd.Timedelta(minutes=10) - times.max())
+    store_view(dataclasses.replace(page_data, samples=samples), now=built)
+    body = get(client, "/api/trace").json()
+    assert body["available"] and not body["stale"] and body["age_s"] == pytest.approx(45 * 60, abs=60)
+    assert pd.Timestamp(body["feeds_at"]) == pd.Timestamp(body["built_at"])
+    row = next(f for f in body["feeds"] if f["source"] == "online_10min")
+    assert row["age_s"] == pytest.approx(600) and row["stale"] is False
 
 
 def test_a_fresh_view_is_not_stale(client, view_path, page_data) -> None:

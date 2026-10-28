@@ -563,7 +563,7 @@ export interface paths {
         /**
          * TRACE: latest shift and hour, correction, feeds
          * @description The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the 14-day
-         *     correction and the age of every source as of now.
+         *     correction and the age of every source at the build of the view (the view's own age in age_s).
          */
         get: operations["trace_summary"];
         put?: never;
@@ -4542,10 +4542,9 @@ export interface components {
             feeds?: components["schemas"]["TraceFeed"][];
             /**
              * Feeds At
-             * Format: date-time
-             * @description Reference time of feeds: now (UTC)
+             * @description Reference time of feeds: the build of the view, when it read the sources (UTC); the view's own age is age_s. Null before the first build
              */
-            feeds_at: string;
+            feeds_at?: string | null;
             /**
              * Hour Available
              * @description The twin store is configured (hourly windows)
