@@ -41,7 +41,10 @@ TABLES = (
     "facts_version",
     "operator_inputs",
     "audit_log",
+    "fm_conversation",
+    "fm_message",
 )
+FM_TABLES = {"fm_conversation", "fm_message"}  # twin_0006 (SV-5.1)
 T0 = datetime(2026, 10, 27, 0, 30, tzinfo=UTC)  # 06:00 IST, start of shift A
 H = timedelta(hours=1)
 ALICE = Actor("alice", "admin", "10.0.0.5")
@@ -103,17 +106,21 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
         config = alembic_config(url)
         command.upgrade(config, "head")
         assert twin_tables(url) == {*TABLES, "alembic_version"}
-        assert TwinStore.from_url(url).revision() == "twin_0005"
+        assert TwinStore.from_url(url).revision() == "twin_0006"
         assert {"scheduled_for", "run_s"} <= job_columns(url)
         assert {"before", "after"} <= job_columns(url, "audit_log")
 
+        command.downgrade(config, "-1")  # twin_0006: the FurnaceMind conversations and messages (SV-5.1)
+        assert TwinStore.from_url(url).revision() == "twin_0005"
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FM_TABLES
+
         command.downgrade(config, "-1")  # twin_0005: the versions of the operator inputs (SV-3.1)
         assert TwinStore.from_url(url).revision() == "twin_0004"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"operator_inputs"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FM_TABLES - {"operator_inputs"}
 
         command.downgrade(config, "-1")  # twin_0004: the shift reports (SV-2.3)
         assert TwinStore.from_url(url).revision() == "twin_0003"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"shift_report", "operator_inputs"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FM_TABLES - {"shift_report", "operator_inputs"}
 
         command.downgrade(config, "-1")  # twin_0003: the values before and after of the audit log
         assert TwinStore.from_url(url).revision() == "twin_0002"
@@ -121,7 +128,7 @@ def test_migration_upgrades_downgrades_and_upgrades_again(pg_server) -> None:
 
         command.downgrade(config, "-1")  # twin_0002: the slot and execution time of the jobs
         assert TwinStore.from_url(url).revision() == "twin_0001"
-        assert twin_tables(url) == {*TABLES, "alembic_version"} - {"shift_report", "operator_inputs"}
+        assert twin_tables(url) == {*TABLES, "alembic_version"} - FM_TABLES - {"shift_report", "operator_inputs"}
         assert not {"scheduled_for", "run_s"} & job_columns(url)
 
         command.downgrade(config, "base")
@@ -677,6 +684,38 @@ def test_a_save_that_waited_from_a_stale_base_version_conflicts(store) -> None:
     assert a.version == 2
     assert isinstance(b, VersionConflict) and (b.base_version, b.current_version) == (1, 2)
     assert store.operator_inputs.current().version == 2
+
+
+@needs_postgres
+def test_furnacemind_messages_are_numbered_per_conversation(store) -> None:
+    """SV-5.1: concurrent appends take distinct numbers; the first question titles the conversation; delete cascades."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    first = store.fm.create(owner="op", reasoning_level="Medium", at=T0)
+    other = store.fm.create(owner="op", reasoning_level="High", title="Given title", at=T0 + H)
+    store.fm.append(first.id, role="user", content="  Why did the\tfuel rate rise?  ", at=T0 + 2 * H)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(
+            pool.map(
+                lambda i: store.fm.append(first.id, role="assistant", content=f"a{i}", parts=[{"i": i}]), range(16)
+            )
+        )
+    rows = store.fm.messages(first.id)
+    assert [m.seq for m in rows] == list(range(1, 18)) and rows[0].parts == []
+    assert sorted(m.content for m in rows[1:]) == sorted(f"a{i}" for i in range(16))
+    assert [m.seq for m in store.fm.messages(first.id, last=3)] == [15, 16, 17]
+    conversation = store.fm.get(first.id)
+    assert conversation.message_count == 17 and conversation.title == "Why did the fuel rate rise?"
+    store.fm.append(other.id, role="user", content="later question")
+    assert store.fm.get(other.id).title == "Given title"
+    assert [c.id for c in store.fm.recent("op")] == [other.id, first.id] and store.fm.recent("sup") == []
+    with pytest.raises(NotFound):
+        store.fm.append(uuid.uuid4(), role="user", content="x")
+    with pytest.raises(IntegrityError), store.engine.begin() as connection:
+        connection.execute(text("UPDATE twin.fm_message SET role = 'tool'"))
+    with store.engine.begin() as connection:
+        connection.execute(text("DELETE FROM twin.fm_conversation WHERE id = :id"), {"id": first.id})
+        assert connection.execute(text("SELECT count(*) FROM twin.fm_message")).scalar_one() == 1
 
 
 @needs_postgres

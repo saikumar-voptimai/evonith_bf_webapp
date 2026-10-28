@@ -1,8 +1,10 @@
 """FurnaceMind agent-loop entry point backed by LangGraph.
 
-The public ``run_agent_loop`` function is intentionally kept stable for the
-Streamlit page. Internally, the model/tool loop is now executed by the
-LangGraph workflow in :mod:`agents.furnacemind.graph`.
+The public ``run_agent_loop`` function is kept stable for older Streamlit
+callers. Page 7 and the agent service (SV-5.1) run a turn through
+:func:`agents.furnacemind.turn.run_turn`, which binds the tools' state and
+records the turn's tool calls and artifacts; both execute the LangGraph
+workflow in :mod:`agents.furnacemind.graph`.
 """
 
 from __future__ import annotations

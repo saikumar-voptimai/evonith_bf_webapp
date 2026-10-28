@@ -35,6 +35,8 @@ from data.twin.models import (
     AlarmEvent,
     AuditLog,
     FactsVersion,
+    FmConversation,
+    FmMessage,
     Job,
     OperatorInputs,
     OptimiserRun,
@@ -979,6 +981,109 @@ class AuditRepository(_Repository):
             return {key: sorted(session.scalars(select(column).distinct())) for key, column in columns.items()}
 
 
+class FurnaceMindRepository(_Repository):
+    """Conversations and messages of the FurnaceMind agent service (SV-5.1, #312).
+
+    ``append`` numbers the messages of a conversation 1, 2, ... in the same transaction that advances the
+    conversation's ``message_count`` (row lock on PostgreSQL), so two writers cannot take the same number.
+    """
+
+    TITLE_CHARS = 200
+
+    def create(
+        self,
+        *,
+        owner: str,
+        reasoning_level: str,
+        owner_id: str | None = None,
+        title: str = "",
+        meta: Mapping[str, Any] | None = None,
+        at: datetime | None = None,
+    ) -> FmConversation:
+        now = _utc(at) or utcnow()
+        row = FmConversation(
+            id=uuid.uuid4(),
+            owner=owner,
+            owner_id=owner_id,
+            title=title[: self.TITLE_CHARS],
+            reasoning_level=reasoning_level,
+            created_at=now,
+            updated_at=now,
+            message_count=0,
+            meta=dict(meta or {}),
+        )
+        with self._sessions.begin() as session:
+            session.add(row)
+        return row
+
+    def get(self, conversation_id: uuid.UUID | str) -> FmConversation | None:
+        with self._sessions() as session:
+            return session.get(FmConversation, uuid.UUID(str(conversation_id)))
+
+    def recent(self, owner: str, *, limit: int = 30) -> list[FmConversation]:
+        """The owner's conversations, most recently updated first."""
+        query = (
+            select(FmConversation)
+            .where(FmConversation.owner == owner)
+            .order_by(FmConversation.updated_at.desc(), FmConversation.created_at.desc())
+            .limit(limit)
+        )
+        with self._sessions() as session:
+            return list(session.scalars(query))
+
+    def messages(self, conversation_id: uuid.UUID | str, *, last: int | None = None) -> list[FmMessage]:
+        """Messages in order (``seq`` ascending); with ``last``, only the last ``last`` of them."""
+        key = uuid.UUID(str(conversation_id))
+        query = select(FmMessage).where(FmMessage.conversation_id == key)
+        with self._sessions() as session:
+            if last is None:
+                return list(session.scalars(query.order_by(FmMessage.seq)))
+            rows = list(session.scalars(query.order_by(FmMessage.seq.desc()).limit(last)))
+            return rows[::-1]
+
+    def append(
+        self,
+        conversation_id: uuid.UUID | str,
+        *,
+        role: str,
+        content: str,
+        parts: Sequence[Mapping[str, Any]] = (),
+        status: str = "complete",
+        model: str | None = None,
+        turn_id: str | None = None,
+        meta: Mapping[str, Any] | None = None,
+        at: datetime | None = None,
+    ) -> FmMessage:
+        """Add the next message; the first user message also titles an untitled conversation."""
+        key = uuid.UUID(str(conversation_id))
+        now = _utc(at) or utcnow()
+        with self._sessions.begin() as session:
+            conversation = session.scalars(
+                select(FmConversation).where(FmConversation.id == key).with_for_update()
+            ).one_or_none()
+            if conversation is None:
+                raise NotFound(f"no FurnaceMind conversation {key}")
+            seq = conversation.message_count + 1
+            row = FmMessage(
+                conversation_id=key,
+                seq=seq,
+                role=role,
+                content=content,
+                parts=[dict(p) for p in parts],
+                status=status,
+                model=model,
+                turn_id=turn_id,
+                created_at=now,
+                meta=dict(meta or {}),
+            )
+            session.add(row)
+            conversation.message_count = seq
+            conversation.updated_at = now
+            if role == "user" and not conversation.title:
+                conversation.title = " ".join(content.split())[: self.TITLE_CHARS]
+        return row
+
+
 class TwinStore:
     """The repositories of the ``twin`` schema over one engine."""
 
@@ -994,6 +1099,7 @@ class TwinStore:
         self.facts = FactsVersionRepository(sessions)
         self.operator_inputs = OperatorInputsRepository(sessions)
         self.audit = AuditRepository(sessions)
+        self.fm = FurnaceMindRepository(sessions)
 
     @classmethod
     def from_url(cls, url: str | None = None, *, application_name: str = "twin") -> TwinStore | None:

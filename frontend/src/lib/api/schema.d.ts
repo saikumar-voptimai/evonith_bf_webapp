@@ -88,6 +88,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fm/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My conversations
+         * @description The signed-in user's conversations, most recently updated first.
+         */
+        get: operations["furnacemind_list_conversations"];
+        put?: never;
+        /**
+         * Start a conversation
+         * @description An empty conversation owned by the signed-in user; ask with POST /api/fm/conversations/{id}/messages.
+         */
+        post: operations["furnacemind_create_conversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fm/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A conversation
+         * @description Every message with its parts (tool calls and results, Plotly figure JSON, dataset previews), oldest first.
+         */
+        get: operations["furnacemind_get_conversation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fm/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask (answer streamed as text/event-stream)
+         * @description Store the question, run page 7's agent on the conversation (the model call streamed; tools in a worker
+         *     thread) and stream its progress. The answer is stored when the turn completes, also if the client disconnects.
+         *     One turn per conversation at a time.
+         */
+        post: operations["furnacemind_post_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -907,6 +973,74 @@ export interface components {
              */
             upper_kg_thm?: number | null;
         };
+        /** ConversationCreate */
+        ConversationCreate: {
+            /**
+             * Reasoning Level
+             * @description OpenRouter reasoning profile (default: the configured default, Medium)
+             */
+            reasoning_level?: ("Low" | "Medium" | "High") | null;
+            /**
+             * Title
+             * @description Title; empty: the first question becomes the title
+             * @default
+             */
+            title: string;
+        };
+        /** DatasetPart */
+        DatasetPart: {
+            /**
+             * Columns
+             * @description Columns of the dataset, count
+             */
+            columns: number;
+            /**
+             * Dataset Id
+             * @description Dataset id the tools return to the model
+             * @default
+             */
+            dataset_id: string;
+            /**
+             * Meta
+             * @description Source, window and resampling of the dataset
+             */
+            meta?: Record<string, unknown>;
+            /** @description First rows; null when they cannot be serialised */
+            preview?: components["schemas"]["DatasetPreview"] | null;
+            /**
+             * Preview Rows
+             * @description Rows in the preview, count (first rows of the dataset)
+             */
+            preview_rows: number;
+            /**
+             * Rows
+             * @description Rows of the dataset, count
+             */
+            rows: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "dataset";
+        };
+        /** DatasetPreview */
+        DatasetPreview: {
+            /**
+             * Columns
+             * @description Column names
+             */
+            columns: string[];
+            /**
+             * Data
+             * @description Rows of values in the columns' own units; null for missing
+             */
+            data: unknown[][];
+            /**
+             * Index
+             * @description Row labels (ISO 8601 times for a time index, IST as the tool gave)
+             */
+            index: unknown[];
+        };
         /** DecisionRequest */
         DecisionRequest: {
             /**
@@ -1069,6 +1203,229 @@ export interface components {
              * @description Stock in the yard, t
              */
             stock_mt?: number | null;
+        };
+        /** FmArtifactEvent */
+        FmArtifactEvent: {
+            /** Part */
+            part: components["schemas"]["PlotlyPart"] | components["schemas"]["DatasetPart"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "artifact";
+        };
+        /** FmAssistantMessageEvent */
+        FmAssistantMessageEvent: {
+            /** Conversation Id */
+            conversation_id: string;
+            message: components["schemas"]["FmMessage"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "message.assistant";
+        };
+        /** FmConversation */
+        FmConversation: {
+            /**
+             * Created At
+             * Format: date-time
+             * @description UTC
+             */
+            created_at: string;
+            /**
+             * Id
+             * @description Conversation id (UUID)
+             */
+            id: string;
+            /**
+             * Message Count
+             * @description Messages in the conversation, count
+             */
+            message_count: number;
+            /**
+             * Messages
+             * @description Every message, oldest first
+             */
+            messages?: components["schemas"]["FmMessage"][];
+            /**
+             * Owner
+             * @description Username of the creator
+             */
+            owner: string;
+            /**
+             * Reasoning Level
+             * @description OpenRouter reasoning profile of the conversation
+             * @enum {string}
+             */
+            reasoning_level: "Low" | "Medium" | "High";
+            /**
+             * Running
+             * @description True while a turn runs in this API process
+             * @default false
+             */
+            running: boolean;
+            /**
+             * Title
+             * @description First user message, shortened; empty before it
+             */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description UTC, time of the last message
+             */
+            updated_at: string;
+        };
+        /** FmConversationSummary */
+        FmConversationSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             * @description UTC
+             */
+            created_at: string;
+            /**
+             * Id
+             * @description Conversation id (UUID)
+             */
+            id: string;
+            /**
+             * Message Count
+             * @description Messages in the conversation, count
+             */
+            message_count: number;
+            /**
+             * Owner
+             * @description Username of the creator
+             */
+            owner: string;
+            /**
+             * Reasoning Level
+             * @description OpenRouter reasoning profile of the conversation
+             * @enum {string}
+             */
+            reasoning_level: "Low" | "Medium" | "High";
+            /**
+             * Title
+             * @description First user message, shortened; empty before it
+             */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description UTC, time of the last message
+             */
+            updated_at: string;
+        };
+        /** FmErrorEvent */
+        FmErrorEvent: {
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Status
+             * @description HTTP status the error would have had
+             */
+            status: number;
+            /** Title */
+            title: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "error";
+        };
+        /** FmMessage */
+        FmMessage: {
+            /**
+             * Content
+             * @description Text replayed to the model (user question or final answer)
+             */
+            content: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description UTC
+             */
+            created_at: string;
+            /**
+             * Meta
+             * @description Reasoning level, model status and error, duration_s (s), tool_calls (count)
+             */
+            meta?: Record<string, unknown>;
+            /**
+             * Model
+             * @description Model that answered
+             */
+            model?: string | null;
+            /**
+             * Parts
+             * @description What the answer showed, in order
+             */
+            parts?: (components["schemas"]["TextPart"] | components["schemas"]["ToolCallPart"] | components["schemas"]["ToolResultPart"] | components["schemas"]["PlotlyPart"] | components["schemas"]["DatasetPart"])[];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /**
+             * Seq
+             * @description Position in the conversation, 1-based
+             */
+            seq: number;
+            /**
+             * Status
+             * @description failed: the model was unavailable
+             * @enum {string}
+             */
+            status: "complete" | "failed";
+        };
+        /** FmTokenEvent */
+        FmTokenEvent: {
+            /**
+             * Step
+             * @description Model call of the turn, 0-based (tool rounds in between)
+             */
+            step: number;
+            /**
+             * Text
+             * @description Visible content as it streams (reasoning blocks removed)
+             */
+            text: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "token";
+        };
+        /** FmToolCallEvent */
+        FmToolCallEvent: {
+            part: components["schemas"]["ToolCallPart"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "tool.call";
+        };
+        /** FmToolResultEvent */
+        FmToolResultEvent: {
+            part: components["schemas"]["ToolResultPart"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "tool.result";
+        };
+        /** FmUserMessageEvent */
+        FmUserMessageEvent: {
+            /** Conversation Id */
+            conversation_id: string;
+            message: components["schemas"]["FmMessage"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "message.user";
         };
         /** ForecastChargedCokeEvent */
         ForecastChargedCokeEvent: {
@@ -1708,6 +2065,19 @@ export interface components {
              */
             username: string;
         };
+        /** MessageCreate */
+        MessageCreate: {
+            /**
+             * Content
+             * @description The question (Markdown)
+             */
+            content: string;
+            /**
+             * Reasoning Level
+             * @description Reasoning profile of this turn (default: the conversation's)
+             */
+            reasoning_level?: ("Low" | "Medium" | "High") | null;
+        };
         /**
          * OperatorInputsDocument
          * @description The operator inputs; a section left out is not set (the configured defaults apply).
@@ -2163,6 +2533,30 @@ export interface components {
              * @description Shift of the decision (YYYY-MM-DD_A, IST date)
              */
             shift_key?: string | null;
+        };
+        /** PlotlyPart */
+        PlotlyPart: {
+            /**
+             * Bytes
+             * @description Size of the figure JSON, bytes
+             */
+            bytes: number;
+            /**
+             * Figure
+             * @description Plotly figure JSON (data, layout); null when omitted
+             */
+            figure?: Record<string, unknown> | null;
+            /**
+             * Omitted
+             * @description True when the figure exceeds 5000000 bytes and is not kept
+             * @default false
+             */
+            omitted: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "plotly";
         };
         /**
          * ProblemDetail
@@ -3385,6 +3779,86 @@ export interface components {
              */
             spread_std?: number | null;
         };
+        /** TextPart */
+        TextPart: {
+            /**
+             * Text
+             * @description Final answer of the turn (Markdown)
+             */
+            text: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+        };
+        /** ToolCallPart */
+        ToolCallPart: {
+            /**
+             * Arguments
+             * @description Arguments the model passed
+             */
+            arguments?: Record<string, unknown>;
+            /**
+             * Call Id
+             * @description Id of the call, pairs the call with its result
+             */
+            call_id?: string | null;
+            /**
+             * Label
+             * @description Progress text shown while the tool runs
+             * @default
+             */
+            label: string;
+            /**
+             * Name
+             * @description Tool name, e.g. fetch_ml_data
+             */
+            name: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "tool_call";
+        };
+        /** ToolResultPart */
+        ToolResultPart: {
+            /**
+             * Call Id
+             * @description Id of the call
+             */
+            call_id?: string | null;
+            /**
+             * Chars
+             * @description Length of the full tool output, characters
+             */
+            chars: number;
+            /**
+             * Content
+             * @description Tool output returned to the model, at most 8000 characters
+             */
+            content: string;
+            /**
+             * Name
+             * @description Tool name
+             */
+            name: string;
+            /**
+             * Ok
+             * @description False when the tool raised (content is then the error)
+             */
+            ok: boolean;
+            /**
+             * Truncated
+             * @description True when content is shorter than the full output
+             */
+            truncated: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "tool_result";
+        };
         /** TransitBand */
         TransitBand: {
             /**
@@ -4023,6 +4497,187 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    furnacemind_list_conversations: {
+        parameters: {
+            query?: {
+                /** @description Conversations, count */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FmConversationSummary"][];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    furnacemind_create_conversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FmConversation"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    furnacemind_get_conversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FmConversation"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    furnacemind_post_message: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageCreate"];
+            };
+        };
+        responses: {
+            /** @description Server-sent events, one FmStreamEvent per event (``event:`` is its type): message.user (the stored question), token, tool.call, tool.result, artifact (Plotly figure or dataset preview), then message.assistant (the stored answer) or error. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string & (components["schemas"]["FmUserMessageEvent"] | components["schemas"]["FmTokenEvent"] | components["schemas"]["FmToolCallEvent"] | components["schemas"]["FmToolResultEvent"] | components["schemas"]["FmArtifactEvent"] | components["schemas"]["FmAssistantMessageEvent"] | components["schemas"]["FmErrorEvent"]);
+                };
+            };
+            /** @description A turn of this conversation is running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The twin store or the agent (LLM, Qdrant settings) is not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ProblemDetail"];
                 };
             };
         };
