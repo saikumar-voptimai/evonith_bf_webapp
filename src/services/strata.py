@@ -97,11 +97,15 @@ def omega_panel(
     start: datetime,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """The omega panel of the windows ending at or after ``start``; ``rows`` are the snapshots of the drift history
-    (``config.history`` up to ``now``, at least back to ``start``), oldest first."""
+    """The omega panel of the windows ending at or after ``start``; ``rows`` are the snapshots from the earlier of
+    ``start`` and ``now - config.history`` up to ``now``, oldest first. The CUSUM is evaluated on the rows of
+    ``config.history`` only (the drift alarm's own set, ``services.drift.run``); older windows show omega without it."""
     now = twin_views.utc(now or datetime.now(UTC))
     start = twin_views.utc(start)
-    report = drift_service.evaluate(rows, config, now)
+    since = now - config.history.to_pytimedelta()
+    rows = list(rows)
+    in_history = [r for r in rows if (t := twin_views.utc(_get(r, "window_end"))) is not None and since <= t <= now]
+    report = drift_service.evaluate(in_history, config, now)
     ar = report.ar1
     settings = report.settings
     mu = ar.mu if ar is not None else settings.mu

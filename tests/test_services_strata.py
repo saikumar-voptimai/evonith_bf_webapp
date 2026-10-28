@@ -260,6 +260,19 @@ def test_the_omega_panel_is_the_drift_alarms_evaluation() -> None:
     assert c["latest"]["s_pos"] == pytest.approx(report.latest()["s_pos"])
 
 
+def test_windows_older_than_the_alarm_history_show_omega_without_the_cusum() -> None:
+    rows = snapshots(shift_after=24 * 10)
+    cfg = drift.DriftConfig.from_config({"twin": {"drift": {"history_days": 5}}})
+    now = rows[-1]["window_end"]
+    panel = strata.omega_panel(rows, cfg, start=rows[0]["window_end"], now=now)
+    since = now - timedelta(days=5)
+    report = drift.evaluate([r for r in rows if r["window_end"] >= since], cfg, now)  # the alarm's own rows
+    assert panel["count"] == len(rows) and panel["cusum"]["sigma_e"] == report.ar1.sigma_e
+    old = [r for r in panel["rows"] if r["window_end"] < since]
+    assert old and all(r["s_pos"] is None and r["omega_strata"] is not None for r in old)
+    assert panel["cusum"]["latest"]["s_pos"] == pytest.approx(report.latest()["s_pos"])
+
+
 def test_without_enough_history_the_cusum_is_collecting() -> None:
     rows = snapshots(n_hours=48)
     panel = strata.omega_panel(rows, drift.DriftConfig.from_config({}), start=rows[0]["window_end"],

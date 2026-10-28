@@ -116,7 +116,7 @@
 		{ key: 'rule', label: 'Rule', sortable: false },
 		{
 			key: 'sigma_max_kg_thm',
-			label: 'σ(coke) up to',
+			label: 'σ(coke) wet, up to',
 			unit: 'kg/tHM',
 			numeric: true,
 			digits: 0,
@@ -271,12 +271,12 @@
 					loading={omega.loading && !omega.data}
 				/>
 				<KpiTile
-					label="Current blend, σ(coke)"
+					label="Current blend, σ(coke) dry"
 					value={current?.k_strata_sd}
 					unit="kg/tHM"
 					digits={1}
 					note={current
-						? `Certainty tier of the latest STRATA window`
+						? 'Tier of the latest STRATA window (rules on wet coke)'
 						: (summary.data?.current_note ?? 'No window')}
 					status={tier.kind}
 					statusLabel={tier.label}
@@ -399,7 +399,8 @@
 					<p>
 						{#if current}
 							Charged blend of the window ending {istDateTime(new Date(current.window_end))} IST: σ(coke)
-							<span class="vo-num">{formatQuantity(current.k_strata_sd, 1, 'kg/tHM')}</span>, support
+							<span class="vo-num">{formatQuantity(current.k_strata_sd, 1, 'kg/tHM')}</span> dry coke (the
+							rules divide by 1 − coke moisture), support
 							{current.support ?? 'not stated'}.
 						{:else}
 							{summary.data?.current_note ?? 'Loading the latest window.'}
