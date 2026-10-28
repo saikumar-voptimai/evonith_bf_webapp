@@ -298,6 +298,29 @@ def test_firewall_rules_open_443_80_and_ssh_from_the_admin_subnets() -> None:
     assert no_http == ["allow 443/tcp", "allow from 10.1.0.0/16 to any port 22 proto tcp"]
 
 
+def test_firewall_defaults_hold_with_ip_forwarding_off(tmp_path: Path) -> None:
+    """ufw prints ``disabled (routed)`` while net.ipv4.ip_forward is 0: a second run must still find no change."""
+    status = "Status: active\nLogging: on (low)\nDefault: deny (incoming), allow (outgoing), {routed} (routed)\n"
+    status += "New profiles: skip\n"
+    drop, accept = tmp_path / "ufw_drop", tmp_path / "ufw_accept"
+    drop.write_bytes(b'IPV6=yes\nDEFAULT_INPUT_POLICY="DROP"\nDEFAULT_FORWARD_POLICY="DROP"\n')
+    accept.write_bytes(b'IPV6=yes\nDEFAULT_INPUT_POLICY="DROP"\nDEFAULT_FORWARD_POLICY="ACCEPT"\n')
+    body = _function_body(PROVISION.read_text(encoding="utf-8"), "step_firewall")
+    assert 'ufw_defaults_ok "$UFW_DEFAULTS"' in body and "deny (routed)'" not in body
+    assert _snippet(PROVISION, 'printf "%s" "$UFW_DEFAULTS"').stdout == "/etc/default/ufw"
+
+    def ok(routed: str, defaults: Path, text: str = status) -> bool:
+        return _status(PROVISION, "ufw_defaults_ok", defaults.as_posix(), stdin=text.format(routed=routed)) == 0
+
+    assert ok("disabled", drop)  # stock JetPack 6 without Docker: forwarding off
+    assert ok("deny", drop)  # forwarding on (Docker)
+    assert not ok("disabled", accept)  # routing would be allowed once forwarding is switched on
+    assert not ok("allow", drop)
+    assert not ok("deny", drop, status.replace("deny (incoming)", "allow (incoming)"))
+    assert not ok("deny", drop, status.replace("allow (outgoing)", "deny (outgoing)"))
+    assert not ok("deny", tmp_path / "missing")
+
+
 # ---- verify_base.sh -------------------------------------------------------------------------------------------------
 
 TRACKING = """Reference ID    : 0A141E01 (10.20.30.1)

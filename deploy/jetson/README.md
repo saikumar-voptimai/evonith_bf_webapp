@@ -57,7 +57,7 @@ Steps (`main`, in this order):
 | power | `nvpmodel -m <id>` of the `MAXN` mode in `/etc/nvpmodel.conf` (`MAXN_SUPER` on an Orin Nano / NX), and `bf-jetson-power.service` (oneshot, after `nvpmodel.service`): nvpmodel MAXN, then `jetson_clocks`, at every boot. The summary says when the mode change needs a reboot |
 | clock | `/etc/chrony/chrony.conf` with only the plant servers (`iburst`, `makestep 1 3`, `rtcsync`; the Ubuntu file kept as `chrony.conf.bf-orig`), systemd-timesyncd off, chrony enabled; waits up to 60 s for an offset below 100 ms |
 | logs | `/etc/logrotate.d/bf-webapp`: `/var/log/bf-webapp/*.log` daily, `rotate 14`, `maxage 14`, compressed, `copytruncate`, as `bfapp`; checked with `logrotate --debug`. journald (`journald.conf.d/bf-webapp.conf`): persistent, `MaxRetentionSec=14day` |
-| firewall | ufw: incoming denied, outgoing allowed, routing denied; allowed in: 443/tcp and 80/tcp from anywhere, 22/tcp from each admin subnet. Rewritten (`ufw --force reset`) only when `ufw show added` differs. Stops while an SSH client outside the admin subnets is connected |
+| firewall | ufw: incoming denied, outgoing allowed, routing denied; allowed in: 443/tcp and 80/tcp from anywhere, 22/tcp from each admin subnet. Rewritten (`ufw --force reset`) only when `ufw show added`, the active state or a default policy differs (routing: `DEFAULT_FORWARD_POLICY="DROP"` in `/etc/default/ufw`, since `ufw status verbose` prints `disabled (routed)` while IP forwarding is off). Stops while an SSH client outside the admin subnets is connected |
 
 | Path | Owner | Mode | Content |
 |---|---|---|---|

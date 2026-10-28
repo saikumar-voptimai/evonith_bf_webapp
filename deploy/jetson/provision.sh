@@ -32,6 +32,7 @@ FSTAB_MARK='# bf-webapp data disk (deploy/jetson/provision.sh, SV-6.1)'
 CHRONY_CONF=/etc/chrony/chrony.conf
 LOGROTATE_CONF=/etc/logrotate.d/bf-webapp
 JOURNALD_CONF=/etc/systemd/journald.conf.d/bf-webapp.conf
+UFW_DEFAULTS=/etc/default/ufw
 LOG_RETENTION_DAYS=14
 PACKAGES=(chrony ufw logrotate)
 # path owner:group mode; verify_base.sh holds the same table (tested)
@@ -294,6 +295,14 @@ ufw_show_form() {
 	done
 }
 
+# stdin: `ufw status verbose`; exit 0 when incoming is denied, outgoing allowed and routing denied. ufw prints the
+# routed policy as "disabled" while net.ipv4.ip_forward and net.ipv6.conf.default.forwarding are 0 (a JetPack without
+# Docker), whatever `ufw default deny routed` set, so the routed policy is read from DEFAULT_FORWARD_POLICY in the file.
+ufw_defaults_ok() { # ufw-defaults-file (/etc/default/ufw)
+	grep -Eq '^Default: deny \(incoming\), allow \(outgoing\), (deny|disabled) \(routed\)' &&
+		grep -Eq '^DEFAULT_FORWARD_POLICY="?DROP"?[[:space:]]*$' "$1"
+}
+
 # ---- system helpers -------------------------------------------------------------------------------------------------
 
 # write_file PATH MODE OWNER:GROUP < content; WROTE=1 when the content changed (owner and mode are set either way)
@@ -518,7 +527,7 @@ step_firewall() {
 	have=$({ ufw show added 2>/dev/null || true; } | sed 1d)
 	status=$(ufw status verbose)
 	if [[ $want == "$have" ]] && grep -q '^Status: active' <<<"$status" &&
-		grep -q '^Default: deny (incoming), allow (outgoing), deny (routed)' <<<"$status"; then
+		ufw_defaults_ok "$UFW_DEFAULTS" <<<"$status"; then
 		note "rules unchanged"
 	else
 		ufw --force reset >/dev/null
