@@ -962,6 +962,11 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `utils/coke_energy/rist_diagram.py` or `ui/furnace_status/schematic.py` run `make fixtures` and commit the JSON
   (`tests/test_chart_fixtures.py` fails on drift). Rules in `frontend/DESIGN.md` section 6.
 - One origin in production: `deploy/jetson/Caddyfile` (SPA with `200.html` fallback, `/api` with `flush_interval -1`, `/legacy` to Streamlit with WebSocket, HTTP to HTTPS; settings from `BF_*` variables, see `deploy/jetson/README.md`). Link to a Streamlit page with `legacyHref('<title>')` from `#lib/legacy.ts`; the titles are generated from `config/page_registry.py` (`make fixtures`, checked by `tests/test_legacy_pages.py`), so a renamed page fails the type check.
+- Jetson base system (SV-6.1): `deploy/jetson/provision.sh` (root, idempotent: JetPack 6 check, NVMe by UUID at
+  `/var/lib/bf-webapp`, MAXN + jetson_clocks unit, chrony to the plant NTP only, ufw 443/80 + 22 from the admin subnet,
+  user `bfapp`, `/opt/bf-webapp/releases` + `current`, `/etc/bf-webapp/env` root:bfapp 0640, 14-day logs) and
+  `verify_base.sh` (offset < 100 ms, units back after a reboot, open-port list); name service units `bf-*` with
+  `RequiresMountsFor=/var/lib/bf-webapp`; tests `tests/test_jetson_scripts.py` (bash via Git Bash on Windows).
 - Live data in the SPA: subscribe through `#lib/live/stream.svelte.ts` (`live.on(type, handler)`, one EventSource
   per tab); follow jobs with `JobTracker` (`#lib/live/jobs.svelte.ts`). A new event type is added to `EventType` and
   the payload models in `services/events.py`, then the OpenAPI client is regenerated (`make client`).

@@ -1,0 +1,2 @@
+# Shell scripts run on the Jetson: LF on every checkout, also with core.autocrlf=true on Windows.
+*.sh text eol=lf
