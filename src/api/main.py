@@ -24,7 +24,19 @@ from api.auth import build_auth_state
 from api.errors import ERROR_RESPONSES, ApiError, install_error_handlers
 from api.live import LiveState
 from api.request_context import RequestContextMiddleware, RequestIdFilter
-from api.routers import admin, auth, furnacemind, jobs, operator_inputs, optimiser, reports, status, stream, system, twin
+from api.routers import (
+    admin,
+    auth,
+    furnacemind,
+    jobs,
+    operator_inputs,
+    optimiser,
+    reports,
+    status,
+    stream,
+    system,
+    twin,
+)
 from api.security.origin import OriginGuardMiddleware
 from api.settings import ApiSettings, get_settings
 
