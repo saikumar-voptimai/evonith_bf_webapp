@@ -7,6 +7,7 @@
 	import Button from '#lib/components/Button.svelte';
 	import DataTable from '#lib/components/DataTable.svelte';
 	import DateRange from '#lib/components/DateRange.svelte';
+	import { rangeError } from '#lib/components/date-range.ts';
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import JobButton from '#lib/components/JobButton.svelte';
@@ -59,7 +60,6 @@
 
 	let start = $state('');
 	let end = $state('');
-	let periodValid = $state(true);
 	let unstable = $state(false);
 	/** Period of the last request; null until the user picks one (the API's default, page 10's). */
 	let requested: Period | null = null;
@@ -135,7 +135,10 @@
 	});
 
 	function applyPeriod(range: Period): void {
-		if (!periodValid || !range.start || !range.end) return;
+		// Checked on the new range: DateRange updates its bound validity only after this event.
+		if (!prediction?.first_day || !prediction.last_day || !range.start || !range.end) return;
+		const limits = { min: prediction.first_day, max: prediction.last_day, maxDays: MAX_PERIOD_DAYS };
+		if (rangeError(range.start, range.end, limits) !== null) return;
 		requested = { ...range };
 		void loadPrediction(requested, unstable);
 	}
@@ -222,7 +225,6 @@
 					<DateRange
 						bind:start
 						bind:end
-						bind:valid={periodValid}
 						min={prediction.first_day}
 						max={prediction.last_day}
 						maxDays={MAX_PERIOD_DAYS}
@@ -288,9 +290,11 @@
 						endLabels
 						loading={firstLoad}
 					/>
-					<h3 class="sub">Bias over the trailing {statsDays} days, per day, with ±1 SD</h3>
+					<h3 class="sub">
+						Bias per day over the {statsDays} days before it and the day ({statsDays + 1} days), with ±1 SD
+					</h3>
 					<TimeSeriesChart
-						title="Bias of FORGE against burnt coke over the trailing {statsDays} days, with ±1 SD"
+						title="Bias of FORGE against burnt coke over the {statsDays + 1} days to each day, with ±1 SD"
 						series={rolling}
 						unit={KG}
 						digits={1}

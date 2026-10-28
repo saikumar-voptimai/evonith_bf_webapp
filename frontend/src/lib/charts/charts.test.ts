@@ -15,6 +15,7 @@ const T0 = Date.UTC(2026, 9, 26, 0, 30); // 06:00 IST on 26 Oct 2026
 
 type Series = {
 	id?: string;
+	stackStrategy?: string;
 	data?: unknown[];
 	markLine?: { data?: unknown[] };
 	markArea?: { data?: unknown[] };
@@ -79,6 +80,22 @@ describe('time series option', () => {
 		expect(span[1]).toBe(12); // upper − lower
 		const strata = seriesOf(option)[3]?.data?.[10] as [number, number | null];
 		expect(strata[1]).toBeNull();
+	});
+
+	it('stacks a band whose lower edge is negative on all signs', () => {
+		const bias: TimeSeries = {
+			id: 'bias',
+			label: 'Bias',
+			colour: 'series-forge',
+			points: [[T0, -1]],
+			band: { label: '±1 SD', fill: 'series-forge-band', points: [[T0, -8.8, 6.8]] }
+		};
+		const option = timeSeriesOption(theme, { series: [bias], unit: 'kg/tHM', digits: 1 });
+		const [base, span] = seriesOf(option);
+		expect(base?.stackStrategy).toBe('all');
+		expect(span?.stackStrategy).toBe('all');
+		expect((base?.data?.[0] as [number, number])[1]).toBe(-8.8);
+		expect((span?.data?.[0] as [number, number])[1]).toBeCloseTo(15.6, 9);
 	});
 
 	it('marks the shift starts above the plot and labels annotations inside it', () => {

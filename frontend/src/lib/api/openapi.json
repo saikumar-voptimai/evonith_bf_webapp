@@ -807,6 +807,99 @@
         "title": "BlendChangeView",
         "type": "object"
       },
+      "CalibrationShift": {
+        "properties": {
+          "k_burnt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, kg/tHM",
+            "title": "K Burnt"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged (the calibration's basis), kg/tHM",
+            "title": "K Charged"
+          },
+          "omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency calibrated on the shift, dimensionless",
+            "title": "Omega"
+          },
+          "q_lz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower-zone heat loss calibrated on the shift, GJ/h",
+            "title": "Q Lz Gj H"
+          },
+          "q_uz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper-zone heat loss calibrated on the shift, GJ/h",
+            "title": "Q Uz Gj H"
+          },
+          "r_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hydrogen reduction share calibrated on the shift, dimensionless",
+            "title": "R H"
+          },
+          "shift_key": {
+            "description": "Shift key, YYYY-MM-DD_A|B|C",
+            "title": "Shift Key",
+            "type": "string"
+          },
+          "t_mid": {
+            "description": "Middle of the shift (UTC)",
+            "format": "date-time",
+            "title": "T Mid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shift_key",
+          "t_mid"
+        ],
+        "title": "CalibrationShift",
+        "type": "object"
+      },
       "ChargedCokeForecastData": {
         "description": "A charged-coke forecast written to the ledger (``services.forecasts.issue_charged``, SV-1.5); times in IST\nwith their offset.",
         "properties": {
@@ -2560,6 +2653,882 @@
           "data"
         ],
         "title": "ForecastSiEvent",
+        "type": "object"
+      },
+      "ForgeCalibration": {
+        "properties": {
+          "complete": {
+            "description": "The window holds at least min_shifts stable shifts",
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "day": {
+            "description": "IST day the calibration applies to",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "min_shifts": {
+            "description": "Stable shifts the calibration needs, count",
+            "title": "Min Shifts",
+            "type": "integer"
+          },
+          "n_calibrated": {
+            "description": "Of them with a two-zone calibration, count",
+            "title": "N Calibrated",
+            "type": "integer"
+          },
+          "n_shifts": {
+            "description": "Stable shifts in the window, count",
+            "title": "N Shifts",
+            "type": "integer"
+          },
+          "omega_cal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Median shaft efficiency, dimensionless",
+            "title": "Omega Cal"
+          },
+          "q_lz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Median lower-zone heat loss, GJ/h",
+            "title": "Q Lz Gj H"
+          },
+          "q_uz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Median upper-zone heat loss, GJ/h",
+            "title": "Q Uz Gj H"
+          },
+          "r_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Median hydrogen reduction share, dimensionless",
+            "title": "R H"
+          },
+          "shifts": {
+            "description": "The stable shifts of the window, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/CalibrationShift"
+            },
+            "title": "Shifts",
+            "type": "array"
+          },
+          "view": {
+            "$ref": "#/components/schemas/ForgeViewInfo"
+          },
+          "window_days": {
+            "description": "Window length, days",
+            "title": "Window Days",
+            "type": "integer"
+          },
+          "window_end": {
+            "description": "Last IST day of the window (the day before)",
+            "format": "date",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "description": "First IST day of the window",
+            "format": "date",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "day",
+          "window_start",
+          "window_end",
+          "window_days",
+          "min_shifts",
+          "n_shifts",
+          "n_calibrated",
+          "complete",
+          "shifts"
+        ],
+        "title": "ForgeCalibration",
+        "type": "object"
+      },
+      "ForgePrediction": {
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last IST day of the period",
+            "title": "End"
+          },
+          "first_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First IST day with FORGE and burnt coke",
+            "title": "First Day"
+          },
+          "last_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last IST day with FORGE and burnt coke",
+            "title": "Last Day"
+          },
+          "record": {
+            "$ref": "#/components/schemas/ForgeStats",
+            "description": "Statistics of every stable shift in the view"
+          },
+          "rolling": {
+            "description": "Per day of the period: statistics of the stats_days days before it and the day",
+            "items": {
+              "$ref": "#/components/schemas/ForgeRollingPoint"
+            },
+            "title": "Rolling",
+            "type": "array"
+          },
+          "shifts": {
+            "description": "Shifts of the period, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/ForgeShift"
+            },
+            "title": "Shifts",
+            "type": "array"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First IST day of the period",
+            "title": "Start"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ForgeStats",
+            "description": "Statistics of the period (page 10's table, FORGE vs burnt)"
+          },
+          "stats_days": {
+            "description": "Days before each day in the rolling window; the window is these days and the day (stats_days + 1 IST days, page 10's period), days",
+            "title": "Stats Days",
+            "type": "integer"
+          },
+          "view": {
+            "$ref": "#/components/schemas/ForgeViewInfo"
+          },
+          "with_unstable": {
+            "description": "Shifts that failed the stability filter are included",
+            "title": "With Unstable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "view",
+          "with_unstable",
+          "stats_days",
+          "stats",
+          "record",
+          "shifts",
+          "rolling"
+        ],
+        "title": "ForgePrediction",
+        "type": "object"
+      },
+      "ForgeRist": {
+        "properties": {
+          "first_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IST date of the first frame",
+            "title": "First Day"
+          },
+          "frames": {
+            "description": "Rist diagram per stable shift, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/ForgeRistFrame"
+            },
+            "title": "Frames",
+            "type": "array"
+          },
+          "last_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IST date of the last frame",
+            "title": "Last Day"
+          },
+          "requested": {
+            "description": "Stable shifts the job drew, count (frames that did not solve are left out)",
+            "title": "Requested",
+            "type": "integer"
+          },
+          "view": {
+            "$ref": "#/components/schemas/ForgeViewInfo"
+          }
+        },
+        "required": [
+          "view",
+          "requested",
+          "frames"
+        ],
+        "title": "ForgeRist",
+        "type": "object"
+      },
+      "ForgeRistFrame": {
+        "properties": {
+          "actual": {
+            "$ref": "#/components/schemas/RistLine",
+            "description": "Shift line: calibrated on burnt coke, the reconciled blast, eta CO"
+          },
+          "day": {
+            "description": "IST date of the shift",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "ideal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RistIdeal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Heat-balanced line through P and W (omega = 1)"
+          },
+          "k_burnt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, kg/tHM",
+            "title": "K Burnt"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged, kg/tHM",
+            "title": "K Charged"
+          },
+          "k_forge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FORGE, kg/tHM",
+            "title": "K Forge"
+          },
+          "k_obal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen-balance model, kg/tHM",
+            "title": "K Obal"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RistLine"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FORGE line: omega, heat losses and r_H at the 14-day medians"
+          },
+          "p_actual": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pivot of the shift's lower-zone heat balance, O/C",
+            "title": "P Actual"
+          },
+          "p_model": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pivot of FORGE's lower-zone heat balance, O/C",
+            "title": "P Model"
+          },
+          "skey": {
+            "description": "Shift key, YYYY-MM-DD_A|B|C",
+            "title": "Skey",
+            "type": "string"
+          },
+          "t_mid": {
+            "description": "Middle of the shift (UTC)",
+            "format": "date-time",
+            "title": "T Mid",
+            "type": "string"
+          },
+          "t_r": {
+            "description": "Temperature of the thermal reserve zone, \u00b0C",
+            "title": "T R",
+            "type": "number"
+          },
+          "y_w": {
+            "description": "O/Fe of w\u00fcstite, O/Fe",
+            "title": "Y W",
+            "type": "number"
+          }
+        },
+        "required": [
+          "skey",
+          "day",
+          "t_mid",
+          "t_r",
+          "y_w",
+          "actual"
+        ],
+        "title": "ForgeRistFrame",
+        "type": "object"
+      },
+      "ForgeRollingPoint": {
+        "properties": {
+          "bias": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean of FORGE \u2212 burnt coke over the window, kg/tHM",
+            "title": "Bias"
+          },
+          "day": {
+            "description": "Last IST day of the trailing window",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean absolute difference over the window, kg/tHM",
+            "title": "Mae"
+          },
+          "n": {
+            "description": "Shifts in the trailing window, count",
+            "title": "N",
+            "type": "integer"
+          },
+          "r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Correlation of FORGE and burnt coke over the window, dimensionless",
+            "title": "R"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard deviation of FORGE \u2212 burnt coke over the window, kg/tHM",
+            "title": "Sd"
+          },
+          "t": {
+            "description": "Middle of the day's last shift in the window (UTC)",
+            "format": "date-time",
+            "title": "T",
+            "type": "string"
+          },
+          "within_10_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shifts within \u00b110 kg/tHM over the window, %",
+            "title": "Within 10 Pct"
+          },
+          "within_5_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shifts within \u00b15 kg/tHM over the window, %",
+            "title": "Within 5 Pct"
+          }
+        },
+        "required": [
+          "day",
+          "t",
+          "n"
+        ],
+        "title": "ForgeRollingPoint",
+        "type": "object"
+      },
+      "ForgeShift": {
+        "properties": {
+          "day": {
+            "description": "IST date of the shift",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FORGE \u2212 burnt coke, kg/tHM",
+            "title": "Error"
+          },
+          "k_burnt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke (TRACE): metered blast less the 14-day offset, kg/tHM",
+            "title": "K Burnt"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged, kg/tHM",
+            "title": "K Charged"
+          },
+          "k_forge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FORGE: two-zone balance at the 14-day medians, kg/tHM",
+            "title": "K Forge"
+          },
+          "k_obal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Oxygen-balance model at the analyser's eta CO, kg/tHM",
+            "title": "K Obal"
+          },
+          "omega_fixed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency FORGE used (14-day median), dimensionless",
+            "title": "Omega Fixed"
+          },
+          "omega_shift": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency calibrated on the shift, dimensionless",
+            "title": "Omega Shift"
+          },
+          "provisional": {
+            "description": "Balanced on a DPR carried forward",
+            "title": "Provisional",
+            "type": "boolean"
+          },
+          "shift_key": {
+            "description": "YYYY-MM-DD_A|B|C (IST date of the shift start)",
+            "title": "Shift Key",
+            "type": "string"
+          },
+          "stable": {
+            "description": "Passed the stability filter",
+            "title": "Stable",
+            "type": "boolean"
+          },
+          "t_mid": {
+            "description": "Middle of the shift (UTC)",
+            "format": "date-time",
+            "title": "T Mid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shift_key",
+          "day",
+          "t_mid",
+          "stable",
+          "provisional"
+        ],
+        "title": "ForgeShift",
+        "type": "object"
+      },
+      "ForgeSources": {
+        "properties": {
+          "dpr_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest daily production report (UTC)",
+            "title": "Dpr End"
+          },
+          "hm_slag_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest hot-metal / slag analysis (UTC)",
+            "title": "Hm Slag End"
+          },
+          "hourly_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest hour of the hourly dataset (UTC)",
+            "title": "Hourly End"
+          },
+          "online_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest 10-min process record (UTC)",
+            "title": "Online End"
+          }
+        },
+        "title": "ForgeSources",
+        "type": "object"
+      },
+      "ForgeStats": {
+        "properties": {
+          "bias": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean of FORGE \u2212 burnt coke, kg/tHM",
+            "title": "Bias"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean absolute difference of FORGE and burnt coke, kg/tHM",
+            "title": "Mae"
+          },
+          "n": {
+            "description": "Shifts with FORGE and burnt coke, count",
+            "title": "N",
+            "type": "integer"
+          },
+          "r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pearson correlation of FORGE and burnt coke, dimensionless",
+            "title": "R"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard deviation of FORGE \u2212 burnt coke (n \u2212 1), kg/tHM",
+            "title": "Sd"
+          },
+          "within_10_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shifts within \u00b110 kg/tHM of burnt coke, %",
+            "title": "Within 10 Pct"
+          },
+          "within_5_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shifts within \u00b15 kg/tHM of burnt coke, %",
+            "title": "Within 5 Pct"
+          }
+        },
+        "required": [
+          "n"
+        ],
+        "title": "ForgeStats",
+        "type": "object"
+      },
+      "ForgeViewInfo": {
+        "properties": {
+          "built_at": {
+            "description": "When the twin.forge job stored the view (UTC)",
+            "format": "date-time",
+            "title": "Built At",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that stored it",
+            "title": "Job Id"
+          },
+          "min_shifts": {
+            "description": "Stable shifts a calibration needs, count",
+            "title": "Min Shifts",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "pipeline_errors": {
+            "description": "Shifts the balance could not solve, count",
+            "title": "Pipeline Errors",
+            "type": "integer"
+          },
+          "rist_days": {
+            "description": "Stable shifts drawn in the Rist diagram: those of these last days, days",
+            "title": "Rist Days",
+            "type": "integer"
+          },
+          "shifts": {
+            "description": "Balanced shifts in the view, count",
+            "title": "Shifts",
+            "type": "integer"
+          },
+          "sources": {
+            "$ref": "#/components/schemas/ForgeSources"
+          },
+          "stats_days": {
+            "description": "Trailing window of the statistics, days",
+            "title": "Stats Days",
+            "type": "integer"
+          },
+          "window_days": {
+            "description": "Calibration window before a shift's date, days",
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "built_at",
+          "model",
+          "sources",
+          "shifts",
+          "pipeline_errors",
+          "window_days",
+          "min_shifts",
+          "stats_days",
+          "rist_days"
+        ],
+        "title": "ForgeViewInfo",
         "type": "object"
       },
       "FuelEditorInputs": {
@@ -6214,6 +7183,88 @@
           "rings"
         ],
         "title": "RingView",
+        "type": "object"
+      },
+      "RistIdeal": {
+        "properties": {
+          "mu": {
+            "description": "Slope of the ideal line (omega = 1), O/Fe",
+            "title": "Mu",
+            "type": "number"
+          },
+          "y_a": {
+            "description": "Y at X = 0 of the ideal line, O/Fe",
+            "title": "Y A",
+            "type": "number"
+          }
+        },
+        "required": [
+          "mu",
+          "y_a"
+        ],
+        "title": "RistIdeal",
+        "type": "object"
+      },
+      "RistLine": {
+        "properties": {
+          "eta_w": {
+            "description": "CO utilisation at the w\u00fcstite\u2013iron equilibrium W, dimensionless",
+            "title": "Eta W",
+            "type": "number"
+          },
+          "mu": {
+            "description": "Slope: carbon gasified per Fe atom, O/Fe",
+            "title": "Mu",
+            "type": "number"
+          },
+          "omega": {
+            "description": "Shaft efficiency the line was drawn at, dimensionless",
+            "title": "Omega",
+            "type": "number"
+          },
+          "x_top": {
+            "description": "Top gas: 1 + eta_f, O/C",
+            "title": "X Top",
+            "type": "number"
+          },
+          "y_a": {
+            "description": "Y at X = 0: blast, PCI, Si/Mn/P/Ti and carbonate oxygen, O/Fe",
+            "title": "Y A",
+            "type": "number"
+          },
+          "y_d": {
+            "description": "Y at X = 1: ore oxygen removed by carbon (direct reduction), O/Fe",
+            "title": "Y D",
+            "type": "number"
+          },
+          "y_top": {
+            "description": "All burden oxygen at the top (hydrogen's part included), O/Fe",
+            "title": "Y Top",
+            "type": "number"
+          },
+          "y_top_c": {
+            "description": "Carbon's share of the burden oxygen at the top, O/Fe",
+            "title": "Y Top C",
+            "type": "number"
+          },
+          "y_wc": {
+            "description": "W\u00fcstite level, carbon's share, O/Fe",
+            "title": "Y Wc",
+            "type": "number"
+          }
+        },
+        "required": [
+          "mu",
+          "y_a",
+          "y_d",
+          "omega",
+          "eta_w",
+          "y_wc",
+          "x_top",
+          "y_top_c",
+          "y_top"
+        ],
+        "title": "RistLine",
         "type": "object"
       },
       "RunLookup": {
@@ -11591,6 +12642,245 @@
         "summary": "Ask (answer streamed as text/event-stream)",
         "tags": [
           "furnacemind"
+        ]
+      }
+    },
+    "/api/forge/calibration": {
+      "get": {
+        "description": "Medians of omega, Q_LZ, Q_UZ and r_H over the stable shifts of the 14 days before ``day`` and those shifts.",
+        "operationId": "forge_calibration",
+        "parameters": [
+          {
+            "description": "IST day it applies to (default: the day after the latest balanced shift)",
+            "in": "query",
+            "name": "day",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "IST day it applies to (default: the day after the latest balanced shift)",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgeCalibration"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "FORGE calibration and its shifts",
+        "tags": [
+          "forge"
+        ]
+      }
+    },
+    "/api/forge/prediction": {
+      "get": {
+        "description": "FORGE and burnt coke per shift of the period with page 10's statistics, the whole record's statistics (stable\nshifts) and, per day, the statistics of its trailing ``stats_days``.",
+        "operationId": "forge_prediction",
+        "parameters": [
+          {
+            "description": "First IST day (default: end \u2212 stats_days; at most 92 days per request)",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First IST day (default: end \u2212 stats_days; at most 92 days per request)",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Last IST day (default: the last day with both values)",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last IST day (default: the last day with both values)",
+              "title": "End"
+            }
+          },
+          {
+            "description": "Include shifts that failed the stability filter",
+            "in": "query",
+            "name": "unstable",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include shifts that failed the stability filter",
+              "title": "Unstable",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgePrediction"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "FORGE against burnt coke per shift",
+        "tags": [
+          "forge"
+        ]
+      }
+    },
+    "/api/forge/rist": {
+      "get": {
+        "description": "The operating lines of the stable shifts of the last ``rist_days`` (``utils.coke_energy.rist_diagram``).",
+        "operationId": "forge_rist",
+        "parameters": [
+          {
+            "description": "First IST day (default: the first frame)",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First IST day (default: the first frame)",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Last IST day (default: the last frame)",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last IST day (default: the last frame)",
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgeRist"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Rist diagram of the stable shifts",
+        "tags": [
+          "forge"
         ]
       }
     },

@@ -154,6 +154,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/forge/calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * FORGE calibration and its shifts
+         * @description Medians of omega, Q_LZ, Q_UZ and r_H over the stable shifts of the 14 days before ``day`` and those shifts.
+         */
+        get: operations["forge_calibration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forge/prediction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * FORGE against burnt coke per shift
+         * @description FORGE and burnt coke per shift of the period with page 10's statistics, the whole record's statistics (stable
+         *     shifts) and, per day, the statistics of its trailing ``stats_days``.
+         */
+        get: operations["forge_prediction"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forge/rist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rist diagram of the stable shifts
+         * @description The operating lines of the stable shifts of the last ``rist_days`` (``utils.coke_energy.rist_diagram``).
+         */
+        get: operations["forge_rist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -1246,6 +1307,50 @@ export interface components {
              */
             zone: "above_cz" | "in_cz" | "below_cz" | "burnt";
         };
+        /** CalibrationShift */
+        CalibrationShift: {
+            /**
+             * K Burnt
+             * @description Burnt coke, kg/tHM
+             */
+            k_burnt?: number | null;
+            /**
+             * K Charged
+             * @description Coke charged (the calibration's basis), kg/tHM
+             */
+            k_charged?: number | null;
+            /**
+             * Omega
+             * @description Shaft efficiency calibrated on the shift, dimensionless
+             */
+            omega?: number | null;
+            /**
+             * Q Lz Gj H
+             * @description Lower-zone heat loss calibrated on the shift, GJ/h
+             */
+            q_lz_gj_h?: number | null;
+            /**
+             * Q Uz Gj H
+             * @description Upper-zone heat loss calibrated on the shift, GJ/h
+             */
+            q_uz_gj_h?: number | null;
+            /**
+             * R H
+             * @description Hydrogen reduction share calibrated on the shift, dimensionless
+             */
+            r_h?: number | null;
+            /**
+             * Shift Key
+             * @description Shift key, YYYY-MM-DD_A|B|C
+             */
+            shift_key: string;
+            /**
+             * T Mid
+             * Format: date-time
+             * @description Middle of the shift (UTC)
+             */
+            t_mid: string;
+        };
         /**
          * ChargedCokeForecastData
          * @description A charged-coke forecast written to the ledger (``services.forecasts.issue_charged``, SV-1.5); times in IST
@@ -2133,6 +2238,445 @@ export interface components {
              * @enum {string}
              */
             type: "forecast.si";
+        };
+        /** ForgeCalibration */
+        ForgeCalibration: {
+            /**
+             * Complete
+             * @description The window holds at least min_shifts stable shifts
+             */
+            complete: boolean;
+            /**
+             * Day
+             * Format: date
+             * @description IST day the calibration applies to
+             */
+            day: string;
+            /**
+             * Min Shifts
+             * @description Stable shifts the calibration needs, count
+             */
+            min_shifts: number;
+            /**
+             * N Calibrated
+             * @description Of them with a two-zone calibration, count
+             */
+            n_calibrated: number;
+            /**
+             * N Shifts
+             * @description Stable shifts in the window, count
+             */
+            n_shifts: number;
+            /**
+             * Omega Cal
+             * @description Median shaft efficiency, dimensionless
+             */
+            omega_cal?: number | null;
+            /**
+             * Q Lz Gj H
+             * @description Median lower-zone heat loss, GJ/h
+             */
+            q_lz_gj_h?: number | null;
+            /**
+             * Q Uz Gj H
+             * @description Median upper-zone heat loss, GJ/h
+             */
+            q_uz_gj_h?: number | null;
+            /**
+             * R H
+             * @description Median hydrogen reduction share, dimensionless
+             */
+            r_h?: number | null;
+            /**
+             * Shifts
+             * @description The stable shifts of the window, oldest first
+             */
+            shifts: components["schemas"]["CalibrationShift"][];
+            view: components["schemas"]["ForgeViewInfo"];
+            /**
+             * Window Days
+             * @description Window length, days
+             */
+            window_days: number;
+            /**
+             * Window End
+             * Format: date
+             * @description Last IST day of the window (the day before)
+             */
+            window_end: string;
+            /**
+             * Window Start
+             * Format: date
+             * @description First IST day of the window
+             */
+            window_start: string;
+        };
+        /** ForgePrediction */
+        ForgePrediction: {
+            /**
+             * End
+             * @description Last IST day of the period
+             */
+            end?: string | null;
+            /**
+             * First Day
+             * @description First IST day with FORGE and burnt coke
+             */
+            first_day?: string | null;
+            /**
+             * Last Day
+             * @description Last IST day with FORGE and burnt coke
+             */
+            last_day?: string | null;
+            /** @description Statistics of every stable shift in the view */
+            record: components["schemas"]["ForgeStats"];
+            /**
+             * Rolling
+             * @description Per day of the period: statistics of the stats_days days before it and the day
+             */
+            rolling: components["schemas"]["ForgeRollingPoint"][];
+            /**
+             * Shifts
+             * @description Shifts of the period, oldest first
+             */
+            shifts: components["schemas"]["ForgeShift"][];
+            /**
+             * Start
+             * @description First IST day of the period
+             */
+            start?: string | null;
+            /** @description Statistics of the period (page 10's table, FORGE vs burnt) */
+            stats: components["schemas"]["ForgeStats"];
+            /**
+             * Stats Days
+             * @description Days before each day in the rolling window; the window is these days and the day (stats_days + 1 IST days, page 10's period), days
+             */
+            stats_days: number;
+            view: components["schemas"]["ForgeViewInfo"];
+            /**
+             * With Unstable
+             * @description Shifts that failed the stability filter are included
+             */
+            with_unstable: boolean;
+        };
+        /** ForgeRist */
+        ForgeRist: {
+            /**
+             * First Day
+             * @description IST date of the first frame
+             */
+            first_day?: string | null;
+            /**
+             * Frames
+             * @description Rist diagram per stable shift, oldest first
+             */
+            frames: components["schemas"]["ForgeRistFrame"][];
+            /**
+             * Last Day
+             * @description IST date of the last frame
+             */
+            last_day?: string | null;
+            /**
+             * Requested
+             * @description Stable shifts the job drew, count (frames that did not solve are left out)
+             */
+            requested: number;
+            view: components["schemas"]["ForgeViewInfo"];
+        };
+        /** ForgeRistFrame */
+        ForgeRistFrame: {
+            /** @description Shift line: calibrated on burnt coke, the reconciled blast, eta CO */
+            actual: components["schemas"]["RistLine"];
+            /**
+             * Day
+             * Format: date
+             * @description IST date of the shift
+             */
+            day: string;
+            /** @description Heat-balanced line through P and W (omega = 1) */
+            ideal?: components["schemas"]["RistIdeal"] | null;
+            /**
+             * K Burnt
+             * @description Burnt coke, kg/tHM
+             */
+            k_burnt?: number | null;
+            /**
+             * K Charged
+             * @description Coke charged, kg/tHM
+             */
+            k_charged?: number | null;
+            /**
+             * K Forge
+             * @description FORGE, kg/tHM
+             */
+            k_forge?: number | null;
+            /**
+             * K Obal
+             * @description Oxygen-balance model, kg/tHM
+             */
+            k_obal?: number | null;
+            /** @description FORGE line: omega, heat losses and r_H at the 14-day medians */
+            model?: components["schemas"]["RistLine"] | null;
+            /**
+             * P Actual
+             * @description Pivot of the shift's lower-zone heat balance, O/C
+             */
+            p_actual?: [
+                number,
+                number
+            ] | null;
+            /**
+             * P Model
+             * @description Pivot of FORGE's lower-zone heat balance, O/C
+             */
+            p_model?: [
+                number,
+                number
+            ] | null;
+            /**
+             * Skey
+             * @description Shift key, YYYY-MM-DD_A|B|C
+             */
+            skey: string;
+            /**
+             * T Mid
+             * Format: date-time
+             * @description Middle of the shift (UTC)
+             */
+            t_mid: string;
+            /**
+             * T R
+             * @description Temperature of the thermal reserve zone, °C
+             */
+            t_r: number;
+            /**
+             * Y W
+             * @description O/Fe of wüstite, O/Fe
+             */
+            y_w: number;
+        };
+        /** ForgeRollingPoint */
+        ForgeRollingPoint: {
+            /**
+             * Bias
+             * @description Mean of FORGE − burnt coke over the window, kg/tHM
+             */
+            bias?: number | null;
+            /**
+             * Day
+             * Format: date
+             * @description Last IST day of the trailing window
+             */
+            day: string;
+            /**
+             * Mae
+             * @description Mean absolute difference over the window, kg/tHM
+             */
+            mae?: number | null;
+            /**
+             * N
+             * @description Shifts in the trailing window, count
+             */
+            n: number;
+            /**
+             * R
+             * @description Correlation of FORGE and burnt coke over the window, dimensionless
+             */
+            r?: number | null;
+            /**
+             * Sd
+             * @description Standard deviation of FORGE − burnt coke over the window, kg/tHM
+             */
+            sd?: number | null;
+            /**
+             * T
+             * Format: date-time
+             * @description Middle of the day's last shift in the window (UTC)
+             */
+            t: string;
+            /**
+             * Within 10 Pct
+             * @description Shifts within ±10 kg/tHM over the window, %
+             */
+            within_10_pct?: number | null;
+            /**
+             * Within 5 Pct
+             * @description Shifts within ±5 kg/tHM over the window, %
+             */
+            within_5_pct?: number | null;
+        };
+        /** ForgeShift */
+        ForgeShift: {
+            /**
+             * Day
+             * Format: date
+             * @description IST date of the shift
+             */
+            day: string;
+            /**
+             * Error
+             * @description FORGE − burnt coke, kg/tHM
+             */
+            error?: number | null;
+            /**
+             * K Burnt
+             * @description Burnt coke (TRACE): metered blast less the 14-day offset, kg/tHM
+             */
+            k_burnt?: number | null;
+            /**
+             * K Charged
+             * @description Coke charged, kg/tHM
+             */
+            k_charged?: number | null;
+            /**
+             * K Forge
+             * @description FORGE: two-zone balance at the 14-day medians, kg/tHM
+             */
+            k_forge?: number | null;
+            /**
+             * K Obal
+             * @description Oxygen-balance model at the analyser's eta CO, kg/tHM
+             */
+            k_obal?: number | null;
+            /**
+             * Omega Fixed
+             * @description Shaft efficiency FORGE used (14-day median), dimensionless
+             */
+            omega_fixed?: number | null;
+            /**
+             * Omega Shift
+             * @description Shaft efficiency calibrated on the shift, dimensionless
+             */
+            omega_shift?: number | null;
+            /**
+             * Provisional
+             * @description Balanced on a DPR carried forward
+             */
+            provisional: boolean;
+            /**
+             * Shift Key
+             * @description YYYY-MM-DD_A|B|C (IST date of the shift start)
+             */
+            shift_key: string;
+            /**
+             * Stable
+             * @description Passed the stability filter
+             */
+            stable: boolean;
+            /**
+             * T Mid
+             * Format: date-time
+             * @description Middle of the shift (UTC)
+             */
+            t_mid: string;
+        };
+        /** ForgeSources */
+        ForgeSources: {
+            /**
+             * Dpr End
+             * @description Latest daily production report (UTC)
+             */
+            dpr_end?: string | null;
+            /**
+             * Hm Slag End
+             * @description Latest hot-metal / slag analysis (UTC)
+             */
+            hm_slag_end?: string | null;
+            /**
+             * Hourly End
+             * @description Latest hour of the hourly dataset (UTC)
+             */
+            hourly_end?: string | null;
+            /**
+             * Online End
+             * @description Latest 10-min process record (UTC)
+             */
+            online_end?: string | null;
+        };
+        /** ForgeStats */
+        ForgeStats: {
+            /**
+             * Bias
+             * @description Mean of FORGE − burnt coke, kg/tHM
+             */
+            bias?: number | null;
+            /**
+             * Mae
+             * @description Mean absolute difference of FORGE and burnt coke, kg/tHM
+             */
+            mae?: number | null;
+            /**
+             * N
+             * @description Shifts with FORGE and burnt coke, count
+             */
+            n: number;
+            /**
+             * R
+             * @description Pearson correlation of FORGE and burnt coke, dimensionless
+             */
+            r?: number | null;
+            /**
+             * Sd
+             * @description Standard deviation of FORGE − burnt coke (n − 1), kg/tHM
+             */
+            sd?: number | null;
+            /**
+             * Within 10 Pct
+             * @description Shifts within ±10 kg/tHM of burnt coke, %
+             */
+            within_10_pct?: number | null;
+            /**
+             * Within 5 Pct
+             * @description Shifts within ±5 kg/tHM of burnt coke, %
+             */
+            within_5_pct?: number | null;
+        };
+        /** ForgeViewInfo */
+        ForgeViewInfo: {
+            /**
+             * Built At
+             * Format: date-time
+             * @description When the twin.forge job stored the view (UTC)
+             */
+            built_at: string;
+            /**
+             * Job Id
+             * @description Job that stored it
+             */
+            job_id?: string | null;
+            /**
+             * Min Shifts
+             * @description Stable shifts a calibration needs, count
+             */
+            min_shifts: number;
+            /** Model */
+            model: string;
+            /**
+             * Pipeline Errors
+             * @description Shifts the balance could not solve, count
+             */
+            pipeline_errors: number;
+            /**
+             * Rist Days
+             * @description Stable shifts drawn in the Rist diagram: those of these last days, days
+             */
+            rist_days: number;
+            /**
+             * Shifts
+             * @description Balanced shifts in the view, count
+             */
+            shifts: number;
+            sources: components["schemas"]["ForgeSources"];
+            /**
+             * Stats Days
+             * @description Trailing window of the statistics, days
+             */
+            stats_days: number;
+            /**
+             * Window Days
+             * @description Calibration window before a shift's date, days
+             */
+            window_days: number;
         };
         /** FuelEditorInputs */
         FuelEditorInputs: {
@@ -3879,6 +4423,67 @@ export interface components {
              * @description calibration: the network solve at the calibration state
              */
             state: string;
+        };
+        /** RistIdeal */
+        RistIdeal: {
+            /**
+             * Mu
+             * @description Slope of the ideal line (omega = 1), O/Fe
+             */
+            mu: number;
+            /**
+             * Y A
+             * @description Y at X = 0 of the ideal line, O/Fe
+             */
+            y_a: number;
+        };
+        /** RistLine */
+        RistLine: {
+            /**
+             * Eta W
+             * @description CO utilisation at the wüstite–iron equilibrium W, dimensionless
+             */
+            eta_w: number;
+            /**
+             * Mu
+             * @description Slope: carbon gasified per Fe atom, O/Fe
+             */
+            mu: number;
+            /**
+             * Omega
+             * @description Shaft efficiency the line was drawn at, dimensionless
+             */
+            omega: number;
+            /**
+             * X Top
+             * @description Top gas: 1 + eta_f, O/C
+             */
+            x_top: number;
+            /**
+             * Y A
+             * @description Y at X = 0: blast, PCI, Si/Mn/P/Ti and carbonate oxygen, O/Fe
+             */
+            y_a: number;
+            /**
+             * Y D
+             * @description Y at X = 1: ore oxygen removed by carbon (direct reduction), O/Fe
+             */
+            y_d: number;
+            /**
+             * Y Top
+             * @description All burden oxygen at the top (hydrogen's part included), O/Fe
+             */
+            y_top: number;
+            /**
+             * Y Top C
+             * @description Carbon's share of the burden oxygen at the top, O/Fe
+             */
+            y_top_c: number;
+            /**
+             * Y Wc
+             * @description Wüstite level, carbon's share, O/Fe
+             */
+            y_wc: number;
         };
         /** RunLookup */
         RunLookup: {
@@ -6677,6 +7282,135 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    forge_calibration: {
+        parameters: {
+            query?: {
+                /** @description IST day it applies to (default: the day after the latest balanced shift) */
+                day?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeCalibration"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    forge_prediction: {
+        parameters: {
+            query?: {
+                /** @description First IST day (default: end − stats_days; at most 92 days per request) */
+                start?: string | null;
+                /** @description Last IST day (default: the last day with both values) */
+                end?: string | null;
+                /** @description Include shifts that failed the stability filter */
+                unstable?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgePrediction"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    forge_rist: {
+        parameters: {
+            query?: {
+                /** @description First IST day (default: the first frame) */
+                start?: string | null;
+                /** @description Last IST day (default: the last frame) */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeRist"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
                 };
             };
         };

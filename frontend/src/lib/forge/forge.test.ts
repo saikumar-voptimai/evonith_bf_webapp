@@ -94,7 +94,7 @@ describe('prediction against burnt coke', () => {
 			{ day: '2026-10-14', t: '2026-10-14T20:30:00Z', n: 1, bias: 2.0, sd: null }
 		];
 		const [bias] = rollingSeries(rolling, 30);
-		expect(bias!.label).toBe('30-day bias, FORGE − burnt');
+		expect(bias!.label).toBe('31-day bias, FORGE − burnt');
 		expect(bias!.band!.fill).toBe('series-forge-band');
 		expect(bias!.band!.points[0]![1]).toBeCloseTo(-8.8, 9);
 		expect(bias!.band!.points[0]![2]).toBeCloseTo(6.8, 9);

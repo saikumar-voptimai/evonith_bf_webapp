@@ -87,11 +87,19 @@ class ForgePrediction(BaseModel):
     first_day: date | None = Field(None, description="First IST day with FORGE and burnt coke")
     last_day: date | None = Field(None, description="Last IST day with FORGE and burnt coke")
     with_unstable: bool = Field(..., description="Shifts that failed the stability filter are included")
-    stats_days: int = Field(..., description="Trailing window of the rolling statistics, days")
+    stats_days: int = Field(
+        ...,
+        description=(
+            "Days before each day in the rolling window; the window is these days and the day "
+            "(stats_days + 1 IST days, page 10's period), days"
+        ),
+    )
     stats: ForgeStats = Field(..., description="Statistics of the period (page 10's table, FORGE vs burnt)")
     record: ForgeStats = Field(..., description="Statistics of every stable shift in the view")
     shifts: list[ForgeShift] = Field(..., description="Shifts of the period, oldest first")
-    rolling: list[ForgeRollingPoint] = Field(..., description="Per day of the period: statistics of its trailing days")
+    rolling: list[ForgeRollingPoint] = Field(
+        ..., description="Per day of the period: statistics of the stats_days days before it and the day"
+    )
 
 
 class RistLine(BaseModel):

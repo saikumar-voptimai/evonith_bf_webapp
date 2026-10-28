@@ -77,12 +77,12 @@ export function predictionSeries(shifts: readonly ForgeShift[]): TimeSeries[] {
 	];
 }
 
-/** Bias of FORGE − burnt over the trailing window of each day, with ±1 SD as a band. */
+/** Bias of FORGE − burnt over the `days` before each day and the day (`days + 1` days), with ±1 SD as a band. */
 export function rollingSeries(rolling: ForgePrediction['rolling'], days: number): TimeSeries[] {
 	return [
 		{
 			id: 'bias',
-			label: `${days}-day bias, FORGE − burnt`,
+			label: `${days + 1}-day bias, FORGE − burnt`,
 			short: 'Bias',
 			colour: 'series-forge',
 			points: rolling.map((p) => [ms(p.t), p.bias ?? null]),
