@@ -1,6 +1,319 @@
 {
   "components": {
     "schemas": {
+      "AgreementClosure": {
+        "properties": {
+          "burnt_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total raw burnt coke, t",
+            "title": "Burnt T"
+          },
+          "charged_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total charged coke, t",
+            "title": "Charged T"
+          },
+          "n": {
+            "description": "Shifts with both raw burnt and charged coke, count",
+            "title": "N",
+            "type": "integer"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total raw burnt over total charged coke, dimensionless",
+            "title": "Ratio"
+          }
+        },
+        "required": [
+          "n"
+        ],
+        "title": "AgreementClosure",
+        "type": "object"
+      },
+      "AgreementPoint": {
+        "properties": {
+          "burnt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke (calibrated), production-weighted, kg/tHM",
+            "title": "Burnt"
+          },
+          "charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged coke, production-weighted, kg/tHM",
+            "title": "Charged"
+          },
+          "diff": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt \u2212 charged, kg/tHM",
+            "title": "Diff"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean of burnt and charged, kg/tHM",
+            "title": "Mean"
+          },
+          "n": {
+            "description": "Shifts in the window, count",
+            "title": "N",
+            "type": "integer"
+          },
+          "t": {
+            "description": "Mid-time of the window (UTC)",
+            "format": "date-time",
+            "title": "T",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "n"
+        ],
+        "title": "AgreementPoint",
+        "type": "object"
+      },
+      "AgreementSplit": {
+        "properties": {
+          "floor_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SD that does not fall with the window, kg/tHM",
+            "title": "Floor Sd"
+          },
+          "random_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-shift SD of random error (falls as 1/\u221aW), kg/tHM",
+            "title": "Random Sd"
+          },
+          "transit_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-shift SD from coke in transit (falls as 1/W), kg/tHM",
+            "title": "Transit Sd"
+          }
+        },
+        "title": "AgreementSplit",
+        "type": "object"
+      },
+      "AgreementStats": {
+        "properties": {
+          "bias": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean of burnt \u2212 charged, kg/tHM",
+            "title": "Bias"
+          },
+          "cb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bias correction factor C_b = CCC / r, dimensionless",
+            "title": "Cb"
+          },
+          "ccc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lin's concordance correlation coefficient, dimensionless",
+            "title": "Ccc"
+          },
+          "hours": {
+            "description": "Length of the window, h",
+            "title": "Hours",
+            "type": "number"
+          },
+          "loa_hi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper limit of agreement, bias + 1.96 SD, kg/tHM",
+            "title": "Loa Hi"
+          },
+          "loa_lo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower limit of agreement, bias \u2212 1.96 SD, kg/tHM",
+            "title": "Loa Lo"
+          },
+          "mean_burnt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean burnt coke over the windows, kg/tHM",
+            "title": "Mean Burnt"
+          },
+          "mean_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean charged coke over the windows, kg/tHM",
+            "title": "Mean Charged"
+          },
+          "n": {
+            "description": "Windows compared, count",
+            "title": "N",
+            "type": "integer"
+          },
+          "r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pearson correlation, dimensionless",
+            "title": "R"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard deviation of burnt \u2212 charged, kg/tHM",
+            "title": "Sd"
+          },
+          "shifts": {
+            "description": "Shifts per window, count",
+            "title": "Shifts",
+            "type": "integer"
+          },
+          "slope": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deming slope of burnt on charged, dimensionless",
+            "title": "Slope"
+          },
+          "window": {
+            "description": "Averaging window, e.g. Shift (8 h), 1 week",
+            "title": "Window",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window",
+          "shifts",
+          "hours",
+          "n"
+        ],
+        "title": "AgreementStats",
+        "type": "object"
+      },
       "AlarmClearedEvent": {
         "properties": {
           "at": {
@@ -6453,6 +6766,1001 @@
         "title": "ToolResultPart",
         "type": "object"
       },
+      "TraceAgreement": {
+        "properties": {
+          "built_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Build of the view (UTC)",
+            "title": "Built At"
+          },
+          "closure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgreementClosure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "peak_lag_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lag of the correlation peak, burnt after charged, h",
+            "title": "Peak Lag H"
+          },
+          "points_shift": {
+            "description": "Pairs per shift, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/AgreementPoint"
+            },
+            "title": "Points Shift",
+            "type": "array"
+          },
+          "points_week": {
+            "description": "Pairs per week, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/AgreementPoint"
+            },
+            "title": "Points Week",
+            "type": "array"
+          },
+          "shift": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgreementStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per shift (the window table's Shift (8 h) row)"
+          },
+          "split": {
+            "$ref": "#/components/schemas/AgreementSplit"
+          },
+          "table": {
+            "description": "Every averaging window of transit.summary",
+            "items": {
+              "$ref": "#/components/schemas/AgreementStats"
+            },
+            "title": "Table",
+            "type": "array"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgreementStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per week (the window table's 1 week row)"
+          }
+        },
+        "required": [
+          "table",
+          "points_shift",
+          "points_week",
+          "split"
+        ],
+        "title": "TraceAgreement",
+        "type": "object"
+      },
+      "TraceCorrection": {
+        "properties": {
+          "min_shifts": {
+            "description": "Stable shifts the median needs, count",
+            "title": "Min Shifts",
+            "type": "integer"
+          },
+          "n_shifts": {
+            "description": "Stable shifts in the window, count",
+            "title": "N Shifts",
+            "type": "integer"
+          },
+          "offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "14-day correction: median of charged \u2212 raw burnt over the stable shifts of the 14 days before, kg/tHM",
+            "title": "Offset"
+          },
+          "pool": {
+            "description": "The stable shifts of the window, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/TraceCorrectionShift"
+            },
+            "title": "Pool",
+            "type": "array"
+          },
+          "skey": {
+            "description": "Shift the correction belongs to (the latest with one)",
+            "title": "Skey",
+            "type": "string"
+          },
+          "window_days": {
+            "description": "Length of the window, d",
+            "title": "Window Days",
+            "type": "integer"
+          },
+          "window_end": {
+            "description": "Date the window ends before, the shift's date (IST)",
+            "format": "date",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "description": "First shift date of the window (IST)",
+            "format": "date",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skey",
+          "window_start",
+          "window_end",
+          "window_days",
+          "min_shifts",
+          "n_shifts",
+          "pool"
+        ],
+        "title": "TraceCorrection",
+        "type": "object"
+      },
+      "TraceCorrectionShift": {
+        "properties": {
+          "gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged \u2212 raw burnt coke, kg/tHM",
+            "title": "Gap"
+          },
+          "k_burnt_raw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, raw: oxygen balance at the metered blast air and the analyser's \u03b7CO (GBC), kg/tHM",
+            "title": "K Burnt Raw"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged (dry), kg/tHM",
+            "title": "K Charged"
+          },
+          "skey": {
+            "description": "Shift key of a stable shift in the window",
+            "title": "Skey",
+            "type": "string"
+          },
+          "start": {
+            "description": "Shift start (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skey",
+          "start"
+        ],
+        "title": "TraceCorrectionShift",
+        "type": "object"
+      },
+      "TraceFeed": {
+        "properties": {
+          "age_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of the last valid data point at the reference, s",
+            "title": "Age S"
+          },
+          "feeds_models": {
+            "description": "A stale value changes the coke rates",
+            "title": "Feeds Models",
+            "type": "boolean"
+          },
+          "item": {
+            "description": "What the row covers, e.g. Lloyds CLO chemistry",
+            "title": "Item",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last valid data point at or before the reference (UTC)",
+            "title": "Last"
+          },
+          "limit_s": {
+            "description": "Freshness limit of the source, s",
+            "title": "Limit S",
+            "type": "number"
+          },
+          "material": {
+            "description": "Material code ('' for a single-series source)",
+            "title": "Material",
+            "type": "string"
+          },
+          "source": {
+            "description": "Freshness source, e.g. online_10min, hm_slag, rm_chemistry",
+            "title": "Source",
+            "type": "string"
+          },
+          "stale": {
+            "description": "No data, or older than the limit: the value is carried forward",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "used_by": {
+            "description": "Which result rests on the source",
+            "title": "Used By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "material",
+          "item",
+          "limit_s",
+          "stale",
+          "used_by",
+          "feeds_models"
+        ],
+        "title": "TraceFeed",
+        "type": "object"
+      },
+      "TraceInput": {
+        "properties": {
+          "digits": {
+            "description": "Decimals to show, count",
+            "title": "Digits",
+            "type": "integer"
+          },
+          "key": {
+            "description": "Input key, e.g. blast_air",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "description": "Name of the input",
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "description": "Source of the value: a freshness source (online_10min, hourly_dataset, hm_slag), open_meteo or plant_rule",
+            "title": "Source",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of value, e.g. Nm\u00b3/tHM",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Value in the shift, in the unit of the unit field",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "digits",
+          "source"
+        ],
+        "title": "TraceInput",
+        "type": "object"
+      },
+      "TraceLatestHour": {
+        "properties": {
+          "burnt_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "14-day correction: median of charged \u2212 raw burnt over the stable shifts of the 14 days before, kg/tHM",
+            "title": "Burnt Offset"
+          },
+          "end": {
+            "description": "Window end, a full hour (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "k_burnt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM",
+            "title": "K Burnt"
+          },
+          "k_burnt_raw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, raw: oxygen balance at the metered blast air and the analyser's \u03b7CO (GBC), kg/tHM",
+            "title": "K Burnt Raw"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged (dry), kg/tHM",
+            "title": "K Charged"
+          },
+          "label": {
+            "description": "Shift key when the window is a shift, else the IST end time",
+            "title": "Label",
+            "type": "string"
+          },
+          "start": {
+            "description": "Window start (UTC): the 8 h before end",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "complete, partial or failed",
+            "title": "Status"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "label"
+        ],
+        "title": "TraceLatestHour",
+        "type": "object"
+      },
+      "TraceLatestShift": {
+        "properties": {
+          "feeds": {
+            "description": "Freshness of every source at the end of the shift",
+            "items": {
+              "$ref": "#/components/schemas/TraceFeed"
+            },
+            "title": "Feeds",
+            "type": "array"
+          },
+          "inputs": {
+            "description": "Inputs of the oxygen balance in the shift",
+            "items": {
+              "$ref": "#/components/schemas/TraceInput"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "shift": {
+            "$ref": "#/components/schemas/TraceShift"
+          }
+        },
+        "required": [
+          "shift",
+          "inputs",
+          "feeds"
+        ],
+        "title": "TraceLatestShift",
+        "type": "object"
+      },
+      "TraceSeries": {
+        "properties": {
+          "built_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Build of the view behind shift and day rows (UTC)",
+            "title": "Built At"
+          },
+          "count": {
+            "description": "Rows, count",
+            "title": "Count",
+            "type": "integer"
+          },
+          "end": {
+            "description": "Last window end included (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "hour",
+              "shift",
+              "day"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TraceSeriesRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "start": {
+            "description": "First window end included (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution",
+          "start",
+          "end",
+          "count",
+          "rows"
+        ],
+        "title": "TraceSeries",
+        "type": "object"
+      },
+      "TraceSeriesRow": {
+        "properties": {
+          "burnt_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "14-day correction: median of charged \u2212 raw burnt over the stable shifts of the 14 days before, kg/tHM",
+            "title": "Burnt Offset"
+          },
+          "end": {
+            "description": "Window end (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "k_burnt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM",
+            "title": "K Burnt"
+          },
+          "k_burnt_raw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, raw: oxygen balance at the metered blast air and the analyser's \u03b7CO (GBC), kg/tHM",
+            "title": "K Burnt Raw"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged (dry), kg/tHM",
+            "title": "K Charged"
+          },
+          "label": {
+            "description": "Shift key, IST date or IST window end",
+            "title": "Label",
+            "type": "string"
+          },
+          "n_shifts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shifts behind the value, count",
+            "title": "N Shifts"
+          },
+          "stable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shift resolution: the shift passed the stability filter",
+            "title": "Stable"
+          },
+          "start": {
+            "description": "Window start (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hour resolution: complete, partial or failed",
+            "title": "Status"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "label"
+        ],
+        "title": "TraceSeriesRow",
+        "type": "object"
+      },
+      "TraceSettings": {
+        "properties": {
+          "history_start": {
+            "description": "First date the pipeline balances (IST)",
+            "title": "History Start",
+            "type": "string"
+          },
+          "min_shifts": {
+            "description": "Stable shifts the correction needs, count",
+            "title": "Min Shifts",
+            "type": "integer"
+          },
+          "window_days": {
+            "description": "Window of the correction, d",
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_days",
+          "min_shifts",
+          "history_start"
+        ],
+        "title": "TraceSettings",
+        "type": "object"
+      },
+      "TraceShift": {
+        "properties": {
+          "burnt_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "14-day correction: median of charged \u2212 raw burnt over the stable shifts of the 14 days before, kg/tHM",
+            "title": "Burnt Offset"
+          },
+          "end": {
+            "description": "Shift end (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "hm_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot metal of the shift, t",
+            "title": "Hm T"
+          },
+          "k_burnt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM",
+            "title": "K Burnt"
+          },
+          "k_burnt_raw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burnt coke, raw: oxygen balance at the metered blast air and the analyser's \u03b7CO (GBC), kg/tHM",
+            "title": "K Burnt Raw"
+          },
+          "k_charged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke charged (dry), kg/tHM",
+            "title": "K Charged"
+          },
+          "prod_th": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Production, t/h",
+            "title": "Prod Th"
+          },
+          "provisional": {
+            "description": "The DPR of the date was carried forward (not entered yet)",
+            "title": "Provisional",
+            "type": "boolean"
+          },
+          "shift": {
+            "description": "Shift letter: A 06-14, B 14-22, C 22-06 IST",
+            "title": "Shift",
+            "type": "string"
+          },
+          "skey": {
+            "description": "Shift key YYYY-MM-DD_A|B|C (IST date of the shift start)",
+            "title": "Skey",
+            "type": "string"
+          },
+          "stable": {
+            "description": "The shift passed the stability filter (calibration pool)",
+            "title": "Stable",
+            "type": "boolean"
+          },
+          "start": {
+            "description": "Shift start (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skey",
+          "shift",
+          "start",
+          "end",
+          "stable",
+          "provisional"
+        ],
+        "title": "TraceShift",
+        "type": "object"
+      },
+      "TraceSources": {
+        "properties": {
+          "dpr_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last DPR date entered (UTC, start of the IST day)",
+            "title": "Dpr End"
+          },
+          "hm_slag_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last hot metal / slag analysis (UTC)",
+            "title": "Hm Slag End"
+          },
+          "hourly_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last hour of the hourly dataset (UTC)",
+            "title": "Hourly End"
+          },
+          "online_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last 10-min bin of the process data (UTC)",
+            "title": "Online End"
+          }
+        },
+        "title": "TraceSources",
+        "type": "object"
+      },
+      "TraceSummary": {
+        "properties": {
+          "age_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time since the build, s",
+            "title": "Age S"
+          },
+          "available": {
+            "description": "A TRACE view has been built",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "built_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the build (UTC)",
+            "title": "Built At"
+          },
+          "correction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceCorrection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errors": {
+            "default": 0,
+            "description": "Shifts that could not be balanced, count",
+            "title": "Errors",
+            "type": "integer"
+          },
+          "feeds": {
+            "description": "Freshness of every source, as of feeds_at",
+            "items": {
+              "$ref": "#/components/schemas/TraceFeed"
+            },
+            "title": "Feeds",
+            "type": "array"
+          },
+          "feeds_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reference time of feeds: the build of the view, when it read the sources (UTC); the view's own age is age_s. Null before the first build",
+            "title": "Feeds At"
+          },
+          "hour_available": {
+            "description": "The twin store is configured (hourly windows)",
+            "title": "Hour Available",
+            "type": "boolean"
+          },
+          "job_kind": {
+            "default": "twin.trace",
+            "description": "Job kind that builds the view",
+            "title": "Job Kind",
+            "type": "string"
+          },
+          "latest_hour": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceLatestHour"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest twin window with a burnt coke"
+          },
+          "latest_shift": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceLatestShift"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest shift with a burnt coke"
+          },
+          "previous_shift": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceShift"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The shift before the latest"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shifts": {
+            "default": 0,
+            "description": "Balanced shifts in the view, count",
+            "title": "Shifts",
+            "type": "integer"
+          },
+          "sources": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceSources"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stale": {
+            "description": "No view, or older than stale_after_s",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_after_s": {
+            "default": 7200.0,
+            "description": "Age from which the view is stale, s",
+            "title": "Stale After S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "available",
+          "stale",
+          "hour_available"
+        ],
+        "title": "TraceSummary",
+        "type": "object"
+      },
       "TransitBand": {
         "properties": {
           "blend_wet_pct": {
@@ -9379,6 +10687,188 @@
         "summary": "Recent events",
         "tags": [
           "stream"
+        ]
+      }
+    },
+    "/api/trace": {
+      "get": {
+        "description": "The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the 14-day\ncorrection and the age of every source at the build of the view (the view's own age in age_s).",
+        "operationId": "trace_summary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "TRACE: latest shift and hour, correction, feeds",
+        "tags": [
+          "trace"
+        ]
+      }
+    },
+    "/api/trace/agreement": {
+      "get": {
+        "description": "Lin's CCC and the Bland-Altman bias and limits of agreement per averaging window (``transit.summary`` over every\nbalanced shift), with the per-shift and per-week pairs.",
+        "operationId": "trace_agreement",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceAgreement"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Burnt against charged coke",
+        "tags": [
+          "trace"
+        ]
+      }
+    },
+    "/api/trace/series": {
+      "get": {
+        "description": "Raw and calibrated burnt coke, the correction and charged coke for the windows ending in [start, end], oldest\nfirst.",
+        "operationId": "trace_series",
+        "parameters": [
+          {
+            "description": "hour (8-h windows), shift or day",
+            "in": "query",
+            "name": "resolution",
+            "required": true,
+            "schema": {
+              "description": "hour (8-h windows), shift or day",
+              "enum": [
+                "hour",
+                "shift",
+                "day"
+              ],
+              "title": "Resolution",
+              "type": "string"
+            }
+          },
+          {
+            "description": "First window end (default: end - 14 days)",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First window end (default: end - 14 days)",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Last window end (default: now)",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last window end (default: now)",
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceSeries"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Burnt coke per hour, shift or day",
+        "tags": [
+          "trace"
         ]
       }
     },

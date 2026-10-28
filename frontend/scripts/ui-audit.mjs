@@ -18,6 +18,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { traceFixture } from './trace-fixture.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -190,6 +191,17 @@ try {
 		auditQueries.push(query);
 		const offset = Number(query.offset ?? 0);
 		const body = { ...AUDIT_PAGE, offset, entries: offset > 0 ? [] : AUDIT_PAGE.entries };
+		return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+	});
+	// TRACE page (SV-1.10, #290): synthetic answers shaped as the API's response models.
+	const trace = traceFixture();
+	await context.route(/\/api\/trace(\/series|\/agreement)?(\?.*)?$/, (route) => {
+		const url = new URL(route.request().url());
+		const body = url.pathname.endsWith('/series')
+			? trace.series(url.searchParams)
+			: url.pathname.endsWith('/agreement')
+				? trace.agreement
+				: trace.summary;
 		return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 	});
 	const page = await context.newPage();

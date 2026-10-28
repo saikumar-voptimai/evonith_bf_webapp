@@ -78,19 +78,28 @@ def _pairs(T: pd.DataFrame, burnt: str, charged: str, stable_only: bool) -> pd.D
     return rows[cols].copy()
 
 
+def window_pairs(T: pd.DataFrame, w: int, *, burnt: str = "K_burnt", charged: str = "K_charged",
+                 weight: str = "hm_t", stable_only: bool = False, min_fraction: float = MIN_FRACTION) -> pd.DataFrame:
+    """The pairs :func:`window_agreement` compares for windows of ``w`` shifts: production-weighted means of burnt
+    and charged coke per non-overlapping window of the full shift grid (``accuracy.window_means`` rules), indexed by
+    the window's mid-time, with ``n`` (shifts present); windows without both values are left out."""
+
+    P = _pairs(T, burnt, charged, stable_only)
+    if P.empty:
+        return pd.DataFrame(columns=["n", burnt, charged])
+    return window_means(P, w, [burnt, charged], weight=weight, min_fraction=min_fraction).dropna(subset=[burnt, charged])
+
+
 def window_agreement(T: pd.DataFrame, windows: dict[str, int] | None = None, *, burnt: str = "K_burnt",
                      charged: str = "K_charged", weight: str = "hm_t", stable_only: bool = False,
                      min_fraction: float = MIN_FRACTION) -> pd.DataFrame:
-    """Burnt against charged coke per averaging window: production-weighted means over non-overlapping windows of
-    the full shift grid (``accuracy.window_means`` rules), then :func:`concordance` across the windows."""
+    """Burnt against charged coke per averaging window: :func:`window_pairs`, then :func:`concordance` across the
+    windows."""
 
-    P = _pairs(T, burnt, charged, stable_only)
     rows = []
     for label, w in (windows or WINDOWS).items():
-        if P.empty:
-            rows.append(dict(window=label, shifts=w, hours=w * SHIFT_H, **concordance([], [])))
-            continue
-        W = window_means(P, w, [burnt, charged], weight=weight, min_fraction=min_fraction).dropna(subset=[burnt, charged])
+        W = window_pairs(T, w, burnt=burnt, charged=charged, weight=weight, stable_only=stable_only,
+                         min_fraction=min_fraction)
         rows.append(dict(window=label, shifts=w, hours=w * SHIFT_H, **concordance(W[charged], W[burnt])))
     return pd.DataFrame(rows)
 

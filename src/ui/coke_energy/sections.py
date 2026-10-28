@@ -19,13 +19,12 @@ from ui.coke_energy.figures import (
     shift_label,
 )
 from utils.coke_energy.accuracy import WINDOWS, accuracy, rolling_mean, window_means
-from utils.coke_energy.freshness import format_age, format_limit
+from utils.coke_energy.freshness import format_age, format_limit, item_label as _item
 from utils.coke_energy.rist_diagram import RistShift
 
 KG = "kg/tHM"
 COKE_COLS = ["K_charged", "K_burnt", "K_obal", "K_energy"]
 SMOOTHING = {"Per shift": 1, "24 h": 3, "48 h": 6}
-_ASH_NAMES = {"coke": "Coke", "nutcoke": "Nut coke", "pci": "PCI"}
 # shift end, hours after the shift date
 _SHIFT_END_HOURS = {"A": 14, "B": 22, "C": 30}
 
@@ -46,17 +45,6 @@ def shift_window(row: pd.Series) -> tuple[pd.Timestamp, pd.Timestamp]:
 
 
 # --------------------------------------------------------------------------------------------- freshness
-def _item(row: Mapping, names: Mapping[str, str]) -> str:
-    material = row["material"]
-    if not material:
-        return row["label"]
-    if row["source"] == "ash_chemistry":
-        return f"{_ASH_NAMES.get(material, material)} ash"
-    what = {"rm_chemistry": "chemistry", "fines": "size", "rm_strength": "strength", "dust_basic": "Fe & carbon",
-            "dust_chemistry": "oxides"}.get(row["source"], row["label"])
-    return f"{names.get(material, material)} {what}"
-
-
 def stale_lines(assessed: pd.DataFrame, names: Mapping[str, str], feeds_only: bool = True) -> list[str]:
     """'Lloyds CLO chemistry: last 14 Oct 07:00 (35.9 h, limit 1 day)' for each source past its limit."""
 

@@ -130,6 +130,23 @@ def in_use_between(charged: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp
     return {m for m, v in totals.items() if v > 0}
 
 
+ASH_NAMES = {"coke": "Coke", "nutcoke": "Nut coke", "pci": "PCI"}
+_WHAT = {"rm_chemistry": "chemistry", "fines": "size", "rm_strength": "strength", "dust_basic": "Fe & carbon",
+         "dust_chemistry": "oxides"}
+
+
+def item_label(row: Mapping, names: Mapping[str, str]) -> str:
+    """Name of one assessed row: the source's label, or the material and what was measured ('Lloyds CLO chemistry',
+    'Coke ash'). ``names``: material code -> name (codes are shown when a name is missing)."""
+
+    material = row["material"]
+    if not material:
+        return row["label"]
+    if row["source"] == "ash_chemistry":
+        return f"{ASH_NAMES.get(material, material)} ash"
+    return f"{names.get(material, material)} {_WHAT.get(row['source'], row['label'])}"
+
+
 def format_age(age: pd.Timedelta | None) -> str:
     if age is None or pd.isna(age):
         return "no data"

@@ -553,6 +553,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * TRACE: latest shift and hour, correction, feeds
+         * @description The latest shift's burnt coke with the inputs of its oxygen balance, the latest hourly window, the 14-day
+         *     correction and the age of every source at the build of the view (the view's own age in age_s).
+         */
+        get: operations["trace_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trace/agreement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Burnt against charged coke
+         * @description Lin's CCC and the Bland-Altman bias and limits of agreement per averaging window (``transit.summary`` over every
+         *     balanced shift), with the per-shift and per-week pairs.
+         */
+        get: operations["trace_agreement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trace/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Burnt coke per hour, shift or day
+         * @description Raw and calibrated burnt coke, the correction and charged coke for the windows ending in [start, end], oldest
+         *     first.
+         */
+        get: operations["trace_series"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/twin/alarms": {
         parameters: {
             query?: never;
@@ -651,6 +714,154 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AgreementClosure */
+        AgreementClosure: {
+            /**
+             * Burnt T
+             * @description Total raw burnt coke, t
+             */
+            burnt_t?: number | null;
+            /**
+             * Charged T
+             * @description Total charged coke, t
+             */
+            charged_t?: number | null;
+            /**
+             * N
+             * @description Shifts with both raw burnt and charged coke, count
+             */
+            n: number;
+            /**
+             * Ratio
+             * @description Total raw burnt over total charged coke, dimensionless
+             */
+            ratio?: number | null;
+        };
+        /** AgreementPoint */
+        AgreementPoint: {
+            /**
+             * Burnt
+             * @description Burnt coke (calibrated), production-weighted, kg/tHM
+             */
+            burnt?: number | null;
+            /**
+             * Charged
+             * @description Charged coke, production-weighted, kg/tHM
+             */
+            charged?: number | null;
+            /**
+             * Diff
+             * @description Burnt − charged, kg/tHM
+             */
+            diff?: number | null;
+            /**
+             * Mean
+             * @description Mean of burnt and charged, kg/tHM
+             */
+            mean?: number | null;
+            /**
+             * N
+             * @description Shifts in the window, count
+             */
+            n: number;
+            /**
+             * T
+             * Format: date-time
+             * @description Mid-time of the window (UTC)
+             */
+            t: string;
+        };
+        /** AgreementSplit */
+        AgreementSplit: {
+            /**
+             * Floor Sd
+             * @description SD that does not fall with the window, kg/tHM
+             */
+            floor_sd?: number | null;
+            /**
+             * Random Sd
+             * @description Per-shift SD of random error (falls as 1/√W), kg/tHM
+             */
+            random_sd?: number | null;
+            /**
+             * Transit Sd
+             * @description Per-shift SD from coke in transit (falls as 1/W), kg/tHM
+             */
+            transit_sd?: number | null;
+        };
+        /** AgreementStats */
+        AgreementStats: {
+            /**
+             * Bias
+             * @description Mean of burnt − charged, kg/tHM
+             */
+            bias?: number | null;
+            /**
+             * Cb
+             * @description Bias correction factor C_b = CCC / r, dimensionless
+             */
+            cb?: number | null;
+            /**
+             * Ccc
+             * @description Lin's concordance correlation coefficient, dimensionless
+             */
+            ccc?: number | null;
+            /**
+             * Hours
+             * @description Length of the window, h
+             */
+            hours: number;
+            /**
+             * Loa Hi
+             * @description Upper limit of agreement, bias + 1.96 SD, kg/tHM
+             */
+            loa_hi?: number | null;
+            /**
+             * Loa Lo
+             * @description Lower limit of agreement, bias − 1.96 SD, kg/tHM
+             */
+            loa_lo?: number | null;
+            /**
+             * Mean Burnt
+             * @description Mean burnt coke over the windows, kg/tHM
+             */
+            mean_burnt?: number | null;
+            /**
+             * Mean Charged
+             * @description Mean charged coke over the windows, kg/tHM
+             */
+            mean_charged?: number | null;
+            /**
+             * N
+             * @description Windows compared, count
+             */
+            n: number;
+            /**
+             * R
+             * @description Pearson correlation, dimensionless
+             */
+            r?: number | null;
+            /**
+             * Sd
+             * @description Standard deviation of burnt − charged, kg/tHM
+             */
+            sd?: number | null;
+            /**
+             * Shifts
+             * @description Shifts per window, count
+             */
+            shifts: number;
+            /**
+             * Slope
+             * @description Deming slope of burnt on charged, dimensionless
+             */
+            slope?: number | null;
+            /**
+             * Window
+             * @description Averaging window, e.g. Shift (8 h), 1 week
+             */
+            window: string;
+        };
         /** AlarmClearedEvent */
         AlarmClearedEvent: {
             /**
@@ -3859,6 +4070,518 @@ export interface components {
              */
             type: "tool_result";
         };
+        /** TraceAgreement */
+        TraceAgreement: {
+            /**
+             * Built At
+             * @description Build of the view (UTC)
+             */
+            built_at?: string | null;
+            closure?: components["schemas"]["AgreementClosure"] | null;
+            /**
+             * Peak Lag H
+             * @description Lag of the correlation peak, burnt after charged, h
+             */
+            peak_lag_h?: number | null;
+            /**
+             * Points Shift
+             * @description Pairs per shift, oldest first
+             */
+            points_shift: components["schemas"]["AgreementPoint"][];
+            /**
+             * Points Week
+             * @description Pairs per week, oldest first
+             */
+            points_week: components["schemas"]["AgreementPoint"][];
+            /** @description Per shift (the window table's Shift (8 h) row) */
+            shift?: components["schemas"]["AgreementStats"] | null;
+            split: components["schemas"]["AgreementSplit"];
+            /**
+             * Table
+             * @description Every averaging window of transit.summary
+             */
+            table: components["schemas"]["AgreementStats"][];
+            /** @description Per week (the window table's 1 week row) */
+            week?: components["schemas"]["AgreementStats"] | null;
+        };
+        /** TraceCorrection */
+        TraceCorrection: {
+            /**
+             * Min Shifts
+             * @description Stable shifts the median needs, count
+             */
+            min_shifts: number;
+            /**
+             * N Shifts
+             * @description Stable shifts in the window, count
+             */
+            n_shifts: number;
+            /**
+             * Offset
+             * @description 14-day correction: median of charged − raw burnt over the stable shifts of the 14 days before, kg/tHM
+             */
+            offset?: number | null;
+            /**
+             * Pool
+             * @description The stable shifts of the window, oldest first
+             */
+            pool: components["schemas"]["TraceCorrectionShift"][];
+            /**
+             * Skey
+             * @description Shift the correction belongs to (the latest with one)
+             */
+            skey: string;
+            /**
+             * Window Days
+             * @description Length of the window, d
+             */
+            window_days: number;
+            /**
+             * Window End
+             * Format: date
+             * @description Date the window ends before, the shift's date (IST)
+             */
+            window_end: string;
+            /**
+             * Window Start
+             * Format: date
+             * @description First shift date of the window (IST)
+             */
+            window_start: string;
+        };
+        /** TraceCorrectionShift */
+        TraceCorrectionShift: {
+            /**
+             * Gap
+             * @description Charged − raw burnt coke, kg/tHM
+             */
+            gap?: number | null;
+            /**
+             * K Burnt Raw
+             * @description Burnt coke, raw: oxygen balance at the metered blast air and the analyser's ηCO (GBC), kg/tHM
+             */
+            k_burnt_raw?: number | null;
+            /**
+             * K Charged
+             * @description Coke charged (dry), kg/tHM
+             */
+            k_charged?: number | null;
+            /**
+             * Skey
+             * @description Shift key of a stable shift in the window
+             */
+            skey: string;
+            /**
+             * Start
+             * Format: date-time
+             * @description Shift start (UTC)
+             */
+            start: string;
+        };
+        /** TraceFeed */
+        TraceFeed: {
+            /**
+             * Age S
+             * @description Age of the last valid data point at the reference, s
+             */
+            age_s?: number | null;
+            /**
+             * Feeds Models
+             * @description A stale value changes the coke rates
+             */
+            feeds_models: boolean;
+            /**
+             * Item
+             * @description What the row covers, e.g. Lloyds CLO chemistry
+             */
+            item: string;
+            /**
+             * Last
+             * @description Last valid data point at or before the reference (UTC)
+             */
+            last?: string | null;
+            /**
+             * Limit S
+             * @description Freshness limit of the source, s
+             */
+            limit_s: number;
+            /**
+             * Material
+             * @description Material code ('' for a single-series source)
+             */
+            material: string;
+            /**
+             * Source
+             * @description Freshness source, e.g. online_10min, hm_slag, rm_chemistry
+             */
+            source: string;
+            /**
+             * Stale
+             * @description No data, or older than the limit: the value is carried forward
+             */
+            stale: boolean;
+            /**
+             * Used By
+             * @description Which result rests on the source
+             */
+            used_by: string;
+        };
+        /** TraceInput */
+        TraceInput: {
+            /**
+             * Digits
+             * @description Decimals to show, count
+             */
+            digits: number;
+            /**
+             * Key
+             * @description Input key, e.g. blast_air
+             */
+            key: string;
+            /**
+             * Label
+             * @description Name of the input
+             */
+            label: string;
+            /**
+             * Source
+             * @description Source of the value: a freshness source (online_10min, hourly_dataset, hm_slag), open_meteo or plant_rule
+             */
+            source: string;
+            /**
+             * Unit
+             * @description Unit of value, e.g. Nm³/tHM
+             */
+            unit: string;
+            /**
+             * Value
+             * @description Value in the shift, in the unit of the unit field
+             */
+            value?: number | null;
+        };
+        /** TraceLatestHour */
+        TraceLatestHour: {
+            /**
+             * Burnt Offset
+             * @description 14-day correction: median of charged − raw burnt over the stable shifts of the 14 days before, kg/tHM
+             */
+            burnt_offset?: number | null;
+            /**
+             * End
+             * Format: date-time
+             * @description Window end, a full hour (UTC)
+             */
+            end: string;
+            /**
+             * K Burnt
+             * @description Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM
+             */
+            k_burnt?: number | null;
+            /**
+             * K Burnt Raw
+             * @description Burnt coke, raw: oxygen balance at the metered blast air and the analyser's ηCO (GBC), kg/tHM
+             */
+            k_burnt_raw?: number | null;
+            /**
+             * K Charged
+             * @description Coke charged (dry), kg/tHM
+             */
+            k_charged?: number | null;
+            /**
+             * Label
+             * @description Shift key when the window is a shift, else the IST end time
+             */
+            label: string;
+            /**
+             * Start
+             * Format: date-time
+             * @description Window start (UTC): the 8 h before end
+             */
+            start: string;
+            /**
+             * Status
+             * @description complete, partial or failed
+             */
+            status?: string | null;
+        };
+        /** TraceLatestShift */
+        TraceLatestShift: {
+            /**
+             * Feeds
+             * @description Freshness of every source at the end of the shift
+             */
+            feeds: components["schemas"]["TraceFeed"][];
+            /**
+             * Inputs
+             * @description Inputs of the oxygen balance in the shift
+             */
+            inputs: components["schemas"]["TraceInput"][];
+            shift: components["schemas"]["TraceShift"];
+        };
+        /** TraceSeries */
+        TraceSeries: {
+            /**
+             * Built At
+             * @description Build of the view behind shift and day rows (UTC)
+             */
+            built_at?: string | null;
+            /**
+             * Count
+             * @description Rows, count
+             */
+            count: number;
+            /**
+             * End
+             * Format: date-time
+             * @description Last window end included (UTC)
+             */
+            end: string;
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "hour" | "shift" | "day";
+            /** Rows */
+            rows: components["schemas"]["TraceSeriesRow"][];
+            /**
+             * Start
+             * Format: date-time
+             * @description First window end included (UTC)
+             */
+            start: string;
+        };
+        /** TraceSeriesRow */
+        TraceSeriesRow: {
+            /**
+             * Burnt Offset
+             * @description 14-day correction: median of charged − raw burnt over the stable shifts of the 14 days before, kg/tHM
+             */
+            burnt_offset?: number | null;
+            /**
+             * End
+             * Format: date-time
+             * @description Window end (UTC)
+             */
+            end: string;
+            /**
+             * K Burnt
+             * @description Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM
+             */
+            k_burnt?: number | null;
+            /**
+             * K Burnt Raw
+             * @description Burnt coke, raw: oxygen balance at the metered blast air and the analyser's ηCO (GBC), kg/tHM
+             */
+            k_burnt_raw?: number | null;
+            /**
+             * K Charged
+             * @description Coke charged (dry), kg/tHM
+             */
+            k_charged?: number | null;
+            /**
+             * Label
+             * @description Shift key, IST date or IST window end
+             */
+            label: string;
+            /**
+             * N Shifts
+             * @description Shifts behind the value, count
+             */
+            n_shifts?: number | null;
+            /**
+             * Stable
+             * @description Shift resolution: the shift passed the stability filter
+             */
+            stable?: boolean | null;
+            /**
+             * Start
+             * Format: date-time
+             * @description Window start (UTC)
+             */
+            start: string;
+            /**
+             * Status
+             * @description Hour resolution: complete, partial or failed
+             */
+            status?: string | null;
+        };
+        /** TraceSettings */
+        TraceSettings: {
+            /**
+             * History Start
+             * @description First date the pipeline balances (IST)
+             */
+            history_start: string;
+            /**
+             * Min Shifts
+             * @description Stable shifts the correction needs, count
+             */
+            min_shifts: number;
+            /**
+             * Window Days
+             * @description Window of the correction, d
+             */
+            window_days: number;
+        };
+        /** TraceShift */
+        TraceShift: {
+            /**
+             * Burnt Offset
+             * @description 14-day correction: median of charged − raw burnt over the stable shifts of the 14 days before, kg/tHM
+             */
+            burnt_offset?: number | null;
+            /**
+             * End
+             * Format: date-time
+             * @description Shift end (UTC)
+             */
+            end: string;
+            /**
+             * Hm T
+             * @description Hot metal of the shift, t
+             */
+            hm_t?: number | null;
+            /**
+             * K Burnt
+             * @description Burnt coke, calibrated: raw + the 14-day correction (TRACE), kg/tHM
+             */
+            k_burnt?: number | null;
+            /**
+             * K Burnt Raw
+             * @description Burnt coke, raw: oxygen balance at the metered blast air and the analyser's ηCO (GBC), kg/tHM
+             */
+            k_burnt_raw?: number | null;
+            /**
+             * K Charged
+             * @description Coke charged (dry), kg/tHM
+             */
+            k_charged?: number | null;
+            /**
+             * Prod Th
+             * @description Production, t/h
+             */
+            prod_th?: number | null;
+            /**
+             * Provisional
+             * @description The DPR of the date was carried forward (not entered yet)
+             */
+            provisional: boolean;
+            /**
+             * Shift
+             * @description Shift letter: A 06-14, B 14-22, C 22-06 IST
+             */
+            shift: string;
+            /**
+             * Skey
+             * @description Shift key YYYY-MM-DD_A|B|C (IST date of the shift start)
+             */
+            skey: string;
+            /**
+             * Stable
+             * @description The shift passed the stability filter (calibration pool)
+             */
+            stable: boolean;
+            /**
+             * Start
+             * Format: date-time
+             * @description Shift start (UTC)
+             */
+            start: string;
+        };
+        /** TraceSources */
+        TraceSources: {
+            /**
+             * Dpr End
+             * @description Last DPR date entered (UTC, start of the IST day)
+             */
+            dpr_end?: string | null;
+            /**
+             * Hm Slag End
+             * @description Last hot metal / slag analysis (UTC)
+             */
+            hm_slag_end?: string | null;
+            /**
+             * Hourly End
+             * @description Last hour of the hourly dataset (UTC)
+             */
+            hourly_end?: string | null;
+            /**
+             * Online End
+             * @description Last 10-min bin of the process data (UTC)
+             */
+            online_end?: string | null;
+        };
+        /** TraceSummary */
+        TraceSummary: {
+            /**
+             * Age S
+             * @description Time since the build, s
+             */
+            age_s?: number | null;
+            /**
+             * Available
+             * @description A TRACE view has been built
+             */
+            available: boolean;
+            /**
+             * Built At
+             * @description Time of the build (UTC)
+             */
+            built_at?: string | null;
+            correction?: components["schemas"]["TraceCorrection"] | null;
+            /**
+             * Errors
+             * @description Shifts that could not be balanced, count
+             * @default 0
+             */
+            errors: number;
+            /**
+             * Feeds
+             * @description Freshness of every source, as of feeds_at
+             */
+            feeds?: components["schemas"]["TraceFeed"][];
+            /**
+             * Feeds At
+             * @description Reference time of feeds: the build of the view, when it read the sources (UTC); the view's own age is age_s. Null before the first build
+             */
+            feeds_at?: string | null;
+            /**
+             * Hour Available
+             * @description The twin store is configured (hourly windows)
+             */
+            hour_available: boolean;
+            /**
+             * Job Kind
+             * @description Job kind that builds the view
+             * @default twin.trace
+             */
+            job_kind: string;
+            /** @description Latest twin window with a burnt coke */
+            latest_hour?: components["schemas"]["TraceLatestHour"] | null;
+            /** @description Latest shift with a burnt coke */
+            latest_shift?: components["schemas"]["TraceLatestShift"] | null;
+            /** @description The shift before the latest */
+            previous_shift?: components["schemas"]["TraceShift"] | null;
+            settings?: components["schemas"]["TraceSettings"] | null;
+            /**
+             * Shifts
+             * @description Balanced shifts in the view, count
+             * @default 0
+             */
+            shifts: number;
+            sources?: components["schemas"]["TraceSources"] | null;
+            /**
+             * Stale
+             * @description No view, or older than stale_after_s
+             */
+            stale: boolean;
+            /**
+             * Stale After S
+             * @description Age from which the view is stale, s
+             * @default 7200
+             */
+            stale_after_s: number;
+        };
         /** TransitBand */
         TransitBand: {
             /**
@@ -5575,6 +6298,127 @@ export interface operations {
                 };
                 content: {
                     "application/json": (components["schemas"]["LiveStatusEvent"] | components["schemas"]["TwinSnapshotEvent"] | components["schemas"]["ForecastSiEvent"] | components["schemas"]["ForecastChargedCokeEvent"] | components["schemas"]["JobProgressEvent"] | components["schemas"]["JobDoneEvent"] | components["schemas"]["AlarmRaisedEvent"] | components["schemas"]["AlarmClearedEvent"] | components["schemas"]["HeartbeatEvent"])[];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    trace_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceSummary"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    trace_agreement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceAgreement"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    trace_series: {
+        parameters: {
+            query: {
+                /** @description hour (8-h windows), shift or day */
+                resolution: "hour" | "shift" | "day";
+                /** @description First window end (default: end - 14 days) */
+                start?: string | null;
+                /** @description Last window end (default: now) */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceSeries"];
                 };
             };
             /** @description Client error (problem+json) */
