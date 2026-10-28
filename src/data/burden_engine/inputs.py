@@ -2,7 +2,8 @@
 
 Both pages see the same yard: ore chemistry and stock come from ``EvonithBmoContextProvider`` (Neon lab tables and
 stock), prices / share bounds / selection / flux limits / fuel prices / slag limits from the operator's saved inputs
-(``bmo_operator_inputs.yml``). The pure functions turn those typed records into the engine's input dict; only
+(``services.operator_inputs``: the version in force in ``twin.operator_inputs``, ``bmo_operator_inputs.yml`` as seed
+and fallback; SV-3.1). The pure functions turn those typed records into the engine's input dict; only
 :func:`load_yard` does I/O.
 
 Engine material record: id, name, code, kind (sinter / ore / pellet), price (Rs/wet t), lo / hi (wet % of ferrous),
@@ -204,7 +205,7 @@ def build_engine_inputs(materials: Iterable[Mapping[str, Any]], fluxes: Iterable
         raise ValueError(f"fuel prices missing: {sorted(missing)}")
     if not any(m["selected"] for m in mats):
         raise ValueError("no ferrous material is selected, carried and in stock")
-    return dict(source="Blend Mix Optimiser yard (context provider + bmo_operator_inputs.yml)", materials=mats,
+    return dict(source="Blend Mix Optimiser yard (context provider + operator inputs)", materials=mats,
                 fluxes=fl, not_carried=left_out, fuel={k: float(v) for k, v in fuel.items()})
 
 
@@ -260,22 +261,31 @@ def load_charged_blend(materials: Iterable[Mapping[str, Any]], *, hours: float =
     return charged_blend(df, mats, hours=hours)
 
 
-def load_yard(cfg: Mapping[str, Any], *, prefs_path: str | Path = "src/config/bmo_operator_inputs.yml",
+def load_yard(cfg: Mapping[str, Any], *, prefs: Mapping[str, Any] | None = None,
               bmo_settings_path: str | Path = "src/config/setting_bmo.yml", provider: Any = None) -> dict[str, Any]:
     """Live yard from the BMO context provider (Neon chemistry + stock) and the operator's saved inputs.
 
-    Fluxes are page 9's catalogue (``setting_bmo.yml``) with the operator's saved prices and limits.
+    Fluxes are page 9's catalogue (``setting_bmo.yml``) with the operator's saved prices and limits. The operator
+    inputs are ``prefs`` when given, else the version in force from the provider (``get_operator_inputs``:
+    ``twin.operator_inputs`` in Neon, the YAML file as fallback, SV-3.1), the source page 9 and the API read.
 
-    Returns dict(materials=[...], fluxes=[...], fuel={...}, slag={...}, charging_saved={...}, warnings=[...])."""
+    Returns dict(materials=[...], fluxes=[...], fuel={...}, slag={...}, charging_saved={...}, warnings=[...],
+    operator_inputs={source, version, valid_from, author, reason})."""
     import yaml
 
-    from data.bmo.ore_editor_preferences import load_ore_editor_preferences
+    from services.operator_inputs import fallback_warning
 
     yard_cfg = dict(cfg.get("yard", {}))
-    prefs = load_ore_editor_preferences(repo_path(prefs_path))
     if provider is None:
         from data.bmo.context_provider import EvonithBmoContextProvider
         provider = EvonithBmoContextProvider()
+    provenance: dict[str, Any] = {"source": "given"}
+    if prefs is None:
+        reader = getattr(provider, "get_operator_inputs", None)
+        if not callable(reader):  # a provider without the accessor (tests): the same service
+            from services.operator_inputs import load_current as reader
+        current = reader()
+        prefs, provenance = current.inputs, current.provenance()
     mode = str(yard_cfg.get("chemistry_mode", "avg"))
     days = int(yard_cfg.get("chemistry_window_days", 30))
     ores, diag = provider.build_ore_inputs(mode=mode, window_days=days)
@@ -284,6 +294,9 @@ def load_yard(cfg: Mapping[str, Any], *, prefs_path: str | Path = "src/config/bm
     warnings = list(diag.get("warnings", []) if isinstance(diag, Mapping) else [])
     if not any(f.enabled for f in fluxes):
         warnings.append("No optimizable flux in setting_bmo.yml flux_inputs.")
+    stale_inputs = fallback_warning(provenance)  # the YAML file standing in for a twin store that failed
+    if stale_inputs:
+        warnings.append(stale_inputs)
     return dict(
         materials=yard_rows(ores, prefs, exclude_fallback=bool(yard_cfg.get("exclude_fallback_chemistry", True)),
                             k_rules=yard_cfg.get("k_rules")),
@@ -292,4 +305,5 @@ def load_yard(cfg: Mapping[str, Any], *, prefs_path: str | Path = "src/config/bm
         slag=slag_limits(prefs),
         charging_saved=saved_charging(prefs),
         warnings=warnings,
+        operator_inputs=provenance,
     )

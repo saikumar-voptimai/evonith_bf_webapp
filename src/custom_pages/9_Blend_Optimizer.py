@@ -31,18 +31,23 @@ from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_datase
 from data.bmo.dust_inputs import dust_caption, dust_cfg_with_live, load_dataset_dust_analysis
 from data.bmo.ore_editor_preferences import (
     apply_dust_preferences,
-    clear_dust_preferences,
     saved_dust_ids,
     apply_fuel_ash_preferences,
     apply_flux_preferences,
     apply_hm_chemistry_preferences,
     apply_model_input_preferences,
     apply_ore_editor_preferences,
-    load_ore_editor_preferences,
+)
+
+# Operator inputs: versioned in the twin store (Neon), the YAML file as seed and fallback (SV-3.1). The savers keep
+# the YAML savers' names, which the Sandbox refuses.
+from ui.bmo.operator_inputs import (
+    clear_dust_preferences,
+    inputs_token as _operator_inputs_token,
+    page_inputs as _operator_inputs_for_page,
     save_dust_preferences,
     save_fuel_ash_preferences,
     save_fuel_price_preferences,
-    save_flux_preferences,
     save_hm_chemistry_preferences,
     save_model_input_preferences,
     save_ore_editor_preferences,
@@ -620,9 +625,10 @@ def _cached_recent_active_pellet_ids(
     )
 
 
-@_data_cache(show_spinner=False)
-def _cached_operator_preferences(path: str, mtime_ns: int) -> dict[str, Any]:
-    return load_ore_editor_preferences(path)
+def _cached_operator_preferences(path: str, token: str) -> dict[str, Any]:
+    # Cached per version of the operator inputs (ui.bmo.operator_inputs), with a warning while the YAML file stands
+    # in for a twin store that failed; a frozen Sandbox replay substitutes it.
+    return _operator_inputs_for_page(path, token)
 
 
 def _refresh_static_dataset_if_needed(
@@ -2512,12 +2518,8 @@ runtime_cfg = build_runtime_config(
 )
 opt_cfg = runtime_cfg.get("optimizer", {})
 operator_preferences_path = _ore_preferences_path(bmo_cfg)
-try:
-    _pref_mtime_ns = Path(operator_preferences_path).stat().st_mtime_ns
-except OSError:
-    _pref_mtime_ns = 0
 operator_preferences = _cached_operator_preferences(
-    str(operator_preferences_path), int(_pref_mtime_ns)
+    str(operator_preferences_path), _operator_inputs_token(operator_preferences_path)
 )
 static_path, static_mtime_ns = _static_dataset_cache_token(bmo_cfg)
 # Live 1-hour-average plant tags win over static-CSV values (which lag and
@@ -3033,9 +3035,8 @@ if ore_inputs_applied or ore_inputs_saved:
     if ore_inputs_saved:
         try:
             saved_path = save_ore_editor_preferences(
-                operator_preferences_path, edited_df
+                operator_preferences_path, edited_df, flux_df=edited_flux_df
             )
-            save_flux_preferences(operator_preferences_path, edited_flux_df)
             st.success(f"Ore and flux inputs saved to {saved_path}.")
         except Exception as exc:  # noqa: BLE001
             st.error(f"Could not save ore inputs: {exc}")

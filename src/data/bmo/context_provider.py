@@ -2332,6 +2332,31 @@ class EvonithBmoContextProvider:
             "manual_blend": dict(self._last_manual_blend_diagnostics),
         }
 
+    def get_operator_inputs(self, at: datetime | None = None) -> Any:
+        """
+        Return the operator's saved inputs that complete this provider's data.
+
+        Prices, share bounds and availability of the ores (the mapping's values
+        in ``build_ore_inputs`` are only defaults), flux prices, stock and
+        limits, fuel prices and ash chemistry, slag targets and charging limits.
+        They come from ``services.operator_inputs`` (SV-3.1): the version in
+        force in Neon ``twin.operator_inputs``, ``bmo_operator_inputs.yml`` as
+        seed and fallback; page 9, page 11 and the API read the same source.
+
+        Args:
+             - at: datetime | None - Timezone-aware time of a past version; None for the version in force.
+
+        Returns:
+             - return OperatorInputs - The document (``inputs``) and where it came from, or None when no version
+               was valid at ``at``.
+        """
+
+        from services import operator_inputs
+
+        if at is None:
+            return operator_inputs.load_current()
+        return operator_inputs.load_at(at)
+
     def build_ore_inputs(
         self, mode: str = "latest", window_days: int | None = None
     ) -> tuple[list[OreInput], dict[str, Any]]:

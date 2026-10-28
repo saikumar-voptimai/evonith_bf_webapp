@@ -1,4 +1,11 @@
-"""Persistence helpers for BMO operator defaults."""
+"""Persistence helpers for BMO operator defaults.
+
+The ``build_*`` functions turn the page's editors into the document of ``bmo_operator_inputs.yml``, the ``merge_*``
+functions apply one section's save to a document (pure), the ``apply_*`` functions put saved values on fresh editors.
+Since SV-3.1 the document is versioned in Neon (``services.operator_inputs``; page 9 saves through
+``ui.bmo.operator_inputs`` with these merges); the ``save_*`` functions here write the YAML file itself, which stays
+the seed of the first version and the fallback without the twin store.
+"""
 
 from __future__ import annotations
 
@@ -166,13 +173,7 @@ def apply_hm_chemistry_preferences(
 def save_hm_chemistry_preferences(path: str | Path, values: dict[str, Any]) -> Path:
     """Persist the held slag-side HM chemistry and return the written path."""
 
-    pref_path = Path(path)
-    pref_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = load_ore_editor_preferences(pref_path)
-    payload.update(build_hm_chemistry_preferences(values))
-    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
-        yaml.safe_dump(payload, file, sort_keys=False)
-    return pref_path
+    return write_preferences_yaml(path, merge_hm_chemistry(load_ore_editor_preferences(Path(path)), values))
 
 
 def build_model_input_preferences(values: dict[str, Any]) -> dict[str, Any]:
@@ -402,6 +403,84 @@ def apply_dust_preferences(
     return out
 
 
+def merge_ore_editor(payload: dict[str, Any], editor_df: pd.DataFrame) -> dict[str, Any]:
+    """``payload`` with the ore editor's selection, prices and share bounds (the section is replaced)."""
+
+    out = dict(payload)
+    out.update(build_ore_editor_preferences(editor_df))
+    return out
+
+
+def merge_flux(payload: dict[str, Any], flux_df: pd.DataFrame) -> dict[str, Any]:
+    """``payload`` with the flux prices, stock and quantity bounds (the section is replaced)."""
+
+    out = dict(payload)
+    out.update(build_flux_preferences(flux_df))
+    return out
+
+
+def merge_fuel_ash(payload: dict[str, Any], fuel_ash_df: pd.DataFrame) -> dict[str, Any]:
+    """``payload`` with every editable Fuel Ash value (the section is replaced)."""
+
+    out = dict(payload)
+    out.update(build_fuel_ash_preferences(fuel_ash_df))
+    return out
+
+
+def merge_fuel_prices(payload: dict[str, Any], fuel_ash_df: pd.DataFrame) -> dict[str, Any]:
+    """``payload`` with the fuel prices only; saved rates and chemistry are kept."""
+
+    out = dict(payload)
+    fuel_section = dict(out.get("fuel_ash_editor") or {})
+    saved_rows = {k: dict(v or {}) for k, v in (fuel_section.get("rows") or {}).items()}
+    price_rows = build_fuel_price_preferences(fuel_ash_df)["fuel_ash_editor"]["rows"]
+    for fuel_id, price_values in price_rows.items():
+        saved_rows.setdefault(fuel_id, {}).update(price_values)
+    fuel_section["rows"] = saved_rows
+    out["fuel_ash_editor"] = fuel_section
+    return out
+
+
+def merge_dust(payload: dict[str, Any], dust_df: pd.DataFrame) -> dict[str, Any]:
+    """``payload`` with every editable BF Gas Dust value (the section is replaced)."""
+
+    out = dict(payload)
+    out.update(build_dust_preferences(dust_df))
+    return out
+
+
+def drop_dust(payload: dict[str, Any]) -> dict[str, Any]:
+    """``payload`` without saved dust rows: the page goes back to the DPR and the dust analyses."""
+
+    return {k: v for k, v in payload.items() if k != "dust_editor"}
+
+
+def merge_model_inputs(payload: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
+    """``payload`` with the slag targets and charging limits (the section is replaced)."""
+
+    out = dict(payload)
+    out.update(build_model_input_preferences(values))
+    return out
+
+
+def merge_hm_chemistry(payload: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
+    """``payload`` with the held slag-side hot-metal chemistry (the section is replaced)."""
+
+    out = dict(payload)
+    out.update(build_hm_chemistry_preferences(values))
+    return out
+
+
+def write_preferences_yaml(path: str | Path, payload: dict[str, Any]) -> Path:
+    """Write the operator-inputs document to the YAML file and return its path."""
+
+    pref_path = Path(path)
+    pref_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
+        yaml.safe_dump(payload, file, sort_keys=False)
+    return pref_path
+
+
 def load_ore_editor_preferences(path: str | Path) -> dict[str, Any]:
     """Load saved BMO ore editor preferences, returning empty prefs if absent."""
 
@@ -416,66 +495,31 @@ def load_ore_editor_preferences(path: str | Path) -> dict[str, Any]:
 def save_ore_editor_preferences(path: str | Path, editor_df: pd.DataFrame) -> Path:
     """Persist BMO ore editor preferences and return the written path."""
 
-    pref_path = Path(path)
-    pref_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = load_ore_editor_preferences(pref_path)
-    payload.update(build_ore_editor_preferences(editor_df))
-    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
-        yaml.safe_dump(payload, file, sort_keys=False)
-    return pref_path
+    return write_preferences_yaml(path, merge_ore_editor(load_ore_editor_preferences(Path(path)), editor_df))
 
 
 def save_flux_preferences(path: str | Path, flux_df: pd.DataFrame) -> Path:
     """Persist flux price/stock preferences and return the written path."""
 
-    pref_path = Path(path)
-    pref_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = load_ore_editor_preferences(pref_path)
-    payload.update(build_flux_preferences(flux_df))
-    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
-        yaml.safe_dump(payload, file, sort_keys=False)
-    return pref_path
+    return write_preferences_yaml(path, merge_flux(load_ore_editor_preferences(Path(path)), flux_df))
 
 
 def save_fuel_ash_preferences(path: str | Path, fuel_ash_df: pd.DataFrame) -> Path:
     """Persist all editable Fuel Ash inputs and return the written path."""
 
-    pref_path = Path(path)
-    pref_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = load_ore_editor_preferences(pref_path)
-    payload.update(build_fuel_ash_preferences(fuel_ash_df))
-    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
-        yaml.safe_dump(payload, file, sort_keys=False)
-    return pref_path
+    return write_preferences_yaml(path, merge_fuel_ash(load_ore_editor_preferences(Path(path)), fuel_ash_df))
 
 
 def save_fuel_price_preferences(path: str | Path, fuel_ash_df: pd.DataFrame) -> Path:
     """Persist only fuel prices, preserving saved rates and chemistry."""
 
-    pref_path = Path(path)
-    pref_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = load_ore_editor_preferences(pref_path)
-    fuel_section = payload.setdefault("fuel_ash_editor", {})
-    saved_rows = fuel_section.setdefault("rows", {})
-    price_rows = build_fuel_price_preferences(fuel_ash_df)["fuel_ash_editor"]["rows"]
-    for fuel_id, price_values in price_rows.items():
-        saved_row = saved_rows.setdefault(fuel_id, {})
-        saved_row.update(price_values)
-    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
-        yaml.safe_dump(payload, file, sort_keys=False)
-    return pref_path
+    return write_preferences_yaml(path, merge_fuel_prices(load_ore_editor_preferences(Path(path)), fuel_ash_df))
 
 
 def save_dust_preferences(path: str | Path, dust_df: pd.DataFrame) -> Path:
     """Persist all editable BF Gas Dust inputs and return the written path."""
 
-    pref_path = Path(path)
-    pref_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = load_ore_editor_preferences(pref_path)
-    payload.update(build_dust_preferences(dust_df))
-    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
-        yaml.safe_dump(payload, file, sort_keys=False)
-    return pref_path
+    return write_preferences_yaml(path, merge_dust(load_ore_editor_preferences(Path(path)), dust_df))
 
 
 def clear_dust_preferences(path: str | Path) -> Path:
@@ -484,10 +528,7 @@ def clear_dust_preferences(path: str | Path) -> Path:
     pref_path = Path(path)
     payload = load_ore_editor_preferences(pref_path)
     if "dust_editor" in payload:
-        payload.pop("dust_editor")
-        pref_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
-            yaml.safe_dump(payload, file, sort_keys=False)
+        write_preferences_yaml(pref_path, drop_dust(payload))
     return pref_path
 
 
@@ -501,10 +542,4 @@ def saved_dust_ids(preferences: dict[str, Any] | None) -> list[str]:
 def save_model_input_preferences(path: str | Path, values: dict[str, Any]) -> Path:
     """Persist BMO model input preferences and return the written path."""
 
-    pref_path = Path(path)
-    pref_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = load_ore_editor_preferences(pref_path)
-    payload.update(build_model_input_preferences(values))
-    with open(pref_path, "w", encoding="utf-8", newline="\n") as file:
-        yaml.safe_dump(payload, file, sort_keys=False)
-    return pref_path
+    return write_preferences_yaml(path, merge_model_inputs(load_ore_editor_preferences(Path(path)), values))

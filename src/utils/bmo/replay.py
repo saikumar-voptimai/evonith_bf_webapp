@@ -360,7 +360,8 @@ def page_substitutes(
 ) -> dict[str, Callable[[Any], Any]]:
     """Name -> function(original) -> replacement, applied as the sandbox page defines names.
 
-    Always: preference SAVES are refused (they write the file the live page reads).
+    Always: preference SAVES are refused (they write the operator inputs the live page,
+    the optimiser API and the worker read: twin.operator_inputs, or the YAML file).
     With a frozen context: data sources are answered from it.
     """
 
@@ -372,6 +373,7 @@ def page_substitutes(
         "save_fuel_ash_preferences",
         "save_dust_preferences",
         "save_hm_chemistry_preferences",
+        "clear_dust_preferences",
     ):
         subs[name] = lambda _orig: _refuse_save
 

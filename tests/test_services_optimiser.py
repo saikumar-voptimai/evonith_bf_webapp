@@ -19,7 +19,7 @@ CFG = {
 @pytest.fixture(autouse=True)
 def _clean():
     svc.clear()
-    st_loaders.yard.clear()
+    st_loaders.cached_yard.clear()
     st_loaders.run_mode.clear()
     yield
     svc.clear()

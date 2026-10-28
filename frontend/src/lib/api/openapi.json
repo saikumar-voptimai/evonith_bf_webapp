@@ -633,6 +633,256 @@
         "title": "DecisionRequest",
         "type": "object"
       },
+      "DustEditorInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DustInputRow"
+            },
+            "description": "Quantity and chemistry by dust id",
+            "title": "Rows",
+            "type": "object"
+          }
+        },
+        "title": "DustEditorInputs",
+        "type": "object"
+      },
+      "DustInputRow": {
+        "additionalProperties": false,
+        "properties": {
+          "al2o3_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Al\u2082O\u2083 in the dry dust, %",
+            "title": "Al2O3 Pct"
+          },
+          "caf2_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CaF\u2082 in the dry dust, %",
+            "title": "Caf2 Pct"
+          },
+          "cao_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CaO in the dry dust, %",
+            "title": "Cao Pct"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The dust is deducted from the burden balance",
+            "title": "Enabled"
+          },
+          "fe_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fe in the dry dust, %",
+            "title": "Fe Pct"
+          },
+          "k2o_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "K\u2082O in the dry dust, %",
+            "title": "K2O Pct"
+          },
+          "mgo_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MgO in the dry dust, %",
+            "title": "Mgo Pct"
+          },
+          "mn_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mn in the dry dust, %",
+            "title": "Mn Pct"
+          },
+          "moisture_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Moisture of the dust, %",
+            "title": "Moisture Pct"
+          },
+          "na2o_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Na\u2082O in the dry dust, %",
+            "title": "Na2O Pct"
+          },
+          "p_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Phosphorus in the dry dust, %",
+            "title": "P Pct"
+          },
+          "quantity_kg_per_charge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wet dust when rate_basis is kg_per_charge, kg/charge",
+            "title": "Quantity Kg Per Charge"
+          },
+          "rate_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "mt_per_day or kg_per_charge",
+            "title": "Rate Basis"
+          },
+          "s_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sulphur in the dry dust, %",
+            "title": "S Pct"
+          },
+          "sio2_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SiO\u2082 in the dry dust, %",
+            "title": "Sio2 Pct"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "manual: saved from the page",
+            "title": "Source"
+          },
+          "ti_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ti in the dry dust, %",
+            "title": "Ti Pct"
+          },
+          "wet_qty_mt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wet dust when rate_basis is mt_per_day, t/d",
+            "title": "Wet Qty Mt"
+          },
+          "zn_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Zn in the dry dust, %",
+            "title": "Zn Pct"
+          }
+        },
+        "title": "DustInputRow",
+        "type": "object"
+      },
       "FieldError": {
         "properties": {
           "loc": {
@@ -664,6 +914,76 @@
           "type"
         ],
         "title": "FieldError",
+        "type": "object"
+      },
+      "FluxEditorInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FluxInputRow"
+            },
+            "description": "Price, stock and bounds by flux id",
+            "title": "Rows",
+            "type": "object"
+          }
+        },
+        "title": "FluxEditorInputs",
+        "type": "object"
+      },
+      "FluxInputRow": {
+        "additionalProperties": false,
+        "properties": {
+          "max_qty_mt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper bound of the flux charged when it is optimised (none: the stock), t/d",
+            "title": "Max Qty Mt"
+          },
+          "min_qty_mt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower bound of the flux charged when it is optimised, t/d",
+            "title": "Min Qty Mt"
+          },
+          "price_rs_per_mt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Price per wet tonne, Rs/t",
+            "title": "Price Rs Per Mt"
+          },
+          "stock_mt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stock in the yard, t",
+            "title": "Stock Mt"
+          }
+        },
+        "title": "FluxInputRow",
         "type": "object"
       },
       "ForecastChargedCokeEvent": {
@@ -728,6 +1048,292 @@
         "title": "ForecastSiEvent",
         "type": "object"
       },
+      "FuelEditorInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FuelInputRow"
+            },
+            "description": "Price, rate and ash chemistry by fuel id (coke, nut_coke, pci)",
+            "title": "Rows",
+            "type": "object"
+          }
+        },
+        "title": "FuelEditorInputs",
+        "type": "object"
+      },
+      "FuelInputRow": {
+        "additionalProperties": false,
+        "properties": {
+          "al2o3_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Al\u2082O\u2083 in the ash, %",
+            "title": "Al2O3 Pct"
+          },
+          "alkali_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Alkalis in the ash, %",
+            "title": "Alkali Pct"
+          },
+          "ash_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ash of the fuel, %",
+            "title": "Ash Pct"
+          },
+          "cao_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CaO in the ash, %",
+            "title": "Cao Pct"
+          },
+          "chemistry_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "manual: saved from the page",
+            "title": "Chemistry Source"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The fuel's ash enters the slag balance",
+            "title": "Enabled"
+          },
+          "fe2o3_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fe\u2082O\u2083 in the ash, %",
+            "title": "Fe2O3 Pct"
+          },
+          "k2o_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "K\u2082O in the ash, %",
+            "title": "K2O Pct"
+          },
+          "mgo_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MgO in the ash, %",
+            "title": "Mgo Pct"
+          },
+          "mn_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "mn or mno: how mno_pct is given",
+            "title": "Mn Basis"
+          },
+          "mno_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mn or MnO in the ash (mn_basis), %",
+            "title": "Mno Pct"
+          },
+          "moisture_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Moisture (TM for coke and nut coke, IM for PCI), %",
+            "title": "Moisture Pct"
+          },
+          "na2o_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Na\u2082O in the ash, %",
+            "title": "Na2O Pct"
+          },
+          "p_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Phosphorus in the fuel, %",
+            "title": "P Pct"
+          },
+          "price_rs_per_mt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Price per wet tonne, Rs/t",
+            "title": "Price Rs Per Mt"
+          },
+          "rate_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Basis of the fuel rate",
+            "title": "Rate Basis"
+          },
+          "rate_kg_per_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fuel rate, kg/tHM",
+            "title": "Rate Kg Per Thm"
+          },
+          "s_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sulphur in the fuel, %",
+            "title": "S Pct"
+          },
+          "sio2_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SiO\u2082 in the ash, %",
+            "title": "Sio2 Pct"
+          },
+          "ti_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ti or tio2: how tio2_pct is given",
+            "title": "Ti Basis"
+          },
+          "tio2_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ti or TiO\u2082 in the ash (ti_basis), %",
+            "title": "Tio2 Pct"
+          },
+          "vm_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Volatile matter of the ash analysis, %",
+            "title": "Vm Pct"
+          }
+        },
+        "title": "FuelInputRow",
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "service": {
@@ -790,6 +1396,61 @@
           "data"
         ],
         "title": "HeartbeatEvent",
+        "type": "object"
+      },
+      "HotMetalChemistryInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "carbon_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Carbon in the hot metal held for the slag balance, %",
+            "title": "Carbon Pct"
+          },
+          "other_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Other elements in the hot metal held for the slag balance, %",
+            "title": "Other Pct"
+          },
+          "silicon_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Silicon in the hot metal held for the slag balance, %",
+            "title": "Silicon Pct"
+          },
+          "sulphur_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sulphur in the hot metal held for the slag balance, %",
+            "title": "Sulphur Pct"
+          }
+        },
+        "title": "HotMetalChemistryInputs",
         "type": "object"
       },
       "JobDoneData": {
@@ -1644,6 +2305,380 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "OperatorInputsDocument": {
+        "additionalProperties": false,
+        "description": "The operator inputs; a section left out is not set (the configured defaults apply).",
+        "properties": {
+          "dust_editor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DustEditorInputs"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "BF gas dust deducted from the burden balance"
+          },
+          "flux_editor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FluxEditorInputs"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fluxes: prices, stock and quantity bounds"
+          },
+          "fuel_ash_editor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FuelEditorInputs"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fuel prices, rates and ash chemistry"
+          },
+          "hot_metal_chemistry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HotMetalChemistryInputs"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal chemistry held for the slag balance"
+          },
+          "model_inputs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SlagChargingInputs"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag targets and charging limits"
+          },
+          "ore_editor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OreEditorInputs"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ferrous materials: availability, prices, bounds"
+          }
+        },
+        "title": "OperatorInputsDocument",
+        "type": "object"
+      },
+      "OperatorInputsSaved": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The instant the version was looked up for (UTC; null: now)",
+            "title": "At"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User who saved the version (seed: the YAML recorded as version 1)",
+            "title": "Author"
+          },
+          "changed": {
+            "description": "False when the request left the inputs as they were (no new version)",
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/OperatorInputsDocument",
+            "description": "The operator inputs (units in the field descriptions)"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Note saved with the version",
+            "title": "Note"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "seed",
+                  "streamlit",
+                  "api"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the version was saved",
+            "title": "Origin"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the YAML file is in force (source yaml)",
+            "title": "Reason"
+          },
+          "source": {
+            "description": "neon: a version of twin.operator_inputs; yaml: bmo_operator_inputs.yml (no version in force)",
+            "enum": [
+              "neon",
+              "yaml"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start of the validity (UTC)",
+            "title": "Valid From"
+          },
+          "valid_upto": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End of the validity (UTC); null for the current version",
+            "title": "Valid Upto"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Number of the version (1, 2, ...; null for the YAML file), count",
+            "title": "Version"
+          }
+        },
+        "required": [
+          "inputs",
+          "source",
+          "changed"
+        ],
+        "title": "OperatorInputsSaved",
+        "type": "object"
+      },
+      "OperatorInputsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "base_version": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The version the edit started from (GET's version; 0 when GET answered from the YAML file); another current version answers 409, count",
+            "title": "Base Version"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/OperatorInputsDocument",
+            "description": "Sections to save: a section given replaces the saved one, a section set to null is removed (the configured defaults apply), a section left out is kept"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason for the change, saved with the version",
+            "title": "Note"
+          }
+        },
+        "required": [
+          "inputs"
+        ],
+        "title": "OperatorInputsUpdate",
+        "type": "object"
+      },
+      "OperatorInputsView": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The instant the version was looked up for (UTC; null: now)",
+            "title": "At"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User who saved the version (seed: the YAML recorded as version 1)",
+            "title": "Author"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/OperatorInputsDocument",
+            "description": "The operator inputs (units in the field descriptions)"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Note saved with the version",
+            "title": "Note"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "seed",
+                  "streamlit",
+                  "api"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the version was saved",
+            "title": "Origin"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the YAML file is in force (source yaml)",
+            "title": "Reason"
+          },
+          "source": {
+            "description": "neon: a version of twin.operator_inputs; yaml: bmo_operator_inputs.yml (no version in force)",
+            "enum": [
+              "neon",
+              "yaml"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start of the validity (UTC)",
+            "title": "Valid From"
+          },
+          "valid_upto": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End of the validity (UTC); null for the current version",
+            "title": "Valid Upto"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Number of the version (1, 2, ...; null for the YAML file), count",
+            "title": "Version"
+          }
+        },
+        "required": [
+          "inputs",
+          "source"
+        ],
+        "title": "OperatorInputsView",
+        "type": "object"
+      },
       "OptimiserRunDetail": {
         "properties": {
           "certainty": {
@@ -2106,6 +3141,72 @@
           "finished_at"
         ],
         "title": "OptimiserRunSummary",
+        "type": "object"
+      },
+      "OreEditorInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/OreInputRow"
+            },
+            "description": "Price and share bounds by ore id",
+            "title": "Rows",
+            "type": "object"
+          },
+          "selected_ore_ids": {
+            "description": "Ferrous materials offered to the optimisers (availability), ids of bmo_ore_mapping.yml; empty: every material",
+            "items": {
+              "type": "string"
+            },
+            "title": "Selected Ore Ids",
+            "type": "array"
+          }
+        },
+        "title": "OreEditorInputs",
+        "type": "object"
+      },
+      "OreInputRow": {
+        "additionalProperties": false,
+        "properties": {
+          "max_share_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper bound of the wet share of the ferrous charge, %",
+            "title": "Max Share Pct"
+          },
+          "min_share_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower bound of the wet share of the ferrous charge, %",
+            "title": "Min Share Pct"
+          },
+          "price_rs_per_mt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Price per wet tonne, Rs/t",
+            "title": "Price Rs Per Mt"
+          }
+        },
+        "title": "OreInputRow",
         "type": "object"
       },
       "ParamStatsView": {
@@ -3691,6 +4792,133 @@
           "target_end"
         ],
         "title": "SiForecastPoint",
+        "type": "object"
+      },
+      "SlagChargingInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "charge_mass_mt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mass of one charge, t",
+            "title": "Charge Mass Mt"
+          },
+          "max_charges_per_hour": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charging capacity of the skips, charges/h",
+            "title": "Max Charges Per Hour"
+          },
+          "target_slag_al2o3_max_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper limit of Al\u2082O\u2083 in the slag, %",
+            "title": "Target Slag Al2O3 Max Pct"
+          },
+          "target_slag_basicity_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper limit of the slag CaO/SiO\u2082, dimensionless",
+            "title": "Target Slag Basicity Max"
+          },
+          "target_slag_basicity_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower limit of the slag CaO/SiO\u2082, dimensionless",
+            "title": "Target Slag Basicity Min"
+          },
+          "target_slag_mgo_al2o3_ratio_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower limit of MgO per Al\u2082O\u2083 charged, dimensionless",
+            "title": "Target Slag Mgo Al2O3 Ratio Min"
+          },
+          "target_slag_mgo_min_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower limit of MgO in the slag, %",
+            "title": "Target Slag Mgo Min Pct"
+          },
+          "target_slag_rate_kg_per_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper limit of the slag rate, kg/tHM",
+            "title": "Target Slag Rate Kg Per Thm"
+          },
+          "target_slag_t_basicity_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper limit of the slag (CaO + MgO)/SiO\u2082, dimensionless",
+            "title": "Target Slag T Basicity Max"
+          },
+          "target_slag_t_basicity_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower limit of the slag (CaO + MgO)/SiO\u2082, dimensionless",
+            "title": "Target Slag T Basicity Min"
+          }
+        },
+        "title": "SlagChargingInputs",
         "type": "object"
       },
       "SlotProblem": {
@@ -6158,6 +7386,118 @@
         "summary": "Cancel a job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/api/operator-inputs": {
+      "get": {
+        "description": "The version in force (the YAML file while the store holds none or cannot be reached), or the version valid at\n``at`` (404 before the first version, 503 without the store).",
+        "operationId": "operator_inputs_get_operator_inputs",
+        "parameters": [
+          {
+            "description": "A date (YYYY-MM-DD: the version in force at the end of that IST day) or an ISO 8601 time (without offset: IST); omitted: the version in force now",
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A date (YYYY-MM-DD: the version in force at the end of that IST day) or an ISO 8601 time (without offset: IST); omitted: the version in force now",
+              "title": "At"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorInputsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Operator inputs in force or at a date",
+        "tags": [
+          "operator_inputs"
+        ]
+      },
+      "put": {
+        "description": "Apply the sections to the version in force and save the result as the next version, with its audit row\n(``operator_inputs.update``, the changed values in the details). The first save records the YAML file as version 1.\nA request that changes nothing writes no version (``changed`` false). 409 when ``base_version`` is not the current\nversion, 422 when a section has values the optimisers cannot use.",
+        "operationId": "operator_inputs_put_operator_inputs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorInputsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorInputsSaved"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Save a new version of the operator inputs",
+        "tags": [
+          "operator_inputs"
         ]
       }
     },

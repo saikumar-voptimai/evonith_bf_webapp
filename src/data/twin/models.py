@@ -10,6 +10,7 @@
 | ``shift_report`` | Shift report (data, tables, LLM narrative) of a closed or the running shift | ``report.*`` |
 | ``alarm_event`` | Alarms raised and cleared (ω drift, model gap, stale source, job failure, lag) | twin and worker |
 | ``facts_version`` | Versioned overlay of the fact register with second-admin review | admin space (SV-4.2) |
+| ``operator_inputs`` | Optimiser inputs (prices, stock, availability, bounds), SCD-2 versions | page 9, API (SV-3.1) |
 | ``audit_log`` | Admin writes (with the values before and after) and plan decisions, append-only | API |
 
 Times are ``timestamptz`` in UTC. Columns queried by time range are indexed (``ix_<table>_<column>``). Values that are
@@ -18,7 +19,7 @@ kept in a JSON column (``JSONB`` on PostgreSQL, ``JSON`` on SQLite, which the ou
 
 The migration in ``alembic/twin/versions`` creates exactly these tables; ``tests/test_twin_store.py`` compares the two.
 Rows of ``shift_record``, ``plan_decision`` and ``audit_log`` cannot be updated or deleted: the migration installs a
-trigger that refuses it on PostgreSQL.
+trigger that refuses it on PostgreSQL. A version of ``operator_inputs`` can only be closed (``valid_upto`` set once).
 """
 
 from __future__ import annotations
@@ -78,6 +79,8 @@ FACTS_STATES = ("pending", "approved", "rejected")
 SHIFT_LETTERS = ("A", "B", "C")
 REPORT_KINDS = ("closed", "live")
 NARRATIVE_STATES = ("ok", "failed", "skipped")
+#: Where a version of the operator inputs was written: the YAML recorded as version 1, page 9, the API.
+OPERATOR_INPUT_ORIGINS = ("seed", "streamlit", "api")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -367,6 +370,47 @@ class FactsVersion(TwinBase):
     )
 
 
+class OperatorInputs(TwinBase):
+    """A version of the operator inputs of the Blend Mix Optimiser and the Burden & Fuel Optimiser, valid in
+    [``valid_from``, ``valid_upto``) (SCD-2; the current version has no ``valid_upto``).
+
+    ``inputs`` is the document of ``src/config/bmo_operator_inputs.yml``: ferrous selection, prices and share bounds;
+    flux prices, stock and quantity bounds; slag targets and charging limits; fuel prices and ash chemistry; held
+    hot-metal chemistry; dust inputs (units in the keys). A save closes the current version and opens the next one in
+    the same transaction as its ``audit_log`` row; on PostgreSQL a trigger refuses any other change and every delete.
+    """
+
+    __tablename__ = "operator_inputs"
+
+    id: Mapped[int] = mapped_column(BIG_ID, Identity(), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime]
+    #: End of the validity; null for the current version.
+    valid_upto: Mapped[datetime | None]
+    author: Mapped[str] = mapped_column(String(128))
+    #: ``seed`` (the YAML recorded as version 1), ``streamlit`` (page 9) or ``api``.
+    origin: Mapped[str] = mapped_column(String(16))
+    note: Mapped[str | None] = mapped_column(Text)
+    inputs: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=EMPTY_JSON)
+    #: SHA-256 of ``inputs`` in canonical JSON: a save that changes nothing writes no version.
+    content_hash: Mapped[str] = mapped_column(String(64))
+
+    __table_args__ = (
+        UniqueConstraint("version"),
+        CheckConstraint(_in("origin", OPERATOR_INPUT_ORIGINS), name="origin"),
+        CheckConstraint("valid_upto IS NULL OR valid_upto > valid_from", name="validity"),
+        Index("ix_operator_inputs_valid_from", "valid_from"),
+        # At most one current version.
+        Index(
+            "uq_operator_inputs_current",
+            text("(valid_upto IS NULL)"),
+            unique=True,
+            postgresql_where=text("valid_upto IS NULL"),
+            sqlite_where=text("valid_upto IS NULL"),
+        ),
+    )
+
+
 class AuditLog(TwinBase):
     """One admin write or plan decision: who, what, on which object, when, with the details of the change.
 
@@ -411,5 +455,6 @@ TIME_INDEXED = {
     "shift_report": ("shift_start", "generated_at"),
     "alarm_event": ("raised_at",),
     "facts_version": ("created_at",),
+    "operator_inputs": ("valid_from",),
     "audit_log": ("at",),
 }
