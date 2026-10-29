@@ -368,6 +368,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fm/conversations/{conversation_id}/datasets/{artifact_id}/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a dataset (CSV)
+         * @description The full DataFrame of a dataset artifact (the part shows only its first rows), while this process holds it.
+         */
+        get: operations["furnacemind_dataset_csv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fm/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -381,9 +401,52 @@ export interface paths {
          * Ask (answer streamed as text/event-stream)
          * @description Store the question, run page 7's agent on the conversation (the model call streamed; tools in a worker
          *     thread) and stream its progress. The answer is stored when the turn completes, also if the client disconnects.
-         *     One turn per conversation at a time.
+         *     One turn per conversation at a time. With ``skill`` the quick skill runs first in the turn thread and its prompt is
+         *     stored as the question (``message.user`` follows once it is stored).
          */
         post: operations["furnacemind_post_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fm/conversations/{conversation_id}/messages/{seq}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rate an answer
+         * @description The owner's rating (up / down, page 7's thumbs) and comment on one answer; a later save replaces it. Each save
+         *     writes its audit row (``fm.feedback``, the values before and after) in the same transaction.
+         */
+        put: operations["furnacemind_save_feedback"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fm/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Quick skills
+         * @description Page 7's quick skills: the active rows of the skills table, else the built-in ones (Unit Cost, Shift to Best,
+         *     Heatloads), with the text a click shows at page 7's default shift (IST).
+         */
+        get: operations["furnacemind_list_skills"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3064,6 +3127,12 @@ export interface components {
         /** DatasetPart */
         DatasetPart: {
             /**
+             * Artifact Id
+             * @description Key of the full DataFrame for the CSV download while the API process that ran the turn holds it (GET /api/fm/conversations/{id}/datasets/{artifact_id}/csv); empty before SV-5.2
+             * @default
+             */
+            artifact_id: string;
+            /**
              * Columns
              * @description Columns of the dataset, count
              */
@@ -3730,6 +3799,21 @@ export interface components {
              */
             verdict: string;
         };
+        /** FeedbackSave */
+        FeedbackSave: {
+            /**
+             * Comment
+             * @description What was right or wrong (optional)
+             * @default
+             */
+            comment: string;
+            /**
+             * Rating
+             * @description up: the answer was useful; down: it needs work
+             * @enum {string}
+             */
+            rating: "up" | "down";
+        };
         /** FieldError */
         FieldError: {
             /** Loc */
@@ -3920,6 +4004,32 @@ export interface components {
              */
             type: "error";
         };
+        /** FmFeedback */
+        FmFeedback: {
+            /**
+             * Author
+             * @description Username of the rater (the conversation's owner)
+             */
+            author: string;
+            /**
+             * Comment
+             * @description What was right or wrong with the answer
+             * @default
+             */
+            comment: string;
+            /**
+             * Rating
+             * @description Rating of the answer: up (useful) or down (needs work)
+             * @enum {string}
+             */
+            rating: "up" | "down";
+            /**
+             * Updated At
+             * Format: date-time
+             * @description UTC, time of the last save
+             */
+            updated_at: string;
+        };
         /** FmMessage */
         FmMessage: {
             /**
@@ -3933,9 +4043,11 @@ export interface components {
              * @description UTC
              */
             created_at: string;
+            /** @description The owner's feedback on an answer; null when not given */
+            feedback?: components["schemas"]["FmFeedback"] | null;
             /**
              * Meta
-             * @description Reasoning level, model status and error, duration_s (s), tool_calls (count)
+             * @description Reasoning level, model status and error, duration_s (s), tool_calls (count); a quick skill's question: skill (slug) and display (the text the chat shows instead of the prompt)
              */
             meta?: Record<string, unknown>;
             /**
@@ -3964,6 +4076,55 @@ export interface components {
              * @enum {string}
              */
             status: "complete" | "failed";
+        };
+        /** FmSkill */
+        FmSkill: {
+            /**
+             * Description
+             * @description What the skill does
+             * @default
+             */
+            description: string;
+            /**
+             * Display
+             * @description Text the chat shows for the click (the shift filled in)
+             */
+            display: string;
+            /**
+             * Name
+             * @description Button label
+             */
+            name: string;
+            /**
+             * Slug
+             * @description Key sent as ``skill`` to start a turn
+             */
+            slug: string;
+        };
+        /** FmSkillList */
+        FmSkillList: {
+            /**
+             * Shift Date
+             * Format: date
+             * @description IST date of the shift the shift skills compare (page 7's default)
+             */
+            shift_date: string;
+            /**
+             * Shift Label
+             * @description Letter of that shift: A 06:00-14:00, B 14:00-22:00, C 22:00-06:00 IST
+             */
+            shift_label: string;
+            /**
+             * Skills
+             * @description Active quick skills in page 7's order
+             */
+            skills?: components["schemas"]["FmSkill"][];
+            /**
+             * Source
+             * @description database: the furnace_mind.skills table; built_in: page 7's fallback skills
+             * @enum {string}
+             */
+            source: "database" | "built_in";
         };
         /** FmTokenEvent */
         FmTokenEvent: {
@@ -5450,7 +5611,8 @@ export interface components {
         MessageCreate: {
             /**
              * Content
-             * @description The question (Markdown)
+             * @description The question (Markdown); empty with a skill
+             * @default
              */
             content: string;
             /**
@@ -5458,6 +5620,11 @@ export interface components {
              * @description Reasoning profile of this turn (default: the conversation's)
              */
             reasoning_level?: ("Low" | "Medium" | "High") | null;
+            /**
+             * Skill
+             * @description Slug of a quick skill (GET /api/fm/skills) to run instead of a typed question; its prompt becomes the question
+             */
+            skill?: string | null;
         };
         /** ModelGaps */
         ModelGaps: {
@@ -10465,6 +10632,55 @@ export interface operations {
             };
         };
     };
+    furnacemind_dataset_csv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                /** @description artifact_id of the dataset part */
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The full DataFrame with its index (page 7's download) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Not held by this API process (restart, another process, or replaced since) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     furnacemind_post_message: {
         parameters: {
             query?: never;
@@ -10496,6 +10712,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Neither or both of content and skill, or a skill that is not active */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description The twin store or the agent (LLM, Qdrant settings) is not available */
             503: {
                 headers: {
@@ -10519,6 +10742,97 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    furnacemind_save_feedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                /** @description Position of the answer in the conversation, 1-based */
+                seq: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FmFeedback"];
+                };
+            };
+            /** @description No such conversation of the user, or message seq is not an answer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    furnacemind_list_skills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FmSkillList"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
                 };
             };
         };

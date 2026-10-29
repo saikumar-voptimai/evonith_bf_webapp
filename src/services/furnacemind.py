@@ -18,6 +18,17 @@ conversation in this process (the last ``STATE_CONVERSATIONS`` conversations); a
 that names an earlier dataset id fetches it again (the model is told the id is unknown). One turn per conversation
 at a time (409 otherwise).
 
+SV-5.2 (#313), for the SPA page:
+
+* quick skills (``list_skills``; a turn started with ``skill``): page 7's ``SkillRegistry`` over its ``SkillEngine``
+  (the database skills, else the built-in ones). The skill runs in the turn thread on the conversation's tool state;
+  its prompt is stored as the question (``meta.display`` the text the chat shows) and its context enters the system
+  prompt, as on page 7;
+* the full DataFrame of a dataset artifact as CSV (``dataset_csv``, page 7's ``to_csv(index=True)``) while this
+  process holds it (``artifact_id`` of the part; the newest ``FRAMES_PER_CONVERSATION`` per conversation);
+* the owner's feedback on an answer (``save_feedback``: rating up / down and a comment in ``twin.fm_feedback``, with
+  its audit row ``fm.feedback``).
+
 Imports of the agent stack (LangGraph, Plotly, pandas, the OpenRouter client, the tools) are deferred to the first
 turn: the API starts without them, and ``utils.settings`` (which validates the LLM and Qdrant settings when imported)
 is only read when a turn runs.
@@ -34,13 +45,13 @@ import uuid
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
-from data.twin.repositories import TwinStore
+from data.twin.repositories import Actor, TwinStore
 from services.twin_views import utc
 
 log = logging.getLogger(__name__)
@@ -61,6 +72,14 @@ PREVIEW_ROWS = 50
 PREVIEW_MAX_CELLS = 20_000
 #: Page 7's history window when ``utils.settings`` cannot be read (``MEMORY_SUMMARY_MESSAGE_WINDOW``).
 DEFAULT_HISTORY_WINDOW = 8
+#: DataFrames of dataset artifacts held per conversation for the CSV download (the newest ones).
+FRAMES_PER_CONVERSATION = 12
+#: Key of those DataFrames in the conversation's tool state.
+FRAMES_KEY = "fm_api_frames"
+#: Characters of a feedback comment.
+FEEDBACK_COMMENT_CHARS = 2_000
+#: Chat entries before a skill click that the skill-context retrieval reads (page 7: 3).
+SKILL_RECENT_MESSAGES = 3
 
 
 # ---------------------------------------------------------------------------------------------------------- views
@@ -105,6 +124,11 @@ class DatasetPreview(BaseModel):
 class DatasetPart(BaseModel):
     type: Literal["dataset"] = "dataset"
     dataset_id: str = Field("", description="Dataset id the tools return to the model")
+    artifact_id: str = Field(
+        "",
+        description="Key of the full DataFrame for the CSV download while the API process that ran the turn holds it "
+        "(GET /api/fm/conversations/{id}/datasets/{artifact_id}/csv); empty before SV-5.2",
+    )
     rows: int = Field(..., description="Rows of the dataset, count")
     columns: int = Field(..., description="Columns of the dataset, count")
     meta: dict[str, Any] = Field(default_factory=dict, description="Source, window and resampling of the dataset")
@@ -118,6 +142,13 @@ MessagePart = Annotated[
 ]
 
 
+class FmFeedback(BaseModel):
+    rating: Literal["up", "down"] = Field(..., description="Rating of the answer: up (useful) or down (needs work)")
+    comment: str = Field("", description="What was right or wrong with the answer")
+    author: str = Field(..., description="Username of the rater (the conversation's owner)")
+    updated_at: datetime = Field(..., description="UTC, time of the last save")
+
+
 class FmMessage(BaseModel):
     seq: int = Field(..., description="Position in the conversation, 1-based")
     role: Literal["user", "assistant"]
@@ -127,8 +158,11 @@ class FmMessage(BaseModel):
     model: str | None = Field(None, description="Model that answered")
     created_at: datetime = Field(..., description="UTC")
     meta: dict[str, Any] = Field(
-        default_factory=dict, description="Reasoning level, model status and error, duration_s (s), tool_calls (count)"
+        default_factory=dict,
+        description="Reasoning level, model status and error, duration_s (s), tool_calls (count); a quick skill's "
+        "question: skill (slug) and display (the text the chat shows instead of the prompt)",
     )
+    feedback: FmFeedback | None = Field(None, description="The owner's feedback on an answer; null when not given")
 
 
 class FmConversationSummary(BaseModel):
@@ -144,6 +178,22 @@ class FmConversationSummary(BaseModel):
 class FmConversation(FmConversationSummary):
     messages: list[FmMessage] = Field(default_factory=list, description="Every message, oldest first")
     running: bool = Field(False, description="True while a turn runs in this API process")
+
+
+class FmSkill(BaseModel):
+    slug: str = Field(..., description="Key sent as ``skill`` to start a turn")
+    name: str = Field(..., description="Button label")
+    description: str = Field("", description="What the skill does")
+    display: str = Field(..., description="Text the chat shows for the click (the shift filled in)")
+
+
+class FmSkillList(BaseModel):
+    skills: list[FmSkill] = Field(default_factory=list, description="Active quick skills in page 7's order")
+    source: Literal["database", "built_in"] = Field(
+        ..., description="database: the furnace_mind.skills table; built_in: page 7's fallback skills"
+    )
+    shift_date: date = Field(..., description="IST date of the shift the shift skills compare (page 7's default)")
+    shift_label: str = Field(..., description="Letter of that shift: A 06:00-14:00, B 14:00-22:00, C 22:00-06:00 IST")
 
 
 class FmUserMessageEvent(BaseModel):
@@ -203,7 +253,11 @@ def stream_frame(event: BaseModel) -> str:
     return f"event: {event.type}\ndata: {event.model_dump_json()}\n\n"  # type: ignore[attr-defined]
 
 
-def message_view(row: Any) -> FmMessage:
+def feedback_view(row: Any) -> FmFeedback:
+    return FmFeedback(rating=row.rating, comment=row.comment or "", author=row.author, updated_at=utc(row.updated_at))
+
+
+def message_view(row: Any, feedback: Any | None = None) -> FmMessage:
     return FmMessage(
         seq=row.seq,
         role=row.role,
@@ -213,6 +267,7 @@ def message_view(row: Any) -> FmMessage:
         model=row.model,
         created_at=utc(row.created_at),
         meta=dict(row.meta or {}),
+        feedback=None if feedback is None else feedback_view(feedback),
     )
 
 
@@ -228,10 +283,11 @@ def conversation_summary(row: Any) -> FmConversationSummary:
     )
 
 
-def conversation_view(row: Any, messages: Iterable[Any]) -> FmConversation:
+def conversation_view(row: Any, messages: Iterable[Any], feedback: Iterable[Any] = ()) -> FmConversation:
+    by_seq = {f.seq: f for f in feedback}
     return FmConversation(
         **conversation_summary(row).model_dump(),
-        messages=[message_view(m) for m in messages],
+        messages=[message_view(m, by_seq.get(m.seq)) for m in messages],
         running=is_running(str(row.id)),
     )
 
@@ -291,7 +347,7 @@ def figure_part(figure: Any) -> PlotlyPart:
     return PlotlyPart(figure=json.loads(text), bytes=size)
 
 
-def dataset_part(frame: Any, meta: Mapping[str, Any]) -> DatasetPart:
+def dataset_part(frame: Any, meta: Mapping[str, Any], *, artifact_id: str = "") -> DatasetPart:
     """Shape, metadata and the first rows of a DataFrame (page 7 shows its first 50 rows)."""
     n_columns = int(frame.shape[1])
     n_rows = max(1, min(PREVIEW_ROWS, PREVIEW_MAX_CELLS // max(1, n_columns)))
@@ -309,6 +365,7 @@ def dataset_part(frame: Any, meta: Mapping[str, Any]) -> DatasetPart:
     clean_meta = _jsonable(dict(meta))
     return DatasetPart(
         dataset_id=str(clean_meta.get("dataset_id") or ""),
+        artifact_id=artifact_id,
         rows=int(frame.shape[0]),
         columns=n_columns,
         meta=clean_meta,
@@ -334,6 +391,9 @@ class Dependencies:
     resources: Callable[[], Mapping[str, Any]]
     #: History window of page 7, entries.
     history_window: Callable[[], int]
+    #: Page 7's quick-skill registry (``SkillRegistry`` over ``SkillEngine``). On a skill turn ``system_prompt`` is
+    #: called with the keywords ``skill_id`` and ``skill_context``.
+    skills: Callable[[], Any] = field(default=lambda: _default_skills())
 
 
 def _default_llm(level: str) -> Any:
@@ -348,13 +408,16 @@ def _default_tools() -> list[dict[str, Any]]:
     return get_openai_tool_schemas()
 
 
-def _default_system_prompt() -> str:
-    """Page 7's prompt without the per-user layers (memory summary, feedback lessons, semantic memory, skills)."""
+def _default_system_prompt(*, skill_id: str | None = None, skill_context: str | None = None) -> str:
+    """Page 7's prompt without the per-user layers (memory summary, feedback lessons, semantic memory); on a skill
+    turn with the skill's context."""
     from agents.furnacemind import prompts
     from agents.furnacemind.context import SystemPromptContext
     from agents.furnacemind.turn import system_prompt
 
-    return system_prompt(SystemPromptContext(), tool_policy=prompts.TOOL_POLICY)
+    return system_prompt(
+        SystemPromptContext(), tool_policy=prompts.TOOL_POLICY, skill_id=skill_id, skill_context=skill_context
+    )
 
 
 #: A shared store that could not be built is built again on the first turn after this many seconds.
@@ -433,6 +496,25 @@ _default_resources = ResourceCache(
 )
 
 
+#: Page 7's skill repository (``furnace_mind.skills``), built once per process; absent without the database.
+_skill_repository = ResourceCache({"skill_repository": _relational("SkillRepository")})
+_SKILL_ENGINE: Any = None
+_SKILL_ENGINE_LOCK = threading.Lock()
+
+
+def _default_skills() -> Any:
+    """Page 7's registry: the database skills, else the built-in ones (``SkillRegistry.available_skills``)."""
+    global _SKILL_ENGINE
+    from agents.furnacemind.skill_registry import SkillRegistry
+    from agents.furnacemind.skills import SkillEngine
+
+    with _SKILL_ENGINE_LOCK:
+        if _SKILL_ENGINE is None:
+            _SKILL_ENGINE = SkillEngine()
+        engine = _SKILL_ENGINE
+    return SkillRegistry(engine=engine, repository=_skill_repository().get("skill_repository"))
+
+
 def _default_history_window() -> int:
     try:
         from utils.settings import settings
@@ -471,6 +553,41 @@ def use(deps: Dependencies | None) -> None:
         _DEPS = deps
     with _STATES_LOCK:
         _STATES.clear()
+
+
+_WARM_LOCK = threading.Lock()
+_WARM_STARTED = False
+#: Modules of the agent stack a turn imports (LangGraph, the tools with pandas and Plotly, the client, the prompt).
+AGENT_STACK = ("agents.furnace_tools", "agents.furnacemind.turn", "agents.llm.llm_client", "agents.furnacemind.context")
+
+
+def warm_up() -> threading.Thread | None:
+    """Import the agent stack in a background thread, once per process (the API's start, ``fm_warm_up``).
+
+    The imports are deferred so the API starts without them; the first turn after a start would otherwise wait for
+    them (4.4 s on the development laptop) before the model is called. Returns the thread, None when started before.
+    """
+    global _WARM_STARTED
+    with _WARM_LOCK:
+        if _WARM_STARTED:
+            return None
+        _WARM_STARTED = True
+
+    def work() -> None:
+        import importlib
+
+        started = time.monotonic()
+        try:
+            for name in AGENT_STACK:
+                importlib.import_module(name)
+        except Exception as exc:  # noqa: BLE001 - the first turn reports it (503) with the same cause
+            log.warning("FurnaceMind agent stack not loaded at start: %s: %s", type(exc).__name__, exc)
+        else:
+            log.info("FurnaceMind agent stack loaded in %.1f s", time.monotonic() - started)
+
+    thread = threading.Thread(target=work, name="furnacemind-warm-up", daemon=True)
+    thread.start()
+    return thread
 
 
 def default_reasoning_level() -> str:
@@ -558,7 +675,88 @@ def load_conversation(store: TwinStore, conversation_id: str) -> FmConversation 
     row = store.fm.get(conversation_id)
     if row is None:
         return None
-    return conversation_view(row, store.fm.messages(row.id))
+    return conversation_view(row, store.fm.messages(row.id), store.fm.feedback(row.id))
+
+
+def save_feedback(
+    store: TwinStore,
+    conversation_id: str,
+    seq: int,
+    actor: Actor,
+    *,
+    rating: str,
+    comment: str,
+    author_id: str | None = None,
+) -> FmFeedback:
+    """Store the owner's rating and comment on answer ``seq`` with its audit row (``NotFound`` without that answer)."""
+    row = store.fm.rate(
+        conversation_id,
+        seq,
+        actor,
+        rating=rating,
+        comment=comment.strip()[:FEEDBACK_COMMENT_CHARS],
+        author_id=author_id,
+    )
+    return feedback_view(row)
+
+
+# ----------------------------------------------------------------------------------------------- skills, datasets
+
+
+class UnknownSkill(ValueError):
+    """No active quick skill with this slug."""
+
+
+def default_shift() -> tuple[date, str]:
+    """Page 7's shift for the shift skills (``utils.shift_windows.last_completed_shift``, IST)."""
+    from utils.shift_windows import last_completed_shift
+
+    return last_completed_shift()
+
+
+def list_skills() -> FmSkillList:
+    """The quick skills page 7 shows above its chat input, with the text a click shows at the default shift."""
+    registry = dependencies().skills()
+    definitions = registry.available_skills()
+    shift_date, shift_label = default_shift()
+    return FmSkillList(
+        skills=[
+            FmSkill(
+                slug=d.slug,
+                name=d.name,
+                description=d.description or "",
+                display=registry.display_text(d, shift_date=shift_date, shift_label=shift_label),
+            )
+            for d in definitions
+        ],
+        source="built_in" if registry.using_fallback else "database",
+        shift_date=shift_date,
+        shift_label=shift_label,
+    )
+
+
+def _hold_frame(state: dict[str, Any], frame: Any, dataset_id: str) -> str:
+    """Keep ``frame`` in the conversation's tool state for the CSV download; returns its artifact id."""
+    artifact_id = uuid.uuid4().hex[:16]
+    with _STATES_LOCK:
+        frames: OrderedDict[str, tuple[Any, str]] = state.setdefault(FRAMES_KEY, OrderedDict())
+        frames[artifact_id] = (frame, dataset_id)
+        while len(frames) > FRAMES_PER_CONVERSATION:
+            frames.popitem(last=False)
+    return artifact_id
+
+
+def dataset_csv(conversation_id: str, artifact_id: str) -> tuple[str, str] | None:
+    """``(file name, CSV text)`` of a dataset artifact's full DataFrame (page 7: ``to_csv(index=True)``), or None when
+    this process does not hold it (another process ran the turn, a restart, or more than ``FRAMES_PER_CONVERSATION``
+    datasets since)."""
+    with _STATES_LOCK:
+        state = _STATES.get(conversation_id)
+        held = None if state is None else (state.get(FRAMES_KEY) or {}).get(artifact_id)
+    if held is None:
+        return None
+    frame, dataset_id = held
+    return f"{dataset_id or artifact_id}.csv", frame.to_csv(index=True)
 
 
 class _StreamObserver:
@@ -566,8 +764,9 @@ class _StreamObserver:
 
     wants_tokens = True
 
-    def __init__(self, emit: Callable[[BaseModel], None]) -> None:
+    def __init__(self, emit: Callable[[BaseModel], None], state: dict[str, Any] | None = None) -> None:
         self.emit = emit
+        self.state = state
         self.parts: list[BaseModel] = []
 
     def on_token(self, step: int, text: str) -> None:
@@ -585,11 +784,14 @@ class _StreamObserver:
 
     def on_artifact(self, artifact: Any) -> None:
         try:
-            part: PlotlyPart | DatasetPart = (
-                figure_part(artifact.value)
-                if artifact.kind == "figure"
-                else dataset_part(artifact.value, artifact.meta)
-            )
+            part: PlotlyPart | DatasetPart
+            if artifact.kind == "figure":
+                part = figure_part(artifact.value)
+            else:
+                held = ""
+                if self.state is not None:
+                    held = _hold_frame(self.state, artifact.value, str(artifact.meta.get("dataset_id") or ""))
+                part = dataset_part(artifact.value, artifact.meta, artifact_id=held)
         except Exception as exc:  # noqa: BLE001 - an artifact that cannot be serialised is left out, not the answer
             log.warning("FurnaceMind artifact %s not serialised: %s", artifact.kind, exc)
             return
@@ -602,11 +804,25 @@ class NotConfigured(RuntimeError):
 
 
 @dataclass
+class SkillTurn:
+    """A quick skill to run at the start of a turn (page 7's click): the registry, the skill and the shift."""
+
+    registry: Any
+    definition: Any
+    shift_date: date
+    shift_label: str
+    #: ``system_prompt`` dependency, called with ``skill_id`` and ``skill_context``.
+    system_prompt: Callable[..., str]
+
+
+@dataclass
 class TurnRequest:
-    """A turn ready to run: the conversation (reserved), its stored user message, the client and the prompt."""
+    """A turn ready to run: the conversation (reserved), its stored user message, the client and the prompt.
+
+    A skill turn has no user message yet: the skill writes the question in the turn thread (``skill``)."""
 
     conversation_id: str
-    user_message: Any
+    user_message: Any | None
     reasoning_level: str
     user_id: str | None
     llm: Any
@@ -614,6 +830,7 @@ class TurnRequest:
     system_prompt: str
     history_window: int
     resources: Mapping[str, Any]
+    skill: SkillTurn | None = None
 
 
 @dataclass
@@ -650,13 +867,16 @@ def begin_turn(
     content: str,
     reasoning_level: str | None,
     user_id: str | None,
+    skill: str | None = None,
     prepared: Callable[[str], _Prepared] = prepare,
 ) -> TurnRequest:
     """Reserve the conversation for one turn, prepare the agent and store the user message.
 
     Synchronous (agent start, database write): call it in a thread from async code. Raises ``Busy`` while a turn of
-    the conversation runs and ``NotConfigured`` when the agent cannot start (nothing is stored then). The reservation
-    ends with the turn (``run_turn_sync``), or here when the turn cannot begin.
+    the conversation runs, ``NotConfigured`` when the agent cannot start and ``UnknownSkill`` for a ``skill`` that is
+    not active (nothing is stored then). With ``skill`` (a slug of ``list_skills``) nothing is stored here: the skill
+    runs at the start of the turn and its prompt becomes the question. The reservation ends with the turn
+    (``run_turn_sync``), or here when the turn cannot begin.
     """
     key = str(conversation.id)
     with _RUNNING_LOCK:
@@ -665,8 +885,13 @@ def begin_turn(
         _RUNNING.add(key)
     level = reasoning_level or conversation.reasoning_level
     try:
+        skill_turn = _skill_turn(skill) if skill else None
         ready = prepared(level)
-        row = store.fm.append(conversation.id, role="user", content=content, meta={"reasoning_level": level})
+        row = (
+            None
+            if skill_turn is not None
+            else store.fm.append(conversation.id, role="user", content=content, meta={"reasoning_level": level})
+        )
     except BaseException:
         _release(key)
         raise
@@ -680,7 +905,24 @@ def begin_turn(
         system_prompt=ready.system_prompt,
         history_window=ready.history_window,
         resources=ready.resources,
+        skill=skill_turn,
     )
+
+
+def _skill_turn(slug: str) -> SkillTurn:
+    """The active skill ``slug`` (page 7's slug rules), at page 7's default shift."""
+    deps = dependencies()
+    try:
+        registry = deps.skills()
+        definitions = registry.available_skills()
+    except Exception as exc:  # noqa: BLE001 - the skill stack cannot load: reported as 503
+        raise NotConfigured(f"{type(exc).__name__}: {exc}") from exc
+    wanted = slug.strip().lower()
+    definition = next((d for d in definitions if d.slug == wanted), None)
+    if definition is None:
+        raise UnknownSkill(slug)
+    shift_date, shift_label = default_shift()
+    return SkillTurn(registry, definition, shift_date, shift_label, deps.system_prompt)
 
 
 def _release(conversation_id: str) -> None:
@@ -697,18 +939,73 @@ def turn_messages(store: TwinStore, conversation_id: str, *, system: str, window
     return [{"role": "system", "content": system}, *history_to_messages(history, max_messages=window)]
 
 
+class _SkillFailed(RuntimeError):
+    """The quick skill raised before its question was stored."""
+
+
+def start_skill(
+    store: TwinStore, request: TurnRequest, state: dict[str, Any], emit: Callable[[BaseModel], None]
+) -> str:
+    """Run the turn's quick skill as page 7 does on a click and return the turn's system prompt.
+
+    The skill's handler runs on the conversation's tool state (``SkillEngine`` fetches the data it pre-computes on);
+    its own chart and DataFrame are then dropped (page 7's ``_queue_skill``). Its prompt is stored as the question
+    (``meta``: skill, display, the context skills) and streamed as ``message.user``; the selected and the
+    retrieved skill context enter the system prompt (``SkillRegistry.turn_skill_context``).
+    """
+    from agents.furnacemind import tool_state as tools_state
+    from agents.furnacemind.turn import history_to_messages
+
+    skill = request.skill
+    assert skill is not None
+    try:
+        with tools_state.bind(state):
+            execution = skill.registry.execute_definition(
+                skill.definition, shift_date=skill.shift_date, shift_label=skill.shift_label
+            )
+        for key in (tools_state.FIGURE, tools_state.DATAFRAME, tools_state.DATAFRAME_META):
+            state.pop(key, None)
+        before = chat_entries(store.fm.messages(request.conversation_id, last=SKILL_RECENT_MESSAGES))
+        context = skill.registry.turn_skill_context(
+            query=execution.prompt,
+            recent_messages=history_to_messages(before, max_messages=SKILL_RECENT_MESSAGES),
+            selected_skill_id=execution.skill_id,
+            selected_skill_context=execution.skill_context,
+        )
+    except Exception as exc:
+        raise _SkillFailed(skill.definition.slug) from exc
+    meta: dict[str, Any] = {
+        "reasoning_level": request.reasoning_level,
+        "skill": execution.skill_id,
+        "display": execution.display,
+    }
+    ids, slugs = list(skill.registry.last_context_skill_ids), list(skill.registry.last_context_skill_slugs)
+    if ids or slugs:
+        meta.update(
+            exclude_from_memory=True,
+            skill_context_skill_ids=ids,
+            skill_context_skill_slugs=slugs,
+            skill_context_source="furnacemind_skills",
+        )
+    row = store.fm.append(request.conversation_id, role="user", content=execution.prompt, meta=meta)
+    emit(FmUserMessageEvent(conversation_id=request.conversation_id, message=message_view(row)))
+    return skill.system_prompt(skill_id=execution.skill_id, skill_context=context or execution.skill_context)
+
+
 def run_turn_sync(store: TwinStore, request: TurnRequest, emit: Callable[[BaseModel], None]) -> FmMessage | None:
     """Run the turn and store the answer; every event goes to ``emit`` (called from this thread). Releases the
-    conversation. Returns the stored answer, or None after an ``error`` event (the user message stays stored)."""
+    conversation. Returns the stored answer, or None after an ``error`` event (the user message stays stored).
+    A skill turn first runs the skill and stores its question (``start_skill``)."""
     started = time.monotonic()
     try:
         from agents.furnacemind.turn import run_turn
 
-        messages = turn_messages(
-            store, request.conversation_id, system=request.system_prompt, window=request.history_window
-        )
         state = tool_state(request.conversation_id, user_id=request.user_id, resources=request.resources)
-        observer = _StreamObserver(emit)
+        system = request.system_prompt
+        if request.skill is not None:
+            system = start_skill(store, request, state, emit)
+        messages = turn_messages(store, request.conversation_id, system=system, window=request.history_window)
+        observer = _StreamObserver(emit, state)
         result = run_turn(
             llm=request.llm,
             messages=messages,
@@ -747,7 +1044,11 @@ def run_turn_sync(store: TwinStore, request: TurnRequest, emit: Callable[[BaseMo
         from sqlalchemy.exc import OperationalError
 
         # As for a 500 problem response, the exception text stays in the log.
-        if isinstance(exc, OperationalError):
+        if isinstance(exc, _SkillFailed):
+            event = FmErrorEvent(
+                status=500, title="The skill could not start", detail="Nothing was stored; see the API log."
+            )
+        elif isinstance(exc, OperationalError):
             event = FmErrorEvent(
                 status=503, title="The twin store is not reachable", detail="The answer was not stored."
             )
@@ -764,8 +1065,8 @@ def start_turn(store: TwinStore, request: TurnRequest) -> AsyncIterator[str]:
 
     Call it from the event loop (an async route). The turn runs, is stored and releases the conversation whether or
     not the events are read: a client that goes away, even before the response starts, does not leave the
-    conversation reserved. The events are the stored user message, then the turn's events as they happen, ending
-    with the stored answer (``message.assistant``) or an ``error``.
+    conversation reserved. The events are the stored user message (on a skill turn once the skill has stored it),
+    then the turn's events as they happen, ending with the stored answer (``message.assistant``) or an ``error``.
     """
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[BaseModel | None] = asyncio.Queue()
@@ -785,9 +1086,10 @@ def start_turn(store: TwinStore, request: TurnRequest) -> AsyncIterator[str]:
     loop.run_in_executor(_pool(), work)
 
     async def frames() -> AsyncIterator[str]:
-        yield stream_frame(
-            FmUserMessageEvent(conversation_id=request.conversation_id, message=message_view(request.user_message))
-        )
+        if request.user_message is not None:
+            yield stream_frame(
+                FmUserMessageEvent(conversation_id=request.conversation_id, message=message_view(request.user_message))
+            )
         while True:
             event = await queue.get()
             if event is None:
@@ -813,7 +1115,10 @@ __all__ = [
     "Dependencies",
     "FmConversation",
     "FmConversationSummary",
+    "FmFeedback",
     "FmMessage",
+    "FmSkill",
+    "FmSkillList",
     "FmStreamEvent",
     "MessagePart",
     "NotConfigured",
@@ -822,26 +1127,34 @@ __all__ = [
     "RESOURCE_RETRY_S",
     "ReasoningLevel",
     "ResourceCache",
+    "SkillTurn",
     "TextPart",
     "ToolCallPart",
     "ToolResultPart",
     "TurnRequest",
+    "UnknownSkill",
     "begin_turn",
     "chat_entries",
     "create_conversation",
+    "dataset_csv",
     "dataset_part",
     "default_dependencies",
+    "default_shift",
     "figure_part",
     "forget_states",
     "is_running",
+    "list_skills",
     "load_conversation",
     "parse_events",
     "prepare",
     "recent_conversations",
     "run_turn_sync",
+    "save_feedback",
+    "start_skill",
     "start_turn",
     "stream_frame",
     "tool_state",
     "turn_messages",
     "use",
+    "warm_up",
 ]

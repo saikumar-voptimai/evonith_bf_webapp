@@ -36,6 +36,10 @@ class ApiSettings(SessionSettings):
 
     # Live events and jobs (SV-0.7 #276, SV-0.8 #277); redis_url in SessionSettings
     stream_heartbeat_s: float = Field(15.0, gt=0, le=60, description="Heartbeat interval of /api/stream")
+    # FurnaceMind (SV-5.2 #313)
+    fm_warm_up: bool = Field(
+        True, description="Load the FurnaceMind agent stack in a background thread at start (first turn without it)"
+    )
 
     @property
     def trusted_proxy_set(self) -> frozenset[str]:

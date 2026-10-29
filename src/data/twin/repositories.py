@@ -36,6 +36,7 @@ from data.twin.models import (
     AuditLog,
     FactsVersion,
     FmConversation,
+    FmFeedback,
     FmMessage,
     Job,
     OperatorInputs,
@@ -1010,10 +1011,12 @@ class AuditRepository(_Repository):
 
 
 class FurnaceMindRepository(_Repository):
-    """Conversations and messages of the FurnaceMind agent service (SV-5.1, #312).
+    """Conversations and messages of the FurnaceMind agent service (SV-5.1, #312), and the feedback on its answers
+    (SV-5.2, #313).
 
     ``append`` numbers the messages of a conversation 1, 2, ... in the same transaction that advances the
     conversation's ``message_count`` (row lock on PostgreSQL), so two writers cannot take the same number.
+    ``rate`` writes the feedback on an answer with its audit row in one transaction.
     """
 
     TITLE_CHARS = 200
@@ -1109,6 +1112,62 @@ class FurnaceMindRepository(_Repository):
             conversation.updated_at = now
             if role == "user" and not conversation.title:
                 conversation.title = " ".join(content.split())[: self.TITLE_CHARS]
+        return row
+
+    def feedback(self, conversation_id: uuid.UUID | str) -> list[FmFeedback]:
+        """The feedback on the conversation's answers, by ``seq``."""
+        key = uuid.UUID(str(conversation_id))
+        query = select(FmFeedback).where(FmFeedback.conversation_id == key).order_by(FmFeedback.seq)
+        with self._sessions() as session:
+            return list(session.scalars(query))
+
+    def rate(
+        self,
+        conversation_id: uuid.UUID | str,
+        seq: int,
+        actor: Actor,
+        *,
+        rating: str,
+        comment: str = "",
+        author_id: str | None = None,
+        at: datetime | None = None,
+    ) -> FmFeedback:
+        """Save the feedback on answer ``seq`` (created, or changed in place) with its audit row ``fm.feedback``
+        (the rating and comment before and after) in the same transaction. ``NotFound`` when the conversation has no
+        assistant message ``seq``."""
+        key = uuid.UUID(str(conversation_id))
+        now = _utc(at) or utcnow()
+        with self._sessions.begin() as session:
+            # Two saves at once: the conversation's row lock (PostgreSQL) makes the second wait, then change the row.
+            session.scalars(select(FmConversation.id).where(FmConversation.id == key).with_for_update()).one_or_none()
+            role = session.scalars(
+                select(FmMessage.role).where(FmMessage.conversation_id == key, FmMessage.seq == seq)
+            ).one_or_none()
+            if role != "assistant":
+                raise NotFound(f"no answer {seq} in FurnaceMind conversation {key}")
+            row = session.scalars(
+                select(FmFeedback).where(FmFeedback.conversation_id == key, FmFeedback.seq == seq)
+            ).one_or_none()
+            before = None if row is None else {"rating": row.rating, "comment": row.comment}
+            if row is None:
+                row = FmFeedback(conversation_id=key, seq=seq, author=actor.name, created_at=now)
+                session.add(row)
+            row.author = actor.name
+            row.author_id = author_id
+            row.rating = rating
+            row.comment = comment
+            row.updated_at = now
+            audit_row(
+                session,
+                actor,
+                "fm.feedback",
+                "fm_message",
+                f"{key}/{seq}",
+                {"conversation_id": str(key), "seq": seq},
+                now,
+                before=before,
+                after={"rating": rating, "comment": comment},
+            )
         return row
 
 

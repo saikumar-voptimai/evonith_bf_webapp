@@ -7,9 +7,12 @@ No Python changes required.
 Usage::
 
     engine = SkillEngine()
-    prompt = engine.optimise_prompt()              # stores fig in session_state
+    prompt = engine.optimise_prompt()              # stores fig in the tools' state
     prompt = engine.shift_to_best_prompt("2026-04-03", "B")
     prompt = engine.heatload_prompt()              # LLM fetches live data
+
+The engine reads and writes the tools' working state (``agents.furnacemind.tool_state.current()``): page 7's
+``st.session_state`` inside Streamlit, the conversation's mapping in the agent service (SV-5.2). No Streamlit import.
 """
 
 from __future__ import annotations
@@ -20,9 +23,9 @@ from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
-import streamlit as st
 import yaml
 
+from agents.furnacemind import tool_state
 from agents.furnacemind.prompts import HEATLOAD_REPORT_TEMPLATE
 from agents.furnace_tools import fetch_ml_data, load_static_shift_data
 
@@ -71,7 +74,7 @@ class SkillEngine:
     """Pre-computes skill analysis; returns numbered prompts ready for the LLM.
 
     The LLM receives only *numbers*, never code.  Charts are built here and
-    stored in ``st.session_state["fm_fig"]`` before the LLM is called.
+    stored in the tools' state (``fm_fig``) before the LLM is called.
     """
 
     def __init__(self) -> None:
@@ -96,7 +99,7 @@ class SkillEngine:
     def shift_to_best_prompt(self, shift_date: str, label: str) -> str:
         """Compare a specific shift against best-shift targets."""
         load_static_shift_data(shift_date=shift_date, shift_label=label)
-        shift_df: pd.DataFrame | None = st.session_state.get("fm_df")
+        shift_df: pd.DataFrame | None = tool_state.current().get("fm_df")
 
         if shift_df is None or shift_df.empty:
             return (
@@ -115,8 +118,8 @@ class SkillEngine:
 
         uc = col_mean(shift_df, self._uc_col)
         uc_benchmark = self._fetch_uc_benchmark()
-        # Restore shift df — benchmark fetch overwrites session_state["fm_df"]
-        st.session_state["fm_df"] = shift_df
+        # Restore shift df — benchmark fetch overwrites the state's "fm_df"
+        tool_state.current()["fm_df"] = shift_df
 
         t1_lines = self._format_tier1_lines(tier1_rows)
         t2_lines = self._tier2_lines_from_df(shift_df)
@@ -224,7 +227,7 @@ class SkillEngine:
     def _compute_optimise_data(self) -> tuple[dict, pd.DataFrame | None]:
         start_date = (date.today() - timedelta(days=30)).isoformat()
         fetch_ml_data(start_time=start_date)
-        df: pd.DataFrame | None = st.session_state.get("fm_df")
+        df: pd.DataFrame | None = tool_state.current().get("fm_df")
         if df is None or df.empty:
             return {"error": "ML data load failed"}, None
 
@@ -314,7 +317,7 @@ class SkillEngine:
     def _fetch_uc_benchmark(self) -> float | None:
         """Fetch 30-day ML history solely to compute the unit-cost benchmark percentile."""
         fetch_ml_data(start_time=(date.today() - timedelta(days=30)).isoformat())
-        df: pd.DataFrame | None = st.session_state.get("fm_df")
+        df: pd.DataFrame | None = tool_state.current().get("fm_df")
         if df is None or self._uc_col not in df.columns:
             return None
         s = df[self._uc_col].dropna()
@@ -323,7 +326,7 @@ class SkillEngine:
     # ── Figure builders ──────────────────────────────────────────────────────
 
     def _build_gap_figure(self, tier1_rows: list[dict], *, title: str) -> None:
-        """Build a current-vs-target bar chart and store it in session_state."""
+        """Build a current-vs-target bar chart and store it in the tools' state."""
         params = [r["param"] for r in tier1_rows]
         curr_vals = [r["current"] for r in tier1_rows]
         tgt_vals = [r["target"] for r in tier1_rows]
@@ -347,7 +350,7 @@ class SkillEngine:
             height=400,
             margin=dict(t=80),
         )
-        st.session_state["fm_fig"] = fig
+        tool_state.current()["fm_fig"] = fig
 
     # ── Prompt formatters ────────────────────────────────────────────────────
 

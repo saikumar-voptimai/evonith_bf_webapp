@@ -3774,6 +3774,12 @@
       },
       "DatasetPart": {
         "properties": {
+          "artifact_id": {
+            "default": "",
+            "description": "Key of the full DataFrame for the CSV download while the API process that ran the turn holds it (GET /api/fm/conversations/{id}/datasets/{artifact_id}/csv); empty before SV-5.2",
+            "title": "Artifact Id",
+            "type": "string"
+          },
           "columns": {
             "description": "Columns of the dataset, count",
             "title": "Columns",
@@ -5050,6 +5056,32 @@
         "title": "FamilyRow",
         "type": "object"
       },
+      "FeedbackSave": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "default": "",
+            "description": "What was right or wrong (optional)",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "rating": {
+            "description": "up: the answer was useful; down: it needs work",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rating"
+        ],
+        "title": "FeedbackSave",
+        "type": "object"
+      },
       "FieldError": {
         "properties": {
           "loc": {
@@ -5409,6 +5441,43 @@
         "title": "FmErrorEvent",
         "type": "object"
       },
+      "FmFeedback": {
+        "properties": {
+          "author": {
+            "description": "Username of the rater (the conversation's owner)",
+            "title": "Author",
+            "type": "string"
+          },
+          "comment": {
+            "default": "",
+            "description": "What was right or wrong with the answer",
+            "title": "Comment",
+            "type": "string"
+          },
+          "rating": {
+            "description": "Rating of the answer: up (useful) or down (needs work)",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "UTC, time of the last save",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rating",
+          "author",
+          "updated_at"
+        ],
+        "title": "FmFeedback",
+        "type": "object"
+      },
       "FmMessage": {
         "properties": {
           "content": {
@@ -5422,8 +5491,19 @@
             "title": "Created At",
             "type": "string"
           },
+          "feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FmFeedback"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The owner's feedback on an answer; null when not given"
+          },
           "meta": {
-            "description": "Reasoning level, model status and error, duration_s (s), tool_calls (count)",
+            "description": "Reasoning level, model status and error, duration_s (s), tool_calls (count); a quick skill's question: skill (slug) and display (the text the chat shows instead of the prompt)",
             "title": "Meta",
             "type": "object"
           },
@@ -5504,6 +5584,77 @@
           "created_at"
         ],
         "title": "FmMessage",
+        "type": "object"
+      },
+      "FmSkill": {
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "What the skill does",
+            "title": "Description",
+            "type": "string"
+          },
+          "display": {
+            "description": "Text the chat shows for the click (the shift filled in)",
+            "title": "Display",
+            "type": "string"
+          },
+          "name": {
+            "description": "Button label",
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "description": "Key sent as ``skill`` to start a turn",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "display"
+        ],
+        "title": "FmSkill",
+        "type": "object"
+      },
+      "FmSkillList": {
+        "properties": {
+          "shift_date": {
+            "description": "IST date of the shift the shift skills compare (page 7's default)",
+            "format": "date",
+            "title": "Shift Date",
+            "type": "string"
+          },
+          "shift_label": {
+            "description": "Letter of that shift: A 06:00-14:00, B 14:00-22:00, C 22:00-06:00 IST",
+            "title": "Shift Label",
+            "type": "string"
+          },
+          "skills": {
+            "description": "Active quick skills in page 7's order",
+            "items": {
+              "$ref": "#/components/schemas/FmSkill"
+            },
+            "title": "Skills",
+            "type": "array"
+          },
+          "source": {
+            "description": "database: the furnace_mind.skills table; built_in: page 7's fallback skills",
+            "enum": [
+              "database",
+              "built_in"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "shift_date",
+          "shift_label"
+        ],
+        "title": "FmSkillList",
         "type": "object"
       },
       "FmTokenEvent": {
@@ -8561,9 +8712,9 @@
         "additionalProperties": false,
         "properties": {
           "content": {
-            "description": "The question (Markdown)",
+            "default": "",
+            "description": "The question (Markdown); empty with a skill",
             "maxLength": 8000,
-            "minLength": 1,
             "title": "Content",
             "type": "string"
           },
@@ -8583,11 +8734,21 @@
             ],
             "description": "Reasoning profile of this turn (default: the conversation's)",
             "title": "Reasoning Level"
+          },
+          "skill": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slug of a quick skill (GET /api/fm/skills) to run instead of a typed question; its prompt becomes the question",
+            "title": "Skill"
           }
         },
-        "required": [
-          "content"
-        ],
         "title": "MessageCreate",
         "type": "object"
       },
@@ -18183,9 +18344,73 @@
         ]
       }
     },
+    "/api/fm/conversations/{conversation_id}/datasets/{artifact_id}/csv": {
+      "get": {
+        "description": "The full DataFrame of a dataset artifact (the part shows only its first rows), while this process holds it.",
+        "operationId": "furnacemind_dataset_csv",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "artifact_id of the dataset part",
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "description": "artifact_id of the dataset part",
+              "pattern": "^[0-9a-f]{1,32}$",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "The full DataFrame with its index (page 7's download)"
+          },
+          "404": {
+            "description": "Not held by this API process (restart, another process, or replaced since)"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Download a dataset (CSV)",
+        "tags": [
+          "furnacemind"
+        ]
+      }
+    },
     "/api/fm/conversations/{conversation_id}/messages": {
       "post": {
-        "description": "Store the question, run page 7's agent on the conversation (the model call streamed; tools in a worker\nthread) and stream its progress. The answer is stored when the turn completes, also if the client disconnects.\nOne turn per conversation at a time.",
+        "description": "Store the question, run page 7's agent on the conversation (the model call streamed; tools in a worker\nthread) and stream its progress. The answer is stored when the turn completes, also if the client disconnects.\nOne turn per conversation at a time. With ``skill`` the quick skill runs first in the turn thread and its prompt is\nstored as the question (``message.user`` follows once it is stored).",
         "operationId": "furnacemind_post_message",
         "parameters": [
           {
@@ -18258,6 +18483,9 @@
           "409": {
             "description": "A turn of this conversation is running"
           },
+          "422": {
+            "description": "Neither or both of content and skill, or a skill that is not active"
+          },
           "4XX": {
             "content": {
               "text/event-stream": {
@@ -18283,6 +18511,126 @@
           }
         },
         "summary": "Ask (answer streamed as text/event-stream)",
+        "tags": [
+          "furnacemind"
+        ]
+      }
+    },
+    "/api/fm/conversations/{conversation_id}/messages/{seq}/feedback": {
+      "put": {
+        "description": "The owner's rating (up / down, page 7's thumbs) and comment on one answer; a later save replaces it. Each save\nwrites its audit row (``fm.feedback``, the values before and after) in the same transaction.",
+        "operationId": "furnacemind_save_feedback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Position of the answer in the conversation, 1-based",
+            "in": "path",
+            "name": "seq",
+            "required": true,
+            "schema": {
+              "description": "Position of the answer in the conversation, 1-based",
+              "minimum": 1,
+              "title": "Seq",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FmFeedback"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such conversation of the user, or message seq is not an answer"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Rate an answer",
+        "tags": [
+          "furnacemind"
+        ]
+      }
+    },
+    "/api/fm/skills": {
+      "get": {
+        "description": "Page 7's quick skills: the active rows of the skills table, else the built-in ones (Unit Cost, Shift to Best,\nHeatloads), with the text a click shows at page 7's default shift (IST).",
+        "operationId": "furnacemind_list_skills",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FmSkillList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Quick skills",
         "tags": [
           "furnacemind"
         ]

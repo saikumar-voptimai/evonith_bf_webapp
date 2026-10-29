@@ -15,6 +15,7 @@
 | ``audit_log`` | Admin writes (with the values before and after) and plan decisions, append-only | API |
 | ``fm_conversation`` | FurnaceMind conversations of the agent service: owner, title, reasoning level | API (SV-5.1) |
 | ``fm_message`` | Their messages in order: text and parts (tool calls and results, figures, dataset previews) | API |
+| ``fm_feedback`` | The owner's rating (up or down) and comment on an answer, with its audit row | API (SV-5.2) |
 
 Times are ``timestamptz`` in UTC. Columns queried by time range are indexed (``ix_<table>_<column>``). Values that are
 plotted or filtered have typed columns with the unit in the name (``k_trace`` kg/tHM); everything else of a result is
@@ -87,6 +88,8 @@ COMMENTARY_STATES = ("ok", "failed")
 OPERATOR_INPUT_ORIGINS = ("seed", "streamlit", "api")
 FM_ROLES = ("user", "assistant")
 FM_MESSAGE_STATES = ("complete", "failed")
+#: Rating of a FurnaceMind answer: page 7's thumbs (polarity positive / negative).
+FM_RATINGS = ("up", "down")
 REASONING_LEVELS = ("Low", "Medium", "High")
 #: Server default of the JSON list columns (message parts).
 EMPTY_JSON_LIST = text("'[]'")
@@ -548,6 +551,33 @@ class FmMessage(TwinBase):
     )
 
 
+class FmFeedback(TwinBase):
+    """The conversation owner's feedback on one FurnaceMind answer (SV-5.2): rating ``up`` or ``down`` (page 7's
+    thumbs) and a comment. One row per answer, changed in place by a later save; every save writes its audit row
+    (``fm.feedback``, the values before and after) in the same transaction. Deleting the conversation deletes it.
+    """
+
+    __tablename__ = "fm_feedback"
+
+    id: Mapped[int] = mapped_column(BIG_ID, Identity(), primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(f"{SCHEMA}.fm_conversation.id", ondelete="CASCADE"))
+    #: ``seq`` of the rated assistant message.
+    seq: Mapped[int] = mapped_column(Integer)
+    author: Mapped[str] = mapped_column(String(128))
+    author_id: Mapped[str | None] = mapped_column(String(64))
+    rating: Mapped[str] = mapped_column(String(8))
+    comment: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "seq"),
+        CheckConstraint(_in("rating", FM_RATINGS), name="rating"),
+        CheckConstraint("seq >= 1", name="seq"),
+        Index("ix_fm_feedback_updated_at", "updated_at"),
+    )
+
+
 #: Tables whose rows are written once; the migration's trigger refuses UPDATE and DELETE on PostgreSQL.
 APPEND_ONLY = ("shift_record", "plan_decision", "audit_log")
 
@@ -566,4 +596,5 @@ TIME_INDEXED = {
     "audit_log": ("at",),
     "fm_conversation": ("updated_at",),
     "fm_message": ("created_at",),
+    "fm_feedback": ("updated_at",),
 }

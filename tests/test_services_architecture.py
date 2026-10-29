@@ -65,6 +65,9 @@ def test_no_streamlit_or_ui_import(path: Path) -> None:
         "agents.furnace_tools",
         "agents.furnacemind.turn",
         "agents.furnacemind.context",
+        # SV-5.2: page 7's quick skills the API runs (registry, engine).
+        "agents.furnacemind.skill_registry",
+        "agents.furnacemind.skills",
         "data.db",
         "data.twin",
         "api.main",
