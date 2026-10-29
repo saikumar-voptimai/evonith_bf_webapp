@@ -83,7 +83,7 @@ async def stream(
                 except TimeoutError:
                     event = _IDLE
                 if loop.time() >= check_at:
-                    if read_session(request) is None:
+                    if await asyncio.to_thread(read_session, request) is None:  # Redis check off the event loop
                         break
                     check_at = loop.time() + heartbeat_s
                 if event is _IDLE:

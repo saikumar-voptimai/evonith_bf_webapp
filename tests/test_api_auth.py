@@ -17,6 +17,7 @@ from api.security.limits import DenyList, FailureLimiter
 from api.security.tokens import TokenError, decode, encode
 from api.settings import ApiSettings
 from services.auth import IdentityUnavailable, Principal
+from services.session_tokens import verify_session
 
 SECRET = "s" * 48
 PASSWORDS = {"op": ("pw-op", "user"), "sup": ("pw-sup", "supervisor"), "adm": ("pw-adm", "admin")}
@@ -148,10 +149,24 @@ def test_sign_in_sets_a_strict_http_only_cookie(app) -> None:
     assert r.status_code == 200
     assert r.json()["user"] == {"username": "sup", "role": "supervisor", "user_id": "id-sup"}
     cookie = r.headers["set-cookie"].lower()
-    for part in ("bf_session=", "httponly", "secure", "samesite=strict", "path=/api", "max-age=43200"):
+    # path=/ (not /api): the Streamlit pages under /legacy sign in from the same cookie (SV-6.6, #320)
+    for part in ("bf_session=", "httponly", "secure", "samesite=strict", "path=/;", "max-age=43200"):
         assert part in cookie, part
+    assert "path=/api" not in cookie
     me = client.get("/api/auth/me")
     assert me.status_code == 200 and me.json()["user"]["role"] == "supervisor"
+
+
+def test_api_cookie_is_accepted_by_the_streamlit_rules(app) -> None:
+    """The cookie the SPA holds signs the Streamlit session in: same key, same rules (SV-6.6, #320)."""
+    state = app.state.auth
+    for username, (_, role) in PASSWORDS.items():
+        token = sign_in(app, username).cookies.get("bf_session")
+        session = verify_session(token, state.key, now=int(state.clock()), is_revoked=state.denylist.contains)
+        assert session is not None
+        assert session.principal == Principal(username=username, role=role, user_id=f"id-{username}")
+        assert session.expires_at == int(state.clock()) + 12 * 3600
+        assert verify_session(token, state.key, now=int(state.clock()) + 12 * 3600 + 31) is None
 
 
 def test_me_without_a_session_is_401(app) -> None:
@@ -188,9 +203,38 @@ def test_sign_out_revokes_the_token(app) -> None:
     assert with_token(app, token).get("/api/auth/me").status_code == 200  # the replay path works before sign-out
     r = client.post("/api/auth/logout")
     assert r.status_code == 204
-    assert 'bf_session=""' in r.headers["set-cookie"] or "max-age=0" in r.headers["set-cookie"].lower()
+    cleared = [c.lower() for c in r.headers.get_list("set-cookie")]
+    assert len(cleared) == 2 and all('bf_session=""' in c or "max-age=0" in c for c in cleared)
+    assert {c.split("path=")[1].split(";")[0] for c in cleared} == {"/", "/api"}  # the cookie of SV-0.4 as well
     assert with_token(app, token).get("/api/auth/me").status_code == 401
     assert client_for(app).post("/api/auth/logout").status_code == 204  # without a session as well
+
+
+def test_sign_out_is_shared_with_other_processes(app) -> None:
+    """Revocations reach the shared store (Redis when configured) and are read from it (SV-6.6, #320)."""
+
+    class Shared:
+        def __init__(self) -> None:
+            self.revoked: dict[str, float] = {}
+
+        def add(self, jti: str, expires_at: float) -> None:
+            self.revoked[jti] = expires_at
+
+        def contains(self, jti: str) -> bool:
+            return jti in self.revoked
+
+    state = app.state.auth
+    shared = Shared()
+    state.denylist = DenyList(clock=state.clock, shared=shared)
+    client = sign_in(app, "adm")
+    token = client.cookies.get("bf_session")
+    jti = decode(token, state.key, now=int(state.clock()))["jti"]
+    assert client.post("/api/auth/logout").status_code == 204
+    assert shared.revoked == {jti: int(state.clock()) + 12 * 3600}
+
+    other = sign_in(app, "op")  # revoked elsewhere (a Streamlit sign-out): refused here
+    shared.add(decode(other.cookies.get("bf_session"), state.key, now=int(state.clock()))["jti"], 0)
+    assert other.get("/api/auth/me").status_code == 401
 
 
 def test_token_signed_with_another_key_is_refused(app) -> None:

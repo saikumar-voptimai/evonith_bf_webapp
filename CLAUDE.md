@@ -934,6 +934,13 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `tests/test_api_auth.py` fails on a route without a role. Accounts come from Neon `identity.users` through
   `services.auth.NeonIdentityStore` (never seeds users). `BF_API_JWT_SECRET` (>= 32 characters) is required in prod.
   The SPA guards pages in `frontend/src/routes/+layout.ts` (session) and per section (`routes/admin/+layout.ts`).
+- Single sign-on with `/legacy` (SV-6.6): the session cookie has path `/`; `services/session_tokens.py` (no FastAPI,
+  no Streamlit) holds the token rules, `SessionSettings` (`BF_API_JWT_SECRET`, `BF_API_COOKIE_NAME`, `BF_REDIS_URL`)
+  and `RedisRevocations` (`twin:auth:revoked:<jti>`, shared by the API deny list and Streamlit when Redis is
+  configured). `utils.session.sync_api_session()` (called in `app.py` before the login gate) signs the Streamlit
+  session in from a valid cookie with the token's user and role, ends it when the token expires or is revoked, and
+  the Streamlit login form stays the fallback; a Streamlit sign-out revokes the API session. Tests
+  `tests/test_session_sso.py`, `tests/test_services_session_tokens.py`.
 - Admin space (SV-4.1): the views are `ADMIN_VIEWS` in `nav.ts`, listed by `shell/SectionNav`, one folder each under
   `routes/admin/<view>/`. Admin writes go through `services.audit.admin_write(store, actor, action, object_type,
   object_id)`: write through `write.session`, set `write.before` / `write.after` (`row_values`); one `twin.audit_log`
