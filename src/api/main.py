@@ -27,6 +27,7 @@ from api.request_context import RequestContextMiddleware, RequestIdFilter
 from api.routers import (
     admin,
     auth,
+    bmo,
     forge,
     furnacemind,
     jobs,
@@ -122,6 +123,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(operator_inputs.router)
     app.include_router(furnacemind.router)
     app.include_router(strata.router)
+    app.include_router(bmo.router)
     if settings.static_dir is not None and (settings.static_dir / "200.html").is_file():
         _mount_spa(app, settings.static_dir)
     return app

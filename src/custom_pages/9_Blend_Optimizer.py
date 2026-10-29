@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import copy
 import logging
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from collections.abc import Mapping
@@ -26,18 +25,10 @@ from config.config_loader import load_config
 from data.bmo import EvonithBmoContextProvider
 from data.bmo.si_forecast_context import LiveSiliconForecastSource
 from services import bmo as bmo_service
+from services import bmo_case as case_service
 from services import forecasts as forecast_service
-from data.bmo.basicity_defaults import derive_basicity_bounds_from_static_dataset
-from data.bmo.dust_inputs import dust_caption, dust_cfg_with_live, load_dataset_dust_analysis
-from data.bmo.ore_editor_preferences import (
-    apply_dust_preferences,
-    saved_dust_ids,
-    apply_fuel_ash_preferences,
-    apply_flux_preferences,
-    apply_hm_chemistry_preferences,
-    apply_model_input_preferences,
-    apply_ore_editor_preferences,
-)
+from data.bmo.dust_inputs import dust_caption, dust_cfg_with_live
+from data.bmo.ore_editor_preferences import saved_dust_ids
 
 # Operator inputs: versioned in the twin store (Neon), the YAML file as seed and fallback (SV-3.1). The savers keep
 # the YAML savers' names, which the Sandbox refuses.
@@ -57,12 +48,7 @@ from domain.optimization_runtime import build_runtime_config
 from ui.streamlit_fragments import fragment, rerun_fragment
 from ui.bmo import (
     apply_bmo_styles,
-    apply_fuel_prices,
     build_dust_editor_df,
-    build_flux_editor_df,
-    build_fuel_ash_editor_df,
-    build_ore_editor_df,
-    fuel_prices_from_editor,
     render_blend_metrics,
     render_blend_table,
     render_coke_correction_breakdown,
@@ -82,29 +68,24 @@ from ui.bmo import (
 from utils.bmo import (
     FuelUnitCostModelService,
     OreInput,
-    load_coke_correction_settings,
     validate_selected_pellet_inputs,
 )
 from ui.bmo.editor_inputs import (
     dust_inputs_from_editor,
-    float_from_row,
     flux_inputs_from_editor,
     fuel_ash_inputs_from_editor,
     slag_balance_settings_from_editor,
 )
 from utils.bmo.constraints import (
     DEFAULT_NUT_COKE_RATE_KG_PER_THM,
-    max_ibrm_flux_capacity_mt,
 )
 from utils.bmo.charged_coke.bmo import (
     ChargedCokePrediction,
-    response_settings as charged_response_settings,
 )
 from utils.bmo.charged_coke.deployments import active_bundle as active_charged_bundle
 from utils.bmo.charged_coke.service import ChargedCokeEngine
 from ui.bmo.charged_coke import render_panel as render_charged_panel
 from ui.bmo.si_forecast import render_forecast as render_si_furnace_forecast
-from utils.bmo.types import oxide_pct_from_basis
 from utils.bmo.si_forecast.deployments import active_bundle as active_si_bundle
 from utils.bmo.si_forecast.service import (
     SiliconForecastService,
@@ -115,7 +96,6 @@ from utils.bmo.pci_anchoring import (
     MODEL_PCI_MAX,
     MODEL_PCI_MIN,
 )
-from utils.bmo.fuel_rates import get_recent_fuel_input_rates
 from utils.session import is_admin, is_logged_in, is_supervisor
 
 if not is_logged_in():
@@ -302,151 +282,40 @@ def _static_dataset_cache_token(bmo_cfg: dict[str, Any]) -> tuple[str, int]:
 def _dust_analysis_from_static_csv(
     static_path: str, mtime_ns: int, window_days: int
 ) -> dict[str, dict[str, Any]]:
-    """Dust-catcher and GCP dust analyses (DUST_1 / DUST_2) from the hourly dataset."""
+    """Dust-catcher and GCP dust analyses (DUST_1 / DUST_2) from the hourly dataset
+    (``services.bmo_case.read_dust_analysis``)."""
     if mtime_ns <= 0:
         return {}
-    try:
-        return load_dataset_dust_analysis(static_path, window_days=window_days)
-    except Exception:  # noqa: BLE001 - the configured chemistry remains
-        return {}
+    return case_service.read_dust_analysis(static_path, window_days)
 
 
 @_data_cache(show_spinner=False, ttl=600)
 def _recent_fuel_rates_from_static_csv(
     static_path: str, mtime_ns: int
 ) -> dict[str, float | str]:
-    path = Path(static_path)
-    if not path.exists() or mtime_ns <= 0:
+    """Latest coke / nut coke / PCI rates of the hourly dataset
+    (``services.bmo_case.read_recent_fuel_rates_static``)."""
+    if mtime_ns <= 0:
         return {}
-    header = pd.read_csv(path, nrows=0)
-    wanted = [
-        "PCI_KG/THM",
-        "ACTUALKG/THM.",
-        "ACTUALKG/THM",
-        "NUTCOKE_CALC_THM",
-        "NUTCOKE_CALC_KG_THM",
-        "NUTCOKE_CALC_MT",
-        "nutcoke_prime_mt",
-        "COKE RATE KG/THM",
-        "coke_rate_kg_per_thm",
-        "coke_rate_kg_thm",
-        "coke_rate",
-        "PRODUCTIONTONNESPERHR",
-        "PRODUCTIONTONNESPERHR.",
-        "production_tonnes_per_hr",
-    ]
-    columns = [column for column in wanted if column in set(header.columns)]
-    if not columns:
-        return {}
-    df = pd.read_csv(path, usecols=columns)
-    return get_recent_fuel_input_rates(process_context=None, history_df=df)
+    return case_service.read_recent_fuel_rates_static(static_path)
 
 
 @_data_cache(show_spinner=False, ttl=600)
 def _live_process_snapshot() -> dict[str, float]:
-    """Blast, top-gas and shell-cooling tags for the Layer 2 energy balance.
+    """Blast, top-gas and shell-cooling tags for the Layer 2 energy balance, 1-h
+    averages (``services.bmo_case.read_live_process_snapshot``); {} when InfluxDB
+    is unavailable, and the caller then says the layer is unavailable."""
 
-    Layer 2 needs the CURRENT operating point: what the blast is doing now, what
-    the top gas analysis reads, and how much heat the staves are shedding. All
-    of it is one-hour-averaged so a single bad scan cannot move a
-    recommendation. Returns an empty dict on any failure, and the caller then
-    tells the operator the layer is unavailable rather than guessing.
-    """
-
-    wanted = (
-        "hot_blast_vol_nm3h",
-        "hot_blast_temp",
-        "hot_blast_press",
-        "oxygen_enrichment_pct",
-        "top_press_avg",
-        "steam_injection",
-        "co_pct",
-        "co2_pct",
-        "h2_pct",
-        "top_temp_avg",
-        # PCI must come from the live tag, never from the Fuel Ash box. The box
-        # is operator-editable and exists for SLAG estimation; the energy
-        # balance solves coke around whatever PCI it is given, so a stale figure
-        # there lands on the coke rate at roughly 0.86 kg per kg.
-        "coal_rate_actual_value",
-        "oxygen_flow",
-        "production_per_hour",
-    )
-    try:
-        from furnace_data.influx.online import fetch_online_df
-
-        df = fetch_online_df(
-            selected_measurements=["process_params", "heatload_delta_t"],
-            time_range="last 1 hour",
-            window_by="15 minutes",
-            column_naming="field",
-        )
-    except Exception as exc:  # noqa: BLE001 - network/auth failures fall back
-        log.warning("Live process snapshot unavailable: %s", exc)
-        return {}
-    if df is None or df.empty:
-        return {}
-
-    out: dict[str, float] = {}
-    for field in wanted:
-        if field in df.columns:
-            value = pd.to_numeric(df[field], errors="coerce").mean()
-            if pd.notna(value):
-                out[field] = float(value)
-
-    # Stave heat load: the tags are already GJ/hr (plant confirmation, 15 Oct
-    # 2026), so they are summed with no conversion - see energy_balance.yml.
-    quad = [f"heat_load_r{r}_q{q}" for r in range(6, 11) for q in range(1, 5)]
-    have = [c for c in quad if c in df.columns]
-    if have:
-        total_gj = df[have].apply(pd.to_numeric, errors="coerce").sum(axis=1).mean()
-        if pd.notna(total_gj) and 2.0 <= float(total_gj) <= 12.0:
-            out["shell_loss_gj_per_hr"] = float(total_gj)
-    return out
+    return case_service.read_live_process_snapshot()
 
 
 @_data_cache(show_spinner=False, ttl=600)
 def _recent_fuel_rates_live() -> dict[str, float | str]:
-    """Live coke / nut coke / PCI rates from InfluxDB, averaged over the last hour.
+    """Live coke / nut coke / PCI rates from InfluxDB, 1-h averages
+    (``services.bmo_case.read_recent_fuel_rates_live``); {} on a fetch failure, so
+    the static-CSV rates are used."""
 
-    The plant's ``process_params`` tags are the authoritative current rates
-    (the static dataset lags and has to derive nut coke from charged MT, which
-    was measured ~22 kg/THM above the live ``nut_coke_rate`` tag). PCI swings
-    widely between 15-minute windows, so a 1-hour average is used for all three.
-    Returns an empty dict on any fetch failure so callers fall back to the
-    static-CSV rates.
-    """
-
-    field_to_rate_key = {
-        "coke_rate": "coke_rate_kg_thm",
-        "nut_coke_rate": "nut_coke_rate_kg_thm",
-        "coal_rate_actual_value": "pci_rate_kg_thm",
-    }
-    try:
-        from furnace_data.influx.online import fetch_online_df
-
-        df = fetch_online_df(
-            selected_measurements=["process_params"],
-            time_range="last 1 hour",
-            window_by="15 minutes",
-            column_naming="field",
-        )
-    except Exception as exc:  # noqa: BLE001 - network/auth issues fall back to static
-        log.warning("BMO live fuel-rate fetch failed; using static CSV: %s", exc)
-        return {}
-
-    rates: dict[str, float | str] = {}
-    for field, rate_key in field_to_rate_key.items():
-        if field not in df.columns:
-            continue
-        values = pd.to_numeric(df[field], errors="coerce").dropna()
-        values = values[values > 0]
-        if values.empty:
-            continue
-        rates[rate_key] = float(values.mean())
-        prefix = rate_key.removesuffix("_rate_kg_thm")
-        rates[f"{prefix}_source"] = f"influx_1h_avg.{field}"
-    return rates
+    return case_service.read_recent_fuel_rates_live()
 
 
 @_data_cache(show_spinner=False, ttl=600)
@@ -518,7 +387,7 @@ def _model_input_defaults_from_static_csv(
 ) -> dict[str, float]:
     if mtime_ns <= 0:
         return {}
-    return derive_basicity_bounds_from_static_dataset(static_path, window_days=30)
+    return case_service.read_model_input_defaults(static_path)
 
 
 # --- Cached offline-source reads -------------------------------------------
@@ -864,60 +733,6 @@ def _clear_bmo_results() -> None:
         st.session_state.pop(key, None)
 
 
-def _fuel_ash_cfg_with_recent_rates(
-    fuel_ash_cfg: list[dict[str, Any]],
-    fuel_rates: dict[str, float | str],
-    fuel_analysis: Mapping[str, Mapping[str, float]] | None = None,
-) -> list[dict[str, Any]]:
-    rate_keys = {
-        "coke": "coke_rate_kg_thm",
-        "nut_coke": "nut_coke_rate_kg_thm",
-        "pci": "pci_rate_kg_thm",
-    }
-    rows: list[dict[str, Any]] = []
-    for item in fuel_ash_cfg or []:
-        row = dict(item)
-        fuel_id = str(row.get("fuel_id", "")).strip()
-        rate_key = rate_keys.get(fuel_id)
-        rate = fuel_rates.get(rate_key or "")
-        if rate is not None:
-            row["rate_kg_per_thm"] = float(rate)
-            if fuel_id == "nut_coke":
-                # The live/default nut-coke tag is the base 70 kg/THM quantity;
-                # its TM is added later to produce the wet charge quantity.
-                row["add_moisture_to_rate"] = True
-        analysis = (fuel_analysis or {}).get(fuel_id, {})
-        for field in ("moisture_pct", "vm_pct"):
-            value = analysis.get(field)
-            if value is not None:
-                row[field] = float(value)
-        rows.append(row)
-    return rows
-
-
-def _fuel_ash_df_with_pinned_rates(
-    fuel_ash_df: pd.DataFrame, fuel_rates: Mapping[str, Any]
-) -> pd.DataFrame:
-    """Pin nut coke and PCI to the effective operator/live rates."""
-
-    out = fuel_ash_df.copy()
-    if "fuel_id" not in out.columns or "rate_kg_per_thm" not in out.columns:
-        return out
-
-    nut_rate = fuel_rates.get("nut_coke_rate_kg_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM)
-    pinned = {"nut_coke": max(0.0, float(nut_rate))}
-    pci_rate = fuel_rates.get("pci_rate_kg_thm")
-    if pci_rate is not None and (
-        float(pci_rate) > 0.0 or fuel_rates.get("pci_source") == "operator override"
-    ):
-        pinned["pci"] = max(0.0, float(pci_rate))
-
-    ids = out["fuel_id"].astype(str).str.strip().str.lower()
-    for fuel_id, rate in pinned.items():
-        out.loc[ids == fuel_id, "rate_kg_per_thm"] = float(rate)
-    return out
-
-
 def _render_pinned_fuel_rates(
     fuel_ash_df: pd.DataFrame, fuel_rates: Mapping[str, Any]
 ) -> None:
@@ -946,6 +761,16 @@ def _pci_override_kg_thm() -> float | None:
 
     if st.session_state.get("bmo_pci_override_on"):
         override = st.session_state.get("bmo_pci_override_kg")
+        if override is not None:
+            return float(override)
+    return None
+
+
+def _nut_coke_override_kg_thm() -> float | None:
+    """The operator's nut-coke override (kg/THM) when it is switched on, else None."""
+
+    if st.session_state.get("bmo_nut_coke_override_on"):
+        override = st.session_state.get("bmo_nut_coke_override_kg")
         if override is not None:
             return float(override)
     return None
@@ -1525,19 +1350,7 @@ def _get_model_service() -> FuelUnitCostModelService:
          - return FuelUnitCostModelService - Cached fuel-cost prediction service.
     """
 
-    bmo_cfg = _get_bmo_config()
-    runtime_cfg = build_runtime_config(bmo_cfg)
-    bundle_cfg = dict(runtime_cfg.get("model_bundle", {}))
-    bundle_cfg.setdefault(
-        "missing_feature_policy",
-        runtime_cfg.get("feature_policy", {}).get(
-            "missing_feature_policy", "default_warn"
-        ),
-    )
-    return FuelUnitCostModelService(
-        bundle_cfg=bundle_cfg,
-        fallback_cfg=bmo_cfg.get("fallback_fuel_model", {}),
-    )
+    return case_service.fuel_model_service(_get_bmo_config())
 
 
 def _data_driven_coke_config() -> dict[str, Any]:
@@ -2383,68 +2196,6 @@ def _render_physics_coke_prediction(anchor: Any | None) -> None:
                 st.caption(f"- {note}")
 
 
-def _selected_ores_from_editor(
-    editor_df: pd.DataFrame, base_ores: list[OreInput]
-) -> list[OreInput]:
-    """
-    Convert edited Streamlit ore rows into typed selected ore inputs.
-
-    The editor lets users change wet stock, price, share limits, and moisture.
-    Moisture is written back into the nested chemistry object so the optimizer
-    uses the same dry-weight Fe calculation that the result table displays.
-
-    Args:
-         - editor_df: pd.DataFrame - User-edited ore selection table.
-         - base_ores: list[OreInput] - Original ore inputs from the context provider.
-
-    Returns:
-         - return list[OreInput] - Selected ores with edited stock, price, and bounds.
-    """
-
-    by_id = {ore.ore_id: ore for ore in base_ores}
-    selected_ores: list[OreInput] = []
-
-    for _, row in editor_df.iterrows():
-        if not bool(row.get("selected", False)):
-            continue
-        ore_id = str(row["ore_id"])
-        if ore_id not in by_id:
-            continue
-        base = by_id[ore_id]
-        edited_chemistry = replace(
-            base.chemistry,
-            moisture_pct=float_from_row(
-                row, "moisture_pct", base.chemistry.moisture_pct
-            ),
-            fe_t_pct=float_from_row(row, "fe_t_pct", base.chemistry.fe_t_pct),
-            sio2_pct=float_from_row(row, "sio2_pct", base.chemistry.sio2_pct),
-            al2o3_pct=float_from_row(row, "al2o3_pct", base.chemistry.al2o3_pct),
-            cao_pct=float_from_row(row, "cao_pct", base.chemistry.cao_pct),
-            mgo_pct=float_from_row(row, "mgo_pct", base.chemistry.mgo_pct),
-            mno_pct=oxide_pct_from_basis(
-                float_from_row(row, "mno_pct", base.chemistry.mno_pct),
-                str(row.get("mn_basis", "mno")),
-                element="mn",
-            ),
-            tio2_pct=oxide_pct_from_basis(
-                float_from_row(row, "tio2_pct", base.chemistry.tio2_pct),
-                str(row.get("ti_basis", "tio2")),
-                element="ti",
-            ),
-        )
-        selected_ores.append(
-            replace(
-                base,
-                stock_mt=float(row["stock_mt"]),
-                price_rs_per_mt=float(row["price_rs_per_mt"]),
-                min_share_pct=float(row["min_share_pct"]),
-                max_share_pct=float(row["max_share_pct"]),
-                chemistry=edited_chemistry,
-            )
-        )
-    return selected_ores
-
-
 apply_bmo_styles()
 bmo_cfg = _get_bmo_config()
 # Recorded so a snapshot can freeze the plant data each run used; the wrapper
@@ -2524,118 +2275,31 @@ operator_preferences = _cached_operator_preferences(
 static_path, static_mtime_ns = _static_dataset_cache_token(bmo_cfg)
 # Live 1-hour-average plant tags win over static-CSV values (which lag and
 # derive nut coke from charged MT); static remains the offline fallback.
-recent_fuel_rates = {
-    **_recent_fuel_rates_from_static_csv(static_path, static_mtime_ns),
-    **_recent_fuel_rates_live(),
-}
-
-# THE OVERRIDE IS APPLIED HERE, AT SOURCE. Everything downstream - the fuel rows,
-# the slag balance's fuel ash, the re-priced fuel cost - reads recent_fuel_rates,
-# so overriding once here reaches all of them. The control itself renders further
-# down, immediately above the run buttons; Streamlit restores widget state before
-# the script runs, so its value is already available at this point.
-if st.session_state.get("bmo_pci_override_on"):
-    _pci_override = st.session_state.get("bmo_pci_override_kg")
-    if _pci_override is not None:
-        recent_fuel_rates["pci_rate_kg_thm"] = max(0.0, float(_pci_override))
-        recent_fuel_rates["pci_source"] = "operator override"
-
-_nut_coke_override = st.session_state.get("bmo_nut_coke_override_kg")
-if st.session_state.get("bmo_nut_coke_override_on") and _nut_coke_override is not None:
-    recent_fuel_rates["nut_coke_rate_kg_thm"] = max(0.0, float(_nut_coke_override))
-    recent_fuel_rates["nut_coke_source"] = "operator override"
-else:
-    recent_fuel_rates["nut_coke_rate_kg_thm"] = DEFAULT_NUT_COKE_RATE_KG_PER_THM
-    recent_fuel_rates["nut_coke_source"] = "fixed plant set point"
-
-
-def _optional_target(key: str, fallback: float | None) -> float | None:
-    """Read a slag-window limit from config, treating an absent/null key as off."""
-
-    if key not in target_cfg:
-        return fallback
-    raw = target_cfg.get(key)
-    if raw is None:
-        return None
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return fallback
-
-
-model_input_defaults = {
-    "target_slag_basicity_min": float(target_cfg.get("target_slag_basicity_min", 0.0)),
-    "target_slag_basicity_max": float(target_cfg.get("target_slag_basicity_max", 10.0)),
-    "target_slag_t_basicity_min": float(
-        _optional_target("target_slag_t_basicity_min", 0.0) or 0.0
-    ),
-    "target_slag_t_basicity_max": float(
-        _optional_target("target_slag_t_basicity_max", 10.0) or 10.0
-    ),
-    "target_slag_rate_kg_per_thm": float(
-        target_cfg.get("target_slag_rate_kg_per_thm", 290.0)
-    ),
-    "target_slag_al2o3_max_pct": float(
-        _optional_target("target_slag_al2o3_max_pct", 20.0) or 0.0
-    ),
-    "target_slag_mgo_min_pct": float(
-        _optional_target("target_slag_mgo_min_pct", 7.0) or 0.0
-    ),
-    "target_slag_mgo_al2o3_ratio_min": float(
-        _optional_target("target_slag_mgo_al2o3_ratio_min", 0.36) or 0.0
-    ),
-}
-# plant_slag = model_slag * factor, so a plant-basis target divides by it to get
-# the model-basis cap the solvers actually enforce. See setting_bmo.yml.
-model_to_plant_slag_factor = float(
-    target_cfg.get("model_to_plant_slag_factor", 1.0) or 1.0
+# THE OVERRIDES ARE APPLIED HERE, AT SOURCE (services.bmo_case.effective_fuel_rates):
+# live 1-hour tags win over the static CSV (which lags and derives nut coke from
+# charged MT), then the operator's PCI / nut-coke overrides. Everything downstream -
+# the fuel rows, the slag balance's fuel ash, the re-priced fuel cost - reads
+# recent_fuel_rates. The controls render further down, immediately above the run
+# buttons; Streamlit restores widget state before the script runs, so their values
+# are already available at this point.
+recent_fuel_rates = case_service.effective_fuel_rates(
+    _recent_fuel_rates_from_static_csv(static_path, static_mtime_ns),
+    _recent_fuel_rates_live(),
+    pci_override_kg_thm=_pci_override_kg_thm(),
+    nut_coke_override_kg_thm=_nut_coke_override_kg_thm(),
 )
-if model_to_plant_slag_factor <= 0.0:
-    model_to_plant_slag_factor = 1.0
-model_input_defaults.update(
-    _model_input_defaults_from_static_csv(static_path, static_mtime_ns)
+
+# Config, the hourly dataset's slag window, the charging plant, then saved values
+# (services.bmo_case.model_input_defaults). plant_slag = model_slag * factor, so a
+# plant-basis target divides by it to get the model-basis cap the solvers enforce.
+model_input_defaults = case_service.model_input_defaults(
+    bmo_cfg,
+    _model_input_defaults_from_static_csv(static_path, static_mtime_ns),
+    operator_preferences,
 )
-# Charging plant is operator-configurable too. Charges per hour and tonnes per
-# charge are the only two numbers that set the throughput ceiling, and both move
-# with skip-car condition and burden bulk density, so pinning them in yml made
-# the ceiling stale. Charging hours are always 24 and nut coke follows from its
-# rate, so neither is an input. Defaults still come from config.
+model_to_plant_slag_factor = case_service.model_to_plant_slag_factor(bmo_cfg)
 burden_capacity_cfg = bmo_cfg.get("burden_capacity", {}) or {}
-model_input_defaults.update(
-    {
-        "max_charges_per_hour": float(
-            burden_capacity_cfg.get("max_charges_per_hour", 6.35) or 6.35
-        ),
-        "charge_mass_mt": float(
-            burden_capacity_cfg.get("charge_mass_mt", 26.4) or 26.4
-        ),
-    }
-)
-model_input_defaults = apply_model_input_preferences(
-    model_input_defaults, operator_preferences
-)
 burden_capacity_enabled_default = bool(burden_capacity_cfg.get("enabled", True))
-# Nut coke is a held set point, not an optimizer variable. The live/default
-# rate is a base quantity and the Fuel Ash TM is added to obtain wet tonnes.
-# Take both from the same source that seeds the editor so the cap and result do
-# not disagree.
-nut_coke_cfg = next(
-    (
-        row
-        for row in bmo_cfg.get("fuel_ash_inputs", [])
-        if str(row.get("fuel_id", "")).strip() == "nut_coke"
-    ),
-    {},
-)
-recent_nut_coke_rate = recent_fuel_rates.get("nut_coke_rate_kg_thm")
-nut_coke_rate_kg_per_thm = float(
-    recent_nut_coke_rate
-    if recent_nut_coke_rate is not None
-    else nut_coke_cfg.get("rate_kg_per_thm", DEFAULT_NUT_COKE_RATE_KG_PER_THM)
-)
-nut_coke_add_moisture = recent_nut_coke_rate is not None or bool(
-    nut_coke_cfg.get("add_moisture_to_rate", False)
-)
 
 with st.form("bmo_model_input_form", clear_on_submit=False):
     st.markdown("### Model Inputs")
@@ -2811,32 +2475,32 @@ if model_inputs_applied or model_inputs_saved:
         st.success("Model inputs applied.")
 elif chemistry_mode == "latest":
     st.caption("Latest chemistry uses the last charged instance for each material.")
-basicity_bounds_valid = (
-    target_slag_basicity_min <= target_slag_basicity_max
-    and target_slag_t_basicity_min <= target_slag_t_basicity_max
+# A limit of 0 means "not enforced"; the solvers take None for that. The
+# operator's slag rate is on the PLANT's basis; the solvers work in the model's,
+# which reads high (services.bmo_case.slag_window).
+slag_limits = case_service.slag_window(
+    basicity_min=target_slag_basicity_min,
+    basicity_max=target_slag_basicity_max,
+    t_basicity_min=target_slag_t_basicity_min,
+    t_basicity_max=target_slag_t_basicity_max,
+    al2o3_max_pct=target_slag_al2o3_max_pct,
+    mgo_min_pct=target_slag_mgo_min_pct,
+    mgo_al2o3_ratio_min=target_slag_mgo_al2o3_ratio_min,
+    slag_rate_kg_per_thm=target_slag_rate_kg_per_thm,
+    target_production_mt=target_production_mt,
+    model_to_plant_factor=model_to_plant_slag_factor,
 )
+basicity_bounds_valid = slag_limits.bounds_valid
 if target_slag_basicity_min > target_slag_basicity_max:
     st.error("Min Basicity CaO/SiO2 must be less than or equal to Max Basicity.")
 if target_slag_t_basicity_min > target_slag_t_basicity_max:
     st.error("Min T Basicity must be less than or equal to Max T Basicity.")
-
-# A limit of 0 means "not enforced"; the solvers take None for that.
-target_slag_t_basicity_min = target_slag_t_basicity_min or None
-target_slag_t_basicity_max = (
-    target_slag_t_basicity_max if target_slag_t_basicity_max > 0.0 else None
-)
-target_slag_al2o3_max_pct = target_slag_al2o3_max_pct or None
-target_slag_mgo_min_pct = target_slag_mgo_min_pct or None
-target_slag_mgo_al2o3_ratio_min = target_slag_mgo_al2o3_ratio_min or None
-
-# The operator's rate is on the PLANT's basis; the solvers work in the model's,
-# which reads high. Convert once here so every downstream call sees one number.
-target_slag_qty_mt = (
-    float(target_slag_rate_kg_per_thm)
-    * float(target_production_mt)
-    / 1000.0
-    / model_to_plant_slag_factor
-)
+target_slag_t_basicity_min = slag_limits.t_basicity_min
+target_slag_t_basicity_max = slag_limits.t_basicity_max
+target_slag_al2o3_max_pct = slag_limits.al2o3_max_pct
+target_slag_mgo_min_pct = slag_limits.mgo_min_pct
+target_slag_mgo_al2o3_ratio_min = slag_limits.mgo_al2o3_ratio_min
+target_slag_qty_mt = slag_limits.slag_qty_mt
 if model_to_plant_slag_factor != 1.0:
     st.caption(
         f"Slag cap: {target_slag_rate_kg_per_thm:,.0f} kg/THM plant basis "
@@ -2845,14 +2509,11 @@ if model_to_plant_slag_factor != 1.0:
         f"(model/plant factor {model_to_plant_slag_factor:.3f})."
     )
 feo_in_slag_pct = float(bmo_cfg.get("chemistry", {}).get("feo_in_slag_pct", 0.4))
-coke_correction_settings = load_coke_correction_settings(bmo_cfg)
-if use_charged_engine:
-    # The charged engine's blend response replaces the physics correction:
-    # one linear slag term from the current burden, applied once.
-    coke_correction_settings = charged_response_settings(
-        coke_correction_settings,
-        coefficient=blend_response_kg_coke_per_kg_slag,
-    )
+# The charged engine's blend response replaces the physics correction on
+# Data-Driven: one linear slag term from the current burden, applied once.
+coke_correction_settings = case_service.coke_correction(
+    bmo_cfg, fuel_rate_anchor_basis, blend_response_kg_coke_per_kg_slag
+)
 # Resolved by the model switch directly below the page header.
 
 
@@ -2900,26 +2561,18 @@ dust_analysis = (
     if str(_ds_cfg.get("dust_chemistry_source", "configured")).lower() == "dataset"
     else {}
 )
-nut_coke_moisture_raw = (fuel_analysis.get("nut_coke") or {}).get("moisture_pct")
-if nut_coke_moisture_raw is None:
-    nut_coke_moisture_raw = nut_coke_cfg.get("moisture_pct", 0.0)
-try:
-    nut_coke_moisture_pct = min(100.0, max(0.0, float(nut_coke_moisture_raw or 0.0)))
-except (TypeError, ValueError):
-    nut_coke_moisture_pct = 0.0
-nut_coke_charge_moisture_pct = nut_coke_moisture_pct if nut_coke_add_moisture else 0.0
+# Nut coke is a held set point, not an optimizer variable: the live/default rate
+# is a base quantity and the Fuel Ash TM is added to obtain wet tonnes
+# (services.bmo_case.nut_coke_charge).
+nut_coke = case_service.nut_coke_charge(bmo_cfg, recent_fuel_rates, fuel_analysis)
+nut_coke_rate_kg_per_thm = nut_coke.rate_kg_per_thm
+nut_coke_charge_moisture_pct = nut_coke.charge_moisture_pct
 observed_slag_rate = float(hm_snapshot.get("observed_slag_rate_kg_per_thm", 0.0) or 0.0)
-hm_fe_pct_for_target = float(
-    hm_snapshot.get("hm_fe_pct_for_target")
-    or target_cfg.get("hm_fe_pct_fallback", 94.5)
-    or 94.5
+target_fe_mt, hm_fe_pct_for_target, _fe_warning = case_service.target_fe(
+    target_production_mt, hm_snapshot, bmo_cfg
 )
-if hm_fe_pct_for_target <= 0:
-    hm_fe_pct_for_target = 94.5
-    ore_diagnostics["warnings"].append(
-        "HM Fe% unavailable; using 94.5% fallback to convert target HM into required Fe."
-    )
-target_fe_mt = float(target_production_mt) * hm_fe_pct_for_target / 100.0
+if _fe_warning:
+    ore_diagnostics["warnings"].append(_fe_warning)
 st.caption(
     f"Optimiser Fe requirement: {target_fe_mt:,.1f} MT "
     f"from {target_production_mt:,.1f} MT HM at {hm_fe_pct_for_target:.2f}% Fe."
@@ -2928,70 +2581,46 @@ st.caption(
 # Charging ceiling, rebuilt from the operator's own charge rate / charge mass
 # rather than the yml snapshot. This is an absolute daily tonnage - the skips run
 # 24 h whatever HM is targeted - so only the nut-coke deduction tracks the target.
-max_burden_qty_mt: float | None = None
-if burden_capacity_enabled:
-    max_burden_qty_mt = max_ibrm_flux_capacity_mt(
-        {
-            "max_charges_per_hour": max_charges_per_hour,
-            "charge_mass_mt": charge_mass_mt,
-        },
-        target_hot_metal_mt=target_production_mt,
-        nut_coke_rate_kg_per_thm=nut_coke_rate_kg_per_thm,
-        nut_coke_moisture_pct=nut_coke_charge_moisture_pct,
-    )
-    if max_burden_qty_mt <= 0.0:
-        max_burden_qty_mt = None
-        st.warning(
-            "Charging capacity works out to zero or less - nut coke alone fills "
-            "every charge. Check charges per hour and tonnes per charge."
-        )
-else:
+max_burden_qty_mt, _capacity_warning = case_service.charging_ceiling(
+    enabled=burden_capacity_enabled,
+    max_charges_per_hour=max_charges_per_hour,
+    charge_mass_mt=charge_mass_mt,
+    target_production_mt=target_production_mt,
+    nut_coke=nut_coke,
+)
+if _capacity_warning:
+    st.warning(_capacity_warning)
+if not burden_capacity_enabled:
     st.caption(
         "Charging capacity is not being enforced: the optimizer may plan more "
         "burden tonnes than the charging system can deliver."
     )
 
-default_selected_names = set(ui_cfg.get("default_selected_ores", []))
-default_selected_ids = [
-    ore.ore_id for ore in ores if ore.display_name in default_selected_names
-]
+active_pellet_ids = None
 if bool(ui_cfg.get("auto_select_active_pellet", True)):
     active_pellet_ids, pellet_usage_warnings = _cached_recent_active_pellet_ids(
         provider, source_cache_version
     )
     ore_diagnostics["warnings"].extend(pellet_usage_warnings)
-    default_selected_ids = sorted(set(default_selected_ids).union(active_pellet_ids))
-editor_df = build_ore_editor_df(ores, default_selected_ids=default_selected_ids)
-editor_df = apply_ore_editor_preferences(editor_df, operator_preferences)
+editor_df = case_service.ore_editor_table(
+    ores,
+    case_service.default_ore_selection(ores, ui_cfg, active_pellet_ids),
+    operator_preferences,
+)
 
 st.markdown("### Ore Selection, Stock, Pricing, Chemistry, and Share Bounds")
-stored_ore_df = st.session_state.get("bmo_applied_ore_editor_df")
-if (
-    isinstance(stored_ore_df, pd.DataFrame)
-    and "ore_id" in stored_ore_df.columns
-    and set(stored_ore_df["ore_id"].astype(str)) == set(editor_df["ore_id"].astype(str))
-):
-    ore_editor_source_df = stored_ore_df
-else:
-    ore_editor_source_df = editor_df
+# The applied table wins while it holds the same ores (services.bmo_case.applied_or_base).
+ore_editor_source_df = case_service.applied_or_base(
+    "ore", st.session_state.get("bmo_applied_ore_editor_df"), editor_df
+)
 
 # Flux editor lives inside the ore-input form so its price/stock are applied and
 # saved together with the ore inputs. Seed from config + saved preferences, or
 # from the session-applied edits.
-flux_base_df = apply_flux_preferences(
-    build_flux_editor_df(bmo_cfg.get("flux_inputs", [])), operator_preferences
+flux_base_df = case_service.flux_editor_table(bmo_cfg, operator_preferences)
+flux_editor_source_df = case_service.applied_or_base(
+    "flux", st.session_state.get("bmo_applied_flux_editor_df"), flux_base_df
 )
-stored_flux_df = st.session_state.get("bmo_applied_flux_editor_df")
-if (
-    isinstance(stored_flux_df, pd.DataFrame)
-    and not flux_base_df.empty
-    and "flux_id" in stored_flux_df.columns
-    and set(stored_flux_df["flux_id"].astype(str))
-    == set(flux_base_df["flux_id"].astype(str))
-):
-    flux_editor_source_df = stored_flux_df
-else:
-    flux_editor_source_df = flux_base_df
 
 with st.form("bmo_ore_input_form", clear_on_submit=False):
     edited_ore_candidate_df = render_ore_editor(ore_editor_source_df)
@@ -3047,26 +2676,24 @@ else:
     edited_flux_df = flux_editor_source_df
 flux_inputs = flux_inputs_from_editor(edited_flux_df)
 
-_hm_chem_defaults = apply_hm_chemistry_preferences(
-    bmo_cfg.get("slag_balance", {}) or {}, operator_preferences
-)
+_hm_chem_defaults = case_service.hm_chem_defaults(bmo_cfg, operator_preferences)
 _hm_widget_keys = {
     "carbon_pct": "bmo_hm_carbon_pct",
     "silicon_pct": "bmo_hm_silicon_pct",
     "sulphur_pct": "bmo_hm_sulphur_pct",
     "other_pct": "bmo_hm_other_pct",
 }
-hm_chem_values: dict[str, float] = {}
-for _hm_field, _hm_widget_key in _hm_widget_keys.items():
-    _hm_default = float(_hm_chem_defaults.get(_hm_field, 0.0) or 0.0)
-    try:
-        hm_chem_values[_hm_field] = float(
-            st.session_state.get(_hm_widget_key, _hm_default)
-        )
-    except (TypeError, ValueError):
-        hm_chem_values[_hm_field] = _hm_default
+hm_chem_values = case_service.hm_chem_values(
+    bmo_cfg,
+    operator_preferences,
+    {
+        _hm_field: st.session_state[_hm_widget_key]
+        for _hm_field, _hm_widget_key in _hm_widget_keys.items()
+        if _hm_widget_key in st.session_state
+    },
+)
 
-selected_ores = _selected_ores_from_editor(edited_df, ores)
+selected_ores = case_service.selected_ores_from_editor(edited_df, ores)
 pellet_input_issues = validate_selected_pellet_inputs(
     selected_ores,
     max_chemistry_age_days=int(
@@ -3096,64 +2723,39 @@ if visible_data_warnings:
     )
 
 
-fuel_ash_base_df = apply_fuel_ash_preferences(
-    build_fuel_ash_editor_df(
-        _fuel_ash_cfg_with_recent_rates(
-            bmo_cfg.get("fuel_ash_inputs", []),
-            recent_fuel_rates,
-            fuel_analysis,
-        )
-    ),
-    operator_preferences,
+fuel_ash_base_df = case_service.fuel_ash_editor_table(
+    bmo_cfg, recent_fuel_rates, fuel_analysis, operator_preferences
 )
-stored_fuel_ash_df = st.session_state.get("bmo_applied_fuel_ash_editor_df")
-if (
-    isinstance(stored_fuel_ash_df, pd.DataFrame)
-    and not fuel_ash_base_df.empty
-    and "fuel_id" in stored_fuel_ash_df.columns
-    and "vm_pct" in stored_fuel_ash_df.columns
-    and set(stored_fuel_ash_df["fuel_id"].astype(str))
-    == set(fuel_ash_base_df["fuel_id"].astype(str))
-):
-    fuel_ash_editor_source_df = stored_fuel_ash_df
-else:
-    fuel_ash_editor_source_df = fuel_ash_base_df
+fuel_ash_editor_source_df = case_service.applied_or_base(
+    "fuel_ash", st.session_state.get("bmo_applied_fuel_ash_editor_df"), fuel_ash_base_df
+)
 
 # The editable ash chemistry is rendered in the collapsed assumptions area at
 # the end of the page. Calculations above it use the last applied/saved table.
 # PCI and nut-coke rates remain authoritative in their dedicated controls, so
-# pin them before this table reaches either slag or fuel-cost calculations.
-edited_fuel_ash_df = _fuel_ash_df_with_pinned_rates(
-    fuel_ash_editor_source_df, recent_fuel_rates
+# they are pinned before this table reaches either slag or fuel-cost
+# calculations, and the operator's fuel prices applied
+# (services.bmo_case.fuel_ash_with_rates).
+edited_fuel_ash_df = case_service.fuel_ash_with_rates(
+    fuel_ash_editor_source_df,
+    recent_fuel_rates,
+    {
+        fuel_id: st.session_state[f"bmo_fuel_price_{fuel_id}_rs_per_mt"]
+        for fuel_id in ("coke", "nut_coke", "pci")
+        if f"bmo_fuel_price_{fuel_id}_rs_per_mt" in st.session_state
+    },
 )
-_fuel_price_defaults = fuel_prices_from_editor(edited_fuel_ash_df)
-_fuel_price_values = {
-    fuel_id: float(
-        st.session_state.get(f"bmo_fuel_price_{fuel_id}_rs_per_mt", default_price)
-    )
-    for fuel_id, default_price in _fuel_price_defaults.items()
-}
-edited_fuel_ash_df = apply_fuel_prices(edited_fuel_ash_df, _fuel_price_values)
 # Top-gas dust: quantity from the DPR (kg per charge over the window), chemistry
 # from the plant's dust analyses in the hourly dataset, the configured rows as
-# fallback; saved operator values override both until "Use DPR values".
-dust_base_df = apply_dust_preferences(
-    build_dust_editor_df(
-        dust_cfg_with_live(bmo_cfg.get("dust_inputs", []), dpr_dust_rates, dust_analysis)
-    ),
-    operator_preferences,
+# fallback; saved operator values override both until "Use DPR values". An
+# applied (or snapshot-restored) table wins for the session, even when its rows
+# differ from today's configuration, so an older snapshot replays as run.
+dust_base_df = case_service.dust_editor_table(
+    bmo_cfg, dpr_dust_rates, dust_analysis, operator_preferences
 )
-stored_dust_df = st.session_state.get("bmo_applied_dust_editor_df")
-# An applied (or snapshot-restored) table wins for the session, even when its
-# rows differ from today's configuration, so an older snapshot replays as run.
-if (
-    isinstance(stored_dust_df, pd.DataFrame)
-    and not stored_dust_df.empty
-    and "dust_id" in stored_dust_df.columns
-):
-    dust_editor_source_df = stored_dust_df
-else:
-    dust_editor_source_df = dust_base_df
+dust_editor_source_df = case_service.applied_or_base(
+    "dust", st.session_state.get("bmo_applied_dust_editor_df"), dust_base_df
+)
 
 dust_inputs_applied = False
 dust_inputs_saved = False
@@ -3557,67 +3159,49 @@ requested_total = bool(run_total_clicked)
 if requested_lp or requested_total:
     # Refusals, the coke anchor, the correction reference and the LP plan come
     # from services.bmo; the page keeps the spinners and the session state.
-    run_refusal = bmo_service.run_refusal(
-        bmo_case,
-        data_driven_prediction=data_driven_prediction,
-        basicity_bounds_valid=basicity_bounds_valid,
-        pellet_blocked=bool(pellet_input_issues and not pellet_input_confirmed),
-    )
-    if run_refusal:
-        st.error(run_refusal)
+    # The LP step (refusal, correction reference, anchor, LP) is services.bmo_case.plan_lp,
+    # shared with the twin-api's runs; the page keeps the spinners and the session state.
+    # The reference and the anchor are resolved once and reused by DE, so both solvers
+    # optimise one identical objective. The anchor is the LEVEL the whole fuel cost sits
+    # on; blend sensitivity is the correction's job, not the anchor's.
+    with st.spinner("Running Balanced Optimizer..."):
+        lp_plan = case_service.plan_lp(
+            bmo_case,
+            provider=provider,
+            data_driven_prediction=data_driven_prediction,
+            energy_anchor=physics_prediction,
+            basicity_bounds_valid=basicity_bounds_valid,
+            pellet_blocked=bool(pellet_input_issues and not pellet_input_confirmed),
+            previous_manual_quantities_mt=st.session_state.get("bmo_manual_quantities_mt"),
+            load_fuel_context=lambda: _load_fuel_prediction_context(provider),
+        )
+    if lp_plan.refusal:
+        st.error(lp_plan.refusal)
     else:
         fuel_context = None
-        current_operating_quantities = bmo_service.case_burden_quantities(
-            bmo_case, provider
-        )
-
-        # Resolved once for the whole run and reused by the LP, DE, and every DE
-        # candidate, so both solvers optimise one identical objective.
-        coke_correction_reference = bmo_service.correction_reference(
-            bmo_case,
-            current_quantities_mt=current_operating_quantities,
-            previous_manual_quantities_mt=st.session_state.get(
-                "bmo_manual_quantities_mt"
-            ),
-        )
-
-        # The LEVEL the whole fuel cost sits on: the closed energy balance
-        # solved at the current controls and the current burden, less the
-        # rolling bias offset. Resolved once here for the same reason the
-        # correction reference is - one number, identical for LP, DE, and every
-        # DE candidate, so the objective is a single fixed function. Blend
-        # sensitivity is the correction's job, not the anchor's.
+        coke_correction_reference = lp_plan.reference
         energy_anchor = physics_prediction
         st.session_state["bmo_energy_anchor"] = energy_anchor
-        coke_anchor = bmo_service.coke_anchor(
-            fuel_rate_anchor_basis, data_driven_prediction, energy_anchor
-        )
+        coke_anchor = lp_plan.anchor
         anchor_coke_rate = coke_anchor.rate_kg_thm
         st.session_state["bmo_coke_anchor_basis"] = fuel_rate_anchor_basis
         st.session_state["bmo_coke_anchor_rate_kg_thm"] = anchor_coke_rate
-
-        with st.spinner("Running Balanced Optimizer..."):
-            balanced_run = bmo_service.run_balanced(
-                bmo_case,
-                reference=coke_correction_reference,
-                anchor=coke_anchor,
-                load_fuel_context=lambda: _load_fuel_prediction_context(provider),
-            )
-            lp_result, lp_errors = balanced_run.lp_result, balanced_run.lp_errors
-            if balanced_run.fuel_context is not None:
-                fuel_context = balanced_run.fuel_context
-                (
-                    model_service,
-                    process_context,
-                    history_df,
-                    bundle_status,
-                    fuel_warnings,
-                ) = fuel_context
-                ore_diagnostics["warnings"] = [
-                    *ore_diagnostics.get("warnings", []),
-                    *fuel_warnings,
-                ]
-                st.session_state["bmo_bundle_status"] = bundle_status
+        balanced_run = lp_plan.balanced
+        lp_result, lp_errors = balanced_run.lp_result, balanced_run.lp_errors
+        if balanced_run.fuel_context is not None:
+            fuel_context = balanced_run.fuel_context
+            (
+                model_service,
+                process_context,
+                history_df,
+                bundle_status,
+                fuel_warnings,
+            ) = fuel_context
+            ore_diagnostics["warnings"] = [
+                *ore_diagnostics.get("warnings", []),
+                *fuel_warnings,
+            ]
+            st.session_state["bmo_bundle_status"] = bundle_status
         # LP always runs in this rerun and shares DE's fuel-prediction context, so
         # always persist it. This keeps the LP tab and the LP-vs-DE comparison on
         # the SAME live snapshot DE used, avoiding a stale LP (from an earlier,
@@ -4167,7 +3751,7 @@ from ui.bmo.production_frontier import render_production_frontier  # noqa: E402
 render_production_frontier(
     # The whole yard, with the operator's edits to price, bounds and chemistry;
     # the main selection only decides which materials start ticked.
-    ores=_selected_ores_from_editor(edited_df.assign(selected=True), ores),
+    ores=case_service.selected_ores_from_editor(edited_df.assign(selected=True), ores),
     selected_ore_ids={ore.ore_id for ore in selected_ores},
     slag_limits={
         "max_slag_rate_kg_per_thm": target_slag_rate_kg_per_thm,

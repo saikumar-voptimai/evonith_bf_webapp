@@ -8,16 +8,27 @@ while handling Streamlit API differences across installed versions.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import pandas as pd
 import streamlit as st
 
 from utils.bmo.calculations import compute_charging_requirements
+# The pure table builders live in utils.bmo.editor_tables (shared with services/bmo_case.py, SV-3.5); the page and
+# its tests import them from here.
+from utils.bmo.editor_tables import (  # noqa: F401 - re-exported
+    FUEL_PRICE_LABELS as _FUEL_PRICE_LABELS,
+    apply_fuel_prices,
+    build_dust_editor_df,
+    build_flux_editor_df,
+    build_fuel_ash_editor_df,
+    build_ore_editor_df,
+    fuel_prices_from_editor,
+    slag_balance_defaults,
+)
 from services.bmo import blend_table as build_blend_table_df  # the result table data (SV-3.4)
 from utils.slag_bands import PLANT_SLAG_BANDS, band_note
 from utils.bmo.constraints import CHARGING_HOURS_PER_DAY
-from utils.bmo.fuel_rates import ASSUMED_FUEL_PRICES_RS_PER_KG
 from utils.bmo.shift_production import production_change_pct
 from utils.bmo.types import (
     MN_IN_MNO_FRACTION,
@@ -146,47 +157,6 @@ def render_header(bundle_status: dict[str, Any]) -> None:
         st.warning(f"Model bundle warning: {bundle_status['bundle_error']}")
 
 
-def build_ore_editor_df(
-    ores: list[OreInput], default_selected_ids: list[str]
-) -> pd.DataFrame:
-    """
-    Build the editable ore selection table from typed ore inputs.
-
-    Args:
-         - ores: list[OreInput] - Available BMO ores.
-         - default_selected_ids: list[str] - Ore ids selected by default.
-
-    Returns:
-         - return pd.DataFrame - Editable table data for Streamlit.
-    """
-
-    default_set = set(default_selected_ids or [])
-    rows = []
-    for ore in ores:
-        rows.append(
-            {
-                "selected": ore.ore_id in default_set,
-                "ore_id": ore.ore_id,
-                "ore_name": ore.display_name,
-                "stock_mt": float(ore.stock_mt),
-                "price_rs_per_mt": float(ore.price_rs_per_mt),
-                "min_share_pct": float(ore.min_share_pct),
-                "max_share_pct": float(ore.max_share_pct),
-                "moisture_pct": float(ore.chemistry.moisture_pct),
-                "fe_t_pct": float(ore.chemistry.fe_t_pct),
-                "sio2_pct": float(ore.chemistry.sio2_pct),
-                "al2o3_pct": float(ore.chemistry.al2o3_pct),
-                "cao_pct": float(ore.chemistry.cao_pct),
-                "mgo_pct": float(ore.chemistry.mgo_pct),
-                "mn_basis": "mno",
-                "mno_pct": float(ore.chemistry.mno_pct),
-                "ti_basis": "tio2",
-                "tio2_pct": float(ore.chemistry.tio2_pct),
-            }
-        )
-    return pd.DataFrame(rows)
-
-
 def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     """
     Render the editable ore table and return the user's edited rows.
@@ -271,118 +241,6 @@ def render_ore_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     editor_kwargs["column_order"] = visible_columns
     editor_kwargs["width"] = "stretch"
     return st.data_editor(editor_df, **editor_kwargs)
-
-
-def build_fuel_ash_editor_df(fuel_ash_cfg: list[dict[str, Any]]) -> pd.DataFrame:
-    """
-    Build the editable fuel ash chemistry table from BMO configuration.
-
-    Fuel ash defaults come from the laboratory ash-analysis workbook and can be
-    overridden by operators for each run. The table keeps rate, fuel moisture
-    (TM for coke/nut coke; IM for PCI), ash-analysis volatile matter (VM), ash
-    chemistry, and dry-fuel-basis S/P together so the slag calculation can
-    apply the full fuel ash sequence.
-
-    Args:
-         - fuel_ash_cfg: list[dict[str, Any]] - Configured fuel ash defaults.
-
-    Returns:
-         - return pd.DataFrame - Editable fuel ash data for Streamlit.
-    """
-
-    rows = []
-    for item in fuel_ash_cfg or []:
-        mn_basis = str(item.get("mn_basis", "mno") or "mno").lower()
-        ti_basis = str(item.get("ti_basis", "tio2") or "tio2").lower()
-        rows.append(
-            {
-                "enabled": bool(item.get("enabled", True)),
-                "fuel_id": str(item.get("fuel_id", "")),
-                "fuel_name": str(item.get("display_name", item.get("fuel_id", ""))),
-                "rate_kg_per_thm": float(item.get("rate_kg_per_thm", 0.0) or 0.0),
-                "rate_basis": str(item.get("rate_basis", "wet") or "wet").lower(),
-                "add_moisture_to_rate": bool(item.get("add_moisture_to_rate", False)),
-                "price_rs_per_mt": float(item.get("price_rs_per_mt", 0.0) or 0.0),
-                "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
-                "vm_pct": float(item.get("vm_pct", 0.0) or 0.0),
-                "ash_pct": float(item.get("ash_pct", 0.0) or 0.0),
-                "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
-                "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
-                "cao_pct": float(item.get("cao_pct", 0.0) or 0.0),
-                "mgo_pct": float(item.get("mgo_pct", 0.0) or 0.0),
-                "fe2o3_pct": float(item.get("fe2o3_pct", 0.0) or 0.0),
-                "mn_basis": mn_basis,
-                "mno_pct": float(
-                    item.get("mn_pct" if mn_basis == "mn" else "mno_pct", 0.0) or 0.0
-                ),
-                "ti_basis": ti_basis,
-                "tio2_pct": float(
-                    item.get("ti_pct" if ti_basis == "ti" else "tio2_pct", 0.0) or 0.0
-                ),
-                "alkali_pct": float(item.get("alkali_pct", 0.0) or 0.0),
-                "na2o_pct": float(item.get("na2o_pct", 0.0) or 0.0),
-                "k2o_pct": float(item.get("k2o_pct", 0.0) or 0.0),
-                "s_pct": float(item.get("s_pct", 0.0) or 0.0),
-                "p_pct": float(item.get("p_pct", 0.0) or 0.0),
-                "chemistry_source": str(
-                    item.get("chemistry_source", "default") or "default"
-                ),
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-_FUEL_PRICE_LABELS = {
-    "coke": "Coke",
-    "nut_coke": "Nut coke",
-    "pci": "PCI",
-}
-
-
-def apply_fuel_prices(
-    editor_df: pd.DataFrame, prices_rs_per_mt: Mapping[str, float]
-) -> pd.DataFrame:
-    """Return fuel inputs with only the configured prices updated."""
-
-    out = editor_df.copy()
-    if "fuel_id" not in out.columns or "price_rs_per_mt" not in out.columns:
-        return out
-
-    ids = out["fuel_id"].astype(str).str.strip().str.lower()
-    for fuel_id, raw_price in prices_rs_per_mt.items():
-        normalized_id = str(fuel_id).strip().lower()
-        if normalized_id not in _FUEL_PRICE_LABELS:
-            continue
-        try:
-            price = max(0.0, float(raw_price))
-        except (TypeError, ValueError):
-            continue
-        out.loc[ids == normalized_id, "price_rs_per_mt"] = price
-    return out
-
-
-def fuel_prices_from_editor(editor_df: pd.DataFrame) -> dict[str, float]:
-    """Return current per-MT prices for the three operator-facing fuels."""
-
-    prices = {
-        fuel_id: float(ASSUMED_FUEL_PRICES_RS_PER_KG.get(fuel_id, 0.0)) * 1000.0
-        for fuel_id in _FUEL_PRICE_LABELS
-    }
-    if (
-        editor_df.empty
-        or "fuel_id" not in editor_df.columns
-        or "price_rs_per_mt" not in editor_df.columns
-    ):
-        return prices
-
-    ids = editor_df["fuel_id"].astype(str).str.strip().str.lower()
-    for fuel_id in _FUEL_PRICE_LABELS:
-        values = pd.to_numeric(
-            editor_df.loc[ids == fuel_id, "price_rs_per_mt"], errors="coerce"
-        ).dropna()
-        if not values.empty:
-            prices[fuel_id] = max(0.0, float(values.iloc[0]))
-    return prices
 
 
 def render_fuel_price_inputs(
@@ -555,66 +413,6 @@ def render_fuel_ash_editor(
     return st.data_editor(editor_df, **editor_kwargs)
 
 
-def build_flux_editor_df(flux_cfg: list[dict[str, Any]]) -> pd.DataFrame:
-    """
-    Build the editable fixed-flux chemistry table from BMO configuration.
-
-    Flux defaults come from plant flux chemistry references and can be adjusted
-    by operators for each run. Flux rows are fixed burden additions, so they
-    contribute to total slag but do not participate in ore share optimization.
-
-    Args:
-         - flux_cfg: list[dict[str, Any]] - Configured flux defaults.
-
-    Returns:
-         - return pd.DataFrame - Editable flux data for Streamlit.
-    """
-
-    rows = []
-    for item in flux_cfg or []:
-        if bool(item.get("hidden_by_default", False)):
-            continue
-        mn_basis = str(item.get("mn_basis", "mno") or "mno").lower()
-        ti_basis = str(item.get("ti_basis", "tio2") or "tio2").lower()
-        rows.append(
-            {
-                "enabled": bool(item.get("enabled", True)),
-                "flux_id": str(item.get("flux_id", "")),
-                "flux_name": str(item.get("display_name", item.get("flux_id", ""))),
-                "optimizable": bool(item.get("optimizable", False)),
-                "wet_qty_mt": float(item.get("wet_qty_mt", 0.0) or 0.0),
-                "price_rs_per_mt": float(item.get("price_rs_per_mt", 0.0) or 0.0),
-                "stock_mt": float(item.get("stock_mt", 0.0) or 0.0),
-                "min_qty_mt": float(item.get("min_qty_mt", 0.0) or 0.0),
-                "max_qty_mt": float(
-                    item.get("max_qty_mt", item.get("stock_mt", 0.0)) or 0.0
-                ),
-                "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
-                "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
-                "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
-                "cao_pct": float(item.get("cao_pct", 0.0) or 0.0),
-                "mgo_pct": float(item.get("mgo_pct", 0.0) or 0.0),
-                "fe2o3_pct": float(item.get("fe2o3_pct", 0.0) or 0.0),
-                "mn_basis": mn_basis,
-                "mno_pct": float(
-                    item.get("mn_pct" if mn_basis == "mn" else "mno_pct", 0.0) or 0.0
-                ),
-                "ti_basis": ti_basis,
-                "tio2_pct": float(
-                    item.get("ti_pct" if ti_basis == "ti" else "tio2_pct", 0.0) or 0.0
-                ),
-                "na2o_pct": float(item.get("na2o_pct", 0.0) or 0.0),
-                "k2o_pct": float(item.get("k2o_pct", 0.0) or 0.0),
-                "caf2_pct": float(item.get("caf2_pct", 0.0) or 0.0),
-                "p_pct": float(item.get("p_pct", 0.0) or 0.0),
-                "s_pct": float(item.get("s_pct", 0.0) or 0.0),
-                "zn_pct": float(item.get("zn_pct", 0.0) or 0.0),
-                "loi_pct": float(item.get("loi_pct", 0.0) or 0.0),
-            }
-        )
-    return pd.DataFrame(rows)
-
-
 def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     """
     Render the editable fixed-flux table and return the user's edited values.
@@ -735,55 +533,6 @@ def render_flux_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
     editor_kwargs["column_order"] = visible_columns
     editor_kwargs["width"] = "stretch"
     return st.data_editor(editor_df, **editor_kwargs)
-
-
-def build_dust_editor_df(dust_cfg: list[dict[str, Any]]) -> pd.DataFrame:
-    """
-    Build the editable BF gas dust deduction table from BMO configuration.
-
-    Dust rows are optional full slag-balance inputs. The table keeps wet
-    quantity, moisture, and component chemistry together so the calculator can
-    deduct dry dust component masses after ore, flux, and fuel ash are added.
-
-    Args:
-         - dust_cfg: list[dict[str, Any]] - Configured dust defaults.
-
-    Returns:
-         - return pd.DataFrame - Editable dust data for Streamlit.
-    """
-
-    rows = []
-    for item in dust_cfg or []:
-        rows.append(
-            {
-                "enabled": bool(item.get("enabled", True)),
-                "dust_id": str(item.get("dust_id", "")),
-                "dust_name": str(item.get("display_name", item.get("dust_id", ""))),
-                "rate_basis": str(
-                    item.get("rate_basis", "mt_per_day") or "mt_per_day"
-                ).lower(),
-                "wet_qty_mt": float(item.get("wet_qty_mt", 0.0) or 0.0),
-                "quantity_kg_per_charge": float(
-                    item.get("quantity_kg_per_charge", 0.0) or 0.0
-                ),
-                "source": str(item.get("source", "default") or "default"),
-                "moisture_pct": float(item.get("moisture_pct", 0.0) or 0.0),
-                "sio2_pct": float(item.get("sio2_pct", 0.0) or 0.0),
-                "al2o3_pct": float(item.get("al2o3_pct", 0.0) or 0.0),
-                "cao_pct": float(item.get("cao_pct", 0.0) or 0.0),
-                "mgo_pct": float(item.get("mgo_pct", 0.0) or 0.0),
-                "fe_pct": float(item.get("fe_pct", 0.0) or 0.0),
-                "mn_pct": float(item.get("mn_pct", 0.0) or 0.0),
-                "p_pct": float(item.get("p_pct", 0.0) or 0.0),
-                "s_pct": float(item.get("s_pct", 0.0) or 0.0),
-                "ti_pct": float(item.get("ti_pct", 0.0) or 0.0),
-                "zn_pct": float(item.get("zn_pct", 0.0) or 0.0),
-                "na2o_pct": float(item.get("na2o_pct", 0.0) or 0.0),
-                "k2o_pct": float(item.get("k2o_pct", 0.0) or 0.0),
-                "caf2_pct": float(item.get("caf2_pct", 0.0) or 0.0),
-            }
-        )
-    return pd.DataFrame(rows)
 
 
 def render_dust_editor(editor_df: pd.DataFrame) -> pd.DataFrame:
@@ -1059,33 +808,35 @@ def render_slag_balance_settings(
          - return dict[str, float | bool] - Edited slag-balance settings.
     """
 
+    # The defaults are slag_balance_defaults (shared with services/bmo_case.py, SV-3.5).
+    defaults = slag_balance_defaults(settings_cfg)
     values: dict[str, float | bool] = {}
     values["enabled"] = st.checkbox(
         "Use full slag balance",
-        value=bool(settings_cfg.get("enabled", True)),
+        value=bool(defaults["enabled"]),
     )
 
-    values["slag_correction_factor"] = 1.0
+    values["slag_correction_factor"] = defaults["slag_correction_factor"]
     c1, c2, c3 = st.columns(3)
     values["pi_loss_pct"] = c1.number_input(
         "PI Loss (%)",
         min_value=0.0,
         max_value=99.0,
-        value=float(settings_cfg.get("pi_loss_pct", 0.2)),
+        value=float(defaults["pi_loss_pct"]),
         step=0.01,
     )
     values["fe_to_pig_iron_fraction"] = c2.number_input(
         "Fe to PI Fraction",
         min_value=0.0,
         max_value=1.0,
-        value=float(settings_cfg.get("fe_to_pig_iron_fraction", 0.999)),
+        value=float(defaults["fe_to_pig_iron_fraction"]),
         step=0.001,
     )
     values["mn_recovery_pct"] = c3.number_input(
         "Mn/Ti Recovery (%)",
         min_value=0.0,
         max_value=100.0,
-        value=float(settings_cfg.get("mn_recovery_pct", 60.0)),
+        value=float(defaults["mn_recovery_pct"]),
         step=0.1,
     )
 
@@ -1094,26 +845,26 @@ def render_slag_balance_settings(
         "S Gas Loss (%)",
         min_value=0.0,
         max_value=100.0,
-        value=float(settings_cfg.get("sulphur_gas_loss_pct", 10.0)),
+        value=float(defaults["sulphur_gas_loss_pct"]),
         step=0.1,
     )
     values["alkali_to_slag_fraction"] = c6.number_input(
         "Alkali to Slag",
         min_value=0.0,
         max_value=1.0,
-        value=float(settings_cfg.get("alkali_to_slag_fraction", 0.8)),
+        value=float(defaults["alkali_to_slag_fraction"]),
         step=0.01,
     )
     values["fe_to_feo_factor"] = c7.number_input(
         "Fe to FeO",
         min_value=0.0,
-        value=float(settings_cfg.get("fe_to_feo_factor", 72.0 / 56.0)),
+        value=float(defaults["fe_to_feo_factor"]),
         step=0.001,
     )
     values["mn_to_mno_factor"] = c8.number_input(
         "Mn to MnO",
         min_value=0.0,
-        value=float(settings_cfg.get("mn_to_mno_factor", 1.291)),
+        value=float(defaults["mn_to_mno_factor"]),
         step=0.001,
     )
     return values

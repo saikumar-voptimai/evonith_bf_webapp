@@ -88,6 +88,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bmo/forecasts/charged-coke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Charged-coke forecast
+         * @description The 4-h charged-coke block for the row of the latest hourly build from the worker's ledger (the row before
+         *     while it is being issued); without a forecast when the ledger is out of date (``reasons``).
+         */
+        get: operations["bmo_charged_coke_forecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bmo/forecasts/si": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hot-metal Si forecast
+         * @description The Si path (Now, +1, +2, +3 h) of the current origin from the worker's ledger; the previous origin's while the
+         *     current one is being issued; an out-of-date record without values otherwise (``note`` says since when).
+         */
+        get: operations["bmo_si_forecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bmo/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a Blend Mix Optimiser run
+         * @description Queue ``bmo.run``: page 9's LP at a fixed production. Fields left out take page 9's defaults. Follow the job
+         *     with GET /api/bmo/runs/{job id} or the ``job.done`` event. A request equal to a queued or running one returns it.
+         */
+        post: operations["bmo_start_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bmo/runs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A Blend Mix Optimiser run
+         * @description The job (records are kept 7 days) and its plan once it is done.
+         */
+        get: operations["bmo_get_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bmo/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Saved Blend Mix Optimiser runs
+         * @description Page 9's snapshots, newest first: when, source, label and the recommended result's headline.
+         */
+        get: operations["bmo_list_snapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bmo/snapshots/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A saved Blend Mix Optimiser run
+         * @description Inputs (tables as row lists), the LP and DE results and the run's provenance; the frozen plant data stay in the
+         *     file (Sandbox replay on page 9).
+         */
+        get: operations["bmo_get_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fm/conversations": {
         parameters: {
             query?: never;
@@ -1306,6 +1430,841 @@ export interface components {
              * @enum {string}
              */
             zone: "above_cz" | "in_cz" | "below_cz" | "burnt";
+        };
+        /** BmoAnchor */
+        BmoAnchor: {
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "data_driven" | "energy_balance";
+            /**
+             * Rate Kg Thm
+             * @description Coke level of the fuel cost, kg/tHM; null = the fuel model's
+             */
+            rate_kg_thm?: number | null;
+        };
+        /** BmoChargedCokeView */
+        BmoChargedCokeView: {
+            /**
+             * Current
+             * @description The forecast is for the row of the latest build (or the one before)
+             */
+            current: boolean;
+            forecast?: components["schemas"]["ChargedCokeForecastData"] | null;
+            /**
+             * Issuer
+             * @description Who issues: auto, worker or page (bmo.forecast_issuer)
+             */
+            issuer: string;
+            /**
+             * Last Issued Row
+             * @description Latest row in the ledger when out of date (IST)
+             */
+            last_issued_row?: string | null;
+            /**
+             * Note
+             * @description Why the forecast shown is not the latest build's
+             */
+            note?: string | null;
+            /** Reasons */
+            reasons?: string[];
+            /**
+             * Worker Active
+             * @description The worker attempted the forecast within 75 min
+             */
+            worker_active: boolean;
+        };
+        /**
+         * BmoFuelPrices
+         * @description Fuel prices of the run (None keeps page 9's price).
+         */
+        BmoFuelPrices: {
+            /**
+             * Coke
+             * @description Coke, Rs/t
+             */
+            coke?: number | null;
+            /**
+             * Nut Coke
+             * @description Nut coke, Rs/t
+             */
+            nut_coke?: number | null;
+            /**
+             * Pci
+             * @description PCI coal, Rs/t
+             */
+            pci?: number | null;
+        };
+        /** BmoFuelRates */
+        BmoFuelRates: {
+            /**
+             * Coke Rate Kg Thm
+             * @description Coke rate read for the run, kg/tHM
+             */
+            coke_rate_kg_thm?: number | null;
+            /** Coke Source */
+            coke_source?: string | null;
+            /**
+             * Nut Coke Rate Kg Thm
+             * @description Nut-coke rate of the run, kg/tHM
+             */
+            nut_coke_rate_kg_thm?: number | null;
+            /** Nut Coke Source */
+            nut_coke_source?: string | null;
+            /**
+             * Pci Rate Kg Thm
+             * @description PCI rate of the run, kg/tHM
+             */
+            pci_rate_kg_thm?: number | null;
+            /** Pci Source */
+            pci_source?: string | null;
+        };
+        /**
+         * BmoHmChemistry
+         * @description Slag-side hot-metal chemistry of page 9's slag balance (None keeps the saved or configured value).
+         */
+        BmoHmChemistry: {
+            /**
+             * Carbon Pct
+             * @description C in hot metal, mass %
+             */
+            carbon_pct?: number | null;
+            /**
+             * Other Pct
+             * @description Other elements in hot metal, mass %
+             */
+            other_pct?: number | null;
+            /**
+             * Silicon Pct
+             * @description Si in hot metal, mass %
+             */
+            silicon_pct?: number | null;
+            /**
+             * Sulphur Pct
+             * @description S in hot metal, mass %
+             */
+            sulphur_pct?: number | null;
+        };
+        /**
+         * BmoOreOverride
+         * @description The operator's edit of one ore row of page 9's ore table (None keeps the table's value).
+         */
+        BmoOreOverride: {
+            /**
+             * Max Share Pct
+             * @description Highest share of the wet burden, %
+             */
+            max_share_pct?: number | null;
+            /**
+             * Min Share Pct
+             * @description Lowest share of the wet burden, %
+             */
+            min_share_pct?: number | null;
+            /**
+             * Price Rs Per Mt
+             * @description Price of the wet ore, Rs/t
+             */
+            price_rs_per_mt?: number | null;
+            /**
+             * Stock Mt
+             * @description Stock available, t wet
+             */
+            stock_mt?: number | null;
+        };
+        /** BmoOreRow */
+        BmoOreRow: {
+            /**
+             * Cost Rs D
+             * @description Ore cost, Rs/day
+             */
+            cost_rs_d?: number | null;
+            /**
+             * Dry Quantity T D
+             * @description Dry quantity, t/day
+             */
+            dry_quantity_t_d?: number | null;
+            /**
+             * Fe T D
+             * @description Fe contributed, t/day
+             */
+            fe_t_d?: number | null;
+            /**
+             * Kg Per Charge
+             * @description Wet quantity per charge, kg
+             */
+            kg_per_charge?: number | null;
+            /**
+             * Moisture Pct
+             * @description Moisture, mass %
+             */
+            moisture_pct?: number | null;
+            /** Ore Id */
+            ore_id: string;
+            /** Ore Name */
+            ore_name: string;
+            /**
+             * Price Rs T
+             * @description Price of the wet ore, Rs/t
+             */
+            price_rs_t?: number | null;
+            /**
+             * Quantity T D
+             * @description Wet quantity, t/day
+             */
+            quantity_t_d: number;
+            /**
+             * Share Pct
+             * @description Share of the wet burden, %
+             */
+            share_pct: number;
+            /**
+             * Slag T D
+             * @description Slag contributed, t/day
+             */
+            slag_t_d?: number | null;
+            /**
+             * Stock T
+             * @description Stock, t wet
+             */
+            stock_t?: number | null;
+        };
+        /**
+         * BmoPlanView
+         * @description A blend as page 9's result cards show it.
+         */
+        BmoPlanView: {
+            /**
+             * Coke Correction Kg Thm
+             * @description Blend correction of the coke rate against the reference burden, kg/tHM
+             */
+            coke_correction_kg_thm?: number | null;
+            /**
+             * Coke Rate Kg Thm
+             * @description Coke rate of the blend, kg/tHM
+             */
+            coke_rate_kg_thm?: number | null;
+            /**
+             * Fe Production T D
+             * @description Fe from the dry burden, t/day
+             */
+            fe_production_t_d?: number | null;
+            /**
+             * Fe T Pct
+             * @description Fe(T) of the dry burden, mass %
+             */
+            fe_t_pct?: number | null;
+            /** Feasible */
+            feasible: boolean;
+            /**
+             * Flux Cost Rs Thm
+             * @description Flux the LP added, Rs/tHM
+             */
+            flux_cost_rs_thm?: number | null;
+            /**
+             * Flux T D
+             * @description Flux the LP added, t/day by flux id
+             */
+            flux_t_d?: {
+                [key: string]: number;
+            };
+            /**
+             * Fuel Cost Rs Thm
+             * @description Fuel cost at the run's fuel prices, Rs/tHM
+             */
+            fuel_cost_rs_thm?: number | null;
+            /**
+             * Fuel Rate Kg Thm
+             * @description Coke + nut coke + PCI, kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Nut Coke Rate Kg Thm
+             * @description Nut-coke rate, kg/tHM
+             */
+            nut_coke_rate_kg_thm?: number | null;
+            /**
+             * Ore Cost Rs Thm
+             * @description Ore cost, Rs/tHM
+             */
+            ore_cost_rs_thm?: number | null;
+            /**
+             * Ores
+             * @description Ores of the run, largest share first
+             */
+            ores?: components["schemas"]["BmoOreRow"][];
+            /**
+             * Pci Rate Kg Thm
+             * @description PCI rate, kg/tHM
+             */
+            pci_rate_kg_thm?: number | null;
+            /**
+             * Slag Al2O3 Pct
+             * @description Al₂O₃ in slag, mass %
+             */
+            slag_al2o3_pct?: number | null;
+            /**
+             * Slag Basicity
+             * @description CaO/SiO₂ of the slag, ratio
+             */
+            slag_basicity?: number | null;
+            /**
+             * Slag Mgo Al2O3 Ratio
+             * @description MgO/Al₂O₃ of the slag, ratio
+             */
+            slag_mgo_al2o3_ratio?: number | null;
+            /**
+             * Slag Mgo Pct
+             * @description MgO in slag, mass %
+             */
+            slag_mgo_pct?: number | null;
+            /**
+             * Slag Rate Kg Thm
+             * @description Slag rate, kg/tHM (model basis)
+             */
+            slag_rate_kg_thm?: number | null;
+            /**
+             * Slag T Basicity
+             * @description (CaO+MgO)/SiO₂ of the slag, ratio
+             */
+            slag_t_basicity?: number | null;
+            /**
+             * Slag T D
+             * @description Slag, t/day (model basis)
+             */
+            slag_t_d?: number | null;
+            /**
+             * Total Cost Rs Thm
+             * @description Ore + fuel + added flux, Rs/tHM
+             */
+            total_cost_rs_thm?: number | null;
+            /**
+             * Total Qty T D
+             * @description Wet ore burden, t/day
+             */
+            total_qty_t_d?: number | null;
+            /** Violations */
+            violations?: string[];
+        };
+        /** BmoRunLookup */
+        BmoRunLookup: {
+            job: components["schemas"]["JobRecord"];
+            /** @description The plan, once the job is done */
+            result?: components["schemas"]["BmoRunResult"] | null;
+        };
+        /**
+         * BmoRunParams
+         * @description One Balanced Optimizer (LP) run of the Blend Mix Optimiser at a fixed production (``bmo.run``, SV-3.5).
+         *
+         *     Every field left out takes page 9's default: the configured target and slag window, the hourly dataset's window,
+         *     the operator's saved inputs, the live yard, chemistry and fuel rates.
+         */
+        BmoRunParams: {
+            /**
+             * Blend Response Kg Coke Per Kg Slag
+             * @description Data-Driven blend response, kg coke per kg slag
+             */
+            blend_response_kg_coke_per_kg_slag?: number | null;
+            /**
+             * Burden Capacity Enabled
+             * @description Enforce the charging ceiling (default: config)
+             */
+            burden_capacity_enabled?: boolean | null;
+            /**
+             * Charge Mass Mt
+             * @description Burden per charge, t
+             */
+            charge_mass_mt?: number | null;
+            /**
+             * Chemistry Mode
+             * @description Raw-material chemistry: latest = last charged instance, avg = window mean
+             */
+            chemistry_mode?: ("latest" | "avg") | null;
+            /**
+             * Chemistry Window Days
+             * @description Chemistry window, d
+             */
+            chemistry_window_days?: number | null;
+            /**
+             * Coke Model
+             * @description Coke level: data_driven = charged-coke forecast, energy_balance = Physics-Driven anchor
+             */
+            coke_model?: ("data_driven" | "energy_balance") | null;
+            /**
+             * Force Data Driven
+             * @description Use the charged-coke forecast while its state pauses it (page 9's force option)
+             * @default false
+             */
+            force_data_driven: boolean;
+            fuel_prices?: components["schemas"]["BmoFuelPrices"] | null;
+            hm_chemistry?: components["schemas"]["BmoHmChemistry"] | null;
+            /**
+             * Manual Blend Lookback Hours
+             * @description Blend history window, h
+             */
+            manual_blend_lookback_hours?: number | null;
+            /**
+             * Max Charges Per Hour
+             * @description Charging rate limit, charges/h
+             */
+            max_charges_per_hour?: number | null;
+            /**
+             * Nut Coke Override Kg Thm
+             * @description Nut-coke rate (default: plant set point), kg/tHM
+             */
+            nut_coke_override_kg_thm?: number | null;
+            /**
+             * Ore Overrides
+             * @description Edits by ore id
+             */
+            ore_overrides?: {
+                [key: string]: components["schemas"]["BmoOreOverride"];
+            } | null;
+            /**
+             * Pci Override Kg Thm
+             * @description PCI rate (default: live tag), kg/tHM
+             */
+            pci_override_kg_thm?: number | null;
+            /**
+             * Pellet Inputs Confirmed
+             * @description The operator has reviewed pellet inputs flagged as stale or incomplete
+             * @default false
+             */
+            pellet_inputs_confirmed: boolean;
+            /**
+             * Selected Ore Ids
+             * @description Ores in the blend (default: page 9's selection)
+             */
+            selected_ore_ids?: string[] | null;
+            /**
+             * Target Production Mt
+             * @description Hot-metal target, t/day
+             */
+            target_production_mt?: number | null;
+            /**
+             * Target Slag Al2O3 Max Pct
+             * @description Highest Al₂O₃ in slag, mass %; 0 = not enforced
+             */
+            target_slag_al2o3_max_pct?: number | null;
+            /**
+             * Target Slag Basicity Max
+             * @description Highest CaO/SiO₂, ratio
+             */
+            target_slag_basicity_max?: number | null;
+            /**
+             * Target Slag Basicity Min
+             * @description Lowest CaO/SiO₂, ratio
+             */
+            target_slag_basicity_min?: number | null;
+            /**
+             * Target Slag Mgo Al2O3 Ratio Min
+             * @description Lowest MgO/Al₂O₃ in slag, ratio; 0 = not enforced
+             */
+            target_slag_mgo_al2o3_ratio_min?: number | null;
+            /**
+             * Target Slag Mgo Min Pct
+             * @description Lowest MgO in slag, mass %; 0 = not enforced
+             */
+            target_slag_mgo_min_pct?: number | null;
+            /**
+             * Target Slag Rate Kg Per Thm
+             * @description Slag cap on the plant basis, kg/tHM
+             */
+            target_slag_rate_kg_per_thm?: number | null;
+            /**
+             * Target Slag T Basicity Max
+             * @description Highest (CaO+MgO)/SiO₂, ratio; 0 = not enforced
+             */
+            target_slag_t_basicity_max?: number | null;
+            /**
+             * Target Slag T Basicity Min
+             * @description Lowest (CaO+MgO)/SiO₂, ratio; 0 = not enforced
+             */
+            target_slag_t_basicity_min?: number | null;
+        };
+        /**
+         * BmoRunResult
+         * @description The result of a ``bmo.run`` job: the LP plan at a fixed production, or why there is none.
+         */
+        BmoRunResult: {
+            anchor?: components["schemas"]["BmoAnchor"] | null;
+            /** Chemistry Mode */
+            chemistry_mode: string;
+            /**
+             * Chemistry Window Days
+             * @description Chemistry window, d
+             */
+            chemistry_window_days: number;
+            /**
+             * Coke Model
+             * @enum {string}
+             */
+            coke_model: "data_driven" | "energy_balance";
+            /**
+             * Computed At
+             * Format: date-time
+             * @description UTC
+             */
+            computed_at: string;
+            /**
+             * Errors
+             * @description LP errors
+             */
+            errors?: string[];
+            fuel_rates: components["schemas"]["BmoFuelRates"];
+            /**
+             * Live Si Pct
+             * @description Hot-metal Si of the Si forecast the run used, mass %
+             */
+            live_si_pct?: number | null;
+            /** Pellet Issues */
+            pellet_issues?: string[];
+            plan?: components["schemas"]["BmoPlanView"] | null;
+            /**
+             * Refusal
+             * @description Why page 9 would not run the optimiser with these inputs
+             */
+            refusal?: string | null;
+            /**
+             * Seconds
+             * @description Run time, s
+             */
+            seconds: number;
+            /**
+             * Status
+             * @description ok: a feasible plan; infeasible: the LP found none or broke a limit; refused: see refusal
+             * @enum {string}
+             */
+            status: "ok" | "infeasible" | "refused";
+            targets: components["schemas"]["BmoRunTargets"];
+            /**
+             * Warnings
+             * @description Data and input warnings of the run
+             */
+            warnings?: string[];
+        };
+        /** BmoRunSubmitted */
+        BmoRunSubmitted: {
+            /**
+             * Duplicate
+             * @description True when an identical run was already queued or running
+             */
+            duplicate: boolean;
+            job: components["schemas"]["JobRecord"];
+        };
+        /** BmoRunTargets */
+        BmoRunTargets: {
+            /**
+             * Al2O3 Max Pct
+             * @description Highest Al₂O₃ in slag, mass %; null = not enforced
+             */
+            al2o3_max_pct?: number | null;
+            /**
+             * Basicity Max
+             * @description Highest CaO/SiO₂, ratio
+             */
+            basicity_max: number;
+            /**
+             * Basicity Min
+             * @description Lowest CaO/SiO₂, ratio
+             */
+            basicity_min: number;
+            /**
+             * Charge Mass T
+             * @description Burden per charge, t
+             */
+            charge_mass_t: number;
+            /**
+             * Fe T D
+             * @description Fe required in hot metal, t/day
+             */
+            fe_t_d: number;
+            /**
+             * Hm Fe Pct
+             * @description Fe in hot metal used for the Fe requirement, mass %
+             */
+            hm_fe_pct: number;
+            /**
+             * Max Burden T D
+             * @description Ore + flux charging ceiling, t/day; null = not enforced
+             */
+            max_burden_t_d?: number | null;
+            /**
+             * Max Charges Per Hour
+             * @description Charging rate limit, charges/h
+             */
+            max_charges_per_hour: number;
+            /**
+             * Mgo Al2O3 Ratio Min
+             * @description Lowest MgO/Al₂O₃, ratio; null = not enforced
+             */
+            mgo_al2o3_ratio_min?: number | null;
+            /**
+             * Mgo Min Pct
+             * @description Lowest MgO in slag, mass %; null = not enforced
+             */
+            mgo_min_pct?: number | null;
+            /**
+             * Model To Plant Slag Factor
+             * @description plant slag = model slag × factor, ratio
+             */
+            model_to_plant_slag_factor: number;
+            /**
+             * Nut Coke Charge Moisture Pct
+             * @description Moisture added to the nut-coke charge, mass %
+             */
+            nut_coke_charge_moisture_pct: number;
+            /**
+             * Nut Coke Rate Kg Thm
+             * @description Nut-coke rate held in the charges, kg/tHM
+             */
+            nut_coke_rate_kg_thm: number;
+            /**
+             * Production T D
+             * @description Hot-metal target, t/day
+             */
+            production_t_d: number;
+            /**
+             * Slag Cap T D
+             * @description Slag cap the LP enforces, t/day (model basis)
+             */
+            slag_cap_t_d: number;
+            /**
+             * Slag Rate Cap Kg Thm
+             * @description Slag cap, kg/tHM (plant basis)
+             */
+            slag_rate_cap_kg_thm: number;
+            /**
+             * T Basicity Max
+             * @description Highest (CaO+MgO)/SiO₂, ratio; null = not enforced
+             */
+            t_basicity_max?: number | null;
+            /**
+             * T Basicity Min
+             * @description Lowest (CaO+MgO)/SiO₂, ratio; null = not enforced
+             */
+            t_basicity_min?: number | null;
+        };
+        /** BmoSiForecastView */
+        BmoSiForecastView: {
+            /**
+             * Current
+             * @description The forecast is for the current origin (or the one before it)
+             */
+            current: boolean;
+            forecast?: components["schemas"]["SiForecastData"] | null;
+            /**
+             * Issuer
+             * @description Who issues: auto, worker or page (bmo.forecast_issuer)
+             */
+            issuer: string;
+            /**
+             * Mode
+             * @description Forecast mode of setting_bmo.yml: forecast, shadow or legacy (none)
+             */
+            mode: string;
+            /**
+             * Note
+             * @description Why the forecast shown is not the current origin's
+             */
+            note?: string | null;
+            /**
+             * Worker Active
+             * @description The worker attempted the forecast within 15 min
+             */
+            worker_active: boolean;
+        };
+        /** BmoSnapshotDetail */
+        BmoSnapshotDetail: {
+            /**
+             * Created At
+             * @description When the snapshot was saved (IST, with offset)
+             */
+            created_at?: string | null;
+            /** @description Intensive Optimizer (DE) result */
+            de?: components["schemas"]["BmoPlanView"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Inputs
+             * @description Widget values and input tables (tables as row lists) by page key
+             */
+            inputs?: Record<string, unknown>;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** @description Balanced Optimizer (LP) result */
+            lp?: components["schemas"]["BmoPlanView"] | null;
+            /**
+             * Model Check
+             * @description Recorded fuel-model check of the run
+             */
+            model_check?: Record<string, unknown> | null;
+            /** Not Restorable */
+            not_restorable?: string[];
+            /**
+             * Provenance
+             * @description Code version of the run
+             */
+            provenance?: Record<string, unknown>;
+            /**
+             * Recommended
+             * @description The result page 9 recommends (DE unless it fell back)
+             */
+            recommended?: string | null;
+            run: components["schemas"]["BmoSnapshotRun"];
+            /**
+             * Schema Version
+             * @description bmo-snapshot/<n>
+             * @default
+             */
+            schema_version: string;
+            /**
+             * Source
+             * @description Blend Mix Optimiser or Sandbox
+             * @default
+             */
+            source: string;
+            summary: components["schemas"]["BmoSnapshotSummary"];
+        };
+        /** BmoSnapshotHeader */
+        BmoSnapshotHeader: {
+            /**
+             * Created At
+             * @description When the snapshot was saved (IST, with offset)
+             */
+            created_at?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Source
+             * @description Blend Mix Optimiser or Sandbox
+             * @default
+             */
+            source: string;
+            summary: components["schemas"]["BmoSnapshotSummary"];
+        };
+        /** BmoSnapshotList */
+        BmoSnapshotList: {
+            /**
+             * Snapshots
+             * @description Newest first
+             */
+            snapshots?: components["schemas"]["BmoSnapshotHeader"][];
+            /**
+             * Unreadable
+             * @description Snapshot files that could not be read
+             */
+            unreadable?: string[];
+        };
+        /** BmoSnapshotRun */
+        BmoSnapshotRun: {
+            /**
+             * At
+             * @description When the recorded run was made (IST, with offset)
+             */
+            at?: string | null;
+            /**
+             * Inputs Changed After Run
+             * @default false
+             */
+            inputs_changed_after_run: boolean;
+            /**
+             * Pinned
+             * @description The inputs and plant data are those of the run, not of the save
+             * @default false
+             */
+            pinned: boolean;
+        };
+        /** BmoSnapshotSummary */
+        BmoSnapshotSummary: {
+            /**
+             * Basicity
+             * @description CaO/SiO₂, ratio
+             */
+            basicity?: number | null;
+            /**
+             * Blend Pct
+             * @description Share by ore name, %
+             */
+            blend_pct?: {
+                [key: string]: number;
+            };
+            /**
+             * Coke Rate Kg Thm
+             * @description kg/tHM
+             */
+            coke_rate_kg_thm?: number | null;
+            /**
+             * Fe Pct
+             * @description Fe(T) of the dry burden, mass %
+             */
+            fe_pct?: number | null;
+            /** Feasible */
+            feasible?: boolean | null;
+            /**
+             * Frozen Context
+             * @description The snapshot holds the plant data the run read (replayable)
+             * @default false
+             */
+            frozen_context: boolean;
+            /**
+             * Fuel Rate Kg Thm
+             * @description kg/tHM
+             */
+            fuel_rate_kg_thm?: number | null;
+            /**
+             * Nut Coke Kg Thm
+             * @description kg/tHM
+             */
+            nut_coke_kg_thm?: number | null;
+            /**
+             * Pci Kg Thm
+             * @description kg/tHM
+             */
+            pci_kg_thm?: number | null;
+            /**
+             * Production T D
+             * @description Hot-metal target, t/day
+             */
+            production_t_d?: number | null;
+            /**
+             * Result
+             * @description Balanced Optimizer (LP) or Intensive Optimizer (DE)
+             */
+            result?: string | null;
+            /**
+             * Slag Rate Kg Thm
+             * @description kg/tHM (model basis)
+             */
+            slag_rate_kg_thm?: number | null;
+            /**
+             * Slag T D
+             * @description t/day (model basis)
+             */
+            slag_t_d?: number | null;
+            /**
+             * T Basicity
+             * @description (CaO+MgO)/SiO₂, ratio
+             */
+            t_basicity?: number | null;
+            /**
+             * Total Cost Rs Thm
+             * @description Ore + fuel + added flux, Rs/tHM
+             */
+            total_cost_rs_thm?: number | null;
+            /**
+             * Violations
+             * @description Limits broken, count
+             */
+            violations?: number | null;
         };
         /** CalibrationShift */
         CalibrationShift: {
@@ -7083,6 +8042,245 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionInfo"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bmo_charged_coke_forecast: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BmoChargedCokeView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bmo_si_forecast: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BmoSiForecastView"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bmo_start_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BmoRunParams"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BmoRunSubmitted"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bmo_get_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BmoRunLookup"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bmo_list_snapshots: {
+        parameters: {
+            query?: {
+                /** @description Snapshots, count */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BmoSnapshotList"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    bmo_get_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BmoSnapshotDetail"];
                 };
             };
             /** @description Client error (problem+json) */
