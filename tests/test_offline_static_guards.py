@@ -96,5 +96,8 @@ def test_sqlite_usage_is_limited_to_ticketing() -> None:
         relative = path.relative_to(ROOT).as_posix()
         if relative.startswith("src/data/tickets/"):
             continue
+        # SV-6.5: the twin store's local outage buffer (twin writes kept while Neon is unreachable, then replayed)
+        if relative == "src/data/twin/outbox.py":
+            continue
         offenders.append(path)
     assert offenders == []
