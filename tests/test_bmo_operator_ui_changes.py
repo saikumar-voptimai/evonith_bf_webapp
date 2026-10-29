@@ -279,11 +279,15 @@ def test_comparison_uses_currently_applied_ore_prices() -> None:
     )
     source = page_path.read_text(encoding="utf-8")
     tree = ast.parse(source)
+    # The editor-to-ores conversion is services.bmo_case.selected_ores_from_editor (SV-3.5).
+    case_tree = ast.parse(
+        (page_path.parents[1] / "services" / "bmo_case.py").read_text(encoding="utf-8")
+    )
     selector = next(
         node
-        for node in tree.body
+        for node in case_tree.body
         if isinstance(node, ast.FunctionDef)
-        and node.name == "_selected_ores_from_editor"
+        and node.name == "selected_ores_from_editor"
     )
     price_keyword = next(
         keyword

@@ -186,5 +186,9 @@ def test_page_uses_only_the_charged_engine() -> None:
     assert "Robust 24-h model" not in page
     assert "DirectCokeModelService" not in page
     assert "direct_coke_model" not in page
-    # One switch point: the charged response replaces the physics correction.
-    assert page.count("charged_response_settings(") == 1
+    # One switch point: the charged response replaces the physics correction
+    # (services.bmo_case.coke_correction, called once by the page; SV-3.5).
+    case = (ROOT / "src/services/bmo_case.py").read_text(encoding="utf-8")
+    assert "charged_response_settings(" not in page
+    assert case.count("charged_response_settings(") == 1
+    assert page.count("case_service.coke_correction(") == 1

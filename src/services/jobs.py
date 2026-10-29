@@ -141,6 +141,99 @@ class StrataLivePointParams(BaseModel):
     )
 
 
+class BmoOreOverride(BaseModel):
+    """The operator's edit of one ore row of page 9's ore table (None keeps the table's value)."""
+
+    model_config = {"extra": "forbid"}
+
+    price_rs_per_mt: float | None = Field(None, ge=0, le=100000, description="Price of the wet ore, Rs/t")
+    min_share_pct: float | None = Field(None, ge=0, le=100, description="Lowest share of the wet burden, %")
+    max_share_pct: float | None = Field(None, ge=0, le=100, description="Highest share of the wet burden, %")
+    stock_mt: float | None = Field(None, ge=0, description="Stock available, t wet")
+
+
+class BmoHmChemistry(BaseModel):
+    """Slag-side hot-metal chemistry of page 9's slag balance (None keeps the saved or configured value)."""
+
+    model_config = {"extra": "forbid"}
+
+    carbon_pct: float | None = Field(None, ge=0, le=10, description="C in hot metal, mass %")
+    silicon_pct: float | None = Field(None, ge=0, le=3, description="Si in hot metal, mass %")
+    sulphur_pct: float | None = Field(None, ge=0, le=1, description="S in hot metal, mass %")
+    other_pct: float | None = Field(None, ge=0, le=10, description="Other elements in hot metal, mass %")
+
+
+class BmoFuelPrices(BaseModel):
+    """Fuel prices of the run (None keeps page 9's price)."""
+
+    model_config = {"extra": "forbid"}
+
+    coke: float | None = Field(None, ge=0, le=200000, description="Coke, Rs/t")
+    nut_coke: float | None = Field(None, ge=0, le=200000, description="Nut coke, Rs/t")
+    pci: float | None = Field(None, ge=0, le=200000, description="PCI coal, Rs/t")
+
+
+class BmoRunParams(BaseModel):
+    """One Balanced Optimizer (LP) run of the Blend Mix Optimiser at a fixed production (``bmo.run``, SV-3.5).
+
+    Every field left out takes page 9's default: the configured target and slag window, the hourly dataset's window,
+    the operator's saved inputs, the live yard, chemistry and fuel rates."""
+
+    model_config = {"extra": "forbid"}
+
+    target_production_mt: float | None = Field(None, ge=1000, le=3500, description="Hot-metal target, t/day")
+    target_slag_rate_kg_per_thm: float | None = Field(
+        None, ge=100, le=600, description="Slag cap on the plant basis, kg/tHM"
+    )
+    target_slag_basicity_min: float | None = Field(None, ge=0, le=3, description="Lowest CaO/SiO₂, ratio")
+    target_slag_basicity_max: float | None = Field(None, ge=0, le=10, description="Highest CaO/SiO₂, ratio")
+    target_slag_t_basicity_min: float | None = Field(
+        None, ge=0, le=3, description="Lowest (CaO+MgO)/SiO₂, ratio; 0 = not enforced"
+    )
+    target_slag_t_basicity_max: float | None = Field(
+        None, ge=0, le=10, description="Highest (CaO+MgO)/SiO₂, ratio; 0 = not enforced"
+    )
+    target_slag_al2o3_max_pct: float | None = Field(
+        None, ge=0, le=40, description="Highest Al₂O₃ in slag, mass %; 0 = not enforced"
+    )
+    target_slag_mgo_min_pct: float | None = Field(
+        None, ge=0, le=20, description="Lowest MgO in slag, mass %; 0 = not enforced"
+    )
+    target_slag_mgo_al2o3_ratio_min: float | None = Field(
+        None, ge=0, le=2, description="Lowest MgO/Al₂O₃ in slag, ratio; 0 = not enforced"
+    )
+    max_charges_per_hour: float | None = Field(None, gt=0, le=12, description="Charging rate limit, charges/h")
+    charge_mass_mt: float | None = Field(None, gt=0, le=60, description="Burden per charge, t")
+    burden_capacity_enabled: bool | None = Field(None, description="Enforce the charging ceiling (default: config)")
+    chemistry_mode: Literal["latest", "avg"] | None = Field(
+        None, description="Raw-material chemistry: latest = last charged instance, avg = window mean"
+    )
+    chemistry_window_days: int | None = Field(None, ge=1, le=180, description="Chemistry window, d")
+    coke_model: Literal["data_driven", "energy_balance"] | None = Field(
+        None, description="Coke level: data_driven = charged-coke forecast, energy_balance = Physics-Driven anchor"
+    )
+    blend_response_kg_coke_per_kg_slag: float | None = Field(
+        None, ge=0, le=1, description="Data-Driven blend response, kg coke per kg slag"
+    )
+    manual_blend_lookback_hours: int | None = Field(None, ge=1, le=48, description="Blend history window, h")
+    pci_override_kg_thm: float | None = Field(None, ge=0, le=300, description="PCI rate (default: live tag), kg/tHM")
+    nut_coke_override_kg_thm: float | None = Field(
+        None, ge=0, le=200, description="Nut-coke rate (default: plant set point), kg/tHM"
+    )
+    force_data_driven: bool = Field(
+        False, description="Use the charged-coke forecast while its state pauses it (page 9's force option)"
+    )
+    pellet_inputs_confirmed: bool = Field(
+        False, description="The operator has reviewed pellet inputs flagged as stale or incomplete"
+    )
+    selected_ore_ids: list[str] | None = Field(
+        None, max_length=40, description="Ores in the blend (default: page 9's selection)"
+    )
+    ore_overrides: dict[str, BmoOreOverride] | None = Field(None, description="Edits by ore id")
+    hm_chemistry: BmoHmChemistry | None = None
+    fuel_prices: BmoFuelPrices | None = None
+
+
 @dataclass(frozen=True)
 class JobKind:
     name: str
@@ -385,6 +478,23 @@ register(
             "Recomputes the MOD facts (coke response of Fixed-ω and STRATA-ω to the standard changes) at the day's "
             "calibration and the ring view of the thermal reserve zone at its state (STRATA-Flow network solves) for "
             "the STRATA page (SV-1.12)."
+        ),
+    )
+)
+
+register(
+    JobKind(
+        name="bmo.run",
+        title="Blend Mix Optimiser run",
+        role="user",
+        # reads the yard and chemistry (Neon), the live tags (InfluxDB), the hourly dataset (fetched when stale) and
+        # the forecast ledgers, then one LP: about 10 s with the data at hand
+        timeout_s=300,
+        max_tries=1,
+        params=BmoRunParams,
+        description=(
+            "Page 9's Balanced Optimizer (LP) at a fixed production with page 9's inputs and the requested changes; "
+            "the plan is the job result (POST /api/bmo/runs, SV-3.5)."
         ),
     )
 )

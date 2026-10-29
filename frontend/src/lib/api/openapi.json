@@ -807,6 +807,1853 @@
         "title": "BlendChangeView",
         "type": "object"
       },
+      "BmoAnchor": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "data_driven",
+              "energy_balance"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke level of the fuel cost, kg/tHM; null = the fuel model's",
+            "title": "Rate Kg Thm"
+          }
+        },
+        "required": [
+          "basis"
+        ],
+        "title": "BmoAnchor",
+        "type": "object"
+      },
+      "BmoChargedCokeView": {
+        "properties": {
+          "current": {
+            "description": "The forecast is for the row of the latest build (or the one before)",
+            "title": "Current",
+            "type": "boolean"
+          },
+          "forecast": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChargedCokeForecastData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issuer": {
+            "description": "Who issues: auto, worker or page (bmo.forecast_issuer)",
+            "title": "Issuer",
+            "type": "string"
+          },
+          "last_issued_row": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest row in the ledger when out of date (IST)",
+            "title": "Last Issued Row"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the forecast shown is not the latest build's",
+            "title": "Note"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "worker_active": {
+            "description": "The worker attempted the forecast within 75 min",
+            "title": "Worker Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "current",
+          "issuer",
+          "worker_active"
+        ],
+        "title": "BmoChargedCokeView",
+        "type": "object"
+      },
+      "BmoFuelPrices": {
+        "additionalProperties": false,
+        "description": "Fuel prices of the run (None keeps page 9's price).",
+        "properties": {
+          "coke": {
+            "anyOf": [
+              {
+                "maximum": 200000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke, Rs/t",
+            "title": "Coke"
+          },
+          "nut_coke": {
+            "anyOf": [
+              {
+                "maximum": 200000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut coke, Rs/t",
+            "title": "Nut Coke"
+          },
+          "pci": {
+            "anyOf": [
+              {
+                "maximum": 200000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI coal, Rs/t",
+            "title": "Pci"
+          }
+        },
+        "title": "BmoFuelPrices",
+        "type": "object"
+      },
+      "BmoFuelRates": {
+        "properties": {
+          "coke_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate read for the run, kg/tHM",
+            "title": "Coke Rate Kg Thm"
+          },
+          "coke_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coke Source"
+          },
+          "nut_coke_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut-coke rate of the run, kg/tHM",
+            "title": "Nut Coke Rate Kg Thm"
+          },
+          "nut_coke_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nut Coke Source"
+          },
+          "pci_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI rate of the run, kg/tHM",
+            "title": "Pci Rate Kg Thm"
+          },
+          "pci_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pci Source"
+          }
+        },
+        "title": "BmoFuelRates",
+        "type": "object"
+      },
+      "BmoHmChemistry": {
+        "additionalProperties": false,
+        "description": "Slag-side hot-metal chemistry of page 9's slag balance (None keeps the saved or configured value).",
+        "properties": {
+          "carbon_pct": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "C in hot metal, mass %",
+            "title": "Carbon Pct"
+          },
+          "other_pct": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Other elements in hot metal, mass %",
+            "title": "Other Pct"
+          },
+          "silicon_pct": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Si in hot metal, mass %",
+            "title": "Silicon Pct"
+          },
+          "sulphur_pct": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "S in hot metal, mass %",
+            "title": "Sulphur Pct"
+          }
+        },
+        "title": "BmoHmChemistry",
+        "type": "object"
+      },
+      "BmoOreOverride": {
+        "additionalProperties": false,
+        "description": "The operator's edit of one ore row of page 9's ore table (None keeps the table's value).",
+        "properties": {
+          "max_share_pct": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Highest share of the wet burden, %",
+            "title": "Max Share Pct"
+          },
+          "min_share_pct": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lowest share of the wet burden, %",
+            "title": "Min Share Pct"
+          },
+          "price_rs_per_mt": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Price of the wet ore, Rs/t",
+            "title": "Price Rs Per Mt"
+          },
+          "stock_mt": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stock available, t wet",
+            "title": "Stock Mt"
+          }
+        },
+        "title": "BmoOreOverride",
+        "type": "object"
+      },
+      "BmoOreRow": {
+        "properties": {
+          "cost_rs_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore cost, Rs/day",
+            "title": "Cost Rs D"
+          },
+          "dry_quantity_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dry quantity, t/day",
+            "title": "Dry Quantity T D"
+          },
+          "fe_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fe contributed, t/day",
+            "title": "Fe T D"
+          },
+          "kg_per_charge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wet quantity per charge, kg",
+            "title": "Kg Per Charge"
+          },
+          "moisture_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Moisture, mass %",
+            "title": "Moisture Pct"
+          },
+          "ore_id": {
+            "title": "Ore Id",
+            "type": "string"
+          },
+          "ore_name": {
+            "title": "Ore Name",
+            "type": "string"
+          },
+          "price_rs_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Price of the wet ore, Rs/t",
+            "title": "Price Rs T"
+          },
+          "quantity_t_d": {
+            "description": "Wet quantity, t/day",
+            "title": "Quantity T D",
+            "type": "number"
+          },
+          "share_pct": {
+            "description": "Share of the wet burden, %",
+            "title": "Share Pct",
+            "type": "number"
+          },
+          "slag_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag contributed, t/day",
+            "title": "Slag T D"
+          },
+          "stock_t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stock, t wet",
+            "title": "Stock T"
+          }
+        },
+        "required": [
+          "ore_id",
+          "ore_name",
+          "share_pct",
+          "quantity_t_d"
+        ],
+        "title": "BmoOreRow",
+        "type": "object"
+      },
+      "BmoPlanView": {
+        "description": "A blend as page 9's result cards show it.",
+        "properties": {
+          "coke_correction_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blend correction of the coke rate against the reference burden, kg/tHM",
+            "title": "Coke Correction Kg Thm"
+          },
+          "coke_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate of the blend, kg/tHM",
+            "title": "Coke Rate Kg Thm"
+          },
+          "fe_production_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fe from the dry burden, t/day",
+            "title": "Fe Production T D"
+          },
+          "fe_t_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fe(T) of the dry burden, mass %",
+            "title": "Fe T Pct"
+          },
+          "feasible": {
+            "title": "Feasible",
+            "type": "boolean"
+          },
+          "flux_cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Flux the LP added, Rs/tHM",
+            "title": "Flux Cost Rs Thm"
+          },
+          "flux_t_d": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Flux the LP added, t/day by flux id",
+            "title": "Flux T D",
+            "type": "object"
+          },
+          "fuel_cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fuel cost at the run's fuel prices, Rs/tHM",
+            "title": "Fuel Cost Rs Thm"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke + nut coke + PCI, kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "nut_coke_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut-coke rate, kg/tHM",
+            "title": "Nut Coke Rate Kg Thm"
+          },
+          "ore_cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore cost, Rs/tHM",
+            "title": "Ore Cost Rs Thm"
+          },
+          "ores": {
+            "description": "Ores of the run, largest share first",
+            "items": {
+              "$ref": "#/components/schemas/BmoOreRow"
+            },
+            "title": "Ores",
+            "type": "array"
+          },
+          "pci_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI rate, kg/tHM",
+            "title": "Pci Rate Kg Thm"
+          },
+          "slag_al2o3_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Al\u2082O\u2083 in slag, mass %",
+            "title": "Slag Al2O3 Pct"
+          },
+          "slag_basicity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CaO/SiO\u2082 of the slag, ratio",
+            "title": "Slag Basicity"
+          },
+          "slag_mgo_al2o3_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MgO/Al\u2082O\u2083 of the slag, ratio",
+            "title": "Slag Mgo Al2O3 Ratio"
+          },
+          "slag_mgo_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MgO in slag, mass %",
+            "title": "Slag Mgo Pct"
+          },
+          "slag_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag rate, kg/tHM (model basis)",
+            "title": "Slag Rate Kg Thm"
+          },
+          "slag_t_basicity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(CaO+MgO)/SiO\u2082 of the slag, ratio",
+            "title": "Slag T Basicity"
+          },
+          "slag_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag, t/day (model basis)",
+            "title": "Slag T D"
+          },
+          "total_cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + fuel + added flux, Rs/tHM",
+            "title": "Total Cost Rs Thm"
+          },
+          "total_qty_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wet ore burden, t/day",
+            "title": "Total Qty T D"
+          },
+          "violations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Violations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "feasible"
+        ],
+        "title": "BmoPlanView",
+        "type": "object"
+      },
+      "BmoRunLookup": {
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/JobRecord"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoRunResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The plan, once the job is done"
+          }
+        },
+        "required": [
+          "job"
+        ],
+        "title": "BmoRunLookup",
+        "type": "object"
+      },
+      "BmoRunParams": {
+        "additionalProperties": false,
+        "description": "One Balanced Optimizer (LP) run of the Blend Mix Optimiser at a fixed production (``bmo.run``, SV-3.5).\n\nEvery field left out takes page 9's default: the configured target and slag window, the hourly dataset's window,\nthe operator's saved inputs, the live yard, chemistry and fuel rates.",
+        "properties": {
+          "blend_response_kg_coke_per_kg_slag": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data-Driven blend response, kg coke per kg slag",
+            "title": "Blend Response Kg Coke Per Kg Slag"
+          },
+          "burden_capacity_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Enforce the charging ceiling (default: config)",
+            "title": "Burden Capacity Enabled"
+          },
+          "charge_mass_mt": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 60.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Burden per charge, t",
+            "title": "Charge Mass Mt"
+          },
+          "chemistry_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "latest",
+                  "avg"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Raw-material chemistry: latest = last charged instance, avg = window mean",
+            "title": "Chemistry Mode"
+          },
+          "chemistry_window_days": {
+            "anyOf": [
+              {
+                "maximum": 180.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chemistry window, d",
+            "title": "Chemistry Window Days"
+          },
+          "coke_model": {
+            "anyOf": [
+              {
+                "enum": [
+                  "data_driven",
+                  "energy_balance"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke level: data_driven = charged-coke forecast, energy_balance = Physics-Driven anchor",
+            "title": "Coke Model"
+          },
+          "force_data_driven": {
+            "default": false,
+            "description": "Use the charged-coke forecast while its state pauses it (page 9's force option)",
+            "title": "Force Data Driven",
+            "type": "boolean"
+          },
+          "fuel_prices": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoFuelPrices"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hm_chemistry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoHmChemistry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manual_blend_lookback_hours": {
+            "anyOf": [
+              {
+                "maximum": 48.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blend history window, h",
+            "title": "Manual Blend Lookback Hours"
+          },
+          "max_charges_per_hour": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 12.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charging rate limit, charges/h",
+            "title": "Max Charges Per Hour"
+          },
+          "nut_coke_override_kg_thm": {
+            "anyOf": [
+              {
+                "maximum": 200.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut-coke rate (default: plant set point), kg/tHM",
+            "title": "Nut Coke Override Kg Thm"
+          },
+          "ore_overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/BmoOreOverride"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Edits by ore id",
+            "title": "Ore Overrides"
+          },
+          "pci_override_kg_thm": {
+            "anyOf": [
+              {
+                "maximum": 300.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI rate (default: live tag), kg/tHM",
+            "title": "Pci Override Kg Thm"
+          },
+          "pellet_inputs_confirmed": {
+            "default": false,
+            "description": "The operator has reviewed pellet inputs flagged as stale or incomplete",
+            "title": "Pellet Inputs Confirmed",
+            "type": "boolean"
+          },
+          "selected_ore_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 40,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ores in the blend (default: page 9's selection)",
+            "title": "Selected Ore Ids"
+          },
+          "target_production_mt": {
+            "anyOf": [
+              {
+                "maximum": 3500.0,
+                "minimum": 1000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal target, t/day",
+            "title": "Target Production Mt"
+          },
+          "target_slag_al2o3_max_pct": {
+            "anyOf": [
+              {
+                "maximum": 40.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Highest Al\u2082O\u2083 in slag, mass %; 0 = not enforced",
+            "title": "Target Slag Al2O3 Max Pct"
+          },
+          "target_slag_basicity_max": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Highest CaO/SiO\u2082, ratio",
+            "title": "Target Slag Basicity Max"
+          },
+          "target_slag_basicity_min": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lowest CaO/SiO\u2082, ratio",
+            "title": "Target Slag Basicity Min"
+          },
+          "target_slag_mgo_al2o3_ratio_min": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lowest MgO/Al\u2082O\u2083 in slag, ratio; 0 = not enforced",
+            "title": "Target Slag Mgo Al2O3 Ratio Min"
+          },
+          "target_slag_mgo_min_pct": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lowest MgO in slag, mass %; 0 = not enforced",
+            "title": "Target Slag Mgo Min Pct"
+          },
+          "target_slag_rate_kg_per_thm": {
+            "anyOf": [
+              {
+                "maximum": 600.0,
+                "minimum": 100.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Slag cap on the plant basis, kg/tHM",
+            "title": "Target Slag Rate Kg Per Thm"
+          },
+          "target_slag_t_basicity_max": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Highest (CaO+MgO)/SiO\u2082, ratio; 0 = not enforced",
+            "title": "Target Slag T Basicity Max"
+          },
+          "target_slag_t_basicity_min": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lowest (CaO+MgO)/SiO\u2082, ratio; 0 = not enforced",
+            "title": "Target Slag T Basicity Min"
+          }
+        },
+        "title": "BmoRunParams",
+        "type": "object"
+      },
+      "BmoRunResult": {
+        "description": "The result of a ``bmo.run`` job: the LP plan at a fixed production, or why there is none.",
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoAnchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chemistry_mode": {
+            "title": "Chemistry Mode",
+            "type": "string"
+          },
+          "chemistry_window_days": {
+            "description": "Chemistry window, d",
+            "title": "Chemistry Window Days",
+            "type": "integer"
+          },
+          "coke_model": {
+            "enum": [
+              "data_driven",
+              "energy_balance"
+            ],
+            "title": "Coke Model",
+            "type": "string"
+          },
+          "computed_at": {
+            "description": "UTC",
+            "format": "date-time",
+            "title": "Computed At",
+            "type": "string"
+          },
+          "errors": {
+            "description": "LP errors",
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "fuel_rates": {
+            "$ref": "#/components/schemas/BmoFuelRates"
+          },
+          "live_si_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal Si of the Si forecast the run used, mass %",
+            "title": "Live Si Pct"
+          },
+          "pellet_issues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pellet Issues",
+            "type": "array"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoPlanView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why page 9 would not run the optimiser with these inputs",
+            "title": "Refusal"
+          },
+          "seconds": {
+            "description": "Run time, s",
+            "title": "Seconds",
+            "type": "number"
+          },
+          "status": {
+            "description": "ok: a feasible plan; infeasible: the LP found none or broke a limit; refused: see refusal",
+            "enum": [
+              "ok",
+              "infeasible",
+              "refused"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "targets": {
+            "$ref": "#/components/schemas/BmoRunTargets"
+          },
+          "warnings": {
+            "description": "Data and input warnings of the run",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "targets",
+          "fuel_rates",
+          "coke_model",
+          "chemistry_mode",
+          "chemistry_window_days",
+          "computed_at",
+          "seconds"
+        ],
+        "title": "BmoRunResult",
+        "type": "object"
+      },
+      "BmoRunSubmitted": {
+        "properties": {
+          "duplicate": {
+            "description": "True when an identical run was already queued or running",
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobRecord"
+          }
+        },
+        "required": [
+          "job",
+          "duplicate"
+        ],
+        "title": "BmoRunSubmitted",
+        "type": "object"
+      },
+      "BmoRunTargets": {
+        "properties": {
+          "al2o3_max_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Highest Al\u2082O\u2083 in slag, mass %; null = not enforced",
+            "title": "Al2O3 Max Pct"
+          },
+          "basicity_max": {
+            "description": "Highest CaO/SiO\u2082, ratio",
+            "title": "Basicity Max",
+            "type": "number"
+          },
+          "basicity_min": {
+            "description": "Lowest CaO/SiO\u2082, ratio",
+            "title": "Basicity Min",
+            "type": "number"
+          },
+          "charge_mass_t": {
+            "description": "Burden per charge, t",
+            "title": "Charge Mass T",
+            "type": "number"
+          },
+          "fe_t_d": {
+            "description": "Fe required in hot metal, t/day",
+            "title": "Fe T D",
+            "type": "number"
+          },
+          "hm_fe_pct": {
+            "description": "Fe in hot metal used for the Fe requirement, mass %",
+            "title": "Hm Fe Pct",
+            "type": "number"
+          },
+          "max_burden_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + flux charging ceiling, t/day; null = not enforced",
+            "title": "Max Burden T D"
+          },
+          "max_charges_per_hour": {
+            "description": "Charging rate limit, charges/h",
+            "title": "Max Charges Per Hour",
+            "type": "number"
+          },
+          "mgo_al2o3_ratio_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lowest MgO/Al\u2082O\u2083, ratio; null = not enforced",
+            "title": "Mgo Al2O3 Ratio Min"
+          },
+          "mgo_min_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lowest MgO in slag, mass %; null = not enforced",
+            "title": "Mgo Min Pct"
+          },
+          "model_to_plant_slag_factor": {
+            "description": "plant slag = model slag \u00d7 factor, ratio",
+            "title": "Model To Plant Slag Factor",
+            "type": "number"
+          },
+          "nut_coke_charge_moisture_pct": {
+            "description": "Moisture added to the nut-coke charge, mass %",
+            "title": "Nut Coke Charge Moisture Pct",
+            "type": "number"
+          },
+          "nut_coke_rate_kg_thm": {
+            "description": "Nut-coke rate held in the charges, kg/tHM",
+            "title": "Nut Coke Rate Kg Thm",
+            "type": "number"
+          },
+          "production_t_d": {
+            "description": "Hot-metal target, t/day",
+            "title": "Production T D",
+            "type": "number"
+          },
+          "slag_cap_t_d": {
+            "description": "Slag cap the LP enforces, t/day (model basis)",
+            "title": "Slag Cap T D",
+            "type": "number"
+          },
+          "slag_rate_cap_kg_thm": {
+            "description": "Slag cap, kg/tHM (plant basis)",
+            "title": "Slag Rate Cap Kg Thm",
+            "type": "number"
+          },
+          "t_basicity_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Highest (CaO+MgO)/SiO\u2082, ratio; null = not enforced",
+            "title": "T Basicity Max"
+          },
+          "t_basicity_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lowest (CaO+MgO)/SiO\u2082, ratio; null = not enforced",
+            "title": "T Basicity Min"
+          }
+        },
+        "required": [
+          "production_t_d",
+          "fe_t_d",
+          "hm_fe_pct",
+          "slag_rate_cap_kg_thm",
+          "slag_cap_t_d",
+          "model_to_plant_slag_factor",
+          "basicity_min",
+          "basicity_max",
+          "max_charges_per_hour",
+          "charge_mass_t",
+          "nut_coke_rate_kg_thm",
+          "nut_coke_charge_moisture_pct"
+        ],
+        "title": "BmoRunTargets",
+        "type": "object"
+      },
+      "BmoSiForecastView": {
+        "properties": {
+          "current": {
+            "description": "The forecast is for the current origin (or the one before it)",
+            "title": "Current",
+            "type": "boolean"
+          },
+          "forecast": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SiForecastData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issuer": {
+            "description": "Who issues: auto, worker or page (bmo.forecast_issuer)",
+            "title": "Issuer",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Forecast mode of setting_bmo.yml: forecast, shadow or legacy (none)",
+            "title": "Mode",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the forecast shown is not the current origin's",
+            "title": "Note"
+          },
+          "worker_active": {
+            "description": "The worker attempted the forecast within 15 min",
+            "title": "Worker Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode",
+          "current",
+          "issuer",
+          "worker_active"
+        ],
+        "title": "BmoSiForecastView",
+        "type": "object"
+      },
+      "BmoSnapshotDetail": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the snapshot was saved (IST, with offset)",
+            "title": "Created At"
+          },
+          "de": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoPlanView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Intensive Optimizer (DE) result"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inputs": {
+            "description": "Widget values and input tables (tables as row lists) by page key",
+            "title": "Inputs",
+            "type": "object"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "lp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BmoPlanView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Balanced Optimizer (LP) result"
+          },
+          "model_check": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorded fuel-model check of the run",
+            "title": "Model Check"
+          },
+          "not_restorable": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Restorable",
+            "type": "array"
+          },
+          "provenance": {
+            "description": "Code version of the run",
+            "title": "Provenance",
+            "type": "object"
+          },
+          "recommended": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The result page 9 recommends (DE unless it fell back)",
+            "title": "Recommended"
+          },
+          "run": {
+            "$ref": "#/components/schemas/BmoSnapshotRun"
+          },
+          "schema_version": {
+            "default": "",
+            "description": "bmo-snapshot/<n>",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "description": "Blend Mix Optimiser or Sandbox",
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BmoSnapshotSummary"
+          }
+        },
+        "required": [
+          "id",
+          "summary",
+          "run"
+        ],
+        "title": "BmoSnapshotDetail",
+        "type": "object"
+      },
+      "BmoSnapshotHeader": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the snapshot was saved (IST, with offset)",
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "description": "Blend Mix Optimiser or Sandbox",
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BmoSnapshotSummary"
+          }
+        },
+        "required": [
+          "id",
+          "summary"
+        ],
+        "title": "BmoSnapshotHeader",
+        "type": "object"
+      },
+      "BmoSnapshotList": {
+        "properties": {
+          "snapshots": {
+            "description": "Newest first",
+            "items": {
+              "$ref": "#/components/schemas/BmoSnapshotHeader"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          },
+          "unreadable": {
+            "description": "Snapshot files that could not be read",
+            "items": {
+              "type": "string"
+            },
+            "title": "Unreadable",
+            "type": "array"
+          }
+        },
+        "title": "BmoSnapshotList",
+        "type": "object"
+      },
+      "BmoSnapshotRun": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the recorded run was made (IST, with offset)",
+            "title": "At"
+          },
+          "inputs_changed_after_run": {
+            "default": false,
+            "title": "Inputs Changed After Run",
+            "type": "boolean"
+          },
+          "pinned": {
+            "default": false,
+            "description": "The inputs and plant data are those of the run, not of the save",
+            "title": "Pinned",
+            "type": "boolean"
+          }
+        },
+        "title": "BmoSnapshotRun",
+        "type": "object"
+      },
+      "BmoSnapshotSummary": {
+        "properties": {
+          "basicity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CaO/SiO\u2082, ratio",
+            "title": "Basicity"
+          },
+          "blend_pct": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Share by ore name, %",
+            "title": "Blend Pct",
+            "type": "object"
+          },
+          "coke_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "kg/tHM",
+            "title": "Coke Rate Kg Thm"
+          },
+          "fe_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fe(T) of the dry burden, mass %",
+            "title": "Fe Pct"
+          },
+          "feasible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feasible"
+          },
+          "frozen_context": {
+            "default": false,
+            "description": "The snapshot holds the plant data the run read (replayable)",
+            "title": "Frozen Context",
+            "type": "boolean"
+          },
+          "fuel_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "kg/tHM",
+            "title": "Fuel Rate Kg Thm"
+          },
+          "nut_coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "kg/tHM",
+            "title": "Nut Coke Kg Thm"
+          },
+          "pci_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "kg/tHM",
+            "title": "Pci Kg Thm"
+          },
+          "production_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot-metal target, t/day",
+            "title": "Production T D"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Balanced Optimizer (LP) or Intensive Optimizer (DE)",
+            "title": "Result"
+          },
+          "slag_rate_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "kg/tHM (model basis)",
+            "title": "Slag Rate Kg Thm"
+          },
+          "slag_t_d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "t/day (model basis)",
+            "title": "Slag T D"
+          },
+          "t_basicity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(CaO+MgO)/SiO\u2082, ratio",
+            "title": "T Basicity"
+          },
+          "total_cost_rs_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ore + fuel + added flux, Rs/tHM",
+            "title": "Total Cost Rs Thm"
+          },
+          "violations": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Limits broken, count",
+            "title": "Violations"
+          }
+        },
+        "title": "BmoSnapshotSummary",
+        "type": "object"
+      },
       "CalibrationShift": {
         "properties": {
           "k_burnt": {
@@ -12372,6 +14219,313 @@
         "summary": "Current session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/bmo/forecasts/charged-coke": {
+      "get": {
+        "description": "The 4-h charged-coke block for the row of the latest hourly build from the worker's ledger (the row before\nwhile it is being issued); without a forecast when the ledger is out of date (``reasons``).",
+        "operationId": "bmo_charged_coke_forecast",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BmoChargedCokeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Charged-coke forecast",
+        "tags": [
+          "bmo"
+        ]
+      }
+    },
+    "/api/bmo/forecasts/si": {
+      "get": {
+        "description": "The Si path (Now, +1, +2, +3 h) of the current origin from the worker's ledger; the previous origin's while the\ncurrent one is being issued; an out-of-date record without values otherwise (``note`` says since when).",
+        "operationId": "bmo_si_forecast",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BmoSiForecastView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Hot-metal Si forecast",
+        "tags": [
+          "bmo"
+        ]
+      }
+    },
+    "/api/bmo/runs": {
+      "post": {
+        "description": "Queue ``bmo.run``: page 9's LP at a fixed production. Fields left out take page 9's defaults. Follow the job\nwith GET /api/bmo/runs/{job id} or the ``job.done`` event. A request equal to a queued or running one returns it.",
+        "operationId": "bmo_start_run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BmoRunParams"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BmoRunSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Start a Blend Mix Optimiser run",
+        "tags": [
+          "bmo"
+        ]
+      }
+    },
+    "/api/bmo/runs/{job_id}": {
+      "get": {
+        "description": "The job (records are kept 7 days) and its plan once it is done.",
+        "operationId": "bmo_get_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BmoRunLookup"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "A Blend Mix Optimiser run",
+        "tags": [
+          "bmo"
+        ]
+      }
+    },
+    "/api/bmo/snapshots": {
+      "get": {
+        "description": "Page 9's snapshots, newest first: when, source, label and the recommended result's headline.",
+        "operationId": "bmo_list_snapshots",
+        "parameters": [
+          {
+            "description": "Snapshots, count",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Snapshots, count",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BmoSnapshotList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Saved Blend Mix Optimiser runs",
+        "tags": [
+          "bmo"
+        ]
+      }
+    },
+    "/api/bmo/snapshots/{snapshot_id}": {
+      "get": {
+        "description": "Inputs (tables as row lists), the LP and DE results and the run's provenance; the frozen plant data stay in the\nfile (Sandbox replay on page 9).",
+        "operationId": "bmo_get_snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BmoSnapshotDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "A saved Blend Mix Optimiser run",
+        "tags": [
+          "bmo"
         ]
       }
     },
