@@ -5,18 +5,21 @@ charges in the column, from the hourly furnace dataset that ``services.coke_ener
 burden_column``). ``quantities(state)``: its scalar quantities for the twin snapshot; ``bands(state)``: the ledger as
 JSON rows. ``implied_lag(fd, snapshots, end)``: the lag between the coke content of the charges and K_TRACE of the
 stored hourly windows over the days before ``end``. ``blend_change(fd, at)``: the latest change of the ferrous blend
-and when its first charge reaches the cohesive zone and the raceways (SV-1.9). Settings: ``config/coke_energy.yml ->
-twin.transit``.
+and when its first charge reaches the cohesive zone and the raceways (SV-1.9). ``view(at, lag=, store=)``: all of it
+at a time, composed once for GET /api/twin/transit and FurnaceMind's ``get_transit`` (SV-5.3). Settings:
+``config/coke_energy.yml -> twin.transit``.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pandas as pd
 
+from services import twin_views
 from utils.coke_energy import burden_column as bc
 
 PLANT_TZ = "Asia/Kolkata"
@@ -127,4 +130,71 @@ def implied_lag(
         detrend_days=lag.detrend_days,
         block_h=lag.block_h,
         n_boot=lag.n_boot,
+    )
+
+
+class Unavailable(RuntimeError):
+    """The hourly dataset (or, for the implied lag, the twin store) is not available."""
+
+
+def view(
+    at: datetime | None = None,
+    *,
+    lag: bool = False,
+    store: Any | None = None,
+    cfg: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The fields of the API's ``TwinTransit`` at ``at`` (UTC; naive is UTC; default now): descent times, coke in
+    transit, the ledger by zone, the latest blend change and, with ``lag``, the implied lag against the stored K_TRACE
+    of the 16 days before (``store``, a ``TwinStore``). Times UTC. Raises ``Unavailable``."""
+    from services import coke_energy as ce
+
+    when = datetime.now(UTC) if at is None else at.replace(tzinfo=UTC) if at.tzinfo is None else at.astimezone(UTC)
+    when_ist = pd.Timestamp(when).tz_convert(PLANT_TZ).tz_localize(None)
+    cfg = ce.config() if cfg is None else cfg
+    try:
+        keys = ce.data_keys(cfg, 0)
+        fd = ce.CACHED_LOADERS.hourly(keys.hourly_path, keys.hourly_mtime_ns)
+    except Exception as exc:  # noqa: BLE001 - the dataset is a file the worker refreshes
+        raise Unavailable(f"The hourly dataset is not available ({type(exc).__name__}).") from exc
+    st = state(fd, when_ist, cfg)
+    q = quantities(st)
+    change = blend_change(fd, when_ist, cfg)
+    lag_view = None
+    if lag:
+        if store is None:
+            raise Unavailable("The implied lag needs the twin store: set BF_TWIN_DB_URL or DATABASE_URL.")
+        snapshots = store.snapshots.series(when - timedelta(days=16), when)
+        res = implied_lag(fd, snapshots, when_ist, cfg)
+        lag_view = dict(
+            lag_h=twin_views.number(res.lag_h),
+            ci_low_h=twin_views.number(res.ci[0]),
+            ci_high_h=twin_views.number(res.ci[1]),
+            r_peak=twin_views.number(res.r_peak),
+            n_hours=int(res.n_hours),
+        )
+    return dict(
+        at=when,
+        charges_per_hour=q.get("transit_charges_per_hour"),
+        tau_cz_h=q.get("tau_cz_h"),
+        tau_raceway_h=q.get("tau_raceway_h"),
+        tau_cz_rate_h=q.get("tau_cz_rate_h"),
+        tau_raceway_rate_h=q.get("tau_raceway_rate_h"),
+        coke_in_transit_t=q.get("coke_in_transit_t"),
+        complete=bool(st.complete),
+        missing_hours=int(st.missing_hours),
+        bands=[{k: twin_views.number(v) if isinstance(v, float) else v for k, v in b.items()} for b in bands(st)],
+        lag=lag_view,
+        blend_change=None
+        if change is None
+        else dict(
+            changed_at=twin_views.ist_utc(change.changed_at),
+            step_pt=change.step_pt,
+            before_pct=change.before_pct,
+            after_pct=change.after_pct,
+            charges_since=change.charges_since,
+            cz_at=twin_views.ist_utc(change.cz_at),
+            raceway_at=twin_views.ist_utc(change.raceway_at),
+            zone=change.zone,
+        ),
     )

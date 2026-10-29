@@ -1,6 +1,6 @@
 """Tool functions for the FurnaceMind AI Co-Operate agent.
 
-Exposes ten tool functions dispatched by
+Exposes fourteen tool functions dispatched by
 :func:`execute_openai_tool_call`:
 
 1. ``fetch_online_data`` — fetch InfluxDB telemetry for any measurement group.
@@ -13,6 +13,9 @@ Exposes ten tool functions dispatched by
 8. ``search_knowledge_docs`` — semantic search over uploaded operator documents.
 9. ``render_heatload_plot`` — deterministic plot for recent heatload telemetry.
 10. ``execute_python_plot`` — sandboxed execution of agent-generated Plotly code.
+11-14. ``get_twin_snapshot``, ``get_twin_series``, ``get_transit``,
+    ``get_optimiser_result`` — the live twin and the optimiser's plan through
+    the twin API's services (``agents.twin_tools``, SV-5.3).
 """
 
 import base64
@@ -45,6 +48,7 @@ from furnace_data.offline import fetch_offline_report as _fetch_offline_report_d
 from furnace_data.offline import (
     resolve_offline_table_name,
 )
+from agents import twin_tools
 from agents.furnacemind import tool_state
 from utils.memo import memo
 from utils.shift_windows import shift_window_naive
@@ -1361,6 +1365,7 @@ def get_openai_tool_schemas() -> list[dict]:
                 },
             },
         },
+        *twin_tools.SCHEMAS,
     ]
 
 
@@ -1397,6 +1402,8 @@ def execute_openai_tool_call(*, name: str, arguments: Dict[str, Any]) -> str:
         return execute_python_plot.invoke(arguments)
     if name == "load_static_shift_data":
         return load_static_shift_data(**arguments)
+    if name in twin_tools.TOOLS:
+        return twin_tools.dispatch(name, arguments)
     return f"Unknown tool: {name}"
 
 

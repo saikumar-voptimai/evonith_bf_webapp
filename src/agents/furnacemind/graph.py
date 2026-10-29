@@ -41,6 +41,7 @@ from typing import Any, Protocol, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agents.llm.llm_client import OpenRouterClient
+from agents.twin_tools import LABELS as TWIN_TOOL_LABELS
 
 _MAX_ITERATIONS = 8
 
@@ -54,6 +55,7 @@ _TOOL_LABELS: dict[str, str] = {
     "search_shift_history": "Searching shift history...",
     "search_knowledge_docs": "Searching knowledge docs...",
     "execute_python_plot": "Generating plot...",
+    **TWIN_TOOL_LABELS,  # the live twin (SV-5.3)
 }
 
 

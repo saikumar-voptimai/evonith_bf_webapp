@@ -22,14 +22,14 @@ from api.auth import require_role
 from api.errors import ApiError
 from api.store import optional_twin_store, twin_store
 from data.twin.repositories import TwinStore
-from services import live_status, source_health, twin_alarms, twin_views
+from services import live_status, source_health, twin_reads, twin_views
 from services.events import TwinSnapshotData
 
 log = logging.getLogger("api.twin")
 
 router = APIRouter(prefix="/api/twin", tags=["twin"], dependencies=[Depends(require_role("user"))])
 
-MAX_SERIES_DAYS = 92
+MAX_SERIES_DAYS = twin_reads.MAX_SERIES_DAYS
 
 
 class SourceAge(BaseModel):
@@ -173,36 +173,16 @@ class TwinAlarms(BaseModel):
     since: datetime = Field(..., description="Start of the history window (UTC)")
 
 
-def _aware(value: datetime | None, default: datetime) -> datetime:
-    if value is None:
-        return default
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+_aware = twin_reads.aware
 
 
 @router.get("/now", response_model=TwinNow, summary="Latest twin evaluation")
 async def now(request: Request, store: Annotated[TwinStore, Depends(twin_store)]) -> TwinNow:
     """The latest stored evaluation, how far it lags the expected window and the number of open alarms. The sources
     carry the live fetches of this process and of the worker's status producer (SV-6.5): one that failed is down."""
-    from services import coke_energy as ce
-
+    # Composed by services.twin_reads.now, as FurnaceMind's get_twin_snapshot (SV-5.3).
     await _follow_producer(request)
-    latest = await asyncio.to_thread(store.snapshots.latest)
-    fresh = twin_views.freshness(latest)
-    cfg = ce.config()
-    gaps = None
-    if latest is not None:
-        alarm_settings = twin_alarms.AlarmSettings.from_config(cfg)
-        days, at = alarm_settings.rmse_days, fresh["now"]
-        recent = await asyncio.to_thread(store.snapshots.series, at - timedelta(days=days), at)
-        gaps = twin_views.model_gaps(recent, at, days=days, ratio=alarm_settings.ratio)
-    health = source_health.HEALTH.view(fresh["now"])
-    return TwinNow(
-        snapshot=TwinSnapshotData.model_validate(twin_views.snapshot_data(latest)) if latest is not None else None,
-        alarms_open=len(await asyncio.to_thread(store.alarms.open_alarms)),
-        sources=twin_views.source_freshness(latest, fresh["now"], twin_views.freshness_limits(cfg), health),
-        gaps=gaps,
-        **fresh,
-    )
+    return TwinNow.model_validate(await asyncio.to_thread(twin_reads.now, store))
 
 
 async def _follow_producer(request: Request) -> None:
@@ -243,15 +223,13 @@ def series(
     ] = None,
 ) -> TwinSeries:
     """Stored windows with start <= window end <= end, oldest first (at most 92 days)."""
-    stop = _aware(end, datetime.now(UTC))
-    first = _aware(start, stop - timedelta(days=7))
-    if first > stop:
-        raise ApiError(422, "start lies after end.")
-    if stop - first > timedelta(days=MAX_SERIES_DAYS):
-        raise ApiError(422, f"At most {MAX_SERIES_DAYS} days per request.")
+    # Composed by services.twin_reads.series, as FurnaceMind's get_twin_series (SV-5.3).
     keys = [k.strip() for k in (quantities or "").split(",") if k.strip()]
-    rows = twin_views.series_rows(store.snapshots.series(first, stop), resolution=resolution, quantities=keys)
-    return TwinSeries(resolution=resolution, start=first, end=stop, count=len(rows), rows=rows)
+    try:
+        data = twin_reads.series(store, start=start, end=end, resolution=resolution, quantities=keys)
+    except twin_reads.InvalidRange as exc:
+        raise ApiError(422, str(exc)) from exc
+    return TwinSeries.model_validate(data)
 
 
 @router.get("/transit", response_model=TwinTransit, summary="Burden column and coke in transit")
@@ -261,65 +239,17 @@ def transit(
     store: Annotated[TwinStore | None, Depends(optional_twin_store)] = None,
 ) -> TwinTransit:
     """The charges in the column at ``at`` from the hourly dataset: descent times, coke by zone, the blend by zone."""
-    from services import coke_energy as ce
+    # Composed by services.transit.view, as FurnaceMind's get_transit (SV-5.3).
     from services import transit as transit_service
 
-    when = _aware(at, datetime.now(UTC))
-    when_ist = pd.Timestamp(when).tz_convert(twin_views.PLANT_TZ).tz_localize(None)
-    cfg = ce.config()
     try:
-        keys = ce.data_keys(cfg, 0)
-        fd = ce.CACHED_LOADERS.hourly(keys.hourly_path, keys.hourly_mtime_ns)
-    except Exception as exc:  # noqa: BLE001 - the dataset is a file the worker refreshes
-        raise ApiError(503, f"The hourly dataset is not available ({type(exc).__name__}).") from exc
-    st = transit_service.state(fd, when_ist, cfg)
-    q = transit_service.quantities(st)
-    change = transit_service.blend_change(fd, when_ist, cfg)
-    lag_view = None
-    if lag:
-        if store is None:
-            raise ApiError(503, "The implied lag needs the twin store: set BF_TWIN_DB_URL or DATABASE_URL.")
-        snapshots = store.snapshots.series(when - timedelta(days=16), when)
-        res = transit_service.implied_lag(fd, snapshots, when_ist, cfg)
-        lag_view = TransitLag(
-            lag_h=twin_views.number(res.lag_h),
-            ci_low_h=twin_views.number(res.ci[0]),
-            ci_high_h=twin_views.number(res.ci[1]),
-            r_peak=twin_views.number(res.r_peak),
-            n_hours=int(res.n_hours),
-        )
-    return TwinTransit(
-        at=when,
-        charges_per_hour=q.get("transit_charges_per_hour"),
-        tau_cz_h=q.get("tau_cz_h"),
-        tau_raceway_h=q.get("tau_raceway_h"),
-        tau_cz_rate_h=q.get("tau_cz_rate_h"),
-        tau_raceway_rate_h=q.get("tau_raceway_rate_h"),
-        coke_in_transit_t=q.get("coke_in_transit_t"),
-        complete=bool(st.complete),
-        missing_hours=int(st.missing_hours),
-        bands=[
-            {k: twin_views.number(v) if isinstance(v, float) else v for k, v in b.items()}
-            for b in transit_service.bands(st)
-        ],
-        lag=lag_view,
-        blend_change=None
-        if change is None
-        else BlendChangeView(
-            changed_at=_ist_utc(change.changed_at),
-            step_pt=change.step_pt,
-            before_pct=change.before_pct,
-            after_pct=change.after_pct,
-            charges_since=change.charges_since,
-            cz_at=_ist_utc(change.cz_at),
-            raceway_at=_ist_utc(change.raceway_at),
-            zone=change.zone,
-        ),
-    )
+        data = transit_service.view(at, lag=lag, store=store)
+    except transit_service.Unavailable as exc:
+        raise ApiError(503, str(exc)) from exc
+    return TwinTransit.model_validate(data)
 
 
-def _ist_utc(ts: pd.Timestamp) -> datetime:
-    return pd.Timestamp(ts).round("s").tz_localize(twin_views.PLANT_TZ).tz_convert("UTC").to_pydatetime()
+_ist_utc = twin_views.ist_utc
 
 
 class HotMetalSample(BaseModel):
