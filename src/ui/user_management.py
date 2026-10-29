@@ -9,6 +9,7 @@ import streamlit as st
 
 from data.db import UserDataService
 from domain.auth_service import AuthService
+from domain.plant_config import EmptyField, registration
 
 
 class RegisterPage:
@@ -56,13 +57,15 @@ class RegisterPage:
             password (str): The new user's password.
             role (str): The role assigned to the user ("admin" or "user").
         """
-        if not username.strip() or not password.strip():
+        try:
+            username, password = registration(username, password)
+        except EmptyField:
             st.warning("⚠️ Please fill in all fields.")
             return
 
         try:
-            # Register new user
-            self.auth_service.register(username.strip(), password.strip(), role)
+            # Register new user (the SPA's user admin makes the same write: services.plant_admin)
+            self.auth_service.register(username, password, role)
 
             # Store success state for message
             st.session_state["registration_success"] = True

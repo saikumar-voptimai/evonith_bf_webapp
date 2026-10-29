@@ -11,6 +11,7 @@ from datetime import datetime
 import streamlit as st
 
 from data.db import BurdenConfigService
+from domain.plant_config import burden_changes
 
 
 class BurdenAdminPage:
@@ -130,24 +131,15 @@ class BurdenAdminPage:
     # HANDLE SUBMISSION
     # -----------------------------------------------
     def handle_submission(self, updated_values, current_values, from_dt, username, ip):
-        changes = 0
         errors = False
 
-        changed_values = {}
-        for field_name, new_value in updated_values.items():
-            old_value = current_values.get(field_name)
-
-            if isinstance(old_value, (int, float)) and isinstance(new_value, str):
-                try:
-                    new_value = float(new_value)
-                except:
-                    pass
-
-            if str(old_value) == str(new_value):
-                continue
-
-            changed_values[field_name] = new_value
-            changes += 1
+        # Shared with the SPA's burden admin (services.plant_admin): the same snapshot is written.
+        try:
+            changed_values = burden_changes(updated_values, current_values)
+        except ValueError as e:
+            st.error(f"❌ {e}")
+            return
+        changes = len(changed_values)
 
         if changed_values:
             try:

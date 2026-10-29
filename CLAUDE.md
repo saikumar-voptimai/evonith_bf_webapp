@@ -967,6 +967,14 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   `POST /api/admin/calibration/run` (admin). Kinds with `JobKind.audited` (`calibration.nightly`) are started through
   `services.job_audit.submit` (also via `POST /api/jobs`): audit `job.start`, 503 without the twin store, the job
   cancelled when the entry cannot be written.
+- User, hopper and burden admin (SV-4.7, `/admin/users`, tabs `?tab=hoppers|burden`): the Welcome page's tools
+  (`ui/user_management`, `hopper_admin_page`, `burden_admin_page`) and `services/plant_admin.py` share the form logic
+  (`domain/plant_config.py`) and the session-level writes of `furnace_data.relational` (`UserRepository.create_user`,
+  `HopperHistoryRepository` / `BurdenHistoryRepository.add_snapshot` and `delete_rows`); the service writes them on the
+  twin store's database (Neon `identity` / `plant_master` / `ops_config`) inside `audit.admin_write` (`user.create`,
+  `hopper.assign`, `hopper.delete`, `burden.update`, `burden.delete`). A save adds a wide snapshot effective from an
+  aware time and keeps the earlier rows (SCD-2). `GET/POST /api/admin/users|hoppers|burden`, `DELETE
+  .../hoppers|burden/history?ids=` (admin); 503 when the plant tables are missing.
 - Shift reports (SV-2.3): `services/reports.py` composes the FurnaceMind Reports tab's `ShiftReportService.build` /
   `build_previous` / `document`; `report.shift` (closed shift) and `report.live` store into `twin.shift_report`. The
   narrative uses page 7's `OpenRouterClient` (120 s per call, 1 retry); when the LLM fails the report is stored

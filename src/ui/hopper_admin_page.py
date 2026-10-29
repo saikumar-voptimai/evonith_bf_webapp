@@ -11,6 +11,7 @@ from datetime import datetime
 import streamlit as st
 
 from data.db import HopperConfigService
+from domain.plant_config import hopper_changes
 
 
 class HopperAdminPage:
@@ -110,16 +111,11 @@ class HopperAdminPage:
         ip_address: str,
     ) -> None:
 
-        changes = 0
         errors = False
 
-        changed_values = {}
-        for hopper, new_material in updated_values.items():
-            current_material = self.hopper_materials.get(hopper, "UNASSIGNED")
-
-            if new_material != current_material:
-                changed_values[hopper] = new_material
-                changes += 1
+        # Shared with the SPA's hopper admin (services.plant_admin): the same snapshot is written.
+        changed_values = hopper_changes(updated_values, self.hopper_materials)
+        changes = len(changed_values)
 
         if changed_values:
             try:
