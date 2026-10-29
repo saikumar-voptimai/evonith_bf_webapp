@@ -15,8 +15,9 @@ from utils.burden_engine.engine import Engine, Limits
 from utils.burden_engine import model_check as mc
 from utils.burden_engine.facts import ENGINE_FACTS, FactRegister
 from utils.coke_energy import transit as tr
-from utils.burden_engine.scenarios import (binding_table, blend_compare_table, cost_table, flux_compare_table,
-                                           limit_label, limit_labels, plan_tiles, process_table, slag_table, viu_table)
+from utils.burden_engine.scenarios import (binding_table, blend_compare_table, cost_table, flux_compare_table,  # noqa: F401
+                                           limit_label, limit_labels, plan_sentence, plan_tiles, process_table,
+                                           slag_table, viu_table)
 from utils.slag_bands import PLANT_SLAG_BANDS, band_note
 
 RS = "Rs/tHM"
@@ -539,27 +540,6 @@ def render_plan_summary(r: Mapping[str, Any], title: str, *, flux_ids: list[str]
         k[4].metric("Hot metal per charge (t)", _num(g["hm_per_charge"], ".3f"))
         st.caption(f"Ferrous **{g['ferrous_t']:,.0f} t/d** wet · flux rate **{g['flux_kg']:,.1f} kg/tHM**.")
     render_problems(r)
-
-
-def plan_sentence(r: Mapping[str, Any], names: Mapping[str, str], flux_ids: list[str],
-                  today: Mapping[str, Any] | None = None) -> tuple[str, str]:
-    """(kind, markdown): one line an operator can act on - what to charge, what it costs, what it saves against
-    today's blend. kind is "saving", "dearer" or "plain" (no comparison)."""
-    fer = sorted(((names.get(i, i), sh) for i, sh in r["share_wet"].items() if sh > 0.05), key=lambda t: -t[1])
-    flux = [(names.get(i, i), r["wet_kg"].get(i, 0.0)) for i in flux_ids if r["wet_kg"].get(i, 0.0) >= 0.5]
-    text = "**Charge** " + ", ".join(f"{n} {sh:.1f} %" for n, sh in fer)
-    text += (" with " + ", ".join(f"{n.lower()} {kg:.0f} kg/tHM" for n, kg in flux)) if flux else ", no flux"
-    text += f": Rs {r['cost']['total']:,.0f}/tHM, coke {r['out']['K']:.1f} kg/tHM dry."
-    if today is None:
-        return "plain", text
-    d = today["cost"]["total"] - r["cost"]["total"]
-    if abs(d) < 0.5:
-        return "plain", text + " Same cost as today's blend."
-    lakh = abs(d) * r["P_tday"] / 1e5
-    dk = r["out"]["K"] - today["out"]["K"]
-    text += (f" **Rs {abs(d):,.0f}/tHM {'less' if d > 0 else 'more'} than today's blend** (Rs {lakh:,.1f} lakh/day at "
-             f"this output; coke {dk:+.1f} kg/tHM).")
-    return ("saving" if d > 0 else "dearer"), text
 
 
 def render_plan_tabs(eng: Engine, r: Mapping[str, Any], key: str, other: Mapping[str, Any] | None = None,

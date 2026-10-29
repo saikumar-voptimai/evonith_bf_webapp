@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -31,7 +33,9 @@ from services.jobs import CATALOG, JobRecord, OptimiserCommentaryParams, Optimis
 from services.optimiser_results import OptimiserResult
 from tests.test_api_auth import PASSWORDS, build
 from tests.test_api_live import session_cookie
-from utils.burden_engine.commentary import NOTES_PATH, SYSTEM_PROMPT
+from utils.burden_engine.commentary import NOTES_PATH, SYSTEM_PROMPT, load_assumptions
+from utils.burden_engine.facts import ENGINE_FACTS, load_register
+from utils.slag_bands import PLANT_SLAG_BANDS
 from worker.kinds import optimiser as optimiser_kind
 from worker.runtime import JobContext
 
@@ -264,14 +268,17 @@ def test_a_failed_run_and_the_critical_assumptions_validate() -> None:
 
 
 UNITS = ("kg/tHM", "t/d", "t/h", "Rs/tHM", "Rs/t", "lakh Rs/d", "°C", "%", "count", "dimensionless", "charges/h",
-         "t", "s", "bar g", "bar", "Nm³/h", "g/Nm³", "Nm³ O₂ per Nm³ air", "in the limit's unit")  # fmt: skip
+         "t", "s", "bar g", "bar", "Nm³/h", "g/Nm³", "Nm³ O₂ per Nm³ air", "in the limit's unit", "in the band's unit",
+         "in the fact's unit")  # fmt: skip
 
 
 @pytest.mark.parametrize(
     "schema",
     ["OptimiserResult", "PlanView", "CostSplit", "FuelSplit", "SlagView", "ChargingView", "ProcessView",
      "ShaftEfficiency", "NetworkSolves", "FrontierPoint", "ValueOfLimit", "CriticalAssumption", "BlendRow", "FluxRow",
-     "BindingLimit", "Violation", "OptimiserSettings", "OptimiserLimits", "CommentaryView"],
+     "BindingLimit", "Violation", "OptimiserSettings", "OptimiserLimits", "CommentaryView", "PlanLimits",
+     "RunSettings", "TodayPoint", "RunCase", "YardMaterial", "YardFlux", "YardFuel", "PlanLead", "OptimiserReference",
+     "SlagBand", "RegisterBand", "FactRow", "ModelFactRow"],
 )  # fmt: skip
 def test_every_numeric_field_states_its_unit(schema) -> None:
     spec = build().openapi()["components"]["schemas"][schema]
@@ -342,3 +349,117 @@ def test_a_commentary_that_fails_twice_is_stored_as_failed(api, twin, monkeypatc
     assert OptimiserCommentaryParams(run_id=res["run_id"]).run_id == res["run_id"]
     with pytest.raises(ValueError):
         OptimiserRunParams(mode="step2", yard="yesterday")
+
+
+# --------------------------------------------------------------------------- SV-3.3: the SPA's optimiser page (#300)
+FIXTURE = Path(__file__).resolve().parents[1] / "frontend" / "src" / "lib" / "optimiser" / "fixtures" / "result.json"
+
+
+def _close(actual: float | None, expected: float | None) -> None:
+    assert actual is not None and expected is not None
+    assert abs(actual - expected) <= 1e-6 * max(1.0, abs(expected)), (actual, expected)
+
+
+def test_the_recorded_result_equals_page_11() -> None:
+    """The recorded run as the API serves it carries page 11's figures of the same engine result (``plan_tiles``,
+    ``plan_sentence``): relative difference <= 1e-6."""
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    res, exp = data["step2"], data["expected"]["step2"]
+    OptimiserResult.model_validate(res)
+    plan, tiles = res["plan"], exp["tiles"]
+    pairs = {
+        ("overview", "total"): plan["cost"]["total_rs_thm"],
+        ("overview", "P_tday"): plan["production_t_d"],
+        ("overview", "P_th"): plan["production_t_h"],
+        ("overview", "fe_wet_pct"): plan["burden_fe_wet_pct"],
+        ("overview", "ferrous_kg"): plan["ferrous_kg_thm"],
+        ("cost", "ore"): plan["cost"]["ore_rs_thm"],
+        ("cost", "flux"): plan["cost"]["flux_rs_thm"],
+        ("cost", "fuel"): plan["cost"]["fuel_rs_thm"],
+        ("cost", "coke"): plan["cost"]["coke_rs_thm"],
+        ("cost", "nut"): plan["cost"]["nut_coke_rs_thm"],
+        ("cost", "pci"): plan["cost"]["pci_rs_thm"],
+        ("cost", "gross"): plan["cost"]["gross_rs_thm"],
+        ("fuel", "coke_dry"): plan["fuel"]["coke_dry_kg_thm"],
+        ("fuel", "coke_wet"): plan["fuel"]["coke_wet_kg_thm"],
+        ("fuel", "total"): plan["fuel"]["fuel_rate_kg_thm"],
+        ("slag", "rate"): plan["slag"]["rate_kg_thm"],
+        ("slag", "t_day"): plan["slag"]["t_d"],
+        ("slag", "b2"): plan["slag"]["cao_sio2"],
+        ("slag", "t_basicity"): plan["slag"]["t_basicity"],
+        ("slag", "ib4"): plan["slag"]["ib4"],
+        ("slag", "mgo_al2o3"): plan["slag"]["mgo_al2o3"],
+        ("charging", "coke_t"): plan["charging"]["coke_t_d"],
+        ("charging", "ferrous_t"): plan["charging"]["ferrous_t_d"],
+        ("charging", "hm_per_charge"): plan["charging"]["hm_per_charge_t"],
+        ("charging", "flux_kg"): plan["charging"]["flux_kg_thm"],
+    }
+    for (group, key), value in pairs.items():
+        _close(value, tiles[group][key])
+    _close(res["saving_lakh_rs_d"], exp["saving_lakh_rs_d"])
+    assert [res["lead"]["kind"], res["lead"]["text"]] == exp["lead"]
+    bands = {b["key"]: b for b in data["reference"]["slag_bands"]}
+    assert {k: (b["lo"], b["hi"]) for k, b in bands.items()} == {k: tuple(v) for k, v in PLANT_SLAG_BANDS.items()}
+
+
+def test_the_case_and_yard_of_a_run_are_served_in_the_api_names(api) -> None:
+    res = run_through_api(api, {"mode": "step2", "production_t_d": 2270, **CASE, "limits": {"slag_max_kg_thm": 345}})
+    case = res["case"]
+    assert case["settings"] == CASE_SETTINGS  # the request's values, in the request's names
+    assert case["settings_set"] == sorted(CASE_SETTINGS) and case["limits_set"] == ["slag_max_kg_thm"]
+    assert case["limits"]["slag_max_kg_thm"] == 345.0 and case["limits"]["fuel_max_kg_thm"] == 600.0
+    assert case["limits"]["process"] is False and case["certainty_filter"] is None  # Fixed-ω
+    assert case["production_source"] == "requested" and case["today"] is None  # the shipped calibration
+    plan = res["plan"]
+    assert plan["limits"] == case["limits"] and plan["limited_by"]
+    prices = {m["id"]: m["price_rs_t"] for m in res["yard"]["materials"]}
+    assert all(b["price_rs_t"] == prices[b["id"]] for b in plan["blend"])
+    assert res["yard"]["fuel"]["coke_rs_t"] > 0 and {f["id"] for f in res["yard"]["fluxes"]} >= {"limestone"}
+    assert res["lead"]["kind"] == "plain" and res["lead"]["text"].startswith("**Charge** ")
+    assert all(v["binds_after_label"] for v in res["value_of_limits"])
+
+
+def test_the_reference_serves_the_plant_bands_facts_and_assumptions(api) -> None:
+    got = call(api, "GET", "op", "/api/optimiser/reference")
+    assert got.status_code == 200, got.text
+    ref = got.json()
+    reg = load_register()
+    assert {b["key"]: (b["lo"], b["hi"]) for b in ref["slag_bands"]} == {
+        k: tuple(v) for k, v in PLANT_SLAG_BANDS.items()
+    }
+    assert {b["fact_id"]: (b["lo"], b["hi"]) for b in ref["bands"]} == {
+        f: reg.band(f) for f in ("BAND-01", "BAND-02", "BAND-03")
+    }
+    assert [f["id"] for f in ref["facts"]] == list(ENGINE_FACTS)
+    assert len(ref["model_facts"]) == len(reg.model_table()) and ref["facts_version"] == str(reg.version)
+    assert ref["assumptions"] == load_assumptions() and ref["assumptions"].startswith("- **Shaft efficiency**")
+    client, _, _ = api
+    assert client.get("/api/optimiser/reference").status_code == 401
+
+
+def test_a_run_started_on_the_page_appears_on_the_live_twin_plan_card(api) -> None:
+    """The page's request (``runParams`` of the form: Step 2, Fixed-ω, a target and a thermal setting) goes through the
+    endpoint and the job the Live Twin's "Run now" uses; the worker stores it in the same runs table, so the plan card's
+    ``GET /api/optimiser/latest`` and the runs list return it; the job's result names the run the page then shows."""
+    body = {
+        "mode": "step2",
+        "omega_mode": "fixed",
+        "certainty": "any",
+        "risk_k": 0,
+        "auto": False,
+        "calibration": "reference",
+        "yard": "reference",
+        "production_t_d": 2270,
+        "settings": CASE_SETTINGS,
+    }
+    started = call(api, "POST", "sup", "/api/optimiser/runs", json=body)
+    assert started.status_code == 202, started.text
+    job_id = started.json()["job"]["id"]
+    out = work(api, job_id)
+    latest = call(api, "GET", "op", "/api/optimiser/latest")
+    assert latest.status_code == 200 and latest.json()["id"] == out["run_id"]
+    assert latest.json()["trigger"] == "user" and latest.json()["requested_by"] == "sup"
+    assert call(api, "GET", "op", "/api/optimiser/runs").json()[0]["id"] == out["run_id"]
+    assert out["run_id"] and out["status"] == "ok"  # the job's result names the run (read by job id with Redis)
+    result = call(api, "GET", "op", f"/api/optimiser/runs/{out['run_id']}/result").json()
+    assert result["case"]["settings_set"] == sorted(CASE_SETTINGS) and result["production_target_t_d"] == 2270.0

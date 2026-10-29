@@ -28,6 +28,8 @@ from utils.burden_engine.scenarios import binding_table, limit_label, limit_labe
 from utils.slag_bands import PLANT_SLAG_BANDS
 
 NOTES_PATH = Path(__file__).resolve().parents[2] / "assets" / "burden_engine" / "optimiser_notes.md"
+#: What the engine assumes and does not see (page 11's "Assumptions" expander and the SPA's Assumptions panel).
+ASSUMPTIONS_PATH = NOTES_PATH.with_name("assumptions.md")
 
 SYSTEM_PROMPT = """\
 You are a senior blast furnace advisor writing a commentary for the operating team at Evonith Steel BF-2 on the \
@@ -118,6 +120,13 @@ def load_notes(path: str | Path | None = None) -> str:
     """The optimiser notes (static context). Empty string when the file is missing."""
 
     p = Path(path) if path else NOTES_PATH
+    return p.read_text(encoding="utf-8").strip() if p.exists() else ""
+
+
+def load_assumptions(path: str | Path | None = None) -> str:
+    """The assumptions of the optimiser and what the engine does not see (Markdown list). Empty when missing."""
+
+    p = Path(path) if path else ASSUMPTIONS_PATH
     return p.read_text(encoding="utf-8").strip() if p.exists() else ""
 
 

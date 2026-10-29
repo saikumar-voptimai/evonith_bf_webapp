@@ -967,6 +967,12 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   YAML is the fallback when the store is off, empty or unreachable. Page 9 (`ui/bmo/operator_inputs.py`), page 11 and
   the worker (`load_yard` → `EvonithBmoContextProvider.get_operator_inputs`) and `GET` / `PUT /api/operator-inputs`
   (`?at=` date = end of the IST day) all read this one source.
+- Burden & Fuel Optimiser page (SV-3.3): `routes/optimiser` with `#lib/optimiser/` (builders `optimiser.ts`, state
+  `optimiser.svelte.ts`); runs through `POST /api/optimiser/runs` (the Live Twin card's endpoint and store), result
+  `GET /api/optimiser/runs/{id}/result` (also the case in API names, the yard, page 11's lead line, plan limits, labels
+  of binding limits), `GET /api/optimiser/reference` (plant slag bands of `utils/slag_bands.py`, BAND-01..03, the
+  engine's facts, MOD / VAL, `assets/burden_engine/assumptions.md` shared with page 11); yard edits save operator-input
+  versions. Parity: `lib/optimiser/fixtures/result.json` (`make fixtures`, page 11's figures, relative 1e-6).
 - FORGE page (SV-1.11): the `twin.forge` job (HH:20 IST, `services/forge.py` `refresh`) stores the Coke Energy
   pipeline's balanced shifts and Rist frames in `src/storage/forge/`; `GET /api/forge/prediction | rist | calibration`
   (role user) only read that view. Statistics are page 10's (`accuracy.period_rows` / `accuracy`; the rolling window

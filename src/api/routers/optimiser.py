@@ -1,5 +1,6 @@
 """Optimiser runs for the Live Twin plan card and the Burden & Fuel Optimiser: start a run, read runs and their typed
-results, accept or reject a plan (SV-1.6, #286), write and read the furnace commentary (SV-3.2, #299).
+results, accept or reject a plan (SV-1.6, #286), write and read the furnace commentary (SV-3.2, #299); the plant
+bands, facts and assumptions the Burden & Fuel Optimiser page shows beside a result (SV-3.3, #300).
 
 A run is the job ``optimiser.run`` (page 11's default case, ``services.optimiser.default_case``); the worker stores
 its plan in ``twin.optimiser_run``. A decision is appended to ``twin.plan_decision`` with its audit row in the same
@@ -27,6 +28,7 @@ from data.twin.repositories import Actor, NotFound, TwinStore
 from services import optimiser_commentary, twin_reads, twin_views
 from services.auth import Principal
 from services.jobs import JobRecord, JobStore, OptimiserRunParams
+from services.optimiser_reference import OptimiserReference, reference_view
 from services.optimiser_results import OptimiserResult, result_view
 
 router = APIRouter(prefix="/api/optimiser", tags=["optimiser"], dependencies=[Depends(require_role("user"))])
@@ -222,6 +224,15 @@ def get_commentary(
     if not context:
         data["context"] = None
     return CommentaryView.model_validate(data)
+
+
+@router.get(
+    "/reference", response_model=OptimiserReference, summary="Plant bands, facts and assumptions of the optimiser"
+)
+def reference() -> OptimiserReference:
+    """The plant's slag basicity bands (``utils.slag_bands``), the register's plausibility bands (BAND-01..03), the
+    facts the engine rests on with Fixed-ω and STRATA-ω side by side, and the assumptions (page 11's expanders)."""
+    return reference_view()
 
 
 @router.get("/latest", response_model=OptimiserRunDetail, summary="Latest optimiser plan")

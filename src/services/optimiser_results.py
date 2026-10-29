@@ -5,7 +5,10 @@
 production), Step 2's ore + flux-only plan (page 9's objective) and today's charged blend modelled at the plan's
 production, Step 1's highest output and frontier, the value of limits, the critical assumptions, the certainty tier
 and the STRATA-Flow network solves behind the plan. The panel figures come from ``utils.burden_engine.scenarios``
-(``plan_tiles``, ``binding_table``, ``limit_label``), the functions page 11 renders, so no quantity is composed twice.
+(``plan_tiles``, ``binding_table``, ``limit_label``, ``plan_sentence``), the functions page 11 renders, so no quantity
+is composed twice. SV-3.3 (#300) adds what the SPA's Burden & Fuel Optimiser page shows next to the plan: each plan's
+limits and the material prices, the lead line, the case the run was solved for (settings and limits in the API's
+names, what the request set, today's operating point) and the yard it read.
 
 Units: costs Rs/tHM; burden, flux, coke and fuel kg/tHM (coke dry unless named wet); production and tonnages t/d;
 temperatures °C; pressures bar g (pressure drop bar); gas flows Nm³/h.
@@ -20,7 +23,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from utils.burden_engine.scenarios import binding_table, limit_label, plan_tiles
+from utils.burden_engine.scenarios import binding_table, limit_label, limit_labels, plan_sentence, plan_tiles
 
 
 class BlendRow(BaseModel):
@@ -31,6 +34,7 @@ class BlendRow(BaseModel):
     wet_kg_thm: float = Field(..., description="Charged wet, kg/tHM")
     dry_kg_thm: float | None = Field(None, description="Charged dry, kg/tHM")
     t_d: float | None = Field(None, description="Charged wet per day, t/d")
+    price_rs_t: float | None = Field(None, description="Price of the wet material in the case's yard, Rs/t")
 
 
 class FluxRow(BaseModel):
@@ -38,6 +42,7 @@ class FluxRow(BaseModel):
     name: str
     wet_kg_thm: float = Field(..., description="Charged wet, kg/tHM")
     t_d: float | None = Field(None, description="Charged wet per day, t/d")
+    price_rs_t: float | None = Field(None, description="Price of the wet flux in the case's yard, Rs/t")
 
 
 class CostSplit(BaseModel):
@@ -101,6 +106,34 @@ class ProcessView(BaseModel):
     top_pressure_bar_g: float | None = Field(None, description="Top pressure, bar g")
     dp_needed_bar: float | None = Field(None, description="Pressure drop needed, bar")
     blast_ceiling_nm3h: float | None = Field(None, description="Blast at the set hot-blast pressure, Nm³/h")
+
+
+class PlanLimits(BaseModel):
+    """The limits a plan or a case was solved under, in the API's names (``services.optimiser.LIMITS_FIELDS``); the
+    fuel-rate band is the register's BAND-01; the process rows apply when ``process`` is true."""
+
+    slag_max_kg_thm: float | None = Field(None, description="Slag rate cap, kg/tHM")
+    cao_sio2_min: float | None = Field(None, description="CaO/SiO₂ of the slag, lower limit, dimensionless")
+    cao_sio2_max: float | None = Field(None, description="CaO/SiO₂ of the slag, upper limit, dimensionless")
+    al2o3_max_pct: float | None = Field(None, description="Al₂O₃ of the slag, upper limit, %")
+    mgo_min_pct: float | None = Field(None, description="MgO of the slag, lower limit, %")
+    mgo_al2o3_min: float | None = Field(None, description="MgO/Al₂O₃ of the slag, lower limit, dimensionless")
+    charge_t: float | None = Field(None, description="Non-coke burden per charge (ferrous + flux + nut coke), t")
+    charges_per_h: float | None = Field(None, description="Charging rate limit, charges/h")
+    top_gas_min_c: float | None = Field(None, description="Top-gas temperature, lower limit, °C")
+    fuel_min_kg_thm: float | None = Field(None, description="Fuel rate, lower edge of BAND-01, kg/tHM")
+    fuel_max_kg_thm: float | None = Field(None, description="Fuel rate, upper edge of BAND-01, kg/tHM")
+    process: bool = Field(False, description="The process rows below apply (Step 1, maximum production)")
+    hot_blast_pressure_max_bar_g: float | None = Field(None, description="Hot-blast pressure limit, bar g")
+    dp_max_bar: float | None = Field(None, description="Pressure drop limit, bar")
+    top_pressure_min_bar_g: float | None = Field(None, description="Top pressure, lower limit, bar g")
+    top_pressure_max_bar_g: float | None = Field(None, description="Top pressure, upper limit, bar g")
+    blast_max_nm3h: float | None = Field(None, description="Hot-blast volume limit, Nm³/h")
+    o2_flow_max_nm3h: float | None = Field(None, description="Oxygen flow limit, Nm³/h")
+    enrichment_max_pct: float | None = Field(None, description="Plant enrichment tag limit, %")
+    hbt_max_c: float | None = Field(None, description="Hot-blast temperature limit, °C")
+    raft_min_c: float | None = Field(None, description="RAFT, lower limit, °C")
+    raft_max_c: float | None = Field(None, description="RAFT, upper limit, °C")
 
 
 class NetworkSolves(BaseModel):
@@ -169,8 +202,10 @@ class PlanView(BaseModel):
     charging: ChargingView
     process: ProcessView
     shaft_efficiency: ShaftEfficiency
+    limits: PlanLimits | None = Field(None, description="The limits the plan was solved under")
     binding: list[BindingLimit] = Field(default_factory=list, description="Binding limits, largest shadow price first")
     warnings: list[str] = Field(default_factory=list)
+    limited_by: str = Field("", description="Operator names of the binding limits (share bounds left out)")
     facts_version: str | None = Field(None, description="Fact register version of the engine")
 
 
@@ -190,12 +225,120 @@ class FrontierPoint(BaseModel):
     charges_per_h: float | None = Field(None, description="Charges needed, charges/h")
     marginal_rs_per_t: float | None = Field(None, description="Cost of each extra tonne of hot metal, Rs/t")
     binding: str = Field("", description="Binding limits (share bounds left out)")
+    binding_label: str = Field("", description="Operator names of the binding limits")
 
 
 class ValueOfLimit(BaseModel):
     change: str = Field(..., description="The limit relaxed one step")
     saving_rs_thm: float | None = Field(None, description="Saving at the same production (null: infeasible), Rs/tHM")
     binds_after: str = Field("", description="What binds after the change")
+    binds_after_label: str = Field("", description="Operator names of what binds after the change")
+
+
+class PlanLead(BaseModel):
+    """Page 11's line over a plan: what to charge, what it costs and, in Step 2, what it saves against today's blend
+    (``scenarios.plan_sentence``); maximum production names its binding limits."""
+
+    kind: Literal["saving", "dearer", "plain"] = Field(..., description="saving / dearer against today's blend")
+    text: str = Field(..., description="Markdown (bold spans only)")
+
+
+class RunSettings(BaseModel):
+    """The controls and thermal targets a run was solved at, in the API's names
+    (``services.optimiser.SETTINGS_FIELDS``): page 11's defaults with the request's values applied last."""
+
+    hmt_c: float | None = Field(None, description="Hot-metal temperature target (BAND-02), °C")
+    hm_si_pct: float | None = Field(None, description="Hot-metal Si target (BAND-03), %")
+    pci_kg_thm: float | None = Field(None, description="PCI as injected (fixed input), kg/tHM")
+    nut_coke_kg_thm: float | None = Field(None, description="Nut coke as charged (fixed input), kg/tHM")
+    blast_moisture_g_nm3: float | None = Field(None, description="Blast moisture (DATA-11), g/Nm³")
+    hbt_c: float | None = Field(None, description="Hot-blast temperature, °C")
+    o2_per_air: float | None = Field(None, description="Oxygen enrichment on the model basis, Nm³ O₂ per Nm³ air")
+    hot_blast_pressure_bar_g: float | None = Field(None, description="Hot-blast pressure, bar g")
+    top_pressure_bar_g: float | None = Field(None, description="Top pressure, bar g")
+
+
+class TodayPoint(BaseModel):
+    """Today's operating point: medians of the regime window of the calibration (page 11's "Today" hints)."""
+
+    period: list[str] = Field(default_factory=list, description="First and last day of the window (IST dates)")
+    n_shifts: int | None = Field(None, description="Stable shifts in the window, count")
+    production_t_d: float | None = Field(None, description="Hot metal, t/d")
+    hot_blast_nm3h: float | None = Field(None, description="Hot blast, meter basis, Nm³/h")
+    o2_nm3h: float | None = Field(None, description="Oxygen, Nm³/h")
+    enrichment_tag_pct: float | None = Field(None, description="Plant enrichment tag, %")
+    hbt_c: float | None = Field(None, description="Hot-blast temperature, °C")
+    hot_blast_pressure_bar_g: float | None = Field(None, description="Hot-blast pressure, bar g")
+    top_pressure_bar_g: float | None = Field(None, description="Top pressure, bar g")
+    dp_bar: float | None = Field(None, description="Pressure drop, bar")
+    raft_c: float | None = Field(None, description="RAFT (DCS), °C")
+
+
+class RunCase(BaseModel):
+    """The case a run was solved for (``Case.summary``), in the API's names."""
+
+    settings: RunSettings = Field(..., description="Controls and thermal targets used")
+    limits: PlanLimits = Field(..., description="Limits used")
+    settings_set: list[str] = Field(default_factory=list, description="Settings the request set (others: defaults)")
+    limits_set: list[str] = Field(default_factory=list, description="Limits the request set (others: defaults)")
+    certainty_filter: str | None = Field(None, description="STRATA-ω certainty filter: any, low, medium, high")
+    risk_k: float | None = Field(None, description="STRATA-ω risk aversion k (cost + k × σ), dimensionless")
+    search_o2: bool = Field(False, description="Oxygen searched up to its limit (Step 1, maximum production)")
+    auto: bool = Field(False, description="Auto mode's three decision settings were run as well")
+    production_source: str | None = Field(None, description="Where Step 2's production target came from")
+    today_window: str | None = Field(None, description="When today's charged blend was charged (IST)")
+    yard_message: str | None = Field(None, description="Why the reference yard stands in (empty: the live yard)")
+    operator_inputs: dict[str, Any] = Field(
+        default_factory=dict, description="Version of the operator inputs the yard was built with (source, version)"
+    )
+    today: TodayPoint | None = Field(None, description="Today's operating point (none on the shipped calibration)")
+
+
+class YardMaterial(BaseModel):
+    id: str
+    name: str
+    kind: str | None = Field(None, description="sinter, ore or pellet")
+    selected: bool = Field(True, description="Offered to the optimiser (operator's availability)")
+    carried: bool = Field(True, description="Has lab chemistry and is carried by the engine")
+    reason: str | None = Field(None, description="Why the material is not carried")
+    fe_pct: float | None = Field(None, description="Fe of the dry material, %")
+    sio2_pct: float | None = Field(None, description="SiO₂ of the dry material, %")
+    al2o3_pct: float | None = Field(None, description="Al₂O₃ of the dry material, %")
+    cao_pct: float | None = Field(None, description="CaO of the dry material, %")
+    loi_pct: float | None = Field(None, description="Loss on ignition, %")
+    moisture_pct: float | None = Field(None, description="Moisture, %")
+    price_rs_t: float | None = Field(None, description="Price per wet tonne, Rs/t")
+    min_share_pct: float | None = Field(None, description="Lower bound of the wet share of the ferrous charge, %")
+    max_share_pct: float | None = Field(None, description="Upper bound of the wet share of the ferrous charge, %")
+    stock_t: float | None = Field(None, description="Stock in the yard, t")
+    chem_source: str | None = Field(None, description="Where the chemistry came from")
+
+
+class YardFlux(BaseModel):
+    id: str
+    name: str
+    price_rs_t: float | None = Field(None, description="Price per wet tonne, Rs/t")
+    max_t_d: float | None = Field(None, description="Upper bound of the flux charged, t/d")
+    stock_t: float | None = Field(None, description="Stock in the yard, t")
+    cao_pct: float | None = Field(None, description="CaO, %")
+    mgo_pct: float | None = Field(None, description="MgO, %")
+    sio2_pct: float | None = Field(None, description="SiO₂, %")
+    loi_pct: float | None = Field(None, description="Loss on ignition, %")
+
+
+class YardFuel(BaseModel):
+    coke_rs_t: float | None = Field(None, description="Coke price, Rs/t")
+    nut_coke_rs_t: float | None = Field(None, description="Nut coke price, Rs/t")
+    pci_rs_t: float | None = Field(None, description="PCI coal price, Rs/t")
+    slag_rs_t: float | None = Field(None, description="Granulated slag sale price (ASM-20), Rs/t")
+
+
+class RunYard(BaseModel):
+    """The yard the run read: ferrous materials (carried or not), fluxes and fuel prices."""
+
+    materials: list[YardMaterial] = Field(default_factory=list)
+    fluxes: list[YardFlux] = Field(default_factory=list)
+    fuel: YardFuel = Field(default_factory=YardFuel)
 
 
 class OptimiserResult(BaseModel):
@@ -224,6 +367,9 @@ class OptimiserResult(BaseModel):
     )
     critical_assumptions_error: str | None = Field(None, description="Why the sensitivity is missing")
     solves: NetworkSolves | None = Field(None, description="STRATA-Flow network solves behind the plan")
+    lead: PlanLead | None = Field(None, description="Page 11's line over the plan (Step 2, maximum production)")
+    case: RunCase | None = Field(None, description="The case the run was solved for")
+    yard: RunYard | None = Field(None, description="The yard the run read")
 
 
 # ------------------------------------------------------------------------------------------------------- helpers
@@ -245,6 +391,151 @@ def flux_ids_of(plan: Mapping[str, Any]) -> list[str]:
     return [i for i in (plan.get("wet_kg") or {}) if i not in ferrous]
 
 
+def _api_names(fields: Mapping[str, str], values: Mapping[str, Any]) -> dict[str, float | None]:
+    """Engine field values (``Settings`` / ``Limits``) under the API's names (``fields``: API name -> engine)."""
+    return {api: _num(values.get(engine)) for api, engine in fields.items()}
+
+
+def limits_view(limits: Mapping[str, Any] | None) -> PlanLimits | None:
+    """``Limits`` fields of a plan or case under the API's names."""
+    from services.optimiser import LIMITS_FIELDS  # the API process imports the optimiser service lazily
+
+    if not isinstance(limits, Mapping) or not limits:
+        return None
+    return PlanLimits(
+        **_api_names(LIMITS_FIELDS, limits),
+        fuel_min_kg_thm=_num(limits.get("fuel_min")),
+        fuel_max_kg_thm=_num(limits.get("fuel_max")),
+        process=bool(limits.get("process", False)),
+    )
+
+
+def _text(value: Any) -> str | None:
+    return str(value) if value not in (None, "") else None
+
+
+def _today(regime: Any) -> TodayPoint | None:
+    if not isinstance(regime, Mapping):
+        return None
+    prod_th = _num(regime.get("prod_th"))
+    n = regime.get("n_shifts")
+    return TodayPoint(
+        period=[str(x) for x in regime.get("period") or []],
+        n_shifts=int(n) if isinstance(n, (int, float)) and math.isfinite(n) else None,
+        production_t_d=prod_th * 24 if prod_th is not None else None,
+        hot_blast_nm3h=_num(regime.get("hot_blast_nm3h")),
+        o2_nm3h=_num(regime.get("O2_nm3h")),
+        enrichment_tag_pct=_num(regime.get("enrich_tag")),
+        hbt_c=_num(regime.get("HBT")),
+        hot_blast_pressure_bar_g=_num(regime.get("Pb")),
+        top_pressure_bar_g=_num(regime.get("Pt")),
+        dp_bar=_num(regime.get("dP")),
+        raft_c=_num(regime.get("raft_dcs")),
+    )
+
+
+def case_view(inputs: Mapping[str, Any]) -> RunCase | None:
+    """The stored case (``optimiser_run.inputs``) under the API's names; None for a run stored without one."""
+    from services.optimiser import SETTINGS_FIELDS
+
+    settings, limits = inputs.get("settings"), inputs.get("limits")
+    if not isinstance(settings, Mapping) or not isinstance(limits, Mapping):
+        return None
+    over = dict(inputs.get("overrides") or {})
+    blend = settings.get("omega_mode") == "blend"
+    return RunCase(
+        settings=RunSettings(**_api_names(SETTINGS_FIELDS, settings)),
+        limits=limits_view(limits) or PlanLimits(),
+        settings_set=sorted(dict(over.get("settings") or {})),
+        limits_set=sorted(dict(over.get("limits") or {})),
+        certainty_filter=_text(settings.get("certainty")) if blend else None,
+        risk_k=_num(settings.get("risk_k")) if blend else None,
+        search_o2=bool(inputs.get("search_o2", False)),
+        auto=bool(inputs.get("auto", False)),
+        production_source=_text(inputs.get("production_source")),
+        today_window=_text(inputs.get("today_window")),
+        yard_message=_text(inputs.get("yard_message")),
+        operator_inputs=dict(inputs.get("operator_inputs") or {}),
+        today=_today(inputs.get("regime")),
+    )
+
+
+def _chem(row: Mapping[str, Any], key: str) -> float | None:
+    return _num(dict(row.get("chem") or {}).get(key))
+
+
+def yard_view(yard: Mapping[str, Any] | None) -> RunYard | None:
+    """The stored yard rows (``Case.yard``); None for a run stored without them."""
+    if not isinstance(yard, Mapping) or not yard:
+        return None
+    materials = [
+        YardMaterial(
+            id=str(m["id"]),
+            name=str(m.get("name") or m["id"]),
+            kind=_text(m.get("kind")),
+            selected=bool(m.get("selected", True)),
+            carried=bool(m.get("carried", True)),
+            reason=_text(m.get("reason")),
+            fe_pct=_chem(m, "Fe"),
+            sio2_pct=_chem(m, "SiO2"),
+            al2o3_pct=_chem(m, "Al2O3"),
+            cao_pct=_chem(m, "CaO"),
+            loi_pct=_chem(m, "LOI"),
+            moisture_pct=_num(m.get("moist")),
+            price_rs_t=_num(m.get("price")),
+            min_share_pct=_num(m.get("lo")),
+            max_share_pct=_num(m.get("hi")),
+            stock_t=_num(m.get("stock_mt")),
+            chem_source=_text(m.get("chem_source")),
+        )
+        for m in yard.get("materials") or []
+        if isinstance(m, Mapping) and "id" in m
+    ]
+    fluxes = [
+        YardFlux(
+            id=str(f["id"]),
+            name=str(f.get("name") or f["id"]),
+            price_rs_t=_num(f.get("price")),
+            max_t_d=_num(f.get("max_qty_mt", f.get("max_t_day"))),
+            stock_t=_num(f.get("stock_mt")),
+            cao_pct=_chem(f, "CaO"),
+            mgo_pct=_chem(f, "MgO"),
+            sio2_pct=_chem(f, "SiO2"),
+            loi_pct=_chem(f, "LOI"),
+        )
+        for f in yard.get("fluxes") or []
+        if isinstance(f, Mapping) and "id" in f
+    ]
+    fu = dict(yard.get("fuel") or {})
+    fuel = YardFuel(
+        coke_rs_t=_num(fu.get("coke_price")),
+        nut_coke_rs_t=_num(fu.get("nut_price")),
+        pci_rs_t=_num(fu.get("pci_price")),
+        slag_rs_t=_num(fu.get("slag_price")),
+    )
+    return RunYard(materials=materials, fluxes=fluxes, fuel=fuel)
+
+
+def lead_view(engine_mode: Any, plan: Mapping[str, Any] | None, today: Mapping[str, Any] | None,
+              names: Mapping[str, str]) -> PlanLead | None:  # fmt: skip
+    """Page 11's line over the plan: Step 2 ``plan_sentence`` against today's blend, maximum production its binding
+    limits; Step 1 shows none."""
+    if plan is None:
+        return None
+    if engine_mode == "fixed":
+        kind, text = plan_sentence(plan, names, flux_ids_of(plan), today)
+        return PlanLead(kind=kind, text=text)
+    if engine_mode == "max":
+        text = (
+            "Limited by: "
+            + (limit_labels(plan.get("binding", []), names) or "–")
+            + ". Controls at their limits; oxygen searched within its flow and enrichment limits, least oxygen among "
+            "equal outputs."
+        )
+        return PlanLead(kind="plain", text=text)
+    return None
+
+
 def _network(om: Mapping[str, Any]) -> NetworkSolves | None:
     net = om.get("network") or {}
     if net.get("backend") != "network":
@@ -262,7 +553,11 @@ def _network(om: Mapping[str, Any]) -> NetworkSolves | None:
 
 
 def plan_view(
-    r: Mapping[str, Any], label: str, names: Mapping[str, str], kinds: Mapping[str, str] | None = None
+    r: Mapping[str, Any],
+    label: str,
+    names: Mapping[str, str],
+    kinds: Mapping[str, str] | None = None,
+    prices: Mapping[str, float] | None = None,
 ) -> PlanView:
     """One plan as page 11's panels show it (``plan_tiles``; binding rows from ``binding_table``)."""
     flux_ids = flux_ids_of(r)
@@ -280,6 +575,7 @@ def plan_view(
                 wet_kg_thm=float(wet.get(i, 0.0) or 0.0),
                 dry_kg_thm=_num(dry.get(i)),
                 t_d=_num(t_day.get(i)),
+                price_rs_t=_num((prices or {}).get(i)),
             )
             for i, share in (r.get("share_wet") or {}).items()
             if share is not None and float(share) > 0.05
@@ -287,7 +583,13 @@ def plan_view(
         key=lambda b: -b.share_wet_pct,
     )
     flux = [
-        FluxRow(id=i, name=names.get(i, i), wet_kg_thm=float(wet.get(i, 0.0) or 0.0), t_d=_num(t_day.get(i)))
+        FluxRow(
+            id=i,
+            name=names.get(i, i),
+            wet_kg_thm=float(wet.get(i, 0.0) or 0.0),
+            t_d=_num(t_day.get(i)),
+            price_rs_t=_num((prices or {}).get(i)),
+        )  # fmt: skip
         for i in flux_ids
         if float(wet.get(i, 0.0) or 0.0) >= 0.5
     ]
@@ -378,6 +680,7 @@ def plan_view(
             day_sd_kg_thm=_num(om.get("day_sd_K")) if blend_mode else None,
             network=_network(om) if blend_mode else None,
         ),
+        limits=limits_view(r.get("limits")),
         binding=[
             BindingLimit(
                 limit=str(x.limit),
@@ -390,8 +693,17 @@ def plan_view(
         if not bt.empty
         else [],
         warnings=[str(w) for w in r.get("warnings") or []],
+        limited_by=limit_labels([str(b) for b in r.get("binding") or []], names),
         facts_version=r.get("facts_version"),
     )
+
+
+def _labels(text: Any, names: Mapping[str, str] | None = None) -> str:
+    """Operator names of a comma-joined list of engine limits (page 11's frontier and value-of-limits tables)."""
+    value = str(text or "")
+    if value == "infeasible":
+        return value
+    return limit_labels([x.strip() for x in value.split(",") if x.strip()], names)
 
 
 def _frontier(rows: Sequence[Mapping[str, Any]] | None) -> list[FrontierPoint]:
@@ -412,6 +724,7 @@ def _frontier(rows: Sequence[Mapping[str, Any]] | None) -> list[FrontierPoint]:
             charges_per_h=_num(x.get("charges_per_h")),
             marginal_rs_per_t=_num(x.get("marginal_rs_per_t")),
             binding=str(x.get("binding") or ""),
+            binding_label=_labels(x.get("binding")),
         )
         for x in rows or []
         if isinstance(x, Mapping)
@@ -445,6 +758,11 @@ def result_view(row: Any) -> OptimiserResult:
     names = dict(inputs.get("materials") or {})
     yard = dict(inputs.get("yard") or {})
     kinds = {m["id"]: m.get("kind") for m in yard.get("materials") or [] if isinstance(m, Mapping) and "id" in m}
+    prices = {
+        str(m["id"]): m.get("price")
+        for m in [*(yard.get("materials") or []), *(yard.get("fluxes") or [])]
+        if isinstance(m, Mapping) and "id" in m
+    }
     mode = str(_get(row, "mode"))
     engine_mode = res.get("mode")
     started, finished = _get(row, "started_at"), _get(row, "finished_at")
@@ -468,19 +786,20 @@ def result_view(row: Any) -> OptimiserResult:
         plan = res.get("with_fuel")
         if plan is not None:
             view["plan"] = plan_view(plan, f"Cheapest blend at {plan['P_tday']:,.0f} t/d, fuel in the objective",
-                                     names, kinds)  # fmt: skip
+                                     names, kinds, prices)  # fmt: skip
         if res.get("ore_only") is not None:
-            view["ore_flux_plan"] = plan_view(res["ore_only"], "Ore + flux objective (page 9)", names, kinds)
+            view["ore_flux_plan"] = plan_view(res["ore_only"], "Ore + flux objective (page 9)", names, kinds, prices)
         if res.get("today") is not None:
             label = "Today's charged blend, modelled" + (
                 f" ({inputs['today_window']})" if inputs.get("today_window") else ""
             )
-            view["today_plan"] = plan_view(res["today"], label, names, kinds)
+            view["today_plan"] = plan_view(res["today"], label, names, kinds, prices)
         view["value_of_limits"] = [
             ValueOfLimit(
                 change=str(x.get("change", "")),
                 saving_rs_thm=_num(x.get("saving_rs_thm")),
                 binds_after=str(x.get("note") or ""),
+                binds_after_label=_labels(x.get("note"), names),
             )
             for x in res.get("value_of_limits") or []
             if isinstance(x, Mapping)
@@ -489,18 +808,23 @@ def result_view(row: Any) -> OptimiserResult:
         plan = res.get("best")
         if plan is not None:
             view["plan"] = plan_view(plan, f"Cheapest output on the Step 1 frontier, {plan['P_tday']:,.0f} t/d",
-                                     names, kinds)  # fmt: skip
+                                     names, kinds, prices)  # fmt: skip
         if res.get("top") is not None:
             top = res["top"]
-            view["highest_output_plan"] = plan_view(top, f"Highest output, {top['P_tday']:,.0f} t/d", names, kinds)
+            view["highest_output_plan"] = plan_view(
+                top, f"Highest output, {top['P_tday']:,.0f} t/d", names, kinds, prices
+            )
         view["frontier"] = _frontier(res.get("frontier"))
     elif engine_mode == "max":
         plan = res.get("result")
         if plan is not None:
-            view["plan"] = plan_view(plan, f"Maximum production, {plan['P_tday']:,.0f} t/d", names, kinds)
+            view["plan"] = plan_view(plan, f"Maximum production, {plan['P_tday']:,.0f} t/d", names, kinds, prices)
     if view.get("plan") is not None and view["saving_rs_thm"] is not None:
         view["saving_lakh_rs_d"] = view["saving_rs_thm"] * view["plan"].production_t_d / 1e5
     view["critical_assumptions"], view["critical_assumptions_error"] = _critical(res.get("critical_assumptions"))
+    view["lead"] = lead_view(engine_mode, plan, res.get("today") if engine_mode == "fixed" else None, names)
+    view["case"] = case_view(inputs)
+    view["yard"] = yard_view(yard)
     if view.get("plan") is not None:
         view["solves"] = view["plan"].shaft_efficiency.network
     return OptimiserResult(**view)

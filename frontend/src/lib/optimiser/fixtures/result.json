@@ -1,0 +1,2668 @@
+{
+	"source": "services.optimiser.compute_mode on the 16 Oct 2026 case report (Fixed-\u03c9, reference yard, cal_2z_jul_oct_2026_case_report_15g.json) at 2,270 t/d against a charged blend, stored by run_values and served by result_view; Step 1 from run_fixed at 2,200 / 2,270 / 2,340 t/d; expected = page 11's functions on the engine result",
+	"step2": {
+		"run_id": "3c1f7a52-9b0e-4d6a-8e21-5f4b7c9d2a10",
+		"mode": "step2",
+		"omega_mode": "fixed",
+		"status": "ok",
+		"error": null,
+		"started_at": "2026-10-16T00:45:00Z",
+		"finished_at": "2026-10-16T00:46:12Z",
+		"run_s": 72.0,
+		"production_target_t_d": 2270.0,
+		"yard_source": "reference",
+		"calibration": {
+			"source": "fallback",
+			"window": "2026-07-01 to 2026-10-07",
+			"omega": 0.799914621,
+			"Q_LZ_GJh": 47.418939944,
+			"Q_UZ_GJh": 21.595484014,
+			"message": "The shipped Jul-Oct 2026 calibration was requested.",
+			"basis": "reference"
+		},
+		"certainty": null,
+		"plan": {
+			"label": "Cheapest blend at 2,270 t/d, fuel in the objective",
+			"feasible": true,
+			"violations": [],
+			"production_t_d": 2270.0,
+			"production_t_h": 94.583333333,
+			"burden_fe_wet_pct": 55.743336147,
+			"ferrous_kg_thm": 1717.629644414,
+			"blend": [
+				{
+					"id": "sinter_sp_02",
+					"name": "SINTER (SP-02)",
+					"kind": "sinter",
+					"share_wet_pct": 58.0,
+					"wet_kg_thm": 996.22519376,
+					"dry_kg_thm": 996.22519376,
+					"t_d": 2261.431189835,
+					"price_rs_t": 8724.0
+				},
+				{
+					"id": "lloyds_clo",
+					"name": "LLOYDS CLO",
+					"kind": "ore",
+					"share_wet_pct": 18.621745151,
+					"wet_kg_thm": 319.852615017,
+					"dry_kg_thm": 305.139394726,
+					"t_d": 726.065436089,
+					"price_rs_t": 8802.0
+				},
+				{
+					"id": "geomin_clo",
+					"name": "GEOMIN CLO",
+					"kind": "ore",
+					"share_wet_pct": 13.378254849,
+					"wet_kg_thm": 229.788871196,
+					"dry_kg_thm": 219.907949734,
+					"t_d": 521.620737614,
+					"price_rs_t": 4284.0
+				},
+				{
+					"id": "lloyds_pellet",
+					"name": "LLOYDS PELLET",
+					"kind": "pellet",
+					"share_wet_pct": 10.0,
+					"wet_kg_thm": 171.762964441,
+					"dry_kg_thm": 170.045334797,
+					"t_d": 389.901929282,
+					"price_rs_t": 10350.0
+				}
+			],
+			"flux": [
+				{
+					"id": "limestone",
+					"name": "Limestone",
+					"wet_kg_thm": 13.677663792,
+					"t_d": 31.048296808,
+					"price_rs_t": 1500.0
+				}
+			],
+			"cost": {
+				"ore_rs_thm": 14268.573513913,
+				"flux_rs_thm": 20.516495688,
+				"fuel_rs_thm": 15849.642266753,
+				"coke_rs_thm": 9821.662266753,
+				"nut_coke_rs_thm": 1825.18,
+				"pci_rs_thm": 4202.8,
+				"gross_rs_thm": 30138.732276355,
+				"slag_credit_rs_thm": 0.0,
+				"total_rs_thm": 30138.732276355,
+				"total_sigma_rs_thm": null,
+				"total_lakh_rs_d": 684.149222673
+			},
+			"fuel": {
+				"coke_dry_kg_thm": 305.676732341,
+				"coke_wet_kg_thm": 307.00369676,
+				"coke_sigma_kg_thm": null,
+				"nut_coke_kg_thm": 70.0,
+				"pci_kg_thm": 190.0,
+				"fuel_rate_kg_thm": 567.00369676
+			},
+			"slag": {
+				"rate_kg_thm": 340.0,
+				"t_d": 771.8,
+				"al2o3_pct": 19.736893979,
+				"mgo_pct": 6.866506,
+				"cao_sio2": 1.05,
+				"t_basicity": 1.24972195,
+				"ib4": 0.793940425,
+				"mgo_al2o3": 0.347902056
+			},
+			"charging": {
+				"coke_t_d": 696.898391646,
+				"nut_coke_t_d": 158.9,
+				"pci_t_d": 431.3,
+				"ferrous_t_d": 3899.01929282,
+				"flux_kg_thm": 13.677663792,
+				"charges_per_h": 6.438913438,
+				"hm_per_charge_t": 14.689331398,
+				"charging_t_h": 170.373649568,
+				"charging_cap_t_h": 171.99
+			},
+			"process": {
+				"hmt_c": 1470.0,
+				"hm_si_pct": 0.3836,
+				"hbt_c": 1188.4,
+				"blast_moisture_g_nm3": 15.0,
+				"blast_nm3h": 113396.003941564,
+				"o2_nm3h": 5568.504878112,
+				"enrichment_tag_pct": 4.158921765,
+				"raft_c": 2214.305585025,
+				"eta_co_pct": 42.39621724,
+				"top_gas_c": 191.008782207,
+				"hot_blast_pressure_needed_bar_g": 2.835427955,
+				"top_pressure_bar_g": 1.42,
+				"dp_needed_bar": 1.415427955,
+				"blast_ceiling_nm3h": 110911.305720687
+			},
+			"shaft_efficiency": {
+				"mode": "fixed",
+				"omega": 0.799914621,
+				"omega_cal": 0.799914621,
+				"omega_sigma": null,
+				"certainty": "Held",
+				"outside": [],
+				"investigate": [],
+				"calibration_sigma_kg_thm": null,
+				"day_sd_kg_thm": null,
+				"network": null
+			},
+			"limits": {
+				"slag_max_kg_thm": 340.0,
+				"cao_sio2_min": 1.05,
+				"cao_sio2_max": 1.15,
+				"al2o3_max_pct": 20.0,
+				"mgo_min_pct": 6.5,
+				"mgo_al2o3_min": 0.345,
+				"charge_t": 26.46,
+				"charges_per_h": 6.5,
+				"top_gas_min_c": 120.0,
+				"fuel_min_kg_thm": 520.0,
+				"fuel_max_kg_thm": 600.0,
+				"process": false,
+				"hot_blast_pressure_max_bar_g": 2.85,
+				"dp_max_bar": 1.45,
+				"top_pressure_min_bar_g": 1.3,
+				"top_pressure_max_bar_g": 1.5,
+				"blast_max_nm3h": 115000.0,
+				"o2_flow_max_nm3h": 6500.0,
+				"enrichment_max_pct": 5.5,
+				"hbt_max_c": 1230.0,
+				"raft_min_c": 2100.0,
+				"raft_max_c": 2350.0
+			},
+			"binding": [
+				{
+					"limit": "basicity min",
+					"label": "CaO/SiO\u2082 floor",
+					"rs_thm_per_unit": 23.387648753,
+					"unit": "per kg/tHM CaO shortfall"
+				},
+				{
+					"limit": "slag cap",
+					"label": "slag rate cap",
+					"rs_thm_per_unit": 5.625051531,
+					"unit": "per kg/tHM of slag cap"
+				},
+				{
+					"limit": "min share lloyds_pellet",
+					"label": "LLOYDS PELLET share floor",
+					"rs_thm_per_unit": 1.331759839,
+					"unit": "per %-pt of ferrous"
+				},
+				{
+					"limit": "min share sinter_sp_02",
+					"label": "SINTER (SP-02) share floor",
+					"rs_thm_per_unit": 0.199689043,
+					"unit": "per %-pt of ferrous"
+				}
+			],
+			"warnings": [],
+			"limited_by": "CaO/SiO\u2082 floor, slag rate cap",
+			"facts_version": "1.8"
+		},
+		"ore_flux_plan": {
+			"label": "Ore + flux objective (page 9)",
+			"feasible": true,
+			"violations": [],
+			"production_t_d": 2270.0,
+			"production_t_h": 94.583333333,
+			"burden_fe_wet_pct": 55.743336147,
+			"ferrous_kg_thm": 1717.629644414,
+			"blend": [
+				{
+					"id": "sinter_sp_02",
+					"name": "SINTER (SP-02)",
+					"kind": "sinter",
+					"share_wet_pct": 58.0,
+					"wet_kg_thm": 996.22519376,
+					"dry_kg_thm": 996.22519376,
+					"t_d": 2261.431189835,
+					"price_rs_t": 8724.0
+				},
+				{
+					"id": "lloyds_clo",
+					"name": "LLOYDS CLO",
+					"kind": "ore",
+					"share_wet_pct": 18.621745151,
+					"wet_kg_thm": 319.852615017,
+					"dry_kg_thm": 305.139394726,
+					"t_d": 726.065436089,
+					"price_rs_t": 8802.0
+				},
+				{
+					"id": "geomin_clo",
+					"name": "GEOMIN CLO",
+					"kind": "ore",
+					"share_wet_pct": 13.378254849,
+					"wet_kg_thm": 229.788871196,
+					"dry_kg_thm": 219.907949734,
+					"t_d": 521.620737614,
+					"price_rs_t": 4284.0
+				},
+				{
+					"id": "lloyds_pellet",
+					"name": "LLOYDS PELLET",
+					"kind": "pellet",
+					"share_wet_pct": 10.0,
+					"wet_kg_thm": 171.762964441,
+					"dry_kg_thm": 170.045334797,
+					"t_d": 389.901929282,
+					"price_rs_t": 10350.0
+				}
+			],
+			"flux": [
+				{
+					"id": "limestone",
+					"name": "Limestone",
+					"wet_kg_thm": 13.677663792,
+					"t_d": 31.048296808,
+					"price_rs_t": 1500.0
+				}
+			],
+			"cost": {
+				"ore_rs_thm": 14268.573513913,
+				"flux_rs_thm": 20.516495688,
+				"fuel_rs_thm": 15849.642266753,
+				"coke_rs_thm": 9821.662266753,
+				"nut_coke_rs_thm": 1825.18,
+				"pci_rs_thm": 4202.8,
+				"gross_rs_thm": 30138.732276355,
+				"slag_credit_rs_thm": 0.0,
+				"total_rs_thm": 30138.732276355,
+				"total_sigma_rs_thm": null,
+				"total_lakh_rs_d": 684.149222673
+			},
+			"fuel": {
+				"coke_dry_kg_thm": 305.676732341,
+				"coke_wet_kg_thm": 307.00369676,
+				"coke_sigma_kg_thm": null,
+				"nut_coke_kg_thm": 70.0,
+				"pci_kg_thm": 190.0,
+				"fuel_rate_kg_thm": 567.00369676
+			},
+			"slag": {
+				"rate_kg_thm": 340.0,
+				"t_d": 771.8,
+				"al2o3_pct": 19.736893979,
+				"mgo_pct": 6.866506,
+				"cao_sio2": 1.05,
+				"t_basicity": 1.24972195,
+				"ib4": 0.793940425,
+				"mgo_al2o3": 0.347902056
+			},
+			"charging": {
+				"coke_t_d": 696.898391646,
+				"nut_coke_t_d": 158.9,
+				"pci_t_d": 431.3,
+				"ferrous_t_d": 3899.01929282,
+				"flux_kg_thm": 13.677663792,
+				"charges_per_h": 6.438913438,
+				"hm_per_charge_t": 14.689331398,
+				"charging_t_h": 170.373649568,
+				"charging_cap_t_h": 171.99
+			},
+			"process": {
+				"hmt_c": 1470.0,
+				"hm_si_pct": 0.3836,
+				"hbt_c": 1188.4,
+				"blast_moisture_g_nm3": 15.0,
+				"blast_nm3h": 113396.003941564,
+				"o2_nm3h": 5568.504878112,
+				"enrichment_tag_pct": 4.158921765,
+				"raft_c": 2214.305585025,
+				"eta_co_pct": 42.39621724,
+				"top_gas_c": 191.008782207,
+				"hot_blast_pressure_needed_bar_g": 2.835427955,
+				"top_pressure_bar_g": 1.42,
+				"dp_needed_bar": 1.415427955,
+				"blast_ceiling_nm3h": 110911.305720687
+			},
+			"shaft_efficiency": {
+				"mode": "fixed",
+				"omega": 0.799914621,
+				"omega_cal": 0.799914621,
+				"omega_sigma": null,
+				"certainty": "Held",
+				"outside": [],
+				"investigate": [],
+				"calibration_sigma_kg_thm": null,
+				"day_sd_kg_thm": null,
+				"network": null
+			},
+			"limits": {
+				"slag_max_kg_thm": 340.0,
+				"cao_sio2_min": 1.05,
+				"cao_sio2_max": 1.15,
+				"al2o3_max_pct": 20.0,
+				"mgo_min_pct": 6.5,
+				"mgo_al2o3_min": 0.345,
+				"charge_t": 26.46,
+				"charges_per_h": 6.5,
+				"top_gas_min_c": 120.0,
+				"fuel_min_kg_thm": 520.0,
+				"fuel_max_kg_thm": 600.0,
+				"process": false,
+				"hot_blast_pressure_max_bar_g": 2.85,
+				"dp_max_bar": 1.45,
+				"top_pressure_min_bar_g": 1.3,
+				"top_pressure_max_bar_g": 1.5,
+				"blast_max_nm3h": 115000.0,
+				"o2_flow_max_nm3h": 6500.0,
+				"enrichment_max_pct": 5.5,
+				"hbt_max_c": 1230.0,
+				"raft_min_c": 2100.0,
+				"raft_max_c": 2350.0
+			},
+			"binding": [
+				{
+					"limit": "basicity min",
+					"label": "CaO/SiO\u2082 floor",
+					"rs_thm_per_unit": 16.488896349,
+					"unit": "per kg/tHM CaO shortfall"
+				},
+				{
+					"limit": "slag cap",
+					"label": "slag rate cap",
+					"rs_thm_per_unit": 10.325506614,
+					"unit": "per kg/tHM of slag cap"
+				},
+				{
+					"limit": "min share lloyds_pellet",
+					"label": "LLOYDS PELLET share floor",
+					"rs_thm_per_unit": 1.359791962,
+					"unit": "per %-pt of ferrous"
+				},
+				{
+					"limit": "min share sinter_sp_02",
+					"label": "SINTER (SP-02) share floor",
+					"rs_thm_per_unit": 1.299420981,
+					"unit": "per %-pt of ferrous"
+				}
+			],
+			"warnings": [],
+			"limited_by": "CaO/SiO\u2082 floor, slag rate cap",
+			"facts_version": "1.8"
+		},
+		"today_plan": {
+			"label": "Today's charged blend, modelled (from 15 Oct 06:00 to 16 Oct 06:00 IST)",
+			"feasible": true,
+			"violations": [],
+			"production_t_d": 2270.0,
+			"production_t_h": 94.583333333,
+			"burden_fe_wet_pct": 55.9442289,
+			"ferrous_kg_thm": 1711.563063007,
+			"blend": [
+				{
+					"id": "sinter_sp_02",
+					"name": "SINTER (SP-02)",
+					"kind": "sinter",
+					"share_wet_pct": 61.95,
+					"wet_kg_thm": 1060.313317533,
+					"dry_kg_thm": 1060.313317533,
+					"t_d": 2406.911230799,
+					"price_rs_t": 8724.0
+				},
+				{
+					"id": "geomin_clo",
+					"name": "GEOMIN CLO",
+					"kind": "ore",
+					"share_wet_pct": 12.05,
+					"wet_kg_thm": 206.243349092,
+					"dry_kg_thm": 197.374885081,
+					"t_d": 468.17240244,
+					"price_rs_t": 4284.0
+				},
+				{
+					"id": "lloyds_pellet",
+					"name": "LLOYDS PELLET",
+					"kind": "pellet",
+					"share_wet_pct": 11.95,
+					"wet_kg_thm": 204.531786029,
+					"dry_kg_thm": 202.486468169,
+					"t_d": 464.287154287,
+					"price_rs_t": 10350.0
+				},
+				{
+					"id": "lloyds_clo",
+					"name": "LLOYDS CLO",
+					"kind": "ore",
+					"share_wet_pct": 8.05,
+					"wet_kg_thm": 137.780826572,
+					"dry_kg_thm": 131.44290855,
+					"t_d": 312.762476319,
+					"price_rs_t": 8802.0
+				},
+				{
+					"id": "nmdc_rom",
+					"name": "NMDC ROM",
+					"kind": "ore",
+					"share_wet_pct": 6.0,
+					"wet_kg_thm": 102.69378378,
+					"dry_kg_thm": 101.05068324,
+					"t_d": 233.114889182,
+					"price_rs_t": 10241.0
+				}
+			],
+			"flux": [],
+			"cost": {
+				"ore_rs_thm": 14515.057750252,
+				"flux_rs_thm": 0.0,
+				"fuel_rs_thm": 15779.153450831,
+				"coke_rs_thm": 9751.173450831,
+				"nut_coke_rs_thm": 1825.18,
+				"pci_rs_thm": 4202.8,
+				"gross_rs_thm": 30294.211201082,
+				"slag_credit_rs_thm": 0.0,
+				"total_rs_thm": 30294.211201082,
+				"total_sigma_rs_thm": null,
+				"total_lakh_rs_d": 687.678594265
+			},
+			"fuel": {
+				"coke_dry_kg_thm": 303.482929466,
+				"coke_wet_kg_thm": 304.800370431,
+				"coke_sigma_kg_thm": null,
+				"nut_coke_kg_thm": 70.0,
+				"pci_kg_thm": 190.0,
+				"fuel_rate_kg_thm": 564.800370431
+			},
+			"slag": {
+				"rate_kg_thm": 338.124333853,
+				"t_d": 767.542237845,
+				"al2o3_pct": 18.980002434,
+				"mgo_pct": 7.222958519,
+				"cao_sio2": 1.057500077,
+				"t_basicity": 1.2670383,
+				"ib4": 0.817122284,
+				"mgo_al2o3": 0.380556248
+			},
+			"charging": {
+				"coke_t_d": 691.896840879,
+				"nut_coke_t_d": 158.9,
+				"pci_t_d": 431.3,
+				"ferrous_t_d": 3885.248153025,
+				"flux_kg_thm": 0.0,
+				"charges_per_h": 6.368336094,
+				"hm_per_charge_t": 14.852126512,
+				"charging_t_h": 168.506173043,
+				"charging_cap_t_h": 2619.54
+			},
+			"process": {
+				"hmt_c": 1470.0,
+				"hm_si_pct": 0.3836,
+				"hbt_c": 1188.4,
+				"blast_moisture_g_nm3": 15.0,
+				"blast_nm3h": 112763.612876327,
+				"o2_nm3h": 5537.450232364,
+				"enrichment_tag_pct": 4.158921765,
+				"raft_c": 2211.438732372,
+				"eta_co_pct": 42.296105287,
+				"top_gas_c": 206.40796619,
+				"hot_blast_pressure_needed_bar_g": 2.816838244,
+				"top_pressure_bar_g": 1.42,
+				"dp_needed_bar": 1.396838244,
+				"blast_ceiling_nm3h": 111288.928394061
+			},
+			"shaft_efficiency": {
+				"mode": "fixed",
+				"omega": 0.799914621,
+				"omega_cal": 0.799914621,
+				"omega_sigma": null,
+				"certainty": "Held",
+				"outside": [],
+				"investigate": [],
+				"calibration_sigma_kg_thm": null,
+				"day_sd_kg_thm": null,
+				"network": null
+			},
+			"limits": {
+				"slag_max_kg_thm": 1000.0,
+				"cao_sio2_min": 1.05,
+				"cao_sio2_max": 1.15,
+				"al2o3_max_pct": 100.0,
+				"mgo_min_pct": 0.0,
+				"mgo_al2o3_min": 0.0,
+				"charge_t": 26.46,
+				"charges_per_h": 99.0,
+				"top_gas_min_c": 120.0,
+				"fuel_min_kg_thm": 520.0,
+				"fuel_max_kg_thm": 600.0,
+				"process": false,
+				"hot_blast_pressure_max_bar_g": 2.85,
+				"dp_max_bar": 1.45,
+				"top_pressure_min_bar_g": 1.3,
+				"top_pressure_max_bar_g": 1.5,
+				"blast_max_nm3h": 115000.0,
+				"o2_flow_max_nm3h": 6500.0,
+				"enrichment_max_pct": 5.5,
+				"hbt_max_c": 1230.0,
+				"raft_min_c": 2100.0,
+				"raft_max_c": 2350.0
+			},
+			"binding": [
+				{
+					"limit": "max share geomin_clo",
+					"label": "GEOMIN CLO share cap",
+					"rs_thm_per_unit": 3.212453489,
+					"unit": "per %-pt of ferrous"
+				},
+				{
+					"limit": "max share lloyds_clo",
+					"label": "LLOYDS CLO share cap",
+					"rs_thm_per_unit": 0.780896043,
+					"unit": "per %-pt of ferrous"
+				},
+				{
+					"limit": "min share sinter_sp_02",
+					"label": "SINTER (SP-02) share floor",
+					"rs_thm_per_unit": 0.435650158,
+					"unit": "per %-pt of ferrous"
+				},
+				{
+					"limit": "min share lloyds_pellet",
+					"label": "LLOYDS PELLET share floor",
+					"rs_thm_per_unit": 0.409419628,
+					"unit": "per %-pt of ferrous"
+				}
+			],
+			"warnings": [],
+			"limited_by": "",
+			"facts_version": "1.8"
+		},
+		"saving_rs_thm": 155.478924728,
+		"saving_lakh_rs_d": 3.529371591,
+		"highest_output_plan": null,
+		"frontier": [],
+		"value_of_limits": [
+			{
+				"change": "Hot blast +40 \u00b0C",
+				"saving_rs_thm": 185.337033511,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "Slag cap +10 kg/tHM",
+				"saving_rs_thm": 52.712671755,
+				"binds_after": "MgO/Al2O3 min, basicity min, slag cap",
+				"binds_after_label": "MgO/Al\u2082O\u2083 floor, CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "LLOYDS PELLET floor \u22122 pt",
+				"saving_rs_thm": 43.538910276,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "CaO/SiO\u2082 floor \u22120.01",
+				"saving_rs_thm": 27.430562422,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "SINTER (SP-02) floor \u22122 pt",
+				"saving_rs_thm": 1.833377718,
+				"binds_after": "MgO/Al2O3 min, basicity min, slag cap",
+				"binds_after_label": "MgO/Al\u2082O\u2083 floor, CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "Charges per hour +0.1",
+				"saving_rs_thm": 0.0,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "Charge mass +0.5 t",
+				"saving_rs_thm": 0.0,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "SINTER (SP-02) cap +5 pt",
+				"saving_rs_thm": 0.0,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "GEOMIN CLO cap +5 pt",
+				"saving_rs_thm": 0.0,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "LLOYDS CLO cap +5 pt",
+				"saving_rs_thm": 0.0,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "NMDC ROM cap +5 pt",
+				"saving_rs_thm": 0.0,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"change": "LLOYDS PELLET cap +5 pt",
+				"saving_rs_thm": 0.0,
+				"binds_after": "basicity min, slag cap",
+				"binds_after_label": "CaO/SiO\u2082 floor, slag rate cap"
+			}
+		],
+		"critical_assumptions": [],
+		"critical_assumptions_error": null,
+		"solves": null,
+		"lead": {
+			"kind": "saving",
+			"text": "**Charge** SINTER (SP-02) 58.0 %, LLOYDS CLO 18.6 %, GEOMIN CLO 13.4 %, LLOYDS PELLET 10.0 % with limestone 14 kg/tHM: Rs 30,139/tHM, coke 305.7 kg/tHM dry. **Rs 155/tHM less than today's blend** (Rs 3.5 lakh/day at this output; coke +2.2 kg/tHM)."
+		},
+		"case": {
+			"settings": {
+				"hmt_c": 1470.0,
+				"hm_si_pct": 0.3836,
+				"pci_kg_thm": 190.0,
+				"nut_coke_kg_thm": 70.0,
+				"blast_moisture_g_nm3": 15.0,
+				"hbt_c": 1188.4,
+				"o2_per_air": 0.05209,
+				"hot_blast_pressure_bar_g": 2.79,
+				"top_pressure_bar_g": 1.42
+			},
+			"limits": {
+				"slag_max_kg_thm": 340.0,
+				"cao_sio2_min": 1.05,
+				"cao_sio2_max": 1.15,
+				"al2o3_max_pct": 20.0,
+				"mgo_min_pct": 6.5,
+				"mgo_al2o3_min": 0.345,
+				"charge_t": 26.46,
+				"charges_per_h": 6.5,
+				"top_gas_min_c": 120.0,
+				"fuel_min_kg_thm": 520.0,
+				"fuel_max_kg_thm": 600.0,
+				"process": false,
+				"hot_blast_pressure_max_bar_g": 2.85,
+				"dp_max_bar": 1.45,
+				"top_pressure_min_bar_g": 1.3,
+				"top_pressure_max_bar_g": 1.5,
+				"blast_max_nm3h": 115000.0,
+				"o2_flow_max_nm3h": 6500.0,
+				"enrichment_max_pct": 5.5,
+				"hbt_max_c": 1230.0,
+				"raft_min_c": 2100.0,
+				"raft_max_c": 2350.0
+			},
+			"settings_set": [
+				"blast_moisture_g_nm3",
+				"hbt_c",
+				"hm_si_pct",
+				"hmt_c",
+				"hot_blast_pressure_bar_g",
+				"nut_coke_kg_thm",
+				"o2_per_air",
+				"pci_kg_thm",
+				"top_pressure_bar_g"
+			],
+			"limits_set": [],
+			"certainty_filter": null,
+			"risk_k": null,
+			"search_o2": false,
+			"auto": false,
+			"production_source": "requested",
+			"today_window": "from 15 Oct 06:00 to 16 Oct 06:00 IST",
+			"yard_message": "The reference yard was requested.",
+			"operator_inputs": {},
+			"today": null
+		},
+		"yard": {
+			"materials": [
+				{
+					"id": "sinter_sp_02",
+					"name": "SINTER (SP-02)",
+					"kind": "sinter",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 54.46,
+					"sio2_pct": 5.4,
+					"al2o3_pct": 2.285,
+					"cao_pct": 11.24,
+					"loi_pct": 0.0,
+					"moisture_pct": 0.0,
+					"price_rs_t": 8724.0,
+					"min_share_pct": 58.0,
+					"max_share_pct": 70.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "geomin_clo",
+					"name": "GEOMIN CLO",
+					"kind": "ore",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 51.21,
+					"sio2_pct": 9.84,
+					"al2o3_pct": 7.89,
+					"cao_pct": 0.12,
+					"loi_pct": 7.37,
+					"moisture_pct": 4.3,
+					"price_rs_t": 4284.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 20.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "lloyds_clo",
+					"name": "LLOYDS CLO",
+					"kind": "ore",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 63.52,
+					"sio2_pct": 3.124,
+					"al2o3_pct": 2.34,
+					"cao_pct": 0.067,
+					"loi_pct": 3.04,
+					"moisture_pct": 4.6,
+					"price_rs_t": 8802.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 20.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "nmdc_rom",
+					"name": "NMDC ROM",
+					"kind": "ore",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 65.64,
+					"sio2_pct": 3.04,
+					"al2o3_pct": 0.82,
+					"cao_pct": 0.12,
+					"loi_pct": 1.66,
+					"moisture_pct": 1.6,
+					"price_rs_t": 10241.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 20.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "lloyds_pellet",
+					"name": "LLOYDS PELLET",
+					"kind": "pellet",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 63.795,
+					"sio2_pct": 4.09,
+					"al2o3_pct": 2.45,
+					"cao_pct": 1.045,
+					"loi_pct": 0.51,
+					"moisture_pct": 1.0,
+					"price_rs_t": 10350.0,
+					"min_share_pct": 10.0,
+					"max_share_pct": 20.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "nmdc_donimalai",
+					"name": "NMDC DONIMALAI",
+					"kind": "ore",
+					"selected": false,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 55.9,
+					"sio2_pct": 14.96,
+					"al2o3_pct": 1.995,
+					"cao_pct": 0.075,
+					"loi_pct": 1.855,
+					"moisture_pct": 1.1,
+					"price_rs_t": 5750.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 15.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "gomti_clo",
+					"name": "GOMTI CLO",
+					"kind": "ore",
+					"selected": false,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 56.6,
+					"sio2_pct": 7.4,
+					"al2o3_pct": 1.96,
+					"cao_pct": 0.45,
+					"loi_pct": 7.89,
+					"moisture_pct": 2.3,
+					"price_rs_t": 5349.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 30.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "lloyds_oversize_clo",
+					"name": "LLOYDS OVERSIZE CLO",
+					"kind": "ore",
+					"selected": false,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 63.42,
+					"sio2_pct": 3.7,
+					"al2o3_pct": 2.45,
+					"cao_pct": 0.05,
+					"loi_pct": 2.36,
+					"moisture_pct": 3.6,
+					"price_rs_t": 6162.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 10.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				}
+			],
+			"fluxes": [
+				{
+					"id": "limestone",
+					"name": "Limestone",
+					"price_rs_t": 1500.0,
+					"max_t_d": 100.0,
+					"stock_t": null,
+					"cao_pct": 51.24,
+					"mgo_pct": 2.81,
+					"sio2_pct": 2.92,
+					"loi_pct": 41.19
+				},
+				{
+					"id": "dolomite",
+					"name": "Dolomite",
+					"price_rs_t": 1183.0,
+					"max_t_d": 100.0,
+					"stock_t": null,
+					"cao_pct": 30.23,
+					"mgo_pct": 22.25,
+					"sio2_pct": 1.81,
+					"loi_pct": 45.18
+				},
+				{
+					"id": "quartz",
+					"name": "Quartz",
+					"price_rs_t": 1796.0,
+					"max_t_d": 100.0,
+					"stock_t": null,
+					"cao_pct": 0.0,
+					"mgo_pct": 0.0,
+					"sio2_pct": 96.08,
+					"loi_pct": 1.12
+				}
+			],
+			"fuel": {
+				"coke_rs_t": 31992.0,
+				"nut_coke_rs_t": 26074.0,
+				"pci_rs_t": 22120.0,
+				"slag_rs_t": 0.0
+			}
+		}
+	},
+	"step1": {
+		"run_id": "8a2d4e61-0c3f-4b7a-9d15-6e2c8f1a4b37",
+		"mode": "step1",
+		"omega_mode": "fixed",
+		"status": "ok",
+		"error": null,
+		"started_at": "2026-10-16T00:45:00Z",
+		"finished_at": "2026-10-16T00:46:12Z",
+		"run_s": 72.0,
+		"production_target_t_d": null,
+		"yard_source": "reference",
+		"calibration": {
+			"source": "fallback",
+			"window": "2026-07-01 to 2026-10-07",
+			"omega": 0.799914621,
+			"Q_LZ_GJh": 47.418939944,
+			"Q_UZ_GJh": 21.595484014,
+			"message": "The shipped Jul-Oct 2026 calibration was requested.",
+			"basis": "reference"
+		},
+		"certainty": null,
+		"plan": {
+			"label": "Cheapest output on the Step 1 frontier, 2,270 t/d",
+			"feasible": true,
+			"violations": [],
+			"production_t_d": 2270.0,
+			"production_t_h": 94.583333333,
+			"burden_fe_wet_pct": 55.743336147,
+			"ferrous_kg_thm": 1717.629644414,
+			"blend": [
+				{
+					"id": "sinter_sp_02",
+					"name": "SINTER (SP-02)",
+					"kind": "sinter",
+					"share_wet_pct": 58.0,
+					"wet_kg_thm": 996.22519376,
+					"dry_kg_thm": 996.22519376,
+					"t_d": 2261.431189835,
+					"price_rs_t": 8724.0
+				},
+				{
+					"id": "lloyds_clo",
+					"name": "LLOYDS CLO",
+					"kind": "ore",
+					"share_wet_pct": 18.621745151,
+					"wet_kg_thm": 319.852615017,
+					"dry_kg_thm": 305.139394726,
+					"t_d": 726.065436089,
+					"price_rs_t": 8802.0
+				},
+				{
+					"id": "geomin_clo",
+					"name": "GEOMIN CLO",
+					"kind": "ore",
+					"share_wet_pct": 13.378254849,
+					"wet_kg_thm": 229.788871196,
+					"dry_kg_thm": 219.907949734,
+					"t_d": 521.620737614,
+					"price_rs_t": 4284.0
+				},
+				{
+					"id": "lloyds_pellet",
+					"name": "LLOYDS PELLET",
+					"kind": "pellet",
+					"share_wet_pct": 10.0,
+					"wet_kg_thm": 171.762964441,
+					"dry_kg_thm": 170.045334797,
+					"t_d": 389.901929282,
+					"price_rs_t": 10350.0
+				}
+			],
+			"flux": [
+				{
+					"id": "limestone",
+					"name": "Limestone",
+					"wet_kg_thm": 13.677663792,
+					"t_d": 31.048296808,
+					"price_rs_t": 1500.0
+				}
+			],
+			"cost": {
+				"ore_rs_thm": 14268.573513913,
+				"flux_rs_thm": 20.516495688,
+				"fuel_rs_thm": 15849.642266753,
+				"coke_rs_thm": 9821.662266753,
+				"nut_coke_rs_thm": 1825.18,
+				"pci_rs_thm": 4202.8,
+				"gross_rs_thm": 30138.732276355,
+				"slag_credit_rs_thm": 0.0,
+				"total_rs_thm": 30138.732276355,
+				"total_sigma_rs_thm": null,
+				"total_lakh_rs_d": 684.149222673
+			},
+			"fuel": {
+				"coke_dry_kg_thm": 305.676732341,
+				"coke_wet_kg_thm": 307.00369676,
+				"coke_sigma_kg_thm": null,
+				"nut_coke_kg_thm": 70.0,
+				"pci_kg_thm": 190.0,
+				"fuel_rate_kg_thm": 567.00369676
+			},
+			"slag": {
+				"rate_kg_thm": 340.0,
+				"t_d": 771.8,
+				"al2o3_pct": 19.736893979,
+				"mgo_pct": 6.866506,
+				"cao_sio2": 1.05,
+				"t_basicity": 1.24972195,
+				"ib4": 0.793940425,
+				"mgo_al2o3": 0.347902056
+			},
+			"charging": {
+				"coke_t_d": 696.898391646,
+				"nut_coke_t_d": 158.9,
+				"pci_t_d": 431.3,
+				"ferrous_t_d": 3899.01929282,
+				"flux_kg_thm": 13.677663792,
+				"charges_per_h": 6.438913438,
+				"hm_per_charge_t": 14.689331398,
+				"charging_t_h": 170.373649568,
+				"charging_cap_t_h": 171.99
+			},
+			"process": {
+				"hmt_c": 1470.0,
+				"hm_si_pct": 0.3836,
+				"hbt_c": 1188.4,
+				"blast_moisture_g_nm3": 15.0,
+				"blast_nm3h": 113396.003941564,
+				"o2_nm3h": 5568.504878112,
+				"enrichment_tag_pct": 4.158921765,
+				"raft_c": 2214.305585025,
+				"eta_co_pct": 42.39621724,
+				"top_gas_c": 191.008782207,
+				"hot_blast_pressure_needed_bar_g": 2.835427955,
+				"top_pressure_bar_g": 1.42,
+				"dp_needed_bar": 1.415427955,
+				"blast_ceiling_nm3h": 110911.305720687
+			},
+			"shaft_efficiency": {
+				"mode": "fixed",
+				"omega": 0.799914621,
+				"omega_cal": 0.799914621,
+				"omega_sigma": null,
+				"certainty": "Held",
+				"outside": [],
+				"investigate": [],
+				"calibration_sigma_kg_thm": null,
+				"day_sd_kg_thm": null,
+				"network": null
+			},
+			"limits": {
+				"slag_max_kg_thm": 340.0,
+				"cao_sio2_min": 1.05,
+				"cao_sio2_max": 1.15,
+				"al2o3_max_pct": 20.0,
+				"mgo_min_pct": 6.5,
+				"mgo_al2o3_min": 0.345,
+				"charge_t": 26.46,
+				"charges_per_h": 6.5,
+				"top_gas_min_c": 120.0,
+				"fuel_min_kg_thm": 520.0,
+				"fuel_max_kg_thm": 600.0,
+				"process": false,
+				"hot_blast_pressure_max_bar_g": 2.85,
+				"dp_max_bar": 1.45,
+				"top_pressure_min_bar_g": 1.3,
+				"top_pressure_max_bar_g": 1.5,
+				"blast_max_nm3h": 115000.0,
+				"o2_flow_max_nm3h": 6500.0,
+				"enrichment_max_pct": 5.5,
+				"hbt_max_c": 1230.0,
+				"raft_min_c": 2100.0,
+				"raft_max_c": 2350.0
+			},
+			"binding": [
+				{
+					"limit": "basicity min",
+					"label": "CaO/SiO\u2082 floor",
+					"rs_thm_per_unit": 23.387648753,
+					"unit": "per kg/tHM CaO shortfall"
+				},
+				{
+					"limit": "slag cap",
+					"label": "slag rate cap",
+					"rs_thm_per_unit": 5.625051531,
+					"unit": "per kg/tHM of slag cap"
+				},
+				{
+					"limit": "min share lloyds_pellet",
+					"label": "LLOYDS PELLET share floor",
+					"rs_thm_per_unit": 1.331759839,
+					"unit": "per %-pt of ferrous"
+				},
+				{
+					"limit": "min share sinter_sp_02",
+					"label": "SINTER (SP-02) share floor",
+					"rs_thm_per_unit": 0.199689043,
+					"unit": "per %-pt of ferrous"
+				}
+			],
+			"warnings": [],
+			"limited_by": "CaO/SiO\u2082 floor, slag rate cap",
+			"facts_version": "1.8"
+		},
+		"ore_flux_plan": null,
+		"today_plan": null,
+		"saving_rs_thm": null,
+		"saving_lakh_rs_d": null,
+		"highest_output_plan": {
+			"label": "Highest output, 2,340 t/d",
+			"feasible": true,
+			"violations": [],
+			"production_t_d": 2340.0,
+			"production_t_h": 97.5,
+			"burden_fe_wet_pct": 56.521611475,
+			"ferrous_kg_thm": 1694.0,
+			"blend": [
+				{
+					"id": "sinter_sp_02",
+					"name": "SINTER (SP-02)",
+					"kind": "sinter",
+					"share_wet_pct": 58.172946337,
+					"wet_kg_thm": 985.449710941,
+					"dry_kg_thm": 985.449710941,
+					"t_d": 2305.952323602,
+					"price_rs_t": 8724.0
+				},
+				{
+					"id": "lloyds_clo",
+					"name": "LLOYDS CLO",
+					"kind": "ore",
+					"share_wet_pct": 20.0,
+					"wet_kg_thm": 338.8,
+					"dry_kg_thm": 323.2152,
+					"t_d": 792.792,
+					"price_rs_t": 8802.0
+				},
+				{
+					"id": "lloyds_pellet",
+					"name": "LLOYDS PELLET",
+					"kind": "pellet",
+					"share_wet_pct": 10.0,
+					"wet_kg_thm": 169.4,
+					"dry_kg_thm": 167.706,
+					"t_d": 396.396,
+					"price_rs_t": 10350.0
+				},
+				{
+					"id": "geomin_clo",
+					"name": "GEOMIN CLO",
+					"kind": "ore",
+					"share_wet_pct": 7.917971405,
+					"wet_kg_thm": 134.130435596,
+					"dry_kg_thm": 128.362826865,
+					"t_d": 313.865219294,
+					"price_rs_t": 4284.0
+				},
+				{
+					"id": "nmdc_rom",
+					"name": "NMDC ROM",
+					"kind": "ore",
+					"share_wet_pct": 3.909082259,
+					"wet_kg_thm": 66.219853463,
+					"dry_kg_thm": 65.160335808,
+					"t_d": 154.954457104,
+					"price_rs_t": 10241.0
+				}
+			],
+			"flux": [],
+			"cost": {
+				"ore_rs_thm": 14585.243183659,
+				"flux_rs_thm": 0.0,
+				"fuel_rs_thm": 15699.210259587,
+				"coke_rs_thm": 9671.230259587,
+				"nut_coke_rs_thm": 1825.18,
+				"pci_rs_thm": 4202.8,
+				"gross_rs_thm": 30284.453443246,
+				"slag_credit_rs_thm": 0.0,
+				"total_rs_thm": 30284.453443246,
+				"total_sigma_rs_thm": null,
+				"total_lakh_rs_d": 708.656210572
+			},
+			"fuel": {
+				"coke_dry_kg_thm": 300.994880824,
+				"coke_wet_kg_thm": 302.301520992,
+				"coke_sigma_kg_thm": null,
+				"nut_coke_kg_thm": 70.0,
+				"pci_kg_thm": 190.0,
+				"fuel_rate_kg_thm": 562.301520992
+			},
+			"slag": {
+				"rate_kg_thm": 315.130517114,
+				"t_d": 737.405410046,
+				"al2o3_pct": 19.128298672,
+				"mgo_pct": 7.215958676,
+				"cao_sio2": 1.05,
+				"t_basicity": 1.258580683,
+				"ib4": 0.810464659,
+				"mgo_al2o3": 0.377239963
+			},
+			"charging": {
+				"coke_t_d": 707.385559122,
+				"nut_coke_t_d": 163.8,
+				"pci_t_d": 444.6,
+				"ferrous_t_d": 3963.96,
+				"flux_kg_thm": 0.0,
+				"charges_per_h": 6.5,
+				"hm_per_charge_t": 15.0,
+				"charging_t_h": 171.99,
+				"charging_cap_t_h": 171.99
+			},
+			"process": {
+				"hmt_c": 1470.0,
+				"hm_si_pct": 0.3836,
+				"hbt_c": 1188.4,
+				"blast_moisture_g_nm3": 15.0,
+				"blast_nm3h": 115259.867024806,
+				"o2_nm3h": 5660.033065265,
+				"enrichment_tag_pct": 4.158921765,
+				"raft_c": 2207.063258861,
+				"eta_co_pct": 42.49574151,
+				"top_gas_c": 207.441633023,
+				"hot_blast_pressure_needed_bar_g": 2.872438344,
+				"top_pressure_bar_g": 1.42,
+				"dp_needed_bar": 1.452438344,
+				"blast_ceiling_nm3h": 110767.15773398
+			},
+			"shaft_efficiency": {
+				"mode": "fixed",
+				"omega": 0.799914621,
+				"omega_cal": 0.799914621,
+				"omega_sigma": null,
+				"certainty": "Held",
+				"outside": [],
+				"investigate": [],
+				"calibration_sigma_kg_thm": null,
+				"day_sd_kg_thm": null,
+				"network": null
+			},
+			"limits": {
+				"slag_max_kg_thm": 340.0,
+				"cao_sio2_min": 1.05,
+				"cao_sio2_max": 1.15,
+				"al2o3_max_pct": 20.0,
+				"mgo_min_pct": 6.5,
+				"mgo_al2o3_min": 0.345,
+				"charge_t": 26.46,
+				"charges_per_h": 6.5,
+				"top_gas_min_c": 120.0,
+				"fuel_min_kg_thm": 520.0,
+				"fuel_max_kg_thm": 600.0,
+				"process": false,
+				"hot_blast_pressure_max_bar_g": 2.85,
+				"dp_max_bar": 1.45,
+				"top_pressure_min_bar_g": 1.3,
+				"top_pressure_max_bar_g": 1.5,
+				"blast_max_nm3h": 115000.0,
+				"o2_flow_max_nm3h": 6500.0,
+				"enrichment_max_pct": 5.5,
+				"hbt_max_c": 1230.0,
+				"raft_min_c": 2100.0,
+				"raft_max_c": 2350.0
+			},
+			"binding": [
+				{
+					"limit": "charging",
+					"label": "charging rate",
+					"rs_thm_per_unit": 72.397868547,
+					"unit": "per t/h of charge"
+				},
+				{
+					"limit": "basicity min",
+					"label": "CaO/SiO\u2082 floor",
+					"rs_thm_per_unit": 19.516962547,
+					"unit": "per kg/tHM CaO shortfall"
+				},
+				{
+					"limit": "min share lloyds_pellet",
+					"label": "LLOYDS PELLET share floor",
+					"rs_thm_per_unit": 0.624251596,
+					"unit": "per %-pt of ferrous"
+				},
+				{
+					"limit": "max share lloyds_clo",
+					"label": "LLOYDS CLO share cap",
+					"rs_thm_per_unit": 0.289646057,
+					"unit": "per %-pt of ferrous"
+				}
+			],
+			"warnings": [],
+			"limited_by": "CaO/SiO\u2082 floor, charging rate",
+			"facts_version": "1.8"
+		},
+		"frontier": [
+			{
+				"production_t_d": 2200.0,
+				"cost_rs_thm": 30178.788478584,
+				"ore_flux_rs_thm": 14291.704892565,
+				"fuel_rs_thm": 15887.083586019,
+				"coke_dry_kg_thm": 306.842007609,
+				"fuel_rate_kg_thm": 568.174030571,
+				"slag_kg_thm": 340.0,
+				"hbt_c": 1188.4,
+				"enrichment_tag_pct": 4.158921765,
+				"blast_nm3h": 110330.532123637,
+				"o2_nm3h": 5417.9696372,
+				"hot_blast_pressure_needed_bar_g": 2.778770485,
+				"charges_per_h": 6.239784384,
+				"marginal_rs_per_t": null,
+				"binding": "basicity min, slag cap",
+				"binding_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"production_t_d": 2270.0,
+				"cost_rs_thm": 30138.732276355,
+				"ore_flux_rs_thm": 14289.090009601,
+				"fuel_rs_thm": 15849.642266753,
+				"coke_dry_kg_thm": 305.676732341,
+				"fuel_rate_kg_thm": 567.00369676,
+				"slag_kg_thm": 340.0,
+				"hbt_c": 1188.4,
+				"enrichment_tag_pct": 4.158921765,
+				"blast_nm3h": 113396.003941564,
+				"o2_nm3h": 5568.504878112,
+				"hot_blast_pressure_needed_bar_g": 2.835427955,
+				"charges_per_h": 6.438913438,
+				"marginal_rs_per_t": 28879.823063436,
+				"binding": "basicity min, slag cap",
+				"binding_label": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			{
+				"production_t_d": 2340.0,
+				"cost_rs_thm": 30284.453443246,
+				"ore_flux_rs_thm": 14585.243183659,
+				"fuel_rs_thm": 15699.210259587,
+				"coke_dry_kg_thm": 300.994880824,
+				"fuel_rate_kg_thm": 562.301520992,
+				"slag_kg_thm": 315.130517114,
+				"hbt_c": 1188.4,
+				"enrichment_tag_pct": 4.158921765,
+				"blast_nm3h": 115259.867024806,
+				"o2_nm3h": 5660.033065265,
+				"hot_blast_pressure_needed_bar_g": 2.872438344,
+				"charges_per_h": 6.5,
+				"marginal_rs_per_t": 35009.982712436,
+				"binding": "basicity min, charging",
+				"binding_label": "CaO/SiO\u2082 floor, charging rate"
+			}
+		],
+		"value_of_limits": [],
+		"critical_assumptions": [],
+		"critical_assumptions_error": null,
+		"solves": null,
+		"lead": null,
+		"case": {
+			"settings": {
+				"hmt_c": 1470.0,
+				"hm_si_pct": 0.3836,
+				"pci_kg_thm": 190.0,
+				"nut_coke_kg_thm": 70.0,
+				"blast_moisture_g_nm3": 15.0,
+				"hbt_c": 1188.4,
+				"o2_per_air": 0.05209,
+				"hot_blast_pressure_bar_g": 2.79,
+				"top_pressure_bar_g": 1.42
+			},
+			"limits": {
+				"slag_max_kg_thm": 340.0,
+				"cao_sio2_min": 1.05,
+				"cao_sio2_max": 1.15,
+				"al2o3_max_pct": 20.0,
+				"mgo_min_pct": 6.5,
+				"mgo_al2o3_min": 0.345,
+				"charge_t": 26.46,
+				"charges_per_h": 6.5,
+				"top_gas_min_c": 120.0,
+				"fuel_min_kg_thm": 520.0,
+				"fuel_max_kg_thm": 600.0,
+				"process": false,
+				"hot_blast_pressure_max_bar_g": 2.85,
+				"dp_max_bar": 1.45,
+				"top_pressure_min_bar_g": 1.3,
+				"top_pressure_max_bar_g": 1.5,
+				"blast_max_nm3h": 115000.0,
+				"o2_flow_max_nm3h": 6500.0,
+				"enrichment_max_pct": 5.5,
+				"hbt_max_c": 1230.0,
+				"raft_min_c": 2100.0,
+				"raft_max_c": 2350.0
+			},
+			"settings_set": [
+				"blast_moisture_g_nm3",
+				"hbt_c",
+				"hm_si_pct",
+				"hmt_c",
+				"hot_blast_pressure_bar_g",
+				"nut_coke_kg_thm",
+				"o2_per_air",
+				"pci_kg_thm",
+				"top_pressure_bar_g"
+			],
+			"limits_set": [],
+			"certainty_filter": null,
+			"risk_k": null,
+			"search_o2": false,
+			"auto": false,
+			"production_source": null,
+			"today_window": "from 15 Oct 06:00 to 16 Oct 06:00 IST",
+			"yard_message": "The reference yard was requested.",
+			"operator_inputs": {},
+			"today": null
+		},
+		"yard": {
+			"materials": [
+				{
+					"id": "sinter_sp_02",
+					"name": "SINTER (SP-02)",
+					"kind": "sinter",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 54.46,
+					"sio2_pct": 5.4,
+					"al2o3_pct": 2.285,
+					"cao_pct": 11.24,
+					"loi_pct": 0.0,
+					"moisture_pct": 0.0,
+					"price_rs_t": 8724.0,
+					"min_share_pct": 58.0,
+					"max_share_pct": 70.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "geomin_clo",
+					"name": "GEOMIN CLO",
+					"kind": "ore",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 51.21,
+					"sio2_pct": 9.84,
+					"al2o3_pct": 7.89,
+					"cao_pct": 0.12,
+					"loi_pct": 7.37,
+					"moisture_pct": 4.3,
+					"price_rs_t": 4284.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 20.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "lloyds_clo",
+					"name": "LLOYDS CLO",
+					"kind": "ore",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 63.52,
+					"sio2_pct": 3.124,
+					"al2o3_pct": 2.34,
+					"cao_pct": 0.067,
+					"loi_pct": 3.04,
+					"moisture_pct": 4.6,
+					"price_rs_t": 8802.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 20.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "nmdc_rom",
+					"name": "NMDC ROM",
+					"kind": "ore",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 65.64,
+					"sio2_pct": 3.04,
+					"al2o3_pct": 0.82,
+					"cao_pct": 0.12,
+					"loi_pct": 1.66,
+					"moisture_pct": 1.6,
+					"price_rs_t": 10241.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 20.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "lloyds_pellet",
+					"name": "LLOYDS PELLET",
+					"kind": "pellet",
+					"selected": true,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 63.795,
+					"sio2_pct": 4.09,
+					"al2o3_pct": 2.45,
+					"cao_pct": 1.045,
+					"loi_pct": 0.51,
+					"moisture_pct": 1.0,
+					"price_rs_t": 10350.0,
+					"min_share_pct": 10.0,
+					"max_share_pct": 20.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "nmdc_donimalai",
+					"name": "NMDC DONIMALAI",
+					"kind": "ore",
+					"selected": false,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 55.9,
+					"sio2_pct": 14.96,
+					"al2o3_pct": 1.995,
+					"cao_pct": 0.075,
+					"loi_pct": 1.855,
+					"moisture_pct": 1.1,
+					"price_rs_t": 5750.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 15.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "gomti_clo",
+					"name": "GOMTI CLO",
+					"kind": "ore",
+					"selected": false,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 56.6,
+					"sio2_pct": 7.4,
+					"al2o3_pct": 1.96,
+					"cao_pct": 0.45,
+					"loi_pct": 7.89,
+					"moisture_pct": 2.3,
+					"price_rs_t": 5349.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 30.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				},
+				{
+					"id": "lloyds_oversize_clo",
+					"name": "LLOYDS OVERSIZE CLO",
+					"kind": "ore",
+					"selected": false,
+					"carried": true,
+					"reason": null,
+					"fe_pct": 63.42,
+					"sio2_pct": 3.7,
+					"al2o3_pct": 2.45,
+					"cao_pct": 0.05,
+					"loi_pct": 2.36,
+					"moisture_pct": 3.6,
+					"price_rs_t": 6162.0,
+					"min_share_pct": 0.0,
+					"max_share_pct": 10.0,
+					"stock_t": null,
+					"chem_source": "reference 16 Oct 2026"
+				}
+			],
+			"fluxes": [
+				{
+					"id": "limestone",
+					"name": "Limestone",
+					"price_rs_t": 1500.0,
+					"max_t_d": 100.0,
+					"stock_t": null,
+					"cao_pct": 51.24,
+					"mgo_pct": 2.81,
+					"sio2_pct": 2.92,
+					"loi_pct": 41.19
+				},
+				{
+					"id": "dolomite",
+					"name": "Dolomite",
+					"price_rs_t": 1183.0,
+					"max_t_d": 100.0,
+					"stock_t": null,
+					"cao_pct": 30.23,
+					"mgo_pct": 22.25,
+					"sio2_pct": 1.81,
+					"loi_pct": 45.18
+				},
+				{
+					"id": "quartz",
+					"name": "Quartz",
+					"price_rs_t": 1796.0,
+					"max_t_d": 100.0,
+					"stock_t": null,
+					"cao_pct": 0.0,
+					"mgo_pct": 0.0,
+					"sio2_pct": 96.08,
+					"loi_pct": 1.12
+				}
+			],
+			"fuel": {
+				"coke_rs_t": 31992.0,
+				"nut_coke_rs_t": 26074.0,
+				"pci_rs_t": 22120.0,
+				"slag_rs_t": 0.0
+			}
+		}
+	},
+	"reference": {
+		"facts_version": "1.8",
+		"facts_date": "2026-10-25",
+		"slag_bands": [
+			{
+				"key": "b2",
+				"label": "B2",
+				"ratio": "CaO/SiO\u2082",
+				"lo": 1.005,
+				"hi": 1.155,
+				"note": "The ratio this page constrains (CaO/SiO\u2082 limits of the case)."
+			},
+			{
+				"key": "t_basicity",
+				"label": "T-basicity",
+				"ratio": "(CaO + MgO)/SiO\u2082",
+				"lo": 1.216,
+				"hi": 1.403,
+				"note": "Display only here (page 9 constrains it)."
+			},
+			{
+				"key": "ib4",
+				"label": "IB4",
+				"ratio": "(CaO + MgO)/(SiO\u2082 + Al\u2082O\u2083)",
+				"lo": 0.793,
+				"hi": 0.902,
+				"note": "Display only; reads lower than T-basicity because Al\u2082O\u2083 is in the denominator."
+			}
+		],
+		"bands": [
+			{
+				"key": "fuel_rate",
+				"fact_id": "BAND-01",
+				"label": "Fuel rate (coke wet + nut coke + PCI)",
+				"unit": "kg/tHM",
+				"lo": 520.0,
+				"hi": 600.0
+			},
+			{
+				"key": "hmt",
+				"fact_id": "BAND-02",
+				"label": "Hot-metal temperature",
+				"unit": "\u00b0C",
+				"lo": 1440.0,
+				"hi": 1520.0
+			},
+			{
+				"key": "hm_si",
+				"fact_id": "BAND-03",
+				"label": "Hot-metal Si",
+				"unit": "%",
+				"lo": 0.2,
+				"hi": 0.8
+			}
+		],
+		"facts": [
+			{
+				"id": "ASM-01",
+				"statement": "Two-zone balance with fixed shaft efficiency",
+				"value": 0.8,
+				"unit": "",
+				"uncertainty": "",
+				"status": "Measured",
+				"grade": "B",
+				"next_test": "",
+				"version": "1.5"
+			},
+			{
+				"id": "ASM-02",
+				"statement": "Reserve-zone temperature",
+				"value": 950.0,
+				"unit": "degC",
+				"uncertainty": "900 to 1000",
+				"status": "Assumed",
+				"grade": "C",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "ASM-03",
+				"statement": "Heat losses fixed per hour",
+				"value": null,
+				"unit": "GJ/h",
+				"uncertainty": "",
+				"status": "Assumed",
+				"grade": "C",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "ASM-04",
+				"statement": "Share of flux CO2 released below the reserve zone",
+				"value": 0.5,
+				"unit": "",
+				"uncertainty": "0 to 1",
+				"status": "Assumed",
+				"grade": "C",
+				"next_test": "T7",
+				"version": "1.0"
+			},
+			{
+				"id": "ASM-05",
+				"statement": "Upper-zone loads (burden moisture, LOI, FeO) cost no coke while top gas >= 120 degC",
+				"value": null,
+				"unit": "",
+				"uncertainty": "",
+				"status": "Assumed",
+				"grade": "C",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "ASM-06",
+				"statement": "Blast humidity",
+				"value": 15.0,
+				"unit": "g/Nm3",
+				"uncertainty": "",
+				"status": "Measured gap",
+				"grade": "B",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "ASM-08",
+				"statement": "Thermal target and fixed fuels",
+				"value": null,
+				"unit": "",
+				"uncertainty": "",
+				"status": "Plant choice",
+				"grade": "D",
+				"next_test": "",
+				"version": "1.6"
+			},
+			{
+				"id": "ASM-09",
+				"statement": "Burden-resistance rules linear and additive",
+				"value": null,
+				"unit": "",
+				"uncertainty": "",
+				"status": "Assumed",
+				"grade": "B",
+				"next_test": "Q2, Q3",
+				"version": "1.0"
+			},
+			{
+				"id": "FLOW-01",
+				"statement": "Packed-bed law (Pb^2 - Pt^2) = K V^n, absolute bar, hot blast Nm3/h",
+				"value": 1.8,
+				"unit": "n",
+				"uncertainty": "",
+				"status": "Assumed",
+				"grade": "C",
+				"next_test": "Q2",
+				"version": "1.0"
+			},
+			{
+				"id": "FLOW-02",
+				"statement": "Pellet +1 pt replacing sinter -> burden resistance K",
+				"value": -0.0037,
+				"unit": "dlnK per pt",
+				"uncertainty": "\u00b1 0.0013",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "Q6",
+				"version": "1.4"
+			},
+			{
+				"id": "FLOW-03",
+				"statement": "Gomti CLO +1 pt -> K",
+				"value": 0.0038,
+				"unit": "dlnK per pt",
+				"uncertainty": "\u00b1 0.0017",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "FLOW-04",
+				"statement": "Oversize CLO in use (> 1 % of ferrous) -> K",
+				"value": -0.028,
+				"unit": "dlnK",
+				"uncertainty": "\u00b1 0.027",
+				"status": "Assumed",
+				"grade": "B",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "FLOW-05",
+				"statement": "O2 +1 pt of hot blast -> K",
+				"value": 0.0214,
+				"unit": "dlnK per pt",
+				"uncertainty": "\u00b1 0.0065",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "Q3",
+				"version": "1.0"
+			},
+			{
+				"id": "FLOW-06",
+				"statement": "Coke +1 kg/tHM -> K",
+				"value": -0.0005,
+				"unit": "dlnK per kg/tHM",
+				"uncertainty": "\u00b1 0.00012",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "DATA-02",
+				"statement": "Enrichment tag",
+				"value": 0.84,
+				"unit": "tag pt per % O2 in hot blast",
+				"uncertainty": "",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "DATA-03",
+				"statement": "RAFT, plant workbook",
+				"value": null,
+				"unit": "",
+				"uncertainty": "",
+				"status": "Supported",
+				"grade": "C",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "BAND-01",
+				"statement": "Fuel rate, coke (wet) + nut coke + PCI",
+				"value": null,
+				"unit": "kg/tHM",
+				"uncertainty": "",
+				"status": "Plant practice",
+				"grade": "D",
+				"next_test": "",
+				"version": "1.1"
+			},
+			{
+				"id": "BAND-02",
+				"statement": "HMT input",
+				"value": null,
+				"unit": "degC",
+				"uncertainty": "",
+				"status": "Plant data",
+				"grade": "B",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "BAND-03",
+				"statement": "HM Si input",
+				"value": null,
+				"unit": "%",
+				"uncertainty": "",
+				"status": "Plant data",
+				"grade": "B",
+				"next_test": "",
+				"version": "1.0"
+			},
+			{
+				"id": "GAS-10",
+				"statement": "Shaft efficiency level and day-to-day spread",
+				"value": 0.8,
+				"unit": "",
+				"uncertainty": "\u00b1 0.028",
+				"status": "Measured",
+				"grade": "B",
+				"next_test": "Q12",
+				"version": "1.0"
+			},
+			{
+				"id": "ASM-18",
+				"statement": "Two-zone balance with STRATA-omega shaft efficiency (page default)",
+				"value": null,
+				"unit": "",
+				"uncertainty": "",
+				"status": "Model",
+				"grade": "B",
+				"next_test": "T5",
+				"version": "1.8"
+			},
+			{
+				"id": "GAS-13",
+				"statement": "STRATA-omega: shaft efficiency from STRATA-Flow network solves (BF-02 gas-flow model), ring counter-current reduction of wustite in the thermal reserve zone",
+				"value": null,
+				"unit": "",
+				"uncertainty": "",
+				"status": "Model",
+				"grade": "B",
+				"next_test": "Q6, T5",
+				"version": "1.6"
+			},
+			{
+				"id": "GAS-14",
+				"statement": "Plant-data scales on the model channels of shaft efficiency (STRATA 1.5)",
+				"value": 1.421,
+				"unit": "lam_pellet",
+				"uncertainty": "\u00b1 0.448",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "T5",
+				"version": "1.8"
+			},
+			{
+				"id": "GAS-15",
+				"statement": "Pellet +10 wet pt -> shaft efficiency (STRATA 1.3, reference operation)",
+				"value": 0.0123,
+				"unit": "omega",
+				"uncertainty": "\u00b1 0.0041",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "Q6, T5",
+				"version": "1.6"
+			},
+			{
+				"id": "GAS-18",
+				"statement": "Certainty tiers of a plan (STRATA-omega): High, Medium, Low, Investigate",
+				"value": null,
+				"unit": "kg/tHM",
+				"uncertainty": "",
+				"status": "Plant choice",
+				"grade": "D",
+				"next_test": "",
+				"version": "1.6"
+			},
+			{
+				"id": "GAS-19",
+				"statement": "Blast moisture -> shaft efficiency (data term; retired in STRATA 1.5)",
+				"value": 0.0,
+				"unit": "omega per g/Nm3",
+				"uncertainty": "\u00b1 0.00094",
+				"status": "Retired",
+				"grade": "B",
+				"next_test": "Q8",
+				"version": "1.8"
+			},
+			{
+				"id": "GAS-20",
+				"statement": "Out-of-sample test of the shaft-efficiency model on 2026 data (STRATA 1.5)",
+				"value": 0.12,
+				"unit": "skill, burnt coke (day)",
+				"uncertainty": "",
+				"status": "Validated",
+				"grade": "B",
+				"next_test": "T5",
+				"version": "1.8"
+			},
+			{
+				"id": "GAS-21",
+				"statement": "Reducibility (RI) and reduction-degradation index (RDI) of the ferrous materials (set T26, Evonith laboratory) and the RI-to-rate link of STRATA-omega",
+				"value": null,
+				"unit": "% RI / % RDI",
+				"uncertainty": "",
+				"status": "Measured",
+				"grade": "B",
+				"next_test": "Sinter RI in the same laboratory (basis check); Gomti RI and RDI; repeat Lloyds CLO (tests 51-84 % since 2022) and Donimalai (single test)",
+				"version": "1.6"
+			},
+			{
+				"id": "GAS-22",
+				"statement": "Production against efficiency: dilution of the fixed heat loss against shorter TRZ residence (BF-02 data)",
+				"value": -1.33,
+				"unit": "kg/tHM burnt coke per t/h",
+				"uncertainty": "\u00b1 0.44",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "Q12; production step trial",
+				"version": "1.8"
+			},
+			{
+				"id": "GAS-23",
+				"statement": "Nut coke +1 kg/tHM -> shaft efficiency (data term, STRATA 1.3+)",
+				"value": 0.000995,
+				"unit": "omega per kg/tHM",
+				"uncertainty": "\u00b1 0.000336",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "Nut-coke step trial (+15 kg/tHM for 7 days at constant blend)",
+				"version": "1.8"
+			},
+			{
+				"id": "GAS-25",
+				"statement": "Strict out-of-sample test on 2023-24 data (parameters frozen from Dec 2025 - Oct 2026)",
+				"value": 0.055,
+				"unit": "skill, burnt coke (day)",
+				"uncertainty": "",
+				"status": "Supported",
+				"grade": "B",
+				"next_test": "Sinter strength 2023-24; a steam-specific moisture coefficient (steam injection resumes)",
+				"version": "1.8"
+			},
+			{
+				"id": "DATA-11",
+				"statement": "Blast moisture from the Open-Meteo daily relative humidity at Wardha",
+				"value": null,
+				"unit": "g/Nm3",
+				"uncertainty": "",
+				"status": "Plant data",
+				"grade": "B",
+				"next_test": "Calibrate the RH mapping on the steam-referenced H2 response (DATA-16), or use temperature with the RH for the absolute humidity",
+				"version": "1.8"
+			},
+			{
+				"id": "ASM-19",
+				"statement": "Auto mode: the pick is a fixed rule; the language model only reviews it",
+				"value": 1.0,
+				"unit": "sigma",
+				"uncertainty": "",
+				"status": "Plant choice",
+				"grade": "D",
+				"next_test": "",
+				"version": "1.3"
+			},
+			{
+				"id": "ASM-20",
+				"statement": "Slag sale credit in the optimiser objective",
+				"value": 457.85,
+				"unit": "Rs/t slag",
+				"uncertainty": "",
+				"status": "Plant data",
+				"grade": "B",
+				"next_test": "Plant granulated-slag sale price (commercial)",
+				"version": "1.6"
+			}
+		],
+		"model_facts": [
+			{
+				"id": "MOD-01",
+				"statement": "Pellet for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke",
+				"fixed_omega": -1.74,
+				"strata_omega": -5.96,
+				"sigma_strata": 1.19,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-02",
+				"statement": "Lloyds CLO for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke",
+				"fixed_omega": -1.9,
+				"strata_omega": -1.06,
+				"sigma_strata": 0.49,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-03",
+				"statement": "Geomin CLO for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke",
+				"fixed_omega": -0.18,
+				"strata_omega": 0.69,
+				"sigma_strata": 0.49,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-04",
+				"statement": "NMDC ROM for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke",
+				"fixed_omega": -2.17,
+				"strata_omega": -0.84,
+				"sigma_strata": 0.81,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-05",
+				"statement": "Donimalai for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke",
+				"fixed_omega": -0.48,
+				"strata_omega": 1.08,
+				"sigma_strata": 0.82,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-06",
+				"statement": "Gomti for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke",
+				"fixed_omega": -1.26,
+				"strata_omega": -0.09,
+				"sigma_strata": 0.68,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-07",
+				"statement": "Lloyds oversize for sinter, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke",
+				"fixed_omega": -1.85,
+				"strata_omega": -0.97,
+				"sigma_strata": 0.49,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-08",
+				"statement": "Pellet for Lloyds CLO, 10 wet pt of ferrous: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke",
+				"fixed_omega": 0.16,
+				"strata_omega": -4.7,
+				"sigma_strata": 1.24,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-09",
+				"statement": "Production +1 t/h at the same burden: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke per t/h",
+				"fixed_omega": -0.36,
+				"strata_omega": -0.39,
+				"sigma_strata": 0.01,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-10",
+				"statement": "Blast moisture +1 g/Nm3 at the same burden: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke per g/Nm3",
+				"fixed_omega": 0.8,
+				"strata_omega": 0.88,
+				"sigma_strata": 0.02,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "MOD-11",
+				"statement": "Nut coke +10 kg/tHM at the same burden: coke response, Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry coke per 10 kg/tHM nut coke",
+				"fixed_omega": -9.94,
+				"strata_omega": -13.17,
+				"sigma_strata": 0.34,
+				"status": "Model",
+				"realised": null,
+				"n": null,
+				"rmse_fixed": null,
+				"rmse_strata": null,
+				"skill": null
+			},
+			{
+				"id": "VAL-01",
+				"statement": "Out-of-sample burnt coke, N1 No pellet, sinter + CLO: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 296.6,
+				"strata_omega": 296.0,
+				"sigma_strata": 1.06,
+				"status": "Neutral",
+				"realised": 296.8,
+				"n": 21,
+				"rmse_fixed": 3.96,
+				"rmse_strata": 4.02,
+				"skill": -0.028
+			},
+			{
+				"id": "VAL-02",
+				"statement": "Out-of-sample burnt coke, N2 No pellet, with Gomti: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 301.4,
+				"strata_omega": 301.8,
+				"sigma_strata": 2.51,
+				"status": "Modelled only",
+				"realised": 304.3,
+				"n": 9,
+				"rmse_fixed": 7.72,
+				"rmse_strata": 7.49,
+				"skill": 0.058
+			},
+			{
+				"id": "VAL-03",
+				"statement": "Out-of-sample burnt coke, N3 No pellet, with oversize: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 306.5,
+				"strata_omega": 306.8,
+				"sigma_strata": 1.39,
+				"status": "Supported",
+				"realised": 307.8,
+				"n": 30,
+				"rmse_fixed": 6.39,
+				"rmse_strata": 5.98,
+				"skill": 0.125
+			},
+			{
+				"id": "VAL-04",
+				"statement": "Out-of-sample burnt coke, N4 No pellet, with ROM: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 303.5,
+				"strata_omega": 303.5,
+				"sigma_strata": 2.9,
+				"status": "Supported",
+				"realised": 304.6,
+				"n": 30,
+				"rmse_fixed": 9.3,
+				"rmse_strata": 8.36,
+				"skill": 0.193
+			},
+			{
+				"id": "VAL-05",
+				"statement": "Out-of-sample burnt coke, N5 No pellet, ROM + oversize: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 292.0,
+				"strata_omega": 291.4,
+				"sigma_strata": null,
+				"status": "Modelled only",
+				"realised": 293.6,
+				"n": 1,
+				"rmse_fixed": 1.59,
+				"rmse_strata": 2.19,
+				"skill": -0.902
+			},
+			{
+				"id": "VAL-06",
+				"statement": "Out-of-sample burnt coke, P1 Pellet, sinter + CLO: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 314.8,
+				"strata_omega": 314.9,
+				"sigma_strata": 1.54,
+				"status": "Supported",
+				"realised": 313.9,
+				"n": 43,
+				"rmse_fixed": 5.43,
+				"rmse_strata": 5.34,
+				"skill": 0.034
+			},
+			{
+				"id": "VAL-07",
+				"statement": "Out-of-sample burnt coke, P2 Pellet, with oversize: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 311.5,
+				"strata_omega": 311.5,
+				"sigma_strata": 1.9,
+				"status": "Modelled only",
+				"realised": 315.5,
+				"n": 6,
+				"rmse_fixed": 5.87,
+				"rmse_strata": 5.68,
+				"skill": 0.064
+			},
+			{
+				"id": "VAL-08",
+				"statement": "Out-of-sample burnt coke, P3 Pellet, with ROM: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 306.4,
+				"strata_omega": 307.1,
+				"sigma_strata": 1.37,
+				"status": "Supported",
+				"realised": 306.2,
+				"n": 27,
+				"rmse_fixed": 4.4,
+				"rmse_strata": 4.37,
+				"skill": 0.014
+			},
+			{
+				"id": "VAL-09",
+				"statement": "Out-of-sample burnt coke, P4 Pellet, ROM + oversize: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 299.9,
+				"strata_omega": 297.0,
+				"sigma_strata": 2.44,
+				"status": "Modelled only",
+				"realised": 297.5,
+				"n": 8,
+				"rmse_fixed": 7.57,
+				"rmse_strata": 6.47,
+				"skill": 0.27
+			},
+			{
+				"id": "VAL-10",
+				"statement": "Out-of-sample burnt coke, All days: realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 306.4,
+				"strata_omega": 306.4,
+				"sigma_strata": 0.74,
+				"status": "Supported",
+				"realised": 306.7,
+				"n": 175,
+				"rmse_fixed": 6.39,
+				"rmse_strata": 5.99,
+				"skill": 0.12
+			},
+			{
+				"id": "VAL-11",
+				"statement": "Out-of-sample burnt coke, ROM >= 10 % (any family): realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 307.1,
+				"strata_omega": 307.5,
+				"sigma_strata": 1.7,
+				"status": "Supported",
+				"realised": 305.7,
+				"n": 26,
+				"rmse_fixed": 6.97,
+				"rmse_strata": 5.89,
+				"skill": 0.285
+			},
+			{
+				"id": "VAL-12",
+				"statement": "Out-of-sample burnt coke, Pellet >= 12 % (any family): realised against Fixed-omega and STRATA-omega",
+				"unit": "kg/tHM dry burnt coke (mean)",
+				"fixed_omega": 310.0,
+				"strata_omega": 309.4,
+				"sigma_strata": 1.84,
+				"status": "Supported",
+				"realised": 308.9,
+				"n": 35,
+				"rmse_fixed": 6.95,
+				"rmse_strata": 6.53,
+				"skill": 0.117
+			}
+		],
+		"assumptions": "- **Shaft efficiency** is either Fixed-\u03c9 (held at the calibration, the Rist baseline; ASM-01) or STRATA-\u03c9 (default; ASM-18, GAS-13..25, STRATA 1.5): the STRATA-Flow gas-flow network's ring counter-current description of the thermal reserve zone (size of each ferrous, coke layers, fuels, oxygen, nut coke), solved for every plan - one network solve per optimiser iteration and three per reported plan, about 1 s each, no surrogate. Plant-data scales: pellet 1.42 \u00b1 0.45, lump ore 0.92 \u00b1 0.46, other operation 0.80 \u00b1 0.28; nut-coke term; no production channel (production acts through the balance; the channel was not replicated on 2023-24 data, GAS-16) and no moisture term (the day's Open-Meteo moisture acts through the balance, GAS-19). Tested out of sample on 175 days of 2026 (burnt-coke RMSE 5.99 against 6.39 kg/tHM for Fixed-\u03c9, skill +0.12 day, +0.22 7-day; GAS-20) and with frozen parameters on 411 days of 2023-24 (RMSE 8.00 against 8.23 kg/tHM; GAS-25). Each plan carries \u03c3(coke), a certainty class (High / Medium / Low / Investigate), its critical assumptions and the network solves behind it; the calibration's own error (about \u00b12 kg/tHM) and the day-to-day spread (about \u00b17 kg/tHM) are reported apart.\n- **Reducibility and RDI** are the Evonith laboratory tests as given (GAS-21, DATA-13: pellet 82, Lloyds CLO 84, Geomin 79, NMDC ROM 61, Donimalai 78 % RI; Gomti not tested). The ore RDIs act in the network as shaft fines. The link from RI to reduction rate is calibrated on the plant data: the measured RI differences show no effect on the plant's shaft efficiency, particle size does (RI exponent 0, size exponent 1.0; both are critical assumptions of every plan).\n- **Oversize**: the Lloyds fines oversize (ore_6) reduces at the Lloyds CLO size (no size credit, GAS-24); the Donimalai oversize return (ore_11) is Donimalai.\n- **Investigate tier**: pellet above 25 % of ferrous or \u03c3(coke) above 8 kg/tHM is beyond common practice; such plans are excluded by default and are trial proposals only.\n- **Blast moisture** is the day's Open-Meteo relative humidity at Wardha mapped to 7-21 g/Nm\u00b3 (DATA-11; validated on the top-gas H\u2082, DATA-16). It acts on coke through the balance; STRATA 1.5 has no separate moisture term (GAS-19 retired). **PCI and nut coke** default to the regime window's medians (ASM-08); both act through the balance, nut coke also through STRATA-\u03c9 (GAS-23).\n- **Burden-resistance rules** (FLOW-02..07) were fitted on pellet up to 16.6 % and Gomti up to 11.6 % of ferrous; beyond that the page warns that it is extrapolating.\n- **Process limits** default to the Jun-Oct 2026 operating envelope, not equipment ratings. Oxygen and stove gas have no price.\n- **Not limited:** phosphorus, alkalis, zinc, sulphur; sinter-plant cost of a basicity change.\n- Steady day average: no transition between blends; dust and heat losses (GJ/h) stay at the calibration."
+	},
+	"expected": {
+		"step2": {
+			"tiles": {
+				"overview": {
+					"total": 30138.732276355,
+					"P_tday": 2270.0,
+					"P_th": 94.583333333,
+					"fe_wet_pct": 55.743336147,
+					"ferrous_kg": 1717.629644414
+				},
+				"cost": {
+					"ore": 14268.573513913,
+					"flux": 20.516495688,
+					"fuel": 15849.642266753,
+					"coke": 9821.662266753,
+					"nut": 1825.18,
+					"pci": 4202.8,
+					"slag_credit": 0.0,
+					"gross": 30138.732276355,
+					"total": 30138.732276355
+				},
+				"fuel": {
+					"coke_dry": 305.676732341,
+					"coke_wet": 307.00369676,
+					"nut": 70.0,
+					"pci": 190.0,
+					"total": 567.00369676
+				},
+				"slag": {
+					"rate": 340.0,
+					"t_day": 771.8,
+					"Al2O3_pct": 19.736893979,
+					"MgO_pct": 6.866506,
+					"b2": 1.05,
+					"t_basicity": 1.24972195,
+					"ib4": 0.793940425,
+					"mgo_al2o3": 0.347902056
+				},
+				"charging": {
+					"coke_t": 696.898391646,
+					"nut_t": 158.9,
+					"pci_t": 431.3,
+					"ferrous_t": 3899.01929282,
+					"charges_per_h": 6.438913438,
+					"hm_per_charge": 14.689331398,
+					"flux_kg": 13.677663792
+				}
+			},
+			"band_notes": {
+				"b2": {
+					"text": "\u2713 plant 1.005\u20131.155",
+					"inside": true
+				},
+				"t_basicity": {
+					"text": "\u2713 plant 1.216\u20131.403",
+					"inside": true
+				},
+				"ib4": {
+					"text": "\u2713 plant 0.793\u20130.902",
+					"inside": true
+				}
+			},
+			"today_tiles": {
+				"overview": {
+					"total": 30294.211201082,
+					"P_tday": 2270.0,
+					"P_th": 94.583333333,
+					"fe_wet_pct": 55.9442289,
+					"ferrous_kg": 1711.563063007
+				},
+				"cost": {
+					"ore": 14515.057750252,
+					"flux": 0.0,
+					"fuel": 15779.153450831,
+					"coke": 9751.173450831,
+					"nut": 1825.18,
+					"pci": 4202.8,
+					"slag_credit": 0.0,
+					"gross": 30294.211201082,
+					"total": 30294.211201082
+				},
+				"fuel": {
+					"coke_dry": 303.482929466,
+					"coke_wet": 304.800370431,
+					"nut": 70.0,
+					"pci": 190.0,
+					"total": 564.800370431
+				},
+				"slag": {
+					"rate": 338.124333853,
+					"t_day": 767.542237845,
+					"Al2O3_pct": 18.980002434,
+					"MgO_pct": 7.222958519,
+					"b2": 1.057500077,
+					"t_basicity": 1.2670383,
+					"ib4": 0.817122284,
+					"mgo_al2o3": 0.380556248
+				},
+				"charging": {
+					"coke_t": 691.896840879,
+					"nut_t": 158.9,
+					"pci_t": 431.3,
+					"ferrous_t": 3885.248153025,
+					"charges_per_h": 6.368336094,
+					"hm_per_charge": 14.852126512,
+					"flux_kg": 0.0
+				}
+			},
+			"deltas": {
+				"cost": {
+					"ore": -246.484236339,
+					"flux": 20.516495688,
+					"fuel": 70.488815923,
+					"coke": 70.488815923,
+					"nut": 0.0,
+					"pci": 0.0,
+					"slag_credit": 0.0,
+					"gross": -155.478924728,
+					"total": -155.478924728
+				},
+				"fuel": {
+					"coke_dry": 2.193802875,
+					"coke_wet": 2.203326329,
+					"nut": 0.0,
+					"pci": 0.0,
+					"total": 2.203326329
+				},
+				"slag": {
+					"rate": 1.875666147,
+					"t_day": 4.257762155,
+					"Al2O3_pct": 0.756891545,
+					"MgO_pct": -0.356452519,
+					"b2": -0.007500077,
+					"t_basicity": -0.01731635,
+					"ib4": -0.023181859,
+					"mgo_al2o3": -0.032654192
+				}
+			},
+			"saving_lakh_rs_d": 3.529371591,
+			"lead": [
+				"saving",
+				"**Charge** SINTER (SP-02) 58.0 %, LLOYDS CLO 18.6 %, GEOMIN CLO 13.4 %, LLOYDS PELLET 10.0 % with limestone 14 kg/tHM: Rs 30,139/tHM, coke 305.7 kg/tHM dry. **Rs 155/tHM less than today's blend** (Rs 3.5 lakh/day at this output; coke +2.2 kg/tHM)."
+			],
+			"blend_table": [
+				{
+					"Material": "SINTER (SP-02)",
+					"Plan, wet %": 58.0,
+					"Today, wet %": 61.95,
+					"Plan, kg/tHM": 996.22519376,
+					"Today, kg/tHM": 1060.313317533,
+					"Plan, t/d": 2261.431189835,
+					"Price, Rs/t": 8724.0
+				},
+				{
+					"Material": "GEOMIN CLO",
+					"Plan, wet %": 13.378254849,
+					"Today, wet %": 12.05,
+					"Plan, kg/tHM": 229.788871196,
+					"Today, kg/tHM": 206.243349092,
+					"Plan, t/d": 521.620737614,
+					"Price, Rs/t": 4284.0
+				},
+				{
+					"Material": "LLOYDS CLO",
+					"Plan, wet %": 18.621745151,
+					"Today, wet %": 8.05,
+					"Plan, kg/tHM": 319.852615017,
+					"Today, kg/tHM": 137.780826572,
+					"Plan, t/d": 726.065436089,
+					"Price, Rs/t": 8802.0
+				},
+				{
+					"Material": "LLOYDS PELLET",
+					"Plan, wet %": 10.0,
+					"Today, wet %": 11.95,
+					"Plan, kg/tHM": 171.762964441,
+					"Today, kg/tHM": 204.531786029,
+					"Plan, t/d": 389.901929282,
+					"Price, Rs/t": 10350.0
+				},
+				{
+					"Material": "NMDC ROM",
+					"Plan, wet %": 0.0,
+					"Today, wet %": 6.0,
+					"Plan, kg/tHM": 0.0,
+					"Today, kg/tHM": 102.69378378,
+					"Plan, t/d": 0.0,
+					"Price, Rs/t": 10241.0
+				}
+			],
+			"flux_table": [
+				{
+					"Flux": "Limestone",
+					"Plan, kg/tHM": 13.677663792,
+					"Today, kg/tHM": 0.0
+				}
+			],
+			"donut": {
+				"segments": [
+					["sinter_sp_02", 58.0, 2261.431189835],
+					["geomin_clo", 13.378254849, 521.620737614],
+					["lloyds_clo", 18.621745151, 726.065436089],
+					["lloyds_pellet", 10.0, 389.901929282]
+				],
+				"ferrous_t_d": 3899.01929282
+			},
+			"value_of_limits": {
+				"useful": [
+					"Hot blast +40 \u00b0C",
+					"Slag cap +10 kg/tHM",
+					"LLOYDS PELLET floor \u22122 pt",
+					"CaO/SiO\u2082 floor \u22120.01",
+					"SINTER (SP-02) floor \u22122 pt"
+				],
+				"rest": [
+					"Charges per hour +0.1",
+					"Charge mass +0.5 t",
+					"SINTER (SP-02) cap +5 pt",
+					"GEOMIN CLO cap +5 pt",
+					"LLOYDS CLO cap +5 pt",
+					"NMDC ROM cap +5 pt",
+					"LLOYDS PELLET cap +5 pt"
+				]
+			}
+		},
+		"step1": {
+			"tiles": {
+				"overview": {
+					"total": 30138.732276355,
+					"P_tday": 2270.0,
+					"P_th": 94.583333333,
+					"fe_wet_pct": 55.743336147,
+					"ferrous_kg": 1717.629644414
+				},
+				"cost": {
+					"ore": 14268.573513913,
+					"flux": 20.516495688,
+					"fuel": 15849.642266753,
+					"coke": 9821.662266753,
+					"nut": 1825.18,
+					"pci": 4202.8,
+					"slag_credit": 0.0,
+					"gross": 30138.732276355,
+					"total": 30138.732276355
+				},
+				"fuel": {
+					"coke_dry": 305.676732341,
+					"coke_wet": 307.00369676,
+					"nut": 70.0,
+					"pci": 190.0,
+					"total": 567.00369676
+				},
+				"slag": {
+					"rate": 340.0,
+					"t_day": 771.8,
+					"Al2O3_pct": 19.736893979,
+					"MgO_pct": 6.866506,
+					"b2": 1.05,
+					"t_basicity": 1.24972195,
+					"ib4": 0.793940425,
+					"mgo_al2o3": 0.347902056
+				},
+				"charging": {
+					"coke_t": 696.898391646,
+					"nut_t": 158.9,
+					"pci_t": 431.3,
+					"ferrous_t": 3899.01929282,
+					"charges_per_h": 6.438913438,
+					"hm_per_charge": 14.689331398,
+					"flux_kg": 13.677663792
+				}
+			},
+			"best": {
+				"P_tday": 2270.0,
+				"cost": 30138.732276355,
+				"limited_by": "CaO/SiO\u2082 floor, slag rate cap"
+			},
+			"top": {
+				"P_tday": 2340.0,
+				"cost": 30284.453443246,
+				"limited_by": "CaO/SiO\u2082 floor, charging rate"
+			},
+			"extra_rs_per_t": 35009.982712436
+		}
+	}
+}
