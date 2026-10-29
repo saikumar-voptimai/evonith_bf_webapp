@@ -4,6 +4,7 @@
 	 * column, the optimiser plan, alarms and the data age of every source, on one page that stays open through a shift.
 	 * State and subscriptions live in `LiveTwin`; destroying the page stops every subscription and timer.
 	 */
+	import { untrack } from 'svelte';
 	import AlarmsPanel from '#lib/twin/AlarmsPanel.svelte';
 	import CokePanel from '#lib/twin/CokePanel.svelte';
 	import ColumnPanel from '#lib/twin/ColumnPanel.svelte';
@@ -21,8 +22,10 @@
 	const twin = new LiveTwin();
 	const tracker = new JobTracker();
 
+	// `start()` writes and reads the controller's state (clock, zone states); untracked, so that the effect runs once
+	// instead of restarting itself until Svelte stops it (effect_update_depth_exceeded).
 	$effect(() => {
-		const stop = twin.start();
+		const stop = untrack(() => twin.start());
 		return () => {
 			stop();
 			tracker.stop();
