@@ -210,6 +210,22 @@ coke_energy:
       implied_lag:
         low_h: 5.0                   # implied transit time outside 5-8 h (reference 6.2 h)
         high_h: 8.0
+    # Burnt against charged coke, admin view (SV-4.4, services.burnt_vs_charged; docs/burnt_vs_charged_coke.md). Leak-
+    # water check (utils.coke_energy.leak_check, model utils.strata_flow.plant_effects): the shifts of the last
+    # recent_days plant days against the baseline_days before; a leak shows as a rise of charged - raw burnt coke and of
+    # top-gas H2 with RAFT unchanged (1 m3/h of water: about +5.5 kg/tHM and +0.5 pt H2 at the reference point).
+    # Initial thresholds, to be tuned on the 2023-24 stave-leak log.
+    burnt_vs_charged:
+      leak_check:
+        recent_days: 3
+        baseline_days: 14            # the 14-day correction absorbs a steady leak: a new one is a step against these
+        min_recent_shifts: 6
+        min_baseline_shifts: 21
+        z_min: 3.0                   # step / its standard error (Welch); shifts of a day are correlated
+        gap_min_kg_thm: 3.0          # rise of charged - raw burnt coke
+        h2_min_pt: 0.15              # rise of top-gas H2, percentage points of the dry gas
+        h2_share_min: 0.5            # H2 rise at least half of what the model gives for the coke step
+        raft_max_c: 15.0             # |RAFT step| up to this counts as unchanged; a fall beyond it points to moisture
     # FORGE page (SV-1.11, services.forge): the twin.forge job (HH:20) stores every balanced shift and the Rist
     # geometry of the stable shifts dated in the rist_days before the latest balanced shift; the page's statistics
     # cover stats_days (page 10's default period of the prediction section).

@@ -21,12 +21,15 @@ pipeline result (``services.coke_energy.page_data``) or composed by the pipeline
 
 A cold build reads 15 months of 10-min data and balances every shift, so a request never builds: the worker job
 ``twin.trace`` (every hour at :20) builds the view (``refresh``) into ``src/storage/coke_energy/trace_view.json`` and
-the API reads that file (``load``). The view is plain JSON: coke rates in kg/tHM dry, masses in t, times UTC (ISO 8601).
+the API reads that file (``load``). The same build stores the admin analysis of burnt against charged coke
+(``services.burnt_vs_charged``, SV-4.4) beside it. The view is plain JSON: coke rates in kg/tHM dry, masses in t,
+times UTC (ISO 8601).
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
@@ -36,6 +39,7 @@ from typing import Any
 
 import pandas as pd
 
+from services import burnt_vs_charged as bvc
 from services import coke_energy as ce
 from services import twin_views
 from utils.coke_energy import transit as tr
@@ -44,6 +48,7 @@ from utils.coke_energy.freshness import assess, in_use_between, item_label, pars
 from utils.coke_energy.pipeline import PipelineSettings
 from utils.memo import memo
 
+log = logging.getLogger("services.trace")
 PLANT_TZ = ce.PLANT_TZ
 VERSION = 1
 JOB_KIND = "twin.trace"
@@ -301,47 +306,17 @@ def shift_feeds(data: ce.PageData, cfg: Mapping[str, Any], skey: str) -> list[di
 
 
 # --------------------------------------------------------------------------------------------- agreement
-def _stats(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "window": str(row["window"]),
-        "shifts": int(row["shifts"]),
-        "hours": float(row["hours"]),
-        "n": int(row["n"]),
-        "ccc": number(row["ccc"]),
-        "r": number(row["r"]),
-        "cb": number(row["cb"]),
-        "bias": number(row["bias"]),
-        "sd": number(row["sd"]),
-        "loa_lo": number(row["loa_lo"]),
-        "loa_hi": number(row["loa_hi"]),
-        "mean_charged": number(row["mean_x"]),
-        "mean_burnt": number(row["mean_y"]),
-        "slope": number(row["slope"]),
-    }
-
-
 def agreement_points(T: pd.DataFrame, shifts: int) -> list[dict[str, Any]]:
     """The pairs ``transit.summary`` compares for windows of ``shifts`` shifts, with their Bland-Altman coordinates:
     the mean of burnt and charged and the difference burnt - charged (kg/tHM)."""
-    W = tr.window_pairs(T, shifts)
-    return [
-        {
-            "t": utc_text(t),
-            "n": int(r["n"]),
-            "charged": number(r["K_charged"]),
-            "burnt": number(r["K_burnt"]),
-            "mean": number((r["K_burnt"] + r["K_charged"]) / 2),
-            "diff": number(r["K_burnt"] - r["K_charged"]),
-        }
-        for t, r in W.iterrows()
-    ]
+    return bvc.pair_points(tr.window_pairs(T, shifts))
 
 
 def agreement(T: pd.DataFrame) -> dict[str, Any]:
     """Burnt (calibrated) against charged coke: ``transit.summary`` (window table, variance split, lag, closure on the
     raw burnt coke) and the per-shift and per-week pairs."""
     S = tr.summary(T)
-    table = [_stats(r) for r in S["table"].to_dict("records")]
+    table = [bvc.stats_row(r) for r in S["table"].to_dict("records")]
     split = S["split"]
     closure = S["closure"]
     return {
@@ -451,12 +426,17 @@ def load(path: Path | None = None) -> dict[str, Any] | None:
 
 def refresh(*, nonce: int = 0, path: Path | None = None, cfg: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Build the view from the memoised Coke Energy page data (the worker's, shared with ``twin.evaluate``) and store
-    it."""
+    it; then the admin analysis of burnt against charged coke on the same result, stored beside the view
+    (``services.burnt_vs_charged``, SV-4.4). A failed analysis is logged and leaves the view stored."""
     cfg = ce.config() if cfg is None else cfg
     settings = PipelineSettings.from_config(cfg)
     data = ce.page_data(ce.data_keys(cfg, nonce), settings)
     view = build_view(data, cfg)
     save(view, path)
+    try:
+        bvc.save(bvc.build(data.result, cfg, now=view["built_at"]), bvc.path_beside(path))
+    except Exception:  # noqa: BLE001 - the TRACE view does not depend on the admin analysis
+        log.exception("burnt against charged coke: the admin analysis was not built")
     return view
 
 

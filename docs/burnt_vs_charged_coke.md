@@ -5,6 +5,8 @@ time the coke takes from the stockline to the tuyeres?
 
 Code: `src/utils/coke_energy/transit.py` · page 11, *Model check → Burnt against charged coke* ·
 `python scripts/burnt_vs_charged_coke.py SHIFTS.csv` · tests `tests/test_burden_optimiser_transit_and_commentary.py`.
+Admin view `/admin/burnt-vs-charged` (SV-4.4): windows from a shift to a month, the variance split, the lag scan, the
+raw mass closure per month and a leak-water check (`services/burnt_vs_charged.py`, `utils/coke_energy/leak_check.py`).
 
 ## What "the same, delayed" implies
 

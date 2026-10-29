@@ -25,6 +25,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/burnt-vs-charged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Burnt against charged coke
+         * @description Agreement per averaging window (CCC, Bland-Altman), the SD(W)² split, the lag scan, the raw mass closure and the
+         *     leak-water check of the latest build.
+         */
+        get: operations["admin_burnt_vs_charged"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/facts": {
         parameters: {
             query?: never;
@@ -2791,6 +2812,303 @@ export interface components {
              * @description Limits broken, count
              */
             violations?: number | null;
+        };
+        /** BurntVsCharged */
+        BurntVsCharged: {
+            /**
+             * Age S
+             * @description Time since the build, s
+             */
+            age_s?: number | null;
+            /**
+             * Basis
+             * @description all: every balanced shift; stable: the stable shifts only
+             * @enum {string}
+             */
+            basis: "all" | "stable";
+            /**
+             * Built At
+             * Format: date-time
+             * @description Time of the build (UTC)
+             */
+            built_at: string;
+            /** @description Raw mass closure; null without a raw burnt coke */
+            closure?: components["schemas"]["BvcClosure"] | null;
+            /**
+             * First Day
+             * @description First shift date (IST)
+             */
+            first_day?: string | null;
+            /**
+             * Job Kind
+             * @description Job kind that builds the analysis
+             * @default twin.trace
+             */
+            job_kind: string;
+            lag: components["schemas"]["BvcLag"];
+            /**
+             * Last Day
+             * @description Last shift date (IST)
+             */
+            last_day?: string | null;
+            leak: components["schemas"]["LeakCheck"];
+            /**
+             * Points
+             * @description Pairs behind each window row
+             */
+            points: components["schemas"]["BvcWindowPoints"][];
+            /**
+             * Shifts
+             * @description Shifts of the basis, count
+             */
+            shifts: number;
+            split: components["schemas"]["BvcSplit"];
+            /**
+             * Stable Shifts
+             * @description Stable shifts among them, count
+             */
+            stable_shifts: number;
+            /**
+             * Stale
+             * @description Older than stale_after_s
+             */
+            stale: boolean;
+            /**
+             * Stale After S
+             * @description Age from which the analysis is stale, s
+             * @default 7200
+             */
+            stale_after_s: number;
+            /**
+             * Windows
+             * @description Agreement per averaging window, one shift to one month
+             */
+            windows: components["schemas"]["AgreementStats"][];
+        };
+        /** BvcClosure */
+        BvcClosure: {
+            /**
+             * Burnt T
+             * @description Raw burnt coke (before the 14-day correction), t
+             */
+            burnt_t?: number | null;
+            /**
+             * Charged T
+             * @description Charged coke, t
+             */
+            charged_t?: number | null;
+            /**
+             * Cumulative
+             * @description Running charged − raw burnt, oldest first
+             */
+            cumulative: components["schemas"]["BvcClosurePoint"][];
+            /**
+             * Gap T
+             * @description Charged − raw burnt coke, t
+             */
+            gap_t?: number | null;
+            /**
+             * Months
+             * @description The same per IST month, oldest first
+             */
+            months: components["schemas"]["BvcClosureMonth"][];
+            /**
+             * N
+             * @description Shifts with raw burnt and charged coke, count
+             */
+            n: number;
+            /**
+             * Ratio
+             * @description Total raw burnt over total charged coke, dimensionless
+             */
+            ratio?: number | null;
+        };
+        /** BvcClosureMonth */
+        BvcClosureMonth: {
+            /**
+             * Burnt T
+             * @description Raw burnt coke, t
+             */
+            burnt_t?: number | null;
+            /**
+             * Charged T
+             * @description Charged coke, t
+             */
+            charged_t?: number | null;
+            /**
+             * Gap T
+             * @description Charged − raw burnt coke, t
+             */
+            gap_t?: number | null;
+            /**
+             * Month
+             * @description IST month of the shift dates, YYYY-MM
+             */
+            month: string;
+            /**
+             * N
+             * @description Shifts with raw burnt and charged coke, count
+             */
+            n: number;
+            /**
+             * Ratio
+             * @description Total raw burnt over total charged coke, dimensionless
+             */
+            ratio?: number | null;
+        };
+        /** BvcClosurePoint */
+        BvcClosurePoint: {
+            /**
+             * Cumulative T
+             * @description Charged − raw burnt coke summed up to the shift, t
+             */
+            cumulative_t?: number | null;
+            /**
+             * Skey
+             * @description Shift key YYYY-MM-DD_A|B|C
+             */
+            skey: string;
+            /**
+             * T
+             * Format: date-time
+             * @description End of the shift (UTC)
+             */
+            t: string;
+        };
+        /** BvcLag */
+        BvcLag: {
+            /**
+             * Detrend Shifts
+             * @description Centred mean the movements are taken against, shifts
+             */
+            detrend_shifts: number;
+            /**
+             * Peak Lag H
+             * @description Lag of the correlation peak (parabola through the best lag and its neighbours), h
+             */
+            peak_lag_h?: number | null;
+            /**
+             * Rows
+             * @description One row per lag, ascending
+             */
+            rows: components["schemas"]["BvcLagRow"][];
+        };
+        /** BvcLagRow */
+        BvcLagRow: {
+            /**
+             * Ccc
+             * @description Lin's CCC of the movements, dimensionless
+             */
+            ccc?: number | null;
+            /**
+             * Lag H
+             * @description Lag, h
+             */
+            lag_h: number;
+            /**
+             * Lag Shifts
+             * @description Lag, shifts (burnt after charged is positive)
+             */
+            lag_shifts: number;
+            /**
+             * N
+             * @description Shift pairs compared, count
+             */
+            n: number;
+            /**
+             * R
+             * @description Pearson correlation of the movements, dimensionless
+             */
+            r?: number | null;
+        };
+        /** BvcSplit */
+        BvcSplit: {
+            /**
+             * Floor Sd
+             * @description √C: SD that does not fall with the window, kg/tHM
+             */
+            floor_sd?: number | null;
+            /**
+             * Random Sd
+             * @description √B: per-shift SD of random error (falls as 1/√W), kg/tHM
+             */
+            random_sd?: number | null;
+            /**
+             * Transit Sd
+             * @description √A: per-shift SD of coke in transit (falls as 1/W), kg/tHM
+             */
+            transit_sd?: number | null;
+            /**
+             * Windows
+             * @description Observed and fitted SD per averaging window
+             */
+            windows: components["schemas"]["BvcSplitWindow"][];
+        };
+        /** BvcSplitWindow */
+        BvcSplitWindow: {
+            /**
+             * Fitted Sd
+             * @description SD of the fit √(A/W² + B/W + C) at the window (null for a window left out of the fit), kg/tHM
+             */
+            fitted_sd?: number | null;
+            /**
+             * Floor Sd
+             * @description Floor, √C (the same at every window), kg/tHM
+             */
+            floor_sd?: number | null;
+            /**
+             * In Fit
+             * @description The window entered the fit (at least 5 windows with an SD)
+             */
+            in_fit: boolean;
+            /**
+             * N
+             * @description Windows compared, count
+             */
+            n: number;
+            /**
+             * Observed Sd
+             * @description SD of burnt − charged over the windows, kg/tHM
+             */
+            observed_sd?: number | null;
+            /**
+             * Random Sd
+             * @description Random part at the window, √B / √W, kg/tHM
+             */
+            random_sd?: number | null;
+            /**
+             * Shifts
+             * @description Shifts per window W, count
+             */
+            shifts: number;
+            /**
+             * Transit Sd
+             * @description Transit part at the window, √A / W, kg/tHM
+             */
+            transit_sd?: number | null;
+            /**
+             * Window
+             * @description Averaging window
+             */
+            window: string;
+        };
+        /** BvcWindowPoints */
+        BvcWindowPoints: {
+            /**
+             * Points
+             * @description Window pairs, oldest first
+             */
+            points: components["schemas"]["AgreementPoint"][];
+            /**
+             * Shifts
+             * @description Shifts per window, count
+             */
+            shifts: number;
+            /**
+             * Window
+             * @description Averaging window, e.g. 1 day
+             */
+            window: string;
         };
         /** CalibrationShift */
         CalibrationShift: {
@@ -5936,6 +6254,229 @@ export interface components {
              * @description Warning threshold, in unit (ETA CO: below, fuel rate: above)
              */
             warn?: number | null;
+        };
+        /** LeakCheck */
+        LeakCheck: {
+            /**
+             * Baseline First
+             * @description First baseline plant day (IST); it ends before recent
+             */
+            baseline_first?: string | null;
+            /** @description Leak-detection model at the coke-gap step; null without a rise */
+            model?: components["schemas"]["LeakModel"] | null;
+            /**
+             * Reason
+             * @description The state in words
+             */
+            reason: string;
+            /**
+             * Recent First
+             * @description First recent plant day (IST)
+             */
+            recent_first?: string | null;
+            /**
+             * Recent Last
+             * @description Last recent plant day (IST): the last day with a coke gap
+             */
+            recent_last?: string | null;
+            settings: components["schemas"]["LeakSettings"];
+            /**
+             * Shifts
+             * @description The compared shifts, oldest first
+             */
+            shifts: components["schemas"]["LeakShift"][];
+            /**
+             * State
+             * @description leak (the model's signature), moisture (H₂ up with a RAFT drop), gap_only, mixed, h2_only, none, or unknown (too few shifts)
+             * @enum {string}
+             */
+            state: "leak" | "moisture" | "gap_only" | "mixed" | "h2_only" | "none" | "unknown";
+            /**
+             * Steps
+             * @description Step of each signal
+             */
+            steps: components["schemas"]["LeakStep"][];
+        };
+        /** LeakModel */
+        LeakModel: {
+            /**
+             * Blast Moisture Equivalent G Nm3
+             * @description The water as blast moisture at the reference blast, g/Nm³
+             */
+            blast_moisture_equivalent_g_nm3?: number | null;
+            /**
+             * Forge Coke Missing Kg Thm
+             * @description Coke FORGE would under-predict, kg/tHM
+             */
+            forge_coke_missing_kg_thm?: number | null;
+            /**
+             * H2 Rise Pt
+             * @description Top-gas H₂ rise the model expects, percentage points
+             */
+            h2_rise_pt?: number | null;
+            /**
+             * Leak Kg H
+             * @description Water that would explain the coke-gap step, kg/h
+             */
+            leak_kg_h?: number | null;
+            /**
+             * Raw Burnt Low By Kg Thm
+             * @description Raw burnt coke reads low by, kg/tHM
+             */
+            raw_burnt_low_by_kg_thm?: number | null;
+            /**
+             * Water Kg Per Thm
+             * @description That water per tonne of hot metal, kg/tHM
+             */
+            water_kg_per_thm?: number | null;
+        };
+        /** LeakSettings */
+        LeakSettings: {
+            /**
+             * Baseline Days
+             * @description Plant days before them, d
+             */
+            baseline_days: number;
+            /**
+             * Gap Min Kg Thm
+             * @description Smallest coke-gap rise, kg/tHM
+             */
+            gap_min_kg_thm: number;
+            /**
+             * H2 Min Pt
+             * @description Smallest H₂ rise, percentage points
+             */
+            h2_min_pt: number;
+            /**
+             * H2 Share Min
+             * @description H₂ rise needed as a share of the model's, dimensionless
+             */
+            h2_share_min: number;
+            /**
+             * Min Baseline Shifts
+             * @description Baseline shifts needed, count
+             */
+            min_baseline_shifts: number;
+            /**
+             * Min Recent Shifts
+             * @description Recent shifts needed, count
+             */
+            min_recent_shifts: number;
+            /**
+             * Raft Max C
+             * @description Largest RAFT step that counts as unchanged, °C
+             */
+            raft_max_c: number;
+            /**
+             * Recent Days
+             * @description Plant days compared, d
+             */
+            recent_days: number;
+            /**
+             * Z Min
+             * @description Step / standard error for a step, dimensionless
+             */
+            z_min: number;
+        };
+        /** LeakShift */
+        LeakShift: {
+            /**
+             * End
+             * Format: date-time
+             * @description Shift end (UTC)
+             */
+            end: string;
+            /**
+             * Gap
+             * @description Charged − raw burnt coke, kg/tHM
+             */
+            gap?: number | null;
+            /**
+             * H2
+             * @description Top-gas H₂, % of the dry gas
+             */
+            h2?: number | null;
+            /**
+             * Moisture
+             * @description Blast moisture, g/Nm³
+             */
+            moisture?: number | null;
+            /**
+             * Period
+             * @description Side of the comparison
+             * @enum {string}
+             */
+            period: "recent" | "baseline";
+            /**
+             * Raft
+             * @description RAFT, °C
+             */
+            raft?: number | null;
+            /**
+             * Skey
+             * @description Shift key YYYY-MM-DD_A|B|C
+             */
+            skey: string;
+            /**
+             * Start
+             * Format: date-time
+             * @description Shift start (UTC)
+             */
+            start: string;
+        };
+        /** LeakStep */
+        LeakStep: {
+            /**
+             * Baseline
+             * @description Mean over the baseline shifts, in the unit field's unit
+             */
+            baseline?: number | null;
+            /**
+             * Key
+             * @description gap: charged − raw burnt coke; h2: top-gas H₂; raft: RAFT; moisture: blast moisture
+             * @enum {string}
+             */
+            key: "gap" | "h2" | "raft" | "moisture";
+            /**
+             * Label
+             * @description Name of the signal
+             */
+            label: string;
+            /**
+             * N Baseline
+             * @description Baseline shifts with a value, count
+             */
+            n_baseline: number;
+            /**
+             * N Recent
+             * @description Recent shifts with a value, count
+             */
+            n_recent: number;
+            /**
+             * Recent
+             * @description Mean over the recent shifts, in the unit field's unit
+             */
+            recent?: number | null;
+            /**
+             * Se
+             * @description Standard error of the step (Welch), in the unit field's unit
+             */
+            se?: number | null;
+            /**
+             * Step
+             * @description Recent − baseline, in the unit field's unit
+             */
+            step?: number | null;
+            /**
+             * Unit
+             * @description Unit of recent, baseline, step and se: kg/tHM, %, °C or g/Nm³
+             */
+            unit: string;
+            /**
+             * Z
+             * @description Step / standard error, dimensionless
+             */
+            z?: number | null;
         };
         /** LiveCalibration */
         LiveCalibration: {
@@ -11633,6 +12174,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_burnt_vs_charged: {
+        parameters: {
+            query?: {
+                /** @description all: every balanced shift; stable: the stable shifts only */
+                basis?: "all" | "stable";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BurntVsCharged"];
                 };
             };
             /** @description Client error (problem+json) */

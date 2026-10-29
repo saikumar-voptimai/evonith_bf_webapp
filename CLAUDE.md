@@ -954,6 +954,12 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   with the latest approved overlay made against its version (`services.facts.approved_overlay`, memo 60 s), else the
   file; `load_register(path)` / `overlay=False` read the file only; retired facts refused (`RetiredFactError`). The
   export is the next file version (v1.8 -> v1.9, changed facts stamped with the approval day IST, revision-log entry).
+- Burnt vs charged (SV-4.4, `/admin/burnt-vs-charged`): `services/burnt_vs_charged.py` (windows 1 shift - 1 month via
+  `transit.window_pairs` + `concordance` = `window_agreement`, `decompose_window_sd`, `lag_scan`, `closure` + per month;
+  leak-water check `utils/coke_energy/leak_check.py`: recent 3 d vs 14 d step of charged - raw burnt, top-gas H2, RAFT,
+  model `strata_flow.plant_effects.leak_for_gap`, thresholds `coke_energy.yml -> twin.burnt_vs_charged.leak_check`),
+  bases all / stable; 8 s for both on 1,325 shifts, so `twin.trace` builds it after the TRACE view (`trace.refresh`) into
+  `burnt_vs_charged.json` beside it; `GET /api/admin/burnt-vs-charged?basis=` (`api/routers/burnt_vs_charged.py`, admin).
 - Shift reports (SV-2.3): `services/reports.py` composes the FurnaceMind Reports tab's `ShiftReportService.build` /
   `build_previous` / `document`; `report.shift` (closed shift) and `report.live` store into `twin.shift_report`. The
   narrative uses page 7's `OpenRouterClient` (120 s per call, 1 retry); when the LLM fails the report is stored
