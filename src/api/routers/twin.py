@@ -1,4 +1,6 @@
-"""Live twin: latest evaluation and its freshness, hourly and per-shift series, burden transit, alarms (SV-1.6, #286).
+"""Live twin: latest evaluation and its freshness, hourly and per-shift series, burden transit, alarms (SV-1.6, #286);
+for the Live Twin page (SV-1.9, #289) the data age of each source, the model gaps against TRACE, one window in full and
+the latest blend change in the column.
 
 Snapshots and alarms come from the twin store (``twin.snapshot``, ``twin.alarm_event``; written by ``twin.evaluate``
 and the drift alarm); the burden column is computed from the hourly dataset at the requested time. Coke rates are
@@ -18,12 +20,40 @@ from api.auth import require_role
 from api.errors import ApiError
 from api.store import optional_twin_store, twin_store
 from data.twin.repositories import TwinStore
-from services import twin_views
+from services import twin_alarms, twin_views
 from services.events import TwinSnapshotData
 
 router = APIRouter(prefix="/api/twin", tags=["twin"], dependencies=[Depends(require_role("user"))])
 
 MAX_SERIES_DAYS = 92
+
+
+class SourceAge(BaseModel):
+    key: Literal["influxdb", "hourly", "hm_slag", "dpr", "open_meteo"]
+    label: str = Field(..., description="Name of the source on the page")
+    data_end: datetime | None = Field(None, description="Newest time the source held at the evaluation (UTC)")
+    age_h: float | None = Field(None, description="Age of data_end now, h")
+    stale_after_h: float = Field(..., description="Age from which the source is stale, h (coke_energy.yml)")
+    stale: bool = Field(..., description="age_h >= stale_after_h, or no time recorded")
+    provisional: bool = Field(False, description="DPR: the window's date is carried forward from an earlier report")
+    recorded_at: datetime | None = Field(None, description="When the evaluation recorded data_end (UTC)")
+
+
+class ModelGaps(BaseModel):
+    days: float = Field(..., description="Period of the RMSE, days")
+    ratio: float = Field(..., description="Multiple of the RMSE above which a window counts as excess, dimensionless")
+    forge_at: datetime | None = Field(None, description="Window end of forge_trace_kg_thm (UTC)")
+    forge_trace_kg_thm: float | None = Field(None, description="K_FORGE - K_TRACE of the newest window, kg/tHM dry")
+    strata_at: datetime | None = Field(None, description="Window end of strata_trace_kg_thm (UTC)")
+    strata_trace_kg_thm: float | None = Field(None, description="K_STRATA - K_TRACE of the newest window, kg/tHM dry")
+    forge_trace_rmse_kg_thm: float | None = Field(None, description="RMSE of FORGE - TRACE over the days, kg/tHM dry")
+    strata_trace_rmse_kg_thm: float | None = Field(None, description="RMSE of STRATA - TRACE over the days, kg/tHM dry")
+    n_forge: int = Field(..., description="Hourly windows in the FORGE RMSE, count")
+    n_strata: int = Field(..., description="Hourly windows in the STRATA RMSE, count")
+    strata_excess_h: int = Field(
+        ..., description="Newest consecutive hourly windows with |STRATA - TRACE| > ratio x RMSE, h"
+    )
+    strata_excess_since: datetime | None = Field(None, description="Window end where that run starts (UTC)")
 
 
 class TwinNow(BaseModel):
@@ -37,6 +67,8 @@ class TwinNow(BaseModel):
     stale: bool = Field(..., description="The latest window lags the expected one by stale_after_h or more")
     stale_after_h: float = Field(..., description="Lag from which the twin is stale, h (one missed evaluation)")
     alarms_open: int = Field(..., description="Open alarms, count")
+    sources: list[SourceAge] = Field(default_factory=list, description="Data age of each source (SV-1.9)")
+    gaps: ModelGaps | None = Field(None, description="FORGE and STRATA against TRACE, now and over 7 days (SV-1.9)")
 
 
 class TwinSeriesRow(BaseModel):
@@ -87,6 +119,17 @@ class TransitLag(BaseModel):
     n_hours: int = Field(..., description="Hours in the comparison, count")
 
 
+class BlendChangeView(BaseModel):
+    changed_at: datetime = Field(..., description="Start of the first hour charged with the new blend (UTC)")
+    step_pt: float = Field(..., description="Largest change of a ferrous share, percentage points")
+    before_pct: dict[str, float] = Field(..., description="Wet share of sinter, pellet, ore in the ferrous before, %")
+    after_pct: dict[str, float] = Field(..., description="Wet share of sinter, pellet, ore in the ferrous after, %")
+    charges_since: float = Field(..., description="Charges from the change to the column time, count")
+    cz_at: datetime = Field(..., description="Arrival of its first charge at the cohesive-zone top (UTC)")
+    raceway_at: datetime = Field(..., description="Arrival of its first charge at the raceways (UTC)")
+    zone: Literal["above_cz", "in_cz", "below_cz", "burnt"] = Field(..., description="Where it is at the column time")
+
+
 class TwinTransit(BaseModel):
     at: datetime = Field(..., description="Time of the column state (UTC)")
     charges_per_hour: float | None = Field(None, description="Charging rate of the last hour, charges/h")
@@ -99,6 +142,9 @@ class TwinTransit(BaseModel):
     missing_hours: int = Field(..., description="Hours missing from the record inside the column, count")
     bands: list[TransitBand]
     lag: TransitLag | None = Field(None, description="Implied lag over the last days (with lag=true)")
+    blend_change: BlendChangeView | None = Field(
+        None, description="Latest change of the ferrous blend in the last 72 h and its arrival times (SV-1.9)"
+    )
 
 
 class AlarmView(BaseModel):
@@ -129,13 +175,37 @@ def _aware(value: datetime | None, default: datetime) -> datetime:
 @router.get("/now", response_model=TwinNow, summary="Latest twin evaluation")
 def now(store: Annotated[TwinStore, Depends(twin_store)]) -> TwinNow:
     """The latest stored evaluation, how far it lags the expected window and the number of open alarms."""
+    from services import coke_energy as ce
+
     latest = store.snapshots.latest()
     fresh = twin_views.freshness(latest)
+    cfg = ce.config()
+    gaps = None
+    if latest is not None:
+        alarm_settings = twin_alarms.AlarmSettings.from_config(cfg)
+        days, at = alarm_settings.rmse_days, fresh["now"]
+        recent = store.snapshots.series(at - timedelta(days=days), at)
+        gaps = twin_views.model_gaps(recent, at, days=days, ratio=alarm_settings.ratio)
     return TwinNow(
         snapshot=TwinSnapshotData.model_validate(twin_views.snapshot_data(latest)) if latest is not None else None,
         alarms_open=len(store.alarms.open_alarms()),
+        sources=twin_views.source_freshness(latest, fresh["now"], twin_views.freshness_limits(cfg)),
+        gaps=gaps,
         **fresh,
     )
+
+
+@router.get("/window", response_model=TwinSnapshotData, summary="One stored window")
+def window(
+    store: Annotated[TwinStore, Depends(twin_store)],
+    end: Annotated[datetime, Query(description="Window end (a time without offset is UTC)")],
+) -> TwinSnapshotData:
+    """The stored evaluation of the window ending ``end``: every quantity, the flags (data counts, notes, network
+    solves) and the model versions; the Live Twin's drill-down of an hourly point."""
+    row = store.snapshots.get(_aware(end, end))
+    if row is None:
+        raise ApiError(404, "No stored evaluation for this window end.")
+    return TwinSnapshotData.model_validate(twin_views.snapshot_data(row))
 
 
 @router.get("/series", response_model=TwinSeries, summary="Twin series, hourly or per shift")
@@ -180,6 +250,7 @@ def transit(
         raise ApiError(503, f"The hourly dataset is not available ({type(exc).__name__}).") from exc
     st = transit_service.state(fd, when_ist, cfg)
     q = transit_service.quantities(st)
+    change = transit_service.blend_change(fd, when_ist, cfg)
     lag_view = None
     if lag:
         if store is None:
@@ -208,7 +279,62 @@ def transit(
             for b in transit_service.bands(st)
         ],
         lag=lag_view,
+        blend_change=None
+        if change is None
+        else BlendChangeView(
+            changed_at=_ist_utc(change.changed_at),
+            step_pt=change.step_pt,
+            before_pct=change.before_pct,
+            after_pct=change.after_pct,
+            charges_since=change.charges_since,
+            cz_at=_ist_utc(change.cz_at),
+            raceway_at=_ist_utc(change.raceway_at),
+            zone=change.zone,
+        ),
     )
+
+
+def _ist_utc(ts: pd.Timestamp) -> datetime:
+    return pd.Timestamp(ts).round("s").tz_localize(twin_views.PLANT_TZ).tz_convert("UTC").to_pydatetime()
+
+
+class HotMetalSample(BaseModel):
+    at: datetime = Field(..., description="Sample time (UTC)")
+    value: float = Field(..., description="HMT, °C, or Si, %")
+
+
+class HotMetalSamples(BaseModel):
+    start: datetime = Field(..., description="Start of the range (UTC)")
+    end: datetime = Field(..., description="End of the range (UTC)")
+    hmt: list[HotMetalSample] = Field(..., description="HMT per tap, °C (taps >= 1,350 °C), oldest first")
+    si: list[HotMetalSample] = Field(..., description="Si per sample, % (finite, above zero), oldest first")
+
+
+MAX_HOT_METAL_HOURS = 24 * 31
+
+
+@router.get("/hot-metal", response_model=HotMetalSamples, summary="HMT per tap and Si per sample")
+def hot_metal(
+    hours: Annotated[
+        float, Query(gt=0, le=MAX_HOT_METAL_HOURS, description="Range ending now, h (at most 31 days)")
+    ] = 72.0,
+) -> HotMetalSamples:
+    """The hot-metal samples of Neon ``offline_feed.hot_metal_slag_analysis`` over the range: HMT of each tap by the
+    pipeline's tap filter and Si of each sample (``services.status.hot_metal_samples``); the Live Twin's thermal
+    state (SV-1.9)."""
+    from services import status as status_service
+
+    end = pd.Timestamp(status_service.clock()).tz_convert(twin_views.PLANT_TZ).tz_localize(None)
+    start = end - pd.Timedelta(hours=hours)
+    try:
+        temps, si = status_service.hot_metal_samples(start, end + pd.Timedelta(minutes=1))
+    except Exception as exc:  # noqa: BLE001 - Neon unreachable
+        raise ApiError(503, f"The hot-metal samples are not available ({type(exc).__name__}).") from exc
+
+    def rows(series: pd.Series) -> list[HotMetalSample]:
+        return [HotMetalSample(at=_ist_utc(t), value=float(v)) for t, v in series.items()]
+
+    return HotMetalSamples(start=_ist_utc(start), end=_ist_utc(end), hmt=rows(temps), si=rows(si))
 
 
 @router.get("/alarms", response_model=TwinAlarms, summary="Open alarms and recent history")

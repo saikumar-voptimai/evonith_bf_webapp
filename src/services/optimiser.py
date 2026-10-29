@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -43,6 +44,8 @@ from utils.burden_engine.scenarios import (
 from utils.coke_energy.pipeline import PipelineSettings
 from utils.coke_energy.weather import plan_blast_moisture
 from utils.memo import memo
+
+log = logging.getLogger(__name__)
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
 
@@ -245,6 +248,7 @@ def compute_mode(
         )
         if auto:
             out["auto"] = run_candidates(eng, prod_t_day, s, L, out["today"])
+        out["critical_assumptions"] = critical_assumptions(eng, out.get("with_fuel"))
         return out
     if mode == "cheapest":
         out = run_cheapest_level(eng, s, L, search_o2=search_o2, n_o2=n_o2, P_lo=P_lo, step=step)
@@ -255,7 +259,22 @@ def compute_mode(
     if auto and plan is not None:
         s_p = Settings(**plan["settings"])
         out["auto"] = run_candidates(eng, plan["P_tday"], s_p, Limits(**plan["limits"]), None)
+    out["critical_assumptions"] = critical_assumptions(eng, plan)
     return out
+
+
+def critical_assumptions(eng: Engine, plan: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Coke effect of each critical assumption of a STRATA-ω plan (``Engine.critical_assumptions``, largest first,
+    about 20 ms; page 11's table), stored with the run for the Live Twin's plan card (SV-1.9); empty for a Fixed-ω
+    plan or when the sensitivity fails."""
+    if plan is None or (plan.get("omega") or {}).get("mode") != "blend":
+        return []
+    try:
+        s = Settings(**{k: v for k, v in dict(plan["settings"]).items() if k in Settings.__dataclass_fields__})
+        return list(eng.critical_assumptions(plan, s))
+    except Exception:  # noqa: BLE001 - the sensitivity never fails a run
+        log.exception("critical assumptions of the plan failed")
+        return []
 
 
 run_mode = memo(max_entries=16)(compute_mode)

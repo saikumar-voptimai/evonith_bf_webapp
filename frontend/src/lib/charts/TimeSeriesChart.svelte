@@ -2,7 +2,8 @@
 @component
 Quantities over time on an IST axis (SV-0.6, #275): lines with an optional uncertainty band, a plant band, shift
 boundaries and annotations. The legend toggles series; the table view lists every value. Colours come from the
-series tokens (`series-trace`, `cat-2`, ...).
+series tokens (`series-trace`, `cat-2`, ...). With `onpick`, a click in the plot passes the instant under the pointer
+(UTC ms), e.g. to open the detail of the nearest hourly window.
 -->
 <script lang="ts">
 	import { formatNumber } from '../format/number.ts';
@@ -10,6 +11,7 @@ series tokens (`series-trace`, `cat-2`, ...).
 	import type { Column } from '../components/table.ts';
 	import ChartHeader, { type LegendItem } from './ChartHeader.svelte';
 	import EChart from './EChart.svelte';
+	import type { EChartsType } from './echarts.ts';
 	import { readTheme, type ChartTheme } from './theme.ts';
 	import {
 		type PlantBand,
@@ -18,7 +20,7 @@ series tokens (`series-trace`, `cat-2`, ...).
 		timeSeriesOption,
 		timeSeriesSummary
 	} from './timeseries.ts';
-	import { axisTimeTitle, toAxis } from './time.ts';
+	import { axisTimeTitle, fromAxis, toAxis } from './time.ts';
 
 	interface Props {
 		/** Accessible name of the chart and caption of its table, e.g. "Coke rate by model, last 72 h". */
@@ -36,6 +38,8 @@ series tokens (`series-trace`, `cat-2`, ...).
 		endLabels?: boolean;
 		loading?: boolean;
 		onrender?: (ms: number) => void;
+		/** Click in the plot: the instant under the pointer (UTC ms). */
+		onpick?: (t: number) => void;
 	}
 
 	let {
@@ -51,8 +55,19 @@ series tokens (`series-trace`, `cat-2`, ...).
 		yMax,
 		endLabels = false,
 		loading = false,
-		onrender
+		onrender,
+		onpick
 	}: Props = $props();
+
+	/** Clicks anywhere in the plot area (lines carry no symbols to hit); the handler dies with the instance. */
+	function ready(chart: EChartsType): void {
+		chart.getZr().on('click', (event: { offsetX: number; offsetY: number }) => {
+			const point = [event.offsetX, event.offsetY];
+			if (!onpick || !chart.containPixel({ gridIndex: 0 }, point)) return;
+			const [x] = chart.convertFromPixel({ gridIndex: 0 }, point) as number[];
+			if (typeof x === 'number' && Number.isFinite(x)) onpick(fromAxis(x));
+		});
+	}
 
 	/** Narrowest chart that keeps direct end labels: below it they would take a third of the plot. */
 	const END_LABEL_MIN_WIDTH = 520;
@@ -188,7 +203,7 @@ series tokens (`series-trace`, `cat-2`, ...).
 	{#if view === 'table'}
 		<DataTable {rows} {columns} caption="{title} (table)" rowKey={(r) => r.t} dense maxHeight="{height}px" />
 	{:else if option}
-		<EChart {option} {height} label={summary} {loading} {onrender} />
+		<EChart {option} {height} label={summary} {loading} {onrender} onready={onpick ? ready : undefined} />
 	{:else}
 		<div style:height="{height}px"></div>
 	{/if}

@@ -51,6 +51,7 @@ __all__ = [
     "build_trend",
     "clear_cache",
     "current_snapshot_view",
+    "hot_metal_samples",
     "latest_hot_metal",
     "live_status_fields",
     "load_status_snapshot",
@@ -384,34 +385,47 @@ def live_status_fields(view: StatusSnapshotView, hot_metal: Mapping[str, TagValu
     }
 
 
-def latest_hot_metal(
-    now: datetime | None = None, fetch: Callable[[pd.Timestamp, pd.Timestamp], pd.DataFrame] | None = None
-) -> dict[str, TagValue]:
-    """``hmt`` (°C) and ``hm_si`` (%) of the latest valid hot-metal samples of the last 24 h in Neon
-    ``offline_feed.hot_metal_slag_analysis`` (``at`` = sample time; ``data.coke_energy.sources.fetch_hm_slag``): HMT
-    by the pipeline's tap filter (``utils.coke_energy.hmt_forecast.taps``, >= 1,350 °C), Si finite and above zero.
-    Empty when Neon is not reachable or holds no sample."""
+def hot_metal_samples(
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    fetch: Callable[[pd.Timestamp, pd.Timestamp], pd.DataFrame] | None = None,
+) -> tuple[pd.Series, pd.Series]:
+    """HMT per tap (°C, the pipeline's tap filter ``utils.coke_energy.hmt_forecast.taps``, >= 1,350 °C) and Si per
+    sample (%, finite and above zero) of Neon ``offline_feed.hot_metal_slag_analysis`` between ``start`` and ``end``
+    (IST, tz-naive; ``data.coke_energy.sources.fetch_hm_slag``), oldest first, indexed by sample time (IST). Raises
+    when Neon is not reachable."""
     from utils.coke_energy.hmt_forecast import taps
 
     if fetch is None:
         from data.coke_energy.sources import fetch_hm_slag as fetch
+    hm = fetch(start, end)
+    empty = pd.Series(dtype=float)
+    if hm is None or hm.empty or "t" not in hm:
+        return empty, empty
+    temps = taps(hm).sort_index()
+    si = empty
+    if "chem_pct_si" in hm:
+        si = pd.Series(pd.to_numeric(hm["chem_pct_si"], errors="coerce").to_numpy(), index=pd.to_datetime(hm["t"]))
+        si = si[np.isfinite(si) & (si > 0)].sort_index()
+    return temps, si
+
+
+def latest_hot_metal(
+    now: datetime | None = None, fetch: Callable[[pd.Timestamp, pd.Timestamp], pd.DataFrame] | None = None
+) -> dict[str, TagValue]:
+    """``hmt`` (°C) and ``hm_si`` (%) of the latest valid hot-metal samples of the last 24 h in Neon
+    (``hot_metal_samples``; ``at`` = sample time). Empty when Neon is not reachable or holds no sample."""
     end = pd.Timestamp(now or clock()).tz_convert(PLANT_TZ).tz_localize(None)
     try:
-        hm = fetch(end - pd.Timedelta(HOT_METAL_LOOKBACK), end + pd.Timedelta(minutes=1))
+        temps, si = hot_metal_samples(end - pd.Timedelta(HOT_METAL_LOOKBACK), end + pd.Timedelta(minutes=1), fetch)
     except Exception as exc:  # noqa: BLE001 - Neon unreachable: the tags are left out
         log.warning("furnace status: hot-metal samples not read (%s)", type(exc).__name__)
         return {}
     out: dict[str, TagValue] = {}
-    if hm is None or hm.empty or "t" not in hm:
-        return out
-    temps = taps(hm)
     if not temps.empty:
         out["hmt"] = TagValue(value=float(temps.iloc[-1]), unit="°C", at=_utc(temps.index[-1]))
-    if "chem_pct_si" in hm:
-        si = pd.Series(pd.to_numeric(hm["chem_pct_si"], errors="coerce").to_numpy(), index=pd.to_datetime(hm["t"]))
-        si = si[np.isfinite(si) & (si > 0)].sort_index()
-        if not si.empty:
-            out["hm_si"] = TagValue(value=float(si.iloc[-1]), unit="%", at=_utc(si.index[-1]))
+    if not si.empty:
+        out["hm_si"] = TagValue(value=float(si.iloc[-1]), unit="%", at=_utc(si.index[-1]))
     return out
 
 

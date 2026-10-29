@@ -29,7 +29,7 @@ from typing import Any
 from arq import Retry
 from pydantic import BaseModel
 
-from services import schedule
+from services import schedule, twin_alarms
 from services.events import EventBus, JobDoneData, JobProgressData, LiveStatusData, WorkerStatus
 from services.jobs import CATALOG, JobKind, JobStore
 
@@ -113,6 +113,10 @@ async def _publish_done(ctx: dict[str, Any], job_id: str, kind: str, status: str
             job_id=job_id, kind=kind, status=status, message=message, duration_s=round(time.monotonic() - t0, 3)
         ),
     )
+    try:  # a scheduled kind that failed raises job_failed, its next finished run clears it (SV-1.9)
+        await twin_alarms.job_outcome(ctx["bus"], kind, status, message)
+    except Exception as exc:  # noqa: BLE001 - the alarm is a by-product; the job's end stands
+        log.warning("job_failed alarm of %s not updated: %s", kind, _short(exc))
 
 
 async def run_job(ctx: dict[str, Any], job_id: str) -> None:

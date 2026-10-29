@@ -253,6 +253,7 @@ def evaluate_window(
     ev.k_charged = _num(rb.coke_kgthm_dry)
     ev.quantities = {name: v for col, name in QUANTITIES.items() if (v := _num(rb.get(col))) is not None}
     ev.quantities.update(transit_q)
+    ev.quantities.update({f"{g}_share_pct": v for g, v in burden_column.ferrous_shares(row).items()})
     ev.status = "partial"
 
     target = pd.Series([window.date], index=[key])

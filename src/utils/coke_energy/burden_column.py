@@ -28,6 +28,11 @@ both as deviations from a centred 7-day mean; the charged series is averaged ove
 the lag of the largest correlation (parabola through the best hour and its neighbours) is the implied transit time to
 the raceways; 95 % interval by moving-block bootstrap of the hours (blocks of 24 h).
 
+Blend change (``blend_change``, SV-1.9): the newest hour boundary of the record where the sinter, pellet or lump-ore
+share of the ferrous charge over the two hours after it differs from that over the two hours before it by 5 points or
+more; its first charge reaches the cohesive-zone top and the raceways when the charges after it fill the zones above
+(the ledger's charge ages for the past, the current charging rate for the future).
+
 Pure numerics: no I/O.
 """
 
@@ -147,6 +152,7 @@ class ColumnState:
 
 
 LOOKBACK = pd.Timedelta(hours=72)  # record read back from ``at`` (the column spans about 6 h of charging)
+BLEND_GROUPS = {"sinter": "SINTER_CALC_MT", "pellet": "TOTAL_PELLET_CALC_MT", "ore": "ORE_CALC_MT"}
 
 
 def _hourly(record: pd.DataFrame, at: pd.Timestamp) -> pd.DataFrame:
@@ -157,6 +163,24 @@ def _hourly(record: pd.DataFrame, at: pd.Timestamp) -> pd.DataFrame:
     h.index = t[keep]
     h = h[~h.index.duplicated(keep="last")]
     return h.sort_index(ascending=False)
+
+
+def _charge_counter(rows: pd.DataFrame, at: pd.Timestamp) -> tuple[pd.Series, np.ndarray, np.ndarray, Any]:
+    """Charges per hour of ``rows`` (newest first), the charges from ``at`` back to the start and to the end of each
+    hour, and the age (h before ``at``) of the charge ``c`` charges back (charges uniformly spaced within an hour)."""
+    n = pd.to_numeric(rows.get(CHARGES, pd.Series(0.0, index=rows.index)), errors="coerce").fillna(0.0).clip(lower=0)
+    cum = n.cumsum().to_numpy()  # charges from ``at`` back to the start of each hour
+    lo = np.r_[0.0, cum[:-1]]
+    t_end = (rows.index + pd.Timedelta(hours=1)).to_numpy()
+
+    def age_at(c: float) -> float:
+        k = int(np.searchsorted(cum, c - 1e-12))
+        if k >= len(cum):
+            return float("nan")
+        frac = (c - lo[k]) / n.iloc[k] if n.iloc[k] > 0 else 0.0
+        return float((at - pd.Timestamp(t_end[k])) / pd.Timedelta(hours=1) + frac)
+
+    return n, cum, lo, age_at
 
 
 def column(
@@ -172,21 +196,10 @@ def column(
     at = pd.Timestamp(at)
     rows = _hourly(record, at)
     mats = list(materials) if materials is not None else [c for c in record.columns if str(c).endswith("_CALC_MT")]
-    n = pd.to_numeric(rows.get(CHARGES, pd.Series(0.0, index=rows.index)), errors="coerce").fillna(0.0).clip(lower=0)
-    cum = n.cumsum().to_numpy()  # charges from ``at`` back to the start of each hour
-    lo = np.r_[0.0, cum[:-1]]
-    t_end = (rows.index + pd.Timedelta(hours=1)).to_numpy()
+    n, cum, lo, age_at = _charge_counter(rows, at)
     need = ref.zone_charges()
     bounds = np.cumsum([0.0] + [need[z] for z in ZONES])
     phi_ref = ref.coke_volume_fraction(ref.coke_t_per_charge, ref.noncoke_t_per_charge)
-
-    def age_at(c: float) -> float:
-        """Age (h before ``at``) of the charge ``c`` charges back."""
-        k = int(np.searchsorted(cum, c - 1e-12))
-        if k >= len(cum):
-            return float("nan")
-        frac = (c - lo[k]) / n.iloc[k] if n.iloc[k] > 0 else 0.0
-        return float((at - pd.Timestamp(t_end[k])) / pd.Timedelta(hours=1) + frac)
 
     bands = []
     for i, zone in enumerate(ZONES):
@@ -249,6 +262,109 @@ def quantities(st: ColumnState) -> dict[str, float]:
         out[f"coke_{b.zone}_t"] = b.coke_inventory_t
         out[f"coke_kg_per_t_ferrous_{b.zone}"] = b.coke_kg_per_t_ferrous
     return {k: float(v) for k, v in out.items() if v is not None and math.isfinite(float(v))}
+
+
+def ferrous_shares(tonnes: Mapping[str, Any]) -> dict[str, float]:
+    """Wet share of sinter, pellet and lump ore in the ferrous charge, % (keys of ``BLEND_GROUPS``); empty without
+    ferrous."""
+    parts = {g: max(_num(tonnes.get(col)) or 0.0, 0.0) for g, col in BLEND_GROUPS.items()}
+    fer = sum(parts.values())
+    return {g: 100.0 * v / fer for g, v in parts.items()} if fer > 0 else {}
+
+
+def _num(value: Any) -> float | None:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) else None
+
+
+@dataclass(frozen=True)
+class BlendChange:
+    """The latest change of the ferrous blend in the charge record and where its first charge is in the column."""
+
+    changed_at: pd.Timestamp  # start of the first hour charged with the new blend
+    step_pt: float  # largest change of a group's share, percentage points
+    before_pct: dict[str, float]  # wet ferrous shares before and after (keys of ``BLEND_GROUPS``), %
+    after_pct: dict[str, float]
+    charges_since: float  # charges from the change to ``at``
+    cz_at: pd.Timestamp  # when its first charge reaches (reached) the cohesive-zone top
+    raceway_at: pd.Timestamp  # ... and the raceways
+    zone: str  # where it is at ``at``: above_cz, in_cz, below_cz or burnt
+
+
+def blend_change(
+    record: pd.DataFrame,
+    at: Any,
+    ref: TransitReference | None = None,
+    *,
+    threshold_pt: float = 5.0,
+    span_h: int = 2,
+) -> BlendChange | None:
+    """The newest change of the ferrous blend in the hourly charge record up to ``at`` (within ``LOOKBACK``): the
+    hour boundary where a group's tonne-weighted share over the ``span_h`` hours after it differs from that over the
+    ``span_h`` hours before it by ``threshold_pt`` or more (of a run of such boundaries, the one with the largest
+    step). The first charge of the new blend reaches a zone boundary when the charges after it fill the zones above
+    the boundary (``TransitReference.zone_charges``): in the past, at the charge ages of the record (as ``column``);
+    in the future, at the current charging rate. None without such a change."""
+    ref = ref or TransitReference()
+    at = pd.Timestamp(at)
+    rows = _hourly(record, at)
+    if len(rows) < 2:
+        return None
+    old = rows.iloc[::-1]  # oldest first
+    tonnes = pd.DataFrame(
+        {
+            col: pd.to_numeric(old.get(col, pd.Series(0.0, index=old.index)), errors="coerce").fillna(0.0).clip(lower=0)
+            for col in BLEND_GROUPS.values()
+        }
+    )
+    steps: list[tuple[int, float, dict[str, float], dict[str, float]]] = []
+    for b in range(1, len(tonnes)):
+        before = ferrous_shares(tonnes.iloc[max(0, b - span_h) : b].sum().to_dict())
+        after = ferrous_shares(tonnes.iloc[b : b + span_h].sum().to_dict())
+        if before and after:
+            steps.append((b, max(abs(after[g] - before[g]) for g in BLEND_GROUPS), before, after))
+    hits = [s for s in steps if s[1] >= threshold_pt]
+    if not hits:
+        return None
+    run = [hits[-1]]
+    for s in reversed(hits[:-1]):  # the contiguous run of boundaries that ends at the newest one
+        if s[0] != run[-1][0] - 1:
+            break
+        run.append(s)
+    b, step, before, after = max(run, key=lambda s: s[1])
+    n, cum, _, age_at = _charge_counter(rows, at)
+    since = float(cum[len(rows) - 1 - b])  # charges from the start of the change hour to ``at``
+    rate = float(n.iloc[0]) if float(n.iloc[0]) > 0 else ref.charges_per_hour
+    need = ref.zone_charges()
+    to_cz, to_below = need["above_cz"], need["above_cz"] + need["in_cz"]
+    to_raceway = to_below + need["below_cz"]
+
+    def reached(c: float) -> pd.Timestamp:
+        if since < c:
+            return at + pd.Timedelta(hours=(c - since) / rate)
+        return at - pd.Timedelta(hours=age_at(since - c))
+
+    if since < to_cz:
+        zone = "above_cz"
+    elif since < to_below:
+        zone = "in_cz"
+    elif since < to_raceway:
+        zone = "below_cz"
+    else:
+        zone = "burnt"
+    return BlendChange(
+        changed_at=pd.Timestamp(old.index[b]),
+        step_pt=float(step),
+        before_pct=before,
+        after_pct=after,
+        charges_since=since,
+        cz_at=reached(to_cz),
+        raceway_at=reached(to_raceway),
+        zone=zone,
+    )
 
 
 def _is_ore_type(name: str) -> bool:

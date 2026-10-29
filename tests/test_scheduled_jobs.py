@@ -144,8 +144,11 @@ def test_the_hourly_job_evaluates_the_window_of_its_slot_with_the_missing_ones(
     rows = store.snapshots.series(utc_of("2026-05-15 07:00"), utc_of("2026-05-15 10:00"))
     assert len(rows) == 4 and {r.job_id for r in rows} == {rec.id, None}
     assert store.jobs.get(rec.id).scheduled_for is not None  # the job record the snapshots refer to
-    events = [e for e in asyncio.run(bus.recent(50)) if e.type != "job.progress"]
+    published = asyncio.run(bus.recent(50))
+    events = [e for e in published if e.type not in ("job.progress", "alarm.raised", "alarm.cleared")]
     assert [e.type for e in events] == ["twin.snapshot"]  # the window of the slot only, not the backfilled ones
+    # the Live Twin alarms ran after the windows (SV-1.9): the synthetic evaluation records no source times
+    assert {e.data.code for e in published if e.type == "alarm.raised"} == {"SOURCE_STALE"}
     assert pd.Timestamp(events[0].data.window_end) == pd.Timestamp(utc_of("2026-05-15 10:00"))
 
 
