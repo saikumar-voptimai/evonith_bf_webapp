@@ -946,6 +946,339 @@
         "title": "ConversationCreate",
         "type": "object"
       },
+      "CurrentBlend": {
+        "properties": {
+          "certainty": {
+            "enum": [
+              "High",
+              "Medium",
+              "Low",
+              "Investigate"
+            ],
+            "title": "Certainty",
+            "type": "string"
+          },
+          "evaluated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Evaluation time (UTC)",
+            "title": "Evaluated At"
+          },
+          "investigate": {
+            "description": "Reasons for Investigate",
+            "items": {
+              "type": "string"
+            },
+            "title": "Investigate",
+            "type": "array"
+          },
+          "k_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke at omega_STRATA, kg/tHM dry",
+            "title": "K Strata"
+          },
+          "k_strata_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of k_strata, kg/tHM dry",
+            "title": "K Strata Sd"
+          },
+          "omega_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA shaft efficiency, dimensionless",
+            "title": "Omega Strata"
+          },
+          "omega_strata_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of omega_strata, dimensionless",
+            "title": "Omega Strata Sd"
+          },
+          "outside": {
+            "description": "Classes or production outside the range",
+            "items": {
+              "type": "string"
+            },
+            "title": "Outside",
+            "type": "array"
+          },
+          "support": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "inside, margin or outside the range BF-02 ran",
+            "title": "Support"
+          },
+          "unmapped_ores": {
+            "description": "Ore types taken as the default lump ore",
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmapped Ores",
+            "type": "array"
+          },
+          "window_end": {
+            "description": "End of the window (UTC)",
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_end",
+          "certainty"
+        ],
+        "title": "CurrentBlend",
+        "type": "object"
+      },
+      "CusumLatest": {
+        "properties": {
+          "r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Residual omega_imp \u2212 omega_strata, dimensionless",
+            "title": "R"
+          },
+          "s_neg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CUSUM S\u2212, sigma_e units (dimensionless)",
+            "title": "S Neg"
+          },
+          "s_pos": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CUSUM S+, sigma_e units (dimensionless)",
+            "title": "S Pos"
+          },
+          "window_end": {
+            "description": "Latest window in the CUSUM (UTC)",
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standardised innovation, sigma_e units (dimensionless)",
+            "title": "Z"
+          }
+        },
+        "required": [
+          "window_end"
+        ],
+        "title": "CusumLatest",
+        "type": "object"
+      },
+      "CusumState": {
+        "properties": {
+          "band_sigmas": {
+            "description": "Half-width of the omega band in sigma_e, dimensionless",
+            "title": "Band Sigmas",
+            "type": "number"
+          },
+          "clear_after_h": {
+            "description": "An alarm clears this long after its last signal, h",
+            "title": "Clear After H",
+            "type": "number"
+          },
+          "episodes": {
+            "description": "Open episodes and those in the period",
+            "items": {
+              "$ref": "#/components/schemas/DriftEpisode"
+            },
+            "title": "Episodes",
+            "type": "array"
+          },
+          "h": {
+            "description": "CUSUM decision limit, sigma_e units (dimensionless)",
+            "title": "H",
+            "type": "number"
+          },
+          "history_days": {
+            "description": "Snapshot history of the evaluation, days",
+            "title": "History Days",
+            "type": "number"
+          },
+          "k": {
+            "description": "CUSUM allowance, sigma_e units (dimensionless)",
+            "title": "K",
+            "type": "number"
+          },
+          "lag_h": {
+            "description": "Lag between the windows of one chain, h",
+            "title": "Lag H",
+            "type": "number"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CusumLatest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mu": {
+            "description": "In-control mean of r, dimensionless",
+            "title": "Mu",
+            "type": "number"
+          },
+          "mu_hat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sample mean of r (bias diagnostic), dimensionless",
+            "title": "Mu Hat"
+          },
+          "n_pairs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pairs of windows lag_h apart in the fit, count",
+            "title": "N Pairs"
+          },
+          "note": {
+            "default": "",
+            "description": "Why the CUSUM is not evaluated (collecting)",
+            "title": "Note",
+            "type": "string"
+          },
+          "rho": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AR(1) coefficient of r at the lag, dimensionless",
+            "title": "Rho"
+          },
+          "sigma_e": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the AR(1) innovations of r, dimensionless",
+            "title": "Sigma E"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "estimated (on the history) or fixed (configured)",
+            "title": "Source"
+          },
+          "state": {
+            "description": "Open alarm direction, in_control, or collecting (too few pairs for the AR(1) fit)",
+            "enum": [
+              "in_control",
+              "high",
+              "low",
+              "both",
+              "collecting"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "k",
+          "h",
+          "mu",
+          "lag_h",
+          "clear_after_h",
+          "history_days",
+          "band_sigmas"
+        ],
+        "title": "CusumState",
+        "type": "object"
+      },
       "DatasetPart": {
         "properties": {
           "columns": {
@@ -1063,6 +1396,69 @@
           "decision"
         ],
         "title": "DecisionRequest",
+        "type": "object"
+      },
+      "DriftEpisode": {
+        "properties": {
+          "cleared_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Clear time (UTC); null while open",
+            "title": "Cleared At"
+          },
+          "direction": {
+            "description": "high: implied above STRATA; low: below",
+            "enum": [
+              "high",
+              "low"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "last_signal": {
+            "description": "Latest signal (UTC)",
+            "format": "date-time",
+            "title": "Last Signal",
+            "type": "string"
+          },
+          "peak": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest CUSUM sum at a signal, sigma_e units (dimensionless)",
+            "title": "Peak"
+          },
+          "raised_at": {
+            "description": "First signal (UTC)",
+            "format": "date-time",
+            "title": "Raised At",
+            "type": "string"
+          },
+          "signals": {
+            "description": "Signals in the episode, count",
+            "title": "Signals",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "direction",
+          "raised_at",
+          "last_signal",
+          "signals"
+        ],
+        "title": "DriftEpisode",
         "type": "object"
       },
       "DustEditorInputs": {
@@ -1313,6 +1709,219 @@
           }
         },
         "title": "DustInputRow",
+        "type": "object"
+      },
+      "ExpandingTest": {
+        "properties": {
+          "rmse_fixed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of burnt coke, Fixed-\u03c9, kg/tHM dry",
+            "title": "Rmse Fixed"
+          },
+          "rmse_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of burnt coke, STRATA-\u03c9, kg/tHM dry",
+            "title": "Rmse Strata"
+          },
+          "skill_coke_7d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill on 7-day means of coke, dimensionless",
+            "title": "Skill Coke 7D"
+          },
+          "skill_coke_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 \u2212 MSE/MSE(Fixed-\u03c9), daily coke, dimensionless",
+            "title": "Skill Coke Day"
+          },
+          "skill_omega_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill on daily omega, dimensionless",
+            "title": "Skill Omega Day"
+          }
+        },
+        "title": "ExpandingTest",
+        "type": "object"
+      },
+      "FamilyRow": {
+        "properties": {
+          "bias": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean STRATA-\u03c9 error, kg/tHM dry",
+            "title": "Bias"
+          },
+          "composition": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Mean share of ferrous by class, %",
+            "title": "Composition",
+            "type": "object"
+          },
+          "family": {
+            "description": "Blend family",
+            "title": "Family",
+            "type": "string"
+          },
+          "fixed_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean Fixed-\u03c9 prediction, kg/tHM dry",
+            "title": "Fixed Omega"
+          },
+          "grade": {
+            "title": "Grade",
+            "type": "string"
+          },
+          "id": {
+            "description": "Fact id (VAL-nn)",
+            "title": "Id",
+            "type": "string"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days in the test, count",
+            "title": "N"
+          },
+          "realised": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean realised burnt coke, kg/tHM dry",
+            "title": "Realised"
+          },
+          "rmse_fixed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE, Fixed-\u03c9, kg/tHM dry",
+            "title": "Rmse Fixed"
+          },
+          "rmse_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE, STRATA-\u03c9, kg/tHM dry",
+            "title": "Rmse Strata"
+          },
+          "se_bias": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard error of the bias, kg/tHM dry",
+            "title": "Se Bias"
+          },
+          "skill": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 \u2212 MSE/MSE(Fixed-\u03c9), dimensionless",
+            "title": "Skill"
+          },
+          "strata_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean STRATA-\u03c9 prediction, kg/tHM dry",
+            "title": "Strata Omega"
+          },
+          "verdict": {
+            "description": "Supported, Disputed, Neutral or Modelled only",
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "family",
+          "verdict",
+          "grade"
+        ],
+        "title": "FamilyRow",
         "type": "object"
       },
       "FieldError": {
@@ -2968,6 +3577,254 @@
         "title": "KindStats",
         "type": "object"
       },
+      "LiveCalibration": {
+        "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "day (the nightly calibration) or live",
+            "title": "Basis"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke rate of the calibration, kg/tHM dry",
+            "title": "Coke Kg Thm"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Day of the nightly calibration (IST)",
+            "title": "Day"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "n_shifts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable shifts in the calibration, count",
+            "title": "N Shifts"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Calibrated shaft efficiency, dimensionless",
+            "title": "Omega"
+          },
+          "q_lz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower-zone heat loss, GJ/h",
+            "title": "Q Lz Gj H"
+          },
+          "q_uz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper-zone heat loss, GJ/h",
+            "title": "Q Uz Gj H"
+          },
+          "r_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hydrogen utilisation, dimensionless",
+            "title": "R H"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "live, or fallback (the shipped calibration)",
+            "title": "Source"
+          },
+          "window": {
+            "description": "First and last shift date of the calibration",
+            "items": {
+              "type": "string"
+            },
+            "title": "Window",
+            "type": "array"
+          }
+        },
+        "title": "LiveCalibration",
+        "type": "object"
+      },
+      "LivePoint": {
+        "properties": {
+          "calibration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveCalibration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "kind": {
+            "description": "Job kind that refreshes the live point",
+            "title": "Kind",
+            "type": "string"
+          },
+          "made_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the job finished (UTC); null before the first run",
+            "title": "Made At"
+          },
+          "network": {
+            "description": "Network solves and seconds of the job",
+            "title": "Network",
+            "type": "object"
+          },
+          "reference_point": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReferencePoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "responses": {
+            "items": {
+              "$ref": "#/components/schemas/LiveResponse"
+            },
+            "title": "Responses",
+            "type": "array"
+          },
+          "rings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RingView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Run time of the computation, s",
+            "title": "Seconds"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA version",
+            "title": "Version"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "LivePoint",
+        "type": "object"
+      },
       "LiveReportParams": {
         "additionalProperties": false,
         "description": "The report of the running shift (``report.live``, SV-2.3).",
@@ -2980,6 +3837,127 @@
           }
         },
         "title": "LiveReportParams",
+        "type": "object"
+      },
+      "LiveResponse": {
+        "properties": {
+          "d_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Change of omega under STRATA-\u03c9, dimensionless",
+            "title": "D Omega"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA-\u03c9 minus Fixed-\u03c9, in unit",
+            "title": "Difference"
+          },
+          "fixed_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke response at the current calibration, Fixed-\u03c9, in unit",
+            "title": "Fixed Omega"
+          },
+          "id": {
+            "description": "Fact id (MOD-nn)",
+            "title": "Id",
+            "type": "string"
+          },
+          "reference_fixed_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Register value at the reference point, in unit",
+            "title": "Reference Fixed Omega"
+          },
+          "reference_sigma_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Register 1 sigma at the reference point, in unit",
+            "title": "Reference Sigma Strata"
+          },
+          "reference_strata_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Register value at the reference point, in unit",
+            "title": "Reference Strata Omega"
+          },
+          "sigma_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the STRATA-\u03c9 response, in unit",
+            "title": "Sigma Strata"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "strata_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke response at the current calibration, STRATA-\u03c9, in unit",
+            "title": "Strata Omega"
+          },
+          "unit": {
+            "description": "Unit of the responses (kg/tHM dry coke per change)",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "statement",
+          "unit"
+        ],
+        "title": "LiveResponse",
         "type": "object"
       },
       "LiveStatusData": {
@@ -3171,6 +4149,169 @@
           "content"
         ],
         "title": "MessageCreate",
+        "type": "object"
+      },
+      "OmegaRow": {
+        "properties": {
+          "band_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "omega_strata + mu + 2 sigma_e, dimensionless",
+            "title": "Band High"
+          },
+          "band_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "omega_strata + mu \u2212 2 sigma_e, dimensionless",
+            "title": "Band Low"
+          },
+          "omega_cal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "14-day median shaft efficiency, dimensionless",
+            "title": "Omega Cal"
+          },
+          "omega_imp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Implied shaft efficiency of the window, dimensionless",
+            "title": "Omega Imp"
+          },
+          "omega_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA shaft efficiency of the window, dimensionless",
+            "title": "Omega Strata"
+          },
+          "omega_strata_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of omega_strata (parameters), dimensionless",
+            "title": "Omega Strata Sd"
+          },
+          "r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Residual omega_imp \u2212 omega_strata, dimensionless",
+            "title": "R"
+          },
+          "s_neg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CUSUM S\u2212 (implied below STRATA), sigma_e units (dimensionless)",
+            "title": "S Neg"
+          },
+          "s_pos": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CUSUM S+ (implied above STRATA), sigma_e units (dimensionless)",
+            "title": "S Pos"
+          },
+          "signal": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CUSUM signal of the window (S > h)",
+            "title": "Signal"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "complete, partial or failed",
+            "title": "Status"
+          },
+          "window_end": {
+            "description": "End of the 8-h window (UTC)",
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standardised AR(1) innovation of r, sigma_e units (dimensionless)",
+            "title": "Z"
+          }
+        },
+        "required": [
+          "window_end"
+        ],
+        "title": "OmegaRow",
         "type": "object"
       },
       "OperatorInputsDocument": {
@@ -4281,6 +5422,131 @@
         "title": "ProblemDetail",
         "type": "object"
       },
+      "ReferencePoint": {
+        "properties": {
+          "blend_wet_pct": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Base ferrous blend, wet %",
+            "title": "Blend Wet Pct",
+            "type": "object"
+          },
+          "production_t_d": {
+            "description": "Hot metal of the reference point, t/d",
+            "title": "Production T D",
+            "type": "number"
+          },
+          "yard": {
+            "title": "Yard",
+            "type": "string"
+          }
+        },
+        "required": [
+          "production_t_d",
+          "blend_wet_pct",
+          "yard"
+        ],
+        "title": "ReferencePoint",
+        "type": "object"
+      },
+      "ReferenceResponse": {
+        "properties": {
+          "d_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Change of omega under STRATA-\u03c9, dimensionless",
+            "title": "D Omega"
+          },
+          "date": {
+            "default": "",
+            "description": "Date of the fact",
+            "title": "Date",
+            "type": "string"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA-\u03c9 minus Fixed-\u03c9, in unit",
+            "title": "Difference"
+          },
+          "fixed_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke response, Fixed-\u03c9, in unit",
+            "title": "Fixed Omega"
+          },
+          "id": {
+            "description": "Fact id (MOD-nn)",
+            "title": "Id",
+            "type": "string"
+          },
+          "sigma_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 sigma of the STRATA-\u03c9 response, in unit",
+            "title": "Sigma Strata"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "strata_omega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke response, STRATA-\u03c9, in unit",
+            "title": "Strata Omega"
+          },
+          "unit": {
+            "description": "Unit of the responses (kg/tHM dry coke per change)",
+            "title": "Unit",
+            "type": "string"
+          },
+          "version": {
+            "default": "",
+            "description": "Register version of the fact",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "statement",
+          "unit"
+        ],
+        "title": "ReferenceResponse",
+        "type": "object"
+      },
       "ReportDocumentView": {
         "description": "The report as the Reports tab renders it.",
         "properties": {
@@ -4418,6 +5684,279 @@
           "duplicate"
         ],
         "title": "ReportSubmitted",
+        "type": "object"
+      },
+      "RingInputs": {
+        "properties": {
+          "blast_moisture_g_nm3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blast moisture, g/Nm\u00b3",
+            "title": "Blast Moisture G Nm3"
+          },
+          "blast_nm3_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot blast incl. O2, Nm\u00b3/tHM",
+            "title": "Blast Nm3 Thm"
+          },
+          "blend_wet_pct": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Wet share of ferrous by model material, %",
+            "title": "Blend Wet Pct",
+            "type": "object"
+          },
+          "classes_wet_pct": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Wet share of ferrous by class, %",
+            "title": "Classes Wet Pct",
+            "type": "object"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke, kg/tHM dry",
+            "title": "Coke Kg Thm"
+          },
+          "ferrous_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ferrous charge, kg/tHM wet",
+            "title": "Ferrous Kg Thm"
+          },
+          "nut_coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nut coke, kg/tHM",
+            "title": "Nut Coke Kg Thm"
+          },
+          "o2_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "O2 fraction of the hot blast, %",
+            "title": "O2 Pct"
+          },
+          "pci_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PCI, kg/tHM",
+            "title": "Pci Kg Thm"
+          },
+          "production_t_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hot metal, t/h",
+            "title": "Production T H"
+          },
+          "sinter_rdi_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sinter RDI, %",
+            "title": "Sinter Rdi Pct"
+          }
+        },
+        "required": [
+          "blend_wet_pct",
+          "classes_wet_pct"
+        ],
+        "title": "RingInputs",
+        "type": "object"
+      },
+      "RingRow": {
+        "properties": {
+          "efficiency": {
+            "description": "Counter-current efficiency of the ring, fraction",
+            "title": "Efficiency",
+            "type": "number"
+          },
+          "fe_share": {
+            "description": "Share of the burden's Fe, fraction",
+            "title": "Fe Share",
+            "type": "number"
+          },
+          "gas_capacity": {
+            "description": "C_g = R \u00d7 gas share, dimensionless",
+            "title": "Gas Capacity",
+            "type": "number"
+          },
+          "gas_share": {
+            "description": "Share of the gas at the top of the thermal reserve zone, fraction",
+            "title": "Gas Share",
+            "type": "number"
+          },
+          "limited_by": {
+            "description": "The smaller of C_g and C_s",
+            "enum": [
+              "gas",
+              "ore"
+            ],
+            "title": "Limited By",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ntu": {
+            "description": "Number of transfer units of the ring, dimensionless",
+            "title": "Ntu",
+            "type": "number"
+          },
+          "omega_share": {
+            "description": "The ring's part of omega (the parts sum to omega), dimensionless",
+            "title": "Omega Share",
+            "type": "number"
+          },
+          "ore_oxygen": {
+            "description": "C_s = Fe share (wustite oxygen of the ring), dimensionless",
+            "title": "Ore Oxygen",
+            "type": "number"
+          },
+          "residence_h": {
+            "description": "Time the burden spends in the thermal reserve zone, h",
+            "title": "Residence H",
+            "type": "number"
+          },
+          "ring": {
+            "description": "Ring number, 1 centre to 6 wall (equal areas)",
+            "title": "Ring",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ring",
+          "name",
+          "gas_share",
+          "fe_share",
+          "residence_h",
+          "gas_capacity",
+          "ore_oxygen",
+          "ntu",
+          "efficiency",
+          "omega_share",
+          "limited_by"
+        ],
+        "title": "RingRow",
+        "type": "object"
+      },
+      "RingView": {
+        "properties": {
+          "capacity_ratio": {
+            "description": "R, gas oxygen capacity over wustite oxygen, dimensionless",
+            "title": "Capacity Ratio",
+            "type": "number"
+          },
+          "distance": {
+            "description": "Scaled distance from the nearest network solve (0 = solved there)",
+            "title": "Distance",
+            "type": "number"
+          },
+          "gas_in_excess": {
+            "description": "Gas share of the rings where C_g \u2265 C_s, fraction",
+            "title": "Gas In Excess",
+            "type": "number"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/RingInputs"
+          },
+          "k_blend": {
+            "description": "Fe-weighted relative reduction rate of the blend, dimensionless",
+            "title": "K Blend",
+            "type": "number"
+          },
+          "kappa": {
+            "description": "Rate constant refitted so that w equals the calibrated omega, 1/h",
+            "title": "Kappa",
+            "type": "number"
+          },
+          "omega": {
+            "description": "w of the ring model at the state, dimensionless",
+            "title": "Omega",
+            "type": "number"
+          },
+          "rings": {
+            "items": {
+              "$ref": "#/components/schemas/RingRow"
+            },
+            "title": "Rings",
+            "type": "array"
+          },
+          "state": {
+            "description": "calibration: the network solve at the calibration state",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "distance",
+          "omega",
+          "capacity_ratio",
+          "k_blend",
+          "kappa",
+          "gas_in_excess",
+          "inputs",
+          "rings"
+        ],
+        "title": "RingView",
         "type": "object"
       },
       "RunLookup": {
@@ -6499,6 +8038,268 @@
         "title": "StatusZone",
         "type": "object"
       },
+      "StrataOmega": {
+        "properties": {
+          "count": {
+            "description": "Windows, count",
+            "title": "Count",
+            "type": "integer"
+          },
+          "cusum": {
+            "$ref": "#/components/schemas/CusumState"
+          },
+          "end": {
+            "description": "Evaluation time (UTC)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/OmegaRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "start": {
+            "description": "First window end shown (UTC)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "count",
+          "rows",
+          "cusum"
+        ],
+        "title": "StrataOmega",
+        "type": "object"
+      },
+      "StrataSummary": {
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentBlend"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tier of the charged blend in the latest STRATA window"
+          },
+          "current_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why there is no current tier",
+            "title": "Current Note"
+          },
+          "families": {
+            "description": "Register VAL group: out-of-sample coke by blend family",
+            "items": {
+              "$ref": "#/components/schemas/FamilyRow"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "reference": {
+            "description": "Register MOD group: responses at the reference point",
+            "items": {
+              "$ref": "#/components/schemas/ReferenceResponse"
+            },
+            "title": "Reference",
+            "type": "array"
+          },
+          "register_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fact register version",
+            "title": "Register Version"
+          },
+          "tiers": {
+            "$ref": "#/components/schemas/Tiers"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/Validation"
+          },
+          "version": {
+            "description": "STRATA version of the asset",
+            "title": "Version",
+            "type": "string"
+          },
+          "version_detail": {
+            "title": "Version Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "version_detail",
+          "validation",
+          "families",
+          "reference",
+          "tiers"
+        ],
+        "title": "StrataSummary",
+        "type": "object"
+      },
+      "StrictPeriod": {
+        "properties": {
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "rmse_fixed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of burnt coke, Fixed-\u03c9, kg/tHM dry",
+            "title": "Rmse Fixed"
+          },
+          "rmse_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of burnt coke, STRATA-\u03c9, kg/tHM dry",
+            "title": "Rmse Strata"
+          }
+        },
+        "required": [
+          "period"
+        ],
+        "title": "StrictPeriod",
+        "type": "object"
+      },
+      "StrictTest": {
+        "properties": {
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/StrictPeriod"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "rmse_fixed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE over all days, Fixed-\u03c9, kg/tHM dry",
+            "title": "Rmse Fixed"
+          },
+          "rmse_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE over all days, STRATA-\u03c9, kg/tHM dry",
+            "title": "Rmse Strata"
+          },
+          "skill_coke_7d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill on 7-day means of coke, dimensionless",
+            "title": "Skill Coke 7D"
+          },
+          "skill_coke_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill on daily coke, dimensionless",
+            "title": "Skill Coke Day"
+          },
+          "skill_omega_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill on daily omega, dimensionless",
+            "title": "Skill Omega Day"
+          },
+          "weekly_rmse_fixed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of weekly means, Fixed-\u03c9, kg/tHM dry",
+            "title": "Weekly Rmse Fixed"
+          },
+          "weekly_rmse_strata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RMSE of weekly means, STRATA-\u03c9, kg/tHM dry",
+            "title": "Weekly Rmse Strata"
+          }
+        },
+        "required": [
+          "method",
+          "periods"
+        ],
+        "title": "StrictTest",
+        "type": "object"
+      },
       "SubmitRequest": {
         "properties": {
           "kind": {
@@ -6665,6 +8466,164 @@
           "text"
         ],
         "title": "TextPart",
+        "type": "object"
+      },
+      "TierLevel": {
+        "properties": {
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "sigma_max_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest sigma(coke) of the tier, kg/tHM wet coke",
+            "title": "Sigma Max Kg Thm"
+          },
+          "support": {
+            "description": "Position of blend and production against the range BF-02 ran",
+            "title": "Support",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "High",
+              "Medium",
+              "Low",
+              "Investigate"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "support",
+          "rule"
+        ],
+        "title": "TierLevel",
+        "type": "object"
+      },
+      "Tiers": {
+        "properties": {
+          "investigate_classes_max_pct": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Class shares above this, % of ferrous",
+            "title": "Investigate Classes Max Pct",
+            "type": "object"
+          },
+          "investigate_classes_min_pct": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Class shares below this, % of ferrous",
+            "title": "Investigate Classes Min Pct",
+            "type": "object"
+          },
+          "investigate_note": {
+            "title": "Investigate Note",
+            "type": "string"
+          },
+          "investigate_sigma_kg_thm": {
+            "description": "sigma(coke) above which a plan is Investigate, kg/tHM",
+            "title": "Investigate Sigma Kg Thm",
+            "type": "number"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/TierLevel"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "margin_pt": {
+            "description": "Margin of the class range, percentage points",
+            "title": "Margin Pt",
+            "type": "number"
+          },
+          "margin_t_h": {
+            "description": "Margin of the production range, t/h",
+            "title": "Margin T H",
+            "type": "number"
+          },
+          "support_classes_pct": {
+            "additionalProperties": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "description": "Range BF-02 ran by class, % of ferrous",
+            "title": "Support Classes Pct",
+            "type": "object"
+          },
+          "support_production_t_h": {
+            "description": "Range BF-02 ran, t/h",
+            "items": {
+              "type": "number"
+            },
+            "title": "Support Production T H",
+            "type": "array"
+          }
+        },
+        "required": [
+          "levels",
+          "investigate_sigma_kg_thm",
+          "investigate_classes_max_pct",
+          "investigate_classes_min_pct",
+          "investigate_note",
+          "support_classes_pct",
+          "support_production_t_h",
+          "margin_pt",
+          "margin_t_h"
+        ],
+        "title": "Tiers",
+        "type": "object"
+      },
+      "TimeSplit": {
+        "properties": {
+          "skill_coke_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill on daily coke, dimensionless",
+            "title": "Skill Coke Day"
+          },
+          "skill_omega_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skill on daily omega, dimensionless",
+            "title": "Skill Omega Day"
+          },
+          "split": {
+            "description": "Training and test halves",
+            "title": "Split",
+            "type": "string"
+          }
+        },
+        "required": [
+          "split"
+        ],
+        "title": "TimeSplit",
         "type": "object"
       },
       "ToolCallPart": {
@@ -8551,6 +10510,49 @@
           "bands"
         ],
         "title": "TwinTransit",
+        "type": "object"
+      },
+      "Validation": {
+        "properties": {
+          "expanding": {
+            "$ref": "#/components/schemas/ExpandingTest",
+            "description": "2026 expanding-window test (parameters from earlier days)"
+          },
+          "method": {
+            "description": "Protocol of the 2026 tests",
+            "title": "Method",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "strict": {
+            "$ref": "#/components/schemas/StrictTest",
+            "description": "Strict test on 2023-24 data with parameters frozen"
+          },
+          "time_splits": {
+            "items": {
+              "$ref": "#/components/schemas/TimeSplit"
+            },
+            "title": "Time Splits",
+            "type": "array"
+          },
+          "verdict_rule": {
+            "description": "Rule of the per-family verdicts",
+            "title": "Verdict Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "note",
+          "verdict_rule",
+          "expanding",
+          "time_splits",
+          "strict"
+        ],
+        "title": "Validation",
         "type": "object"
       },
       "Version": {
@@ -10511,6 +12513,147 @@
         "summary": "Furnace status trends",
         "tags": [
           "status"
+        ]
+      }
+    },
+    "/api/strata/live-point": {
+      "get": {
+        "description": "The latest result of the job ``strata.live_point`` (empty before its first run).",
+        "operationId": "strata_live_point",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivePoint"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Coke responses and ring view at the calibration",
+        "tags": [
+          "strata"
+        ]
+      }
+    },
+    "/api/strata/omega": {
+      "get": {
+        "description": "The stored windows of the last ``days``; the CUSUM runs on the drift alarm's history (56 days by default).",
+        "operationId": "strata_omega",
+        "parameters": [
+          {
+            "description": "Windows of the last days shown, days",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7.0,
+              "description": "Windows of the last days shown, days",
+              "exclusiveMinimum": 0.0,
+              "maximum": 56.0,
+              "title": "Days",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrataOmega"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "omega_STRATA against the implied omega, with the CUSUM",
+        "tags": [
+          "strata"
+        ]
+      }
+    },
+    "/api/strata/summary": {
+      "get": {
+        "operationId": "strata_summary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrataSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Validation, reference responses and certainty tiers",
+        "tags": [
+          "strata"
         ]
       }
     },

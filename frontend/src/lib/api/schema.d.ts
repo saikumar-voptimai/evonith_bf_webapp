@@ -511,6 +511,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/strata/live-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Coke responses and ring view at the calibration
+         * @description The latest result of the job ``strata.live_point`` (empty before its first run).
+         */
+        get: operations["strata_live_point"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/strata/omega": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * omega_STRATA against the implied omega, with the CUSUM
+         * @description The stored windows of the last ``days``; the CUSUM runs on the drift alarm's history (56 days by default).
+         */
+        get: operations["strata_omega"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/strata/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Validation, reference responses and certainty tiers */
+        get: operations["strata_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stream": {
         parameters: {
             query?: never;
@@ -1198,6 +1255,175 @@ export interface components {
              */
             title: string;
         };
+        /** CurrentBlend */
+        CurrentBlend: {
+            /**
+             * Certainty
+             * @enum {string}
+             */
+            certainty: "High" | "Medium" | "Low" | "Investigate";
+            /**
+             * Evaluated At
+             * @description Evaluation time (UTC)
+             */
+            evaluated_at?: string | null;
+            /**
+             * Investigate
+             * @description Reasons for Investigate
+             */
+            investigate?: string[];
+            /**
+             * K Strata
+             * @description Coke at omega_STRATA, kg/tHM dry
+             */
+            k_strata?: number | null;
+            /**
+             * K Strata Sd
+             * @description 1 sigma of k_strata, kg/tHM dry
+             */
+            k_strata_sd?: number | null;
+            /**
+             * Omega Strata
+             * @description STRATA shaft efficiency, dimensionless
+             */
+            omega_strata?: number | null;
+            /**
+             * Omega Strata Sd
+             * @description 1 sigma of omega_strata, dimensionless
+             */
+            omega_strata_sd?: number | null;
+            /**
+             * Outside
+             * @description Classes or production outside the range
+             */
+            outside?: string[];
+            /**
+             * Support
+             * @description inside, margin or outside the range BF-02 ran
+             */
+            support?: string | null;
+            /**
+             * Unmapped Ores
+             * @description Ore types taken as the default lump ore
+             */
+            unmapped_ores?: string[];
+            /**
+             * Window End
+             * Format: date-time
+             * @description End of the window (UTC)
+             */
+            window_end: string;
+        };
+        /** CusumLatest */
+        CusumLatest: {
+            /**
+             * R
+             * @description Residual omega_imp − omega_strata, dimensionless
+             */
+            r?: number | null;
+            /**
+             * S Neg
+             * @description CUSUM S−, sigma_e units (dimensionless)
+             */
+            s_neg?: number | null;
+            /**
+             * S Pos
+             * @description CUSUM S+, sigma_e units (dimensionless)
+             */
+            s_pos?: number | null;
+            /**
+             * Window End
+             * Format: date-time
+             * @description Latest window in the CUSUM (UTC)
+             */
+            window_end: string;
+            /**
+             * Z
+             * @description Standardised innovation, sigma_e units (dimensionless)
+             */
+            z?: number | null;
+        };
+        /** CusumState */
+        CusumState: {
+            /**
+             * Band Sigmas
+             * @description Half-width of the omega band in sigma_e, dimensionless
+             */
+            band_sigmas: number;
+            /**
+             * Clear After H
+             * @description An alarm clears this long after its last signal, h
+             */
+            clear_after_h: number;
+            /**
+             * Episodes
+             * @description Open episodes and those in the period
+             */
+            episodes?: components["schemas"]["DriftEpisode"][];
+            /**
+             * H
+             * @description CUSUM decision limit, sigma_e units (dimensionless)
+             */
+            h: number;
+            /**
+             * History Days
+             * @description Snapshot history of the evaluation, days
+             */
+            history_days: number;
+            /**
+             * K
+             * @description CUSUM allowance, sigma_e units (dimensionless)
+             */
+            k: number;
+            /**
+             * Lag H
+             * @description Lag between the windows of one chain, h
+             */
+            lag_h: number;
+            latest?: components["schemas"]["CusumLatest"] | null;
+            /**
+             * Mu
+             * @description In-control mean of r, dimensionless
+             */
+            mu: number;
+            /**
+             * Mu Hat
+             * @description Sample mean of r (bias diagnostic), dimensionless
+             */
+            mu_hat?: number | null;
+            /**
+             * N Pairs
+             * @description Pairs of windows lag_h apart in the fit, count
+             */
+            n_pairs?: number | null;
+            /**
+             * Note
+             * @description Why the CUSUM is not evaluated (collecting)
+             * @default
+             */
+            note: string;
+            /**
+             * Rho
+             * @description AR(1) coefficient of r at the lag, dimensionless
+             */
+            rho?: number | null;
+            /**
+             * Sigma E
+             * @description 1 sigma of the AR(1) innovations of r, dimensionless
+             */
+            sigma_e?: number | null;
+            /**
+             * Source
+             * @description estimated (on the history) or fixed (configured)
+             */
+            source?: string | null;
+            /**
+             * State
+             * @description Open alarm direction, in_control, or collecting (too few pairs for the AR(1) fit)
+             * @enum {string}
+             */
+            state: "in_control" | "high" | "low" | "both" | "collecting";
+        };
         /** DatasetPart */
         DatasetPart: {
             /**
@@ -1264,6 +1490,42 @@ export interface components {
              * @enum {string}
              */
             decision: "accepted" | "rejected";
+        };
+        /** DriftEpisode */
+        DriftEpisode: {
+            /**
+             * Cleared At
+             * @description Clear time (UTC); null while open
+             */
+            cleared_at?: string | null;
+            /**
+             * Direction
+             * @description high: implied above STRATA; low: below
+             * @enum {string}
+             */
+            direction: "high" | "low";
+            /**
+             * Last Signal
+             * Format: date-time
+             * @description Latest signal (UTC)
+             */
+            last_signal: string;
+            /**
+             * Peak
+             * @description Largest CUSUM sum at a signal, sigma_e units (dimensionless)
+             */
+            peak?: number | null;
+            /**
+             * Raised At
+             * Format: date-time
+             * @description First signal (UTC)
+             */
+            raised_at: string;
+            /**
+             * Signals
+             * @description Signals in the episode, count
+             */
+            signals: number;
         };
         /** DustEditorInputs */
         DustEditorInputs: {
@@ -1372,6 +1634,106 @@ export interface components {
              * @description Zn in the dry dust, %
              */
             zn_pct?: number | null;
+        };
+        /** ExpandingTest */
+        ExpandingTest: {
+            /**
+             * Rmse Fixed
+             * @description RMSE of burnt coke, Fixed-ω, kg/tHM dry
+             */
+            rmse_fixed?: number | null;
+            /**
+             * Rmse Strata
+             * @description RMSE of burnt coke, STRATA-ω, kg/tHM dry
+             */
+            rmse_strata?: number | null;
+            /**
+             * Skill Coke 7D
+             * @description Skill on 7-day means of coke, dimensionless
+             */
+            skill_coke_7d?: number | null;
+            /**
+             * Skill Coke Day
+             * @description 1 − MSE/MSE(Fixed-ω), daily coke, dimensionless
+             */
+            skill_coke_day?: number | null;
+            /**
+             * Skill Omega Day
+             * @description Skill on daily omega, dimensionless
+             */
+            skill_omega_day?: number | null;
+        };
+        /** FamilyRow */
+        FamilyRow: {
+            /**
+             * Bias
+             * @description Mean STRATA-ω error, kg/tHM dry
+             */
+            bias?: number | null;
+            /**
+             * Composition
+             * @description Mean share of ferrous by class, %
+             */
+            composition?: {
+                [key: string]: number;
+            };
+            /**
+             * Family
+             * @description Blend family
+             */
+            family: string;
+            /**
+             * Fixed Omega
+             * @description Mean Fixed-ω prediction, kg/tHM dry
+             */
+            fixed_omega?: number | null;
+            /** Grade */
+            grade: string;
+            /**
+             * Id
+             * @description Fact id (VAL-nn)
+             */
+            id: string;
+            /**
+             * N
+             * @description Days in the test, count
+             */
+            n?: number | null;
+            /**
+             * Realised
+             * @description Mean realised burnt coke, kg/tHM dry
+             */
+            realised?: number | null;
+            /**
+             * Rmse Fixed
+             * @description RMSE, Fixed-ω, kg/tHM dry
+             */
+            rmse_fixed?: number | null;
+            /**
+             * Rmse Strata
+             * @description RMSE, STRATA-ω, kg/tHM dry
+             */
+            rmse_strata?: number | null;
+            /**
+             * Se Bias
+             * @description Standard error of the bias, kg/tHM dry
+             */
+            se_bias?: number | null;
+            /**
+             * Skill
+             * @description 1 − MSE/MSE(Fixed-ω), dimensionless
+             */
+            skill?: number | null;
+            /**
+             * Strata Omega
+             * @description Mean STRATA-ω prediction, kg/tHM dry
+             */
+            strata_omega?: number | null;
+            /**
+             * Verdict
+             * @description Supported, Disputed, Neutral or Modelled only
+             */
+            verdict: string;
         };
         /** FieldError */
         FieldError: {
@@ -2188,6 +2550,98 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** LiveCalibration */
+        LiveCalibration: {
+            /**
+             * Basis
+             * @description day (the nightly calibration) or live
+             */
+            basis?: string | null;
+            /**
+             * Coke Kg Thm
+             * @description Coke rate of the calibration, kg/tHM dry
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Day
+             * @description Day of the nightly calibration (IST)
+             */
+            day?: string | null;
+            /** Message */
+            message?: string | null;
+            /**
+             * N Shifts
+             * @description Stable shifts in the calibration, count
+             */
+            n_shifts?: number | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Omega
+             * @description Calibrated shaft efficiency, dimensionless
+             */
+            omega?: number | null;
+            /**
+             * Q Lz Gj H
+             * @description Lower-zone heat loss, GJ/h
+             */
+            q_lz_gj_h?: number | null;
+            /**
+             * Q Uz Gj H
+             * @description Upper-zone heat loss, GJ/h
+             */
+            q_uz_gj_h?: number | null;
+            /**
+             * R H
+             * @description Hydrogen utilisation, dimensionless
+             */
+            r_h?: number | null;
+            /**
+             * Source
+             * @description live, or fallback (the shipped calibration)
+             */
+            source?: string | null;
+            /**
+             * Window
+             * @description First and last shift date of the calibration
+             */
+            window?: string[];
+        };
+        /** LivePoint */
+        LivePoint: {
+            calibration?: components["schemas"]["LiveCalibration"] | null;
+            /** Job Id */
+            job_id?: string | null;
+            /**
+             * Kind
+             * @description Job kind that refreshes the live point
+             */
+            kind: string;
+            /**
+             * Made At
+             * @description When the job finished (UTC); null before the first run
+             */
+            made_at?: string | null;
+            /**
+             * Network
+             * @description Network solves and seconds of the job
+             */
+            network?: Record<string, unknown>;
+            reference_point?: components["schemas"]["ReferencePoint"] | null;
+            /** Responses */
+            responses?: components["schemas"]["LiveResponse"][];
+            rings?: components["schemas"]["RingView"] | null;
+            /**
+             * Seconds
+             * @description Run time of the computation, s
+             */
+            seconds?: number | null;
+            /**
+             * Version
+             * @description STRATA version
+             */
+            version?: string | null;
+        };
         /**
          * LiveReportParams
          * @description The report of the running shift (``report.live``, SV-2.3).
@@ -2199,6 +2653,61 @@ export interface components {
              * @default true
              */
             narrative: boolean;
+        };
+        /** LiveResponse */
+        LiveResponse: {
+            /**
+             * D Omega
+             * @description Change of omega under STRATA-ω, dimensionless
+             */
+            d_omega?: number | null;
+            /**
+             * Difference
+             * @description STRATA-ω minus Fixed-ω, in unit
+             */
+            difference?: number | null;
+            /**
+             * Fixed Omega
+             * @description Coke response at the current calibration, Fixed-ω, in unit
+             */
+            fixed_omega?: number | null;
+            /**
+             * Id
+             * @description Fact id (MOD-nn)
+             */
+            id: string;
+            /**
+             * Reference Fixed Omega
+             * @description Register value at the reference point, in unit
+             */
+            reference_fixed_omega?: number | null;
+            /**
+             * Reference Sigma Strata
+             * @description Register 1 sigma at the reference point, in unit
+             */
+            reference_sigma_strata?: number | null;
+            /**
+             * Reference Strata Omega
+             * @description Register value at the reference point, in unit
+             */
+            reference_strata_omega?: number | null;
+            /**
+             * Sigma Strata
+             * @description 1 sigma of the STRATA-ω response, in unit
+             */
+            sigma_strata?: number | null;
+            /** Statement */
+            statement: string;
+            /**
+             * Strata Omega
+             * @description Coke response at the current calibration, STRATA-ω, in unit
+             */
+            strata_omega?: number | null;
+            /**
+             * Unit
+             * @description Unit of the responses (kg/tHM dry coke per change)
+             */
+            unit: string;
         };
         /**
          * LiveStatusData
@@ -2288,6 +2797,75 @@ export interface components {
              * @description Reasoning profile of this turn (default: the conversation's)
              */
             reasoning_level?: ("Low" | "Medium" | "High") | null;
+        };
+        /** OmegaRow */
+        OmegaRow: {
+            /**
+             * Band High
+             * @description omega_strata + mu + 2 sigma_e, dimensionless
+             */
+            band_high?: number | null;
+            /**
+             * Band Low
+             * @description omega_strata + mu − 2 sigma_e, dimensionless
+             */
+            band_low?: number | null;
+            /**
+             * Omega Cal
+             * @description 14-day median shaft efficiency, dimensionless
+             */
+            omega_cal?: number | null;
+            /**
+             * Omega Imp
+             * @description Implied shaft efficiency of the window, dimensionless
+             */
+            omega_imp?: number | null;
+            /**
+             * Omega Strata
+             * @description STRATA shaft efficiency of the window, dimensionless
+             */
+            omega_strata?: number | null;
+            /**
+             * Omega Strata Sd
+             * @description 1 sigma of omega_strata (parameters), dimensionless
+             */
+            omega_strata_sd?: number | null;
+            /**
+             * R
+             * @description Residual omega_imp − omega_strata, dimensionless
+             */
+            r?: number | null;
+            /**
+             * S Neg
+             * @description CUSUM S− (implied below STRATA), sigma_e units (dimensionless)
+             */
+            s_neg?: number | null;
+            /**
+             * S Pos
+             * @description CUSUM S+ (implied above STRATA), sigma_e units (dimensionless)
+             */
+            s_pos?: number | null;
+            /**
+             * Signal
+             * @description CUSUM signal of the window (S > h)
+             */
+            signal?: ("high" | "low") | null;
+            /**
+             * Status
+             * @description complete, partial or failed
+             */
+            status?: string | null;
+            /**
+             * Window End
+             * Format: date-time
+             * @description End of the 8-h window (UTC)
+             */
+            window_end: string;
+            /**
+             * Z
+             * @description Standardised AR(1) innovation of r, sigma_e units (dimensionless)
+             */
+            z?: number | null;
         };
         /**
          * OperatorInputsDocument
@@ -2811,6 +3389,75 @@ export interface components {
              */
             type: string;
         };
+        /** ReferencePoint */
+        ReferencePoint: {
+            /**
+             * Blend Wet Pct
+             * @description Base ferrous blend, wet %
+             */
+            blend_wet_pct: {
+                [key: string]: number;
+            };
+            /**
+             * Production T D
+             * @description Hot metal of the reference point, t/d
+             */
+            production_t_d: number;
+            /** Yard */
+            yard: string;
+        };
+        /** ReferenceResponse */
+        ReferenceResponse: {
+            /**
+             * D Omega
+             * @description Change of omega under STRATA-ω, dimensionless
+             */
+            d_omega?: number | null;
+            /**
+             * Date
+             * @description Date of the fact
+             * @default
+             */
+            date: string;
+            /**
+             * Difference
+             * @description STRATA-ω minus Fixed-ω, in unit
+             */
+            difference?: number | null;
+            /**
+             * Fixed Omega
+             * @description Coke response, Fixed-ω, in unit
+             */
+            fixed_omega?: number | null;
+            /**
+             * Id
+             * @description Fact id (MOD-nn)
+             */
+            id: string;
+            /**
+             * Sigma Strata
+             * @description 1 sigma of the STRATA-ω response, in unit
+             */
+            sigma_strata?: number | null;
+            /** Statement */
+            statement: string;
+            /**
+             * Strata Omega
+             * @description Coke response, STRATA-ω, in unit
+             */
+            strata_omega?: number | null;
+            /**
+             * Unit
+             * @description Unit of the responses (kg/tHM dry coke per change)
+             */
+            unit: string;
+            /**
+             * Version
+             * @description Register version of the fact
+             * @default
+             */
+            version: string;
+        };
         /**
          * ReportDocumentView
          * @description The report as the Reports tab renders it.
@@ -2877,6 +3524,165 @@ export interface components {
             duplicate: boolean;
             /** @description The report.live job; its result holds report_id once it is done */
             job: components["schemas"]["JobRecord"];
+        };
+        /** RingInputs */
+        RingInputs: {
+            /**
+             * Blast Moisture G Nm3
+             * @description Blast moisture, g/Nm³
+             */
+            blast_moisture_g_nm3?: number | null;
+            /**
+             * Blast Nm3 Thm
+             * @description Hot blast incl. O2, Nm³/tHM
+             */
+            blast_nm3_thm?: number | null;
+            /**
+             * Blend Wet Pct
+             * @description Wet share of ferrous by model material, %
+             */
+            blend_wet_pct: {
+                [key: string]: number;
+            };
+            /**
+             * Classes Wet Pct
+             * @description Wet share of ferrous by class, %
+             */
+            classes_wet_pct: {
+                [key: string]: number;
+            };
+            /**
+             * Coke Kg Thm
+             * @description Coke, kg/tHM dry
+             */
+            coke_kg_thm?: number | null;
+            /**
+             * Ferrous Kg Thm
+             * @description Ferrous charge, kg/tHM wet
+             */
+            ferrous_kg_thm?: number | null;
+            /**
+             * Nut Coke Kg Thm
+             * @description Nut coke, kg/tHM
+             */
+            nut_coke_kg_thm?: number | null;
+            /**
+             * O2 Pct
+             * @description O2 fraction of the hot blast, %
+             */
+            o2_pct?: number | null;
+            /**
+             * Pci Kg Thm
+             * @description PCI, kg/tHM
+             */
+            pci_kg_thm?: number | null;
+            /**
+             * Production T H
+             * @description Hot metal, t/h
+             */
+            production_t_h?: number | null;
+            /**
+             * Sinter Rdi Pct
+             * @description Sinter RDI, %
+             */
+            sinter_rdi_pct?: number | null;
+        };
+        /** RingRow */
+        RingRow: {
+            /**
+             * Efficiency
+             * @description Counter-current efficiency of the ring, fraction
+             */
+            efficiency: number;
+            /**
+             * Fe Share
+             * @description Share of the burden's Fe, fraction
+             */
+            fe_share: number;
+            /**
+             * Gas Capacity
+             * @description C_g = R × gas share, dimensionless
+             */
+            gas_capacity: number;
+            /**
+             * Gas Share
+             * @description Share of the gas at the top of the thermal reserve zone, fraction
+             */
+            gas_share: number;
+            /**
+             * Limited By
+             * @description The smaller of C_g and C_s
+             * @enum {string}
+             */
+            limited_by: "gas" | "ore";
+            /** Name */
+            name: string;
+            /**
+             * Ntu
+             * @description Number of transfer units of the ring, dimensionless
+             */
+            ntu: number;
+            /**
+             * Omega Share
+             * @description The ring's part of omega (the parts sum to omega), dimensionless
+             */
+            omega_share: number;
+            /**
+             * Ore Oxygen
+             * @description C_s = Fe share (wustite oxygen of the ring), dimensionless
+             */
+            ore_oxygen: number;
+            /**
+             * Residence H
+             * @description Time the burden spends in the thermal reserve zone, h
+             */
+            residence_h: number;
+            /**
+             * Ring
+             * @description Ring number, 1 centre to 6 wall (equal areas)
+             */
+            ring: number;
+        };
+        /** RingView */
+        RingView: {
+            /**
+             * Capacity Ratio
+             * @description R, gas oxygen capacity over wustite oxygen, dimensionless
+             */
+            capacity_ratio: number;
+            /**
+             * Distance
+             * @description Scaled distance from the nearest network solve (0 = solved there)
+             */
+            distance: number;
+            /**
+             * Gas In Excess
+             * @description Gas share of the rings where C_g ≥ C_s, fraction
+             */
+            gas_in_excess: number;
+            inputs: components["schemas"]["RingInputs"];
+            /**
+             * K Blend
+             * @description Fe-weighted relative reduction rate of the blend, dimensionless
+             */
+            k_blend: number;
+            /**
+             * Kappa
+             * @description Rate constant refitted so that w equals the calibrated omega, 1/h
+             */
+            kappa: number;
+            /**
+             * Omega
+             * @description w of the ring model at the state, dimensionless
+             */
+            omega: number;
+            /** Rings */
+            rings: components["schemas"]["RingRow"][];
+            /**
+             * State
+             * @description calibration: the network solve at the calibration state
+             */
+            state: string;
         };
         /** RunLookup */
         RunLookup: {
@@ -3925,6 +4731,120 @@ export interface components {
              */
             upper_m: number;
         };
+        /** StrataOmega */
+        StrataOmega: {
+            /**
+             * Count
+             * @description Windows, count
+             */
+            count: number;
+            cusum: components["schemas"]["CusumState"];
+            /**
+             * End
+             * Format: date-time
+             * @description Evaluation time (UTC)
+             */
+            end: string;
+            /** Rows */
+            rows: components["schemas"]["OmegaRow"][];
+            /**
+             * Start
+             * Format: date-time
+             * @description First window end shown (UTC)
+             */
+            start: string;
+        };
+        /** StrataSummary */
+        StrataSummary: {
+            /** @description Tier of the charged blend in the latest STRATA window */
+            current?: components["schemas"]["CurrentBlend"] | null;
+            /**
+             * Current Note
+             * @description Why there is no current tier
+             */
+            current_note?: string | null;
+            /**
+             * Families
+             * @description Register VAL group: out-of-sample coke by blend family
+             */
+            families: components["schemas"]["FamilyRow"][];
+            /**
+             * Reference
+             * @description Register MOD group: responses at the reference point
+             */
+            reference: components["schemas"]["ReferenceResponse"][];
+            /**
+             * Register Version
+             * @description Fact register version
+             */
+            register_version?: string | null;
+            tiers: components["schemas"]["Tiers"];
+            validation: components["schemas"]["Validation"];
+            /**
+             * Version
+             * @description STRATA version of the asset
+             */
+            version: string;
+            /** Version Detail */
+            version_detail: string;
+        };
+        /** StrictPeriod */
+        StrictPeriod: {
+            /** Period */
+            period: string;
+            /**
+             * Rmse Fixed
+             * @description RMSE of burnt coke, Fixed-ω, kg/tHM dry
+             */
+            rmse_fixed?: number | null;
+            /**
+             * Rmse Strata
+             * @description RMSE of burnt coke, STRATA-ω, kg/tHM dry
+             */
+            rmse_strata?: number | null;
+        };
+        /** StrictTest */
+        StrictTest: {
+            /** Method */
+            method: string;
+            /** Periods */
+            periods: components["schemas"]["StrictPeriod"][];
+            /**
+             * Rmse Fixed
+             * @description RMSE over all days, Fixed-ω, kg/tHM dry
+             */
+            rmse_fixed?: number | null;
+            /**
+             * Rmse Strata
+             * @description RMSE over all days, STRATA-ω, kg/tHM dry
+             */
+            rmse_strata?: number | null;
+            /**
+             * Skill Coke 7D
+             * @description Skill on 7-day means of coke, dimensionless
+             */
+            skill_coke_7d?: number | null;
+            /**
+             * Skill Coke Day
+             * @description Skill on daily coke, dimensionless
+             */
+            skill_coke_day?: number | null;
+            /**
+             * Skill Omega Day
+             * @description Skill on daily omega, dimensionless
+             */
+            skill_omega_day?: number | null;
+            /**
+             * Weekly Rmse Fixed
+             * @description RMSE of weekly means, Fixed-ω, kg/tHM dry
+             */
+            weekly_rmse_fixed?: number | null;
+            /**
+             * Weekly Rmse Strata
+             * @description RMSE of weekly means, STRATA-ω, kg/tHM dry
+             */
+            weekly_rmse_strata?: number | null;
+        };
         /** SubmitRequest */
         SubmitRequest: {
             /**
@@ -4002,6 +4922,92 @@ export interface components {
              * @enum {string}
              */
             type: "text";
+        };
+        /** TierLevel */
+        TierLevel: {
+            /** Rule */
+            rule: string;
+            /**
+             * Sigma Max Kg Thm
+             * @description Largest sigma(coke) of the tier, kg/tHM wet coke
+             */
+            sigma_max_kg_thm?: number | null;
+            /**
+             * Support
+             * @description Position of blend and production against the range BF-02 ran
+             */
+            support: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "High" | "Medium" | "Low" | "Investigate";
+        };
+        /** Tiers */
+        Tiers: {
+            /**
+             * Investigate Classes Max Pct
+             * @description Class shares above this, % of ferrous
+             */
+            investigate_classes_max_pct: {
+                [key: string]: number;
+            };
+            /**
+             * Investigate Classes Min Pct
+             * @description Class shares below this, % of ferrous
+             */
+            investigate_classes_min_pct: {
+                [key: string]: number;
+            };
+            /** Investigate Note */
+            investigate_note: string;
+            /**
+             * Investigate Sigma Kg Thm
+             * @description sigma(coke) above which a plan is Investigate, kg/tHM
+             */
+            investigate_sigma_kg_thm: number;
+            /** Levels */
+            levels: components["schemas"]["TierLevel"][];
+            /**
+             * Margin Pt
+             * @description Margin of the class range, percentage points
+             */
+            margin_pt: number;
+            /**
+             * Margin T H
+             * @description Margin of the production range, t/h
+             */
+            margin_t_h: number;
+            /**
+             * Support Classes Pct
+             * @description Range BF-02 ran by class, % of ferrous
+             */
+            support_classes_pct: {
+                [key: string]: number[];
+            };
+            /**
+             * Support Production T H
+             * @description Range BF-02 ran, t/h
+             */
+            support_production_t_h: number[];
+        };
+        /** TimeSplit */
+        TimeSplit: {
+            /**
+             * Skill Coke Day
+             * @description Skill on daily coke, dimensionless
+             */
+            skill_coke_day?: number | null;
+            /**
+             * Skill Omega Day
+             * @description Skill on daily omega, dimensionless
+             */
+            skill_omega_day?: number | null;
+            /**
+             * Split
+             * @description Training and test halves
+             */
+            split: string;
         };
         /** ToolCallPart */
         ToolCallPart: {
@@ -4986,6 +5992,27 @@ export interface components {
              * @description Descent time to the raceways at the current rate, h
              */
             tau_raceway_rate_h?: number | null;
+        };
+        /** Validation */
+        Validation: {
+            /** @description 2026 expanding-window test (parameters from earlier days) */
+            expanding: components["schemas"]["ExpandingTest"];
+            /**
+             * Method
+             * @description Protocol of the 2026 tests
+             */
+            method: string;
+            /** Note */
+            note: string;
+            /** @description Strict test on 2023-24 data with parameters frozen */
+            strict: components["schemas"]["StrictTest"];
+            /** Time Splits */
+            time_splits: components["schemas"]["TimeSplit"][];
+            /**
+             * Verdict Rule
+             * @description Rule of the per-family verdicts
+             */
+            verdict_rule: string;
         };
         /** Version */
         Version: {
@@ -6215,6 +7242,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusTrend"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    strata_live_point: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LivePoint"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    strata_omega: {
+        parameters: {
+            query?: {
+                /** @description Windows of the last days shown, days */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrataOmega"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    strata_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrataSummary"];
                 };
             };
             /** @description Client error (problem+json) */

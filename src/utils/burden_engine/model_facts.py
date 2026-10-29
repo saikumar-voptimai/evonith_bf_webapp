@@ -51,12 +51,14 @@ def _today() -> str:
     return datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat()
 
 
-def _engine() -> Engine:
+def reference_engine(cal: Any = None) -> Engine:
+    """The engine of the facts: the 16 Oct 2026 UAT yard, every material free (0-100 %), on ``cal`` (default: the
+    shipped calibration). The STRATA page recomputes the MOD facts on the current calibration with it (SV-1.12)."""
     with open(REFERENCE_INPUTS_PATH, encoding="utf-8") as fh:
         inputs = json.load(fh)
     mats = [m["id"] for m in inputs["materials"]]
     bounds = {m["id"]: (0.0, 100.0) for m in inputs["materials"]}
-    return Engine(inputs, materials=mats, bounds=bounds)
+    return Engine(inputs, cal, materials=mats, bounds=bounds)
 
 
 def _blend_z(eng: Engine, z_ref: np.ndarray, shares: dict[str, float], s: Settings, P: float) -> np.ndarray:
@@ -69,7 +71,7 @@ def _blend_z(eng: Engine, z_ref: np.ndarray, shares: dict[str, float], s: Settin
 
 def model_facts(eng: Engine | None = None) -> list[dict[str, Any]]:
     """MOD rows: coke response under Fixed-omega and STRATA-omega (kg/tHM dry)."""
-    eng = eng or _engine()
+    eng = eng or reference_engine()
     # reference point = the calibration point: blast moisture = the calibration window's Open-Meteo mean (DATA-11)
     s_fix = Settings(omega_mode="fixed", humidity_g=float(eng.case0.get("humidity_g") or eng.cal["case"]["humidity_g"]))
     ref = eng.min_cost(P=P_REF, s=s_fix, L=Limits(), fuel=True)

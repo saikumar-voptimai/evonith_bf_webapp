@@ -314,14 +314,23 @@ class OmegaModel:
         t = np.clip(y[12:18], 0.05, None)
         return f, o, t
 
-    def w(self, st: OmegaState, R: float, kappa: float | None = None, parts=None) -> float:
+    def rings(self, st: OmegaState, R: float, kappa: float | None = None, parts=None) -> dict[str, Any]:
+        """The ring counter-current model of a state, ring by ring (1 centre .. 6 wall): f, o, t, gas capacity
+        C_g = R f, ore oxygen C_s = o, NTU, exchanger efficiency eps, each ring's share of w (eps C_min / sum C_g; the
+        shares sum to w), the blend rate k and w itself."""
         f, o, t = parts if parts is not None else self.parts(st)
         k = self.k_blend(st.fe_frac)
         cg = R * f
         cmin = np.minimum(cg, o); cmax = np.maximum(cg, o)
         cr = cmin / np.maximum(cmax, 1e-12)
-        eff = counter_current_eff((self.kappa if kappa is None else kappa) * k * t * o / np.maximum(cmin, 1e-12), cr)
-        return float(np.sum(eff * cmin) / np.sum(cg))
+        ntu = (self.kappa if kappa is None else kappa) * k * t * o / np.maximum(cmin, 1e-12)
+        eff = counter_current_eff(ntu, cr)
+        total = np.sum(cg)
+        return dict(f=f, o=o, t=t, c_gas=cg, c_ore=o, ntu=ntu, eff=eff, share=eff * cmin / total, k=k,
+                    w=float(np.sum(eff * cmin) / total))
+
+    def w(self, st: OmegaState, R: float, kappa: float | None = None, parts=None) -> float:
+        return self.rings(st, R, kappa, parts)["w"]
 
     # ---------------------------------------------------------------------------------------------- calibration
     def calibrate(self, ref: OmegaState, omega_cal: float, R_cal: float, jacobian: bool = True) -> "OmegaModel":
