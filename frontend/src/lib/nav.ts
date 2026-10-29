@@ -81,10 +81,10 @@ export const ADMIN_VIEWS: NavItem[] = [
 		href: '/admin/burnt-vs-charged',
 		label: 'Burnt vs charged',
 		title: 'Burnt vs charged coke',
-		subtitle: 'Burnt against charged coke per averaging window, with agreement statistics.',
+		subtitle: 'Agreement from a shift to a month, what averages out, lag, mass closure and leak water.',
 		icon: Scale,
 		summary:
-			'Burnt coke from the oxygen balance against the coke charged, per averaging window, with the concordance coefficient and the Bland–Altman limits.',
+			'Burnt coke from the oxygen balance against the coke charged, per averaging window from a shift to a month: concordance and Bland–Altman limits, the variance split, the lag, the raw mass closure and the leak-water check.',
 		issue: 307,
 		legacy: 'Burden & Fuel Optimiser'
 	},

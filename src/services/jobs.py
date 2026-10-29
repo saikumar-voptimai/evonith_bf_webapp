@@ -556,7 +556,8 @@ register(
         description=(
             "Builds the TRACE view from the Coke Energy pipeline (burnt coke raw and calibrated per shift and day, "
             "the 14-day correction, feeds and freshness, burnt against charged coke) into "
-            "src/storage/coke_energy/trace_view.json, which the TRACE page reads (SV-1.10)."
+            "src/storage/coke_energy/trace_view.json, which the TRACE page reads (SV-1.10), and the admin analysis of "
+            "burnt against charged coke into burnt_vs_charged.json beside it (SV-4.4)."
         ),
     )
 )
