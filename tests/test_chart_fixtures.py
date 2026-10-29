@@ -22,8 +22,12 @@ HINT = "Regenerate with: python scripts/export_chart_fixtures.py"
 
 @pytest.mark.parametrize(
     ("path", "build"),
-    [(exporter.RIST_OUT, exporter.rist_fixture), (exporter.SCHEMATIC_OUT, exporter.schematic_fixture)],
-    ids=["rist", "schematic"],
+    [
+        (exporter.RIST_OUT, exporter.rist_fixture),
+        (exporter.SCHEMATIC_OUT, exporter.schematic_fixture),
+        (exporter.STATUS_OUT, exporter.status_fixture),
+    ],
+    ids=["rist", "schematic", "status"],
 )
 def test_fixture_is_current(path: Path, build) -> None:
     committed = json.loads(path.read_text(encoding="utf-8"))
