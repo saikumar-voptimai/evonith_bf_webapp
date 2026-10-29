@@ -155,6 +155,19 @@
 	/* Motion: only in answer to an action */
 	--vo-duration: 160ms;
 	--vo-ease: cubic-bezier(0.2, 0, 0, 1);
+
+	/*
+	 * Print theme (SV-2.4, #296): A4 portrait on a warm paper tint. `@media print` below maps the surfaces and the type
+	 * scale onto these; print.css sets the page box. reports/print.ts plans the pages with the same sizes (print.test.ts
+	 * compares them).
+	 */
+	--vo-print-paper: #fffbe6; /* page and panel background */
+	--vo-print-band: #f7efcc; /* table header band, tiles */
+	--vo-print-rule: #d9cd9a; /* rules between rows and regions */
+	--vo-print-margin: 12mm; /* page margin, every side */
+	--vo-print-fs: 8.5pt; /* body text and table cells */
+	--vo-print-fs-small: 7.5pt; /* labels, units, notes, table headers */
+	--vo-print-row: 5mm; /* table row height (one line) */
 }
 
 @media (max-width: 1279px) {
@@ -166,6 +179,30 @@
 @media (max-width: 767px) {
 	:root {
 		--vo-gutter: 16px;
+	}
+}
+
+@media print {
+	:root {
+		--vo-bg: var(--vo-print-paper);
+		--vo-surface: var(--vo-print-paper);
+		--vo-surface-raised: var(--vo-print-band);
+		--vo-cream: var(--vo-print-paper);
+		--vo-cream-raised: var(--vo-print-paper);
+		--vo-border: var(--vo-print-rule);
+		--vo-border-strong: var(--vo-print-rule);
+		--vo-fs-eyebrow: 6.5pt;
+		--vo-fs-label: var(--vo-print-fs-small);
+		--vo-fs-body: var(--vo-print-fs);
+		--vo-fs-text: var(--vo-print-fs);
+		--vo-fs-title: 10pt;
+		--vo-fs-heading: 13pt;
+		--vo-fs-kpi: 12pt;
+		--vo-space-3: 2mm;
+		--vo-space-4: 2.5mm;
+		--vo-space-5: 3mm;
+		--vo-gutter: 0;
+		--vo-shadow-card: none;
 	}
 }
 

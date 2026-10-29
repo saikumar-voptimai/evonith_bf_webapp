@@ -224,3 +224,13 @@ lining and zone dividers to the decimal; `tests/test_chart_fixtures.py` fails wh
   the catalogue at 390×844, horizontal overflow, keyboard and dialog behaviour, chart render budget, legend toggle and
   table view, schematic zone highlight and compact list, sign-in, role guard and sign-out; screenshots in `.audit/`.
   Needs Playwright with Chromium.
+
+## 8. Print
+
+Print theme (SV-2.4, #296): A4 portrait, 12 mm margins (`theme/print.css`, `@page`), the warm paper
+`--vo-print-paper` #FFFBE6 with `--vo-print-band` for header bands and `--vo-print-rule` for rules; `@media print` in
+`tokens.css` maps the surfaces and the type scale onto them (body 8.5 pt, labels 7.5 pt, table rows 5 mm). The shell
+(sidebar, page header, footer) and every element marked `data-print="hide"` (filters, lists, actions) are left out.
+Panels keep together (`breakable` lets a long panel continue between its blocks); tables print whole (no scroll box or
+height limit, header repeated, rows never split, text cells wrap). Text tokens reach 4.5:1 on the paper and the band
+(`reports/print.test.ts`). A report's pages are planned by `reports/print.ts` on the same sizes; limit three pages.

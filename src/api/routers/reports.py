@@ -4,6 +4,10 @@ Reports are written by the worker into ``twin.shift_report``: ``report.shift`` r
 at 06:20, 14:20 and 22:20 IST; ``POST /api/reports/live`` queues ``report.live`` for the running shift and answers 202
 with the job, whose result names the report (``report_id``) once it is done. A report whose narrative failed after its
 retry is stored without it (``status`` no_narrative, ``narrative_status`` failed). Times are UTC unless named ``_ist``.
+
+SV-2.4 (#296), the Shift Reports page: ``GET /api/reports/thresholds`` serves the status thresholds of
+``config/shift_report.yml`` (read at every request) and a report's ``kpis`` are its ETA CO, fuel rate, RAFT and
+permeability against them (``services.reports.kpi_checks``, the builder's rule).
 """
 
 from __future__ import annotations
@@ -173,6 +177,42 @@ class ShiftReportDetail(ShiftReportSummary):
     narrative_model: str | None = Field(None, description="Model that wrote the narrative")
     data: ShiftReportDataView
     document: ReportDocumentView
+    kpis: list[KpiStatusView] = Field(
+        default_factory=list, description="ETA CO, fuel rate, RAFT and permeability against the current thresholds"
+    )
+
+
+class KpiStatusView(BaseModel):
+    """One KPI of the report against the current thresholds of config/shift_report.yml."""
+
+    key: Literal["etaco", "fuel_rate", "raft", "permeability"]
+    label: str
+    unit: str = Field(..., description="Unit of value and thresholds ('' for the dimensionless permeability index)")
+    value: float | None = Field(None, description="Mean over the report window, in unit")
+    level: Literal["ok", "warning", "critical", "no_data"] = Field(
+        ..., description="ok, warning or critical against the thresholds; no_data without a value"
+    )
+    rule: str = Field(..., description="The thresholds as text, e.g. 'warning below 42 %, critical below 40 %'")
+    flag: str | None = Field(None, description="The Reports tab's flag text when the KPI breaches")
+    warn: float | None = Field(None, description="Warning threshold, in unit (ETA CO: below, fuel rate: above)")
+    crit: float | None = Field(None, description="Critical threshold, in unit (ETA CO: below, fuel rate: above)")
+    lo: float | None = Field(None, description="Lower edge of the normal band, in unit (RAFT, permeability)")
+    hi: float | None = Field(None, description="Upper edge of the normal band, in unit (RAFT, permeability)")
+
+
+class ReportThresholds(BaseModel):
+    """``config/shift_report.yml -> status_thresholds`` and the rule that turns flags into the report's status."""
+
+    etaco_warn_pct: float = Field(..., description="ETA CO below this: warning, %")
+    etaco_crit_pct: float = Field(..., description="ETA CO below this: critical, %")
+    fuel_rate_warn_kg_thm: float = Field(..., description="Fuel rate above this: warning, kg/tHM")
+    fuel_rate_crit_kg_thm: float = Field(..., description="Fuel rate above this: critical, kg/tHM")
+    raft_lo_c: float = Field(..., description="RAFT normal band, lower edge, °C")
+    raft_hi_c: float = Field(..., description="RAFT normal band, upper edge, °C")
+    permeability_lo: float = Field(..., description="Permeability index normal band, lower edge, dimensionless")
+    permeability_hi: float = Field(..., description="Permeability index normal band, upper edge, dimensionless")
+    attention_from: int = Field(..., description="Flags from which the status is ATTENTION REQUIRED, count")
+    unstable_from: int = Field(..., description="Flags from which the status is UNSTABLE, count")
 
 
 class ReportSubmitted(BaseModel):
@@ -214,6 +254,15 @@ async def live_report(
     return ReportSubmitted(job=record, duplicate=duplicate)
 
 
+@router.get("/thresholds", response_model=ReportThresholds, summary="Status thresholds of the reports")
+def thresholds() -> ReportThresholds:
+    """The thresholds of config/shift_report.yml as they are now (read at every request)."""
+    try:
+        return ReportThresholds.model_validate(reports.thresholds_data())
+    except ValueError as exc:
+        raise ApiError(500, f"config/shift_report.yml: {exc}") from exc
+
+
 def _uuid(value: str) -> uuid.UUID | None:
     try:
         return uuid.UUID(value)
@@ -241,4 +290,8 @@ async def get_report(
                 raise ApiError(404, f"The report job ended {job.status} without a stored report.")
     if row is None:
         raise ApiError(404, "No shift report with this id.")
-    return ShiftReportDetail.model_validate(reports.detail_data(row))
+    try:
+        detail = await asyncio.to_thread(reports.detail_data, row)  # reads the thresholds file
+    except ValueError as exc:  # thresholds missing from the configuration
+        raise ApiError(500, f"config/shift_report.yml: {exc}") from exc
+    return ShiftReportDetail.model_validate(detail)

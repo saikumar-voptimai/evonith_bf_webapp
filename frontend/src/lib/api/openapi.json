@@ -7896,6 +7896,127 @@
         "title": "KindStats",
         "type": "object"
       },
+      "KpiStatusView": {
+        "description": "One KPI of the report against the current thresholds of config/shift_report.yml.",
+        "properties": {
+          "crit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Critical threshold, in unit (ETA CO: below, fuel rate: above)",
+            "title": "Crit"
+          },
+          "flag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Reports tab's flag text when the KPI breaches",
+            "title": "Flag"
+          },
+          "hi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper edge of the normal band, in unit (RAFT, permeability)",
+            "title": "Hi"
+          },
+          "key": {
+            "enum": [
+              "etaco",
+              "fuel_rate",
+              "raft",
+              "permeability"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "level": {
+            "description": "ok, warning or critical against the thresholds; no_data without a value",
+            "enum": [
+              "ok",
+              "warning",
+              "critical",
+              "no_data"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "lo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower edge of the normal band, in unit (RAFT, permeability)",
+            "title": "Lo"
+          },
+          "rule": {
+            "description": "The thresholds as text, e.g. 'warning below 42 %, critical below 40 %'",
+            "title": "Rule",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of value and thresholds ('' for the dimensionless permeability index)",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean over the report window, in unit",
+            "title": "Value"
+          },
+          "warn": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Warning threshold, in unit (ETA CO: below, fuel rate: above)",
+            "title": "Warn"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "level",
+          "rule"
+        ],
+        "title": "KpiStatusView",
+        "type": "object"
+      },
       "LiveCalibration": {
         "properties": {
           "basis": {
@@ -11205,6 +11326,75 @@
         "title": "ReportSubmitted",
         "type": "object"
       },
+      "ReportThresholds": {
+        "description": "``config/shift_report.yml -> status_thresholds`` and the rule that turns flags into the report's status.",
+        "properties": {
+          "attention_from": {
+            "description": "Flags from which the status is ATTENTION REQUIRED, count",
+            "title": "Attention From",
+            "type": "integer"
+          },
+          "etaco_crit_pct": {
+            "description": "ETA CO below this: critical, %",
+            "title": "Etaco Crit Pct",
+            "type": "number"
+          },
+          "etaco_warn_pct": {
+            "description": "ETA CO below this: warning, %",
+            "title": "Etaco Warn Pct",
+            "type": "number"
+          },
+          "fuel_rate_crit_kg_thm": {
+            "description": "Fuel rate above this: critical, kg/tHM",
+            "title": "Fuel Rate Crit Kg Thm",
+            "type": "number"
+          },
+          "fuel_rate_warn_kg_thm": {
+            "description": "Fuel rate above this: warning, kg/tHM",
+            "title": "Fuel Rate Warn Kg Thm",
+            "type": "number"
+          },
+          "permeability_hi": {
+            "description": "Permeability index normal band, upper edge, dimensionless",
+            "title": "Permeability Hi",
+            "type": "number"
+          },
+          "permeability_lo": {
+            "description": "Permeability index normal band, lower edge, dimensionless",
+            "title": "Permeability Lo",
+            "type": "number"
+          },
+          "raft_hi_c": {
+            "description": "RAFT normal band, upper edge, \u00b0C",
+            "title": "Raft Hi C",
+            "type": "number"
+          },
+          "raft_lo_c": {
+            "description": "RAFT normal band, lower edge, \u00b0C",
+            "title": "Raft Lo C",
+            "type": "number"
+          },
+          "unstable_from": {
+            "description": "Flags from which the status is UNSTABLE, count",
+            "title": "Unstable From",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "etaco_warn_pct",
+          "etaco_crit_pct",
+          "fuel_rate_warn_kg_thm",
+          "fuel_rate_crit_kg_thm",
+          "raft_lo_c",
+          "raft_hi_c",
+          "permeability_lo",
+          "permeability_hi",
+          "attention_from",
+          "unstable_from"
+        ],
+        "title": "ReportThresholds",
+        "type": "object"
+      },
       "RingInputs": {
         "properties": {
           "blast_moisture_g_nm3": {
@@ -12420,6 +12610,14 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "kpis": {
+            "description": "ETA CO, fuel rate, RAFT and permeability against the current thresholds",
+            "items": {
+              "$ref": "#/components/schemas/KpiStatusView"
+            },
+            "title": "Kpis",
+            "type": "array"
           },
           "narrative": {
             "anyOf": [
@@ -19561,6 +19759,48 @@
           }
         },
         "summary": "Report the running shift",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/thresholds": {
+      "get": {
+        "description": "The thresholds of config/shift_report.yml as they are now (read at every request).",
+        "operationId": "reports_thresholds",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportThresholds"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Status thresholds of the reports",
         "tags": [
           "reports"
         ]

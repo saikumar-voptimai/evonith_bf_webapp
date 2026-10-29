@@ -14,6 +14,10 @@
   ``GET /api/status/settings`` serve it, with the V-Board's layout (``ui.furnace_status.layout``) and the texts it
   renders from the same snapshot (row labels, callouts, strip spreads, heat-load shares, badges). The builders of the
   Furnace Status page (``frontend/src/lib/status/status.ts``) must reproduce them (acceptance criterion of #294).
+- ``frontend/src/lib/reports/fixtures/report.json``: shift 26 Oct 2026 B of the synthetic sources of
+  ``tests/test_services_reports.py`` through the report builder and the Reports tab's renderer, as
+  ``GET /api/reports/{id}`` and ``GET /api/reports/thresholds`` serve it. The Shift Reports page's tables
+  (``frontend/src/lib/reports/reports.ts``) must show the numbers of the tab's document (#296).
 
 ``tests/test_chart_fixtures.py`` fails when a committed fixture differs from this output.
 """
@@ -34,6 +38,7 @@ os.environ.setdefault("COKE_ENERGY_WEATHER_LIVE", "0")  # the shipped weather re
 RIST_OUT = ROOT / "frontend" / "src" / "lib" / "charts" / "fixtures" / "rist_shift.json"
 SCHEMATIC_OUT = ROOT / "frontend" / "src" / "lib" / "furnace" / "fixtures" / "schematic.json"
 STATUS_OUT = ROOT / "frontend" / "src" / "lib" / "status" / "fixtures" / "snapshot.json"
+REPORT_OUT = ROOT / "frontend" / "src" / "lib" / "reports" / "fixtures" / "report.json"
 SHIFT_INPUTS = ROOT / "tests" / "fixtures" / "coke_energy" / "shift_inputs.csv"
 SHIFT_KEY = "2026-10-14_A"
 
@@ -217,6 +222,50 @@ def status_fixture() -> dict[str, Any]:
     }
 
 
+REPORT_ID = "6f1c2a4e-2d8b-4c1e-9a57-0c3d5e7f9b21"
+REPORT_NARRATIVE = (
+    "Shift B needs **attention**: fuel rate 541.7 kg/tHM, above 530; ETA CO 46.2 %.\n\n"
+    "Against shift A:\n- production up 1.2 t/h\n- belly spread wider\n\n"
+    "Watch the belly Q4 and keep the blast at 231,000 Nm³/h."
+)
+
+
+def report_fixture() -> dict[str, Any]:
+    """A stored report as the API serves it: the builder on the synthetic sources, the tab's document stamped at a
+    fixed time, the narrative of a fake LLM."""
+    if str(ROOT) not in sys.path:
+        sys.path.append(str(ROOT))
+    from dataclasses import replace
+    from datetime import UTC, datetime
+
+    from api.routers.reports import ReportThresholds, ShiftReportDetail
+    from reports.furnace_report.builder import ShiftBuilder
+    from reports.furnace_report.service import ShiftReportService
+    from services import reports
+    from tests.test_services_reports import SHIFT, raw_for
+
+    timeframe = SHIFT.timeframe()
+    data = ShiftBuilder().build(raw_for(timeframe))
+    generated = datetime(2026, 10, 26, 16, 51, tzinfo=UTC)  # 22:21 IST, the report.shift slot
+    document = replace(ShiftReportService().document(data, REPORT_NARRATIVE, timeframe), generated_at_ist=generated)
+    report = reports.GeneratedReport(
+        SHIFT, "closed", data, document, reports.Narrative("ok", REPORT_NARRATIVE, 1, model="fake/model-1"), generated
+    )
+    row = {"id": REPORT_ID, **reports.store_values(report, job_id=None, trigger="schedule", requested_by="scheduler")}
+    thresholds = reports.load_thresholds()
+    detail = ShiftReportDetail.model_validate(reports.detail_data(row, thresholds))
+    return {
+        "source": (
+            "services.reports.detail_data of shift 2026-10-26_B built from tests.test_services_reports.raw_for "
+            "(ShiftBuilder, ShiftReportService.document)"
+        ),
+        "thresholds": json.loads(
+            ReportThresholds.model_validate(reports.thresholds_data(thresholds)).model_dump_json()
+        ),
+        "detail": json.loads(detail.model_dump_json()),
+    }
+
+
 def write(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
@@ -227,6 +276,7 @@ def main() -> None:
     write(RIST_OUT, rist_fixture())
     write(SCHEMATIC_OUT, schematic_fixture())
     write(STATUS_OUT, status_fixture())
+    write(REPORT_OUT, report_fixture())
 
 
 if __name__ == "__main__":

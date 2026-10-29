@@ -17,6 +17,10 @@ is the mean rate × 8 h, as the tab shows a running shift.
 
 Building blocks (``generate``, ``write_narrative``, ``report_data``, ``document_data``, ``store_values``) and views of
 stored rows (``summary_data``, ``detail_data``) for the worker and the API. No Streamlit or ``ui`` import.
+
+KPI status (SV-2.4, #296): ``load_thresholds`` reads ``config/shift_report.yml -> status_thresholds`` at every call;
+``kpi_checks`` evaluates a stored report's ETA CO, fuel rate, RAFT and permeability against them through
+``reports.furnace_report.status``, the rule the builder applies to the report's status.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from reports.furnace_report.analyser import ShiftAnalyser
 from reports.furnace_report.data import ReportTimeframe, ShiftReportData
+from reports.furnace_report.status import ATTENTION_FROM, UNSTABLE_FROM, Thresholds, evaluate, load_thresholds
 from reports.furnace_report.timeframe import get_report_timeframe
 from reports.rendering import ReportDocument
 from utils.shift_windows import last_completed_shift, previous_shift
@@ -355,15 +360,53 @@ def summary_data(row: Any) -> dict[str, Any]:
     return out
 
 
-def detail_data(row: Any) -> dict[str, Any]:
-    """A stored report with its data, tables and narrative."""
+def thresholds_data(thresholds: Thresholds | None = None) -> dict[str, Any]:
+    """The status thresholds (default: read from the configuration now) and the flag counts of the status rule."""
+    t = thresholds or load_thresholds()
+    return {
+        "etaco_warn_pct": t.etaco_warn,
+        "etaco_crit_pct": t.etaco_crit,
+        "fuel_rate_warn_kg_thm": t.fuel_rate_warn,
+        "fuel_rate_crit_kg_thm": t.fuel_rate_crit,
+        "raft_lo_c": t.raft_lo,
+        "raft_hi_c": t.raft_hi,
+        "permeability_lo": t.perm_lo,
+        "permeability_hi": t.perm_hi,
+        "attention_from": ATTENTION_FROM,
+        "unstable_from": UNSTABLE_FROM,
+    }
+
+
+def _mean_of(data: Mapping[str, Any], key: str) -> Any:
+    stats = data.get(key)
+    return stats.get("mean") if isinstance(stats, Mapping) else None
+
+
+def kpi_checks(data: Mapping[str, Any], thresholds: Thresholds | None = None) -> list[dict[str, Any]]:
+    """A stored report's ETA CO, fuel rate, RAFT and permeability (``report_data`` values) against the thresholds
+    (default: read from the configuration now): value, level, rule and the Reports tab's flag."""
+    checks = evaluate(
+        etaco=_mean_of(data, "etaco"),
+        fuel_rate=data.get("fuel_rate"),
+        raft=_mean_of(data, "raft"),
+        perm=_mean_of(data, "permeability"),
+        thresholds=thresholds or load_thresholds(),
+    )
+    return [asdict(c) for c in checks]
+
+
+def detail_data(row: Any, thresholds: Thresholds | None = None) -> dict[str, Any]:
+    """A stored report with its data, tables and narrative, and its KPIs against the thresholds (default: read from
+    the configuration now)."""
+    data = _get(row, "data") or {}
     return summary_data(row) | {
         "narrative": _get(row, "narrative"),
         "narrative_error": _get(row, "narrative_error"),
         "narrative_tries": _get(row, "narrative_tries") or 0,
         "narrative_model": _get(row, "narrative_model"),
-        "data": _get(row, "data") or {},
+        "data": data,
         "document": _get(row, "document") or {},
+        "kpis": kpi_checks(data, thresholds),
     }
 
 
@@ -400,11 +443,14 @@ __all__ = [
     "document_data",
     "generate",
     "job_result",
+    "kpi_checks",
+    "load_thresholds",
     "narrative_client",
     "report_data",
     "report_status",
     "running_shift",
     "store_values",
     "summary_data",
+    "thresholds_data",
     "write_narrative",
 ]
