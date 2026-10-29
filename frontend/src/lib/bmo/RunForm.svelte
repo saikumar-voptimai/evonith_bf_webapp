@@ -37,7 +37,21 @@ saved operator inputs, live yard and chemistry); the hint shows the value the la
 		valid = $bindable(true)
 	}: Props = $props();
 
-	const checks = $state<Record<string, boolean>>({});
+	// One entry per bound NumberInput, present before the binding: `bind:valid` to an undefined entry is refused
+	// (props_invalid_value: `valid` has a fallback) and the form would not render.
+	const checks = $state<Record<string, boolean>>({
+		production: true,
+		slagRateCap: true,
+		basicityMin: true,
+		basicityMax: true,
+		tBasicityMin: true,
+		tBasicityMax: true,
+		al2o3Max: true,
+		mgoMin: true,
+		mgoAl2o3Min: true,
+		maxChargesPerHour: true,
+		chargeMass: true
+	});
 	$effect(() => {
 		valid = Object.values(checks).every(Boolean);
 	});
