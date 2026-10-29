@@ -960,6 +960,13 @@ Branch `feature/262_svelte_twin`; plan in the epic #262 and its phase epics #263
   model `strata_flow.plant_effects.leak_for_gap`, thresholds `coke_energy.yml -> twin.burnt_vs_charged.leak_check`),
   bases all / stable; 8 s for both on 1,325 shifts, so `twin.trace` builds it after the TRACE view (`trace.refresh`) into
   `burnt_vs_charged.json` beside it; `GET /api/admin/burnt-vs-charged?basis=` (`api/routers/burnt_vs_charged.py`, admin).
+- Calibration console (SV-4.6, `/admin/calibration`): `services/calibration_console.py` reads what `calibration.nightly`
+  stored (`day_calibration`, now with the window's `mask` = `utils.burden_engine.calibration.shift_mask` over
+  `whatif.STABLE_BOUNDS` and the calibration `settings`; values unrounded = `live_calibration`), the Jacobian cache
+  (`src/storage/strata_flow/`, `NetworkParts.stats()['cache_file']`) and the job's runs; `GET /api/admin/calibration[?day]`,
+  `POST /api/admin/calibration/run` (admin). Kinds with `JobKind.audited` (`calibration.nightly`) are started through
+  `services.job_audit.submit` (also via `POST /api/jobs`): audit `job.start`, 503 without the twin store, the job
+  cancelled when the entry cannot be written.
 - Shift reports (SV-2.3): `services/reports.py` composes the FurnaceMind Reports tab's `ShiftReportService.build` /
   `build_previous` / `document`; `report.shift` (closed shift) and `report.live` store into `twin.shift_report`. The
   narrative uses page 7's `OpenRouterClient` (120 s per call, 1 retry); when the LLM fails the report is stored

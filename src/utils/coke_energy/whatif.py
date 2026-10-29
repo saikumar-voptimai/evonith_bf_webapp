@@ -14,9 +14,19 @@ from utils.coke_energy.bf_balance import solve_coke, calibrate_loss, slag_and_fl
 from utils.coke_energy.run_shifts import case_from_shift, cooling_losses
 
 
+# Stability filter of the calibration pool: column of the shift balance -> inclusive band. Charged coke kg/tHM dry,
+# C and Fe closure %, blast meter against the reconciled blast %, cooling losses MJ/tHM, production t/h.
+STABLE_BOUNDS = {"coke_kgthm_dry": (220, 400), "C_closure_pct": (-20, 5), "blast_meter_vs_reconciled_pct": (-9, 15),
+                 "R_out_cooling_total": (40, 400), "Fe_closure_pct": (-6, 6), "prod_th": (75, 110)}
+
+
+def stable_tests(R):
+    """One column per test of ``stable_mask``: True where the shift's value lies in its band (a missing value fails)."""
+    return pd.DataFrame({c: R[c].between(lo, hi) for c, (lo, hi) in STABLE_BOUNDS.items()}, index=R.index)
+
+
 def stable_mask(R):
-    return (R.coke_kgthm_dry.between(220, 400) & R.C_closure_pct.between(-20, 5) & R.blast_meter_vs_reconciled_pct.between(-9, 15)
-            & R.R_out_cooling_total.between(40, 400) & R.Fe_closure_pct.between(-6, 6) & R.prod_th.between(75, 110))
+    return stable_tests(R).all(axis=1)
 
 
 def baseline_case(S, R, start=None, end=None, pci=None, nut=None, tol_pci=10, tol_nut=6):

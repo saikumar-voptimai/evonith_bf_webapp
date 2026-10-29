@@ -29,6 +29,7 @@ from api.routers import (
     auth,
     bmo,
     burnt_vs_charged,
+    calibration,
     facts,
     forge,
     furnacemind,
@@ -128,6 +129,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(facts.router)
     app.include_router(whatif.router)
     app.include_router(burnt_vs_charged.router)
+    app.include_router(calibration.router)
     app.include_router(status.router)
     app.include_router(operator_inputs.router)
     app.include_router(furnacemind.router)

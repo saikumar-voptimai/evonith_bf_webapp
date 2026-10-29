@@ -3526,6 +3526,398 @@
         "title": "BvcWindowPoints",
         "type": "object"
       },
+      "CalibrationConsole": {
+        "properties": {
+          "calibration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayCalibration"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The shown day's calibration"
+          },
+          "current": {
+            "description": "The shown calibration is today's",
+            "title": "Current",
+            "type": "boolean"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IST day shown; null when no calibration is stored",
+            "title": "Day"
+          },
+          "days": {
+            "description": "Stored calibrations (the last 30 days), newest first",
+            "items": {
+              "$ref": "#/components/schemas/CalibrationDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "jacobian_cache": {
+            "$ref": "#/components/schemas/JacobianCache"
+          },
+          "job": {
+            "$ref": "#/components/schemas/NightlyJob"
+          },
+          "runs": {
+            "description": "Latest runs of the nightly job, newest first (at most 10)",
+            "items": {
+              "$ref": "#/components/schemas/CalibrationRun"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "runs_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "twin.jobs",
+                  "redis"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the runs were read; null when neither the twin store nor Redis is available",
+            "title": "Runs Source"
+          },
+          "tests": {
+            "description": "Tests of the stability filter with their bands",
+            "items": {
+              "$ref": "#/components/schemas/StabilityTest"
+            },
+            "title": "Tests",
+            "type": "array"
+          },
+          "today": {
+            "description": "Today (IST)",
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          }
+        },
+        "required": [
+          "today",
+          "current",
+          "days",
+          "tests",
+          "jacobian_cache",
+          "job",
+          "runs"
+        ],
+        "title": "CalibrationConsole",
+        "type": "object"
+      },
+      "CalibrationDay": {
+        "properties": {
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged coke of the window, kg/tHM",
+            "title": "Coke Kg Thm"
+          },
+          "coke_model_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model coke at the calibration burden, kg/tHM",
+            "title": "Coke Model Kg Thm"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IST day the calibration applies to",
+            "title": "Day"
+          },
+          "jacobian_cached": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The file is in the cache; null when the job named none",
+            "title": "Jacobian Cached"
+          },
+          "jacobian_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Jacobian cache file the job named",
+            "title": "Jacobian File"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that made it",
+            "title": "Job Id"
+          },
+          "made_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the job stored it (UTC)",
+            "title": "Made At"
+          },
+          "n_shifts": {
+            "description": "Stable shifts in the window, count",
+            "title": "N Shifts",
+            "type": "integer"
+          },
+          "omega_cal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency, dimensionless",
+            "title": "Omega Cal"
+          },
+          "q_lz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower-zone heat loss, GJ/h",
+            "title": "Q Lz Gj H"
+          },
+          "q_uz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper-zone heat loss, GJ/h",
+            "title": "Q Uz Gj H"
+          },
+          "r_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hydrogen reduction share, dimensionless",
+            "title": "R H"
+          },
+          "source": {
+            "description": "live or fallback (the shipped calibration)",
+            "enum": [
+              "live",
+              "fallback"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "n_shifts"
+        ],
+        "title": "CalibrationDay",
+        "type": "object"
+      },
+      "CalibrationRun": {
+        "properties": {
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IST day of the calibration it stored",
+            "title": "Day"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it failed or was cancelled",
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End (UTC)",
+            "title": "Finished At"
+          },
+          "id": {
+            "description": "Job id",
+            "title": "Id",
+            "type": "string"
+          },
+          "run_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Execution time over the tries, s",
+            "title": "Run S"
+          },
+          "scheduled": {
+            "description": "Started by the schedule (02:30 IST) rather than by a user",
+            "title": "Scheduled",
+            "type": "boolean"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start of the first try (UTC)",
+            "title": "Started At"
+          },
+          "status": {
+            "description": "queued, running, done, failed or cancelled",
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Submission time (UTC)",
+            "title": "Submitted At"
+          },
+          "submitted_by": {
+            "description": "User name, or scheduler",
+            "title": "Submitted By",
+            "type": "string"
+          },
+          "tries": {
+            "description": "Tries made, count",
+            "title": "Tries",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "submitted_by",
+          "scheduled",
+          "tries"
+        ],
+        "title": "CalibrationRun",
+        "type": "object"
+      },
+      "CalibrationRunStarted": {
+        "properties": {
+          "audit_id": {
+            "description": "Audit-log entry of the start",
+            "title": "Audit Id",
+            "type": "integer"
+          },
+          "duplicate": {
+            "description": "True when a calibration job was already queued or running",
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobRecord"
+          }
+        },
+        "required": [
+          "job",
+          "duplicate",
+          "audit_id"
+        ],
+        "title": "CalibrationRunStarted",
+        "type": "object"
+      },
       "CalibrationShift": {
         "properties": {
           "k_burnt": {
@@ -4638,6 +5030,231 @@
           "data"
         ],
         "title": "DatasetPreview",
+        "type": "object"
+      },
+      "DayCalibration": {
+        "properties": {
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged coke of the window (the calibration basis), kg/tHM",
+            "title": "Coke Kg Thm"
+          },
+          "coke_model_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coke the model gives at the calibration burden (fixed omega), kg/tHM",
+            "title": "Coke Model Kg Thm"
+          },
+          "complete": {
+            "description": "Live, on at least min_shifts stable shifts",
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IST day the calibration applies to",
+            "title": "Day"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job that made it",
+            "title": "Job Id"
+          },
+          "made_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the job stored it (UTC)",
+            "title": "Made At"
+          },
+          "mask": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MaskShift"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Every shift of the window's days, oldest first; null for a calibration made before SV-4.6",
+            "title": "Mask"
+          },
+          "message": {
+            "description": "The calibration's own account of the window",
+            "title": "Message",
+            "type": "string"
+          },
+          "min_shifts": {
+            "description": "Stable shifts a live calibration needs, count",
+            "title": "Min Shifts",
+            "type": "integer"
+          },
+          "n_shifts": {
+            "description": "Stable shifts in the window, count",
+            "title": "N Shifts",
+            "type": "integer"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetworkStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The job's Jacobian step; null when it recorded none"
+          },
+          "omega_cal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shaft efficiency of the calibration, dimensionless",
+            "title": "Omega Cal"
+          },
+          "q_lz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower-zone heat loss, GJ/h",
+            "title": "Q Lz Gj H"
+          },
+          "q_uz_gj_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper-zone heat loss, GJ/h",
+            "title": "Q Uz Gj H"
+          },
+          "r_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hydrogen reduction share, dimensionless",
+            "title": "R H"
+          },
+          "shifts": {
+            "description": "Shift keys averaged into the calibration",
+            "items": {
+              "type": "string"
+            },
+            "title": "Shifts",
+            "type": "array"
+          },
+          "source": {
+            "description": "live: calibrated on the window; fallback: too few stable shifts, the shipped calibration",
+            "enum": [
+              "live",
+              "fallback"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Window length, days",
+            "title": "Window Days"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last IST day of the window (the day before)",
+            "title": "Window End"
+          },
+          "window_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First IST day of the window",
+            "title": "Window Start"
+          }
+        },
+        "required": [
+          "source",
+          "message",
+          "min_shifts",
+          "n_shifts",
+          "complete",
+          "shifts"
+        ],
+        "title": "DayCalibration",
         "type": "object"
       },
       "DecisionRequest": {
@@ -8836,6 +9453,132 @@
         "title": "HotMetalSamples",
         "type": "object"
       },
+      "JacobianCache": {
+        "properties": {
+          "day_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Jacobian file of the shown calibration",
+            "title": "Day File"
+          },
+          "directory": {
+            "description": "Cache folder, relative to the repository",
+            "title": "Directory",
+            "type": "string"
+          },
+          "files": {
+            "description": "The newest 50 files, newest first",
+            "items": {
+              "$ref": "#/components/schemas/JacobianFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "n_files": {
+            "description": "Files in the cache, count",
+            "title": "N Files",
+            "type": "integer"
+          },
+          "network_version": {
+            "description": "Current STRATA-Flow network version",
+            "title": "Network Version",
+            "type": "string"
+          },
+          "stale_files": {
+            "description": "Files of another network version, count",
+            "title": "Stale Files",
+            "type": "integer"
+          },
+          "status": {
+            "description": "The shown calibration's Jacobian: cached; missing (the next STRATA-\u03c9 run solves it again, 17 solves); unknown (its job named no file); none (no calibration shown)",
+            "enum": [
+              "cached",
+              "missing",
+              "unknown",
+              "none"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total_bytes": {
+            "description": "Size of the files, bytes",
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "directory",
+          "network_version",
+          "status",
+          "n_files",
+          "total_bytes",
+          "stale_files",
+          "files"
+        ],
+        "title": "JacobianCache",
+        "type": "object"
+      },
+      "JacobianFile": {
+        "properties": {
+          "current": {
+            "description": "Built for the current network version (a stale file is never read)",
+            "title": "Current",
+            "type": "boolean"
+          },
+          "days": {
+            "description": "Stored calibration days whose job named the file, newest first",
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "modified_at": {
+            "description": "Last written (UTC)",
+            "format": "date-time",
+            "title": "Modified At",
+            "type": "string"
+          },
+          "name": {
+            "description": "File name, jacobian_<key>.json",
+            "title": "Name",
+            "type": "string"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Network version the Jacobian was built for",
+            "title": "Network"
+          },
+          "size_bytes": {
+            "description": "File size, bytes",
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "size_bytes",
+          "modified_at",
+          "current",
+          "days"
+        ],
+        "title": "JacobianFile",
+        "type": "object"
+      },
       "JobDoneData": {
         "properties": {
           "duration_s": {
@@ -8919,6 +9662,12 @@
       },
       "JobKindInfo": {
         "properties": {
+          "audited": {
+            "default": false,
+            "description": "A user's start is recorded in the audit log (action job.start)",
+            "title": "Audited",
+            "type": "boolean"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -10609,6 +11358,131 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MaskShift": {
+        "properties": {
+          "blast_meter_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blast meter against the reconciled blast, %",
+            "title": "Blast Meter Pct"
+          },
+          "c_closure_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Carbon closure of the shift balance, %",
+            "title": "C Closure Pct"
+          },
+          "coke_kg_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Charged coke, dry, kg/tHM",
+            "title": "Coke Kg Thm"
+          },
+          "cooling_mj_thm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cooling losses of the shift balance, MJ/tHM",
+            "title": "Cooling Mj Thm"
+          },
+          "day": {
+            "description": "IST date of the shift start",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "failed": {
+            "description": "Tests the shift failed (names of tests)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "fe_closure_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Iron closure of the shift balance, %",
+            "title": "Fe Closure Pct"
+          },
+          "production_t_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Production, t/h",
+            "title": "Production T H"
+          },
+          "shift": {
+            "description": "Shift: A 06:00, B 14:00, C 22:00 IST",
+            "enum": [
+              "A",
+              "B",
+              "C"
+            ],
+            "title": "Shift",
+            "type": "string"
+          },
+          "shift_key": {
+            "description": "Shift key, YYYY-MM-DD_A|B|C (IST date of the shift start)",
+            "title": "Shift Key",
+            "type": "string"
+          },
+          "state": {
+            "description": "used: averaged into the calibration; stable: passed the filter, not averaged; unstable: failed a test; missing: no balanced shift (data gap, or the C shift still running at the calibration)",
+            "enum": [
+              "used",
+              "stable",
+              "unstable",
+              "missing"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shift_key",
+          "day",
+          "shift",
+          "state",
+          "failed"
+        ],
+        "title": "MaskShift",
+        "type": "object"
+      },
       "MaterialOption": {
         "properties": {
           "id": {
@@ -11014,6 +11888,158 @@
           }
         },
         "title": "NetworkSolves",
+        "type": "object"
+      },
+      "NetworkStats": {
+        "properties": {
+          "anchors": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Network states solved exactly, count",
+            "title": "Anchors"
+          },
+          "cache_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Jacobian cache file of the calibration state",
+            "title": "Cache File"
+          },
+          "jacobian": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the Jacobian came from: cache <file> or computed (...)",
+            "title": "Jacobian"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STRATA-Flow network version",
+            "title": "Network"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time in network solves, s",
+            "title": "Seconds"
+          },
+          "seconds_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time of the Jacobian step, s",
+            "title": "Seconds Total"
+          },
+          "solves": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Network solves of the job's process, count",
+            "title": "Solves"
+          }
+        },
+        "title": "NetworkStats",
+        "type": "object"
+      },
+      "NightlyJob": {
+        "properties": {
+          "kind": {
+            "description": "Job kind",
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_tries": {
+            "description": "Tries before it fails, count",
+            "title": "Max Tries",
+            "type": "integer"
+          },
+          "next_slot": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Next scheduled run (UTC)",
+            "title": "Next Slot"
+          },
+          "role": {
+            "description": "Lowest role that may start it",
+            "title": "Role",
+            "type": "string"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scheduled times (IST)",
+            "title": "Schedule"
+          },
+          "timeout_s": {
+            "description": "Time limit of one try, s",
+            "title": "Timeout S",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "role",
+          "timeout_s",
+          "max_tries"
+        ],
+        "title": "NightlyJob",
         "type": "object"
       },
       "OmegaRow": {
@@ -16513,6 +17539,44 @@
         "title": "SourceAge",
         "type": "object"
       },
+      "StabilityTest": {
+        "properties": {
+          "hi": {
+            "description": "Upper end of the band (inclusive), unit of the test",
+            "title": "Hi",
+            "type": "number"
+          },
+          "label": {
+            "description": "What the test checks",
+            "title": "Label",
+            "type": "string"
+          },
+          "lo": {
+            "description": "Lower end of the band (inclusive), unit of the test",
+            "title": "Lo",
+            "type": "number"
+          },
+          "name": {
+            "description": "Test, named as the mask's value field (e.g. c_closure_pct)",
+            "title": "Name",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit of the value and the band",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "unit",
+          "lo",
+          "hi"
+        ],
+        "title": "StabilityTest",
+        "type": "object"
+      },
       "StatusFreshness": {
         "properties": {
           "age_s": {
@@ -21868,6 +22932,111 @@
         ]
       }
     },
+    "/api/admin/calibration": {
+      "get": {
+        "description": "The calibration ``calibration.nightly`` stored for the day: window, stable-shift mask, omega_cal, Q_LZ, Q_UZ,\nr_H; the stored days; the Jacobian cache; the nightly job and its latest runs. 404 when ``day`` has none.",
+        "operationId": "admin_calibration_view",
+        "parameters": [
+          {
+            "description": "IST day to show (default: the newest stored calibration)",
+            "in": "query",
+            "name": "day",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "IST day to show (default: the newest stored calibration)",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationConsole"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Calibration console",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/calibration/run": {
+      "post": {
+        "description": "Queue ``calibration.nightly`` now (the 14 days before today; today's calibration and its Jacobian) and record\nthe start in the audit log (``job.start``). A calibration job already queued or running is returned instead\n(``duplicate``), and the request is recorded as well. Follow the job with GET /api/jobs/{job_id} or the\n``job.progress`` / ``job.done`` events.",
+        "operationId": "admin_start_calibration",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationRunStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Client error (problem+json)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Server error (problem+json)"
+          }
+        },
+        "summary": "Recalibrate now",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/admin/facts": {
       "get": {
         "description": "The facts of the version in force (or of ``version``) with the fields it changes against the repository\nfile. Without a twin store the repository file, with the ``reason``.",
@@ -23899,7 +25068,7 @@
         ]
       },
       "post": {
-        "description": "Queue a job. A request equal to a queued or running job (same kind and parameters) returns that job.",
+        "description": "Queue a job. A request equal to a queued or running job (same kind and parameters) returns that job. The\nstart of an audited kind (``audited``) is recorded in the audit log and needs the twin store.",
         "operationId": "jobs_submit",
         "requestBody": {
           "content": {

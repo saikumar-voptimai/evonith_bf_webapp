@@ -14,12 +14,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, ValidationError
 
-from api.auth import require_role
+from api.auth import request_actor, require_role
 from api.errors import ApiError
 from api.live import job_store, live_state
 from api.store import optional_twin_store
 from data.twin.repositories import TwinStore
-from services import jobstats, schedule
+from services import job_audit, jobstats, schedule
 from services.auth import Principal, Role, has_role
 from services.events import JobDoneData
 from services.jobs import CATALOG, QUEUE_NAME, RECORD_TTL_S, JobRecord, JobStore, UnknownJobKind
@@ -41,6 +41,7 @@ class JobKindInfo(BaseModel):
     next_slot: datetime | None = Field(None, description="Next scheduled time (UTC); null for kinds without a schedule")
     description: str
     params_schema: dict[str, Any] = Field(..., description="JSON schema of the parameters")
+    audited: bool = Field(False, description="A user's start is recorded in the audit log (action job.start)")
 
 
 class KindStats(BaseModel):
@@ -128,6 +129,7 @@ def kinds() -> list[JobKindInfo]:
             next_slot=schedule.next_slot(k.schedule, now) if k.schedule else None,
             description=k.description,
             params_schema=k.params.model_json_schema(),
+            audited=k.audited,
         )
         for k in CATALOG.values()
     ]
@@ -206,16 +208,24 @@ async def submit(
     body: SubmitRequest,
     request: Request,
     store: Annotated[JobStore, Depends(job_store)],
+    twin: Annotated[TwinStore | None, Depends(optional_twin_store)],
 ) -> SubmitResponse:
-    """Queue a job. A request equal to a queued or running job (same kind and parameters) returns that job."""
+    """Queue a job. A request equal to a queued or running job (same kind and parameters) returns that job. The
+    start of an audited kind (``audited``) is recorded in the audit log and needs the twin store."""
     principal: Principal = request.state.principal
     kind = CATALOG.get(body.kind)
     if kind is None:
         raise ApiError(404, f"No job kind {body.kind!r}.")
     if not has_role(principal.role, kind.role):
         raise ApiError(403, f"Starting {kind.title} needs the {kind.role} role; signed in as {principal.role}.")
+    if kind.audited and twin is None:
+        raise ApiError(503, f"Starting {kind.title} is recorded in the audit log: the twin store is not configured.")
     try:
-        record, duplicate = await store.submit(kind.name, body.params, principal.username)
+        if kind.audited and twin is not None:
+            started = await job_audit.submit(store, twin, request_actor(request), kind.name, body.params, origin="jobs")
+            record, duplicate = started.record, started.duplicate
+        else:
+            record, duplicate = await store.submit(kind.name, body.params, principal.username)
     except ValidationError as exc:
         errors = [{**e, "loc": ("body", "params", *e["loc"])} for e in exc.errors(include_url=False)]
         raise RequestValidationError(jsonable_encoder(errors)) from exc
