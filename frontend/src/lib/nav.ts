@@ -125,10 +125,10 @@ export const ADMIN_VIEWS: NavItem[] = [
 		href: '/admin/jobs',
 		label: 'Jobs & health',
 		title: 'Jobs and health',
-		subtitle: 'Background jobs, the schedule and missed slots, run times and service health.',
+		subtitle: 'Job history with cancel and retry, run times, source data age and host health.',
 		icon: ServerCog,
 		summary:
-			'Background jobs and their history, the IST schedule with missed slots, run times (p50 and p95) and the health of the API, the worker and the databases.',
+			'Background jobs and their history with audited cancel and retry, run times (p50 and p95) and missed slots, the data age of every source, the services and the host’s CPU, RAM, disk and temperatures.',
 		issue: 311
 	},
 	{

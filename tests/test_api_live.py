@@ -304,8 +304,25 @@ def test_submit_checks_the_role_parameters_and_duplicates(jobs_app) -> None:
         assert listed == [other["job"]["id"], job["id"]]  # newest first
 
 
+@pytest.fixture()
+def audit_store(tmp_path):
+    """A SQLite twin store for the routes that write the audit log (a cancel, SV-4.8)."""
+    from data.twin.engine import build_engine, session_factory
+    from data.twin.models import TwinBase
+    from data.twin.repositories import TwinStore
+    from services import store as store_service
+
+    engine = build_engine(f"sqlite:///{tmp_path / 'twin.db'}")
+    TwinBase.metadata.create_all(engine)
+    store = TwinStore(session_factory(engine), engine)
+    store_service.use(store)
+    yield store
+    store_service.reset()
+    store.dispose()
+
+
 @needs_redis
-def test_cancel_ends_a_queued_job_and_publishes_job_done(jobs_app) -> None:
+def test_cancel_ends_a_queued_job_and_publishes_job_done(jobs_app, audit_store) -> None:
     with TestClient(jobs_app, base_url="https://testserver") as client:
         users = Users(jobs_app, client)
         job = users.post("adm", "/api/jobs", json={"kind": "system.selftest"}).json()["job"]
@@ -319,6 +336,7 @@ def test_cancel_ends_a_queued_job_and_publishes_job_done(jobs_app) -> None:
 
         again = users.post("sup", f"/api/jobs/{job['id']}/cancel")
         assert again.status_code == 409 and "cancelled" in again.json()["detail"]
+        assert [(e.action, e.actor) for e in audit_store.audit.query()] == [("job.cancel", "sup")]
 
         done = [e for e in users.get("op", "/api/stream/recent").json() if e["type"] == "job.done"]
         assert done[-1]["data"] == {

@@ -26,6 +26,7 @@ from api.live import LiveState
 from api.request_context import RequestContextMiddleware, RequestIdFilter
 from api.routers import (
     admin,
+    admin_jobs,
     auth,
     bmo,
     burnt_vs_charged,
@@ -129,6 +130,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(reports.router)
     app.include_router(shift_records.router)
     app.include_router(admin.router)
+    app.include_router(admin_jobs.router)
     app.include_router(facts.router)
     app.include_router(whatif.router)
     app.include_router(burnt_vs_charged.router)

@@ -1,6 +1,7 @@
 """Background jobs: catalogue, submission with de-duplication, status and cancellation (SV-0.8, #277); runtime
 statistics per kind and the audit of the schedule (SV-1.7, #287), from ``twin.jobs`` (the Redis records of the last
-7 days without a twin store)."""
+7 days without a twin store). A cancel is recorded in the audit log (``job.cancel``, SV-4.8 #311) and needs the twin
+store."""
 
 from __future__ import annotations
 
@@ -242,32 +243,49 @@ async def get_job(job_id: str, store: Annotated[JobStore, Depends(job_store)]) -
     return record
 
 
+async def audited_cancel(
+    request: Request, store: JobStore, twin: TwinStore | None, job_id: str, *, origin: str
+) -> job_audit.AuditedCancel:
+    """Cancel through ``services.job_audit.cancel`` (the audit entry first), then announce a job ended before its
+    start (``job.done``) and abort it in arq; 503 without the twin store, 404 without the record, 409 when ended."""
+    from arq.jobs import Job
+
+    if twin is None:
+        raise ApiError(503, "Cancelling a job is recorded in the audit log: the twin store is not configured.")
+    live = live_state(request)
+    try:
+        cancelled = await job_audit.cancel(store, twin, request_actor(request), job_id, origin=origin)
+    except job_audit.JobNotFound as exc:
+        raise ApiError(404, "No job with this id (records are kept for 7 days).") from exc
+    except job_audit.JobConflict as exc:
+        raise ApiError(409, str(exc)) from exc
+    if cancelled.ended:
+        await live.bus.publish(
+            "job.done",
+            JobDoneData(
+                job_id=job_id, kind=cancelled.record.kind, status="cancelled", message=job_audit.CANCELLED_BEFORE_START
+            ),
+        )
+    if live.redis is not None:
+        # Not started: arq's abort keeps the worker from starting it; a running job is stopped.
+        with contextlib.suppress(TimeoutError):
+            await Job(job_id, live.redis, _queue_name=QUEUE_NAME).abort(timeout=0.2)
+    return cancelled
+
+
 @router.post(
     "/{job_id}/cancel",
     response_model=JobRecord,
-    summary="Cancel a job",
+    summary="Cancel a job (audited)",
     dependencies=[Depends(require_role("supervisor"))],
 )
-async def cancel(job_id: str, request: Request, store: Annotated[JobStore, Depends(job_store)]) -> JobRecord:
-    """A queued job is not started; a running job is stopped. Both end with status ``cancelled``."""
-    from arq.jobs import Job
-
-    record = await store.get(job_id)
-    if record is None:
-        raise ApiError(404, "No job with this id (records are kept for 7 days).")
-    if record.status in FINISHED:
-        raise ApiError(409, f"The job has already ended ({record.status}).")
-    live = live_state(request)
-    await store.update(job_id, cancel_requested=True)
-    if record.status == "queued":
-        # Not started: end it here; arq's abort below keeps the worker from starting it.
-        ended = await store.finish(job_id, "cancelled", error="Cancelled before start.")
-        await live.bus.publish(
-            "job.done",
-            JobDoneData(job_id=job_id, kind=record.kind, status="cancelled", message="Cancelled before start."),
-        )
-        record = ended or record
-    if live.redis is not None:
-        with contextlib.suppress(TimeoutError):
-            await Job(job_id, live.redis, _queue_name=QUEUE_NAME).abort(timeout=0.2)
-    return await store.get(job_id) or record
+async def cancel(
+    job_id: str,
+    request: Request,
+    store: Annotated[JobStore, Depends(job_store)],
+    twin: Annotated[TwinStore | None, Depends(optional_twin_store)],
+) -> JobRecord:
+    """A queued job is not started; a running job is stopped. Both end with status ``cancelled``. The cancel is
+    recorded in the audit log (``job.cancel``) before the job changes; without the twin store it is refused (503)."""
+    cancelled = await audited_cancel(request, store, twin, job_id, origin="jobs")
+    return await store.get(job_id) or cancelled.record

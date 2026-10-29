@@ -247,6 +247,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sources, services and host health
+         * @description Every source with its last timestamp and age (the data sources with the live fetches of this process and the
+         *     worker, and the latest twin evaluation), the services and the host's CPU, RAM, disks and temperatures.
+         */
+        get: operations["admin_health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/hoppers": {
         parameters: {
             query?: never;
@@ -289,6 +310,73 @@ export interface paths {
          *     (nothing is deleted).
          */
         delete: operations["admin_delete_hopper_history"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job history
+         * @description Jobs submitted in the period, newest first, from ``twin.jobs`` (92 days) merged with the live Redis records
+         *     (7 days; their progress and cancel flag): durations (waiting, execution over the tries, elapsed while running),
+         *     tries, the error of a failed job and whether it can be cancelled or retried.
+         */
+        get: operations["admin_job_history_view"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a job (audited)
+         * @description Cancel a queued or running job; the cancel is recorded in the audit log (``job.cancel``, with the job before
+         *     and after) before the job changes. A queued job ends at once (``cancelled``), a running one when the worker stops
+         *     it. 409 when the job has ended.
+         */
+        post: operations["admin_cancel_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry a job (audited)
+         * @description Queue the kind and parameters of a failed or cancelled job again (``job.retry`` in the audit log, with the job
+         *     retried). A scheduler job's parameters take their defaults now (e.g. the current hour), not at its slot. An
+         *     identical job already queued or running is returned instead (``duplicate``), and recorded as well. 409 when the
+         *     job neither failed nor was cancelled; 422 when its parameters no longer fit the kind.
+         */
+        post: operations["admin_retry_job"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -917,8 +1005,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Cancel a job
-         * @description A queued job is not started; a running job is stopped. Both end with status ``cancelled``.
+         * Cancel a job (audited)
+         * @description A queued job is not started; a running job is stopped. Both end with status ``cancelled``. The cancel is
+         *     recorded in the audit log (``job.cancel``) before the job changes; without the twin store it is refused (503).
          */
         post: operations["jobs_cancel"];
         delete?: never;
@@ -4334,6 +4423,34 @@ export interface components {
              */
             decision: "accepted" | "rejected";
         };
+        /** DiskRow */
+        DiskRow: {
+            /**
+             * Path
+             * @description A path on the file system
+             */
+            path: string;
+            /**
+             * Pct
+             * @description Used share, %
+             */
+            pct: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "warning" | "critical";
+            /**
+             * Total Gb
+             * @description Size, GB
+             */
+            total_gb: number;
+            /**
+             * Used Gb
+             * @description Used space, GB
+             */
+            used_gb: number;
+        };
         /** DriftEpisode */
         DriftEpisode: {
             /**
@@ -6627,6 +6744,111 @@ export interface components {
              */
             user_name: string | null;
         };
+        /** HostHealth */
+        HostHealth: {
+            /**
+             * Collected At
+             * Format: date-time
+             * @description Time of the reading (UTC)
+             */
+            collected_at: string;
+            /**
+             * Cores Pct
+             * @description Load per core (tegrastats; null = core off), %
+             */
+            cores_pct: (number | null)[];
+            /**
+             * Cpu Count
+             * @description Logical CPUs, count
+             */
+            cpu_count?: number | null;
+            /**
+             * Cpu Pct
+             * @description CPU load, mean of the online cores, %
+             */
+            cpu_pct?: number | null;
+            /** Cpu State */
+            cpu_state?: ("ok" | "warning" | "critical") | null;
+            /** Disks */
+            disks: components["schemas"]["DiskRow"][];
+            /** Hostname */
+            hostname: string;
+            /**
+             * Limits
+             * @description Warning and critical values: cpu_pct, ram_pct, disk_pct, temp_c
+             */
+            limits: {
+                [key: string]: components["schemas"]["HostLimit"];
+            };
+            /**
+             * Load 1M
+             * @description Load average over 1 min (not on Windows), runnable tasks
+             */
+            load_1m?: number | null;
+            /** Notes */
+            notes: string[];
+            /** Platform */
+            platform: string;
+            /**
+             * Ram Pct
+             * @description RAM in use, %
+             */
+            ram_pct?: number | null;
+            /** Ram State */
+            ram_state?: ("ok" | "warning" | "critical") | null;
+            /**
+             * Ram Total Mb
+             * @description RAM size, MB
+             */
+            ram_total_mb?: number | null;
+            /**
+             * Ram Used Mb
+             * @description RAM in use, MB
+             */
+            ram_used_mb?: number | null;
+            /**
+             * Source
+             * @description Where CPU, RAM and temperatures were read
+             * @enum {string}
+             */
+            source: "tegrastats" | "psutil";
+            /**
+             * State
+             * @description Worst state of the figures
+             * @enum {string}
+             */
+            state: "ok" | "warning" | "critical";
+            /**
+             * Swap Total Mb
+             * @description Swap size, MB
+             */
+            swap_total_mb?: number | null;
+            /**
+             * Swap Used Mb
+             * @description Swap in use, MB
+             */
+            swap_used_mb?: number | null;
+            /** Temperatures */
+            temperatures: components["schemas"]["TemperatureRow"][];
+            /**
+             * Uptime S
+             * @description Time since boot, s
+             */
+            uptime_s?: number | null;
+        };
+        /** HostLimit */
+        HostLimit: {
+            /**
+             * Critical
+             * @description Critical from this value, in the figure's unit (%, °C)
+             */
+            critical: number;
+            /**
+             * Warning
+             * @description Warning from this value, in the figure's unit (%, °C)
+             */
+            warning: number;
+        };
         /** HotMetalChemistryInputs */
         HotMetalChemistryInputs: {
             /**
@@ -6767,6 +6989,20 @@ export interface components {
              */
             size_bytes: number;
         };
+        /** JobCancelled */
+        JobCancelled: {
+            /**
+             * Audit Id
+             * @description Audit-log entry of the cancel (job.cancel)
+             */
+            audit_id: number;
+            /**
+             * Ended
+             * @description The job was queued and is cancelled; a running job stops in the worker
+             */
+            ended: boolean;
+            job: components["schemas"]["JobRecord"];
+        };
         /** JobDoneData */
         JobDoneData: {
             /** Duration S */
@@ -6802,6 +7038,164 @@ export interface components {
              * @enum {string}
              */
             type: "job.done";
+        };
+        /** JobHistory */
+        JobHistory: {
+            /**
+             * End
+             * Format: date-time
+             * @description End of the period (UTC)
+             */
+            end: string;
+            /**
+             * Limit
+             * @description Rows at most, count
+             */
+            limit: number;
+            /**
+             * Rows
+             * @description Jobs submitted in the period, newest first
+             */
+            rows: components["schemas"]["JobHistoryRow"][];
+            /**
+             * Sources
+             * @description Stores the rows were read from
+             */
+            sources: ("twin.jobs" | "redis")[];
+            /**
+             * Start
+             * Format: date-time
+             * @description Start of the period (UTC)
+             */
+            start: string;
+        };
+        /** JobHistoryRow */
+        JobHistoryRow: {
+            /**
+             * Can Cancel
+             * @description Queued or running, no cancel requested yet, live record in Redis
+             */
+            can_cancel: boolean;
+            /**
+             * Can Retry
+             * @description Failed or cancelled, and its kind is still in the catalogue
+             */
+            can_retry: boolean;
+            /**
+             * Cancel Requested
+             * @description A cancel was requested (Redis records only)
+             */
+            cancel_requested: boolean;
+            /**
+             * Elapsed S
+             * @description now − start while running, s
+             */
+            elapsed_s?: number | null;
+            /**
+             * Error
+             * @description Why the job failed or was cancelled
+             */
+            error?: string | null;
+            /**
+             * Finished At
+             * @description End (UTC)
+             */
+            finished_at?: string | null;
+            /**
+             * Id
+             * @description Job id
+             */
+            id: string;
+            /**
+             * Kind
+             * @description Job kind, e.g. twin.evaluate
+             */
+            kind: string;
+            /**
+             * Live
+             * @description Read from Redis (the live record) rather than from twin.jobs
+             */
+            live: boolean;
+            /**
+             * Max Tries
+             * @description Tries the kind allows, count
+             */
+            max_tries?: number | null;
+            /**
+             * Message
+             * @description Latest progress message or outcome
+             */
+            message?: string | null;
+            /**
+             * Params
+             * @description Parameters of the job (units in the kind's parameter schema)
+             */
+            params: Record<string, unknown>;
+            /**
+             * Progress
+             * @description Progress of a running job, fraction 0-1 (Redis records only)
+             */
+            progress?: number | null;
+            /**
+             * Run S
+             * @description Execution time summed over the tries, s
+             */
+            run_s?: number | null;
+            /**
+             * Scheduled
+             * @description Started by the schedule rather than by a user
+             */
+            scheduled: boolean;
+            /**
+             * Scheduled For
+             * @description Schedule slot the job serves (UTC)
+             */
+            scheduled_for?: string | null;
+            /**
+             * Skipped
+             * @description A schedule slot recorded as skipped (the job did not run)
+             */
+            skipped: boolean;
+            /**
+             * Started At
+             * @description Start of the first try (UTC)
+             */
+            started_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed" | "cancelled";
+            /**
+             * Submitted At
+             * @description Submission (UTC)
+             */
+            submitted_at?: string | null;
+            /**
+             * Submitted By
+             * @description User name, or scheduler / scheduler (catch-up) / scheduler (skipped)
+             */
+            submitted_by: string;
+            /**
+             * Timeout S
+             * @description Time limit of one try, s
+             */
+            timeout_s?: number | null;
+            /**
+             * Title
+             * @description Title of the kind (the kind itself when it left the catalogue)
+             */
+            title: string;
+            /**
+             * Tries
+             * @description Tries made, count
+             */
+            tries: number;
+            /**
+             * Wait S
+             * @description Start − submission; now − submission while queued, s
+             */
+            wait_s?: number | null;
         };
         /** JobKindInfo */
         JobKindInfo: {
@@ -6936,6 +7330,25 @@ export interface components {
              * @default 0
              */
             tries: number;
+        };
+        /** JobRetried */
+        JobRetried: {
+            /**
+             * Audit Id
+             * @description Audit-log entry of the retry (job.retry)
+             */
+            audit_id: number;
+            /**
+             * Duplicate
+             * @description True when an identical job was already queued or running
+             */
+            duplicate: boolean;
+            job: components["schemas"]["JobRecord"];
+            /**
+             * Retry Of
+             * @description Id of the failed or cancelled job retried
+             */
+            retry_of: string;
         };
         /** JobStatsResponse */
         JobStatsResponse: {
@@ -9748,6 +10161,39 @@ export interface components {
              */
             start: string;
         };
+        /** ServiceRow */
+        ServiceRow: {
+            /**
+             * Age S
+             * @description Age of last_at, s
+             */
+            age_s?: number | null;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Key
+             * @description api, redis, twin_store, worker
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Last At
+             * @description Process start (API) or last heartbeat (worker), UTC; null for the others
+             */
+            last_at?: string | null;
+            /**
+             * Latency Ms
+             * @description Time of the check (Redis ping, database query), ms
+             */
+            latency_ms?: number | null;
+            /**
+             * State
+             * @description ok, stale, down, missing (not known), off (not configured)
+             * @enum {string}
+             */
+            state: "ok" | "stale" | "down" | "missing" | "off";
+        };
         /** SessionInfo */
         SessionInfo: {
             /**
@@ -10879,6 +11325,60 @@ export interface components {
              */
             stale_after_h: number;
         };
+        /** SourceRow */
+        SourceRow: {
+            /**
+             * Age S
+             * @description Age of last_at at checked time, s; null without last_at
+             */
+            age_s?: number | null;
+            /**
+             * Checked At
+             * @description Last successful fetch or evaluation (UTC)
+             */
+            checked_at?: string | null;
+            /**
+             * Error
+             * @description Error of the last fetch while the source is down
+             */
+            error?: string | null;
+            /**
+             * Failed At
+             * @description Time of the failed fetch (UTC)
+             */
+            failed_at?: string | null;
+            /**
+             * Group
+             * @description data: a data source; twin: the twin's own evaluation
+             * @enum {string}
+             */
+            group: "data" | "twin";
+            /**
+             * Key
+             * @description influxdb, hourly, hm_slag, dpr, open_meteo, evaluation
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Last At
+             * @description Newest data time the source holds (UTC; the window end for the evaluation); null when none
+             */
+            last_at?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Stale After S
+             * @description Age from which the source is stale, s
+             */
+            stale_after_s?: number | null;
+            /**
+             * State
+             * @description ok, stale, down (last fetch failed), missing (no time), off
+             * @enum {string}
+             */
+            state: "ok" | "stale" | "down" | "missing" | "off";
+        };
         /** StabilityTest */
         StabilityTest: {
             /**
@@ -11821,6 +12321,39 @@ export interface components {
             duplicate: boolean;
             job: components["schemas"]["JobRecord"];
         };
+        /** SystemHealth */
+        SystemHealth: {
+            /**
+             * Checked At
+             * Format: date-time
+             * @description Time of the check (UTC); the ages are taken at this time
+             */
+            checked_at: string;
+            /**
+             * Counts
+             * @description Sources and services per state, count
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /** @description The machine the API runs on; null when it could not be read */
+            host?: components["schemas"]["HostHealth"] | null;
+            /**
+             * Host Error
+             * @description Why the host could not be read
+             */
+            host_error?: string | null;
+            /**
+             * Services
+             * @description twin-api, Redis, the twin store and the worker
+             */
+            services: components["schemas"]["ServiceRow"][];
+            /**
+             * Sources
+             * @description Every source the twin reads, with its last timestamp and age
+             */
+            sources: components["schemas"]["SourceRow"][];
+        };
         /** TagValue */
         TagValue: {
             /**
@@ -11866,6 +12399,24 @@ export interface components {
              * @description Standard deviation across Q1 to Q4, °C
              */
             spread_std?: number | null;
+        };
+        /** TemperatureRow */
+        TemperatureRow: {
+            /**
+             * C
+             * @description Temperature, °C
+             */
+            c: number;
+            /**
+             * Sensor
+             * @description Thermal zone or sensor, e.g. cpu, gpu, tj
+             */
+            sensor: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "warning" | "critical";
         };
         /** TextPart */
         TextPart: {
@@ -14135,6 +14686,44 @@ export interface operations {
             };
         };
     };
+    admin_health: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemHealth"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     admin_hopper_mapping: {
         parameters: {
             query?: never;
@@ -14234,6 +14823,137 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SnapshotsDeleted"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_job_history_view: {
+        parameters: {
+            query?: {
+                /** @description Only this kind, e.g. optimiser.step2 */
+                kind?: string | null;
+                /** @description Only this status */
+                status?: ("queued" | "running" | "done" | "failed" | "cancelled") | null;
+                /** @description Length of the period, d */
+                days?: number;
+                /** @description End of the period (default now; naive is UTC) */
+                end?: string | null;
+                /** @description Rows at most, count */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobHistory"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_cancel_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Job id */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobCancelled"];
+                };
+            };
+            /** @description Client error (problem+json) */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Server error (problem+json) */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    admin_retry_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Job id */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRetried"];
                 };
             };
             /** @description Client error (problem+json) */
